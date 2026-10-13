@@ -298,6 +298,7 @@ async function seedBoundaryContest(
 ): Promise<string> {
   const contestId = `pg-b-c-${tag}-${runId}`;
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     title: `PG 赛期边界-${tag}`,
     start_time: new Date(Date.now() - 3_600_000).toISOString(),

@@ -352,6 +352,7 @@ Deno.test({
     await db.insert(contests).values([
       {
         id: excludedContestId,
+        domain_id: DEFAULT_DOMAIN_ID,
         title: "不计入全局榜单",
         start_time: new Date(Date.now() - 120_000).toISOString(),
         end_time: new Date(Date.now() - 60_000).toISOString(),
@@ -364,6 +365,7 @@ Deno.test({
       },
       {
         id: includedContestId,
+        domain_id: DEFAULT_DOMAIN_ID,
         title: "计入全局榜单（已结束）",
         start_time: new Date(Date.now() - 120_000).toISOString(),
         end_time: new Date(Date.now() - 60_000).toISOString(),

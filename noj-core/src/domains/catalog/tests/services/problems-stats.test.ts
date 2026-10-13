@@ -462,10 +462,7 @@ Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 ma
     updated_at: now,
   });
   await seedSubmission(problemId, student, 10000, {}, school.id);
-  const contestId = await seedRunningContest({ problemIds: [problemId] });
-  await getDb().update(contests).set({ domain_id: school.id }).where(
-    eq(contests.id, contestId),
-  );
+  await seedRunningContest({ problemIds: [problemId], domainId: school.id });
   const stats = await getPublicProblemStats(problemId);
   assertEquals(stats.submit_count, 0);
   assertEquals(stats.accepted_count, 0);

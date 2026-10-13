@@ -1,4 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
@@ -520,6 +521,7 @@ async function seedObjectiveFixture(
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, problemId),
       contest_id: contestId,
       problem_id: problemId,
       label: "A",

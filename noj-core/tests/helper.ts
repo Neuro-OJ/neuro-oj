@@ -410,6 +410,43 @@ export interface ContestProblemFixtureRow {
   effective_policy_revision?: number;
 }
 
+/** 按父比赛的真实使用域取得赛题绑定；跨域题必须先建立目标域引用。 */
+export async function contestProblemExecutionForTest(
+  contestId: string,
+  problemId: string,
+) {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contests, domainProblemBindings, problems } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [contest] = await db.select().from(contests).where(
+    eq(contests.id, contestId),
+  );
+  if (!contest) throw new Error("比赛夹具的父比赛不存在");
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, contest.domain_id),
+    eq(domainProblemBindings.problem_id, problemId),
+  ));
+  if (binding) {
+    return {
+      domain_id: contest.domain_id,
+      domain_problem_binding_id: binding.id,
+    };
+  }
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem || problem.domain_id !== contest.domain_id) {
+    throw new Error("共享赛题夹具缺少比赛使用域的题库绑定");
+  }
+  return {
+    domain_id: contest.domain_id,
+    domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
+  };
+}
+
 /**
  * 插入竞赛题目关联，自动补齐**必填**的固定版本（Handbook §2.6）。
  *
@@ -424,13 +461,9 @@ export async function insertContestProblems(
   input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
 ): Promise<void> {
   const { getDb } = await import("../src/shared/db/connection.ts");
-  const { contestProblems, contests, domainProblemBindings } = await import(
+  const { contestProblems } = await import(
     "../src/shared/db/schema.ts"
   );
-  const { DEFAULT_DOMAIN_ID } = await import(
-    "../src/shared/workspace/types.ts"
-  );
-  const { and, eq } = await import("drizzle-orm");
   const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
     ? input
     : [input as ContestProblemFixtureRow];
@@ -438,22 +471,9 @@ export async function insertContestProblems(
   for (const row of rows) {
     const versionId = row.pinned_version_id ??
       await publishBaselineVersionForTest(row.problem_id);
-    await bindPublishedProblemForTest(row.problem_id);
-    const [contest] = await getDb().select().from(contests).where(
-      eq(contests.id, row.contest_id),
-    );
-    const domainId = contest.domain_id ?? DEFAULT_DOMAIN_ID;
-    const [binding] = await getDb().select().from(domainProblemBindings).where(
-      and(
-        eq(domainProblemBindings.domain_id, domainId),
-        eq(domainProblemBindings.problem_id, row.problem_id),
-      ),
-    );
-    if (!binding) throw new Error("比赛夹具缺少使用域题库绑定");
     resolved.push({
       ...row,
-      domain_id: domainId,
-      domain_problem_binding_id: binding.id,
+      ...await contestProblemExecutionForTest(row.contest_id, row.problem_id),
       pinned_version_id: versionId,
     });
   }

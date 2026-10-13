@@ -1,4 +1,5 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛变更使全站榜口径立即失效（2026-10-11 复审问题 8）。
  *
@@ -114,6 +115,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, problemId),
       contest_id: contestId,
       problem_id: problemId,
       label: "A",

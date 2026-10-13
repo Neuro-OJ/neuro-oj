@@ -1,5 +1,6 @@
 import {
   bindPublishedProblemForTest,
+  contestProblemExecutionForTest,
   deleteProblemFixtures,
   problemExecutionForTest,
 } from "../../../../../tests/helper.ts";
@@ -329,6 +330,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_2,
       problem_id: PROBLEM_A1,
+      ...await contestProblemExecutionForTest(CONTEST_2, PROBLEM_A1),
       label: "A1",
       score: 100,
       sort_order: 0,
@@ -338,6 +340,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_1,
       problem_id: PROBLEM_A2,
+      ...await contestProblemExecutionForTest(CONTEST_1, PROBLEM_A2),
       label: "A2",
       score: 100,
       sort_order: 1,
@@ -347,6 +350,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_1,
       problem_id: PROBLEM_B1,
+      ...await contestProblemExecutionForTest(CONTEST_1, PROBLEM_B1),
       label: "B1",
       score: 100,
       sort_order: 0,
@@ -356,6 +360,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_2,
       problem_id: PROBLEM_B2,
+      ...await contestProblemExecutionForTest(CONTEST_2, PROBLEM_B2),
       label: "B2",
       score: 100,
       sort_order: 1,

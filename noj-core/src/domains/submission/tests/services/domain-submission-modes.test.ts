@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import {
   AppError,
@@ -487,12 +488,14 @@ Deno.test({
       updated_at: new Date(now).toISOString(),
     });
     await f.db.insert(contestProblems).values([{
+      ...await contestProblemExecutionForTest(id, f.problemId),
       contest_id: id,
       problem_id: f.problemId,
       pinned_version_id: f.v2,
       label: "A",
       score: 10000,
     }, {
+      ...await contestProblemExecutionForTest(id, f.paper),
       contest_id: id,
       problem_id: f.paper,
       pinned_version_id: f.version,

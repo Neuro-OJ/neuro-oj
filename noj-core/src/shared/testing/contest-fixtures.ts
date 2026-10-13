@@ -28,10 +28,11 @@ import { getDb } from "../db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   problems,
   problemVersions,
 } from "../db/schema.ts";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 /** 竞赛时间对（开始/结束）。 */
 export interface ContestTimes {
@@ -129,12 +130,16 @@ export async function seedRunningContest(options: {
   times?: ContestTimes;
   title?: string;
   createdBy?: string;
+  /** 显式使用域；其他域源题必须已有该域的共享绑定。 */
+  domainId?: string;
 }): Promise<string> {
   const times = options.times ?? runningContestTimes();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const db = getDb();
+  const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
   await db.insert(contests).values({
+    domain_id: domainId,
     id,
     title: options.title ?? `夹具竞赛 ${Date.now()}-${id.slice(0, 8)}`,
     description: "",
@@ -194,15 +199,48 @@ export async function seedRunningContest(options: {
         latest_version_id: baselineVersionId(problemId),
       }).where(eq(problems.id, problemId));
     }
+    const sources = await db.select().from(problems).where(
+      inArray(problems.id, options.problemIds),
+    );
+    const owned = sources.filter((problem) =>
+      domainId === DEFAULT_DOMAIN_ID && problem.domain_id === DEFAULT_DOMAIN_ID
+    );
+    if (owned.length) {
+      await db.insert(domainProblemBindings).values(owned.map((problem) => ({
+        id: `fixture-binding-${problem.id}`,
+        domain_id: DEFAULT_DOMAIN_ID,
+        problem_id: problem.id,
+        kind: "owned" as const,
+        visibility: problem.visibility === "public"
+          ? "public" as const
+          : "members" as const,
+        created_by: options.createdBy ?? "0",
+        created_at: now,
+        updated_at: now,
+      }))).onConflictDoNothing();
+    }
+    const bindings = await db.select().from(domainProblemBindings).where(and(
+      eq(domainProblemBindings.domain_id, domainId),
+      inArray(domainProblemBindings.problem_id, options.problemIds),
+    ));
+    const bindingIds = new Map(
+      bindings.map((binding) => [binding.problem_id, binding.id]),
+    );
     await db.insert(contestProblems).values(
-      options.problemIds.map((problemId, index) => ({
-        contest_id: id,
-        problem_id: problemId,
-        sort_order: index,
-        label: String.fromCharCode(65 + index),
-        score: 10000,
-        pinned_version_id: baselineVersionId(problemId),
-      })),
+      options.problemIds.map((problemId, index) => {
+        const bindingId = bindingIds.get(problemId);
+        if (!bindingId) throw new Error("竞赛夹具缺少使用域题库绑定");
+        return {
+          domain_id: domainId,
+          domain_problem_binding_id: bindingId,
+          contest_id: id,
+          problem_id: problemId,
+          sort_order: index,
+          label: String.fromCharCode(65 + index),
+          score: 10000,
+          pinned_version_id: baselineVersionId(problemId),
+        };
+      }),
     );
   }
   return id;

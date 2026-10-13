@@ -1,4 +1,5 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛客观题小题固定版本回归（Handbook §6.4，缺陷 #3-contest）。
  *
@@ -161,6 +162,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, paperId),
       contest_id: contestId,
       problem_id: paperId,
       label: "A",
