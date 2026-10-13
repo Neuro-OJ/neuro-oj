@@ -108,10 +108,9 @@ function objectiveZip(number: number): Uint8Array {
   const enc = new TextEncoder();
   return zipSync({
     "problem.json": enc.encode(JSON.stringify({
-      format_version: 1,
+      format_version: 2,
       title: `客观题包 ${number}`,
       difficulty: "easy",
-      type: "P",
       number,
       is_objective: true,
     })),

@@ -67,10 +67,9 @@ function makeBundleZip(
   manifestOverrides: Record<string, unknown> = {},
 ): Uint8Array {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `导入测试题 ${ts}`,
     difficulty: "easy",
-    type: "U",
     runtime_config: VALID_RUNTIME_CONFIG,
     ...manifestOverrides,
   };

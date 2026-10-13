@@ -125,11 +125,18 @@ noj-cli judge calibrate --input benchmark.json --output oi-cost-profile.json \
 ## 题目包管理
 
 ```bash
-noj-cli problem init <slug> [--type P|U] [--judge-type dual|oi] \
+noj-cli problem init <slug> [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
 noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
+noj-cli problem import --domain school --dir <题包目录>
 ```
+
+`problem init` 和 `pack` 生成格式 2 题包，不再写 P/U 分类。`lint` 可校验格式 1
+的 P 题包并提示升级，`pack` 会转换为格式 2；格式 1 U
+题包须先人工转换。题包中的数字 `number` 可选，目标 Domain 通过
+`problem import --domain <slug>` 传给 core 容器，省略时使用默认域 `main`。LLM
+包只保留单次 `max_calls` / `max_tokens` 预算，Provider 和模型由使用域配置。
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。

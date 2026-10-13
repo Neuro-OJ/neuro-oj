@@ -16,6 +16,7 @@
  * 题目的编辑器都没有初始代码。参考实现仍必须排除（见 `submission*`）。
  */
 import { zipSync } from "fflate";
+import { normalizeBundleManifestFormat } from "./vendor/problem-bundle.ts";
 
 /** 打包排除规则（与 `noj.ts` 及 quality.md 对齐）。 */
 export const PACK_EXCLUDES = {
@@ -84,7 +85,17 @@ export function packBundle(input: PackInput): PackResult {
       excluded.push(name);
       continue;
     }
-    payload[name] = data;
+    payload[name] = name === "problem.json"
+      ? new TextEncoder().encode(
+        JSON.stringify(
+          normalizeBundleManifestFormat(
+            JSON.parse(new TextDecoder().decode(data)),
+          ).manifest,
+          null,
+          2,
+        ) + "\n",
+      )
+      : data;
     included.push(name);
   }
 

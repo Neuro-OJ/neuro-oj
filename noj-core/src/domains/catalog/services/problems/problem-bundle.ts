@@ -217,7 +217,7 @@ export async function importProblemBundle(
     /** 客户端编辑基线（target 模式下必填）：缺失 428、过时 409。 */
     expectedRevision?: number | null;
   },
-): Promise<ProblemResponseWithTags> {
+): Promise<ProblemResponseWithTags & { warnings?: string[] }> {
   const targetProblemId = typeof target === "string"
     ? target
     : target?.problemId;
@@ -295,7 +295,7 @@ export async function importProblemBundle(
   // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
   if (manifest.is_objective) {
     const questions = validateObjectiveQuestions(parsed.questions);
-    return importObjectivePaper(
+    const paper = await importObjectivePaper(
       manifest,
       description,
       questions,
@@ -304,6 +304,7 @@ export async function importProblemBundle(
       c,
       !!targetProblemId,
     );
+    return { ...paper, warnings: parsed.warnings };
   }
 
   // 5. 剥离元数据，重建纯净评测包
@@ -322,7 +323,6 @@ export async function importProblemBundle(
   //    旧入口只在默认域匹配，域内数字题号由 DB 唯一约束保证。
   let result: ProblemResponseWithTags;
   if (number !== undefined) {
-    const type = manifest.type ?? "U";
     const db = getDb();
     const byNumber = await db
       .select({
@@ -333,7 +333,6 @@ export async function importProblemBundle(
       .from(problems)
       .where(
         and(
-          eq(problems.type, type),
           eq(problems.number, number),
           or(
             eq(problems.domain_id, DEFAULT_DOMAIN_ID),
@@ -392,7 +391,7 @@ export async function importProblemBundle(
     );
   }
 
-  return result;
+  return { ...result, warnings: parsed.warnings };
 }
 
 /**
@@ -599,7 +598,6 @@ async function importObjectivePaper(
         .from(problems)
         .where(
           and(
-            eq(problems.type, type),
             eq(problems.number, number),
             or(
               eq(problems.domain_id, DEFAULT_DOMAIN_ID),

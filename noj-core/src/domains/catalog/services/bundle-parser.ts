@@ -21,10 +21,12 @@ import {
 import { unzipSync, zipSync } from "fflate";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
+  BUNDLE_FORMAT_VERSION,
   BUNDLE_METADATA_ENTRIES,
   DEFAULT_TEMPLATE_FILE,
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
+  normalizeBundleManifestFormat,
 } from "./../types/problem-bundle.ts";
 import { validateOiRuntimeConfig } from "../types/runtime-config.ts";
 
@@ -74,6 +76,8 @@ export function readEvaluationEntries(
 export interface ParsedProblemBundle {
   /** 校验并规范化后的 manifest（`problem.json`）。 */
   manifest: Record<string, unknown>;
+  /** 格式升级与移除部署执行配置的提示。 */
+  warnings: string[];
   /** `statement.md` 内容（不存在时为 null）。 */
   statement: string | null;
   /** `questions.json` 内容（客观题包；不存在为 null） */
@@ -237,9 +241,8 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     const configFile = files["testdata/config.yaml"] ??
       files["testdata/config.yml"];
     manifest = {
-      format_version: 1,
+      format_version: BUNDLE_FORMAT_VERSION,
       title: metadata.title,
-      type: "U",
       judge_type: "oi",
       runtime_config: normalizeHydroOiConfig(
         configFile ? parseConfigYaml(configFile) : {},
@@ -256,6 +259,9 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       "zip 根级缺少 problem.json 或 Hydro problem.yaml",
     );
   }
+
+  const normalized = normalizeBundleManifestFormat(manifest);
+  manifest = normalized.manifest;
 
   const isObjective = manifest.is_objective === true;
   if (isObjective) {
@@ -301,6 +307,7 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
 
   return {
     manifest,
+    warnings: normalized.warnings,
     statement: statementFile ? new TextDecoder().decode(statementFile) : null,
     questions,
     entries: files,

@@ -72,10 +72,9 @@ Deno.test("T22 planInitPrompts：全部已给 → 一个都不问", () => {
     planInitPrompts({
       slug: "a-plus-b",
       title: "A+B",
-      type: "P",
       difficulty: "medium",
     }),
-    { askSlug: false, askTitle: false, askType: false, askDifficulty: false },
+    { askSlug: false, askTitle: false, askDifficulty: false },
   );
 });
 
@@ -83,13 +82,11 @@ Deno.test("T22 planInitPrompts：部分已给 → 只问缺的（逐字段）", 
   assertEquals(planInitPrompts({ slug: "a-plus-b" }), {
     askSlug: false,
     askTitle: true,
-    askType: true,
     askDifficulty: true,
   });
-  assertEquals(planInitPrompts({ type: "U", difficulty: "hard" }), {
+  assertEquals(planInitPrompts({ difficulty: "hard" }), {
     askSlug: true,
     askTitle: true,
-    askType: false,
     askDifficulty: false,
   });
   // 空串视为"未给"（与 command.ts 传 undefined/有值 的语义一致）
@@ -98,21 +95,19 @@ Deno.test("T22 planInitPrompts：部分已给 → 只问缺的（逐字段）", 
 
 // ---------------- 覆盖与默认值 ----------------
 
-Deno.test("T22 引导：四个字段都问到，且返回值正确", async () => {
+Deno.test("T22 引导：三个字段都问到，且返回值正确", async () => {
   const { io, asked } = makeIO([
     "a-plus-b", // slug
     "A+B 求和", // title
-    "1", // type: P
     "1", // difficulty: medium
     "y", // 确认
   ]);
   const answers = await guideProblemInit(io, {});
   assertEquals(answers.slug, "a-plus-b");
   assertEquals(answers.title, "A+B 求和");
-  assertEquals(answers.type, "P");
   assertEquals(answers.difficulty, "medium");
-  // 四个字段各问一次 + 一次确认
-  assertEquals(asked.length, 5);
+  // 三个字段各问一次 + 一次确认
+  assertEquals(asked.length, 4);
 });
 
 Deno.test("T22 引导：已给旗标的字段不再提问", async () => {
@@ -121,9 +116,8 @@ Deno.test("T22 引导：已给旗标的字段不再提问", async () => {
     "3", // difficulty: hard
     "y",
   ]);
-  const answers = await guideProblemInit(io, { slug: "only-diff", type: "P" });
+  const answers = await guideProblemInit(io, { slug: "only-diff" });
   assertEquals(answers.slug, "only-diff");
-  assertEquals(answers.type, "P");
   assertEquals(answers.difficulty, "hard");
   // slug 与 type 未提问 → 总提问数 = title + difficulty + 确认
   assertEquals(asked.length, 3);
@@ -137,20 +131,17 @@ Deno.test("T22 引导：标题回车接受 slug 作为默认值", async () => {
   const { io } = makeIO([
     "my-problem", // slug
     "", // title 回车 → 默认 slug
-    "", // type 回车 → 第 1 项 P
     "", // difficulty 回车 → 第 1 项 medium
     "", // 确认回车 → 默认 Y
   ]);
   const answers = await guideProblemInit(io, {});
   assertEquals(answers.title, "my-problem");
-  assertEquals(answers.type, "P");
   assertEquals(answers.difficulty, "medium");
 });
 
-Deno.test("T22 引导：type 选第 2 项 → U；difficulty 选第 3 项 → hard", async () => {
-  const { io } = makeIO(["slug-x-1", "t", "2", "3", "y"]);
+Deno.test("T22 引导：difficulty 选第 3 项 → hard", async () => {
+  const { io } = makeIO(["slug-x-1", "t", "3", "y"]);
   const answers = await guideProblemInit(io, {});
-  assertEquals(answers.type, "U");
   assertEquals(answers.difficulty, "hard");
 });
 
@@ -165,7 +156,6 @@ Deno.test("T22 校验：非法 slug 重新提问，合法后继续", async () =>
     "under_score", // 下划线 → 拒绝
     "good-slug", // 合法
     "", // title
-    "", // type
     "", // difficulty
     "y",
   ]);
@@ -186,15 +176,13 @@ Deno.test("T22 校验：select 非法编号重新提问（由 widgets 保证）"
   const { io, written } = makeIO([
     "ok-slug",
     "t",
-    "9", // type 非法编号
-    "abc", // type 非法编号
+    "9", // difficulty 非法编号
+    "abc", // difficulty 非法编号
     "1", // 合法
-    "1",
     "y",
   ]);
-  const answers = await guideProblemInit(io, {});
-  assertEquals(answers.type, "P");
-  assertStringIncludes(written.join(""), "输入无效");
+  await guideProblemInit(io, {});
+  assertStringIncludes(written.join(""), "无效");
 });
 
 // ---------------- EOF / 连续空输入：必须有限次后报错（回归） ----------------
@@ -222,13 +210,13 @@ Deno.test("T22 EOF 回归：readLine 恒返回空串时**有限次**后报错（
 });
 
 Deno.test("T22 EOF：slug 无默认值，EOF 下有界报错（唯一会挂死的字段）", async () => {
-  // 说明：title 走 `input(def)`、type/difficulty 走 `select(defaultIndex)`——
+  // 说明：title 走 `input(def)`、difficulty 走 `select(defaultIndex)`——
   // 它们的空输入会**取默认值**（既有 UX），因此在 EOF 下不会挂死。
   // 真正会挂死的是 **slug**（空串非法且无默认）与**确认环节**（非法词重问）。
   const { io, asked } = makeIO([]);
   let error: Error | null = null;
   try {
-    await guideProblemInit(io, { title: "T", type: "P", difficulty: "easy" });
+    await guideProblemInit(io, { title: "T", difficulty: "easy" });
   } catch (err) {
     error = err as Error;
   }
@@ -240,7 +228,6 @@ Deno.test("T22 EOF：确认环节的无限非法输入有界报错（confirm 会
   const { io, asked } = makeIO([
     "ok-slug",
     "T",
-    "1",
     "1",
     ...Array.from({ length: 40 }, () => "maybe"), // 确认处反复给非法词
   ]);
@@ -276,16 +263,14 @@ Deno.test("T22 回退：在后续字段输入 back 会回到上一个字段重�
   const { io, asked } = makeIO([
     "first-slug", // slug
     "First Title", // title
-    "back", // type 处回退 → 回到 title
+    "back", // difficulty 处回退到标题
     "Second Title", // 重新问 title
-    "1", // type
     "1", // difficulty
     "y",
   ]);
   const answers = await guideProblemInit(io, {});
   assertEquals(answers.slug, "first-slug");
   assertEquals(answers.title, "Second Title", "回退后应能改掉 title");
-  assertEquals(answers.type, "P");
   // title 被问了两次（回退前后各一次）
   assertEquals(asked.filter((p) => p.includes("题目标题")).length, 2);
 });
@@ -311,7 +296,6 @@ Deno.test("T22 回退：slug 处输入 back 被当作**合法题目名**（不�
   const { io } = makeIO([
     "back", // 合法 slug（4 个小写字母）→ 必须被接受
     "", // title 回车 → 默认取 slug
-    "", // type 回车 → 默认 P
     "", // difficulty 回车 → 默认 medium
     "y", // 确认
   ]);
@@ -323,9 +307,8 @@ Deno.test("T22 回退：`:b` 别名同样生效", async () => {
   const { io } = makeIO([
     "s-1",
     "T1",
-    ":b", // type 处回退
+    ":b", // difficulty 处回退到标题
     "T2",
-    "1",
     "1",
     "y",
   ]);
@@ -362,14 +345,14 @@ Deno.test("T22 回退：回退次数也受上限约束（不挂死）", async ()
 
 Deno.test("T22 进度：提示里带 [当前/总数]，且总数随已给旗标变化", async () => {
   // 全部都要问 → 总数 4
-  const all = makeIO(["s-1", "T", "1", "1", "y"]);
+  const all = makeIO(["s-1", "T", "1", "y"]);
   await guideProblemInit(all.io, {});
   const allText = all.asked.join("\n") + all.written.join("\n");
-  assertStringIncludes(allText, "[1/4]");
+  assertStringIncludes(allText, "[1/3]");
 
   // 已给 slug+type → 总数 2
   const partial = makeIO(["T", "1", "y"]);
-  await guideProblemInit(partial.io, { slug: "s-2", type: "P" });
+  await guideProblemInit(partial.io, { slug: "s-2" });
   const partialText = partial.asked.join("\n") + partial.written.join("\n");
   assertStringIncludes(partialText, "[1/2]");
 });
@@ -377,7 +360,7 @@ Deno.test("T22 进度：提示里带 [当前/总数]，且总数随已给旗标�
 // ---------------- 确认与取消 ----------------
 
 Deno.test("T22 确认：拒绝确认 → 抛『已取消』", async () => {
-  const { io } = makeIO(["s-1", "T", "1", "1", "n"]);
+  const { io } = makeIO(["s-1", "T", "1", "n"]);
   await assertRejects(() => guideProblemInit(io, {}), Error, "已取消");
 });
 
@@ -390,7 +373,6 @@ Deno.test("T22 端到端：引导答案 → 生成骨架 → 通过 problem lint
     const { io } = makeIO([
       "guided-problem",
       "引导生成的题目",
-      "1", // P
       "1", // medium
       "y",
     ]);
@@ -399,7 +381,6 @@ Deno.test("T22 端到端：引导答案 → 生成骨架 → 通过 problem lint
       root,
       slug: answers.slug,
       title: answers.title,
-      type: answers.type,
       difficulty: answers.difficulty,
     });
     assert(result.dir.length > 0);
@@ -418,7 +399,8 @@ Deno.test("T22 端到端：引导答案 → 生成骨架 → 通过 problem lint
     );
     assertEquals(manifest.title, "引导生成的题目");
     assertEquals(manifest.difficulty, "medium");
-    assertEquals(manifest.type, "P");
+    assertEquals(manifest.format_version, 2);
+    assertEquals("type" in manifest, false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

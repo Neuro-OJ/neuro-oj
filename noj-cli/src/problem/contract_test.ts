@@ -1,5 +1,8 @@
 import { assertEquals } from "@std/assert";
-import { validateBundleManifest } from "./vendor/problem-bundle.ts";
+import {
+  normalizeBundleManifestFormat,
+  validateBundleManifest,
+} from "./vendor/problem-bundle.ts";
 
 /**
  * **共享 fixture 契约测试**（#514 的关键补偿措施）。
@@ -78,5 +81,29 @@ Deno.test("契约: 校验不修改入参（纯函数）", async () => {
       before,
       `「${item.name}」入参被修改`,
     );
+  }
+});
+
+Deno.test("契约: 规范化输出统一为 v2，无分类、域 ID 或 Provider 选择", async () => {
+  const fixture = await loadFixture();
+  for (const item of fixture.valid) {
+    const result = validateBundleManifest(item.manifest);
+    assertEquals(result.format_version, 2);
+    assertEquals("type" in result, false);
+    assertEquals("domain_id" in result, false);
+    if (result.llm) {
+      assertEquals(
+        Object.keys(result.llm).every((key) =>
+          key === "max_calls" || key === "max_tokens"
+        ),
+        true,
+      );
+    }
+    if (item.manifest.format_version === 1) {
+      assertEquals(
+        normalizeBundleManifestFormat(item.manifest).warnings.length > 0,
+        true,
+      );
+    }
   }
 });

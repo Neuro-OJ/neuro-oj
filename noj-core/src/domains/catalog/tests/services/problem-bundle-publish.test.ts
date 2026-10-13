@@ -108,11 +108,10 @@ Deno.test({
     const explicitKey = crypto.randomUUID();
     const bundle = zipSync({
       "problem.json": encoder.encode(JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: `导入客观题 ${ts}`,
         description: "套卷",
         is_objective: true,
-        type: "U",
         difficulty: "easy",
         tags: [],
       })),

@@ -94,7 +94,7 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
- * 题目 LLM 配置：出题人只声明预算，Provider/模型由平台全局默认决定。
+ * 题目 LLM 配置：出题人只声明预算，Provider/模型由使用域默认配置决定。
  *
  * 非 null 即启用 LLM；`provider_id` / `model` 等旧字段容忍并忽略。
  */

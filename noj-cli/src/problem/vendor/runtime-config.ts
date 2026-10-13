@@ -1,10 +1,23 @@
-// ⚠️ **本文件是 noj-core 的刻意副本**（issue #514 决策：noj-cli 不依赖主仓库导入映射）。
+// ⚠️ 本文件是 noj-core 的刻意副本，修改时同步两处并运行共享契约测试。
 // 原始路径：noj-core/src/domains/catalog/types/runtime-config.ts
-// 修改时必须同步两处，并运行 noj-cli/src/problem/contract_test.ts（共享 fixture 契约测试）。
 import { BadRequestError } from "./errors.ts";
 
 /** 题目评测模式。 */
 export type JudgeType = "dual" | "oi";
+
+/** 可公开的执行后端名称；客观题或无有效 OI 配置时为空。 */
+export type JudgeBackend = "dual" | "oi-native" | "oi-wasm";
+
+/** 提取执行后端标识，不暴露测试数据、checker 或存储配置。 */
+export function getJudgeBackend(
+  judgeType: string | null | undefined,
+  config: unknown,
+  isObjective = false,
+): JudgeBackend | null {
+  if (isObjective) return null;
+  if (judgeType !== "oi") return "dual";
+  return isOiRuntimeConfig(config) ? `oi-${config.backend}` : null;
+}
 
 /**
  * 双容器模式题目运行配置。
@@ -44,16 +57,19 @@ export interface RuntimeConfig {
 
 /** OI 测试点文件名以评测包根目录为基准。 */
 export interface OiTestCase {
+  id?: string;
+  score?: number;
   input: string;
   output: string;
   time_limit_ms?: number;
   memory_limit_mb?: number;
 }
 
-/** OI 子任务采用全部通过得分。 */
+/** OI 子任务采用 Hydro 的 min/max/sum 聚合；旧配置默认 min。 */
 export interface OiSubtask {
   id: string;
   score: number;
+  scoring?: "all" | "min" | "max" | "sum";
   depends_on?: string[];
   time_limit_ms?: number;
   memory_limit_mb?: number;
@@ -62,6 +78,9 @@ export interface OiSubtask {
 
 /** OI 题在原生与 WASM 执行后端共用的时空限制配置。 */
 export interface OiRuntimeConfig {
+  /** 仅独立自测任务允许；CRUD 和题包配置禁止声明。 */
+  self_test?: { no_compare_inputs: string[] };
+  scoring_version?: 2;
   backend: "native" | "wasm";
   languages: Array<"c" | "cc">;
   time_limit_ms: number;
@@ -103,11 +122,15 @@ function isSafeOiPath(value: unknown): value is string {
 /** 校验 OI 题目运行配置。 */
 export function validateOiRuntimeConfig(
   value: unknown,
+  allowSelfTest = false,
 ): asserts value is OiRuntimeConfig {
   if (!isOiRuntimeConfig(value)) {
     throw new BadRequestError("runtime_config OI 配置必须是对象");
   }
   const rc = value;
+  if (rc.scoring_version !== undefined && rc.scoring_version !== 2) {
+    throw new BadRequestError("不支持的 OI 评分协议，请重新保存题目配置");
+  }
   for (
     const key of [
       "cost_profile",
@@ -117,6 +140,9 @@ export function validateOiRuntimeConfig(
     ]
   ) {
     if (key in rc) throw new BadRequestError("WASM 成本只能由服务器注入");
+  }
+  if (rc.self_test !== undefined && !allowSelfTest) {
+    throw new BadRequestError("题目配置不能携带自测模式");
   }
   if (rc.filename !== undefined && !/^[A-Za-z0-9_-]+$/.test(rc.filename)) {
     throw new BadRequestError("filename 必须是安全文件名前缀");
@@ -184,6 +210,7 @@ export function validateOiRuntimeConfig(
   }
   const ids = new Set<string>();
   const casePaths = new Set<string>();
+  const caseIds = new Set<string>();
   const protectedPaths = new Set<string>();
   let totalScore = 0;
   for (const [index, subtask] of rc.subtasks.entries()) {
@@ -208,9 +235,12 @@ export function validateOiRuntimeConfig(
       );
     }
     totalScore += subtask.score;
-    if ("scoring" in subtask && subtask.scoring !== "all") {
+    if (
+      subtask.scoring !== undefined &&
+      !["all", "min", "max", "sum"].includes(subtask.scoring)
+    ) {
       throw new BadRequestError(
-        `runtime_config.subtasks[${index}].scoring 仅允许 all`,
+        `runtime_config.subtasks[${index}].scoring 仅允许 min/max/sum（旧配置 all 兼容 min）`,
       );
     }
     if (!Array.isArray(subtask.cases) || subtask.cases.length === 0) {
@@ -219,6 +249,27 @@ export function validateOiRuntimeConfig(
       );
     }
     for (const [caseIndex, testCase] of subtask.cases.entries()) {
+      if (
+        testCase?.score !== undefined &&
+        (typeof testCase.score !== "number" ||
+          !Number.isFinite(testCase.score) ||
+          testCase.score < 0 || testCase.score > subtask.score ||
+          Math.abs(testCase.score * 100 - Math.round(testCase.score * 100)) >
+            1e-7)
+      ) {
+        throw new BadRequestError(
+          "测试点分数必须为不超过子任务分数、最多两位小数的非负数",
+        );
+      }
+      if (
+        testCase?.id !== undefined &&
+        (typeof testCase.id !== "string" ||
+          !/^[A-Za-z0-9_-]{1,100}$/.test(testCase.id) ||
+          caseIds.has(testCase.id))
+      ) {
+        throw new BadRequestError("测试点 id 必须是安全标识");
+      }
+      if (testCase?.id !== undefined) caseIds.add(testCase.id);
       if (
         !testCase || typeof testCase !== "object" ||
         !isSafeOiPath(testCase.input) || !isSafeOiPath(testCase.output)
@@ -306,8 +357,15 @@ export function validateOiRuntimeConfig(
     }
   }
   if (caseCount > 100) throw new BadRequestError("OI 最多 100 个测试点");
-  if (totalTime > 60000) {
-    throw new BadRequestError("OI 测试点总时限最多 60000ms");
+  // WASM 限额是固定工作量，不能沿用原生 CPU 毫秒的总预算上限。
+  // 宿主实际耗时仍由 Worker 的外层任务墙钟保护独立约束。
+  const totalTimeLimit = rc.backend === "wasm" ? 300000 : 60000;
+  if (totalTime > totalTimeLimit) {
+    throw new BadRequestError(
+      rc.backend === "wasm"
+        ? "OI WASM 测试点总预算最多 300000 NOJ 参考毫秒"
+        : "OI 测试点总时限最多 60000ms",
+    );
   }
   if (Math.abs(totalScore - 100) > 1e-7) {
     throw new BadRequestError("runtime_config.subtasks.score 总和必须为 100");

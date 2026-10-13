@@ -929,7 +929,8 @@ Deno.test("T19 buildDrillBundle：产出可被 zip 解析的包（含 evaluator/
   const manifest = JSON.parse(new TextDecoder().decode(files["problem.json"]!));
   assertEquals(manifest.runtime_config.evaluator.image, "eval-img:1");
   assertEquals(manifest.runtime_config.solution.image, "sol-img:1");
-  assertEquals(manifest.type, "P");
+  assertEquals(manifest.format_version, 2);
+  assertEquals("type" in manifest, false);
 });
 
 // ---------------- 报告与指标（纯函数） ----------------

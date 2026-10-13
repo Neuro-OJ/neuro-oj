@@ -39,10 +39,9 @@ export function makeBundleZip(
   extraEntries: Record<string, string> = {},
 ): Uint8Array {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `导入测试题 ${ts}`,
     difficulty: "easy",
-    type: "U",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -100,10 +99,9 @@ function makeObjectiveZipBlob(
   ],
 ): Blob {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `客观题导入测试 ${ts}`,
     difficulty: "easy",
-    type: "U",
     is_objective: true,
     ...manifestOverrides,
   };
@@ -156,7 +154,7 @@ async function ensureUser(id: string): Promise<void> {
 }
 
 Deno.test({
-  name: "import-bundle: admin 导入 P 型新题成功（含评测包注册）",
+  name: "import-bundle: admin 导入 v2 新题成功（含评测包注册）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -166,7 +164,7 @@ Deno.test({
     const token = await createUserToken("admin");
 
     const formData = new FormData();
-    formData.append("file", makeZipBlob({ type: "P" }), "p1.zip");
+    formData.append("file", makeZipBlob({}), "p1.zip");
 
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
@@ -175,7 +173,6 @@ Deno.test({
     });
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.data.type, "P");
     assertEquals(body.data.title, `导入测试题 ${ts}`);
     assertEquals(typeof body.data.support_package_storage_url, "string");
 
@@ -504,7 +501,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入 P 型返回 403",
+  name: "import-bundle: 格式 2 携带旧 P 分类返回 400",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -522,7 +519,7 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 400);
   },
 });
 
@@ -570,7 +567,7 @@ Deno.test({
     const enc = new TextEncoder();
     const badZip = zipSync({
       "problem.json": enc.encode(
-        JSON.stringify({ format_version: 1, title: "x", runtime_config: {} }),
+        JSON.stringify({ format_version: 2, title: "x", runtime_config: {} }),
       ),
       "statement.md": enc.encode("# x"),
       "sub/evaluate.py": enc.encode("print('x')"),
@@ -884,7 +881,7 @@ Deno.test({
     const enc = new TextEncoder();
     const noQuestionsZip = zipSync({
       "problem.json": enc.encode(JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: "缺小题",
         is_objective: true,
       })),
@@ -1048,7 +1045,6 @@ Deno.test({
     formData.append(
       "file",
       makeZipBlob({
-        type: "P",
         runtime_config: {
           evaluator: {
             image: "noj-evaluator-python",
