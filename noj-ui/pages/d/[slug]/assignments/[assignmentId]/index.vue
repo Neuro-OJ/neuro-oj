@@ -9,7 +9,7 @@ const actor = useState<{ id: string } | null>('auth:user', () => null);
 const id = computed(() => String(route.params.assignmentId)), scope = ref<'on_time' | 'current'>('on_time');
 const page = ref(1), recipients = ref('current'), statusFilter = ref('all'), search = ref('');
 const searchDraft = ref(''), itemFilter = ref('all'), verdictFilter = ref('all');
-const selected = ref<{ userId: string; cell: TeachingCell } | null>(null),
+const selected = ref<{ userId: string; username: string; reference: string; cell: TeachingCell } | null>(null),
   drawer = ref(false),
   downloading = ref(false);
 const key = computed(() => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value));
@@ -93,7 +93,12 @@ watch(() => [slug.value, id.value, actor.value?.id], () => {
   page.value = 1;
 });
 function select(userId: string, cell: TeachingCell) {
-  selected.value = { userId, cell };
+  selected.value = {
+    userId,
+    username: matrix.data.value?.data.rows.find(row => row.user_id === userId)?.username ?? '本人',
+    reference: (matrix.data.value?.data.items ?? progress.data.value?.data.items ?? []).find(item => item.id === cell.item_id)?.reference.display_ref ?? '',
+    cell,
+  };
   drawer.value = true;
 }
 async function download() {
@@ -221,14 +226,17 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
       </AsyncContent>
       <TrainingComparison v-if="isStudent && actor" :key="`${key}:own-comparison`" :slug="slug!" :assignment-id="id"
         :user-id="actor.id" :anchor="task.data.value.data.published_at" />
-      <UButton v-if="selected && can('feedback:write')" variant="ghost" @click="selected = null">改为整体反馈</UButton>
+      <div v-if="selected && can('feedback:write')" class="flex flex-wrap items-center gap-3 rounded border border-primary/30 bg-primary-bg p-3">
+        <p class="text-sm">已选学生：<strong>{{ selected.username }}</strong> · 查看题目 {{ selected.reference }}。下方反馈发送给该学生，覆盖本份作业。</p>
+        <UButton variant="outline" @click="selected = null">改为全体反馈</UButton>
+      </div>
       <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
-        :target-user-id="selected?.userId" :help-id="requestedHelp" :feedback-id="requestedFeedback" />
+        :target-user-id="selected?.userId" :target-user-name="selected?.username" :help-id="requestedHelp" :feedback-id="requestedFeedback" />
       <UButton variant="outline" icon="i-lucide-history"
         @click="showHistory = !showHistory">{{ showHistory ? '收起变化依据' : '查看版本与策略变化依据' }}</UButton>
       <AssignmentHistory v-if="showHistory" :key="`${key}:history`" :slug="slug!" :assignment-id="id" />
-      <USlideover v-model:open="drawer" title="学生提交与反馈">
+      <USlideover v-model:open="drawer" :title="selected ? `${selected.username} · ${selected.reference}` : '学生提交与反馈'">
         <template #body>
           <div v-if="selected" class="space-y-4">
             <p class="text-sm tabular-nums">{{ teachingCellLabel(selected.cell) }}</p>

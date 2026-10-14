@@ -46,6 +46,9 @@ async function fixture() {
 
 Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，学生不能看同学反馈", async () => {
   const f = await fixture();
+  await f.db.update(users).set({ username: "target_student" }).where(
+    eq(users.id, f.student),
+  );
   const common = await createAssignmentFeedback(
     f.school.slug,
     f.task.id,
@@ -78,6 +81,18 @@ Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，
   assertEquals(
     (await listAssignmentFeedback(f.school.slug, f.task.id, f.teacher)).total,
     3,
+  );
+  const named = await getAssignmentFeedback(
+    f.school.slug,
+    f.task.id,
+    first.id,
+    f.teacher,
+  );
+  assertEquals(named.target_name, "target_student");
+  assertEquals(
+    (await listAssignmentFeedback(f.school.slug, f.task.id, f.teacher)).data
+      .find((row) => row.id === first.id)?.target_name,
+    "target_student",
   );
   assertEquals(
     (await getAssignmentFeedback(

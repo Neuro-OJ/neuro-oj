@@ -19,7 +19,7 @@ const scope = useCommunityScope().capture()
 const { isLoggedIn, user } = useAuth()
 const route = useRoute()
 const router = useRouter()
-const { config, loadConfig } = useCommunity()
+const { config, loadConfig, error: configError } = useCommunity()
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { open: reportModal } = useReportModal()
@@ -338,11 +338,12 @@ async function publish() {
 }
 
 // ── SSR 初始数据：通过 useAsyncData 获取，结果随 payload 序列化到客户端 ──
-const { data: initialData } = await useAsyncData(
+const { data: initialData, error: initialError, status: initialStatus, refresh: retryInitial } = await useAsyncData(
   `${scope.key}:index:${route.fullPath}`,
   async () => {
     // 强制刷新：赛时静默随竞赛起止实时变化，不能沿用会话内缓存
     const cfg = await loadConfig(true)
+    if (configError.value) throw configError.value
     const enabled = cfg?.enabled
       ? ENABLED_TYPES.filter((t) => cfg[typeFlag[t]] === true)
       : []
@@ -354,11 +355,11 @@ const { data: initialData } = await useAsyncData(
       ? (requested as PostType)
       : (enabled[0] ?? 'discussion')
     activeType.value = chosen
+    if (!cfg?.enabled || enabled.length === 0) {
+      return { activeType: chosen, posts: [], counts: null, nextCursor: null }
+    }
 
-    let posts: PostRowWithPreview<PostRow>[] = []
-    let nextCursor: string | null = null
-    try {
-      const postsRes = await api.get<{ data: PostRow[]; next_cursor: string | null }>(
+    const postsRes = await api.get<{ data: PostRow[]; next_cursor: string | null }>(
         scope.apiPath('posts'),
         {
           query: {
@@ -369,11 +370,8 @@ const { data: initialData } = await useAsyncData(
           silent: true,
         },
       )
-      posts = addPostPreviews(postsRes.data)
-      nextCursor = postsRes.next_cursor ?? null
-    } catch {
-      // 列表失败按空态渲染，不阻断页面
-    }
+    const posts = addPostPreviews(postsRes.data)
+    const nextCursor = postsRes.next_cursor ?? null
 
     let counts: CommunityCounts | null = null
     try {
@@ -417,7 +415,10 @@ watch(initialData, (value) => {
       </div>
     </div>
 
-    <div v-if="!config?.enabled" class="rounded-lg border border-border bg-white p-8 text-center text-text-secondary">社区功能暂未启用。</div>
+    <UAlert v-if="initialError" color="error" :title="extractApiError(initialError).message">
+      <template #actions><UButton variant="outline" :loading="initialStatus === 'pending'" @click="retryInitial()">重试加载社区</UButton></template>
+    </UAlert>
+    <div v-else-if="!config?.enabled" class="rounded-lg border border-border bg-white p-8 text-center text-text-secondary">社区功能暂未启用。</div>
     <div v-else-if="enabledTypes.length === 0" class="rounded-lg border border-border bg-white p-8 text-center text-text-secondary">所有内容模块均已关闭，暂无可用功能。</div>
     <template v-else>
       <div class="mb-6 flex gap-2 overflow-x-auto border-b border-border" role="tablist">
@@ -480,7 +481,9 @@ watch(initialData, (value) => {
         </div>
       </form>
 
-      <p v-if="error" class="rounded border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
+      <UAlert v-if="error" color="error" :title="error">
+        <template #actions><UButton variant="outline" :loading="loading" @click="loadPosts()">重试加载帖子</UButton></template>
+      </UAlert>
       <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
       <div v-else-if="posts.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
         <p>{{ isFiltering ? '没有匹配的帖子。' : '还没有内容，来发布第一篇吧。' }}</p>

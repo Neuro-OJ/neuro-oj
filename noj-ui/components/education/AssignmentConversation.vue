@@ -10,6 +10,7 @@ const props = defineProps<
     canHelp: boolean;
     writable: boolean;
     targetUserId?: string | null;
+    targetUserName?: string;
     helpId?: string;
     feedbackId?: string;
   }
@@ -118,7 +119,7 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
       <UAlert v-if="feedback.error.value" color="error" :title="extractApiError(feedback.error.value).message" />
       <article v-for="note in feedback.data.value?.data.data" :key="note.id" class="mb-3 border-b border-border pb-3">
         <p
-          class="mb-2 text-xs text-text-muted">{{ note.author_name }} · {{ note.target_user_id ? '学生个人反馈' : '整体反馈' }}</p>
+          class="mb-2 text-xs text-text-muted">{{ note.author_name }} · {{ note.target_user_id ? `给 ${note.target_name ?? note.target_user_id}` : '给全体目标学生' }}</p>
         <p class="whitespace-pre-wrap text-sm">{{ note.body }}</p>
       </article>
       <p v-if="feedback.status.value === 'success' && !feedback.data.value?.data.total"
@@ -130,7 +131,7 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
       </div>
       <form v-if="canFeedback && writable" class="mt-4 space-y-3" @submit.prevent="act('feedback')">
         <p
-          class="text-xs text-text-muted">{{ targetUserId ? '反馈发送给当前选中的学生' : '反馈发送给本作业全体目标学生' }}</p>
+          class="text-sm font-medium">{{ targetUserId ? `反馈对象：${targetUserName ?? targetUserId}` : '反馈对象：本作业全体目标学生' }}</p>
         <UTextarea v-model="feedbackBody" class="w-full" :maxlength="30000" aria-label="作业反馈正文"
           placeholder="留下具体、可操作的反馈" />
         <UButton type="submit" :loading="saving" :disabled="!feedbackBody.trim()">发送反馈</UButton>
