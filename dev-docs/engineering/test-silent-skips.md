@@ -746,8 +746,8 @@
 | noj-core/tests/db/test-transaction-savepoint_test.ts | 332 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
 | noj-core/tests/perf/community_search_bench.test.ts | 28 | ignore |
-| noj-core/tests/perf/search_bench.test.ts | 37 | ignore |
-| noj-core/tests/perf/search_bench.test.ts | 179 | ignore |
+| noj-core/tests/perf/search_bench.test.ts | 38 | ignore |
+| noj-core/tests/perf/search_bench.test.ts | 187 | ignore |
 | noj-core/tests/scripts/backfill_public_ids_test.ts | 8 | ignore |
 | noj-core/tests/seed_bootstrap_admin_test.ts | 117 | ignore |
 | noj-core/tests/seed_bootstrap_admin_test.ts | 133 | ignore |

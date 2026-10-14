@@ -2110,7 +2110,7 @@ jobs:
     # 仅 main push / workflow_dispatch；PR 一律跳过
     if: ${{ github.event_name != 'pull_request' && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -2122,6 +2122,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --shm-size=512m
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
@@ -2168,7 +2169,7 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        run: deno test -A tests/00_migrate_test.ts tests/perf src/domains/search/tests/perf
+        run: deno task test:perf
 
       - name: 教学矩阵性能（标准教育测试入口）
         working-directory: noj-core

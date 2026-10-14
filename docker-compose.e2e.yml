@@ -12,6 +12,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    shm_size: 512m
     container_name: noj-e2e-postgres
     ports: ["5433:5432"]
     environment:
