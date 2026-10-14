@@ -127,6 +127,28 @@ async function view() {
   return result;
 }
 describe('域 LLM 并发编辑与自然配额对象', () => {
+  it('种子参考值与实际额度分开，使用参考值须选择目标并新增，不改写空作用域', async () => {
+    api.quotas.mockResolvedValue({
+      data: [quotaRow(), { ...quotaRow(), id: 'seed-user', scope_type: 'user', scope_id: '' }],
+      caps,
+    });
+    const result = await view();
+    expect(result.get('details').text()).toContain('额度参考值（未生效）');
+    expect(result.get('details').text()).toContain('不限制实际调用');
+    expect(result.findAll('button').filter((button) => button.text() === '编辑配额')).toHaveLength(1);
+    await result.get('details button').trigger('click');
+    expect((result.get('select[aria-label="配额用户"]').element as HTMLSelectElement).value).toBe('none');
+    expect(result.text()).not.toContain('此前选择的用户');
+    await result.get('select[aria-label="配额用户"]').setValue('u1');
+    await result.findAll('form').find((form) => form.text().includes('新增配额'))!.trigger('submit');
+    await flushPromises();
+    expect(api.saveQuota).toHaveBeenCalledWith(
+      'school',
+      expect.objectContaining({ scope_type: 'user', scope_id: 'u1' }),
+      0,
+    );
+    result.unmount();
+  });
   it('Provider编辑保留RPM和TPM，连接测试明确属于当前域Provider', async () => {
     api.providers.mockResolvedValue({ data: [{ ...provider(), rpm_limit: 12, tpm_limit: 3000 }] });
     api.testProvider.mockResolvedValue({ data: { status: 'ok', model: 'school-model', latency_ms: 18 } });

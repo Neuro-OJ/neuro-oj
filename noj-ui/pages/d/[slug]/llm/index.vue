@@ -112,6 +112,7 @@ const problemOptions = computed(() => {
 });
 function quotaTarget(item: DomainLlmQuota) {
   if (item.scope_type === 'domain') return '全域';
+  if (!item.scope_id) return { user: '用户额度参考值', problem: '题目额度参考值', user_problem: '用户 × 题目额度参考值' }[item.scope_type];
   const [userId, problemId] = item.scope_type === 'user_problem' ? item.scope_id.split(':') : [
     item.scope_type === 'user' ? item.scope_id : undefined,
     item.scope_type === 'problem' ? item.scope_id : undefined,
@@ -119,9 +120,11 @@ function quotaTarget(item: DomainLlmQuota) {
   const username = members.data.value?.data.find((member) => member.user_id === userId)?.username;
   const reference = problemChoices.data.value?.items.find((problem) => problem.reference.problem_id === problemId)
     ?.reference.display_ref;
-  return [userId ? username ?? '当前成员页之外的用户' : null, problemId ? reference ?? '当前题目页之外的题目' : null]
+  return [userId ? username ?? `用户 ${userId}` : null, problemId ? reference ?? `题目 ${problemId}` : null]
     .filter(Boolean).join(' × ');
 }
+const activeQuotas = computed(() => data.value?.quotas.filter(item => item.scope_type === 'domain' || !!item.scope_id) ?? []);
+const referenceQuotas = computed(() => data.value?.quotas.filter(item => item.scope_type !== 'domain' && !item.scope_id) ?? []);
 const { data: usage, error: usageError, refresh: refreshUsage } = await useAsyncData(
   computed(() => `${key.value}:usage:${page.value}:${usageUser.value}:${usageProblem.value}`),
   () =>
@@ -228,15 +231,16 @@ function limit(value: string) {
   return value.trim() ? Number(value) : null;
 }
 function editQuota(value: DomainLlmQuota) {
+  const reference = value.scope_type !== 'domain' && !value.scope_id;
   const [userId, problemId] = value.scope_type === 'user_problem'
     ? value.scope_id.split(':')
     : [value.scope_type === 'user' ? value.scope_id : 'none', value.scope_type === 'problem' ? value.scope_id : 'none'];
   Object.assign(quota, {
-    id: value.id,
-    revision: value.revision,
+    id: reference ? undefined : value.id,
+    revision: reference ? 0 : value.revision,
     scope_type: value.scope_type,
-    user: userId,
-    problem: problemId,
+    user: userId || 'none',
+    problem: problemId || 'none',
     window_type: value.window_type,
     calls: value.max_calls == null ? '' : String(value.max_calls),
     tokens: value.max_tokens == null ? '' : String(value.max_tokens),
@@ -383,8 +387,16 @@ useSeoMeta({ title: '空间 LLM 配置' });
         class="mt-3 text-xs text-text-muted tabular-nums">{{ quota.window_type === 'day' ? '每日' : '每月' }}实例允许上限：{{ data.caps[quota.window_type].max_calls ?? '不限' }} 次 / {{ data.caps[quota.window_type].max_tokens ?? '不限' }} Token / {{ data.caps[quota.window_type].max_cost ?? '不限' }} 费用整数。域总额度只能降低，提高需平台治理权限。</p>
       <p
         class="mt-3 text-xs text-text-muted">费用额度与 Provider 单价采用同一单位，使用整数；实际用量按上游返回结算，调用前预估与上游账单可能存在差异。</p>
-      <div v-for="item in data.quotas" :key="item.id"
+      <div v-for="item in activeQuotas" :key="item.id"
         class="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm"><span>{{ quotaTarget(item) }} · {{ item.window_type === 'day' ? '每日' : '每月' }}：{{ item.max_calls ?? '不限' }} 次 / {{ item.max_tokens ?? '不限' }} Token / {{ item.max_cost ?? '不限' }} 费用</span><UButton variant="ghost" @click="editQuota(item)">编辑配额</UButton></div>
+      <details v-if="referenceQuotas.length" class="mt-4 rounded border border-border p-3 text-sm">
+        <summary class="cursor-pointer font-medium">额度参考值（未生效）</summary>
+        <p class="mt-2 text-text-secondary">以下参考值尚未绑定用户或题目，不限制实际调用。选择目标并保存后才建立实际额度。</p>
+        <div v-for="item in referenceQuotas" :key="item.id" class="mt-3 flex items-center justify-between gap-3">
+          <span>{{ quotaTarget(item) }} · {{ item.window_type === 'day' ? '每日' : '每月' }}：{{ item.max_calls ?? '不限' }} 次 / {{ item.max_tokens ?? '不限' }} Token / {{ item.max_cost ?? '不限' }} 费用</span>
+          <UButton variant="ghost" @click="editQuota(item)">按此参考值新增</UButton>
+        </div>
+      </details>
     </UCard>
     <DomainLlmAliases v-if="data" :key="key" :slug="slug!" :providers="data.providers" :writable="writable" />
     <UCard>
