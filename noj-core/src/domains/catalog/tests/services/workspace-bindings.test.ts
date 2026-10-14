@@ -471,6 +471,13 @@ Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签
   });
   assertEquals((await read({ progress: "solved" })).total, 0);
   assertEquals((await read()).items[0].submit_count, 0);
+  const hiddenDetail = await readDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.student,
+  );
+  assertEquals(hiddenDetail.statistics.submit_count, 0);
+  assertEquals(hiddenDetail.statistics.progress, "unseen");
   await db.update(contests).set({
     end_time: new Date(Date.now() - 1000).toISOString(),
   }).where(eq(contests.id, "list-hidden-contest"));
@@ -478,6 +485,13 @@ Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签
   assertEquals(solved.total, 1);
   assertEquals(solved.items[0].progress, "solved");
   assertEquals(solved.items[0].accepted_submissions, 1);
+  const endedDetail = await readDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.student,
+  );
+  assertEquals(endedDetail.statistics.accepted_submissions, 1);
+  assertEquals(endedDetail.statistics.progress, "solved");
   assertEquals(solved.items[0].tags.length, 2);
   assertEquals((await read({ progress: "unseen" })).total, 1);
 });

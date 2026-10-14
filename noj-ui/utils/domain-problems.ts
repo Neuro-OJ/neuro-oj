@@ -48,6 +48,14 @@ export interface DomainProblemDetail {
   version: number;
   can_edit: boolean;
   supported_languages?: string[];
+  difficulty?: string;
+  statistics?: {
+    submit_count: number;
+    valid_submissions: number;
+    accepted_submissions: number;
+    progress: 'solved' | 'attempted' | 'unseen' | null;
+  };
+  limits?: { time_limit_ms: number; memory_limit_mb: number } | null;
   content: DomainProblemContent;
 }
 /** 草稿与账号、域、题目、版本及语言一起定位，两个标签页不会改写提交归属。 */

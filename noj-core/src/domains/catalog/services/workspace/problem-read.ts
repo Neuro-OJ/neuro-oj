@@ -271,6 +271,14 @@ export async function readDomainProblem(
     );
   const content = resolved.version.content as ProblemContentV1;
   const fields = projectProblemContent(content, false);
+  const [summary] = await getDomainProblemSummaries(
+    {
+      domainId: resolved.domain.id,
+      member: !!resolved.membership || resolved.platformAdmin,
+    },
+    [resolved.problem.id],
+    actorId,
+  );
   return {
     reference: resolved.reference,
     binding_id: resolved.binding.id,
@@ -285,6 +293,25 @@ export async function readDomainProblem(
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,
+    difficulty: resolved.problem.difficulty,
+    statistics: {
+      submit_count: summary?.submit_count ?? 0,
+      valid_submissions: summary?.valid_submissions ?? 0,
+      accepted_submissions: summary?.accepted_submissions ?? 0,
+      progress: actorId
+        ? summary?.solved
+          ? "solved"
+          : summary?.attempted
+          ? "attempted"
+          : "unseen"
+        : null,
+    },
+    limits: content.kind === "oi"
+      ? {
+        time_limit_ms: content.runtime_config.time_limit_ms,
+        memory_limit_mb: content.runtime_config.memory_limit_mb,
+      }
+      : null,
     supported_languages: fields.supported_languages ?? [],
     submission_mode: content.kind === "ai" ? content.submission_mode : "code",
     content: trimProblemContentForViewer(
