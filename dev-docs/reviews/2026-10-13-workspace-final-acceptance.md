@@ -1,7 +1,7 @@
 # NOJ 工作空间、教学及五赛制升级验收报告
 
-更新日期：2026-10-14。实现及 API 验收已交付，最终 PR／远端 CI 尚未签收。
-审查：[PR #643](https://github.com/Neuro-OJ/neuro-oj/pull/643)。
+更新日期：2026-10-14。实现、API、浏览器及性能验收已交付；合入等待仓库要求的批准
+review。 审查：[PR #643](https://github.com/Neuro-OJ/neuro-oj/pull/643)。
 依据：[已批准计划](../superpowers/plans/2026-10-12-workspace-education-contest-upgrade.md)、
 [106 项任务清单](../superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
 
@@ -50,9 +50,9 @@
 
 用户进一步要求 API 验收。最新正式 core 上 submission 完整 38 项通过，其余
 八项开启真实 S3 后全部通过；最终搜索修复 core 上 cross-domain 再完整 55 项、 10
-步、零忽略通过。正常后台进度 1346ms、实际重启恢复 2261ms。 远端实际 contest API
-36 项、submission 38＋8 项、cross-domain 55 项全部通过。
-目标明确为独立栈，没有借用浏览器 或服务单元结果，见
+步、零忽略通过。最终生产 Judge 再次全绿，正常后台进度 253ms、实际重启恢复
+2248ms。远端实际 contest API 36 项、submission 38＋8 项、cross-domain 55
+项全部通过。 目标明确为独立栈，没有借用浏览器 或服务单元结果，见
 [最终 API 记录](../../.agents/notes/implemented/testing/2026-10-13-final-api-acceptance.md)。
 
 - Public：注册、main 做题、公开题单、域社区与比赛。
@@ -90,7 +90,7 @@ Provider／模型／用量仍归使用域。旧完整快照恢复证据与此次
 分别记录，没有在已产生新提交后要求历史表摘要仍相同。
 
 100 人×50 题、按 50 人分页，后端矩阵 p95 100.36ms，实际消费者更新 1623.94ms。
-最终跨模块正常更新 1346ms，真正 core 重启后的两积压事件恢复 2261ms。
+最终生产 Judge 的跨模块正常更新 253ms，真正 core 重启后的两积压事件恢复 2248ms。
 这些是固定场景的后端／消费者测量，不包括浏览器渲染、无界负载或所有故障组合。
 完整环境见[性能报告](2026-10-13-education-matrix-performance.md)。
 
@@ -113,9 +113,35 @@ Provider／模型／用量仍归使用域。旧完整快照恢复证据与此次
 自测时的实际空结果竞态，按中断状态修复，未通过重复重跑掩盖失败，见
 [取消修复 Note](../../.agents/notes/implemented/bug-fix/2026-10-14-wasm-cancellation-result.md)。
 
-尚待最终签收：包含性能 job 的最新远端 CI 和 PR #643 合入流程。外部邮件、付费 API
-与 生产专用 rootless Judge 不在本机 Mock／宿主 Docker 的证据范围内；部署文档
-要求生产采用原有安全配置。这不改变本次产品功能交付范围。
+最终源码 `b501ea84` 的
+[PR CI](https://github.com/Neuro-OJ/neuro-oj/actions/runs/38516413582)、
+[完整 E2E](https://github.com/Neuro-OJ/neuro-oj/actions/runs/38516413909) 和
+[workflow lint](https://github.com/Neuro-OJ/neuro-oj/actions/runs/38516413673)
+通过。 额外
+[手动全量 CI](https://github.com/Neuro-OJ/neuro-oj/actions/runs/38516422987)
+运行默认 PR 跳过的性能 job：搜索四项、教育初始化八项、教育完整 126 项通过；
+十万题 226ms、十万帖 P95 116ms、100×50 矩阵 P95 39.57ms、实际消费者更新
+1011.16ms。 手动全量 CI 整体也成功。文档收尾提交的检查以 PR
+实时记录为准，运行源码没有变化， 不把历史失败运行删去。
+
+生产 Judge 镜像为
+`sha256:5b22550c84ba1c8ca7d1708f6b1ac761172ae7050f9483c398430639c78f3f58`，
+包含匹配的 WASI SDK。首次误用缺 SDK 的测试镜像启动被拒，造成等待评测超时；
+纠正后完整 cross-domain 55 项通过，恢复栈新 LLM 100 分／8 tokens 通过。 新提交
+`b8baefe7-c53b-42ff-8c1d-21ae61879c1a` 的 Provider／实际模型与使用域一致。
+本地比赛补跑 34 项通过、两条固定旧端口的 SSE 请求 404，不计整套通过；
+同一最终源码的远端比赛 API 36 项全部通过，包括这两条 SSE 保密检查。
+
+最终产物恢复栈另创建加密快照 `snapshot-20261014-054053.nojbackup`，557025 字节，
+SHA-256 `18af97bc1951371a21e80839f736a389c044413040e5c59f9014c613de72157b`。
+最终正式 CLI create／deep verify／sidecar 均通过；文件权限 0600。此新快照的
+深度校验和此前完整隔离恢复、数据比对是不同证据，不声称又恢复了新快照。
+
+PR #643
+合入尚需批准：[protect main 规则](https://github.com/Neuro-OJ/neuro-oj/settings/rules/17899316)
+要求一条批准 review、解决 review 线程且新推送撤销过期批准。没有管理员绕过。
+外部邮件、付费 API 与生产专用 rootless Judge 不在本机 Mock／宿主 Docker
+的证据范围内；部署文档 要求生产采用原有安全配置。这不改变本次产品功能交付范围。
 
 明确延后范围与批准计划一致：自定义角色、私有跨域共享、课程学期、多班同作业、 AI
 教学诊断、专属 Judge 池、复杂域调度、订阅计费与自定义题号。

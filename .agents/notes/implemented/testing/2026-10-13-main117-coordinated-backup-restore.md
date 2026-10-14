@@ -67,3 +67,16 @@ CLI，后两者分别记录原数据／ 对象／预算比对与新调用、最�
 image manifest digest；首次 误把 config digest 作为 image 引用时 Compose
 拒绝拉取，未替换运行容器；纠正
 引用后真正启动并完成客户端验证，不把失败操作计入成功。
+
+2026-10-14 的最终搜索修复 core 和 WASM 取消修复生产 Judge 已在此独立恢复
+栈升级：core 为 `8817bbcf7166`，Judge 为 `5b22550c84ba`，含匹配 WASI SDK。
+再次实际 API 登录并读取原提交版本／尝试／100 分与域模型 alias revision； 新提交
+`b8baefe7-c53b-42ff-8c1d-21ae61879c1a` 实评 10000 分、8 tokens，使用域
+Provider／模型／用量正确。测试镜像缺 SDK 的启动失败与等待超时不计为通过。
+
+最新正式 CLI 对最终运行产物创建快照
+`/tmp/noj-main117-restore-20261013/backups/snapshot-20261014-054053.nojbackup`，
+557025 字节，SHA-256
+`18af97bc1951371a21e80839f736a389c044413040e5c59f9014c613de72157b`，权限 0600。
+create、deep verify 与 sidecar 校验均通过。此次是最终快照深度校验，完整隔离
+restore 和 28／63／87 比对属于前次演练，不混同为再次恢复新快照。

@@ -38,5 +38,16 @@ Judge／Gateway／Redis／MinIO 目标，调用标准 E2E 任务，不写假成�
 `/tmp/noj-root-api-cross-domain-release-final.log`。首次 S3 filter
 拼错是零通过、 46 filtered，不计验收；纠正后确实执行八项。
 
-最后提交的远端 CI／各 API job 仍独立跟踪，不提前称全部通过。业务源码没有因
-验收新增兜底，原开发与旧验收栈未被改写。
+最终源码 b501ea84 的 PR CI、完整 E2E、workflow lint 和含性能基准的手动全量 CI
+全部成功。远端 submission 38＋8 项、contest 36 项、cross-domain 55 项及 浏览器
+22 项／42 步全部通过。正式生产 Judge 更新后，本地完整 cross-domain 再次 55
+项／10 步通过，正常后台 253ms、实际重启恢复 2248ms；独立恢复栈 新真实 LLM 100
+分／8 tokens，原版本和模型归属保留。
+
+第一次更新误用缺 WASI SDK 的测试镜像，启动被拒并造成等待超时；正式生产
+镜像恢复后完整重跑通过。本地 contest 补跑 34 项通过、两条硬编码旧端口的 SSE 请求
+404，不记为整套通过；最终远端 contest 36 项确实执行并通过，覆盖 SSE。
+这些失败不删去、不计作成功，也没有通过新增业务兜底放行。
+
+完整运行链接见[验收报告](../../../../dev-docs/reviews/2026-10-13-workspace-final-acceptance.md)。
+文档收尾检查及仓库要求的批准 review 另行签收；原开发与旧验收栈未被改写。
