@@ -18,6 +18,7 @@ import {
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
 import { invalidateEducationEvent } from "../../../shared/education-events.ts";
 import { processEducationNotice } from "./notifications.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
 
 /** 租约标识只用于当前数据库领取，不代表用户权限。 */
 export type ClaimedEducationEvent = typeof educationOutbox.$inferSelect;
@@ -144,6 +145,13 @@ export async function processEducationEvent(event: ClaimedEducationEvent) {
     eq(educationOutbox.id, event.id),
     eq(educationOutbox.lease_token, event.lease_token!),
   )).returning({ id: educationOutbox.id });
+  if (rows.length) {
+    await publishSseEvent(Channels.education(event.domain_id), {
+      type: "education:sync",
+      domain_id: event.domain_id,
+      assignment_id: assignment.id,
+    });
+  }
   return rows.length > 0;
 }
 

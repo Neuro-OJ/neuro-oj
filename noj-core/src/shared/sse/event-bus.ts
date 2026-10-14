@@ -25,6 +25,10 @@ export const Channels = {
   user(id: string): string {
     return `${EVENT_CHANNEL_PREFIX}user:${id}`;
   },
+  /** 域内教学进度刷新提示；推送前仍须检查具体作业访问权限。 */
+  education(domainId: string): string {
+    return `${EVENT_CHANNEL_PREFIX}education:${domainId}`;
+  },
   /** 竞赛排名变更：noj:events:contest:<contest_id>:ranking */
   contestRanking(id: string): string {
     return `${EVENT_CHANNEL_PREFIX}contest:${id}:ranking`;

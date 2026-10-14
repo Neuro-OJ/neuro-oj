@@ -15,6 +15,7 @@ import {
   setMemberRoles,
 } from "../../../workspace/index.ts";
 import { createDomainContest } from "../../../contest/index.ts";
+import { updateSetting } from "../../../system/index.ts";
 import {
   countPostsByType,
   createComment,
@@ -446,9 +447,18 @@ Deno.test({
       configuration: {
         ...f.target.configuration,
         access: "members",
-        features: { ...f.target.configuration.features, community: false },
       },
     }).where(eq(domains.id, f.target.id));
+    await updateSetting(
+      "instance_allowed_modules",
+      JSON.stringify({
+        community: false,
+        classroom: true,
+        assignment: true,
+        analytics: true,
+      }),
+      "0",
+    );
     await assertRejects(
       () =>
         withDomainCommunity(

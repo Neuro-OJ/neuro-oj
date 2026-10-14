@@ -19,6 +19,7 @@ import {
 } from "../../index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { educationNotificationSse } from "../../routes/notification-sse.ts";
+import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test({
@@ -137,6 +138,111 @@ Deno.test({
         })).status,
         404,
       );
+    } finally {
+      controller.abort();
+      await reader.cancel();
+    }
+  },
+});
+
+Deno.test({
+  name: "教学进度SSE：物化后持久提示教师重读，重放及推送不含成绩，撤权后停止",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await assignmentFixture();
+    const task = await createAssignment(
+      f.school.slug,
+      f.classroom.id,
+      f.teacher,
+      f.input,
+    );
+    await publishAssignment(
+      f.school.slug,
+      task.id,
+      f.teacher,
+      0,
+      "progress-sse",
+    );
+    for (let i = 0; i < 10; i++) {
+      if (!(await processEducationBatch()).length) break;
+    }
+    const channel = Channels.education(f.school.id);
+    const [logged] = await f.db.select().from(sseEvents).where(
+      eq(sseEvents.channel, channel),
+    ).orderBy(desc(sseEvents.id));
+    assertEquals(logged.payload, {
+      type: "education:sync",
+      domain_id: f.school.id,
+      assignment_id: task.id,
+    });
+    // 将进度提示放到现有通知之后，单独验收本频道的断线重放。
+    const replayId = await recordSseEvent(channel, logged.payload);
+    const app = new Hono();
+    app.route("/", educationNotificationSse);
+    const token = await signToken({ sub: f.teacher, role: "user" });
+    const controller = new AbortController();
+    const response = await app.request(
+      `/domains/${f.school.slug}/notifications/events`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Last-Event-ID": String(replayId - 1),
+        },
+        signal: controller.signal,
+      },
+    );
+    const reader = response.body!.getReader(), decode = new TextDecoder();
+    try {
+      assertEquals(response.status, 200);
+      assert(
+        decode.decode((await reader.read()).value).includes("education:sync"),
+      );
+      const replay = decode.decode((await reader.read()).value);
+      assert(replay.includes(task.id));
+      assert(!replay.includes("score"));
+      const pending = reader.read();
+      _dispatchToLocalListenersForTest(
+        channel,
+        JSON.stringify({
+          type: "education:sync",
+          domain_id: f.school.id,
+          assignment_id: crypto.randomUUID(),
+          score: 12345,
+        }),
+      );
+      _dispatchToLocalListenersForTest(
+        channel,
+        JSON.stringify({
+          type: "education:sync",
+          domain_id: f.other.id,
+          assignment_id: task.id,
+          score: 12345,
+        }),
+      );
+      _dispatchToLocalListenersForTest(
+        channel,
+        JSON.stringify({
+          type: "education:sync",
+          domain_id: f.school.id,
+          assignment_id: task.id,
+          score: 12345,
+        }),
+      );
+      const live = decode.decode((await pending).value);
+      assert(live.includes(task.id));
+      assert(!live.includes("12345"));
+      await removeDomainMember(f.school.slug, f.owner, f.teacher);
+      const closed = reader.read();
+      _dispatchToLocalListenersForTest(
+        channel,
+        JSON.stringify({
+          type: "education:sync",
+          domain_id: f.school.id,
+          assignment_id: task.id,
+        }),
+      );
+      assertEquals((await closed).done, true);
     } finally {
       controller.abort();
       await reader.cancel();
