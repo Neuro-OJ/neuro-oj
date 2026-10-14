@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛客观题小题固定版本回归（Handbook §6.4，缺陷 #3-contest）。
  *
@@ -19,14 +21,22 @@ import {
   contestParticipants,
   contestProblems,
   contests,
+  domainMemberRoles,
+  domainProblemBindings,
   problems,
   problemVersions,
   users,
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../objective/index.ts";
+import {
+  addDomainMember,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest({ refreshRankings: true });
+await ensureDefaultWorkspace();
 
 const now = new Date().toISOString();
 const atMinutes = (minutes: number) =>
@@ -43,12 +53,18 @@ async function seedUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, id);
+  await getDb().insert(domainMemberRoles).values({
+    membership_id: member.id,
+    role: "editor",
+  });
   return id;
 }
 
 async function seedPaper(paperId: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
     id: paperId,
+    domain_id: "00000000-0000-4000-8000-000000000001",
     title: "客观题套卷",
     description: "d",
     difficulty: "easy",
@@ -57,7 +73,6 @@ async function seedPaper(paperId: string, number: number): Promise<void> {
     owner_id: "0",
     is_objective: true,
     // P 型 + public：用于验证"无竞赛上下文 → 题库默认作答版本"路径
-    type: "P",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -120,7 +135,18 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, paperId),
     );
+    await db.insert(domainProblemBindings).values({
+      id: `${paperId}-binding`,
+      domain_id: DEFAULT_DOMAIN_ID,
+      problem_id: paperId,
+      kind: "owned",
+      visibility: "public",
+      created_by: "0",
+      created_at: now,
+      updated_at: now,
+    });
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: contestPublicId,
       title: "客观题固定版本测试",
@@ -136,6 +162,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, paperId),
       contest_id: contestId,
       problem_id: paperId,
       label: "A",
@@ -226,14 +253,19 @@ Deno.test({
         eq(contestProblems.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, paperId),
+      );
       await db.update(problems).set({ latest_version_id: null }).where(
         eq(problems.id, paperId),
       );
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, paperId),
       );
-      await db.delete(problems).where(eq(problems.id, paperId));
-      await db.delete(users).where(inArray(users.id, [userId]));
+      await deleteProblemFixtures(eq(problems.id, paperId));
+      await db.update(users).set({ deleted_at: now }).where(
+        inArray(users.id, [userId]),
+      );
     }
   },
 });

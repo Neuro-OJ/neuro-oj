@@ -16,6 +16,7 @@
  */
 import { DEFAULT_LOCALE, type Locale, messages } from './i18n.ts';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
+import { workspacePath, workspaceSlugFromPath } from './workspace.ts';
 
 /** 解析后的单层面包屑。`to` 缺省表示当前页（末层，不可点击）。 */
 export interface BreadcrumbItem {
@@ -55,8 +56,203 @@ type TrailEntry =
  * 不在此重复拼字符串。
  */
 const ROUTES: BreadcrumbRoute[] = [
+  // 工作空间层级保留 URL 中的使用域，不能跳往默认域。
+  { pattern: '/workspaces', trail: [{ key: 'breadcrumb.workspaces' }] },
+  { pattern: '/my/submissions', trail: [{ key: 'breadcrumb.mySubmissions' }] },
+  {
+    pattern: '/my/submissions/:kind/:submissionId',
+    trail: [{ key: 'breadcrumb.mySubmissions', to: '/my/submissions' }, { key: 'breadcrumb.submissionDetail' }],
+  },
+  {
+    pattern: '/d/:slug/notifications',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, {
+      key: 'breadcrumb.notifications',
+    }],
+  },
+  { pattern: '/join', trail: [{ key: 'breadcrumb.invitation' }] },
+  { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
+  { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
+  {
+    pattern: '/d/:slug/submission-jobs/:jobId',
+    trail: [{ param: 'slug' }, { key: 'nav.submissions', to: '/d/:slug/submissions' }, {
+      key: 'breadcrumb.submissionJob',
+    }],
+  },
+  { pattern: '/d/:slug/teaching', trail: [{ param: 'slug' }, { key: 'breadcrumb.teaching' }] },
+  { pattern: '/d/:slug/my-learning', trail: [{ param: 'slug' }, { key: 'breadcrumb.myLearning' }] },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/students',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.classrooms', to: '/d/:slug/classrooms' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.studentTraining',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/students/:userId',
+    trail: [{ param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.studentTraining',
+      to: '/d/:slug/classrooms/:classroomId/students',
+    }, { param: 'userId' }],
+  },
+  { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
+  {
+    pattern: '/d/:slug/problem-bindings',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.resources' }],
+  },
+  { pattern: '/d/:slug/trainings', trail: [{ param: 'slug' }, { key: 'nav.trainings' }] },
+  {
+    pattern: '/d/:slug/trainings/new',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { key: 'breadcrumb.newTraining' }],
+  },
+  {
+    pattern: '/d/:slug/trainings/:trainingId',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { param: 'trainingId' }],
+  },
+  {
+    pattern: '/d/:slug/trainings/:trainingId/edit',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { param: 'trainingId' }, {
+      key: 'breadcrumb.edit',
+    }],
+  },
+  { pattern: '/d/:slug/search', trail: [{ param: 'slug' }, { key: 'nav.search' }] },
+  { pattern: '/d/:slug/community', trail: [{ param: 'slug' }, { key: 'nav.community' }] },
+  {
+    pattern: '/d/:slug/community/posts/:postId',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { param: 'postId' }],
+  },
+  {
+    pattern: '/d/:slug/community/bookmarks',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.myBookmarks' }],
+  },
+  {
+    pattern: '/d/:slug/community/notifications',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.notifications' }],
+  },
+  {
+    pattern: '/d/:slug/community/notifications/:id',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.notifications', to: '/d/:slug/community/notifications' }, {
+      param: 'id',
+    }],
+  },
+  {
+    pattern: '/d/:slug/community/reports/:id',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { param: 'id' }],
+  },
+  {
+    pattern: '/d/:slug/community/manage',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.edit' }],
+  },
+  { pattern: '/d/:slug/rankings', trail: [{ param: 'slug' }, { key: 'nav.ranking' }] },
+  {
+    pattern: '/d/:slug/problem-drafts',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.problemDrafts' }],
+  },
+  {
+    pattern: '/d/:slug/problems/new',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.newProblem' }],
+  },
+  {
+    pattern: '/d/:slug/editor/:reference',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.edit' }],
+  },
+  {
+    pattern: '/d/:slug/problems/:reference',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { param: 'reference' }],
+  },
+  { pattern: '/d/:slug/contests', trail: [{ param: 'slug' }, { key: 'nav.contests' }] },
+  {
+    pattern: '/d/:slug/contests/:contestId/problems/:label',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { param: 'contestId' }, {
+      param: 'label',
+    }],
+  },
+  { pattern: '/d/:slug/submissions', trail: [{ param: 'slug' }, { key: 'nav.submissions' }] },
+  { pattern: '/d/:slug/objective-submissions', trail: [{ param: 'slug' }, { key: 'breadcrumb.objectiveHistory' }] },
+  {
+    pattern: '/d/:slug/objective-submissions/:submissionId',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.objectiveHistory', to: '/d/:slug/objective-submissions' }, {
+      key: 'breadcrumb.submissionDetail',
+    }],
+  },
+  {
+    pattern: '/d/:slug/self-tests/:selfTestId',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.selfTest' }, { param: 'selfTestId' }],
+  },
+  {
+    pattern: '/d/:slug/submissions/:submissionId',
+    trail: [{ param: 'slug' }, { key: 'nav.submissions', to: '/d/:slug/submissions' }, { param: 'submissionId' }],
+  },
+  {
+    pattern: '/d/:slug/contests/new',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { key: 'breadcrumb.edit' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { param: 'contestId' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId/ranking',
+    trail: [{ param: 'slug' }, { param: 'contestId' }, { key: 'breadcrumb.ranking' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId/manage',
+    trail: [{ param: 'slug' }, { param: 'contestId' }, { key: 'breadcrumb.edit' }],
+  },
+  {
+    pattern: '/d/:slug/members',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.members' }],
+  },
+  {
+    pattern: '/d/:slug/settings',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.settings' }],
+  },
   // ── 题库 ──
+  {
+    pattern: '/d/:slug/classrooms',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.classrooms' }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }],
+  },
+  {
+    pattern: '/d/:slug/assignments/:assignmentId',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }],
+  },
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/assignments/new',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.newAssignment',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/contest-remediation',
+    trail: [{ param: 'slug' }, { param: 'classroomId', to: '/d/:slug/classrooms/:classroomId' }, {
+      key: 'breadcrumb.contestRemediation',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/members',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.members',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/join',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.invitation' }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/settings',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.settings',
+    }],
+  },
+  {
+    pattern: '/d/:slug/assignments/:assignmentId/edit',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }, {
+      key: 'breadcrumb.edit',
+    }],
+  },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
   {
     pattern: '/problems/new/oi',
@@ -243,6 +439,11 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   const prefix = pattern.split('/').slice(0, pattern.split('/').indexOf(`:${paramName}`)).join('/');
   const value = params[paramName];
   if (!value) return undefined;
+  if (prefix === '/d') return workspaceSlugFromPath(`/d/${value}`) ? workspacePath(value) : undefined;
+  if (prefix === '/d/:slug/classrooms' && params.slug) return workspacePath(params.slug, `classrooms/${value}`);
+  if (prefix === '/d/:slug/assignments' && params.slug) return workspacePath(params.slug, `assignments/${value}`);
+  if (prefix === '/d/:slug/contests' && params.slug) return workspacePath(params.slug, `contests/${value}`);
+  if (prefix === '/d/:slug/trainings' && params.slug) return workspacePath(params.slug, `trainings/${value}`);
 
   // 题目 / 用户 / 竞赛 / 提交 / 题单 / 帖子 / 公告均有公开标识构造器
   if (prefix === '/problems') return problemUrl(value);
@@ -278,7 +479,10 @@ export function resolveBreadcrumb(path: string, locale: Locale = DEFAULT_LOCALE)
   const items: BreadcrumbItem[] = [];
   for (const entry of route.trail) {
     if ('key' in entry) {
-      items.push({ label: label(entry.key, locale), to: entry.to });
+      items.push({
+        label: label(entry.key, locale),
+        to: entry.to?.replace(/:([A-Za-z0-9_]+)/g, (_, name: string) => encodeURIComponent(match.params[name] ?? '')),
+      });
     } else {
       const value = match.params[entry.param];
       if (value === undefined) continue;

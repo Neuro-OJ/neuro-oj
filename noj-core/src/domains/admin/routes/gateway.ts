@@ -2,31 +2,36 @@ import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
-import { adminVersionMiddleware } from "../middleware/admin-version.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
+  AppError,
   BadRequestError,
+  ConflictError,
   NotFoundError,
   ServiceUnavailableError,
 } from "../../../shared/base/errors.ts";
 import {
   createLlmProvider,
+  listInstanceLlmQuotas,
   listLlmProviders,
+  listLlmQuotas,
   LlmGatewayError,
   type LlmProviderInput,
   type LlmQuotaInput,
   type LlmUsageQuery,
+  parseLlmRevision,
   queryLlmUsage,
   testLlmProvider,
   updateLlmProvider,
   upsertLlmQuota,
-} from "../../gateway/services/llm.ts";
+} from "../../gateway/index.ts";
 import {
   deleteLlmModelAlias,
   listLlmModelAliases,
   listProblemsUsingAlias,
   type LlmModelAliasInput,
   upsertLlmModelAlias,
-} from "../../gateway/services/llm-model-aliases.ts";
+} from "../../gateway/index.ts";
 
 /**
  * 管理端 LLM Gateway 路由（挂载前缀 /api/v1/admin）。
@@ -50,7 +55,7 @@ router.onError((error) => mapLlmError(error));
 
 /**
  * 获取 LLM Provider 列表。
- * GET /api/v1/admin/llm/providers
+ * GET /api/v1/admin/gateway/llm/providers
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * 响应：`{ data: LlmProviderView[] }`，Key 已由 gateway 脱敏。
@@ -62,7 +67,7 @@ router.get("/llm/providers", async (c) => {
 
 /**
  * 新增 LLM Provider。
- * POST /api/v1/admin/llm/providers
+ * POST /api/v1/admin/gateway/llm/providers
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * body: { name, base_url, api_key, cost_per_1k_tokens?, enabled?, rpm_limit?, tpm_limit? }
@@ -73,7 +78,11 @@ router.post("/llm/providers", async (c) => {
   if (!body.name || !body.base_url || !body.api_key) {
     return c.json({ error: "缺少必填字段" }, 400);
   }
-  const data = await createLlmProvider(body);
+  const data = await createLlmProvider(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
   await adminAudit(
     "llm_provider.create",
     { action: "llm_provider.create", name: body.name },
@@ -84,7 +93,7 @@ router.post("/llm/providers", async (c) => {
 
 /**
  * 更新 LLM Provider 的指定字段。
- * PUT /api/v1/admin/llm/providers/:id
+ * PUT /api/v1/admin/gateway/llm/providers/:id
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * path: :id = Provider ID
@@ -93,14 +102,15 @@ router.post("/llm/providers", async (c) => {
  */
 router.put(
   "/llm/providers/:id",
-  adminVersionMiddleware(async (c) => {
-    const id = c.req.param("id") as string;
-    return (await listLlmProviders()).find((p) => p.id === id)?.updated_at;
-  }),
   async (c) => {
     const id = c.req.param("id") as string;
     const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-    const data = await updateLlmProvider(id, body);
+    const data = await updateLlmProvider(
+      id,
+      body,
+      undefined,
+      parseLlmRevision(c.req.header("If-Match")),
+    );
     await adminAudit(
       "llm_provider.update",
       { action: "llm_provider.update", id, name: body.name },
@@ -206,7 +216,13 @@ router.get("/llm/model-aliases", async (c) => {
 router.put("/llm/model-aliases/:alias", async (c) => {
   const alias = c.req.param("alias") as string;
   const body = await parseJsonBody<LlmModelAliasInput>(c);
-  const data = await upsertLlmModelAlias(alias, body, c.get("userId"));
+  const data = await upsertLlmModelAlias(
+    alias,
+    body,
+    c.get("userId"),
+    DEFAULT_DOMAIN_ID,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
   await adminAudit(
     "llm_model_alias.upsert",
     { action: "llm_model_alias.upsert", alias },
@@ -232,7 +248,13 @@ router.delete("/llm/model-aliases/:alias", async (c) => {
       problem_ids: used,
     }, 409);
   }
-  if (!(await deleteLlmModelAlias(alias))) {
+  if (
+    !(await deleteLlmModelAlias(
+      alias,
+      DEFAULT_DOMAIN_ID,
+      parseLlmRevision(c.req.header("If-Match")),
+    ))
+  ) {
     throw new NotFoundError("模型别名不存在");
   }
   await adminAudit(
@@ -245,7 +267,7 @@ router.delete("/llm/model-aliases/:alias", async (c) => {
 
 /**
  * 查询 LLM 用量记录。
- * GET /api/v1/admin/llm/usage
+ * GET /api/v1/admin/gateway/llm/usage
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * query 可选：submission_id / user_id / problem_id / provider_id / status /
@@ -270,7 +292,7 @@ router.get("/llm/usage", async (c) => {
 
 /**
  * 查询 LLM 配额列表。
- * GET /api/v1/admin/llm/quotas
+ * GET /api/v1/admin/gateway/llm/quotas
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * 说明：透传 gateway `GET /internal/quotas`（`llm_quotas` 全表，按创建时间倒序），
@@ -278,21 +300,29 @@ router.get("/llm/usage", async (c) => {
  * 响应：`{ data: unknown[] }`（gateway `llm_quotas` 行原样透传）。
  */
 router.get("/llm/quotas", async (c) => {
-  const data = await fetchLlmQuotas();
+  const [instanceQuotas, domainQuotas] = await Promise.all([
+    listInstanceLlmQuotas(),
+    listLlmQuotas(),
+  ]);
+  const data = [...instanceQuotas, ...domainQuotas];
   return c.json({ data });
 });
 
 /**
  * 新增或更新 LLM 配额。
- * POST /api/v1/admin/llm/quotas
+ * POST /api/v1/admin/gateway/llm/quotas
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
- * body: LlmQuotaInput（按 id upsert：含 id 则更新，否则新增）。
- * 响应：201 `{ data: { id: string } }`。
+ * body: LlmQuotaInput（含 id 只更新既有资源，否则新增），If-Match 必填。
+ * 响应：201 `{ data: { id: string, revision: number } }`。
  */
 router.post("/llm/quotas", async (c) => {
   const body = await parseJsonBody<LlmQuotaInput>(c);
-  const data = await upsertLlmQuota(body);
+  const data = await upsertLlmQuota(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
   await adminAudit(
     "llm_quota.upsert",
     { action: "llm_quota.upsert", id: data?.id ?? null },
@@ -302,42 +332,6 @@ router.post("/llm/quotas", async (c) => {
 });
 
 /**
- * 向 LLM Gateway 内部管理 API 请求配额列表。
- *
- * 读取 NOJ_LLM_SERVICE_TOKEN 与 NOJ_LLM_GATEWAY_URL 环境变量，
- * 携带承载 Token 调用 gateway 的 /internal/quotas 端点；失败时抛出异常。
- *
- * @returns 配额列表（无数据时返回空数组）
- * @throws {Error} gateway 返回非 2xx 时抛出，携带状态码
- */
-async function fetchLlmQuotas(): Promise<unknown[]> {
-  const token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
-  const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
-    "http://localhost:8001";
-  let res: Response;
-  try {
-    res = await fetch(`${gatewayUrl}/internal/quotas`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    throw new LlmGatewayError(503, "gateway_unavailable");
-  }
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => null) as
-      | { error?: unknown }
-      | null;
-    throw new LlmGatewayError(
-      res.status,
-      typeof errorBody?.error === "string" ? errorBody.error : "gateway_error",
-    );
-  }
-  const body = await res.json().catch(() => null) as
-    | { data?: unknown[] }
-    | null;
-  return body?.data ?? [];
-}
-
-/**
  * 将 LLM Gateway 转发错误映射为可读的 4xx 而非 500。
  *
  * core 的 request() 对 gateway 任何非 2xx 都抛 LlmGatewayError（非 AppError），
@@ -345,6 +339,15 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
  */
 export function mapLlmError(error: unknown): never {
   if (error instanceof LlmGatewayError) {
+    if (error.status === 409) {
+      throw new ConflictError(
+        "模型配置已修改，请重新读取",
+        "REVISION_CONFLICT",
+      );
+    }
+    if (error.status === 428) {
+      throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+    }
     if (error.status === 404) throw new NotFoundError("模型配置不存在");
     if (error.status >= 500) {
       throw new ServiceUnavailableError("模型服务暂时不可用");

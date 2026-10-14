@@ -8,7 +8,7 @@
  * - 注册用户自动分配默认角色
  */
 
-import { api, e2eTest, getAdminToken, isE2E, registerUser } from "../helper.ts";
+import { api, e2eTest, getAdminToken, registerUser } from "../helper.ts";
 
 e2eTest("rbac-e2e: 注册用户自动获得默认角色", async () => {
   const ts = Date.now();
@@ -114,7 +114,7 @@ e2eTest("rbac-e2e: 普通用户无法访问管理 API", async () => {
   }
 });
 
-e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题", async () => {
+e2eTest("rbac-e2e: 域成员不可建题，域编辑者仍受实例敏感字段约束", async () => {
   const ts = Date.now();
   const token = await registerUser(
     `rbac_puser_${ts}`,
@@ -122,13 +122,12 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
     "TestPass1234",
   );
 
-  // 尝试创建 P 型题目
-  const createRes = await api("POST", "/api/v1/problems", {
+  // 统一账号本身不授予当前域题库编辑权限。
+  const createRes = await api("POST", "/api/v1/domains/main/problems", {
     token,
     body: {
-      title: "E2E P-type Test",
+      title: "E2E 域成员建题权限",
       description: "Should be forbidden",
-      type: "P",
       runtime_config: {
         evaluator: {
           image: "noj-evaluator-python",
@@ -145,19 +144,43 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
     },
   });
 
-  // 普通用户创建 P 型题应被拒绝
-  if (createRes.status === 201) {
-    throw new Error("普通用户不应能创建 P 型题");
+  if (createRes.status !== 403) {
+    throw new Error(`普通成员建题应返回403：${JSON.stringify(createRes)}`);
   }
-
-  // 创建 U 型题时设置非默认 evaluator.command（敏感字段）同样应被拒（NOJ-062）；
-  // 使用默认命令 `python3 /workspace/evaluate.py` 不触发敏感字段检查
-  const uRes = await api("POST", "/api/v1/problems", {
+  const admin = await getAdminToken();
+  const invited = await api("POST", "/api/v1/domains/main/invitations", {
+    token: admin,
+    body: { email: `rbac_puser_${ts}@e2e.com` },
+  });
+  if (invited.status !== 201) {
+    throw new Error(`邀请编辑者失败 ${JSON.stringify(invited)}`);
+  }
+  const accepted = await api("POST", "/api/v1/domain-invitations/accept", {
+    token,
+    body: { token: (invited.body as { data: { token: string } }).data.token },
+  });
+  if (accepted.status !== 200) {
+    throw new Error(`加入默认域失败 ${JSON.stringify(accepted)}`);
+  }
+  const me = await api("GET", "/api/v1/auth/me", { token });
+  const userId = (me.body as { data: { id: string } }).data.id;
+  const assigned = await api(
+    "PUT",
+    `/api/v1/domains/main/members/${userId}/roles`,
+    {
+      token: admin,
+      body: { roles: ["editor"] },
+    },
+  );
+  if (assigned.status !== 200) {
+    throw new Error(`编辑者授权失败 ${JSON.stringify(assigned)}`);
+  }
+  // 已具有当前域资源编辑权限，非默认 evaluator.command 仍需要平台授权。
+  const uRes = await api("POST", "/api/v1/domains/main/problems", {
     token,
     body: {
-      title: "E2E U-type Test",
+      title: "E2E 编辑者敏感字段权限",
       description: "Should be forbidden for sensitive fields",
-      type: "U",
       runtime_config: {
         evaluator: {
           image: "noj-evaluator-python",
@@ -176,7 +199,7 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
 
   if (uRes.status !== 403) {
     throw new Error(
-      `普通用户创建含敏感字段的 U 型题应被拒，实际 ${uRes.status}: ${
+      `域编辑者创建含敏感字段的题应被拒，实际 ${uRes.status}: ${
         JSON.stringify(uRes.body)
       }`,
     );

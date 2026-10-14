@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务条目关联与结算门禁查询回归（tracking #35、#46）。
  *
@@ -9,7 +11,9 @@
  *   `hasOpenJobItemsForSources` 必须查得到 `pending`（还没有 `attempt_id`）的条目，
  *   即 `queued`/`preparing` 阶段尚未创建尝试的批任务也进入结算门禁。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
@@ -32,6 +36,8 @@ import { ensureJobAttempt } from "../../services/versioning/job-attempt.ts";
 import type { DispatchSource } from "../../services/versioning/dispatch-job-item.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -110,10 +116,10 @@ const aiContent = {
 async function seedProblem(problemId: string): Promise<string> {
   const versionId = `${problemId}-v1`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number: 996500 + Math.floor(Math.random() * 1000),
     owner_id: "0",
     judge_type: "dual",
@@ -131,11 +137,14 @@ async function seedProblem(problemId: string): Promise<string> {
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return versionId;
 }
 
 async function seedJob(jobId: string): Promise<void> {
+  await authorizeLegacyJobActorForTest("oi-user", "admin");
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,
     kind: "rejudge",
     actor_id: "oi-user",
@@ -158,6 +167,7 @@ async function seedItem(input: {
   ordinal?: number;
 }): Promise<void> {
   await db.insert(submissionJobItems).values({
+    ...(await problemExecutionForTest(input.problemId)),
     id: input.id,
     job_id: input.jobId,
     ordinal: input.ordinal ?? 0,
@@ -290,6 +300,7 @@ Deno.test("open-items#46: 查询覆盖 pending/preparing/dispatched，排除终�
 Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发写入不回退终态", async () => {
   const versionId = await seedProblem("oi-p2");
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest("oi-p2")),
     id: "oi-source",
     user_id: "oi-user",
     problem_id: "oi-p2",
@@ -391,3 +402,4 @@ Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发�
   );
   assertEquals(attempts.length, 1);
 });
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";

@@ -1,13 +1,15 @@
 import { formatDateTime } from '~/utils/submissionFormat';
 import type { SimilarSubmissionsResponse } from '~/utils/contestAntiCheat';
 
-export type ContestType = 'kaggle';
+export type ContestType = 'kaggle' | 'oi' | 'ioi' | 'ioi_strict' | 'acm';
 export type ContestKind = 'public' | 'invite';
 export type ContestStatus = 'pending' | 'running' | 'ended';
 export type RankingVisibility = 'public' | 'participants' | 'hidden';
 
 export interface ContestConfig {
   submission_limits?: Record<string, number>;
+  penalty_minutes?: number;
+  scoreboard_scope?: 'self' | 'full';
 }
 
 export interface Contest {
@@ -33,9 +35,12 @@ export interface Contest {
   participant_count: number;
   updated_at: string;
   is_registered?: boolean;
+  domain_id?: string;
+  revision?: number;
 }
 
 export interface ContestProblem {
+  reference?: import('~/utils/domain-problems').DomainProblemReference;
   judge_type?: 'dual' | 'oi';
   supported_languages?: string[];
   problem_id: string;
@@ -116,7 +121,10 @@ export interface AdminProblemOption {
 
 export interface KaggleProblemScore {
   label: string;
-  best_score: number;
+  best_score: number | null;
+  pending?: boolean;
+  accepted?: boolean;
+  penalty_ms?: number;
   attempts: number;
   last_best_at: string | null;
 }
@@ -129,6 +137,9 @@ export interface KaggleRankingRow {
   total_score: number;
   last_submission_at: string | null;
   problem_scores: KaggleProblemScore[];
+  solved?: number;
+  penalty_ms?: number;
+  pending?: boolean;
 }
 
 export interface ClarificationSender {
@@ -169,6 +180,10 @@ export function useContests() {
   const { t, locale } = useI18n();
   const typeLabels = computed<Record<ContestType, string>>(() => ({
     kaggle: t('contest.kaggle'),
+    oi: 'OI',
+    ioi: 'IOI',
+    ioi_strict: 'IOI 严格',
+    acm: 'ACM/ICPC',
   }));
   const statusLabels = computed<Record<ContestStatus, string>>(() => ({
     pending: t('contest.pending'),

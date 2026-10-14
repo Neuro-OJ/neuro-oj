@@ -5,7 +5,7 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 
 import {
   contestParticipants,
@@ -24,7 +24,11 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   getProblemDraft,
   saveProblemDraft,
@@ -55,9 +59,11 @@ async function makePaper(
   ownerId: string,
   visibility: "public" | "private" = "public",
 ): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `客观题卷 ${ts} ${id.slice(0, 6)}`,
     description: "测试套卷",
@@ -65,12 +71,12 @@ async function makePaper(
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "U",
     visibility,
     is_objective: true,
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 
@@ -79,6 +85,7 @@ async function makeCodeProblem(): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `编程题 ${ts}`,
     description: "code",
@@ -86,10 +93,10 @@ async function makeCodeProblem(): Promise<string> {
     runtime_config: {},
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: "0",
-    type: "U",
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 
@@ -233,6 +240,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -266,8 +274,8 @@ Deno.test({
     // 用字面量收窄联合类型：contest_mode === true ⇒ SubmitObjectiveContestReceipt
     if (first.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
     assertEquals(first.status, "finished");
-    assertEquals(first.score, null);
-    assertEquals(first.score_db, null);
+    assertEquals(first.score, 100);
+    assertEquals(first.score_db, 10000);
     assertEquals(first.correct_count, null);
     assertEquals(Object.keys(first.details).length, 0);
 
@@ -308,6 +316,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛2 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -434,6 +443,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛3 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -465,7 +475,7 @@ Deno.test({
     // （审计 VULN-03：逐题对错即答案预言机；精确分数可被二分探测）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.submission_type, "contest");
-    assertEquals(mine.score, null);
+    assertEquals(mine.score, 10000);
     assertEquals(mine.details[q1].expected, undefined);
     assertEquals(mine.details[q1].explanation, undefined);
     assertEquals(mine.details[q1].correct, undefined);
@@ -478,9 +488,56 @@ Deno.test({
       "0",
       "admin",
     );
-    assertEquals(byAdmin.score, null);
+    assertEquals(byAdmin.score, 10000);
     assertEquals(byAdmin.details[q1].expected, undefined);
     assertEquals(byAdmin.details[q1].correct, undefined);
+    const oiContest = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: oiContest,
+      title: "OI 客观题",
+      domain_id: DEFAULT_DOMAIN_ID,
+      type: "oi",
+      created_by: owner,
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: oiContest,
+      user_id: user,
+      registered_at: now,
+    });
+    await insertContestProblems({
+      contest_id: oiContest,
+      problem_id: paper,
+      label: "A",
+      score: 2000,
+      sort_order: 0,
+    });
+    const oiReceipt = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+      contest_id: oiContest,
+      version_id: await latestVersionId(paper),
+    }, user);
+    assertEquals(oiReceipt.score, null);
+    const oiDetail = await getObjectiveSubmission(
+      oiReceipt.submission_id,
+      user,
+    );
+    assertEquals(oiDetail.score, null);
+    assertEquals(oiDetail.status, "submitted");
+    assertEquals(oiDetail.is_valid, null);
+    assertEquals(oiDetail.attempts, []);
+    assertEquals(oiDetail.details, {});
+    const oiList = await listObjectiveSubmissions({
+      viewerId: user,
+      contestId: oiContest,
+      page: 1,
+      perPage: 20,
+    });
+    assertEquals(oiList.data[0].score, null);
+    assertEquals(oiList.data[0].attempts, []);
   },
 });
 
@@ -498,6 +555,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `赛后复盘竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 7_200_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
@@ -527,7 +585,7 @@ Deno.test({
 
     // 赛期：无分数、无对错
     const during = await getObjectiveSubmission(result.submission_id, user);
-    assertEquals(during.score, null);
+    assertEquals(during.score, 10000);
     assertEquals(during.details[q1].correct, undefined);
 
     // 把竞赛改为已结束 → 对错与分数恢复（仍剥离期望答案，防泄题立场不变）
@@ -566,6 +624,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛4 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -575,6 +634,8 @@ Deno.test({
       updated_at: now,
     });
     const row = {
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: await bindPublishedProblemForTest(paper),
       id: crypto.randomUUID(),
       paper_id: paper,
       user_id: user,
@@ -656,3 +717,7 @@ Deno.test({
     assertEquals(adminView.details[q1].explanation, "私有解析");
   },
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";

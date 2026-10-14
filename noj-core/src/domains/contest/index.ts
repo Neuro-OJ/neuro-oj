@@ -15,6 +15,7 @@ export {
   updateContest,
 } from "./services/contests.ts";
 export { verifyContestAccess } from "./services/contest-access.ts";
+export { assertDomainPracticeAllowed } from "./services/practice-admission.ts";
 export {
   filterProblemsInRunningContest,
   isProblemInRunningContest,
@@ -56,3 +57,9 @@ export {
 export * from "./types/contests.ts";
 export * from "./services/contest-anti-cheat.ts";
 export * from "./services/contest-similarity.ts";
+export * from "./services/domain-contests.ts";
+export * from "./services/domain-access.ts";
+export * from "./services/domain-results.ts";
+export * from "./services/domain-content.ts";
+export { resolveDefaultContestAccess } from "./services/default-access.ts";
+export * from "./services/teaching-basis.ts";

@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -15,6 +16,7 @@ import {
 import { searchFlat, searchGrouped } from "../../services/search.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+import { backfillDefaultCatalog } from "../../../catalog/index.ts";
 
 await resetDbForTest();
 
@@ -22,6 +24,7 @@ async function seed() {
   const db = getDb();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "p-search-1",
     title: "动态规划",
     description: "入门",
@@ -36,7 +39,6 @@ async function seed() {
       solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
     },
     number: 1,
-    type: "P",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -51,6 +53,7 @@ async function seed() {
   });
   // 夹具题目必须"已发布"才入索引（Handbook §6.6）
   await publishAllProblemsForTest();
+  await backfillDefaultCatalog();
   await upsertSearchEntry((await buildProblemEntry("p-search-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-1"))!);
 }
@@ -102,6 +105,7 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-percent-1",
         title: "50%off",
         description: "促销",
@@ -116,12 +120,12 @@ Deno.test({
           solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
         },
         number: 10,
-        type: "P",
         visibility: "public",
         created_at: now,
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-percent-2",
         title: "50off",
         description: "促销",
@@ -136,13 +140,13 @@ Deno.test({
           solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
         },
         number: 11,
-        type: "P",
         visibility: "public",
         created_at: now,
         updated_at: now,
       },
     ]);
     await publishAllProblemsForTest();
+    await backfillDefaultCatalog();
     await upsertSearchEntry((await buildProblemEntry("p-percent-1"))!);
     await upsertSearchEntry((await buildProblemEntry("p-percent-2"))!);
     const result = await searchFlat({
@@ -232,6 +236,27 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const now = new Date().toISOString();
+    await getDb().insert(users).values(["u-del-a", "u-del-b"].map((id) => ({
+      id,
+      username: id,
+      email: `${id}@example.com`,
+      created_at: now,
+      updated_at: now,
+    })));
+    await getDb().insert(conversations).values({
+      id: "conv-perm-1",
+      user1_id: "u-del-a",
+      user2_id: "u-del-b",
+      created_at: now,
+      last_message_at: now,
+    });
+    await getDb().insert(messages).values({
+      id: "msg-perm-1",
+      conversation_id: "conv-perm-1",
+      sender_id: "u-del-a",
+      content: "私信秘密",
+      created_at: now,
+    });
     await upsertSearchEntry({
       entityType: "message",
       entityId: "msg-perm-1",

@@ -5,9 +5,11 @@
  * 已版本化题目缺版本 → VERSION_REQUIRED（不静默绑定最新版）、
  * 未发布题目也不能创建未知版本提交、版本内容对提交模式/语言的校验。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   contests,
   problems,
@@ -20,7 +22,10 @@ import {
 } from "../../services/versioning/submission-version.ts";
 import { createSubmission } from "../../index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -29,11 +34,12 @@ async function seedProblem(
   number: number,
   options: { publish?: boolean; judgeType?: "dual" | "oi" } = {},
 ): Promise<void> {
+  await ensureDefaultWorkspace();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -112,6 +118,7 @@ async function seedProblem(
   await getDb().update(problems).set({ latest_version_id: `${id}-v1` }).where(
     eq(problems.id, id),
   );
+  await bindPublishedProblemForTest(id);
 }
 
 Deno.test("submission version: 显式版本被采用并标记 known", async () => {
@@ -164,6 +171,7 @@ Deno.test("submission version: 未发布题目也不能创建未知版本提交"
 Deno.test("submission version: 竞赛使用固定版本，客户端覆盖 → 409", async () => {
   await seedProblem("sv-p6", 980006);
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "sv-c6",
     public_id: "ct-sv6",
     title: "c",

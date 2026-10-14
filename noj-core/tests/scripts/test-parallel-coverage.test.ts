@@ -66,7 +66,7 @@ async function collectTestFiles(): Promise<string[]> {
 
 Deno.test("shards: 每个 domain 的 tests 目录都被某个分片覆盖", () => {
   // 显式断言 observability / admin 在列（防止回归到 2026-09-21 前的遗漏）。
-  for (const domain of ["observability", "admin"]) {
+  for (const domain of ["observability", "admin", "workspace", "education"]) {
     const covered = SHARDS.some((s) =>
       s.dirs.some((d) => d.startsWith(`src/domains/${domain}/tests`))
     );
@@ -136,6 +136,9 @@ Deno.test("shards: 性能基准按登记豁免（而非被静默遗漏）", () =
   // 反向证据：perf 文件确实存在于文件系统，但被显式排除。
   assert(isPerfExcluded("tests/perf/search_bench.test.ts"));
   assert(isPerfExcluded("src/domains/search/tests/perf/search_bench.test.ts"));
+  assert(
+    isPerfExcluded("src/domains/education/tests/perf/matrix-bench.test.ts"),
+  );
   assert(!isPerfExcluded("tests/security-headers.test.ts"));
 });
 

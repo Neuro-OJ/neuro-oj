@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -53,6 +54,7 @@ import {
   updateSetting,
 } from "../../../system/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 const actorId = "community-test-user";
 const observerId = "community-test-observer";
@@ -83,16 +85,17 @@ async function setup(): Promise<void> {
     },
   ]);
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "community-test-problem",
     title: "社区测试题目",
     description: "测试用题目",
     difficulty: "easy",
     runtime_config: {},
     number: 5001,
-    type: "P",
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest("community-test-problem");
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");
@@ -113,6 +116,7 @@ Deno.test({
     // 动态流不再混排 first_accepted / solution_published / contest_joined 事件。
     const now = new Date().toISOString();
     await getDb().insert(communityPosts).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "feed-moment-1",
       public_id: "post_feedmoment1",
       type: "moment",
@@ -311,17 +315,17 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    // 不存在的题目引用 → ValidationError（而非 FK 500）
+    // 合法但不存在的来源题号统一返回 404。
     await assertRejects(
       () =>
         createPost(actorId, {
           type: "solution",
-          problem_id: "problem-not-exist",
+          problem_id: "999999",
           title: "不存在题解",
           content: "不应允许发布",
         }),
-      ValidationError,
-      "题目不存在",
+      NotFoundError,
+      "域题库中不存在此题",
     );
     // 真实题目（display_id P5001）但作者未通过 → ForbiddenError
     await assertRejects(
@@ -715,6 +719,7 @@ Deno.test({
     // 手动插入 3 条同 created_at 的 moment，验证 (created_at, id) 复合游标
     const createdAt = new Date().toISOString();
     const values = [1, 2, 3].map((i) => ({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: `feed-moment-${i}`,
       type: "moment" as const,
       author_id: actorId,
@@ -885,6 +890,7 @@ Deno.test({
     // 1 条官方 + 4 条普通，共 5 条；per_page=2 → 需翻 3 页
     await getDb().insert(communityPosts).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "cursor-official",
         type: "moment" as const,
         author_id: actorId,
@@ -902,6 +908,7 @@ Deno.test({
         updated_at: createdAt,
       },
       ...[1, 2, 3, 4].map((i) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: `cursor-normal-${i}`,
         type: "moment" as const,
         author_id: actorId,
@@ -975,6 +982,7 @@ Deno.test({
     // 排布：N1/N2 最新，两条置顶帖居中，N3 最旧
     await getDb().insert(communityPosts).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         ...base,
         id: "page-n1",
         content: "普通1",
@@ -983,6 +991,7 @@ Deno.test({
         created_at: at(0),
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         ...base,
         id: "page-n2",
         content: "普通2",
@@ -991,6 +1000,7 @@ Deno.test({
         created_at: at(1),
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         ...base,
         id: "page-p1",
         content: "置顶1",
@@ -999,6 +1009,7 @@ Deno.test({
         created_at: at(2),
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         ...base,
         id: "page-p2",
         content: "置顶2",
@@ -1007,6 +1018,7 @@ Deno.test({
         created_at: at(3),
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         ...base,
         id: "page-n3",
         content: "普通3",

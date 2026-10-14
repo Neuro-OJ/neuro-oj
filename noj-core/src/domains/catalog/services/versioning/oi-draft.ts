@@ -237,6 +237,10 @@ export async function saveOiDraft(
     /** 预期草稿 revision；缺少 → 428，过时 → 409。 */
     expectedRevision: number | null | undefined;
     actorId?: string | null;
+    /** 域文件入口从源题授权上下文传入物理存储归属。 */
+    domainId?: string;
+    /** 使用域入口在上传后、草稿写入前重新确认当前编辑权限。 */
+    authorize?: (executor: Executor) => Promise<void>;
   },
   entries?: Record<string, Uint8Array>,
 ): Promise<SaveOiDraftResult> {
@@ -320,6 +324,7 @@ export async function saveOiDraft(
           bytes,
           contentType: "application/octet-stream",
           sha256: hash,
+          domainId: input.domainId,
         });
         uploaded.push(url);
         nextRefs.push({ role: "oi_file", path, storage_url: url });
@@ -333,6 +338,7 @@ export async function saveOiDraft(
             key: `oi-runtime-${crypto.randomUUID()}.zip`,
             bytes: packageBytes,
             contentType: "application/zip",
+            domainId: input.domainId,
           },
         );
       uploaded.push(packageUrl);
@@ -358,11 +364,14 @@ export async function saveOiDraft(
       });
     }
 
-    const saved = await saveProblemDraftWithObjects(problemId, {
-      content,
-      expectedRevision: input.expectedRevision,
-      actorId: input.actorId ?? null,
-      objects: nextObjects,
+    const saved = await getDb().transaction(async (tx) => {
+      await input.authorize?.(tx);
+      return await saveProblemDraftWithObjects(problemId, {
+        content,
+        expectedRevision: input.expectedRevision,
+        actorId: input.actorId ?? null,
+        objects: nextObjects,
+      }, tx);
     });
     return {
       problem_id: problemId,

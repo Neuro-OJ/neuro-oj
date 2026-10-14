@@ -25,6 +25,54 @@ import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
+import type { DomainQueryScope } from "../../query/index.ts";
+import { unendedPublicContestForProblem } from "../../contest/index.ts";
+
+function queueResourceScope(
+  table: typeof submissions | typeof selfTests,
+  scope: DomainQueryScope,
+) {
+  return sql`(${table.domain_id}=${scope.domainId} OR (${table.domain_id} IS NULL AND ${
+    scope.domainId === DEFAULT_DOMAIN_ID
+  }))
+ AND NOT ${
+    unendedPublicContestForProblem(
+      table === submissions ? submissions.problem_id : selfTests.problem_id,
+      sql`${scope.domainId}`,
+    )
+  }
+ AND ((${table.domain_id} IS NULL AND ${table.domain_problem_binding_id} IS NULL) OR ${
+    domainProblemBindingAvailableWhere(
+      table.domain_problem_binding_id,
+      sql`${scope.domainId}`,
+      { member: scope.member },
+    )
+  })`;
+}
+
+/** 普通队列通知只发到提交的使用域；共享池健康信息另走平台治理接口。 */
+export function queueEventChannel(domainId: string) {
+  return domainId === DEFAULT_DOMAIN_ID
+    ? Channels.queue
+    : `noj:events:domain:${domainId}:queue`;
+}
+/** 归属从可信源记录读取，不接受 evaluator 或 Redis 消息覆盖。 */
+export async function publishQueueChange(submissionId: string) {
+  const db = getDb(),
+    table = submissionId.startsWith(SELF_TEST_ID_PREFIX)
+      ? selfTests
+      : submissions;
+  const [row] = await db.select({ domain_id: table.domain_id }).from(table)
+    .where(eq(table.id, submissionId));
+  if (row) {
+    await publishSseEvent(
+      queueEventChannel(row.domain_id ?? DEFAULT_DOMAIN_ID),
+      { type: "queue:changed" },
+    );
+  }
+}
 
 /** 评测任务队列名称列表（与 producer.ts 一致，按优先级排列）。 */
 const JUDGE_QUEUE_LIST = ALL_JUDGE_QUEUES;
@@ -133,6 +181,7 @@ async function queryQueueRows(
   table: AnyPgTable,
   cols: QueueTableColumns,
   kind: QueueItem["kind"],
+  scope: DomainQueryScope,
   where: SQL | undefined,
   orderBy?: SQL,
   limit?: number,
@@ -175,7 +224,15 @@ async function queryQueueRows(
       ),
     );
   }
-  if (where) query = query.where(where);
+  query = query.where(
+    and(
+      where,
+      queueResourceScope(
+        kind === "submission" ? submissions : selfTests,
+        scope,
+      ),
+    ),
+  );
   if (orderBy) query = query.orderBy(orderBy);
   if (limit !== undefined) query = query.limit(limit);
 
@@ -405,7 +462,7 @@ export async function removePendingSubmission(id: string): Promise<void> {
     { action: "submissions.queue_removed", submission_id: id },
     { type: "submission", id },
   );
-  await publishSseEvent(Channels.queue, { type: "queue:changed" });
+  await publishQueueChange(id);
 }
 
 /**
@@ -463,6 +520,7 @@ function selfTestScope(
 export async function getQueueOverview(
   isAdmin = false,
   viewerUserId?: string,
+  scope: DomainQueryScope = { domainId: DEFAULT_DOMAIN_ID, member: isAdmin },
 ): Promise<QueueResponse> {
   const db = getDb();
 
@@ -470,12 +528,10 @@ export async function getQueueOverview(
   // NOJ-033：Redis 不可用时优雅降级——pending 为空、统计用 DB 数据，
   // 不向队列页面抛 500。
   let pendingIds: string[] = [];
-  let pendingQueueLength = 0;
   let pendingScheduling = new Map<string, PendingSchedulingTask>();
   try {
     const snapshot = await getPendingQueueSnapshot();
     pendingIds = snapshot.ids;
-    pendingQueueLength = snapshot.length;
     pendingScheduling = snapshot.scheduling;
   } catch (err) {
     logger.warn("Redis 不可用，队列 pending 信息降级为空", { err });
@@ -501,6 +557,7 @@ export async function getQueueOverview(
         userId: submissions.user_id,
       },
       "submission",
+      scope,
       isAdmin ? inArray(submissions.id, pendingFormalIds) : and(
         inArray(submissions.id, pendingFormalIds),
         isNull(submissions.contest_id),
@@ -520,6 +577,7 @@ export async function getQueueOverview(
         userId: selfTests.user_id,
       },
       "self_test",
+      scope,
       // 非管理员只能看到自己的自测（审计 VULN-11）
       and(
         inArray(selfTests.id, pendingSelfIds),
@@ -537,7 +595,7 @@ export async function getQueueOverview(
         new Date(a.submitted_at).getTime() -
         new Date(b.submitted_at).getTime(),
     );
-  const pendingCount = pendingQueueLength;
+  const pendingCount = pendingItems.length;
 
   // 4. 查询 judging 列表：DB status="judging" 且不在 pending 中
   const judgingConditions: SQL[] = [eq(submissions.status, "judging")];
@@ -560,6 +618,7 @@ export async function getQueueOverview(
       judgeStartedAt: submissions.judge_started_at,
     },
     "submission",
+    scope,
     judgingWhere,
     sql`${submissions.judge_started_at} ASC`,
   );
@@ -582,6 +641,7 @@ export async function getQueueOverview(
       judgeStartedAt: selfTests.judge_started_at,
     },
     "self_test",
+    scope,
     and(selfJudgingWhere, ...selfTestScope(isAdmin, viewerUserId)),
     sql`${selfTests.judge_started_at} ASC`,
   );
@@ -608,6 +668,7 @@ export async function getQueueOverview(
         status: submissions.status,
       },
       "submission",
+      scope,
       isAdmin ? sql`${submissions.status} IN ('finished', 'error')` : and(
         sql`${submissions.status} IN ('finished', 'error')`,
         isNull(submissions.contest_id),
@@ -633,6 +694,7 @@ export async function getQueueOverview(
         score: selfTests.score,
       },
       "self_test",
+      scope,
       and(
         sql`${selfTests.status} IN ('finished', 'error')`,
         ...selfTestScope(isAdmin, viewerUserId),
@@ -664,24 +726,33 @@ export async function getQueueOverview(
   const [judgingCountRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(submissions)
-    .where(judgingWhereStats);
+    .where(and(judgingWhereStats, queueResourceScope(submissions, scope)));
 
   const [selfJudgingCountRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(selfTests)
-    .where(and(selfJudgingWhereStats, ...selfTestScope(isAdmin, viewerUserId)));
+    .where(
+      and(
+        selfJudgingWhereStats,
+        ...selfTestScope(isAdmin, viewerUserId),
+        queueResourceScope(selfTests, scope),
+      ),
+    );
 
   const today = new Date().toISOString().slice(0, 10);
   const [completedTodayRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(submissions)
     .where(
-      isAdmin
-        ? sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`
-        : and(
-          sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`,
-          isNull(submissions.contest_id),
-        ),
+      and(
+        queueResourceScope(submissions, scope),
+        isAdmin
+          ? sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`
+          : and(
+            sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`,
+            isNull(submissions.contest_id),
+          ),
+      ),
     );
 
   const judgingCount = Number(judgingCountRow?.count ?? 0) +
@@ -703,7 +774,7 @@ export async function getQueueOverview(
     })),
   ) as NonNullable<QueueStats["pools"]>;
   const resourceMemory = { reserved_mb: 0, budget_mb: 0 };
-  if (JUDGE_QUEUE_LAYOUT === "pools") {
+  if (isAdmin && JUDGE_QUEUE_LAYOUT === "pools") {
     const health = await getQueueHealth();
     for (const group of Object.values(health.resource_groups ?? {})) {
       const capacities = group.capacities as
@@ -769,7 +840,7 @@ export async function getQueueOverview(
       pending_count: pendingCount,
       judging_count: judgingCount,
       completed_today: completedToday,
-      ...(JUDGE_QUEUE_LAYOUT === "pools"
+      ...(isAdmin && JUDGE_QUEUE_LAYOUT === "pools"
         ? { pools: poolStats, resource_memory: resourceMemory }
         : {}),
     },
@@ -794,6 +865,7 @@ export async function getSubmissionQueueStatus(
   submissionId: string,
   viewerUserId?: string,
   viewerRole?: string,
+  domainId?: string,
 ): Promise<SubmissionStatusResponse | null> {
   const db = getDb();
 
@@ -807,7 +879,12 @@ export async function getSubmissionQueueStatus(
       judge_finished_at: submissions.judge_finished_at,
     })
     .from(submissions)
-    .where(eq(submissions.id, submissionId))
+    .where(and(
+      eq(submissions.id, submissionId),
+      domainId
+        ? eq(submissions.domain_id, domainId)
+        : sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+    ))
     .limit(1);
 
   if (rows.length === 0) return null;

@@ -10,8 +10,19 @@ import {
   buildPaginationMeta,
   parsePagination,
 } from "./../../../shared/http/pagination.ts";
+import {
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+  loadWorkspace,
+} from "../../workspace/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
+router.use("*", optionalAuthMiddleware, async (c, next) => {
+  await ensureDefaultWorkspace();
+  await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
+  c.header("Cache-Control", "no-store");
+  await next();
+});
 
 /**
  * 全站用户榜单。

@@ -91,6 +91,7 @@ const navGroups: NavGroup[] = [
   {
     label: "系统运维",
     items: [
+      { label: "实例与空间治理", to: "/admin/instance", icon: "i-lucide-building-2" },
       { label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings" },
       { label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text" },
     ],

@@ -1,88 +1,90 @@
 <script setup lang="ts">
-import type { EditorTheme } from '~/composables/useEditorTheme'
-import type { DraftState } from '~/composables/useDraftStorage'
+import type { EditorTheme } from '~/composables/useEditorTheme';
+import type { DraftState } from '~/composables/useDraftStorage';
 
 interface Problem {
-  id: string
-  display_id: string
-  title: string
-  type: 'U' | 'P'
+  id: string;
+  display_id: string;
+  title: string;
+  type: 'U' | 'P';
 }
 
 interface LanguageOption {
-  value: string
-  label: string
+  value: string;
+  label: string;
 }
 
 const props = defineProps<{
-  problem: Problem
-  language: string
-  languages: LanguageOption[]
-  themeMode: EditorTheme
-  canSubmit: boolean
-  submitting: boolean
-  canSelfTest: boolean
-  selfTesting: boolean
-  canResetTemplate: boolean
-  templateLoading: boolean
-  sidebarVisible: boolean
-  draftState: DraftState
-  draftSavedAt: Date | null
+  problem: Problem;
+  language: string;
+  languages: LanguageOption[];
+  themeMode: EditorTheme;
+  canSubmit: boolean;
+  submitting: boolean;
+  canSelfTest: boolean;
+  selfTesting: boolean;
+  canResetTemplate: boolean;
+  templateLoading: boolean;
+  sidebarVisible: boolean;
+  draftState: DraftState;
+  draftSavedAt: Date | null;
   /** 竞赛题号徽标（如 A/B/C），非竞赛场景缺省 */
-  badge?: string
+  badge?: string;
   /** 工具栏副标题（如竞赛标题），非竞赛场景缺省 */
-  subtitle?: string
-}>()
+  subtitle?: string;
+}>();
 
 const emit = defineEmits<{
-  'update:language': [value: string]
-  'update:themeMode': [value: EditorTheme]
-  'toggle-sidebar': []
-  'open-settings': []
-  submit: []
-  'self-test': []
-  'reset-template': []
-  back: []
-}>()
+  'update:language': [value: string];
+  'update:themeMode': [value: EditorTheme];
+  'toggle-sidebar': [];
+  'open-settings': [];
+  submit: [];
+  'self-test': [];
+  'reset-template': [];
+  back: [];
+}>();
 
 function toggleTheme() {
-  emit('update:themeMode', props.themeMode === 'dark' ? 'light' : 'dark')
+  emit('update:themeMode', props.themeMode === 'dark' ? 'light' : 'dark');
 }
 
 // 保存状态实时显示
-const now = ref(Date.now())
-let nowTimer: ReturnType<typeof setInterval> | null = null
+const now = ref(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
-  if (!import.meta.client) return
-  nowTimer = setInterval(() => { now.value = Date.now() }, 5000)
-})
+  if (!import.meta.client) return;
+  nowTimer = setInterval(() => {
+    now.value = Date.now();
+  }, 5000);
+});
 onBeforeUnmount(() => {
-  if (nowTimer) clearInterval(nowTimer)
-})
+  if (nowTimer) clearInterval(nowTimer);
+});
 
 const draftLabel = computed(() => {
-  if (!props.draftSavedAt) return '未保存'
-  const diff = Math.floor((now.value - props.draftSavedAt.getTime()) / 1000)
-  if (diff < 2) return '刚刚已保存'
-  if (diff < 60) return `${diff}s 前已保存`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m 前已保存`
-  return props.draftSavedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 已保存'
-})
+  if (!props.draftSavedAt) return '未保存';
+  const diff = Math.floor((now.value - props.draftSavedAt.getTime()) / 1000);
+  if (diff < 2) return '刚刚已保存';
+  if (diff < 60) return `${diff}s 前已保存`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m 前已保存`;
+  return props.draftSavedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 已保存';
+});
 
 const draftDotClass = computed(() => {
   switch (props.draftState) {
     case 'dirty':
-      return 'bg-orange-500'
+      return 'bg-orange-500';
     case 'saving':
-      return 'bg-blue-500 animate-pulse'
+      return 'bg-blue-500 animate-pulse';
     case 'error':
-      return 'bg-red-500'
+      return 'bg-red-500';
     case 'saved':
-      return 'bg-green-500'
+      return 'bg-green-500';
     default:
-      return 'bg-text-muted'
+      return 'bg-text-muted';
   }
-})
+});
 </script>
 
 <template>
@@ -103,8 +105,7 @@ const draftDotClass = computed(() => {
         {{ badge }}
       </span>
       <span
-        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0"
-        :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
+        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 bg-primary/10 text-primary"
       >
         {{ problem.display_id }}
       </span>
@@ -141,8 +142,8 @@ const draftDotClass = computed(() => {
         :title="themeMode === 'dark' ? '切换到亮色' : '切换到暗色'"
         @click="toggleTheme"
       >
-        <UIcon name="i-lucide-moon" class="size-4" v-if="themeMode === 'dark'"/>
-        <UIcon name="i-lucide-sun" class="size-4" v-else/>
+        <UIcon name="i-lucide-moon" class="size-4" v-if="themeMode === 'dark'" />
+        <UIcon name="i-lucide-sun" class="size-4" v-else />
       </button>
 
       <button
@@ -187,15 +188,15 @@ const draftDotClass = computed(() => {
         :disabled="!canSelfTest || selfTesting"
         @click="emit('self-test')"
       >
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="selfTesting"/>
-        <UIcon name="i-lucide-flask-conical" class="size-3.5" v-else/>
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="selfTesting" />
+        <UIcon name="i-lucide-flask-conical" class="size-3.5" v-else />
         <span>{{ selfTesting ? '自测中...' : '自测' }}</span>
       </UButton>
 
       <UButton color="primary" size="md" class="ml-1 font-medium" :disabled="!canSubmit || submitting"
         @click="emit('submit')">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting"/>
-        <UIcon name="i-lucide-send" class="size-3.5" v-else/>
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting" />
+        <UIcon name="i-lucide-send" class="size-3.5" v-else />
         <span>{{ submitting ? '提交中...' : '提交评测' }}</span>
       </UButton>
     </div>

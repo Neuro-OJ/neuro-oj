@@ -1,8 +1,10 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 个人信息导出端点测试（PIPL 第 45 条）。
  *
  * 覆盖：未登录 401；导出包含本体账户、提交与同意记录；不含他人数据。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { submissions, users } from "../../../../shared/db/schema.ts";
@@ -53,6 +55,7 @@ Deno.test({
     const now = new Date().toISOString();
     // 题目夹具（submissions.problem_id FK）
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-x",
       title: "导出测试题",
       description: "",
@@ -67,7 +70,6 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 9001,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,
@@ -78,6 +80,7 @@ Deno.test({
         id: "sub-mine",
         user_id: "export-user-1",
         problem_id: "p-x",
+        ...await problemExecutionForTest("p-x"),
         language: "python3",
         code: "print(1)",
         created_at: now,
@@ -86,6 +89,7 @@ Deno.test({
         id: "sub-other",
         user_id: "export-user-2",
         problem_id: "p-x",
+        ...await problemExecutionForTest("p-x"),
         language: "python3",
         code: "print(2)",
         created_at: now,

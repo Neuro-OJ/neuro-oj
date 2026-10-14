@@ -1,9 +1,8 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "number": 1001,
   "title": "A+B Problem",
   "difficulty": "easy",
-  "type": "P",
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",

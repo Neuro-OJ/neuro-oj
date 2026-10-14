@@ -27,6 +27,8 @@ export default defineConfig({
   },
   plugins: [vue() as never, nuxtMetaPlugin()],
   test: {
+    // Deno 下默认 fork 池在全部断言通过后仍出现 BrokenPipe，线程池正常退出。
+    pool: 'threads',
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],

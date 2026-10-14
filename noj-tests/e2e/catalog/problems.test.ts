@@ -52,7 +52,6 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
         memory_limit_mb: 512,
       },
     },
-    type: "P",
   }, adminToken);
   if (status !== 201) throw new Error("创建失败: " + status);
   problemId = (body as { data: { id: string } }).data.id;
@@ -150,14 +149,23 @@ e2eTest("[e2e/problems] 2.7 非法难度值", async () => {
   console.log("  ✓ 非法难度 400");
 });
 
-e2eTest("[e2e/problems] 2.8 管理员删除题目", async () => {
+e2eTest("[e2e/problems] 2.8 已发布题目保护版本并停止公开", async () => {
   if (!isE2E) return;
   const { status } = await apiDelete(
     "/api/v1/problems/" + problemId,
     adminToken,
   );
-  if (status !== 204) throw new Error("期望 204, 实际 " + status);
+  if (status !== 409) throw new Error("已发布题目删除应 409, 实际 " + status);
+  const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
+    visibility: "private",
+  }, adminToken);
+  if (withdrawn.status !== 200) throw new Error("停止公开失败");
   const getRes = await apiGet("/api/v1/problems/" + problemId);
-  if (getRes.status !== 404) throw new Error("删后应 404");
-  console.log("  ✓ 删除题目");
+  if (getRes.status !== 404) throw new Error("停止公开后匿名应 404");
+  const retained = await apiGet(
+    `/api/v1/problems/${problemId}/versions`,
+    adminToken,
+  );
+  if (retained.status !== 200) throw new Error("停止公开后历史版本应保留");
+  console.log("  ✓ 版本保护与停止公开");
 });

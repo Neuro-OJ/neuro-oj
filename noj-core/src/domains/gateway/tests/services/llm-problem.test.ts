@@ -1,5 +1,5 @@
 /**
- * LLM 题目配置与 token 签发测试（纯函数，无需 DB）。
+ * LLM 题目能力、使用域默认配置与 token 签发测试。
  */
 import {
   assert,
@@ -23,6 +23,12 @@ import {
   LlmGatewayError,
 } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { domainLlmSettings } from "../../../../shared/db/schema.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
   assert(isValidLlmConfig({}));
@@ -457,6 +463,7 @@ function stubProviderFetch(
   const body = failure ? { error: failure.error } : {
     data: {
       id: "prov-default",
+      domain_id: "00000000-0000-4000-8000-000000000001",
       name: "stub",
       base_url: "http://stub",
       cost_per_1k_tokens: 0,
@@ -493,7 +500,17 @@ const RUNTIME: RuntimeConfig = {
   },
 };
 
-Deno.test("llm-token: 未配置平台默认时抛错", async () => {
+Deno.test("llm-token: 未配置使用域默认时抛错", async () => {
+  await ensureDefaultWorkspace();
+  await getDb().insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: null,
+    model: null,
+    updated_at: new Date().toISOString(),
+  }).onConflictDoUpdate({
+    target: domainLlmSettings.domain_id,
+    set: { provider_id: null, model: null },
+  });
   _resetSystemSettingsForTest();
   Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
   Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");

@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import type { Next } from "hono";
+import type { Context, MiddlewareHandler, Next } from "hono";
+import { getDb } from "../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
@@ -7,6 +9,7 @@ import { listBoards } from "../../community/services/community/community-boards.
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import {
   assertPermission,
@@ -48,13 +51,19 @@ import {
 import { resolveUserId } from "../../identity/index.ts";
 import { parseQueryLimit } from "../../community/services/community/query-limit.ts";
 import {
+  type CommunityScope,
+  withDefaultCommunity,
+} from "../../community/index.ts";
+import {
   getReviewQueueDetail,
+  getReviewQueueItem,
   listReviewQueue,
   resolveReviewQueue,
+  type ReviewQueueAccess,
 } from "../../content-review/index.ts";
 
 /**
- * 社区管理路由（挂载前缀 /api/v1/community，见 app.ts）。
+ * 社区管理路由（挂载前缀 /api/v1/admin/community，见 app.ts）。
  *
  * 提供（相对路径 /admin/*）：
  * - /admin/preset/:preset                     应用社区预设（system:settings）
@@ -72,7 +81,15 @@ import {
  * 具备 `community_moderation:review` 权限的审核员可进入，各端点再按操作
  * 细分权限（lock / sanction / board / system 等）。
  */
-const router = new Hono<OptionalAuthEnv>();
+interface CommunityAdminEnv extends OptionalAuthEnv {
+  Variables: OptionalAuthEnv["Variables"] & {
+    communityScope?: CommunityScope;
+    reportTarget?: Awaited<ReturnType<typeof getReportTarget>>;
+    reviewTarget?: Awaited<ReturnType<typeof getReviewQueueItem>>;
+    reviewAccess?: ReviewQueueAccess;
+  };
+}
+const router = new Hono<CommunityAdminEnv>();
 
 /**
  * 从请求上下文读取当前登录用户 UUID，未登录时抛出 ForbiddenError。
@@ -104,6 +121,53 @@ async function requireCommunityModeration(
  * 管理路由组守卫：/admin/* 全部需登录且具备社区审核权限（requireCommunityModeration）。
  */
 router.use("*", authMiddleware, requireCommunityModeration);
+async function withMainScope(c: Context<CommunityAdminEnv>, next: Next) {
+  await withDefaultCommunity(userId(c), {
+    write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
+    moderator: true,
+  }, async (scope) => {
+    c.set("communityScope", scope);
+    await next();
+    if (c.error) throw c.error;
+  });
+}
+router.use("*", async (c, next) => {
+  // 私信举报和平台审查仍是账号治理；内容、板块与禁言明确以 main 为目标。
+  const contentRoute =
+    /\/(?:boards|posts|comments|sanctions)(?:\/|$)/.test(c.req.path) ||
+    /\/users\/[^/]+\/sanctions$/.test(c.req.path);
+  if (!contentRoute) return await next();
+  await withMainScope(c, next);
+});
+router.use("/reports/:reportId/:status", async (c, next) => {
+  const target = await getReportTarget(c.req.param("reportId"));
+  c.set("reportTarget", target);
+  if (target.report.content_type === "message") return await next();
+  await withMainScope(c, next);
+});
+
+const reviewTargetScope: MiddlewareHandler<CommunityAdminEnv> = async (
+  c,
+  next,
+) => {
+  const row = await getReviewQueueItem(c.req.param("id")!);
+  c.set("reviewTarget", row);
+  if (row.content_type === "message") {
+    c.set("reviewAccess", { domainId: null, executor: getDb() });
+    return await next();
+  }
+  if (row.source_domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("审查记录不存在");
+  }
+  await withMainScope(c, async () => {
+    const scope = c.var.communityScope!;
+    const access = { domainId: scope.domainId, executor: scope.executor };
+    c.set("reviewAccess", access);
+    await next();
+  });
+};
+router.use("/content-review/:id", reviewTargetScope);
+router.use("/content-review/:id/:status", reviewTargetScope);
 
 /**
  * POST /admin/preset/:preset — 应用社区预设（public / private / knowledge）。
@@ -143,7 +207,7 @@ router.post("/boards", async (c) => {
     name: body.name,
     description: body.description,
     sort_order: body.sort_order,
-  });
+  }, c.var.communityScope);
   await adminAudit(
     "community.board_create",
     { action: "community.board_create", slug: body.slug, name: body.name },
@@ -160,13 +224,19 @@ router.patch(
   "/boards/:boardId",
   adminVersionMiddleware(async (c) => {
     const boardId = c.req.param("boardId");
-    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+    return (await listBoards(true, c.var.communityScope)).find((b) =>
+      b.id === boardId
+    )?.updated_at;
   }),
   async (c) => {
     // 板块管理：community_board:manage
     await assertPermission(c, "community_board:manage");
     const boardId = c.req.param("boardId");
-    const data = await updateBoard(boardId, await parseJsonBody(c));
+    const data = await updateBoard(
+      boardId,
+      await parseJsonBody(c),
+      c.var.communityScope,
+    );
     await adminAudit(
       "community.board_update",
       { action: "community.board_update", board_id: boardId },
@@ -184,7 +254,12 @@ router.get(
   "/boards/:boardId/role-grants",
   async (c) => {
     await assertPermission(c, "community_board:manage");
-    return c.json({ data: await listBoardRoleGrants(c.req.param("boardId")) });
+    return c.json({
+      data: await listBoardRoleGrants(
+        c.req.param("boardId"),
+        c.var.communityScope,
+      ),
+    });
   },
 );
 /**
@@ -196,7 +271,9 @@ router.put(
   "/boards/:boardId/role-grants/:roleId",
   adminVersionMiddleware(async (c) => {
     const boardId = c.req.param("boardId");
-    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+    return (await listBoards(true, c.var.communityScope)).find((b) =>
+      b.id === boardId
+    )?.updated_at;
   }),
   async (c) => {
     await assertPermission(c, "community_board:manage");
@@ -207,7 +284,12 @@ router.put(
     }>(c);
     const boardId = c.req.param("boardId");
     const roleId = c.req.param("roleId");
-    const data = await updateBoardRoleGrant(boardId, roleId, body);
+    const data = await updateBoardRoleGrant(
+      boardId,
+      roleId,
+      body,
+      c.var.communityScope,
+    );
     await adminAudit(
       "community.board_role_grant_update",
       {
@@ -228,13 +310,15 @@ router.delete(
   "/boards/:boardId/role-grants/:roleId",
   adminVersionMiddleware(async (c) => {
     const boardId = c.req.param("boardId");
-    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+    return (await listBoards(true, c.var.communityScope)).find((b) =>
+      b.id === boardId
+    )?.updated_at;
   }),
   async (c) => {
     await assertPermission(c, "community_board:manage");
     const boardId = c.req.param("boardId");
     const roleId = c.req.param("roleId");
-    await deleteBoardRoleGrant(boardId, roleId);
+    await deleteBoardRoleGrant(boardId, roleId, c.var.communityScope);
     await adminAudit(
       "community.board_role_grant_delete",
       {
@@ -249,7 +333,8 @@ router.delete(
 );
 /**
  * GET /admin/reports — 列出举报工单。
- * 权限：社区审核。query：status（pending/resolved/dismissed/all，默认 pending）。
+ * 权限：社区审核及 main 进入／社区权限。query：status（默认 pending），
+ * content_type=message 明确只查询账号私信举报，不依赖 main。
  * 响应：{ data: 举报列表 }。
  */
 router.get(
@@ -265,7 +350,18 @@ router.get(
     if (!["pending", "resolved", "dismissed", "all"].includes(s)) {
       throw new BadRequestError("无效举报状态");
     }
-    return c.json({ data: await listReports(s) });
+    const contentType = c.req.query("content_type");
+    if (contentType && contentType !== "message") {
+      throw new BadRequestError("content_type 仅支持 message");
+    }
+    const data = contentType === "message"
+      ? await listReports(s, undefined, "only")
+      : await withDefaultCommunity(
+        userId(c),
+        { moderator: true },
+        (scope) => listReports(s, scope, "include"),
+      );
+    return c.json({ data });
   },
 );
 /**
@@ -279,6 +375,7 @@ router.get(
     c.json({
       data: await listPendingComments(
         parseQueryLimit(c.req.query("limit"), { default: 50 }),
+        c.var.communityScope,
       ),
     }),
 );
@@ -289,14 +386,13 @@ router.get(
  */
 router.post(
   "/reports/:reportId/reopen",
-  adminVersionMiddleware(async (c) => {
-    const reportId = c.req.param("reportId")!;
-    return (await getReportTarget(reportId)).report.updated_at;
+  adminVersionMiddleware((c) => {
+    return c.var.reportTarget!.report.updated_at;
   }),
   async (c) => {
     const reportId = c.req.param("reportId");
     // 撤销处理若涉及解除封禁或社区禁言，需更高级的社区处罚权限（防止审核员越权解封）
-    const target = await getReportTarget(reportId);
+    const target = c.var.reportTarget!;
     if (target.report.ban_id || target.report.sanction_id) {
       await assertPermission(c, "community_moderation:sanction");
     }
@@ -308,7 +404,7 @@ router.post(
       }
     }
     return c.json({
-      data: await reopenReport(reportId),
+      data: await reopenReport(reportId, c.var.communityScope),
     });
   },
 );
@@ -320,9 +416,8 @@ router.post(
  */
 router.post(
   "/reports/:reportId/:status",
-  adminVersionMiddleware(async (c) => {
-    const reportId = c.req.param("reportId")!;
-    return (await getReportTarget(reportId)).report.updated_at;
+  adminVersionMiddleware((c) => {
+    return c.var.reportTarget!.report.updated_at;
   }),
   async (c) => {
     const status = c.req.param("status");
@@ -351,7 +446,7 @@ router.post(
     }
 
     // 处理（resolved）：被处罚用户必须从举报目标派生，不允许客户端指定任意用户（越权封禁）
-    const target = await getReportTarget(reportId);
+    const target = c.var.reportTarget!;
     const targetUserId = target.post?.author_id ?? target.comment?.author_id ??
       target.message?.sender_id;
     if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
@@ -399,9 +494,21 @@ router.post(
       // 默认移除内容：隐藏帖子或评论；私信消息无公开内容可隐藏，仅记录处理
       const reason = body.resolution || "被举报隐藏";
       if (target.post) {
-        await changePostStatus(target.post.id, actorId, "hidden", reason);
+        await changePostStatus(
+          target.post.id,
+          actorId,
+          "hidden",
+          reason,
+          c.var.communityScope,
+        );
       } else if (target.comment) {
-        await changeCommentStatus(target.comment.id, actorId, "hidden", reason);
+        await changeCommentStatus(
+          target.comment.id,
+          actorId,
+          "hidden",
+          reason,
+          c.var.communityScope,
+        );
       }
     }
     return c.json({
@@ -433,6 +540,7 @@ router.post("/posts/:postId/:status", async (c) => {
       userId(c),
       status as "published" | "hidden" | "deleted",
       body.reason,
+      c.var.communityScope,
     ),
   });
 });
@@ -453,6 +561,7 @@ router.post("/comments/:commentId/:status", async (c) => {
       userId(c),
       status as "published" | "hidden" | "deleted",
       body.reason,
+      c.var.communityScope,
     ),
   });
 });
@@ -475,6 +584,7 @@ router.post("/posts/:postId/:flag", async (c) => {
     userId(c),
     flag === "lock" ? "is_locked" : "is_pinned",
     body.value === true,
+    c.var.communityScope,
   );
   await adminAudit(
     "community.post_flag",
@@ -490,7 +600,7 @@ router.post("/posts/:postId/:flag", async (c) => {
  */
 router.get(
   "/sanctions",
-  async (c) => c.json({ data: await listSanctions() }),
+  async (c) => c.json({ data: await listSanctions(c.var.communityScope) }),
 );
 /**
  * POST /admin/sanctions — 创建社区处罚（禁言）。
@@ -513,6 +623,7 @@ router.post("/sanctions", async (c) => {
       targetUserId,
       body.reason,
       body.expires_at,
+      c.var.communityScope,
     ),
   }, 201);
 });
@@ -525,13 +636,19 @@ router.delete(
   "/sanctions/:sanctionId",
   adminVersionMiddleware(async (c) => {
     const sanctionId = c.req.param("sanctionId");
-    return (await listSanctions()).find((s) => s.id === sanctionId)?.updated_at;
+    return (await listSanctions(c.var.communityScope)).find((s) =>
+      s.id === sanctionId
+    )?.updated_at;
   }),
   async (c) => {
     // 撤销社区处罚：community_moderation:sanction
     await assertPermission(c, "community_moderation:sanction");
     return c.json({
-      data: await revokeSanction(userId(c), c.req.param("sanctionId")),
+      data: await revokeSanction(
+        userId(c),
+        c.req.param("sanctionId"),
+        c.var.communityScope,
+      ),
     });
   },
 );
@@ -544,7 +661,9 @@ router.get(
   "/users/:userId/sanctions",
   async (c) => {
     const targetUserId = await resolveUserId(c.req.param("userId") as string);
-    return c.json({ data: await listUserSanctions(targetUserId) });
+    return c.json({
+      data: await listUserSanctions(targetUserId, c.var.communityScope),
+    });
   },
 );
 
@@ -607,7 +726,7 @@ router.get(
     if (channel && !["ugc", "dm"].includes(channel)) {
       throw new BadRequestError("无效来源渠道");
     }
-    const result = await listReviewQueue({
+    const filter = {
       status: status as never || undefined,
       content_type: content_type as never || undefined,
       channel: channel as never || undefined,
@@ -615,7 +734,18 @@ router.get(
       to: c.req.query("to") ?? undefined,
       page: parsePage(c.req.query("page"), 1),
       perPage: Math.min(parsePage(c.req.query("per_page"), 20), 100),
-    });
+    };
+    const result = channel === "dm" || content_type === "message"
+      ? await listReviewQueue(filter, { domainId: null, executor: getDb() })
+      : await withDefaultCommunity(
+        userId(c),
+        { moderator: true },
+        (scope) =>
+          listReviewQueue(filter, {
+            domainId: scope.domainId,
+            executor: scope.executor,
+          }),
+      );
     return c.json({
       data: result.data,
       pagination: {
@@ -632,7 +762,10 @@ router.get(
  * 权限：社区审核。
  */
 router.get("/content-review/:id", async (c) => {
-  const detail = await getReviewQueueDetail(c.req.param("id"));
+  const detail = await getReviewQueueDetail(
+    c.var.reviewTarget!,
+    c.var.reviewAccess!.executor,
+  );
   return c.json({
     data: {
       ...detail.queue,
@@ -661,6 +794,7 @@ router.post("/content-review/:id/:status", async (c) => {
     status,
     action,
     body.resolution ?? (status === "dismissed" ? "无需处置" : "已人工复核"),
+    c.var.reviewAccess!,
   );
   return c.json({ data: record });
 });

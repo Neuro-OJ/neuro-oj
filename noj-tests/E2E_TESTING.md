@@ -17,7 +17,7 @@ Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
 
 ```bash
 # 前置：完整评测栈已启动（scripts/e2e/setup.sh），noj-ui 已构建并监听 :3000
-cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 node .output/server/index.mjs
+cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 deno run -A .output/server/index.mjs
 cd noj-tests
 deno run -A npm:playwright install chromium   # 首次安装浏览器
 NOJ_RUN_BROWSER_E2E=1 deno task test:browser
@@ -118,9 +118,57 @@ noj-tests/
 
 `docker-compose.e2e.yml` 的 Worker 明确启用 `ai` 池，用于现有
 AI、产物提交与客观题 全链路测试；其轻量镜像不包含 WASI SDK。OI Native 的真实
-Docker 沙箱由 Rust E2E 门禁验证；OI WASM 则由 Judge Check 的真实
+Docker 沙箱同时由 Rust E2E 与比赛 HTTP 门禁验证；OI WASM 则由 Judge Check 的真实
 SDK、冻结快照与生产镜像验收验证。 不要在缺少经过标准摘要校验的 SDK 时启用
 `oi-wasm` 池。
+
+### 五赛制真实评测门禁
+
+正式 `e2e-contest` 与 `e2e-cross-domain` CI 为 Worker 与 Deno 测试统一设置
+`E2E_JUDGE_RESOURCE_POOLS=ai,oi-native`，在启动评测栈前构建
+`noj-judge/docker/oi-cpp/Dockerfile` 的 `noj-oi-cpp:latest` 镜像。
+比赛及五题型教学测试不能依靠另一个 job 构建的镜像；GitHub jobs 使用不同 runner。
+
+本地运行比赛完整门禁时，先在同一 shell 导出配置，再启动和测试：
+
+```bash
+export E2E_JUDGE_RESOURCE_POOLS=ai,oi-native
+bash scripts/e2e/setup.sh
+cd noj-tests
+deno task test:domain contest
+# 只验证新增五赛制链路：
+deno task test:domain contest --filter=contest-formats-native
+```
+
+五题型教学场景使用同一启动配置，执行
+`deno task test:domain cross-domain --filter=assignment-all-kinds`。
+该旅程实际创建 40 名学生与两份五题作业，完成 OI、AI、LLM、产物及客观题；
+不能通过只启用 AI 池跳过 OI 评测。
+
+### 真实 S3 支持包门禁
+
+`e2e-submission` 先完成 local 存储的提交链路，再使用 `docker-compose.e2e-s3.yml`
+重建同一隔离栈中的 core 容器并等待健康。 标准
+`deno task test:domain submission --filter=e2e/s3-support-pkg` 验证八项实际
+MinIO 存取、字节摘要、历史版本引用及访问权限。Gateway 和 Judge 保持原隔离
+数据库；本地存储环境不将这些 S3 用例算为通过。
+
+本地可在完成普通提交测试后使用相同 overlay；core 容器内的 S3 地址为
+`http://minio:9000`，主机测试的 `S3_ENDPOINT` 为 `http://localhost:9002`。
+测试前设置 `STORAGE_PROVIDER=s3` 及 overlay 中对应的开发用 MinIO 配置。 恢复
+local 时仅用基础 Compose 文件重建 core，避免影响其他开发栈。
+
+启动脚本会先刷新包含 OI C++ 的本地 SDK 镜像，再确认 Native
+镜像可用，失败时停止启动。 默认 AI 专用栈的九项 Native 比赛测试使用明确的
+ignored 标记；正式比赛 CI 设置上述配置后实际执行。
+如果复用已启动的栈，必须同时为 Worker
+和测试设置相同资源池，仅给测试导出变量不会启用 Worker。
+
+`contest_formats_native.test.ts` 使用 v2 题包与真实 C++
+提交验证最后一次受理选择、 20/80 分子任务、CE、OI 保密、IOI
+字段允许列表、严格汇总、ACM 罚时与封榜。
+同时验证客观题并发一次交卷、百分制原分，以及按真实结束时间发布正式快照。
+评测成绩均来自 Judge，不向数据库写入成绩或倒改比赛时间。
 
 ## 运行方式
 
@@ -129,6 +177,7 @@ SDK、冻结快照与生产镜像验收验证。 不要在缺少经过标准摘�
 ```bash
 cd noj-tests
 deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh submission
+deno task test:domain cross-domain --filter=workspace-teaching  # 仍使用统一环境和目录
 ```
 
 可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
@@ -137,6 +186,15 @@ deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh
 
 > 本地运行需要完整的 E2E 栈（`env.e2e.template` 会设置 `NOJ_RUN_E2E=1`）；
 > 栈未启动时用例会被静默跳过，请先 `bash ../scripts/e2e/setup.sh`。
+
+已有测试栈包含旧开发题时，使用独立新数据库验收新模型。Compose 的三个业务服务
+通过 `E2E_DATABASE_NAME` 选择同一数据库，默认仍为 `e2e`；先在隔离 PostgreSQL
+中创建目标库，再启动当前代码。测试侧同时设置 `DATABASE_URL` 指向该库。
+不要通过删除旧 U 数据或开发数据库绕过收缩迁移的前置检查。
+
+本地 E2E Gateway 默认发布在 `8003`，与开发 Gateway 的 `8001` 隔离。
+`E2E_LLM_GATEWAY_PORT` 可调整该端口，同时更新 core 发给 evaluator 的 Gateway
+地址，避免测试流量调用开发库的 Provider。
 
 ### 一键运行所有 E2E 测试（本地全量）
 

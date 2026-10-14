@@ -30,6 +30,7 @@ import {
 export interface ProblemResponse {
   samples: import("../../types/problem-samples.ts").ProblemSample[];
   id: string;
+  domain_id: string;
   title: string;
   description: string;
   difficulty: string;
@@ -40,7 +41,6 @@ export interface ProblemResponse {
   runtime_config?: ProblemRuntimeConfig | null;
   number: number;
   owner_id: string;
-  type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
@@ -106,7 +106,6 @@ export interface AdminProblemListItem {
   number: number;
   owner_id: string;
   owner_username: string;
-  type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
   submission_mode: "code" | "artifact" | "prediction" | "ui";

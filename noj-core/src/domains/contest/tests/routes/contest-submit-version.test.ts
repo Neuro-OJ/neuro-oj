@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛提交版本校验路由测试（Handbook §4.2/§4.4）。
  *
@@ -10,6 +12,7 @@
  * - **未携带版本 → 409 `VERSION_REQUIRED`**：迁移期兼容路径已关闭（缺陷 #6），
  *   新提交必须显式携带版本，服务端不得替客户端猜版本（Handbook §4.2）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -59,10 +62,10 @@ Deno.test({
     }).onConflictDoNothing();
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "竞赛提交版本题",
       description: "d",
-      type: "P",
       number,
       owner_id: "0",
       difficulty: "easy",
@@ -106,6 +109,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     let contestId: string | undefined;
@@ -228,7 +232,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
     }
   },
 });

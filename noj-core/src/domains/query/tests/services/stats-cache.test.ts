@@ -1,3 +1,7 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * stats-cache 服务测试（Handbook §3.4/§3.5）。
  *
@@ -9,6 +13,7 @@
  *
  * 依赖 PGlite/PG 测试库（resetDbForTest 保证空库起点）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -32,16 +37,17 @@ const now = new Date().toISOString();
 /** 建一道题（仅为满足提交外键）。 */
 async function seedProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
 }
 
 /** 建一条提交（有效成绩指针可指向其尝试）。 */
@@ -57,6 +63,7 @@ async function seedSubmission(input: {
     id: input.id,
     user_id: "0",
     problem_id: input.problemId,
+    ...await problemExecutionForTest(input.problemId),
     language: "python",
     code: "print(1)",
     version_origin: "legacy_unknown",

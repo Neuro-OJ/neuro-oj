@@ -256,6 +256,23 @@ export class S3StorageProvider implements StorageProvider {
     return body.transformToByteArray();
   }
 
+  /** 已授权服务器流式读取，不向浏览器返回 S3 预签名地址。 */
+  async getStream(url: string): Promise<ReadableStream<Uint8Array>> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    validateStorageKey(parsed.key);
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: parsed.key,
+      }),
+    );
+    if (!response.Body) throw new Error("S3 对象没有响应流");
+    return response.Body.transformToWebStream() as ReadableStream<Uint8Array>;
+  }
+
   /**
    * 根据 `noj-storage://s3/` URL 从 S3 删除数据
    *

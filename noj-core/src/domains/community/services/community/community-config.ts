@@ -1,5 +1,4 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communitySanctions,
   userBans,
@@ -8,6 +7,11 @@ import { ForbiddenError } from "./../../../../shared/base/errors.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { getSetting } from "../../../system/index.ts";
 import type { CommunityConfig } from "./../../types/community.ts";
+import {
+  communityDb,
+  communityDomainWhere,
+  type CommunityScope,
+} from "./community-scope.ts";
 
 /**
  * 读取布尔型系统设置。
@@ -81,14 +85,14 @@ export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
 export async function assertCommunityWritable(
   userId: string,
   isModerator: boolean,
-  opts: { allowSocialBan?: boolean } = {},
+  opts: { allowSocialBan?: boolean; scope?: CommunityScope } = {},
 ): Promise<void> {
   const config = getCommunityConfig();
   if (config.read_only && !isModerator) {
     throw new ForbiddenError("社区当前为只读模式", "COMMUNITY_READ_ONLY");
   }
   if (isModerator) return;
-  const db = getDb();
+  const db = communityDb(opts.scope);
   // 平台封禁或社交封禁都限制社区发布（social 不限制登录/评测，仅在此处拦截社区写操作）
   const banRows = await db.select({
     reason: userBans.reason,
@@ -113,6 +117,7 @@ export async function assertCommunityWritable(
   }
   const rows = await db.select().from(communitySanctions).where(and(
     eq(communitySanctions.user_id, userId),
+    communityDomainWhere(communitySanctions.domain_id, opts.scope),
     isNull(communitySanctions.revoked_at),
   )).orderBy(desc(communitySanctions.created_at)).limit(1);
   const sanction = rows[0];

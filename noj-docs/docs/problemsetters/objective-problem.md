@@ -52,7 +52,7 @@ my-objective-exam.zip
 ```json
 {
   "title": "大模型理论与微调工程模拟测评",
-  "type": "U",
+  "format_version": 2,
   "is_objective": true
 }
 ```

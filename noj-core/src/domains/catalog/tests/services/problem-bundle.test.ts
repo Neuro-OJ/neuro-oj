@@ -11,10 +11,9 @@ import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 Deno.test("validateBundleManifest: 客观题 manifest 不要求 runtime_config", () => {
   const manifest = validateBundleManifest({
-    format_version: 1,
+    format_version: 2,
     title: "客观题套卷",
     is_objective: true,
-    type: "U",
   });
   assertEquals(manifest.is_objective, true);
   assertEquals(manifest.runtime_config, undefined);
@@ -24,7 +23,7 @@ Deno.test("validateBundleManifest: 客观题 manifest 携带 runtime_config 被�
   assertThrows(
     () =>
       validateBundleManifest({
-        format_version: 1,
+        format_version: 2,
         title: "客观题套卷",
         is_objective: true,
         runtime_config: {
@@ -49,7 +48,7 @@ Deno.test("validateBundleManifest: 客观题 manifest 携带 llm/template/submis
     assertThrows(
       () =>
         validateBundleManifest({
-          format_version: 1,
+          format_version: 2,
           title: "客观题套卷",
           is_objective: true,
           ...extra,
@@ -63,7 +62,7 @@ Deno.test("validateBundleManifest: 非客观题仍要求 runtime_config", () => 
   assertThrows(
     () =>
       validateBundleManifest({
-        format_version: 1,
+        format_version: 2,
         title: "编程题",
       }),
     BadRequestError,
@@ -99,7 +98,7 @@ const oiRuntime: OiRuntimeConfig = {
 
 Deno.test("validateBundleManifest: OI C/C++ 子任务配置保留全部通过与依赖信息", () => {
   const manifest = validateBundleManifest({
-    format_version: 1,
+    format_version: 2,
     title: "A+B",
     judge_type: "oi",
     runtime_config: oiRuntime,
@@ -136,7 +135,7 @@ Deno.test("validateBundleManifest: OI 配置拒绝不存在或循环依赖", () 
     assertThrows(
       () =>
         validateBundleManifest({
-          format_version: 1,
+          format_version: 2,
           title: "OI",
           judge_type: "oi",
           runtime_config: { ...oiRuntime, subtasks },
@@ -173,7 +172,7 @@ Deno.test("validateBundleManifest: OI 配置拒绝不安全路径和非法计分
     assertThrows(
       () =>
         validateBundleManifest({
-          format_version: 1,
+          format_version: 2,
           title: "OI",
           judge_type: "oi",
           runtime_config,
@@ -208,7 +207,7 @@ Deno.test("validateBundleManifest: OI 分值必须合计 100 且测试输入不�
     assertThrows(
       () =>
         validateBundleManifest({
-          format_version: 1,
+          format_version: 2,
           title: "OI",
           judge_type: "oi",
           runtime_config: { ...oiRuntime, subtasks },
@@ -220,7 +219,7 @@ Deno.test("validateBundleManifest: OI 分值必须合计 100 且测试输入不�
 
 Deno.test("validateBundleManifest: 存量双容器题缺省 judge_type=dual", () => {
   const manifest = validateBundleManifest({
-    format_version: 1,
+    format_version: 2,
     title: "旧题",
     runtime_config: {
       evaluator: { image: "e", time_limit_ms: 1000, memory_limit_mb: 256 },
@@ -234,7 +233,7 @@ Deno.test("validateBundleManifest: OI 不接受双容器专有字段", () => {
   assertThrows(
     () =>
       validateBundleManifest({
-        format_version: 1,
+        format_version: 2,
         title: "OI",
         judge_type: "oi",
         llm: { max_calls: 1 },

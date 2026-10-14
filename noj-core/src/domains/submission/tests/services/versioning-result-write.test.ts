@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 评测尝试生命周期与结果落库事务测试（Handbook §5.4、§5.6、§1.3）。
  *
@@ -5,11 +7,13 @@
  * 终态只写一次（重复/过时消息不覆盖）、graded 更新当前判定与双口径投影、
  * 平台错误不替换已有正式判定、exact 策略下 graded 结果不产生有效成绩。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contests,
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -31,15 +35,17 @@ import {
 import type { ProjectionSource } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
+await resetDbForTest();
+
 const now = new Date().toISOString();
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -64,6 +70,7 @@ async function seedSubmission(
   problemId: string,
 ): Promise<ProjectionSource> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id,
     user_id: "0",
     problem_id: problemId,
@@ -238,6 +245,7 @@ Deno.test("result write: 竞赛提交自动补全竞赛上下文并写入竞赛�
   await seedProblem("rw-p6", 990006);
   const contestId = "rw-c6";
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     title: "结果写入竞赛",
     description: "",
@@ -257,6 +265,7 @@ Deno.test("result write: 竞赛提交自动补全竞赛上下文并写入竞赛�
     pinned_version_id: "rw-p6-v1",
   });
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("rw-p6"),
     id: "rw-s6",
     user_id: "0",
     problem_id: "rw-p6",
@@ -441,10 +450,17 @@ Deno.test("result write: exact 策略下 graded 结果不产生有效成绩", as
   });
   await db.update(problems).set({
     latest_version_id: "rw-p7-v2",
+  }).where(eq(problems.id, "rw-p7"));
+  await db.update(domainProblemBindings).set({
     effective_version_mode: "exact",
     required_version_id: "rw-p7-v2",
-    effective_policy_revision: 1,
-  }).where(eq(problems.id, "rw-p7"));
+    revision: 1,
+  }).where(
+    eq(
+      domainProblemBindings.id,
+      (await problemExecutionForTest("rw-p7")).domain_problem_binding_id,
+    ),
+  );
 
   const outcome = await applyAttemptResult({
     attemptId: attempt.id,
@@ -464,11 +480,16 @@ Deno.test("result write: exact 策略下 graded 结果不产生有效成绩", as
   assertEquals(submission.global_policy_revision, 1);
 
   // 切回 any 后，已有判定立即可用（不需要重新评测）
-  await db.update(problems).set({
+  await db.update(domainProblemBindings).set({
     effective_version_mode: "any",
     required_version_id: null,
-    effective_policy_revision: 2,
-  }).where(eq(problems.id, "rw-p7"));
+    revision: 2,
+  }).where(
+    eq(
+      domainProblemBindings.id,
+      (await problemExecutionForTest("rw-p7")).domain_problem_binding_id,
+    ),
+  );
   const outcome2 = await applyAttemptResult({
     attemptId: attempt.id,
     resultKind: "graded",

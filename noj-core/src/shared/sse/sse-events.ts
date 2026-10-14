@@ -6,6 +6,7 @@
  */
 import { and, asc, gt, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
+import type { Executor } from "../db/executor.ts";
 import { sseEvents } from "../db/schema.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -29,9 +30,9 @@ export interface SseEventRow {
 export async function recordSseEvent(
   channel: string,
   payload: unknown,
+  executor: Executor = getDb(),
 ): Promise<number> {
-  const db = getDb();
-  const rows = await db.insert(sseEvents).values({
+  const rows = await executor.insert(sseEvents).values({
     channel,
     payload,
     created_at: new Date().toISOString(),

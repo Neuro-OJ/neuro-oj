@@ -55,6 +55,13 @@ import {
 import type { StorageObjectState } from "../../../../shared/versioning/types.ts";
 import { getStorageProvider } from "./factory.ts";
 import { parseStorageUrl, sha256Hex } from "./types.ts";
+import {
+  getDomainOwnedStorageBytes,
+  releaseDomainStorageObject,
+  releaseDomainStorageUpload,
+  reserveDomainStorageUpload,
+  settleDomainStorageUpload,
+} from "../../../workspace/index.ts";
 
 /** 登记行读模型。 */
 export interface StorageObjectRecord {
@@ -258,6 +265,8 @@ export async function uploadStorageObjectWithReservation(
     /** 已知的内容 SHA-256；缺省时内部计算。 */
     sha256?: string | null;
     ttlMs?: number;
+    /** 调用方从已授权源题或提交定位，不读取上传表单中的域 ID。 */
+    domainId?: string;
   },
   executor?: StorageExecutor,
 ): Promise<{ storageUrl: string }> {
@@ -269,7 +278,21 @@ export async function uploadStorageObjectWithReservation(
       executor,
     );
   let uploaded = false;
+  let domainUpload:
+    | Awaited<ReturnType<typeof reserveDomainStorageUpload>>
+    | undefined;
   try {
+    if (input.domainId) {
+      const owned = await getDomainOwnedStorageBytes(
+        input.domainId,
+        storageUrl,
+      );
+      domainUpload = await reserveDomainStorageUpload({
+        domainId: input.domainId,
+        bytes: owned === null ? input.bytes.byteLength : 0,
+        storageUrl,
+      });
+    }
     const putUrl = await storage.put(input.key, input.bytes, input.contentType);
     uploaded = true;
     if (putUrl !== storageUrl) {
@@ -286,8 +309,18 @@ export async function uploadStorageObjectWithReservation(
       },
       executor,
     );
+    if (domainUpload) {
+      await settleDomainStorageUpload(
+        domainUpload.domain_id,
+        domainUpload.id,
+        storageUrl,
+      );
+    }
     return { storageUrl };
   } catch (error) {
+    if (domainUpload) {
+      await releaseDomainStorageUpload(domainUpload.domain_id, domainUpload.id);
+    }
     if (uploaded) {
       await compensateUploadedObject(
         { storageUrl, reservationId: reservation.reservation_id },
@@ -533,7 +566,7 @@ export async function verifyStorageObject(
   const nextState: StorageObjectState = stat.exists ? "ready" : "missing";
   await db.update(storageObjects).set({
     state: nextState,
-    byte_size: stat.sizeBytes ?? null,
+    byte_size: stat.exists ? stat.sizeBytes ?? null : 0,
   }).where(
     and(
       eq(storageObjects.storage_url, storageUrl),
@@ -615,6 +648,7 @@ export async function deleteStorageObject(
 
     if (existing?.state === "deleted") {
       // 已删除：不再触碰物理文件（在途重传可能刚写回同一内容，交给它登记）。
+      await releaseDomainStorageObject(storageUrl, tx);
       return { outcome: "deleted" } as const;
     }
 
@@ -649,6 +683,7 @@ export async function deleteStorageObject(
     await tx.update(storageObjects).set({ state: "deleted" }).where(
       eq(storageObjects.storage_url, storageUrl),
     );
+    await releaseDomainStorageObject(storageUrl, tx);
     return stat.exists
       ? ({ outcome: "deleted" } as const)
       : ({ outcome: "missing" } as const);

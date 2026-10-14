@@ -10,7 +10,7 @@ useHead({ title: '从题目包导入 - Neuro OJ' })
 const router = useRouter()
 
 function onImported(result: BundleImportResult) {
-  router.replace(`/problems/${result.display_id ?? result.id}/edit`)
+  router.replace(`/d/main/editor/${result.number}`)
 }
 </script>
 
@@ -21,6 +21,6 @@ function onImported(result: BundleImportResult) {
       上传完整题目包即可建题，题面与评测配置都取自包内，导入后进入编辑页核对并发布。
     </p>
 
-    <BundleImportPanel @imported="onImported" />
+    <BundleImportPanel domain-slug="main" @imported="onImported" />
   </div>
 </template>

@@ -11,7 +11,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problemDraftObjects,
   problems,
@@ -99,7 +99,6 @@ Deno.test({
         problem: {
           title: `OI 新建 ${Date.now()}`,
           description: "题面",
-          type: "P",
           difficulty: "easy",
           runtime_config: oiConfig(),
         },
@@ -201,7 +200,6 @@ Deno.test({
           problem: {
             title: `OI 配置 ${Date.now()}`,
             description: "题面",
-            type: "P",
             difficulty: "easy",
             runtime_config: oiConfig(),
           },
@@ -241,7 +239,6 @@ Deno.test({
           problem: {
             title: "新标题",
             description: "题面",
-            type: "P",
             runtime_config: revised,
           },
           draft_revision: draftRevision,
@@ -267,7 +264,6 @@ Deno.test({
           problem: {
             title: "不应保存",
             description: "题面",
-            type: "P",
             runtime_config: invalid,
           },
           draft_revision: savedBody.draft_revision,
@@ -285,7 +281,6 @@ Deno.test({
           problem: {
             title: "不应保存",
             description: "题面",
-            type: "P",
             runtime_config: oiConfig(),
           },
         }),
@@ -301,7 +296,6 @@ Deno.test({
           problem: {
             title: "不应保存",
             description: "题面",
-            type: "P",
             runtime_config: oiConfig(),
           },
           draft_revision: draftRevision,
@@ -313,3 +307,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

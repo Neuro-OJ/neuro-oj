@@ -27,6 +27,7 @@
  */
 
 import { BOOTSTRAP_CONFIG_DEFINITIONS } from "./settings-registry-bootstrap.ts";
+import { WORKSPACE_CONFIG_DEFINITIONS } from "./settings-registry-workspace.ts";
 
 export type SettingType = "boolean" | "string" | "text" | "integer";
 
@@ -71,10 +72,15 @@ export interface SettingDefinition {
   needsRestart?: boolean;
   /** 是否在管理后台展示（false=仅参与校验/登记，如开发测试专用键） */
   visible?: boolean;
+  /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
+  choices?: readonly string[];
+  /** 结构化文本的格式约束，在写入设置时校验。 */
+  valueSchema?: "domain_limits" | "domain_features" | "domain_llm_quota_caps";
 }
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
 export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
+  ...WORKSPACE_CONFIG_DEFINITIONS,
   // 数据说明只公开以下专用字段，运营者补充真实部署信息。
   // ── runtime（DB-owned，运行时可热改）───────────────────────
   // bootstrap 半区见 ./settings-registry-bootstrap.ts（下方展开处拼接）。

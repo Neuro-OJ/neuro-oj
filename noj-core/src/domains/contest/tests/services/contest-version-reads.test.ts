@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛固定版本读取与版本策略回归（Handbook §2.6/§4.1/§4.5）。
  *
@@ -10,6 +13,7 @@
  * - **#45**：竞赛榜单按**竞赛口径有效成绩指针**计分，版本策略 any → exact 切换
  *   后立即改用新目标版本的判定，不吃"最近分数"。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -65,6 +69,7 @@ async function insertProblemRow(
   } = {},
 ): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: options.title ?? `题目身份-${number}`,
     description: "身份描述（非版本内容）",
@@ -73,7 +78,6 @@ async function insertProblemRow(
     judge_type: options.judgeType ?? "dual",
     number,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });
@@ -157,8 +161,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "固定版本读取测试",
       start_time: atMinutes(-120),
@@ -233,8 +239,9 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
@@ -279,6 +286,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV1 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
     await insertProblemRow(otherProblemId, 921011);
     const otherVersion = `${otherProblemId}-v1`;
     await insertVersion(otherProblemId, otherVersion, 1, {
@@ -307,8 +315,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: otherVersion }).where(
       eq(problems.id, otherProblemId),
     );
+    await bindPublishedProblemForTest(otherProblemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "策略保留测试",
       start_time: atMinutes(-120),
@@ -414,9 +424,10 @@ Deno.test({
         await db.delete(problemVersions).where(
           eq(problemVersions.problem_id, id),
         );
-        await db.delete(problems).where(eq(problems.id, id));
+        await deleteProblemFixtures(eq(problems.id, id));
       }
-      await db.delete(users).where(eq(users.id, adminId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
@@ -487,8 +498,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "any/exact 切换测试",
       start_time: atMinutes(-120),
@@ -517,6 +530,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -629,8 +643,9 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, userId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, userId));
     }
   },
 });
@@ -674,6 +689,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV1 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     let contestId: string | undefined;
     try {
@@ -721,8 +737,9 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });

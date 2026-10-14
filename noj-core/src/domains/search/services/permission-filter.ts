@@ -1,6 +1,13 @@
 import { sql } from "drizzle-orm";
 import { searchEntries } from "../../../shared/db/schema.ts";
 import { unendedPublicContestForProblem } from "../../contest/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
+import {
+  domainProblemAvailableWhere,
+  domainProblemBindingAvailableWhere,
+} from "../../catalog/index.ts";
+import { currentTeacherSubmissionAccessWhere } from "../../education/index.ts";
+import { submissionQueryVisibility } from "../../query/index.ts";
 
 export interface SearchPermissionContext {
   userId?: string;
@@ -8,12 +15,22 @@ export interface SearchPermissionContext {
   guestReadEnabled: boolean;
   /** 社区功能是否可用；缺省视为可用，避免未传该字段的测试/调用方行为变化。 */
   communityEnabled?: boolean;
+  domainId?: string;
+  member?: boolean;
+  communityModerator?: boolean;
+  problemWriteAny?: boolean;
+  problemWriteOwn?: boolean;
+  contestManageAny?: boolean;
+  contestManageOwn?: boolean;
+  submissionReadAll?: boolean;
+  accountEntities?: boolean;
 }
 
 export function permissionWhere(ctx: SearchPermissionContext) {
   const userId = ctx.userId ?? "";
   return sql`(
     ${searchEntries.is_public} = true
+    OR ${searchEntries.entity_type} IN ('problem','community_post','community_comment','contest','submission')
     OR ${searchEntries.owner_id} = ${userId}
     OR ${userId} = ANY(${searchEntries.participant_ids})
     OR ${ctx.isAdmin} = true
@@ -46,12 +63,20 @@ export function communityVisibilityWhere(ctx: SearchPermissionContext) {
  * 也不泄露赛题），与列表路径一致。
  */
 export function contestSecrecyProblemWhere(ctx: SearchPermissionContext) {
-  if (ctx.isAdmin) return sql`true`;
+  if (ctx.isAdmin || ctx.problemWriteAny) return sql`true`;
   const userId = ctx.userId ?? "";
   return sql`NOT (
     ${searchEntries.entity_type} = 'problem'
-    AND ${unendedPublicContestForProblem(searchEntries.entity_id)}
-    AND ${searchEntries.owner_id} <> ${userId}
+    AND ${
+    unendedPublicContestForProblem(
+      searchEntries.entity_id,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }
+    AND NOT (${
+    ctx.domainId === undefined || ctx.problemWriteOwn === true
+  } AND EXISTS (
+      SELECT 1 FROM problems current_owner WHERE current_owner.id=${searchEntries.entity_id} AND current_owner.owner_id=${userId}))
   )`;
 }
 
@@ -80,7 +105,7 @@ export function contestSecrecyProblemWhere(ctx: SearchPermissionContext) {
  * 使 `NOT (... AND NULL)` 整体为 NULL 而**永久排除**该行（对普通帖子是误杀）。
  */
 export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
-  if (ctx.isAdmin) return sql`true`;
+  if (ctx.communityModerator ?? ctx.isAdmin) return sql`true`;
   return sql`NOT (
     (
       ${searchEntries.entity_type} = 'community_post'
@@ -89,6 +114,7 @@ export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
       AND ${
     unendedPublicContestForProblem(
       sql`(${searchEntries.metadata}->>'problem_id')`,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
     )
   }
     )
@@ -99,7 +125,12 @@ export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
         WHERE p.id = ${searchEntries.metadata}->>'post_id'
           AND p.type IN ('solution', 'discussion')
           AND p.problem_id IS NOT NULL
-          AND ${unendedPublicContestForProblem(sql`p.problem_id`)}
+          AND ${
+    unendedPublicContestForProblem(
+      sql`p.problem_id`,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }
       )
     )
   )`;
@@ -111,3 +142,74 @@ export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
  * 保留旧名是因为既有调用点/测试在用；两者是同一实现的别名（无口径漂移风险）。
  */
 export const runningContestSolutionWhere = notGatedContestContentWhere;
+
+/** 索引只提供候选；实际域、成员、资源状态与授权必须在分页前读取源事实。 */
+export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
+  const domainId = ctx.domainId ?? DEFAULT_DOMAIN_ID,
+    userId = ctx.userId ?? "",
+    member = ctx.member ?? false;
+  const postVisible =
+    sql`coalesce(search_post.domain_id,${DEFAULT_DOMAIN_ID})=${domainId}
+    AND (search_post.status='published' OR (${
+      ctx.communityModerator ?? ctx.isAdmin
+    } AND search_post.status<>'deleted'))
+    AND (search_post.problem_id IS NULL OR (search_post.domain_id IS NULL AND ${
+      domainId === DEFAULT_DOMAIN_ID
+    })
+      OR ${
+      domainProblemBindingAvailableWhere(
+        sql`search_post.domain_problem_binding_id`,
+        sql`${domainId}`,
+        { member },
+      )
+    })`;
+  return sql`CASE ${searchEntries.entity_type}
+    WHEN 'problem' THEN ${
+    domainProblemAvailableWhere(
+      searchEntries.entity_id,
+      sql`${domainId}`,
+      { member },
+    )
+  }
+    WHEN 'community_post' THEN EXISTS (SELECT 1 FROM community_posts search_post
+      WHERE search_post.id=${searchEntries.entity_id} AND ${postVisible})
+    WHEN 'community_comment' THEN EXISTS (SELECT 1 FROM community_comments comment
+      JOIN community_posts search_post ON search_post.id=comment.post_id WHERE comment.id=${searchEntries.entity_id}
+        AND coalesce(comment.domain_id,${DEFAULT_DOMAIN_ID})=${domainId} AND comment.status='published' AND ${postVisible})
+    WHEN 'contest' THEN EXISTS (SELECT 1 FROM contests c WHERE c.id=${searchEntries.entity_id}
+      AND coalesce(c.domain_id,${DEFAULT_DOMAIN_ID})=${domainId}
+      AND (c.is_public OR ${ctx.isAdmin} OR ${ctx.contestManageAny ?? false}
+        OR (${ctx.contestManageOwn ?? false} AND c.created_by=${userId})
+        OR EXISTS (SELECT 1 FROM contest_participants participant WHERE participant.contest_id=c.id AND participant.user_id=${userId})))
+    WHEN 'submission' THEN EXISTS (SELECT 1 FROM submissions s WHERE s.id=${searchEntries.entity_id}
+      AND ${
+    submissionQueryVisibility({ domainId, member }, {
+      domainId: sql`s.domain_id`,
+      bindingId: sql`s.domain_problem_binding_id`,
+      contestId: sql`s.contest_id`,
+    })
+  }
+      AND (s.user_id=${userId} OR ${ctx.isAdmin} OR ${
+    ctx.submissionReadAll ?? false
+  }
+        OR ${
+    currentTeacherSubmissionAccessWhere(
+      sql`s.user_id`,
+      sql`${domainId}`,
+      userId,
+    )
+  }))
+    WHEN 'message' THEN ${
+    ctx.accountEntities ?? ctx.domainId === undefined
+  } AND EXISTS (
+      SELECT 1 FROM messages m JOIN conversations c ON c.id=m.conversation_id
+      WHERE m.id=${searchEntries.entity_id} AND m.recalled_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM message_deletions deletion WHERE deletion.message_id=m.id AND deletion.user_id=${userId})
+        AND (c.user1_id=${userId} OR c.user2_id=${userId}))
+    WHEN 'user' THEN ${
+    ctx.accountEntities ?? ctx.domainId === undefined
+  } AND ${ctx.isAdmin}
+      AND EXISTS (SELECT 1 FROM users u WHERE u.id=${searchEntries.entity_id} AND u.deleted_at IS NULL)
+    WHEN 'announcement' THEN EXISTS (SELECT 1 FROM announcements a WHERE a.id=${searchEntries.entity_id} AND a.is_active)
+    ELSE false END`;
+}

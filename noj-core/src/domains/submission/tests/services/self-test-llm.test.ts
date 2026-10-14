@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  domainLlmSettings,
   llmTokenRevocations,
   problems,
   selfTests,
@@ -14,6 +15,11 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { _resetSystemSettingsForTest } from "../../../system/services/system-settings.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  addDomainMember,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { rebuildPendingTask } from "../../mq/pending-recovery.ts";
 import { recoverPendingSelfTests } from "../../mq/sweeper.ts";
@@ -60,6 +66,8 @@ Deno.test({
           new Response(
             JSON.stringify({
               data: {
+                domain_id: DEFAULT_DOMAIN_ID,
+                revision: 1,
                 id: "self-test-provider",
                 name: "test",
                 base_url: "http://provider.test",
@@ -82,6 +90,23 @@ Deno.test({
         created_at: now,
         updated_at: now,
       });
+      await ensureDefaultWorkspace(db);
+      await addDomainMember(db, DEFAULT_DOMAIN_ID, userId);
+      await db.insert(domainLlmSettings).values({
+        domain_id: DEFAULT_DOMAIN_ID,
+        provider_id: "self-test-provider",
+        model: "self-test-model",
+        revision: 1,
+        updated_at: now,
+      })
+        .onConflictDoUpdate({
+          target: domainLlmSettings.domain_id,
+          set: {
+            provider_id: "self-test-provider",
+            model: "self-test-model",
+            revision: 1,
+          },
+        });
       const runtime = {
         evaluator: {
           image: "noj-evaluator-python",
@@ -97,6 +122,7 @@ Deno.test({
         },
       };
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemId,
         number: 98999,
         title: "LLM 自测回归",
@@ -124,6 +150,12 @@ Deno.test({
         eq(selfTests.id, created.id),
       );
       assertEquals(row.judge_run_id, task.run_id);
+      assertEquals(row.domain_id, DEFAULT_DOMAIN_ID);
+      assertEquals(
+        (row.task_snapshot as { llm_execution: { domain_id: string } })
+          .llm_execution.domain_id,
+        DEFAULT_DOMAIN_ID,
+      );
       const snapshot = row.task_snapshot as Record<string, unknown>;
       assertEquals(
         (snapshot.llm_execution as Record<string, unknown>).max_calls,
@@ -133,8 +165,13 @@ Deno.test({
 
       // 平台默认模型变化不能改写同一次自测的执行事实。
       Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "changed-default-model");
+      await db.update(domainLlmSettings).set({
+        model: "changed-default-model",
+        revision: 2,
+      }).where(eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID));
       _resetSystemSettingsForTest();
       const recovered = await rebuildPendingTask({
+        domain_id: row.domain_id,
         id: row.id,
         language: row.language,
         code: row.code,

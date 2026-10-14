@@ -51,7 +51,7 @@ describe('notificationTarget', () => {
   it('clarification 指向竞赛答疑 Tab', () => {
     expect(
       notificationTarget(row({ type: 'clarification', data: { contest_id: 'c1' } })),
-    ).toBe('/contests/c1?tab=clarifications');
+    ).toBe('/d/main/contests/c1?tab=clarifications');
   });
 
   it('封禁通知没有关联内容 → null（回归：曾回退到 /community）', () => {

@@ -16,6 +16,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   problems,
   problemVersions,
   users,
@@ -26,6 +27,11 @@ import {
   jsonRequest,
 } from "../../../../../tests/helper.ts";
 import { createContest } from "../../../contest/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import { bindDefaultCatalogFixture } from "../../../catalog/tests/default-fixture.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -58,12 +64,13 @@ async function seedProblem(tag: string): Promise<{
   v2: string;
 }> {
   const problemId = `tst-pol-prob-${tag}-${ts}`;
+  await ensureDefaultWorkspace();
   await db.insert(problems).values({
     id: problemId,
+    domain_id: DEFAULT_DOMAIN_ID,
     title: `策略路由题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 97000 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",
@@ -114,6 +121,7 @@ async function seedProblem(tag: string): Promise<{
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindDefaultCatalogFixture(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -169,12 +177,20 @@ Deno.test({
     assertEquals(switchedBody.data.policy, { mode: "exact", version_id: v1 });
     assertEquals(switchedBody.data.revision, 1);
     const [row] = await db.select({
-      mode: problems.effective_version_mode,
-      required: problems.required_version_id,
+      mode: domainProblemBindings.effective_version_mode,
+      required: domainProblemBindings.required_version_id,
       latest: problems.latest_version_id,
-    }).from(problems).where(eq(problems.id, problemId));
+      source_mode: problems.effective_version_mode,
+    }).from(problems).innerJoin(
+      domainProblemBindings,
+      and(
+        eq(domainProblemBindings.problem_id, problems.id),
+        eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
+      ),
+    ).where(eq(problems.id, problemId));
     assertEquals(row.mode, "exact");
     assertEquals(row.required, v1);
+    assertEquals(row.source_mode, "any");
     // exact 不修改最新版指针（§1.2）
     assertEquals(row.latest, `${problemId}-v2`);
 

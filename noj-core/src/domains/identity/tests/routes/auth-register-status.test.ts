@@ -76,7 +76,7 @@ Deno.test({
     const before = await getRegisterStatus();
     assertEquals(before.status, 200);
     assertEquals(await before.json(), {
-      data: { allowed: false, reason: "email_unconfigured" },
+      data: { allowed: false, reason: "email_unconfigured", mode: "open" },
     });
 
     // 首个公开请求也被拒绝，部署者通过本机初始化
@@ -92,7 +92,7 @@ Deno.test({
     const after = await getRegisterStatus();
     assertEquals(after.status, 200);
     assertEquals(await after.json(), {
-      data: { allowed: false, reason: "email_unconfigured" },
+      data: { allowed: false, reason: "email_unconfigured", mode: "open" },
     });
 
     // 第二个注册请求被 403 拦截
@@ -124,7 +124,7 @@ Deno.test({
     const status = await getRegisterStatus();
     assertEquals(status.status, 200);
     assertEquals(await status.json(), {
-      data: { allowed: true, reason: null },
+      data: { allowed: true, reason: null, mode: "open" },
     });
   },
 });

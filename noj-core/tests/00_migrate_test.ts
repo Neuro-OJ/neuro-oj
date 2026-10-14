@@ -13,6 +13,7 @@ import { getDb } from "./../src/shared/db/connection.ts";
 import { setupSchemaForTest } from "./_setup.ts";
 import { judgeImages } from "./../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
+import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 
@@ -28,6 +29,8 @@ if (hasDb) {
 
     await ensureRbacSeeds();
     console.log("[setup] RBAC 种子数据就绪");
+    await ensureDefaultWorkspace();
+    console.log("[setup] 默认工作空间就绪");
 
     const db = getDb();
     const now = new Date().toISOString();

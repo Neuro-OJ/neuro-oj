@@ -11,9 +11,14 @@ import {
   enforceAndCount,
   evalTokenIpSetKey,
   evalTokenRevokedKey,
-  settleUsage,
 } from "../limits.ts";
+import {
+  persistCallUsage,
+  recordUnknownCall,
+  settleCall,
+} from "../accounting.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
+import { loadCurrentQuotaCaps } from "../quota-policy.ts";
 import {
   acquireProviderSlot,
   ProviderQueueAbortedError,
@@ -193,6 +198,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           logger.warn(
             "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
             {
+              domain_id: payload.domain_id,
               submission_id: payload.submission_id,
               attempt_id: payload.attempt_id ?? null,
               problem_version_id: payload.problem_version_id ?? null,
@@ -239,6 +245,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         deps.db,
         payload.provider_id,
         deps.config.storeKey,
+        payload.domain_id,
       );
     } catch {
       return c.json({ error: "provider_not_found" }, 400);
@@ -264,6 +271,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
 
     const startedAt = Date.now();
+    const callId = crypto.randomUUID();
+    c.header("X-Noj-Call-Id", callId);
     const promptTokens = estimateTokens(body.messages);
     const completionTokens = typeof body.max_tokens === "number"
       ? Math.floor(Math.max(0, body.max_tokens))
@@ -272,6 +281,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       promptTokens + completionTokens,
       providerSecret.provider.cost_per_1k_tokens,
     );
+    let domainQuotaCaps;
+    try {
+      domainQuotaCaps = await loadCurrentQuotaCaps(deps.config);
+    } catch {
+      return c.json({ error: "quota_policy_unavailable" }, 503);
+    }
 
     // Provider 级 RPM / TPM：超限时排队等待（多副本共享 Redis 队列），放在额度
     // 扣减之前——排队超时的请求不消耗用户/题目配额。
@@ -305,15 +320,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         );
         await recordRejectedUsage(deps.db, deps.redis, {
           id: crypto.randomUUID(),
+          domain_id: payload.domain_id,
           submission_id: payload.submission_id,
           attempt_id: payload.attempt_id ?? null,
           problem_version_id: payload.problem_version_id ?? null,
           problem_id: payload.problem_id,
           user_id: payload.user_id,
           provider_id: payload.provider_id,
-          model,
+          model: upstreamModel,
           request_messages: body.messages,
-          request_params: pickParams(body),
+          request_params: pickParams(body, aliasForAudit),
           prompt_tokens: promptTokens,
           completion_tokens: 0,
           total_tokens: promptTokens,
@@ -346,6 +362,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
+        callId,
+        domainQuotaCaps,
         model,
         promptTokens,
         completionTokens,
@@ -357,12 +375,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
-      inc("noj_llm_rate_limited_total");
-      // 请求未发往上游：归还 Provider 窗口额度
+      // 请求未发往上游：包括配额服务失败也归还 Provider 窗口额度。
       await providerSlot.release().catch(() => undefined);
+      if (message !== "limit_exceeded" && message !== "rate_limit_exceeded") {
+        return c.json({ error: "quota_unavailable" }, 503);
+      }
+      inc("noj_llm_rate_limited_total");
       // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
       await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -402,8 +424,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch {
       inc("noj_llm_provider_errors_total");
+      await recordUnknownCall(deps.db, callId);
       await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -434,12 +458,14 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       );
     } catch (readErr) {
       inc("noj_llm_provider_errors_total");
+      await recordUnknownCall(deps.db, callId);
       const errCode = readErr instanceof Error &&
           readErr.message === "upstream_response_too_large"
         ? "upstream_response_too_large"
         : "upstream_error";
       await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -495,23 +521,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       providerSecret.provider.cost_per_1k_tokens,
     );
 
-    try {
-      await settleUsage(deps.db, deps.redis, payload, {
-        promptTokens,
-        completionTokens,
-        estimatedCost,
-        actualPromptTokens,
-        actualCompletionTokens,
-        actualBilledTotalTokens,
-        actualCost,
-        ip: c.req.header("x-forwarded-for") ?? "unknown",
-        ttlSeconds,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "quota_exceeded";
-      inc("noj_llm_quota_exhausted_total");
-      await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+    await persistCallUsage(
+      deps.db,
+      callId,
+      {
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -529,38 +544,27 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         billed_total_tokens: billedUsage.billedTotalTokens,
         estimated_cost: actualCost,
         latency_ms: latency,
-        status: "rejected",
-        error_code: message,
+        status: upstreamRes.ok ? "ok" : "error",
+        error_code: upstreamRes.ok ? null : String(upstreamRes.status),
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
-      });
-      return openAiLimitError(message);
+      },
+      actualBilledTotalTokens,
+      actualCost,
+    );
+    let settled: string;
+    try {
+      settled = await settleCall(deps.db, deps.redis, callId);
+    } catch {
+      // 实际用量已持久化；不伪称额度错误，后台在 Redis 恢复后幂等结算。
+      return c.json({ error: "accounting_pending", call_id: callId }, 503);
     }
-
-    await recordUsage(deps.db, {
-      id: crypto.randomUUID(),
-      submission_id: payload.submission_id,
-      attempt_id: payload.attempt_id ?? null,
-      problem_version_id: payload.problem_version_id ?? null,
-      problem_id: payload.problem_id,
-      user_id: payload.user_id,
-      provider_id: payload.provider_id,
-      model: upstreamModel,
-      request_messages: body.messages,
-      request_params: pickParams(body, aliasForAudit),
-      prompt_tokens: actualPromptTokens,
-      completion_tokens: actualCompletionTokens,
-      total_tokens: actualTotalTokens,
-      cached_prompt_tokens: billedUsage.cachedPromptTokens,
-      billed_prompt_tokens: billedUsage.billedPromptTokens,
-      billed_total_tokens: billedUsage.billedTotalTokens,
-      estimated_cost: actualCost,
-      latency_ms: latency,
-      status: upstreamRes.ok ? "ok" : "error",
-      error_code: upstreamRes.ok ? null : String(upstreamRes.status),
-      prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
-      created_at: new Date().toISOString(),
-    });
+    if (settled !== "ok") {
+      inc("noj_llm_quota_exhausted_total");
+      await deps
+        .db`UPDATE llm_usage SET status='rejected',error_code=${settled} WHERE id=${callId}`;
+      return openAiLimitError(settled);
+    }
 
     if (!upstreamRes.ok) {
       inc("noj_llm_provider_errors_total");

@@ -1,3 +1,4 @@
+import { publishQueueChange } from "../queue.ts";
 /**
  * Artifact 提交服务（类 Kaggle 产物提交），同时承载 prediction（预测结果文件）提交。
  *
@@ -35,7 +36,11 @@ import {
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
-import { evaluateProblemAccess } from "../../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "../../../catalog/index.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import {
@@ -48,6 +53,20 @@ import { peekFirstChunk } from "./stream-peek.ts";
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "../workspace-execution.ts";
+import {
+  attachDomainStorageUpload,
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+  growDomainStorageUpload,
+  releaseDomainStorageUpload,
+  reserveDomainStorageUpload,
+  settleDomainStorageUpload,
+} from "../../../workspace/index.ts";
 import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
@@ -125,6 +144,59 @@ const ARTIFACT_SPEC: UploadedSubmissionSpec = {
   contentType: "application/zip",
 };
 
+/** 每批最多 1MiB，写入存储前原子预留该批实际字节，失败由调用方释放预约。 */
+function meteredArtifactStream(
+  source: ReadableStream<Uint8Array>,
+  domainId: string,
+  reservationId: string,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let pending: Uint8Array | undefined;
+  let ended = false;
+  const batchSize = 1024 * 1024;
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const buffer = new Uint8Array(batchSize);
+        let size = 0;
+        while (size < batchSize && !ended) {
+          if (!pending?.length) {
+            const next = await reader.read();
+            if (next.done) {
+              ended = true;
+              break;
+            }
+            pending = next.value;
+          }
+          const take = Math.min(pending.length, batchSize - size);
+          buffer.set(pending.subarray(0, take), size);
+          pending = pending.subarray(take);
+          size += take;
+        }
+        if (!size) {
+          controller.close();
+          reader.releaseLock();
+          return;
+        }
+        const batch = buffer.subarray(0, size);
+        await growDomainStorageUpload(
+          domainId,
+          reservationId,
+          batch.byteLength,
+        );
+        controller.enqueue(batch);
+      } catch (error) {
+        await reader.cancel(error);
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      reader.releaseLock();
+    },
+  });
+}
+
 /**
  * 创建 artifact 提交。
  *
@@ -137,6 +209,7 @@ export function createArtifactSubmission(
   input: UploadedSubmissionInput,
   contestId?: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmissionResponse> {
   return createUploadedSubmission(
     ARTIFACT_SPEC,
@@ -144,6 +217,7 @@ export function createArtifactSubmission(
     input,
     contestId,
     isAdmin,
+    domainRequest,
   );
 }
 
@@ -161,12 +235,27 @@ export async function createUploadedSubmission(
   input: UploadedSubmissionInput,
   contestId?: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
-  const resolvedContestId = contestId ?? input.contest_id ?? null;
+  const requestedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && requestedContestId && !domainRequest.contestId) {
+    throw new BadRequestError("域内练习不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与提交上下文不一致");
+  const resolvedContestId = domainExecution?.contestId ?? requestedContestId;
+  if (domainExecution && domainExecution.problem.id !== input.problem_id) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 比赛内每道题提交次数上限（含 error 计数）
   if (resolvedContestId) {
@@ -178,7 +267,7 @@ export async function createUploadedSubmission(
   }
 
   // 读取最新题目配置（快照读，避免无事务包裹导致单语句 FOR UPDATE 锁即刻释放的伪锁缺陷）
-  const lockedRows = await db
+  const lockedRows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, input.problem_id))
@@ -187,26 +276,29 @@ export async function createUploadedSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
-    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id, {
+      domainId: domainExecution?.domain.id,
+    })
     : null;
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new ForbiddenError("无权对该题目提交");
+  if (!domainExecution) {
+    const { result: access } = await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+      contestAccess,
+    });
+    if (!access.allowed) throw new ForbiddenError("无权对该题目提交");
   }
   // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
   if (resolvedContestId && contestAccess && !contestAccess.running) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  if (problem.submission_mode !== spec.mode) {
+  if (!domainExecution && problem.submission_mode !== spec.mode) {
     throw new BadRequestError(spec.modeMismatchMessage);
   }
   spec.validateFileName(input.file_name);
@@ -281,6 +373,16 @@ export async function createUploadedSubmission(
 
   // 流式上传到存储（prediction 复用 artifacts/ 前缀，便于既有治理脚本覆盖）
   const storage = await getStorageProvider();
+  const id = crypto.randomUUID();
+  const uploadDomainId = domainExecution?.domain.id ??
+    (await resolveDefaultExecutionContext(input.problem_id, userId, db))
+      .domain_id;
+  await consumeDomainSubmissionQuota(uploadDomainId, userId, id);
+  const reservation = await reserveDomainStorageUpload({
+    domainId: uploadDomainId,
+    bytes: 0,
+  });
+  const reservationId = reservation.id;
   const storageKey = `artifacts/${crypto.randomUUID()}${
     spec.storageExtension(input.file_name)
   }`;
@@ -288,11 +390,12 @@ export async function createUploadedSubmission(
   try {
     artifactStorageUrl = await storage.putStream(
       storageKey,
-      rest,
+      meteredArtifactStream(rest, uploadDomainId, reservationId),
       spec.contentType,
       maxSizeBytes,
     );
   } catch (err) {
+    await releaseDomainStorageUpload(uploadDomainId, reservationId);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("超过大小限制")) {
       throw new BadRequestError(
@@ -302,7 +405,6 @@ export async function createUploadedSubmission(
     throw err;
   }
 
-  const id = crypto.randomUUID();
   // 尝试 ID 先于任务构造确定：任务 `run_id` 与之一致（Handbook §5.5）
   const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
@@ -311,6 +413,19 @@ export async function createUploadedSubmission(
   let task: JudgeTask;
 
   try {
+    // 独立登记事务保留物理上传定位；后续业务事务失败仍可被恢复任务盘点。
+    await db.transaction(async (tx) => {
+      await registerStreamedStorageObject(
+        { storageUrl: artifactStorageUrl },
+        tx,
+      );
+      await attachDomainStorageUpload(
+        uploadDomainId,
+        reservationId,
+        artifactStorageUrl,
+        tx,
+      );
+    });
     let llmTask: JudgeTaskLlm | undefined;
     const llmConfig = content.llm_config;
     if (llmConfig) {
@@ -323,6 +438,7 @@ export async function createUploadedSubmission(
         {
           // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
           attemptId,
+          domainId: domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
           problemVersionId: versionResolution.version.version_id,
         },
       );
@@ -368,6 +484,15 @@ export async function createUploadedSubmission(
 
     try {
       await db.transaction(async (tx) => {
+        const workspace = domainExecution && domainRequest
+          ? await lockDomainExecution(
+            domainExecution,
+            domainRequest,
+            userId,
+            input.version_id,
+            tx,
+          )
+          : await resolveDefaultExecutionContext(input.problem_id, userId, tx);
         await lockProjectionHosts(tx, {
           kind: "submission",
           id,
@@ -387,7 +512,14 @@ export async function createUploadedSubmission(
           storageUrl: artifactStorageUrl,
         }, tx);
         await assertStorageObjectBindable(artifactStorageUrl, tx);
+        await settleDomainStorageUpload(
+          uploadDomainId,
+          reservationId,
+          artifactStorageUrl,
+          tx,
+        );
         await tx.insert(submissions).values({
+          ...workspace,
           id,
           public_id: publicId,
           user_id: userId,
@@ -419,7 +551,12 @@ export async function createUploadedSubmission(
           problemVersionId: versionResolution.version.version_id,
           source_kind: "initial",
           taskSnapshot: {
-            ...executionSnapshot(task, llmConfig),
+            ...executionSnapshot(
+              task,
+              llmConfig,
+              undefined,
+              workspace.domain_id,
+            ),
             submission_mode: spec.mode,
           },
           createdBy: userId,
@@ -446,6 +583,7 @@ export async function createUploadedSubmission(
   } catch (err) {
     if (!submissionCommitted) {
       await compensateUploadedObject({ storageUrl: artifactStorageUrl })
+        .then(() => releaseDomainStorageUpload(uploadDomainId, reservationId))
         .catch((cleanupError) => {
           logger.error("artifact 上传后处理失败，补偿清理失败", {
             storage_url: artifactStorageUrl,
@@ -461,7 +599,7 @@ export async function createUploadedSubmission(
     await db.update(submissions).set({ status: "judging" }).where(
       and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
     if (resolvedContestId) {
       await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),

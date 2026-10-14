@@ -7,7 +7,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
   registerUser,
   retryE2E,
@@ -15,6 +14,7 @@ import {
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 let token = "";
 let adminToken = "";
@@ -30,8 +30,7 @@ e2eTest("[e2e/queue] Setup", async () => {
     "q_user_" + ts + "@test.com",
     TEST_PASSWORD,
   );
-  // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
-  PROBLEM_ID = await getProblemIdByNumber(1001);
+  PROBLEM_ID = await createCodingProblemFixture();
 });
 
 e2eTest("[e2e/queue] 7.1 公共队列概览结构", async () => {

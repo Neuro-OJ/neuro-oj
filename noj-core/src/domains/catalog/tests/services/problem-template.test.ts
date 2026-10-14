@@ -172,8 +172,7 @@ Deno.test("getProblemTemplate: manifest 未声明 number 时按标题匹配（�
   await withTmpSrcRoot(
     {
       "trial-snowy-manor/problem.json": JSON.stringify({
-        format_version: 1,
-        type: "P",
+        format_version: 2,
         title: "魔法 Agents 的推理审判",
         template: "template.py",
       }),

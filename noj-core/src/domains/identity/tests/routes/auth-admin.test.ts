@@ -1,6 +1,10 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
+  bindPublishedProblemForTest,
   createUserToken,
+  deleteProblemFixtures,
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
@@ -780,6 +784,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `del-test-${ts}`,
       description: "x",
@@ -799,7 +804,6 @@ Deno.test({
         },
       },
       owner_id: userId,
-      type: "U",
       number: 70000 + (ts & 0x7fff),
       created_at: now,
       updated_at: now,
@@ -812,6 +816,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print('hi')",
       file_name: "main.py",
@@ -863,12 +868,12 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `busy-test-${ts}`,
       description: "x",
       difficulty: "easy",
       owner_id: userId,
-      type: "U",
       number: 71000 + (ts & 0x7fff),
       created_at: now,
       updated_at: now,
@@ -877,6 +882,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print('hi')",
       status: "judging",
@@ -1070,6 +1076,7 @@ Deno.test({
     );
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `重测测试 ${ts}`,
       description: "测试",
@@ -1090,13 +1097,15 @@ Deno.test({
       },
       number: 80000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
 
     const judgingSubId = `rej-sub-judging-${ts}`;
+    const bindingId = await bindPublishedProblemForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
       id: judgingSubId,
       user_id: testUserId,
       problem_id: problemId,
@@ -1134,7 +1143,7 @@ Deno.test({
       eq(submissionJobs.id, body.data.job_id),
     );
     await db.delete(submissions).where(eq(submissions.id, judgingSubId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -1159,6 +1168,7 @@ Deno.test({
     const submissionId = `single-rej-submission-${ts}`;
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `单条重测测试 ${ts}`,
       description: "测试",
@@ -1178,11 +1188,13 @@ Deno.test({
       },
       number: 81000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
+    const bindingId = await bindPublishedProblemForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -1216,7 +1228,7 @@ Deno.test({
       eq(submissionJobs.id, body.data.job_id),
     );
     await db.delete(submissions).where(eq(submissions.id, submissionId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -1236,6 +1248,7 @@ Deno.test({
 
     const problemId = `rej-empty-${ts}`;
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `重测空 ${ts}`,
       description: "测试",
@@ -1256,7 +1269,6 @@ Deno.test({
       },
       number: 85000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -1278,6 +1290,6 @@ Deno.test({
     await db.delete(submissionJobs).where(
       eq(submissionJobs.id, body.data.job_id),
     );
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });

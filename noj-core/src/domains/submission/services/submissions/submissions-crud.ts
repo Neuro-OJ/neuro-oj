@@ -1,39 +1,22 @@
+import { publishQueueChange } from "../queue.ts";
+import {
+  attemptDisplayStatus,
+  normalizeAttemptDetails,
+  normalizeResultStatus,
+} from "./submission-result-format.ts";
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
+import { prepareEducationSubmissionDeletion } from "../../../education/index.ts";
+import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
- * Submissions CRUD（PR-3 拆分）。
- *
- * 包含：
- * - listSubmissions（分页 + 筛选 + 队列位置查询）
- * - createSubmission（创建提交并推送到 MQ）
- * - getSubmission（详情，按权限裁剪 code/output/details）
- * - deleteSubmission
- *
- * 重测相关（rejudgeSubmission / rejudgeProblemSubmissions）在
- * submissions-rejudge.ts；评测结果写回（saveEvaluationResult / updateSubmissionStatus）
- * 在 submissions-result.ts。
- *
- * ## 关于本文件中的 `as unknown as ReturnType<typeof eq>` 模式
- *
- * PR-5 评审指出这些 cast 模式（line 107, 114, 126 等）属于类型边界合理使用，
- * 不抽取为 `unwrapRows` helper。原因：
- *
- * 1. `unwrapRows` 处理的是 `db.execute()` 的"返回值"，即 `T[] | { rows: T[] }`
- *    这种**整张表**的形态
- * 2. 本文件中的 `or(...)` / `ilike(...)` 是**单条 SQL 片段**，返回值是
- *    `SQL | SQL<unknown>`，与 unwrapRows 的契约不匹配
- * 3. 强行统一会让类型推导从 SQL 条件表达式退化为 `SQL`，丢失 schema 类型信息
- *
- * 真正的统一方案需 Drizzle 官方提供 `SQL<T>` 与 `SQL` 的统一类型，
- * 目前没有。如未来支持，迁移路径：把所有 `as unknown as ReturnType<typeof eq>`
- * 替换为直接的 `SQL<boolean>` 注解。
- *
- * 风险：每个 `as unknown as` 都是一个潜在的运行时类型漂移点。当前文件所有
- * 此类 cast 都对应 Drizzle 在 LEFT JOIN 条件下 `or`/`ilike` 返回的
- * `SQL<unknown>`，与等价的 `eq()` 返回 `SQL<boolean>` 兼容。
+ * 提交列表、创建、详情及删除。
+ * 重测入口在 submissions-rejudge.ts，评测结果写入在 submissions-result.ts。
+ * Drizzle LEFT JOIN 的 or/ilike 条件返回 SQL<unknown>；局部条件转换为 eq 的
+ * SQL 类型，仅用于统一条件数组，不涉及查询结果行的 unwrapRows。
  */
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -54,9 +37,14 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { consumeDomainSubmissionQuota } from "../../../workspace/index.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { checkPermission } from "./../../../identity/index.ts";
-import { evaluateProblemAccess } from "../../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "../../../catalog/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
 import {
   generatePublicId,
@@ -84,6 +72,12 @@ import {
 } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "../workspace-execution.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
 } from "../versioning/submission-version.ts";
@@ -108,7 +102,6 @@ import type {
   SubmissionAttemptSummary,
   SubmissionAttemptView,
   SubmissionDetail,
-  SubmissionEvaluationDetails,
   SubmissionInput,
   SubmissionListItem,
   SubmissionResponse,
@@ -128,65 +121,6 @@ const logger = getLogger(["noj", "submission"]);
  * 修复 issue 64 评论 §5.1。
  */
 const MAX_OUTPUT_LENGTH = 8 * 1024;
-
-/**
- * 解析 details 字段。
- * 数据库中以 JSON 字符串存储，解析为对象返回。
- */
-function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
-  if (raw === null || raw === undefined) return null;
-  try {
-    return JSON.parse(raw) as SubmissionEvaluationDetails;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 归一化尝试 details：`evaluation_attempts.details` 是 jsonb 对象，
- * 迁移导入的历史行可能存 JSON 文本；两种形态都收敛为对象或 null。
- */
-function normalizeAttemptDetails(
-  raw: unknown,
-): SubmissionEvaluationDetails | null {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "string") return parseDetails(raw);
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as SubmissionEvaluationDetails;
-  }
-  return null;
-}
-
-/**
- * 将评测结果状态归一化为提交状态：只保留 finished / error。
- * 旧数据中的 Accepted / WrongAnswer 等按分数制语义映射（兼容历史数据）。
- */
-function normalizeResultStatus(status: string | null): string | null {
-  if (!status) return null;
-  if (
-    status === "error" || status === "SystemError" ||
-    status === "TimeLimitExceeded" || status === "MemoryLimitExceeded" ||
-    status === "RuntimeError"
-  ) {
-    return "error";
-  }
-  return "finished";
-}
-
-/**
- * 尝试历史条目的展示状态：与 `result.status` 同口径（finished / error），
- * 未终结的排队/执行中分别回落到 pending / judging。
- */
-function attemptDisplayStatus(
-  state: string,
-  resultStatus: string | null,
-): string {
-  const normalized = normalizeResultStatus(resultStatus);
-  if (normalized) return normalized;
-  if (state === "queued") return "pending";
-  if (state === "judging") return "judging";
-  return "error";
-}
 
 /**
  * 查询提交列表（分页 + 筛选）。
@@ -220,7 +154,19 @@ export async function listSubmissions(
   } = params;
 
   // 动态构建筛选条件（仅对提供的参数添加条件）
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions: ReturnType<typeof eq>[] = [
+    params.domainId
+      ? eq(submissions.domain_id, params.domainId)
+      : sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+  ];
+  if (!params.platformAdmin && (status || validOnly || acceptedOnly)) {
+    // 结果筛选本身也会泄露 OI 判定，赛期不让隐藏结果参与筛选计数。
+    conditions.push(
+      sql`NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = ${submissions.contest_id}
+      AND c.type = 'oi' AND c.start_time <= ${new Date().toISOString()}
+      AND c.end_time > ${new Date().toISOString()})`,
+    );
+  }
 
   if (userId) conditions.push(eq(submissions.user_id, userId));
   if (contestId) conditions.push(eq(submissions.contest_id, contestId));
@@ -245,11 +191,15 @@ export async function listSubmissions(
   if (validOnly) conditions.push(eq(submissions.is_valid, true));
   if (acceptedOnly) conditions.push(eq(submissions.is_accepted, true));
   if (upgradable) {
-    // 可升级 = 题目已发布版本，且本提交不是针对最新版提交的（`IS DISTINCT FROM`
-    // 让"未知历史版本"也进入候选，其升级由任务条目按 `LEGACY_VERSION_UNKNOWN` 处理）
+    // 作答升级跟随使用域绑定；exact(X) 的当前作答版本不随源域发布新版变化。
+    const answerVersion =
+      sql`coalesce((SELECT CASE WHEN binding.effective_version_mode='exact'
+      THEN binding.required_version_id ELSE ${problems.latest_version_id} END
+      FROM domain_problem_bindings binding WHERE binding.id=${submissions.domain_problem_binding_id}
+      AND binding.domain_id=coalesce(${submissions.domain_id},${DEFAULT_DOMAIN_ID})),${problems.latest_version_id})`;
     conditions.push(
-      sql`${problems.latest_version_id} IS NOT NULL
-        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${problems.latest_version_id}` as unknown as ReturnType<
+      sql`${answerVersion} IS NOT NULL
+        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${answerVersion}` as unknown as ReturnType<
         typeof eq
       >,
     );
@@ -361,7 +311,7 @@ export async function listSubmissions(
   const hasInProgress = rows.some((r) => !r.result_status);
   let pendingPosMap: Map<string, number> | null = null;
   let queueLength: number | null = null;
-  if (hasInProgress) {
+  if (hasInProgress && params.platformAdmin) {
     try {
       const snapshot = await getPendingQueueSnapshot();
       const pendingIds = snapshot.ids;
@@ -413,7 +363,14 @@ export async function listSubmissions(
     };
   });
 
-  return { data, total };
+  return {
+    data: await projectContestSubmissionReads(
+      data,
+      userId ?? null,
+      params.platformAdmin,
+    ),
+    total,
+  };
 }
 
 /**
@@ -426,12 +383,27 @@ export async function createSubmission(
   input: SubmissionInput,
   contestId?: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
-  const resolvedContestId = contestId ?? input.contest_id ?? null;
+  const requestedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && requestedContestId && !domainRequest.contestId) {
+    throw new BadRequestError("域内练习提交不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与提交上下文不一致");
+  const resolvedContestId = domainExecution?.contestId ?? requestedContestId;
+  if (domainExecution && domainExecution.problem.id !== input.problem_id) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 比赛内每道题提交次数上限（含 error 计数）
   if (resolvedContestId) {
@@ -443,7 +415,7 @@ export async function createSubmission(
   }
 
   // 读取最新题目配置（快照读，避免无事务包裹导致单语句 FOR UPDATE 锁即刻释放的伪锁缺陷）
-  const lockedRows = await db
+  const lockedRows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, input.problem_id))
@@ -452,19 +424,22 @@ export async function createSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
-    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id, {
+      domainId: domainExecution?.domain.id,
+    })
     : null;
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new ForbiddenError("无权对该题目提交");
+  if (!domainExecution) {
+    const { result: access } = await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+      contestAccess,
+    });
+    if (!access.allowed) throw new ForbiddenError("无权对该题目提交");
   }
   // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
   if (resolvedContestId && contestAccess && !contestAccess.running) {
@@ -473,8 +448,8 @@ export async function createSubmission(
 
   // artifact / prediction 题目必须走 multipart 上传，拒绝 JSON 代码提交
   if (
-    problem.submission_mode === "artifact" ||
-    problem.submission_mode === "prediction"
+    !domainExecution && (problem.submission_mode === "artifact" ||
+      problem.submission_mode === "prediction")
   ) {
     throw new BadRequestError(
       problem.submission_mode === "artifact"
@@ -499,7 +474,10 @@ export async function createSubmission(
 
   // 验证语言：ui 题只收界面参数；其余与 LANGUAGE_EXT_MAP 键集保持一致
   assertSubmissionLanguage(
-    problem.submission_mode,
+    versionResolution.kind === "known" &&
+      versionResolution.version.content.kind === "ai"
+      ? versionResolution.version.content.submission_mode
+      : "code",
     input.language,
     Object.keys(LANGUAGE_EXT_MAP),
   );
@@ -516,6 +494,11 @@ export async function createSubmission(
   const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
+  await consumeDomainSubmissionQuota(
+    domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
+    userId,
+    id,
+  );
 
   if (versionResolution.kind !== "known") {
     throw new BadRequestError("必须指定已发布版本");
@@ -582,6 +565,7 @@ export async function createSubmission(
       {
         // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
         attemptId,
+        domainId: domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
         problemVersionId: versionResolution.kind === "known"
           ? versionResolution.version.version_id
           : null,
@@ -623,6 +607,15 @@ export async function createSubmission(
 
   try {
     await db.transaction(async (tx) => {
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(input.problem_id, userId, tx);
       await lockProjectionHosts(tx, {
         kind: "submission",
         id,
@@ -635,6 +628,7 @@ export async function createSubmission(
         requestedVersionId: input.version_id,
       }, tx);
       await tx.insert(submissions).values({
+        ...workspace,
         id,
         public_id: publicId,
         user_id: userId,
@@ -667,7 +661,7 @@ export async function createSubmission(
           : null,
         source_kind: "initial",
         taskSnapshot: {
-          ...executionSnapshot(task, llmConfig),
+          ...executionSnapshot(task, llmConfig, undefined, workspace.domain_id),
           submission_mode: "code",
         },
         createdBy: userId,
@@ -698,7 +692,7 @@ export async function createSubmission(
     );
 
     // 写入 SSE 事件日志并发布队列变更事件
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
     if (resolvedContestId) {
       await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),
@@ -767,6 +761,11 @@ export async function getSubmission(
   viewerId?: string | null,
   viewerRole?: string | null,
   c?: Context,
+  domainAccess?: {
+    domainId: string;
+    canReadDetails: boolean;
+    platformAdmin: boolean;
+  },
 ): Promise<SubmissionDetail> {
   const db = getDb();
 
@@ -781,13 +780,22 @@ export async function getSubmission(
   }
 
   const row = rows[0];
+  if (
+    domainAccess
+      ? row.domain_id !== domainAccess.domainId
+      : row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID
+  ) {
+    throw new NotFoundError("默认域不存在此提交");
+  }
 
   // 权限判断：仅 owner 或 admin 可看 code/output/details
   // 注意：基础数据（题号/状态/时间等）对所有访问者公开，不在这里做"非所有者 404"的拦截
   const isOwner = !!(c?.var.userId ?? viewerId) &&
     row.user_id === (c?.var.userId ?? viewerId);
   // 实时权限查询（submission:read_all，admin:full_access 通配）
-  const isAdmin = c
+  const isAdmin = domainAccess
+    ? domainAccess.canReadDetails
+    : c
     ? await checkPermission(c, "submission:read_all")
     : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
@@ -857,16 +865,29 @@ export async function getSubmission(
       effective_version_mode: problems.effective_version_mode,
       required_version_id: problems.required_version_id,
       latest_version_id: problems.latest_version_id,
+      binding_mode: domainProblemBindings.effective_version_mode,
+      binding_required: domainProblemBindings.required_version_id,
     })
     .from(problems)
+    .leftJoin(
+      domainProblemBindings,
+      eq(domainProblemBindings.id, row.domain_problem_binding_id ?? ""),
+    )
     .where(eq(problems.id, row.problem_id))
     .limit(1);
   const effectiveVersionPolicy: EffectiveVersionPolicy = policyFromColumns(
-    policyRow?.effective_version_mode,
-    policyRow?.required_version_id,
+    row.domain_problem_binding_id
+      ? policyRow?.binding_mode
+      : policyRow?.effective_version_mode,
+    row.domain_problem_binding_id
+      ? policyRow?.binding_required
+      : policyRow?.required_version_id,
   ) ?? { mode: "any" };
   const isSubmittedVersionLatest = !!row.submitted_version_id &&
-    row.submitted_version_id === policyRow?.latest_version_id;
+    row.submitted_version_id ===
+      (row.domain_problem_binding_id && effectiveVersionPolicy.mode === "exact"
+        ? effectiveVersionPolicy.version_id
+        : policyRow?.latest_version_id);
 
   // 全部执行历史（含 queued/judging/superseded 与平台错误，tracking #53）。
   // 只投影非敏感字段：output/details 仍只经 `result` 返回并按权限裁剪，
@@ -1009,10 +1030,16 @@ export async function getSubmission(
   const queueStatus = await getSubmissionQueueStatus(
     id,
     viewerId ?? undefined,
-    viewerRole ?? undefined,
+    isAdmin ? "admin" : viewerRole ?? undefined,
+    domainAccess?.domainId,
   );
+  const platformAdmin = domainAccess
+    ? domainAccess.platformAdmin
+    : c
+    ? await checkPermission(c, "admin:full_access")
+    : viewerRole === "admin";
 
-  return {
+  const response: SubmissionDetail = {
     id: row.id,
     public_id: row.public_id,
     ...(canSeeDetails
@@ -1031,8 +1058,8 @@ export async function getSubmission(
     status: row.status,
     created_at: row.created_at,
     result,
-    queue_position: queueStatus?.queue_position ?? null,
-    queue_length: queueStatus?.queue_length ?? null,
+    queue_position: platformAdmin ? queueStatus?.queue_position ?? null : null,
+    queue_length: platformAdmin ? queueStatus?.queue_length ?? null : null,
     judge_started_at: queueStatus?.judge_started_at ?? row.judge_started_at ??
       null,
     judge_finished_at: queueStatus?.judge_finished_at ??
@@ -1051,6 +1078,11 @@ export async function getSubmission(
     effective_attempt_id: effectiveAttemptId,
     accepted_attempt_id: acceptedAttemptId,
   };
+  return (await projectContestSubmissionReads(
+    [response],
+    viewerId ?? null,
+    platformAdmin,
+  ))[0];
 }
 
 /**
@@ -1095,6 +1127,13 @@ export async function deleteSubmission(id: string): Promise<void> {
       current?.active_attempt_id ||
       (current && ["pending", "judging"].includes(current.status))
     ) throw new AppError("提交正在评测，不能删除", 409, "SOURCE_JUDGING");
+    await prepareEducationSubmissionDeletion(tx, {
+      id,
+      kind: "submission",
+      domain_id: identity.domain_id,
+      user_id: identity.user_id,
+      problem_id: identity.problem_id,
+    });
     const [row] = await tx.delete(submissions).where(eq(submissions.id, id))
       .returning();
     if (!row) throw new NotFoundError("提交不存在");

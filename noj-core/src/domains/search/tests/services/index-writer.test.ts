@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -46,6 +48,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-search-1",
       title: "动态规划",
       description: "入门",
@@ -60,7 +63,6 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 1,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,
@@ -69,6 +71,10 @@ Deno.test({
     await publishBaselineVersionForTest("p-search-1");
     const entry = await buildProblemEntry("p-search-1");
     assertEquals(entry !== null, true);
+    assertEquals(entry!.domainId, DEFAULT_DOMAIN_ID);
+    assertEquals(entry!.metadata.display_id, "1");
+    assertEquals(entry!.metadata.qualified_ref, "main:1");
+    assertEquals(entry!.metadata.type, undefined);
     await upsertSearchEntry(entry!);
     const rows = await db.select().from(searchEntries).where(
       sql`${searchEntries.entity_type} = 'problem' AND ${searchEntries.entity_id} = 'p-search-1'`,
@@ -227,6 +233,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityBoards).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "board-post-entry",
       slug: "post-entry-board",
       name: "搜索测试板块",
@@ -234,6 +241,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityPosts).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "post-entry-1",
       type: "discussion",
       author_id: "u-post-author",
@@ -246,6 +254,7 @@ Deno.test({
     });
     const entry = await buildCommunityPostEntry("post-entry-1");
     assertEquals(entry !== null, true);
+    assertEquals(entry!.domainId, DEFAULT_DOMAIN_ID);
     assertEquals(entry?.entityType, "community_post");
     assertEquals(entry?.title, "社区帖子标题");
     assert(entry!.body.includes("社区帖子正文"));
@@ -275,6 +284,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityBoards).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "board-comment-entry",
       slug: "comment-entry-board",
       name: "评论测试板块",
@@ -282,6 +292,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityPosts).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "post-comment-entry",
       type: "discussion",
       author_id: "u-comment-author",
@@ -293,6 +304,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityComments).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "comment-entry-1",
       post_id: "post-comment-entry",
       author_id: "u-comment-author",
@@ -330,6 +342,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-sub-entry",
       title: "提交索引题",
       description: "desc",
@@ -344,7 +357,6 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 31,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,
@@ -353,6 +365,7 @@ Deno.test({
       id: "sub-entry-1",
       user_id: "u-sub-entry",
       problem_id: "p-sub-entry",
+      ...await problemExecutionForTest("p-sub-entry"),
       language: "python",
       code: "print(1)",
       status: "finished",
@@ -405,7 +418,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "index-writer: buildContestEntry 包含关联题目名",
+  name: "index-writer: buildContestEntry 只索引比赛摘要，不携带赛题集合",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -413,6 +426,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-contest-entry",
       title: "竞赛关联题",
       description: "desc",
@@ -427,13 +441,13 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 7,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,
     });
     await db.insert(contests).values({
       id: "contest-entry-1",
+      domain_id: DEFAULT_DOMAIN_ID,
       title: "题目关联竞赛",
       description: "竞赛描述",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -453,9 +467,9 @@ Deno.test({
     });
     const entry = await buildContestEntry("contest-entry-1");
     assertEquals(entry !== null, true);
-    assertEquals(entry?.metadata.problem_titles, ["竞赛关联题"]);
-    assertEquals(entry?.metadata.problem_display_ids, ["P7"]);
-    assert(entry!.body.includes("竞赛关联题"));
+    assertEquals(entry?.metadata.problem_titles, undefined);
+    assertEquals(entry?.metadata.problem_display_ids, undefined);
+    assertEquals(entry!.body, "竞赛描述");
   },
 });
 
@@ -479,25 +493,25 @@ Deno.test({
     // 一道公开题 + 一道私题同时挂到公开竞赛下
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-contest-public",
         title: "公开关联题",
         description: "desc",
         difficulty: "medium",
         runtime_config: runtime,
         number: 8,
-        type: "P",
         visibility: "public",
         created_at: now,
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-contest-private",
         title: "赛前保密的私题",
         description: "desc",
         difficulty: "medium",
         runtime_config: runtime,
         number: 9,
-        type: "U",
         visibility: "private",
         created_at: now,
         updated_at: now,
@@ -505,6 +519,7 @@ Deno.test({
     ]);
     await db.insert(contests).values({
       id: "contest-entry-2",
+      domain_id: DEFAULT_DOMAIN_ID,
       title: "含私题的公开竞赛",
       description: "竞赛描述",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -533,9 +548,9 @@ Deno.test({
     ]);
     const entry = await buildContestEntry("contest-entry-2");
     assertEquals(entry !== null, true);
-    // 只有公开题可进索引；私题标题/编号必须完全不出现
-    assertEquals(entry?.metadata.problem_titles, ["公开关联题"]);
-    assertEquals(entry?.metadata.problem_display_ids, ["P8"]);
+    // 题目清单由比赛授权接口提供，不进入摘要搜索索引。
+    assertEquals(entry?.metadata.problem_titles, undefined);
+    assertEquals(entry?.metadata.problem_display_ids, undefined);
     assert(!entry!.body.includes("赛前保密的私题"));
     assert(!entry!.body.includes("U9"));
   },
@@ -550,6 +565,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-search-keep",
       title: "保留题",
       description: "desc",
@@ -564,7 +580,6 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 2,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,

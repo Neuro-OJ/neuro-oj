@@ -8,13 +8,12 @@ inputs:
   browser:
     description: 是否运行 UI 浏览器门禁（true/false）
     required: false
-    default: 'false'
+    default: "false"
 
 runs:
   using: composite
   steps:
     # ── 安装工具链 ────────────────────────────
-
     - name: 安装 Deno
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
@@ -31,6 +30,10 @@ runs:
       uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: 校验本地 E2E SDK 镜像刷新逻辑
       run: bash scripts/e2e/check-setup.sh
+      shell: bash
+
+    - name: 校验 LLM Mock 的模型回显与安全读取契约
+      run: python3 -B scripts/e2e/check_llm_mock.py
       shell: bash
 
     # ── 缓存依赖 ──────────────────────────────
@@ -211,6 +214,27 @@ runs:
       run: deno run -A scripts/noj.ts search reindex
       shell: bash
 
+    - name: 切换支持包验收至真实 S3 存储
+      if: inputs.domain == 'submission'
+      run: |
+        docker compose -f docker-compose.e2e.yml -f docker-compose.e2e-s3.yml \
+          -p "$COMPOSE_PROJECT_NAME" up -d --no-build --no-deps --wait --wait-timeout 120 noj-core
+      shell: bash
+
+    - name: 真实 S3 支持包版本与权限验收
+      if: inputs.domain == 'submission'
+      working-directory: noj-tests
+      env:
+        STORAGE_PROVIDER: s3
+        S3_ENDPOINT: http://localhost:9002
+        S3_REGION: us-east-1
+        S3_ACCESS_KEY: minioadmin
+        S3_SECRET_KEY: minioadmin
+        S3_BUCKET: noj-support-packages
+        S3_FORCE_PATH_STYLE: "true"
+      run: deno task test:domain submission --filter=e2e/s3-support-pkg
+      shell: bash
+
     - name: 缓存 Playwright 浏览器
       if: inputs.browser == 'true'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -231,6 +255,9 @@ runs:
       env:
         NOJ_RUN_BROWSER_E2E: "1"
         E2E_UI_URL: http://localhost:3000
+        E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
+        E2E_LLM_MOCK_INSPECT_URL: http://localhost:8002/
+        E2E_LLM_GOVERNANCE_DATABASE_URL: ${{ env.E2E_DB_URL }}
       run: deno task test:browser
       shell: bash
 

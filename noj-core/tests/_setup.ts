@@ -8,7 +8,14 @@
  * 此文件为显式引导入口（用于 00_migrate_test.ts 等需要明确可见 bootstrap 的场景）。
  */
 
-import { ensurePGliteSchemaForTest } from "./../src/shared/db/connection.ts";
+import {
+  ensurePGliteSchemaForTest,
+  registerDbResetSeeder,
+} from "./../src/shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
+
+// 所有标准测试进程通过 preload 导入；每次 reset 后建立真实默认域基础数据。
+registerDbResetSeeder(ensureDefaultWorkspace);
 
 /**
  * 判断当前是否为 PGlite 模式（DATABASE_URL 未设置）。

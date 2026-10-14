@@ -82,11 +82,13 @@ e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
   if (!isE2E) return;
   if (!judgeOk) return;
   try {
+    const password = Deno.env.get("E2E_REDIS_PASSWORD");
     const cmd = new Deno.Command("docker", {
       args: [
         "exec",
-        "noj-e2e-redis",
+        Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis",
         "redis-cli",
+        ...(password ? ["-a", password] : []),
         "RPUSH",
         "noj:judge:results",
         "{invalid json}",

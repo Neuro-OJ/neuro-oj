@@ -89,7 +89,6 @@ export async function rejudgeProblemSubmissions(
   const db = getDb();
   const [problem] = await db.select({
     title: problems.title,
-    type: problems.type,
     number: problems.number,
   }).from(problems).where(eq(problems.id, problemId)).limit(1);
 
@@ -104,7 +103,7 @@ export async function rejudgeProblemSubmissions(
   );
   logger.info("整题重测已受理", {
     problem_id: problemId,
-    display_id: problem ? `${problem.type}${problem.number}` : undefined,
+    display_id: problem ? `main:${problem.number}` : undefined,
     job_id: accepted.job_id,
     total_items: accepted.total_items,
   });

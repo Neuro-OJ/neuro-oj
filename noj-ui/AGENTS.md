@@ -159,6 +159,12 @@ cd dist
 
 ## API 交互约定
 
+产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用
+`layouts/workspace.vue` 提供的统一上下文。实现及当前限制见
+[工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
+授予权限；资源网址与缓存必须包含使用域，确认后仍须检查目标空间及账号未改变。
+新域资源入口在全链路隔离验收前不得直接接到旧全局业务 API。
+
 - 所有 API 请求通过 `server/api/[...slug].ts` **Nitro 代理**转发到 noj-core
 - 代理负责：
   - 拦截登录响应，将 JWT 设为 **HTTP-only Cookie**（`noj:token`）—— 对 JS 不可见

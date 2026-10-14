@@ -1,3 +1,9 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import {
+  deleteProblemFixtures,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   getPendingSubmissionIds,
@@ -50,10 +56,11 @@ async function setup() {
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
-    type: "P",
     number: Math.floor(Math.random() * 10000),
     title: "Queue Test Problem",
+    visibility: "public",
     difficulty: "easy",
     owner_id: USER_ID,
     runtime_config: {
@@ -74,8 +81,10 @@ async function setup() {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(PROBLEM_ID);
   await db.insert(submissions).values([
     {
+      ...await problemExecutionForTest(PROBLEM_ID),
       id: SUBMISSION_PENDING_ID,
       user_id: USER_ID,
       problem_id: PROBLEM_ID,
@@ -85,6 +94,7 @@ async function setup() {
       created_at: now,
     },
     {
+      ...await problemExecutionForTest(PROBLEM_ID),
       id: SUBMISSION_JUDGING_ID,
       user_id: USER_ID,
       problem_id: PROBLEM_ID,
@@ -95,6 +105,7 @@ async function setup() {
       created_at: now,
     },
     {
+      ...await problemExecutionForTest(PROBLEM_ID),
       id: SUBMISSION_FINISHED_ID,
       user_id: USER_ID,
       problem_id: PROBLEM_ID,
@@ -128,6 +139,7 @@ async function setup() {
     is_accepted: true,
   }).where(eq(submissions.id, SUBMISSION_FINISHED_ID));
   await db.insert(selfTests).values({
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: SELF_TEST_FINISHED_ID,
     user_id: USER_ID,
     problem_id: PROBLEM_ID,
@@ -153,7 +165,7 @@ async function teardown() {
     await db.delete(submissions).where(
       eq(submissions.user_id, USER_ID),
     );
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   } catch { /* ignore */ }
 }

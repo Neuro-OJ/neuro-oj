@@ -62,6 +62,7 @@ router.get("/submissions", async (c) => {
   }
 
   const result = await listSubmissions({
+    platformAdmin: true,
     userId,
     userSearch,
     problemId,

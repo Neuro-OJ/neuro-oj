@@ -45,6 +45,8 @@ const DOMAINS = new Set([
   "observability",
   "search",
   "legal",
+  "workspace",
+  "education",
 ]);
 
 /** 允许业务域 import 的观测域子路径白名单。 */

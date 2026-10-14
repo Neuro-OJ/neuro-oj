@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   objectiveSubmissions,
   problems,
@@ -42,6 +43,10 @@ async function createUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await grantDefaultCatalogRole(
+    id,
+    prefix.includes("owner") ? "editor" : "member",
+  );
   return id;
 }
 
@@ -86,7 +91,7 @@ Deno.test({
         privateTraining.id,
       );
       assertEquals(
-        (await getTraining(privateTraining.id, other, true)).id,
+        (await getTraining(privateTraining.id, "0")).id,
         privateTraining.id,
       );
       assertEquals(
@@ -124,7 +129,7 @@ Deno.test({
       const ownerView = await listUserTrainings(owner, owner);
       assertEquals(ownerView.total, 3);
 
-      const all = await listAllTrainings({ page: 1, perPage: 20 });
+      const all = await listAllTrainings({ page: 1, perPage: 20 }, "0");
       assertEquals(
         all.data.some((t) => t.id === privateTraining.id),
         true,
@@ -152,7 +157,7 @@ Deno.test({
       const pinOwn = await updateTraining(
         unlistedTraining.id,
         { is_pinned: true },
-        owner,
+        "0",
         { canPin: true },
       );
       assertEquals(pinOwn.is_pinned, true);
@@ -164,7 +169,9 @@ Deno.test({
       );
     } finally {
       await db.delete(trainings).where(eq(trainings.created_by, owner));
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(other);
       await db.delete(users).where(eq(users.id, other));
     }
   },
@@ -186,6 +193,7 @@ Deno.test({
     ): Promise<string> {
       const id = crypto.randomUUID();
       await db.insert(problems).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
         id,
         title: `题单测试题 ${number}`,
         description: "测试题面",
@@ -193,11 +201,11 @@ Deno.test({
         runtime_config: isObjective ? null : {},
         number,
         owner_id: "0",
-        type: "P",
         is_objective: isObjective,
         created_at: now,
         updated_at: now,
       });
+      await publishDefaultCatalogFixture(id);
       return id;
     }
 
@@ -219,6 +227,8 @@ Deno.test({
       await addTrainingProblem(training.id, objective, 2, owner);
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        domain_problem_binding_id: await bindPublishedProblemForTest(p1),
         id: subId,
         user_id: solver,
         problem_id: p1,
@@ -231,6 +241,8 @@ Deno.test({
         created_at: now,
       });
       await db.insert(objectiveSubmissions).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        domain_problem_binding_id: await bindPublishedProblemForTest(objective),
         id: crypto.randomUUID(),
         paper_id: objective,
         user_id: solver,
@@ -284,7 +296,9 @@ Deno.test({
       await db.delete(objectiveSubmissions).where(
         eq(objectiveSubmissions.user_id, solver),
       );
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(solver);
       await db.delete(users).where(eq(users.id, solver));
     }
   },
@@ -301,6 +315,7 @@ Deno.test({
     const now = new Date().toISOString();
     const privateProblemId = crypto.randomUUID();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: privateProblemId,
       title: "他人私有题",
       description: "私有题面",
@@ -309,7 +324,6 @@ Deno.test({
       runtime_config: {},
       number: 940010,
       owner_id: other,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
@@ -321,14 +335,22 @@ Deno.test({
       await assertRejects(
         () =>
           addTrainingProblem(training.id, privateProblemId, undefined, owner),
-        ForbiddenError,
-        "仅可加入公开题或自己拥有的题目",
+        NotFoundError,
       );
     } finally {
       await db.delete(trainings).where(eq(trainings.id, training.id));
       await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(other);
       await db.delete(users).where(eq(users.id, other));
     }
   },
 });
+
+import {
+  grantDefaultCatalogRole,
+  publishDefaultCatalogFixture,
+  removeDefaultCatalogMembership,
+  resetDbForTest,
+} from "../default-fixture.ts";

@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -23,6 +25,7 @@ import {
 } from "../../../system/index.ts";
 
 const ownerId = "official-owner";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 const otherId = "official-other";
 const problemId = "official-problem";
 
@@ -51,18 +54,19 @@ async function setup(): Promise<void> {
     },
   ]);
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: "官方题解测试题",
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number: 960001,
-    type: "U",
     visibility: "public",
     owner_id: ownerId,
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(problemId);
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");
@@ -169,6 +173,7 @@ Deno.test({
         id: submissionId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(1)",
         status: "finished",

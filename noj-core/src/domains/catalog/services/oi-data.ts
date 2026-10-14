@@ -10,8 +10,9 @@ import type { Context } from "hono";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems } from "../../../shared/db/schema.ts";
+import { assertProblemEditPermission } from "./problems/problems-crud.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { assertPermission, checkPermission } from "../../identity/index.ts";
+import { checkPermission } from "../../identity/index.ts";
 import { resolveProblem } from "./problem-resolve.ts";
 
 /** 数据路径不能逃逸题包根目录。 */
@@ -32,12 +33,7 @@ export async function authorizeOiData(c: Context, reference: string) {
   const userId = c.get("userId") as string;
   const isAdmin = await checkPermission(c, "admin:full_access");
   const problem = await resolveProblem(reference, { userId, isAdmin });
-  const own = problem.type === "U" && problem.owner_id === userId;
-  await assertPermission(c, own ? "problem:write_own" : "problem:write_any");
-  await assertPermission(
-    c,
-    own ? "problem:package_manage_own" : "problem:package_manage_any",
-  );
+  await assertProblemEditPermission(c, problem, userId);
   if (problem.judge_type !== "oi") {
     throw new BadRequestError("数据编辑仅用于 OI 题");
   }

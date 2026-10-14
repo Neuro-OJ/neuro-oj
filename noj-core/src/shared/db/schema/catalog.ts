@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
 import { ROOT_USER_ID } from "../../base/constants.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import { storageObjects } from "./system.ts";
 import type {
   ProblemObjectRole,
@@ -205,6 +206,8 @@ export const problems = pgTable(
   "problems",
   {
     id: text("id").primaryKey(),
+    /** 所属源域不可为空；使用域通过独立题库绑定表示。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     /** 公开样例独立于题面，旧题目缺省为空数组。 */
@@ -222,12 +225,10 @@ export const problems = pgTable(
     runtime_config: jsonb("runtime_config"),
     /** 评测模式：存量题目默认 dual。 */
     judge_type: text("judge_type").notNull().default("dual"),
-    /** 题号（同一 type 内独立自增） */
+    /** 域内数字题号，由工作空间游标原子分配。 */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
-    /** 题目类型：U=用户题库, P=主题库 */
-    type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
     visibility: text("visibility").notNull().default("public"),
@@ -275,13 +276,13 @@ export const problems = pgTable(
     searchVector: tsvector("search_vector"),
   },
   (table) => ({
-    typeNumberUnique: unique("problems_type_number_unique").on(
-      table.type,
-      table.number,
+    domainIdUnique: unique("problems_domain_id_id_unique").on(
+      table.domain_id,
+      table.id,
     ),
-    typeCheck: check(
-      "problems_type_check",
-      sql`${table.type} IN ('U', 'P')`,
+    domainNumberUnique: unique("problems_domain_number_unique").on(
+      table.domain_id,
+      table.number,
     ),
     submissionModeCheck: check(
       "problems_submission_mode_check",
@@ -290,10 +291,6 @@ export const problems = pgTable(
     visibilityCheck: check(
       "problems_visibility_check",
       sql`${table.visibility} IN ('public', 'private')`,
-    ),
-    pVisibilityCheck: check(
-      "problems_p_visibility_check",
-      sql`${table.type} <> 'P' OR ${table.visibility} = 'public'`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
@@ -379,11 +376,14 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
+    /** 存量先可空，域归属回填完成后收紧。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     public_id: publicIdColumn("tr"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
     is_pinned: boolean("is_pinned").notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     created_by: text("created_by").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),

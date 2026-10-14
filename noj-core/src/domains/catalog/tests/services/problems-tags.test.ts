@@ -11,7 +11,12 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import { initRedisForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  deleteProblemFixtures,
+  initRedisForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problems,
@@ -35,7 +40,6 @@ import { createTag } from "../../index.ts";
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 
@@ -47,6 +51,7 @@ async function createTestProblem(): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `门控测试题-${ts}-${Math.random().toString(36).slice(2, 6)}`,
     description: "描述",
@@ -55,7 +60,6 @@ async function createTestProblem(): Promise<string> {
     is_objective: false,
     number: 940000 + (ts % 10000),
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });
@@ -238,7 +242,10 @@ Deno.test({
     const db = getDb();
     const submissionId = crypto.randomUUID();
     const now = new Date().toISOString();
+    await publishBaselineVersionForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
+      domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -258,7 +265,7 @@ Deno.test({
 
     await db.delete(submissions).where(eq(submissions.id, submissionId));
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
     await db.delete(tags).where(eq(tags.id, algoTag.id));
     await db.delete(users).where(eq(users.id, userId));
   },
@@ -281,6 +288,7 @@ Deno.test({
     const ownedProblemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: ownedProblemId,
       title: `门控题主题-${ts}`,
       description: "描述",
@@ -289,7 +297,6 @@ Deno.test({
       is_objective: false,
       number: 950000 + (ts % 10000),
       owner_id: ownerId,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -437,3 +444,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

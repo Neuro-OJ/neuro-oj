@@ -6,6 +6,7 @@
  */
 
 import {
+  api,
   apiDelete,
   apiGet,
   apiPost,
@@ -17,6 +18,7 @@ import {
   isE2E,
   isJudgeAvailable,
   pollSubmission,
+  publishProblemVersion,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -119,7 +121,7 @@ e2eTest("[e2e/tags] 1.5 重复标签名冲突", async () => {
 
 e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   if (!isE2E) return;
-  // 打标签：创建 U 型题目并带 tag_ids（admin 创建）
+  // 创建默认域题目并带 tag_ids。
   const title = "E2E 标签题目 " + Date.now().toString(36);
   const res = await apiPost(
     "/api/v1/problems",
@@ -141,7 +143,7 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   }
   problemId = (res.body as { data: { id: string } }).data.id;
 
-  // U 型新建默认 private；标签筛选与匿名详情需要公开可见
+  // 标签筛选与匿名详情需要公开可见。
   const pubRes = await apiPut(
     `/api/v1/problems/${problemId}/visibility`,
     { visibility: "public" },
@@ -154,9 +156,30 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
     );
   }
 
+  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  const revision = (draft.body as { data: { revision: number } }).data.revision;
+  const question = await api(
+    "POST",
+    `/api/v1/problems/${problemId}/questions`,
+    {
+      token: adminToken,
+      headers: { "If-Match": String(revision) },
+      body: {
+        type: "single",
+        prompt: "标签筛选测试",
+        options: [{ key: "A", text: "答案" }],
+        answer: ["A"],
+      },
+    },
+  );
+  if (question.status !== 201) {
+    throw new Error(`添加客观题失败: ${JSON.stringify(question.body)}`);
+  }
+  await publishProblemVersion(adminToken, problemId, "标签题发布");
+
   // 按标签筛选命中
   const listRes = await apiGet(
-    `/api/v1/problems?tag=${tagId}&type=U`,
+    `/api/v1/problems?tag=${tagId}`,
     adminToken,
   );
   if (listRes.status !== 200) throw new Error("筛选失败: " + listRes.status);
@@ -170,7 +193,7 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
 e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
   if (!isE2E) return;
   const res = await apiGet(
-    `/api/v1/problems?tag=${tagId}&difficulty=easy&type=U`,
+    `/api/v1/problems?tag=${tagId}&difficulty=easy`,
     adminToken,
   );
   if (res.status !== 200) throw new Error("组合筛选失败: " + res.status);
@@ -204,7 +227,7 @@ e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
 
   // 原标签已删除，关联重指向 target
   const listRes = await apiGet(
-    `/api/v1/problems?tag=${targetId}&type=U`,
+    `/api/v1/problems?tag=${targetId}`,
     adminToken,
   );
   const items = (listRes.body as { data: { id: string }[] }).data;

@@ -11,11 +11,15 @@ export async function upsertSearchEntry(
   // deno-lint-ignore no-explicit-any
   db: any = getDb(),
 ): Promise<void> {
+  const domainId = input.domainId === undefined
+    ? await resolveSearchEntryDomain(input.entityType, input.entityId, db)
+    : input.domainId;
   await db
     .insert(searchEntries)
     .values({
       entity_type: input.entityType,
       entity_id: input.entityId,
+      domain_id: domainId,
       title: input.title,
       body: input.body,
       metadata: input.metadata,
@@ -31,6 +35,7 @@ export async function upsertSearchEntry(
     .onConflictDoUpdate({
       target: [searchEntries.entity_type, searchEntries.entity_id],
       set: {
+        domain_id: domainId,
         title: input.title,
         body: input.body,
         metadata: input.metadata,
@@ -43,6 +48,29 @@ export async function upsertSearchEntry(
         updated_at: input.updatedAt,
       },
     });
+}
+
+/** 资源索引归属由源记录确定，账号与平台公告保留实例级关系。 */
+async function resolveSearchEntryDomain(
+  type: string,
+  id: string,
+  db: Executor,
+): Promise<string | null> {
+  const query = type === "problem"
+    ? sql`SELECT domain_id FROM problems WHERE id=${id}`
+    : type === "contest"
+    ? sql`SELECT domain_id FROM contests WHERE id=${id}`
+    : type === "community_post"
+    ? sql`SELECT domain_id FROM community_posts WHERE id=${id}`
+    : type === "community_comment"
+    ? sql`SELECT domain_id FROM community_comments WHERE id=${id}`
+    : type === "submission"
+    ? sql`SELECT domain_id FROM submissions WHERE id=${id}`
+    : null;
+  if (!query) return null;
+  const rows = await db.execute(query);
+  return unwrapFirstRow<{ domain_id: string | null }>(rows as never)
+    ?.domain_id ?? null;
 }
 
 export async function deleteSearchEntry(
@@ -68,18 +96,20 @@ export async function buildProblemEntry(
 ): Promise<SearchEntryInput | null> {
   const rows = await db.execute<{
     id: string;
+    domain_id: string;
     title: string;
     description: string;
     difficulty: string;
     number: number;
-    type: string;
+    source_slug: string;
     owner_id: string;
     visibility: string;
     created_at: string;
     updated_at: string;
     tags: string | null;
   }>(sql`
-    SELECT p.id, p.title, p.description, p.difficulty, p.number, p.type,
+    SELECT p.id, p.domain_id, p.title, p.description, p.difficulty, p.number,
+           coalesce(source.slug, 'main') AS source_slug,
            p.owner_id, p.visibility, p.created_at, p.updated_at,
            COALESCE((
              SELECT string_agg(t.name, ' ' ORDER BY t.name)
@@ -87,17 +117,19 @@ export async function buildProblemEntry(
              WHERE pt.problem_id = p.id
            ), '') AS tags
     FROM problems p
+    LEFT JOIN domains source ON source.id = p.domain_id
     -- 只索引**已发布**题目（Handbook §3.5/§6.6）：草稿内容不进公开索引；
     -- 未发布题目对普通访问者本就不存在，索引出现行等于泄露存在性
     WHERE p.id = ${id} AND p.latest_version_id IS NOT NULL
   `);
   const row = unwrapFirstRow<{
     id: string;
+    domain_id: string;
     title: string;
     description: string;
     difficulty: string;
     number: number;
-    type: string;
+    source_slug: string;
     owner_id: string;
     visibility: string;
     created_at: string;
@@ -105,16 +137,19 @@ export async function buildProblemEntry(
     tags: string | null;
   }>(rows as never);
   if (!row) return null;
-  const displayId = `${row.type}${row.number}`;
+  const displayId = String(row.number),
+    qualifiedRef = `${row.source_slug}:${row.number}`;
   return {
     entityType: "problem",
     entityId: row.id,
+    domainId: row.domain_id,
     title: row.title,
-    body: `${row.description} ${displayId} ${row.tags ?? ""}`.trim(),
+    body: `${row.description} ${qualifiedRef} ${row.tags ?? ""}`.trim(),
     metadata: {
       display_id: displayId,
       difficulty: row.difficulty,
-      type: row.type,
+      qualified_ref: qualifiedRef,
+      source_domain_slug: row.source_slug,
       number: row.number,
       tags: row.tags ? row.tags.split(" ") : [],
     },
@@ -177,6 +212,7 @@ export async function buildCommunityPostEntry(
   const db = getDb();
   const rows = await db.execute<{
     id: string;
+    domain_id: string;
     public_id: string;
     type: string;
     title: string | null;
@@ -187,22 +223,24 @@ export async function buildCommunityPostEntry(
     created_at: string;
     updated_at: string;
     author_username: string;
-    problem_type: string | null;
+    source_domain_slug: string | null;
     problem_number: number | null;
     problem_title: string | null;
   }>(sql`
-    SELECT p.id, p.public_id, p.type, p.title, p.content, p.author_id,
+    SELECT p.id, p.domain_id, p.public_id, p.type, p.title, p.content, p.author_id,
            p.problem_id, p.status, p.created_at, p.updated_at,
            u.username AS author_username,
-           pr.type AS problem_type, pr.number AS problem_number,
+           coalesce(source.slug, 'main') AS source_domain_slug, pr.number AS problem_number,
            pr.title AS problem_title
     FROM community_posts p
     JOIN users u ON u.id = p.author_id
     LEFT JOIN problems pr ON pr.id = p.problem_id
+    LEFT JOIN domains source ON source.id = pr.domain_id
     WHERE p.id = ${id}
   `);
   const row = unwrapFirstRow<{
     id: string;
+    domain_id: string;
     public_id: string;
     type: string;
     title: string | null;
@@ -213,7 +251,7 @@ export async function buildCommunityPostEntry(
     created_at: string;
     updated_at: string;
     author_username: string;
-    problem_type: string | null;
+    source_domain_slug: string | null;
     problem_number: number | null;
     problem_title: string | null;
   }>(rows as never);
@@ -225,11 +263,12 @@ export async function buildCommunityPostEntry(
     return null;
   }
   const problemText = row.problem_title
-    ? `${row.problem_type}${row.problem_number} ${row.problem_title}`
+    ? `${row.source_domain_slug}:${row.problem_number} ${row.problem_title}`
     : "";
   return {
     entityType: "community_post",
     entityId: row.id,
+    domainId: row.domain_id,
     title: row.title ?? row.content.slice(0, 50),
     body: `${row.content} ${row.author_username} ${problemText}`.trim(),
     metadata: {
@@ -327,8 +366,6 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
-    problem_titles: string[];
-    problem_display_ids: string[];
   }>(sql`
     SELECT c.id, c.public_id, c.title, c.description, c.kind, c.is_public,
            c.created_at, c.updated_at,
@@ -336,23 +373,7 @@ export async function buildContestEntry(
              SELECT array_agg(user_id)
              FROM contest_participants cp
              WHERE cp.contest_id = c.id
-           ), '{}') AS participant_ids,
-           COALESCE((
-             SELECT array_agg(p.title ORDER BY cp.sort_order)
-             FROM contest_problems cp
-             JOIN problems p ON p.id = cp.problem_id
-             WHERE cp.contest_id = c.id
-               -- #554：仅公开题进入索引，避免公开赛引用私题时泄露题目标题
-               AND p.visibility = 'public'
-           ), '{}') AS problem_titles,
-           COALESCE((
-             SELECT array_agg(p.type || p.number ORDER BY cp.sort_order)
-             FROM contest_problems cp
-             JOIN problems p ON p.id = cp.problem_id
-             WHERE cp.contest_id = c.id
-               -- #554：display_id 同理，私题编号不进索引
-               AND p.visibility = 'public'
-           ), '{}') AS problem_display_ids
+           ), '{}') AS participant_ids
     FROM contests c
     WHERE c.id = ${id}
   `);
@@ -366,22 +387,17 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
-    problem_titles: string[];
-    problem_display_ids: string[];
   }>(rows as never);
   if (!row) return null;
-  const problemText = row.problem_titles.join(" ");
   return {
     entityType: "contest",
     entityId: row.id,
     title: row.title,
-    body: `${row.description} ${problemText}`.trim(),
+    body: row.description,
     metadata: {
       public_id: row.public_id,
       kind: row.kind,
       is_public: row.is_public,
-      problem_titles: row.problem_titles,
-      problem_display_ids: row.problem_display_ids,
     },
     ownerId: null,
     participantIds: row.participant_ids,
@@ -406,16 +422,17 @@ export async function buildSubmissionEntry(
     status: string;
     created_at: string;
     problem_title: string;
-    problem_type: string;
+    source_domain_slug: string;
     problem_number: number;
     submitter_username: string;
   }>(sql`
     SELECT s.id, s.public_id, s.user_id, s.problem_id, s.language, s.status,
            s.created_at,
-           p.title AS problem_title, p.type AS problem_type, p.number AS problem_number,
+           p.title AS problem_title, coalesce(source.slug, 'main') AS source_domain_slug, p.number AS problem_number,
            u.username AS submitter_username
     FROM submissions s
     JOIN problems p ON p.id = s.problem_id
+    LEFT JOIN domains source ON source.id = p.domain_id
     JOIN users u ON u.id = s.user_id
     WHERE s.id = ${id}
   `);
@@ -428,12 +445,12 @@ export async function buildSubmissionEntry(
     status: string;
     created_at: string;
     problem_title: string;
-    problem_type: string;
+    source_domain_slug: string;
     problem_number: number;
     submitter_username: string;
   }>(rows as never);
   if (!row) return null;
-  const displayId = `${row.problem_type}${row.problem_number}`;
+  const displayId = `${row.source_domain_slug}:${row.problem_number}`;
   return {
     entityType: "submission",
     entityId: row.id,

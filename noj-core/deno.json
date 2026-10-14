@@ -16,6 +16,8 @@
     "storage:audit": "deno run --env-file=.env -A scripts/storage-audit.ts",
     "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
+    "db:catalog-backfill": "deno run --env-file=.env -A scripts/noj.ts db catalog-backfill",
+    "db:execution-backfill": "deno run --env-file=.env -A scripts/noj.ts db execution-backfill",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
     "check:config-usage": "deno run -A scripts/check-config-usage.ts",
@@ -36,7 +38,8 @@
     "check:metrics": "deno run -A ../scripts/check-metrics.ts",
     "check:runtime-contract": "deno run -A ../scripts/check-runtime-contract.ts",
     "check:runbooks": "deno run -A ../scripts/check-runbooks.ts",
-    "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
+    "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts",
+    "test:perf": "BCRYPT_SALT_ROUNDS=4 NOJ_ENV=test NOJ_RUN_PERF=1 deno test -A tests/00_migrate_test.ts tests/perf src/domains/search/tests/perf"
   },
   "imports": {
     "yaml": "npm:yaml@^2.9.1",

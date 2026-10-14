@@ -6,6 +6,7 @@
  * 2. 查询服务（取数口径、分桶、规模上限）——需要数据库；
  * 3. 管理端路由（权限、参数校验、响应结构）——需要数据库。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -23,6 +24,7 @@ import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import {
   detectSimilarPairs,
   findSimilarSubmissions,
@@ -510,6 +512,7 @@ Deno.test({
     await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemA,
         title: "相似度测试题 A",
         description: "",
@@ -517,11 +520,11 @@ Deno.test({
         runtime_config: {},
         number: 981001,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemB,
         title: "相似度测试题 B",
         description: "",
@@ -529,12 +532,12 @@ Deno.test({
         runtime_config: {},
         number: 981002,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
     ]);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: `ct-sim-${suffix}`,
       title: "相似度测试赛",
@@ -553,13 +556,16 @@ Deno.test({
     });
 
     /** 造一条提交；`overrides` 覆盖默认值。 */
+    const contextA = await problemExecutionForTest(problemA);
+    const contextB = await problemExecutionForTest(problemB);
     const submissionRow = (
-      overrides: Record<string, unknown>,
-    ): Record<string, unknown> => ({
+      overrides: Partial<typeof submissions.$inferInsert>,
+    ): typeof submissions.$inferInsert => ({
       id: crypto.randomUUID(),
       public_id: `sub-sim-${crypto.randomUUID().slice(0, 8)}`,
       user_id: userA,
       problem_id: problemA,
+      ...contextA,
       contest_id: contestId,
       language: "python",
       code: BUBBLE_SOLUTION,
@@ -591,6 +597,7 @@ Deno.test({
         public_id: "sub-sim-e",
         user_id: userB,
         problem_id: problemB,
+        ...contextB,
       }),
       // 5：同代码但不同语言（不应命中）
       submissionRow({
@@ -629,7 +636,7 @@ Deno.test({
         code: "print(1)",
       }),
     ];
-    await db.insert(submissions).values(rows as never);
+    await db.insert(submissions).values(rows);
 
     const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
     // 候选 = 通过「finished + 非 artifact + 非空白 + 长度达标」的行：0,1,2,3,4,5
@@ -802,6 +809,7 @@ Deno.test({
     ]);
     // 题目行必须先存在（submissions.problem_id 有外键约束）
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `噪声测试题-${suffix}`,
       description: "",
@@ -809,11 +817,11 @@ Deno.test({
       runtime_config: {},
       number: 982001,
       owner_id: userA,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: `ct-sim-noise-${suffix}`,
       title: `噪声赛-${suffix}`,
@@ -834,6 +842,7 @@ Deno.test({
     const base = {
       contest_id: contestId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python",
       status: "finished" as const,
       created_at: now,
@@ -860,7 +869,7 @@ Deno.test({
         code: BUBBLE_RENAMED,
         created_at: earlier,
       },
-    ] as never);
+    ]);
 
     // 再插入大量过短的调试残留（时间戳更晚）
     const noise = Array.from({ length: 30 }, (_, i) => ({
@@ -870,7 +879,7 @@ Deno.test({
       user_id: i % 2 === 0 ? userA : userB,
       code: "print(1)",
     }));
-    await db.insert(submissions).values(noise as never);
+    await db.insert(submissions).values(noise);
 
     const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
 

@@ -27,6 +27,8 @@ export interface UpdateTrainingInput {
 
 export interface TrainingResponse {
   id: string;
+  domain_id: string;
+  revision: number;
   public_id: string;
   title: string;
   description: string;
@@ -46,7 +48,6 @@ export interface TrainingProblemResponse {
   description: string;
   difficulty: string;
   display_id: string;
-  type: string;
   is_objective: boolean;
   accepted: boolean;
   /** 是否被尚未结束的公开赛收编（仅特权用户可见的行会带 true，见 ProblemResponse） */

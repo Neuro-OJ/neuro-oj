@@ -8,7 +8,7 @@
  * 否则会出现"展示 V2 小题、按 V1 判卷"。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestParticipants,
@@ -27,6 +27,7 @@ import {
   saveProblemDraft,
 } from "../../../catalog/index.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -46,8 +47,10 @@ async function makeUser(tag: string): Promise<string> {
 }
 
 async function makePaper(ownerId: string): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `小题目版本绑定 ${ts} ${id.slice(0, 6)}`,
     description: "套卷",
@@ -55,7 +58,6 @@ async function makePaper(ownerId: string): Promise<string> {
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "U",
     visibility: "public",
     is_objective: true,
     created_at: now,
@@ -162,6 +164,7 @@ Deno.test("objective questions: 题库显式版本读取该版本小题（不受
 Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版覆盖）", async () => {
   const owner = await makeUser("owner");
   const viewer = await makeUser("contestant");
+  await grantDefaultCatalogRole(viewer, "member");
   const paper = await makePaper(owner);
 
   const q1 = await createDraftQuestion(
@@ -194,6 +197,8 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   await db.insert(contests).values({
     id: contestId,
     title: `小题目版本竞赛 ${ts}`,
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: "0",
     description: "",
     start_time: new Date(Date.now() - 3600_000).toISOString(),
     end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -226,6 +231,34 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   });
   assertEquals(contestRead.version_id, v1.version_id);
   assertEquals(contestRead.questions.map((q) => q.id), [q1.key]);
+  // 源题编辑者身份不能替代比赛组织身份获取答案或新草稿。
+  await db.insert(contestParticipants).values({
+    contest_id: contestId,
+    user_id: owner,
+    registered_at: now,
+  });
+  const authorAsParticipant = await listPaperQuestionsWithAccess(paper, {
+    viewerId: owner,
+    userId: owner,
+    userRole: "user",
+    isAdmin: false,
+    contestId,
+    versionId: v2.version_id,
+  });
+  assertEquals(authorAsParticipant.version_id, v1.version_id);
+  assertEquals(authorAsParticipant.questions[0].id, q1.key);
+  assertEquals(authorAsParticipant.questions[0].answer, undefined);
+  assertEquals(authorAsParticipant.questions[0].explanation, undefined);
+  const organizerRead = await listPaperQuestionsWithAccess(paper, {
+    viewerId: "0",
+    userId: "0",
+    isAdmin: false,
+    contestId,
+    versionId: v2.version_id,
+  });
+  assertEquals(organizerRead.version_id, v1.version_id);
+  assertEquals(organizerRead.questions[0].id, q1.key);
+  assertEquals(organizerRead.questions[0].answer, ["A"]);
 });
 
 Deno.test("objective questions: 显式版本不属于该题返回 404", async () => {
@@ -257,4 +290,50 @@ Deno.test("objective questions: 显式版本不属于该题返回 404", async ()
     )).length,
     1,
   );
+});
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+await resetDbForTest();
+
+import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";
+
+Deno.test("客观题答案权限：源题作者角色撤销即时裁剪，匿名和伪造 admin 字符串不获取答案", async () => {
+  const owner = await makeUser("revoked-editor");
+  const paperId = await makePaper(owner);
+  const q = await createDraftQuestion(
+    paperId,
+    single("保留的版本题目"),
+    await rev(paperId),
+  );
+  await publish(paperId, "版本");
+  const editorRead = await listPaperQuestionsWithAccess(paperId, {
+    viewerId: owner,
+    userId: owner,
+    isAdmin: false,
+  });
+  assertEquals(editorRead.questions[0].answer, ["A"]);
+  const { domainMemberships, domainMemberRoles } = await import(
+    "../../../../shared/db/schema.ts"
+  );
+  const [membership] = await db.select().from(domainMemberships).where(and(
+    eq(domainMemberships.user_id, owner),
+    eq(domainMemberships.domain_id, "00000000-0000-4000-8000-000000000001"),
+  ));
+  await db.delete(domainMemberRoles).where(
+    eq(domainMemberRoles.membership_id, membership.id),
+  );
+  const ordinaryRead = await listPaperQuestionsWithAccess(paperId, {
+    viewerId: owner,
+    userId: owner,
+    userRole: "admin",
+    isAdmin: false,
+  });
+  assertEquals(ordinaryRead.questions[0].id, q.key);
+  assertEquals(ordinaryRead.questions[0].answer, undefined);
+  const anonymousRead = await listPaperQuestionsWithAccess(paperId, {
+    viewerId: null,
+    isAdmin: false,
+  });
+  assertEquals(anonymousRead.questions[0].answer, undefined);
 });

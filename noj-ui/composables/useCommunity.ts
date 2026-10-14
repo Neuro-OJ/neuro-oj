@@ -183,24 +183,27 @@ export interface NotificationRow {
 }
 
 export function useCommunity() {
-  const config = useState<CommunityConfig | null>('community:config', () => null);
-  const loading = useState('community:config-loading', () => false);
+  const scope = useCommunityScope();
   const { api } = useApi();
+  const { data, status, refresh } = useAsyncData(
+    computed(() => `${scope.key.value}:config`),
+    async () => {
+      const request = scope.capture();
+      const response = await api.get<{ data: CommunityConfig }>(request.apiPath('config'), { silent: true });
+      return { key: request.key, config: response.data };
+    },
+    { immediate: false },
+  );
+  const config = computed(() =>
+    status.value !== 'error' && data.value?.key === scope.key.value ? data.value.config : null
+  );
+  const loading = computed(() => status.value === 'pending');
 
   async function loadConfig(force = false) {
     if (config.value && !force) return config.value;
-    loading.value = true;
-    try {
-      const response = await api.get<{ data: CommunityConfig }>('/api/v1/community/config');
-      config.value = response.data;
-      return response.data;
-    } catch {
-      // 非关键配置：失败时降级为“社区未启用/不可用”，不让整页 SSR 抛错
-      config.value = null;
-      return null;
-    } finally {
-      loading.value = false;
-    }
+    await refresh();
+    // 配置不可用时隐藏入口，不能使用另一域或另一账号的旧权限。
+    return status.value === 'error' ? null : config.value;
   }
 
   return { config, loading, loadConfig };

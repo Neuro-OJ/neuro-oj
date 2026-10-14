@@ -9,7 +9,10 @@
  * **刻意的两份实现**（issue #514 已确认的取舍）。两侧都对
  * `fixtures/problem-bundle-manifest.json` 断言，任一漂移即红灯。
  */
-import { validateBundleManifest } from "./vendor/problem-bundle.ts";
+import {
+  normalizeBundleManifestFormat,
+  validateBundleManifest,
+} from "./vendor/problem-bundle.ts";
 import {
   isOiRuntimeConfig,
   type OiRuntimeConfig,
@@ -119,19 +122,6 @@ export function runQualityRules(ctx: QualityContext): LintFinding[] {
     });
   }
 
-  // Q4：已废弃字段 samples（2026-09-24 审计 A2-2）
-  // 该字段从不落库、没有任何消费者。导入仍会容忍（兼容存量题包），
-  // 但新增题包不应再写，题面样例请直接写进题面正文。
-  if (manifest.samples !== undefined) {
-    findings.push({
-      level: "warn",
-      rule: "quality/deprecated-samples",
-      message:
-        "manifest.samples 已废弃（从不落库，导入时被忽略）。题面样例请直接写进题面正文，删除该字段。",
-      file: "problem.json",
-    });
-  }
-
   return findings;
 }
 
@@ -168,6 +158,14 @@ export function lintBundle(files: BundleFiles): LintReport {
   if (Object.keys(manifest).length > 0 || rawManifest !== undefined) {
     try {
       validateBundleManifest(manifest);
+      for (const warning of normalizeBundleManifestFormat(manifest).warnings) {
+        findings.push({
+          level: "warn",
+          rule: "format/upgrade",
+          message: warning,
+          file: "problem.json",
+        });
+      }
     } catch (err) {
       findings.push({
         level: "error",

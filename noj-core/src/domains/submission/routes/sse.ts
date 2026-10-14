@@ -1,152 +1,210 @@
-import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-  checkPermission,
-} from "../../identity/index.ts";
-import { ForbiddenError } from "../../../shared/base/errors.ts";
+import { type Context, Hono } from "hono";
+import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { eq } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import { submissions } from "../../../shared/db/schema.ts";
 import { Channels } from "../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
-  replayToStream,
+  lastEventId,
   subscribeToChannel,
 } from "../../../shared/sse/server-helpers.ts";
-import { getQueueOverview } from "../services/queue.ts";
-import { getSubmission } from "../services/submissions/submissions.ts";
+import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
+import {
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+  loadWorkspace,
+} from "../../workspace/index.ts";
+import { getDomainSubmission } from "../services/domain-submission-read.ts";
+import { getDomainSelfTest } from "../services/domain-self-test-read.ts";
+import {
+  getSubmission,
+  resolveSubmissionId,
+} from "../services/submissions/submissions.ts";
 
-/**
- * submission 域 SSE 路由。
- *
- * 挂载在 `/api/v1` 前缀下（见 app.ts），因此文件内路径为相对路径。
- */
 const sse = new Hono<AuthEnv>();
+export const domainSubmissionSse = new Hono<AuthEnv>();
+for (const path of ["/submissions/:id/events", "/queue/events"]) {
+  sse.use(path, authMiddleware);
+}
+for (
+  const path of [
+    "/domains/:slug/submissions/:id/events",
+    "/domains/:slug/self-tests/:id/events",
+  ]
+) {
+  domainSubmissionSse.use(path, authMiddleware);
+}
 
-// SSE 端点全部需要认证
-sse.use("*", authMiddleware);
-
-/**
- * 提交状态 SSE 端点。
- *
- * 前端 EventSource 连接到 `/api/v1/submissions/:id/events`，
- * 实时接收评测状态变更推送。
- *
- * 事件格式：
- *   event: submission:updated
- *   data: { type: "submission:updated", data: { ... } }
- *
- * 心跳：每 30s 发送 keepalive 事件
- */
-sse.get("/submissions/:id/events", async (c) => {
-  const { id } = c.req.param();
-  const userId = c.get("userId");
-
-  // 校验提交存在并验证访问权限，同时获取当前状态
-  const submission = await getSubmission(
-    id,
-    userId,
-    c.get("userRole"),
-    c,
-  );
-
-  // ── 订阅归属校验（审计 VULN-10）──
-  //
-  // `getSubmission` 对非所有者**不抛错**（仅把 code/output/details 置 null），
-  // 因此这里此前允许任何登录用户订阅**任意**提交的信道。配合竞赛 SSE 广播中
-  // 泄露的 `submission_id`，任何参赛者都能实时监听他人提交的评测完成瞬间。
-  //
-  // 实时状态变更本身也属于他人隐私（能反推"谁在何时被判出什么结果"），
-  // 故订阅必须与详情读取同权限：仅所有者本人或具备 submission:read_all 者。
-  const isAdmin = await checkPermission(c, "submission:read_all");
-  if (submission.user_id !== userId && !isAdmin) {
-    throw new ForbiddenError("无权订阅该提交的评测事件");
+async function currentSubmission(
+  c: Context<AuthEnv>,
+  slug: string | undefined,
+  reference: string,
+) {
+  if (slug) return await getDomainSubmission(slug, reference, c.var.userId);
+  await ensureDefaultWorkspace();
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
+  const stableId = await resolveSubmissionId(reference);
+  const [record] = await getDb().select({ domain_id: submissions.domain_id })
+    .from(submissions).where(eq(submissions.id, stableId));
+  if (record?.domain_id) {
+    return await getDomainSubmission(
+      DEFAULT_DOMAIN_SLUG,
+      stableId,
+      c.var.userId,
+    );
   }
-
-  return createSseStream(
+  const detail = await getSubmission(
+    stableId,
+    c.var.userId,
+    undefined,
     c,
-    async ({ stream, closed, close, onUnsubscribe }) => {
-      // 如果提交已经处于终态（finished/error），立即推送触发通知并关闭
-      if (submission.status === "finished" || submission.status === "error") {
-        await stream.writeSSE({
-          event: "submission:updated",
-          data: JSON.stringify({
-            type: "submission:updated",
-            id,
-          }),
-        });
-        close();
-        return;
-      }
-
-      subscribeToChannel(
-        onUnsubscribe,
-        Channels.submission(id),
-        "submission:updated",
-        stream,
-        () => closed,
-        close,
-      );
-
-      // 重放缺失事件（先订阅后重放，避免竞态）
-      await replayToStream(
-        c,
-        stream,
-        () => closed,
-        [Channels.submission(id)],
-        "submission:updated",
-      );
-    },
   );
-});
+  const manager = workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("submission:read_all");
+  if (detail.user_id !== c.var.userId && !manager) {
+    throw new NotFoundError("提交不存在");
+  }
+  return {
+    ...detail,
+    domain_id: workspace.domain.id,
+    resource_available: true,
+    result_visibility: "result_visibility" in detail
+      ? detail.result_visibility
+      : "cases",
+  };
+}
 
-/**
- * 全局队列 SSE 端点。
- *
- * 登录用户可订阅。收到 `queue:changed` 事件后，
- * 前端应调用 GET /api/v1/queue 刷新全量队列数据。
- *
- * 事件格式：
- *   event: queue:changed
- *   data: { type: "queue:changed" }
- */
-sse.get("/queue/events", (c) => {
-  return createSseStream(
-    c,
-    async ({ stream, closed, close, onUnsubscribe }) => {
-      // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）。
-      // 该调用只用于探测队列可用性（结果不入事件体），但同样按查看者隔离自测，
-      // 避免任何未来误用成为越权读取面。
+/** SSE 只发送定位信号；源授权和比赛结果仍由重新读取的裁剪接口决定。 */
+async function submissionEvents(c: Context<AuthEnv>, selfTest = false) {
+  const slug = c.req.param("slug"), reference = c.req.param("id")!;
+  const read = () =>
+    selfTest
+      ? getDomainSelfTest(slug!, reference, c.var.userId, c)
+      : currentSubmission(c, slug, reference);
+  const initial = await read(), id = String(initial.id);
+  const channel = Channels.submission(id),
+    event = selfTest ? "self-test:updated" : "submission:updated";
+  c.header("Cache-Control", "no-store");
+  return createSseStream(c, async (streamContext) => {
+    const locator = async () => {
+      const current = await read();
+      return {
+        type: event,
+        id,
+        domain_id: current.domain_id,
+        resource_available: current.resource_available,
+        result_visibility: "result_visibility" in current
+          ? current.result_visibility
+          : "cases",
+      };
+    };
+    const initialLocator = await locator();
+    await streamContext.stream.writeSSE({
+      event,
+      data: JSON.stringify(initialLocator),
+    });
+    if (
+      initial.status === "finished" || initial.status === "error" ||
+      initial.status === "cancelled"
+    ) {
+      streamContext.close();
+      return;
+    }
+    subscribeToChannel(
+      streamContext.onUnsubscribe,
+      channel,
+      event,
+      streamContext.stream,
+      () => streamContext.closed,
+      streamContext.close,
+      async () => {
+        try {
+          return JSON.stringify(await locator());
+        } catch {
+          streamContext.close();
+          return null;
+        }
+      },
+    );
+    for (
+      const missed of await replaySseEvents([channel], lastEventId(c), 200)
+    ) {
+      if (streamContext.closed) return;
       try {
-        await getQueueOverview(
-          await checkPermission(c, "submission:read_all"),
-          c.get("userId"),
-        );
-        await stream.writeSSE({
-          event: "queue:changed",
-          data: JSON.stringify({ type: "queue:changed" }),
+        await streamContext.stream.writeSSE({
+          event,
+          id: String(missed.id),
+          data: JSON.stringify(await locator()),
         });
       } catch {
-        // 获取当前队列失败不影响后续订阅
+        streamContext.close();
+        return;
       }
+    }
+  });
+}
+sse.get("/submissions/:id/events", (c) => submissionEvents(c));
+domainSubmissionSse.get(
+  "/domains/:slug/submissions/:id/events",
+  (c) => submissionEvents(c),
+);
+domainSubmissionSse.get(
+  "/domains/:slug/self-tests/:id/events",
+  (c) => submissionEvents(c, true),
+);
 
-      subscribeToChannel(
-        onUnsubscribe,
-        Channels.queue,
-        "queue:changed",
-        stream,
-        () => closed,
-        close,
-      );
-
-      // 重放缺失事件
-      await replayToStream(
-        c,
-        stream,
-        () => closed,
+/** 旧队列订阅固定 main，每次推送和重放重新验证域访问，只返回定位信号。 */
+sse.get("/queue/events", async (c) => {
+  await ensureDefaultWorkspace();
+  const authorize = () => loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
+  await authorize();
+  c.header("Cache-Control", "no-store");
+  return createSseStream(c, async (streamContext) => {
+    const locator = async () => {
+      await authorize();
+      return JSON.stringify({ type: "queue:changed" });
+    };
+    await streamContext.stream.writeSSE({
+      event: "queue:changed",
+      data: await locator(),
+    });
+    subscribeToChannel(
+      streamContext.onUnsubscribe,
+      Channels.queue,
+      "queue:changed",
+      streamContext.stream,
+      () => streamContext.closed,
+      streamContext.close,
+      async () => {
+        try {
+          return await locator();
+        } catch {
+          streamContext.close();
+          return null;
+        }
+      },
+    );
+    for (
+      const missed of await replaySseEvents(
         [Channels.queue],
-        "queue:changed",
-      );
-    },
-  );
+        lastEventId(c),
+        200,
+      )
+    ) {
+      if (streamContext.closed) return;
+      try {
+        await streamContext.stream.writeSSE({
+          event: "queue:changed",
+          id: String(missed.id),
+          data: await locator(),
+        });
+      } catch {
+        streamContext.close();
+        return;
+      }
+    }
+  });
 });
-
 export default sse;

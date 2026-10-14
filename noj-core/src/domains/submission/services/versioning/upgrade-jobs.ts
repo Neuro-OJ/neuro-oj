@@ -13,7 +13,14 @@
  * worker 端 `applyUpgradeItem` 负责真正建新提交与派发（下一批次实现）。
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  assertDefaultProblemSource,
+  resolveDefaultExecutionContexts,
+} from "../../../catalog/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../workspace/index.ts";
+import { loadDomainContest } from "../../../contest/index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
@@ -70,16 +77,19 @@ async function loadSource(
   if (kind === "submission") {
     const [row] = await executor.select({
       id: submissions.id,
+      domain_id: submissions.domain_id,
       user_id: submissions.user_id,
       problem_id: submissions.problem_id,
       contest_id: submissions.contest_id,
       submitted_version_id: submissions.submitted_version_id,
       active_attempt_id: submissions.active_attempt_id,
     }).from(submissions).where(eq(submissions.id, id)).limit(1);
+    if (row) assertDefaultProblemSource(row);
     return row ? { kind, ...row } : null;
   }
   const [row] = await executor.select({
     id: objectiveSubmissions.id,
+    domain_id: objectiveSubmissions.domain_id,
     user_id: objectiveSubmissions.user_id,
     problem_id: objectiveSubmissions.paper_id,
     contest_id: objectiveSubmissions.contest_id,
@@ -88,6 +98,7 @@ async function loadSource(
   }).from(objectiveSubmissions).where(
     eq(objectiveSubmissions.id, id),
   ).limit(1);
+  if (row) assertDefaultProblemSource(row);
   return row ? { kind, ...row } : null;
 }
 
@@ -196,6 +207,7 @@ export async function acceptUpgradeJob(
   const [existingJob] = await db.select().from(submissionJobs).where(
     and(
       eq(submissionJobs.actor_id, actorId),
+      sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
       eq(submissionJobs.kind, "upgrade"),
       eq(submissionJobs.idempotency_key, idempotencyKey),
     ),
@@ -225,6 +237,11 @@ export async function acceptUpgradeJob(
       const source = await loadSource(entry.kind, entry.id, tx);
       if (source) identities.push(source);
     }
+    const contexts = await resolveDefaultExecutionContexts(
+      identities.map((source) => source.problem_id),
+      actorId,
+      tx,
+    );
     const problemIds = [
       ...new Set(identities.map((source) => source.problem_id)),
     ].sort();
@@ -289,6 +306,18 @@ export async function acceptUpgradeJob(
           "客观题竞赛仅允许一次提交，请使用练习升级或管理员重测",
           409,
           "OBJECTIVE_CONTEST_UPGRADE_FORBIDDEN",
+        );
+      }
+      if (context === "source_contest" && source.contest_id) {
+        await loadDomainContest(
+          DEFAULT_DOMAIN_SLUG,
+          source.contest_id,
+          actorId,
+          {
+            executor: tx,
+            write: true,
+            manage: true,
+          },
         );
       }
       if (source.active_attempt_id) {
@@ -376,6 +405,7 @@ export async function acceptUpgradeJob(
     const jobStatus = allSkipped ? "completed" : "queued";
     await tx.insert(submissionJobs).values({
       id: jobId,
+      domain_id: DEFAULT_DOMAIN_ID,
       kind: "upgrade",
       actor_id: actorId,
       idempotency_key: idempotencyKey,
@@ -396,6 +426,10 @@ export async function acceptUpgradeJob(
           source_kind: entry.source.kind,
           source_id: entry.source.id,
           problem_id: entry.source.problem_id,
+          domain_id: DEFAULT_DOMAIN_ID,
+          domain_problem_binding_id:
+            contexts.get(entry.source.problem_id)?.domain_problem_binding_id ??
+              null,
           target_version_id: entry.targetVersionId,
           target_version_ref: entry.targetVersionRef ?? entry.targetVersionId,
           status: entry.skipped ? "skipped" : "pending",
@@ -424,6 +458,7 @@ export async function acceptUpgradeJob(
     const [raced] = await db.select().from(submissionJobs).where(
       and(
         eq(submissionJobs.actor_id, actorId),
+        sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
         eq(submissionJobs.kind, "upgrade"),
         eq(submissionJobs.idempotency_key, idempotencyKey),
       ),

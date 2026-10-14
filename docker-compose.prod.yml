@@ -309,6 +309,7 @@ services:
       LOG_COLOR: ${LOG_COLOR:-never}
       LOG_LEVEL: ${LOG_LEVEL:-warn}
       NOJ_LLM_PORT: "8001"
+      NOJ_CORE_INTERNAL_URL: http://core:8000
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
@@ -450,6 +451,7 @@ services:
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${POSTGRES_MEM_LIMIT:-2g}"
     image: postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
+    shm_size: 512m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-noj}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}

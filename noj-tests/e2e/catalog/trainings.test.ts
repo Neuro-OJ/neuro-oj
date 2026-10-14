@@ -10,6 +10,7 @@ import {
   getOrCreateUser,
   getProblemIdByNumber,
   pollSubmission,
+  publishProblemVersion,
   submitCode,
 } from "../helper.ts";
 
@@ -25,14 +26,21 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     `training_other_${Date.now().toString(36)}`,
     `training_other_${Date.now().toString(36)}@test.com`,
   );
+  const identity = await apiGet("/api/v1/auth/me", user.token);
+  const userId = (identity.body as { data: { id: string } }).data.id;
+  const granted = await apiPut(`/api/v1/domains/main/members/${userId}/roles`, {
+    roles: ["editor"],
+  }, adminToken);
+  if (granted.status !== 200) {
+    throw new Error(`授予域资源编辑角色失败: ${JSON.stringify(granted.body)}`);
+  }
 
-  // 用 admin 创建 U 型题（普通用户设置 evaluator.command 已被 RBAC 拒绝）
+  // 管理员创建默认域题目，普通成员不得设置敏感评测字段。
   const problemRes = await apiPost(
     "/api/v1/problems",
     {
       title: "Training E2E Problem",
       description: "e2e",
-      type: "U",
       runtime_config: {
         evaluator: {
           image: "noj-evaluator-python",
@@ -63,6 +71,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
       `管理员设题目 public 失败: ${JSON.stringify(publicRes.body)}`,
     );
   }
+  await publishProblemVersion(adminToken, problemId, "题单源题发布");
   const sampleProblemId = await getProblemIdByNumber(1001);
 
   const created = await apiPost(
@@ -129,17 +138,20 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   }
 
   const deleted = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
-  if (deleted.status !== 204 && deleted.status !== 200) {
-    throw new Error(`删题失败: ${deleted.status}`);
+  if (deleted.status !== 409) {
+    throw new Error(`已发布源题不得物理删除: ${deleted.status}`);
   }
+  const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
+    visibility: "private",
+  }, adminToken);
+  if (withdrawn.status !== 200) throw new Error("源题停止公开失败");
   const afterDelete = await apiGet(
     `/api/v1/trainings/${trainingId}/problems`,
-    user.token,
   );
   const afterData = (afterDelete.body as {
     data: Array<{ problem_id: string }>;
   }).data;
   if (afterData.some((p) => p.problem_id === problemId)) {
-    throw new Error("删除题目后题单关联应自动清理");
+    throw new Error("停止公开后旧题单匿名入口不得返回源题内容");
   }
 });

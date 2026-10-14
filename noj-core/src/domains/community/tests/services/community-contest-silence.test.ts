@@ -10,6 +10,7 @@
  * 本文件锁定：公开赛未结束（含 pending）时普通用户上述写入一律 CONTEST_SILENCE，
  * 审核员免静默，赛后自动恢复。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -27,7 +28,10 @@ import {
   updatePost,
 } from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
-import { ForbiddenError } from "../../../../shared/base/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
 import {
   _resetSystemSettingsForTest,
   ensureRbacSeeds,
@@ -63,13 +67,13 @@ async function setup(): Promise<void> {
   })));
   await getDb().insert(problems).values(
     [normalProblemId, contestProblemId].map((id, i) => ({
+      domain_id: DEFAULT_DOMAIN_ID,
       id,
       title: id,
       description: "x",
       difficulty: "easy",
       runtime_config: {},
       number: 971001 + i,
-      type: "U",
       visibility: "public",
       owner_id: ownerId,
       created_at: now,
@@ -92,6 +96,7 @@ async function setup(): Promise<void> {
   commentId = crypto.randomUUID();
   await getDb().insert(communityPosts).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: momentId,
       type: "moment",
       author_id: userId,
@@ -100,8 +105,10 @@ async function setup(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: solutionId,
       type: "solution",
+      domain_problem_binding_id: `owned-binding-${normalProblemId}`,
       author_id: userId,
       problem_id: normalProblemId,
       title: "普通题题解",
@@ -111,6 +118,7 @@ async function setup(): Promise<void> {
     },
   ]);
   await getDb().insert(communityComments).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: commentId,
     post_id: momentId,
     author_id: userId,
@@ -292,8 +300,8 @@ Deno.test({
     // 赛题本身仍得到更具体的保密提示
     await assertRejects(
       () => createPost(userId, { ...input, problem_id: contestProblemId }),
-      ForbiddenError,
-      "该题目当前归属于公开赛",
+      NotFoundError,
+      "比赛保密窗口",
     );
     // 审核员免静默
     const official = await createPost(ownerId, input, true);

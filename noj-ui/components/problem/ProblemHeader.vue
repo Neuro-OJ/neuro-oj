@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { ProblemView } from '~/utils/problemView'
-import { problemTypeLabel, problemJudgeTypeLabel } from '~/utils/problemView'
-import { formatAcceptanceRate } from '~/utils/submissionFormat'
-import { formatMemoryLimit, formatTimeLimit } from '~/utils/problemView'
-import type { PublicProblemStats } from '~/utils/problemStats'
+import type { ProblemView } from '~/utils/problemView';
+import { problemJudgeTypeLabel } from '~/utils/problemView';
+import { defaultProblemLabel } from '~/utils/default-workspace';
+import { formatAcceptanceRate } from '~/utils/submissionFormat';
+import { formatMemoryLimit, formatTimeLimit } from '~/utils/problemView';
+import type { PublicProblemStats } from '~/utils/problemStats';
 
 /**
  * 题目头部标识区（#511）：编号胶囊 + 类型/客观题徽章 + 标题 + 作者 +
@@ -12,12 +13,12 @@ import type { PublicProblemStats } from '~/utils/problemStats'
  * 由独立题目页与竞赛做题页共用，消除第二份题面实现与第二套硬编码难度色。
  */
 const props = defineProps<{
-  problem: ProblemView
+  problem: ProblemView;
   /** 公开统计；null 表示未加载或接口不可用（不渲染对应数值项）。 */
-  stats?: PublicProblemStats | null
+  stats?: PublicProblemStats | null;
   /** 竞赛进行中时后端抑制统计，显示占位而非空白。 */
-  suppressedReason?: 'running_contest' | null
-}>()
+  suppressedReason?: 'running_contest' | null;
+}>();
 
 /**
  * 插槽：
@@ -26,17 +27,15 @@ const props = defineProps<{
  * - `actions`：右上角主操作按钮。
  */
 defineSlots<{
-  leading?: () => unknown
-  titleSuffix?: () => unknown
-  actions?: () => unknown
-}>()
-
-const typeLabel = computed(() => problemTypeLabel(props.problem.type))
+  leading?: () => unknown;
+  titleSuffix?: () => unknown;
+  actions?: () => unknown;
+}>();
 
 /** 统计条是否整体不可用（赛期抑制）。 */
 const suppressed = computed(
   () => props.suppressedReason === 'running_contest' || props.stats?.suppressed_reason === 'running_contest',
-)
+);
 </script>
 
 <template>
@@ -45,15 +44,9 @@ const suppressed = computed(
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <slot name="leading" />
         <span
-          class="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-xs font-semibold"
-          :class="problem.type === 'U' ? 'bg-primary/10 text-primary' : 'bg-signal/10 text-signal-deep'"
+          class="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-xs font-semibold bg-primary/10 text-primary"
         >
-          {{ problem.display_id }}
-        </span>
-        <span
-          class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-semibold text-text-secondary"
-        >
-          {{ typeLabel }}
+          {{ defaultProblemLabel(problem.display_id) }}
         </span>
         <span
           v-if="problemJudgeTypeLabel(problem)"
@@ -80,7 +73,7 @@ const suppressed = computed(
         <slot name="titleSuffix" />
       </div>
       <UserIdentity
-        v-if="problem.type === 'U' && problem.owner_username"
+        v-if="problem.owner_username"
         :user="{ id: problem.owner_id ?? '', username: problem.owner_username, avatar_url: problem.owner_avatar_url }"
         size="sm"
         class="mt-2"

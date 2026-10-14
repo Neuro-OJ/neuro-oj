@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-  checkPermission,
-} from "./../../identity/index.ts";
+import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
 import { getQueueOverview } from "../services/queue.ts";
+import {
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+  loadWorkspace,
+} from "../../workspace/index.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -20,9 +21,15 @@ const router = new Hono<AuthEnv>();
  *   普通用户只会看到自己的自测题目/得分，管理员才看全站。
  */
 router.get("/", authMiddleware, async (c) => {
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  await ensureDefaultWorkspace();
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
+  const isAdmin = workspace.platformAdmin;
   // viewerUserId：非管理员的自测记录按用户隔离（审计 VULN-11）
-  const overview = await getQueueOverview(isAdmin, c.var.userId);
+  const overview = await getQueueOverview(isAdmin, c.var.userId, {
+    domainId: workspace.domain.id,
+    member: !!workspace.membership || workspace.platformAdmin,
+  });
+  c.header("Cache-Control", "no-store");
   return c.json(overview);
 });
 

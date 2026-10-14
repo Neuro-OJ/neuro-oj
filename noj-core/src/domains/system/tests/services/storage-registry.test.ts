@@ -4,6 +4,7 @@
  * 重点验证「上传补偿不误删共享对象」：本地 provider 是内容寻址，同一字节内容会得到
  * 同一 URL，因此删除必须经过引用守卫，而不能直接 `storage.delete()`。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -99,10 +100,10 @@ function useTempStorage(): LocalStorageProvider {
 
 async function seedProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",

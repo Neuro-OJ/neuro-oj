@@ -205,12 +205,11 @@ if __name__ == "__main__":
     main()
 `;
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: "NOJ 恢复演练自测题",
     description:
       "恢复演练自动导入的 A+B 自测题，验证隔离恢复后的真实评测链路。",
     difficulty: "easy",
-    type: "P",
     template: "template.py",
     runtime_config: {
       evaluator: {

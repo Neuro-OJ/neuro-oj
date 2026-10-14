@@ -130,6 +130,7 @@ export function useAuth() {
     email: string,
     password: string,
     acceptedLegal = false,
+    invitationToken?: string,
   ) {
     const res = await api.post<{ data: { email_verification_sent: boolean } }>(
       '/api/v1/auth/register',
@@ -138,6 +139,7 @@ export function useAuth() {
         email,
         password,
         accepted_legal: acceptedLegal,
+        ...(invitationToken ? { invitation_token: invitationToken } : {}),
       },
       {
         silent: true,
@@ -188,7 +190,8 @@ export function useAuth() {
     const res = await api.get<{
       data: {
         allowed: boolean;
-        reason: 'register_disabled' | 'email_unconfigured' | null;
+        reason: 'register_disabled' | 'email_unconfigured' | 'admin_only' | 'invitation_required' | null;
+        mode: 'open' | 'invite' | 'admin_only';
       };
     }>('/api/v1/auth/register-status', { silent: true });
     return res.data;

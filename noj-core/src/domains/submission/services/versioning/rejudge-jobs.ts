@@ -30,7 +30,17 @@ import {
   submissionJobs,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import { canonicalJson } from "../../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  canonicalJson,
+  resolveDefaultExecutionContexts,
+} from "../../../catalog/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import {
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../../workspace/index.ts";
 import type {
   EffectiveVersionPolicy,
   SubmissionJobItemStatus,
@@ -233,6 +243,7 @@ async function resolveScopeItems(
     {
       kind: JobSourceKind;
       id: string;
+      domain_id: string | null;
       problem_id: string;
       submitted_version_id: string | null;
       contest_id: string | null;
@@ -253,6 +264,7 @@ async function resolveScopeItems(
     const planned: Array<{
       kind: JobSourceKind;
       id: string;
+      domain_id: string | null;
       problem_id: string;
       submitted_version_id: string | null;
       contest_id: string | null;
@@ -264,22 +276,30 @@ async function resolveScopeItems(
       if (entry.kind === "submission") {
         const [row] = await db.select({
           id: submissions.id,
+          domain_id: submissions.domain_id,
           problem_id: submissions.problem_id,
           submitted_version_id: submissions.submitted_version_id,
           contest_id: submissions.contest_id,
         }).from(submissions).where(eq(submissions.id, entry.id)).limit(1);
-        if (row) planned.push({ kind: "submission", ...row });
+        if (row) {
+          assertDefaultProblemSource(row);
+          planned.push({ kind: "submission", ...row });
+        }
         continue;
       }
       const [row] = await db.select({
         id: objectiveSubmissions.id,
+        domain_id: objectiveSubmissions.domain_id,
         problem_id: objectiveSubmissions.paper_id,
         submitted_version_id: objectiveSubmissions.submitted_version_id,
         contest_id: objectiveSubmissions.contest_id,
       }).from(objectiveSubmissions).where(
         eq(objectiveSubmissions.id, entry.id),
       ).limit(1);
-      if (row) planned.push({ kind: "objective", ...row });
+      if (row) {
+        assertDefaultProblemSource(row);
+        planned.push({ kind: "objective", ...row });
+      }
     }
     return planned;
   }
@@ -287,17 +307,27 @@ async function resolveScopeItems(
   if (scope.type === "problem") {
     const plain = await db.select({
       id: submissions.id,
+      domain_id: submissions.domain_id,
       problem_id: submissions.problem_id,
       submitted_version_id: submissions.submitted_version_id,
       contest_id: submissions.contest_id,
-    }).from(submissions).where(eq(submissions.problem_id, scope.problem_id));
+    }).from(submissions).where(
+      and(
+        eq(submissions.problem_id, scope.problem_id),
+        sql`(${submissions.domain_id} IS NULL OR ${submissions.domain_id} = ${DEFAULT_DOMAIN_ID})`,
+      ),
+    );
     const objective = await db.select({
       id: objectiveSubmissions.id,
+      domain_id: objectiveSubmissions.domain_id,
       problem_id: objectiveSubmissions.paper_id,
       submitted_version_id: objectiveSubmissions.submitted_version_id,
       contest_id: objectiveSubmissions.contest_id,
     }).from(objectiveSubmissions).where(
-      eq(objectiveSubmissions.paper_id, scope.problem_id),
+      and(
+        eq(objectiveSubmissions.paper_id, scope.problem_id),
+        sql`(${objectiveSubmissions.domain_id} IS NULL OR ${objectiveSubmissions.domain_id} = ${DEFAULT_DOMAIN_ID})`,
+      ),
     );
     return [
       ...plain.map((row) => ({ kind: "submission" as const, ...row })),
@@ -308,17 +338,27 @@ async function resolveScopeItems(
   const contestId = scope.contest_id;
   const plain = await db.select({
     id: submissions.id,
+    domain_id: submissions.domain_id,
     problem_id: submissions.problem_id,
     submitted_version_id: submissions.submitted_version_id,
     contest_id: submissions.contest_id,
-  }).from(submissions).where(eq(submissions.contest_id, contestId));
+  }).from(submissions).where(
+    and(
+      eq(submissions.contest_id, contestId),
+      sql`(${submissions.domain_id} IS NULL OR ${submissions.domain_id} = ${DEFAULT_DOMAIN_ID})`,
+    ),
+  );
   const objective = await db.select({
     id: objectiveSubmissions.id,
+    domain_id: objectiveSubmissions.domain_id,
     problem_id: objectiveSubmissions.paper_id,
     submitted_version_id: objectiveSubmissions.submitted_version_id,
     contest_id: objectiveSubmissions.contest_id,
   }).from(objectiveSubmissions).where(
-    eq(objectiveSubmissions.contest_id, contestId),
+    and(
+      eq(objectiveSubmissions.contest_id, contestId),
+      sql`(${objectiveSubmissions.domain_id} IS NULL OR ${objectiveSubmissions.domain_id} = ${DEFAULT_DOMAIN_ID})`,
+    ),
   );
   return [
     ...plain.map((row) => ({ kind: "submission" as const, ...row })),
@@ -364,7 +404,7 @@ async function assertSpecifiedVersionsUsable(
 }
 
 /** 依据目标模式把解析后的提交集合变成条目计划。 */
-async function planItems(
+export async function planItems(
   members: Array<{
     kind: JobSourceKind;
     id: string;
@@ -465,6 +505,7 @@ export async function acceptRejudgeJob(
   const [existingJob] = await db.select().from(submissionJobs).where(
     and(
       eq(submissionJobs.actor_id, actorId),
+      sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
       eq(submissionJobs.kind, "rejudge"),
       eq(submissionJobs.idempotency_key, idempotencyKey),
     ),
@@ -485,7 +526,22 @@ export async function acceptRejudgeJob(
   let jobStatus: "queued" | "completed" = "queued";
   try {
     const write = async (tx: Executor): Promise<void> => {
+      if (
+        (normalized.policy_changes ?? []).some((change) => !change.contest_id)
+      ) {
+        const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
+          executor: tx,
+          write: true,
+          lock: true,
+        });
+        assertWorkspacePermission(workspace.context, "problem:policy");
+      }
       const members = await resolveScopeItems(normalized.scope, tx);
+      const contexts = await resolveDefaultExecutionContexts(
+        members.map((member) => member.problem_id),
+        actorId,
+        tx,
+      );
       planned = await planItems(members, normalized.target, tx);
       // §4.3：策略变更必须显式作用域，且只能作用于任务包含的题目/竞赛。
       // 任何写入前完成全部校验（题目维度 + 竞赛维度 + revision 形态）。
@@ -499,7 +555,7 @@ export async function acceptRejudgeJob(
       // revision 递增与条目写入阶段。
       //
       // 相关宿主 = 本次批量策略修改要改写的宿主（`policy_changes` 的题目与竞赛）：
-      // 题目策略写在 `problems` 行上、竞赛策略写在 `contest_problems` 行上，
+      // 题库策略写在 main 绑定行上（域锁已先取得）、竞赛策略写在 `contest_problems` 行上，
       // 两者的投影重算分别写提交行并递增 `problem:*` / `contest:*` / `global`
       // 的 projection revision。
       //
@@ -542,6 +598,7 @@ export async function acceptRejudgeJob(
         : "queued";
       await tx.insert(submissionJobs).values({
         id: jobId,
+        domain_id: DEFAULT_DOMAIN_ID,
         kind: "rejudge",
         actor_id: actorId,
         idempotency_key: idempotencyKey,
@@ -564,6 +621,9 @@ export async function acceptRejudgeJob(
             source_kind: item.source_kind,
             source_id: item.source_id,
             problem_id: item.problem_id,
+            domain_id: DEFAULT_DOMAIN_ID,
+            domain_problem_binding_id:
+              contexts.get(item.problem_id)?.domain_problem_binding_id ?? null,
             target_version_id: item.target_version_id,
             target_version_ref: item.target_version_ref,
             status: item.skipped_reason ? "skipped" : "pending",
@@ -586,6 +646,7 @@ export async function acceptRejudgeJob(
     const [raced] = await db.select().from(submissionJobs).where(
       and(
         eq(submissionJobs.actor_id, actorId),
+        sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
         eq(submissionJobs.kind, "rejudge"),
         eq(submissionJobs.idempotency_key, idempotencyKey),
       ),
@@ -910,6 +971,7 @@ export async function retryRejudgeJob(
   const existing = await db.select().from(submissionJobs).where(
     and(
       eq(submissionJobs.actor_id, actorId),
+      sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
       eq(submissionJobs.kind, "rejudge"),
       eq(submissionJobs.idempotency_key, idempotencyKey),
     ),
@@ -929,6 +991,7 @@ export async function retryRejudgeJob(
   const rows = retryable.map(
     (item, index): typeof submissionJobItems.$inferInsert => ({
       id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
       job_id: newJobId,
       ordinal: index,
       source_kind: item.source_kind,
@@ -942,8 +1005,26 @@ export async function retryRejudgeJob(
   );
   try {
     await db.transaction(async (tx) => {
+      const contexts = await resolveDefaultExecutionContexts(
+        rows.map((row) => row.problem_id),
+        actorId,
+        tx,
+      );
+      for (const row of rows) {
+        const context = contexts.get(row.problem_id);
+        row.domain_problem_binding_id = context?.domain_problem_binding_id ??
+          null;
+        if (!context) {
+          row.status = "skipped";
+          row.reason_code = "SOURCE_DELETED";
+          row.reason_message = "源题已不存在，不能重新评测";
+          row.finished_at = now;
+        }
+      }
+      const complete = rows.every((row) => row.status === "skipped");
       await tx.insert(submissionJobs).values({
         id: newJobId,
+        domain_id: DEFAULT_DOMAIN_ID,
         kind: "rejudge",
         actor_id: actorId,
         idempotency_key: idempotencyKey,
@@ -953,8 +1034,9 @@ export async function retryRejudgeJob(
           retry_of: jobId,
           policy_changes: [],
         } as unknown as Record<string, unknown>,
-        status: "queued",
+        status: complete ? "completed" : "queued",
         created_at: now,
+        finished_at: complete ? now : null,
       });
       // 整题/整场任务的重试条目数可达数万：分批插入（#41）
       await insertJobItemsBatched(tx, rows);
@@ -965,6 +1047,7 @@ export async function retryRejudgeJob(
     const [raced] = await db.select().from(submissionJobs).where(
       and(
         eq(submissionJobs.actor_id, actorId),
+        sql`(${submissionJobs.domain_id} IS NULL OR ${submissionJobs.domain_id} = ${DEFAULT_DOMAIN_ID})`,
         eq(submissionJobs.kind, "rejudge"),
         eq(submissionJobs.idempotency_key, idempotencyKey),
       ),
@@ -983,7 +1066,9 @@ export async function retryRejudgeJob(
 
   return {
     job_id: newJobId,
-    status: "queued",
+    status: rows.every((row) => row.status === "skipped")
+      ? "completed"
+      : "queued",
     total_items: retryable.length,
     existing: false,
   };

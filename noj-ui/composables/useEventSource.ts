@@ -22,6 +22,8 @@ export interface UseEventSourceOptions {
   onMessage?: (event: string, data: unknown) => void;
   /** 是否启用 SSE（默认 true） */
   enabled?: Ref<boolean>;
+  /** 同一路径切换登录账号时，也必须关闭旧凭据建立的连接。 */
+  scopeKey?: Ref<string>;
   /** Fallback 轮询间隔（ms），SSE 不可用时降级到此间隔 */
   fallbackIntervalMs?: number;
   /** Fallback 轮询函数，SSE 不可用时代替 EventSource 获取数据 */
@@ -63,6 +65,7 @@ export function useEventSource(options: UseEventSourceOptions) {
   const urlRef = typeof options.url === 'string' ? ref(options.url) : options.url;
 
   const enabled = options.enabled ?? ref(true);
+  const scopeKey = options.scopeKey ?? ref('');
   const onEvent = options.onEvent ?? {};
   const onMessage = options.onMessage;
   const fallbackIntervalMs = options.fallbackIntervalMs ?? 3000;
@@ -244,8 +247,9 @@ export function useEventSource(options: UseEventSourceOptions) {
 
   // 监听 enabled 和 url 变化（SSR 阶段不连接，客户端水合后自动执行）
   watch(
-    [enabled, urlRef],
-    ([isEnabled]) => {
+    [enabled, urlRef, scopeKey],
+    ([isEnabled, url, scope], previous) => {
+      if (previous && (url !== previous[1] || scope !== previous[2])) lastEventId.value = 0;
       if (isClient && isEnabled) {
         connect();
       } else if (!isEnabled) {

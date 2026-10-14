@@ -20,6 +20,8 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import { assertStorageObjectBindable } from "../../../system/index.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
+import { assertDomainJobExecution } from "./domain-job-access.ts";
+import { consumeDomainSubmissionQuota } from "../../../workspace/index.ts";
 import { createAttempt } from "./attempts.ts";
 import {
   bumpSubmissionCountRevisions,
@@ -63,6 +65,26 @@ export class UpgradeQuotaDeferredError extends Error {
     this.retryAfterMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0
       ? retryAfterMs
       : 60_000;
+  }
+}
+
+/** 域分钟额度不足同样延期，不把可重试的频率限制记录为永久失败。 */
+export async function consumeDomainUpgradeQuota(
+  domainId: string,
+  userId: string,
+  itemId: string,
+  executor: Executor,
+) {
+  try {
+    await consumeDomainSubmissionQuota(domainId, userId, itemId, executor);
+  } catch (error) {
+    if (
+      error instanceof AppError &&
+      error.code === "DOMAIN_SUBMISSION_QUOTA_EXCEEDED"
+    ) {
+      throw new UpgradeQuotaDeferredError(60_000);
+    }
+    throw error;
   }
 }
 
@@ -149,6 +171,9 @@ export async function ensureJobAttempt(
 ): Promise<typeof evaluationAttempts.$inferSelect> {
   const { item, owner, source, kind, prepared } = input;
   return await getDb().transaction(async (tx) => {
+    const execution = !item.attempt_id
+      ? await assertDomainJobExecution(item, source, kind, tx)
+      : null;
     const contestId = kind === "upgrade" && input.context !== "source_contest"
       ? null
       : source.contest_id;
@@ -189,6 +214,12 @@ export async function ensureJobAttempt(
       throw new AppError("源提交正在评测", 409, "SOURCE_JUDGING");
     }
     if (kind === "upgrade") {
+      await consumeDomainUpgradeQuota(
+        execution!.domain_id,
+        source.user_id,
+        item.id,
+        tx,
+      );
       if (contestId) {
         await resolveSubmissionVersion(source.problem_id, {
           contestId,
@@ -200,6 +231,10 @@ export async function ensureJobAttempt(
       }
       // 升级副本使用**预分配**的 ID（副本、尝试、条目关联同一事务落库）
       await tx.insert(submissions).values({
+        domain_id: execution!.domain_id,
+        domain_problem_binding_id: execution!.domain_problem_binding_id,
+        assignment_id: original.assignment_id,
+        assignment_item_id: original.assignment_item_id,
         id: prepared.destinationId,
         public_id: generatePublicId("sub"),
         user_id: source.user_id,

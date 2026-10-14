@@ -253,6 +253,21 @@ export async function enforceRateLimit(
   }
 }
 
+/** 教学写窗口按使用域和账号共享，允许正常批量教学操作。 */
+export const EDUCATION_WRITE_LIMIT = { windowSec: 60, max: 120 } as const;
+
+/** system 公开门面：教学写路由调用现有 Redis 固定窗口，不影响读取。 */
+export async function enforceEducationWriteRateLimit(
+  domainSlug: string,
+  actorId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `education-write:${domainSlug}:${actorId}`,
+    EDUCATION_WRITE_LIMIT,
+    "教学操作过于频繁，请稍后重试",
+  );
+}
+
 /**
  * 非抛出的固定窗口计数检查（worker 侧「额度不足 → 延期」语义用）。
  *

@@ -15,6 +15,7 @@ import {
 } from "../../../catalog/index.ts";
 import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 /**
  * 界面提交的脚本模板：以**目标版本**的 `template_content` 为准（版本才是判卷事实源），
@@ -61,6 +62,7 @@ export async function versionSupportPackageDownload(
   task: JudgeTask,
   llmConfig?: LlmConfig | null,
   previous?: Record<string, unknown> | null,
+  domainId: string = DEFAULT_DOMAIN_ID,
 ): Record<string, unknown> {
   return {
     language: task.language,
@@ -71,6 +73,7 @@ export async function versionSupportPackageDownload(
     ...(task.llm && llmConfig
       ? {
         llm_execution: previous?.llm_execution ?? {
+          domain_id: domainId,
           provider_id: task.llm.provider_id,
           // 旧字段：default-only 时为真实模型名，否则为首个别名对应的真实模型
           model: task.llm.model_map

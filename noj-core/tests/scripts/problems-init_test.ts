@@ -19,6 +19,7 @@
 // `Deno.Command` 会抛错使测试**失败**，不会静默跳过——这正是本仓库要避免的模式。
 
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertStringIncludes,
@@ -257,14 +258,16 @@ Deno.test("initProblem: manifest 通过平台校验器 validateBundleManifest", 
     // 直接调用平台自己的校验器：字段约束以它为准，测试不手抄一份（手抄版会漂移）。
     const parsed = validateBundleManifest(manifest);
     assertEquals(parsed.title, "清单校验题");
-    assertEquals(parsed.type, "P");
-    assertEquals(parsed.format_version, 1);
+    assertEquals("type" in parsed, false);
+    assertEquals(parsed.format_version, 2);
     // 双容器 runtime_config 齐备
+    const runtime = parsed.runtime_config;
+    assert(runtime && "evaluator" in runtime);
     assertEquals(
-      parsed.runtime_config?.evaluator?.image,
+      runtime.evaluator.image,
       "noj-evaluator-python",
     );
-    assertEquals(parsed.runtime_config?.solution?.image, "noj-solution-python");
+    assertEquals(runtime.solution.image, "noj-solution-python");
     // 不得留下未替换占位符
     const raw = await Deno.readTextFile(join(dir, "problem.json"));
     assertEquals(raw.includes("REPLACE_WITH"), false, "不得含未替换占位符");
@@ -569,17 +572,12 @@ Deno.test("initProblem: 拒绝写入符号链接指向的目录（不越出 --di
   }
 });
 
-Deno.test("initProblem: 拒绝非法 slug 与非法题型/难度", async () => {
+Deno.test("initProblem: 拒绝非法 slug 与非法难度", async () => {
   const root = await makeTempRoot();
   try {
     await assertRejects(
       () => initProblem({ slug: "Bad Slug", root }),
       InvalidSlugError,
-    );
-    await assertRejects(
-      () => initProblem({ slug: "ok", type: "X" as unknown as "P", root }),
-      Error,
-      "题型非法",
     );
     await assertRejects(
       () =>

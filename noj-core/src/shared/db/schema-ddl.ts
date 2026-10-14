@@ -1,8 +1,25 @@
-/**
- * Schema DDL SQL 字符串——与 src/db/schema.ts 同步。
- *
- * 供 PGlite 模式在测试中建表使用。当 Drizzle schema 变更时需同步更新此文件。
- */
+import {
+  CATALOG_PROBLEM_BASE_DDL,
+  CATALOG_TRAINING_BASE_DDL,
+} from "./schema-ddl-catalog-base.ts";
+import { CATALOG_WORKSPACE_DDL } from "./schema-ddl-catalog-workspace.ts";
+import { WORKSPACE_DDL } from "./schema-ddl-workspace.ts";
+import { WORKSPACE_STORAGE_DDL } from "./schema-ddl-workspace-storage.ts";
+import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
+import { DOMAIN_EXECUTION_DDL } from "./schema-ddl-domain-execution.ts";
+import { COMMUNITY_WORKSPACE_DDL } from "./schema-ddl-community-workspace.ts";
+import { EDUCATION_DDL } from "./schema-ddl-education.ts";
+import { ASSIGNMENT_DDL } from "./schema-ddl-assignment.ts";
+import { ASSIGNMENT_ORIGIN_DDL } from "./schema-ddl-assignment-origin.ts";
+import {
+  SUBMISSION_ANNOTATIONS_DDL,
+} from "./schema-ddl-submission-annotations.ts";
+import {
+  EDUCATION_INTERACTIONS_DDL,
+} from "./schema-ddl-education-interactions.ts";
+import { EDUCATION_DELIVERY_DDL } from "./schema-ddl-education-delivery.ts";
+import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
+/** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
   // 1. users（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS users (
@@ -56,48 +73,7 @@ export const SCHEMA_DDL: string[] = [
     updated_at TEXT NOT NULL
   )`,
 
-  // 3. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
-  `CREATE TABLE IF NOT EXISTS problems (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    difficulty TEXT NOT NULL DEFAULT 'medium',
-    support_package_storage_url TEXT,
-    samples JSONB DEFAULT '[]'::jsonb,
-    oi_data_files JSONB,
-    runtime_config JSONB CHECK (jsonb_typeof(runtime_config) = 'object'),
-    judge_type TEXT NOT NULL DEFAULT 'dual' CHECK (judge_type IN ('dual', 'oi')),
-    number INTEGER NOT NULL,
-    owner_id TEXT NOT NULL DEFAULT '0',
-    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
-    is_objective BOOLEAN NOT NULL DEFAULT false,
-    visibility TEXT NOT NULL DEFAULT 'public'
-      CHECK (visibility IN ('public', 'private')),
-    CONSTRAINT problems_p_visibility_check CHECK (type <> 'P' OR visibility = 'public'),
-    submission_mode TEXT NOT NULL DEFAULT 'code'
-      CHECK (submission_mode IN ('code', 'artifact', 'prediction', 'ui')),
-    artifact_max_size_mb INTEGER,
-    template_content TEXT,
-    llm_config JSONB,
-    latest_version_id TEXT,
-    effective_version_mode TEXT NOT NULL DEFAULT 'any'
-      CHECK (effective_version_mode IN ('any', 'exact')),
-    required_version_id TEXT,
-    effective_policy_revision INTEGER NOT NULL DEFAULT 0
-      CHECK (effective_policy_revision >= 0),
-    CONSTRAINT problems_effective_version_policy_check CHECK (
-      (effective_version_mode = 'any' AND required_version_id IS NULL)
-      OR (effective_version_mode = 'exact' AND required_version_id IS NOT NULL)
-    ),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    search_vector tsvector GENERATED ALWAYS AS (
-      setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
-      setweight(to_tsvector('simple',
-        coalesce(type, '') || ' ' || coalesce(number::text, '')
-      ), 'B')
-    ) STORED
-  )`,
+  ...CATALOG_PROBLEM_BASE_DDL,
 
   // 3.0.1 problem_versions（题目版本；发布后不可修改，DB 触发器/服务层双重守卫）
   `CREATE TABLE IF NOT EXISTS problem_versions (
@@ -237,8 +213,11 @@ $$ LANGUAGE plpgsql`,
     PRIMARY KEY (problem_id, tag_id)
   )`,
 
+  `CREATE SEQUENCE IF NOT EXISTS submission_receipt_sequence START WITH 1`,
   `CREATE TABLE IF NOT EXISTS contests (
     id TEXT PRIMARY KEY,
+    revision INTEGER NOT NULL DEFAULT 0,
+    domain_id TEXT NOT NULL,
     public_id TEXT NOT NULL DEFAULT ('ct-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -249,7 +228,7 @@ $$ LANGUAGE plpgsql`,
     freeze_start_time TEXT,
     freeze_duration_seconds INTEGER NOT NULL DEFAULT 0
       CHECK (freeze_duration_seconds >= 0),
-    type TEXT NOT NULL CHECK (type IN ('kaggle')),
+    type TEXT NOT NULL CHECK (type IN ('kaggle', 'oi', 'ioi', 'ioi_strict', 'acm')),
     kind TEXT NOT NULL DEFAULT 'public' CHECK (kind IN ('public', 'invite')),
     config JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(config) = 'object'),
     is_public BOOLEAN NOT NULL DEFAULT true,
@@ -274,6 +253,8 @@ $$ LANGUAGE plpgsql`,
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_problems (
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT NOT NULL,
     contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
     problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -312,6 +293,11 @@ $$ LANGUAGE plpgsql`,
   // 3.3 objective_submissions（客观题提交，服务端即时判定；依赖 contests 表）
   `CREATE TABLE IF NOT EXISTS objective_submissions (
     id TEXT PRIMARY KEY,
+    receipt_sequence BIGINT NOT NULL DEFAULT nextval('submission_receipt_sequence'),
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT NOT NULL,
+    assignment_id TEXT,
+    assignment_item_id TEXT,
     paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id),
     contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL,
@@ -371,30 +357,16 @@ $$ LANGUAGE plpgsql`,
     UNIQUE (contest_id, version)
   )`,
 
-  // 3.4 trainings（题单，issue #224）
-  `CREATE TABLE IF NOT EXISTS trainings (
-    id TEXT PRIMARY KEY,
-    public_id TEXT NOT NULL DEFAULT ('tr-' || substr(md5(random()::text),1,8)) UNIQUE,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
-    is_pinned BOOLEAN NOT NULL DEFAULT false,
-    created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`,
-
-  `CREATE TABLE IF NOT EXISTS training_problems (
-    training_id TEXT NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
-    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (training_id, problem_id),
-    UNIQUE (training_id, position)
-  )`,
+  ...CATALOG_TRAINING_BASE_DDL,
 
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
+    receipt_sequence BIGINT NOT NULL DEFAULT nextval('submission_receipt_sequence'),
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT NOT NULL,
+    assignment_id TEXT,
+    assignment_item_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('sub-' || substr(md5(random()::text),1,8)) UNIQUE,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
@@ -535,6 +507,7 @@ $$ LANGUAGE plpgsql`,
   // 6.7 批量任务（管理员重测 / 用户升级共用）
   `CREATE TABLE IF NOT EXISTS submission_jobs (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('rejudge', 'upgrade')),
     actor_id TEXT NOT NULL REFERENCES users(id),
     idempotency_key TEXT NOT NULL,
@@ -544,7 +517,7 @@ $$ LANGUAGE plpgsql`,
       CHECK (status IN ('queued', 'running', 'completed', 'completed_with_errors')),
     created_at TEXT NOT NULL,
     finished_at TEXT,
-    UNIQUE (actor_id, kind, idempotency_key)
+    CONSTRAINT submission_jobs_actor_kind_key_unique UNIQUE (actor_id, kind, idempotency_key)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_submission_jobs_status_created
     ON submission_jobs (status, created_at)`,
@@ -552,6 +525,8 @@ $$ LANGUAGE plpgsql`,
     ON submission_jobs (actor_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS submission_job_items (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT,
     job_id TEXT NOT NULL REFERENCES submission_jobs(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
     source_kind TEXT NOT NULL CHECK (source_kind IN ('submission', 'objective')),
@@ -561,6 +536,8 @@ $$ LANGUAGE plpgsql`,
     target_version_ref TEXT,
     status TEXT NOT NULL DEFAULT 'pending'
       CHECK (status IN ('pending', 'preparing', 'dispatched', 'succeeded', 'failed', 'skipped')),
+    CONSTRAINT submission_job_items_binding_required_check
+      CHECK (domain_problem_binding_id IS NOT NULL OR status IN ('failed', 'skipped')),
     attempt_id TEXT REFERENCES evaluation_attempts(id) ON DELETE SET NULL,
     result_submission_id TEXT,
     lease_owner TEXT,
@@ -581,6 +558,10 @@ $$ LANGUAGE plpgsql`,
   // 7.1 self_tests（issue #221）
   `CREATE TABLE IF NOT EXISTS self_tests (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT NOT NULL,
+    assignment_id TEXT,
+    assignment_item_id TEXT,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
     problem_version_id TEXT,
@@ -710,12 +691,15 @@ $$ LANGUAGE plpgsql`,
 
   // 14.1 llm_model_aliases（LLM 模型别名：别名 → Provider + 真实模型）
   `CREATE TABLE IF NOT EXISTS llm_model_aliases (
-    alias TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
     provider_id TEXT NOT NULL,
     model TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL,
-    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (domain_id, alias)
   )`,
 
   // 15. audit_logs (issue #101 + PR-2)
@@ -750,7 +734,7 @@ $$ LANGUAGE plpgsql`,
       'judge_images.create','judge_images.update','judge_images.delete','email_delivery.clear_suppression',
       'llm_provider.create','llm_provider.update','llm_quota.upsert','llm_model_alias.upsert',
       'llm_model_alias.delete','legal.publish_version',
-      'legal.data_request_update')
+      'legal.data_request_update', ${WORKSPACE_AUDIT_ACTION_SQL})
     ))
   `,
 
@@ -809,6 +793,8 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_boards (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -829,6 +815,8 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_posts (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
+    domain_problem_binding_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('post-' || substr(md5(random()::text),1,8)) UNIQUE,
     type TEXT NOT NULL CHECK (type IN ('solution', 'discussion', 'moment')),
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -854,6 +842,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_comments (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
     post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id TEXT REFERENCES community_comments(id) ON DELETE CASCADE,
@@ -896,6 +885,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_moderation_actions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     moderator_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     action TEXT NOT NULL,
     target_type TEXT NOT NULL,
@@ -907,6 +897,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_sanctions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT NOT NULL,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reason TEXT NOT NULL,
     expires_at TEXT,
@@ -919,6 +910,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_reports (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
     comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
@@ -940,6 +932,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_notifications (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')),
@@ -997,6 +990,7 @@ $$ LANGUAGE plpgsql`,
   // 21. search_entries（统一搜索索引表，search domain）
   `CREATE TABLE IF NOT EXISTS search_entries (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_id TEXT,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
@@ -1141,6 +1135,20 @@ $$ LANGUAGE plpgsql`,
     CONSTRAINT carousel_slides_kind_check CHECK (kind IN ('image', 'text'))
   )`,
   `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
+  ...WORKSPACE_DDL,
+  `ALTER TABLE llm_model_aliases ADD CONSTRAINT llm_model_aliases_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)`,
+  ...WORKSPACE_STORAGE_DDL,
+  ...CATALOG_WORKSPACE_DDL,
+  ...EXECUTION_WORKSPACE_DDL,
+  ...EDUCATION_DDL,
+  ...ASSIGNMENT_DDL,
+  ...ASSIGNMENT_ORIGIN_DDL,
+  ...EDUCATION_INTERACTIONS_DDL,
+  ...EDUCATION_DELIVERY_DDL,
+  ...SUBMISSION_ANNOTATIONS_DDL,
+  ...DOMAIN_EXECUTION_DDL,
+  ...COMMUNITY_WORKSPACE_DDL,
+  "ALTER TABLE search_entries ADD CONSTRAINT search_entries_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)",
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
@@ -1150,77 +1158,4 @@ export {
   SCHEMA_INDEXES,
 } from "./schema-ddl-indexes.ts";
 
-export const ALL_TABLES = [
-  "users",
-  "oauth_accounts",
-  "problems",
-  "problem_versions",
-  "problem_drafts",
-  "problem_draft_objects",
-  "problem_version_objects",
-  "storage_objects",
-  "storage_object_reservations",
-  "query_projection_revisions",
-  "evaluation_attempts",
-  "llm_token_revocations",
-  "submission_version_results",
-  "submission_jobs",
-  "submission_job_items",
-  "judge_images",
-  "tags",
-  "problem_tags",
-  "contests",
-  "contest_problems",
-  "contest_participants",
-  "contest_clarifications",
-  "contest_ranking_snapshots",
-  "trainings",
-  "training_problems",
-  "submissions",
-  "check_ins",
-  "password_reset_tokens",
-  "tfa_recovery_codes",
-  "conversations",
-  "messages",
-  "message_reactions",
-  "conversation_reads",
-  "message_deletions",
-  "conversation_preferences",
-  "system_settings",
-  "llm_model_aliases",
-  "audit_logs",
-  "ip_bans",
-  "user_bans",
-  "roles",
-  "permissions",
-  "role_permissions",
-  "user_roles",
-  "community_boards",
-  "community_board_role_grants",
-  "community_posts",
-  "community_comments",
-  "community_post_likes",
-  "community_comment_likes",
-  "community_bookmarks",
-  "community_follows",
-  "community_reports",
-  "community_moderation_actions",
-  "community_sanctions",
-  "community_notifications",
-  "announcements",
-  "content_review_queue",
-  "search_entries",
-  "email_delivery_events",
-  "email_suppressions",
-  "legal_documents",
-  "legal_document_versions",
-  "user_consents",
-  "data_requests",
-  "carousel_slides",
-  // 2026-09-24 评审：以下表建表但长期漏登记，resetDbForTest 从不清理
-  // （跨用例污染隐患；守卫测试 tests/db/schema.test.ts 现已覆盖该类遗漏）。
-  // 注：`objective_questions` 已随 0107 删除（小题迁入草稿/版本快照）。
-  "objective_submissions",
-  "self_tests",
-  "sse_events",
-] as const;
+export { ALL_TABLES } from "./schema-ddl-tables.ts";

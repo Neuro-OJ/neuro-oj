@@ -24,8 +24,10 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
+  domainProblemBindings,
   problemDrafts,
   problems,
   problemVersionObjects,
@@ -34,6 +36,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
   assertContentKindTransition,
   computeProblemContentHash,
@@ -374,6 +377,8 @@ export async function publishProblemVersion(
     changeNote?: string;
     actorId?: string | null;
     context?: Context;
+    /** 域路由在发布事务内重新确认授权，与资源写入共用锁和连接。 */
+    authorize?: (executor: Executor) => Promise<void>;
   },
 ): Promise<PublishProblemVersionResult> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
@@ -411,6 +416,7 @@ export async function publishProblemVersion(
   );
   const db = getDb();
   const outcome = await db.transaction(async (tx) => {
+    await input.authorize?.(tx);
     // 步骤 2：锁定题目与草稿
     const locked = unwrapRows<{ id: string }>(
       await tx.execute(
@@ -625,6 +631,13 @@ export async function publishProblemVersion(
       now,
     });
     await writeProblemSearchIndex(tx, problemId);
+    await recordPublishedBindingChanges(
+      tx,
+      problemId,
+      versionId,
+      input.actorId ?? null,
+      now,
+    );
 
     return {
       problem_id: problemId,
@@ -795,9 +808,22 @@ export async function resolveProblemAnswerVersion(
   problem?: typeof problems.$inferSelect,
 ): Promise<ProblemVersionContentView | null> {
   const identity = problem ?? await loadProblemIdentity(problemId);
-  const versionId = identity.effective_version_mode === "exact"
-    ? identity.required_version_id
-    : identity.latest_version_id;
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    and(
+      eq(domainProblemBindings.problem_id, problemId),
+      eq(
+        domainProblemBindings.domain_id,
+        identity.domain_id ?? DEFAULT_DOMAIN_ID,
+      ),
+      eq(domainProblemBindings.kind, "owned"),
+    ),
+  );
+  const mode = binding?.effective_version_mode ??
+    identity.effective_version_mode;
+  const required = binding
+    ? binding.required_version_id
+    : identity.required_version_id;
+  const versionId = mode === "exact" ? required : identity.latest_version_id;
   if (!versionId) return null;
   const row = await getProblemVersionOrThrow(problemId, versionId);
   return {

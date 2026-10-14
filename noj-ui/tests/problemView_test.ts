@@ -227,9 +227,9 @@ Deno.test('problemView: 提交模式文案与预测 accept 白名单', () => {
 });
 
 Deno.test('problemView: 类型文案与空值兜底', () => {
-  assertEquals(problemTypeLabel('U'), '用户题库');
-  assertEquals(problemTypeLabel('T'), '主题库');
-  assertEquals(problemTypeLabel(undefined), '主题库');
+  assertEquals(problemTypeLabel('U'), '题库');
+  assertEquals(problemTypeLabel('T'), '题库');
+  assertEquals(problemTypeLabel(undefined), '题库');
 });
 
 Deno.test('problemView: 时限/内存文案占位一致', () => {

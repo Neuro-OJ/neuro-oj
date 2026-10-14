@@ -3,15 +3,19 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import type { StorageObjectState } from "../../versioning/types.ts";
+import { WORKSPACE_AUDIT_ACTION_SQL } from "../../workspace/audit.ts";
 
 /**
  * 评测镜像白名单表。
@@ -239,7 +243,7 @@ export const auditLogs = pgTable(
         'llm_model_alias.delete',
         'legal.publish_version',
         'legal.data_request_update'
-      )`,
+      ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
     createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),
@@ -343,7 +347,9 @@ export const storageObjects = pgTable(
  * 恒等于系统设置 `llm_default_provider_id` + `llm_default_model`。
  */
 export const llmModelAliases = pgTable("llm_model_aliases", {
-  alias: text("alias").primaryKey(),
+  domain_id: text("domain_id").notNull().references(() => domains.id),
+  alias: text("alias").notNull(),
+  revision: integer("revision").notNull().default(0),
   /** gateway 内部 Provider UUID */
   provider_id: text("provider_id").notNull(),
   /** 上游真实模型名 */
@@ -354,4 +360,10 @@ export const llmModelAliases = pgTable("llm_model_aliases", {
   updated_by: text("updated_by").references(() => users.id, {
     onDelete: "set null",
   }),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.domain_id, table.alias] }),
+  revisionCheck: check(
+    "llm_model_aliases_revision_check",
+    sql`${table.revision} >= 0`,
+  ),
+}));

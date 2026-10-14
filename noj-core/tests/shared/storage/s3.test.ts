@@ -82,6 +82,9 @@ Deno.test({
     const result = await provider.get(url);
     assertEquals(result.length, data.length);
     assertEquals(result[0], data[0]);
+    const streamed = await new Response(await provider.getStream(url))
+      .arrayBuffer();
+    assertEquals(new Uint8Array(streamed), data);
   },
 });
 

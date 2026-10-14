@@ -1,5 +1,7 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { createSubmission } from "../../services/submissions/submissions-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
@@ -24,6 +26,7 @@ Deno.test({
     try {
       await connectRedis();
       await resetDbForTest();
+      await ensureDefaultWorkspace();
       const db = getDb();
       const now = new Date().toISOString();
       await db.insert(users).values({
@@ -35,6 +38,7 @@ Deno.test({
         updated_at: now,
       });
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-sub-event",
         title: "提交事件题",
         description: "",
@@ -53,7 +57,6 @@ Deno.test({
           },
         },
         number: 1,
-        type: "P",
         visibility: "public",
         created_at: now,
         updated_at: now,

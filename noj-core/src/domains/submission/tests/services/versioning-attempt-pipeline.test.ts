@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
   saveV2ResultForTest,
   seedActiveAttemptForTest,
@@ -14,6 +17,7 @@ import {
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   evaluationAttempts,
   problems,
@@ -31,12 +35,13 @@ import {
 const now = new Date().toISOString();
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
+  await ensureDefaultWorkspace();
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -89,6 +94,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   });
   await db.update(problems).set({ latest_version_id: `${problemId}-v1` })
     .where(eq(problems.id, problemId));
+  await bindPublishedProblemForTest(problemId);
 }
 
 /** 建一次提交（评测队列不可用会抛错，但提交与尝试已落库）。 */
@@ -388,6 +394,7 @@ Deno.test("pipeline: 协议 v2 结果经 run_id 精确落到尝试", async () =>
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ap-p6"),
     id: submissionId,
     user_id: "0",
     problem_id: "ap-p6",

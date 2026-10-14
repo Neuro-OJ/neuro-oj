@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import type { Db } from "../db.ts";
 import type { GatewayConfig } from "../config.ts";
+import type { RedisClient } from "../redis.ts";
 import { requireServiceToken } from "../auth.ts";
 import {
   createProvider,
@@ -15,10 +16,14 @@ import {
 } from "../providers.ts";
 import { fallbackQuota } from "../limits.ts";
 import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
+import { reconcileAccounting } from "../accounting.ts";
+import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
+import { requireRevision } from "../revision.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
   db: Db;
+  redis?: RedisClient;
 }
 
 /**
@@ -34,10 +39,17 @@ const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
 export function createInternalRouter(deps: InternalDeps): Hono {
   const app = new Hono();
   app.use("*", requireServiceToken(deps.config.serviceToken));
+  // 旧平台管理入口固定映射 main；新调用必须传显式使用域，body 不能覆盖归属。
+  const domain = (c: { req: { header(name: string): string | undefined } }) =>
+    c.req.header("X-Noj-Domain-Id") ?? "00000000-0000-4000-8000-000000000001";
 
   // Provider 列表（Key 脱敏）
   app.get("/internal/providers", async (c) => {
-    const providers = await listProviders(deps.db, deps.config.storeKey);
+    const providers = await listProviders(
+      deps.db,
+      deps.config.storeKey,
+      domain(c),
+    );
     return c.json({ data: providers });
   });
 
@@ -45,7 +57,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+      .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
+      domain(c)
+    }`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -54,6 +68,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 新增 Provider
   app.post("/internal/providers", async (c) => {
+    if (requireRevision(c) !== 0) {
+      return c.json({ error: "revision_conflict" }, 409);
+    }
     const body = await c.req.json<ProviderInput>();
     if (!body.name || !body.base_url || !body.api_key) {
       return c.json({ error: "missing_required_fields" }, 400);
@@ -65,6 +82,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         deps.db,
         body,
         deps.config.storeKey,
+        domain(c),
       );
       return c.json({ data: provider }, 201);
     } catch (err) {
@@ -75,6 +93,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 更新 Provider
   app.put("/internal/providers/:id", async (c) => {
+    const revision = requireRevision(c);
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
@@ -89,22 +108,41 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         id,
         body,
         deps.config.storeKey,
+        domain(c),
+        revision,
       );
       return c.json({ data: provider });
     } catch (err) {
       const message = err instanceof Error ? err.message : "update_failed";
       return c.json(
         { error: message },
-        message === "provider_not_found" ? 404 : 400,
+        message === "provider_not_found"
+          ? 404
+          : message === "revision_conflict"
+          ? 409
+          : 400,
       );
     }
   });
 
   app.delete("/internal/providers/:id", async (c) => {
-    const deleted = await deleteProvider(deps.db, c.req.param("id"));
-    return deleted
-      ? c.body(null, 204)
-      : c.json({ error: "provider_not_found" }, 404);
+    const revision = requireRevision(c);
+    try {
+      const deleted = await deleteProvider(
+        deps.db,
+        c.req.param("id"),
+        domain(c),
+        revision,
+      );
+      return deleted
+        ? c.body(null, 204)
+        : c.json({ error: "provider_not_found" }, 404);
+    } catch (error) {
+      if (error instanceof Error && error.message === "revision_conflict") {
+        return c.json({ error: "revision_conflict" }, 409);
+      }
+      throw error;
+    }
   });
 
   app.post("/internal/providers/:id/test", async (c) => {
@@ -118,6 +156,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         deps.config.storeKey,
         body.model ?? "",
         deps.config.upstreamAllowedHosts,
+        undefined,
+        domain(c),
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {
@@ -153,8 +193,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
       : 1;
 
-    const conditions: string[] = [];
-    const params: string[] = [];
+    const conditions: string[] = ["domain_id = $1"];
+    const params: string[] = [domain(c)];
     if (submissionId) {
       params.push(submissionId);
       conditions.push(`submission_id = $${params.length}`);
@@ -208,25 +248,31 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 配额列表
   app.get("/internal/quotas", async (c) => {
+    const quotaDomain = c.req.header("X-Noj-Instance-Quota") === "1"
+      ? ""
+      : domain(c);
     const rows = await deps
-      .db`SELECT * FROM llm_quotas ORDER BY created_at DESC`;
+      .db`SELECT * FROM llm_quotas WHERE domain_id = ${quotaDomain} ORDER BY created_at DESC`;
     return c.json({ data: rows });
   });
 
-  // 新增或更新配额（按 id upsert）
+  // 新增或按 id 更新既有配额，禁止旧版本重新插入失效行。
   app.post("/internal/quotas", async (c) => {
+    const revision = requireRevision(c);
     const body = await c.req.json<{
       id?: string;
       scope_type: string;
       scope_id?: string;
       window_type?: string;
-      max_calls?: number;
-      max_tokens?: number;
-      max_cost?: number;
+      max_calls?: number | null;
+      max_tokens?: number | null;
+      max_cost?: number | null;
     }>();
     if (
       !body.scope_type ||
-      !["user", "problem", "global", "user_problem"].includes(body.scope_type)
+      !["user", "problem", "domain", "global", "user_problem"].includes(
+        body.scope_type,
+      )
     ) {
       return c.json({ error: "invalid_scope_type" }, 400);
     }
@@ -236,11 +282,32 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     ) {
       return c.json({ error: "invalid_window_type" }, 400);
     }
+    // 实例总量只由 core 平台治理端发送明确的 instance 标记。
+    if (
+      body.scope_type === "global" &&
+      c.req.header("X-Noj-Instance-Quota") !== "1"
+    ) {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    for (const value of [body.max_calls, body.max_tokens, body.max_cost]) {
+      if (
+        value !== undefined && value !== null &&
+        (!Number.isSafeInteger(value) || value < 0)
+      ) {
+        return c.json({ error: "invalid_quota" }, 400);
+      }
+    }
+    const quotaDomain = body.scope_type === "global" ? "" : domain(c);
     const id = body.id ?? crypto.randomUUID();
     const now = new Date().toISOString();
-    const scopeId = body.scope_id ?? "";
+    const scopeId = body.scope_type === "domain" || body.scope_type === "global"
+      ? ""
+      : body.scope_id ?? "";
     const windowType = body.window_type ?? "day";
-    const fallback = fallbackQuota(body.scope_type, windowType);
+    const fallback = quotaDomain === "" ||
+        quotaDomain === "00000000-0000-4000-8000-000000000001"
+      ? fallbackQuota(body.scope_type, windowType)
+      : { max_calls: null, max_tokens: null, max_cost: null };
     const maxCalls = body.max_calls !== undefined
       ? body.max_calls
       : fallback.max_calls;
@@ -250,19 +317,75 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const maxCost = body.max_cost !== undefined
       ? body.max_cost
       : fallback.max_cost;
-    await deps.db`
-      INSERT INTO llm_quotas (id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
-      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
-      ON CONFLICT (id) DO UPDATE SET
-        scope_type = EXCLUDED.scope_type,
-        scope_id = EXCLUDED.scope_id,
-        window_type = EXCLUDED.window_type,
-        max_calls = EXCLUDED.max_calls,
-        max_tokens = EXCLUDED.max_tokens,
-        max_cost = EXCLUDED.max_cost,
-        updated_at = EXCLUDED.updated_at
-    `;
-    return c.json({ data: { id } }, 201);
+    if (!body.id) {
+      if (revision !== 0) return c.json({ error: "revision_conflict" }, 409);
+      const [saved] = await deps.db`
+        INSERT INTO llm_quotas (id, domain_id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
+        VALUES (${id}, ${quotaDomain}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
+        RETURNING id, revision`;
+      return c.json({ data: saved }, 201);
+    }
+    const [saved] = await deps.db`UPDATE llm_quotas SET
+      scope_type=${body.scope_type}, scope_id=${scopeId}, window_type=${windowType},
+      max_calls=${maxCalls}, max_tokens=${maxTokens}, max_cost=${maxCost}, updated_at=${now}, revision=revision+1
+      WHERE id=${id} AND domain_id=${quotaDomain} AND revision=${revision} RETURNING id, revision`;
+    if (!saved) {
+      const existing = await deps
+        .db`SELECT id FROM llm_quotas WHERE id=${id} AND domain_id=${quotaDomain}`;
+      return c.json({
+        error: existing.length ? "revision_conflict" : "quota_not_found",
+      }, existing.length ? 409 : 404);
+    }
+    return c.json({ data: saved }, 201);
+  });
+
+  // 账本只返回状态和定位，绝不把其他域的计数快照或调用正文混入列表。
+  app.get("/internal/accounting", async (c) => {
+    const rows = await deps
+      .db`SELECT id,domain_id,attempt_id,state,settlement_result,created_at,updated_at
+      FROM llm_call_ledger WHERE domain_id=${
+      domain(c)
+    } AND state IN ('pending','unknown','planned')
+      ORDER BY created_at,id LIMIT 100`;
+    return c.json({ data: rows });
+  });
+  app.post("/internal/accounting/reconcile", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({ data: await reconcileAccounting(deps.db, deps.redis) });
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message.startsWith("accounting_")
+          ? error.message
+          : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
+  });
+  app.post("/internal/accounting/bootstrap", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({
+        data: await bootstrapAccountingBaseline(deps.db, deps.redis),
+      });
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message.startsWith("accounting_")
+          ? error.message
+          : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
   });
 
   return app;

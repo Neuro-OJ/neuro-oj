@@ -88,6 +88,14 @@ type Tab = "pending" | "resolved" | "dismissed"
 const activeTab = ref<Tab>("pending")
 const lists = reactive<Record<Tab, ReportRow[]>>({ pending: [], resolved: [], dismissed: [] })
 const loading = ref(false)
+const contentFilter = ref<"all" | "post" | "comment" | "message">("all")
+const loadErrors = reactive<Record<Tab, string>>({ pending: "", resolved: "", dismissed: "" })
+const contentOptions = [
+  { label: "全部社区内容与私信", value: "all" },
+  { label: "帖子", value: "post" },
+  { label: "评论", value: "comment" },
+  { label: "私信", value: "message" },
+]
 
 // 处理相关状态
 const processingId = ref<string | null>(null)
@@ -112,15 +120,27 @@ const typeLabel: Record<string, string> = {
 }
 
 async function load(tab: Tab) {
+  const filter = contentFilter.value
+  loadErrors[tab] = ""
   try {
     const result = await api.get<{ data: ReportRow[] }>(
       "/api/v1/admin/community/reports",
-      { query: { status: tab }, silent: true },
+      { query: { status: tab, content_type: filter === "all" ? undefined : filter }, silent: true },
     )
-    lists[tab] = result.data
-  } catch {
-    lists[tab] = []
+    if (contentFilter.value === filter) lists[tab] = result.data
+  } catch (error) {
+    if (contentFilter.value === filter) {
+      lists[tab] = []
+      loadErrors[tab] = extractApiError(error).message
+    }
   }
+}
+
+async function filterReports() {
+  lists.pending = []
+  lists.resolved = []
+  lists.dismissed = []
+  await Promise.all([load("pending"), load("resolved"), load("dismissed")])
 }
 
 function switchTab(tab: Tab) {
@@ -252,6 +272,12 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
   <div>
     <AdminPageHeader title="举报管理" description="处理社区举报工单" icon="i-lucide-flag" />
 
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+      <USelect v-model="contentFilter" :items="contentOptions" aria-label="举报内容类型"
+        class="w-60" @update:model-value="filterReports" />
+      <p class="text-sm text-text-secondary">社区内容使用默认空间权限；私信可独立处理。</p>
+    </div>
+
     <!-- 三板块 Tab -->
     <div class="mb-6 flex gap-2 border-b border-border">
       <button
@@ -271,7 +297,8 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
     </div>
 
     <!-- 空态 -->
-    <div v-if="lists[activeTab].length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
+    <UAlert v-if="loadErrors[activeTab]" color="error" :title="loadErrors[activeTab]" />
+    <div v-else-if="lists[activeTab].length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
       暂无{{ activeTab === "pending" ? "待处理" : activeTab === "resolved" ? "已处理" : "已驳回" }}举报。
     </div>
 

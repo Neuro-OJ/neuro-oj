@@ -38,10 +38,10 @@ function useTempStorage(): LocalStorageProvider {
 
 async function seedProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -245,3 +245,6 @@ Deno.test("support package: 模板优先从版本内容读取（不下载支持�
   assertEquals(template?.content, "# 版本内模板\nprint(42)");
   assertEquals(template?.language, "python3");
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+await resetDbForTest();

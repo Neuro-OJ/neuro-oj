@@ -7,6 +7,10 @@ LLM 调用可信代理：托管 Provider Key（信封加密）、签发/校验 e
 Provider/查询用量，judge 侧 evaluator 通过 `POST /v1/chat/completions` 携带
 `NOJ_LLM_TOKEN` 调用。
 
+协议 v3 强制使用域与评测尝试，Provider/用量/额度 API 通过受信任内部头绑定
+Domain；默认域兼容入口固定映射 main。完整契约与集成验证命令见
+[README](./README.md)。
+
 ## 开发命令
 
 ```bash
@@ -15,6 +19,7 @@ deno task start      # 启动
 deno task test       # deno test -A --no-check
 deno task check      # fmt --check + lint + typecheck
 deno task db:migrate # 执行 LLM 表迁移（幂等）
+deno task db:generate # 时间戳前缀生成下一份迁移
 ```
 
 ## 关键约定
@@ -27,3 +32,5 @@ deno task db:migrate # 执行 LLM 表迁移（幂等）
 - 审计统一走 `src/usage.ts` 的 `recordUsage`。
 - 测试在 `tests/`，使用 FakeRedis 时需实现 `eval` 并 `await Promise.resolve`
   以满足 Deno lint `require-await`。
+- `NOJ_GATEWAY_TEST_DATABASE_URL` 与 `NOJ_GATEWAY_TEST_REDIS_URL` 分别启用随机
+  schema 数据库测试及随机前缀 Redis Lua 测试；禁止对生产库运行集成测试。

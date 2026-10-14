@@ -58,7 +58,7 @@ export function sameStorageObject(a: string, b: string): boolean {
  * @param oldUrl 待清理的旧头像 URL
  * @throws 沿用 provider.delete 的异常语义（调用方按需静默）
  */
-async function deleteAvatarIfUnreferenced(
+export async function deleteAvatarIfUnreferenced(
   db: ReturnType<typeof getDb>,
   userId: string,
   oldUrl: string,

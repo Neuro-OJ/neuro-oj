@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
@@ -26,7 +27,6 @@ import { enterTestContext } from "../../../system/index.ts";
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 
@@ -159,6 +159,7 @@ Deno.test({
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: `审计题-${ts}`,
       description: "描述",
@@ -167,7 +168,6 @@ Deno.test({
       is_objective: false,
       number: 910000 + (ts % 10000),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -218,6 +218,7 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemA,
         title: `合并题A-${ts}`,
         description: "描述",
@@ -226,11 +227,11 @@ Deno.test({
         is_objective: false,
         number: 920000 + (ts % 10000),
         owner_id: "0",
-        type: "P",
         created_at: now,
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemB,
         title: `合并题B-${ts}`,
         description: "描述",
@@ -239,7 +240,6 @@ Deno.test({
         is_objective: false,
         number: 930000 + (ts % 10000),
         owner_id: "0",
-        type: "P",
         created_at: now,
         updated_at: now,
       },
@@ -334,3 +334,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

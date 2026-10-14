@@ -1,3 +1,8 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -42,17 +47,18 @@ async function seedProblem(): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `门控测试题 ${id.slice(0, 8)}`,
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number: 950_000 + Math.floor(Math.random() * 10_000),
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -62,6 +68,7 @@ async function seedSolution(
 ): Promise<void> {
   const now = new Date().toISOString();
   await getDb().insert(communityPosts).values({
+    ...await problemExecutionForTest(problemId),
     id: crypto.randomUUID(),
     type: "solution",
     author_id: authorId,
@@ -85,6 +92,7 @@ async function seedAcceptedSubmission(
     id: submissionId,
     user_id: authorId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     language: "python3",
     code: "print(1)",
     status: "finished",

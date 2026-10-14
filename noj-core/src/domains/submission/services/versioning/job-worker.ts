@@ -37,6 +37,8 @@ export const DISPATCH_BACKOFF_SECONDS = [1, 2, 4, 8, 16] as const;
 
 /** 领取到的条目。 */
 export interface ClaimedJobItem {
+  domain_id?: string | null;
+  domain_problem_binding_id?: string | null;
   id: string;
   job_id: string;
   ordinal: number;
@@ -83,6 +85,8 @@ export async function claimJobItems(
     const rows = await tx.select({
       id: submissionJobItems.id,
       job_id: submissionJobItems.job_id,
+      domain_id: submissionJobItems.domain_id,
+      domain_problem_binding_id: submissionJobItems.domain_problem_binding_id,
       ordinal: submissionJobItems.ordinal,
       source_kind: submissionJobItems.source_kind,
       source_id: submissionJobItems.source_id,

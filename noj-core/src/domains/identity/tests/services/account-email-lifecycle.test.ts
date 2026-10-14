@@ -23,6 +23,7 @@ import { takeMockEmailsForTest } from "../../../system/services/email-providers/
 import { runWithContext } from "../../../system/index.ts";
 import { getPost } from "../../../community/index.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 async function seedUser(verified = false) {
   const id = crypto.randomUUID();
@@ -159,6 +160,7 @@ Deno.test("账户注销：密码确认后身份匿名化且不可再次登录", 
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(communityPosts).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: postId,
     type: "moment",
     author_id: userId,

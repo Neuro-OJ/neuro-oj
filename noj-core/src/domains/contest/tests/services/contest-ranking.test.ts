@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -46,6 +49,7 @@ async function insertSubmission(
     id,
     user_id: userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -99,6 +103,7 @@ async function insertProblem(
 ): Promise<void> {
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title,
     description: title,
@@ -106,7 +111,6 @@ async function insertProblem(
     runtime_config: {},
     number,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });
@@ -123,6 +127,7 @@ Deno.test({
     const now = new Date().toISOString();
     await insertUser(userId, "settlement-gate");
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "结算门禁测试",
       start_time: atMinutes(-120),
@@ -174,6 +179,7 @@ Deno.test({
     await insertUser(userId, "settlement-failed");
     await insertProblem(problemId, 920099, "结算失败题");
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "失败评测结算测试",
       start_time: atMinutes(-120),
@@ -200,6 +206,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -226,7 +233,7 @@ Deno.test({
     } finally {
       await db.delete(submissions).where(eq(submissions.id, submissionId));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -243,6 +250,7 @@ Deno.test({
     const now = new Date().toISOString();
     await insertUser(userId, "snapshot-concurrent");
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "并发快照测试",
       start_time: atMinutes(-120),
@@ -292,6 +300,7 @@ Deno.test({
     await insertProblem(problemB, 920102, "Kaggle 排名题 B");
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 排名测试",
       start_time: atMinutes(-120),
@@ -352,7 +361,7 @@ Deno.test({
         [contestId],
       ));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [problemA, problemB]),
       );
       await db.delete(users).where(inArray(users.id, [userA, userB]));
@@ -379,6 +388,7 @@ Deno.test({
     await insertProblem(problemB, 920104, "平局排序题 B");
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 平局排序测试",
       start_time: atMinutes(-120),
@@ -435,7 +445,7 @@ Deno.test({
         [contestId],
       ));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [problemA, problemB]),
       );
       await db.delete(users).where(inArray(users.id, [userEarly, userLate]));
@@ -458,6 +468,7 @@ Deno.test({
     await insertUser(userFull, "obj-full");
     await insertUser(userPartial, "obj-partial");
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: paperId,
       title: "客观题排名卷",
       description: "客观题",
@@ -465,12 +476,12 @@ Deno.test({
       runtime_config: null,
       number: 920105,
       owner_id: "0",
-      type: "U",
       is_objective: true,
       created_at: now,
       updated_at: now,
     });
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 客观题排名测试",
       start_time: atMinutes(-120),
@@ -503,6 +514,7 @@ Deno.test({
       {
         id: fullSubmissionId,
         paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
         user_id: userFull,
         contest_id: contestId,
         submission_type: "contest",
@@ -515,6 +527,7 @@ Deno.test({
       {
         id: partialSubmissionId,
         paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
         user_id: userPartial,
         contest_id: contestId,
         submission_type: "contest",
@@ -569,7 +582,7 @@ Deno.test({
         eq(objectiveSubmissions.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, paperId));
+      await deleteProblemFixtures(eq(problems.id, paperId));
       await db.delete(users).where(
         inArray(users.id, [userFull, userPartial]),
       );
@@ -594,6 +607,7 @@ Deno.test({
     await insertProblem(problemA, 920106, "访问控制题");
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 访问控制测试",
       start_time: atMinutes(-60),
@@ -643,7 +657,7 @@ Deno.test({
         [contestId],
       ));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemA));
+      await deleteProblemFixtures(eq(problems.id, problemA));
       await db.delete(users).where(inArray(users.id, [userA, userB]));
     }
   },
@@ -666,6 +680,7 @@ Deno.test({
     await insertProblem(problemA, 920107, "视图访问控制题");
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 视图访问控制测试",
       start_time: atMinutes(-60),
@@ -713,7 +728,7 @@ Deno.test({
         [contestId],
       ));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemA));
+      await deleteProblemFixtures(eq(problems.id, problemA));
       await db.delete(users).where(inArray(users.id, [userA, userB]));
     }
   },
@@ -734,6 +749,7 @@ Deno.test({
     await insertProblem(problemA, 920108, "视图管理员题");
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "Kaggle 视图管理员测试",
       start_time: atMinutes(-60),
@@ -773,7 +789,7 @@ Deno.test({
         [contestId],
       ));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemA));
+      await deleteProblemFixtures(eq(problems.id, problemA));
       await db.delete(users).where(inArray(users.id, [userA]));
     }
   },
@@ -792,6 +808,7 @@ Deno.test({
     await insertUser(userId, "settlement-attempts");
     await insertProblem(problemId, 920098, "结算尝试题");
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "就绪状态尝试口径测试",
       start_time: atMinutes(-120),
@@ -822,6 +839,7 @@ Deno.test({
         id: failedId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",
@@ -833,6 +851,7 @@ Deno.test({
         id: gradedId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(2)",
@@ -893,7 +912,7 @@ Deno.test({
       );
       await db.delete(submissions).where(eq(submissions.contest_id, contestId));
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -927,6 +946,7 @@ Deno.test({
       eq(problems.id, problemId),
     );
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "快照归因测试",
       start_time: atMinutes(-120),
@@ -958,6 +978,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -1034,7 +1055,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1056,6 +1077,7 @@ Deno.test({
     await insertUser(userId, "kaggle-projection");
     await insertProblem(problemId, 920096, "投影计分题");
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "投影计分测试",
       start_time: atMinutes(-120),
@@ -1082,6 +1104,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -1150,7 +1173,7 @@ Deno.test({
         eq(contestParticipants.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },

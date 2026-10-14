@@ -17,6 +17,11 @@ import { getPost } from "./community-post-crud.ts";
 import type { CommunityConfig } from "./../../types/community.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
+import {
+  communityDb,
+  communityDomainWhere,
+  type CommunityScope,
+} from "./community-scope.ts";
 
 /**
  * 校验帖子可被该用户互动（存在、已发布、未处于赛期门控）。
@@ -38,8 +43,9 @@ import { nowIso } from "./../../../../shared/base/dates.ts";
 async function assertPostInteractable(
   postId: string,
   userId: string,
+  scope?: CommunityScope,
 ): Promise<void> {
-  await getPost(postId, userId);
+  await getPost(postId, userId, scope?.moderator, scope);
 }
 
 /**
@@ -55,11 +61,12 @@ async function toggleRelation(
   table: typeof communityPostLikes | typeof communityBookmarks,
   columns: { post_id: string; user_id: string },
   enabled: keyof CommunityConfig,
+  scope?: CommunityScope,
 ) {
   assertCommunityEnabled(enabled);
   // 写入前校验：既是门控要求，也消除"存在 / 不存在"的状态码差异（High#6）
-  await assertPostInteractable(columns.post_id, columns.user_id);
-  const db = getDb();
+  await assertPostInteractable(columns.post_id, columns.user_id, scope);
+  const db = communityDb(scope);
   const existing = await db.select().from(table).where(
     and(eq(table.post_id, columns.post_id), eq(table.user_id, columns.user_id)),
   ).limit(1);
@@ -82,13 +89,22 @@ async function toggleRelation(
  * @param postId 帖子 UUID。
  * @returns 切换后是否处于已点赞状态。
  */
-export async function togglePostLike(userId: string, postId: string) {
-  const liked = await toggleRelation(communityPostLikes, {
-    post_id: postId,
-    user_id: userId,
-  }, "reactions_enabled");
+export async function togglePostLike(
+  userId: string,
+  postId: string,
+  scope?: CommunityScope,
+) {
+  const liked = await toggleRelation(
+    communityPostLikes,
+    {
+      post_id: postId,
+      user_id: userId,
+    },
+    "reactions_enabled",
+    scope,
+  );
   if (liked) {
-    const post = await getPost(postId, userId);
+    const post = await getPost(postId, userId, scope?.moderator, scope);
     if (post.post.author_id !== userId) {
       await createNotification(
         post.post.author_id,
@@ -97,6 +113,7 @@ export async function togglePostLike(userId: string, postId: string) {
         postId,
         null,
         {},
+        scope,
       );
     }
   }
@@ -109,11 +126,20 @@ export async function togglePostLike(userId: string, postId: string) {
  * @param postId 帖子 UUID。
  * @returns 切换后是否处于已收藏状态。
  */
-export function toggleBookmark(userId: string, postId: string) {
-  return toggleRelation(communityBookmarks, {
-    post_id: postId,
-    user_id: userId,
-  }, "bookmarks_enabled");
+export function toggleBookmark(
+  userId: string,
+  postId: string,
+  scope?: CommunityScope,
+) {
+  return toggleRelation(
+    communityBookmarks,
+    {
+      post_id: postId,
+      user_id: userId,
+    },
+    "bookmarks_enabled",
+    scope,
+  );
 }
 
 /**
@@ -124,20 +150,30 @@ export function toggleBookmark(userId: string, postId: string) {
  * @returns 切换后是否处于已点赞状态。
  * @throws {NotFoundError} 评论不存在或未发布时抛出。
  */
-export async function toggleCommentLike(userId: string, commentId: string) {
+export async function toggleCommentLike(
+  userId: string,
+  commentId: string,
+  scope?: CommunityScope,
+) {
   assertCommunityEnabled("reactions_enabled");
-  const db = getDb();
+  const db = communityDb(scope);
   const comment = await db.select({
     author_id: communityComments.author_id,
     post_id: communityComments.post_id,
     status: communityComments.status,
-  }).from(communityComments).where(eq(communityComments.id, commentId))
+  }).from(communityComments).where(
+    and(
+      eq(communityComments.id, commentId),
+      communityDomainWhere(communityComments.domain_id, scope),
+    ),
+  )
     .limit(1);
   if (!comment[0]) throw new NotFoundError("评论不存在");
   // 仅可点赞已发布评论，避免与 pending/hidden/deleted 内容互动
   if (comment[0].status !== "published") {
     throw new NotFoundError("评论不存在");
   }
+  await getPost(comment[0].post_id, userId, scope?.moderator, scope);
   const existing = await db.select().from(communityCommentLikes).where(
     and(
       eq(communityCommentLikes.comment_id, commentId),
@@ -166,6 +202,7 @@ export async function toggleCommentLike(userId: string, commentId: string) {
       comment[0].post_id,
       commentId,
       {},
+      scope,
     );
   }
   return true;

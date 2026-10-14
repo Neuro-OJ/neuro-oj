@@ -1,6 +1,8 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { contentReviewQueue } from "./../../../shared/db/schema.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
   NotFoundError,
   ValidationError,
@@ -116,12 +118,40 @@ export interface ReviewQueueFilter {
   perPage: number;
 }
 
+/** main 已授权时包括其内容与账号消息；null 明确限定为账号消息。 */
+export interface ReviewQueueAccess {
+  domainId: string | null;
+  executor: Executor;
+}
+
+function reviewTargetDomain() {
+  return sql<
+    string | null
+  >`CASE WHEN ${contentReviewQueue.content_type} = 'message' THEN NULL ELSE COALESCE(
+    (SELECT COALESCE(post.domain_id, ${DEFAULT_DOMAIN_ID}) FROM community_posts post
+      WHERE ${contentReviewQueue.content_type} = 'post' AND post.id = ${contentReviewQueue.target_id}),
+    (SELECT COALESCE(comment.domain_id, ${DEFAULT_DOMAIN_ID}) FROM community_comments comment
+      WHERE ${contentReviewQueue.content_type} = 'comment' AND comment.id = ${contentReviewQueue.target_id}),
+    ${contentReviewQueue.meta}::jsonb ->> 'domain_id'
+  ) END`;
+}
+
+function reviewAccessWhere(access: ReviewQueueAccess) {
+  return access.domainId
+    ? sql`(${contentReviewQueue.content_type} = 'message' OR ${reviewTargetDomain()} = ${access.domainId})`
+    : eq(contentReviewQueue.content_type, "message");
+}
+
 /**
  * 分页查询统一审查队列（默认待人工处理，按创建时间倒序）。
  */
-export async function listReviewQueue(filter: ReviewQueueFilter) {
-  const db = getDb();
+export async function listReviewQueue(
+  filter: ReviewQueueFilter,
+  access?: ReviewQueueAccess,
+) {
+  const db = access?.executor ?? getDb();
   const conds = [];
+  if (access) conds.push(reviewAccessWhere(access));
   if (filter.status) {
     conds.push(eq(contentReviewQueue.status, filter.status));
   }
@@ -160,10 +190,13 @@ export async function listReviewQueue(filter: ReviewQueueFilter) {
 /** 队列单条记录详情。 */
 export async function getReviewQueueItem(id: string) {
   const db = getDb();
-  const [row] = await db.select().from(contentReviewQueue)
+  const [row] = await db.select({
+    queue: contentReviewQueue,
+    source_domain_id: reviewTargetDomain(),
+  }).from(contentReviewQueue)
     .where(eq(contentReviewQueue.id, id)).limit(1);
   if (!row) throw new NotFoundError("审查记录不存在");
-  return row;
+  return { ...row.queue, source_domain_id: row.source_domain_id };
 }
 
 /**
@@ -176,11 +209,12 @@ export async function resolveReviewQueue(
   status: "reviewed" | "dismissed",
   actionTaken: string,
   resolution: string,
+  access?: ReviewQueueAccess,
 ): Promise<typeof contentReviewQueue.$inferSelect> {
   if (!resolution?.trim()) {
     throw new ValidationError("处置说明不能为空");
   }
-  const db = getDb();
+  const db = access?.executor ?? getDb();
   const now = nowIso();
 
   const [row] = await db.update(contentReviewQueue).set({
@@ -190,7 +224,12 @@ export async function resolveReviewQueue(
     resolution: resolution.trim(),
     action_taken: actionTaken,
     updated_at: now,
-  }).where(eq(contentReviewQueue.id, id)).returning();
+  }).where(
+    and(
+      eq(contentReviewQueue.id, id),
+      access ? reviewAccessWhere(access) : undefined,
+    ),
+  ).returning();
 
   if (!row) throw new NotFoundError("审查记录不存在");
 

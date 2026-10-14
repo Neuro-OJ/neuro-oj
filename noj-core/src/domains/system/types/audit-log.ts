@@ -5,8 +5,11 @@
  * `AuditDetail` 用 discriminated union 保证 detail 字段的类型安全。
  */
 
+import type { WorkspaceAuditAction } from "../../../shared/workspace/audit.ts";
+
 /** 审计 action 枚举（与 DB CHECK 约束一致，PR-2 新增 auth.*） */
 export type AuditAction =
+  | WorkspaceAuditAction
   | "users.role_change"
   | "users.ban"
   | "users.unban"
@@ -89,6 +92,7 @@ export type AuditAction =
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
+  | { action: WorkspaceAuditAction; domain_id: string; [key: string]: unknown }
   | { action: "users.role_change"; from: string; to: string }
   | {
     action: "users.ban";

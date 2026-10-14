@@ -1,23 +1,34 @@
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   serial,
   text,
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/** 正式受理顺序，普通提交与客观题共用，不随评测或重测改变。 */
+export const submissionReceiptSequence = pgSequence(
+  "submission_receipt_sequence",
+  { startWith: 1 },
+);
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
 import { problems, problemVersions } from "./catalog.ts";
 import { contests } from "./contest.ts";
+import { domains } from "./workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
 import { objectiveSubmissions } from "./objective.ts";
+import { assignmentItems, assignments } from "./assignment.ts";
 import type {
   AttemptResultKind,
   AttemptSource,
@@ -213,7 +224,15 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
+    receipt_sequence: bigint("receipt_sequence", { mode: "number" }).notNull()
+      .default(sql`nextval('submission_receipt_sequence')`),
     public_id: publicIdColumn("sub"),
+    /** 使用域及其题库配置，创建后保持不变。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
+    /** 可选作业入口依据，不限制提交自动计入其他同域作业。 */
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {
@@ -280,6 +299,45 @@ export const submissions = pgTable(
   },
   (table) => ({
     publicIdUnique: unique("submissions_public_id_unique").on(table.public_id),
+    workspaceContestFk: foreignKey({
+      name: "submissions_workspace_contest_fk",
+      columns: [table.domain_id, table.contest_id],
+      foreignColumns: [contests.domain_id, contests.id],
+    }),
+    teachingSourceUnique: unique("submissions_teaching_source_unique").on(
+      table.domain_id,
+      table.id,
+      table.user_id,
+    ),
+    assignmentOriginCheck: check(
+      "submissions_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "submissions_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "submissions_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.problem_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "submissions_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     user_idx: index("idx_submissions_user_id").on(table.user_id),
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
@@ -328,6 +386,32 @@ export const submissions = pgTable(
       columns: [table.problem_id, table.submitted_version_id],
       foreignColumns: [problemVersions.problem_id, problemVersions.id],
     }),
+    workspaceBindingFk: foreignKey({
+      name: "submissions_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "submissions_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.problem_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
+    workspaceUserCreatedIdx: index("idx_submissions_domain_user_created").on(
+      table.domain_id,
+      table.user_id,
+      table.created_at,
+    ),
+    workspaceProblemUserIdx: index("idx_submissions_domain_problem_user").on(
+      table.domain_id,
+      table.problem_id,
+      table.user_id,
+    ),
     // 六个尝试指针（在途/最近/有效/通过/竞赛有效/竞赛通过）的外键
     // **故意不在此声明**：`evaluation_attempts.submission_id → submissions.id`
     // 与本表指针构成类型层面的互相引用，`foreignKey()` 立即求值列数组会让
@@ -418,6 +502,7 @@ export const submissionJobs = pgTable(
   "submission_jobs",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     kind: text("kind").$type<SubmissionJobKind>().notNull(),
     actor_id: text("actor_id").notNull().references(() => users.id),
     idempotency_key: text("idempotency_key").notNull(),
@@ -431,11 +516,17 @@ export const submissionJobs = pgTable(
     finished_at: text("finished_at"),
   },
   (table) => ({
-    actorKindKeyUnique: unique("submission_jobs_actor_kind_key_unique").on(
-      table.actor_id,
-      table.kind,
-      table.idempotency_key,
+    workspaceIdentityUnique: unique("submission_jobs_domain_id_unique").on(
+      table.domain_id,
+      table.id,
     ),
+    actorKindKeyUnique: unique("submission_jobs_domain_actor_kind_key_unique")
+      .on(
+        table.domain_id,
+        table.actor_id,
+        table.kind,
+        table.idempotency_key,
+      ),
     kindCheck: check(
       "submission_jobs_kind_check",
       sql`${table.kind} IN ('rejudge', 'upgrade')`,
@@ -467,6 +558,8 @@ export const submissionJobItems = pgTable(
   "submission_job_items",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id"),
     job_id: text("job_id").notNull().references(() => submissionJobs.id, {
       onDelete: "cascade",
     }),
@@ -505,6 +598,27 @@ export const submissionJobItems = pgTable(
       table.source_kind,
       table.source_id,
     ),
+    workspaceJobFk: foreignKey({
+      name: "submission_job_items_workspace_job_fk",
+      columns: [table.domain_id, table.job_id],
+      foreignColumns: [submissionJobs.domain_id, submissionJobs.id],
+    }),
+    workspaceBindingFk: foreignKey({
+      name: "submission_job_items_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "submission_job_items_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.problem_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
     sourceKindCheck: check(
       "submission_job_items_source_kind_check",
       sql`${table.source_kind} IN ('submission', 'objective')`,
@@ -512,6 +626,10 @@ export const submissionJobItems = pgTable(
     statusCheck: check(
       "submission_job_items_status_check",
       sql`${table.status} IN ('pending', 'preparing', 'dispatched', 'succeeded', 'failed', 'skipped')`,
+    ),
+    bindingRequiredCheck: check(
+      "submission_job_items_binding_required_check",
+      sql`${table.domain_problem_binding_id} IS NOT NULL OR ${table.status} IN ('failed', 'skipped')`,
     ),
     ordinalCheck: check(
       "submission_job_items_ordinal_check",
@@ -545,6 +663,10 @@ export const selfTests = pgTable(
   "self_tests",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     user_id: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -576,6 +698,35 @@ export const selfTests = pgTable(
   },
   (table) => ({
     user_idx: index("idx_self_tests_user_id").on(table.user_id),
+    assignmentOriginCheck: check(
+      "self_tests_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "self_tests_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "self_tests_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.problem_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "self_tests_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     problem_idx: index("idx_self_tests_problem_id").on(table.problem_id),
     created_at_idx: index("idx_self_tests_created_at").on(table.created_at),
     user_created_idx: index("idx_self_tests_user_id_created_at").on(
@@ -595,6 +746,27 @@ export const selfTests = pgTable(
       columns: [table.problem_id, table.problem_version_id],
       foreignColumns: [problemVersions.problem_id, problemVersions.id],
     }),
+    workspaceBindingFk: foreignKey({
+      name: "self_tests_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "self_tests_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.problem_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
+    workspaceUserCreatedIdx: index("idx_self_tests_domain_user_created").on(
+      table.domain_id,
+      table.user_id,
+      table.created_at,
+    ),
   }),
 );
 

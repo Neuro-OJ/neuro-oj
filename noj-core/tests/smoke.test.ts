@@ -18,6 +18,7 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
+import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { resetDbForTest } from "./../src/shared/db/connection.ts";
 import {
   _resetSystemSettingsForTest,
@@ -187,6 +188,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    await ensureDefaultWorkspace();
     const res = await app.request("/api/v1/problems");
     assertEquals(res.status, 200, "题目列表应返回 200");
     const body = await res.json();

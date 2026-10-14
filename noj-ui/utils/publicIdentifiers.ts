@@ -5,8 +5,10 @@
  * 竞赛/训练/提交/帖子/公告 → public_id。
  */
 
+import { defaultProblemReference } from './default-workspace.ts';
 export function problemUrl(id: string, displayId?: string): string {
-  return `/problems/${displayId || id}`;
+  const reference = defaultProblemReference(displayId ?? '');
+  return reference ? `/d/main/problems/${encodeURIComponent(reference)}` : `/problems/${encodeURIComponent(id)}`;
 }
 
 export function userUrl(username: string): string {
@@ -24,5 +26,5 @@ export function publicUrl(
     post: 'community/posts',
     announcement: 'announcements',
   }[kind];
-  return `/${base}/${publicId}`;
+  return `${['contest', 'submission'].includes(kind) ? '/d/main' : ''}/${base}/${encodeURIComponent(publicId)}`;
 }

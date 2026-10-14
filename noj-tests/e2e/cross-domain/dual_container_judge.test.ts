@@ -4,7 +4,7 @@
  * 覆盖：
  * - admin 通过 API 配置双容器题目 + 提交 → 期望进入评测队列
  * - 镜像白名单被下架后 admin 提交被拒
- * - 普通用户默认不能将 runtime_config 中的敏感字段（evaluator.command）设为非默认值
+ * - 普通域成员不能借 runtime_config 绕过题库权限；editor 的实例敏感权限在 rbac 测试验证
  * - runtime_config 是必填字段，不可清空
  *
  * 要求：
@@ -16,8 +16,10 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  BASE_URL,
   e2eTest,
   getAdminToken,
+  pollSubmission,
   publishProblemVersion,
   registerUser,
 } from "../helper.ts";
@@ -63,43 +65,79 @@ async function ensureImage(
   return (create.body as { data: JiEntry }).data.id;
 }
 
-/** 创建题目（双 runtime_config），返回 problem_id */
+/** 导入真实双容器支持包，避免通过空包发布掩盖评测预检。 */
 async function createDualProblem(
   adminToken: string,
   title: string,
 ): Promise<string> {
-  const res = await apiPost(
-    "/api/v1/problems",
-    {
-      title,
-      description: `# ${title}\n\nMarkdown 内容`,
-      difficulty: "medium",
-      type: "P",
-      number: Math.floor(Math.random() * 9000) + 1000,
-      runtime_config: {
-        evaluator: {
-          image: EVALUATOR_IMAGE,
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 10_000,
-          memory_limit_mb: 512,
+  const directory = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(
+      `${directory}/problem.json`,
+      JSON.stringify({
+        format_version: 2,
+        title,
+        difficulty: "medium",
+        runtime_config: {
+          evaluator: {
+            image: EVALUATOR_IMAGE,
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 10_000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: SOLUTION_IMAGE,
+            call_timeout_ms: 1_000,
+            memory_limit_mb: 256,
+          },
         },
-        solution: {
-          image: SOLUTION_IMAGE,
-          call_timeout_ms: 1_000,
-          memory_limit_mb: 256,
-        },
-      },
-    },
-    adminToken,
-  );
-  if (res.status !== 201) {
-    throw new Error(
-      `Failed to create dual problem: ${res.status} ${
-        JSON.stringify(res.body)
-      }`,
+      }),
     );
+    await Deno.writeTextFile(
+      `${directory}/statement.md`,
+      `# ${title}\n返回两个数之和。`,
+    );
+    await Deno.writeTextFile(
+      `${directory}/evaluate.py`,
+      `from noj_evaluator_sdk import SolutionRunner, result
+runner = SolutionRunner()
+try:
+    value = runner.call("solve", 1, 2)
+    if value == 3:
+        result.accept(score=100)
+    else:
+        result.wrong_answer(score=0)
+finally:
+    runner.close()
+`,
+    );
+    const zipped = await new Deno.Command("zip", {
+      args: ["-r", `${directory}/bundle.zip`, "."],
+      cwd: directory,
+    }).output();
+    if (zipped.code !== 0) throw new Error("双容器题包打包失败");
+    const bytes = await Deno.readFile(`${directory}/bundle.zip`);
+    const body = new FormData();
+    body.set(
+      "file",
+      new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
+      "dual.zip",
+    );
+    const response = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body,
+    });
+    const imported = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        `导入双容器题包失败 ${response.status}: ${JSON.stringify(imported)}`,
+      );
+    }
+    return imported.data.id;
+  } finally {
+    await Deno.remove(directory, { recursive: true });
   }
-  return (res.body as { data: { id: string } }).data.id;
 }
 
 // ── Tests ────────────────────────────────────────────
@@ -127,7 +165,7 @@ e2eTest(
 );
 
 e2eTest(
-  "dual_container_judge: 普通用户设置 runtime_config 被拒（敏感字段）",
+  "dual_container_judge: 普通域成员不能通过 runtime_config 绕过建题权限",
   async () => {
     // 普通用户注册
     const userToken = await registerUser(
@@ -136,7 +174,7 @@ e2eTest(
       "UserPass123!",
     );
 
-    // 普通用户创建题目时设置非默认 evaluator.command（敏感字段）→ 期望 403
+    // 未获得当前域 editor 身份的账号不能直接创建题目。
     const res = await apiPost(
       "/api/v1/problems",
       {
@@ -185,7 +223,6 @@ e2eTest("dual_container_judge: 镜像白名单 kind 不匹配被拒", async () =
       title: `[${TEST_TAG}] kind 错配测试`,
       description: "test",
       difficulty: "easy",
-      type: "P",
       runtime_config: {
         evaluator: {
           image: EVALUATOR_IMAGE,
@@ -263,7 +300,6 @@ e2eTest(
         title: `[${TEST_TAG}] runtime_config 必填`,
         description: "test",
         difficulty: "easy",
-        type: "P",
         runtime_config: {
           evaluator: {
             image: EVALUATOR_IMAGE,
@@ -308,6 +344,14 @@ e2eTest(
       adminToken,
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
+    const visibility = await apiPut(
+      `/api/v1/problems/${problemId}/visibility`,
+      { visibility: "public" },
+      adminToken,
+    );
+    if (visibility.status !== 200) {
+      throw new Error(`公开题目失败 ${JSON.stringify(visibility)}`);
+    }
     const versionId = await publishProblemVersion(
       adminToken,
       problemId,
@@ -327,7 +371,8 @@ e2eTest(
         problem_id: problemId,
         version_id: versionId,
         language: "python3",
-        code: "def solve(a, b):\n    return a + b\n",
+        code:
+          "from noj_solution_sdk import register\n@register\ndef solve(a, b):\n    return a + b\n",
       },
       userToken,
     );
@@ -335,6 +380,11 @@ e2eTest(
       throw new Error(
         `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
       );
+    }
+    const id = (sub.body as { data: { id: string } }).data.id;
+    const result = await pollSubmission(userToken, id, 60, 1000, true);
+    if (result.status !== "finished" || result.score !== 10000) {
+      throw new Error(`双容器实际评测应满分完成 ${JSON.stringify(result)}`);
     }
   },
 );

@@ -1,8 +1,7 @@
 /**
- * 存储故障 E2E：本地支持包缺失时，下载可观测失败且新提交在预检阶段被拒绝。
+ * 存储故障 E2E：支持包缺失时，下载可观测失败且新提交在预检阶段被拒绝。
  *
- * E2E 栈使用 `STORAGE_PROVIDER=local`（见 docker-compose.e2e.yml），因此本测试
- * 不验证 S3 presigned URL，而是验证：
+ * 标准 E2E 栈使用 local；独立正式镜像验收可使用 S3 和显式容器定位，验证：
  * - 无支持包题目下载返回 404（local 存储路径不存在）
  * - 存储文件被删除后下载返回 5xx（存储故障可观测）
  * - 已发布版本的支持包缺失时拒绝新提交，不产生无从执行的记录
@@ -27,10 +26,9 @@ let brokenStorageKey = "";
 const testSuffix = Date.now().toString(36);
 
 const MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: `E2E 存储故障测试 ${testSuffix}`,
   difficulty: "easy",
-  type: "U",
   number: 91000 + (Date.now() % 9000),
   runtime_config: {
     evaluator: {
@@ -130,7 +128,6 @@ e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
           memory_limit_mb: 512,
         },
       },
-      type: "U",
     },
     adminToken,
   );
@@ -178,38 +175,58 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     data: { id: string; support_package_storage_url: string | null };
   };
   brokenProblemId = body.data.id;
-  const storageUrl = body.data.support_package_storage_url;
-  if (!storageUrl || !storageUrl.startsWith("noj-storage://local/")) {
-    throw new Error("期望 local 存储 URL, 实际 " + storageUrl);
-  }
-  // 解析 local key：noj-storage://local/<base64>?checksum_sha256=...
-  brokenStorageKey = storageUrl.split("?")[0].replace(
-    "noj-storage://local/",
-    "",
-  );
-
-  // 先发布作答版本（发布预检需要支持包存在），随后再删除存储文件模拟故障
+  // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。
   await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
+  const published = await apiGet(
+    `/api/v1/problems/${brokenProblemId}`,
+    adminToken,
+  );
+  if (published.status !== 200) {
+    throw new Error(`读取已发布题目失败 ${JSON.stringify(published)}`);
+  }
+  const storageUrl =
+    (published.body as { data: { support_package_storage_url: string | null } })
+      .data.support_package_storage_url;
+  const provider = Deno.env.get("STORAGE_PROVIDER") ?? "local";
+  if (!storageUrl || !storageUrl.startsWith(`noj-storage://${provider}/`)) {
+    throw new Error(`期望 ${provider} 存储 URL, 实际 ${storageUrl}`);
+  }
+  brokenStorageKey = decodeURIComponent(new URL(storageUrl).pathname.slice(1));
 
-  // 删除容器内存储文件模拟存储故障（与 pipeline.test.ts 的 docker exec 模式一致）
-  try {
-    const cmd = new Deno.Command("docker", {
-      args: [
-        "exec",
-        "noj-e2e-core",
-        "rm",
-        "-f",
-        `/app/data/storage/${brokenStorageKey}.zip`,
-      ],
-    });
-    const out = await cmd.output();
-    if (!out.success) {
-      console.log("  ⚠ docker exec 删除存储文件失败，跳过存储故障断言");
-      return;
-    }
-  } catch {
-    console.log("  ⚠ docker exec 不可用，跳过存储故障断言");
-    return;
+  async function execute(container: string, args: string[]) {
+    return await new Deno.Command("docker", {
+      args: ["exec", container, ...args],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+  }
+  if (provider === "s3") {
+    const container = Deno.env.get("E2E_MINIO_CONTAINER") ?? "noj-e2e-minio";
+    const alias = await execute(container, [
+      "mc",
+      "alias",
+      "set",
+      "storage-failure",
+      "http://localhost:9000",
+      Deno.env.get("MINIO_ROOT_USER") ?? "minioadmin",
+      Deno.env.get("MINIO_ROOT_PASSWORD") ?? "minioadmin",
+    ]);
+    if (!alias.success) throw new Error("无法配置存储故障夹具的 MinIO 连接");
+    const object = `storage-failure/${
+      Deno.env.get("S3_BUCKET") ?? "noj-support-packages"
+    }/${brokenStorageKey}`;
+    const before = await execute(container, ["mc", "stat", object]);
+    if (!before.success) throw new Error("故障注入前 S3 支持包对象必须存在");
+    const removed = await execute(container, ["mc", "rm", object]);
+    if (!removed.success) throw new Error("删除故障夹具的 S3 支持包失败");
+    const after = await execute(container, ["mc", "stat", object]);
+    if (after.success) throw new Error("故障注入后 S3 支持包对象仍然存在");
+  } else {
+    const removed = await execute(
+      Deno.env.get("E2E_CORE_CONTAINER") ?? "noj-e2e-core",
+      ["rm", "-f", `/app/data/storage/${brokenStorageKey}.zip`],
+    );
+    if (!removed.success) throw new Error("删除故障夹具的 local 支持包失败");
   }
 
   const download = await apiGet(
@@ -226,7 +243,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
-    // import-bundle 创建的是 admin 名下的私有 U 型题，必须用 admin 身份提交，
+    // 使用管理该导入题目的相同 admin 身份提交，
     // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
     if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
     const listPath = `/api/v1/submissions?problem_id=${brokenProblemId}`;
@@ -260,13 +277,17 @@ e2eTest(
   },
 );
 
-e2eTest("[e2e/storage-failure] 清理导入的题目", async () => {
-  if (!isE2E || !brokenProblemId) return;
-  const del = await fetch(`${BASE_URL}/api/v1/problems/${brokenProblemId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-  if (del.status !== 204 && del.status !== 200) {
-    throw new Error("清理导入题目失败: " + del.status);
-  }
-});
+e2eTest(
+  "[e2e/storage-failure] 已发布版本受删除保护，不级联清除历史依据",
+  async () => {
+    if (!isE2E || !brokenProblemId) return;
+    const del = await fetch(`${BASE_URL}/api/v1/problems/${brokenProblemId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    await del.arrayBuffer();
+    if (del.status !== 409) {
+      throw new Error("已发布题目物理删除应返回409，实际 " + del.status);
+    }
+  },
+);

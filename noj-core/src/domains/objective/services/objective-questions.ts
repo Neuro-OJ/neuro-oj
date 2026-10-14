@@ -9,9 +9,10 @@
  * 旧 `objective_questions` 表已随迁移 0107 删除：小题的唯一事实源是草稿与版本
  * 快照；`legacy_unknown` 存量提交（无提交时版本）的卷面无法还原，按未作答处理。
  *
- * 权限：套卷遵循 U 型规则（owner/admin 可管理小题）。
+ * 权限：套卷遵循当前源域角色，不按作者身份或旧题库分类授予管理能力。
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, problemVersions } from "./../../../shared/db/schema.ts";
@@ -21,8 +22,8 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { assertPermission } from "./../../identity/index.ts";
 import {
+  assertProblemEditPermission,
   evaluateProblemAccess,
   type ObjectiveQuestionSnapshot,
   resolveProblemAnswerVersion,
@@ -31,7 +32,6 @@ import {
   resolveContestId,
   verifyContestAccess,
 } from "./../../contest/index.ts";
-import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
   JUDGE_OPTIONS,
   type ObjectiveOption,
@@ -43,7 +43,7 @@ import {
   listVersionQuestions,
 } from "./versioning/objective-drafts.ts";
 
-/** 套卷行类型（problems 表 type='O' 行）。 */
+/** 客观题套卷源题行类型。 */
 export type PaperRow = typeof problems.$inferSelect;
 
 /** 判断题固定选项（对/错）。 */
@@ -51,7 +51,7 @@ export function judgeOptions(): ObjectiveOption[] {
   return JUDGE_OPTIONS.map((o) => ({ key: o.key, text: o.text }));
 }
 
-/** 按 id 查询套卷（problems 行），不存在抛 404。支持 UUID / display_id（如 U42）/ 纯数字。 */
+/** 按 id 查询套卷（problems 行），不存在抛 404。支持默认域 UUID、数字题号与 P 数字兼容入口。 */
 export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
   const paper = await resolvePaperId(paperId);
   if (!paper) {
@@ -62,27 +62,21 @@ export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
 
 /**
  * 解析套卷 ID（双索引，同 problem-resolve）：
- * - UUID / 纯数字：直接按 id 精确查找
- * - display_id（如 "U42" / "P7"）：按 (type, number) 查找
+ * - 稳定 ID：只解析默认域源题
+ * - 数字 / P 数字：按默认域题号查找，U 前缀不再受理
  * 返回完整套卷行；找不到返回 null。
  */
 export async function resolvePaperId(
   paperId: string,
 ): Promise<PaperRow | null> {
   const db = getDb();
-  if (isUuid(paperId) || /^\d+$/.test(paperId)) {
-    const rows = await db.select().from(problems).where(
-      eq(problems.id, paperId),
-    ).limit(1);
-    return rows[0] ?? null;
-  }
-  const match = /^([UP])(\d+)$/.exec(paperId);
-  if (!match) return null;
-  const [, type, number] = match;
-  const rows = await db.select().from(problems).where(
-    eq(problems.number, Number(number)),
-  );
-  return rows.find((row) => row.type === type) ?? null;
+  if (/^[Uu][0-9]+$/.test(paperId)) return null;
+  const match = /^(?:[Pp])?([1-9][0-9]*)$/.exec(paperId);
+  const rows = await db.select().from(problems).where(and(
+    match ? eq(problems.number, Number(match[1])) : eq(problems.id, paperId),
+    or(isNull(problems.domain_id), eq(problems.domain_id, DEFAULT_DOMAIN_ID)),
+  )).limit(1);
+  return rows[0] ?? null;
 }
 
 /** 解析套卷引用的规范 UUID（display_id → 真实 id）。 */
@@ -100,40 +94,21 @@ export function assertObjectivePaper(paper: PaperRow): void {
   }
 }
 
-/** 判断套卷是否可管理/查看答案（权限随题目类型）：
- * - P 型主题库：仅 admin（problem:write_any）
- * - U 型：owner / admin
- */
+/** 当前源域可编辑者可管理套卷及读取草稿答案；匿名查看者没有编辑身份。 */
 export async function isPaperOwnerOrAdmin(
   paper: PaperRow,
   userId?: string,
   userRole?: string,
   c?: Context,
 ): Promise<boolean> {
-  // P 型：仅实时 RBAC 的 problem:write_any 可管理（含查看答案）。
-  // NOJ-008：JWT 中的静态 role 不得短路 RBAC。
-  if (paper.type === "P") {
-    if (c) {
-      try {
-        await assertPermission(c, "problem:write_any");
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return userRole === "admin";
+  const actorId = c?.var.userId ?? userId;
+  if (!actorId) return false;
+  try {
+    await assertProblemEditPermission(c, paper, actorId, userRole);
+    return true;
+  } catch {
+    return false;
   }
-  // U 型：owner 或实时 RBAC admin 权限
-  if (paper.owner_id === (c?.var.userId ?? userId)) return true;
-  if (c) {
-    try {
-      await assertPermission(c, "problem:write_any");
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return userRole === "admin";
 }
 
 /** 断言套卷可管理（owner/admin），否则抛 403。 */
@@ -193,7 +168,7 @@ export async function listPaperQuestions(
 ): Promise<ObjectiveQuestionResponse[]> {
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
-  if (includeAnswer) {
+  if (includeAnswer && !options.versionId) {
     const questions = await listDraftQuestions(paper.id);
     return questions.map((question) =>
       serializeQuestion(paper.id, question, true)
@@ -203,7 +178,7 @@ export async function listPaperQuestions(
   if (!version) throw new NotFoundError("题目不存在");
   const questions = await listVersionQuestions(version.version_id);
   return questions.map((question) =>
-    serializeQuestion(paper.id, question, false)
+    serializeQuestion(paper.id, question, includeAnswer)
   );
 }
 
@@ -295,21 +270,23 @@ export async function listPaperQuestionsWithAccess(
     throw new NotFoundError("题目不存在");
   }
 
-  const includeAnswer = await isPaperOwnerOrAdmin(
-    paper,
-    options.userId,
-    options.userRole,
-    options.c,
-  );
+  const includeAnswer =
+    (!contestAccess?.running || contestAccess.organizer === true) &&
+    await isPaperOwnerOrAdmin(
+      paper,
+      options.userId,
+      options.userRole,
+      options.c,
+    );
   // 竞赛 > 显式版本 > 默认作答版本：竞赛固定版本不可被客户端参数覆盖。
-  const effectiveVersionId = contestAccess?.allowed
+  const effectiveVersionId = contestAccess?.allowed || contestAccess?.organizer
     ? (contestAccess.pinnedVersionId ?? null)
     : (options.versionId?.trim() || null);
   const questions = await listPaperQuestions(paper.id, includeAnswer, {
     versionId: effectiveVersionId,
   });
   // 回传实际展示的版本：客户端据此提交同一版本（竞赛里不匹配将 409）。
-  const version = includeAnswer
+  const version = includeAnswer && !effectiveVersionId
     ? null
     : await resolveAnswerVersion(paper, effectiveVersionId);
   return {

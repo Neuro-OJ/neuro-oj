@@ -1,3 +1,4 @@
+import { submissionQueryVisibility } from "../../../query/index.ts";
 import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。
@@ -10,6 +11,7 @@ import { unifiedSubmissionSources } from "../../../../shared/versioning/submissi
  * - 隐藏用例只进**匿名聚合桶**（`hidden-1`、`hidden-2`…），**绝不返回真实 case_id**；
  * - 取数上限 `MAX_STATS_SAMPLE`，超出返回 `truncated = true`（**不静默截断**）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
@@ -133,6 +135,11 @@ export async function getProblemStatsDetail(
     )
     .where(and(
       eq(submissions.problem_id, problemId),
+      submissionQueryVisibility({ domainId: DEFAULT_DOMAIN_ID, member: true }, {
+        domainId: submissions.domain_id,
+        bindingId: submissions.domain_problem_binding_id,
+        contestId: submissions.contest_id,
+      }),
       gte(submissions.created_at, since),
     ))
     .orderBy(desc(submissions.created_at))
@@ -257,7 +264,10 @@ export async function getPublicProblemStats(
   problemId: string,
 ): Promise<PublicProblemStats> {
   const detail = await getProblemStatsDetail(problemId);
-  const suppressed = await isProblemInRunningContest(problemId);
+  const suppressed = await isProblemInRunningContest(
+    problemId,
+    DEFAULT_DOMAIN_ID,
+  );
   return {
     attempt_count: detail.attempt_count,
     submit_count: suppressed ? null : detail.submit_count,

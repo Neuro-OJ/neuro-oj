@@ -1,3 +1,9 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -59,6 +65,7 @@ async function createSubmission(
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -80,6 +87,7 @@ async function createTestProblem(problemNumber: number): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `rankings_test_${problemNumber}_${Date.now()}`,
     description: "test",
@@ -100,10 +108,10 @@ async function createTestProblem(problemNumber: number): Promise<string> {
     },
     number: problemNumber,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -122,7 +130,7 @@ async function cleanupUser(userId: string): Promise<void> {
 async function cleanupProblem(problemId: string): Promise<void> {
   const db = getDb();
   await db.delete(submissions).where(eq(submissions.problem_id, problemId));
-  await db.delete(problems).where(eq(problems.id, problemId));
+  await deleteProblemFixtures(eq(problems.id, problemId));
 }
 
 Deno.test({
@@ -344,6 +352,7 @@ Deno.test({
     await db.insert(contests).values([
       {
         id: excludedContestId,
+        domain_id: DEFAULT_DOMAIN_ID,
         title: "不计入全局榜单",
         start_time: new Date(Date.now() - 120_000).toISOString(),
         end_time: new Date(Date.now() - 60_000).toISOString(),
@@ -356,6 +365,7 @@ Deno.test({
       },
       {
         id: includedContestId,
+        domain_id: DEFAULT_DOMAIN_ID,
         title: "计入全局榜单（已结束）",
         start_time: new Date(Date.now() - 120_000).toISOString(),
         end_time: new Date(Date.now() - 60_000).toISOString(),

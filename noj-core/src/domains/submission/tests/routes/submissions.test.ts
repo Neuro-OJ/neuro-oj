@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
@@ -299,10 +301,10 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "筛选测试题",
       description: "d",
-      type: "P",
       number: 988000 + (Date.now() % 1000),
       owner_id: "0",
       difficulty: "easy",
@@ -332,6 +334,7 @@ Deno.test({
     );
     await db.insert(submissions).values([
       {
+        ...await problemExecutionForTest(problemId),
         id: "filter-s-v1",
         user_id: userId,
         problem_id: problemId,
@@ -344,6 +347,7 @@ Deno.test({
         created_at: now,
       },
       {
+        ...await problemExecutionForTest(problemId),
         id: "filter-s-v2",
         user_id: userId,
         problem_id: problemId,

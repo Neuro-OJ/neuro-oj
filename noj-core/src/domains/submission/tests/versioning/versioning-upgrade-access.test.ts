@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 用户升级的授权与竞赛语义回归（tracking #42、#43）。
  *
@@ -11,6 +14,11 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+  removeDomainMember,
+} from "../../../workspace/index.ts";
 import {
   contestParticipants,
   contests,
@@ -37,6 +45,8 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -141,6 +151,7 @@ async function makeUser(
     await db.insert(userRoles).values({ user_id: id, role_id: roleId })
       .onConflictDoNothing();
   }
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -149,8 +160,6 @@ async function seedProblemWithVersions(
   options: {
     visibility?: "public" | "private";
     ownerId?: string;
-    /** `private` 只对 U 型题合法（P 型题的 visibility 检查约束恒为 public）。 */
-    type?: "P" | "U";
     /** 版本内容类别（客观题路径需要 `objective` 内容）。 */
     contentKind?: "ai" | "objective";
   } = {},
@@ -159,11 +168,11 @@ async function seedProblemWithVersions(
   const v1 = `acc-v1-${tag}-${ts}`;
   const v2 = `acc-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `升级授权测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: options.type ?? "P",
     number: 97800 + Math.floor(Math.random() * 1000),
     owner_id: options.ownerId ?? "0",
     visibility: options.visibility ?? "public",
@@ -213,6 +222,7 @@ async function seedProblemWithVersions(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -224,6 +234,7 @@ async function seedSubmission(
 ): Promise<string> {
   const submissionId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -326,10 +337,9 @@ Deno.test({
     const admin = await makeUser("admin2", { admin: true });
     const owner = await makeUser("owner2");
     const stranger = await makeUser("stranger");
-    // 私有题（U 型才允许 private）：不归 stranger，也不对其可见
+    // 原用户离域后，管理员的管理权限不能替代其当前提交资格。
     const { problemId, v1 } = await seedProblemWithVersions("private", {
       visibility: "private",
-      type: "U",
       ownerId: owner,
     });
     const submissionId = await seedSubmission(problemId, stranger, v1);
@@ -343,12 +353,13 @@ Deno.test({
       `acc-private-key-${ts}`,
     );
     assertEquals(accepted.total_items, 1);
+    await removeDomainMember("main", "0", stranger);
 
     // 受理不校验可访问性；派发必须按**原用户**资格拒绝（管理员身份不外借）
     await assertRejects(
       () => dispatchFirstItem(accepted.job_id, "upgrade"),
       Error,
-      "升级时已无提交权限",
+      "工作空间权限不足",
     );
     // 未创建任何升级副本
     assertEquals(
@@ -371,6 +382,8 @@ Deno.test({
     const contestId = `acc-contest-${ts}`;
     await db.insert(contests).values({
       id: contestId,
+      domain_id: DEFAULT_DOMAIN_ID,
+      created_by: user,
       public_id: `ct-acc-${ts}`,
       title: "c",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -431,6 +444,7 @@ Deno.test({
 });
 
 Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生练习副本", async () => {
+  await ensureDefaultWorkspace();
   const user = await makeUser("obj");
   const { problemId, v1, v2 } = await seedProblemWithVersions("obj", {
     contentKind: "objective",
@@ -441,6 +455,8 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   const contestId = `acc-obj-contest-${ts}`;
   await db.insert(contests).values({
     id: contestId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: user,
     public_id: `ct-acc-obj-${ts}`,
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",
@@ -466,6 +482,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   });
   const objectiveId = crypto.randomUUID();
   await db.insert(objectiveSubmissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: objectiveId,
     paper_id: problemId,
     user_id: user,
@@ -505,6 +522,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   // 绝不能静默生成一条 contest_id = null 的练习提交
   const jobId = `acc-obj-job-${ts}`;
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,
     kind: "upgrade",
     actor_id: user,
@@ -518,6 +536,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
     created_at: now,
   });
   await db.insert(submissionJobItems).values({
+    ...(await problemExecutionForTest(problemId)),
     id: `acc-obj-item-${ts}`,
     job_id: jobId,
     ordinal: 0,
@@ -569,3 +588,4 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   assertEquals(rows[0].id, objectiveId);
   assertEquals(rows[0].contest_id, contestId);
 });
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";

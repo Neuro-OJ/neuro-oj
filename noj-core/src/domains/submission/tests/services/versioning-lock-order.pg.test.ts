@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发/锁协议验证（tracking #12、#30；2026-10-11 复审问题 1、5）。
  *
@@ -17,8 +19,10 @@
  * 3. **锁顺序 题目 → 竞赛 → 提交 → 尝试 → revision**：结果写入对题目取共享锁、
  *    策略切换对策略宿主取更新锁，二者互斥，后到的策略重算不会用旧候选覆盖新投影。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
   createRawClient,
   withRawTransaction,
@@ -28,7 +32,10 @@ import {
   getDb,
 } from "../../../../shared/db/connection.ts";
 import {
+  domainProblemBindings,
+  educationOutbox,
   evaluationAttempts,
+  problemBindingHistory,
   problems,
   problemVersions,
   storageObjectReservations,
@@ -53,6 +60,7 @@ import {
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import { setProblemEffectiveVersionPolicy } from "../../services/versioning/effective-policy.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 
 const HAS_PG = !!Deno.env.get("DATABASE_URL");
 if (HAS_PG) disableTestTransactionForFile();
@@ -118,10 +126,10 @@ async function waitFor(
 async function seedProblem(id: string, number: number): Promise<string> {
   const versionId = `${id}-v1`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -144,6 +152,7 @@ async function seedProblem(id: string, number: number): Promise<string> {
 }
 
 async function cleanupProblem(id: string): Promise<void> {
+  await db.delete(educationOutbox).where(eq(educationOutbox.problem_id, id));
   await db.delete(submissionVersionResults).where(
     eq(submissionVersionResults.problem_id, id),
   );
@@ -151,6 +160,17 @@ async function cleanupProblem(id: string): Promise<void> {
     eq(evaluationAttempts.problem_id, id),
   );
   await db.delete(submissions).where(eq(submissions.problem_id, id));
+  const bindings = await db.select({ id: domainProblemBindings.id }).from(
+    domainProblemBindings,
+  ).where(eq(domainProblemBindings.problem_id, id));
+  for (const binding of bindings) {
+    await db.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, binding.id),
+    );
+  }
+  await db.delete(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, id),
+  );
   await db.update(problems).set({
     latest_version_id: null,
     // 策略可能已被切换为 exact(X)：先解开对版本的外键引用再删版本
@@ -158,7 +178,7 @@ async function cleanupProblem(id: string): Promise<void> {
     effective_version_mode: "any",
   }).where(eq(problems.id, id));
   await db.delete(problemVersions).where(eq(problemVersions.problem_id, id));
-  await db.delete(problems).where(eq(problems.id, id));
+  await deleteProblemFixtures(eq(problems.id, id));
 }
 
 /** 清理存储夹具：预约行、登记行、引用该对象的提交。 */
@@ -224,6 +244,7 @@ Deno.test({
     const bindPromise = withRawTransaction(async (tx) => {
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-bind-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -325,6 +346,7 @@ Deno.test({
       }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-reup-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -494,6 +516,7 @@ Deno.test({
         await registerStreamedStorageObject({ storageUrl: url }, tx);
         await assertStorageObjectBindable(url, tx);
         await tx.insert(submissions).values({
+          ...await problemExecutionForTest(problemId),
           id: `pg-lock-stream-${crypto.randomUUID()}`,
           user_id: "0",
           problem_id: problemId,
@@ -582,6 +605,7 @@ Deno.test({
       await registerStreamedStorageObject({ storageUrl: url }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-stream-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -629,6 +653,7 @@ Deno.test({
       await registerStreamedStorageObject({ storageUrl: url }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-stream-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -661,6 +686,7 @@ Deno.test({
     const submissionId = `pg-lock-sub-${crypto.randomUUID()}`;
     const attemptId = `pg-lock-att-${crypto.randomUUID()}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: "0",
       problem_id: problemId,
@@ -686,16 +712,23 @@ Deno.test({
     await db.update(submissions).set({ active_attempt_id: attemptId }).where(
       eq(submissions.id, submissionId),
     );
+    await bindMainProblemForTest(problemId);
 
     // A：持有题目行更新锁（模拟"策略宿主正被修改"）
     const barrier = createRawClient();
     await barrier`BEGIN`;
     await barrier`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`;
+    const [barrierIdentity] = await barrier`SELECT pg_backend_pid() AS pid`;
 
     let resultSettled = false;
     let policySettled = false;
+    let resultPid = 0;
+    let policyPid = 0;
     // B：结果写入（对题目取共享锁 → 必须等待 A）
     const resultPromise = withRawTransaction(async (tx) => {
+      resultPid = unwrapRows<{ pid: number }>(
+        await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as never,
+      )[0].pid;
       const outcome = await applyAttemptResult({
         attemptId,
         resultKind: "graded",
@@ -709,9 +742,22 @@ Deno.test({
       return outcome;
     });
     const resultGuard = resultPromise.catch(() => {});
-    await sleep(200);
+    let resultBlocked = false;
+    const resultDeadline = Date.now() + 5000;
+    while (Date.now() < resultDeadline) {
+      const [row] =
+        await barrier`SELECT ${barrierIdentity.pid} = ANY(pg_blocking_pids(${resultPid})) AS blocked`;
+      if (row.blocked) {
+        resultBlocked = true;
+        break;
+      }
+      await sleep(10);
+    }
     // C：策略切换（对策略宿主取更新锁 → 排在 B 之后）
     const policyPromise = withRawTransaction(async (tx) => {
+      policyPid = unwrapRows<{ pid: number }>(
+        await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as never,
+      )[0].pid;
       const result = await tx.transaction((inner) =>
         setProblemEffectiveVersionPolicy(problemId, {
           policy: { mode: "exact", version_id: versionId },
@@ -723,9 +769,19 @@ Deno.test({
     });
     const policyGuard = policyPromise.catch(() => {});
 
-    await sleep(300);
-    assertEquals(resultSettled, false, "结果写入必须等待题目宿主锁");
-    assertEquals(policySettled, false, "策略切换必须等待结果写入完成");
+    let policyBlocked = false;
+    const policyDeadline = Date.now() + 5000;
+    while (Date.now() < policyDeadline) {
+      const [row] =
+        await barrier`SELECT ${resultPid} = ANY(pg_blocking_pids(${policyPid})) AS blocked`;
+      if (row.blocked) {
+        policyBlocked = true;
+        break;
+      }
+      await sleep(10);
+    }
+    const resultPendingAtBarrier = !resultSettled;
+    const policyPendingAtBarrier = !policySettled;
 
     await barrier`COMMIT`;
     await barrier.end();
@@ -734,6 +790,14 @@ Deno.test({
     const policy = await policyPromise;
     await resultGuard;
     await policyGuard;
+    assertEquals(
+      resultBlocked,
+      true,
+      "结果写入必须已持域共享锁并阻塞于源题屏障",
+    );
+    assertEquals(policyBlocked, true, "策略切换必须阻塞于结果写入的域共享锁");
+    assertEquals(resultPendingAtBarrier, true);
+    assertEquals(policyPendingAtBarrier, true);
     assertEquals(applied.applied, "graded");
     assertEquals(policy.revision, 1);
 

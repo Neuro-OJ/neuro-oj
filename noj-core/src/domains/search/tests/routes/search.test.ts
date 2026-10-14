@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -11,6 +12,7 @@ import {
 } from "../../services/index-writer.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+import { backfillDefaultCatalog } from "../../../catalog/index.ts";
 
 try {
   await connectRedis();
@@ -26,6 +28,7 @@ async function seed() {
   const db = getDb();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "p-search-route-1",
     title: "动态规划",
     description: "入门",
@@ -40,7 +43,6 @@ async function seed() {
       solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
     },
     number: 1,
-    type: "P",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -54,6 +56,7 @@ async function seed() {
     updated_at: now,
   });
   await publishAllProblemsForTest();
+  await backfillDefaultCatalog();
   await upsertSearchEntry((await buildProblemEntry("p-search-route-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-route-1"))!);
 }

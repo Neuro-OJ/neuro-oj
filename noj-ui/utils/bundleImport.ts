@@ -5,38 +5,22 @@
  */
 import type { ApiErrorInfo } from './apiError.ts';
 
-export type ProblemType = 'U' | 'P';
-export type ProblemVisibility = 'public' | 'private';
-
 /** 校验所选文件是否为 zip；合法返回 null，否则返回提示文案。 */
 export function validateZipFileName(name: string): string | null {
   return name.toLowerCase().endsWith('.zip') ? null : '仅支持 .zip 格式文件';
 }
 
-/**
- * 题目实际提交的可见性。
- *
- * 主题库（P）题目必须公开（服务端校验「P 型题目必须公开」）；编辑器只在用户题库（U）
- * 下展示可见性选择，因此 P 型一律按公开提交，避免隐藏字段残留「私有」导致建题失败。
- */
-export function effectiveVisibility(
-  type: ProblemType,
-  visibility: ProblemVisibility,
-): ProblemVisibility {
-  return type === 'P' ? 'public' : visibility;
-}
-
-/** `POST /api/v1/problems/import-bundle` 的响应数据（仅前端用到的字段）。 */
+/** 使用域题包导入的响应。 */
 export interface BundleImportResult {
-  id: string;
-  display_id?: string;
-  title?: string;
+  problem_id: string;
+  number: number;
+  draft_revision: number;
   published?: { version: number; unchanged?: boolean } | null;
 }
 
 /** 导入成功提示。 */
 export function bundleImportSuccessMessage(result: BundleImportResult): string {
-  const label = result.display_id ?? result.title ?? '题目';
+  const label = String(result.number);
   if (result.published) {
     return result.published.unchanged
       ? `已导入 ${label}，内容未变化，继续使用 V${result.published.version}`
@@ -49,7 +33,7 @@ export function bundleImportSuccessMessage(result: BundleImportResult): string {
  * 「从题目包导入」的错误文案。
  *
  * 管理员导入的包若在 problem.json 写了 `number` 且与已有题目重复，服务端会按
- * (type, number) 走**更新既有题目**路径，而该路径必须携带编辑基线（428）。新建入口
+ * (domain_id, number) 走更新既有题目路径，而该路径必须携带编辑基线（428）。新建入口
  * 没有基线可带，原始文案「保存草稿必须携带 If-Match」会让人摸不着头脑，这里改写成
  * 可操作的提示。
  */

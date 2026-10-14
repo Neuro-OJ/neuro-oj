@@ -3,6 +3,8 @@ import {
   projectMeteringDetails,
   projectOiDetails,
 } from "./oi-details.ts";
+import type { ContestType } from "../../../contest/index.ts";
+import type { ResultVisibility } from "../../../../shared/contest-types.ts";
 /**
  * 统一提交结果投影（F-02/F-15 基础）。
  *
@@ -24,6 +26,8 @@ export type ProjectionCtx = {
     running: boolean;
     /** 查看者是否为参赛者 */
     participant: boolean;
+    type?: ContestType;
+    organizer?: boolean;
   } | null;
 };
 
@@ -79,6 +83,13 @@ export function applySubmissionProjection<
     return structuredClone(submission);
   }
 
+  if (ctx.contest.organizer) return submission;
+  if (
+    ctx.contest.running && ctx.contest.type && ctx.contest.type !== "kaggle"
+  ) {
+    return projectFormatSubmission(submission, ctx);
+  }
+
   const { running, participant } = ctx.contest;
   const isSubmitter = ctx.viewerId !== null &&
     submission.user_id === ctx.viewerId;
@@ -90,11 +101,12 @@ export function applySubmissionProjection<
 
   // 非本人/非参赛者：竞赛内只给存在级信息。
   if (!participant || !isSubmitter) {
-    return {
-      id: submission.id,
-      problem_id: submission.problem_id,
-      status: submission.status,
-    } as unknown as T;
+    return allowedFields(submission, [
+      "id",
+      "problem_id",
+      "contest_id",
+      "status",
+    ]) as T;
   }
 
   const result = structuredClone(submission);
@@ -134,6 +146,101 @@ export function applySubmissionProjection<
   // running/ended 均保留 status/score；赛后不再额外恢复已删除字段。
   void running;
   return result;
+}
+
+/** 各赛制本人反馈的字段层级，OI 结束后再开放结果。 */
+export function contestResultVisibility(
+  type: ContestType,
+  running: boolean,
+): ResultVisibility {
+  if (!running || type === "ioi" || type === "kaggle") return "cases";
+  return type === "oi" ? "hidden" : "summary";
+}
+
+const SUBMISSION_IDENTITY_FIELDS = [
+  "id",
+  "public_id",
+  "domain_id",
+  "problem_id",
+  "user_id",
+  "contest_id",
+  "language",
+  "file_name",
+  "code",
+  "created_at",
+  "submitted_version_id",
+  "submitted_version",
+  "version_origin",
+  "upgraded_from_id",
+];
+const SUMMARY_FIELDS = ["status", "verdict", "score", "time_ms", "memory_kb"];
+
+function allowedFields(
+  value: unknown,
+  keys: readonly string[],
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    keys.filter((key) => Object.hasOwn(record, key)).map((
+      key,
+    ) => [key, record[key]]),
+  );
+}
+
+/** 新赛制采用允许字段列表，不透传原始 output、任意 details 或执行历史。 */
+function projectFormatSubmission<T extends Record<string, unknown>>(
+  submission: T,
+  ctx: ProjectionCtx,
+): T {
+  const own = ctx.viewerId !== null && submission.user_id === ctx.viewerId;
+  if (!own || !ctx.contest?.participant) {
+    return allowedFields(submission, ["id", "problem_id"]) as T;
+  }
+  const visibility = contestResultVisibility(
+    ctx.contest.type!,
+    ctx.contest.running,
+  );
+  const result = allowedFields(submission, SUBMISSION_IDENTITY_FIELDS);
+  result.result_visibility = visibility;
+  if (visibility === "hidden") {
+    result.status = "submitted";
+    return result as T;
+  }
+  Object.assign(result, allowedFields(submission, SUMMARY_FIELDS));
+  const nested = submission.result;
+  if (nested && typeof nested === "object") {
+    const summary = allowedFields(nested, SUMMARY_FIELDS);
+    const details = (nested as Record<string, unknown>).details;
+    const oi = details && typeof details === "object"
+      ? (details as Record<string, unknown>).oi
+      : null;
+    // IOI 严格与 ACM 不返回测试点或子任务；汇总配置也只取明示字段。
+    if (visibility === "cases") summary.details = { oi: projectOiDetails(oi) };
+    else {
+      const oiSummary = allowedFields(oi, [
+        "verdict",
+        "score",
+        "max_score",
+        "time_ms",
+        "memory_kb",
+      ]);
+      if (ctx.contest.type === "acm") {
+        const diagnostic = oi && typeof oi === "object"
+          ? (oi as Record<string, unknown>).compile_error
+          : null;
+        if (typeof diagnostic === "string") {
+          oiSummary.compile_error = diagnostic.slice(0, 16 * 1024);
+        }
+      }
+      summary.details = { oi: oiSummary };
+    }
+    result.result = summary;
+  } else if (submission.details && visibility === "cases") {
+    const details = submission.details as Record<string, unknown>;
+    result.details = { oi: projectOiDetails(details.oi) };
+  }
+  return result as T;
 }
 
 /**

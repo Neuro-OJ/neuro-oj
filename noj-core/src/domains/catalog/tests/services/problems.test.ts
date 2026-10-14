@@ -1,5 +1,6 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   createProblem,
   deleteProblem,
@@ -8,9 +9,11 @@ import {
   listProblems,
   updateProblem,
 } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
+  domainProblemBindings,
+  problemBindingHistory,
   problems,
   selfTests,
   tags,
@@ -22,7 +25,10 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { enterTestContext } from "../../../system/index.ts";
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import type {
   OiRuntimeConfig,
   RuntimeConfig,
@@ -90,6 +96,39 @@ const MODULE_PROBLEM = await createProblem({
 const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
 Deno.test({
+  name: "problems service: 初始草稿写入失败时题目同事务回滚",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const title = "draft-write-rollback";
+    // 在测试库制造草稿写入错误，证明不是只回滚提前校验失败的请求。
+    await db.execute(
+      sql`ALTER TABLE problem_drafts ADD CONSTRAINT test_initial_draft_failure CHECK (content->>'title' <> 'draft-write-rollback')`,
+    );
+    try {
+      await assertRejects(() =>
+        createProblem({
+          title,
+          description: "验证题目与草稿的原子写入",
+          is_objective: true,
+        })
+      );
+      assertEquals(
+        await db.select({ id: problems.id }).from(problems).where(
+          eq(problems.title, title),
+        ),
+        [],
+      );
+    } finally {
+      await db.execute(
+        sql`ALTER TABLE problem_drafts DROP CONSTRAINT test_initial_draft_failure`,
+      );
+    }
+  },
+});
+
+Deno.test({
   name: "problems service: 列表返回正确分页结构",
   ignore: skip,
   sanitizeResources: false,
@@ -120,7 +159,7 @@ Deno.test({
     assertEquals(problem.tags, []);
     assertEquals(problem.has_hidden_algorithm_tags, false);
     // 新建 U 型默认 private（I1）
-    assertEquals(problem.visibility, "private");
+    assertEquals(problem.visibility, "public");
   },
 });
 
@@ -135,7 +174,6 @@ Deno.test({
         title: `临时 P 题 ${ts}`,
         description: "用来测 P 默认公开",
         difficulty: "easy",
-        type: "P",
         runtime_config: VALID_RUNTIME_CONFIG,
       },
       "0",
@@ -327,7 +365,7 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
-    const result = await listProblems({ difficulty: "easy", type: "U" });
+    const result = await listProblems({ difficulty: "easy" });
     assertEquals(result.items.every((i) => i.difficulty === "easy"), true);
   },
 });
@@ -353,7 +391,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
     }).where(eq(problems.id, created.id));
     await publishBaselineVersionForTest(created.id);
-    const result = await listProblems({ keyword, type: "U" });
+    const result = await listProblems({ keyword });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, created.id);
   },
@@ -399,7 +437,12 @@ Deno.test({
     });
     const now = new Date().toISOString();
     // 已终态的历史自测记录（`pending`/`judging` 属于活动评测，删除入口会拒绝并保留题目）
+    const [binding] = await getDb().select().from(domainProblemBindings).where(
+      eq(domainProblemBindings.problem_id, problem.id),
+    );
     await getDb().insert(selfTests).values({
+      domain_id: problem.domain_id,
+      domain_problem_binding_id: binding.id,
       id: crypto.randomUUID(),
       user_id: "0",
       problem_id: problem.id,
@@ -442,6 +485,7 @@ Deno.test({
       updated_at: now,
     });
 
+    await grantDefaultCatalogRole(adminId, "admin");
     // 注入 admin actor context（logAudit 依赖 RequestContext）
     enterTestContext({
       actorId: adminId,
@@ -568,6 +612,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    await grantDefaultCatalogRole("admin-1", "admin");
     const created = await createProblem(
       {
         title: `admin 联网题 ${Date.now()}`,
@@ -767,7 +812,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems service: 非法 submission_mode 被拒（CHECK 三值以外）",
+  name: "problems service: 非法 submission_mode 被拒（CHECK 允许值以外）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -801,6 +846,7 @@ Deno.test({
       () =>
         db.insert(problems).values({
           id: crypto.randomUUID(),
+          domain_id: DEFAULT_DOMAIN_ID,
           title: "bogus 模式直插",
           description: "应被 CHECK 拒绝",
           number: 999001,
@@ -828,7 +874,6 @@ Deno.test({
             title: `prediction 配 LLM ${Date.now()}`,
             description: "应被拒绝",
             difficulty: "easy",
-            type: "P",
             submission_mode: "prediction",
             runtime_config: {
               evaluator: {
@@ -859,14 +904,13 @@ Deno.test({
     await resetDbForTest();
     const db = getDb();
     const id = crypto.randomUUID();
-    // 直插一道已落库的「P 型 + 已配 LLM + 联网」题，绕过创建期的 provider 校验
-    // （本用例只关心更新路径的模式切换守卫）。
+    // 显式建立默认域题库中的联网题，验证草稿模式切换守卫。
     await db.insert(problems).values({
       id,
+      domain_id: DEFAULT_DOMAIN_ID,
       title: `已有 LLM 的题 ${Date.now()}`,
       description: "更新为 prediction 应被拒绝",
       difficulty: "easy",
-      type: "P",
       number: 999500,
       owner_id: "0",
       runtime_config: NETWORKED_RUNTIME_CONFIG,
@@ -875,6 +919,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    await bindPublishedProblemForTest(id);
 
     await assertRejects(
       () =>
@@ -940,7 +985,6 @@ Deno.test({
         title: `prediction 更新加 LLM ${Date.now()}`,
         description: "更新期应被拒绝",
         difficulty: "easy",
-        type: "P",
         submission_mode: "prediction",
         runtime_config: {
           evaluator: {
@@ -999,12 +1043,12 @@ Deno.test({
     const db = getDb();
     try {
       await db.insert(problems).values(fixtures.map((fixture, index) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         ...fixture,
         id: ids[index],
         title: `${marker}-${index}`,
         description: "筛选测试",
         difficulty: "easy",
-        type: "U",
         number: 9000000 + index,
         owner_id: "0",
         visibility: "public",
@@ -1013,7 +1057,7 @@ Deno.test({
       })));
       // 公共列表只含已发布题目：为每个夹具补基线版本
       for (const id of ids) await publishBaselineVersionForTest(id);
-      const query = { type: "U", keyword: marker, limit: 1 };
+      const query = { keyword: marker, limit: 1 };
       const oi = await listProblems({ ...query, judge_type: "oi" });
       assertEquals(oi.total, 2);
       assertEquals(oi.items.length, 1);
@@ -1055,8 +1099,18 @@ Deno.test({
       );
     } finally {
       for (const id of ids) {
+        await db.delete(problemBindingHistory).where(
+          eq(problemBindingHistory.problem_id, id),
+        );
+        await db.delete(domainProblemBindings).where(
+          eq(domainProblemBindings.problem_id, id),
+        );
         await db.delete(problems).where(eq(problems.id, id));
       }
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

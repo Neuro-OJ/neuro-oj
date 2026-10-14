@@ -1,3 +1,9 @@
+import {
+  bindPublishedProblemForTest,
+  contestProblemExecutionForTest,
+  deleteProblemFixtures,
+  problemExecutionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发屏障用例：**交叉竞赛的批量策略修改**
  * （2026-10-11 复审问题 2 / tracking task-8）。
@@ -40,7 +46,8 @@
  * （并发用例必须各自持有真实事务），夹具按固定 ID 自愈清理。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { inArray, like } from "drizzle-orm";
+import { inArray, like, sql } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -216,10 +223,10 @@ async function seedRound(): Promise<void> {
 
   await db.insert(problems).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_A1,
       title: "lock order A1",
       description: "d",
-      type: "P",
       number: 987101,
       owner_id: ACTOR,
       difficulty: "easy",
@@ -228,10 +235,10 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_A2,
       title: "lock order A2",
       description: "d",
-      type: "P",
       number: 987102,
       owner_id: ACTOR,
       difficulty: "easy",
@@ -240,10 +247,10 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_B1,
       title: "lock order B1",
       description: "d",
-      type: "P",
       number: 987103,
       owner_id: ACTOR,
       difficulty: "easy",
@@ -252,10 +259,10 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_B2,
       title: "lock order B2",
       description: "d",
-      type: "P",
       number: 987104,
       owner_id: ACTOR,
       difficulty: "easy",
@@ -265,6 +272,9 @@ async function seedRound(): Promise<void> {
     },
   ]);
 
+  for (const problemId of ALL_PROBLEMS) {
+    await bindPublishedProblemForTest(problemId);
+  }
   await db.insert(problemVersions).values(
     ALL_PROBLEMS.map((problemId) => ({
       id: versionOf(problemId),
@@ -287,6 +297,7 @@ async function seedRound(): Promise<void> {
 
   await db.insert(contests).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: CONTEST_1,
       title: "lock order contest 1",
       description: "",
@@ -300,6 +311,7 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: CONTEST_2,
       title: "lock order contest 2",
       description: "",
@@ -318,6 +330,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_2,
       problem_id: PROBLEM_A1,
+      ...await contestProblemExecutionForTest(CONTEST_2, PROBLEM_A1),
       label: "A1",
       score: 100,
       sort_order: 0,
@@ -327,6 +340,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_1,
       problem_id: PROBLEM_A2,
+      ...await contestProblemExecutionForTest(CONTEST_1, PROBLEM_A2),
       label: "A2",
       score: 100,
       sort_order: 1,
@@ -336,6 +350,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_1,
       problem_id: PROBLEM_B1,
+      ...await contestProblemExecutionForTest(CONTEST_1, PROBLEM_B1),
       label: "B1",
       score: 100,
       sort_order: 0,
@@ -345,6 +360,7 @@ async function seedRound(): Promise<void> {
     {
       contest_id: CONTEST_2,
       problem_id: PROBLEM_B2,
+      ...await contestProblemExecutionForTest(CONTEST_2, PROBLEM_B2),
       label: "B2",
       score: 100,
       sort_order: 1,
@@ -353,11 +369,12 @@ async function seedRound(): Promise<void> {
     },
   ]);
 
-  const submission = (
+  const submission = async (
     id: string,
     problemId: string,
     contestId: string,
-  ): typeof submissions.$inferInsert => ({
+  ): Promise<typeof submissions.$inferInsert> => ({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: ACTOR,
     problem_id: problemId,
@@ -369,12 +386,14 @@ async function seedRound(): Promise<void> {
     status: "pending",
     created_at: now,
   });
-  await db.insert(submissions).values([
-    submission(SUBMISSION_A1, PROBLEM_A1, CONTEST_2),
-    submission(SUBMISSION_A2, PROBLEM_A2, CONTEST_1),
-    submission(SUBMISSION_B1, PROBLEM_B1, CONTEST_1),
-    submission(SUBMISSION_B2, PROBLEM_B2, CONTEST_2),
-  ]);
+  await db.insert(submissions).values(
+    await Promise.all([
+      submission(SUBMISSION_A1, PROBLEM_A1, CONTEST_2),
+      submission(SUBMISSION_A2, PROBLEM_A2, CONTEST_1),
+      submission(SUBMISSION_B1, PROBLEM_B1, CONTEST_1),
+      submission(SUBMISSION_B2, PROBLEM_B2, CONTEST_2),
+    ]),
+  );
 }
 
 /**
@@ -419,13 +438,23 @@ async function cleanupFixedIds(): Promise<void> {
   await db.delete(problemVersions).where(
     inArray(problemVersions.problem_id, ALL_PROBLEMS),
   );
-  await db.delete(problems).where(inArray(problems.id, ALL_PROBLEMS));
+  await deleteProblemFixtures(inArray(problems.id, ALL_PROBLEMS));
   await db.delete(queryProjectionRevisions).where(
     inArray(queryProjectionRevisions.scope_key, [
       "global",
       ...ALL_PROBLEMS.map((problemId) => `problem:${problemId}`),
       ...ALL_CONTESTS.map((contestId) => `contest:${contestId}`),
     ]),
+  );
+  // 本文件使用真实独立事务；只清理自己的默认域成员夹具并校准容量计数。
+  await db.execute(
+    sql`DELETE FROM domain_member_roles WHERE membership_id IN (SELECT id FROM domain_memberships WHERE user_id = ${ACTOR})`,
+  );
+  await db.execute(
+    sql`DELETE FROM domain_memberships WHERE user_id = ${ACTOR}`,
+  );
+  await db.execute(
+    sql`UPDATE domain_resource_counters counter SET used = (SELECT count(*) FROM domain_memberships membership WHERE membership.domain_id = counter.domain_id AND membership.status = 'active') WHERE counter.domain_id = ${DEFAULT_DOMAIN_ID} AND counter.resource = 'members'`,
   );
   await db.delete(users).where(inArray(users.id, [ACTOR]));
 }

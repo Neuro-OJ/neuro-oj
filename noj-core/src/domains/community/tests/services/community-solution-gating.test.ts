@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -35,6 +36,8 @@ import {
   updateSetting,
 } from "../../../system/index.ts";
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+import { addDomainMember } from "../../../workspace/index.ts";
+import { domainMemberRoles } from "../../../../shared/db/schema.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -55,28 +58,33 @@ async function setup(): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  const membership = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, ownerId);
+  await getDb().insert(domainMemberRoles).values({
+    membership_id: membership.id,
+    role: "editor",
+  });
   await getDb().insert(problems).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: normalProblemId,
       title: "普通练习题",
       description: "x",
       difficulty: "easy",
       runtime_config: {},
       number: 970001,
-      type: "U",
       visibility: "public",
       owner_id: ownerId,
       created_at: now,
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestProblemId,
       title: "竞赛题目",
       description: "x",
       difficulty: "easy",
       runtime_config: {},
       number: 970002,
-      type: "U",
       visibility: "public",
       owner_id: ownerId,
       created_at: now,
@@ -419,6 +427,7 @@ Deno.test({
     const secret = "赛期题解评论的机密正文";
     const now = new Date().toISOString();
     await getDb().insert(communityComments).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: commentId,
       post_id: post.id,
       author_id: ownerId,
@@ -440,11 +449,8 @@ Deno.test({
     // 举报人（非审核员）查看：快照与评论正文都必须被剥离
     const asReporter = await getReportDetail(report.id, ownerId, false);
     assertEquals(asReporter.report.content_snapshot, "");
-    assertEquals(asReporter.comment?.content, "");
-    // 父帖投影只含门控元数据，绝不能夹带父帖正文（否则换个字段继续泄露）
-    assertEquals("content" in (asReporter.parent_post ?? {}), false);
-    // 门控元数据仍应在（调用方据此展示"内容暂不可见"）
-    assertEquals(asReporter.parent_post?.problem_id, contestProblemId);
+    assertEquals(asReporter.comment, null);
+    assertEquals(asReporter.parent_post, null);
 
     // 审核员处理工单必须看到全文
     const asModerator = await getReportDetail(report.id, ownerId, true);
@@ -475,6 +481,7 @@ Deno.test({
     const body = "普通题的评论正文";
     const now = new Date().toISOString();
     await getDb().insert(communityComments).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: commentId,
       post_id: post.id,
       author_id: ownerId,

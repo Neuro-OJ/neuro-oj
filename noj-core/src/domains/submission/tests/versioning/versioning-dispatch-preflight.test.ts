@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务派发前的平台安全预检回归（tracking #33 后半、Handbook §7）。
  *
@@ -20,7 +23,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { resetSetting, updateSetting } from "../../../system/index.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import {
@@ -95,6 +98,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -106,11 +110,11 @@ async function seedVersionContent(
   const problemId = `pf-prob-${tag}-${ts}`;
   const versionId = `pf-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `预检测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 96900 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",
@@ -149,6 +153,7 @@ async function seedSubmission(
 ): Promise<string> {
   const submissionId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,

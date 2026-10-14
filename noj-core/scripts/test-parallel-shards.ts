@@ -56,6 +56,8 @@ export const SHARDS: Shard[] = [
       "src/domains/catalog/tests/types",
       "src/domains/contest/tests/types",
       "src/domains/submission/tests/types",
+      "src/domains/workspace/tests/types",
+      "src/domains/education/tests/types",
       "src/domains/observability/tests",
       "src/domains/search/tests/consumer",
       "tests/data",
@@ -104,9 +106,14 @@ export const SHARDS: Shard[] = [
       "src/domains/admin/tests/services",
       "src/domains/admin/tests/routes",
       "src/domains/gateway/tests/services",
+      "src/domains/gateway/tests/routes",
       "src/domains/content-review/tests/services",
       "src/domains/legal/tests/routes",
       "src/domains/legal/tests/services",
+      "src/domains/workspace/tests/routes",
+      "src/domains/workspace/tests/services",
+      "src/domains/education/tests/routes",
+      "src/domains/education/tests/services",
     ],
   },
 ];
@@ -133,6 +140,8 @@ export function isCoveredByShards(
 export const PERF_EXCLUDED_PREFIXES = [
   "tests/perf/",
   "src/domains/search/tests/perf/",
+  // 教学矩阵含 5000 份正式成绩，主分片不承受性能数据准备；CI core-perf 单独执行。
+  "src/domains/education/tests/perf/",
 ] as const;
 
 /** 某测试文件是否属于刻意排除的性能基准。 */

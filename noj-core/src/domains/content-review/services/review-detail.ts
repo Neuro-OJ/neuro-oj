@@ -1,5 +1,5 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import {
   communityComments,
   communityPosts,
@@ -7,7 +7,7 @@ import {
   messages,
   users,
 } from "./../../../shared/db/schema.ts";
-import { getReviewQueueItem } from "./review-queue.ts";
+import type { getReviewQueueItem } from "./review-queue.ts";
 
 /**
  * 统一审查队列详情（issue #413）。
@@ -21,18 +21,17 @@ import { getReviewQueueItem } from "./review-queue.ts";
 
 /**
  * 获取审查队列详情（含目标内容上下文）。
- * @param id content_review_queue 记录 ID
+ * @param row 已授权的审查记录
  * @returns 队列记录 + context（按 content_type 展开）
  */
 export async function getReviewQueueDetail(
-  id: string,
+  row: Awaited<ReturnType<typeof getReviewQueueItem>>,
+  db: Executor,
 ): Promise<{
   queue:
     typeof import("./../../../shared/db/schema.ts").contentReviewQueue.$inferSelect;
   context: Record<string, unknown>;
 }> {
-  const row = await getReviewQueueItem(id);
-  const db = getDb();
   const context: Record<string, unknown> = {};
 
   if (row.content_type === "post") {

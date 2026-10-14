@@ -1,3 +1,7 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 锁内复查分类的**真实 PostgreSQL 屏障**回归（复审问题 10，P2）。
  *
@@ -12,6 +16,7 @@
  * 隔离：本文件关闭 preload 的逐用例事务（屏障需要两条真实连接），因此显式使用
  * 唯一 ID 并在用例结束时清理；在**独立 schema**（TEST_SCHEMA）下由 Lead 串行执行。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
@@ -22,9 +27,13 @@ import {
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
+  domains,
+  educationOutbox,
   evaluationAttempts,
   judgeImages,
   objectiveSubmissions,
+  problemBindingHistory,
   problems,
   problemVersions,
   submissionJobItems,
@@ -37,7 +46,11 @@ import {
   dispatchJobItem,
   type DispatchOutcome,
 } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import {
+  acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
+  authorizeLegacyJobActorForTest,
+  bindMainProblemForTest,
+} from "../_versioning-fixtures.ts";
 import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
 import {
   setContestProblemEffectiveVersionPolicy,
@@ -124,12 +137,13 @@ async function seedFixture(tag: string): Promise<Fixture> {
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
+  await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `屏障测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 94000 + Math.floor(Math.random() * 900),
     // 独立 schema 由迁移创建，不含 PGlite 的 root 种子 → 用夹具用户做题主
     owner_id: userId,
@@ -159,7 +173,9 @@ async function seedFixture(tag: string): Promise<Fixture> {
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -212,11 +228,22 @@ async function cleanup(fixture: Fixture): Promise<void> {
   await db.update(problems).set({ latest_version_id: null }).where(
     eq(problems.id, fixture.problemId),
   );
+  const bindings = await db.select({ id: domainProblemBindings.id }).from(
+    domainProblemBindings,
+  ).where(eq(domainProblemBindings.problem_id, fixture.problemId));
+  for (const binding of bindings) {
+    await db.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, binding.id),
+    );
+  }
+  await db.delete(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, fixture.problemId),
+  );
   await db.delete(problemVersions).where(
     inArray(problemVersions.problem_id, [fixture.problemId]),
   );
-  await db.delete(problems).where(eq(problems.id, fixture.problemId));
-  await db.delete(users).where(eq(users.id, fixture.userId));
+  await deleteProblemFixtures(eq(problems.id, fixture.problemId));
+  // 域身份是保留历史，不物理删除账号；由独立测试 schema 的生命周期管理。
 }
 
 /**
@@ -435,12 +462,13 @@ async function seedObjectiveFixture(
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
+  await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `客观题屏障测试 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 93000 + Math.floor(Math.random() * 900),
     owner_id: userId,
     judge_type: "dual",
@@ -478,8 +506,10 @@ async function seedObjectiveFixture(
   await db.update(problems).set({ latest_version_id: latestVersionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   if (contestId) {
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `客观题策略锁序 ${tag}`,
       description: "",
@@ -491,6 +521,7 @@ async function seedObjectiveFixture(
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, problemId),
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -499,6 +530,7 @@ async function seedObjectiveFixture(
     });
   }
   await db.insert(objectiveSubmissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: objectiveSubmissionId,
     paper_id: problemId,
     user_id: userId,
@@ -550,6 +582,9 @@ async function seedObjectiveFixture(
 }
 
 async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
+  await db.delete(educationOutbox).where(
+    eq(educationOutbox.problem_id, fixture.problemId),
+  );
   await db.delete(submissionJobItems).where(
     eq(submissionJobItems.job_id, fixture.jobId),
   );
@@ -574,11 +609,23 @@ async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
   await db.update(problems).set({ latest_version_id: null }).where(
     eq(problems.id, fixture.problemId),
   );
+  const bindings = await db.select({ id: domainProblemBindings.id }).from(
+    domainProblemBindings,
+  )
+    .where(eq(domainProblemBindings.problem_id, fixture.problemId));
+  for (const binding of bindings) {
+    await db.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, binding.id),
+    );
+  }
+  await db.delete(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, fixture.problemId),
+  );
   await db.delete(problemVersions).where(
     eq(problemVersions.id, fixture.versionId),
   );
-  await db.delete(problems).where(eq(problems.id, fixture.problemId));
-  await db.delete(users).where(eq(users.id, fixture.userId));
+  await deleteProblemFixtures(eq(problems.id, fixture.problemId));
+  // 保留已加入 main 的账号身份，不能通过删除用户破坏域成员历史。
 }
 
 /**
@@ -617,6 +664,7 @@ async function dispatchDuringObjectivePolicyChange(
   fixture: ObjectiveFixture,
   scope: "problem" | "contest",
 ): Promise<DispatchOutcome> {
+  if (scope === "problem") await bindMainProblemForTest(fixture.problemId);
   if (scope === "contest" && !fixture.contestId) {
     throw new Error("竞赛策略用例缺少竞赛夹具");
   }
@@ -632,6 +680,9 @@ async function dispatchDuringObjectivePolicyChange(
       );
       const barrierPid = pidRows[0].pid;
       if (scope === "problem") {
+        await tx.select({ id: domains.id }).from(domains).where(
+          eq(domains.slug, "main"),
+        ).for("update");
         await tx.select({ id: problems.id }).from(problems).where(
           eq(problems.id, fixture.problemId),
         ).for("update");

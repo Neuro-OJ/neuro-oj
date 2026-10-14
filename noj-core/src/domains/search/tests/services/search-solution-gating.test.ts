@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -38,13 +39,13 @@ async function setup(): Promise<string> {
     updated_at: now,
   });
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: "搜索门控题",
     description: "x",
     difficulty: "easy",
     runtime_config: {},
     number: 980001,
-    type: "U",
     visibility: "public",
     owner_id: ownerId,
     created_at: now,
@@ -169,8 +170,8 @@ Deno.test({
     const commentId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().execute(sql`
-      INSERT INTO community_comments (id, post_id, author_id, content, status, created_at, updated_at)
-      VALUES (${commentId}, ${post.id}, ${ownerId}, '评论内容无关键词', 'published', ${now}, ${now})
+      INSERT INTO community_comments (id, domain_id, post_id, author_id, content, status, created_at, updated_at)
+      VALUES (${commentId}, ${post.domain_id}, ${post.id}, ${ownerId}, '评论内容无关键词', 'published', ${now}, ${now})
     `);
     await upsertSearchEntry((await buildCommunityCommentEntry(commentId))!);
 

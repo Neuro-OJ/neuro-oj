@@ -1,3 +1,4 @@
+import { publishQueueChange } from "./queue.ts";
 /**
  * 代码自测服务（issue #221）。
  *
@@ -15,10 +16,18 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
+import {
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+} from "../../workspace/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
+import {
+  oiVerdict,
+  projectOiSelfTestDetails,
+} from "./submissions/oi-details.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
@@ -38,6 +47,11 @@ import {
   runAttemptTerminalRevocationAfterCommit,
 } from "./versioning/attempts.ts";
 import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "./workspace-execution.ts";
+import {
   executionSnapshot,
   scriptTemplateOf,
   versionSupportPackageDownload,
@@ -47,7 +61,11 @@ import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
 } from "./versioning/submission-version.ts";
-import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "./../../catalog/index.ts";
 import { buildOiSelfTestPackage } from "../../catalog/index.ts";
 import {
   isOiRuntimeConfig,
@@ -68,8 +86,12 @@ import {
 const MAX_OUTPUT_LENGTH = 8 * 1024;
 
 /** 取消 OI 自测；先持久化共享取消信号，再锁住终态，保留已有进度结果。 */
-export async function cancelSelfTest(id: string, c: Context): Promise<void> {
-  const detail = await getSelfTest(id, c);
+export async function cancelSelfTest(
+  id: string,
+  c: Context,
+  domainAccess?: { domainId: string; canReadDetails: boolean },
+): Promise<void> {
+  const detail = await getSelfTest(id, c, domainAccess);
   if (!["pending", "judging"].includes(detail.status)) return;
   const db = getDb();
   const [row] = await db.select().from(selfTests).where(eq(selfTests.id, id));
@@ -129,11 +151,18 @@ export async function createSelfTest(
   problemId: string,
   input: SelfTestInput,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SelfTestResponse> {
   const db = getDb();
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (domainExecution && domainExecution.problem.id !== problemId) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 读取最新题目配置；不依赖行级锁（自测是只读快照，入队前若 config 变化由 judge 侧兜底）
-  const rows = await db
+  const rows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, problemId))
@@ -142,14 +171,17 @@ export async function createSelfTest(
     throw new NotFoundError("题目不存在");
   }
   const problem = rows[0];
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin；
   // 被公开赛保密的题目同样只有 owner/管理员可自测。
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-  });
-  if (!access.allowed) {
+  const access = domainExecution
+    ? null
+    : (await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+    })).result;
+  if (access && !access.allowed) {
     // 被未结束公开赛保密的题目对外一律"不存在"（面 1.4 审计 F-03）：
     // 若此处统一 403，则 403（保密题）与 404（题目不存在）的差异本身就是
     // **存在性预言机**——display_id 可枚举，攻击者据此即可在赛前确认某题已被
@@ -163,13 +195,6 @@ export async function createSelfTest(
   if (problem.is_objective) {
     throw new BadRequestError("客观题不支持代码自测");
   }
-
-  // 验证语言（与正式提交保持一致）
-  assertSubmissionLanguage(
-    problem.submission_mode,
-    input.language,
-    Object.keys(LANGUAGE_EXT_MAP),
-  );
 
   // 生成文件默认名
   const fileName = input.language === UI_LANGUAGE
@@ -189,6 +214,11 @@ export async function createSelfTest(
     throw new BadRequestError("自测必须选择已发布的编程题版本");
   }
   const versionContent = versionResolution.version.content;
+  assertSubmissionLanguage(
+    versionContent.kind === "ai" ? versionContent.submission_mode : "code",
+    input.language,
+    Object.keys(LANGUAGE_EXT_MAP),
+  );
   const download_url = await versionSupportPackageDownload(
     versionResolution.version.version_id,
   );
@@ -245,6 +275,11 @@ export async function createSelfTest(
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
+  await consumeDomainSubmissionQuota(
+    domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
+    userId,
+    id,
+  );
   const runId = crypto.randomUUID();
   const llmConfig = versionContent.kind === "ai"
     ? versionContent.llm_config
@@ -252,6 +287,7 @@ export async function createSelfTest(
   // 自测也按唯一 run_id 隔离 LLM 预算；快照只保存冻结配置，不落库短期 token。
   const llmTask = llmConfig && !isOiRuntimeConfig(runtimeConfig)
     ? await buildJudgeTaskLlm(llmConfig, id, problemId, userId, runtimeConfig, {
+      domainId: domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
       attemptId: runId,
       problemVersionId: selfTestVersionId,
     })
@@ -293,24 +329,37 @@ export async function createSelfTest(
   });
 
   try {
-    await db.insert(selfTests).values({
-      id,
-      user_id: userId,
-      problem_id: problemId,
-      language: input.language,
-      code: input.code,
-      file_name: fileName,
-      status: "pending",
-      judge_run_id: task.run_id,
-      // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
-      problem_version_id: selfTestVersionId,
-      task_snapshot: {
-        ...executionSnapshot(task, llmConfig),
-        ...(oiSelfTest ? { self_test_cases: cases } : {}),
-      },
-      created_at: now,
+    await db.transaction(async (tx) => {
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(problemId, userId, tx);
+      await tx.insert(selfTests).values({
+        ...workspace,
+        id,
+        user_id: userId,
+        problem_id: problemId,
+        language: input.language,
+        code: input.code,
+        file_name: fileName,
+        status: "pending",
+        judge_run_id: task.run_id,
+        // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
+        problem_version_id: selfTestVersionId,
+        task_snapshot: {
+          ...executionSnapshot(task, llmConfig, undefined, workspace.domain_id),
+          ...(oiSelfTest ? { self_test_cases: cases } : {}),
+        },
+        created_at: now,
+      });
     });
   } catch (dbErr) {
+    if (dbErr instanceof AppError) throw dbErr;
     logger.error("自测记录插入失败", { err: dbErr });
     throw new AppError(
       "自测失败：数据库写入错误，请稍后重试",
@@ -328,7 +377,7 @@ export async function createSelfTest(
     }).where(
       and(eq(selfTests.id, id), eq(selfTests.status, "pending")),
     );
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
   } catch (mqErr) {
     logger.error("自测任务推送失败", { self_test_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {
@@ -347,7 +396,12 @@ export async function createSelfTest(
           await registerAttemptTerminalRevocation(tx, {
             attemptId: runId,
             submissionId: id,
-            taskSnapshot: executionSnapshot(task, llmConfig),
+            taskSnapshot: executionSnapshot(
+              task,
+              llmConfig,
+              undefined,
+              domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
+            ),
           });
         }
       });
@@ -432,6 +486,7 @@ export async function listMySelfTests(
 export async function getSelfTest(
   id: string,
   c: Context,
+  domainAccess?: { domainId: string; canReadDetails: boolean },
 ): Promise<SelfTestDetail> {
   const db = getDb();
 
@@ -446,10 +501,19 @@ export async function getSelfTest(
   }
 
   const row = rows[0];
+  if (
+    domainAccess
+      ? row.domain_id !== domainAccess.domainId
+      : row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID
+  ) {
+    throw new NotFoundError("默认域不存在此自测");
+  }
 
   // 权限：owner 或 admin 可读
   const isOwner = !!c.var.userId && row.user_id === c.var.userId;
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = domainAccess
+    ? domainAccess.canReadDetails
+    : await checkPermission(c, "submission:read_all");
   if (!isOwner && !isAdmin) {
     throw new NotFoundError("自测不存在");
   }
@@ -459,7 +523,11 @@ export async function getSelfTest(
   const output = outputTruncated
     ? rawOutput.slice(0, MAX_OUTPUT_LENGTH)
     : rawOutput;
-  const details = parseDetails(row.details);
+  const parsedDetails = parseDetails(row.details);
+  const isOi = oiVerdict(parsedDetails) !== undefined;
+  const details = isOi
+    ? { oi: projectOiSelfTestDetails(parsedDetails!.oi) }
+    : parsedDetails;
 
   return {
     id: row.id,
@@ -474,8 +542,8 @@ export async function getSelfTest(
     status: row.status as SelfTestStatus,
     result_status: row.result_status,
     score: row.score,
-    output,
-    output_truncated: outputTruncated,
+    output: isOi ? null : output,
+    output_truncated: isOi ? null : outputTruncated,
     details,
     time_ms: row.time_ms,
     memory_kb: row.memory_kb,
@@ -573,6 +641,10 @@ export async function saveSelfTestResult(
 
   if (outcome === true) {
     await runAttemptTerminalRevocationAfterCommit(result.run_id);
+    await publishSseEvent(Channels.submission(result.submission_id), {
+      type: "self-test:updated",
+      id: result.submission_id,
+    });
   }
   return outcome === true;
 }

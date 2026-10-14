@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛题目固定版本测试（Handbook §4.1/§4.3）。
  *
@@ -7,6 +10,7 @@
  * - 编辑竞赛会整体替换题目关联，但必须保留既有固定版本（否则改名/改时间等于静默换版）；
  * - 新加入竞赛的题目按当前最新已发布版固定；题库尚无已发布版本的题目固定为 null（存量路径）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { and, eq } from "drizzle-orm";
@@ -46,10 +50,10 @@ async function createUser(prefix: string): Promise<string> {
 /** 建一道带 AI 版本内容的题（visibility 默认 public，任何登录用户可加入竞赛）。 */
 async function createProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -99,6 +103,7 @@ async function publishVersion(
   await getDb().update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return versionId;
 }
 
@@ -289,12 +294,13 @@ Deno.test({
       id: "cp-pin-sub-1",
       user_id: solverId,
       problem_id: "cp-pin-p5",
+      ...await problemExecutionForTest("cp-pin-p5"),
       contest_id: contest.id,
       language: "python",
       code: "print(1)",
       submitted_version_id: v1,
       version_origin: "known",
-      created_at: now,
+      created_at: contest.start_time,
     });
     const attempted = await getContestProblems(contest.id, solverId);
     assertEquals(attempted[0].user_status, "attempted");
@@ -338,6 +344,6 @@ Deno.test({
     await getDb().delete(problemVersions).where(
       eq(problemVersions.problem_id, "cp-pin-p5"),
     );
-    await getDb().delete(problems).where(eq(problems.id, "cp-pin-p5"));
+    await deleteProblemFixtures(eq(problems.id, "cp-pin-p5"));
   },
 });

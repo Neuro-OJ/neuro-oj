@@ -23,16 +23,17 @@ import {
   problems,
 } from "../../../shared/db/schema.ts";
 import { logAudit } from "../../system/index.ts";
+import { getFormatRanking } from "./format-ranking.ts";
 
 export async function publishContestRankingSnapshot(
   contestId: string,
   actorId: string,
   note = "",
-  options: { allowFailed?: boolean } = {},
+  options: { allowFailed?: boolean; executor?: Executor } = {},
 ): Promise<
   { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
 > {
-  const db = getDb();
+  const db = options.executor ?? getDb();
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
   const result = await db.transaction(async (tx) => {
@@ -70,6 +71,9 @@ export async function publishContestRankingSnapshot(
       .where(eq(contestRankingSnapshots.contest_id, contestId))
       .orderBy(desc(contestRankingSnapshots.version)).limit(1);
     const nextVersion = (latest?.version ?? 0) + 1;
+    if (latest && !note.trim()) {
+      throw new ConflictError("重新发布正式成绩必须填写原因");
+    }
     await tx.insert(contestRankingSnapshots).values({
       id,
       contest_id: contest.id,
@@ -276,8 +280,11 @@ export async function getContestSettlementStatus(
   };
 }
 
-export async function getLatestContestRankingSnapshot(contestId: string) {
-  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+export async function getLatestContestRankingSnapshot(
+  contestId: string,
+  executor: Executor = getDb(),
+) {
+  const [snapshot] = await executor.select().from(contestRankingSnapshots)
     .where(eq(contestRankingSnapshots.contest_id, contestId))
     .orderBy(desc(contestRankingSnapshots.version)).limit(1);
   return snapshot ?? null;
@@ -362,7 +369,7 @@ export async function getKaggleRanking(
   const db = executor ?? getDb();
   const contest = await getContest(contestId, undefined, db);
   if (contest.type !== "kaggle") {
-    throw new BadRequestError("该竞赛不是类 Kaggle 赛制");
+    return await getFormatRanking(contestId, cutoffTime, includeDetails, db);
   }
   const result = await db.execute(sql`
     WITH contest_data AS (
@@ -373,17 +380,20 @@ export async function getKaggleRanking(
     submission_scores AS (
       -- 竞赛计分只取「竞赛口径有效成绩」（Handbook §3.4/§6.6）：
       -- 有效成绩指针指向的已完成正式尝试，不再读 evaluation_results
-      SELECT s.id, s.user_id, s.problem_id, s.created_at, ea.score,
+      SELECT s.id, s.user_id, s.problem_id, s.created_at,
+        ((ea.score::bigint * cp.score + 5000) / 10000)::int AS score,
         ea.result_status AS evaluation_status,
         coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
         ea.sequence AS rejudge_seq, ea.id AS contest_effective_attempt_id, s.submitted_version_id, ea.problem_version_id AS evaluated_version_id
       FROM submissions s
       JOIN evaluation_attempts ea ON ea.id = s.contest_effective_attempt_id
       JOIN contest_data c ON c.id = s.contest_id
+      JOIN contest_problems cp ON cp.contest_id = s.contest_id AND cp.problem_id = s.problem_id
       WHERE s.contest_id = ${contestId}
         AND s.is_contest_valid = TRUE
+        AND s.created_at >= c.start_time
         AND s.created_at <= c.end_time
-        ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
+        ${cutoffTime ? sql`AND s.created_at < ${cutoffTime}` : sql``}
       UNION ALL
       SELECT os.id, os.user_id, os.paper_id, os.created_at, ea.score,
         ea.result_status AS evaluation_status, coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
@@ -393,8 +403,9 @@ export async function getKaggleRanking(
       JOIN contest_data c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
         AND os.is_contest_valid = TRUE
+        AND os.created_at >= c.start_time
         AND os.created_at <= c.end_time
-        ${cutoffTime ? sql`AND os.created_at <= ${cutoffTime}` : sql``}
+        ${cutoffTime ? sql`AND os.created_at < ${cutoffTime}` : sql``}
     ),
     ranked AS (
       SELECT
@@ -638,12 +649,18 @@ export async function getContestRankingView(
   type: ContestType,
   isAdmin = false,
   viewerId?: string,
+  executor: Executor = getDb(),
 ): Promise<ContestRankingResult> {
-  const contest = await getContest(contestId, viewerId);
+  const contest = await getContest(contestId, viewerId, executor);
   if (contest.type !== type) {
     throw new BadRequestError("排名类型与竞赛赛制不一致");
   }
   const window = getContestFreezeWindow(contest);
+  if (!isAdmin && contest.type === "oi" && contest.status === "running") {
+    throw new NotFoundError("OI 赛时成绩榜不可见");
+  }
+  const selfOnly = contest.type === "kaggle" &&
+    contest.config.scoreboard_scope !== "full";
   assertRankingVisibility(
     contest.ranking_visibility,
     isAdmin,
@@ -653,18 +670,18 @@ export async function getContestRankingView(
 
   if (isAdmin) {
     return {
-      rows: await getKaggleRanking(contestId, undefined, true),
+      rows: await getKaggleRanking(contestId, undefined, true, executor),
       view: "live",
       ranking_visibility: contest.ranking_visibility,
       freeze_start_time: window.start,
       freeze_end_time: window.end,
       settlement_pending: contest.status === "ended" &&
-        !await getLatestContestRankingSnapshot(contestId),
+        !await getLatestContestRankingSnapshot(contestId, executor),
     };
   }
 
   const snapshot = contest.status === "ended"
-    ? await getLatestContestRankingSnapshot(contestId)
+    ? await getLatestContestRankingSnapshot(contestId, executor)
     : null;
   if (snapshot) {
     return {
@@ -698,9 +715,16 @@ export async function getContestRankingView(
   if (frozen) {
     // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
     // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
-    const frozenRows = await getKaggleRanking(contestId, window.start!);
+    const frozenRows = await getKaggleRanking(
+      contestId,
+      window.start!,
+      false,
+      executor,
+    );
     return {
-      rows: viewerId === undefined
+      rows: !selfOnly
+        ? frozenRows
+        : viewerId === undefined
         ? []
         : frozenRows.filter((row) => row.user_id === viewerId),
       view: "frozen",
@@ -716,10 +740,10 @@ export async function getContestRankingView(
     throw new ConflictError("竞赛已结束，正式成绩尚未发布");
   }
 
-  const rows = await getKaggleRanking(contestId);
+  const rows = await getKaggleRanking(contestId, undefined, false, executor);
   return {
     // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
-    rows: contest.status === "running"
+    rows: contest.status === "running" && selfOnly
       ? rows.filter((row) => row.user_id === viewerId)
       : rows,
     view: "live",
@@ -759,7 +783,10 @@ export async function getContestRanking(
     // 保留旧服务函数的进行中“仅返回本人”语义；REST 路由使用带元数据的
     // getContestRankingView，可按显式 public 策略返回公开榜。
     const contest = await getContest(contestId, viewerId);
-    if (!isAdmin && contest.status === "running") {
+    if (
+      !isAdmin && contest.status === "running" &&
+      contest.type === "kaggle" && contest.config.scoreboard_scope !== "full"
+    ) {
       return result.rows.filter((row) => row.user_id === viewerId);
     }
     return result.rows;

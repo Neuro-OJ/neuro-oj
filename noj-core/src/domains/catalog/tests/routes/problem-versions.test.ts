@@ -5,18 +5,23 @@
  * 相同内容重复发布（unchanged）、版本列表与指定版本读取（非编辑者答案裁剪）、
  * 非编辑者访问草稿被拒。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
+  problemBindingHistory,
   problemDrafts,
   problems,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  deleteProblemFixtures,
+  jsonRequest,
+} from "../../../../../tests/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -40,20 +45,19 @@ const runtimeConfig = {
   },
 };
 
-/** 建一道题（内容完整，仅用于草稿/版本接口；默认 U 型）。 */
-async function makeDraftProblem(type: "U" | "P" = "U"): Promise<string> {
+/** 建一道默认域题目，内容完整，仅用于草稿与版本接口。 */
+async function makeDraftProblem(): Promise<string> {
   const created = await createProblem({
     title: `草稿路由题 ${ts}_${Math.random().toString(36).slice(2, 8)}`,
     description: "初始题面",
     difficulty: "easy",
     samples: [],
     runtime_config: runtimeConfig,
-    type,
   });
   return created.id;
 }
 
-/** 管理员 token（U 型非 owner 需要 problem:write_any）。 */
+/** 管理员凭据通过实际平台治理权限编辑他人题目。 */
 async function adminToken(): Promise<string> {
   const { createUserToken } = await import("../../../../../tests/helper.ts");
   return await createUserToken("admin");
@@ -325,7 +329,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problem versions route: 删除带版本的题目清理干净（不再被外键阻塞）",
+  name: "problem versions route: 有版本的源题拒绝物理删除并保留草稿及版本",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -353,29 +357,26 @@ Deno.test({
 
     const db = getDb();
     const { deleteProblem, getProblemDraft } = await import("../../index.ts");
-    // 版本、草稿与文件引用都必须先清理，否则 problems 行删不掉（NO ACTION 外键）
-    await deleteProblem(problemId, undefined, "admin");
+    const error = await assertRejects(
+      () => deleteProblem(problemId, undefined, "admin"),
+      AppError,
+    );
+    assertEquals(error.statusCode, 409);
+    assertEquals(error.code, "SOURCE_HAS_RETAINED_REFERENCES");
 
     const [problemRow] = await db.select().from(problems).where(
       eq(problems.id, problemId),
     );
-    assertEquals(problemRow, undefined);
+    assertEquals(problemRow.id, problemId);
     const versionRows = await db.select().from(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    assertEquals(versionRows.length, 0);
+    assertEquals(versionRows.length, 1);
     const draftRows = await db.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     );
-    assertEquals(draftRows.length, 0);
-    // 删除后再读草稿：题目已不存在 → 明确 404（不返回幽灵草稿）
-    let code: string | undefined;
-    try {
-      await getProblemDraft(problemId);
-    } catch (err) {
-      code = (err as { code?: string }).code;
-    }
-    assertEquals(code, "PROBLEM_NOT_FOUND");
+    assertEquals(draftRows.length, 1);
+    assertEquals((await getProblemDraft(problemId)).problem_id, problemId);
   },
 });
 
@@ -514,7 +515,10 @@ Deno.test({
     assertEquals(afterBody.version_id, versionId);
     assertEquals(afterBody.latest_version, 1);
 
-    // 清理顺序：草稿（base_version_id 为 NO ACTION）→ 最新版指针 → 版本行
+    // 隔离测试清理先移除绑定沿革引用，再清除草稿、指针和版本。
+    await getDb().delete(problemBindingHistory).where(
+      eq(problemBindingHistory.problem_id, problemId),
+    );
     await getDb().delete(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     );
@@ -538,15 +542,16 @@ Deno.test({
     const { publishBaselineVersionForTest } = await import(
       "../../../../../tests/helper.ts"
     );
-    // 直接落一行 P 型公开题（无已发布版本）：模拟"新建但尚未发布"
+    // 显式公开题（无已发布版本），不能依赖已移除的题库分类决定可见性。
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: `未发布列表题 ${ts}`,
       description: "草稿题面",
       difficulty: "easy",
-      type: "P",
+      visibility: "public",
       number: 8900000 + (ts % 10000),
       owner_id: "0",
       created_at: now,
@@ -575,7 +580,7 @@ Deno.test({
     await getDb().delete(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    await getDb().delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -708,7 +713,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const problemId = await makeDraftProblem("U");
+    const problemId = await makeDraftProblem();
     const app = createApp();
     const token = await adminToken();
     const auth = { Authorization: `Bearer ${token}` };
@@ -772,7 +777,11 @@ Deno.test({
         headers: auth,
         body: {
           policy: { mode: "exact", version_id: v1Id },
-          expected_revision: 0,
+          expected_revision:
+            (await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+              headers: auth,
+            }).then((response) => response.json())).data
+              .effective_version_policy_revision,
         },
       },
     );
@@ -819,7 +828,6 @@ Deno.test({
       difficulty: "easy",
       samples: [],
       runtime_config: runtimeConfig,
-      type: "U",
       visibility: "public",
     });
     const problemId = created.id;
@@ -899,3 +907,5 @@ Deno.test({
     );
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

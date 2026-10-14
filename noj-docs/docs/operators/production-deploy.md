@@ -285,39 +285,44 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 `-dirty`）、构建时间取进程启动时刻——因此本地页脚显示的 `-dirty`
 是正常现象，表示图像来自未提交的工作区。
 
-### 升级前检查：题目引用的 LLM Provider 是否为用户自建
+### LLM 配置迁移：历史 BYOK 与当前域配置 {#升级前检查题目引用的-llm-provider-是否为用户自建}
 
-**适用版本**：升级到移除 BYOK 的版本（`llm_providers.created_by`
-列被删除）时必查。
+当前版本按**使用域**选择 Provider 和模型。已有平台 Provider、用量及默认配置 归入
+`main`；其他域需要独立配置。题目版本中旧的 Provider、模型字段保留为
+历史内容，不参与新的执行选择。不要通过清空题目 LLM 配置迁移 Provider：
+题目仍需保留 LLM 能力和单次预算，历史版本也保持不可变。
 
-在删除 BYOK 的迁移中，gateway 会执行
-`DELETE FROM llm_providers WHERE created_by <> '0'`（永久删除用户自建 Provider
-及其加密 Key）。**历史上题目的 `problems.llm_config->>'provider_id'` 可以指向
-用户自建 Provider**（题目保存时的校验只检查 Provider 存在且启用，不校验归属），
-因此这类题目的引用会在升级后变成悬空：提交仍会被接受，但评测时 gateway 返回 400
-`provider_not_found`，表现为"LLM 题评测静默失败"。
+如果跨越较早的 BYOK 移除版本，仍需核实历史密钥：Gateway 的
+`0002_remove_byok_created_by.sql` 删除 `created_by <> '0'` 的用户自建 Provider
+及其加密密钥，然后移除 `created_by`。这是**旧 Provider 记录的收缩迁移**，
+不代表当前域模型从题目字段中选取。已经应用该迁移的实例不用重复执行旧
+字段查询；不能从题目中的旧 Provider ID 判断当前域是否已经配置可用模型。
 
-升级**之前**用下面的 SQL 核查（`psql` 连到生产库）：
+可执行的升级顺序：
 
-```sql
--- 列出会被删除、但已被题目引用的用户 Provider
-SELECT p.id AS problem_id, p.title, p.llm_config->>'provider_id' AS provider_id
-FROM problems p
-JOIN llm_providers lp ON lp.id = p.llm_config->>'provider_id'
-WHERE lp.created_by <> '0';
-```
+1. 维护窗口前保存完整备份和 Gateway 密钥加密配置，核对已应用的 Gateway 迁移。若
+   `0002` 尚未应用，先盘点需要保留的旧用户自建服务及管理授权。
+2. 在仍有 `created_by` 的旧 Gateway 数据库中，可用下面的只读查询记录服务
+   信息。备份保存加密密钥；不要把解密后的密钥写进日志或工单。
 
-::: warning 悬空 Provider 引用会导致 LLM 题静默失败
+   ```sql
+   SELECT id, name, base_url, enabled, created_by
+   FROM llm_providers
+   WHERE created_by <> '0';
+   ```
 
-- **结果为空**：直接升级。
-- **有结果**：先把这些题目的 LLM 配置改为平台 Provider（管理端编辑题目即可），
-  或按需清空（`UPDATE problems SET llm_config = NULL WHERE id = '<problem_id>'`），
-  再执行升级。升级后这类题目的**编辑保存**也会以 「LLM Provider
-  不存在或已停用」失败，因此不要留到升级后再处理。 :::
+3. 使用同一目标 Release 协调升级 core、Gateway、Judge、UI 和客户端，执行
+   该版本的迁移与初始化。旧平台 Provider 和用量归默认域；新学校不继承其密钥。
+4. 登录各使用域“LLM”页，核对或配置启用的 Provider、默认模型及日/月额度。
+   原用户自建服务如仍需使用，经授权在目标域重新配置有效凭据；源题字段不会
+   自动重建它们。已有域设置不会在重启时被旧平台默认值覆盖。
+5. 用普通域成员完成一次该域 LLM 题提交，确认调用成功、用量记录属于该域，
+   引用公共题时也不使用来源域密钥。缺本域配置或服务停用会明确拒绝新调用。
 
-> 升级后若怀疑存在遗漏，可再查一次悬空引用：
-> `SELECT id, title FROM problems WHERE llm_config->>'provider_id' IS NOT NULL
-> AND llm_config->>'provider_id' NOT IN (SELECT id FROM llm_providers);`
+每次评测尝试保留当时解析的域、Provider、模型与预算；改变默认模型只影响新
+尝试，不改写已经受理的配置。不同域可以采用不同模型，成绩不承诺可比。
+详细政策与资源上限见[工作空间部署与治理](./workspace-deployment.md)，域内
+操作见[配置本域 LLM](../features/workspaces.md#配置本域-llm)。
 
 ## 5.1 备份、文件校验与隔离恢复演练
 

@@ -5,7 +5,7 @@
  * - problems-types.ts：响应 DTO（ProblemResponse / ProblemListResponse /
  *   AdminProblemList*） + validateRuntimeConfig
  * - problems-list.ts：listProblems / listAllProblems / getProblem /
- *   getProblemByTypeAndNumber + attachTags
+ *   getDefaultDomainProblemByNumber + attachTags
  * - problems-tags.ts：syncProblemTags
  * - problems-crud.ts：createProblem / updateProblem / deleteProblem
  *
@@ -18,14 +18,15 @@
 
 export {
   assertProblemEditPermission,
+  createDomainProblem,
   createProblem,
   deleteProblem,
   updateProblem,
 } from "./problems-crud.ts";
 
 export {
+  getDefaultDomainProblemByNumber,
   getProblem,
-  getProblemByTypeAndNumber,
   listAllProblems,
   listProblems,
 } from "./problems-list.ts";

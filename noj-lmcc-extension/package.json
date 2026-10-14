@@ -38,10 +38,28 @@
     "onCommand:neuroOj.logout",
     "onCommand:neuroOj.refreshProblems",
     "onCommand:neuroOj.selectProblem",
+    "onCommand:neuroOj.selectDomain",
+    "onCommand:neuroOj.openTemplate",
+    "onCommand:neuroOj.showVersions",
     "onCommand:neuroOj.submit"
   ],
   "contributes": {
     "commands": [
+      {
+        "command": "neuroOj.openTemplate",
+        "title": "Neuro OJ: 打开当前版本模板",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "neuroOj.showVersions",
+        "title": "Neuro OJ: 查看题目版本沿革",
+        "icon": "$(history)"
+      },
+      {
+        "command": "neuroOj.selectDomain",
+        "title": "Neuro OJ: 切换工作空间",
+        "icon": "$(organization)"
+      },
       {
         "command": "neuroOj.configureServer",
         "title": "Neuro OJ: 配置服务器地址",
@@ -95,6 +113,11 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "neuroOj.selectDomain",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@0"
+        },
         {
           "command": "neuroOj.configureServer",
           "when": "view == neuroOj.problems",
@@ -171,9 +194,10 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p tsconfig.json",
-    "format:check": "prettier --check \"src/**/*.ts\" package.json tsconfig.json README.md CHANGELOG.md",
+    "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.cjs\" package.json tsconfig.json README.md CHANGELOG.md",
     "check": "npm run format:check && tsc -p tsconfig.json --noEmit",
     "test": "npm run compile && node --test out/test/*.test.js",
+    "test:host": "npm run compile && node scripts/test-extension-host.cjs",
     "package": "npx @vscode/vsce package"
   },
   "devDependencies": {

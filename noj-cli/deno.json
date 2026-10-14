@@ -15,7 +15,8 @@
     "@cliffy/command": "jsr:@cliffy/command@1.2.1",
     "@std/assert": "jsr:@std/assert@^1",
     "@std/path": "jsr:@std/path@^1",
-    "fflate": "npm:fflate@~0.8.3"
+    "fflate": "npm:fflate@~0.8.3",
+    "yaml": "npm:yaml@^2.9.1"
   },
   "compilerOptions": {
     "strict": true,

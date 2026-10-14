@@ -43,6 +43,7 @@ import {
   lockProjectionHosts,
 } from "./projection.ts";
 import {
+  consumeDomainUpgradeQuota,
   consumeUpgradeQuota,
   defaultUpgradeQuotaConsumer,
   ensureJobAttempt,
@@ -51,7 +52,9 @@ import {
   UpgradeQuotaDeferredError,
 } from "./job-attempt.ts";
 import { assertUpgradeAccess } from "./upgrade-access.ts";
+import { assertDomainJobExecution } from "./domain-job-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertExecutionPreflight,
   executionSnapshot,
@@ -84,6 +87,10 @@ export type DispatchOutcome =
 
 /** 源提交（两类统一视图）。 */
 export interface DispatchSource {
+  domain_id?: string | null;
+  domain_problem_binding_id?: string | null;
+  assignment_id?: string | null;
+  assignment_item_id?: string | null;
   id: string;
   problem_id: string;
   user_id: string;
@@ -106,6 +113,10 @@ async function loadSource(
   if (item.source_kind === "submission") {
     const [row] = await db.select({
       id: submissions.id,
+      domain_id: submissions.domain_id,
+      domain_problem_binding_id: submissions.domain_problem_binding_id,
+      assignment_id: submissions.assignment_id,
+      assignment_item_id: submissions.assignment_item_id,
       problem_id: submissions.problem_id,
       user_id: submissions.user_id,
       language: submissions.language,
@@ -120,6 +131,10 @@ async function loadSource(
   }
   const [row] = await db.select({
     id: objectiveSubmissions.id,
+    domain_id: objectiveSubmissions.domain_id,
+    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
+    assignment_id: objectiveSubmissions.assignment_id,
+    assignment_item_id: objectiveSubmissions.assignment_item_id,
     problem_id: objectiveSubmissions.paper_id,
     user_id: objectiveSubmissions.user_id,
     language: objectiveSubmissions.submission_type,
@@ -135,6 +150,10 @@ async function loadSource(
   if (!row) return null;
   return {
     id: row.id,
+    domain_id: row.domain_id,
+    domain_problem_binding_id: row.domain_problem_binding_id,
+    assignment_id: row.assignment_id,
+    assignment_item_id: row.assignment_item_id,
     problem_id: row.problem_id,
     user_id: row.user_id,
     language: "objective",
@@ -262,6 +281,9 @@ async function dispatchClaimedJobItem(
     return "skipped";
   }
 
+  if (!item.attempt_id) {
+    await assertDomainJobExecution(item, source, jobKind);
+  }
   if (jobKind === "upgrade" && !item.attempt_id) {
     await assertUpgradeAccess(item, source, upgradeContext);
   }
@@ -353,6 +375,9 @@ async function dispatchClaimedJobItem(
     try {
       // 重判与源行锁复查放在同一事务：锁内发现源已删除/正在评测 → skipped（#8）
       await getDb().transaction(async (tx) => {
+        if (!item.attempt_id) {
+          await assertDomainJobExecution(item, source, "rejudge", tx);
+        }
         // Handbook §5.1：先锁题库与竞赛宿主，再锁客观题提交行。
         // 与策略切换重算保持相同的 host → source 顺序，避免双方互等。
         await lockProjectionHosts(tx, {
@@ -578,6 +603,7 @@ async function dispatchJudgeAttempt(input: {
         {
           // 同一尝试重派共享预算：重新签发 token 不重置额度
           attemptId,
+          domainId: source.domain_id ?? DEFAULT_DOMAIN_ID,
           problemVersionId: targetVersionId,
           frozen: frozenLlm,
         },
@@ -613,7 +639,12 @@ async function dispatchJudgeAttempt(input: {
       attemptId,
       destinationId,
       taskSnapshot: {
-        ...executionSnapshot(task, llmConfig, previousSnapshot),
+        ...executionSnapshot(
+          task,
+          llmConfig,
+          previousSnapshot,
+          source.domain_id ?? DEFAULT_DOMAIN_ID,
+        ),
         batch_job_id: item.job_id,
         submission_mode: content.kind === "ai"
           ? content.submission_mode
@@ -757,6 +788,12 @@ async function dispatchObjectiveUpgrade(input: {
   );
   try {
     await db.transaction(async (tx) => {
+      const execution = await assertDomainJobExecution(
+        item,
+        source,
+        "upgrade",
+        tx,
+      );
       // Handbook §5.1：先锁来源题库与竞赛，再锁客观题源行；随后才能创建副本、
       // 分配 revision 并创建新尝试。策略重算使用同一宿主 → 来源提交顺序。
       await lockProjectionHosts(tx, {
@@ -768,7 +805,17 @@ async function dispatchObjectiveUpgrade(input: {
       // 锁内复查源：预检期间被删除/换活动尝试 → skipped（#8），且不留副本
       await assertObjectiveSourceDispatchable(tx, source.id);
       const newId = crypto.randomUUID();
+      await consumeDomainUpgradeQuota(
+        execution.domain_id,
+        source.user_id,
+        item.id,
+        tx,
+      );
       await tx.insert(objectiveSubmissions).values({
+        domain_id: execution.domain_id,
+        domain_problem_binding_id: execution.domain_problem_binding_id,
+        assignment_id: source.assignment_id,
+        assignment_item_id: source.assignment_item_id,
         id: newId,
         paper_id: source.problem_id,
         user_id: source.user_id,

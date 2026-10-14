@@ -19,6 +19,8 @@ export interface ProviderInput {
 
 export interface ProviderRow {
   id: string;
+  revision: number;
+  domain_id: string;
   name: string;
   base_url: string;
   cost_per_1k_tokens: number;
@@ -34,6 +36,8 @@ export interface ProviderRow {
 
 export interface ProviderView {
   id: string;
+  revision: number;
+  domain_id: string;
   name: string;
   base_url: string;
   cost_per_1k_tokens: number;
@@ -67,6 +71,8 @@ export function maskApiKey(key: string): string {
 function toView(row: ProviderRow, apiKey: string): ProviderView {
   return {
     id: row.id,
+    revision: row.revision,
+    domain_id: row.domain_id,
     name: row.name,
     base_url: row.base_url,
     cost_per_1k_tokens: row.cost_per_1k_tokens,
@@ -103,10 +109,11 @@ export function normalizeRateLimit(value: unknown): number {
 export async function listProviders(
   db: Db,
   storeKey: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
 ): Promise<ProviderView[]> {
   const rows = await db<
     ProviderRow[]
-  >`SELECT * FROM llm_providers ORDER BY created_at DESC`;
+  >`SELECT * FROM llm_providers WHERE domain_id = ${domainId} ORDER BY created_at DESC`;
   const views: ProviderView[] = [];
   for (const row of rows) {
     let apiKey = "";
@@ -124,10 +131,11 @@ export async function listProviders(
 export async function getProviderById(
   db: Db,
   id: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
 ): Promise<ProviderRow | null> {
   const rows = await db<
     ProviderRow[]
-  >`SELECT * FROM llm_providers WHERE id = ${id}`;
+  >`SELECT * FROM llm_providers WHERE id = ${id} AND domain_id = ${domainId}`;
   return rows[0] ?? null;
 }
 
@@ -136,8 +144,9 @@ export async function getProviderSecret(
   db: Db,
   id: string,
   storeKey: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
 ): Promise<{ provider: ProviderRow; apiKey: string }> {
-  const provider = await getProviderById(db, id);
+  const provider = await getProviderById(db, id, domainId);
   if (!provider) {
     throw new Error("provider_not_found");
   }
@@ -150,6 +159,7 @@ export async function createProvider(
   db: Db,
   input: ProviderInput,
   storeKey: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
 ): Promise<ProviderView> {
   const rawCost = input.cost_per_1k_tokens ?? 0;
   const cost = Number(rawCost);
@@ -164,12 +174,12 @@ export async function createProvider(
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
-    INSERT INTO llm_providers (id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, rpm_limit, tpm_limit, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${cost}, ${encrypted}, ${
+    INSERT INTO llm_providers (id, domain_id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, rpm_limit, tpm_limit, created_at, updated_at)
+    VALUES (${id}, ${domainId}, ${input.name}, ${input.base_url}, ${cost}, ${encrypted}, ${
     input.enabled ?? true
   }, ${rpmLimit}, ${tpmLimit}, ${createdAt}, ${createdAt})
   `;
-  const row = await getProviderById(db, id);
+  const row = await getProviderById(db, id, domainId);
   if (!row) throw new Error("provider_not_found");
   return toView(row, input.api_key);
 }
@@ -191,8 +201,10 @@ export async function updateProvider(
     >
   >,
   storeKey: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
+  expectedRevision: number,
 ): Promise<ProviderView> {
-  const existing = await getProviderById(db, id);
+  const existing = await getProviderById(db, id, domainId);
   if (!existing) {
     throw new Error("provider_not_found");
   }
@@ -237,35 +249,38 @@ export async function updateProvider(
     sets.push(`encrypted_api_key = $${params.length}`);
   }
 
-  params.push(updatedAt, id);
+  params.push(updatedAt, id, domainId, expectedRevision);
   const offset = sets.length + 1;
   const setSql = sets.length > 0
     ? `${sets.join(", ")}, updated_at = $${offset}`
     : `updated_at = $1`;
-  await db.unsafe(
-    `UPDATE llm_providers SET ${setSql} WHERE id = $${offset + 1}`,
+  const rows = await db.unsafe<ProviderRow[]>(
+    `UPDATE llm_providers SET ${setSql}, revision = revision + 1 WHERE id = $${
+      offset + 1
+    } AND domain_id = $${offset + 2} AND revision = $${offset + 3} RETURNING *`,
     params,
   );
-
-  const row = await getProviderById(db, id);
-  if (!row) {
-    throw new Error("provider_not_found");
-  }
+  const row = rows[0];
+  if (!row) throw new Error("revision_conflict");
   const apiKey = input.api_key ??
     (await decryptSecret(row.encrypted_api_key, storeKey).catch(() => ""));
   return toView(row, apiKey);
 }
 
-/** 删除 Provider。 */
+/** 停用 Provider；历史尝试的配置依据保留。 */
 export async function deleteProvider(
   db: Db,
   id: string,
+  domainId = "00000000-0000-4000-8000-000000000001",
+  expectedRevision: number,
 ): Promise<boolean> {
-  const row = await getProviderById(db, id);
+  const row = await getProviderById(db, id, domainId);
   if (!row) {
     return false;
   }
-  await db`DELETE FROM llm_providers WHERE id = ${id}`;
+  const updated =
+    await db`UPDATE llm_providers SET enabled = false, updated_at = ${now()}, revision = revision + 1 WHERE id = ${id} AND domain_id = ${domainId} AND revision = ${expectedRevision} RETURNING id`;
+  if (!updated.length) throw new Error("revision_conflict");
   return true;
 }
 
@@ -282,17 +297,18 @@ export async function testProviderConnection(
   model: string,
   allowedHosts: Set<string> = new Set(),
   resolve?: ResolveFn,
+  domainId = "00000000-0000-4000-8000-000000000001",
 ): Promise<void> {
   if (!model.trim()) {
     throw new Error("model_required");
   }
-  const row = await getProviderById(db, id);
+  const row = await getProviderById(db, id, domainId);
   if (!row) {
     throw new Error("provider_not_found");
   }
   const baseUrl = row.base_url;
   await assertResolvesPublic(baseUrl, allowedHosts, resolve);
-  const { apiKey } = await getProviderSecret(db, id, storeKey);
+  const { apiKey } = await getProviderSecret(db, id, storeKey, domainId);
   let response: Response;
   try {
     response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {

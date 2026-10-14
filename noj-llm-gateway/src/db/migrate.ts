@@ -11,6 +11,7 @@ import { logger } from "../logger.ts";
 export async function runMigrations(databaseUrl: string): Promise<void> {
   const sql = postgres(databaseUrl, { max: 1 });
   try {
+    await sql`SELECT pg_advisory_lock(184789, 1)`;
     await sql`
       CREATE TABLE IF NOT EXISTS llm_schema_migrations (
         id serial PRIMARY KEY,
@@ -36,14 +37,18 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       if (applied.length > 0) continue;
 
       const content = await Deno.readTextFile(resolve(dir, file));
-      await sql.unsafe(content);
-      await sql`
-        INSERT INTO llm_schema_migrations (name, applied_at)
-        VALUES (${file}, ${new Date().toISOString()})
-      `;
+      await sql.begin(async (tx) => {
+        await tx.unsafe(content);
+        await tx`INSERT INTO llm_schema_migrations (name, applied_at)
+          VALUES (${file}, ${new Date().toISOString()})`;
+      });
       logger.info("已应用迁移: {file}", { file });
     }
   } finally {
-    await sql.end();
+    try {
+      await sql`SELECT pg_advisory_unlock(184789, 1)`;
+    } finally {
+      await sql.end();
+    }
   }
 }

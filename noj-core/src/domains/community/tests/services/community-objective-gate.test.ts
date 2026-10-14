@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 题解通过门槛统一聚合回归（Handbook §3.4/§6.6，缺陷 #51）。
  *
@@ -5,6 +7,7 @@
  * 全局排行一致地覆盖**两类正式提交**。修复前只查 `submissions`，仅通过客观题
  * （满分即通过）的用户无法发布题解。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -21,6 +24,8 @@ await resetDbForTest({ refreshRankings: true });
 
 const now = new Date().toISOString();
 const FULL_SCORE = 10000;
+
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 async function seedUser(prefix: string): Promise<string> {
   const id = crypto.randomUUID();
@@ -42,6 +47,7 @@ async function seedProblem(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `门槛-${number}`,
     description: "d",
@@ -49,11 +55,11 @@ async function seedProblem(
     runtime_config: null,
     number,
     owner_id: "0",
-    type: objective ? "U" : "P",
     is_objective: objective,
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -67,6 +73,7 @@ async function seedObjectiveSubmission(
   await getDb().insert(objectiveSubmissions).values({
     id: submissionId,
     paper_id: paperId,
+    ...await problemExecutionForTest(paperId),
     user_id: userId,
     submission_type: "practice",
     answers: {},
@@ -119,6 +126,7 @@ Deno.test({
         id: codeSubmissionId,
         user_id: codePasser,
         problem_id: codeProblemId,
+        ...await problemExecutionForTest(codeProblemId),
         language: "python3",
         code: "print(1)",
         status: "finished",
@@ -169,7 +177,7 @@ Deno.test({
       await db.delete(submissions).where(
         eq(submissions.problem_id, codeProblemId),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [paperId, codeProblemId]),
       );
       await db.delete(users).where(

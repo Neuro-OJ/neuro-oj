@@ -75,11 +75,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
-      config: {
-        penalty_minutes: 20,
-        freeze_time: null,
-        unfreeze_after_end: true,
-      },
+      config: {},
       is_public: true,
       affect_global_ranking: false,
       problems: [{
@@ -175,11 +171,7 @@ e2eTest(
         start_time: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
         end_time: new Date(now - 60 * 60 * 1000).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
+        config: {},
         is_public: true,
         affect_global_ranking: false,
         problems: [{
@@ -211,11 +203,7 @@ e2eTest(
         start_time: new Date(now + 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 120 * 60 * 1000).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
+        config: {},
         is_public: true,
         affect_global_ranking: false,
         problems: [{
@@ -269,11 +257,7 @@ e2eTest(
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 60 * 60 * 1000).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
+        config: {},
         is_public: true,
         affect_global_ranking: false,
         problems: [{

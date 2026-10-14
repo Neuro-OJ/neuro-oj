@@ -40,6 +40,17 @@ import { invalidateBanCache } from "./../../../identity/index.ts";
 import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { parseStorageUrl } from "./../../../system/index.ts";
+import {
+  communityDb,
+  communityDomainId,
+  communityDomainWhere,
+  communityResourceVisible,
+  type CommunityScope,
+  loadCommunityScope,
+} from "./community-scope.ts";
+import { withDefaultCommunity } from "./domain-community.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../workspace/index.ts";
+import { getPost } from "./community-post-crud.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 
@@ -63,7 +74,15 @@ export async function createReport(
     category?: string;
   },
   moderator = false,
-) {
+  scope?: CommunityScope,
+): Promise<typeof communityReports.$inferSelect> {
+  if (!scope && (input.post_id || input.comment_id)) {
+    return await withDefaultCommunity(
+      reporterId,
+      { write: true, moderator },
+      (current) => createReport(reporterId, input, moderator, current),
+    );
+  }
   assertCommunityEnabled();
   const targetCount = [input.post_id, input.comment_id, input.message_id]
     .filter((x) => !!x).length;
@@ -75,11 +94,15 @@ export async function createReport(
   if (!category || !REPORT_CATEGORIES.includes(category as ReportCategory)) {
     throw new ValidationError("请选择举报分类");
   }
-  const db = getDb();
+  const db = communityDb(scope);
+  if (scope && input.message_id) {
+    throw new ValidationError("私信举报属于统一账号治理入口");
+  }
   let contentSnapshot = "";
   let contentType = "post";
   let targetFilter;
   if (input.post_id) {
+    if (scope) await getPost(input.post_id, reporterId, moderator, scope);
     const target = await db.select({
       id: communityPosts.id,
       content: communityPosts.content,
@@ -87,7 +110,12 @@ export async function createReport(
       type: communityPosts.type,
       problem_id: communityPosts.problem_id,
       author_id: communityPosts.author_id,
-    }).from(communityPosts).where(eq(communityPosts.id, input.post_id)).limit(
+    }).from(communityPosts).where(
+      and(
+        eq(communityPosts.id, input.post_id),
+        communityDomainWhere(communityPosts.domain_id, scope),
+      ),
+    ).limit(
       1,
     );
     if (!target[0] || target[0].status === "deleted") {
@@ -106,7 +134,11 @@ export async function createReport(
     if (
       !moderator && target[0].author_id !== reporterId &&
       target[0].problem_id &&
-      await isProblemInUnendedPublicContest(target[0].problem_id)
+      await isProblemInUnendedPublicContest(
+        target[0].problem_id,
+        communityDomainId(scope),
+        db,
+      )
     ) {
       throw new NotFoundError("举报目标不存在");
     }
@@ -121,23 +153,32 @@ export async function createReport(
       // 评论所在帖子的门控信息：评论讨论同样会泄露赛期题目内容
       post_type: communityPosts.type,
       post_problem_id: communityPosts.problem_id,
+      post_id: communityPosts.id,
     }).from(communityComments)
       .innerJoin(
         communityPosts,
         eq(communityPosts.id, communityComments.post_id),
       )
       .where(
-        eq(communityComments.id, input.comment_id),
+        and(
+          eq(communityComments.id, input.comment_id),
+          communityDomainWhere(communityComments.domain_id, scope),
+        ),
       ).limit(1);
     if (!target[0] || target[0].status === "deleted") {
       throw new NotFoundError("举报目标不存在");
     }
+    if (scope) await getPost(target[0].post_id, reporterId, moderator, scope);
     // 与帖子举报同口径：评论所属帖子处于赛期门控时一并隐藏（High#3/#4）
     // 窗口口径 = unended（含 pending），见上方帖子举报处的说明（审计 N-02）。
     if (
       !moderator && target[0].author_id !== reporterId &&
       target[0].post_type === "solution" && target[0].post_problem_id &&
-      await isProblemInUnendedPublicContest(target[0].post_problem_id)
+      await isProblemInUnendedPublicContest(
+        target[0].post_problem_id,
+        communityDomainId(scope),
+        db,
+      )
     ) {
       throw new NotFoundError("举报目标不存在");
     }
@@ -185,6 +226,7 @@ export async function createReport(
   if (reason.length > 500) throw new ValidationError("举报原因最多 500 个字符");
   const report = {
     id: crypto.randomUUID(),
+    domain_id: input.message_id ? null : communityDomainId(scope),
     reporter_id: reporterId,
     post_id: input.post_id ?? null,
     comment_id: input.comment_id ?? null,
@@ -197,6 +239,8 @@ export async function createReport(
     resolution: null,
     resolved_by: null,
     resolved_at: null,
+    ban_id: null,
+    sanction_id: null,
     updated_at: nowIso(),
     created_at: nowIso(),
   };
@@ -213,6 +257,8 @@ export async function createReport(
       status: "pending",
       message: "你的举报已提交，等待管理员审核中",
     },
+    scope,
+    report.domain_id ?? undefined,
   );
   return report;
 }
@@ -224,11 +270,36 @@ export async function createReport(
  */
 export function listReports(
   status: "pending" | "resolved" | "dismissed" | "all" = "pending",
+  scope?: CommunityScope,
+  accountMessages: "only" | "include" | "exclude" = scope
+    ? "exclude"
+    : "include",
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const conditions = status === "all"
     ? []
     : [eq(communityReports.status, status)];
+  const contentWhere = and(
+    communityDomainWhere(communityReports.domain_id, scope),
+    sql`EXISTS (
+    SELECT 1 FROM community_posts WHERE community_posts.id = coalesce(${communityReports.post_id},
+      (SELECT report_comment.post_id FROM community_comments report_comment WHERE report_comment.id = ${communityReports.comment_id}))
+      AND ${communityDomainWhere(communityPosts.domain_id, scope)} AND ${
+      communityResourceVisible(scope)
+    }
+  )`,
+  );
+  const messageWhere = and(
+    eq(communityReports.content_type, "message"),
+    isNull(communityReports.domain_id),
+  );
+  conditions.push(
+    accountMessages === "only"
+      ? messageWhere!
+      : accountMessages === "include"
+      ? sql`(${messageWhere} OR ${contentWhere})`
+      : contentWhere!,
+  );
   const targetAuthor = aliasedTable(users, "target_author");
   const resolvedByUser = aliasedTable(users, "resolved_by_user");
   return db.select({
@@ -322,8 +393,10 @@ export async function resolveReport(
   resolution = "",
   banId?: string,
   sanctionId?: string,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
+  if (scope && banId) throw new ValidationError("域治理不能修改全站账号封禁");
   const rows = await db.update(communityReports).set({
     status,
     resolution,
@@ -332,7 +405,12 @@ export async function resolveReport(
     updated_at: nowIso(),
     ban_id: banId ?? undefined,
     sanction_id: sanctionId ?? undefined,
-  }).where(eq(communityReports.id, reportId)).returning();
+  }).where(
+    and(
+      eq(communityReports.id, reportId),
+      communityDomainWhere(communityReports.domain_id, scope),
+    ),
+  ).returning();
   if (!rows[0]) throw new NotFoundError("举报不存在");
   // 通知举报者处理结果（resolved=已处理，dismissed=已驳回）。
   // actor 用 null（系统）而非处理者：当处理者恰好是举报者本人时，
@@ -349,6 +427,8 @@ export async function resolveReport(
       message: status === "resolved" ? "你的举报已处理" : "你的举报已被驳回",
       resolution: resolution || undefined,
     },
+    scope,
+    rows[0].domain_id ?? undefined,
   );
   await logAudit(
     "community.report_resolved",
@@ -359,15 +439,20 @@ export async function resolveReport(
 }
 
 /** 撤销处理/驳回：把举报放回待处理，恢复被隐藏内容并解除关联封禁/禁言。 */
-export async function reopenReport(reportId: string) {
-  const db = getDb();
+export async function reopenReport(reportId: string, scope?: CommunityScope) {
+  const db = communityDb(scope);
   const current = await db.select({
     id: communityReports.id,
     post_id: communityReports.post_id,
     comment_id: communityReports.comment_id,
     ban_id: communityReports.ban_id,
     sanction_id: communityReports.sanction_id,
-  }).from(communityReports).where(eq(communityReports.id, reportId)).limit(1);
+  }).from(communityReports).where(
+    and(
+      eq(communityReports.id, reportId),
+      communityDomainWhere(communityReports.domain_id, scope),
+    ),
+  ).limit(1);
   if (!current[0]) throw new NotFoundError("举报不存在");
 
   // 恢复内容 + 撤销封禁/禁言 + 重置状态需原子化，避免部分成功导致状态不一致
@@ -451,14 +536,19 @@ export async function reopenReport(reportId: string) {
         status: "pending",
         message: "你的举报已重新开启，等待管理员审核",
       },
+      scope,
+      rows[0].domain_id ?? undefined,
     );
   }
   return rows[0];
 }
 
 /** 举报目标信息（处理时需要知道被举报对象与被举报用户）。 */
-export async function getReportTarget(reportId: string) {
-  const db = getDb();
+export async function getReportTarget(
+  reportId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
   const rows = await db.select({
     report: communityReports,
     post: {
@@ -483,7 +573,12 @@ export async function getReportTarget(reportId: string) {
       eq(communityComments.id, communityReports.comment_id),
     )
     .leftJoin(messages, eq(messages.id, communityReports.message_id))
-    .where(eq(communityReports.id, reportId)).limit(1);
+    .where(
+      and(
+        eq(communityReports.id, reportId),
+        communityDomainWhere(communityReports.domain_id, scope),
+      ),
+    ).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
   return rows[0];
 }
@@ -496,7 +591,12 @@ export async function getReportBanScope(
   const rows = await db.select({ scope: userBans.scope })
     .from(communityReports)
     .innerJoin(userBans, eq(userBans.id, communityReports.ban_id))
-    .where(eq(communityReports.id, reportId)).limit(1);
+    .where(
+      and(
+        eq(communityReports.id, reportId),
+        communityDomainWhere(communityReports.domain_id),
+      ),
+    ).limit(1);
   if (!rows[0] || !rows[0].scope) return null;
   return rows[0].scope === "social" ? "social" : "platform";
 }
@@ -517,8 +617,9 @@ export async function getReportDetail(
   reportId: string,
   _viewerId: string,
   moderator = false,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   // 同一张 community_posts 需要出现两次（被举报帖 / 评论的父帖），必须用别名
   // 区分，否则 SQL 里两个同名列引用会产生歧义（评审 #1）。
   const parentPost = aliasedTable(communityPosts, "comment_parent_post");
@@ -575,9 +676,39 @@ export async function getReportDetail(
     .leftJoin(parentPost, eq(parentPost.id, communityComments.post_id))
     .leftJoin(messages, eq(messages.id, communityReports.message_id))
     .leftJoin(userBans, eq(userBans.id, communityReports.ban_id))
-    .where(eq(communityReports.id, reportId)).limit(1);
+    .where(
+      and(
+        eq(communityReports.id, reportId),
+        communityDomainWhere(communityReports.domain_id, scope),
+      ),
+    ).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
   const row = rows[0];
+  if (row.report.reporter_id !== _viewerId && !moderator) {
+    throw new NotFoundError("举报不存在");
+  }
+  if (!scope && row.report.domain_id) {
+    scope = await loadCommunityScope(DEFAULT_DOMAIN_SLUG, _viewerId);
+  }
+  if (scope && (row.post || row.comment)) {
+    try {
+      await getPost(
+        row.post?.id ?? row.comment!.post_id,
+        _viewerId,
+        moderator,
+        scope,
+      );
+    } catch (error) {
+      if (!(error instanceof NotFoundError)) throw error;
+      return {
+        ...row,
+        report: { ...row.report, content_snapshot: "" },
+        post: null,
+        comment: null,
+        parent_post: null,
+      };
+    }
+  }
   // 赛期门控（High#4 / 评审 #1）：非审核员查看存量工单时，剥离被门控的正文与快照。
   // 不抛 404——工单归属已由调用方校验，此处只需不返回受保护正文。
   //
@@ -591,7 +722,11 @@ export async function getReportDetail(
     (row.comment ? row.parent_post?.type : null);
   if (
     !moderator && gatedProblemId && gatedType === "solution" &&
-    await isProblemInUnendedPublicContest(gatedProblemId)
+    await isProblemInUnendedPublicContest(
+      gatedProblemId,
+      communityDomainId(scope),
+      db,
+    )
   ) {
     return {
       ...row,
@@ -616,10 +751,12 @@ export async function createSanction(
   userId: string,
   reason: string,
   expiresAt?: string,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const sanction = {
     id: crypto.randomUUID(),
+    domain_id: communityDomainId(scope),
     user_id: userId,
     reason,
     expires_at: expiresAt ?? null,
@@ -649,13 +786,22 @@ export async function createSanction(
  * @returns 撤销后的社区处罚记录。
  * @throws {NotFoundError} 社区处罚不存在时抛出。
  */
-export async function revokeSanction(actorId: string, sanctionId: string) {
-  const db = getDb();
+export async function revokeSanction(
+  actorId: string,
+  sanctionId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
   const rows = await db.update(communitySanctions).set({
     revoked_at: nowIso(),
     revoked_by: actorId,
     updated_at: nowIso(),
-  }).where(eq(communitySanctions.id, sanctionId)).returning();
+  }).where(
+    and(
+      eq(communitySanctions.id, sanctionId),
+      communityDomainWhere(communitySanctions.domain_id, scope),
+    ),
+  ).returning();
   if (!rows[0]) throw new NotFoundError("社区处罚不存在");
   await logAudit(
     "community.sanction_revoked",
@@ -669,18 +815,23 @@ export async function revokeSanction(actorId: string, sanctionId: string) {
  * 列出全部社区处罚记录，按创建时间倒序。
  * @returns 社区处罚列表。
  */
-export function listSanctions() {
-  const db = getDb();
-  return db.select().from(communitySanctions).orderBy(
+export function listSanctions(scope?: CommunityScope) {
+  const db = communityDb(scope);
+  return db.select().from(communitySanctions).where(
+    communityDomainWhere(communitySanctions.domain_id, scope),
+  ).orderBy(
     desc(communitySanctions.created_at),
   );
 }
 
 /** 某用户的全部社区处罚历史（含已撤销记录），按创建时间倒序。 */
-export function listUserSanctions(userId: string) {
-  const db = getDb();
+export function listUserSanctions(userId: string, scope?: CommunityScope) {
+  const db = communityDb(scope);
   return db.select().from(communitySanctions).where(
-    eq(communitySanctions.user_id, userId),
+    and(
+      eq(communitySanctions.user_id, userId),
+      communityDomainWhere(communitySanctions.domain_id, scope),
+    ),
   ).orderBy(desc(communitySanctions.created_at));
 }
 

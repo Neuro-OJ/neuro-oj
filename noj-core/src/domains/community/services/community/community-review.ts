@@ -20,6 +20,8 @@ import { ForbiddenError } from "./../../../../shared/base/errors.ts";
  */
 
 export interface UgcReviewInput {
+  /** 服务端已解析的使用域，拒绝发布时也保留快照归属。 */
+  domain_id: string;
   content_type: "post" | "comment";
   /** 落库前的目标 ID（block 时内容不会落库，仍记录快照留痕） */
   target_id: string;
@@ -58,6 +60,7 @@ export async function reviewUgcContent(
     text,
     enabled: true,
     meta: {
+      domain_id: input.domain_id,
       author_id: input.author_id,
       title: input.title ?? "",
     },

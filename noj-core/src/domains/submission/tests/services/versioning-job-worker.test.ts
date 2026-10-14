@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务 worker 原语测试（Handbook §5.7）。
  *
@@ -5,6 +7,7 @@
  * （结果早到时不回退终态）、条目终态幂等、指数退避与超限失败、
  * 队列容量不足重新排队（不计失败）、结果回写时自动完成条目并聚合任务状态。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -31,6 +34,8 @@ import {
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import { getRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
 
+await resetDbForTest();
+
 const now = new Date().toISOString();
 
 // 幂等 seed：本文件在**无 preload 事务隔离**（例如单文件直接 `deno test`）时，
@@ -47,8 +52,11 @@ await getDb().insert(users).values({
 /** 建一个含 n 个 pending 条目的任务。 */
 async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
   const db = getDb();
+  await seedProblemAndVersion();
+  const execution = await problemExecutionForTest("jw-prob");
   await db.insert(submissionJobs).values({
     id: jobId,
+    domain_id: execution.domain_id,
     kind: "rejudge",
     actor_id: "jw-admin",
     idempotency_key: `key-${jobId}`,
@@ -62,12 +70,13 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
     const id = `${jobId}-item-${index}`;
     ids.push(id);
     await db.insert(submissionJobItems).values({
+      ...execution,
       id,
       job_id: jobId,
       ordinal: index,
       source_kind: "submission",
       source_id: `src-${index}`,
-      problem_id: `prob-${index}`,
+      problem_id: "jw-prob",
       target_version_id: null,
       status: "pending",
       created_at: now,
@@ -80,10 +89,10 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
 async function seedProblemAndVersion(): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "jw-prob",
     title: "jw",
     description: "d",
-    type: "P",
     number: 994001,
     owner_id: "0",
     judge_type: "dual",
@@ -106,6 +115,7 @@ async function seedProblemAndVersion(): Promise<void> {
 /** 建一条已知提交时版本的提交流（题目需已存在）。 */
 async function seedSubmissionForJob(id: string): Promise<void> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest("jw-prob"),
     id,
     user_id: "0",
     problem_id: "jw-prob",

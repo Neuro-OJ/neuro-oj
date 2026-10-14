@@ -6,6 +6,8 @@ import type {
   ProblemDetail,
   SubmissionDetail,
   User,
+  Domain,
+  DomainProblem,
 } from "./types";
 
 export interface HttpRequest {
@@ -155,9 +157,117 @@ export class NeuroOjApi {
 
   /** 通过公开题目端点验证服务器地址，无需登录或发送已有令牌。 */
   async checkConnection(): Promise<void> {
-    await this.request("/api/v1/problems?page=1&limit=1&type=P", {
+    await this.request("/api/v1/instance", {
       authenticated: false,
     });
+  }
+
+  async domains(): Promise<Domain[]> {
+    return (await this.request<{ data: Domain[] }>("/api/v1/me/domains")).data;
+  }
+
+  async domainProblems(slug: string): Promise<Problem[]> {
+    const items: Problem[] = [];
+    for (let page = 1; ; page++) {
+      const result = await this.request<{
+        items: DomainProblem[];
+        total: number;
+      }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/problems?page=${page}&limit=100`,
+      );
+      for (const problem of result.items) {
+        if (problem.kind === "objective") continue;
+        items.push({
+          id: problem.reference.display_ref,
+          display_id: problem.reference.display_ref,
+          title: problem.title,
+          difficulty: "",
+          is_objective: false,
+          submission_mode: "code",
+        });
+      }
+      if (page * 100 >= result.total || result.items.length === 0) return items;
+    }
+  }
+
+  async domainProblem(
+    slug: string,
+    reference: string,
+  ): Promise<{
+    version_id: string;
+    version: number;
+    supported_languages?: string[];
+    content: { submission_mode?: string; title: string };
+  }> {
+    return await this.request(
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}`,
+    );
+  }
+
+  async submitDomainCode(
+    slug: string,
+    reference: string,
+    code: string,
+    fileName: string,
+    versionId: string,
+  ): Promise<CreatedSubmission> {
+    return (
+      await this.request<{ data: CreatedSubmission }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
+        {
+          method: "POST",
+          body: {
+            problem_ref: reference,
+            language: "python3",
+            code,
+            file_name: fileName,
+            version_id: versionId,
+          },
+        },
+      )
+    ).data;
+  }
+
+  async domainSubmission(slug: string, id: string): Promise<SubmissionDetail> {
+    return (
+      await this.request<{ data: SubmissionDetail }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(id)}`,
+      )
+    ).data;
+  }
+
+  async domainTemplate(
+    slug: string,
+    reference: string,
+    versionId: string,
+  ): Promise<{ version_id: string; template_content: string | null }> {
+    const path = `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}/template`;
+    return (
+      await this.request<{
+        data: { version_id: string; template_content: string | null };
+      }>(`${path}?version_id=${encodeURIComponent(versionId)}`)
+    ).data;
+  }
+
+  async domainVersions(
+    slug: string,
+    reference: string,
+    page = 1,
+  ): Promise<{
+    items: Array<{
+      version_id: string;
+      version: number;
+      change_note: string | null;
+      published_at: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    answer_version_id: string;
+  }> {
+    return await this.request(
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}/versions?page=${page}&limit=20`,
+    );
   }
 
   async listProblems(): Promise<Problem[]> {
