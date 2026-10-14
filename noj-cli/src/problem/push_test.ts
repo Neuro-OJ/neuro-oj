@@ -5,6 +5,7 @@ import { parseProblemArgs } from "./command.ts";
 import {
   extractLoginToken,
   normalizeServer,
+  parsePushTarget,
   pushBundle,
   type PushDeps,
   PushError,
@@ -221,4 +222,92 @@ Deno.test("pushBundle: 平台错误保留错误码，并给出可操作提示", 
     true,
   );
   assertEquals(pushErrorHint(new PushError("x", 500)), null);
+});
+
+Deno.test("pushBundle --problem: 解析题号、携带草稿 revision 写入目标题目", async () => {
+  const TARGET = "11111111-2222-4333-8444-555555555555";
+  const { fetch, calls } = fakeFetch({
+    "/api/v1/problems/P12": () => json(200, { data: { id: TARGET } }),
+    [`/api/v1/problems/${TARGET}/draft`]: () =>
+      json(200, { data: { revision: 7 } }),
+    "/api/v1/problems/import-bundle": () =>
+      json(200, { data: { id: TARGET, display_id: "P12", published: null } }),
+  });
+  const result = await pushBundle(
+    {
+      server: "https://noj.example.com",
+      bundle,
+      publish: true,
+      problem: "P12",
+    },
+    { fetch, io: null, envToken: "tok" },
+  );
+  const upload = calls.at(-1)!;
+  const form = upload.init.body as FormData;
+  assertEquals(form.get("problem_id"), TARGET);
+  assertEquals(form.get("expected_revision"), "7");
+  assertEquals(form.get("publish"), "true");
+  assertEquals(
+    (upload.init.headers as Record<string, string>)["If-Match"],
+    "7",
+  );
+  assertEquals(result.edit_url, "https://noj.example.com/problems/P12/edit");
+});
+
+Deno.test("pushBundle --problem: 返回了别的题目时报错（不能悄悄新建）", async () => {
+  const TARGET = "11111111-2222-4333-8444-555555555555";
+  const { fetch } = fakeFetch({
+    [`/api/v1/problems/${TARGET}/draft`]: () =>
+      json(200, { data: { revision: 1 } }),
+    "/api/v1/problems/import-bundle": () =>
+      json(200, { data: { id: "another-id", display_id: "P99" } }),
+  });
+  await assertRejects(
+    () =>
+      pushBundle(
+        {
+          server: "https://noj.example.com",
+          bundle,
+          publish: false,
+          problem: TARGET,
+        },
+        { fetch, io: null, envToken: "tok" },
+      ),
+    PushError,
+    "不属于目标题目",
+  );
+});
+
+Deno.test("parseProblemArgs: push 支持 --problem", () => {
+  assertEquals(
+    parseProblemArgs(["push", "pkg", "--problem", "P12"]).problem,
+    "P12",
+  );
+});
+
+Deno.test("parsePushTarget: 路径=题号 表示更新；文件名自带的 = 不误判", () => {
+  assertEquals(parsePushTarget("a.zip"), { path: "a.zip" });
+  assertEquals(parsePushTarget("pkg/b.zip=P12"), {
+    path: "pkg/b.zip",
+    problem: "P12",
+  });
+  assertEquals(
+    parsePushTarget("x=11111111-2222-4333-8444-555555555555"),
+    { path: "x", problem: "11111111-2222-4333-8444-555555555555" },
+  );
+  assertEquals(parsePushTarget("weird=name.zip"), { path: "weird=name.zip" });
+});
+
+Deno.test("parseProblemArgs: push 收集全部位置参数作为目标", () => {
+  assertEquals(
+    parseProblemArgs([
+      "push",
+      "a.zip",
+      "b.zip=P12",
+      "c",
+      "--server",
+      "https://x.dev",
+    ]).targets,
+    ["a.zip", "b.zip=P12", "c"],
+  );
 });

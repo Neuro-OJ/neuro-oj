@@ -12,9 +12,12 @@ import { packBundle } from "./pack.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
 import {
   normalizeServer,
+  parsePushTarget,
   pushBundle,
   PushError,
   pushErrorHint,
+  type PushResult,
+  resolveToken,
 } from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
 import { realIO } from "../tui/io.ts";
@@ -43,6 +46,10 @@ export interface ProblemArgs {
   server?: string;
   /** push: 导入后立即发布。 */
   publish: boolean;
+  /** push: 目标题目（题号或 ID），更新既有题目而非新建（仅单个题包时可用）。 */
+  problem?: string;
+  /** push: 全部位置参数（`路径` 或 `路径=题号`），一次登录依次推送。 */
+  targets?: string[];
 }
 
 /** 解析 problem 子命令参数。 */
@@ -102,6 +109,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       case "--publish":
         out.publish = true;
         break;
+      case "--problem":
+        out.problem = takeValue("--problem", i);
+        i++;
+        break;
       case "--strict":
         out.strict = true;
         break;
@@ -129,6 +140,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
+  if (out.sub === "push") out.targets = positional;
   return out;
 }
 
@@ -315,10 +327,38 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   return EXIT_OK;
 }
 
+/** 读取一个推送目标：.zip 原样读取；目录先 lint 再内存打包（有错误返回 null）。 */
+async function loadPushBundle(
+  path: string,
+): Promise<{ name: string; data: Uint8Array } | null> {
+  const target = resolve(path);
+  if (target.toLowerCase().endsWith(".zip")) {
+    try {
+      return { name: bundleSlug(target), data: await Deno.readFile(target) };
+    } catch {
+      throw new UsageError(`无法读取题目包：${target}`);
+    }
+  }
+  const { report, pack } = await packDirectory(target);
+  if (!pack) {
+    console.error(`${target}：`);
+    console.error(formatLintReport(report.findings));
+    return null;
+  }
+  return { name: `${bundleSlug(target)}.zip`, data: pack.data };
+}
+
+/** 单个推送目标的结果（`--json` 输出）。 */
+type PushOutcome =
+  & { target: string; pass: boolean }
+  & Partial<PushResult>
+  & { status?: number; code?: string; error?: string; hint?: string | null };
+
 /**
- * 执行 `problem push`：校验打包（或直接读取 .zip）后推送到平台建题。
+ * 执行 `problem push`：校验打包（或直接读取 .zip）后推送到平台。
  *
- * 位置参数可以是题目目录（先 lint 再内存打包，有错误不上传）或现成的 .zip。
+ * 位置参数可以有多个：`路径` 新建题目，`路径=题号` 更新该题；全部题包先完成本地
+ * 校验（任一失败则不上传），然后**只登录一次**依次推送，单个失败不影响其余。
  */
 export async function runProblemPush(args: ProblemArgs): Promise<number> {
   const server = args.server ?? Deno.env.get("NOJ_SERVER");
@@ -329,72 +369,102 @@ export async function runProblemPush(args: ProblemArgs): Promise<number> {
   }
   // 先校验地址（非本机必须 HTTPS），再读目录/打包：用法错误应尽早失败
   normalizeServer(server);
-  const target = resolve(args.dir ?? Deno.cwd());
 
-  let bundle: { name: string; data: Uint8Array };
-  if (target.toLowerCase().endsWith(".zip")) {
-    try {
-      bundle = { name: bundleSlug(target), data: await Deno.readFile(target) };
-    } catch {
-      throw new UsageError(`无法读取题目包：${target}`);
-    }
-  } else {
-    const { report, pack } = await packDirectory(target);
-    if (!pack) {
-      console.error(formatLintReport(report.findings));
-      return EXIT_FAILURE;
-    }
-    bundle = { name: `${bundleSlug(target)}.zip`, data: pack.data };
+  const rawTargets = args.targets?.length ? args.targets : [Deno.cwd()];
+  if (args.problem && rawTargets.length > 1) {
+    throw new UsageError(
+      "--problem 只能配合单个题包使用；推送多个题包时请写成 路径=题号",
+    );
+  }
+  const targets = rawTargets.map((raw) => {
+    const t = parsePushTarget(raw);
+    return rawTargets.length === 1 && args.problem
+      ? { ...t, problem: args.problem }
+      : t;
+  });
+
+  // 全部题包先在本地校验 / 打包：任何一个有问题都不上传，避免推了一半
+  const bundles: { name: string; data: Uint8Array }[] = [];
+  for (const t of targets) {
+    const bundle = await loadPushBundle(t.path);
+    if (!bundle) return EXIT_FAILURE;
+    bundles.push(bundle);
   }
 
   const interactive = !args.noInteractive && Deno.stdin.isTerminal();
-  try {
-    const result = await pushBundle(
-      { server, bundle, publish: args.publish },
-      {
-        fetch,
-        io: interactive ? realIO() : null,
-        envToken: Deno.env.get("NOJ_TOKEN"),
-      },
-    );
-    if (args.json) {
-      console.log(JSON.stringify({ pass: true, ...result }, null, 2));
-    } else {
-      const label = result.display_id ?? result.id;
-      const state = result.published
-        ? (result.published.unchanged
-          ? `内容未变化，沿用 V${result.published.version}`
-          : `已发布 V${result.published.version}`)
+  const deps = {
+    fetch,
+    io: interactive ? realIO() : null,
+    envToken: Deno.env.get("NOJ_TOKEN"),
+  };
+  const outcomes: PushOutcome[] = [];
+  const report = (outcome: PushOutcome, isUpdate = false) => {
+    outcomes.push(outcome);
+    if (args.json) return;
+    if (outcome.pass) {
+      const label = outcome.display_id ?? outcome.id;
+      const state = outcome.published
+        ? (outcome.published.unchanged
+          ? `内容未变化，沿用 V${outcome.published.version}`
+          : `已发布 V${outcome.published.version}`)
         : "草稿，核对后发布即可作答";
       console.log(
-        `已导入 ${label}${
-          result.title ? `《${result.title}》` : ""
+        `${isUpdate ? "已更新" : "已导入"} ${label}${
+          outcome.title ? `《${outcome.title}》` : ""
         }（${state}）`,
       );
-      console.log(`编辑页：${result.edit_url}`);
+      console.log(`  编辑页：${outcome.edit_url}`);
+    } else {
+      console.error(`推送失败（${outcome.target}）：${outcome.error}`);
+      if (outcome.hint) console.error(`  提示：${outcome.hint}`);
     }
-    return EXIT_OK;
+  };
+  const failure = (target: string, err: PushError): PushOutcome => ({
+    target,
+    pass: false,
+    status: err.status,
+    code: err.code,
+    error: err.message,
+    hint: pushErrorHint(err),
+  });
+
+  let token: string;
+  try {
+    token = await resolveToken(server, deps);
   } catch (err) {
     if (!(err instanceof PushError)) throw err;
-    const hint = pushErrorHint(err);
-    if (args.json) {
-      console.log(JSON.stringify(
-        {
-          pass: false,
-          status: err.status,
-          code: err.code,
-          error: err.message,
-          hint,
-        },
-        null,
-        2,
-      ));
-    } else {
-      console.error(`推送失败：${err.message}`);
-      if (hint) console.error(`提示：${hint}`);
-    }
+    report(failure("登录", err));
+    if (args.json) printPushJson(outcomes);
     return EXIT_FAILURE;
   }
+
+  for (const [i, t] of targets.entries()) {
+    try {
+      const result = await pushBundle(
+        {
+          server,
+          bundle: bundles[i]!,
+          publish: args.publish,
+          problem: t.problem,
+        },
+        { ...deps, envToken: token },
+      );
+      report({ target: t.path, pass: true, ...result }, !!t.problem);
+    } catch (err) {
+      if (!(err instanceof PushError)) throw err;
+      report(failure(t.path, err));
+    }
+  }
+  if (args.json) printPushJson(outcomes);
+  return outcomes.every((o) => o.pass) ? EXIT_OK : EXIT_FAILURE;
+}
+
+/** `--json`：单个目标输出对象（与旧格式一致），多个目标输出 `{pass, results}`。 */
+function printPushJson(outcomes: PushOutcome[]): void {
+  const body = outcomes.length === 1
+    ? outcomes[0]
+    : { pass: outcomes.every((o) => o.pass), results: outcomes };
+  console.log(JSON.stringify(body, null, 2));
 }
 
 /**
