@@ -18,7 +18,7 @@ const room = await useAsyncData(
   () => `${key.value}:classroom:${task.data.value?.data.classroom_id ?? ''}`,
   () => task.data.value ? education.classroom(slug.value!, task.data.value.data.classroom_id) : Promise.resolve(null),
 );
-const can = (cap: TeachingCapability) => !!room.data.value && classroomCan(room.data.value.data, cap);
+const can = (cap: TeachingCapability) => !room.error.value && !!room.data.value && classroomCan(room.data.value.data, cap);
 const isStudent = computed(() =>
   room.data.value?.data.membership?.role === 'student' ||
   room.data.value?.data.historical_student === true
@@ -69,6 +69,15 @@ usePolling({
       isStudent.value ? progress.refresh() : Promise.resolve(),
     ]);
   },
+});
+useEducationNotifications(async () => {
+  await task.refresh();
+  if (task.error.value) return;
+  await room.refresh();
+  await Promise.all([
+    can('progress:read') ? matrix.refresh() : Promise.resolve(),
+    isStudent.value ? progress.refresh() : Promise.resolve(),
+  ]);
 });
 watch([scope, recipients, statusFilter, search, itemFilter, verdictFilter], () => {
   page.value = 1;
@@ -139,7 +148,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           class="mt-3 text-sm text-text-muted">截止：{{ new Date(task.data.value.data.deadline_at).toLocaleString() }}。截止后可以继续练习，按时成绩与补做进度分别统计。</p>
       </template>
     </AsyncContent>
-    <template v-if="task.data.value?.data.published_at">
+    <template v-if="task.data.value?.data.published_at && !task.error.value">
       <div class="flex flex-wrap items-end gap-3">
         <AdminFormField label="统计范围">
           <USelect v-model="scope"

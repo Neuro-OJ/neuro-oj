@@ -10,7 +10,10 @@ const key = computed(() =>
 );
 const { data, status, error, refresh } = await useAsyncData(key, () => api.problem(slug.value!, id.value, label.value));
 const contest = await useAsyncData(() => `${key.value}:contest`, () => contestApi.detail(slug.value!, id.value));
-usePolling({ intervalMs: 30000, immediate: false, fetcher: () => contest.refresh() });
+usePolling({ intervalMs: computed(() => contest.data.value?.data.status !== 'ended' ? 2000 : null), immediate: false, fetcher: () => contest.refresh() });
+watch(() => contest.data.value?.data.revision, (next, previous) => {
+  if (previous != null && next !== previous) void refresh();
+});
 useSeoMeta({ title: () => data.value?.data.title ?? '比赛题目' });
 </script>
 <template>

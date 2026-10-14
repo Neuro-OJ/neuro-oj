@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.stubGlobal('reactive', reactive);
   vi.stubGlobal('ref', ref);
   vi.stubGlobal('useWorkspaceApi', () => api);
+  vi.stubGlobal('useUnsavedChanges', vi.fn());
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm } }));
 });
 describe('空间设置与并发编辑', () => {

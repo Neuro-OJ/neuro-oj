@@ -17,6 +17,7 @@ usePolling({
   immediate: false,
   fetcher: () => refresh(),
 });
+useEducationNotifications(() => refresh());
 useSeoMeta({ title: '我的学习' });
 </script>
 <template>

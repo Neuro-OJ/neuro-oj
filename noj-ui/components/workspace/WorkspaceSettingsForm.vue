@@ -23,6 +23,8 @@ const form = reactive({
   configuration: { ...props.domain.configuration, features: { ...props.domain.configuration.features } },
 });
 const baseRevision = ref(props.domain.revision);
+const savedSnapshot = ref(JSON.stringify(form));
+useUnsavedChanges(() => JSON.stringify(form) !== savedSnapshot.value);
 const saving = ref(false);
 const error = ref('');
 const preset = ref<WorkspacePreset>(props.domain.preset);
@@ -68,6 +70,7 @@ async function save() {
   try {
     await workspaces.update(target.slug, form, baseRevision.value);
     if (!isCurrent()) return;
+    savedSnapshot.value = JSON.stringify(form);
     toast.success('空间设置已保存');
     emit('saved');
   } catch (cause) {

@@ -15,12 +15,14 @@ const contest = await useAsyncData(
 );
 usePolling({
   intervalMs: computed(() =>
-    data.value?.data.result_visibility !== 'hidden' && ['pending', 'judging'].includes(data.value?.data.status ?? '')
+    data.value?.data.result_visibility === 'hidden' || ['pending', 'judging'].includes(data.value?.data.status ?? '') || contest.data.value?.data.status === 'running'
       ? 2000
       : null
   ),
   immediate: false,
-  fetcher: () => refresh(),
+  fetcher: async () => {
+    await Promise.all([refresh(), data.value?.data.contest_id ? contest.refresh() : Promise.resolve()]);
+  },
 });
 useSeoMeta({ title: '空间提交详情' });
 </script>

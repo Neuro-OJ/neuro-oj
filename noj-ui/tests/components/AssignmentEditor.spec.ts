@@ -68,6 +68,7 @@ const stubs = {
   UButton: { props: ['disabled', 'loading'], template: '<button :disabled="disabled || loading"><slot /></button>' },
 };
 beforeEach(() => {
+  vi.stubGlobal('useUnsavedChanges', vi.fn());
   vi.clearAllMocks();
   current = true;
   api.members.mockResolvedValue({

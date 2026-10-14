@@ -17,6 +17,7 @@ usePolling({
   immediate: false,
   fetcher: () => refresh(),
 });
+useEducationNotifications(() => refresh());
 useSeoMeta({ title: '教学工作台' });
 </script>
 <template>

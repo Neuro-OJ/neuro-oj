@@ -23,6 +23,10 @@ const title = ref(''),
   ),
   visibility = ref<'public' | 'private'>('private');
 const submissionMode = ref<'code' | 'artifact'>('code'), saving = ref(false), failure = ref('');
+const snapshot = () => JSON.stringify({ title: title.value, description: description.value, kind: kind.value,
+  visibility: visibility.value, mode: submissionMode.value, evaluator: evaluatorImage.value, solution: solutionImage.value });
+const savedSnapshot = ref(snapshot());
+useUnsavedChanges(() => snapshot() !== savedSnapshot.value);
 const writable = computed(() =>
   domain.value?.status === 'active' && (can('problem:write_own') || can('problem:write_any'))
 );
@@ -43,7 +47,10 @@ async function create() {
   failure.value = '';
   try {
     const response = await api.create(scope.slug, content, visibility.value);
-    if (scope.isCurrent()) await navigateTo(`/d/${scope.slug}/editor/${response.number}`);
+    if (scope.isCurrent()) {
+      savedSnapshot.value = snapshot();
+      await navigateTo(`/d/${scope.slug}/editor/${response.number}`);
+    }
   } catch (error) {
     if (scope.isCurrent()) failure.value = extractApiError(error).message;
   } finally {
