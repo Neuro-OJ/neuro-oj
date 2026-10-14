@@ -398,14 +398,14 @@ pub(super) async fn run_prepared_module(
         let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
         start.call_async(&mut store, ()).await
     };
-    let (call, wall_timed_out) = if let Some(limit) = wall_limit_ms {
+    let (call, execution_interrupted) = if let Some(limit) = wall_limit_ms {
         let timed = tokio::time::timeout(std::time::Duration::from_millis(limit), execute);
         tokio::select! {
             result=timed=>match result {Ok(result)=>(Some(result),false),Err(_)=>(None,true)},
             _=async {
                 let Some(cancelled)=cancellation.as_ref() else {std::future::pending::<()>().await;return;};
                 while !cancelled.load(Ordering::Relaxed) {tokio::time::sleep(std::time::Duration::from_millis(20)).await;}
-            }=>(None,false),
+            }=>(None,true),
         }
     } else {
         (Some(execute.await), false)
@@ -452,7 +452,7 @@ pub(super) async fn run_prepared_module(
         || stdout.len().saturating_add(stderr.len()) >= MAX_OUTPUT_BYTES
     {
         WasmStatus::OutputLimitExceeded
-    } else if wall_timed_out {
+    } else if execution_interrupted {
         WasmStatus::SystemError
     } else {
         match call.expect("WASM 调用结果必须存在") {

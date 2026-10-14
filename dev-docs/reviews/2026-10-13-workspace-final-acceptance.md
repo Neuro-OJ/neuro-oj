@@ -1,6 +1,6 @@
 # NOJ 工作空间、教学及五赛制升级验收报告
 
-日期：2026-10-13。实现及本地验收已交付，最终 PR／远端 CI 尚未签收。
+更新日期：2026-10-14。实现及 API 验收已交付，最终 PR／远端 CI 尚未签收。
 审查：[PR #643](https://github.com/Neuro-OJ/neuro-oj/pull/643)。
 依据：[已批准计划](../superpowers/plans/2026-10-12-workspace-education-contest-upgrade.md)、
 [106 项任务清单](../superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
@@ -37,20 +37,22 @@
 | Judge               | 631 通过／46 专属跳过                     | nextest／fmt／clippy；预测 Docker 另实际 1 项通过，9 项比赛 Native 已实际执行        |
 | LMCC                | 14 项／格式／类型通过                     | 当前宿主相关源码与已有 8 项真实 Extension Host 证据逐字节一致；宿主采用本地模拟 HTTP |
 | 跨模块              | 55 项／10 步／0 忽略                      | 真实 Judge、Gateway、S3、五题型作业、故障及进度恢复                                  |
-| 浏览器              | 原 20 项覆盖＋ClassGov 1＋题包 1          | 完整一次运行 17 通过、3 失败；三个夹具前置流程修复后分别通过，新两项另外实际执行     |
+| 浏览器              | 22 项／42 步／0 失败                      | 远端完整启用 Chromium；包含 Public／Private／Mixed、40 人班级及题包导入              |
+| 搜索性能            | 4 项／0 失败，完整运行 24m7s              | 真实三次十万行重建，原查询阈值未放宽；独立 PostgreSQL，512MiB 共享内存               |
 | Schema              | 108 表／985 列 parity                     | 保留主线已发布迁移，标准生成追加；迁移安全、快照链及实际存量回填通过                 |
 | 仓库门禁            | 标准 check-ci 全部通过                    | 含 216 个门禁自测、边界／CI 路径／迁移／目录／链接／Note／写频率／跳过棘轮           |
 
-浏览器证据不表述为单次全套全绿；环境忽略、筛选未执行用例不计为通过。
-测试均使用标准 `deno task`／项目共享脚本及 `cargo nextest` 入口；直接 Deno
-脚本仅用于实际 CLI／备份恢复等运维操作。
+浏览器最终远端运行是单次全套全绿；早期夹具失败及补验记录保留为实施历史。
+环境忽略、筛选未执行用例不计为通过。 测试均使用标准 `deno task`／项目共享脚本及
+`cargo nextest` 入口；直接 Deno 脚本仅用于实际 CLI／备份恢复等运维操作。
 
 ## 实际用户旅程
 
 用户进一步要求 API 验收。最新正式 core 上 submission 完整 38 项通过，其余
-八项开启真实 S3 后全部通过；cross-domain 完整 55 项、10 步、零忽略通过。
-正常后台进度 1109ms、实际重启恢复 2218ms。目标明确为独立栈，没有借用浏览器
-或服务单元结果，见
+八项开启真实 S3 后全部通过；最终搜索修复 core 上 cross-domain 再完整 55 项、 10
+步、零忽略通过。正常后台进度 1346ms、实际重启恢复 2261ms。 远端实际 contest API
+36 项、submission 38＋8 项、cross-domain 55 项全部通过。
+目标明确为独立栈，没有借用浏览器 或服务单元结果，见
 [最终 API 记录](../../.agents/notes/implemented/testing/2026-10-13-final-api-acceptance.md)。
 
 - Public：注册、main 做题、公开题单、域社区与比赛。
@@ -80,10 +82,23 @@ tokens，目标域与实例各增加 1 次／8 tokens，其他域不变。最终
 CLI push 和最新 Chromium 历史读取另已核验，见
 [恢复记录](../../.agents/notes/implemented/testing/2026-10-13-main117-coordinated-backup-restore.md)。
 
+搜索修复后，独立恢复栈再次升级最终 core 镜像
+`sha256:8817bbcf716606f51dc5ed98db292469d57fd9d2a37aa737c23e365cef41b451`。 实际
+API 登录、历史原版本／尝试／100 分、域模型 alias revision 均保持；新提交
+`a8685f33-9a68-4d09-9f3f-3db591d61617` 经 Judge／Gateway 完成 100 分、8 tokens，
+Provider／模型／用量仍归使用域。旧完整快照恢复证据与此次最终代码读取／执行
+分别记录，没有在已产生新提交后要求历史表摘要仍相同。
+
 100 人×50 题、按 50 人分页，后端矩阵 p95 100.36ms，实际消费者更新 1623.94ms。
-最终跨模块正常更新 1309ms，真正 core 重启后的两积压事件恢复 2288ms。
+最终跨模块正常更新 1346ms，真正 core 重启后的两积压事件恢复 2261ms。
 这些是固定场景的后端／消费者测量，不包括浏览器渲染、无界负载或所有故障组合。
 完整环境见[性能报告](2026-10-13-education-matrix-performance.md)。
+
+新增最终搜索基准：十万题真实重建后查询 324ms；十万帖子搜索 P50 131.5ms／ P95
+139.5ms；另一组十万题＋一万用户，高选择性题目查询 323ms、全命中题目 查询
+280ms、用户查询 37ms；十万次分页解析 8ms。标准 `test:perf` 四项全部通过。
+修复重复实时授权 SQL 和索引 builder 的重复来源查询，仍读取当前 DB 授权，
+见[性能修复 Note](../../.agents/notes/implemented/bug-fix/2026-10-14-domain-search-benchmark.md)。
 
 ## 代码质量与交付边界
 
@@ -93,8 +108,13 @@ CLI push 和最新 Chromium 历史读取另已核验，见
 发布／复制／批量操作幂等。评测结果及题目补丁静态帮助函数拆出，保持门禁文件
 规模；界面消息只在 JSON 发送边界转换快照，未增加吞错兜底。
 
-尚待最终签收：PR #643 的最新提交远端 CI 和合入流程。外部邮件、付费 API 与
-生产专用 rootless Judge 不在本机 Mock／宿主 Docker 的证据范围内；部署文档
+首次 PR 的 50 项检查通过，性能 job 按规则跳过；显式手动运行暴露旧基准夹具和
+重复授权查询，现已修复并完成完整本地基准。最终手动 Judge 检查又发现取消 WASM
+自测时的实际空结果竞态，按中断状态修复，未通过重复重跑掩盖失败，见
+[取消修复 Note](../../.agents/notes/implemented/bug-fix/2026-10-14-wasm-cancellation-result.md)。
+
+尚待最终签收：包含性能 job 的最新远端 CI 和 PR #643 合入流程。外部邮件、付费 API
+与 生产专用 rootless Judge 不在本机 Mock／宿主 Docker 的证据范围内；部署文档
 要求生产采用原有安全配置。这不改变本次产品功能交付范围。
 
 明确延后范围与批准计划一致：自定义角色、私有跨域共享、课程学期、多班同作业、 AI
@@ -104,6 +124,7 @@ CLI push 和最新 Chromium 历史读取另已核验，见
 
 ```bash
 cd noj-core && deno task test:parallel
+cd noj-core && deno task test:perf
 cd noj-core && deno task test:domain catalog --filter import-bundle
 cd noj-core && bash scripts/test-shared.sh
 cd noj-ui && deno task test && deno task test:components && deno task check
