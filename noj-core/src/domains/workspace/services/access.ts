@@ -19,6 +19,7 @@ import {
 } from "../../identity/index.ts";
 import { domainPermissions } from "../types.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
+import { effectiveDomainConfiguration } from "../../../shared/workspace/capabilities.ts";
 
 /** 读取仅验证进入域所需字段，导航及其他模块配置由其边界处理。 */
 function assertDomainAccess(domain: typeof domains.$inferSelect) {
@@ -45,6 +46,10 @@ export async function loadWorkspace(
     ? await query.for(options.lock === "share" ? "share" : "update")
     : await query;
   if (!domain) throw new NotFoundError("工作空间不存在");
+  domain.configuration = effectiveDomainConfiguration(
+    domain.preset,
+    domain.configuration,
+  );
   const platformPermissions = actorId
     ? await getUserPermissions(actorId, db)
     : new Set<string>();

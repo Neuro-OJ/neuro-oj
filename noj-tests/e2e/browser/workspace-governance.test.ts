@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-/** 实例治理与Preset真实页面操作；API只准备夹具和核对持久事实。 */
+/** 实例治理与固定域类型真实页面操作；API只准备夹具和核对持久事实。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
 import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
@@ -284,7 +284,7 @@ Deno.test({
               name: "空间网址标识",
               exact: true,
             }).fill(target);
-            await select(applicant.page, "初始模板", "教学");
+            await select(applicant.page, "域类型", "教学");
             await applicant.page.getByRole("textbox", {
               name: "创建申请理由",
               exact: true,
@@ -499,7 +499,7 @@ Deno.test({
         },
       );
       await step(
-        "Preset预览不修改数据，显式应用保留成员、原题、答案与成绩",
+        "域类型和能力固定，设置修改保留成员、原题、答案与成绩",
         async () => {
           const members = await fixture(
             "GET",
@@ -517,40 +517,29 @@ Deno.test({
             student.token,
           );
           await gotoPage(applicant.page, `/d/${slug}/settings`);
-          await select(applicant.page, "重新应用模板", "社区");
-          const preview = await write(
-            applicant.page,
-            "POST",
-            `/domains/${slug}/preset-preview`,
-            () =>
-              applicant.page.getByRole("button", {
-                name: "预览差异",
-                exact: true,
-              }).click(),
-          );
-          assertEquals(preview.body.data.changes.length > 0, true);
-          assertEquals(
-            (await fixture<{ data: Domain }>(
-              "GET",
-              `/domains/${slug}`,
-              owner.token,
-            )).data.configuration.homepage,
-            "teaching",
-          );
-          const applied = await confirmed(
-            applicant.page,
-            "POST",
-            `/domains/${slug}/preset-apply`,
-            () =>
-              applicant.page.getByRole("button", {
-                name: "应用这些修改",
-                exact: true,
-              }).click(),
-          );
-          assertEquals(
-            applied.request.headers()["if-match"],
-            String(preview.body.data.revision),
-          );
+          await expect(applicant.page.getByText("创建后固定", { exact: false }))
+            .toBeVisible();
+          await expect(
+            applicant.page.getByRole("button", {
+              name: "预览差异",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          const fixed = await api("PATCH", `/api/v1/domains/${slug}`, {
+            token: owner.token,
+            headers: {
+              "If-Match": String(
+                (await fixture<{ data: Domain }>(
+                  "GET",
+                  `/domains/${slug}`,
+                  owner.token,
+                )).data.revision,
+              ),
+            },
+            body: { preset: "community" },
+          });
+          assertEquals(fixed.status, 400);
+          assertEquals(fixed.body.code, "DOMAIN_TYPE_FIXED");
           assertEquals(
             await fixture("GET", `/domains/${slug}/members`, owner.token),
             members,

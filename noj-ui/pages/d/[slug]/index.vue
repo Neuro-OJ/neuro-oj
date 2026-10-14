@@ -43,8 +43,8 @@ useSeoMeta({ title: () => domain.value?.name ?? '空间' });
     <UCard>
       <h2 class="mb-3 font-semibold text-text">空间信息</h2>
       <dl class="grid grid-cols-2 gap-3 text-sm">
-        <dt class="text-text-muted">初始模板</dt>
-        <dd>{{ WORKSPACE_PRESETS.find((p) => p.value === domain?.preset)?.label }}</dd>
+        <dt class="text-text-muted">域类型</dt>
+        <dd>{{ WORKSPACE_PRESETS.find((p) => p.value === domain?.preset)?.label ?? '旧自定义域（待转换）' }}</dd>
         <dt class="text-text-muted">访问方式</dt>
         <dd>{{ domain.configuration.access === 'public' ? '公开访问' : '仅成员' }}</dd>
         <dt class="text-text-muted">加入方式</dt>

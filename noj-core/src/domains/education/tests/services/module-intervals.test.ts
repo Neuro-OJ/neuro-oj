@@ -64,40 +64,29 @@ async function practice(f: Awaited<ReturnType<typeof fixture>>) {
   });
 }
 
-Deno.test("教学停用：域区间排除正常练习，保留任务读取，重新启用不自动回填", async () => {
+Deno.test("教学域能力固定：域管理员不能自行停用作业，失败不影响正常成绩", async () => {
   const f = await fixture();
-  const disabled = await updateDomain(
-    f.school.slug,
-    f.owner,
-    f.school.revision,
-    {
-      configuration: {
-        ...f.school.configuration,
-        features: {
-          ...f.school.configuration.features,
-          assignment: false,
-          analytics: false,
+  await assertRejects(() =>
+    updateDomain(
+      f.school.slug,
+      f.owner,
+      f.school.revision,
+      {
+        configuration: {
+          ...f.school.configuration,
+          features: {
+            ...f.school.configuration.features,
+            assignment: false,
+            analytics: false,
+          },
         },
       },
-    },
-  );
+    ), AppError);
   await practice(f);
-  await assertRejects(
-    () => createAssignment(f.school.slug, f.classroom.id, f.teacher, f.input),
-    AppError,
-  );
   assertEquals(
     (await getMyAssignmentProgress(f.school.slug, f.task.id, f.student))
       .cells[0].score,
-    null,
-  );
-  await updateDomain(f.school.slug, f.owner, disabled.revision, {
-    configuration: f.school.configuration,
-  });
-  assertEquals(
-    (await getMyAssignmentProgress(f.school.slug, f.task.id, f.student))
-      .cells[0].score,
-    null,
+    10000,
   );
 });
 

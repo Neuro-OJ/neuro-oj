@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
 import { WORKSPACE_PRESETS } from '~/utils/workspace';
-import type { WorkspaceConfiguration, WorkspaceDetail, WorkspacePreset } from '~/utils/workspace';
+import type { WorkspaceConfiguration, WorkspaceDetail } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 import { onScopeDispose } from 'vue';
 const props = defineProps<
@@ -20,53 +20,17 @@ const isCurrent = () => mounted && props.domain.slug === target.slug && props.do
 const form = reactive({
   name: props.domain.name,
   description: props.domain.description,
-  configuration: { ...props.domain.configuration, features: { ...props.domain.configuration.features } },
+  configuration: { access: props.domain.configuration.access, discoverable: props.domain.configuration.discoverable, join_policy: props.domain.configuration.join_policy },
 });
 const baseRevision = ref(props.domain.revision);
 const savedSnapshot = ref(JSON.stringify(form));
 useUnsavedChanges(() => JSON.stringify(form) !== savedSnapshot.value);
 const saving = ref(false);
 const error = ref('');
-const preset = ref<WorkspacePreset>(props.domain.preset);
-const preview = ref<{ revision: number; changes: Array<{ key: string; before: unknown; after: unknown }> } | null>(
-  null,
-);
-const featureOptions = [{ key: 'community', label: '社区' }, { key: 'classroom', label: '班级' }, {
-  key: 'assignment',
-  label: '作业',
-}, { key: 'analytics', label: '教学学情' }] as const;
-const fieldLabels: Record<string, string> = {
-  access: '访问方式',
-  discoverable: '公开目录',
-  join_policy: '加入方式',
-  homepage: '首页',
-  'features.community': '社区',
-  'features.classroom': '班级',
-  'features.assignment': '作业',
-  'features.analytics': '教学学情',
-};
-const valueLabels: Record<string, string> = {
-  public: '公开',
-  members: '仅成员',
-  open: '直接加入',
-  approval: '申请审核',
-  invite: '邀请',
-  overview: '概览',
-  community: '社区',
-  teaching: '教学工作台',
-  training: '题单',
-};
-const valueText = (value: unknown) =>
-  typeof value === 'boolean' ? value ? '启用' : '关闭' : valueLabels[String(value)] ?? String(value);
-function dependencies() {
-  if (!form.configuration.features.classroom) form.configuration.features.assignment = false;
-  if (!form.configuration.features.assignment) form.configuration.features.analytics = false;
-}
 async function save() {
   if (saving.value) return;
   saving.value = true;
   error.value = '';
-  dependencies();
   try {
     await workspaces.update(target.slug, form, baseRevision.value);
     if (!isCurrent()) return;
@@ -78,25 +42,6 @@ async function save() {
   } finally {
     saving.value = false;
   }
-}
-async function previewPreset() {
-  const selected = preset.value;
-  const response = await workspaces.previewPreset(target.slug, selected);
-  if (isCurrent() && preset.value === selected) preview.value = response.data;
-}
-async function applyPreset() {
-  const selected = preset.value;
-  const selection = preview.value;
-  if (
-    !preview.value ||
-    !await dialog.confirm('按预览差异修改空间配置？成员、资源和已有历史不会被删除。', { title: '应用初始模板' })
-  ) return;
-  if (!selection || !isCurrent() || preset.value !== selected || preview.value !== selection) return;
-  await workspaces.applyPreset(target.slug, selected, selection.revision);
-  if (!isCurrent()) return;
-  preview.value = null;
-  emit('saved');
-  toast.success('模板配置已应用');
 }
 async function setStatus(status: WorkspaceDetail['status']) {
   const revision = props.domain.revision;
@@ -141,34 +86,14 @@ async function setStatus(status: WorkspaceDetail['status']) {
           </AdminFormField>
         </div>
         <UCheckbox v-model="form.configuration.discoverable" label="在公开目录展示此空间" />
-        <fieldset class="space-y-2">
-          <legend class="mb-2 text-sm font-semibold text-text">可选功能</legend>
-          <UCheckbox v-for="feature in featureOptions" :key="feature.key"
-            v-model="form.configuration.features[feature.key]" :label="feature.label" :disabled="!modules[feature.key]"
-            @update:model-value="dependencies" />
-        </fieldset>
-        <AdminFormField label="首页">
-          <USelect v-model="form.configuration.homepage"
-            :items="[{ label: '概览', value: 'overview' }, { label: '社区', value: 'community' }, { label: '教学工作台', value: 'teaching' }, { label: '题单', value: 'training' }]"
-            class="w-full" aria-label="空间首页" />
-        </AdminFormField>
+        <div class="rounded border border-border bg-bg-sunken p-3 text-sm">
+          <p class="font-medium">域类型：{{ WORKSPACE_PRESETS.find(p => p.value === domain.preset)?.label ?? '旧自定义域（待转换）' }} · 创建后固定</p>
+          <p class="mt-2 text-text-secondary">三种域均提供题库、题单、比赛、社区与域排行。教学域额外提供班级、作业与教练工作台。</p>
+          <p v-if="!modules.community || !modules.classroom || !modules.assignment || !modules.analytics" class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
+        </div>
         <p v-if="error" class="text-sm text-error-text" role="alert">{{ error }} 未保存的修改仍保留在表单中。</p>
         <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active'">保存设置</UButton>
       </form>
-    </UCard>
-    <UCard v-if="domain.status === 'active'" class="rounded">
-      <h2 class="mb-3 font-semibold text-text">重新应用模板</h2>
-      <div class="flex flex-wrap gap-3">
-        <USelect v-model="preset" :items="WORKSPACE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
-          class="min-w-56" aria-label="重新应用模板" @update:model-value="preview = null" />
-        <UButton color="neutral" variant="outline" @click="previewPreset">预览差异</UButton>
-      </div>
-      <div v-if="preview" class="mt-4 space-y-2">
-        <p v-if="!preview.changes.length" class="text-sm text-text-muted">配置没有差异。</p>
-        <p v-for="change in preview.changes" :key="change.key"
-          class="text-sm text-text-secondary">{{ fieldLabels[change.key] ?? change.key }}：{{ valueText(change.before) }} → {{ valueText(change.after) }}</p>
-        <UButton :disabled="!preview.changes.length" @click="applyPreset">应用这些修改</UButton>
-      </div>
     </UCard>
     <UCard v-if="canArchive" class="rounded">
       <h2 class="mb-3 font-semibold text-text">空间状态</h2>

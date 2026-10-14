@@ -1,6 +1,6 @@
 /** 产品空间的客户端契约；权限仍由每次服务端请求判定。 */
 export type WorkspaceRole = 'owner' | 'admin' | 'editor' | 'educator' | 'moderator' | 'member';
-export type WorkspacePreset = 'community' | 'education' | 'team' | 'custom';
+export type WorkspacePreset = 'community' | 'education' | 'team';
 export interface WorkspaceConfiguration {
   access: 'public' | 'members';
   discoverable: boolean;
@@ -17,7 +17,7 @@ export interface WorkspaceSummary {
 }
 export interface WorkspaceRecord extends WorkspaceSummary {
   owner_id: string;
-  preset: WorkspacePreset;
+  preset: WorkspacePreset | 'custom';
   configuration: WorkspaceConfiguration;
   revision: number;
 }
@@ -85,10 +85,9 @@ export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
   member: '成员',
 };
 export const WORKSPACE_PRESETS = [
-  { value: 'community', label: '社区', description: '公开入口、社区与题单' },
-  { value: 'education', label: '教学', description: '成员入口、班级与作业' },
-  { value: 'team', label: '团队', description: '成员入口、题库与比赛' },
-  { value: 'custom', label: '自定义', description: '最小核心 OJ，可按需配置' },
+  { value: 'community', label: '社区', description: '公开入口、题库、题单、比赛与社区' },
+  { value: 'education', label: '教学', description: '班级、作业与教练工作台，兼有题库、比赛和社区' },
+  { value: 'team', label: '团队', description: '成员入口、协作题库、题单、比赛与社区' },
 ] as const;
 
 /** slug 是网址标识，不接受路径或跨域题号分隔符。 */

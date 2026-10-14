@@ -1,12 +1,10 @@
 import { and, count, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { recordSourceDomainEducationChange } from "../../catalog/index.ts";
-import { recordEducationEvent } from "../../../shared/education-events.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   auditLogs,
-  domainFeatureIntervals,
   domainLimits,
   domainMemberRoles,
   domainMemberships,
@@ -24,6 +22,7 @@ import {
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
+  DOMAIN_PRESETS,
   type DomainConfiguration,
   type DomainPreset,
 } from "../../../shared/workspace/types.ts";
@@ -93,8 +92,8 @@ export async function createDomain(
     typeof input.description !== "undefined" &&
       (typeof input.description !== "string" || input.description.length > 2000)
   ) throw new BadRequestError("工作空间名称或简介非法");
-  if (!["community", "education", "team", "custom"].includes(input.preset)) {
-    throw new BadRequestError("工作空间模板非法");
+  if (!DOMAIN_PRESETS.includes(input.preset)) {
+    throw new BadRequestError("域类型须为社区、教学或团队");
   }
   if (!options.executor) {
     return await getDb().transaction((tx) =>
@@ -302,7 +301,7 @@ export async function ensureDefaultWorkspace(
   );
 }
 
-/** 修改必须携带旧 revision；模板应用调用相同的授权与修改入口。 */
+/** 修改访问政策须携带旧 revision；域类型与能力创建后固定。 */
 export async function updateDomain(
   slug: string,
   actorId: string,
@@ -310,14 +309,18 @@ export async function updateDomain(
   patch: {
     name?: string;
     description?: string;
-    configuration?: DomainConfiguration;
+    configuration?: Partial<DomainConfiguration>;
   },
 ) {
   if (!Number.isInteger(revision) || revision < 0) {
     throw new AppError("缺少有效配置版本", 428, "REVISION_REQUIRED");
   }
-  if (patch.configuration !== undefined) {
-    validateDomainConfiguration(patch.configuration);
+  if (
+    patch.configuration !== undefined &&
+    (!patch.configuration || typeof patch.configuration !== "object" ||
+      Array.isArray(patch.configuration))
+  ) {
+    throw new BadRequestError("域配置须为对象");
   }
   if (
     patch.name !== undefined &&
@@ -339,61 +342,43 @@ export async function updateDomain(
       throw new ConflictError("配置已被其他管理员更新");
     }
     const now = new Date().toISOString();
+    let configuration: DomainConfiguration | undefined;
     if (patch.configuration) {
-      const allowed = (await getInstanceResourcePolicy(tx)).modules;
-      for (const key of Object.keys(allowed) as Array<keyof typeof allowed>) {
-        if (
-          patch.configuration.features[key] &&
-          !domain.configuration.features[key] && !allowed[key]
-        ) {
-          throw new ForbiddenError(
-            "实例未允许启用此模块",
-            "DOMAIN_FEATURE_NOT_ALLOWED",
-          );
-        }
-      }
-      for (
-        const feature of [
-          "classroom",
-          "assignment",
-          "analytics",
-          "community",
-        ] as const
+      const fixed = constrainDomainConfiguration(
+        domain.configuration,
+        (await getInstanceResourcePolicy(tx)).modules,
+      );
+      if (
+        patch.configuration.features &&
+          Object.keys(fixed.features).some((key) =>
+            patch.configuration!
+              .features![key as keyof typeof fixed.features] !==
+              fixed.features[key as keyof typeof fixed.features]
+          ) ||
+        patch.configuration.homepage !== undefined &&
+          patch.configuration.homepage !== fixed.homepage
       ) {
-        if (
-          domain.configuration.features[feature] &&
-          !patch.configuration.features[feature]
-        ) {
-          await tx.insert(domainFeatureIntervals).values({
-            id: crypto.randomUUID(),
-            domain_id: domain.id,
-            feature,
-            disabled_at: now,
-          });
-        }
-        if (
-          !domain.configuration.features[feature] &&
-          patch.configuration.features[feature]
-        ) {
-          await tx.update(domainFeatureIntervals).set({ enabled_at: now })
-            .where(
-              and(
-                eq(domainFeatureIntervals.domain_id, domain.id),
-                eq(domainFeatureIntervals.feature, feature),
-                isNull(domainFeatureIntervals.enabled_at),
-              ),
-            );
-        }
+        throw new BadRequestError(
+          "域能力和首页由固定类型决定",
+          "DOMAIN_TYPE_FIXED",
+        );
       }
+      configuration = {
+        ...domain.configuration,
+        access: patch.configuration.access ?? domain.configuration.access,
+        discoverable: patch.configuration.discoverable ??
+          domain.configuration.discoverable,
+        join_policy: patch.configuration.join_policy ??
+          domain.configuration.join_policy,
+      };
+      validateDomainConfiguration(configuration);
     }
     const [updated] = await tx.update(domains).set({
       ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
       ...(patch.description === undefined
         ? {}
         : { description: patch.description }),
-      ...(patch.configuration === undefined
-        ? {}
-        : { configuration: patch.configuration }),
+      ...(configuration === undefined ? {} : { configuration }),
       revision: domain.revision + 1,
       updated_at: now,
     }).where(eq(domains.id, domain.id)).returning();
@@ -401,21 +386,10 @@ export async function updateDomain(
       revision: updated.revision,
     });
     if (
-      patch.configuration &&
-      patch.configuration.access !== domain.configuration.access
+      configuration &&
+      configuration.access !== domain.configuration.access
     ) {
       await recordSourceDomainEducationChange(tx, domain.id);
-    } else if (
-      patch.configuration &&
-      (["classroom", "assignment"] as const).some((feature) =>
-        patch.configuration!.features[feature] !==
-          domain.configuration.features[feature]
-      )
-    ) {
-      await recordEducationEvent(tx, {
-        domain_id: domain.id,
-        event_type: "module.changed",
-      });
     }
     return updated;
   });

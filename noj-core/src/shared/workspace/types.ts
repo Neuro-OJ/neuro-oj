@@ -15,9 +15,13 @@ export const DOMAIN_ROLES = [
 export type DomainRole = typeof DOMAIN_ROLES[number];
 /** 工作空间生命周期。 */
 export type DomainStatus = "active" | "archived" | "suspended";
-/** 初始化模板，不参与后续权限判断。 */
-export type DomainPreset = "community" | "education" | "team" | "custom";
-/** 工作空间可选功能。 */
+/** 创建后固定的三种域类型。 */
+export const DOMAIN_PRESETS = ["community", "education", "team"] as const;
+/** 新建域及创建申请只接受三种类型。 */
+export type DomainPreset = typeof DOMAIN_PRESETS[number];
+/** 存量自定义域保留读取，转换须由管理员明确决定。 */
+export type StoredDomainPreset = DomainPreset | "custom";
+/** 由域类型决定、受实例政策约束的能力。 */
 export interface DomainFeatures {
   community: boolean;
   classroom: boolean;

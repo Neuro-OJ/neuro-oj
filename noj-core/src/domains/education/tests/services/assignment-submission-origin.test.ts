@@ -8,7 +8,6 @@ import {
   classroomMemberships,
   classrooms,
   domainMemberships,
-  domains,
 } from "../../../../shared/db/schema.ts";
 import {
   createAssignment,
@@ -16,6 +15,7 @@ import {
   resolveAssignmentSubmissionOrigin,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { updateSetting } from "../../../system/index.ts";
 
 async function fixture(publish = true) {
   const f = await assignmentFixture();
@@ -167,12 +167,16 @@ Deno.test("作业受理来源：当前域成员、班级学生和实际接收者
 
 Deno.test("作业受理来源：教学关闭不影响无来源练习，但带来源执行拒绝", async () => {
   const f = await fixture();
-  await f.db.update(domains).set({
-    configuration: {
-      ...f.school.configuration,
-      features: { ...f.school.configuration.features, assignment: false },
-    },
-  }).where(eq(domains.id, f.school.id));
+  await updateSetting(
+    "instance_allowed_modules",
+    JSON.stringify({
+      community: true,
+      classroom: true,
+      assignment: false,
+      analytics: true,
+    }),
+    "0",
+  );
   assertEquals(
     await f.db.transaction((tx) =>
       resolveAssignmentSubmissionOrigin(tx, { ...f.input, origin: undefined })

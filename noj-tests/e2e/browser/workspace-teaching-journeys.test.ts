@@ -250,7 +250,7 @@ Deno.test({
             name: "空间网址标识",
             exact: true,
           }).fill(slug);
-          await select(administrator.page, "初始模板", "教学");
+          await select(administrator.page, "域类型", "教学");
           await write(
             administrator.page,
             "POST",

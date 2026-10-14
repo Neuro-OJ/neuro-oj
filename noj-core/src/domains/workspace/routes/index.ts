@@ -54,7 +54,9 @@ import {
   requestDomainCreation,
   reviewDomainCreation,
 } from "../services/creation-requests.ts";
-import { configurationDiff, presetConfiguration } from "../types.ts";
+import { DOMAIN_PRESETS } from "../../../shared/workspace/types.ts";
+import { constrainDomainConfiguration } from "../../../shared/workspace/resource-policy.ts";
+import { getInstanceResourcePolicy } from "../services/instance.ts";
 import {
   listAdminDomains,
   listDomainCreationRequests,
@@ -92,8 +94,8 @@ function revisionHeader(value: string | undefined) {
 function presetValue(value: unknown): DomainPreset {
   if (
     typeof value !== "string" ||
-    !["community", "education", "team", "custom"].includes(value)
-  ) throw new BadRequestError("模板非法");
+    !DOMAIN_PRESETS.includes(value as DomainPreset)
+  ) throw new BadRequestError("域类型须为社区、教学或团队");
   return value as DomainPreset;
 }
 async function body(c: Parameters<typeof parseJsonBody>[0]) {
@@ -198,6 +200,10 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   return c.json({
     data: {
       ...domain,
+      configuration: constrainDomainConfiguration(
+        domain.configuration,
+        (await getInstanceResourcePolicy()).modules,
+      ),
       permissions: [...context.domainPermissions],
       is_member: !!membership,
       platform_admin: platformAdmin,
@@ -232,6 +238,9 @@ router.patch("/domains/:slug/limits", authMiddleware, async (c) => {
 });
 router.patch("/domains/:slug", authMiddleware, async (c) => {
   const input = await body(c);
+  if (input.preset !== undefined) {
+    throw new BadRequestError("域类型创建后固定", "DOMAIN_TYPE_FIXED");
+  }
   return c.json({
     data: await updateDomain(
       c.req.param("slug")!,
@@ -253,33 +262,6 @@ router.post("/domains/:slug/status", authMiddleware, async (c) => {
       c.var.userId!,
       input.status as "active",
       revisionHeader(c.req.header("If-Match")),
-    ),
-  });
-});
-router.post("/domains/:slug/preset-preview", authMiddleware, async (c) => {
-  const input = await body(c);
-  const { domain, context } = await loadWorkspace(
-    c.req.param("slug")!,
-    c.var.userId!,
-  );
-  assertWorkspacePermission(context, "domain:settings");
-  const configuration = presetConfiguration(presetValue(input.preset));
-  return c.json({
-    data: {
-      revision: domain.revision,
-      configuration,
-      changes: configurationDiff(domain.configuration, configuration),
-    },
-  });
-});
-router.post("/domains/:slug/preset-apply", authMiddleware, async (c) => {
-  const input = await body(c);
-  return c.json({
-    data: await updateDomain(
-      c.req.param("slug")!,
-      c.var.userId!,
-      revisionHeader(c.req.header("If-Match")),
-      { configuration: presetConfiguration(presetValue(input.preset)) },
     ),
   });
 });

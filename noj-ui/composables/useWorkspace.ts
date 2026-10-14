@@ -108,7 +108,7 @@ export function useWorkspaceApi() {
       api.post<{ data: { membership?: unknown; request?: unknown } }>(`${path(slug)}/join`, { reason }),
     update: (
       slug: string,
-      input: Partial<Pick<WorkspaceDetail, 'name' | 'description' | 'configuration'>>,
+      input: { name?: string; description?: string; configuration?: Partial<WorkspaceDetail['configuration']> },
       current: number,
     ) => api.patch(`${path(slug)}`, input, revision(current)),
     limits: (slug: string) =>
@@ -127,13 +127,6 @@ export function useWorkspaceApi() {
       api.patch(`${path(slug)}/limits`, input, revision(current)),
     status: (slug: string, status: WorkspaceDetail['status'], current: number) =>
       api.post(`${path(slug)}/status`, { status }, revision(current)),
-    previewPreset: (slug: string, preset: WorkspacePreset) =>
-      api.post<{ data: { revision: number; changes: Array<{ key: string; before: unknown; after: unknown }> } }>(
-        `${path(slug)}/preset-preview`,
-        { preset },
-      ),
-    applyPreset: (slug: string, preset: WorkspacePreset, current: number) =>
-      api.post(`${path(slug)}/preset-apply`, { preset }, revision(current)),
     remember: (slug: string) => api.put('/api/v1/me/workspace-preference', { slug }, { silent: true }),
   };
 }

@@ -9,7 +9,10 @@
 - 实例访问 / 注册 / 域创建政策及邀请注册限制，配置复用系统注册表。
 - 实例模块允许列表、新域资源默认值、域上限及带 revision 的配额治理接口。
 - 容量操作读取持久政策；域管理员只降低自身有效限额，成员及引用题受当前上限约束。
-- 公开发现与本人域列表、创建 / 申请审核、设置、状态及 Preset 差异预览 / 应用。
+- 公开发现与本人域列表、创建 / 申请审核、设置及状态治理。
+- 三种固定域类型：社区、教学和团队；三者均有社区和域排行，教学域增加班级、作业及学情。
+- 类型能力集中在共享契约定义，域管理员只修改名称、简介和访问 /
+  加入政策；不提供模块组合或 Preset 重应用。
 - 当前成员关系、固定组合角色、加入申请、负责人原子交接及邀请接受 / 撤销。
 - 平台治理目录按状态、名称和标识筛选及分页，包含未加入的私有、归档与暂停域。
 - 创建审核按状态分页展示申请人，批准与拒绝都在业务事务审计明确的申请 ID。
@@ -53,20 +56,20 @@
 
 接口前缀为 `/api/v1`，具体路由以 `routes/index.ts` 为准。
 
-| 入口                                            | 用途                                    |
-| ----------------------------------------------- | --------------------------------------- |
-| `/instance`                                     | 当前实例访问和创建政策摘要              |
-| `/domains`、`/me/domains`                       | 发现、创建与本人当前空间                |
-| `/domain-creation-requests`                     | 创建申请                                |
-| `/admin/instance/domain-creation-requests`      | 平台审核                                |
-| `/admin/instance/domains`                       | 平台完整域目录及分页治理                |
-| `/domain-invitations/accept`                    | 登录身份接受邀请                        |
-| `/auth/domain-invitation`                       | 持有有效邀请预览加入信息（POST 请求体） |
-| `/domains/:slug`                                | 概览及带 If-Match 的配置修改            |
-| 域下 `status`、`preset-preview`、`preset-apply` | 状态与模板配置                          |
-| 域下 `join`、`join-requests`、`members`         | 加入与当前成员治理                      |
-| 域下 `invitations`、`transfer`                  | 邀请和负责人交接                        |
-| 域下 `limits`                                   | 配额及实例上限读取，带 If-Match 修改    |
+| 入口                                       | 用途                                    |
+| ------------------------------------------ | --------------------------------------- |
+| `/instance`                                | 当前实例访问和创建政策摘要              |
+| `/domains`、`/me/domains`                  | 发现、创建与本人当前空间                |
+| `/domain-creation-requests`                | 创建申请                                |
+| `/admin/instance/domain-creation-requests` | 平台审核                                |
+| `/admin/instance/domains`                  | 平台完整域目录及分页治理                |
+| `/domain-invitations/accept`               | 登录身份接受邀请                        |
+| `/auth/domain-invitation`                  | 持有有效邀请预览加入信息（POST 请求体） |
+| `/domains/:slug`                           | 概览及带 If-Match 的配置修改            |
+| 域下 `status`                              | 状态治理                                |
+| 域下 `join`、`join-requests`、`members`    | 加入与当前成员治理                      |
+| 域下 `invitations`、`transfer`             | 邀请和负责人交接                        |
+| 域下 `limits`                              | 配额及实例上限读取，带 If-Match 修改    |
 
 用户偏好仅用于导航。资源 ID 放入其他域路径必须重新校验该域归属，不据 ID 放行。
 平台目录和审核目录使用 `page`、`per_page`，返回 `data` 与 `pagination`，
@@ -105,6 +108,10 @@ DB-owned 设置，结构化文本写入时检查完整字段、依赖和数值�
 `getInstancePolicy()` 提供完整摘要，额度执行用 `getInstanceResourcePolicy()`。
 `assertDomainFeatureEnabled()` 须在域及资源授权之后调用；历史教学读取例外
 不授予班级、学生代码或其他资源权限。
+
+域类型创建后不能修改，`custom` 不接受新建或申请。数据库仍允许读取旧自定义类型，
+不在启动时猜测转换。有效能力由类型计算并与实例允许列表组合，旧域开关不能授予团队
+教学写入能力，也不能关闭教学域自身的固定能力。实例治理仍可停用模块并保留授权历史。
 
 ## 初始化与迁移
 

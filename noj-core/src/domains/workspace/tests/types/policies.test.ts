@@ -1,12 +1,12 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import {
-  configurationDiff,
   domainPermissions,
   presetConfiguration,
   validateDomainConfiguration,
   validateDomainSlug,
 } from "../../types.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 
 Deno.test("工作空间：管理员不能获得平台权限，角色组合只扩展当前域能力", () => {
   const admin = domainPermissions(["admin"]);
@@ -19,15 +19,24 @@ Deno.test("工作空间：管理员不能获得平台权限，角色组合只扩
   assert(domainPermissions(["editor", "educator"]).has("classroom:create"));
   assertEquals(domainPermissions([]).size, 0);
 });
-Deno.test("工作空间：模板配置独立，可在团队域启用教学，差异不操作业务数据", () => {
+Deno.test("工作空间：三种类型均有社区和排行，仅教学类型提供教学，旧开关不改变能力", () => {
+  for (const type of ["community", "education", "team"] as const) {
+    const config = presetConfiguration(type);
+    assertEquals(config.features.community, true);
+    assertEquals(config.features.analytics, true);
+    assertEquals(config.features.classroom, type === "education");
+    assertEquals(config.features.assignment, type === "education");
+  }
   const config = presetConfiguration("team");
   config.features.classroom = true;
   config.features.assignment = true;
-  validateDomainConfiguration(config);
+  config.features.community = false;
+  const effective = effectiveDomainConfiguration("team", config);
+  assertEquals(effective.features.classroom, false);
+  assertEquals(effective.features.assignment, false);
+  assertEquals(effective.features.community, true);
   assertEquals(presetConfiguration("team").features.classroom, false);
-  const diff = configurationDiff(config, presetConfiguration("custom"));
-  assert(diff.some((item) => item.key === "features.classroom"));
-  assertEquals(config.features.classroom, true);
+  assertEquals(effectiveDomainConfiguration("custom", config), config);
 });
 Deno.test("工作空间：拒绝路径、跨域分隔符和错误模块依赖", () => {
   for (
@@ -42,7 +51,7 @@ Deno.test("工作空间：拒绝路径、跨域分隔符和错误模块依赖", 
     ]
   ) assertThrows(() => validateDomainSlug(slug), BadRequestError);
   validateDomainSlug("school-a");
-  const invalid = presetConfiguration("custom");
+  const invalid = presetConfiguration("team");
   invalid.features.assignment = true;
   assertThrows(() => validateDomainConfiguration(invalid), BadRequestError);
 });

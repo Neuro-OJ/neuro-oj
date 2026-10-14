@@ -14,6 +14,70 @@ import { createDomainInvitation } from "../../index.ts";
 await resetDbForTest();
 await initRedisForTest();
 
+Deno.test("域类型 HTTP：拒绝自定义创建、类型变更和模块组合，三个类型均有社区", async () => {
+  await resetDbForTest();
+  const app = createApp(), admin = await createUserToken("admin");
+  assertEquals(
+    (await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "invalid-custom", name: "自定义", preset: "custom" },
+    })).status,
+    400,
+  );
+  for (const preset of ["community", "education", "team"]) {
+    const path = `/api/v1/domains/fixed-${preset}`;
+    const created = await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: `fixed-${preset}`, name: preset, preset },
+    });
+    assertEquals(created.status, 201);
+    const { data } = await (await jsonRequest(app, path, { token: admin }))
+      .json();
+    assertEquals(data.configuration.features.community, true);
+    assertEquals(data.configuration.features.analytics, true);
+    assertEquals(
+      data.configuration.features.assignment,
+      preset === "education",
+    );
+    for (
+      const body of [{ preset: "education" }, {
+        configuration: {
+          features: { ...data.configuration.features, community: false },
+        },
+      }]
+    ) {
+      const response = await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body,
+      });
+      assertEquals(response.status, 400);
+      assertEquals((await response.json()).code, "DOMAIN_TYPE_FIXED");
+    }
+    assertEquals(
+      (await jsonRequest(app, `${path}/preset-apply`, {
+        method: "POST",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: { preset: "team" },
+      })).status,
+      404,
+    );
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: { configuration: { access: "public" } },
+      })).status,
+      200,
+    );
+  }
+});
+
 Deno.test("工作空间 HTTP：挂载中间件不覆盖其他模块的响应缓存契约", async () => {
   await resetDbForTest();
   const app = createApp();

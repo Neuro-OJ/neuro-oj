@@ -6,7 +6,6 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-  ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
 import {
   assignmentItemHistory,
@@ -59,7 +58,7 @@ Deno.test("作业事务上下文：复用授权后仍逐题检查当前绑定，
   assertEquals(created.classroom_id, f.classroom.id);
 });
 
-Deno.test("教学模块配置：导航错误不阻断业务，非法truthy开关拒绝写入而保留历史读取", async () => {
+Deno.test("教学类型能力：旧导航与模块开关不覆盖固定类型，原任务继续可读", async () => {
   const f = await assignmentFixture();
   await f.db.execute(
     sql`UPDATE domains SET configuration = jsonb_set(configuration, '{homepage}', '"unknown-navigation"') WHERE id = ${f.school.id}`,
@@ -74,15 +73,12 @@ Deno.test("教学模块配置：导航错误不阻断业务，非法truthy开关
   await f.db.execute(
     sql`UPDATE domains SET configuration = jsonb_set(configuration, '{features,assignment}', '"enabled"') WHERE id = ${f.school.id}`,
   );
-  await assertRejects(
-    () => createAssignment(f.school.slug, f.classroom.id, f.teacher, f.input),
-    ServiceUnavailableError,
-  );
+  await createAssignment(f.school.slug, f.classroom.id, f.teacher, f.input);
   assertEquals(
     (await getAssignment(f.school.slug, draft.id, f.teacher)).id,
     draft.id,
   );
-  assertEquals((await f.db.select().from(assignments)).length, 1);
+  assertEquals((await f.db.select().from(assignments)).length, 2);
 });
 
 Deno.test("作业：发布固定条目与名单、原子保存版本依据和事件，重复键不重复发布", async () => {

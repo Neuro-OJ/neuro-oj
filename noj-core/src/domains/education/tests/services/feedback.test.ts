@@ -10,7 +10,7 @@ import {
   queryProjectionRevisions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { updateDomain } from "../../../workspace/index.ts";
+import { updateSetting } from "../../../system/index.ts";
 import {
   createAssignment,
   createAssignmentFeedback,
@@ -274,16 +274,16 @@ Deno.test("作业反馈：离班及停用保持历史，作者注销有标识，
     )).body,
     "保留反馈",
   );
-  await updateDomain(f.school.slug, f.owner, 0, {
-    configuration: {
-      ...f.school.configuration,
-      features: {
-        ...f.school.configuration.features,
-        assignment: false,
-        analytics: false,
-      },
-    },
-  });
+  await updateSetting(
+    "instance_allowed_modules",
+    JSON.stringify({
+      community: true,
+      classroom: true,
+      assignment: false,
+      analytics: true,
+    }),
+    "0",
+  );
   await assertRejects(
     () =>
       createAssignmentFeedback(f.school.slug, f.task.id, f.teacher, "paused", {

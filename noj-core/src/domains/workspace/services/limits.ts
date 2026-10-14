@@ -4,7 +4,6 @@ import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
-  ServiceUnavailableError,
 } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -20,6 +19,7 @@ import {
 import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
 import { workspaceAudit } from "./domains.ts";
 import { getInstanceResourcePolicy } from "./instance.ts";
+import { effectiveDomainConfiguration } from "../../../shared/workspace/capabilities.ts";
 
 /** 当前域限额与实例上限始终组合；默认值只在新域创建时复制。 */
 export async function getDomainEffectiveLimits(
@@ -124,20 +124,8 @@ export async function assertDomainFeatureEnabled(
   } = {},
 ) {
   const policy = await getInstanceResourcePolicy(options.executor);
-  const features = domain.configuration.features;
-  const required = feature === "analytics"
-    ? ["analytics", "assignment", "classroom"] as const
-    : feature === "assignment"
-    ? ["assignment", "classroom"] as const
-    : [feature];
-  if (
-    required.some((key) => typeof features?.[key] !== "boolean") ||
-    feature === "assignment" && features.assignment && !features.classroom ||
-    feature === "analytics" && features.analytics &&
-      (!features.assignment || !features.classroom)
-  ) {
-    throw new ServiceUnavailableError("工作空间模块配置无效，请联系管理员修复");
-  }
+  const features =
+    effectiveDomainConfiguration(domain.preset, domain.configuration).features;
   if (features[feature] && policy.modules[feature]) return;
   if (options.historicalRead && feature !== "community") return;
   throw new ForbiddenError(

@@ -108,9 +108,9 @@ useSeoMeta({ title: '空间' });
             <UInput v-model="form.slug" class="w-full" required pattern="[a-z][a-z0-9-]{1,30}[a-z0-9]"
               aria-label="空间网址标识" />
           </AdminFormField>
-          <AdminFormField label="初始模板">
+          <AdminFormField label="域类型（创建后固定）">
             <USelect v-model="form.preset" :items="WORKSPACE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
-              class="w-full" aria-label="初始模板" />
+              class="w-full" aria-label="域类型" />
           </AdminFormField>
           <AdminFormField :label="canRequest ? '申请理由' : '简介'">
             <UTextarea v-if="canRequest" v-model="form.reason" class="w-full" required aria-label="创建申请理由" />

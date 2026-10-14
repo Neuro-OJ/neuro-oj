@@ -15,12 +15,12 @@ import { users } from "./identity.ts";
 import { classrooms } from "./education.ts";
 import type {
   DomainConfiguration,
-  DomainPreset,
   DomainRole,
   DomainStatus,
+  StoredDomainPreset,
 } from "../../workspace/types.ts";
 
-/** 产品工作空间；模板名称不决定权限或功能。 */
+/** 产品工作空间；固定类型决定能力，成员角色决定操作权限。 */
 export const domains = pgTable("domains", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull().unique(),
@@ -28,7 +28,7 @@ export const domains = pgTable("domains", {
   description: text("description").notNull().default(""),
   status: text("status").$type<DomainStatus>().notNull().default("active"),
   owner_id: text("owner_id").notNull().references(() => users.id),
-  preset: text("preset").$type<DomainPreset>().notNull(),
+  preset: text("preset").$type<StoredDomainPreset>().notNull(),
   configuration: jsonb("configuration").$type<DomainConfiguration>().notNull(),
   revision: integer("revision").notNull().default(0),
   next_problem_number: integer("next_problem_number").notNull().default(1001),
@@ -197,7 +197,7 @@ export const domainCreationRequests = pgTable("domain_creation_requests", {
   applicant_id: text("applicant_id").notNull().references(() => users.id),
   slug: text("slug").notNull(),
   name: text("name").notNull(),
-  preset: text("preset").$type<DomainPreset>().notNull(),
+  preset: text("preset").$type<StoredDomainPreset>().notNull(),
   reason: text("reason").notNull(),
   status: text("status").$type<"pending" | "approved" | "rejected">().notNull()
     .default("pending"),

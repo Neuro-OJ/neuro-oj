@@ -13,7 +13,7 @@ export function unlimitedDomainLimits(): DomainLimits {
     submissions_per_minute: null,
   };
 }
-/** 实例缺省允许域管理员按配置启用可选模块。 */
+/** 实例缺省允许全部域类型能力。 */
 export function allowedDomainFeatures(): DomainFeatures {
   return {
     community: true,
@@ -62,8 +62,8 @@ export function validateDomainFeatures(
     keys.some((key) => typeof input[key] !== "boolean")
   ) throw new Error("模块配置字段须为合法布尔值");
   if (
-    input.assignment && !input.classroom || input.analytics && !input.assignment
-  ) throw new Error("作业依赖班级，学情依赖作业");
+    input.assignment && !input.classroom
+  ) throw new Error("作业依赖班级");
 }
 /** 注册表中的结构化文本同样执行业务格式验证。 */
 export function validateWorkspaceSetting(
@@ -144,7 +144,7 @@ export function combineDomainLimits(
   }
   return result;
 }
-/** Preset 初始化只启用实例允许的功能，不覆盖存量域配置。 */
+/** 域类型能力受实例限制；域排行不依赖教学模块。 */
 export function constrainDomainConfiguration(
   configuration: DomainConfiguration,
   allowed: DomainFeatures,
@@ -154,7 +154,6 @@ export function constrainDomainConfiguration(
     features[key] = features[key] && allowed[key];
   }
   features.assignment = features.assignment && features.classroom;
-  features.analytics = features.analytics && features.assignment;
   const homepage =
     configuration.homepage === "teaching" && !features.classroom ||
       configuration.homepage === "community" && !features.community
