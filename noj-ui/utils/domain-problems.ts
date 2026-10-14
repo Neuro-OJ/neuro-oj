@@ -16,6 +16,13 @@ export interface DomainProblemSummary {
   version: number;
   binding_id: string;
   policy_revision: number;
+  difficulty?: string;
+  tags?: Array<{ id: string; name: string; kind: string }>;
+  has_hidden_algorithm_tags?: boolean;
+  progress?: 'solved' | 'attempted' | 'unseen' | null;
+  submit_count?: number;
+  valid_submissions?: number;
+  accepted_submissions?: number;
 }
 export interface DomainProblemContent {
   kind: DomainProblemSummary['kind'];

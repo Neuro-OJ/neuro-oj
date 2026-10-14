@@ -4,6 +4,7 @@ import {
   count,
   eq,
   ilike,
+  inArray,
   isNotNull,
   isNull,
   or,
@@ -16,16 +17,27 @@ import {
   domains,
   problems,
   problemShareSettings,
+  problemTags,
   problemVersions,
+  tags,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../workspace/index.ts";
+import {
+  domainProblemProgressWhere,
+  getDomainProblemSummaries,
+} from "../../../query/index.ts";
+import { isValidDifficulty } from "../../types/problems.ts";
 import { unendedPublicContestForProblem } from "../../../contest/index.ts";
 import type { ProblemContentV1 } from "../../types/problem-content.ts";
 import {
   projectProblemContent,
   trimProblemContentForViewer,
 } from "../versioning/version-read-view.ts";
-import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
+import {
+  AppError,
+  BadRequestError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 import { problemAuthoringRestrictedByContest } from "./problem-contest-authoring.ts";
@@ -34,7 +46,15 @@ import { problemAuthoringRestrictedByContest } from "./problem-contest-authoring
 export async function listDomainProblems(
   slug: string,
   actorId: string | null,
-  query: { page: number; limit: number; keyword?: string },
+  query: {
+    page: number;
+    limit: number;
+    keyword?: string;
+    difficulty?: string;
+    kind?: string;
+    progress?: string;
+    tag_id?: string;
+  },
 ) {
   const db = getDb();
   const workspace = await loadWorkspace(slug, actorId);
@@ -42,6 +62,38 @@ export async function listDomainProblems(
   const binding = domainProblemBindings;
   const canEdit = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("problem:write_any");
+  if (query.difficulty && !isValidDifficulty(query.difficulty)) {
+    throw new BadRequestError("题目难度非法");
+  }
+  if (query.kind && !["oi", "ai", "objective"].includes(query.kind)) {
+    throw new BadRequestError("题型非法");
+  }
+  if (
+    query.progress &&
+    !["solved", "attempted", "unseen"].includes(query.progress)
+  ) throw new BadRequestError("本人状态非法");
+  if (query.progress && !actorId) {
+    throw new BadRequestError("请登录后筛选本人状态");
+  }
+  const scope = {
+    domainId: workspace.domain.id,
+    member: !!workspace.membership || workspace.platformAdmin,
+  };
+  const ownEditable = and(
+    eq(binding.kind, "owned"),
+    canEdit
+      ? sql`true`
+      : actorId && workspace.context.domainPermissions.has("problem:write_own")
+      ? eq(problems.owner_id, actorId)
+      : sql`false`,
+  );
+  const algorithmVisible = or(
+    ownEditable,
+    actorId
+      ? domainProblemProgressWhere(scope, problems.id, actorId, "solved")
+      : sql`false`,
+  );
+  const keyword = query.keyword?.trim();
   const visible = and(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
@@ -77,8 +129,29 @@ export async function listDomainProblems(
         sql`NOT ${unendedPublicContestForProblem(problems.id, source.id)}`,
       ),
     ),
-    query.keyword
-      ? ilike(sql`${problemVersions.content}->>'title'`, `%${query.keyword}%`)
+    keyword
+      ? or(
+        ilike(sql`${problemVersions.content}->>'title'`, `%${keyword}%`),
+        eq(sql`${problems.number}::text`, keyword),
+        eq(sql`${source.slug} || ':' || ${problems.number}`, keyword),
+      )
+      : undefined,
+    query.difficulty ? eq(problems.difficulty, query.difficulty) : undefined,
+    query.kind
+      ? eq(sql`${problemVersions.content}->>'kind'`, query.kind)
+      : undefined,
+    query.progress && actorId
+      ? domainProblemProgressWhere(
+        scope,
+        problems.id,
+        actorId,
+        query.progress as "solved" | "attempted" | "unseen",
+      )
+      : undefined,
+    query.tag_id
+      ? sql`EXISTS (SELECT 1 FROM problem_tags filtered_tags JOIN tags filtered_tag ON filtered_tag.id=filtered_tags.tag_id
+      WHERE filtered_tags.problem_id=${problems.id} AND filtered_tags.tag_id=${query.tag_id}
+      AND (filtered_tag.kind='problem' OR ${algorithmVisible}))`
       : undefined,
   );
   const join = () =>
@@ -89,6 +162,8 @@ export async function listDomainProblems(
       number: problems.number,
       title: sql<string>`${problemVersions.content}->>'title'`,
       kind: sql<string>`${problemVersions.content}->>'kind'`,
+      difficulty: problems.difficulty,
+      can_edit_tags: sql<boolean>`${ownEditable}`,
       version_id: problemVersions.id,
       version: problemVersions.version,
       binding_id: binding.id,
@@ -115,27 +190,65 @@ export async function listDomainProblems(
     join().orderBy(asc(source.slug), asc(problems.number), asc(problems.id))
       .limit(query.limit).offset((query.page - 1) * query.limit),
   ]);
+  const ids = rows.map((row) => row.problem_id);
+  const [statistics, labels] = await Promise.all([
+    getDomainProblemSummaries(scope, ids, actorId),
+    ids.length
+      ? db.select({
+        problem_id: problemTags.problem_id,
+        id: tags.id,
+        name: tags.name,
+        kind: tags.kind,
+      })
+        .from(problemTags).innerJoin(tags, eq(tags.id, problemTags.tag_id))
+        .where(inArray(problemTags.problem_id, ids)).orderBy(asc(tags.name))
+      : Promise.resolve([]),
+  ]);
+  const summaries = new Map(statistics.map((row) => [row.problem_id, row]));
   return {
     page: query.page,
     limit: query.limit,
     total: total.total,
-    items: rows.map((row) => ({
-      reference: domainProblemReference(
-        {
-          id: row.problem_id,
-          domain_id: row.source_domain_id,
-          number: row.number,
-        },
-        row.source_slug,
-        workspace.domain.id,
-      ),
-      title: row.title,
-      kind: row.kind,
-      version_id: row.version_id,
-      version: row.version,
-      binding_id: row.binding_id,
-      policy_revision: row.revision,
-    })),
+    items: rows.map((row) => {
+      const summary = summaries.get(row.problem_id);
+      const problemLabels = labels.filter((label) =>
+        label.problem_id === row.problem_id
+      );
+      const visibleLabels = problemLabels.filter((label) =>
+        label.kind === "problem" || row.can_edit_tags || summary?.solved
+      );
+      return ({
+        reference: domainProblemReference(
+          {
+            id: row.problem_id,
+            domain_id: row.source_domain_id,
+            number: row.number,
+          },
+          row.source_slug,
+          workspace.domain.id,
+        ),
+        title: row.title,
+        kind: row.kind,
+        version_id: row.version_id,
+        version: row.version,
+        binding_id: row.binding_id,
+        policy_revision: row.revision,
+        difficulty: row.difficulty,
+        tags: visibleLabels.map(({ id, name, kind }) => ({ id, name, kind })),
+        has_hidden_algorithm_tags:
+          visibleLabels.length !== problemLabels.length,
+        progress: actorId
+          ? summary?.solved
+            ? "solved"
+            : summary?.attempted
+            ? "attempted"
+            : "unseen"
+          : null,
+        submit_count: summary?.submit_count ?? 0,
+        valid_submissions: summary?.valid_submissions ?? 0,
+        accepted_submissions: summary?.accepted_submissions ?? 0,
+      });
+    }),
   };
 }
 

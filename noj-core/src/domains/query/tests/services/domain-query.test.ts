@@ -4,7 +4,7 @@ import { signToken } from "../../../identity/index.ts";
 import { domainStatsSse } from "../../routes/sse.ts";
 import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 import { _dispatchToLocalListenersForTest } from "../../../../shared/sse/event-bus.ts";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contests,
@@ -23,6 +23,8 @@ import {
   presetConfiguration,
 } from "../../../workspace/index.ts";
 import {
+  domainProblemProgressWhere,
+  getDomainProblemSummaries,
   getDomainRankingRows,
   getDomainStats,
   loadDomainQueryScope,
@@ -119,6 +121,45 @@ export async function fixture() {
   );
   return { db, actor, now };
 }
+
+Deno.test("本人题库状态：不计全站排行的已结束比赛仍显示通过，赛中与全站榜继续排除", async () => {
+  const { db, actor, now } = await fixture();
+  await db.insert(contests).values({
+    id: "main-unranked",
+    domain_id: DEFAULT_DOMAIN_ID,
+    title: "不计全站排行",
+    created_by: actor,
+    type: "oi",
+    kind: "invite",
+    description: "",
+    affect_global_ranking: false,
+    start_time: new Date(Date.now() - 60000).toISOString(),
+    end_time: new Date(Date.now() + 60000).toISOString(),
+    created_at: now,
+    updated_at: now,
+  });
+  await db.update(submissions).set({
+    contest_id: "main-unranked",
+    is_accepted: true,
+  }).where(eq(submissions.id, `submit-${DEFAULT_DOMAIN_ID}`));
+  const scope = await loadDomainQueryScope("main", actor);
+  assertEquals(
+    (await getDomainProblemSummaries(scope, ["query-source"], actor)).length,
+    0,
+  );
+  await db.update(contests).set({
+    end_time: new Date(Date.now() - 1000).toISOString(),
+  }).where(eq(contests.id, "main-unranked"));
+  const summary =
+    (await getDomainProblemSummaries(scope, ["query-source"], actor))[0];
+  assertEquals(summary.solved, true);
+  assertEquals(summary.submit_count, 1);
+  const matched = await db.select({ id: problems.id }).from(problems).where(
+    domainProblemProgressWhere(scope, sql`${problems.id}`, actor, "solved"),
+  );
+  assertEquals(matched.map((row) => row.id), ["query-source"]);
+  assertEquals((await getGlobalRankings({ page: 1 })).total, 0);
+});
 
 Deno.test("域统计与榜单：同源题三个域独立、撤销共享即时去除候选", async () => {
   const { db, actor } = await fixture();

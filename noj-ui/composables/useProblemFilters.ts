@@ -18,6 +18,8 @@ export function useProblemFilters() {
   /** 题目类型筛选。空字符串 = 未选择（API 默认返回 P 型）。 */
   const problemType = computed(() => (route.query.type as string) || '');
   const problemNumber = computed(() => (route.query.number as string) || '');
+  const kind = computed(() => (route.query.kind as string) || '');
+  const progress = computed(() => (route.query.progress as string) || '');
 
   const limit = 20;
 
@@ -31,13 +33,17 @@ export function useProblemFilters() {
    * - 若非 page 参数变更，自动重置到第 1 页
    */
   function setFilter(key: string, value: string | null | undefined) {
+    setFilters({ [key]: value });
+  }
+
+  /** 同时改变多个筛选值，避免连续导航相互覆盖。 */
+  function setFilters(values: Record<string, string | null | undefined>) {
     const query = { ...route.query };
-    if (value) {
-      query[key] = value;
-    } else {
-      delete query[key];
+    for (const [key, value] of Object.entries(values)) {
+      if (value) query[key] = value;
+      else delete query[key];
     }
-    if (key !== 'page') {
+    if (!('page' in values)) {
       delete query.page;
     }
     router.push({ query });
@@ -69,8 +75,11 @@ export function useProblemFilters() {
     tagId,
     problemType,
     problemNumber,
+    kind,
+    progress,
     hasActiveFilters,
     setFilter,
+    setFilters,
     queryParams,
   };
 }

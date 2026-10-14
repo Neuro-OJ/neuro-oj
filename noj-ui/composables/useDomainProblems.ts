@@ -7,11 +7,16 @@ import type { AssignmentSubmissionOrigin } from '~/utils/education';
 export function useDomainProblems() {
   const { api } = useApi();
   return {
-    list: (slug: string, page: number, keyword = '') =>
+    list: (
+      slug: string,
+      page: number,
+      keyword = '',
+      filters: { kind?: string; difficulty?: string; progress?: string; tag_id?: string } = {},
+    ) =>
       api.get<{ items: DomainProblemSummary[]; total: number; page: number; limit: number }>(
         domainProblemApiPath(slug),
         {
-          query: { page, limit: 30, keyword },
+          query: { page, limit: 30, keyword, ...filters },
           silent: true,
         },
       ),
