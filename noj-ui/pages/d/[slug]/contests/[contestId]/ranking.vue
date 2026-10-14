@@ -10,7 +10,7 @@ const api = useDomainContests();
 const id = computed(() => String(route.params.contestId));
 const official = ref(false);
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'contest-ranking', id.value));
-const { data: contest } = await useAsyncData(
+const { data: contest, refresh: refreshContest } = await useAsyncData(
   computed(() => `${key.value}:contest`),
   () => api.detail(slug.value!, id.value),
 );
@@ -19,6 +19,10 @@ const { data, error, status, refresh } = await useAsyncData(
   () => api.ranking(slug.value!, id.value, official.value),
 );
 useSeoMeta({ title: '比赛成绩榜' });
+usePolling({ intervalMs: computed(() => contest.value?.data.status !== 'ended' ? 2000 : null), immediate: false, fetcher: () => refreshContest() });
+watch(() => contest.value?.data.status, (next, previous) => {
+  if (previous && next !== previous) void refresh();
+});
 usePolling({
   intervalMs: computed(() => contest.value?.data.status === 'running' && !official.value ? 5000 : null),
   immediate: false,

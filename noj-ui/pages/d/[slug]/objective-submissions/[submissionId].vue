@@ -10,7 +10,7 @@ const { data, status, error, refresh } = await useAsyncData(
 );
 usePolling({
   intervalMs: computed(() =>
-    data.value?.data.result_visibility !== 'hidden' && ['pending', 'judging'].includes(data.value?.data.status ?? '')
+    data.value?.data.result_visibility === 'hidden' || ['pending', 'judging'].includes(data.value?.data.status ?? '')
       ? 2000
       : null
   ),
