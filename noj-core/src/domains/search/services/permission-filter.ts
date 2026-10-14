@@ -2,7 +2,10 @@ import { sql } from "drizzle-orm";
 import { searchEntries } from "../../../shared/db/schema.ts";
 import { unendedPublicContestForProblem } from "../../contest/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
+import {
+  domainProblemAvailableWhere,
+  domainProblemBindingAvailableWhere,
+} from "../../catalog/index.ts";
 import { currentTeacherSubmissionAccessWhere } from "../../education/index.ts";
 import { submissionQueryVisibility } from "../../query/index.ts";
 
@@ -161,19 +164,13 @@ export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
       )
     })`;
   return sql`CASE ${searchEntries.entity_type}
-    WHEN 'problem' THEN EXISTS (SELECT 1 FROM problems p WHERE p.id=${searchEntries.entity_id}
-      AND p.latest_version_id IS NOT NULL AND (
-        (p.domain_id IS NULL AND ${
-    domainId === DEFAULT_DOMAIN_ID
-  } AND (p.visibility='public' OR p.owner_id=${userId} OR ${ctx.isAdmin}))
-        OR EXISTS (SELECT 1 FROM domain_problem_bindings candidate_binding WHERE candidate_binding.problem_id=p.id AND candidate_binding.domain_id=${domainId}
-          AND ${
-    domainProblemBindingAvailableWhere(
-      sql`candidate_binding.id`,
+    WHEN 'problem' THEN ${
+    domainProblemAvailableWhere(
+      searchEntries.entity_id,
       sql`${domainId}`,
       { member },
     )
-  })))
+  }
     WHEN 'community_post' THEN EXISTS (SELECT 1 FROM community_posts search_post
       WHERE search_post.id=${searchEntries.entity_id} AND ${postVisible})
     WHEN 'community_comment' THEN EXISTS (SELECT 1 FROM community_comments comment

@@ -71,6 +71,7 @@ Deno.test({
     await publishBaselineVersionForTest("p-search-1");
     const entry = await buildProblemEntry("p-search-1");
     assertEquals(entry !== null, true);
+    assertEquals(entry!.domainId, DEFAULT_DOMAIN_ID);
     assertEquals(entry!.metadata.display_id, "1");
     assertEquals(entry!.metadata.qualified_ref, "main:1");
     assertEquals(entry!.metadata.type, undefined);
@@ -253,6 +254,7 @@ Deno.test({
     });
     const entry = await buildCommunityPostEntry("post-entry-1");
     assertEquals(entry !== null, true);
+    assertEquals(entry!.domainId, DEFAULT_DOMAIN_ID);
     assertEquals(entry?.entityType, "community_post");
     assertEquals(entry?.title, "社区帖子标题");
     assert(entry!.body.includes("社区帖子正文"));

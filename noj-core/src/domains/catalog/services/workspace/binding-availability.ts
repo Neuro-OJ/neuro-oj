@@ -22,11 +22,36 @@ export function domainProblemBindingAvailableWhere(
   domainId: AnyColumn | SQL,
   options: { member: boolean },
 ): SQL {
+  return availableBindingWhere(
+    sql`b.id = ${bindingId}`,
+    domainId,
+    options.member,
+  );
+}
+
+/** 搜索直接按源题定位当前可用绑定，避免再次查询同一个题目和绑定。 */
+export function domainProblemAvailableWhere(
+  problemId: AnyColumn | SQL,
+  domainId: AnyColumn | SQL,
+  options: { member: boolean },
+): SQL {
+  return availableBindingWhere(
+    sql`b.problem_id = ${problemId}`,
+    domainId,
+    options.member,
+  );
+}
+
+function availableBindingWhere(
+  selector: SQL,
+  domainId: AnyColumn | SQL,
+  member: boolean,
+): SQL {
   return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
     JOIN problems p ON p.id = b.problem_id JOIN domains src ON src.id = p.domain_id
     LEFT JOIN problem_share_settings share ON share.problem_id = p.id
-    WHERE b.id = ${bindingId} AND b.domain_id = ${domainId}
-      AND (${options.member} OR b.visibility = 'public') AND ${bindingAvailabilityCondition()})`;
+    WHERE ${selector} AND b.domain_id = ${domainId}
+      AND (${member} OR b.visibility = 'public') AND ${bindingAvailabilityCondition()})`;
 }
 
 /** 批量教学读取需要的绑定事实，不包含题面、答案、文件或 Provider 配置。 */

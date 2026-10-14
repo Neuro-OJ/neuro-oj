@@ -96,6 +96,7 @@ export async function buildProblemEntry(
 ): Promise<SearchEntryInput | null> {
   const rows = await db.execute<{
     id: string;
+    domain_id: string;
     title: string;
     description: string;
     difficulty: string;
@@ -107,7 +108,7 @@ export async function buildProblemEntry(
     updated_at: string;
     tags: string | null;
   }>(sql`
-    SELECT p.id, p.title, p.description, p.difficulty, p.number,
+    SELECT p.id, p.domain_id, p.title, p.description, p.difficulty, p.number,
            coalesce(source.slug, 'main') AS source_slug,
            p.owner_id, p.visibility, p.created_at, p.updated_at,
            COALESCE((
@@ -123,6 +124,7 @@ export async function buildProblemEntry(
   `);
   const row = unwrapFirstRow<{
     id: string;
+    domain_id: string;
     title: string;
     description: string;
     difficulty: string;
@@ -140,6 +142,7 @@ export async function buildProblemEntry(
   return {
     entityType: "problem",
     entityId: row.id,
+    domainId: row.domain_id,
     title: row.title,
     body: `${row.description} ${qualifiedRef} ${row.tags ?? ""}`.trim(),
     metadata: {
@@ -209,6 +212,7 @@ export async function buildCommunityPostEntry(
   const db = getDb();
   const rows = await db.execute<{
     id: string;
+    domain_id: string;
     public_id: string;
     type: string;
     title: string | null;
@@ -223,7 +227,7 @@ export async function buildCommunityPostEntry(
     problem_number: number | null;
     problem_title: string | null;
   }>(sql`
-    SELECT p.id, p.public_id, p.type, p.title, p.content, p.author_id,
+    SELECT p.id, p.domain_id, p.public_id, p.type, p.title, p.content, p.author_id,
            p.problem_id, p.status, p.created_at, p.updated_at,
            u.username AS author_username,
            coalesce(source.slug, 'main') AS source_domain_slug, pr.number AS problem_number,
@@ -236,6 +240,7 @@ export async function buildCommunityPostEntry(
   `);
   const row = unwrapFirstRow<{
     id: string;
+    domain_id: string;
     public_id: string;
     type: string;
     title: string | null;
@@ -263,6 +268,7 @@ export async function buildCommunityPostEntry(
   return {
     entityType: "community_post",
     entityId: row.id,
+    domainId: row.domain_id,
     title: row.title ?? row.content.slice(0, 50),
     body: `${row.content} ${row.author_username} ${problemText}`.trim(),
     metadata: {
