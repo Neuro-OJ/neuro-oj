@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast';
+import { authCookieNames } from '~/utils/auth-cookies';
 import { extractApiError } from '~/utils/apiError';
 import { workspaceInvitationLink, workspaceInvitationToken, workspacePath } from '~/utils/workspace';
 import type { WorkspaceInvitationPreview } from '~/utils/workspace';
@@ -17,7 +18,7 @@ const credentials = reactive({ login: '', password: '', code: '' });
 const tfaRequired = ref(false);
 const signingIn = ref(false);
 const registrationLink = ref('');
-const session = useCookie('noj:session');
+const session = useCookie(authCookieNames(useRuntimeConfig().public.authCookiePrefix).session);
 const checkingAccount = ref(false);
 async function refreshAccount() {
   if (checkingAccount.value || !preview.value) return;

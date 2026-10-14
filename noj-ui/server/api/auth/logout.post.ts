@@ -1,4 +1,4 @@
-// deleteCookie 由 h3 自动导入
+import { authCookieNames } from '../../../utils/auth-cookies.ts';
 
 /**
  * 本地注销端点（issue #75 JWT 撤销机制）。
@@ -14,8 +14,9 @@
  */
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+  const names = authCookieNames(config.public.authCookiePrefix);
   const cookies = parseCookies(event);
-  const token = cookies['noj:token'];
+  const token = cookies[names.token];
 
   // 1. 通知后端撤销该 token（fail-open：失败时也要清本地 Cookie）
   if (token) {
@@ -30,10 +31,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // 2. 清除本地 Cookie
-  deleteCookie(event, 'noj:token', {
+  deleteCookie(event, names.token, {
     path: '/',
   });
-  deleteCookie(event, 'noj:session', {
+  deleteCookie(event, names.session, {
     path: '/',
   });
 

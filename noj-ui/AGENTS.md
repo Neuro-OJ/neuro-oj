@@ -155,6 +155,7 @@ cd dist
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `NUXT_API_BASE` | `http://localhost:8000` | noj-core API 地址（服务端私有） |
+| `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj` | 身份 Cookie 前缀；同一主机多套 UI 分别设置，避免跨端口覆盖登录 |
 | `NUXT_SITE_URL` | 空 | sitemap/canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时 sitemap 退化为按 Host 分键缓存；生产必须配置，避免缓存投毒（2026-09-12 评审 §4.2） |
 
 ## API 交互约定
@@ -170,7 +171,8 @@ cd dist
   - 拦截登录响应，将 JWT 设为 **HTTP-only Cookie**（`noj:token`）—— 对 JS 不可见
   - 设置 **可读 Session Cookie**（`noj:session`）—— 存用户基本信息，仅用于 UI 快速判断登录态
   - 自动从 Cookie 注入 `Authorization: Bearer` 头到转发请求
-- 注销：`server/api/auth/logout.post.ts` 删除两个 Cookie（**纯本地操作**，不调用后端 API）
+- Cookie 名默认 `noj:token` / `noj:session`，可通过上述前缀统一调整；服务端代理、登录、改密、401 清理与注销使用相同配置。
+- 注销：`server/api/auth/logout.post.ts` 通知后端撤销本套件 token，再删除本套件的两个 Cookie。
 
 ### useApi 统一 API 调用层
 

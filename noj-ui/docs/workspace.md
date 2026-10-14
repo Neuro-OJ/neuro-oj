@@ -200,6 +200,11 @@ SSE；域或登录账号变化会关闭旧连接和重放依据。
 
 ## 验证
 
+同一主机同时运行多个独立套件时，Cookie 不区分端口。分别设置
+`NUXT_PUBLIC_AUTH_COOKIE_PREFIX`（例如 `noj-main` 与 `noj-restore`），重启 UI
+后各自登录，避免另一套件的登录或注销覆盖当前身份。默认单套部署仍用 `noj`；
+改变前缀会要求重新登录，不迁移已有令牌。此配置与当前 Domain 无关，域授权始终来自 URL。
+
 ```sh
 deno task test
 deno task test:components
