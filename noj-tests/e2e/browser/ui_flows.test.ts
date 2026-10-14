@@ -251,7 +251,7 @@ async function logoutViaUI(): Promise<void> {
   // 统一 useDialog 确认弹窗
   await p.getByRole("button", { name: "确认登出" }).click();
   // 登出后回到未登录态（导航栏出现「登录」链接）
-  await p.locator('a[href="/login"]').first().waitFor({ timeout: 15_000 });
+  await p.locator('a[href^="/login"]').first().waitFor({ timeout: 15_000 });
 }
 
 /**

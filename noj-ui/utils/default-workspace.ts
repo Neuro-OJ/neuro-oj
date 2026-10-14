@@ -19,6 +19,7 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/trainings/mine': 'trainings',
     '/contests': 'contests',
     '/submissions': 'submissions',
+    '/my/submissions': 'submissions',
     '/ranking': 'rankings',
     '/community': 'community',
     '/community/bookmarks': 'community/bookmarks',

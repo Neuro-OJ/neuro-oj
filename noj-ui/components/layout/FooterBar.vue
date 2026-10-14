@@ -40,9 +40,9 @@
                 <!-- 站内导航 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">站内导航</h4>
-                    <NuxtLink to="/problems" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
-                    <NuxtLink to="/contests" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
-                    <NuxtLink to="/community" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'problems')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'contests')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'community')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
                     <NuxtLink to="/data-policy" class="block text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
                     <NuxtLink to="/legal/privacy" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
                     <NuxtLink to="/legal/terms" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
@@ -88,6 +88,8 @@
 </template>
 
 <script setup lang="ts">
+import { workspacePath } from "~/utils/workspace";
+const domainSlug = useNavigationDomain();
 import { buildFilingLinks, EMPTY_SITE_META } from "~/utils/siteMeta";
 import {
     type BuildInfo,

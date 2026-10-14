@@ -23,7 +23,9 @@ watch(workspaceRoute, () => close());
 function onGlobalKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        if (!workspaceRoute.value) open();
+        const slug = workspaceSlugFromPath(route.path);
+        if (slug) void navigateTo(`/d/${slug}/search`);
+        else open();
     } else if (e.key === "Escape" && state.value.open) {
         close();
     }

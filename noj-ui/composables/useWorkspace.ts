@@ -43,6 +43,10 @@ export function provideWorkspaceContext() {
 }
 
 const workspaceContextKey: InjectionKey<ReturnType<typeof provideWorkspaceContext>> = Symbol('workspace-context');
+/** 共享导航在账号页没有域布局；域页面直接复用布局已解析的上下文。 */
+export function useOptionalWorkspace() {
+  return inject(workspaceContextKey, null);
+}
 /** 子页面复用所属布局的解析，不重复触发上下文读取或依赖全局当前域。 */
 export function useWorkspace() {
   const context = inject(workspaceContextKey);
@@ -85,6 +89,7 @@ export function useWorkspaceApi() {
         {
           data: {
             access: 'public' | 'authenticated';
+            default_domain_slug: string;
             domain_creation_policy: 'admin' | 'approval' | 'open';
             modules: WorkspaceDetail['configuration']['features'];
           };

@@ -7,7 +7,7 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
   const can = (permission: string) => domain.permissions.includes(permission);
   const features = domain.configuration.features;
   const entries = [
-    { label: '概览', section: '', icon: 'i-lucide-building-2' },
+    { label: '首页', section: '', icon: 'i-lucide-home' },
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
     { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },
     { label: '比赛', section: 'contests', icon: 'i-lucide-trophy' },

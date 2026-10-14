@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
 import { workspaceNavigation } from '~/utils/workspace-navigation';
-import { workspaceHomepagePath } from '~/utils/workspace-homepage';
 import { useToast } from '~/composables/useToast';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const { domain, refresh } = useWorkspace();
-const route = useRoute();
-const homepage = computed(() => domain.value ? workspaceHomepagePath(domain.value) : null);
-if (homepage.value) await navigateTo(homepage.value, { replace: true });
-watch(homepage, (path) => {
-  if (path && domain.value && route.path === workspacePath(domain.value.slug)) {
-    return navigateTo(path, { replace: true });
-  }
-});
 const { isLoggedIn } = useAuth();
 const workspace = useWorkspaceApi();
 const { toast } = useToast();
@@ -41,6 +32,7 @@ useSeoMeta({ title: () => domain.value?.name ?? '空间' });
 
 <template>
   <div v-if="domain" class="grid gap-4 md:grid-cols-2">
+    <AdminPageHeader class="md:col-span-2" :title="domain.name" :description="domain.description" icon="i-lucide-home" />
     <UCard class="md:col-span-2">
       <h2 class="mb-3 font-semibold text-text">开始使用</h2>
       <div class="flex flex-wrap gap-3">

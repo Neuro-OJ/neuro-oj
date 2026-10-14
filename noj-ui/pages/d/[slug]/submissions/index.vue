@@ -31,7 +31,6 @@ useSeoMeta({ title: '我的空间提交' });
   <div class="space-y-4">
     <div class="flex justify-between gap-3">
       <h2 class="text-xl font-semibold">我的空间提交</h2>
-      <UButton to="/my/submissions" variant="outline">全部域本人历史</UButton>
       <UButton :to="workspacePath(slug!, 'objective-submissions')" variant="outline">客观题历史</UButton>
       <UButton variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新提交" @click="refresh()" />
     </div>

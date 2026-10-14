@@ -364,8 +364,8 @@ Deno.test({
             ),
             [slug],
           );
-          await expect(student.page.getByTestId("single-workspace")).toHaveText(
-            school,
+          await expect(student.page.getByTestId("domain-identity")).toHaveText(
+            `${studentName}@${slug}`,
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
@@ -387,12 +387,12 @@ Deno.test({
             name: "确认登出",
             exact: true,
           }).click();
-          await expect(student.page.locator('a[href="/login"]').first())
+          await expect(student.page.locator('a[href^="/login"]').first())
             .toBeVisible();
           await login(student.page, studentName);
           await student.page.waitForURL((url) => url.pathname === `/d/${slug}`);
-          await expect(student.page.getByTestId("single-workspace")).toHaveText(
-            school,
+          await expect(student.page.getByTestId("domain-identity")).toHaveText(
+            `${studentName}@${slug}`,
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
