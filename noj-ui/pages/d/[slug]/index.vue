@@ -12,7 +12,9 @@ const reason = ref('');
 const shortcuts = computed(() =>
   domain.value
     ? workspaceNavigation(domain.value).filter((entry) =>
-      entry.section && !['members', 'settings'].includes(entry.section)
+      (domain.value!.preset === 'education'
+        ? ['my-learning', 'teaching', 'classrooms', 'problems']
+        : ['problems', 'trainings', 'contests', 'community']).includes(entry.section)
     )
     : []
 );
@@ -40,6 +42,7 @@ useSeoMeta({ title: () => domain.value?.name ?? '空间' });
           variant="outline">{{ entry.label }}</UButton>
       </div>
     </UCard>
+    <DomainHomeContent class="md:col-span-2" />
     <UCard>
       <h2 class="mb-3 font-semibold text-text">空间信息</h2>
       <dl class="grid grid-cols-2 gap-3 text-sm">

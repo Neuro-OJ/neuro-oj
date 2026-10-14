@@ -25,9 +25,7 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
     entries.push({ label: '班级', section: 'classrooms', icon: 'i-lucide-users' });
     if (features.assignment) {
       entries.push({ label: '我的学习', section: 'my-learning', icon: 'i-lucide-graduation-cap' });
-      if (can('classroom:create') || can('classroom:manage_any')) {
-        entries.push({ label: '教学工作台', section: 'teaching', icon: 'i-lucide-presentation' });
-      }
+      entries.push({ label: '教学工作台', section: 'teaching', icon: 'i-lucide-presentation' });
     }
   }
   if (can('llm:manage')) entries.push({ label: 'LLM', section: 'llm', icon: 'i-lucide-bot' });

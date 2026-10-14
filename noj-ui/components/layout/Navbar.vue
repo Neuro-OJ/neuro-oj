@@ -33,9 +33,21 @@ useEventSource({
   fetchFn: () => loadUnreadCount(),
   fallbackIntervalMs: 30000,
 });
-const notificationHref = computed(() => teachingEnabled.value
-  ? workspacePath(slug.value, 'notifications')
-  : communityPath(slug.value, 'notifications'));
+const educationApi = useEducationApi();
+const educationNotifications = useAsyncData(
+  computed(() => `navbar-education:${slug.value}:${user.value?.id ?? ''}:${teachingEnabled.value}`),
+  () => user.value && teachingEnabled.value && (workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)
+    ? educationApi.notifications(slug.value)
+    : Promise.resolve({ data: { unread: 0 } }),
+);
+useEventSource({
+  url: computed(() => `/api/v1/domains/${encodeURIComponent(slug.value)}/notifications/events`),
+  scopeKey: computed(() => `${slug.value}:${user.value?.id ?? ''}`),
+  enabled: computed(() => !!user.value && teachingEnabled.value && !!(workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)),
+  onEvent: { 'education:sync': () => educationNotifications.refresh(), 'education:notification': () => educationNotifications.refresh() },
+  fetchFn: () => educationNotifications.refresh(),
+  fallbackIntervalMs: 15000,
+});
 watch(() => route.path, () => { mobileOpen.value = false; });
 onMounted(() => {
   const element = headerRef.value!;
@@ -77,9 +89,13 @@ onMounted(() => {
       </nav>
       <div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
         <UButton :to="workspacePath(slug, 'search')" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="搜索当前域" />
-        <UButton v-if="user && (teachingEnabled || communityEnabled)" :to="notificationHref" color="neutral"
-          variant="ghost" icon="i-lucide-bell" :aria-label="teachingEnabled ? '教学通知' : t('nav.notifications')">
-          <span v-if="!teachingEnabled && unreadCount" class="text-xs tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        <UButton v-if="user && communityEnabled" :to="communityPath(slug, 'notifications')" color="neutral"
+          variant="ghost" icon="i-lucide-bell" aria-label="社区通知">
+          <span v-if="unreadCount" class="text-xs tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        </UButton>
+        <UButton v-if="user && teachingEnabled" :to="workspacePath(slug, 'notifications')" color="neutral"
+          variant="ghost" icon="i-lucide-bell-ring" aria-label="教学通知">
+          <span v-if="educationNotifications.data.value?.data.unread" class="text-xs tabular-nums">{{ educationNotifications.data.value.data.unread > 99 ? '99+' : educationNotifications.data.value.data.unread }}</span>
         </UButton>
         <UButton color="neutral" variant="ghost" size="sm" :aria-label="t('common.language')"
           @click="setLocale(isEnglish ? 'zh-CN' : 'en-US')">{{ isEnglish ? '中文' : 'EN' }}</UButton>

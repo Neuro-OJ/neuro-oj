@@ -50,6 +50,7 @@ const mountHome = () =>
         UCard: { template: '<div><slot /></div>' },
         UButton: { template: '<button><slot /></button>' },
         UTextarea: true,
+        DomainHomeContent: true,
       },
     },
   });

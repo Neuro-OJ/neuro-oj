@@ -36,7 +36,6 @@ const modules = [{ key: 'community', label: '社区' }, { key: 'classroom', labe
 }, { key: 'analytics', label: '学情与域排行' }] as const;
 function dependencies() {
   if (!draft.instance_allowed_modules.classroom) draft.instance_allowed_modules.assignment = false;
-  if (!draft.instance_allowed_modules.assignment) draft.instance_allowed_modules.analytics = false;
 }
 async function save(key: keyof InstancePolicyDraft) {
   if (saving.value) return;
@@ -109,7 +108,7 @@ async function save(key: keyof InstancePolicyDraft) {
         <p class="text-sm text-text-secondary">各域只能启用这里许可的模块；停用教学保留获授权历史读取。</p>
         <UCheckbox v-for="module in modules" :key="module.key" v-model="draft.instance_allowed_modules[module.key]"
           :label="module.label"
-          :disabled="module.key === 'assignment' && !draft.instance_allowed_modules.classroom || module.key === 'analytics' && !draft.instance_allowed_modules.assignment"
+          :disabled="module.key === 'assignment' && !draft.instance_allowed_modules.classroom"
           @update:model-value="dependencies" />
         <UButton type="submit" :loading="saving === 'instance_allowed_modules'"
           :disabled="saving !== null">保存模块许可</UButton>

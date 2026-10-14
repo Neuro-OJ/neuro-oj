@@ -85,7 +85,7 @@ describe('实例政策使用现有设置契约', () => {
     expect((view.get('input[aria-label="默认工作空间"]').element as HTMLInputElement).value).toBe('school');
     expect((view.get('select[aria-label="实例访问"]').element as HTMLSelectElement).value).toBe('authenticated');
   });
-  it('关闭班级时联动关闭作业与学情，保存仍为注册表文本值', async () => {
+  it('关闭班级时仅联动关闭作业，域排行可独立保留，保存仍为注册表文本值', async () => {
     const settings = initial(), view = mount(InstancePolicyForm, { props: { initial: settings }, global: { stubs } });
     saveSetting.mockImplementation((setting: InstanceSetting, value: unknown) =>
       Promise.resolve({
@@ -99,7 +99,7 @@ describe('实例政策使用现有设置契约', () => {
       community: true,
       classroom: false,
       assignment: false,
-      analytics: false,
+      analytics: true,
     });
     expect(view.text()).toContain('已保存');
   });
