@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import BanBanner from "~/components/BanBanner.vue"
 import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
-import SearchPalette from "~/components/feature/search/SearchPalette.vue";
 import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
 import { useBanStatus } from "~/composables/useBanStatus"
 import { collectPendingConsents } from "~/utils/legalConsent"
-import { workspaceSlugFromPath } from "~/utils/workspace"
+import { workspacePath } from "~/utils/workspace"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
 
@@ -15,19 +14,12 @@ const pendingConsents = computed(() =>
     user.value ? collectPendingConsents(user.value.legal) : []
 )
 
-const { state, open, close } = useSearch();
-const route = useRoute();
-const workspaceRoute = computed(() => !!workspaceSlugFromPath(route.path));
-watch(workspaceRoute, () => close());
+const slug = useNavigationDomain();
 
 function onGlobalKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        const slug = workspaceSlugFromPath(route.path);
-        if (slug) void navigateTo(`/d/${slug}/search`);
-        else open();
-    } else if (e.key === "Escape" && state.value.open) {
-        close();
+        void navigateTo(workspacePath(slug.value, 'search'));
     }
 }
 
@@ -56,7 +48,6 @@ onUnmounted(() => {
             </main>
         </div>
         <FooterBar />
-        <SearchPalette v-if="!workspaceRoute" />
         <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
     </div>
 </template>

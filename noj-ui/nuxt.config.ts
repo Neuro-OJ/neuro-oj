@@ -169,6 +169,7 @@ export default defineNuxtConfig({
   // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
     '/workspaces': { headers: { 'cache-control': 'no-store' } },
+    '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
     '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
     '/d/**': { headers: { 'cache-control': 'no-store' } },
     '/d/*/members': { ssr: false },

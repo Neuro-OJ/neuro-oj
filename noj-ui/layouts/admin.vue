@@ -49,30 +49,22 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "题务教务",
+    label: "公共分类",
     items: [
-      { label: "题目管理", to: "/admin/problems", icon: "i-lucide-book-open" },
-      { label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags" },
-      { label: "竞赛管理", to: "/admin/contests", icon: "i-lucide-trophy" },
-      { label: "题单管理", to: "/admin/trainings", icon: "i-lucide-list-todo" },
+      { label: "题型标签", to: "/admin/tags", icon: "i-lucide-tags" },
     ],
   },
   {
     label: "评测与算力",
     items: [
-      { label: "提交记录", to: "/admin/submissions", icon: "i-lucide-files" },
-      { label: "版本策略", to: "/admin/problem-versions", icon: "i-lucide-git-branch" },
-      { label: "批量重测", to: "/admin/submission-jobs", icon: "i-lucide-refresh-cw" },
       { label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container" },
-      { label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server" },
-      { label: "LLM 用量统计", to: "/admin/llm/usage", icon: "i-lucide-bar-chart-3" },
-      { label: "LLM 配额", to: "/admin/llm/quotas", icon: "i-lucide-gauge" },
+      { label: "实例 LLM 上限", to: "/admin/llm/quotas", icon: "i-lucide-gauge" },
     ],
   },
   {
     label: "社区与风控",
     items: [
-      { label: "社区管理", to: "/admin/community", icon: "i-lucide-messages-square" },
+      { label: "默认域社区治理", to: "/admin/community", icon: "i-lucide-messages-square" },
       { label: "内容审查", to: "/admin/content-review", icon: "i-lucide-shield-alert" },
       { label: "举报中心", to: "/admin/reports", icon: "i-lucide-flag" },
       { label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone" },
