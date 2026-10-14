@@ -6,6 +6,7 @@ import { extractApiError } from '~/utils/apiError';
 import UiFrame from '~/components/uiproblem/UiFrame.vue';
 import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
 import { PREDICTION_FILE_ACCEPT } from '~/utils/problemView';
+import { languageLabels } from '~/utils/submissionFormat';
 const props = defineProps<
   { slug: string; contestId: string; problem: ContestProblem & { version_id: string }; active: boolean }
 >();
@@ -83,7 +84,7 @@ async function template() {
       emit('refresh');
       return;
     }
-    if (response.data.content == null) failure.value = '此比赛版本没有模板';
+    if (!response.data.content?.trim()) failure.value = '此比赛版本没有模板，当前代码已保留';
     else code.value = response.data.content;
   } catch (error) {
     if (operation.isCurrent()) failure.value = extractApiError(error).message;
@@ -162,7 +163,7 @@ async function submit() {
     </template>
     <template v-else>
       <div class="flex gap-3">
-        <USelect v-model="language" :items="problem.supported_languages ?? ['python3']" aria-label="比赛提交语言"
+        <USelect v-model="language" :items="(problem.supported_languages ?? ['python3']).map(value => ({ value, label: languageLabels[value] ?? value }))" aria-label="比赛提交语言"
           :disabled="!writable" />
         <UButton variant="outline" :disabled="!writable" :loading="templateLoading"
           @click="template">载入比赛模板</UButton>

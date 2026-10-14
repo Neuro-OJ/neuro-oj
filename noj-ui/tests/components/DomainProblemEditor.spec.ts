@@ -50,6 +50,44 @@ function editor() {
   });
 }
 describe('域共享草稿与发布', () => {
+  it('旧 OI 配置补齐计分默认值后不误报修改，允许直接预检与离开', async () => {
+    const guard = vi.fn();
+    vi.stubGlobal('onBeforeRouteLeave', guard);
+    const view = mount(DomainProblemEditor, {
+      props: {
+        slug: 'school',
+        reference: '1001',
+        writable: true,
+        canPublish: true,
+        draft: {
+          ...draft,
+          content: {
+            kind: 'oi',
+            title: 'A+B',
+            description: '',
+            samples: [],
+            runtime_config: {
+              backend: 'native',
+              languages: ['cc'],
+              time_limit_ms: 1000,
+              memory_limit_mb: 256,
+              checker: { type: 'default' },
+              subtasks: [{ id: 'all', score: 100, cases: [{ id: 'sample', input: '1.in', output: '1.out' }] }],
+            },
+          },
+        },
+      },
+      global: { stubs: { ...stubs, DomainOiRuntime: true, DomainOiFiles: true } },
+    });
+    expect(view.text()).toContain('草稿已保存');
+    expect(view.text()).not.toContain('有未保存修改');
+    const preflight = view.findAll('button').find((button) => button.text() === '发布预检')!;
+    expect(preflight.attributes('disabled')).toBeUndefined();
+    await preflight.trigger('click');
+    await flushPromises();
+    expect(api.preflight).toHaveBeenCalledWith('school', '1001', 3);
+    expect(await guard.mock.calls[0]![0]()).toBe(true);
+  });
   it('AI 创建请求携带完整初始 runtime，不发送题库分类或模型', async () => {
     const post = vi.fn().mockResolvedValue({ problem_id: 'p', number: 1001, draft_revision: 1 });
     vi.stubGlobal('useApi', () => ({ api: { post } }));

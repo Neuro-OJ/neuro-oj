@@ -59,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const [name, value] of Object.entries({ computed, ref, nextTick })) vi.stubGlobal(name, value);
   vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'student' }), isLoggedIn: ref(true) }));
+  vi.stubGlobal('useRoute', () => ({ fullPath: '/d/school/problems/main:1001' }));
   vi.stubGlobal('useWorkspace', () => ({ domain: ref({ status: 'active' }) }));
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal('useDomainProblems', () => api);
@@ -69,7 +70,10 @@ beforeEach(() => {
     });
     return { data, error };
   });
-  vi.stubGlobal('useDomainAnswerDraft', () => ({ save: vi.fn() }));
+  vi.stubGlobal(
+    'useDomainAnswerDraft',
+    () => ({ save: vi.fn(), state: ref('saved'), guestAvailable: ref(false), restoreGuest: vi.fn() }),
+  );
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm } }));
   confirm.mockResolvedValue(true);
   api.code.mockResolvedValue({ data: { id: 's1', status: 'pending' } });
@@ -78,6 +82,28 @@ beforeEach(() => {
   api.template.mockResolvedValue({ data: { version_id: 'v1', template_content: '# version template' } });
 });
 describe('域题作答', () => {
+  it('游客模板按钮不可操作，不调用需要登录的权限上下文', async () => {
+    const capture = vi.fn(() => {
+      throw new Error('操作需要登录');
+    });
+    vi.stubGlobal('useAuth', () => ({ user: ref(null), isLoggedIn: ref(false) }));
+    vi.stubGlobal('useWorkspaceActionScope', () => capture);
+    const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: detail }, global: { stubs } });
+    const button = view.findAll('button').find((button) => button.text() === '载入版本模板')!;
+    expect(button.attributes('disabled')).toBeDefined();
+    await button.trigger('click');
+    expect(capture).not.toHaveBeenCalled();
+    expect(api.template).not.toHaveBeenCalled();
+  });
+  it('空模板不会清除已经输入的代码，并说明没有模板', async () => {
+    api.template.mockResolvedValue({ data: { version_id: 'v1', template_content: '' } });
+    const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: detail }, global: { stubs } });
+    await view.find('textarea').setValue('keep my code');
+    await view.findAll('button').find((button) => button.text() === '载入版本模板')!.trigger('click');
+    await flushPromises();
+    expect(view.find('textarea').element.value).toBe('keep my code');
+    expect(view.text()).toContain('此版本没有代码模板，当前代码已保留');
+  });
   it('界面题读取学校绑定版本，参数仍走同域普通提交及作业来源', async () => {
     const origin = { assignment_id: 'task', assignment_item_id: 'item' };
     const view = mount(DomainProblemAnswer, {

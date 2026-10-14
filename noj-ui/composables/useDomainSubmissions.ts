@@ -20,6 +20,7 @@ export interface DomainSubmission {
   submitted_version?: number | null;
   result?: {
     status: string;
+    verdict?: string;
     score?: number;
     time_ms?: number | null;
     memory_kb?: number | null;
