@@ -465,14 +465,18 @@ Deno.test({
           `${UI_URL}/api/v1/auth/me`,
         );
         assertEquals(identity.status(), 200);
-        await teacher.page.evaluate((current) => {
+        const refreshedUserId = await teacher.page.evaluate((current) => {
           const root = document.querySelector("#__nuxt") as Element & {
             __vue_app__: {
               $nuxt: { payload: { state: Record<string, unknown> } };
             };
           };
-          root.__vue_app__.$nuxt.payload.state["auth:user"] = current;
+          const state = root.__vue_app__.$nuxt.payload.state;
+          const previous = state["$sauth:user"] as { id: string };
+          state["$sauth:user"] = current;
+          return previous.id;
         }, (await identity.json()).data);
+        assertEquals(refreshedUserId, teacherId);
         await panel.locator("div.divide-y > button").filter({
           hasText: /^0 分/,
         }).click();
