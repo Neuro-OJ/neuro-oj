@@ -61,6 +61,16 @@ beforeEach(() => {
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm } }));
 });
 describe('空间设置与并发编辑', () => {
+  it('默认域没有状态操作时不显示空的空间状态面板', () => {
+    const domain = detail();
+    domain.slug = 'main';
+    const view = mount(WorkspaceSettingsForm, {
+      props: { domain, modules, canArchive: true },
+      global: { stubs },
+    });
+    expect(view.text()).not.toContain('空间状态');
+    view.unmount();
+  });
   it('响应式域对象可打开表单；外部 revision 变化后的冲突保留修改和原编辑依据', async () => {
     const domain = detail();
     const view = mount(WorkspaceSettingsForm, { props: { domain, modules, canArchive: false }, global: { stubs } });

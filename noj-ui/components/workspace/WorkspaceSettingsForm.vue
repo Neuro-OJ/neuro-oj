@@ -96,13 +96,13 @@ async function setStatus(status: WorkspaceDetail['status']) {
         <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active'">保存设置</UButton>
       </form>
     </UCard>
-    <UCard v-if="canArchive" class="rounded">
+    <UCard v-if="canArchive && domain.slug !== 'main'" class="rounded">
       <h2 class="mb-3 font-semibold text-text">空间状态</h2>
       <div class="flex flex-wrap gap-3">
         <UButton v-if="domain.status !== 'active'" variant="outline" @click="setStatus('active')">恢复使用</UButton>
-        <UButton v-if="domain.status === 'active' && domain.slug !== 'main'" color="neutral" variant="outline"
+        <UButton v-if="domain.status === 'active'" color="neutral" variant="outline"
           @click="setStatus('archived')">归档</UButton>
-        <UButton v-if="domain.platform_admin && domain.status !== 'suspended' && domain.slug !== 'main'" color="error"
+        <UButton v-if="domain.platform_admin && domain.status !== 'suspended'" color="error"
           variant="outline" @click="setStatus('suspended')">暂停</UButton>
       </div>
     </UCard>

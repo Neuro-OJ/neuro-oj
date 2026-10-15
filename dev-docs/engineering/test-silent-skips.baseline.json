@@ -1,9 +1,9 @@
 {
-  "total": 1101,
+  "total": 1102,
   "by_reason": {
     "early-return": 248,
     "env-guard": 15,
-    "ignore": 765,
+    "ignore": 766,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
@@ -127,6 +127,7 @@
     "noj-tests/e2e/browser/19_search_unified.test.ts": 3,
     "noj-tests/e2e/browser/workspace-bundle-import.test.ts": 1,
     "noj-tests/e2e/browser/workspace-classroom-matrix.test.ts": 1,
+    "noj-tests/e2e/browser/workspace-domain-content.test.ts": 1,
     "noj-tests/e2e/browser/workspace-governance.test.ts": 1,
     "noj-tests/e2e/browser/workspace-input-modes.test.ts": 1,
     "noj-tests/e2e/browser/workspace-llm-model-governance.test.ts": 1,
