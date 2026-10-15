@@ -6,7 +6,8 @@ const props = defineProps<{ domainSlug?: string; announcementId: string }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);
 const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(props.domainSlug ?? '', user.value?.id ?? null, 'announcement', props.announcementId),
-  () => api.detail(props.announcementId));
+  () => api.detail(props.announcementId),
+);
 useBreadcrumbLabel(() => data.value?.title);
 useSeoMeta({ title: () => data.value ? `${data.value.title} · 公告` : '公告' });
 </script>
@@ -24,7 +25,9 @@ useSeoMeta({ title: () => data.value ? `${data.value.title} · 公告` : '公告
           <h1 class="break-words text-2xl font-bold text-text">{{ data.title }}</h1>
           <p class="mt-2 text-xs tabular-nums text-text-muted">发布于 {{ formatDateTime(data.created_at) }}</p>
         </header>
-        <div class="px-5 py-6 sm:px-7"><MarkdownRenderer :content="data.content" /></div>
+        <div class="px-5 py-6 sm:px-7">
+          <MarkdownRenderer :content="data.content" />
+        </div>
       </article>
     </AsyncContent>
   </div>

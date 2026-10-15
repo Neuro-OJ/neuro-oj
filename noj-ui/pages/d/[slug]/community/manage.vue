@@ -5,6 +5,6 @@ const { key } = useCommunityScope();
 </script>
 <template>
   <DomainSettingsShell>
-  <CommunityManage :key="key" />
+    <CommunityManage :key="key" />
   </DomainSettingsShell>
 </template>

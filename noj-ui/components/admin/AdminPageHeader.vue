@@ -3,12 +3,12 @@
  * 统一管理页头：标题、描述、可选图标、面包屑占位与操作区。
  */
 interface Props {
-  title: string
-  description?: string
-  icon?: string
+  title: string;
+  description?: string;
+  icon?: string;
 }
 
-defineProps<Props>()
+defineProps<Props>();
 </script>
 
 <template>

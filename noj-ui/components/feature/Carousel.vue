@@ -7,13 +7,16 @@
  * - 保留暂停/继续（WCAG 2.2.2）与圆点导航；无 slide 时显示默认欢迎占位。
  */
 
-import { useCarousel, type CarouselSlide } from '~/composables/useCarousel';
+import { type CarouselSlide, useCarousel } from '~/composables/useCarousel';
 import { extractApiError } from '~/utils/apiError';
 import { DEFAULT_GRADIENT, gradientClass } from '~/utils/carouselGradient';
 
-const props = withDefaults(defineProps<{ autoIntervalMs?: number; domainSlug?: string; title?: string; description?: string }>(), {
-  autoIntervalMs: 5000,
-});
+const props = withDefaults(
+  defineProps<{ autoIntervalMs?: number; domainSlug?: string; title?: string; description?: string }>(),
+  {
+    autoIntervalMs: 5000,
+  },
+);
 
 const { loadEnabled } = useCarousel(props.domainSlug);
 const slides = ref<CarouselSlide[]>([]);
@@ -97,7 +100,8 @@ onUnmounted(() => {
           class="absolute inset-0 size-full object-cover"
         />
         <div class="relative z-[6] max-w-[480px]">
-          <UBadge v-if="current.scope" class="mb-3" color="neutral" variant="subtle">{{ current.scope === 'instance' ? '实例' : '本域' }}</UBadge>
+          <UBadge v-if="current.scope" class="mb-3" color="neutral"
+            variant="subtle">{{ current.scope === 'instance' ? '实例' : '本域' }}</UBadge>
           <h2
             v-if="current.title"
             class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]"
@@ -129,9 +133,12 @@ onUnmounted(() => {
         class="absolute inset-0 p-8 lg:p-12 flex flex-col justify-center text-text"
         :class="`bg-gradient-to-br ${DEFAULT_GRADIENT}`"
       >
-        <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ title || 'Neuro OJ' }}</h2>
-        <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ description || '面向 AI 领域认证与竞赛的在线评测平台。' }}</p>
-        <div v-if="error" class="relative z-10 mt-4 text-sm text-error-text" role="alert">{{ error }} <UButton size="xs" color="neutral" variant="outline" @click="load">重试轮播</UButton></div>
+        <h2
+          class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ title || 'Neuro OJ' }}</h2>
+        <p
+          class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ description || '面向 AI 领域认证与竞赛的在线评测平台。' }}</p>
+        <div v-if="error" class="relative z-10 mt-4 text-sm text-error-text"
+          role="alert">{{ error }} <UButton size="xs" color="neutral" variant="outline" @click="load">重试轮播</UButton></div>
       </div>
     </Transition>
 
@@ -181,22 +188,22 @@ onUnmounted(() => {
    scoped 样式不穿透子组件，故必须定义在本组件内（原定义留在 index.vue 已成死代码）。 */
 .carousel-fade-enter-active,
 .carousel-fade-leave-active {
-    transition: opacity 700ms ease-in-out;
+  transition: opacity 700ms ease-in-out;
 }
 
 .carousel-fade-enter-from,
 .carousel-fade-leave-to {
-    opacity: 0;
+  opacity: 0;
 }
 
 @keyframes slideInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

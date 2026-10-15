@@ -18,7 +18,8 @@ const room = await useAsyncData(
   () => `${key.value}:classroom:${task.data.value?.data.classroom_id ?? ''}`,
   () => task.data.value ? education.classroom(slug.value!, task.data.value.data.classroom_id) : Promise.resolve(null),
 );
-const can = (cap: TeachingCapability) => !room.error.value && !!room.data.value && classroomCan(room.data.value.data, cap);
+const can = (cap: TeachingCapability) =>
+  !room.error.value && !!room.data.value && classroomCan(room.data.value.data, cap);
 const isStudent = computed(() =>
   room.data.value?.data.membership?.role === 'student' ||
   room.data.value?.data.historical_student === true
@@ -51,10 +52,12 @@ const progress = await useAsyncData(
 watch([matrix.data, progress.data], ([matrixValue, progressValue]) => {
   const current = selected.value;
   if (!current) return;
-  const row = matrixValue?.data.rows.find(row => row.user_id === current.userId);
-  const cell = row?.cells.find(cell => cell.item_id === current.cell.item_id) ??
-    (current.userId === actor.value?.id ? progressValue?.data.cells.find(cell => cell.item_id === current.cell.item_id) : undefined);
-  if (cell) selected.value = {...current, username:row?.username ?? current.username, cell};
+  const row = matrixValue?.data.rows.find((row) => row.user_id === current.userId);
+  const cell = row?.cells.find((cell) => cell.item_id === current.cell.item_id) ??
+    (current.userId === actor.value?.id
+      ? progressValue?.data.cells.find((cell) => cell.item_id === current.cell.item_id)
+      : undefined);
+  if (cell) selected.value = { ...current, username: row?.username ?? current.username, cell };
 });
 const classroomWritable = computed(() =>
   domain.value?.status === 'active' && domain.value.configuration.features.classroom &&
@@ -103,8 +106,10 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
 function select(userId: string, cell: TeachingCell) {
   selected.value = {
     userId,
-    username: matrix.data.value?.data.rows.find(row => row.user_id === userId)?.username ?? '本人',
-    reference: (matrix.data.value?.data.items ?? progress.data.value?.data.items ?? []).find(item => item.id === cell.item_id)?.reference.display_ref ?? '',
+    username: matrix.data.value?.data.rows.find((row) => row.user_id === userId)?.username ?? '本人',
+    reference:
+      (matrix.data.value?.data.items ?? progress.data.value?.data.items ?? []).find((item) => item.id === cell.item_id)
+        ?.reference.display_ref ?? '',
     cell,
   };
   drawer.value = true;
@@ -234,21 +239,28 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
       </AsyncContent>
       <TrainingComparison v-if="isStudent && actor" :key="`${key}:own-comparison`" :slug="slug!" :assignment-id="id"
         :user-id="actor.id" :anchor="task.data.value.data.published_at" />
-      <div v-if="selected && can('feedback:write')" class="flex flex-wrap items-center gap-3 rounded border border-primary/30 bg-primary-bg p-3">
-        <p class="text-sm">已选学生：<strong>{{ selected.username }}</strong> · 查看题目 {{ selected.reference }}。下方反馈发送给该学生，覆盖本份作业。</p>
+      <div v-if="selected && can('feedback:write')"
+        class="flex flex-wrap items-center gap-3 rounded border border-primary/30 bg-primary-bg p-3">
+        <p
+          class="text-sm">已选学生：<strong>{{ selected.username }}</strong> · 查看题目 {{ selected.reference }}。下方反馈发送给该学生，覆盖本份作业。</p>
         <UButton variant="outline" @click="selected = null">改为全体反馈</UButton>
       </div>
       <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
-        :target-user-id="selected?.userId" :target-user-name="selected?.username" :help-id="requestedHelp" :feedback-id="requestedFeedback" />
+        :target-user-id="selected?.userId" :target-user-name="selected?.username" :help-id="requestedHelp"
+        :feedback-id="requestedFeedback" />
       <UButton variant="outline" icon="i-lucide-history"
         @click="showHistory = !showHistory">{{ showHistory ? '收起变化依据' : '查看版本与策略变化依据' }}</UButton>
       <AssignmentHistory v-if="showHistory" :key="`${key}:history`" :slug="slug!" :assignment-id="id" />
-      <USlideover v-model:open="drawer" :title="selected ? `${selected.username} · ${selected.reference}` : '学生提交与反馈'">
+      <USlideover v-model:open="drawer"
+        :title="selected ? `${selected.username} · ${selected.reference}` : '学生提交与反馈'">
         <template #body>
           <div v-if="selected" class="space-y-4">
             <p class="text-sm tabular-nums">{{ teachingCellLabel(selected.cell) }}</p>
-            <AssignmentCellSubmissions v-if="!isStudent && can('submissions:read')" :key="`${key}:${selected.userId}:${selected.cell.item_id}:${scope}`" :slug="slug!" :assignment-id="id" :classroom-id="task.data.value.data.classroom_id" :user-id="selected.userId" :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
+            <AssignmentCellSubmissions v-if="!isStudent && can('submissions:read')"
+              :key="`${key}:${selected.userId}:${selected.cell.item_id}:${scope}`" :slug="slug!" :assignment-id="id"
+              :classroom-id="task.data.value.data.classroom_id" :user-id="selected.userId"
+              :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
             <TrainingComparison v-if="can('progress:read') && !isStudent" :key="`${key}:${selected.userId}:comparison`"
               :slug="slug!" :assignment-id="id" :user-id="selected.userId"
               :anchor="task.data.value.data.published_at" />

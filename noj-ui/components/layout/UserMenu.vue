@@ -19,8 +19,13 @@ const menuDomain = useAsyncData(
   async () => {
     if (!user.value || workspace) return null;
     try {
-      return (await api.get<{ data: WorkspaceDetail }>(`/api/v1/domains/${slug.value}`, { silent: true, redirectOnUnauthorized: false })).data;
-    } catch { return null; }
+      return (await api.get<{ data: WorkspaceDetail }>(`/api/v1/domains/${slug.value}`, {
+        silent: true,
+        redirectOnUnauthorized: false,
+      })).data;
+    } catch {
+      return null;
+    }
   },
 );
 const domainSettingsEntry = computed(() => {
@@ -60,8 +65,10 @@ const items = computed(() => [
   ],
   [
     {
-      label: '切换域', icon: 'i-lucide-building-2', children: [
-        ...(spaces.data.value?.data ?? []).map(space => ({
+      label: '切换域',
+      icon: 'i-lucide-building-2',
+      children: [
+        ...(spaces.data.value?.data ?? []).map((space) => ({
           label: `${space.name} · ${space.slug}`,
           icon: space.slug === slug.value ? 'i-lucide-check' : 'i-lucide-building-2',
           onSelect: () => selectDomain(space),
@@ -69,7 +76,9 @@ const items = computed(() => [
         { label: '浏览与管理域', icon: 'i-lucide-grid-2x2', to: '/workspaces' },
       ],
     },
-    ...(domainSettingsEntry.value ? [{ label: '域设置', icon: 'i-lucide-building-2', to: domainSettingsEntry.value.to }] : []),
+    ...(domainSettingsEntry.value
+      ? [{ label: '域设置', icon: 'i-lucide-building-2', to: domainSettingsEntry.value.to }]
+      : []),
     { label: '账号设置', icon: 'i-lucide-settings', to: accountLink('/settings') },
     ...(user.value?.is_admin ? [{ label: '实例管理', icon: 'i-lucide-shield-check', to: '/admin' }] : []),
   ],

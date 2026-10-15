@@ -88,7 +88,8 @@ const draftDotClass = computed(() => {
 </script>
 
 <template>
-  <div role="toolbar" aria-label="代码工具栏" class="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-panel px-3 py-2 sm:h-12 sm:flex-nowrap sm:py-0">
+  <div role="toolbar" aria-label="代码工具栏"
+    class="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-panel px-3 py-2 sm:h-12 sm:flex-nowrap sm:py-0">
     <!-- 左：返回 + 题目标题 -->
     <button
       class="inline-flex items-center gap-1 text-text-secondary hover:text-text transition-colors text-sm"
@@ -193,7 +194,8 @@ const draftDotClass = computed(() => {
         <span class="hidden sm:inline">{{ selfTesting ? '自测中...' : '自测' }}</span>
       </UButton>
 
-      <UButton color="primary" size="md" class="ml-1 shrink-0 whitespace-nowrap font-medium" :disabled="!canSubmit || submitting" aria-label="提交评测"
+      <UButton color="primary" size="md" class="ml-1 shrink-0 whitespace-nowrap font-medium"
+        :disabled="!canSubmit || submitting" aria-label="提交评测"
         @click="emit('submit')">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting" />
         <UIcon name="i-lucide-send" class="size-3.5" v-else />

@@ -123,46 +123,46 @@ function formatElapsed(iso: string) {
   <div
     class="h-full overflow-y-auto bg-white text-text border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
     <div class="h-full">
-        <!-- 描述 tab -->
-        <div v-show="active === 'description'" class="p-4 space-y-4">
-          <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
-            <span
-              class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
-              :class="'bg-primary/10 text-primary'"
-            >
+      <!-- 描述 tab -->
+      <div v-show="active === 'description'" class="p-4 space-y-4">
+        <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
+          <span
+            class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
+            :class="'bg-primary/10 text-primary'"
+          >
             {{ problem.display_id }}
           </span>
-            <span class="inline-flex items-center gap-1">
+          <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-clock" class="size-3" />
             {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
           </span>
-            <span class="inline-flex items-center gap-1">
+          <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-server" class="size-3" />
             {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
           </span>
-            <span class="font-medium">{{ problem.difficulty }}</span>
-          </div>
-
-          <div v-if="problem.tags.length" class="flex flex-wrap gap-1.5">
-            <span
-              v-for="tag in problem.tags"
-              :key="tag.id"
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-              :class="tag.kind === 'algorithm' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-blue-50 text-blue-700 border border-blue-200'"
-            >
-          {{ tag.name }}
-        </span>
-          </div>
-
-          <div class="prose prose-sm prose-neuro max-w-none">
-            <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
-            <slot name="after-description" />
-          </div>
+          <span class="font-medium">{{ problem.difficulty }}</span>
         </div>
 
-        <!-- 历史 tab -->
-        <div v-show="active === 'history'" class="p-4 space-y-4">
-          <slot name="history">
+        <div v-if="problem.tags.length" class="flex flex-wrap gap-1.5">
+          <span
+            v-for="tag in problem.tags"
+            :key="tag.id"
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+            :class="tag.kind === 'algorithm' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-blue-50 text-blue-700 border border-blue-200'"
+          >
+          {{ tag.name }}
+        </span>
+        </div>
+
+        <div class="prose prose-sm prose-neuro max-w-none">
+          <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
+          <slot name="after-description" />
+        </div>
+      </div>
+
+      <!-- 历史 tab -->
+      <div v-show="active === 'history'" class="p-4 space-y-4">
+        <slot name="history">
           <!-- 最近（实时轮询，最多一张卡片） -->
           <div>
             <div class="flex items-center justify-between mb-2">
@@ -254,116 +254,116 @@ function formatElapsed(iso: string) {
                 class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity size-3.5" />
             </button>
           </div>
-          </slot>
-        </div>
+        </slot>
+      </div>
 
-        <!-- 自测 tab -->
-        <div v-if="showSelfTest" v-show="active === 'self-test'" class="p-4 space-y-4">
-          <slot name="oi-self-test">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-text">自测</h3>
-              <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
-            </div>
+      <!-- 自测 tab -->
+      <div v-if="showSelfTest" v-show="active === 'self-test'" class="p-4 space-y-4">
+        <slot name="oi-self-test">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-text">自测</h3>
+            <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
+          </div>
 
-            <div v-if="selfTestError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+          <div v-if="selfTestError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
         {{ selfTestError }}
       </div>
 
-            <div v-if="!selfTest && !isPollingSelfTest"
-              class="text-xs text-text-muted text-center py-4 border border-dashed border-border rounded-md">
+          <div v-if="!selfTest && !isPollingSelfTest"
+            class="text-xs text-text-muted text-center py-4 border border-dashed border-border rounded-md">
         点击「自测」运行完整评测
       </div>
 
-            <div v-if="selfTest" class="space-y-3">
-              <div class="flex items-center justify-between">
-                <span
-                  class="inline-flex items-center gap-1 text-11px px-2 py-0.5 rounded font-semibold"
-                  :style="{
+          <div v-if="selfTest" class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span
+                class="inline-flex items-center gap-1 text-11px px-2 py-0.5 rounded font-semibold"
+                :style="{
               background: getStatusColor(selfTest.status, selfTest.result_status) + '22',
               color: getStatusColor(selfTest.status, selfTest.result_status),
             }"
-                >
+              >
             <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="selfTest.status === 'pending' || selfTest.status === 'judging'" />
             {{ getStatusLabel(selfTest.status, selfTest.result_status) }}
           </span>
-                <span class="text-sm font-mono font-semibold text-text">
+              <span class="text-sm font-mono font-semibold text-text">
             {{ selfTest.status === 'finished' ? `${formatScore(selfTest.score)} 分` : '—' }}
           </span>
-              </div>
+            </div>
 
-              <div v-if="selfTest.status === 'finished' && (selfTest.time_ms || selfTest.memory_kb)"
-                class="flex items-center gap-3 text-xs text-text-muted">
-                <span v-if="selfTest.time_ms" class="inline-flex items-center gap-1">
+            <div v-if="selfTest.status === 'finished' && (selfTest.time_ms || selfTest.memory_kb)"
+              class="flex items-center gap-3 text-xs text-text-muted">
+              <span v-if="selfTest.time_ms" class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-timer" class="size-[11px]" />
             {{ selfTest.time_ms }}ms
           </span>
-                <span v-if="selfTest.memory_kb" class="inline-flex items-center gap-1">
+              <span v-if="selfTest.memory_kb" class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-memory-stick" class="size-[11px]" />
             {{ Math.round(selfTest.memory_kb / 1024) }}MB
           </span>
-              </div>
-
-              <div v-if="selfTest.output" class="text-xs">
-                <div class="text-text-secondary mb-1 font-medium">输出</div>
-                <pre
-                  class="whitespace-pre-wrap break-words bg-bg-page border border-border rounded-md p-3 text-[11px] leading-relaxed max-h-72 overflow-y-auto">{{ selfTest.output }}</pre>
-              </div>
             </div>
-          </slot>
-        </div>
 
-        <!-- 设置 tab -->
-        <div v-show="active === 'settings'" class="p-4 space-y-5">
-          <h3 class="text-sm font-semibold text-text">设置</h3>
+            <div v-if="selfTest.output" class="text-xs">
+              <div class="text-text-secondary mb-1 font-medium">输出</div>
+              <pre
+                class="whitespace-pre-wrap break-words bg-bg-page border border-border rounded-md p-3 text-[11px] leading-relaxed max-h-72 overflow-y-auto">{{ selfTest.output }}</pre>
+            </div>
+          </div>
+        </slot>
+      </div>
 
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-text-secondary">主题</label>
-            <div class="flex items-center gap-2">
-              <button
-                class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
-                :class="themeMode === 'light' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
-                @click="emit('update:themeMode', 'light')"
-              >
+      <!-- 设置 tab -->
+      <div v-show="active === 'settings'" class="p-4 space-y-5">
+        <h3 class="text-sm font-semibold text-text">设置</h3>
+
+        <div class="space-y-2">
+          <label class="text-xs font-medium text-text-secondary">主题</label>
+          <div class="flex items-center gap-2">
+            <button
+              class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
+              :class="themeMode === 'light' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
+              @click="emit('update:themeMode', 'light')"
+            >
             <UIcon name="i-lucide-sun" class="size-4" />
             亮色
           </button>
-              <button
-                class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
-                :class="themeMode === 'dark' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
-                @click="emit('update:themeMode', 'dark')"
-              >
+            <button
+              class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
+              :class="themeMode === 'dark' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
+              @click="emit('update:themeMode', 'dark')"
+            >
             <UIcon name="i-lucide-moon" class="size-4" />
             暗色
           </button>
-            </div>
           </div>
+        </div>
 
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-text-secondary">自动保存草稿</label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                :checked="draftEnabled"
-                class="size-4 accent-primary"
-                @change="emit('update:draftEnabled', ($event.target as HTMLInputElement).checked)"
-              />
-              <span class="text-sm">本地保存代码草稿</span>
-            </label>
-            <p class="text-xs text-text-muted leading-relaxed">
+        <div class="space-y-2">
+          <label class="text-xs font-medium text-text-secondary">自动保存草稿</label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              :checked="draftEnabled"
+              class="size-4 accent-primary"
+              @change="emit('update:draftEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            <span class="text-sm">本地保存代码草稿</span>
+          </label>
+          <p class="text-xs text-text-muted leading-relaxed">
           关闭后不再保存代码到浏览器，刷新页面会丢失未提交的代码。
         </p>
-          </div>
+        </div>
 
-          <div class="pt-2 border-t border-border">
-            <button
-              class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 border border-red-200 text-red-700 bg-red-50 rounded-md text-sm hover:bg-red-100 transition-colors"
-              @click="emit('clear-draft')"
-            >
+        <div class="pt-2 border-t border-border">
+          <button
+            class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 border border-red-200 text-red-700 bg-red-50 rounded-md text-sm hover:bg-red-100 transition-colors"
+            @click="emit('clear-draft')"
+          >
           <UIcon name="i-lucide-trash-2" class="size-3.5" />
           清除当前草稿
         </button>
-          </div>
         </div>
+      </div>
     </div>
   </div>
 </template>

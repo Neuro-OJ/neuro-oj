@@ -8,13 +8,15 @@ const api = useAnnouncements(props.domainSlug);
 const page = computed(() => Math.max(1, Number(route.query.page) || 1));
 const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(props.domainSlug ?? '', user.value?.id ?? null, 'announcements', String(page.value)),
-  () => api.list(page.value));
+  () => api.list(page.value),
+);
 useSeoMeta({ title: '公告' });
 </script>
 <template>
   <div class="mx-auto max-w-[900px] space-y-5">
     <h1 class="text-2xl font-bold text-text">公告</h1>
-    <AsyncContent :status="error ? 'error' : status === 'pending' && !data ? 'loading' : data?.data.length ? 'data' : 'empty'"
+    <AsyncContent
+      :status="error ? 'error' : status === 'pending' && !data ? 'loading' : data?.data.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无公告" @retry="refresh()">
       <div class="divide-y divide-border rounded border border-border bg-bg-panel">
         <NuxtLink v-for="item in data?.data" :key="item.id" :to="api.href(item.public_id || item.id)"
@@ -28,7 +30,8 @@ useSeoMeta({ title: '公告' });
           </div>
         </NuxtLink>
       </div>
-      <PaginationNav v-if="data && data.meta.total_pages > 1" class="mt-5" :current-page="page" :total-pages="data.meta.total_pages"
+      <PaginationNav v-if="data && data.meta.total_pages > 1" class="mt-5" :current-page="page"
+        :total-pages="data.meta.total_pages"
         @page-change="router.push({query:{...route.query,page:$event}})" />
     </AsyncContent>
   </div>

@@ -2,7 +2,7 @@
 /** 实例与两域运营内容：管理页面实际发布，公开入口与隔离用真实 API 核对。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { api, getAdminToken } from "../helper.ts";
+import { api, BASE_URL, getAdminToken } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage,
@@ -143,6 +143,47 @@ Deno.test({
         (await api("GET", `/api/v1/domains/${b}/announcements`)).status,
         404,
       );
+      // 私有域上传的图片仍由当前域授权入口读取，不能经其他域或实例 URL 公开。
+      const png = Uint8Array.from(
+        atob(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7x8AAAAASUVORK5CYII=",
+        ),
+        (c) => c.charCodeAt(0),
+      );
+      const form = new FormData();
+      form.set("file", new File([png], "banner.png", { type: "image/png" }));
+      const uploaded = await fetch(
+        `${BASE_URL}/api/v1/domains/${b}/settings/carousel/images`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        },
+      );
+      assertEquals(uploaded.status, 201);
+      const image = (await uploaded.json()).data.image_storage_url as string;
+      const imageSlide = await fixture<{ data: { id: string } }>(
+        "POST",
+        `/domains/${b}/settings/carousel/slides`,
+        token,
+        { kind: "image", image_storage_url: image },
+      );
+      const imagePath = `/carousel/slides/${imageSlide.data.id}/image`;
+      const bytes = await fetch(`${BASE_URL}/api/v1/domains/${b}${imagePath}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(bytes.status, 200);
+      assertEquals(new Uint8Array(await bytes.arrayBuffer()), png);
+      assertEquals(
+        (await api("GET", `/api/v1/domains/${b}${imagePath}`)).status,
+        404,
+      );
+      assertEquals(
+        (await api("GET", `/api/v1/domains/${a}${imagePath}`, { token }))
+          .status,
+        404,
+      );
+      assertEquals((await api("GET", `/api/v1${imagePath}`)).status, 404);
       await page.setViewportSize({ width: 390, height: 844 });
       await gotoPage(page, `/d/${a}/settings`);
       await expect(

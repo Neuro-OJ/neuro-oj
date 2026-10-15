@@ -5,7 +5,16 @@ import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 const props = defineProps<
-  { slug: string; problem: Pick<DomainProblemDetail, 'reference' | 'content'>; code: string; language: string; versionId: string; writable: boolean; assignmentOrigin?: AssignmentSubmissionOrigin; expanded?: boolean }
+  {
+    slug: string;
+    problem: Pick<DomainProblemDetail, 'reference' | 'content'>;
+    code: string;
+    language: string;
+    versionId: string;
+    writable: boolean;
+    assignmentOrigin?: AssignmentSubmissionOrigin;
+    expanded?: boolean;
+  }
 >();
 const emit = defineEmits<{ refresh: []; result: [record: DomainSelfTest | null] }>();
 const { user } = useAuth(), api = useDomainSelfTests(), capture = useWorkspaceActionScope();
@@ -27,7 +36,7 @@ const record = useAsyncData(
   () => id.value ? api.detail(props.slug, id.value) : Promise.resolve(null),
 );
 const current = computed(() => record.data.value?.data.id === id.value ? record.data.value.data : null);
-watch(current, value => emit('result', value), { immediate: true });
+watch(current, (value) => emit('result', value), { immediate: true });
 const pending = computed(() =>
   !!id.value && !record.error.value && (!current.value || ['pending', 'judging'].includes(current.value.status))
 );

@@ -23,7 +23,8 @@
       <div v-else-if="error" class="flex items-center justify-center flex-1 px-4 text-center text-sm text-text-muted">
         {{ error }}
       </div>
-      <div v-else-if="items.length === 0" class="flex items-center justify-center flex-1 px-4 text-center text-sm leading-relaxed text-text-muted">
+      <div v-else-if="items.length === 0"
+        class="flex items-center justify-center flex-1 px-4 text-center text-sm leading-relaxed text-text-muted">
         还没有关注动态<br>去用户主页关注感兴趣的人吧
       </div>
       <div v-else class="flex flex-col gap-[10px] p-[10px] flex-1">
@@ -60,21 +61,20 @@
 </template>
 
 <script setup lang="ts">
-import type { FeedItem } from "~/composables/useCommunity"
-import { stripMarkdown } from "~/utils/markdown"
-import { extractApiError } from "~/utils/apiError"
+import type { FeedItem } from '~/composables/useCommunity';
+import { stripMarkdown } from '~/utils/markdown';
+import { extractApiError } from '~/utils/apiError';
 
+const { api } = useApi();
+const scope = useCommunityScope().capture();
 
-const { api } = useApi()
-const scope = useCommunityScope().capture()
+const { isLoggedIn } = useAuth();
+const { config, loadConfig } = useCommunity();
 
-const { isLoggedIn } = useAuth()
-const { config, loadConfig } = useCommunity()
-
-const items = ref<FeedItem[]>([])
-const loading = ref(true)
-const refreshing = ref(false)
-const error = ref("")
+const items = ref<FeedItem[]>([]);
+const loading = ref(true);
+const refreshing = ref(false);
+const error = ref('');
 
 /**
  * 卡片可用：已登录 + 关注功能开启 + 短动态模块开启。
@@ -83,38 +83,39 @@ const error = ref("")
  * 因此不再把 `activities_enabled` 作为可用性条件。
  */
 const available = computed(
-  () => isLoggedIn.value && config.value?.follows_enabled === true &&
+  () =>
+    isLoggedIn.value && config.value?.follows_enabled === true &&
     config.value?.moments_enabled === true,
-)
+);
 
 async function fetchFeed() {
   if (!available.value) {
-    loading.value = false
-    return
+    loading.value = false;
+    return;
   }
-  loading.value = true
+  loading.value = true;
   try {
     const res = await api.get<{ data: FeedItem[] }>(scope.apiPath('feed'), {
-      query: { view: "following", limit: 5 },
+      query: { view: 'following', limit: 5 },
       silent: true,
-    })
-    items.value = res.data
+    });
+    items.value = res.data;
   } catch (err: unknown) {
-    error.value = extractApiError(err).message
+    error.value = extractApiError(err).message;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function refresh() {
-  if (refreshing.value) return
-  refreshing.value = true
-  await fetchFeed()
-  refreshing.value = false
+  if (refreshing.value) return;
+  refreshing.value = true;
+  await fetchFeed();
+  refreshing.value = false;
 }
 
 onMounted(async () => {
-  await loadConfig()
-  await fetchFeed()
-})
+  await loadConfig();
+  await fetchFeed();
+});
 </script>

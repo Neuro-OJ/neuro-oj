@@ -10,17 +10,24 @@ const entered = ref(String(route.query.q ?? ''));
 const query = computed(() => String(route.query.q ?? '').trim());
 const page = computed(() => Number(route.query.page) || 1);
 const type = computed<'problem' | 'contest' | 'submission' | 'announcement'>({
-  get: () => ['problem','contest','submission','announcement'].includes(String(route.query.type)) ? route.query.type as 'problem' | 'contest' | 'submission' | 'announcement' : 'problem',
-  set: value => { void router.push({query:{...route.query,type:value,page:undefined}}); },
+  get: () =>
+    ['problem', 'contest', 'submission', 'announcement'].includes(String(route.query.type))
+      ? route.query.type as 'problem' | 'contest' | 'submission' | 'announcement'
+      : 'problem',
+  set: (value) => {
+    void router.push({ query: { ...route.query, type: value, page: undefined } });
+  },
 });
 const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(slug.value!, user.value?.id ?? null, `search:${type.value}`, query.value, String(page.value)),
   () => query.value.length >= 2 ? api.search(slug.value!, query.value, type.value, page.value) : Promise.resolve(null),
 );
 function search() {
-  void router.push({query:{...route.query,q:entered.value.trim(),page:undefined}});
+  void router.push({ query: { ...route.query, q: entered.value.trim(), page: undefined } });
 }
-watch(query, value => { entered.value = value; });
+watch(query, (value) => {
+  entered.value = value;
+});
 function href(item: SearchItem): string | undefined {
   return domainSearchHref(slug.value!, item);
 }

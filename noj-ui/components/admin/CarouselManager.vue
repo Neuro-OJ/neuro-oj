@@ -4,11 +4,11 @@
 // 列表 + 新建/编辑（image/text 切换）+ 上移/下移排序 + 启停 + 图片上传。
 // 权限：`announcement:manage`（与公告管理复用同一运营展示位权限）。
 
-import { extractApiError } from "~/utils/apiError";
+import { extractApiError } from '~/utils/apiError';
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
-import { useToast } from "~/composables/useToast";
-import type { CarouselSlide, CarouselSlideInput, CarouselKind } from "~/composables/useCarousel";
-import { CAROUSEL_GRADIENTS } from "~/utils/carouselGradient";
+import { useToast } from '~/composables/useToast';
+import type { CarouselKind, CarouselSlide, CarouselSlideInput } from '~/composables/useCarousel';
+import { CAROUSEL_GRADIENTS } from '~/utils/carouselGradient';
 
 const props = defineProps<{ domainSlug?: string }>();
 
@@ -17,11 +17,11 @@ const { loadAll, create, update, remove, reorder, uploadImage } = useCarousel(pr
 
 const items = ref<CarouselSlide[]>([]);
 const loading = ref(true);
-const error = ref("");
+const error = ref('');
 
 async function load() {
   loading.value = true;
-  error.value = "";
+  error.value = '';
   try {
     items.value = await loadAll(true);
   } catch (err: unknown) {
@@ -36,16 +36,26 @@ onMounted(load);
 const showForm = ref(false);
 const editing = ref<CarouselSlide | null>(null);
 const saving = ref(false);
-const formError = ref("");
-const formKind = ref<CarouselKind>("text");
-const formTitle = ref("");
-const formSubtitle = ref("");
-const formGradient = ref("blue");
-const formLinkUrl = ref("");
-const formImageUrl = ref("");
+const formError = ref('');
+const formKind = ref<CarouselKind>('text');
+const formTitle = ref('');
+const formSubtitle = ref('');
+const formGradient = ref('blue');
+const formLinkUrl = ref('');
+const formImageUrl = ref('');
 const formEnabled = ref(true);
 const uploading = ref(false);
-const snapshot = computed(() => JSON.stringify([formKind.value, formTitle.value, formSubtitle.value, formGradient.value, formLinkUrl.value, formImageUrl.value, formEnabled.value]));
+const snapshot = computed(() =>
+  JSON.stringify([
+    formKind.value,
+    formTitle.value,
+    formSubtitle.value,
+    formGradient.value,
+    formLinkUrl.value,
+    formImageUrl.value,
+    formEnabled.value,
+  ])
+);
 const savedSnapshot = ref('');
 useUnsavedChanges(() => showForm.value && snapshot.value !== savedSnapshot.value);
 
@@ -53,14 +63,14 @@ const GRADIENT_ITEMS = Object.keys(CAROUSEL_GRADIENTS).map((k) => ({ label: k, v
 
 function openCreate() {
   editing.value = null;
-  formKind.value = "text";
-  formTitle.value = "";
-  formSubtitle.value = "";
-  formGradient.value = "blue";
-  formLinkUrl.value = "";
-  formImageUrl.value = "";
+  formKind.value = 'text';
+  formTitle.value = '';
+  formSubtitle.value = '';
+  formGradient.value = 'blue';
+  formLinkUrl.value = '';
+  formImageUrl.value = '';
   formEnabled.value = true;
-  formError.value = "";
+  formError.value = '';
   savedSnapshot.value = snapshot.value;
   showForm.value = true;
 }
@@ -68,13 +78,13 @@ function openCreate() {
 function openEdit(row: CarouselSlide) {
   editing.value = row;
   formKind.value = row.kind;
-  formTitle.value = row.title ?? "";
-  formSubtitle.value = row.subtitle ?? "";
-  formGradient.value = row.gradient_key ?? "blue";
-  formLinkUrl.value = row.link_url ?? "";
-  formImageUrl.value = row.image_storage_url ?? "";
+  formTitle.value = row.title ?? '';
+  formSubtitle.value = row.subtitle ?? '';
+  formGradient.value = row.gradient_key ?? 'blue';
+  formLinkUrl.value = row.link_url ?? '';
+  formImageUrl.value = row.image_storage_url ?? '';
   formEnabled.value = row.is_enabled;
-  formError.value = "";
+  formError.value = '';
   savedSnapshot.value = snapshot.value;
   showForm.value = true;
 }
@@ -84,28 +94,28 @@ async function handleUpload(event: Event) {
   const file = input.files?.[0];
   if (!file) return;
   uploading.value = true;
-  formError.value = "";
+  formError.value = '';
   try {
     formImageUrl.value = await uploadImage(file);
-    toast.success("图片已上传");
+    toast.success('图片已上传');
   } catch (err: unknown) {
     formError.value = extractApiError(err).message;
   } finally {
     uploading.value = false;
-    input.value = "";
+    input.value = '';
   }
 }
 
 async function handleSave() {
   saving.value = true;
-  formError.value = "";
+  formError.value = '';
   const payload: CarouselSlideInput = {
     kind: formKind.value,
-    title: formKind.value === "text" ? formTitle.value.trim() : (formTitle.value.trim() || null),
+    title: formKind.value === 'text' ? formTitle.value.trim() : (formTitle.value.trim() || null),
     subtitle: formSubtitle.value.trim() || null,
-    gradient_key: formKind.value === "text" ? formGradient.value : null,
+    gradient_key: formKind.value === 'text' ? formGradient.value : null,
     link_url: formLinkUrl.value.trim() || null,
-    image_storage_url: formKind.value === "image" ? formImageUrl.value : null,
+    image_storage_url: formKind.value === 'image' ? formImageUrl.value : null,
     is_enabled: formEnabled.value,
   };
   try {
@@ -121,7 +131,7 @@ async function handleSave() {
 }
 
 // ── 启停 / 删除 / 排序 ──
-const busyId = ref("");
+const busyId = ref('');
 
 async function toggleEnabled(row: CarouselSlide) {
   busyId.value = row.id;
@@ -131,7 +141,7 @@ async function toggleEnabled(row: CarouselSlide) {
   } catch (err: unknown) {
     toast.error(extractApiError(err).message);
   } finally {
-    busyId.value = "";
+    busyId.value = '';
   }
 }
 
@@ -139,12 +149,12 @@ async function handleDelete(row: CarouselSlide) {
   busyId.value = row.id;
   try {
     await remove(row.id);
-    toast.success("已删除");
+    toast.success('已删除');
     await load();
   } catch (err: unknown) {
     toast.error(extractApiError(err).message);
   } finally {
-    busyId.value = "";
+    busyId.value = '';
   }
 }
 
@@ -164,7 +174,8 @@ async function move(index: number, delta: number) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <AdminPageHeader title="轮播管理" :description="domainSlug ? '配置本域首页轮播；实例轮播在本域内容之前展示。' : '配置所有域共享的实例轮播，按列表顺序展示。'">
+    <AdminPageHeader title="轮播管理"
+      :description="domainSlug ? '配置本域首页轮播；实例轮播在本域内容之前展示。' : '配置所有域共享的实例轮播，按列表顺序展示。'">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
@@ -173,7 +184,8 @@ async function move(index: number, delta: number) {
       </template>
     </AdminPageHeader>
 
-    <AsyncContent :status="loading ? 'loading' : error ? 'error' : items.length === 0 ? 'empty' : 'data'" :error="error" @retry="load">
+    <AsyncContent :status="loading ? 'loading' : error ? 'error' : items.length === 0 ? 'empty' : 'data'" :error="error"
+      @retry="load">
       <div class="rounded border border-border overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-bg-sunken text-text-secondary">
@@ -191,28 +203,32 @@ async function move(index: number, delta: number) {
               <td class="px-3 py-2">
                 <div class="flex items-center gap-1">
                   <span class="tabular-nums text-text-muted w-6">{{ i + 1 }}</span>
-                  <UButton size="xs" color="neutral" variant="ghost" :disabled="i === 0" aria-label="上移" @click="move(i, -1)">
+                  <UButton size="xs" color="neutral" variant="ghost" :disabled="i === 0" aria-label="上移"
+                    @click="move(i, -1)">
                     <UIcon name="i-lucide-arrow-up" class="size-3.5" />
                   </UButton>
-                  <UButton size="xs" color="neutral" variant="ghost" :disabled="i === items.length - 1" aria-label="下移" @click="move(i, 1)">
+                  <UButton size="xs" color="neutral" variant="ghost" :disabled="i === items.length - 1"
+                    aria-label="下移" @click="move(i, 1)">
                     <UIcon name="i-lucide-arrow-down" class="size-3.5" />
                   </UButton>
                 </div>
               </td>
-              <td class="px-3 py-2">{{ s.kind === "image" ? "图片" : "文案" }}</td>
+              <td class="px-3 py-2">{{ s.kind === 'image' ? '图片' : '文案' }}</td>
               <td class="px-3 py-2 max-w-xs">
-                <span class="font-medium">{{ s.title || "—" }}</span>
+                <span class="font-medium">{{ s.title || '—' }}</span>
                 <span v-if="s.subtitle" class="ml-1 text-text-muted">{{ s.subtitle }}</span>
               </td>
-              <td class="px-3 py-2 max-w-xs truncate text-text-muted">{{ s.link_url || "不可点" }}</td>
-              <td class="px-3 py-2">{{ s.is_enabled ? "已启用" : "已停用" }}</td>
+              <td class="px-3 py-2 max-w-xs truncate text-text-muted">{{ s.link_url || '不可点' }}</td>
+              <td class="px-3 py-2">{{ s.is_enabled ? '已启用' : '已停用' }}</td>
               <td class="px-3 py-2">
                 <div class="flex gap-1.5">
-                  <UButton size="xs" color="neutral" variant="outline" :loading="busyId === s.id" @click="toggleEnabled(s)">
-                    {{ s.is_enabled ? "停用" : "启用" }}
+                  <UButton size="xs" color="neutral" variant="outline" :loading="busyId === s.id"
+                    @click="toggleEnabled(s)">
+                    {{ s.is_enabled ? '停用' : '启用' }}
                   </UButton>
                   <UButton size="xs" color="neutral" variant="outline" @click="openEdit(s)">编辑</UButton>
-                  <UButton size="xs" color="error" variant="outline" :loading="busyId === s.id" @click="handleDelete(s)">删除</UButton>
+                  <UButton size="xs" color="error" variant="outline" :loading="busyId === s.id"
+                    @click="handleDelete(s)">删除</UButton>
                 </div>
               </td>
             </tr>
@@ -268,7 +284,8 @@ async function move(index: number, delta: number) {
           <UInput v-model="formLinkUrl" placeholder="留空则整卡不可点（支持 / 站内路径或 http(s)）" />
         </div>
         <div class="flex items-center justify-between gap-4 pt-1">
-          <label class="text-xs font-semibold text-text cursor-pointer select-none" for="car-form-enabled">启用状态</label>
+          <label class="text-xs font-semibold text-text cursor-pointer select-none"
+            for="car-form-enabled">启用状态</label>
           <USwitch v-model="formEnabled" id="car-form-enabled" />
         </div>
         <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>

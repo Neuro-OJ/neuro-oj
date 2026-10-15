@@ -20,7 +20,11 @@ const isCurrent = () => mounted && props.domain.slug === target.slug && props.do
 const form = reactive({
   name: props.domain.name,
   description: props.domain.description,
-  configuration: { access: props.domain.configuration.access, discoverable: props.domain.configuration.discoverable, join_policy: props.domain.configuration.join_policy },
+  configuration: {
+    access: props.domain.configuration.access,
+    discoverable: props.domain.configuration.discoverable,
+    join_policy: props.domain.configuration.join_policy,
+  },
 });
 const baseRevision = ref(props.domain.revision);
 const savedSnapshot = ref(JSON.stringify(form));
@@ -88,9 +92,12 @@ async function setStatus(status: WorkspaceDetail['status']) {
         </div>
         <UCheckbox v-model="form.configuration.discoverable" label="在公开目录展示此空间" />
         <div class="rounded border border-border bg-bg-sunken p-3 text-sm">
-          <p class="font-medium">域类型：{{ WORKSPACE_PRESETS.find(p => p.value === domain.preset)!.label }} · 创建后固定</p>
-          <p class="mt-2 text-text-secondary">三种域均提供题库、题单、比赛、社区与域排行。教学域额外提供班级、作业与教练工作台。</p>
-          <p v-if="!modules.community || !modules.classroom || !modules.assignment || !modules.analytics" class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
+          <p
+            class="font-medium">域类型：{{ WORKSPACE_PRESETS.find((p) => p.value === domain.preset)!.label }} · 创建后固定</p>
+          <p
+            class="mt-2 text-text-secondary">三种域均提供题库、题单、比赛、社区与域排行。教学域额外提供班级、作业与教练工作台。</p>
+          <p v-if="!modules.community || !modules.classroom || !modules.assignment || !modules.analytics"
+            class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
         </div>
         <p v-if="error" class="text-sm text-error-text" role="alert">{{ error }} 未保存的修改仍保留在表单中。</p>
         <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active'">保存设置</UButton>

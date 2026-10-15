@@ -662,9 +662,15 @@ Deno.test({
           for (const page of [learner.page, second]) {
             await expect(
               page.getByRole("heading", {
-                name: `${reference} 共同源题 ${suffix}`,
+                name: `共同源题 ${suffix}`,
                 exact: true,
               }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole("heading", {
+                name: `共同源题 ${suffix}`,
+                exact: true,
+              }).locator("..").getByText(reference, { exact: true }),
             ).toBeVisible();
           }
           const first = await handIn(

@@ -190,89 +190,89 @@ useSeoMeta({ title: '空间成员' });
 
 <template>
   <DomainSettingsShell>
-  <div v-if="managing" class="space-y-6">
-    <AdminPageHeader title="成员" description="域内角色可组合；成员权限不会延伸到其他空间。" icon="i-lucide-users" />
-    <UCard v-if="writable && pendingRequests.length" class="rounded">
-      <h2 class="mb-3 font-semibold text-text">待审核的加入申请</h2>
-      <ul class="divide-y divide-border">
-        <li v-for="request in pendingRequests" :key="request.id"
-          class="flex flex-wrap items-center justify-between gap-3 py-3">
-          <div>
-            <p class="text-sm font-medium text-text">{{ request.username }}</p>
-            <p class="text-sm text-text-secondary">{{ request.reason || '未填写理由' }}</p>
-          </div>
-          <div class="flex gap-2">
-            <UButton :disabled="busy || !request.can_approve" size="sm"
-              @click="reviewRequest(request, true)">批准</UButton>
-            <UButton :disabled="busy" size="sm" color="neutral" variant="outline"
-              @click="reviewRequest(request, false)">拒绝</UButton>
-          </div>
-        </li>
-      </ul>
-    </UCard>
-    <p v-if="requests.error.value" class="text-sm text-error-text"
-      role="alert">{{ extractApiError(requests.error.value).message }}</p>
-    <AdminTable
-      :columns="[{ key: 'username', label: '账号' }, { key: 'email', label: '邮箱' }, { key: 'roles', label: '角色' }, { key: 'status', label: '状态' }]"
-      :items="tableRows" :loading="members.status.value === 'pending'"
-      :error="members.error.value ? extractApiError(members.error.value).message : ''">
-      <template
-        #cell="{ row, column }"><div v-if="column.key === 'roles'" class="flex flex-wrap gap-1"><UBadge v-for="role in (row.roles as WorkspaceRole[])" :key="role" color="neutral" variant="subtle">{{ WORKSPACE_ROLE_LABELS[role] }}</UBadge></div><span v-else-if="column.key === 'status'">{{ row.status === 'active' ? '当前成员' : '历史成员' }}</span><span v-else>{{ row[column.key] }}</span></template>
-      <template #actions="{ row }">
-        <template v-if="writable && !row.is_owner && row.status === 'active' && row.email">
-          <UButton color="neutral" variant="ghost" size="sm" @click="editRoles(row)">角色</UButton>
-          <UButton color="error" variant="ghost" size="sm" @click="remove(row)">移除</UButton>
+    <div v-if="managing" class="space-y-6">
+      <AdminPageHeader title="成员" description="域内角色可组合；成员权限不会延伸到其他空间。" icon="i-lucide-users" />
+      <UCard v-if="writable && pendingRequests.length" class="rounded">
+        <h2 class="mb-3 font-semibold text-text">待审核的加入申请</h2>
+        <ul class="divide-y divide-border">
+          <li v-for="request in pendingRequests" :key="request.id"
+            class="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p class="text-sm font-medium text-text">{{ request.username }}</p>
+              <p class="text-sm text-text-secondary">{{ request.reason || '未填写理由' }}</p>
+            </div>
+            <div class="flex gap-2">
+              <UButton :disabled="busy || !request.can_approve" size="sm"
+                @click="reviewRequest(request, true)">批准</UButton>
+              <UButton :disabled="busy" size="sm" color="neutral" variant="outline"
+                @click="reviewRequest(request, false)">拒绝</UButton>
+            </div>
+          </li>
+        </ul>
+      </UCard>
+      <p v-if="requests.error.value" class="text-sm text-error-text"
+        role="alert">{{ extractApiError(requests.error.value).message }}</p>
+      <AdminTable
+        :columns="[{ key: 'username', label: '账号' }, { key: 'email', label: '邮箱' }, { key: 'roles', label: '角色' }, { key: 'status', label: '状态' }]"
+        :items="tableRows" :loading="members.status.value === 'pending'"
+        :error="members.error.value ? extractApiError(members.error.value).message : ''">
+        <template
+          #cell="{ row, column }"><div v-if="column.key === 'roles'" class="flex flex-wrap gap-1"><UBadge v-for="role in (row.roles as WorkspaceRole[])" :key="role" color="neutral" variant="subtle">{{ WORKSPACE_ROLE_LABELS[role] }}</UBadge></div><span v-else-if="column.key === 'status'">{{ row.status === 'active' ? '当前成员' : '历史成员' }}</span><span v-else>{{ row[column.key] }}</span></template>
+        <template #actions="{ row }">
+          <template v-if="writable && !row.is_owner && row.status === 'active' && row.email">
+            <UButton color="neutral" variant="ghost" size="sm" @click="editRoles(row)">角色</UButton>
+            <UButton color="error" variant="ghost" size="sm" @click="remove(row)">移除</UButton>
+          </template>
         </template>
-      </template>
-    </AdminTable>
-    <div
-      class="flex items-center justify-end gap-3"><UButton color="neutral" variant="outline" :disabled="page === 1" @click="page--">上一页</UButton><span class="text-sm tabular-nums">第 {{ page }} 页</span><UButton color="neutral" variant="outline" :disabled="(members.data.value?.data.length ?? 0) < 100" @click="page++">下一页</UButton></div>
-    <UCard v-if="context.can('domain:invitations')" class="rounded">
-      <h2 class="mb-3 font-semibold text-text">邀请成员</h2>
-      <form v-if="writable" class="flex flex-wrap gap-3" @submit.prevent="invite">
-        <UInput v-model="inviteEmail" type="email" placeholder="受邀人的邮箱" aria-label="受邀邮箱" required
-          class="min-w-64" />
-        <UButton type="submit" :loading="busy">生成邀请</UButton>
-      </form>
-      <div v-if="invitationLink" class="mt-4 space-y-2">
-        <p class="text-sm text-text-secondary">将链接发送给受邀人。链接仅在创建时显示，请及时复制。</p>
-        <UInput :model-value="invitationLink" readonly class="w-full" aria-label="新邀请链接" />
-        <UButton size="sm" variant="outline" @click="copyInvitation">复制链接</UButton>
-      </div>
-      <p v-if="invitations.error.value" class="mt-3 text-error-text"
-        role="alert">{{ extractApiError(invitations.error.value).message }}</p>
-      <ul class="mt-4 divide-y divide-border">
-        <li v-for="invitation in invitations.data.value?.data" :key="invitation.id"
-          class="flex flex-wrap items-center justify-between gap-2 py-3">
-          <div>
-            <p class="text-sm text-text">{{ invitation.email }}</p>
-            <p
-              class="text-xs text-text-muted">{{ invitationState(invitation) }} · {{ new Date(invitation.expires_at).toLocaleString() }} 到期</p>
-          </div>
-          <UButton v-if="writable && invitationState(invitation) === '待接受'" color="neutral" variant="outline"
-            size="sm" @click="revoke(invitation.id)">撤销</UButton>
-        </li>
-      </ul>
-    </UCard>
-    <UCard v-if="writable && context.can('domain:transfer')" class="rounded">
-      <h2 class="mb-3 font-semibold text-text">转交负责人</h2>
-      <div class="flex flex-wrap gap-3">
-        <USelect v-model="newOwnerId"
-          :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && !m.is_owner && m.email).map(m => ({ value: m.user_id, label: m.username }))"
-          placeholder="选择当前成员" class="min-w-64" aria-label="新负责人" />
-        <UButton :disabled="!newOwnerId" color="neutral" variant="outline" @click="transfer">转交</UButton>
-      </div>
-    </UCard>
-    <UModal v-model:open="rolesOpen" title="调整域内角色">
-      <template #body>
-        <form class="space-y-4" @submit.prevent="saveRoles">
-          <p class="text-sm text-text-secondary">{{ editingMember?.username }}</p>
-          <USelect v-model="editingRoles" multiple :items="roleOptions" class="w-full" aria-label="域内角色" />
-          <UButton type="submit" :loading="busy" :disabled="!editingRoles.length">保存角色</UButton>
+      </AdminTable>
+      <div
+        class="flex items-center justify-end gap-3"><UButton color="neutral" variant="outline" :disabled="page === 1" @click="page--">上一页</UButton><span class="text-sm tabular-nums">第 {{ page }} 页</span><UButton color="neutral" variant="outline" :disabled="(members.data.value?.data.length ?? 0) < 100" @click="page++">下一页</UButton></div>
+      <UCard v-if="context.can('domain:invitations')" class="rounded">
+        <h2 class="mb-3 font-semibold text-text">邀请成员</h2>
+        <form v-if="writable" class="flex flex-wrap gap-3" @submit.prevent="invite">
+          <UInput v-model="inviteEmail" type="email" placeholder="受邀人的邮箱" aria-label="受邀邮箱" required
+            class="min-w-64" />
+          <UButton type="submit" :loading="busy">生成邀请</UButton>
         </form>
-      </template>
-    </UModal>
-  </div>
-  <UAlert v-else-if="context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间成员的权限" />
+        <div v-if="invitationLink" class="mt-4 space-y-2">
+          <p class="text-sm text-text-secondary">将链接发送给受邀人。链接仅在创建时显示，请及时复制。</p>
+          <UInput :model-value="invitationLink" readonly class="w-full" aria-label="新邀请链接" />
+          <UButton size="sm" variant="outline" @click="copyInvitation">复制链接</UButton>
+        </div>
+        <p v-if="invitations.error.value" class="mt-3 text-error-text"
+          role="alert">{{ extractApiError(invitations.error.value).message }}</p>
+        <ul class="mt-4 divide-y divide-border">
+          <li v-for="invitation in invitations.data.value?.data" :key="invitation.id"
+            class="flex flex-wrap items-center justify-between gap-2 py-3">
+            <div>
+              <p class="text-sm text-text">{{ invitation.email }}</p>
+              <p
+                class="text-xs text-text-muted">{{ invitationState(invitation) }} · {{ new Date(invitation.expires_at).toLocaleString() }} 到期</p>
+            </div>
+            <UButton v-if="writable && invitationState(invitation) === '待接受'" color="neutral" variant="outline"
+              size="sm" @click="revoke(invitation.id)">撤销</UButton>
+          </li>
+        </ul>
+      </UCard>
+      <UCard v-if="writable && context.can('domain:transfer')" class="rounded">
+        <h2 class="mb-3 font-semibold text-text">转交负责人</h2>
+        <div class="flex flex-wrap gap-3">
+          <USelect v-model="newOwnerId"
+            :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && !m.is_owner && m.email).map(m => ({ value: m.user_id, label: m.username }))"
+            placeholder="选择当前成员" class="min-w-64" aria-label="新负责人" />
+          <UButton :disabled="!newOwnerId" color="neutral" variant="outline" @click="transfer">转交</UButton>
+        </div>
+      </UCard>
+      <UModal v-model:open="rolesOpen" title="调整域内角色">
+        <template #body>
+          <form class="space-y-4" @submit.prevent="saveRoles">
+            <p class="text-sm text-text-secondary">{{ editingMember?.username }}</p>
+            <USelect v-model="editingRoles" multiple :items="roleOptions" class="w-full" aria-label="域内角色" />
+            <UButton type="submit" :loading="busy" :disabled="!editingRoles.length">保存角色</UButton>
+          </form>
+        </template>
+      </UModal>
+    </div>
+    <UAlert v-else-if="context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间成员的权限" />
   </DomainSettingsShell>
 </template>

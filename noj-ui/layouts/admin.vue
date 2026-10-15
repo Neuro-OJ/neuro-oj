@@ -1,103 +1,104 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue"
+import { onMounted, onUnmounted, ref } from 'vue';
 
-const route = useRoute()
-const sidebarOpen = ref(true)
-const isMobile = ref(false)
-const commandPaletteOpen = ref(false)
+const route = useRoute();
+const sidebarOpen = ref(true);
+const isMobile = ref(false);
+const commandPaletteOpen = ref(false);
 
 function onResize() {
-  isMobile.value = window.innerWidth < 768
-  if (isMobile.value) sidebarOpen.value = false
-  else sidebarOpen.value = true
+  isMobile.value = window.innerWidth < 768;
+  if (isMobile.value) sidebarOpen.value = false;
+  else sidebarOpen.value = true;
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-    e.preventDefault()
-    commandPaletteOpen.value = !commandPaletteOpen.value
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    commandPaletteOpen.value = !commandPaletteOpen.value;
   }
 }
 
 onMounted(() => {
-  onResize()
-  window.addEventListener("resize", onResize)
-  window.addEventListener("keydown", handleGlobalKeydown)
-})
+  onResize();
+  window.addEventListener('resize', onResize);
+  window.addEventListener('keydown', handleGlobalKeydown);
+});
 
 onUnmounted(() => {
-  window.removeEventListener("resize", onResize)
-  window.removeEventListener("keydown", handleGlobalKeydown)
-})
+  window.removeEventListener('resize', onResize);
+  window.removeEventListener('keydown', handleGlobalKeydown);
+});
 
 interface NavItem {
-  label: string
-  to: string
-  icon: string
+  label: string;
+  to: string;
+  icon: string;
 }
 
 interface NavGroup {
-  label: string
-  items: NavItem[]
+  label: string;
+  items: NavItem[];
 }
 
 const navGroups: NavGroup[] = [
   {
-    label: "概览监控",
+    label: '概览监控',
     items: [
-      { label: "仪表盘", to: "/admin", icon: "i-lucide-layout-dashboard" },
+      { label: '仪表盘', to: '/admin', icon: 'i-lucide-layout-dashboard' },
     ],
   },
   {
-    label: "公共分类",
+    label: '公共分类',
     items: [
-      { label: "题型标签", to: "/admin/tags", icon: "i-lucide-tags" },
+      { label: '题型标签', to: '/admin/tags', icon: 'i-lucide-tags' },
     ],
   },
   {
-    label: "评测与算力",
+    label: '评测与算力',
     items: [
-      { label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container" },
-      { label: "实例 LLM 上限", to: "/admin/llm/quotas", icon: "i-lucide-gauge" },
+      { label: '评测镜像', to: '/admin/judge-images', icon: 'i-lucide-container' },
+      { label: '实例 LLM 上限', to: '/admin/llm/quotas', icon: 'i-lucide-gauge' },
     ],
   },
   {
-    label: "社区与风控",
+    label: '社区与风控',
     items: [
-      { label: "内容审查", to: "/admin/content-review", icon: "i-lucide-shield-alert" },
-      { label: "举报中心", to: "/admin/reports", icon: "i-lucide-flag" },
-      { label: "实例公告", to: "/admin/announcements", icon: "i-lucide-megaphone" },
-      { label: "实例轮播", to: "/admin/carousel", icon: "i-lucide-gallery-horizontal" },
+      { label: '内容审查', to: '/admin/content-review', icon: 'i-lucide-shield-alert' },
+      { label: '举报中心', to: '/admin/reports', icon: 'i-lucide-flag' },
+      { label: '实例公告', to: '/admin/announcements', icon: 'i-lucide-megaphone' },
+      { label: '实例轮播', to: '/admin/carousel', icon: 'i-lucide-gallery-horizontal' },
     ],
   },
   {
-    label: "用户与安全",
+    label: '用户与安全',
     items: [
-      { label: "用户管理", to: "/admin/users", icon: "i-lucide-users" },
-      { label: "角色权限", to: "/admin/roles", icon: "i-lucide-shield-check" },
-      { label: "黑名单管理", to: "/admin/blacklist", icon: "i-lucide-ban" },
-      { label: "法律与合规", to: "/admin/legal", icon: "i-lucide-scale" },
+      { label: '用户管理', to: '/admin/users', icon: 'i-lucide-users' },
+      { label: '角色权限', to: '/admin/roles', icon: 'i-lucide-shield-check' },
+      { label: '黑名单管理', to: '/admin/blacklist', icon: 'i-lucide-ban' },
+      { label: '法律与合规', to: '/admin/legal', icon: 'i-lucide-scale' },
     ],
   },
   {
-    label: "系统运维",
+    label: '系统运维',
     items: [
-      { label: "实例与域治理", to: "/admin/instance", icon: "i-lucide-building-2" },
-      { label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings" },
-      { label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text" },
+      { label: '实例与域治理', to: '/admin/instance', icon: 'i-lucide-building-2' },
+      { label: '系统设置', to: '/admin/settings', icon: 'i-lucide-settings' },
+      { label: '审计日志', to: '/admin/audit-logs', icon: 'i-lucide-scroll-text' },
     ],
   },
-]
+];
 
 function isActive(path: string) {
-  if (path === "/admin") return route.path === "/admin"
-  return route.path.startsWith(path)
+  if (path === '/admin') return route.path === '/admin';
+  return route.path.startsWith(path);
 }
 </script>
 
 <template>
   <div class="flex min-h-screen bg-bg-page bg-tech-grid">
-    <a href="#admin-main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+    <a href="#admin-main"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
       跳转到主要内容
     </a>
 

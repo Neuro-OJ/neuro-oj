@@ -46,22 +46,23 @@ useSeoMeta({ title: '题单' });
           :to="workspacePath(slug!, 'trainings/new')" icon="i-lucide-plus">创建题单</UButton>
       </template>
     </AdminPageHeader>
-    <details v-if="domain?.status === 'active' && can('training:import')" class="rounded border border-border bg-bg-panel">
+    <details v-if="domain?.status === 'active' && can('training:import')"
+      class="rounded border border-border bg-bg-panel">
       <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-text-secondary">引用公开题单</summary>
       <div class="border-t border-border p-4">
-      <p
-        class="mb-3 text-xs text-text-muted">粘贴来源域题单链接。引用不会复制内容，也不自动授予其中题目的作答权限；资源管理者可逐题建立当前域引用。</p>
-      <div class="flex gap-2">
-        <UInput v-model="trainingLink" placeholder="/d/main/trainings/…" class="grow"
-          @keydown.enter.prevent="importTraining" />
-        <UButton :loading="importing" :disabled="!trainingLink.trim()" @click="importTraining">引用到本域</UButton>
-      </div>
-      <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
-      <div class="mt-5 border-t border-border pt-5">
-        <ClientOnly>
-          <DomainSharedCatalog :slug="slug!" kind="training" @imported="refresh()" />
-        </ClientOnly>
-      </div>
+        <p
+          class="mb-3 text-xs text-text-muted">粘贴来源域题单链接。引用不会复制内容，也不自动授予其中题目的作答权限；资源管理者可逐题建立当前域引用。</p>
+        <div class="flex gap-2">
+          <UInput v-model="trainingLink" placeholder="/d/main/trainings/…" class="grow"
+            @keydown.enter.prevent="importTraining" />
+          <UButton :loading="importing" :disabled="!trainingLink.trim()" @click="importTraining">引用到本域</UButton>
+        </div>
+        <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
+        <div class="mt-5 border-t border-border pt-5">
+          <ClientOnly>
+            <DomainSharedCatalog :slug="slug!" kind="training" @imported="refresh()" />
+          </ClientOnly>
+        </div>
       </div>
     </details>
     <div class="flex gap-2">

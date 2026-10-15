@@ -114,7 +114,10 @@ const tagItems = computed(() => [
           @update:model-value="emit('update:judgeBackend', filterValue($event))" />
       </UFormField>
       <UFormField v-if="signedIn" label="我的进度" class="min-w-0">
-        <USelect :model-value="progress || allFilterValue" :items="[{value:allFilterValue,label:'全部'},{value:'solved',label:'已通过'},{value:'attempted',label:'尝试未通过'},{value:'unseen',label:'未尝试'}]" size="sm" class="w-full" aria-label="筛选本人状态" @update:model-value="emit('update:progress', filterValue($event))" />
+        <USelect :model-value="progress || allFilterValue"
+          :items="[{value:allFilterValue,label:'全部'},{value:'solved',label:'已通过'},{value:'attempted',label:'尝试未通过'},{value:'unseen',label:'未尝试'}]"
+          size="sm" class="w-full" aria-label="筛选本人状态"
+          @update:model-value="emit('update:progress', filterValue($event))" />
       </UFormField>
       <UFormField label="标签" class="min-w-0">
         <USelect :model-value="tagId || allFilterValue" :items="tagItems" size="sm" class="w-full" aria-label="标签"

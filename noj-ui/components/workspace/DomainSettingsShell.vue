@@ -4,18 +4,22 @@ import { workspacePath } from '~/utils/workspace';
 const { domain, slug } = useWorkspace();
 const route = useRoute();
 const entries = computed(() => domain.value ? workspaceSettingsNavigation(domain.value) : []);
-const current = computed(() => entries.value.find(item => item.to === route.path + route.hash)?.to ?? route.path);
-function select(value: string) { return navigateTo(value); }
+const current = computed(() => entries.value.find((item) => item.to === route.path + route.hash)?.to ?? route.path);
+function select(value: string) {
+  return navigateTo(value);
+}
 </script>
 
 <template>
   <div class="space-y-5">
     <AdminPageHeader title="域设置" :description="domain?.name" icon="i-lucide-settings">
       <template #actions>
-        <UButton v-if="slug" :to="workspacePath(slug)" color="neutral" variant="outline" icon="i-lucide-arrow-left">返回域首页</UButton>
+        <UButton v-if="slug" :to="workspacePath(slug)" color="neutral" variant="outline"
+          icon="i-lucide-arrow-left">返回域首页</UButton>
       </template>
     </AdminPageHeader>
-    <USelect :model-value="current" :items="entries.map(item => ({ label: item.label, value: item.to, icon: item.icon }))"
+    <USelect :model-value="current"
+      :items="entries.map(item => ({ label: item.label, value: item.to, icon: item.icon }))"
       class="w-full md:hidden" aria-label="域设置分组" @update:model-value="select" />
     <div class="grid min-w-0 gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
       <aside class="hidden md:block">
