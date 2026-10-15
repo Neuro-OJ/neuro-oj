@@ -66,7 +66,7 @@ const items = computed(() => [
     <UButton :to="{ path: '/register', query: { redirect: route.fullPath } }">注册</UButton>
   </template>
   <UDropdownMenu v-else :items="items" :content="{ align: 'end' }" :ui="{ content: 'w-64' }">
-    <UButton color="neutral" variant="ghost" aria-label="用户菜单" class="min-w-0 gap-2 px-1.5">
+    <UButton color="neutral" variant="ghost" aria-label="用户菜单" :title="label" class="min-w-0 gap-2 px-1.5">
       <UserIdentity v-if="user" :user="user" :show-username="false" size="sm" :link="false" />
       <span class="hidden max-w-56 truncate text-sm sm:inline" data-testid="domain-identity">{{ label }}</span>
       <UIcon name="i-lucide-chevron-down" class="size-3.5 shrink-0 text-text-muted" />

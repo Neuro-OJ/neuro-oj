@@ -2,7 +2,7 @@
 import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
-definePageMeta({ layout: 'workspace', middleware: 'workspace-context', problemWorkspace: true });
+definePageMeta({ layout: 'workspace', middleware: 'workspace-context', problemWorkspace: true, breadcrumbWidth: '100rem' });
 const route = useRoute();
 const { slug } = useWorkspace();
 const { user } = useAuth();

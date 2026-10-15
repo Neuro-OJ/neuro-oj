@@ -25,13 +25,12 @@ watch([scope.key, communityEnabled], async () => {
   await loadConfig(true);
   if (user.value) await loadUnreadCount();
 }, { immediate: true });
-useEventSource({
-  url: computed(() => scope.capture().apiPath('notifications/events')),
-  scopeKey: scope.key,
-  enabled: computed(() => !!user.value && communityEnabled.value),
-  onEvent: { 'notification:new': () => loadUnreadCount() },
-  fetchFn: () => loadUnreadCount(),
-  fallbackIntervalMs: 30000,
+// 角标无需独占常驻连接，避免多标签页耗尽 HTTP/1.1 连接；成绩页面继续使用实时 SSE。
+usePolling({
+  active: computed(() => !!user.value && communityEnabled.value),
+  fetcher: () => loadUnreadCount(),
+  intervalMs: 30000,
+  immediate: false,
 });
 const educationApi = useEducationApi();
 const educationNotifications = useAsyncData(
@@ -40,13 +39,11 @@ const educationNotifications = useAsyncData(
     ? educationApi.notifications(slug.value)
     : Promise.resolve({ data: { unread: 0 } }),
 );
-useEventSource({
-  url: computed(() => `/api/v1/domains/${encodeURIComponent(slug.value)}/notifications/events`),
-  scopeKey: computed(() => `${slug.value}:${user.value?.id ?? ''}`),
-  enabled: computed(() => !!user.value && teachingEnabled.value && !!(workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)),
-  onEvent: { 'education:sync': () => educationNotifications.refresh(), 'education:notification': () => educationNotifications.refresh() },
-  fetchFn: () => educationNotifications.refresh(),
-  fallbackIntervalMs: 15000,
+usePolling({
+  active: computed(() => !!user.value && teachingEnabled.value && !!(workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)),
+  fetcher: () => educationNotifications.refresh(),
+  intervalMs: 15000,
+  immediate: false,
 });
 watch(() => route.path, () => { mobileOpen.value = false; });
 onMounted(() => {
