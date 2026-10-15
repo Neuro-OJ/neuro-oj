@@ -2,6 +2,7 @@
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
+import { getEditorHistoryUrl } from '~/utils/editorHistory'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { isNotFoundError, isVersionConflictError } from '~/utils/apiError'
 import type { ProblemContestSecrecyNotice, SubmissionMode } from '~/utils/problemView'
@@ -208,9 +209,8 @@ function submissionFilter(s: WorkspaceSubmission): boolean {
   return !p || s.problem_id === p.problem_id
 }
 
-const historyUrl = computed(() => isContest.value
-  ? `/api/v1/contests/${contestId.value}/my-submissions?per_page=100`
-  : `/api/v1/submissions?problem_id=${problemId.value}&limit=20`)
+// 列表接口按内部 ID 过滤；网址中的公开题号（如 P17）不能作为 problem_id。
+const historyUrl = computed(() => getEditorHistoryUrl(workspaceProblem.value, contestId.value))
 
 const backUrl = computed(() => isContest.value
   ? `/contests/${contestId.value}/problems/${label.value}`
