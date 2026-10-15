@@ -3,7 +3,7 @@ import { extractApiError } from '~/utils/apiError';
 import { WORKSPACE_PRESETS } from '~/utils/workspace';
 import type { WorkspaceConfiguration, WorkspaceDetail } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
-import { onScopeDispose } from 'vue';
+import { computed, onScopeDispose } from 'vue';
 const props = defineProps<
   { domain: WorkspaceDetail; modules: WorkspaceConfiguration['features']; canArchive: boolean }
 >();
@@ -24,7 +24,8 @@ const form = reactive({
 });
 const baseRevision = ref(props.domain.revision);
 const savedSnapshot = ref(JSON.stringify(form));
-useUnsavedChanges(() => JSON.stringify(form) !== savedSnapshot.value);
+const dirty = computed(() => JSON.stringify(form) !== savedSnapshot.value);
+defineExpose({ dirty });
 const saving = ref(false);
 const error = ref('');
 async function save() {
@@ -87,7 +88,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
         </div>
         <UCheckbox v-model="form.configuration.discoverable" label="在公开目录展示此空间" />
         <div class="rounded border border-border bg-bg-sunken p-3 text-sm">
-          <p class="font-medium">域类型：{{ WORKSPACE_PRESETS.find(p => p.value === domain.preset)?.label ?? '旧自定义域（待转换）' }} · 创建后固定</p>
+          <p class="font-medium">域类型：{{ WORKSPACE_PRESETS.find(p => p.value === domain.preset)!.label }} · 创建后固定</p>
           <p class="mt-2 text-text-secondary">三种域均提供题库、题单、比赛、社区与域排行。教学域额外提供班级、作业与教练工作台。</p>
           <p v-if="!modules.community || !modules.classroom || !modules.assignment || !modules.analytics" class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
         </div>

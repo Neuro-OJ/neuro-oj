@@ -1,5 +1,5 @@
 import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
-import { workspaceProblemPath } from '~/utils/workspace';
+import { workspaceProblemPath, workspaceSolvePath } from '~/utils/workspace';
 import { isNotFoundError } from '~/utils/apiError';
 /** 旧入口在页面 setup 前转到 main，旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -43,6 +43,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!reference) throw createError({ statusCode: 404, statusMessage: '旧题目入口不存在' });
   const path = destination.editor
     ? `/d/main/editor/${encodeURIComponent(reference)}`
+    : destination.solve
+    ? workspaceSolvePath('main', reference)
     : workspaceProblemPath('main', reference);
   return navigateTo({ path, query, hash: to.hash }, { redirectCode: 301, replace: true });
 });

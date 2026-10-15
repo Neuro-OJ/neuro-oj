@@ -48,6 +48,14 @@ const progress = await useAsyncData(
       ? education.progress(slug.value!, id.value, scope.value)
       : Promise.resolve(null),
 );
+watch([matrix.data, progress.data], ([matrixValue, progressValue]) => {
+  const current = selected.value;
+  if (!current) return;
+  const row = matrixValue?.data.rows.find(row => row.user_id === current.userId);
+  const cell = row?.cells.find(cell => cell.item_id === current.cell.item_id) ??
+    (current.userId === actor.value?.id ? progressValue?.data.cells.find(cell => cell.item_id === current.cell.item_id) : undefined);
+  if (cell) selected.value = {...current, username:row?.username ?? current.username, cell};
+});
 const classroomWritable = computed(() =>
   domain.value?.status === 'active' && domain.value.configuration.features.classroom &&
   domain.value.configuration.features.assignment && room.data.value?.data.status === 'active'
@@ -190,14 +198,14 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         </template>
       </div>
       <AsyncContent v-if="can('progress:read')"
-        :status="matrix.error.value ? 'error' : matrix.status.value === 'pending' ? 'loading' : matrix.data.value ? 'data' : 'empty'"
+        :status="matrix.error.value ? 'error' : matrix.data.value ? 'data' : matrix.status.value === 'pending' ? 'loading' : 'empty'"
         :error="matrix.error.value ? extractApiError(matrix.error.value).message : undefined" @retry="matrix.refresh()">
         <AssignmentMatrix v-if="matrix.data.value" :matrix="matrix.data.value.data" @select="select" />
         <div
           class="mt-4 flex items-center gap-3"><UButton :disabled="page <= 1" variant="outline" @click="page--">上一页</UButton><span class="text-sm tabular-nums">{{ page }} · {{ matrix.data.value?.data.total ?? 0 }} 名学生</span><UButton :disabled="page * 50 >= (matrix.data.value?.data.total ?? 0)" variant="outline" @click="page++">下一页</UButton><UButton variant="ghost" icon="i-lucide-refresh-cw" @click="matrix.refresh()">刷新成绩</UButton></div>
       </AsyncContent>
       <AsyncContent v-if="isStudent"
-        :status="progress.error.value ? 'error' : progress.status.value === 'pending' ? 'loading' : progress.data.value ? 'data' : 'empty'"
+        :status="progress.error.value ? 'error' : progress.data.value ? 'data' : progress.status.value === 'pending' ? 'loading' : 'empty'"
         :error="progress.error.value ? extractApiError(progress.error.value).message : undefined"
         @retry="progress.refresh()">
         <UCard v-for="item in progress.data.value?.data.items" :key="item.id" class="mb-3">

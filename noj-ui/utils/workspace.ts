@@ -17,7 +17,7 @@ export interface WorkspaceSummary {
 }
 export interface WorkspaceRecord extends WorkspaceSummary {
   owner_id: string;
-  preset: WorkspacePreset | 'custom';
+  preset: WorkspacePreset;
   configuration: WorkspaceConfiguration;
   revision: number;
 }

@@ -296,9 +296,13 @@ async function submitCodeViaUI(code: string): Promise<void> {
     { key: `noj:draft:${key}`, content: code },
   );
   await goto(`/d/main/problems/${problemNumber}`);
+  await p.getByRole("link", { name: "开始编码", exact: true }).click();
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
-  await p.getByRole("button", { name: "提交评测", exact: true }).click();
+  await p.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
+    name: "提交评测",
+    exact: true,
+  }).click();
   await p.getByRole("link", { name: "查看评测", exact: true }).click();
   await p.waitForURL(/\/d\/main\/submissions\//);
 }

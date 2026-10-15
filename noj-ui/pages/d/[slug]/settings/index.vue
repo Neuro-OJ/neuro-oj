@@ -9,6 +9,8 @@ const captureAction = useWorkspaceActionScope();
 const { user } = useAuth();
 const workspaces = useWorkspaceApi();
 const { toast } = useToast();
+const { dialog } = useDialog();
+const general = ref<{ dirty: boolean } | null>(null);
 const formVersion = ref(0);
 const permitted = computed(() =>
   !!context.domain.value &&
@@ -33,15 +35,28 @@ const quotaDraft = ref<WorkspaceLimits | null>(null);
 const quotaRevision = ref(0);
 const quotaError = ref('');
 const savingQuota = ref(false);
+const quotaSnapshot = ref('');
+const quotaDirty = computed(() => !!quotaDraft.value && JSON.stringify(quotaDraft.value) !== quotaSnapshot.value);
+function loadQuota() {
+  const value = quotas.data.value?.data;
+  if (!value) return;
+  quotaDraft.value = { ...value.configured };
+  quotaRevision.value = value.revision;
+  quotaSnapshot.value = JSON.stringify(quotaDraft.value);
+}
 watch(quotas.data, (value) => {
-  if (value?.data) {
-    quotaDraft.value = { ...value.data.configured };
-    quotaRevision.value = value.data.revision;
-  }
+  if (value?.data && !quotaDirty.value) loadQuota();
 }, { immediate: true });
+useUnsavedChanges(() => !!general.value?.dirty || quotaDirty.value);
+async function refreshGeneral() {
+  await context.refresh();
+  formVersion.value++;
+}
 async function reload() {
+  if ((general.value?.dirty || quotaDirty.value) && !await dialog.confirm('重新读取会替换本页尚未保存的修改。',{title:'重新读取设置'})) return;
   await context.refresh();
   await quotas.refresh();
+  if (!quotas.error.value) loadQuota();
   formVersion.value++;
 }
 async function saveQuota() {
@@ -52,6 +67,7 @@ async function saveQuota() {
   try {
     await workspaces.updateLimits(action.slug, quotaDraft.value, quotaRevision.value);
     if (!action.isCurrent()) return;
+    quotaSnapshot.value = JSON.stringify(quotaDraft.value);
     toast.success('配额设置已保存');
     await context.refresh();
     await quotas.refresh();
@@ -73,10 +89,10 @@ useSeoMeta({ title: '域设置' });
       </template>
     </AdminPageHeader>
     <UAlert v-if="policy.error.value" color="error" :title="extractApiError(policy.error.value).message" />
-    <WorkspaceSettingsForm v-if="policy.data.value?.data"
+    <WorkspaceSettingsForm v-if="policy.data.value?.data" ref="general"
       :key="`${context.domain.value.id}:${context.domain.value.actor_id}:${formVersion}`"
       :domain="context.domain.value" :modules="policy.data.value.data.modules"
-      :can-archive="context.can('domain:archive') || context.domain.value.platform_admin" @saved="reload" />
+      :can-archive="context.can('domain:archive') || context.domain.value.platform_admin" @saved="refreshGeneral" />
     <UCard id="limits" v-if="quotaDraft && context.can('domain:limits')" class="scroll-mt-24 rounded">
       <form class="space-y-4" @submit.prevent="saveQuota">
         <h2 class="font-semibold text-text">成员、题库、存储与提交额度</h2>

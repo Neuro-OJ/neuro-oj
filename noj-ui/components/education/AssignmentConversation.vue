@@ -19,6 +19,7 @@ const education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const feedbackPage = ref(1), helpPage = ref(1), replyPage = ref(1), selectedHelp = ref(props.helpId ?? '');
 const feedbackBody = ref(''), question = ref(''), replyBody = ref(''), saving = ref(false);
+useUnsavedChanges(() => !!(feedbackBody.value.trim() || question.value.trim() || replyBody.value.trim()));
 const feedbackKey = ref(crypto.randomUUID()),
   questionKey = ref(crypto.randomUUID()),
   replyKey = ref(crypto.randomUUID());

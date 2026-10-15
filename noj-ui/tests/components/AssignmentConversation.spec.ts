@@ -10,6 +10,7 @@ const stubs = {
   UTextarea: { template: '<textarea />' },
 };
 beforeEach(() => {
+  vi.stubGlobal('useUnsavedChanges', vi.fn());
   vi.clearAllMocks();
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('useState', () => ref({ id: 'student' }));

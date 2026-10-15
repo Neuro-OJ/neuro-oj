@@ -110,12 +110,17 @@ async function submit(
     localStorage.setItem(key, JSON.stringify({ code, answers: {} }));
   }, { key, code });
   await gotoPage(page, `/d/${slug}/problems/${reference}`);
+  await page.getByRole("link", { name: "开始编码", exact: true }).click();
   await page.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   const created = await write(
     page,
     "POST",
     `/api/v1/domains/${slug}/submissions`,
-    () => page.getByRole("button", { name: "提交评测", exact: true }).click(),
+    () =>
+      page.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
+        name: "提交评测",
+        exact: true,
+      }).click(),
   );
   const id = created.data.id as string;
   await page.getByRole("link", { name: "查看评测", exact: true }).click();

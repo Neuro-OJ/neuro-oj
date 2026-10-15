@@ -4,6 +4,7 @@ import type { AssignmentSubmissionOrigin } from '~/utils/education';
 
 export interface DomainSubmission {
   id: string;
+  public_id?: string;
   user_id?: string;
   contest_id?: string | null;
   assignment_origin?: AssignmentSubmissionOrigin | null;
