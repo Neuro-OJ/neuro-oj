@@ -1,6 +1,7 @@
 import { and, count, eq, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentFeedback, users } from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
@@ -131,12 +132,13 @@ export async function getAssignmentFeedback(
   id: string,
   feedbackId: string,
   actorId: string,
+  executor: Executor = getDb(),
 ) {
-  const access = await loadInteractionAccess(slug, id, actorId),
+  const access = await loadInteractionAccess(slug, id, actorId, executor),
     all = interactionStaff(access, "feedback:write");
-  if (!all) await assertInteractionRecipient(access, actorId);
+  if (!all) await assertInteractionRecipient(access, actorId, executor);
   const target = alias(users, "feedback_target");
-  const [row] = await getDb().select({
+  const [row] = await executor.select({
     feedback: assignmentFeedback,
     username: users.username,
     deleted_at: users.deleted_at,

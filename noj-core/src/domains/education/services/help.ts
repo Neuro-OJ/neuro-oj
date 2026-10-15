@@ -1,5 +1,6 @@
 import { and, count, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import {
   assignmentHelpReplies,
   assignmentHelpRequests,
@@ -127,10 +128,15 @@ export async function createAssignmentHelp(
   });
 }
 
-async function helpReader(slug: string, id: string, actorId: string) {
-  const access = await loadInteractionAccess(slug, id, actorId),
+async function helpReader(
+  slug: string,
+  id: string,
+  actorId: string,
+  executor: Executor = getDb(),
+) {
+  const access = await loadInteractionAccess(slug, id, actorId, executor),
     all = interactionStaff(access, "help:manage");
-  if (!all) await assertInteractionRecipient(access, actorId);
+  if (!all) await assertInteractionRecipient(access, actorId, executor);
   return { access, all };
 }
 
@@ -170,9 +176,10 @@ export async function getAssignmentHelp(
   helpId: string,
   actorId: string,
   replyPage = 1,
+  executor: Executor = getDb(),
 ) {
-  const { all } = await helpReader(slug, id, actorId);
-  const [help] = await getDb().select().from(assignmentHelpRequests).where(
+  const { all } = await helpReader(slug, id, actorId, executor);
+  const [help] = await executor.select().from(assignmentHelpRequests).where(
     and(
       eq(assignmentHelpRequests.assignment_id, id),
       eq(assignmentHelpRequests.id, helpId),
@@ -183,7 +190,7 @@ export async function getAssignmentHelp(
   if (!Number.isSafeInteger(replyPage) || replyPage < 1 || replyPage > 100000) {
     throw new BadRequestError("回复分页格式错误");
   }
-  const db = getDb(),
+  const db = executor,
     [total] = await db.select({ count: count() }).from(assignmentHelpReplies)
       .where(eq(assignmentHelpReplies.help_id, helpId));
   const rows = await db.select({
