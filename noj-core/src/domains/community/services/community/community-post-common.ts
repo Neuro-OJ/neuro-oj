@@ -1,6 +1,5 @@
 import { eq, type SQL, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import { communityPosts, users } from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
@@ -70,10 +69,11 @@ export function featureForType(type: CommunityPostType): keyof CommunityConfig {
  */
 export async function publicationStatus(
   authorId: string,
+  scope?: CommunityScope,
 ): Promise<CommunityPostStatus> {
   const reviewHours = getCommunityConfig().new_user_review_hours;
   if (reviewHours <= 0) return "published";
-  const db = getDb();
+  const db = communityDb(scope);
   const row = await db.select({ created_at: users.created_at }).from(users)
     .where(eq(users.id, authorId)).limit(1);
   if (!row[0]) throw new NotFoundError("用户不存在");

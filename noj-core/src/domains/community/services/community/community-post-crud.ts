@@ -1,5 +1,4 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
@@ -113,9 +112,10 @@ async function ensureSolutionAccepted(
 async function canPostToBoard(
   userId: string,
   boardId: string,
+  scope?: CommunityScope,
 ): Promise<boolean> {
-  const db = getDb();
-  const grants = await listBoardRoleGrants(boardId);
+  const db = communityDb(scope);
+  const grants = await listBoardRoleGrants(boardId, scope);
   if (grants.length === 0) return true;
   const roleRows = await db.select({ role_id: userRoles.role_id }).from(
     userRoles,
@@ -197,7 +197,7 @@ export async function createPost(
     }
     if (
       (!scope || scope.slug === DEFAULT_DOMAIN_SLUG) && !moderator &&
-      !await canPostToBoard(authorId, input.board_id)
+      !await canPostToBoard(authorId, input.board_id, scope)
     ) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
@@ -262,7 +262,7 @@ export async function createPost(
     }
   }
   const createdAt = nowIso();
-  const status = await publicationStatus(authorId);
+  const status = await publicationStatus(authorId, scope);
   const post = {
     id: crypto.randomUUID(),
     domain_id: communityDomainId(scope),

@@ -167,7 +167,7 @@ export async function createComment(
     }
   }
   const createdAt = nowIso();
-  const status = await publicationStatus(authorId);
+  const status = await publicationStatus(authorId, scope);
   const comment = {
     id: crypto.randomUUID(),
     domain_id: communityDomainId(scope),
