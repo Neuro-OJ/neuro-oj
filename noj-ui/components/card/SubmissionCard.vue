@@ -1,6 +1,6 @@
 <template>
     <NuxtLink
-        :to="publicUrl('submission', submission.public_id || submission.id)"
+        :to="domainSlug ? workspacePath(domainSlug, `submissions/${submission.public_id || submission.id}`) : publicUrl('submission', submission.public_id || submission.id)"
         class="relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary hover:shadow-dropdown group"
     >
         <div class="grid grid-cols-[auto_1fr] gap-x-2">
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { workspacePath } from "~/utils/workspace"
 import { computed } from "vue"
 import { publicUrl } from "~/utils/publicIdentifiers"
 
@@ -87,10 +88,10 @@ interface Submission {
     }
     status: string
     created_at: string
-    judge_started_at: string | null
-    judge_finished_at: string | null
-    queue_position: number | null
-    queue_length: number | null
+    judge_started_at?: string | null
+    judge_finished_at?: string | null
+    queue_position?: number | null
+    queue_length?: number | null
     result: {
         status: string
         score: number
@@ -101,6 +102,7 @@ interface Submission {
 
 interface Props {
     submission: Submission
+    domainSlug?: string
 }
 
 const props = defineProps<Props>()

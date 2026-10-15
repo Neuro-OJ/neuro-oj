@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import UserMenu from '~/components/layout/UserMenu.vue';
 const slug = ref('school'), user = ref<{ id: string; username: string; is_admin: boolean } | null>(null);
 const remember = vi.fn(), navigate = vi.fn();
+const permissions = ref<string[]>([]);
 const spaces = [{ id: 's', slug: 'school', name: '学校' }, { id: 't', slug: 'team', name: '团队' }];
 const stubs = {
   UDropdownMenu: { name: 'UDropdownMenu', props: ['items'], template: '<div><slot /></div>' },
@@ -15,9 +16,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   slug.value = 'school';
   user.value = { id: 'u', username: 'student', is_admin: false };
+  permissions.value = [];
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('useNavigationDomain', () => slug);
-  vi.stubGlobal('useOptionalWorkspace', () => ({ can: () => false }));
+  vi.stubGlobal('useOptionalWorkspace', () => ({
+    domain: computed(() => ({
+      slug: slug.value,
+      platform_admin: false,
+      permissions: permissions.value,
+      configuration: { features: { community: true } },
+    })),
+    can: () => false,
+  }));
   vi.stubGlobal('useRoute', () => ({ fullPath: '/d/school/problems/main:1001?assignment_id=task' }));
   vi.stubGlobal('useAuth', () => ({ user, isLoggedIn: computed(() => !!user.value), logout: vi.fn() }));
   vi.stubGlobal('useWorkspaceApi', () => ({ remember, list: vi.fn() }));
@@ -56,5 +66,17 @@ describe('头像菜单中的域导航', () => {
       path: '/login',
       query: { redirect: '/d/school/problems/main:1001?assignment_id=task' },
     });
+  });
+  it('域管理员从独立设置按钮进入当前域，成员不显示该按钮', async () => {
+    const view = mount(UserMenu, { global: { stubs } });
+    const items = () => view.getComponent({ name: 'UDropdownMenu' }).props('items').flat();
+    expect(items().some((item: { label: string }) => item.label === '域设置')).toBe(false);
+    permissions.value = ['domain:settings'];
+    await view.vm.$nextTick();
+    expect(items().find((item: { label: string }) => item.label === '域设置').to).toBe('/d/school/settings');
+    slug.value = 'main';
+    await view.vm.$nextTick();
+    expect(items().find((item: { label: string }) => item.label === '域设置').to).toBe('/d/main/settings');
+    view.unmount();
   });
 });

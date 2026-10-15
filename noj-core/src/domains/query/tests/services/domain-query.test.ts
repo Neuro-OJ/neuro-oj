@@ -26,6 +26,7 @@ import {
   domainProblemProgressWhere,
   getDomainProblemSummaries,
   getDomainRankingRows,
+  getDomainRecentSubmissions,
   getDomainStats,
   loadDomainQueryScope,
   PUBLIC_DEFAULT_QUERY_SCOPE,
@@ -121,6 +122,34 @@ export async function fixture() {
   );
   return { db, actor, now };
 }
+
+Deno.test("域首页评测：只展示当前域可用练习，撤销共享立即隐藏且不返回代码", async () => {
+  const { db, actor } = await fixture();
+  const a = await loadDomainQueryScope("school-query-a", actor);
+  const rows = await getDomainRecentSubmissions(a, actor);
+  assertEquals(rows.map((row) => row.id), ["submit-school-query-a"]);
+  assertEquals(
+    Object.keys(rows[0]).sort(),
+    [
+      "id",
+      "public_id",
+      "problem_id",
+      "status",
+      "created_at",
+      "problem",
+      "result",
+    ].sort(),
+  );
+  assertEquals(
+    (await getDomainRecentSubmissions(PUBLIC_DEFAULT_QUERY_SCOPE, null)).map(
+      (row) => row.id,
+    ),
+    [`submit-${DEFAULT_DOMAIN_ID}`],
+  );
+  assertEquals((await getDomainRecentSubmissions(a, "other-user")).length, 0);
+  await db.update(problemShareSettings).set({ enabled: false });
+  assertEquals((await getDomainRecentSubmissions(a, actor)).length, 0);
+});
 
 Deno.test("本人题库状态：不计全站排行的已结束比赛仍显示通过，赛中与全站榜继续排除", async () => {
   const { db, actor, now } = await fixture();

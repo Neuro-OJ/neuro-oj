@@ -1,215 +1,36 @@
-<template>
-    <div class="bg-white border border-border rounded-lg shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
-        <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border shrink-0">
-            <UIcon name="i-lucide-clock" class="text-primary shrink-0 size-4" />
-            <h3 class="text-sm font-semibold text-text m-0">最新评测</h3>
-            <span class="relative flex size-2 ml-0.5" title="实时推送中">
-                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal opacity-75"></span>
-                <span class="relative inline-flex size-2 rounded-full bg-signal"></span>
-            </span>
-            <StatsToggle :today-stats="todayStats" :total-stats="totalStats" />
-        </div>
-        <div class="flex-1 flex flex-col">
-            <template v-if="loading">
-                <div class="flex items-center justify-center flex-1 gap-2 text-text-muted text-sm">
-                    <div class="size-4 border-2 border-border border-t-primary rounded-full animate-spin-slow" />
-                    <span>加载中...</span>
-                </div>
-            </template>
-            <template v-else-if="submissions.length === 0">
-                <div class="flex items-center justify-center flex-1 text-center text-sm text-text-muted">暂无评测记录</div>
-            </template>
-            <TransitionGroup v-else appear name="list" tag="div" class="flex flex-col gap-[10px] p-[10px] flex-1">
-                <SubmissionCard
-                    v-for="(s, i) in displayList"
-                    :key="s.id"
-                    :submission="s"
-                    :style="{ '--i': i }"
-                    :class="{ 'animate-pin': pinSet.has(s.id) }"
-                />
-            </TransitionGroup>
-        </div>
-        <NuxtLink
-            to="/submissions"
-            class="flex items-center justify-center gap-1 px-5 py-2.5 text-xs font-semibold text-primary no-underline border-t border-border transition-colors duration-150 hover:bg-primary-bg group"
-        >
-            查看全部提交
-            <UIcon name="i-lucide-arrow-right" class="transition-transform duration-150 group-hover:translate-x-0.5 size-3.5" />
-        </NuxtLink>
-    </div>
-</template>
-
 <script setup lang="ts">
-import { useEventSource } from "~/composables/useEventSource"
-
-const { api } = useApi()
-
-interface SubmissionItem {
-    id: string
-    problem_id: string
-    problem: { title: string; memory_limit_mb: number | null }
-    status: string
-    created_at: string
-    judge_started_at: string | null
-    judge_finished_at: string | null
-    queue_position: number | null
-    queue_length: number | null
-    result: { status: string; score: number; time_ms: number; memory_kb: number } | null
+import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
+import { extractApiError } from '~/utils/apiError';
+const props = defineProps<{domainSlug:string}>();
+const { api } = useApi(), { user } = useAuth();
+interface Snapshot { total:number; full_score:number; not_full_score:number }
+interface RecentSubmission {
+  id:string; public_id:string|null; problem_id:string; status:string; created_at:string; problem:{title:string};
+  result:{status:string;score:number;time_ms:number|null;memory_kb:number|null}|null;
 }
-
-interface TodayStats {
-    total: number
-    full_score: number
-    not_full_score: number
-}
-
-const { isLoggedIn } = useAuth()
-
-const submissions = ref<SubmissionItem[]>([])
-const loading = ref(true)
-const prevStatuses = ref<Map<string, string>>(new Map())
-const pinSet = ref<Set<string>>(new Set())
-const todayStats = ref<TodayStats | null>(null)
-const totalStats = ref<TodayStats | null>(null)
-
-let pinTimer: ReturnType<typeof setTimeout> | null = null
-
-// SSE 事件处理：统计数据变更时从事件数据中获取最新值
-function onStatsUpdated(data: unknown) {
-    const d = data as { total?: TodayStats; today?: TodayStats }
-    if (d.total) totalStats.value = d.total
-    if (d.today) todayStats.value = d.today
-}
-
-async function fetchStatsFallback() {
-    try {
-        const [totalRes, todayRes] = await Promise.all([
-            api.get<{ data: TodayStats }>("/api/v1/submissions/total-stats", { silent: true }),
-            api.get<{ data: TodayStats }>("/api/v1/submissions/today-stats", { silent: true }),
-        ])
-        if (totalRes.data) totalStats.value = totalRes.data
-        if (todayRes.data) todayStats.value = todayRes.data
-    } catch {
-        // silent
-    }
-}
-
-const displayList = computed(() => {
-    const list = [...submissions.value]
-    list.sort((a, b) => {
-        const aPinned = pinSet.value.has(a.id)
-        const bPinned = pinSet.value.has(b.id)
-        if (aPinned && !bPinned) return -1
-        if (!aPinned && bPinned) return 1
-        return b.created_at.localeCompare(a.created_at)
-    })
-    return list.slice(0, 5)
-})
-
-async function fetchSubmissions() {
-    try {
-        // 未登录调用公开端点（全站最近评测），登录调用私有端点（我的提交）
-        const url = isLoggedIn.value ? "/api/v1/submissions" : "/api/v1/submissions/public/recent"
-        const res = await api.get<{ data: SubmissionItem[] }>(url, {
-            query: { per_page: 10 },
-            silent: true,
-            // 首页后台刷新属于可选认证请求：失效登录态不能把公共首页重定向到登录页。
-            redirectOnUnauthorized: false,
-        })
-        const list = res.data ?? []
-        const newPrev = new Map<string, string>()
-        const newPin = new Set<string>()
-        let hasNewFinish = false
-        for (const s of list) {
-            const old = prevStatuses.value.get(s.id)
-            if (old && old !== "finished" && s.status === "finished") {
-                newPin.add(s.id)
-                hasNewFinish = true
-            }
-            newPrev.set(s.id, s.status)
-        }
-        submissions.value = list
-        prevStatuses.value = newPrev
-        // 保持已有 pin 持续生效
-        for (const id of pinSet.value) {
-            newPin.add(id)
-        }
-        pinSet.value = newPin
-        if (hasNewFinish) {
-            if (pinTimer) clearTimeout(pinTimer)
-            pinTimer = setTimeout(() => { pinSet.value = new Set() }, 3500)
-        }
-    } catch {
-        // silent
-    } finally {
-        loading.value = false
-    }
-}
-
-onMounted(() => {
-    // 首次加载
-    fetchSubmissions()
-    fetchStatsFallback()
-
-    // 通过 SSE 接收实时变更通知（stats + 新评测结果）
-    // 每次收到 stats:updated，说明有新评测完成，刷新列表和统计
-    useEventSource({
-        url: "/api/v1/submissions/stats/events",
-        onEvent: {
-            "stats:updated": (data) => {
-                onStatsUpdated(data)
-                fetchSubmissions()
-            },
-        },
-        fetchFn: async () => {
-            await Promise.all([fetchSubmissions(), fetchStatsFallback()])
-        },
-        fallbackIntervalMs: 10000,
-    })
-})
-
-onUnmounted(() => {
-    if (pinTimer) clearTimeout(pinTimer)
-})
+const scope = computed(() => workspaceCacheKey(props.domainSlug,user.value?.id ?? null,'latest-submissions'));
+const {data,status,error,refresh} = await useAsyncData(scope, () => api.get<{data:{recent:RecentSubmission[];total:Snapshot;today:Snapshot}}>(`/api/v1/domains/${props.domainSlug}/activity`, {silent:true}));
+const events = useEventSource({
+  url: `/api/v1/domains/${props.domainSlug}/submissions/stats/events`, scopeKey: scope,
+  onEvent: {'stats:updated': () => { void refresh(); }}, fetchFn: () => refresh(), fallbackIntervalMs:10000,
+});
 </script>
-
-<style>
-.list-enter-active {
-    transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-    transition-delay: calc(0.1s + var(--i, 0) * 0.05s);
-}
-.list-leave-active {
-    transition: all 0.5s ease-in;
-    position: absolute;
-    left: 0;
-    right: 0;
-    width: 100%;
-}
-.list-enter-from {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.97);
-}
-.list-leave-to {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.97);
-}
-.list-move {
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes pin-pop {
-    0% {
-        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3);
-    }
-    30% {
-        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
-    }
-}
-
-.animate-pin {
-    animation: pin-pop 1s cubic-bezier(0.16, 1, 0.3, 1);
-}
-</style>
+<template>
+  <section class="flex h-full min-h-64 flex-col rounded border border-border bg-bg-panel">
+    <div class="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3.5">
+      <UIcon name="i-lucide-clock" class="size-4 shrink-0 text-primary" />
+      <h2 class="text-sm font-semibold text-text">最新评测</h2>
+      <span class="size-1.5 rounded-full" :class="events.state.value === 'connected' ? 'bg-signal' : 'bg-text-muted'" :title="events.state.value === 'connected' ? '实时更新' : '定时刷新'" />
+      <StatsToggle :today-stats="data?.data.today ?? null" :total-stats="data?.data.total ?? null" />
+    </div>
+    <div class="flex-1 p-3">
+      <AsyncContent :status="error ? 'error' : !data && status === 'pending' ? 'loading' : data?.data.recent.length ? 'data' : 'empty'"
+        :error="error ? extractApiError(error).message : undefined" :empty-text="user ? '你在此域还没有评测记录' : '暂无公开评测记录'" @retry="refresh()">
+        <div class="space-y-2">
+          <SubmissionCard v-for="submission in data?.data.recent" :key="submission.id" :domain-slug="domainSlug" :submission="{...submission,public_id:submission.public_id ?? undefined}" />
+        </div>
+      </AsyncContent>
+    </div>
+    <NuxtLink :to="workspacePath(domainSlug,'submissions')" class="flex items-center justify-center gap-1 border-t border-border px-5 py-2.5 text-xs font-semibold text-primary no-underline hover:bg-primary-hover-bg">查看全部提交<UIcon name="i-lucide-arrow-right" class="size-3.5" /></NuxtLink>
+  </section>
+</template>

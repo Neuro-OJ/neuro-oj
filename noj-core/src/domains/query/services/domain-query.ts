@@ -72,6 +72,45 @@ function visibleSources(scope: DomainQueryScope) {
   }`;
 }
 
+/** 首页最新评测只返回可展示的基本字段；登录者看本人，游客看当前域公开练习。 */
+export async function getDomainRecentSubmissions(
+  scope: DomainQueryScope,
+  actorId: string | null,
+) {
+  const rows = await getDb().execute(sql`
+    SELECT s.id, s.public_id, s.problem_id, s.status, s.created_at,
+      json_build_object('title',p.title) AS problem,
+      CASE WHEN a.result_kind='judged' THEN json_build_object(
+        'status',a.result_status,'score',a.score,'time_ms',a.time_ms,'memory_kb',a.memory_kb
+      ) ELSE NULL END AS result
+    FROM submissions s JOIN problems p ON p.id=s.problem_id
+    LEFT JOIN evaluation_attempts a ON a.id=coalesce(s.effective_attempt_id,s.latest_attempt_id)
+    WHERE s.contest_id IS NULL AND ${
+    submissionQueryVisibility(scope, {
+      domainId: sql`s.domain_id`,
+      bindingId: sql`s.domain_problem_binding_id`,
+      contestId: sql`s.contest_id`,
+    })
+  }
+      ${actorId ? sql`AND s.user_id=${actorId}` : sql``}
+    ORDER BY s.created_at DESC,s.id DESC LIMIT 5
+  `);
+  return unwrapRows<{
+    id: string;
+    public_id: string | null;
+    problem_id: string;
+    status: string;
+    created_at: string;
+    problem: { title: string };
+    result: {
+      status: string;
+      score: number;
+      time_ms: number | null;
+      memory_kb: number | null;
+    } | null;
+  }>(rows as never);
+}
+
 /** 题库本人状态过滤在分页前执行，赛中隐藏及其他域记录不能影响命中数。 */
 export function domainProblemProgressWhere(
   scope: DomainQueryScope,

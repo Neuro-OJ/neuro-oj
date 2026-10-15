@@ -9,8 +9,8 @@ const router = useRouter();
 const entered = ref(String(route.query.q ?? ''));
 const query = computed(() => String(route.query.q ?? '').trim());
 const page = computed(() => Number(route.query.page) || 1);
-const type = computed<'problem' | 'contest' | 'submission'>({
-  get: () => ['problem','contest','submission'].includes(String(route.query.type)) ? route.query.type as 'problem' | 'contest' | 'submission' : 'problem',
+const type = computed<'problem' | 'contest' | 'submission' | 'announcement'>({
+  get: () => ['problem','contest','submission','announcement'].includes(String(route.query.type)) ? route.query.type as 'problem' | 'contest' | 'submission' | 'announcement' : 'problem',
   set: value => { void router.push({query:{...route.query,type:value,page:undefined}}); },
 });
 const { data, status, error, refresh } = await useAsyncData(
@@ -28,12 +28,12 @@ useSeoMeta({ title: '域内搜索' });
 </script>
 <template>
   <div class="space-y-5">
-    <AdminPageHeader title="搜索当前域" description="只返回当前域获准访问的题目、比赛和提交" />
+    <AdminPageHeader title="搜索当前域" description="查找当前域可访问的题目、比赛、提交与公告" />
     <form class="flex flex-wrap gap-3" @submit.prevent="search">
       <UInput v-model="entered" minlength="2" maxlength="100" placeholder="搜索关键词，至少 2 个字符" class="grow"
         aria-label="域内搜索关键词" />
       <USelect v-model="type"
-        :items="[{ label: '题目', value: 'problem' }, { label: '比赛', value: 'contest' }, { label: '提交', value: 'submission' }]"
+        :items="[{ label: '题目', value: 'problem' }, { label: '比赛', value: 'contest' }, { label: '提交', value: 'submission' }, { label: '公告', value: 'announcement' }]"
         aria-label="搜索类型" />
       <UButton type="submit" :disabled="entered.trim().length < 2">搜索</UButton>
     </form>
@@ -47,7 +47,7 @@ useSeoMeta({ title: '域内搜索' });
             class="font-medium text-primary hover:underline"><span v-if="domainSearchReference(item)" class="mr-2 font-mono">{{ domainSearchReference(item)!.display_ref }}</span>{{ item.title }}</NuxtLink>
           <h3 v-else class="font-medium">{{ item.title }}</h3>
           <p
-            class="text-xs text-text-muted">{{ { problem: '题目', contest: '比赛', submission: '提交' }[item.entity_type as 'problem' | 'contest' | 'submission'] }}</p>
+            class="text-xs text-text-muted">{{ { problem: '题目', contest: '比赛', submission: '提交', announcement: '公告' }[item.entity_type as 'problem' | 'contest' | 'submission' | 'announcement'] }}</p>
         </div>
       </div>
       <div

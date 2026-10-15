@@ -1,37 +1,40 @@
 <script setup lang="ts">
-import { workspaceProblemPath } from '~/utils/workspace';
+import { workspaceProblemPath, workspacePath, workspaceCacheKey } from '~/utils/workspace';
+import { extractApiError } from '~/utils/apiError';
+const props = defineProps<{ domainSlug: string }>();
 const api = useDomainProblems(), { user } = useAuth();
 async function sample() {
-  try {
-    const first = await api.list('main', 1);
-    const page = Math.floor(Math.random() * Math.max(1, Math.ceil(first.total / 30))) + 1;
-    const result = page === 1 ? first : await api.list('main', page);
-    return result.items.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-  } catch {
-    return [];
-  }
+  const first = await api.list(props.domainSlug, 1);
+  const page = Math.floor(Math.random() * Math.max(1, Math.ceil(first.total / 30))) + 1;
+  const result = page === 1 ? first : await api.list(props.domainSlug, page);
+  return result.items.slice().sort(() => Math.random() - 0.5).slice(0, 3);
 }
-const { data, status, refresh } = await useAsyncData(
-  () => `public-random-problems:main:${user.value?.id ?? 'guest'}`,
-  sample,
-);
+const { data, status, error, refresh } = await useAsyncData(
+  () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'random-problems'), sample);
 </script>
 <template>
-  <UCard class="h-full">
-    <div class="mb-4 flex items-center justify-between gap-3">
-      <h3 class="font-semibold">随机题目</h3>
-      <UButton variant="ghost" icon="i-lucide-refresh-cw" aria-label="换一批题目" :loading="status === 'pending'"
-        @click="refresh()" />
+  <section class="flex h-full min-h-64 flex-col rounded border border-border bg-bg-panel">
+    <div class="flex items-center gap-2 border-b border-border px-5 py-3.5">
+      <UIcon name="i-lucide-shuffle" class="size-4 text-primary" />
+      <h2 class="mr-auto text-sm font-semibold text-text">随机题目</h2>
+      <UButton variant="ghost" color="neutral" size="xs" icon="i-lucide-refresh-cw" aria-label="换一批题目" :loading="status === 'pending'" @click="refresh()" />
     </div>
-    <div class="space-y-3">
-      <NuxtLink v-for="problem in data" :key="problem.reference.problem_id"
-        :to="workspaceProblemPath('main', problem.reference.display_ref)"
-        class="block rounded border border-border p-3 transition-colors hover:border-primary">
-        <span class="mr-2 font-mono text-primary">{{ problem.reference.display_ref }}</span>{{ problem.title }}
-        <p class="mt-1 text-xs text-text-muted">V{{ problem.version }} · {{ { oi: 'OI 编程题', ai: 'AI 代码／LLM／产物题', objective: '客观题' }[problem.kind] }}</p>
-      </NuxtLink>
-      <p v-if="status !== 'pending' && !data?.length" class="text-sm text-text-muted">暂无可浏览的公开题目</p>
+    <div class="flex-1 p-3">
+      <AsyncContent :status="error ? 'error' : !data && status === 'pending' ? 'loading' : data?.length ? 'data' : 'empty'"
+        :error="error ? extractApiError(error).message : undefined" empty-text="暂无可浏览的题目" @retry="refresh()">
+        <ul class="space-y-2">
+          <li v-for="problem in data" :key="problem.binding_id">
+            <NuxtLink :to="workspaceProblemPath(domainSlug, problem.reference.display_ref)" class="block rounded border border-border p-3 no-underline transition-colors hover:border-primary hover:bg-primary-hover-bg">
+              <p class="break-words text-sm font-medium text-text"><span class="mr-2 font-mono text-primary">{{ problem.reference.display_ref }}</span>{{ problem.title }}</p>
+              <div class="mt-2 flex items-center gap-2 text-xs text-text-muted">
+                <DifficultyBadge v-if="problem.difficulty" :difficulty="problem.difficulty" />
+                <span>{{ { oi:'OI 编程题',ai:'AI 题',objective:'客观题' }[problem.kind] }} · V{{ problem.version }}</span>
+              </div>
+            </NuxtLink>
+          </li>
+        </ul>
+      </AsyncContent>
     </div>
-    <UButton to="/d/main/problems" variant="ghost" class="mt-4">查看全部题目</UButton>
-  </UCard>
+    <NuxtLink :to="workspacePath(domainSlug,'problems')" class="flex items-center justify-center gap-1 border-t border-border px-5 py-2.5 text-xs font-semibold text-primary no-underline hover:bg-primary-hover-bg">查看全部题目<UIcon name="i-lucide-arrow-right" class="size-3.5" /></NuxtLink>
+  </section>
 </template>

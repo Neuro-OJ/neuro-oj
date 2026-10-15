@@ -10,15 +10,18 @@ import {
 } from "../../../shared/http/pagination.ts";
 import {
   getDomainRankingRows,
+  getDomainRecentSubmissions,
   getDomainStats,
   loadDomainQueryScope,
 } from "../services/domain-query.ts";
+import { getDomainSubmissionStats } from "../services/stats-cache.ts";
 
 /** 显式域统计与榜单，只聚合当前授权范围内的使用域记录。 */
 export const domainQueryRouter = new Hono<OptionalAuthEnv>();
 for (
   const path of [
     "/domains/:slug/stats",
+    "/domains/:slug/activity",
     "/domains/:slug/rankings",
     "/domains/:slug/rankings/*",
   ]
@@ -37,6 +40,16 @@ domainQueryRouter.get(
       ),
     }),
 );
+domainQueryRouter.get("/domains/:slug/activity", async (c) => {
+  const actor = c.var.userId ?? null;
+  const scope = await loadDomainQueryScope(c.req.param("slug"), actor);
+  const [recent, total, today] = await Promise.all([
+    getDomainRecentSubmissions(scope, actor),
+    getDomainSubmissionStats(scope),
+    getDomainSubmissionStats(scope, true, actor ?? undefined),
+  ]);
+  return c.json({ data: { recent, total, today } });
+});
 domainQueryRouter.get("/domains/:slug/rankings", async (c) => {
   const scope = await loadDomainQueryScope(
       c.req.param("slug"),

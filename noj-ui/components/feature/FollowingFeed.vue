@@ -30,7 +30,7 @@
         <NuxtLink
           v-for="(item, i) in items"
           :key="item.post.id"
-          :to="publicUrl('post', item.post.public_id || item.post.id)"
+          :to="scope.href(`posts/${item.post.public_id || item.post.id}`)"
           :style="{ animationDelay: `${0.1 + i * 0.05}s` }"
           class="flex flex-col gap-1 rounded-lg border border-border p-3 no-underline animate-[fadeInUp_0.5s_ease_both] transition-colors duration-150 hover:bg-primary-bg"
         >
@@ -50,7 +50,7 @@
       </div>
     </div>
     <NuxtLink
-      to="/community"
+      :to="scope.href()"
       class="flex items-center justify-center gap-1 px-5 py-2.5 text-xs font-semibold text-primary no-underline border-t border-border transition-colors duration-150 hover:bg-primary-bg group"
     >
       进入社区
@@ -63,9 +63,10 @@
 import type { FeedItem } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
-import { publicUrl } from "~/utils/publicIdentifiers"
+
 
 const { api } = useApi()
+const scope = useCommunityScope().capture()
 
 const { isLoggedIn } = useAuth()
 const { config, loadConfig } = useCommunity()
@@ -93,12 +94,11 @@ async function fetchFeed() {
   }
   loading.value = true
   try {
-    const res = await api.get<{ data: FeedItem[] }>("/api/v1/community/feed", {
+    const res = await api.get<{ data: FeedItem[] }>(scope.apiPath('feed'), {
       query: { view: "following", limit: 5 },
       silent: true,
     })
-    // 后端只返回帖子；仍按 kind 过滤一次，避免旧缓存/旧后端混入非帖子条目
-    items.value = (res.data ?? []).filter((item) => item.kind === "moment" && !!item.post)
+    items.value = res.data
   } catch (err: unknown) {
     error.value = extractApiError(err).message
   } finally {

@@ -108,6 +108,7 @@
 | GET | `/documents/:kind` | noj-core/src/domains/legal/routes/admin.ts |
 | GET | `/documents/:kind/versions` | noj-core/src/domains/legal/routes/documents.ts |
 | GET | `/domains/:slug/${path}` | noj-core/src/domains/education/routes/workbench.ts |
+| GET | `/domains/:slug/activity` | noj-core/src/domains/query/routes/domain-query.ts |
 | GET | `/domains/:slug/assignments/:id` | noj-core/src/domains/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/feedback` | noj-core/src/domains/education/routes/interactions.ts |
 | GET | `/domains/:slug/assignments/:id/feedback/:feedbackId` | noj-core/src/domains/education/routes/interactions.ts |

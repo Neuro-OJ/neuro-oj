@@ -41,3 +41,17 @@ Deno.test('域搜索：不以旧索引题号猜测目标域题号，比赛仍携
     '/d/school/contests/c1',
   );
 });
+
+Deno.test('域公告搜索的阅读链接保留使用域，即使内容来自实例', () => {
+  assertEquals(
+    domainSearchHref('school', {
+      entity_type: 'announcement',
+      entity_id: 'notice',
+      title: '通知',
+      highlight: '',
+      rank: 1,
+      metadata: { public_id: 'n123' },
+    }),
+    '/d/school/announcements/n123',
+  );
+});
