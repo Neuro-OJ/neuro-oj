@@ -73,7 +73,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
         <AdminFormField label="简介">
           <UTextarea v-model="form.description" class="w-full" maxlength="2000" aria-label="空间简介" />
         </AdminFormField>
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div id="access" class="grid scroll-mt-24 gap-4 sm:grid-cols-2">
           <AdminFormField label="访问方式">
             <USelect v-model="form.configuration.access"
               :items="[{ label: '公开访问', value: 'public' }, { label: '仅成员进入', value: 'members' }]"

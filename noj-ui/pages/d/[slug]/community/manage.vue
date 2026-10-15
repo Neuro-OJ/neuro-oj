@@ -4,5 +4,7 @@ definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'],
 const { key } = useCommunityScope();
 </script>
 <template>
+  <DomainSettingsShell>
   <CommunityManage :key="key" />
+  </DomainSettingsShell>
 </template>

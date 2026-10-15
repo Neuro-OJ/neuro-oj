@@ -64,11 +64,10 @@ const navGroups: NavGroup[] = [
   {
     label: "社区与风控",
     items: [
-      { label: "默认域社区治理", to: "/admin/community", icon: "i-lucide-messages-square" },
       { label: "内容审查", to: "/admin/content-review", icon: "i-lucide-shield-alert" },
       { label: "举报中心", to: "/admin/reports", icon: "i-lucide-flag" },
-      { label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone" },
-      { label: "轮播管理", to: "/admin/carousel", icon: "i-lucide-gallery-horizontal" },
+      { label: "实例公告", to: "/admin/announcements", icon: "i-lucide-megaphone" },
+      { label: "实例轮播", to: "/admin/carousel", icon: "i-lucide-gallery-horizontal" },
     ],
   },
   {
@@ -83,7 +82,7 @@ const navGroups: NavGroup[] = [
   {
     label: "系统运维",
     items: [
-      { label: "实例与空间治理", to: "/admin/instance", icon: "i-lucide-building-2" },
+      { label: "实例与域治理", to: "/admin/instance", icon: "i-lucide-building-2" },
       { label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings" },
       { label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text" },
     ],

@@ -301,6 +301,7 @@ watch(key, () => {
 useSeoMeta({ title: '空间 LLM 配置' });
 </script>
 <template>
+  <DomainSettingsShell>
   <div v-if="can('llm:manage')" class="space-y-5">
     <div class="flex flex-wrap justify-between gap-3">
       <h2 class="text-xl font-semibold">LLM 配置与用量</h2>
@@ -455,4 +456,5 @@ useSeoMeta({ title: '空间 LLM 配置' });
     </UModal>
   </div>
   <UAlert v-else color="warning" title="没有当前域 LLM 管理权限" />
+  </DomainSettingsShell>
 </template>

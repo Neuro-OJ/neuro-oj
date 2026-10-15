@@ -73,6 +73,14 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
   { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
   {
+    pattern: '/d/:slug/settings/carousel',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.carousel' }],
+  },
+  {
+    pattern: '/d/:slug/settings/announcements',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'announcement.title' }],
+  },
+  {
     pattern: '/d/:slug/submission-jobs/:jobId',
     trail: [{ param: 'slug' }, { key: 'nav.submissions', to: '/d/:slug/submissions' }, {
       key: 'breadcrumb.submissionJob',

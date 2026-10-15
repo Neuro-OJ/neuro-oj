@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { workspaceSettingsNavigation } from '~/utils/workspace-settings';
+import type { WorkspaceDetail } from '~/utils/workspace';
 import { domainIdentityLabel } from '~/utils/domain-navigation';
 import { userUrl } from '~/utils/publicIdentifiers';
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
@@ -12,6 +14,19 @@ const spaces = useAsyncData(
   () => workspaceCacheKey('', user.value?.id ?? null, 'user-menu-domains'),
   () => user.value ? workspaces.list(true) : Promise.resolve({ data: [] as WorkspaceSummary[] }),
 );
+const menuDomain = useAsyncData(
+  () => workspaceCacheKey(slug.value, user.value?.id ?? null, 'menu-permissions'),
+  async () => {
+    if (!user.value || workspace) return null;
+    try {
+      return (await api.get<{ data: WorkspaceDetail }>(`/api/v1/domains/${slug.value}`, { silent: true, redirectOnUnauthorized: false })).data;
+    } catch { return null; }
+  },
+);
+const domainSettingsEntry = computed(() => {
+  const domain = workspace?.domain.value ?? menuDomain.data.value;
+  return domain ? workspaceSettingsNavigation(domain)[0] : undefined;
+});
 const unreadCount = ref(0);
 async function refreshMessages() {
   const response = await api.get<{ data: { unread_count: number } }>('/api/v1/conversations/unread-count', {
@@ -54,6 +69,7 @@ const items = computed(() => [
         { label: '浏览与管理域', icon: 'i-lucide-grid-2x2', to: '/workspaces' },
       ],
     },
+    ...(domainSettingsEntry.value ? [{ label: '域设置', icon: 'i-lucide-building-2', to: domainSettingsEntry.value.to }] : []),
     { label: '账号设置', icon: 'i-lucide-settings', to: accountLink('/settings') },
     ...(user.value?.is_admin ? [{ label: '实例管理', icon: 'i-lucide-shield-check', to: '/admin' }] : []),
   ],

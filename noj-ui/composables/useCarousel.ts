@@ -13,6 +13,8 @@ export type CarouselKind = 'image' | 'text';
 /** 幻灯片结构。 */
 export interface CarouselSlide {
   id: string;
+  domain_id?: string | null;
+  scope?: 'instance' | 'domain';
   kind: CarouselKind;
   image_storage_url: string | null;
   title: string | null;
@@ -37,14 +39,16 @@ export interface CarouselSlideInput {
 /**
  * 轮播能力。
  */
-export function useCarousel() {
+export function useCarousel(domainSlug?: string) {
+  const readBase = domainSlug ? `/api/v1/domains/${domainSlug}/carousel` : '/api/v1/carousel';
+  const manageBase = domainSlug ? `/api/v1/domains/${domainSlug}/settings/carousel` : '/api/v1/admin/carousel';
   const { api } = useApi();
   const slides = ref<CarouselSlide[]>([]);
 
   /** 公开端：加载启用中的 slides。 */
   async function loadEnabled(silent = true): Promise<CarouselSlide[]> {
     const res = await api.get<{ data: CarouselSlide[] }>(
-      '/api/v1/carousel/slides',
+      `${readBase}/slides`,
       { silent },
     );
     slides.value = res.data;
@@ -54,7 +58,7 @@ export function useCarousel() {
   /** 管理端：加载全部（含停用）。 */
   async function loadAll(silent = true): Promise<CarouselSlide[]> {
     const res = await api.get<{ data: CarouselSlide[] }>(
-      '/api/v1/admin/carousel/slides',
+      `${manageBase}/slides`,
       { silent },
     );
     return res.data;
@@ -63,7 +67,7 @@ export function useCarousel() {
   /** 新建。 */
   async function create(input: CarouselSlideInput): Promise<string> {
     const res = await api.post<{ data: { id: string } }>(
-      '/api/v1/admin/carousel/slides',
+      `${manageBase}/slides`,
       input,
     );
     return res.data.id;
@@ -71,17 +75,17 @@ export function useCarousel() {
 
   /** 更新（部分更新）。 */
   async function update(id: string, input: Partial<CarouselSlideInput>): Promise<void> {
-    await api.patch(`/api/v1/admin/carousel/slides/${id}`, input);
+    await api.patch(`${manageBase}/slides/${id}`, input);
   }
 
   /** 删除。 */
   async function remove(id: string): Promise<void> {
-    await api.delete(`/api/v1/admin/carousel/slides/${id}`);
+    await api.delete(`${manageBase}/slides/${id}`);
   }
 
   /** 按 id 顺序重排。 */
   async function reorder(ids: string[]): Promise<void> {
-    await api.post('/api/v1/admin/carousel/slides/reorder', { ids }, { silent: true });
+    await api.post(`${manageBase}/slides/reorder`, { ids }, { silent: true });
   }
 
   /** 上传图片，返回存储 URL。 */
@@ -89,7 +93,7 @@ export function useCarousel() {
     const form = new FormData();
     form.append('file', file);
     const res = await api.post<{ data: { image_storage_url: string } }>(
-      '/api/v1/admin/carousel/images',
+      `${manageBase}/images`,
       form,
     );
     return res.data.image_storage_url;

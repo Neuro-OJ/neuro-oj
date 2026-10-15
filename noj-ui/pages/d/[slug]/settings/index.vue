@@ -61,12 +61,13 @@ async function saveQuota() {
     savingQuota.value = false;
   }
 }
-useSeoMeta({ title: '空间设置' });
+useSeoMeta({ title: '域设置' });
 </script>
 
 <template>
+  <DomainSettingsShell>
   <div v-if="permitted && context.domain.value" class="space-y-6">
-    <AdminPageHeader title="空间设置" description="成员、功能与访问政策仅作用于当前空间。" icon="i-lucide-settings">
+    <AdminPageHeader title="基本设置" description="名称、访问与加入政策。" icon="i-lucide-settings">
       <template #actions>
         <UButton color="neutral" variant="outline" @click="reload">重新读取设置</UButton>
       </template>
@@ -76,7 +77,7 @@ useSeoMeta({ title: '空间设置' });
       :key="`${context.domain.value.id}:${context.domain.value.actor_id}:${formVersion}`"
       :domain="context.domain.value" :modules="policy.data.value.data.modules"
       :can-archive="context.can('domain:archive') || context.domain.value.platform_admin" @saved="reload" />
-    <UCard v-if="quotaDraft && context.can('domain:limits')" class="rounded">
+    <UCard id="limits" v-if="quotaDraft && context.can('domain:limits')" class="scroll-mt-24 rounded">
       <form class="space-y-4" @submit.prevent="saveQuota">
         <h2 class="font-semibold text-text">成员、题库、存储与提交额度</h2>
         <p
@@ -99,5 +100,6 @@ useSeoMeta({ title: '空间设置' });
     <p v-if="quotas.error.value" class="text-sm text-error-text"
       role="alert">{{ extractApiError(quotas.error.value).message }}</p>
   </div>
-  <UAlert v-else-if="context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间设置的权限" />
+  <UAlert v-else-if="context.domain.value" color="neutral" variant="subtle" title="你没有管理此域设置的权限" />
+  </DomainSettingsShell>
 </template>

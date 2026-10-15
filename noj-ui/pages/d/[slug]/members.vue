@@ -189,6 +189,7 @@ useSeoMeta({ title: '空间成员' });
 </script>
 
 <template>
+  <DomainSettingsShell>
   <div v-if="managing" class="space-y-6">
     <AdminPageHeader title="成员" description="域内角色可组合；成员权限不会延伸到其他空间。" icon="i-lucide-users" />
     <UCard v-if="writable && pendingRequests.length" class="rounded">
@@ -273,4 +274,5 @@ useSeoMeta({ title: '空间成员' });
     </UModal>
   </div>
   <UAlert v-else-if="context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间成员的权限" />
+  </DomainSettingsShell>
 </template>
