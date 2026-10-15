@@ -16,7 +16,7 @@
  *   由前端页面加载 / 轮询 fallback 兜底，与既有事件机制一致）。
  */
 
-import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import { announcements } from "./../../../shared/db/schema.ts";
@@ -35,6 +35,7 @@ import {
   type PaginationMeta,
 } from "./../../../shared/http/pagination.ts";
 import { logAudit } from "./audit-log.ts";
+import { type ContentScope, contentScopeWhere } from "./content-scope.ts";
 
 /** 列表摘要截断长度（Markdown 源码字符数） */
 const EXCERPT_LENGTH = 120;
@@ -46,6 +47,7 @@ const CONTENT_MAX = 50000;
 /** 公开列表项（不含 content 全文） */
 export interface AnnouncementSummary {
   id: string;
+  domain_id: string | null;
   public_id: string;
   title: string;
   is_pinned: boolean;
@@ -58,6 +60,7 @@ export interface AnnouncementSummary {
 /** 公开详情（含 content 全文） */
 export interface AnnouncementDetail {
   id: string;
+  domain_id: string | null;
   public_id: string;
   title: string;
   content: string;
@@ -71,6 +74,7 @@ export interface AnnouncementDetail {
 /** 管理列表项（含 content 全文与发布状态） */
 export interface AdminAnnouncementItem {
   id: string;
+  domain_id: string | null;
   public_id: string;
   title: string;
   content: string;
@@ -85,6 +89,7 @@ export interface AdminAnnouncementItem {
 /** 导航栏横幅载荷（无用户态） */
 export interface AnnouncementBanner {
   id: string;
+  domain_id: string | null;
   public_id: string;
   banner_text: string;
 }
@@ -120,9 +125,13 @@ export interface AdminAnnouncementListResponse {
 }
 
 /** 广播公告变更（写 SSE 事件日志 + Redis 通知） */
-async function broadcastAnnouncementUpdate(): Promise<void> {
+async function broadcastAnnouncementUpdate(
+  scope?: ContentScope,
+): Promise<void> {
   await publishSseEvent(
-    Channels.announcements,
+    scope
+      ? `noj:events:domain:${scope.domainId}:announcements`
+      : Channels.announcements,
     { type: "announcement:updated" },
   );
 }
@@ -161,15 +170,23 @@ function validateFields(title?: string, content?: string): void {
 export async function listPublicAnnouncements(
   page: number,
   perPage: number,
+  scope?: ContentScope,
 ): Promise<PublicAnnouncementListResponse> {
   const db = getDb();
   const offset = (page - 1) * perPage;
-  const where = eq(announcements.is_active, true);
+  const where = and(
+    eq(announcements.is_active, true),
+    contentScopeWhere(announcements.domain_id, scope, true),
+  );
 
   const [rows, totalRow] = await Promise.all([
     db.select().from(announcements)
       .where(where)
-      .orderBy(desc(announcements.is_pinned), desc(announcements.created_at))
+      .orderBy(
+        asc(isNotNull(announcements.domain_id)),
+        desc(announcements.is_pinned),
+        desc(announcements.created_at),
+      )
       .limit(perPage)
       .offset(offset),
     db.select({ value: count() }).from(announcements).where(where),
@@ -177,6 +194,7 @@ export async function listPublicAnnouncements(
 
   const data = rows.map((row) => ({
     id: row.id,
+    domain_id: row.domain_id,
     public_id: row.public_id,
     title: row.title,
     is_pinned: row.is_pinned,
@@ -193,10 +211,17 @@ export async function listPublicAnnouncements(
  */
 export async function getPublicAnnouncement(
   id: string,
+  scope?: ContentScope,
 ): Promise<AnnouncementDetail> {
   const db = getDb();
   const [row] = await db.select().from(announcements)
-    .where(and(eq(announcements.id, id), eq(announcements.is_active, true)))
+    .where(
+      and(
+        eq(announcements.id, id),
+        eq(announcements.is_active, true),
+        contentScopeWhere(announcements.domain_id, scope, true),
+      ),
+    )
     .limit(1);
 
   if (!row) {
@@ -205,6 +230,7 @@ export async function getPublicAnnouncement(
 
   return {
     id: row.id,
+    domain_id: row.domain_id,
     public_id: row.public_id,
     title: row.title,
     content: row.content,
@@ -224,7 +250,9 @@ export async function getPublicAnnouncement(
  *
  * @returns 横幅载荷；无符合条件的公告时返回 null
  */
-export async function getLatestBannerAnnouncement(): Promise<
+export async function getLatestBannerAnnouncement(
+  scope?: ContentScope,
+): Promise<
   AnnouncementBanner | null
 > {
   const db = getDb();
@@ -236,13 +264,19 @@ export async function getLatestBannerAnnouncement(): Promise<
         eq(announcements.is_active, true),
         isNotNull(announcements.banner_text),
         ne(announcements.banner_text, ""),
+        contentScopeWhere(announcements.domain_id, scope, true),
       ),
     )
-    .orderBy(desc(announcements.is_pinned), desc(announcements.created_at))
+    .orderBy(
+      asc(isNotNull(announcements.domain_id)),
+      desc(announcements.is_pinned),
+      desc(announcements.created_at),
+    )
     .limit(1);
   if (!row || !row.banner_text) return null;
   return {
     id: row.id,
+    domain_id: row.domain_id,
     public_id: row.public_id,
     banner_text: row.banner_text,
   };
@@ -255,12 +289,14 @@ export async function listAdminAnnouncements(
   page: number,
   perPage: number,
   isActive?: boolean,
+  scope?: ContentScope,
 ): Promise<AdminAnnouncementListResponse> {
   const db = getDb();
   const offset = (page - 1) * perPage;
   const conditions = isActive === undefined
     ? []
     : [eq(announcements.is_active, isActive)];
+  conditions.push(contentScopeWhere(announcements.domain_id, scope));
 
   const [rows, totalRow] = await Promise.all([
     db.select().from(announcements)
@@ -298,6 +334,7 @@ export function resolveAnnouncementId(value: string): Promise<string> {
  */
 export async function createAnnouncement(
   input: CreateAnnouncementInput,
+  scope?: ContentScope,
 ): Promise<AdminAnnouncementItem> {
   // 必填校验：title / content 必须存在（否则会绕过 validateFields，
   // 落到 DB NOT NULL 约束抛 500，而非 spec 要求的 400）
@@ -317,6 +354,7 @@ export async function createAnnouncement(
 
   await db.insert(announcements).values({
     id,
+    domain_id: scope?.domainId ?? null,
     public_id: publicId,
     title: input.title.trim(),
     content: input.content.trim(),
@@ -337,7 +375,7 @@ export async function createAnnouncement(
     { action: "announcement.create", title: row!.title },
     { type: "announcement", id },
   );
-  await broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate(scope);
   await publishSearchIndexEvent("announcement", id, "upsert");
 
   return { ...row! };
@@ -351,12 +389,18 @@ export async function createAnnouncement(
 export async function updateAnnouncement(
   id: string,
   input: UpdateAnnouncementInput,
+  scope?: ContentScope,
 ): Promise<AdminAnnouncementItem> {
   validateFields(input.title, input.content);
 
   const db = getDb();
   const existing = await db.select().from(announcements)
-    .where(eq(announcements.id, id))
+    .where(
+      and(
+        eq(announcements.id, id),
+        contentScopeWhere(announcements.domain_id, scope),
+      ),
+    )
     .limit(1);
   if (existing.length === 0) {
     throw new NotFoundError("公告不存在");
@@ -373,7 +417,12 @@ export async function updateAnnouncement(
   if (input.is_pinned !== undefined) updates.is_pinned = input.is_pinned;
   if (input.is_active !== undefined) updates.is_active = input.is_active;
 
-  await db.update(announcements).set(updates).where(eq(announcements.id, id));
+  await db.update(announcements).set(updates).where(
+    and(
+      eq(announcements.id, id),
+      contentScopeWhere(announcements.domain_id, scope),
+    ),
+  );
 
   const [row] = await db.select().from(announcements)
     .where(eq(announcements.id, id))
@@ -384,7 +433,7 @@ export async function updateAnnouncement(
     { action: "announcement.update", title: row!.title },
     { type: "announcement", id },
   );
-  await broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate(scope);
   await publishSearchIndexEvent("announcement", id, "upsert");
 
   return { ...row! };
@@ -395,22 +444,35 @@ export async function updateAnnouncement(
  *
  * @throws {NotFoundError} 公告不存在
  */
-export async function deleteAnnouncement(id: string): Promise<void> {
+export async function deleteAnnouncement(
+  id: string,
+  scope?: ContentScope,
+): Promise<void> {
   const db = getDb();
   const existing = await db.select().from(announcements)
-    .where(eq(announcements.id, id))
+    .where(
+      and(
+        eq(announcements.id, id),
+        contentScopeWhere(announcements.domain_id, scope),
+      ),
+    )
     .limit(1);
   if (existing.length === 0) {
     throw new NotFoundError("公告不存在");
   }
 
-  await db.delete(announcements).where(eq(announcements.id, id));
+  await db.delete(announcements).where(
+    and(
+      eq(announcements.id, id),
+      contentScopeWhere(announcements.domain_id, scope),
+    ),
+  );
 
   await logAudit(
     "announcement.delete",
     { action: "announcement.delete", title: existing[0].title },
     { type: "announcement", id },
   );
-  await broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate(scope);
   await publishSearchIndexEvent("announcement", id, "delete");
 }

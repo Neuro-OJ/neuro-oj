@@ -210,6 +210,7 @@ export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
     ctx.accountEntities ?? ctx.domainId === undefined
   } AND ${ctx.isAdmin}
       AND EXISTS (SELECT 1 FROM users u WHERE u.id=${searchEntries.entity_id} AND u.deleted_at IS NULL)
-    WHEN 'announcement' THEN EXISTS (SELECT 1 FROM announcements a WHERE a.id=${searchEntries.entity_id} AND a.is_active)
+    WHEN 'announcement' THEN EXISTS (SELECT 1 FROM announcements a WHERE a.id=${searchEntries.entity_id} AND a.is_active
+      AND (a.domain_id IS NULL OR a.domain_id=${domainId}))
     ELSE false END`;
 }

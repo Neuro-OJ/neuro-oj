@@ -946,6 +946,7 @@ $$ LANGUAGE plpgsql`,
   // 18. announcements (issue #231)
   `CREATE TABLE IF NOT EXISTS announcements (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('ann-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -958,6 +959,7 @@ $$ LANGUAGE plpgsql`,
   )`,
 
   // 19. sse_events（SSE 事件表，与 schema.ts 定义一致，PGlite 测试模式）
+  `CREATE INDEX IF NOT EXISTS idx_announcements_active_pinned_created ON announcements (domain_id, is_active, is_pinned, created_at)`,
   `CREATE TABLE IF NOT EXISTS sse_events (
     id SERIAL PRIMARY KEY,
     channel TEXT NOT NULL,
@@ -1122,6 +1124,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS carousel_slides (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     kind TEXT NOT NULL,
     image_storage_url TEXT,
     title TEXT,
@@ -1134,8 +1137,10 @@ $$ LANGUAGE plpgsql`,
     updated_at TEXT NOT NULL,
     CONSTRAINT carousel_slides_kind_check CHECK (kind IN ('image', 'text'))
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
+  `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (domain_id, is_enabled, sort_order)`,
   ...WORKSPACE_DDL,
+  `ALTER TABLE announcements ADD CONSTRAINT announcements_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)`,
+  `ALTER TABLE carousel_slides ADD CONSTRAINT carousel_slides_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)`,
   `ALTER TABLE llm_model_aliases ADD CONSTRAINT llm_model_aliases_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)`,
   ...WORKSPACE_STORAGE_DDL,
   ...CATALOG_WORKSPACE_DDL,
