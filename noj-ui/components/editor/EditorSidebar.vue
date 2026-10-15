@@ -143,9 +143,7 @@ function formatElapsed(iso: string) {
         </span>
       </div>
 
-      <div class="prose prose-sm prose-neuro max-w-none">
-        <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
-      </div>
+      <MarkdownRenderer class="prose-sm" :content="problem.description" />
     </div>
 
     <!-- 历史 tab -->
@@ -350,35 +348,6 @@ function formatElapsed(iso: string) {
 </template>
 
 <style scoped>
-/* 左侧题目文字：亮色模式纯黑；暗色模式恢复主题浅色保证可读 */
-.editor-sidebar-prose {
-  --tw-prose-body: #000;
-  --tw-prose-headings: #000;
-  --tw-prose-bold: #000;
-}
-
-:global(.editor-dark) .editor-sidebar-prose {
-  --tw-prose-body: #f2f3ef;
-  --tw-prose-headings: #f2f3ef;
-  --tw-prose-bold: #f2f3ef;
-}
-
-/* 亮色：加粗标签（如 **输入** / **输出**）与标题也强制纯黑 */
-.editor-sidebar-prose :deep(strong),
-.editor-sidebar-prose :deep(h1),
-.editor-sidebar-prose :deep(h2),
-.editor-sidebar-prose :deep(h3) {
-  color: #000;
-}
-
-/* 暗色：恢复主题浅色 */
-:global(.editor-dark) .editor-sidebar-prose :deep(strong),
-:global(.editor-dark) .editor-sidebar-prose :deep(h1),
-:global(.editor-dark) .editor-sidebar-prose :deep(h2),
-:global(.editor-dark) .editor-sidebar-prose :deep(h3) {
-  color: #f2f3ef;
-}
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 180ms ease, transform 180ms ease;
