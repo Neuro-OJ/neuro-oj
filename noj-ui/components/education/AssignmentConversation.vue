@@ -63,7 +63,7 @@ watch(question, () => {
 watch(replyBody, () => {
   replyKey.value = crypto.randomUUID();
 });
-watch(() => [props.slug, props.assignmentId, actor.value?.id], () => {
+watch([() => props.slug, () => props.assignmentId, () => actor.value?.id], () => {
   selectedHelp.value = '';
   feedbackBody.value = '';
   question.value = '';

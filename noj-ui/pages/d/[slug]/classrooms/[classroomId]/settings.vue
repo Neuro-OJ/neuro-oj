@@ -96,7 +96,7 @@ async function reload() {
     if (scope.isCurrent() && id.value === classId) reset();
   }
 }
-watch(() => [slug.value, id.value, actor.value?.id], () => {
+watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   form.name = '';
   form.description = '';
   form.stage_tag = '';

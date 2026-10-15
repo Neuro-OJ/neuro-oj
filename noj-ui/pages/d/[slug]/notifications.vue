@@ -23,7 +23,7 @@ async function open(notice: TeachingNotice) {
     opening.value = '';
   }
 }
-watch(() => [slug.value, actor.value?.id], () => {
+watch([() => slug.value, () => actor.value?.id], () => {
   page.value = 1;
 });
 useSeoMeta({ title: '教学通知' });

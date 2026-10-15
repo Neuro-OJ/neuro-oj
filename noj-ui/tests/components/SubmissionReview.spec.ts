@@ -4,6 +4,7 @@ import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import SubmissionReview from '~/components/education/SubmissionReview.vue';
 const api = { files: vi.fn(), annotations: vi.fn(), text: vi.fn(), updateAnnotation: vi.fn() };
 const confirm = vi.fn(), refresh = vi.fn();
+const actor = ref({ id: 'teacher' });
 const stubs = {
   AsyncContent: { template: '<div><slot /></div>' },
   USelect: { template: '<select />' },
@@ -18,7 +19,8 @@ const stubs = {
 beforeEach(() => {
   vi.clearAllMocks();
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
-  vi.stubGlobal('useState', () => ref({ id: 'teacher' }));
+  actor.value = { id: 'teacher' };
+  vi.stubGlobal('useState', () => actor);
   vi.stubGlobal('useEducationApi', () => api);
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm } }));
@@ -63,6 +65,18 @@ async function review() {
   return view;
 }
 describe('行批注修改及撤回', () => {
+  it('同一账号刷新不清空正在编辑的批注，换账号才重置', async () => {
+    const view = await review();
+    await view.findAll('button').find((button) => button.text() === '修改')!.trigger('click');
+    await view.find('textarea').setValue('尚未保存的批注');
+    actor.value = { id: 'teacher' };
+    await flushPromises();
+    expect(view.find('textarea').element.value).toBe('尚未保存的批注');
+    actor.value = { id: 'another-teacher' };
+    await flushPromises();
+    expect(view.text()).not.toContain('尚未保存的批注');
+    view.unmount();
+  });
   it('修改绑定原域、班级、提交及服务器 revision', async () => {
     const view = await review();
     await view.findAll('button').find((button) => button.text() === '修改')!.trigger('click');

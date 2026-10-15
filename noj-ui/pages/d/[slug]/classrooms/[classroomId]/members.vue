@@ -106,7 +106,7 @@ async function revoke(inviteId: string) {
     saving.value = false;
   }
 }
-watch(() => [slug.value, id.value, actor.value?.id], () => {
+watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   link.value = '';
   email.value = '';
   error.value = '';

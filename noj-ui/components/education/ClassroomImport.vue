@@ -16,7 +16,7 @@ watch([csv, replace], () => {
   result.value = null;
   key.value = crypto.randomUUID();
 });
-watch(() => [props.slug, props.classroomId, actor.value?.id], () => {
+watch([() => props.slug, () => props.classroomId, () => actor.value?.id], () => {
   csv.value = '';
   error.value = '';
   preview.value = null;

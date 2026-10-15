@@ -10,7 +10,7 @@ const { data, status, error, refresh } = await useAsyncData(
   key,
   () => api.versions(props.slug, props.reference, page.value),
 );
-watch(() => [props.slug, props.reference, user.value?.id], () => {
+watch([() => props.slug, () => props.reference, () => user.value?.id], () => {
   page.value = 1;
 });
 </script>

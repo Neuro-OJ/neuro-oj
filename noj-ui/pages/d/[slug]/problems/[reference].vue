@@ -20,7 +20,7 @@ const showVersions = ref(false);
 const passRequirement = computed(() => data.value?.content.kind === 'oi'
   ? '正式判定为 AC 才算通过'
   : data.value?.content.kind === 'objective' ? '满分才算通过' : '按当前有效正分规则判定是否通过');
-watch(() => [slug.value, reference.value, user.value?.id], () => {
+watch([() => slug.value, () => reference.value, () => user.value?.id], () => {
   showVersions.value = false;
 });
 useSeoMeta({ title: () => data.value?.content.title ?? '题目' });

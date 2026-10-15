@@ -82,7 +82,7 @@ useEducationNotifications(async () => {
 watch([scope, recipients, statusFilter, search, itemFilter, verdictFilter], () => {
   page.value = 1;
 });
-watch(() => [slug.value, id.value, actor.value?.id], () => {
+watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   scope.value = 'on_time';
   recipients.value = 'current';
   statusFilter.value = 'all';

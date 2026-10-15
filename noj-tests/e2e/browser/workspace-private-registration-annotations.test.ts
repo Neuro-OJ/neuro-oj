@@ -460,6 +460,19 @@ Deno.test({
         const panel = teacher.page.getByRole("dialog", {
           name: / · /,
         });
+        // 模拟其他页面请求完成后发布同一账号的新资料，不能被误判为切换账号。
+        const identity = await teacher.page.request.get(
+          `${UI_URL}/api/v1/auth/me`,
+        );
+        assertEquals(identity.status(), 200);
+        await teacher.page.evaluate((current) => {
+          const root = document.querySelector("#__nuxt") as Element & {
+            __vue_app__: {
+              $nuxt: { payload: { state: Record<string, unknown> } };
+            };
+          };
+          root.__vue_app__.$nuxt.payload.state["auth:user"] = current;
+        }, (await identity.json()).data);
         await panel.locator("div.divide-y > button").filter({
           hasText: /^0 分/,
         }).click();

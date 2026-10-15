@@ -34,7 +34,7 @@ const fileOptions = computed(() =>
 watch(fileOptions, (options) => {
   if (!options.some((o) => o.value === file.value)) file.value = options[0]?.value ?? '';
 }, { immediate: true });
-watch(() => [props.slug, props.classroomId, props.submissionId, actor.value?.id], () => {
+watch([() => props.slug, () => props.classroomId, () => props.submissionId, () => actor.value?.id], () => {
   file.value = '';
   body.value = '';
   page.value = 1;
