@@ -24,7 +24,10 @@ beforeEach(() => {
   vi.stubGlobal('useRoute', () => ({ query: {}, fullPath: '/d/school/community' }));
   vi.stubGlobal('useRouter', () => ({ replace: vi.fn() }));
   const config = ref({ enabled: true, discussions_enabled: true, solutions_enabled: true, permissions: {} });
-  vi.stubGlobal('useCommunity', () => ({ config, error: configError, loadConfig: async () => config.value }));
+  vi.stubGlobal(
+    'useCommunity',
+    () => ({ config, error: configError, loadConfig: () => Promise.resolve(config.value) }),
+  );
   vi.stubGlobal('useDialog', () => ({ dialog: {} }));
   vi.stubGlobal('useReportModal', () => ({ open: vi.fn() }));
   vi.stubGlobal('useApi', () => ({ api: { get } }));
@@ -43,8 +46,8 @@ beforeEach(() => {
     await refresh();
     return { data, error, status, refresh };
   });
-  get.mockImplementation(async (path: string) =>
-    path.endsWith('/counts') ? { data: {} } : { data: [], next_cursor: null }
+  get.mockImplementation((path: string) =>
+    Promise.resolve(path.endsWith('/counts') ? { data: {} } : { data: [], next_cursor: null })
   );
 });
 async function view() {

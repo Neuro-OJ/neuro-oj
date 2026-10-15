@@ -597,10 +597,10 @@ Deno.test({
           await card.getByRole("button", { name: "0 · 未达标", exact: true })
             .click();
           await expect(
-            teacher.page.getByRole("dialog", { name: "学生提交与反馈" }),
+            teacher.page.getByRole("dialog", { name: / · / }),
           ).toBeVisible();
           const panel = teacher.page.getByRole("dialog", {
-            name: "学生提交与反馈",
+            name: / · /,
           });
           const path =
             `/api/v1/domains/${slug}/classrooms/${classroomId}/submissions/objective/${objectiveSubmissionId}/attempts`;
@@ -676,22 +676,18 @@ Deno.test({
           ).toBeVisible();
           await expect(second.getByText("本次成绩：0 分", { exact: true }))
             .toBeVisible();
-          await student.page.getByRole("link", {
-            name: "所有空间",
+          await student.page.getByRole("button", {
+            name: "用户菜单",
             exact: true,
           }).click();
-          const otherCard = student.page.locator("div").filter({
-            has: student.page.getByRole("heading", {
-              name: `另一个私有域 ${suffix}`,
-              exact: true,
-            }),
-          }).filter({
-            has: student.page.getByRole("button", {
-              name: "进入空间",
-              exact: true,
-            }),
-          }).last();
-          await otherCard.getByRole("button", { name: "进入空间", exact: true })
+          await student.page.getByRole("menuitem", {
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await student.page.getByRole("menuitem", {
+            name: `另一个私有域 ${suffix} · ${otherSlug}`,
+            exact: true,
+          })
             .click();
           await student.page.waitForURL(`${UI_URL}/d/${otherSlug}`);
           await second.reload();

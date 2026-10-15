@@ -596,11 +596,15 @@ Deno.test({
         "Mixed同一账号切换为A班学生和B班教练，导航能力随域变化",
         async () => {
           await learner.page.getByRole("button", {
-            name: "切换空间",
+            name: "用户菜单",
             exact: true,
           }).click();
           await learner.page.getByRole("menuitem", {
-            name: `学校A ${suffix}`,
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await learner.page.getByRole("menuitem", {
+            name: `学校A ${suffix} · ${schoolA}`,
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
@@ -613,15 +617,19 @@ Deno.test({
           await expect(
             learner.page.getByRole("link", { name: "创建作业", exact: true }),
           ).toHaveCount(0);
-          await expect(
-            learner.page.getByRole("link", { name: "教学工作台", exact: true }),
-          ).toHaveCount(0);
+          await expect(learner.page.getByTestId("domain-identity")).toHaveText(
+            `${actor.username}@${schoolA}`,
+          );
           await learner.page.getByRole("button", {
-            name: "切换空间",
+            name: "用户菜单",
             exact: true,
           }).click();
           await learner.page.getByRole("menuitem", {
-            name: `学校B ${suffix}`,
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await learner.page.getByRole("menuitem", {
+            name: `学校B ${suffix} · ${schoolB}`,
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
@@ -634,9 +642,15 @@ Deno.test({
           await expect(
             learner.page.getByRole("link", { name: "创建作业", exact: true }),
           ).toBeVisible();
-          await expect(
-            learner.page.getByRole("link", { name: "教学工作台", exact: true }),
-          ).toBeVisible();
+          await learner.page.getByRole("button", { name: "更多", exact: true })
+            .click();
+          await learner.page.getByRole("menuitem", {
+            name: "教学工作台",
+            exact: true,
+          }).click();
+          await learner.page.waitForURL((url) =>
+            url.pathname === `/d/${schoolB}/teaching`
+          );
         },
       );
       await step(

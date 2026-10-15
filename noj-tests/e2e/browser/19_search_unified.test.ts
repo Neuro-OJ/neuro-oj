@@ -1,21 +1,7 @@
 /// <reference lib="dom" />
-/**
- * 统一搜索 UI E2E（Task 6）。
- *
- * 覆盖：
- * - 命令面板（SearchPalette）分组展示
- * - /search 全部 Tab 分组展示
- * - /search 单类型 Tab 激活态
- * - /search Tab 切换 URL 同步
- *
- * 运行前置（完整栈）：
- *   - noj-core（E2E_BASE_URL，默认 :8099）
- *   - noj-ui 已构建并监听 E2E_UI_URL（默认 :3000）
- *   - Playwright 浏览器：`deno run -A npm:playwright install chromium`
- *
- * 启用：NOJ_RUN_BROWSER_E2E=1 deno task test:browser
- */
+/** 域内搜索真实浏览器验收：快捷入口、兼容链接与 URL 状态。 */
 
+import { expect } from "npm:playwright@1.62.1/test";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import {
@@ -26,7 +12,6 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 import {
-  assertClassContains,
   BROWSER_E2E,
   gotoPage,
   launchBrowser,
@@ -126,7 +111,10 @@ async function prepareSearchFixture(): Promise<void> {
   // 等待正常持久事件更新索引，不直接刷新或写入搜索表。
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const indexed = await api("GET", `/api/v1/search?q=${QUERY}&type=problem`);
+    const indexed = await api(
+      "GET",
+      `/api/v1/domains/main/search?q=${QUERY}&type=problem`,
+    );
     assertEquals(indexed.status, 200);
     const items =
       (indexed.body as { data: { items: { entity_id: string }[] } }).data.items;
@@ -136,120 +124,100 @@ async function prepareSearchFixture(): Promise<void> {
   throw new Error(`独立公开题 ${problem.number} 未在30秒内进入搜索索引`);
 }
 
-Deno.test("[ui/browser] 统一搜索：命令面板显示分组结果", async () => {
-  if (!BROWSER_E2E) {
-    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-    return;
-  }
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    await prepareSearchFixture();
-    await gotoPage(session.page, "/");
-    await session.page.waitForFunction(() =>
-      !!(document.querySelector("#__nuxt") as Element & {
-        __vue_app__?: unknown;
-      })?.__vue_app__
-    );
-    // 等待默认布局挂载完成后再触发全局 Ctrl+K
-    await session.page.locator('button[aria-label*="搜索题目"]').waitFor({
-      state: "visible",
-      timeout: 15_000,
-    });
-    await session.page.keyboard.press("Control+K");
-    const input = session.page.getByPlaceholder(/搜索题目/);
-    await input.waitFor({ state: "visible", timeout: 15_000 });
-    await input.fill(QUERY);
-    // 分组标题“题目”比结果项更早出现；命令面板内无 Tab 按钮，因此首条即分组标题。
-    const groupHeader = session.page
-      .locator("div.text-xs.text-text-muted.font-medium", { hasText: /^题目$/ })
-      .first();
-    await groupHeader.waitFor({ state: "visible", timeout: 15_000 });
-    await session.page.getByRole("option").filter({ hasText: TITLE }).waitFor({
-      timeout: 15_000,
-    });
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "search");
-  }
+Deno.test({
+  name: "[ui/browser] 域搜索：根入口与快捷键进入明确域，题目结果可访问",
+  ignore: !BROWSER_E2E,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const session = await launchBrowser();
+    let failed = true;
+    try {
+      await prepareSearchFixture();
+      await gotoPage(session.page, "/");
+      await session.page.waitForURL((url) => url.pathname === "/d/main");
+      await session.page.waitForFunction(() =>
+        Boolean(
+          (document.querySelector("#__nuxt") as Element & {
+            __vue_app__?: unknown;
+          })?.__vue_app__,
+        )
+      );
+      await session.page.getByRole("link", { name: "搜索当前域", exact: true })
+        .waitFor();
+      await session.page.keyboard.press("Control+K");
+      await session.page.waitForURL((url) => url.pathname === "/d/main/search");
+      await session.page.getByRole("textbox", { name: "域内搜索关键词" }).fill(
+        QUERY,
+      );
+      await session.page.getByRole("button", { name: "搜索", exact: true })
+        .click();
+      const result = session.page.getByRole("link", {
+        name: new RegExp(TITLE),
+      });
+      await expect(result).toBeVisible();
+      await result.click();
+      await session.page.waitForURL((url) =>
+        url.pathname === `/d/main/problems/${problemNumber}`
+      );
+      failed = false;
+    } finally {
+      await teardownBrowser(session, failed, "domain-search-shortcut");
+    }
+  },
 });
-
-Deno.test("[ui/browser] 统一搜索：/search 全部 Tab 显示分组", async () => {
-  if (!BROWSER_E2E) {
-    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-    return;
-  }
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    await gotoPage(session.page, `/search?q=${QUERY}&type=all`);
-    const allTab = session.page.getByRole("button", {
-      name: "全部",
-      exact: true,
-    });
-    await allTab.waitFor({ state: "visible", timeout: 15_000 });
-    await assertClassContains(allTab, "border-signal", "「全部」Tab");
-    // /search 页存在 Tab 按钮也包含“题目”文本，因此用分组标题的精确 class 定位。
-    const groupHeader = session.page
-      .locator("span.text-sm.font-medium.text-text", { hasText: /^题目$/ })
-      .first();
-    await groupHeader.waitFor({ state: "visible", timeout: 15_000 });
-    await session.page.getByRole("option").filter({ hasText: TITLE }).waitFor({
-      timeout: 15_000,
-    });
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "search");
-  }
+Deno.test({
+  name: "[ui/browser] 域搜索：旧全局链接固定默认域，刷新保留查询",
+  ignore: !BROWSER_E2E,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const session = await launchBrowser();
+    let failed = true;
+    try {
+      await gotoPage(session.page, `/search?q=${QUERY}&type=problem`);
+      await session.page.waitForURL((url) => url.pathname === "/d/main/search");
+      await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
+        .toBeVisible();
+      await session.page.reload();
+      await expect(
+        session.page.getByRole("textbox", { name: "域内搜索关键词" }),
+      ).toHaveValue(QUERY);
+      await expect(
+        session.page.getByRole("button", { name: "全部", exact: true }),
+      ).toHaveCount(0);
+      failed = false;
+    } finally {
+      await teardownBrowser(session, failed, "domain-search-legacy");
+    }
+  },
 });
-
-Deno.test("[ui/browser] 统一搜索：单类型 Tab 并同步 URL", async () => {
-  if (!BROWSER_E2E) {
-    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-    return;
-  }
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    await gotoPage(session.page, `/search?q=${QUERY}&type=problem`);
-    const problemTab = session.page.getByRole("button", {
-      name: "题目",
-      exact: true,
-    });
-    await problemTab.waitFor({ state: "visible", timeout: 15_000 });
-    await assertClassContains(problemTab, "border-signal", "「题目」Tab");
-
-    // 等待单类型结果出现。分页行为由后端路由/服务测试覆盖；
-    // 当前文件只有一份独立题目，因此不在浏览器 E2E 中断言多页。
-    const problemResult = session.page.getByRole("option").filter({
-      hasText: TITLE,
-    });
-    await problemResult.waitFor({ state: "visible", timeout: 15_000 });
-
-    // URL 同步：切换到“全部”后，地址栏 type 应更新为 all。
-    await session.page.getByRole("button", { name: "全部", exact: true })
-      .click();
-    await session.page.waitForURL(
-      (u) =>
-        u.pathname === "/search" &&
-        u.searchParams.get("q") === QUERY &&
-        u.searchParams.get("type") === "all",
-      { timeout: 15_000 },
-    );
-    const allTab = session.page.getByRole("button", {
-      name: "全部",
-      exact: true,
-    });
-    await assertClassContains(allTab, "border-signal", "切换后的「全部」Tab");
-    await session.page.getByRole("option").filter({ hasText: TITLE }).click();
-    await session.page.waitForURL(
-      (url) => url.pathname === `/d/main/problems/${problemNumber}`,
-      {
-        timeout: 15_000,
-      },
-    );
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "search");
-  }
+Deno.test({
+  name: "[ui/browser] 域搜索：类型切换与返回恢复URL，结果保留当前域",
+  ignore: !BROWSER_E2E,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const session = await launchBrowser();
+    let failed = true;
+    try {
+      await gotoPage(session.page, `/d/main/search?q=${QUERY}&type=problem`);
+      await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
+        .toBeVisible();
+      await session.page.getByRole("combobox", { name: "搜索类型" }).click();
+      await session.page.getByRole("option", { name: "比赛", exact: true })
+        .click();
+      await session.page.waitForURL((url) =>
+        url.pathname === "/d/main/search" &&
+        url.searchParams.get("type") === "contest" &&
+        url.searchParams.get("q") === QUERY
+      );
+      await session.page.goBack();
+      await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
+        .toHaveAttribute("href", `/d/main/problems/${problemNumber}`);
+      failed = false;
+    } finally {
+      await teardownBrowser(session, failed, "domain-search-url");
+    }
+  },
 });

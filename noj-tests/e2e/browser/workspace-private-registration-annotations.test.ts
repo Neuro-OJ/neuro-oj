@@ -149,7 +149,7 @@ async function openStudentReview(
   }, { timeout: 20_000 }).toBe(id);
   await gotoPage(page, `/d/${slug}/assignments/${assignmentId}`);
   await page.getByRole("button", { name: "查看原提交", exact: true }).click();
-  const panel = page.getByRole("dialog", { name: "学生提交与反馈" });
+  const panel = page.getByRole("dialog", { name: / · / });
   await expect(
     panel.getByText(`原提交 ${id} · 批注保留在这份代码上`, { exact: true }),
   )
@@ -458,7 +458,7 @@ Deno.test({
             exact: true,
           }).click();
         const panel = teacher.page.getByRole("dialog", {
-          name: "学生提交与反馈",
+          name: / · /,
         });
         await panel.locator("div.divide-y > button").filter({
           hasText: /^0 分/,
@@ -496,7 +496,7 @@ Deno.test({
       });
       await step("教师修改并撤回批注，学生重读可见范围同步更新", async () => {
         const panel = teacher.page.getByRole("dialog", {
-          name: "学生提交与反馈",
+          name: / · /,
         });
         await panel.getByRole("button", { name: "修改", exact: true }).click();
         await panel.getByRole("textbox", { name: "修改行批注正文" }).fill(
@@ -621,7 +621,7 @@ Deno.test({
               exact: true,
             }).click();
           let panel = teacher.page.getByRole("dialog", {
-            name: "学生提交与反馈",
+            name: / · /,
           });
           await panel.locator("div.divide-y > button").filter({
             hasText: /10 分/,
@@ -680,7 +680,7 @@ Deno.test({
               name: `${studentName} ${reference} 10 · 已达标`,
               exact: true,
             }).click();
-          panel = teacher.page.getByRole("dialog", { name: "学生提交与反馈" });
+          panel = teacher.page.getByRole("dialog", { name: / · / });
           await panel.locator("div.divide-y > button").filter({
             hasText: /10 分/,
           }).click();

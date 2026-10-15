@@ -455,7 +455,10 @@ Deno.test({
           await card.getByRole("button", { name: "未开始", exact: true })
             .click();
           await expect(
-            coach.page.getByRole("dialog", { name: "学生提交与反馈" }),
+            coach.page.getByRole("dialog", {
+              name: `${pupils[1].username} · ${number}`,
+              exact: true,
+            }),
           ).toBeVisible();
           await coach.page.setViewportSize({ width: 1440, height: 900 });
         },

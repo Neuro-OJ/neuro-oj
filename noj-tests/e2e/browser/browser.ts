@@ -71,6 +71,15 @@ export async function teardownBrowser(
 
 export async function gotoPage(page: Page, path: string): Promise<void> {
   await page.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
+  // SSR 的按钮可见时，异步页面仍可能尚未绑定事件；等待 Nuxt 完成水合后再操作。
+  await page.waitForFunction(() => {
+    const root = document.querySelector("#__nuxt") as
+      | Element & {
+        __vue_app__?: { $nuxt?: { isHydrating: boolean } };
+      }
+      | null;
+    return root?.__vue_app__?.$nuxt?.isHydrating === false;
+  });
 }
 
 export async function assertClassContains(

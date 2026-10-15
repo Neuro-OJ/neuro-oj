@@ -539,7 +539,10 @@ Deno.test({
             body: { preset: "community" },
           });
           assertEquals(fixed.status, 400);
-          assertEquals(fixed.body.code, "DOMAIN_TYPE_FIXED");
+          assertEquals(
+            (fixed.body as { code: string }).code,
+            "DOMAIN_TYPE_FIXED",
+          );
           assertEquals(
             await fixture("GET", `/domains/${slug}/members`, owner.token),
             members,
@@ -560,7 +563,16 @@ Deno.test({
             ),
             history,
           );
-          await select(applicant.page, "空间首页", "题单");
+          await expect(
+            applicant.page.getByRole("combobox", {
+              name: "空间首页",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          await applicant.page.getByRole("textbox", {
+            name: "空间简介",
+            exact: true,
+          }).fill("修改简介保留固定教学域能力。");
           await write(
             applicant.page,
             "PATCH",
@@ -573,8 +585,11 @@ Deno.test({
           );
           await gotoPage(applicant.page, `/d/${slug}`);
           await applicant.page.waitForURL((url) =>
-            url.pathname === `/d/${slug}/trainings`
+            url.pathname === `/d/${slug}`
           );
+          await expect(
+            applicant.page.getByRole("heading", { name, exact: true }),
+          ).toBeVisible();
         },
       );
       await step(
