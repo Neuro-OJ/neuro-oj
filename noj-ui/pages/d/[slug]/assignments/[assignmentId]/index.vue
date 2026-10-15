@@ -123,7 +123,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
 <template>
   <div class="space-y-5">
     <AsyncContent
-      :status="task.error.value ? 'error' : task.status.value === 'pending' ? 'loading' : task.data.value ? 'data' : 'empty'"
+      :status="task.error.value ? 'error' : task.data.value ? 'data' : task.status.value === 'pending' ? 'loading' : 'empty'"
       :error="task.error.value ? extractApiError(task.error.value).message : undefined" @retry="task.refresh()">
       <template v-if="task.data.value">
         <UButton :to="workspacePath(slug!, `classrooms/${task.data.value.data.classroom_id}`)" variant="ghost"

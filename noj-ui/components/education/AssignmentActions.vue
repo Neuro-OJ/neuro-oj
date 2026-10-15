@@ -58,7 +58,7 @@ async function change() {
     saving.value = false;
   }
 }
-watch(() => [props.slug, props.task.id], () => {
+watch([() => props.slug, () => props.task.id], () => {
   open.value = false;
   error.value = '';
 });

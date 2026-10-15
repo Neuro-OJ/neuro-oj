@@ -56,7 +56,7 @@ async function create(input: RemediationSelectionInput) {
 watch(scope, () => {
   if (open.value) void refresh();
 });
-watch(() => [props.slug, props.task.id], () => {
+watch([() => props.slug, () => props.task.id], () => {
   ++request;
   open.value = false;
   preview.value = null;

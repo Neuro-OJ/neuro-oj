@@ -26,7 +26,7 @@ watch(() => [slug.value, reference.value, user.value?.id], () => {
 useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
 </script>
 <template>
-  <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
+  <AsyncContent :status="error ? 'error' : data ? 'data' : status === 'pending' ? 'loading' : 'empty'"
     :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
     <div v-if="data" class="space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
