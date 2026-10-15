@@ -13,7 +13,7 @@ interface Problem {
   title: string;
   description: string;
   difficulty: string;
-  type: 'U' | 'P';
+  type?: 'U' | 'P';
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[];
   /** 运行时限制（竞赛题接口不返回，缺省时展示 --） */
   runtime_config?: {
@@ -21,7 +21,7 @@ interface Problem {
       time_limit_ms?: number;
       memory_limit_mb?: number;
     };
-  };
+  } | null;
 }
 
 interface Submission {
@@ -42,18 +42,24 @@ const props = withDefaults(
   defineProps<{
     active: Tab;
     problem: Problem;
-    submissions: Submission[];
-    activeSubmission: PolledSubmission | null;
-    isPollingActive: boolean;
-    selfTest: PolledSelfTest | null;
-    isPollingSelfTest: boolean;
-    selfTestError: string;
+    submissions?: Submission[];
+    activeSubmission?: PolledSubmission | null;
+    isPollingActive?: boolean;
+    selfTest?: PolledSelfTest | null;
+    isPollingSelfTest?: boolean;
+    selfTestError?: string;
     showSelfTest?: boolean;
     themeMode: EditorTheme;
     draftEnabled: boolean;
   }>(),
   {
     showSelfTest: false,
+    submissions: () => [],
+    activeSubmission: null,
+    isPollingActive: false,
+    selfTest: null,
+    isPollingSelfTest: false,
+    selfTestError: '',
   },
 );
 
@@ -116,10 +122,9 @@ function formatElapsed(iso: string) {
 <template>
   <div
     class="h-full overflow-y-auto bg-white text-text border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
-    <Transition name="fade" mode="out-in">
-      <div :key="active" class="h-full">
+    <div class="h-full">
         <!-- 描述 tab -->
-        <div v-if="active === 'description'" class="p-4 space-y-4">
+        <div v-show="active === 'description'" class="p-4 space-y-4">
           <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
             <span
               class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
@@ -151,11 +156,13 @@ function formatElapsed(iso: string) {
 
           <div class="prose prose-sm prose-neuro max-w-none">
             <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
+            <slot name="after-description" />
           </div>
         </div>
 
         <!-- 历史 tab -->
-        <div v-else-if="active === 'history'" class="p-4 space-y-4">
+        <div v-show="active === 'history'" class="p-4 space-y-4">
+          <slot name="history">
           <!-- 最近（实时轮询，最多一张卡片） -->
           <div>
             <div class="flex items-center justify-between mb-2">
@@ -247,10 +254,11 @@ function formatElapsed(iso: string) {
                 class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity size-3.5" />
             </button>
           </div>
+          </slot>
         </div>
 
         <!-- 自测 tab -->
-        <div v-else-if="active === 'self-test' && showSelfTest" class="p-4 space-y-4">
+        <div v-if="showSelfTest" v-show="active === 'self-test'" class="p-4 space-y-4">
           <slot name="oi-self-test">
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-semibold text-text">自测</h3>
@@ -305,7 +313,7 @@ function formatElapsed(iso: string) {
         </div>
 
         <!-- 设置 tab -->
-        <div v-else-if="active === 'settings'" class="p-4 space-y-5">
+        <div v-show="active === 'settings'" class="p-4 space-y-5">
           <h3 class="text-sm font-semibold text-text">设置</h3>
 
           <div class="space-y-2">
@@ -356,8 +364,7 @@ function formatElapsed(iso: string) {
         </button>
           </div>
         </div>
-      </div>
-    </Transition>
+    </div>
   </div>
 </template>
 

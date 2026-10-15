@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import ObjectivePage from '~/pages/d/[slug]/objective-submissions/[submissionId].vue';
 import ContestProblemPage from '~/pages/d/[slug]/contests/[contestId]/problems/[label].vue';
+import ContestSolvePage from '~/pages/d/[slug]/contests/[contestId]/solve/[label].vue';
 import RankingPage from '~/pages/d/[slug]/contests/[contestId]/ranking.vue';
 const contests = { detail: vi.fn(), ranking: vi.fn() }, answers = { problem: vi.fn() }, history = { detail: vi.fn() };
 let polling: Array<{ intervalMs: { value: number | null }; fetcher: () => Promise<unknown> }>;
@@ -47,6 +48,7 @@ async function view(page: typeof ObjectivePage) {
         UButton: { template: '<button><slot /></button>' },
         NuxtLink: { template: '<a><slot /></a>' },
         DomainContestAnswer: { props: ['active'], template: '<p>可提交：{{ active }}</p>' },
+        DomainCodeWorkspace: { props: ['contest'], template: '<p>可提交：{{ contest.active }}</p>' },
         OwnSubmissionRecord: {
           props: ['entry'],
           template: '<p>{{ entry.result_visibility }} {{ entry.result?.score }}</p>',
@@ -67,7 +69,35 @@ describe('比赛时间边界自动刷新', () => {
     await polling[0]!.fetcher();
     await flushPromises();
     expect(answers.problem).toHaveBeenCalledTimes(2);
+    expect(result.text()).toContain('开始编码');
+    result.unmount();
+  });
+  it('独立工作区在比赛结束时关闭提交，不因 revision 未变化继续受理', async () => {
+    answers.problem.mockResolvedValue({
+      data: {
+        title: '赛题',
+        version_id: 'v1',
+        version: 1,
+        label: 'A',
+        problem_id: 'p',
+        judge_type: 'oi',
+        submission_mode: 'code',
+        supported_languages: ['cc'],
+        samples: [],
+        reference: { problem_id: 'p', display_ref: '1001' },
+      },
+    });
+    contests.detail.mockResolvedValue({
+      data: { id: 'contest', title: '比赛', status: 'running', revision: 1, is_registered: true },
+    });
+    const result = await view(ContestSolvePage);
     expect(result.text()).toContain('可提交：true');
+    contests.detail.mockResolvedValue({
+      data: { id: 'contest', title: '比赛', status: 'ended', revision: 1, is_registered: true },
+    });
+    await polling[0]!.fetcher();
+    await flushPromises();
+    expect(result.text()).toContain('可提交：false');
     result.unmount();
   });
   it('客观题已即时评测但赛时隐藏时仍刷新，结束后显示允许摘要并停止轮询', async () => {

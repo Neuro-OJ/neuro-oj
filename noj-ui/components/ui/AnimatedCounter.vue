@@ -10,6 +10,8 @@ let animId: number | null = null
 
 const duration = 1500
 
+// 动画只在挂载后运行，服务端直接输出数值。
+onMounted(() => {
 watch(() => props.value, (newVal) => {
     if (animId) cancelAnimationFrame(animId)
     const startVal = prevValue
@@ -25,7 +27,8 @@ watch(() => props.value, (newVal) => {
         }
     }
     animId = requestAnimationFrame(tick)
-}, { immediate: true })
+})
+})
 
 onUnmounted(() => {
     if (animId) cancelAnimationFrame(animId)

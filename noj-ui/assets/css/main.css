@@ -6,7 +6,8 @@
 @import "@nuxt/ui";
 
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
-@theme {
+/* 在使用位置解析语义颜色，才能继承编辑器局部的 --c-* 明暗变量。 */
+@theme inline {
   /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
   --color-primary-50: #f0f9ff;
@@ -191,7 +192,8 @@
 }
 
 /* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
-:root {
+:root,
+.editor-dark {
   /* Nuxt UI primary 使用品牌天青蓝（Sky 600）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
   --ui-color-primary-50: #f0f9ff;
@@ -228,6 +230,10 @@
   --ui-text-dimmed: var(--c-text-muted);
   --ui-text-toned: var(--c-text-secondary);
   --ui-text-highlighted: var(--c-text);
+}
+
+.editor-dark {
+  --ui-text-inverted: var(--c-bg-page);
 }
 
 /* ---- @tailwindcss/typography 插件（Tailwind v4 通过 @plugin 加载） ---- */

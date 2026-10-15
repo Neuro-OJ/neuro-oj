@@ -5,7 +5,7 @@ import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 const props = defineProps<
-  { slug: string; problem: DomainProblemDetail; code: string; language: string; versionId: string; writable: boolean; assignmentOrigin?: AssignmentSubmissionOrigin }
+  { slug: string; problem: Pick<DomainProblemDetail, 'reference' | 'content'>; code: string; language: string; versionId: string; writable: boolean; assignmentOrigin?: AssignmentSubmissionOrigin; expanded?: boolean }
 >();
 const emit = defineEmits<{ refresh: []; result: [record: DomainSelfTest | null] }>();
 const { user } = useAuth(), api = useDomainSelfTests(), capture = useWorkspaceActionScope();
@@ -22,7 +22,7 @@ const key = computed(() =>
     props.language,
   )
 );
-const record = await useAsyncData(
+const record = useAsyncData(
   () => `${key.value}:run:${id.value}`,
   () => id.value ? api.detail(props.slug, id.value) : Promise.resolve(null),
 );
@@ -127,7 +127,7 @@ async function cancel() {
 defineExpose({ run });
 </script>
 <template>
-  <details class="mt-4 rounded border border-border p-4">
+  <details :open="expanded" class="mt-4 rounded border border-border p-4">
     <summary class="cursor-pointer font-semibold">代码自测</summary>
     <p class="my-3 text-sm text-text-secondary">使用当前代码、语言与作答版本，自测不计入正式成绩或作业进度。</p>
     <template v-if="isOi">

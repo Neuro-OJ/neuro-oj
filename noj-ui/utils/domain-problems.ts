@@ -60,6 +60,11 @@ export interface DomainProblemDetail {
   limits?: { time_limit_ms: number; memory_limit_mb: number } | null;
   content: DomainProblemContent;
 }
+/** 独立代码工作区只消费公开题面、版本与执行语言，不接收作者配置。 */
+export type DomainCodeProblem = Pick<
+  DomainProblemDetail,
+  'reference' | 'version_id' | 'version' | 'supported_languages' | 'difficulty' | 'limits' | 'content'
+>;
 /** 草稿与账号、域、题目、版本及语言一起定位，两个标签页不会改写提交归属。 */
 export function domainAnswerKey(actor: string, slug: string, problem: string, version: string, language: string) {
   return JSON.stringify(['domain-answer', actor, slug, problem, version, language]);

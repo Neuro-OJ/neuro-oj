@@ -12,12 +12,14 @@ export function useDomainAnswerDraft(
 ) {
   const state = ref<'saved' | 'error' | 'idle'>('idle');
   const guestAvailable = ref(false);
+  const savedAt = ref<Date | null>(null);
   const storageKey = (target: string) => `noj:draft:${target}`;
   function save(target = key.value) {
     if (!import.meta.client || !enabled.value) return false;
     try {
       localStorage.setItem(storageKey(target), JSON.stringify({ code: code.value, answers: answers.value }));
       state.value = 'saved';
+      savedAt.value = new Date();
       return true;
     } catch {
       state.value = 'error';
@@ -67,5 +69,5 @@ export function useDomainAnswerDraft(
   }, { flush: 'sync' });
   watch([code, answers], () => save(), { deep: true, flush: 'post' });
   onBeforeUnmount(() => save());
-  return { state, save, guestAvailable, restoreGuest };
+  return { state, save, savedAt, guestAvailable, restoreGuest };
 }

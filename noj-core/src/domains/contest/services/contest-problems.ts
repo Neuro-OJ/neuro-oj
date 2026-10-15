@@ -193,6 +193,9 @@ function toContestProblemResponse(
     description: typeof versionFields?.["description"] === "string"
       ? versionFields["description"]
       : row.description as string,
+    samples:
+      (versionFields?.samples ?? []) as ContestProblemResponse["samples"],
+    limits: (versionFields?.limits ?? null) as ContestProblemResponse["limits"],
     // 难度 / 可见性 / display_id 属于题目管理信息，沿用题目身份值
     difficulty: row.difficulty as string,
     judge_type: judgeType,

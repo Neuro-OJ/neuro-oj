@@ -118,6 +118,10 @@ export function workspaceProblemPath(slug: string, reference: string) {
   if (number > 2147483647) throw new Error('题号无效');
   return `${workspacePath(slug)}/problems/${reference}`;
 }
+/** 学生做题工作区与作者草稿编辑器使用不同的地址。 */
+export function workspaceSolvePath(slug: string, reference: string) {
+  return workspaceProblemPath(slug, reference).replace('/problems/', '/solve/');
+}
 /** 邀请在 URL fragment 中传递，不进入请求路径、Referer 或 API 日志。 */
 export function workspaceInvitationLink(origin: string, token: string, registration = false) {
   if (!/^[0-9a-f-]{72}$/.test(token)) throw new Error('邀请无效');

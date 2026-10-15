@@ -355,12 +355,7 @@ export async function readDomainProblem(
           : "unseen"
         : null,
     },
-    limits: content.kind === "oi"
-      ? {
-        time_limit_ms: content.runtime_config.time_limit_ms,
-        memory_limit_mb: content.runtime_config.memory_limit_mb,
-      }
-      : null,
+    limits: fields.limits,
     supported_languages: fields.supported_languages ?? [],
     submission_mode: content.kind === "ai" ? content.submission_mode : "code",
     content: trimProblemContentForViewer(
