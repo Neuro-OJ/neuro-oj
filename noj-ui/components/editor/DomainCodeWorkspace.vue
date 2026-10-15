@@ -165,6 +165,7 @@ async function selfTest(){
             <UAlert v-if="history.error.value" color="error" :title="extractApiError(history.error.value).message" />
             <UAlert v-if="active.error.value" color="error" :title="extractApiError(active.error.value).message" />
             <DomainSubmissionResult v-if="active.data.value && !active.error.value" :submission="active.data.value.data" />
+            <UButton v-if="activeId" :to="`/d/${slug}/submissions/${activeId}`" variant="outline" size="sm">查看评测</UButton>
             <button v-for="item in history.data.value?.data" :key="item.id" class="mb-2 block w-full rounded border border-border p-3 text-left text-xs hover:border-primary"
               @click="activeId=item.id">
               <span class="font-mono">{{ item.id.slice(0,8) }}</span>
