@@ -1,5 +1,4 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
   communityPosts,
@@ -53,6 +52,7 @@ import {
   communityResourceVisible,
   type CommunityScope,
   loadCommunityScope,
+  publishCommunitySearchEvent,
   resolveCommunityProblem,
 } from "./community-scope.ts";
 
@@ -307,7 +307,7 @@ export async function createPost(
   // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
   // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
 
-  await publishSearchIndexEvent("community_post", post.id, "upsert");
+  publishCommunitySearchEvent("community_post", post.id, "upsert", scope);
 
   return post;
 }
@@ -481,7 +481,7 @@ export async function updatePost(
     updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
 
-  await publishSearchIndexEvent("community_post", postId, "upsert");
+  publishCommunitySearchEvent("community_post", postId, "upsert", scope);
 
   return rows[0]!;
 }

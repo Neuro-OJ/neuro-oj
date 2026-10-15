@@ -3,6 +3,10 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
+  publishSearchIndexEvent,
+  type SearchIndexAction,
+} from "../../../../shared/search-events.ts";
+import {
   communityPosts,
   domainProblemBindings,
   domains,
@@ -85,6 +89,20 @@ export function communityDomainId(scope?: CommunityScope) {
 /** 同一请求的数据库操作共享授权事务。 */
 export function communityDb(scope?: CommunityScope) {
   return scope?.executor ?? getDb();
+}
+
+/** 索引消费者只能读取已提交内容；回滚的授权事务不发送消息。 */
+export function publishCommunitySearchEvent(
+  entityType: "community_post" | "community_comment",
+  entityId: string,
+  action: SearchIndexAction,
+  scope?: CommunityScope,
+): void {
+  const publish = () => {
+    void publishSearchIndexEvent(entityType, entityId, action);
+  };
+  if (scope) scope.afterCommit.push(publish);
+  else publish();
 }
 
 /** 内部题目 ID 与来源题号都必须先定位到当前域的有效绑定。 */

@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityModerationActions,
   communityNotifications,
@@ -15,6 +14,7 @@ import {
   communityDomainId,
   communityDomainWhere,
   type CommunityScope,
+  publishCommunitySearchEvent,
 } from "./community-scope.ts";
 
 /**
@@ -91,7 +91,7 @@ export async function changePostStatus(
     );
   }
 
-  await publishSearchIndexEvent("community_post", postId, "upsert");
+  publishCommunitySearchEvent("community_post", postId, "upsert", scope);
 
   return rows[0];
 }

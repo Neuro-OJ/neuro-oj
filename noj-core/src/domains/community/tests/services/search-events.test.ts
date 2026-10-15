@@ -3,7 +3,11 @@ import { users } from "../../../../shared/db/schema.ts";
 import { createBoard } from "../../services/community/community-boards.ts";
 import { createPost } from "../../services/community/community-post-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
+import { withDomainCommunity } from "../../index.ts";
+import { domainFixture } from "./domain-fixture.ts";
 
 try {
   await connectRedis();
@@ -42,5 +46,76 @@ Deno.test({
       content: "内容",
     });
     await assertSearchEventPublished("community_post", post.id, "upsert");
+  },
+});
+
+Deno.test({
+  name: "community search event: 授权事务完成前不发布，完成后才进入索引队列",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await domainFixture("search-after-commit");
+    const post = await withDomainCommunity(f.source.slug, f.a, {
+      write: true,
+      permission: "community:create",
+    }, async (scope) => {
+      const post = await createPost(
+        f.a,
+        {
+          type: "discussion",
+          board_id: f.boardA.id,
+          title: "提交后才索引",
+          content: "内容",
+        },
+        true,
+        scope,
+      );
+      const queued = await getRedis().lrange(SEARCH_INDEX_QUEUE, 0, -1);
+      assertEquals(
+        queued.some((value) => JSON.parse(value).entityId === post.id),
+        false,
+        "不能让消费者在事务完成前读取本次帖子",
+      );
+      return post;
+    });
+    await assertSearchEventPublished("community_post", post.id, "upsert");
+  },
+});
+
+Deno.test({
+  name: "community search event: 授权事务回滚不发布索引事件",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await domainFixture("search-rollback");
+    let postId = "";
+    await assertRejects(
+      () =>
+        withDomainCommunity(f.source.slug, f.a, {
+          write: true,
+          permission: "community:create",
+        }, async (scope) => {
+          const post = await createPost(
+            f.a,
+            {
+              type: "discussion",
+              board_id: f.boardA.id,
+              title: "回滚帖子",
+              content: "内容",
+            },
+            true,
+            scope,
+          );
+          postId = post.id;
+          throw new Error("测试回滚");
+        }),
+      Error,
+      "测试回滚",
+    );
+    const queued = await getRedis().lrange(SEARCH_INDEX_QUEUE, 0, -1);
+    assertEquals(
+      queued.some((value) => JSON.parse(value).entityId === postId),
+      false,
+    );
   },
 });

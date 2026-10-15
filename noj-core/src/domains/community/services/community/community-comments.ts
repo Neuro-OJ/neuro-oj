@@ -1,5 +1,4 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityComments,
   communityModerationActions,
@@ -31,6 +30,7 @@ import {
   communityDomainId,
   communityDomainWhere,
   type CommunityScope,
+  publishCommunitySearchEvent,
 } from "./community-scope.ts";
 
 /** 审核/处置评论状态：批准待审评论时补发回复通知（原 pending 创建时不发）。 */
@@ -119,7 +119,7 @@ export async function changeCommentStatus(
     }).where(eq(communityNotifications.comment_id, commentId));
   }
 
-  await publishSearchIndexEvent("community_comment", commentId, "upsert");
+  publishCommunitySearchEvent("community_comment", commentId, "upsert", scope);
 
   return rows[0]!;
 }
@@ -208,7 +208,7 @@ export async function createComment(
     );
   }
 
-  await publishSearchIndexEvent("community_comment", comment.id, "upsert");
+  publishCommunitySearchEvent("community_comment", comment.id, "upsert", scope);
 
   return comment;
 }
@@ -329,7 +329,7 @@ export async function updateComment(
     updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
 
-  await publishSearchIndexEvent("community_comment", commentId, "upsert");
+  publishCommunitySearchEvent("community_comment", commentId, "upsert", scope);
 
   return rows[0]!;
 }
@@ -379,7 +379,7 @@ export async function deleteComment(
     comment_id: null,
   }).where(eq(communityNotifications.comment_id, commentId));
 
-  await publishSearchIndexEvent("community_comment", commentId, "delete");
+  publishCommunitySearchEvent("community_comment", commentId, "delete", scope);
 
   return rows[0]!;
 }
