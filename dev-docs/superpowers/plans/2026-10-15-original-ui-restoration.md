@@ -57,7 +57,7 @@
 - [x] F06：标准浏览器套件和 Public / Private / Mixed 用户旅程通过。
 - [x] F07：Impeccable detector 执行一次，结果纳入验收记录。
 - [x] F08：本地预览运行，提交均签名，文档与 implemented Notes 完整。
-- [ ] F09：最终提交的全量 CI 和 E2E 全绿，PR 可 review，合入保留审批。
+- [x] F09：最终提交的全量 CI 和 E2E 全绿，PR 可 review，合入保留审批。
 
 ## 契约与执行约定
 

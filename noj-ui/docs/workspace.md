@@ -39,8 +39,9 @@ OJ。
 
 `/d/:slug/problems` 及题目页读取来源题号和目标域作答版本。代码题从阅读详情进入
 `/d/:slug/solve/:reference`，复用原版工作区；比赛进入
-`/d/:slug/contests/:contestId/solve/:label`，采用比赛固定版本。产物 ZIP、预测文件与
-客观题在详情作答，界面题进入独立 solve 页面。作者 editor 路由不作为学生作答入口。
+`/d/:slug/contests/:contestId/solve/:label`，采用比赛固定版本。产物
+ZIP、预测文件与 客观题在详情作答，界面题进入独立 solve 页面。作者 editor
+路由不作为学生作答入口。
 草稿按账号、域、题目、版本和语言保存；版本冲突保留输入，确认后切换。
 题库按题号、完整来源题号或标题定位，可按难度、题型、标签及本人状态筛选；
 条件与页码保存在 URL。本人状态和有效通过率只使用本域获授权记录，赛中结果不计入。
@@ -206,7 +207,8 @@ SSE；域或登录账号变化会关闭旧连接和重放依据。
 同一主机同时运行多个独立套件时，Cookie 不区分端口。分别设置
 `NUXT_PUBLIC_AUTH_COOKIE_PREFIX`（例如 `noj-main` 与 `noj-restore`），重启 UI
 后各自登录，避免另一套件的登录或注销覆盖当前身份。默认单套部署仍用 `noj`；
-改变前缀会要求重新登录，不迁移已有令牌。此配置与当前 Domain 无关，域授权始终来自 URL。
+改变前缀会要求重新登录，不迁移已有令牌。此配置与当前 Domain 无关，域授权始终来自
+URL。
 
 ```sh
 deno task test
