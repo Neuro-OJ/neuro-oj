@@ -421,6 +421,7 @@ Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签
       difficulty?: string;
       progress?: string;
       tag_id?: string;
+      judge_backend?: string;
     } = {},
   ) =>
     listDomainProblems(f.school.slug, f.student, {
@@ -433,7 +434,16 @@ Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签
     assertEquals(page.total, 1);
     assertEquals(page.items[0].reference.display_ref, "public-source:1001");
   }
-  const initial = (await read()).items[0];
+  const initialPage = await read();
+  const initial = initialPage.items[0];
+  assertEquals(initialPage.tags.map((tag) => tag.id), [topic]);
+  assertEquals(initial.judge_backend, "dual");
+  assertEquals(Object.keys(initial.limits!).sort(), [
+    "memory_limit_mb",
+    "time_limit_ms",
+  ]);
+  assertEquals((await read({ judge_backend: "dual" })).total, 2);
+  assertEquals((await read({ judge_backend: "oi-native" })).total, 0);
   assertEquals(initial.progress, "unseen");
   assertEquals(initial.submit_count, 0);
   assertEquals(initial.tags.map((t) => t.id), [topic]);
@@ -493,6 +503,7 @@ Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签
   assertEquals(endedDetail.statistics.accepted_submissions, 1);
   assertEquals(endedDetail.statistics.progress, "solved");
   assertEquals(solved.items[0].tags.length, 2);
+  assertEquals(solved.tags.length, 2);
   assertEquals((await read({ progress: "unseen" })).total, 1);
 });
 

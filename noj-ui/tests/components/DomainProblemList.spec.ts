@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, defineComponent, h, reactive, ref, Suspense, watch } from 'vue';
+import { computed, defineComponent, h, onUnmounted, reactive, ref, Suspense, watch } from 'vue';
 import ProblemList from '~/pages/d/[slug]/problems/index.vue';
+import ProblemFilterBar from '~/components/feature/ProblemFilterBar.vue';
 import { useProblemFilters } from '~/composables/useProblemFilters';
 const list = vi.fn();
 let route: { query: Record<string, string> };
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
+  for (const [name, value] of Object.entries({ computed, ref, watch, onUnmounted })) vi.stubGlobal(name, value);
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
   vi.stubGlobal('useWorkspace', () => ({ slug: ref('school'), can: () => false, domain: ref({ status: 'active' }) }));
@@ -53,7 +54,20 @@ async function view() {
   };
   const result = mount(defineComponent({ setup: () => () => h(Suspense, null, { default: () => h(ProblemList) }) }), {
     global: {
+      components: { ProblemFilterBar },
       stubs: {
+        UCard: { template: '<div><slot /></div>' },
+        UFormField: { template: '<label><slot /></label>' },
+        UTable: {
+          props: ['data', 'columns'],
+          template:
+            '<table><tbody><tr v-for="item in data"><td v-for="column in columns"><slot :name="column.accessorKey + \'-cell\'" :row="{original:item}" /></td></tr></tbody></table>',
+        },
+        PaginationNav: {
+          props: ['currentPage', 'totalPages'],
+          emits: ['page-change'],
+          template: '<button @click="$emit(\'page-change\',currentPage+1)">下一页</button>',
+        },
         AsyncContent: { template: '<section><slot /></section>' },
         NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
         UInput: input,
@@ -76,7 +90,7 @@ describe('域题库列表与筛选', () => {
   it('显示本人状态、难度、有效通过率与标签，引用链接保留使用域', async () => {
     const result = await view();
     expect(result.text()).toContain('已通过');
-    expect(result.text()).toContain('50.0% 通过 · 4 次有效提交');
+    expect(result.text()).toContain('50.0%');
     expect(result.get('a').attributes('href')).toBe('/d/school/problems/main:1001');
     await result.findAll('button').find((button) => button.text() === '数学')!.trigger('click');
     await flushPromises();

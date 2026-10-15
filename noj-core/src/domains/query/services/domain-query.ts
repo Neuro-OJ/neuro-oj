@@ -80,7 +80,7 @@ export async function getDomainRecentSubmissions(
   const rows = await getDb().execute(sql`
     SELECT s.id, s.public_id, s.problem_id, s.status, s.created_at,
       json_build_object('title',p.title) AS problem,
-      CASE WHEN a.result_kind='judged' THEN json_build_object(
+      CASE WHEN a.result_kind='graded' THEN json_build_object(
         'status',a.result_status,'score',a.score,'time_ms',a.time_ms,'memory_kb',a.memory_kb
       ) ELSE NULL END AS result
     FROM submissions s JOIN problems p ON p.id=s.problem_id

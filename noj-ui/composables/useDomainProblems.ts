@@ -11,9 +11,17 @@ export function useDomainProblems() {
       slug: string,
       page: number,
       keyword = '',
-      filters: { kind?: string; difficulty?: string; progress?: string; tag_id?: string } = {},
+      filters: { kind?: string; difficulty?: string; progress?: string; tag_id?: string; judge_backend?: string } = {},
     ) =>
-      api.get<{ items: DomainProblemSummary[]; total: number; page: number; limit: number }>(
+      api.get<
+        {
+          items: DomainProblemSummary[];
+          total: number;
+          page: number;
+          limit: number;
+          tags: Array<{ id: string; name: string; kind: 'problem' | 'algorithm' }>;
+        }
+      >(
         domainProblemApiPath(slug),
         {
           query: { page, limit: 30, keyword, ...filters },

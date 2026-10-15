@@ -11,6 +11,7 @@ import {
   domainMemberships,
   domainProblemBindings,
   domains,
+  evaluationAttempts,
   problems,
   problemShareSettings,
   submissions,
@@ -125,9 +126,34 @@ export async function fixture() {
 
 Deno.test("域首页评测：只展示当前域可用练习，撤销共享立即隐藏且不返回代码", async () => {
   const { db, actor } = await fixture();
+  await db.insert(evaluationAttempts).values({
+    id: "home-graded",
+    submission_id: "submit-school-query-a",
+    problem_id: "query-source",
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
+    score: 7500,
+    accepted: false,
+    time_ms: 42,
+    memory_kb: 1024,
+    created_at: new Date().toISOString(),
+  });
+  await db.update(submissions).set({
+    effective_attempt_id: "home-graded",
+    latest_attempt_id: "home-graded",
+  }).where(eq(submissions.id, "submit-school-query-a"));
   const a = await loadDomainQueryScope("school-query-a", actor);
   const rows = await getDomainRecentSubmissions(a, actor);
   assertEquals(rows.map((row) => row.id), ["submit-school-query-a"]);
+  assertEquals(rows[0].result, {
+    status: "finished",
+    score: 7500,
+    time_ms: 42,
+    memory_kb: 1024,
+  });
   assertEquals(
     Object.keys(rows[0]).sort(),
     [

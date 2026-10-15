@@ -54,6 +54,7 @@ export async function listDomainProblems(
     kind?: string;
     progress?: string;
     tag_id?: string;
+    judge_backend?: string;
   },
 ) {
   const db = getDb();
@@ -67,6 +68,12 @@ export async function listDomainProblems(
   }
   if (query.kind && !["oi", "ai", "objective"].includes(query.kind)) {
     throw new BadRequestError("题型非法");
+  }
+  if (
+    query.judge_backend &&
+    !["dual", "oi-native", "oi-wasm"].includes(query.judge_backend)
+  ) {
+    throw new BadRequestError("评测后端非法");
   }
   if (
     query.progress &&
@@ -94,7 +101,12 @@ export async function listDomainProblems(
       : sql`false`,
   );
   const keyword = query.keyword?.trim();
-  const visible = and(
+  const backend = sql<
+    string | null
+  >`CASE WHEN ${problemVersions.content}->>'kind'='oi'
+    THEN 'oi-' || (${problemVersions.content}->'runtime_config'->>'backend')
+    WHEN ${problemVersions.content}->>'kind'='ai' THEN 'dual' ELSE NULL END`;
+  const authorized = and(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
     workspace.membership || workspace.platformAdmin
@@ -129,6 +141,10 @@ export async function listDomainProblems(
         sql`NOT ${unendedPublicContestForProblem(problems.id, source.id)}`,
       ),
     ),
+  );
+  const visible = and(
+    authorized,
+    query.judge_backend ? eq(backend, query.judge_backend) : undefined,
     keyword
       ? or(
         ilike(sql`${problemVersions.content}->>'title'`, `%${keyword}%`),
@@ -154,9 +170,9 @@ export async function listDomainProblems(
       AND (filtered_tag.kind='problem' OR ${algorithmVisible}))`
       : undefined,
   );
-  const join = () =>
+  const join = (where = visible) =>
     db.select({
-      problem_id: problems.id,
+      problem_id: sql<string>`${problems.id}`.as("problem_id"),
       source_domain_id: source.id,
       source_slug: source.slug,
       number: problems.number,
@@ -164,6 +180,20 @@ export async function listDomainProblems(
       kind: sql<string>`${problemVersions.content}->>'kind'`,
       difficulty: problems.difficulty,
       can_edit_tags: sql<boolean>`${ownEditable}`,
+      can_view_algorithm_tags: sql<boolean>`${algorithmVisible}`.as(
+        "can_view_algorithm_tags",
+      ),
+      judge_backend: backend.as("judge_backend"),
+      limits: sql<
+        { time_limit_ms: number; memory_limit_mb: number } | null
+      >`CASE
+        WHEN ${problemVersions.content}->>'kind'='oi' THEN json_build_object(
+          'time_limit_ms',${problemVersions.content}->'runtime_config'->'time_limit_ms',
+          'memory_limit_mb',${problemVersions.content}->'runtime_config'->'memory_limit_mb')
+        WHEN ${problemVersions.content}->>'kind'='ai' THEN json_build_object(
+          'time_limit_ms',${problemVersions.content}->'runtime_config'->'evaluator'->'time_limit_ms',
+          'memory_limit_mb',${problemVersions.content}->'runtime_config'->'evaluator'->'memory_limit_mb')
+        ELSE NULL END`.as("limits"),
       version_id: problemVersions.id,
       version: problemVersions.version,
       binding_id: binding.id,
@@ -183,12 +213,28 @@ export async function listDomainProblems(
       .leftJoin(
         problemShareSettings,
         eq(problemShareSettings.problem_id, problems.id),
-      ).where(visible);
+      ).where(where);
   const candidates = join().as("authorized_domain_problems");
-  const [[total], rows] = await Promise.all([
+  const accessible = join(authorized).as("accessible_domain_problems");
+  const [[total], rows, availableTags] = await Promise.all([
     db.select({ total: count() }).from(candidates),
     join().orderBy(asc(source.slug), asc(problems.number), asc(problems.id))
       .limit(query.limit).offset((query.page - 1) * query.limit),
+    db.selectDistinct({ id: tags.id, name: tags.name, kind: tags.kind }).from(
+      tags,
+    )
+      .innerJoin(problemTags, eq(tags.id, problemTags.tag_id))
+      .innerJoin(
+        accessible,
+        eq(sql`accessible_domain_problems.problem_id`, problemTags.problem_id),
+      )
+      .where(
+        or(
+          eq(tags.kind, "problem"),
+          eq(sql`accessible_domain_problems.can_view_algorithm_tags`, true),
+        ),
+      )
+      .orderBy(asc(tags.kind), asc(tags.name), asc(tags.id)),
   ]);
   const ids = rows.map((row) => row.problem_id);
   const [statistics, labels] = await Promise.all([
@@ -209,6 +255,7 @@ export async function listDomainProblems(
     page: query.page,
     limit: query.limit,
     total: total.total,
+    tags: availableTags,
     items: rows.map((row) => {
       const summary = summaries.get(row.problem_id);
       const problemLabels = labels.filter((label) =>
@@ -234,6 +281,8 @@ export async function listDomainProblems(
         binding_id: row.binding_id,
         policy_revision: row.revision,
         difficulty: row.difficulty,
+        judge_backend: row.judge_backend,
+        limits: row.limits,
         tags: visibleLabels.map(({ id, name, kind }) => ({ id, name, kind })),
         has_hidden_algorithm_tags:
           visibleLabels.length !== problemLabels.length,

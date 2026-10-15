@@ -17,6 +17,8 @@ export interface DomainProblemSummary {
   binding_id: string;
   policy_revision: number;
   difficulty?: string;
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  limits?: { time_limit_ms: number | null; memory_limit_mb: number | null } | null;
   tags?: Array<{ id: string; name: string; kind: string }>;
   has_hidden_algorithm_tags?: boolean;
   progress?: 'solved' | 'attempted' | 'unseen' | null;
