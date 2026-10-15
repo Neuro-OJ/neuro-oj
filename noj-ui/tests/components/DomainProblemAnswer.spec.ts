@@ -138,6 +138,7 @@ describe('域题作答', () => {
     const input = view.get('input[type="file"]');
     Object.defineProperty(input.element, 'files', { value: [file] });
     await input.trigger('change');
+    expect(view.text()).toContain('已选择：prediction.csv');
     expect(input.attributes('accept')).toContain('.csv');
     expect(input.attributes('accept')).not.toContain('.zip');
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');

@@ -188,6 +188,7 @@ async function submit() {
         class="mb-3 text-sm text-text-secondary">{{ isPrediction ? '上传单个预测结果文件' : '上传产物 ZIP' }}{{ problem.content.artifact_max_size_mb ? `，最大 ${problem.content.artifact_max_size_mb} MiB` : '' }}。</p>
       <UFileUpload :model-value="file" :accept="isPrediction ? PREDICTION_FILE_ACCEPT : '.zip'" :label="isPrediction ? '选择预测结果文件' : '选择产物文件'" :disabled="!writable || submitting"
         @update:model-value="pickedFile" />
+      <p v-if="file" class="mt-2 break-all text-sm text-text-secondary">已选择：{{ file.name }}</p>
     </template>
     <template v-else-if="isUi">
       <UAlert v-if="ui.error.value" color="error" :title="extractApiError(ui.error.value).message" />
