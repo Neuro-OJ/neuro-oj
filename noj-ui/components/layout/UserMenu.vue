@@ -57,7 +57,7 @@ const items = computed(() => [
   [{ label: label.value, type: 'label' as const }],
   [
     { label: '用户主页', icon: 'i-lucide-user-round', to: accountLink(userUrl(user.value?.username ?? '')) },
-    { label: '我的提交', icon: 'i-lucide-file-code-2', to: workspacePath(slug.value, 'submissions') },
+    { label: '提交', icon: 'i-lucide-file-code-2', to: workspacePath(slug.value, 'submissions') },
     ...(user.value?.is_admin || workspace?.can('problem:write_own') || workspace?.can('problem:write_any')
       ? [{ label: '我的题目', icon: 'i-lucide-book-open', to: workspacePath(slug.value, 'problem-drafts') }]
       : []),

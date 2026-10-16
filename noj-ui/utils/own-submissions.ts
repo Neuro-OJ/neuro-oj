@@ -7,6 +7,10 @@ export interface OwnSubmissionHistory {
   kind: OwnSubmissionKind;
   id: string;
   public_id: string;
+  user_id?: string;
+  username?: string;
+  can_view_answers?: boolean;
+  can_view_source?: boolean;
   domain: { id: string; slug: string; name: string; accessible: boolean };
   problem: { id: string; title: string };
   reference: DomainProblemReference;
@@ -18,6 +22,7 @@ export interface OwnSubmissionHistory {
   has_artifact: boolean;
   created_at: string;
   submitted_version_id: string | null;
+  submitted_version?: number | null;
   status: string;
   result_visibility: 'hidden' | 'summary' | 'cases';
   is_valid?: boolean;

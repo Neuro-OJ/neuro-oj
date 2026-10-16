@@ -16,7 +16,10 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
       : []),
     { label: '搜索', section: 'search', icon: 'i-lucide-search' },
   ];
-  if (signedIn) entries.push({ label: '我的提交', section: 'submissions', icon: 'i-lucide-code-2' });
+  if (signedIn) {
+    entries.push({ label: '提交', section: 'submissions', icon: 'i-lucide-code-2' });
+    entries.push({ label: '评测队列', section: 'queue', icon: 'i-lucide-activity' });
+  }
   if (signedIn && features.classroom) {
     entries.push({ label: '班级', section: 'classrooms', icon: 'i-lucide-users' });
     if (features.assignment) {

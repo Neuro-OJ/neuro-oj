@@ -23,7 +23,7 @@ Deno.test('空间导航：相同用户不同域角色只显示该域能力，所
   assert(!teacher.some((item) => item.section === 'llm'));
   assertEquals(
     workspaceSettingsNavigation({ ...base, slug: 'other-school', permissions: ['llm:manage'] }).map((item) => item.to),
-    ['/d/other-school/llm'],
+    ['/d/other-school/settings/llm', '/d/other-school/settings/llm/quotas', '/d/other-school/settings/llm/usage'],
   );
   assert(teacher.every((item) => item.to.startsWith('/d/other-school')));
 });
@@ -59,6 +59,9 @@ Deno.test('空间导航：匿名仅公开入口，关闭教学模块不显示新
   });
   assert(!disabled.some((item) => ['classrooms', 'my-learning', 'teaching'].includes(item.section)));
   assert(disabled.some((item) => item.section === 'submissions'));
+  assertEquals(disabled.find((item) => item.section === 'submissions')?.label, '提交');
+  assert(disabled.some((item) => item.section === 'queue'));
+  assertEquals(disabled.find((item) => item.section === 'queue')?.to, '/d/school/queue');
   assert(!disabled.some((item) => item.section === 'rankings'));
 });
 Deno.test('社区导航由当前域开关决定，入口保留当前域', () => {

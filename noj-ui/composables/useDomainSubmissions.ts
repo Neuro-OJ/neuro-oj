@@ -6,11 +6,15 @@ export interface DomainSubmission {
   id: string;
   public_id?: string;
   user_id?: string;
+  username?: string;
+  kind?: 'submission' | 'objective';
+  submission_mode?: string;
   contest_id?: string | null;
   assignment_origin?: AssignmentSubmissionOrigin | null;
   submitted_version_id?: string | null;
   is_latest?: boolean;
   domain_id: string;
+  domain?: { id: string; slug: string; name: string; accessible: boolean };
   reference: DomainProblemReference;
   resource_available: boolean;
   result_visibility?: 'hidden' | 'summary' | 'cases';
@@ -19,16 +23,18 @@ export interface DomainSubmission {
   status?: string;
   code?: string | null;
   submitted_version?: number | null;
+  can_view_source?: boolean;
+  can_view_answers?: boolean;
   result?: {
     status: string;
-    verdict?: string;
-    score?: number;
+    verdict?: string | null;
+    score?: number | null;
     time_ms?: number | null;
     memory_kb?: number | null;
     details?: unknown;
     output?: string | null;
   } | null;
-  problem?: { title: string };
+  problem?: { id: string; title: string };
   attempts?: Array<
     {
       attempt_id: string;
@@ -41,12 +47,20 @@ export interface DomainSubmission {
   >;
 }
 
+export interface DomainSubmissionListQuery {
+  problem_id?: string;
+  contest_id?: string;
+  username?: string;
+  kind?: string;
+  per_page?: number;
+}
+
 /** 提交页使用路径域；无权限或撤销授权时不重试默认域接口。 */
 export function useDomainSubmissions() {
   const { api } = useApi();
   const path = (slug: string) => `/api/v1/domains/${encodeURIComponent(slug)}/submissions`;
   return {
-    list: (slug: string, page: number, query: { problem_id?: string; contest_id?: string } = {}) =>
+    list: (slug: string, page: number, query: DomainSubmissionListQuery = {}) =>
       api.get<{ data: DomainSubmission[]; pagination: Pagination }>(path(slug), {
         query: { page, per_page: 30, ...query },
         silent: true,

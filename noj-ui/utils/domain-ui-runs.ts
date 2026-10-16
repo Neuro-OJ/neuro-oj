@@ -5,7 +5,7 @@ import { getStatusLabel } from './submissionFormat.ts';
 export function domainUiSubmissionResult(record: {
   result_visibility?: 'hidden' | 'summary' | 'cases';
   status?: string;
-  result?: { status: string; score?: number } | null;
+  result?: { status: string; score?: number | null } | null;
 }): UiFrameResult {
   if (record.result_visibility === 'hidden') {
     return { kind: 'submit', status: 'accepted', label: '已受理', score: null };

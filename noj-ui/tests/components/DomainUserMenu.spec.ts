@@ -42,14 +42,14 @@ describe('头像菜单中的域导航', () => {
     const view = mount(UserMenu, { global: { stubs } });
     expect(view.text()).toContain('student@school');
     let items = view.getComponent({ name: 'UDropdownMenu' }).props('items').flat();
-    expect(items.find((item: { label: string }) => item.label === '我的提交').to).toBe('/d/school/submissions');
+    expect(items.find((item: { label: string }) => item.label === '提交').to).toBe('/d/school/submissions');
     expect(JSON.stringify(items)).not.toContain('/my/submissions');
     expect(items.some((item: { label: string }) => item.label === '我的题目')).toBe(false);
     slug.value = 'team';
     await view.vm.$nextTick();
     items = view.getComponent({ name: 'UDropdownMenu' }).props('items').flat();
     expect(view.text()).toContain('student@team');
-    expect(items.find((item: { label: string }) => item.label === '我的提交').to).toBe('/d/team/submissions');
+    expect(items.find((item: { label: string }) => item.label === '提交').to).toBe('/d/team/submissions');
   });
   it('二级菜单明确选择目标域后跳转，不修改当前资源的来源题号', async () => {
     const view = mount(UserMenu, { global: { stubs } });

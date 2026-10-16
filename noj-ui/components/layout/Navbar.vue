@@ -13,7 +13,7 @@ const entries = computed(() => workspace?.domain.value
     { label: '比赛', section: 'contests', to: workspacePath(slug.value, 'contests'), icon: 'i-lucide-trophy' },
     { label: '题单', section: 'trainings', to: workspacePath(slug.value, 'trainings'), icon: 'i-lucide-list-ordered' },
   ]);
-const primary = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'submissions'].includes(entry.section)).slice(0, 6));
+const primary = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'submissions', 'queue'].includes(entry.section)).slice(0, 6));
 const more = computed(() => entries.value.filter(entry => entry.section !== 'search' && !primary.value.includes(entry)));
 const communityEnabled = computed(() => !!workspace?.domain.value?.configuration.features.community);
 const teachingEnabled = computed(() => !!workspace?.domain.value?.configuration.features.assignment);

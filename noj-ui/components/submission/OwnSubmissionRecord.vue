@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { OwnSubmissionHistory } from '~/utils/own-submissions';
 import { originalAnswerText, ownHistoryProblemLink } from '~/utils/own-submissions';
 import { formatDateTime } from '~/utils/submissionFormat';
 import { workspacePath } from '~/utils/workspace';
-defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
+const props = defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
+const user = typeof useAuth === 'function' ? useAuth()?.user : undefined;
+const isOwner = computed(() => !props.entry.user_id || (user?.value ? user.value.id === props.entry.user_id : true));
 </script>
 <template>
   <div class="space-y-4">
@@ -27,8 +30,8 @@ defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
       <h3 class="mb-3 font-semibold">结果摘要</h3>
       <OwnSubmissionSummary :entry="entry" />
     </UCard>
-    <UCard v-if="entry.code">
-      <h3 class="mb-3 font-semibold">原提交代码</h3>
+    <UCard v-if="entry.can_view_source !== false && entry.code">
+      <h3 class="mb-3 font-semibold">{{ isOwner ? '原提交代码' : '提交者原代码' }}</h3>
       <pre class="max-h-[32rem] overflow-auto whitespace-pre font-mono text-xs">{{ entry.code }}</pre>
     </UCard>
     <UCard v-if="entry.file_name">
@@ -37,11 +40,13 @@ defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
     <ArtifactDownload v-if="entry.kind === 'submission' && entry.has_artifact" :key="entry.id"
       :endpoint="`/api/v1/me/submissions/submission/${encodeURIComponent(entry.id)}/artifact`"
       :file-name="entry.file_name ?? `submission-${entry.id}.zip`" />
-    <UCard v-if="entry.kind === 'objective' && entry.answers">
-      <h3 class="mb-3 font-semibold">本人原回答</h3>
+    <UCard v-if="entry.kind === 'objective' && entry.can_view_answers !== false && entry.answers">
+      <h3 class="mb-3 font-semibold">{{ isOwner ? '本人原回答' : '提交者原回答' }}</h3>
       <p v-for="(answer, key, index) in entry.answers" :key="key"
         class="mb-2 text-sm"><span class="text-text-muted">答案条目 {{ index + 1 }}：</span>{{ originalAnswerText(answer) }}</p>
       <p class="text-xs text-text-muted">这里保留原提交选择，不展示标准答案、解析或逐题正确性。</p>
     </UCard>
+    <UAlert v-else-if="entry.kind === 'objective' && entry.can_view_answers === false" color="neutral" variant="subtle"
+      title="原回答仅本人及获授权批阅者可见" />
   </div>
 </template>
