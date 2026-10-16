@@ -73,6 +73,33 @@ beforeEach(() => {
 });
 
 describe('系统设置草稿与来源', () => {
+  it('重置准确提示环境回退且只刷新目标设置，保留其他项目草稿', async () => {
+    const view = mount(SystemSettings, { global: { stubs } });
+    await flushPromises();
+    const beta = view.get('input[id="setting-input-beta-desktop"]');
+    await beta.setValue('kept-during-reset');
+    api.delete.mockResolvedValue({});
+    api.get.mockResolvedValueOnce({
+      data: [
+        { ...settings[0], source: 'env', effective_value: 'env-alpha', raw_value: 'env-alpha' },
+        settings[1],
+      ],
+    });
+    await view.findAll('button[aria-label="重置 alpha"]')[0].trigger('click');
+    await flushPromises();
+    expect(dialog.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('环境变量'),
+      expect.objectContaining({ danger: true }),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/api/v1/admin/system/settings/alpha', {
+      silent: true,
+      headers: { 'If-Match': '"2026-10-16T00:00:00Z"' },
+    });
+    expect((view.get('input[id="setting-input-alpha-desktop"]').element as HTMLInputElement).value).toBe('env-alpha');
+    expect((beta.element as HTMLInputElement).value).toBe('kept-during-reset');
+    view.unmount();
+  });
+
   it('环境变量当前生效时不错误宣称数据库值已经生效', async () => {
     api.get.mockImplementation((path: string) =>
       path === '/api/v1/admin/system/settings'

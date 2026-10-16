@@ -272,7 +272,11 @@ Deno.test({
           ]
         ) {
           await gotoPage(page, path);
-          await expect(page.getByText(ready, { exact: false }).first())
+          await expect(
+            label === "system"
+              ? page.getByRole("heading", { name: ready, exact: true })
+              : page.getByRole("button", { name: ready, exact: true }),
+          )
             .toBeVisible();
           if (label === "system" && editable) {
             const field = page.getByRole("textbox", {
