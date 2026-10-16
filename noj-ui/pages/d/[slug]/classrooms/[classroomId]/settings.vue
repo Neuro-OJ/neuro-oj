@@ -106,46 +106,127 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
 useSeoMeta({ title: '班级设置' });
 </script>
 <template>
-  <div class="space-y-5">
-    <UButton :to="workspacePath(slug!, `classrooms/${id}`)" variant="ghost"
-      icon="i-lucide-arrow-left">返回班级</UButton>
-    <AdminPageHeader title="班级设置" :description="room.data.value?.data.name">
+  <div class="space-y-6">
+    <!-- 顶部面包屑与返回 -->
+    <div class="flex items-center gap-2 text-sm text-text-muted">
+      <NuxtLink
+        :to="workspacePath(slug!, `classrooms/${id}`)"
+        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
+      >
+        <UIcon name="i-lucide-arrow-left" class="size-4" />
+        <span>返回班级</span>
+      </NuxtLink>
+      <span class="text-border">/</span>
+      <span class="text-text font-medium truncate max-w-xs">{{ room.data.value?.data.name ?? '班级' }}</span>
+      <span class="text-border">/</span>
+      <span class="text-text-muted">班级设置</span>
+    </div>
+
+    <AdminPageHeader
+      title="班级设置"
+      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」基本信息、主教练交接或班级生命周期` : '管理班级基本设置与生命周期'"
+      icon="i-lucide-settings"
+    >
       <template #actions>
-        <UButton variant="outline" @click="reload">重新读取</UButton>
+        <UButton variant="outline" color="neutral" icon="i-lucide-refresh-cw" @click="reload">
+          重新读取
+        </UButton>
       </template>
     </AdminPageHeader>
-    <UAlert v-if="error || room.error.value" color="error"
-      :title="error || extractApiError(room.error.value).message" />
+
+    <UAlert
+      v-if="error || room.error.value"
+      color="error"
+      :title="error || extractApiError(room.error.value).message"
+    />
+
     <template v-if="writable">
+      <!-- 基本信息 -->
       <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-edit-3" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">基本信息设置</h2>
+          </div>
+        </template>
+
         <form class="space-y-4" @submit.prevent="save">
           <AdminFormField label="班级名称" required>
             <UInput v-model="form.name" class="w-full" required :maxlength="120" aria-label="班级名称" />
           </AdminFormField>
-          <AdminFormField label="阶段标签">
+          <AdminFormField label="阶段标签" hint="例如：提高组强化班 / 省选集训队">
             <UInput v-model="form.stage_tag" class="w-full" :maxlength="80" aria-label="阶段标签" />
           </AdminFormField>
           <AdminFormField label="班级简介">
             <UTextarea v-model="form.description" class="w-full" :maxlength="10000" aria-label="班级简介" />
           </AdminFormField>
-          <UButton type="submit" :loading="saving">保存设置</UButton>
+          <div class="pt-2 flex justify-end">
+            <UButton type="submit" color="primary" :loading="saving">保存班级设置</UButton>
+          </div>
         </form>
       </UCard>
+
+      <!-- 主教练交接 -->
       <UCard>
-        <h2 class="mb-3 font-semibold">主教练交接</h2>
-        <p class="mb-3 text-sm text-text-muted">先在班级成员中任命接任教练，再完成交接。</p>
-        <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
-        <div class="flex gap-2">
-          <USelect v-model="successor" :items="successors" class="grow" aria-label="接任主教练" />
-          <UButton :disabled="!successor || saving" variant="outline" @click="lifecycle('transfer')">交接</UButton>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-user-check" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">主教练交接</h2>
+          </div>
+        </template>
+
+        <div class="space-y-3">
+          <p class="text-sm text-text-secondary">
+            将主教练权限交接给班级内其他已被任命为教练身份的成员。历史作业与学情数据仍保留在当前班级。
+          </p>
+
+          <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
+
+          <div class="flex flex-wrap items-center gap-3 pt-1">
+            <USelect
+              v-model="successor"
+              :items="successors"
+              placeholder="选择接任的主教练"
+              class="w-full sm:w-72"
+              aria-label="接任主教练"
+            />
+            <UButton
+              :disabled="!successor || saving"
+              variant="outline"
+              color="neutral"
+              @click="lifecycle('transfer')"
+            >
+              确认交接
+            </UButton>
+          </div>
         </div>
       </UCard>
-      <UCard>
-        <h2 class="mb-3 font-semibold">归档班级</h2>
-        <UButton color="warning" variant="outline" :disabled="saving"
-          @click="lifecycle('archive')">归档并保留历史</UButton>
+
+      <!-- 归档班级 -->
+      <UCard class="border-warning/40">
+        <template #header>
+          <div class="flex items-center gap-2 text-warning">
+            <UIcon name="i-lucide-archive" class="size-5" />
+            <h2 class="font-semibold text-text">归档班级</h2>
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <p class="text-sm text-text-secondary leading-relaxed">
+            归档后班级将进入只读状态，停止发布新作业与新成员加入。学生和助教仍可随时查阅已布置作业的历史提交、答题表现与教练反馈。
+          </p>
+          <UButton
+            color="warning"
+            variant="outline"
+            :disabled="saving"
+            @click="lifecycle('archive')"
+          >
+            归档此班级并保留历史
+          </UButton>
+        </div>
       </UCard>
     </template>
-    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置" />
+
+    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置，无权修改配置或交接负责人" />
   </div>
 </template>

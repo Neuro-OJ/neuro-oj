@@ -2,15 +2,20 @@
 import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+
 const route = useRoute(), { slug } = useWorkspace(), education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
   id = computed(() => String(route.params.classroomId));
+
 const state = await useAsyncData(
   () => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value, 'join'),
   () => education.joinView(slug.value!, id.value),
 );
+
 const reason = ref(''), busy = ref(false), error = ref('');
+
 async function apply() {
   if (busy.value) return;
   const scope = capture(), classId = id.value;
@@ -25,24 +30,103 @@ async function apply() {
     busy.value = false;
   }
 }
+
 useSeoMeta({ title: '申请加入班级' });
 </script>
+
 <template>
-  <div class="space-y-5">
-    <AdminPageHeader title="申请加入班级" :description="state.data.value?.data.name" />
-    <UAlert v-if="error || state.error.value" color="error"
-      :title="error || extractApiError(state.error.value).message" />
+  <div class="space-y-6 max-w-2xl mx-auto">
+    <!-- 顶部面包屑与返回 -->
+    <div class="flex items-center gap-2 text-sm text-text-muted">
+      <NuxtLink
+        :to="workspacePath(slug!, 'classrooms')"
+        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
+      >
+        <UIcon name="i-lucide-arrow-left" class="size-4" />
+        <span>我的班级</span>
+      </NuxtLink>
+      <span class="text-border">/</span>
+      <span class="text-text font-medium truncate max-w-xs">{{ state.data.value?.data.name ?? '班级申请' }}</span>
+    </div>
+
+    <AdminPageHeader
+      title="申请加入班级"
+      :description="state.data.value?.data.name ? `申请加入「${state.data.value.data.name}」` : '向班级教练提交加入申请'"
+      icon="i-lucide-door-open"
+    />
+
+    <UAlert
+      v-if="error || state.error.value"
+      color="error"
+      :title="error || extractApiError(state.error.value).message"
+    />
+
     <template v-if="state.data.value">
-      <UButton v-if="state.data.value.data.is_member" :to="workspacePath(slug!, `classrooms/${id}`)">进入班级</UButton>
+      <!-- 已经是班级成员 -->
+      <UCard v-if="state.data.value.data.is_member">
+        <div class="text-center py-6 space-y-3">
+          <div class="flex size-12 items-center justify-center rounded-full bg-success-bg text-success mx-auto">
+            <UIcon name="i-lucide-check-circle-2" class="size-6" />
+          </div>
+          <h2 class="text-lg font-semibold text-text">你已是该班级成员</h2>
+          <p class="text-sm text-text-secondary">无需重复提交申请，可以直接进入班级查看作业与训练进展。</p>
+          <div class="pt-2">
+            <UButton :to="workspacePath(slug!, `classrooms/${id}`)" color="primary" size="lg">
+              进入班级主页
+            </UButton>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- 未加入：显示申请状态或申请表单 -->
       <UCard v-else>
-        <p v-if="state.data.value.data.request"
-          class="mb-3 text-sm">申请状态：{{ ({ pending: '等待审核', approved: '已批准', rejected: '已拒绝' })[state.data.value.data.request.status] }}</p>
-        <form v-if="state.data.value.data.can_apply" class="space-y-3" @submit.prevent="apply">
-          <UTextarea v-model="reason" class="w-full" :maxlength="2000" placeholder="说明加入班级的理由"
-            aria-label="班级申请理由" />
-          <UButton type="submit" :loading="busy">提交学生加入申请</UButton>
-        </form>
-        <p v-else class="text-sm text-text-muted">当前不能提交新申请，请等待审核或联系教练。</p>
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-clipboard-pen" class="size-5 text-primary" />
+              <h2 class="font-semibold text-text">提交学生入班申请</h2>
+            </div>
+            <UBadge
+              v-if="state.data.value.data.request"
+              :color="state.data.value.data.request.status === 'approved' ? 'success' : state.data.value.data.request.status === 'rejected' ? 'error' : 'warning'"
+              variant="subtle"
+            >
+              {{ ({ pending: '等待审核中', approved: '申请已批准', rejected: '申请已被拒绝' })[state.data.value.data.request.status] }}
+            </UBadge>
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <div v-if="state.data.value.data.request" class="rounded-lg bg-bg-sunken p-3.5 text-sm space-y-1">
+            <div class="flex items-center justify-between text-xs text-text-muted">
+              <span>申请提交时间：{{ new Date(state.data.value.data.request.created_at).toLocaleString() }}</span>
+            </div>
+            <p v-if="state.data.value.data.request.reason" class="text-text-secondary text-xs">
+              附言：{{ state.data.value.data.request.reason }}
+            </p>
+          </div>
+
+          <form v-if="state.data.value.data.can_apply" class="space-y-4" @submit.prevent="apply">
+            <AdminFormField label="申请理由或备注" hint="教练或助教将在审核时查看">
+              <UTextarea
+                v-model="reason"
+                class="w-full"
+                :maxlength="2000"
+                placeholder="例如说明你的学校、年级或算法学习基础"
+                aria-label="班级申请理由"
+              />
+            </AdminFormField>
+            <div class="flex justify-end pt-2">
+              <UButton type="submit" color="primary" size="lg" :loading="busy">
+                提交加入申请
+              </UButton>
+            </div>
+          </form>
+
+          <p v-else class="text-sm text-text-muted py-3 text-center">
+            当前暂不能提交新申请，请等待审核处理或联系班级主教练。
+          </p>
+        </div>
       </UCard>
     </template>
   </div>

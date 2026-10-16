@@ -48,6 +48,7 @@
   --color-text-on-color: var(--c-text-on-color);
   --color-bg-page: var(--c-bg-page);
   --color-bg-panel: var(--c-bg-panel);
+  --color-bg-card: var(--c-bg-card);
   --color-bg-sunken: var(--c-bg-sunken);
   --color-bg-dark: var(--c-bg-dark);
   --color-bg-dark-2: var(--c-bg-dark-2);
@@ -154,6 +155,14 @@
   box-shadow: 0 1px 3px rgba(194, 65, 12, 0.1);
 }
 
+/* ---- 独立卡片专用立体感（白色专用面板底，彻底与浅蓝页面底分离） ---- */
+@utility card-elevated {
+  background-color: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
 /* ---- 无障碍：键盘焦点可见（WCAG 2.4.7）----
  * 自定义链接/按钮无 focus-visible 样式类时，由浏览器默认 outline 兜底；
  * 此处统一为品牌天青蓝焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
@@ -220,9 +229,9 @@
   --ui-color-success-900: #064e3b;
   --ui-color-success-950: #022c22;
   --ui-radius: var(--radius);
-  --ui-bg: var(--c-bg-page);
-  --ui-bg-muted: var(--c-bg-panel);
-  --ui-bg-elevated: var(--c-bg-sunken);
+  --ui-bg: var(--c-bg-panel);
+  --ui-bg-muted: var(--c-bg-sunken);
+  --ui-bg-elevated: var(--c-bg-panel);
   --ui-border: var(--c-border);
   --ui-border-accented: var(--c-border);
   --ui-text: var(--c-text);

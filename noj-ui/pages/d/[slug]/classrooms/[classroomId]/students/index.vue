@@ -2,60 +2,132 @@
 import { classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth(), education = useEducationApi();
 const id = computed(() => String(route.params.classroomId)),
   search = ref(''),
   scope = ref<'current' | 'historical' | 'all'>('current');
+
 const base = computed(() => educationCacheKey(slug.value!, user.value?.id ?? null, id.value, 'student-directory'));
 const room = await useAsyncData(() => `${base.value}:room`, () => education.classroom(slug.value!, id.value));
+
 const allowed = computed(() =>
   !!room.data.value &&
   (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))
 );
+
 const roster = await useAsyncData(
   () => `${base.value}:roster:${allowed.value}`,
   () => allowed.value ? education.members(slug.value!, id.value) : Promise.resolve(null),
 );
+
 const students = computed(() =>
   roster.data.value?.data.filter((member) =>
     member.role === 'student' && (scope.value === 'all' || member.effective_active === (scope.value === 'current')) &&
     member.username.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())
   ) ?? []
 );
+
 useSeoMeta({ title: '班级学生训练目录' });
 </script>
+
 <template>
-  <div class="space-y-5">
-    <AdminPageHeader title="学生训练目录" :description="room.data.value?.data.name">
-      <template #actions>
-        <UButton :to="workspacePath(slug!, `classrooms/${id}`)" variant="outline">返回班级</UButton>
-      </template>
-    </AdminPageHeader>
+  <div class="space-y-6">
+    <!-- 顶部面包屑与返回 -->
+    <div class="flex items-center gap-2 text-sm text-text-muted">
+      <NuxtLink
+        :to="workspacePath(slug!, `classrooms/${id}`)"
+        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
+      >
+        <UIcon name="i-lucide-arrow-left" class="size-4" />
+        <span>返回班级</span>
+      </NuxtLink>
+      <span class="text-border">/</span>
+      <span class="text-text font-medium truncate max-w-xs">{{ room.data.value?.data.name ?? '班级' }}</span>
+      <span class="text-border">/</span>
+      <span class="text-text-muted">学生训练目录</span>
+    </div>
+
+    <AdminPageHeader
+      title="学生训练目录"
+      :description="room.data.value?.data.name ? `查看「${room.data.value.data.name}」学员的个人训练进度与答题记录` : '查看班级学员训练进展'"
+      icon="i-lucide-users"
+    />
+
     <UAlert v-if="room.error.value" color="error" :title="extractApiError(room.error.value).message" />
-    <UAlert v-if="room.data.value && !allowed" color="info" title="需要本班学情或提交读取能力" />
+    <UAlert v-if="room.data.value && !allowed" color="info" title="当前账号未被授予本班学情或提交记录的读取权限" />
+
     <template v-if="allowed">
-      <div class="flex flex-wrap gap-3">
-        <UInput v-model="search" placeholder="筛选学生姓名" class="grow" />
-        <USelect v-model="scope"
-          :items="[{ label: '当前学生', value: 'current' }, { label: '历史学生', value: 'historical' }, { label: '全部学生', value: 'all' }]"
-          aria-label="学生成员范围" />
+      <!-- 搜索与范围筛选栏 -->
+      <div class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-3.5 shadow-card">
+        <UInput
+          v-model="search"
+          placeholder="按学生用户名检索"
+          icon="i-lucide-search"
+          class="grow max-w-md"
+        />
+        <USelect
+          v-model="scope"
+          :items="[{ label: '当前在班学生', value: 'current' }, { label: '历史学生', value: 'historical' }, { label: '全部学生', value: 'all' }]"
+          aria-label="学生成员范围"
+          class="w-40"
+        />
+        <span class="text-xs text-text-muted ml-auto tabular-nums">
+          共 {{ students.length }} 名学生
+        </span>
       </div>
+
       <AsyncContent
         :status="roster.error.value ? 'error' : roster.status.value === 'pending' ? 'loading' : students.length ? 'data' : 'empty'"
-        :error="roster.error.value ? extractApiError(roster.error.value).message : undefined" @retry="roster.refresh()">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UCard v-for="student in students" :key="student.id">
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h3 class="font-semibold">{{ student.username }}</h3>
-                <p class="mt-1 text-xs text-text-muted">{{ student.effective_active ? '当前学生' : '历史学生' }}</p>
+        :error="roster.error.value ? extractApiError(roster.error.value).message : undefined"
+        empty-text="暂无符合条件的学生"
+        @retry="roster.refresh()"
+      >
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="student in students"
+            :key="student.id"
+            class="flex items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-4 shadow-card hover:border-primary/50 transition-colors"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-bg text-primary font-semibold text-sm">
+                {{ student.username.slice(0, 1).toUpperCase() }}
               </div>
-              <UButton :to="workspacePath(slug!, `classrooms/${id}/students/${student.user_id}`)"
-                variant="outline">训练详情</UButton>
+              <div class="min-w-0">
+                <h3 class="font-semibold text-text truncate">{{ student.username }}</h3>
+                <UBadge
+                  :color="student.effective_active ? 'success' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
+                  class="mt-1"
+                >
+                  {{ student.effective_active ? '在班学员' : '历史学员' }}
+                </UBadge>
+              </div>
             </div>
-          </UCard>
+
+            <UButton
+              :to="workspacePath(slug!, `classrooms/${id}/students/${student.user_id}`)"
+              variant="outline"
+              color="primary"
+              size="sm"
+              trailing-icon="i-lucide-arrow-right"
+              class="shrink-0"
+            >
+              训练详情
+            </UButton>
+          </div>
         </div>
+
+        <template #empty>
+          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-white dark:bg-bg-panel py-10 px-4 text-center shadow-card">
+            <UIcon name="i-lucide-user-x" class="size-8 text-text-muted mb-2" />
+            <p class="font-medium text-text">暂无符合条件的学生</p>
+            <p class="text-xs text-text-muted mt-0.5">请尝试切换筛选范围或清空检索关键字</p>
+          </div>
+        </template>
       </AsyncContent>
     </template>
   </div>
