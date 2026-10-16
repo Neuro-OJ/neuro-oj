@@ -172,7 +172,7 @@ function formatElapsed(iso: string) {
               <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="sub.status === 'pending' || sub.status === 'judging'"/>
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
-            <span class="text-sm font-mono font-semibold text-text">
+            <span class="text-sm font-mono font-semibold text-text" data-testid="recent-submission-score">
               <template v-if="sub.result && sub.status === 'finished'">
                 {{ formatScore(sub.result.score) }} 分
               </template>
@@ -227,7 +227,10 @@ function formatElapsed(iso: string) {
             >
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
-            <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.result?.score ?? 0) }} 分</span>
+            <span class="text-xs font-mono text-text-secondary">
+              <template v-if="sub.result && sub.status === 'finished'">{{ formatScore(sub.result.score) }} 分</template>
+              <template v-else>—</template>
+            </span>
           </div>
           <div class="flex items-center justify-between text-xs text-text-muted">
             <span class="font-mono">{{ sub.language }}</span>

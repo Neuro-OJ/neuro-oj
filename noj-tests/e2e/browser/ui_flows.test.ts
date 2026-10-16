@@ -157,10 +157,15 @@ async function submitCodeViaUI(code: string): Promise<void> {
   await p.getByRole("button", { name: "提交评测", exact: true }).click();
 }
 
-/** 读取侧栏「最近」卡片的得分文本；无终态得分（等待/评测中/无记录）时返回 null */
+/**
+ * 读取侧栏「最近」卡片的得分文本；无终态得分（等待/评测中/无记录）时返回 null。
+ * 只认「最近」卡片：「历史」列表同样渲染「N 分」，不能按文本匹配首个元素。
+ */
 async function currentScoreText(): Promise<string | null> {
   const p = mustPage();
-  const span = p.locator("span.font-mono", { hasText: /\d+\s*分/ }).first();
+  const span = p.locator('[data-testid="recent-submission-score"]', {
+    hasText: /\d+\s*分/,
+  }).first();
   if ((await span.count()) === 0) return null;
   const text = (await span.textContent()) ?? "";
   return /\d+\s*分/.test(text) ? text.trim() : null;
@@ -261,9 +266,10 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
     await launch();
     await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    // 先读取上一条（3/4 满分卡片的分数），等待新结论覆盖
+    // 先等待「最近」卡片异步加载出上一条（3/4 满分）的分数，再等待新结论覆盖；
+    // 历史列表是客户端异步拉取的，直接读取会拿到 null 并把旧结论误判为新结论。
     await goto("/editor/P1001");
-    const prev = await currentScoreText();
+    const prev = await waitForNewVerdict(null, 30_000);
     await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
     const score = await waitForNewVerdict(prev);
     if (score === "10 分") {
