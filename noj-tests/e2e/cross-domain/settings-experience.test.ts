@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import {
   api,
+  BASE_URL,
   e2eTest,
   getAdminToken,
   registerUser,
@@ -188,13 +189,38 @@ e2eTest(
     // 短码注册走原账号事务，不能把“加入已有账号”权限变成平台开户能力。
     const registrationInvite = await createInvite(b, { mode: "general" });
     const username = `settings_join_${suffix}`;
-    await request("POST", "/auth/register", undefined, 201, {
+    const registered = await request<
+      { data: { email_verification_token: string } }
+    >("POST", "/auth/register", undefined, 201, {
       username,
       email: `${username}@test.com`,
       password: TEST_PASSWORD,
       invitation_token: registrationInvite.code,
       accepted_legal: true,
     });
+    await request("POST", "/auth/email/verify", undefined, 200, {
+      token: registered.data.email_verification_token,
+    });
+    const login = await request<{ data: { token: string } }>(
+      "POST",
+      "/auth/login",
+      undefined,
+      200,
+      { login: username, password: TEST_PASSWORD },
+    );
+    const finalSlot = await createInvite(a, { mode: "once" });
+    const contenders = [students[2].token, login.data.token];
+    const race = await Promise.all(
+      contenders.map((token) =>
+        api("POST", "/api/v1/domain-invitations/accept", {
+          token,
+          body: { code: finalSlot.code },
+        })
+      ),
+    );
+    assertEquals(race.map((result) => result.status).sort(), [200, 404]);
+    const outsiderToken =
+      contenders[race.findIndex((result) => result.status === 404)];
     const accessPath = "/admin/instance/settings/access";
     const { data: access } = await request<{ data: Section }>(
       "GET",
@@ -338,6 +364,23 @@ e2eTest(
         path === "/instance/queue" ? "instance" : "domain",
       );
     }
-    await request("GET", `${a}/queue`, students[2].token, 404);
+    await request("GET", `${a}/queue`, outsiderToken, 404);
+    for (const path of [`${a}/queue/events`, "/instance/queue/events"]) {
+      const controller = new AbortController();
+      try {
+        const stream = await fetch(`${BASE_URL}/api/v1${path}`, {
+          headers: { Authorization: `Bearer ${students[0].token}` },
+          signal: controller.signal,
+        });
+        assertEquals(stream.status, 200);
+        const reader = stream.body!.getReader();
+        const packet = new TextDecoder().decode((await reader.read()).value);
+        assert(packet.includes("queue:changed"));
+        assertEquals(packet.includes("problem_title"), false);
+        await reader.cancel();
+      } finally {
+        controller.abort();
+      }
+    }
   },
 );
