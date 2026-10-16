@@ -421,7 +421,9 @@ function hasResult(
                   @change="toggleSelect(sub.id)"
                 />
               </td>
-              <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.public_id || sub.id.slice(0, 8) }}...</td>
+              <td class="px-3.5 py-3 font-mono text-xs text-text-secondary whitespace-nowrap" :title="sub.public_id || sub.id">
+                #{{ (sub.public_id || sub.id).length > 12 ? (sub.public_id || sub.id).slice(0, 8) + '…' : (sub.public_id || sub.id) }}
+              </td>
               <td class="px-3.5 py-3 text-13px text-text">
                 <NuxtLink :to="problemUrl(sub.problem_id, sub.problem.display_id)" class="font-medium text-primary no-underline hover:underline">
                   {{ sub.problem.title || sub.problem_id }}

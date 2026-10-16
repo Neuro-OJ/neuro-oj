@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
-import { WORKSPACE_PRESETS } from '~/utils/workspace';
+import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
 import type { WorkspaceConfiguration, WorkspaceDetail } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 import { computed, onScopeDispose } from 'vue';
@@ -28,11 +28,6 @@ const isCurrent = () => mounted && props.domain.slug === target.slug && props.do
 const form = reactive({
   name: props.domain.name,
   description: props.domain.description,
-  configuration: {
-    access: props.domain.configuration.access,
-    discoverable: props.domain.configuration.discoverable,
-    join_policy: props.domain.configuration.join_policy,
-  },
 });
 const baseRevision = ref(props.domain.revision);
 const savedSnapshot = ref(JSON.stringify(form));
@@ -45,10 +40,10 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
-    await workspaces.update(target.slug, form, baseRevision.value);
+    await workspaces.update(target.slug, { name: form.name, description: form.description }, baseRevision.value);
     if (!isCurrent()) return;
     savedSnapshot.value = JSON.stringify(form);
-    toast.success('空间设置已保存');
+    toast.success('基本设置已保存');
     emit('saved');
   } catch (cause) {
     error.value = extractApiError(cause).message;
@@ -86,19 +81,23 @@ async function setStatus(status: WorkspaceDetail['status']) {
         <AdminFormField label="简介">
           <UTextarea v-model="form.description" class="w-full" maxlength="2000" aria-label="空间简介" />
         </AdminFormField>
-        <div id="access" class="grid scroll-mt-24 gap-4 sm:grid-cols-2">
-          <AdminFormField label="访问方式">
-            <USelect v-model="form.configuration.access"
-              :items="[{ label: '公开访问', value: 'public' }, { label: '仅成员进入', value: 'members' }]"
-              class="w-full" aria-label="空间访问方式" />
-          </AdminFormField>
-          <AdminFormField label="加入方式">
-            <USelect v-model="form.configuration.join_policy"
-              :items="[{ label: '直接加入', value: 'open' }, { label: '申请审核', value: 'approval' }, { label: '接受邀请', value: 'invite' }]"
-              class="w-full" aria-label="加入方式" />
-          </AdminFormField>
+        <div class="rounded border border-border bg-bg-sunken p-3 text-xs space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-text">访问与加入政策</span>
+            <NuxtLink
+              :to="workspacePath(domain.slug, 'settings/access')"
+              class="text-primary hover:underline font-medium inline-flex items-center gap-1"
+            >
+              前往专页配置
+              <UIcon name="i-lucide-arrow-right" class="size-3" />
+            </NuxtLink>
+          </div>
+          <p class="text-text-secondary">
+            当前配置：{{ domain.configuration.access === 'public' ? '公开访问' : '仅成员进入' }} ·
+            {{ domain.configuration.join_policy === 'open' ? '直接加入' : domain.configuration.join_policy === 'approval' ? '申请审核' : '接受邀请' }} ·
+            {{ domain.configuration.discoverable ? '在公开目录展示' : '不在公开目录展示' }}
+          </p>
         </div>
-        <UCheckbox v-model="form.configuration.discoverable" label="在公开目录展示此空间" />
         <div class="rounded border border-border bg-bg-sunken p-3 text-sm">
           <p
             class="font-medium">域类型：{{ WORKSPACE_PRESETS.find((p) => p.value === domain.preset)!.label }} · 创建后固定</p>
@@ -108,7 +107,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
             class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
         </div>
         <p v-if="error" class="text-sm text-error-text" role="alert">{{ error }} 未保存的修改仍保留在表单中。</p>
-        <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active' || disabled">保存设置</UButton>
+        <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active' || disabled">保存基本设置</UButton>
       </form>
     </UCard>
     <UCard v-if="canArchive && domain.slug !== 'main'" class="rounded">

@@ -123,12 +123,14 @@ useSeoMeta({ title: '评测队列' });
         <!-- 分段范围切换：当前域 vs 实例 -->
         <div class="inline-flex rounded border border-border bg-bg-sunken p-0.5">
           <button type="button"
+            :aria-pressed="scope === 'domain'"
             class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
             :class="scope === 'domain' ? 'bg-bg-panel text-primary shadow-xs font-semibold' : 'text-text-secondary hover:text-text'"
             @click="scope = 'domain'">
             当前域
           </button>
           <button type="button"
+            :aria-pressed="scope === 'instance'"
             class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
             :class="scope === 'instance' ? 'bg-bg-panel text-primary shadow-xs font-semibold' : 'text-text-secondary hover:text-text'"
             @click="scope = 'instance'">
@@ -141,7 +143,7 @@ useSeoMeta({ title: '评测队列' });
     </AdminPageHeader>
 
     <!-- 实例范围说明：实例 stats 是全局数字，列表仅展示授权任务 -->
-    <UAlert v-if="scope === 'instance'" color="info" icon="i-lucide-info" title="明细仅显示你有权查看的任务"
+    <UAlert v-if="scope === 'instance'" color="neutral" variant="subtle" icon="i-lucide-info" title="明细仅显示你有权查看的任务"
       description="当前为实例全局队列视图。上方统计数字包含全站任务总量，下方任务明细仅展示你获授权访问的任务。" />
 
     <!-- 刷新失败提示：保留现有数据与更新时间 -->

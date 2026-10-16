@@ -1,5 +1,6 @@
 <!-- 队列行（正在评测 / 排队中 / 最近完成 三个分区共用）。 -->
 <script setup lang="ts">
+import { computed } from "vue"
 import { formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { publicUrl } from "~/utils/publicIdentifiers"
 
@@ -47,21 +48,37 @@ function elapsed(): string {
   const minutes = Math.floor(seconds / 60)
   return `${minutes}m ${seconds % 60}s`
 }
+
+function shortId(val: string): string {
+  if (!val) return ''
+  return val.length > 12 ? `${val.slice(0, 8)}…` : val
+}
+
+const problemDisplay = computed(() => {
+  const title = props.item.problem_title?.trim()
+  const id = props.item.problem_id?.trim()
+  if (!title) return id || ''
+  if (!id || id.includes('-') || id.length > 16) {
+    return title
+  }
+  return `${id} ${title}`
+})
 </script>
 
 <template>
   <div class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
     <NuxtLink v-if="item.kind !== 'self_test'"
       :to="item.domain_slug ? `/d/${item.domain_slug}/submissions/${item.public_id || item.id}` : publicUrl('submission', item.public_id || item.id)"
-      class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">
-      #{{ item.public_id || item.id.slice(0, 8) }}
+      :title="`完整提交编号: ${item.public_id || item.id}`"
+      class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[70px] hover:underline">
+      #{{ shortId(item.public_id || item.id) }}
     </NuxtLink>
-    <span v-else class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[80px] text-purple-700">
+    <span v-else class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[70px] text-purple-700" :title="`完整自测号: ${item.public_id || item.id}`">
       <UIcon name="i-lucide-flask-conical" class="size-3.5" />
-      #{{ item.public_id || item.id.slice(0, 8) }}
+      #{{ shortId(item.public_id || item.id) }}
     </span>
     <UBadge v-if="item.domain_slug" color="neutral" variant="subtle" size="xs">@{{ item.domain_slug }}</UBadge>
-    <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
+    <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text" :title="problemDisplay">{{ problemDisplay }}</span>
     <UBadge v-if="item.resource_pool" color="neutral" variant="outline" size="sm">{{ item.resource_pool }}</UBadge>
     <UBadge v-if="item.waiting_reason" color="warning" variant="subtle" size="sm">{{ waitingLabels[item.waiting_reason] }}</UBadge>
     <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>

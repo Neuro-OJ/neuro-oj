@@ -126,7 +126,7 @@ const columns = [
   { accessorKey: 'problem', header: '题目', meta: { class: { th: 'w-full', td: 'min-w-36 whitespace-normal' } } },
   { accessorKey: 'user', header: '提交者' },
   { accessorKey: 'type_lang', header: '题型 / 语言' },
-  { accessorKey: 'result', header: '允许结果' },
+  { accessorKey: 'result', header: '评测结果' },
   {
     accessorKey: 'version',
     header: '版本',
@@ -192,7 +192,11 @@ useSeoMeta({ title: '提交' });
           <template #id-cell="{ row }">
             <NuxtLink
               :to="workspacePath(slug!, `${row.original.kind === 'objective' ? 'objective-submissions' : 'submissions'}/${row.original.public_id || row.original.id}`)"
-              class="font-mono text-xs text-primary">#{{ row.original.public_id || row.original.id.slice(0, 8) }}</NuxtLink>
+              :title="`完整提交编号: ${row.original.public_id || row.original.id}`"
+              class="font-mono text-xs text-primary whitespace-nowrap hover:underline"
+            >
+              #{{ (row.original.public_id || row.original.id).length > 12 ? (row.original.public_id || row.original.id).slice(0, 8) + '…' : (row.original.public_id || row.original.id) }}
+            </NuxtLink>
           </template>
           <template #problem-cell="{ row }">
             <NuxtLink v-if="row.original.resource_available"

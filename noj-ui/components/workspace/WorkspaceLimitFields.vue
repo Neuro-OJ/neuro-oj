@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { WORKSPACE_LIMIT_FIELDS } from '~/utils/instance-governance';
 import type { WorkspaceLimits } from '~/utils/workspace';
 
@@ -227,6 +227,39 @@ function setStorageQuick(gib: number) {
   rawInputs.storage_bytes = bytes;
   model.value.storage_bytes = bytes;
 }
+
+const storageGibInput = ref<number | string>('');
+
+watch(
+  () => rawInputs.storage_bytes,
+  (val) => {
+    if (typeof val === 'number' && val >= 0) {
+      storageGibInput.value = (val / GIB).toFixed(2).replace(/\.00$/, '');
+    } else {
+      storageGibInput.value = '';
+    }
+  },
+  { immediate: true },
+);
+
+function onGibInput(val: unknown) {
+  if (val === '' || val === null || val === undefined) {
+    storageGibInput.value = '';
+    onNumberInput('storage_bytes', '');
+    return;
+  }
+  const num = Number(val);
+  if (isNaN(num) || num < 0) return;
+  const bytes = Math.round(num * GIB);
+  rawInputs.storage_bytes = bytes;
+  model.value.storage_bytes = bytes;
+}
+
+function hasProjectedChange(key: keyof WorkspaceLimits): boolean {
+  const proj = getProjected(key);
+  const eff = props.effective?.[key] != null ? formatLimit(key, props.effective[key]) : '不限制';
+  return proj !== eff && proj !== '待填写';
+}
 </script>
 
 <template>
@@ -247,7 +280,51 @@ function setStorageQuick(gib: number) {
       </div>
 
       <div v-if="isCustom[field.key]" class="space-y-2 pt-1 border-t border-border/60">
-        <div class="flex items-center gap-2">
+        <div v-if="field.key === 'storage_bytes'" class="space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-text-secondary shrink-0">容量输入：</span>
+            <UInput
+              :model-value="String(storageGibInput)"
+              type="number"
+              step="any"
+              min="0"
+              :disabled="disabled"
+              aria-label="存储容量GiB"
+              placeholder="数值"
+              class="w-24 font-mono text-xs"
+              @update:model-value="onGibInput"
+            />
+            <span class="text-xs text-text-muted shrink-0">GiB</span>
+            <div v-if="!disabled" class="flex flex-wrap gap-1 ml-auto">
+              <UButton v-for="size in [1, 5, 20, 100, 256]" :key="size" size="xs" variant="outline" color="neutral" @click="setStorageQuick(size)">
+                {{ size }} GiB
+              </UButton>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-text-muted shrink-0">精确字节：</span>
+            <UInput
+              :model-value="String(rawInputs[field.key] ?? '')"
+              type="number"
+              inputmode="numeric"
+              step="1"
+              :min="0"
+              :max="field.max"
+              :disabled="disabled"
+              :aria-label="`${field.label}上限`"
+              class="w-full max-w-[200px] font-mono text-xs"
+              @update:model-value="onNumberInput(field.key, $event)"
+            />
+            <span class="text-xs text-text-muted shrink-0">{{ field.unit }}</span>
+          </div>
+
+          <p class="text-xs text-text-secondary tabular-nums">
+            当前输入换算：{{ formatLimit('storage_bytes', typeof rawInputs.storage_bytes === 'number' ? rawInputs.storage_bytes : model.storage_bytes) }}
+          </p>
+        </div>
+
+        <div v-else class="flex items-center gap-2">
           <UInput
             :model-value="String(rawInputs[field.key] ?? '')"
             type="number"
@@ -267,27 +344,29 @@ function setStorageQuick(gib: number) {
           {{ fieldErrors[field.key] }}
         </p>
 
-        <div v-if="field.key === 'storage_bytes'" class="space-y-1">
-          <p class="text-xs text-text-secondary tabular-nums">
-            当前输入换算：{{ formatLimit('storage_bytes', typeof rawInputs.storage_bytes === 'number' ? rawInputs.storage_bytes : model.storage_bytes) }}
-          </p>
-          <div v-if="!disabled" class="flex flex-wrap gap-1.5 pt-0.5">
-            <span class="text-[11px] text-text-muted self-center mr-1">快捷预设:</span>
-            <UButton v-for="size in [1, 5, 20, 100, 256]" :key="size" size="xs" variant="outline" color="neutral" @click="setStorageQuick(size)">
-              {{ size }} GiB
-            </UButton>
-          </div>
-        </div>
-
         <p v-if="rawInputs[field.key] === 0 || model[field.key] === 0" class="text-xs text-amber-600">
           0 表示禁止对应新增或调用，但保留历史数据与已有配置。
         </p>
       </div>
 
-      <div class="space-y-1 pt-1 border-t border-border/60 text-xs text-text-muted tabular-nums">
-        <p v-if="caps">实例上限：{{ caps[field.key] != null ? formatLimit(field.key, caps[field.key]) : '不设上限' }}</p>
-        <p v-if="effective">当前已保存有效值：{{ effective[field.key] != null ? formatLimit(field.key, effective[field.key]) : '不限制' }}</p>
-        <p class="text-text-secondary">保存后预计生效：<span class="font-medium text-text">{{ getProjected(field.key) }}</span></p>
+      <div class="space-y-1.5 pt-2 border-t border-border/60 text-xs tabular-nums">
+        <div v-if="effective" class="flex items-center justify-between">
+          <span class="text-text-secondary">当前已保存有效值：</span>
+          <span class="font-semibold text-text">{{ effective[field.key] != null ? formatLimit(field.key, effective[field.key]) : '不限制' }}</span>
+        </div>
+        <div v-if="caps" class="flex items-center justify-between text-text-muted">
+          <span>实例上限：</span>
+          <span class="text-text-secondary">{{ caps[field.key] != null ? formatLimit(field.key, caps[field.key]) : '不设上限' }}</span>
+        </div>
+        <div
+          class="flex items-center justify-between rounded px-2 py-1 transition-colors"
+          :class="hasProjectedChange(field.key) ? 'bg-primary-bg/40 font-medium text-primary' : 'text-text-muted'"
+        >
+          <span>保存后预计生效：</span>
+          <span :class="hasProjectedChange(field.key) ? 'font-semibold text-primary' : 'text-text-secondary'">
+            {{ getProjected(field.key) }}
+          </span>
+        </div>
       </div>
     </div>
   </div>

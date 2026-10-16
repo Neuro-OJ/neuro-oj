@@ -63,6 +63,11 @@ const stubs = {
       </div>
     `,
   },
+  UPagination: {
+    props: ['page', 'itemsPerPage', 'total', 'showEdges', 'size'],
+    emits: ['update:page'],
+    template: '<nav data-testid="pagination" />',
+  },
 };
 
 const sampleInvitations = [

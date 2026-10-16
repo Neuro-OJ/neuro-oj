@@ -51,6 +51,8 @@ const stubs = {
     template: '<label>{{ label }}<input type="checkbox" :checked="modelValue" /></label>',
   },
   UButton: { template: '<button><slot /></button>' },
+  NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+  UIcon: { props: ['name'], template: '<i />' },
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -94,7 +96,9 @@ describe('空间设置与并发编辑', () => {
     });
     expect(view.text()).toContain('域类型：教学 · 创建后固定');
     expect(view.text()).not.toContain('重新应用模板');
-    expect(view.findAll('input[type="checkbox"]')).toHaveLength(1);
+    expect(view.text()).toContain('访问与加入政策');
+    expect(view.find('a[href="/d/school-one/settings/access"]').exists()).toBe(true);
+    expect(view.findAll('input[type="checkbox"]')).toHaveLength(0);
     view.unmount();
   });
   it('disabled 为 true 或域非活跃时禁用保存按钮且拦截提交，但草稿可继续编辑', async () => {

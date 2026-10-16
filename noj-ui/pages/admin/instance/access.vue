@@ -144,7 +144,7 @@ useSeoMeta({ title: '访问与注册政策 - 实例设置' });
                 aria-label="实例访问范围"
               />
               <p class="text-xs text-text-secondary leading-relaxed">
-                公开访问允许游客浏览公开题目、比赛和动态；仅登录账号模式下所有未认证请求均会被拦截或重定向至登录页。
+                公开访问允许游客浏览公开题目、比赛和动态；仅已登录账号模式下，访客必须先登录才能访问站内内容。
               </p>
             </div>
 
@@ -162,19 +162,37 @@ useSeoMeta({ title: '访问与注册政策 - 实例设置' });
                 aria-label="账号注册模式"
               />
               <p class="text-xs text-text-secondary leading-relaxed">
-                开放注册允许任何用户自主注册；邀请注册仅允许持有有效邀请凭据的用户开户；管理员开户则完全禁止公开注册接口。
+                开放注册允许任何访客自主注册；邀请注册仅允许凭有效邀请凭据注册；管理员开户则仅允许由平台管理员统一创建账号。
               </p>
             </div>
 
-            <!-- 允许域管理员签发注册邀请 -->
+            <!-- 允许域管理员签发注册邀请（区分生效模式与预设状态） -->
             <div class="space-y-1.5 pt-1">
-              <UCheckbox
-                v-model="draft.allow_domain_registration_invites"
-                label="允许域管理员签发新账号注册邀请"
-              />
-              <p class="text-xs text-text-muted leading-relaxed pl-6">
-                仅在实例邀请注册模式下生效。若实例设为仅管理员开户，域管理员签发的注册邀请仍无法用于新开户。
-              </p>
+              <template v-if="draft.instance_registration_mode === 'invite'">
+                <label class="block text-sm font-medium text-text">邀请注册政策</label>
+                <UCheckbox
+                  v-model="draft.allow_domain_registration_invites"
+                  label="允许域管理员签发新账号注册邀请"
+                />
+                <p class="text-xs text-text-secondary leading-relaxed pl-6">
+                  启用后，各空间的域管理员可直接生成新账号注册邀请；未勾选时仅平台管理员可签发。
+                </p>
+              </template>
+              <template v-else>
+                <label class="block text-sm font-medium text-text">邀请注册时的政策（预设）</label>
+                <div class="rounded border border-border bg-bg-sunken p-3 text-xs text-text-secondary space-y-2">
+                  <p class="text-text font-medium">
+                    当前账号注册模式为“{{ draft.instance_registration_mode === 'open' ? '开放注册' : '仅平台管理员开户' }}”，此项设置仅在注册模式切换为“邀请注册”时才会生效。
+                  </p>
+                  <UCheckbox
+                    v-model="draft.allow_domain_registration_invites"
+                    label="邀请注册时允许域管理员签发新账号注册邀请"
+                  />
+                  <p class="text-text-muted pl-6">
+                    预设将在未来切换为“邀请注册”时立即应用；当前模式下不会影响账号注册行为。
+                  </p>
+                </div>
+              </template>
             </div>
 
             <!-- 默认工作空间 -->
@@ -191,6 +209,17 @@ useSeoMeta({ title: '访问与注册政策 - 实例设置' });
                   aria-label="默认工作空间"
                 />
               </div>
+              <p v-if="domains.status.value === 'pending'" class="text-xs text-text-muted flex items-center gap-1">
+                <UIcon name="i-lucide-loader-2" class="size-3.5 animate-spin" />
+                正在加载候选空间...
+              </p>
+              <p v-else-if="domains.error.value" class="text-xs text-error-text flex items-center gap-1">
+                <span>候选空间加载失败</span>
+                <button type="button" class="underline hover:text-text cursor-pointer ml-1" @click="domains.refresh()">重试</button>
+              </p>
+              <p v-else-if="domainSearch && activeDomainOptions.length === 0" class="text-xs text-text-muted">
+                未找到匹配的活跃空间
+              </p>
               <p class="text-xs text-text-secondary leading-relaxed">
                 用于未指定空间时的默认入口。旧题目、提交等兼容链接始终指向 main；只能选择状态正常的现有空间。
               </p>

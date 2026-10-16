@@ -56,6 +56,11 @@ const expiryPreset = ref<'1' | '7' | '30' | 'custom'>('7');
 const customExpiry = ref('');
 const formError = ref('');
 const creating = ref(false);
+const expandedCards = reactive<Record<string, boolean>>({});
+
+function toggleCardDetails(id: string) {
+  expandedCards[id] = !expandedCards[id];
+}
 
 // 新创建凭据展示
 const createdResult = ref<WorkspaceInvitationCreated | null>(null);
@@ -347,7 +352,7 @@ onMounted(() => {
         <form class="space-y-4" @submit.prevent="createInvitation">
           <!-- 邀请模式选择 -->
           <AdminFormField label="邀请类型" required>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 :aria-pressed="mode === 'general'"
@@ -449,6 +454,7 @@ onMounted(() => {
             <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                :aria-pressed="expiryPreset === '1'"
                 :class="[
                   'rounded px-2.5 py-1 text-xs border transition-colors',
                   expiryPreset === '1'
@@ -461,6 +467,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
+                :aria-pressed="expiryPreset === '7'"
                 :class="[
                   'rounded px-2.5 py-1 text-xs border transition-colors',
                   expiryPreset === '7'
@@ -473,6 +480,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
+                :aria-pressed="expiryPreset === '30'"
                 :class="[
                   'rounded px-2.5 py-1 text-xs border transition-colors',
                   expiryPreset === '30'
@@ -485,6 +493,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
+                :aria-pressed="expiryPreset === 'custom'"
                 :class="[
                   'rounded px-2.5 py-1 text-xs border transition-colors',
                   expiryPreset === 'custom'
@@ -505,11 +514,13 @@ onMounted(() => {
             </div>
           </AdminFormField>
 
-          <div class="flex items-center justify-between pt-2">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
             <span class="text-xs text-text-muted">
               创建后请自行将链接或短码发送给受邀者。新成员加入后拥有普通成员基础权限。
             </span>
-            <UButton type="submit" color="primary" :loading="creating">生成邀请</UButton>
+            <UButton type="submit" color="primary" :loading="creating" class="w-full sm:w-auto shrink-0">
+              生成邀请
+            </UButton>
           </div>
         </form>
       </div>
@@ -531,57 +542,164 @@ onMounted(() => {
         </UButton>
       </div>
 
-      <AdminTable
-        :columns="tableColumns"
-        :items="tableRows"
-        :loading="loading"
-        :error="error"
-        :current-page="pagination.page"
-        :total-pages="pagination.total_pages"
-        :total-items="pagination.total"
-        @update:page="onPageChange"
-      >
-        <template #cell="{ row, column }">
-          <span v-if="column.key === 'mode'">
-            <UBadge color="neutral" variant="subtle" size="sm">
-              {{ WORKSPACE_INVITATION_MODE_LABELS[row.mode as keyof typeof WORKSPACE_INVITATION_MODE_LABELS] ?? row.mode }}
-            </UBadge>
-          </span>
-          <span v-else-if="column.key === 'target'" class="font-mono text-xs">
-            {{ row.target }}
-          </span>
-          <span v-else-if="column.key === 'usage'" class="tabular-nums font-mono text-xs">
-            {{ row.usage }}
-          </span>
-          <span v-else-if="column.key === 'status'">
-            <UBadge
-              :color="statusBadgeColors[row.status as WorkspaceInvitationStatus] ?? 'neutral'"
-              variant="subtle"
-              size="sm"
-            >
-              {{ WORKSPACE_INVITATION_STATUS_LABELS[row.status as WorkspaceInvitationStatus] ?? row.status }}
-            </UBadge>
-          </span>
-          <span v-else-if="column.key === 'expires_at'" class="tabular-nums text-xs text-text-secondary">
-            {{ new Date(row.expires_at as string).toLocaleString() }}
-          </span>
-          <span v-else>{{ row[column.key] }}</span>
-        </template>
+      <!-- 桌面端表格视图 -->
+      <div class="hidden sm:block">
+        <AdminTable
+          :columns="tableColumns"
+          :items="tableRows"
+          :loading="loading"
+          :error="error"
+          :current-page="pagination.page"
+          :total-pages="pagination.total_pages"
+          :total-items="pagination.total"
+          @update:page="onPageChange"
+        >
+          <template #cell="{ row, column }">
+            <span v-if="column.key === 'mode'">
+              <UBadge color="neutral" variant="subtle" size="sm">
+                {{ WORKSPACE_INVITATION_MODE_LABELS[row.mode as keyof typeof WORKSPACE_INVITATION_MODE_LABELS] ?? row.mode }}
+              </UBadge>
+            </span>
+            <span v-else-if="column.key === 'target'" class="font-mono text-xs">
+              {{ row.target }}
+            </span>
+            <span v-else-if="column.key === 'usage'" class="tabular-nums font-mono text-xs">
+              {{ row.usage }}
+            </span>
+            <span v-else-if="column.key === 'status'">
+              <UBadge
+                :color="statusBadgeColors[row.status as WorkspaceInvitationStatus] ?? 'neutral'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ WORKSPACE_INVITATION_STATUS_LABELS[row.status as WorkspaceInvitationStatus] ?? row.status }}
+              </UBadge>
+            </span>
+            <span v-else-if="column.key === 'expires_at'" class="tabular-nums text-xs text-text-secondary">
+              {{ new Date(row.expires_at as string).toLocaleString() }}
+            </span>
+            <span v-else>{{ row[column.key] }}</span>
+          </template>
 
-        <template #actions="{ row }">
-          <UButton
-            v-if="writable && row.status === 'active'"
-            variant="ghost"
-            color="error"
-            size="xs"
-            :loading="revokingId === row.id"
-            @click="revokeInvitation(row.id as string)"
+          <template #actions="{ row }">
+            <UButton
+              v-if="writable && row.status === 'active'"
+              variant="ghost"
+              color="error"
+              size="xs"
+              :loading="revokingId === row.id"
+              @click="revokeInvitation(row.id as string)"
+            >
+              撤销
+            </UButton>
+            <span v-else class="text-text-muted text-xs">-</span>
+          </template>
+        </AdminTable>
+      </div>
+
+      <!-- 手机端紧凑卡片列表：优先展示对象、状态、到期和撤销操作，次要数据折叠展开 -->
+      <div class="sm:hidden space-y-3">
+        <div v-if="loading" class="flex items-center justify-center py-8 text-xs text-text-muted">
+          <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary mr-1.5" />
+          正在加载邀请...
+        </div>
+        <div v-else-if="error" class="p-4 rounded border border-border bg-bg-panel text-xs text-error-text">
+          {{ error }}
+        </div>
+        <div v-else-if="tableRows.length === 0" class="p-8 text-center text-xs text-text-muted rounded border border-border bg-bg-panel">
+          暂无邀请记录
+        </div>
+        <template v-else>
+          <div
+            v-for="row in tableRows"
+            :key="row.id"
+            class="rounded border border-border bg-bg-panel p-3.5 shadow-xs space-y-2.5"
           >
-            撤销
-          </UButton>
-          <span v-else class="text-text-muted text-xs">-</span>
+            <!-- 头部：受邀对象、状态标签、撤销操作 -->
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <UBadge color="neutral" variant="subtle" size="sm" class="shrink-0">
+                  {{ WORKSPACE_INVITATION_MODE_LABELS[row.mode as keyof typeof WORKSPACE_INVITATION_MODE_LABELS] ?? row.mode }}
+                </UBadge>
+                <span class="font-mono text-xs text-text font-medium truncate" :title="row.target">
+                  {{ row.target }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <UBadge
+                  :color="statusBadgeColors[row.status as WorkspaceInvitationStatus] ?? 'neutral'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ WORKSPACE_INVITATION_STATUS_LABELS[row.status as WorkspaceInvitationStatus] ?? row.status }}
+                </UBadge>
+                <UButton
+                  v-if="writable && row.status === 'active'"
+                  variant="ghost"
+                  color="error"
+                  size="xs"
+                  :loading="revokingId === row.id"
+                  @click="revokeInvitation(row.id as string)"
+                >
+                  撤销
+                </UButton>
+              </div>
+            </div>
+
+            <!-- 到期时间与次要信息行 -->
+            <div class="flex items-center justify-between text-xs text-text-secondary pt-0.5">
+              <span class="tabular-nums">
+                到期：{{ new Date(row.expires_at as string).toLocaleString() }}
+              </span>
+              <button
+                type="button"
+                class="text-[11px] text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
+                @click="toggleCardDetails(row.id as string)"
+              >
+                <span>{{ expandedCards[row.id as string] ? '收起详情' : '展开详情' }}</span>
+                <UIcon
+                  :name="expandedCards[row.id as string] ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                  class="size-3"
+                />
+              </button>
+            </div>
+
+            <!-- 折叠的次要详情 -->
+            <div
+              v-if="expandedCards[row.id as string]"
+              class="border-t border-border/60 pt-2 text-xs text-text-muted space-y-1 tabular-nums"
+            >
+              <div class="flex justify-between">
+                <span>使用人数：</span>
+                <span class="text-text font-mono">{{ row.usage }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>邀请 ID：</span>
+                <span class="text-text font-mono">{{ row.id }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>创建时间：</span>
+                <span>{{ new Date(row.created_at as string).toLocaleString() }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 手机端分页 -->
+          <div v-if="pagination.total_pages > 1" class="flex items-center justify-between pt-2">
+            <span class="text-xs text-text-muted tabular-nums">
+              第 {{ pagination.page }} / {{ pagination.total_pages }} 页
+            </span>
+            <UPagination
+              :page="pagination.page"
+              :items-per-page="1"
+              :total="pagination.total_pages"
+              :show-edges="true"
+              size="sm"
+              @update:page="onPageChange"
+            />
+          </div>
         </template>
-      </AdminTable>
+      </div>
     </div>
   </div>
 </template>
