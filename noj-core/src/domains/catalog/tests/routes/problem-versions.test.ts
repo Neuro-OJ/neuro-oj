@@ -15,7 +15,7 @@ import {
   problems,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -71,6 +71,14 @@ function draftContent(title: string, description = "题面") {
     artifact_max_size_mb: null,
     llm_config: null,
   };
+}
+
+/** 模拟题包导入：直接把模板写进草稿行（不递增 revision）。 */
+async function setDraftTemplate(problemId: string, template: string) {
+  await getDb().update(problemDrafts).set({
+    content:
+      sql`jsonb_set(${problemDrafts.content}, '{template_content}', to_jsonb(${template}::text))`,
+  }).where(eq(problemDrafts.problem_id, problemId));
 }
 
 Deno.test({
@@ -830,15 +838,12 @@ Deno.test({
     const userToken = await createUserToken("user");
     const userAuth = { Authorization: `Bearer ${userToken}` };
 
+    // 模板只能由题包导入写入（客户端提交值被忽略），这里直接写草稿行模拟导入结果
+    await setDraftTemplate(problemId, "print('secret-template')");
     await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
       method: "PUT",
       headers: { ...adminAuth, "If-Match": "1" },
-      body: {
-        content: {
-          ...draftContent("带敏感配置的题面"),
-          template_content: "print('secret-template')",
-        },
-      },
+      body: { content: draftContent("带敏感配置的题面") },
     });
     const published = await jsonRequest(
       app,
@@ -896,6 +901,86 @@ Deno.test({
     assertEquals(
       adminVersionContent.runtime_config.evaluator.command,
       "python3 /workspace/evaluate.py",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "problem versions route: 编辑器保存/发布草稿不会清空题包导入的模板（2026-10-16 P23 回归）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem();
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+    const url = `/api/v1/problems/${problemId}/draft`;
+    const template = "def get_config():\n    return PARAMS\n";
+    await setDraftTemplate(problemId, template);
+
+    // 编辑器总是回传空模板：服务端必须沿用草稿里的模板
+    const saved = await jsonRequest(app, url, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "1" },
+      body: { content: draftContent("编辑器改题面") },
+    });
+    assertEquals(saved.status, 200);
+    const savedBody = await saved.json();
+    assertEquals(savedBody.data.content.title, "编辑器改题面");
+    assertEquals(savedBody.data.content.template_content, template);
+
+    // 客户端试图写入任意模板同样被忽略
+    const forged = await jsonRequest(app, url, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "2" },
+      body: {
+        content: {
+          ...draftContent("编辑器改题面"),
+          template_content: "import os",
+        },
+      },
+    });
+    assertEquals(forged.status, 200);
+    assertEquals(
+      (await forged.json()).data.content.template_content,
+      template,
+    );
+
+    // 发布后的版本内容保留模板（界面题评测脚本由它生成）
+    const published = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "3" },
+        body: {},
+      },
+    );
+    assertEquals(published.status, 201);
+    const versionId = (await published.json()).data.version_id;
+    const [version] = await getDb().select().from(problemVersions).where(
+      eq(problemVersions.id, versionId),
+    );
+    assertEquals(
+      (version.content as Record<string, unknown>).template_content,
+      template,
+    );
+
+    // 无草稿行（派生草稿）时同样以最新版本的模板为准
+    await getDb().delete(problemDrafts).where(
+      eq(problemDrafts.problem_id, problemId),
+    );
+    const derived = await jsonRequest(app, url, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "0" },
+      body: { content: draftContent("派生后再改") },
+    });
+    assertEquals(derived.status, 200);
+    assertEquals(
+      (await derived.json()).data.content.template_content,
+      template,
     );
   },
 });
