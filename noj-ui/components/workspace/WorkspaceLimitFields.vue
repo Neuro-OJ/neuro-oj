@@ -249,7 +249,7 @@ function setStorageQuick(gib: number) {
       <div v-if="isCustom[field.key]" class="space-y-2 pt-1 border-t border-border/60">
         <div class="flex items-center gap-2">
           <UInput
-            :model-value="rawInputs[field.key] ?? ''"
+            :model-value="String(rawInputs[field.key] ?? '')"
             type="number"
             inputmode="numeric"
             step="1"
