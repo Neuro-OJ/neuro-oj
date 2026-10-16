@@ -8,7 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { contestProblems } from "./../../../shared/db/schema.ts";
 import type { ContestAccessInfo } from "./../../catalog/index.ts";
-import { computeContestStatus } from "./contests.ts";
+import { computeContestStatus, resolveContestId } from "./contests.ts";
 import { findContestRow } from "./contest-row.ts";
 import { isParticipant } from "./contests.ts";
 
@@ -30,6 +30,8 @@ export async function verifyContestAccess(
   let startTime: string;
   let endTime: string;
   try {
+    // 编辑器查询参数可能是公开编号；后续成员与关联查询必须使用内部 UUID。
+    contestId = await resolveContestId(contestId);
     const contest = await findContestRow(contestId);
     startTime = contest.start_time;
     endTime = contest.end_time;
