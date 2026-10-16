@@ -88,10 +88,13 @@ const fieldErrors = computed<Record<keyof WorkspaceLimits, string>>(() => {
       const raw = rawInputs[key];
       if (raw === '' || raw === null || raw === undefined) {
         errs[key] = `请填写${field.label}上限数值`;
-      } else if (typeof raw === 'number') {
-        if (isNaN(raw) || raw < 0) {
+      } else {
+        const num = typeof raw === 'number' ? raw : Number(raw);
+        if (isNaN(num) || num < 0) {
           errs[key] = `${field.label}上限必须大于或等于 0`;
-        } else if (raw > field.max) {
+        } else if (!Number.isInteger(num)) {
+          errs[key] = `${field.label}上限必须为整数`;
+        } else if (num > field.max) {
           errs[key] = `${field.label}上限不能超过 ${field.max.toLocaleString()}`;
         }
       }
@@ -132,8 +135,8 @@ function getProjected(key: keyof WorkspaceLimits): string {
   if (rawInputs[key] === '' || rawInputs[key] === null || rawInputs[key] === undefined) {
     return '待填写';
   }
-  const current = typeof rawInputs[key] === 'number' ? (rawInputs[key] as number) : model.value[key];
-  if (typeof current !== 'number' || isNaN(current)) return '待填写';
+  const current = typeof rawInputs[key] === 'number' ? (rawInputs[key] as number) : Number(rawInputs[key]);
+  if (typeof current !== 'number' || isNaN(current) || !Number.isInteger(current) || current < 0) return '待填写';
   if (props.mode === 'domain_limits' && props.caps?.[key] != null) {
     const effectiveVal = Math.min(current, props.caps[key]!);
     return formatLimit(key, effectiveVal);
@@ -201,16 +204,21 @@ function onNumberInput(key: keyof WorkspaceLimits, val: unknown) {
     rawInputs[key] = '';
     return;
   }
-  const num = Number(val);
-  if (isNaN(num)) {
+  const str = String(val).trim();
+  if (str === '') {
     rawInputs[key] = '';
+    return;
+  }
+  const num = Number(str);
+  if (isNaN(num)) {
+    rawInputs[key] = str;
     return;
   }
   rawInputs[key] = num;
   const field = WORKSPACE_LIMIT_FIELDS.find((f) => f.key === key);
   const max = field?.max ?? Number.MAX_SAFE_INTEGER;
-  if (num >= 0 && num <= max) {
-    model.value[key] = Math.floor(num);
+  if (Number.isInteger(num) && num >= 0 && num <= max) {
+    model.value[key] = num;
   }
 }
 
@@ -240,8 +248,11 @@ function setStorageQuick(gib: number) {
 
       <div v-if="isCustom[field.key]" class="space-y-2 pt-1 border-t border-border/60">
         <div class="flex items-center gap-2">
-          <UInputNumber
-            :model-value="typeof rawInputs[field.key] === 'number' ? (rawInputs[field.key] as number) : undefined"
+          <UInput
+            :model-value="rawInputs[field.key] ?? ''"
+            type="number"
+            inputmode="numeric"
+            step="1"
             :min="0"
             :max="field.max"
             :disabled="disabled"

@@ -121,12 +121,14 @@ async function write(
   action: () => Promise<unknown>,
   status = 200,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending, body = await response.json();
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === `/api/v1${path}` &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
+  const body = await response.json();
   assertEquals(
     response.status(),
     status,
@@ -465,6 +467,17 @@ Deno.test({
               name: "成员上限",
               exact: true,
             }).fill("30");
+            await expect(
+              manager.page.getByRole("button", {
+                name: "保存配额",
+                exact: true,
+              }),
+            )
+              .toBeEnabled();
+            await expect(
+              other.getByRole("button", { name: "保存配额", exact: true }),
+            )
+              .toBeEnabled();
             const first = await write(
               manager.page,
               "PATCH",

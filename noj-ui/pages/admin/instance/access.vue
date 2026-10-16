@@ -192,7 +192,7 @@ useSeoMeta({ title: '访问与注册政策 - 实例设置' });
                 />
               </div>
               <p class="text-xs text-text-secondary leading-relaxed">
-                系统根路径或兼容链接未指定空间时使用的空间。只能从当前处于正常状态（active）的空间中选择。
+                用于未指定空间时的默认入口。旧题目、提交等兼容链接始终指向 main；只能选择状态正常的现有空间。
               </p>
             </div>
 

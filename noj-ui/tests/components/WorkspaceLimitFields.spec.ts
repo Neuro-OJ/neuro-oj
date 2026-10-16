@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WorkspaceLimitFields from '~/components/workspace/WorkspaceLimitFields.vue';
+
 const stubs = {
   USelect: {
     props: ['modelValue', 'items', 'disabled', 'ariaLabel'],
@@ -8,14 +9,15 @@ const stubs = {
     template:
       '<select :disabled="disabled" :aria-label="ariaLabel" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>',
   },
-  UInputNumber: {
-    props: ['modelValue', 'min', 'max', 'disabled'],
+  UInput: {
+    props: ['modelValue', 'min', 'max', 'disabled', 'ariaLabel', 'type', 'inputmode', 'step'],
     emits: ['update:modelValue'],
     template:
-      '<input type="number" :disabled="disabled" :min="min" :max="max" :value="modelValue" @input="$emit(\'update:modelValue\', Number($event.target.value))" />',
+      '<input :type="type || \'text\'" :inputmode="inputmode" :step="step" :disabled="disabled" :aria-label="ariaLabel" :min="min" :max="max" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
   UButton: { template: '<button><slot /></button>' },
 };
+
 describe('四项工作空间额度', () => {
   it('存储与正式提交频率可编辑，0和null保留各自含义并显示实例有效上限', async () => {
     const limits = { members: null, problems: 0, storage_bytes: 274877906944, submissions_per_minute: 30 };
@@ -35,7 +37,8 @@ describe('四项工作空间额度', () => {
     expect(view.text()).toContain('当前已保存有效值：');
     expect(view.text()).toContain('保存后预计生效：');
   });
-  it('自定义模式空值显示待填写且触发有效性通知', async () => {
+
+  it('自定义模式空值显示待填写且触发有效性通知，输入数值无需blur立即valid=true，小数报错不静默取整', async () => {
     const limits = { members: null, problems: null, storage_bytes: null, submissions_per_minute: null };
     const view = mount(WorkspaceLimitFields, {
       props: { modelValue: limits },
@@ -44,10 +47,21 @@ describe('四项工作空间额度', () => {
     await view.get('select[aria-label="成员额度模式"]').setValue('custom');
     expect(view.text()).toContain('待填写');
     expect(view.emitted('valid')?.slice(-1)[0]).toEqual([false]);
-    await view.get('input[aria-label="成员上限"]').setValue('15');
-    expect(limits.members).toBe(15);
+
+    const input = view.get('input[aria-label="成员上限"]');
+
+    // 小数输入报错，不允许静默 Math.floor
+    await input.setValue('1.5');
+    expect(view.text()).toContain('成员上限必须为整数');
+    expect(view.emitted('valid')?.slice(-1)[0]).toEqual([false]);
+
+    // 输入正整数无需 blur 即可立即触发 valid=true 并同步 model
+    await input.setValue('40');
+    expect(limits.members).toBe(40);
     expect(view.emitted('valid')?.slice(-1)[0]).toEqual([true]);
+    expect(view.text()).toContain('40 人');
   });
+
   it('归档只读时额度控件不允许写入', () => {
     const view = mount(WorkspaceLimitFields, {
       props: {
