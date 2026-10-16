@@ -57,6 +57,7 @@ import type { ObjectiveQuestionSnapshot } from "./../../types/problem-content.ts
 import { assertProblemEditPermission, updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
+  assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
@@ -459,6 +460,7 @@ async function updateExisting(
   );
   enforceResourceLimits(manifest.runtime_config!);
   if (manifest.llm) {
+    await assertLlmProblemPermission(manifest.type ?? "U", c, actor.userId);
     assertLlmLimitsWithinDefault(manifest.llm);
     // 题包可先于运营配置导入：别名未配置只告警，跨 Provider 仍拒绝
     await assertLlmModelsValid(manifest.llm, { allowUnknown: true });
@@ -826,6 +828,7 @@ async function createViaCrud(
     enforceResourceLimits(manifest.runtime_config!);
   }
   if (manifest.llm) {
+    await assertLlmProblemPermission(type, c, actor.userId);
     assertLlmLimitsWithinDefault(manifest.llm);
     // 题包可先于运营配置导入：别名未配置只告警，跨 Provider 仍拒绝
     await assertLlmModelsValid(manifest.llm, { allowUnknown: true });

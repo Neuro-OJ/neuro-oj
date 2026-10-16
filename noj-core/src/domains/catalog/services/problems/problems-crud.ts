@@ -70,6 +70,7 @@ import {
   checkPermission,
 } from "./../../../identity/index.ts";
 import {
+  assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
@@ -273,7 +274,7 @@ export async function createProblem(
     throw new BadRequestError("runtime_config 是必填字段");
   }
 
-  // LLM 配置准入校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+  // U 型可保持私有，但仅管理员可配置 LLM；网络、模型与预算校验照常执行。
   let llmConfig: LlmConfig | null = null;
   if (input.llm !== undefined && input.llm !== null) {
     if (isObjective) {
@@ -288,9 +289,7 @@ export async function createProblem(
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
     }
-    if (type !== "P") {
-      throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
-    }
+    await assertLlmProblemPermission(type, c, userId);
     assertLlmLimitsWithinDefault(input.llm);
     await assertLlmModelsValid(input.llm);
     const runtime = input.runtime_config;
@@ -727,7 +726,7 @@ export async function updateProblem(
     throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
   }
 
-  // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
+  // 配置 LLM 时校验类型对应权限，并保持 evaluator 网络开启。
   let llmConfig: LlmConfig | null | undefined;
   if (input.llm !== undefined) {
     if (input.llm === null) {
@@ -742,9 +741,7 @@ export async function updateProblem(
       if (!isValidLlmConfig(input.llm)) {
         throw new BadRequestError("llm 配置格式非法");
       }
-      if (problem.type !== "P") {
-        throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
-      }
+      await assertLlmProblemPermission(problem.type, c, userId);
       if (isObjective) {
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
