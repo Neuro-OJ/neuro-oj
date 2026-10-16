@@ -349,16 +349,16 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
         <template #body>
           <form class="space-y-4" @submit.prevent="saveProvider">
             <AdminFormField label="名称" required>
-              <UInput v-model="form.name" required class="w-full" placeholder="如 OpenAI / DeepSeek" />
+              <UInput v-model="form.name" required class="w-full" placeholder="如 OpenAI / DeepSeek" aria-label="Provider 名称" />
             </AdminFormField>
             <AdminFormField label="Base URL" required>
-              <UInput v-model="form.base_url" type="url" required class="w-full" placeholder="https://api.openai.com/v1" />
+              <UInput v-model="form.base_url" type="url" required class="w-full" placeholder="https://api.openai.com/v1" aria-label="Provider Base URL" />
             </AdminFormField>
             <AdminFormField label="API Key" :hint="editing ? '留空保留现有密钥' : '仅写入加密存储'">
-              <UInput v-model="form.api_key" type="password" autocomplete="new-password" :required="!editing" class="w-full" />
+              <UInput v-model="form.api_key" type="password" autocomplete="new-password" :required="!editing" class="w-full" aria-label="Provider API Key" />
             </AdminFormField>
             <AdminFormField label="每 1000 Token 费用" hint="费用整数与 Provider 单价采用同一单位">
-              <UInput v-model.number="form.cost_per_1k_tokens" type="number" min="0" step="any" />
+              <UInput v-model.number="form.cost_per_1k_tokens" type="number" min="0" step="any" aria-label="Provider 每 1000 Token 费用" />
             </AdminFormField>
             <UCheckbox v-model="form.enabled" label="启用此 Provider" />
             <div class="grid grid-cols-2 gap-3">

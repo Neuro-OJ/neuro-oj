@@ -82,14 +82,12 @@ async function createProvider(
     exact: true,
   });
   for (
-    const [label, value] of [["名称", name], [
-      "Base URL",
+    const [label, value] of [["Provider 名称", name], [
+      "Provider Base URL",
       Deno.env.get("E2E_LLM_MOCK_URL") || "http://noj-e2e-llm-mock:8002/v1",
-    ], ["API Key", "isolated-e2e-mock-key"]]
+    ], ["Provider API Key", "isolated-e2e-mock-key"]]
   ) {
-    await dialog.getByText(label, { exact: true }).locator("..").locator(
-      "input",
-    ).fill(value);
+    await dialog.getByLabel(label, { exact: true }).fill(value);
   }
   await dialog.getByRole("spinbutton", {
     name: "Provider RPM 上限",
@@ -104,7 +102,9 @@ async function createProvider(
     school,
     "POST",
     "providers",
-    () => dialog.getByRole("button", { name: "保存", exact: true }).click(),
+    () =>
+      dialog.getByRole("button", { name: "保存 Provider", exact: true })
+        .click(),
     201,
   );
   assertEquals(created.request.headers()["if-match"], "0");

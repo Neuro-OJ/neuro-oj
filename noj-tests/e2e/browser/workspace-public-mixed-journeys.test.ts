@@ -712,7 +712,13 @@ Deno.test({
           const otherStudent = await friend.page.request.get(
             `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateB}`,
           );
-          assertEquals(otherStudent.status(), 404);
+          assertEquals(otherStudent.status(), 200);
+          const peerSummary = (await otherStudent.json()).data;
+          assertEquals(peerSummary.can_view_answers, false);
+          assertEquals(peerSummary.can_view_source, false);
+          assertEquals(peerSummary.answers, undefined);
+          assertEquals(peerSummary.code, undefined);
+          assertEquals(peerSummary.assignment_origin, null);
           await gotoPage(learner.page, "/d/main/objective-submissions");
           await expect(learner.page.locator(`a[href$="/${privateA}"]`))
             .toHaveCount(0);
