@@ -30,14 +30,14 @@ let Some(mut conn) = connect().await else {
 
 实测对照（同一条命令，仅端口不可达）：
 
-| 状态 | 命令 | 结果 |
-| --- | --- | --- |
-| 修复前 | `REDIS_URL=redis://127.0.0.1:6398/9 cargo test --test user_claim_redis` | `7 passed; 0 failed` |
-| 修复后 | 同上 | `FAILED. 1 passed; 6 failed` |
+| 状态   | 命令                                                                    | 结果                         |
+| ------ | ----------------------------------------------------------------------- | ---------------------------- |
+| 修复前 | `REDIS_URL=redis://127.0.0.1:6398/9 cargo test --test user_claim_redis` | `7 passed; 0 failed`         |
+| 修复后 | 同上                                                                    | `FAILED. 1 passed; 6 failed` |
 
 被吞掉的 6 个用例包含本仓库最关键的并发回归证据
-`concurrent_claims_only_one_wins`（跨 worker 每用户互斥）。也就是说
-**CI 基础设施故障会表现为绿色**，与该文件头部注释"这些用例在每次 CI 都真实
+`concurrent_claims_only_one_wins`（跨 worker 每用户互斥）。也就是说 **CI
+基础设施故障会表现为绿色**，与该文件头部注释"这些用例在每次 CI 都真实
 执行"的承诺相反。
 
 ## Decision
@@ -58,8 +58,8 @@ let Some(mut conn) = connect().await else {
 1. **用 `#[ignore]` 属性替代运行时跳过**：拒绝。`#[ignore]` 默认不运行，
    本地开发反而会失去"REDIS_URL 在就执行"的便利；且 CI 需显式
    `--include-ignored`，改动面更大。
-2. **只对"未配置"打印提示、连不上仍然跳过但输出 warning**：拒绝。warning
-   不会让 CI 失败，等于维持现状。
+2. **只对"未配置"打印提示、连不上仍然跳过但输出 warning**：拒绝。warning 不会让
+   CI 失败，等于维持现状。
 3. **引入 nextest 的 skip 机制**：拒绝（本轮）。仓库 CI 用 `cargo test`
    的兼容路径，且 `#[ignore]`/skip 的语义迁移会牵动所有 judge 测试的既有守卫
    约定，超出本次修复范围。
