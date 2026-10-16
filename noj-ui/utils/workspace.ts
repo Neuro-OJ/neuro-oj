@@ -38,11 +38,23 @@ export interface WorkspaceMember {
 }
 export interface WorkspaceInvitation {
   id: string;
-  email: string;
+  classroom_id?: string | null;
+  mode: 'email' | 'general' | 'once';
+  email: string | null;
+  max_uses: number | null;
+  used_count: number;
   expires_at: string;
   used_at: string | null;
   revoked_at: string | null;
   created_at: string;
+}
+export interface WorkspaceInvitationCreated {
+  id: string;
+  token: string;
+  code: string;
+  mode: 'email' | 'general' | 'once';
+  max_uses: number | null;
+  expires_at: string;
 }
 export interface WorkspaceJoinRequest {
   id: string;
@@ -56,12 +68,42 @@ export interface WorkspaceJoinRequest {
 export interface WorkspaceInvitationPreview {
   domain_slug: string;
   domain_name: string;
-  email: string;
+  email: string | null;
+  mode: 'email' | 'general' | 'once';
+  max_uses: number | null;
+  used_count: number;
   expires_at: string;
   can_register: boolean;
   classroom_id?: string;
   classroom_name?: string;
 }
+export type WorkspaceInvitationStatus = 'active' | 'used_up' | 'expired' | 'revoked';
+
+export function getInvitationStatus(invitation: {
+  revoked_at: string | null;
+  expires_at: string;
+  max_uses: number | null;
+  used_count: number;
+}): WorkspaceInvitationStatus {
+  if (invitation.revoked_at) return 'revoked';
+  const expiry = Date.parse(invitation.expires_at);
+  if (Number.isFinite(expiry) && expiry <= Date.now()) return 'expired';
+  if (invitation.max_uses !== null && invitation.used_count >= invitation.max_uses) return 'used_up';
+  return 'active';
+}
+
+export const WORKSPACE_INVITATION_STATUS_LABELS: Record<WorkspaceInvitationStatus, string> = {
+  active: '有效',
+  used_up: '已用尽',
+  expired: '已过期',
+  revoked: '已撤销',
+};
+
+export const WORKSPACE_INVITATION_MODE_LABELS: Record<'email' | 'general' | 'once', string> = {
+  email: '指定邮箱',
+  general: '通用',
+  once: '一次性',
+};
 export interface WorkspaceLimits {
   members: number | null;
   problems: number | null;
@@ -122,12 +164,41 @@ export function workspaceProblemPath(slug: string, reference: string) {
 export function workspaceSolvePath(slug: string, reference: string) {
   return workspaceProblemPath(slug, reference).replace('/problems/', '/solve/');
 }
+/** 链接令牌与分组短码共用兑换路径，不将凭据放入 API URL。 */
+export function isInvitationCredential(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (/^[0-9a-f-]{72}$/i.test(trimmed)) return true;
+  const cleaned = trimmed.replaceAll('-', '').toUpperCase();
+  return /^[2-9A-HJ-NP-Z]{12}$/.test(cleaned);
+}
+
+/** 规范化短码为 4 字符一组展示，如 XXXX-XXXX-XXXX */
+export function formatInvitationCode(code: string): string {
+  const cleaned = code.replaceAll(/[^2-9A-HJ-NP-Za-hj-np-z]/g, '').toUpperCase().slice(0, 12);
+  const parts = cleaned.match(/.{1,4}/g);
+  return parts ? parts.join('-') : cleaned;
+}
+
+/** 规范化凭据（长 token 保持原样，短码大写去连字符） */
+export function normalizeInvitationCredential(value: string): string {
+  const trimmed = value.trim();
+  if (/^[0-9a-f-]{72}$/i.test(trimmed)) return trimmed;
+  const cleaned = trimmed.replaceAll('-', '').toUpperCase();
+  if (/^[2-9A-HJ-NP-Z]{12}$/.test(cleaned)) return cleaned;
+  return trimmed;
+}
+
 /** 邀请在 URL fragment 中传递，不进入请求路径、Referer 或 API 日志。 */
 export function workspaceInvitationLink(origin: string, token: string, registration = false) {
-  if (!/^[0-9a-f-]{72}$/.test(token)) throw new Error('邀请无效');
-  return `${origin}${registration ? '/register' : '/join'}#invitation=${encodeURIComponent(token)}`;
+  if (!isInvitationCredential(token)) throw new Error('邀请无效');
+  return `${origin}${registration ? '/register' : '/join'}#token=${encodeURIComponent(token)}`;
 }
-export function workspaceInvitationToken(hash: string) {
-  const token = new URLSearchParams(hash.replace(/^#/, '')).get('invitation');
-  return token && /^[0-9a-f-]{72}$/.test(token) ? token : null;
+
+export function workspaceInvitationToken(hash: string): string | null {
+  const rawHash = hash.replace(/^#/, '');
+  const params = new URLSearchParams(rawHash);
+  const raw = params.get('token') ?? params.get('invitation') ?? (rawHash && !rawHash.includes('=') ? rawHash : null);
+  if (!raw) return null;
+  return isInvitationCredential(raw) ? raw.trim() : null;
 }
