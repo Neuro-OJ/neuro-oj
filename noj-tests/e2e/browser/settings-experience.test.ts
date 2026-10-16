@@ -144,7 +144,27 @@ Deno.test({
       await page.reload();
       await expect(username).toHaveValue("");
 
-      await gotoPage(page, `/d/${slug}/queue`);
+      const queueRequests = new Map<string, number>();
+      page.on("request", (request) => {
+        const path = new URL(request.url()).pathname;
+        if (request.method() === "GET" && path.endsWith("/queue")) {
+          queueRequests.set(path, (queueRequests.get(path) ?? 0) + 1);
+        }
+      });
+      const checkQueueRequests = async (path: string) => {
+        await expect(page.getByText("更新时间:", { exact: false }))
+          .toBeVisible();
+        // 观察时间覆盖 2 秒降级轮询周期，确认健康 SSE 下没有启动请求风暴。
+        await page.waitForTimeout(2500);
+        const initial = queueRequests.get(path) ?? 0;
+        assertEquals(initial >= 1 && initial <= 2, true, `${path}: ${initial}`);
+        console.log(`  ${path} 初始队列请求数：${initial}`);
+        await page.getByRole("button", { name: "刷新队列", exact: true })
+          .click();
+        await expect.poll(() => queueRequests.get(path)).toBe(initial + 1);
+      };
+      await gotoPage(page, "/d/main/queue");
+      await checkQueueRequests("/api/v1/domains/main/queue");
       await page.getByRole("button", { name: "实例", exact: true }).click();
       await expect(page.getByRole("button", { name: "实例", exact: true }))
         .toHaveAttribute("aria-pressed", "true");
@@ -154,6 +174,7 @@ Deno.test({
       await expect(
         page.getByText("明细仅显示你有权查看的任务", { exact: true }),
       ).toBeVisible();
+      await checkQueueRequests("/api/v1/instance/queue");
       await page.getByRole("button", { name: "当前域", exact: true }).click();
       await expect(page.getByRole("button", { name: "当前域", exact: true }))
         .toHaveAttribute("aria-pressed", "true");

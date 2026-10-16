@@ -577,10 +577,10 @@
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 249 | ignore |
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 261 | ignore |
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 291 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 29 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 41 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 63 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 143 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 35 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 47 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 69 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 149 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 28 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 47 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 67 | ignore |

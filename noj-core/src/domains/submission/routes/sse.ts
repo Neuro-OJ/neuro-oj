@@ -162,7 +162,7 @@ domainSubmissionSse.get(
   (c) => submissionEvents(c, true),
 );
 
-/** 旧队列订阅固定 main，每次推送和重放重新验证域访问，只返回定位信号。 */
+/** 队列连接时校准当前状态，后续推送重新验证域访问，只返回定位信号。 */
 async function queueEvents(c: Context<AuthEnv>, instance = false) {
   const slug = c.req.param("slug") ?? DEFAULT_DOMAIN_SLUG;
   if (!instance && !c.req.param("slug")) await ensureDefaultWorkspace();
@@ -200,25 +200,8 @@ async function queueEvents(c: Context<AuthEnv>, instance = false) {
         }
       },
     );
-    for (
-      const missed of await replaySseEvents(
-        [channel],
-        lastEventId(c),
-        200,
-      )
-    ) {
-      if (streamContext.closed) return;
-      try {
-        await streamContext.stream.writeSSE({
-          event: "queue:changed",
-          id: String(missed.id),
-          data: await locator(),
-        });
-      } catch {
-        streamContext.close();
-        return;
-      }
-    }
+    // 每次连接已通知客户端读取完整当前队列，无需逐条重放历史失效信号。
+    // 重放会让页面为同一当前状态连续发起最多 200 次 REST 请求。
   });
 }
 sse.get("/queue/events", (c) => queueEvents(c));
