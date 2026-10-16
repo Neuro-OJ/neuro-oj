@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     :to="domainSlug ? workspacePath(domainSlug, `submissions/${submission.public_id || submission.id}`) : publicUrl('submission', submission.public_id || submission.id)"
-    class="relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary hover:shadow-dropdown group"
+    class="relative block px-3 py-2 border border-border/80 rounded-lg bg-bg-panel no-underline transition-all duration-150 ease-out hover:border-primary/50 hover:bg-primary-hover-bg/30 hover:shadow-xs group"
   >
     <div class="grid grid-cols-[auto_1fr] gap-x-2">
       <!-- 左列：icon + #id（跨两行） -->

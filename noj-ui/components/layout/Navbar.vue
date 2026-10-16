@@ -85,14 +85,29 @@ onMounted(() => {
         </UDropdownMenu>
       </nav>
       <div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
-        <UButton :to="workspacePath(slug, 'search')" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="搜索当前域" />
+        <NuxtLink
+          :to="workspacePath(slug, 'search')"
+          class="hidden sm:inline-flex items-center gap-2 rounded-md border border-border/80 bg-bg-sunken/60 px-2.5 py-1.5 text-xs text-text-muted hover:border-primary/40 hover:text-text transition-colors no-underline"
+          aria-label="全局搜索 (快捷键 Ctrl+K)"
+        >
+          <UIcon name="i-lucide-search" class="size-3.5 text-text-muted" />
+          <span class="text-xs">搜索...</span>
+          <kbd class="ml-1 inline-flex items-center gap-0.5 rounded border border-border bg-white px-1.5 py-0.5 font-mono text-[10px] text-text-secondary shadow-xs">
+            <span class="text-[9px]">⌘</span>K
+          </kbd>
+        </NuxtLink>
+        <UButton :to="workspacePath(slug, 'search')" class="sm:hidden" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="搜索当前域" />
         <UButton v-if="user && communityEnabled" :to="communityPath(slug, 'notifications')" color="neutral"
-          variant="ghost" icon="i-lucide-bell" aria-label="社区通知">
-          <span v-if="unreadCount" class="text-xs tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+          variant="ghost" icon="i-lucide-bell" aria-label="社区通知" class="relative">
+          <span v-if="unreadCount" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-text px-1 text-[10px] font-bold text-white tabular-nums">
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
         </UButton>
         <UButton v-if="user && teachingEnabled" :to="workspacePath(slug, 'notifications')" color="neutral"
-          variant="ghost" icon="i-lucide-bell-ring" aria-label="教学通知">
-          <span v-if="educationNotifications.data.value?.data.unread" class="text-xs tabular-nums">{{ educationNotifications.data.value.data.unread > 99 ? '99+' : educationNotifications.data.value.data.unread }}</span>
+          variant="ghost" icon="i-lucide-bell-ring" aria-label="教学通知" class="relative">
+          <span v-if="educationNotifications.data.value?.data.unread" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white tabular-nums">
+            {{ educationNotifications.data.value.data.unread > 99 ? '99+' : educationNotifications.data.value.data.unread }}
+          </span>
         </UButton>
         <UButton color="neutral" variant="ghost" size="sm" :aria-label="t('common.language')"
           @click="setLocale(isEnglish ? 'zh-CN' : 'en-US')">{{ isEnglish ? '中文' : 'EN' }}</UButton>

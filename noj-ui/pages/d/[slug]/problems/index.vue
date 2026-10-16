@@ -59,26 +59,26 @@ useSeoMeta({ title: '题库' });
 </script>
 <template>
   <div class="space-y-5">
-    <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <div
-          class="flex size-10 shrink-0 items-center justify-center rounded border border-primary/20 bg-primary-bg text-primary">
+          class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary-bg text-primary shadow-xs">
           <UIcon name="i-lucide-book-open" class="size-5" />
         </div>
         <div>
           <h1 class="text-2xl font-bold leading-tight text-text">题库</h1>
-          <p class="mt-1 text-xs text-text-muted">{{ domain?.name }} · 算法与 AI 在线评测</p>
+          <p class="mt-0.5 text-xs text-text-muted">{{ domain?.name }} · 算法与 AI 在线评测</p>
         </div>
       </div>
-      <span
-        class="rounded border border-border bg-bg-sunken px-2.5 py-1 font-mono text-xs tabular-nums text-text-muted">共 {{ data?.total ?? '—' }} 道题</span>
-    </div>
-    <div v-if="manageItems.length" class="flex flex-wrap items-center justify-end gap-2">
-      <UButton v-if="domain?.status==='active' && (can('problem:write_own') || can('problem:write_any'))"
-        :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
-      <UDropdownMenu :items="manageItems">
-        <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>
-      </UDropdownMenu>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <span
+          class="rounded-md border border-border bg-bg-sunken px-2.5 py-1 font-mono text-xs tabular-nums text-text-muted">共 {{ data?.total ?? '—' }} 道题</span>
+        <UButton v-if="domain?.status==='active' && (can('problem:write_own') || can('problem:write_any'))"
+          :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
+        <UDropdownMenu v-if="manageItems.length" :items="manageItems">
+          <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>
+        </UDropdownMenu>
+      </div>
     </div>
     <ProblemFilterBar :keyword="keyword" :difficulty="difficulty" :kind="kind" :judge-backend="judgeBackend"
       :progress="progress" :signed-in="!!user"

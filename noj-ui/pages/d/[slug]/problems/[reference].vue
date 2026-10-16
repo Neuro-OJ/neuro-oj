@@ -54,9 +54,9 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
         <UButton v-if="!inlineAnswer" :to="solveTo" class="lg:hidden"
           icon="i-lucide-code-2">{{ data.content.submission_mode === 'ui' ? '打开作答界面' : '开始编码' }}</UButton>
       </header>
-      <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div class="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_260px] items-start">
         <div class="min-w-0 space-y-5">
-          <article class="rounded border border-border bg-bg-panel p-5 shadow-card sm:p-7">
+          <article class="rounded-lg border border-border bg-bg-panel p-5 shadow-card sm:p-7">
             <MarkdownRenderer :content="data.content.description" />
             <ProblemSamples :samples="data.content.samples" />
           </article>
@@ -65,9 +65,9 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           <DomainProblemVersions v-if="showVersions" :key="`${slug}:${reference}:${user?.id}:versions`" :slug="slug!"
             :reference="reference" />
         </div>
-        <aside class="space-y-4">
-          <div class="space-y-3 rounded border border-border bg-bg-panel p-4">
-            <UButton v-if="!inlineAnswer" :to="solveTo" class="w-full justify-center"
+        <aside class="space-y-4 lg:sticky lg:top-20">
+          <div class="space-y-3 rounded-lg border border-border bg-bg-panel p-4 shadow-card">
+            <UButton v-if="!inlineAnswer" :to="solveTo" size="lg" color="primary" class="w-full justify-center shadow-xs"
               icon="i-lucide-code-2">{{ data.content.submission_mode === 'ui' ? '打开作答界面' : '开始编码' }}</UButton>
             <UButton v-if="user"
               :to="{path:`/d/${slug}/${data.content.kind==='objective'?'objective-submissions':'submissions'}`,query:{problem_id:data.reference.problem_id}}"

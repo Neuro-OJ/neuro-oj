@@ -20,7 +20,7 @@ useEducationNotifications(async () => {
 }, enabled);
 </script>
 <template>
-  <section v-if="enabled" class="border-b border-border px-4 py-4 sm:px-6" aria-label="教学与学习">
+  <section v-if="enabled" class="px-5 py-5 sm:px-6" aria-label="教学与学习">
     <div class="flex flex-wrap items-center gap-3">
       <h2 class="mr-auto text-sm font-semibold text-text">教学与学习</h2>
       <USelect v-model="mode" size="sm"

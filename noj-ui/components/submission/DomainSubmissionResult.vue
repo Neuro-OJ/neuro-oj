@@ -19,15 +19,65 @@ const subtasks = computed(() =>
 <template>
   <div class="space-y-4">
     <UAlert v-if="!visible" color="info" title="提交已受理，比赛规定的结果暂未公开" />
-    <UCard v-else>
-      <h3 class="mb-3 font-semibold">评测结果</h3>
-      <div class="flex flex-wrap gap-5 text-sm tabular-nums">
-        <span :class="verdict === 'AC' ? 'font-semibold text-success-text' : verdict ? 'font-semibold text-error-text' : ''">{{ verdict ? getResultDef(verdict).label : submission.result ? getStatusLabel(submission.status ?? '', submission.result.status) : '等待正式结果' }}</span>
-        <span v-if="submission.result?.score != null">{{ formatScore(submission.result.score) }} 分</span>
-        <span v-if="submission.result?.time_ms != null">评测耗时 {{ formatTime(submission.result.time_ms) }}</span>
-        <span v-if="submission.result?.memory_kb != null">{{ formatMemory(submission.result.memory_kb) }}</span>
+    <div
+      v-else
+      class="rounded-lg border p-5 shadow-card transition-colors"
+      :class="verdict === 'AC'
+        ? 'border-signal/30 bg-signal/5'
+        : verdict
+        ? 'border-error-text/30 bg-error-text/5'
+        : 'border-border bg-bg-panel'"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div
+            class="flex size-11 shrink-0 items-center justify-center rounded-full text-xl"
+            :class="verdict === 'AC'
+              ? 'bg-signal/20 text-signal'
+              : verdict
+              ? 'bg-error-text/20 text-error-text'
+              : 'bg-primary-bg text-primary animate-pulse'"
+          >
+            <UIcon
+              :name="verdict === 'AC'
+                ? 'i-lucide-check-circle-2'
+                : verdict
+                ? 'i-lucide-alert-circle'
+                : 'i-lucide-clock'"
+              class="size-6"
+            />
+          </div>
+          <div>
+            <h3
+              class="text-xl font-bold tracking-tight"
+              :class="verdict === 'AC' ? 'text-signal' : verdict ? 'text-error-text' : 'text-text'"
+            >
+              {{ verdict ? getResultDef(verdict).label : submission.result ? getStatusLabel(submission.status ?? '', submission.result.status) : '等待正式结果' }}
+            </h3>
+            <p class="text-xs text-text-muted mt-0.5">
+              {{ verdict === 'AC' ? '所有测试点顺利通过' : verdict ? '部分测试用例未达成预期判定' : '评测排队中或正在沙箱执行' }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 关键指标胶囊 -->
+        <div class="flex flex-wrap items-center gap-2.5 text-xs tabular-nums">
+          <div v-if="submission.result?.score != null" class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 font-semibold text-text shadow-xs">
+            <span class="text-text-muted text-[11px]">得分</span>
+            <span class="text-base text-primary font-bold">{{ formatScore(submission.result.score) }}</span>
+            <span class="text-[11px] text-text-muted">分</span>
+          </div>
+          <div v-if="submission.result?.time_ms != null" class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 text-text-secondary shadow-xs">
+            <UIcon name="i-lucide-clock" class="size-3.5 text-text-muted" />
+            <span>{{ formatTime(submission.result.time_ms) }}</span>
+          </div>
+          <div v-if="submission.result?.memory_kb != null" class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 text-text-secondary shadow-xs">
+            <UIcon name="i-lucide-cpu" class="size-3.5 text-text-muted" />
+            <span>{{ formatMemory(submission.result.memory_kb) }}</span>
+          </div>
+        </div>
       </div>
-    </UCard>
+    </div>
     <UCard v-if="visible && submission.resource_available && oi?.compile_error">
       <h3 class="mb-3 font-semibold text-error-text">编译诊断</h3>
       <pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{{ oi.compile_error }}</pre>
