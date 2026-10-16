@@ -317,19 +317,20 @@ Deno.test({
             name: "班级成员",
             exact: true,
           }).click();
+          await teacher.page.getByRole("button", { name: /指定邮箱/ }).click();
           await teacher.page.getByRole("textbox", {
-            name: "学生邀请邮箱",
+            name: "受邀人邮箱",
             exact: true,
           }).fill(studentEmail);
           await teacher.page.getByRole("button", {
-            name: "生成邀请链接",
+            name: "生成邀请",
             exact: true,
           }).click();
           const invitation = teacher.page.getByRole("textbox", {
-            name: "学生邀请链接",
+            name: "生成的邀请链接",
             exact: true,
           });
-          await expect(invitation).toHaveValue(/\/join#invitation=/);
+          await expect(invitation).toHaveValue(/\/join#token=/);
           await student.page.goto(await invitation.inputValue());
           await ready(student.page);
           await student.page.getByRole("textbox", {
@@ -344,7 +345,9 @@ Deno.test({
             name: "接受邀请",
             exact: true,
           }).click();
-          await student.page.waitForURL(`${UI_URL}/d/${slug}`);
+          await student.page.waitForURL(
+            `${UI_URL}/d/${slug}/classrooms/${classroomId}`,
+          );
           await teacher.page.reload();
           await ready(teacher.page);
           await expect(

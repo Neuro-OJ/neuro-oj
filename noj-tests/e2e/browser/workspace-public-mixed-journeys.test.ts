@@ -784,9 +784,10 @@ Deno.test({
               exact: true,
             }),
           ).toHaveValue(`model-${schoolA}`);
+          await gotoPage(organizer.page, `/d/${schoolA}/settings/llm/usage`);
           await expect(
             organizer.page.getByRole("heading", {
-              name: "本域用量",
+              name: "LLM 用量统计",
               exact: true,
             }),
           ).toBeVisible();
@@ -810,6 +811,7 @@ Deno.test({
           await expect(
             learner.page.getByText(`独立Provider ${schoolA}`, { exact: true }),
           ).toHaveCount(0);
+          await gotoPage(learner.page, `/d/${schoolB}/settings/llm/usage`);
           await write(
             learner.page,
             "GET",

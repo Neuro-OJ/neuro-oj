@@ -363,11 +363,13 @@ Deno.test({
               true,
             );
             for (
-              const [page, model] of [[browserA.page, nextA], [
+              const [page, model, slug] of [[browserA.page, nextA, a.slug], [
                 browserB.page,
                 modelB,
+                b.slug,
               ]] as const
             ) {
+              await gotoPage(page, `/d/${slug}/settings/llm/usage`);
               await page.getByRole("textbox", {
                 name: "按题筛选用量",
                 exact: true,
