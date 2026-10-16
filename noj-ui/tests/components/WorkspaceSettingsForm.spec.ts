@@ -97,4 +97,20 @@ describe('空间设置与并发编辑', () => {
     expect(view.findAll('input[type="checkbox"]')).toHaveLength(1);
     view.unmount();
   });
+  it('disabled 为 true 或域非活跃时禁用保存按钮且拦截提交，但草稿可继续编辑', async () => {
+    const domain = detail();
+    const view = mount(WorkspaceSettingsForm, {
+      props: { domain, modules, canArchive: false, disabled: true },
+      global: { stubs },
+    });
+    const submitBtn = view.get('button[type="submit"]');
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true);
+    const name = view.get('input[aria-label="空间名称"]');
+    await name.setValue('草稿编辑测试');
+    expect((name.element as HTMLInputElement).value).toBe('草稿编辑测试');
+    await view.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.update).not.toHaveBeenCalled();
+    view.unmount();
+  });
 });

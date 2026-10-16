@@ -40,7 +40,7 @@
                         :label="t('auth.email')"
                         :placeholder="t('auth.emailPlaceholder')"
                         autocomplete="email"
-                        :disabled="loading || !!invitation"
+                        :disabled="loading || isEmailLocked"
                         :error="fieldErrors.email"
                         @focus="fieldErrors.email = ''"
                     >
@@ -138,6 +138,9 @@ const auth = useAuth()
 const { api } = useApi()
 const invitationToken = ref("")
 const invitation = ref<WorkspaceInvitationPreview | null>(null)
+const isEmailLocked = computed(() =>
+    invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' && invitation.value.email.length > 0
+)
 const { t, locale } = useI18n()
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
@@ -150,25 +153,34 @@ onMounted(async () => {
         invitationToken.value = workspaceInvitationToken(route.hash) ?? ""
         if (new URLSearchParams(route.hash.replace(/^#/, "")).has("invitation") && !invitationToken.value) throw new Error("邀请链接无效")
         if (invitationToken.value) {
-            invitation.value = (await api.post<{ data: WorkspaceInvitationPreview }>("/api/v1/auth/domain-invitation", { token: invitationToken.value }, { silent: true })).data
-            form.email = invitation.value.email
+            const preview = (await api.post<{ data: WorkspaceInvitationPreview }>(
+                "/api/v1/auth/domain-invitation",
+                { token: invitationToken.value },
+                { silent: true }
+            )).data
+            invitation.value = preview
+            if (preview.mode === 'email' && typeof preview.email === 'string') {
+                form.email = preview.email
+            }
         }
         const [providers, status] = await Promise.all([
             auth.getOAuthProviders(),
             auth.getRegisterStatus(),
         ])
         oauthProviders.value = invitationToken.value ? [] : providers
-        registerRestricted.value = status.reason === "register_disabled"
-            ? t('auth.registerDisabled')
-            : status.reason === "email_unconfigured"
-            ? t('auth.emailUnconfigured')
-            : status.reason === "admin_only"
-            ? "此实例由平台管理员开设账号"
-            : status.reason === "invitation_required" && !invitation.value?.can_register
-            ? "注册需要有效邀请"
-            : invitation.value && !invitation.value.can_register
-            ? "此邀请不能用于创建账号，请使用已有账号登录"
-            : ""
+        if (status.reason === "register_disabled") {
+            registerRestricted.value = t('auth.registerDisabled')
+        } else if (status.reason === "email_unconfigured") {
+            registerRestricted.value = t('auth.emailUnconfigured')
+        } else if (status.reason === "admin_only") {
+            registerRestricted.value = "此实例由平台管理员开设账号"
+        } else if (status.reason === "invitation_required" && !invitation.value?.can_register) {
+            registerRestricted.value = "注册需要有效邀请"
+        } else if (invitation.value && !invitation.value.can_register) {
+            registerRestricted.value = "此邀请不能用于创建账号，请使用已有账号登录"
+        } else {
+            registerRestricted.value = ""
+        }
     } catch (cause) {
         oauthProviders.value = []
         registerRestricted.value = extractApiError(cause).message

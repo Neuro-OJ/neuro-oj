@@ -225,11 +225,11 @@ const tableRows = computed(() => {
   });
 });
 
-const statusBadgeClasses: Record<WorkspaceInvitationStatus, string> = {
-  active: 'bg-green-50 text-success-600 border-green-200',
-  used_up: 'bg-bg-sunken text-text-muted border-border',
-  expired: 'bg-amber-50 text-amber-700 border-amber-200',
-  revoked: 'bg-red-50 text-error-text border-red-200',
+const statusBadgeColors: Record<WorkspaceInvitationStatus, 'success' | 'neutral' | 'warning' | 'error'> = {
+  active: 'success',
+  used_up: 'neutral',
+  expired: 'warning',
+  revoked: 'error',
 };
 
 watch(
@@ -350,6 +350,7 @@ onMounted(() => {
             <div class="grid grid-cols-3 gap-2">
               <button
                 type="button"
+                :aria-pressed="mode === 'general'"
                 :class="[
                   'rounded border px-3 py-2 text-left text-xs transition-colors',
                   mode === 'general'
@@ -363,6 +364,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
+                :aria-pressed="mode === 'email'"
                 :class="[
                   'rounded border px-3 py-2 text-left text-xs transition-colors',
                   mode === 'email'
@@ -376,6 +378,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
+                :aria-pressed="mode === 'once'"
                 :class="[
                   'rounded border px-3 py-2 text-left text-xs transition-colors',
                   mode === 'once'
@@ -551,14 +554,13 @@ onMounted(() => {
             {{ row.usage }}
           </span>
           <span v-else-if="column.key === 'status'">
-            <span
-              :class="[
-                'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border tabular-nums',
-                statusBadgeClasses[row.status as WorkspaceInvitationStatus],
-              ]"
+            <UBadge
+              :color="statusBadgeColors[row.status as WorkspaceInvitationStatus] ?? 'neutral'"
+              variant="subtle"
+              size="sm"
             >
               {{ WORKSPACE_INVITATION_STATUS_LABELS[row.status as WorkspaceInvitationStatus] ?? row.status }}
-            </span>
+            </UBadge>
           </span>
           <span v-else-if="column.key === 'expires_at'" class="tabular-nums text-xs text-text-secondary">
             {{ new Date(row.expires_at as string).toLocaleString() }}

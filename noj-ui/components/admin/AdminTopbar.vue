@@ -73,6 +73,7 @@ const ROUTE_MAP: Record<string, RouteMetaMap> = {
   "/admin/roles": { group: "用户与安全", label: "角色权限" },
   "/admin/blacklist": { group: "用户与安全", label: "黑名单管理" },
   "/admin/legal": { group: "用户与安全", label: "法律与合规" },
+  "/admin/instance": { group: "系统运维", label: "实例与域治理" },
   "/admin/settings": { group: "系统运维", label: "系统设置" },
   "/admin/audit-logs": { group: "系统运维", label: "审计日志" },
 }

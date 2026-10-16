@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, defineComponent, h, reactive, ref, shallowRef, Suspense, watch } from 'vue';
-import LlmPage from '~/pages/d/[slug]/llm/index.vue';
+import { type Component, computed, defineComponent, h, reactive, ref, shallowRef, Suspense, watch } from 'vue';
+import LlmProviderPage from '~/pages/d/[slug]/settings/llm/index.vue';
+import LlmQuotaPage from '~/pages/d/[slug]/settings/llm/quotas.vue';
 import { useDomainLlm } from '~/composables/useDomainLlm';
 const api = {
   settings: vi.fn(),
@@ -48,6 +49,8 @@ beforeEach(() => {
   }
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
+  vi.stubGlobal('useRoute', () => ({ path: '/d/school/settings/llm', hash: '' }));
+  vi.stubGlobal('navigateTo', vi.fn());
   vi.stubGlobal('useAuth', () => ({ user }));
   vi.stubGlobal('useWorkspace', () => ({ slug: scope, domain: ref({ status: 'active' }), can: () => true }));
   vi.stubGlobal('useWorkspaceActionScope', () => () => {
@@ -100,11 +103,13 @@ const input = {
   emits: ['update:modelValue'],
   template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
 };
-async function view() {
-  const wrapper = defineComponent({ setup: () => () => h(Suspense, null, { default: () => h(LlmPage) }) });
+async function view(component: Component = LlmProviderPage) {
+  const wrapper = defineComponent({ setup: () => () => h(Suspense, null, { default: () => h(component) }) });
   const result = mount(wrapper, {
     global: {
       stubs: {
+        DomainSettingsShell: { template: '<div><slot /></div>' },
+        AdminPageHeader: { props: ['title'], template: '<header><h2>{{ title }}</h2><slot name="actions" /></header>' },
         UCard: { template: '<section><slot /></section>' },
         DomainLlmAliases: true,
         UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
@@ -132,7 +137,7 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
       data: [quotaRow(), { ...quotaRow(), id: 'seed-user', scope_type: 'user', scope_id: '' }],
       caps,
     });
-    const result = await view();
+    const result = await view(LlmQuotaPage);
     expect(result.get('details').text()).toContain('额度参考值（未生效）');
     expect(result.get('details').text()).toContain('不限制实际调用');
     expect(result.findAll('button').filter((button) => button.text() === '编辑配额')).toHaveLength(1);
@@ -152,7 +157,7 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
   it('Provider编辑保留RPM和TPM，连接测试明确属于当前域Provider', async () => {
     api.providers.mockResolvedValue({ data: [{ ...provider(), rpm_limit: 12, tpm_limit: 3000 }] });
     api.testProvider.mockResolvedValue({ data: { status: 'ok', model: 'school-model', latency_ms: 18 } });
-    const result = await view();
+    const result = await view(LlmProviderPage);
     await result.findAll('button').find((button) => button.text() === '编辑')!.trigger('click');
     expect((result.get('input[aria-label="Provider RPM 上限"]').element as HTMLInputElement).value).toBe('12');
     await result.findAll('form').find((form) => form.text().includes('API Key'))!.trigger('submit');
@@ -171,7 +176,7 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
     expect(result.text()).toContain('连接成功，耗时 18 ms');
   });
   it('成功保存使用自己的写响应版本，随后列表有别人的新版本也不冒充自己的编辑依据', async () => {
-    const result = await view();
+    const result = await view(LlmQuotaPage);
     await result.findAll('button').find((button) => button.text() === '编辑配额')!.trigger('click');
     await result.get('input[aria-label="调用次数上限"]').setValue('6');
     api.quotas.mockResolvedValue({ data: [quotaRow(9)], caps });
@@ -183,7 +188,7 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
     expect(api.saveQuota).toHaveBeenLastCalledWith('school', expect.objectContaining({ id: 'q1', max_calls: 5 }), 6);
   });
   it('Provider冲突保留表单和打开时版本，重读列表不偷换编辑依据', async () => {
-    const result = await view();
+    const result = await view(LlmProviderPage);
     await result.findAll('button').find((button) => button.text() === '编辑')!.trigger('click');
     const name = result.findAll('label').find((label) => label.text() === '名称')!.get('input');
     await name.setValue('我的未保存编辑');
@@ -199,29 +204,33 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
     expect(result.text()).toContain('Provider 已变化');
     expect((name.element as HTMLInputElement).value).toBe('我的未保存编辑');
     api.providers.mockResolvedValue({ data: [provider(9)] });
-    await result.findAll('button').find((button) => button.text() === '重新读取 Provider 与额度列表')!.trigger('click');
+    await result.findAll('button').find((button) => button.text().includes('重新读取 Provider'))!.trigger('click');
     await flushPromises();
     await result.findAll('form').find((form) => form.text().includes('API Key'))!.trigger('submit');
     await flushPromises();
     expect(api.updateProvider).toHaveBeenLastCalledWith('school', 'p1', expect.anything(), 3);
   });
   it('quota冲突保留原revision，保存Provider不覆盖未保存默认模型', async () => {
-    const result = await view();
-    await result.get('input[aria-label="默认模型"]').setValue('尚未保存模型');
-    await result.findAll('button').find((button) => button.text() === '停用')!.trigger('click');
+    const providerResult = await view(LlmProviderPage);
+    await providerResult.get('input[aria-label="默认模型"]').setValue('尚未保存模型');
+    await providerResult.findAll('button').find((button) => button.text() === '停用')!.trigger('click');
     await flushPromises();
-    expect((result.get('input[aria-label="默认模型"]').element as HTMLInputElement).value).toBe('尚未保存模型');
-    await result.findAll('button').find((button) => button.text() === '编辑配额')!.trigger('click');
-    await result.get('input[aria-label="调用次数上限"]').setValue('6');
+    expect((providerResult.get('input[aria-label="默认模型"]').element as HTMLInputElement).value).toBe('尚未保存模型');
+    providerResult.unmount();
+
+    const quotaResult = await view(LlmQuotaPage);
+    await quotaResult.findAll('button').find((button) => button.text() === '编辑配额')!.trigger('click');
+    await quotaResult.get('input[aria-label="调用次数上限"]').setValue('6');
     api.saveQuota.mockRejectedValue({ statusCode: 409, data: { error: '额度已经变化' } });
-    await result.findAll('form').find((form) => form.text().includes('更新配额'))!.trigger('submit');
+    await quotaResult.findAll('form').find((form) => form.text().includes('更新配额'))!.trigger('submit');
     await flushPromises();
     expect(api.saveQuota).toHaveBeenCalledWith('school', expect.objectContaining({ id: 'q1', max_calls: 6 }), 5);
-    expect(result.text()).toContain('额度已经变化');
-    expect((result.get('input[aria-label="调用次数上限"]').element as HTMLInputElement).value).toBe('6');
+    expect(quotaResult.text()).toContain('额度已经变化');
+    expect((quotaResult.get('input[aria-label="调用次数上限"]').element as HTMLInputElement).value).toBe('6');
+    quotaResult.unmount();
   });
   it('用户×源题显示用户名和来源题号，创建发送stable IDs和版本0', async () => {
-    const result = await view();
+    const result = await view(LlmQuotaPage);
     await result.get('select[aria-label="配额作用域"]').setValue('user_problem');
     expect(result.text()).toContain('学生甲');
     expect(result.text()).toContain('main:1001');
@@ -238,7 +247,7 @@ describe('域 LLM 并发编辑与自然配额对象', () => {
     expect(result.find('input[aria-label="配额对象"]').exists()).toBe(false);
   });
   it('切域或账号关闭旧编辑，旧请求完成不覆盖新域列表', async () => {
-    const result = await view();
+    const result = await view(LlmProviderPage);
     await result.findAll('button').find((button) => button.text() === '编辑')!.trigger('click');
     let resolve!: () => void;
     api.updateProvider.mockReturnValue(

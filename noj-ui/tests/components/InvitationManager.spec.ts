@@ -146,7 +146,9 @@ describe('InvitationManager 邀请管理组件', () => {
 
     // 切换到指定邮箱模式，未输入邮箱时校验报错
     const emailModeBtn = view.findAll('button').find((b) => b.text().includes('指定邮箱'))!;
+    expect(emailModeBtn.attributes('aria-pressed')).toBe('false');
     await emailModeBtn.trigger('click');
+    expect(emailModeBtn.attributes('aria-pressed')).toBe('true');
     await view.get('form').trigger('submit');
     expect(view.text()).toContain('请输入合法的邮箱地址');
 
@@ -159,6 +161,8 @@ describe('InvitationManager 邀请管理组件', () => {
     // 切换到通用邀请模式并选择限制人数，未填正整数时报错
     const generalModeBtn = view.findAll('button').find((b) => b.text().includes('通用邀请'))!;
     await generalModeBtn.trigger('click');
+    expect(generalModeBtn.attributes('aria-pressed')).toBe('true');
+    expect(emailModeBtn.attributes('aria-pressed')).toBe('false');
     const limitRadio = view.findAll('input[type="radio"]').find((r) =>
       (r.element as HTMLInputElement).value === 'limit'
     )!;

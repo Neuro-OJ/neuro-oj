@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import CommunityManage from '~/components/feature/community/CommunityManage.vue';
+import { workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], ssr: false });
-const { key } = useCommunityScope();
+const route = useRoute();
+const slug = workspaceSlugFromPath(route.path) ?? 'main';
+await navigateTo(workspacePath(slug, 'settings/community'), { replace: true });
 </script>
+
 <template>
-  <DomainSettingsShell>
-    <CommunityManage :key="key" />
-  </DomainSettingsShell>
+  <div />
 </template>

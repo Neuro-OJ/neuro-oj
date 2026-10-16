@@ -4,9 +4,17 @@ import { WORKSPACE_PRESETS } from '~/utils/workspace';
 import type { WorkspaceConfiguration, WorkspaceDetail } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 import { computed, onScopeDispose } from 'vue';
-const props = defineProps<
-  { domain: WorkspaceDetail; modules: WorkspaceConfiguration['features']; canArchive: boolean }
->();
+const props = withDefaults(
+  defineProps<{
+    domain: WorkspaceDetail;
+    modules: WorkspaceConfiguration['features'];
+    canArchive: boolean;
+    disabled?: boolean;
+  }>(),
+  {
+    disabled: false,
+  },
+);
 const emit = defineEmits<{ saved: [] }>();
 const workspaces = useWorkspaceApi();
 const { toast } = useToast();
@@ -33,7 +41,7 @@ defineExpose({ dirty });
 const saving = ref(false);
 const error = ref('');
 async function save() {
-  if (saving.value) return;
+  if (saving.value || props.disabled || props.domain.status !== 'active') return;
   saving.value = true;
   error.value = '';
   try {
@@ -100,7 +108,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
             class="mt-2 text-text-muted">部分能力受实例政策限制，需联系实例管理员。</p>
         </div>
         <p v-if="error" class="text-sm text-error-text" role="alert">{{ error }} 未保存的修改仍保留在表单中。</p>
-        <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active'">保存设置</UButton>
+        <UButton type="submit" :loading="saving" :disabled="domain.status !== 'active' || disabled">保存设置</UButton>
       </form>
     </UCard>
     <UCard v-if="canArchive && domain.slug !== 'main'" class="rounded">
