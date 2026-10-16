@@ -169,7 +169,7 @@ function isActive(path: string) {
 
     <!-- 主内容区 -->
     <div
-      class="flex-1 min-h-screen flex flex-col transition-[margin-left] duration-200"
+      class="flex-1 min-w-0 min-h-screen flex flex-col transition-[margin-left] duration-200"
       :class="sidebarOpen ? 'ml-60 max-md:ml-0' : 'ml-15 max-md:ml-0'"
     >
       <!-- Admin 统一全局顶栏 -->
@@ -181,7 +181,7 @@ function isActive(path: string) {
       />
 
       <!-- 主工作区内容 -->
-      <main id="admin-main" class="flex-1 p-4 sm:p-6 lg:p-7 w-full max-w-[1600px] mx-auto">
+      <main id="admin-main" class="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 w-full max-w-[1600px] mx-auto">
         <slot />
       </main>
     </div>
