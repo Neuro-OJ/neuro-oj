@@ -160,6 +160,8 @@ function formatElapsed(iso: string) {
         <button
           v-for="sub in recentSubmissions"
           :key="sub.id"
+          data-testid="recent-submission"
+          :data-submission-id="sub.id"
           class="w-full text-left p-3 rounded-md border-2 border-signal/40 bg-primary-bg/20 hover:border-signal hover:bg-primary-bg/40 transition-colors group relative"
           @click="emit('open-submission', sub.id)"
         >

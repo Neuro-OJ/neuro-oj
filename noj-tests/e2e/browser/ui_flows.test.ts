@@ -139,7 +139,7 @@ async function logoutViaUI(): Promise<void> {
  * 改用编辑器的 localStorage 草稿（noj:draft:<problemId>）预置代码，
  * 恢复路径与真实用户「刷新后继续上次代码」完全一致。
  */
-async function submitCodeViaUI(code: string): Promise<void> {
+async function submitCodeViaUI(code: string): Promise<string> {
   const p = page!;
   await p.addInitScript(
     ({ key, content }) => {
@@ -154,40 +154,51 @@ async function submitCodeViaUI(code: string): Promise<void> {
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   await p.waitForTimeout(300);
+  // 以提交接口返回的 ID 定位「最近」卡片：提交后轮询数据就绪前，卡片会短暂
+  // 显示历史中的上一条提交，按得分文本变化判断新结论会被旧结论误导。
+  const created = p.waitForResponse((res) =>
+    res.request().method() === "POST" &&
+    new URL(res.url()).pathname === "/api/v1/submissions"
+  );
   await p.getByRole("button", { name: "提交评测", exact: true }).click();
+  const res = await created;
+  if (res.status() !== 201) {
+    throw new Error(`提交失败：HTTP ${res.status()} ${await res.text()}`);
+  }
+  const body = await res.json() as { data: { id: string } };
+  return body.data.id;
 }
 
-/**
- * 读取侧栏「最近」卡片的得分文本；无终态得分（等待/评测中/无记录）时返回 null。
- * 只认「最近」卡片：「历史」列表同样渲染「N 分」，不能按文本匹配首个元素。
- */
-async function currentScoreText(): Promise<string | null> {
+/** 读取指定提交在侧栏「最近」卡片的得分文本；未到终态或卡片未就绪时返回 null */
+async function verdictText(submissionId: string): Promise<string | null> {
   const p = mustPage();
-  const span = p.locator('[data-testid="recent-submission-score"]', {
-    hasText: /\d+\s*分/,
-  }).first();
+  const span = p.locator(
+    `[data-testid="recent-submission"][data-submission-id="${submissionId}"] ` +
+      '[data-testid="recent-submission-score"]',
+    { hasText: /\d+\s*分/ },
+  );
   if ((await span.count()) === 0) return null;
-  const text = (await span.textContent()) ?? "";
+  const text = (await span.first().textContent()) ?? "";
   return /\d+\s*分/.test(text) ? text.trim() : null;
 }
 
 /**
- * 等待一条"新的"评测结论：与 prevScore 不同的得分文本出现。
- * 侧栏一次只显示一张最近提交卡片；提交后卡片会先变为 等待评测/评测中（无得分），
- * 终态后显示「N 分」。轮询由前端完成，这里按 1s 间隔轮询 UI。
+ * 等待指定提交的评测结论出现在「最近」卡片。
+ * 提交后卡片先显示 等待评测/评测中（无得分），终态后显示「N 分」。
+ * 轮询由前端完成，这里按 1s 间隔轮询 UI。
  */
-async function waitForNewVerdict(
-  prevScore: string | null,
+async function waitForVerdict(
+  submissionId: string,
   timeoutMs = 180_000,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const text = await currentScoreText();
-    if (text !== null && text !== prevScore) return text;
+    const text = await verdictText(submissionId);
+    if (text !== null) return text;
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(
-    `等待评测结论超时（${timeoutMs}ms），prevScore=${prevScore ?? "无"}`,
+    `等待评测结论超时（${timeoutMs}ms），submission=${submissionId}`,
   );
 }
 
@@ -247,8 +258,8 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", a
     // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
     await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    await submitCodeViaUI(CODE_SAMPLES.accepted);
-    const score = await waitForNewVerdict(null);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.accepted);
+    const score = await waitForVerdict(submissionId);
     // P1001 满分 10 分（evaluate.py：内容 8 + 格式 2），UI formatScore 显示「10 分」
     if (score !== "10 分") {
       throw new Error(`期望满分「10 分」，实际「${score}」`);
@@ -266,12 +277,8 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
     await launch();
     await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    // 先等待「最近」卡片异步加载出上一条（3/4 满分）的分数，再等待新结论覆盖；
-    // 历史列表是客户端异步拉取的，直接读取会拿到 null 并把旧结论误判为新结论。
-    await goto("/editor/P1001");
-    const prev = await waitForNewVerdict(null, 30_000);
-    await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
-    const score = await waitForNewVerdict(prev);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
+    const score = await waitForVerdict(submissionId);
     if (score === "10 分") {
       throw new Error(`错误答案不应满分，实际「${score}」`);
     }

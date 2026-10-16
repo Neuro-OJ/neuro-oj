@@ -22,9 +22,10 @@ Status: implemented
 
 - 单测改为断言 U 型 LLM manifest 能通过结构校验；E2E 7.2 改为「管理员可导入私有
   U 型 LLM 题」与「普通用户导入被拒 403」两条，与 #651 的权限边界一致。
-- 编辑器「最近」卡片得分加
-  `data-testid="recent-submission-score"`，浏览器测试只读该元素；4/4
-  先等待「最近」卡片加载出上一条结论再提交。
+- 编辑器「最近」卡片加 `data-testid="recent-submission"` 与
+  `data-submission-id`，得分加
+  `data-testid="recent-submission-score"`；浏览器测试从提交接口响应取得提交
+  ID，只等待该提交卡片的终态得分。提交后轮询数据就绪前，「最近」卡片会短暂显示历史中的上一条提交，因此不能用「得分文本变化」判断新结论。
 - 历史卡片无终态结果时显示「—」而非误导性的 `0 分`。
 
 ## Alternatives considered

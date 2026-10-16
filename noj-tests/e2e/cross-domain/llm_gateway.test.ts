@@ -123,7 +123,7 @@ async function importBundle(
 
 function llmManifest(
   type: "P" | "U",
-  number: number,
+  number: number | undefined,
   withNetwork: boolean,
   includeLlm: boolean,
 ): string {
@@ -203,47 +203,51 @@ e2eTest("[e2e/llm-gateway] Setup: 管理员登录 + 检查 judge", async () => {
 });
 
 // #651 起 U 型题可由管理员配置 LLM（保持私有），普通用户仍不得配置。
-e2eTest("[e2e/llm-gateway] 7.2 管理员可导入私有 U 型 LLM 题", async () => {
-  if (!isE2E || !providerId) return;
-  const number = 91000 + (Date.now() % 1000);
-  const res = await importBundle(
-    llmManifest("U", number, true, true),
-    `# E2E LLM U 型题\n\n管理员私有 LLM 题`,
-  );
-  if (res.status !== 200 && res.status !== 201) {
-    throw new Error(
-      `管理员导入 U 型 LLM 题应当成功，实际 ${res.status} ${
-        JSON.stringify(res.body)
-      }`,
+e2eTest(
+  "[e2e/llm-gateway] 7.2 U 型 LLM 题仅管理员可导入且保持私有",
+  async () => {
+    if (!isE2E || !providerId) return;
+    const number = 91000 + (Date.now() % 1000);
+    const res = await importBundle(
+      llmManifest("U", number, true, true),
+      `# E2E LLM U 型题\n\n管理员私有 LLM 题`,
     );
-  }
-  const problem = (res.body as {
-    data: { type: string; visibility: string };
-  }).data;
-  if (problem.type !== "U" || problem.visibility !== "private") {
-    throw new Error(
-      `U 型 LLM 题应保持私有，实际 type=${problem.type} visibility=${problem.visibility}`,
-    );
-  }
-});
+    if (res.status !== 200 && res.status !== 201) {
+      throw new Error(
+        `管理员导入 U 型 LLM 题应当成功，实际 ${res.status} ${
+          JSON.stringify(res.body)
+        }`,
+      );
+    }
+    const problem = (res.body as {
+      data: { type: string; visibility: string };
+    }).data;
+    if (problem.type !== "U" || problem.visibility !== "private") {
+      throw new Error(
+        `U 型 LLM 题应保持私有，实际 type=${problem.type} visibility=${problem.visibility}`,
+      );
+    }
 
-e2eTest("[e2e/llm-gateway] 7.2 普通用户 U 型题携带 llm 被拒", async () => {
-  if (!isE2E || !providerId) return;
-  const user = await getOrCreateUser(
-    "llm_gateway_user",
-    `e2e_llm_user_${testSuffix}`,
-    `e2e_llm_user_${testSuffix}@test.com`,
-  );
-  const number = 91500 + (Date.now() % 500);
-  const res = await importBundle(
-    llmManifest("U", number, true, true),
-    `# E2E LLM U 型题\n\n不应创建成功`,
-    user.token,
-  );
-  if (res.status !== 403) {
-    throw new Error(`普通用户导入 U 型 LLM 题应当 403，实际 ${res.status}`);
-  }
-});
+    const user = await getOrCreateUser(
+      "llm_gateway_user",
+      `e2e_llm_user_${testSuffix}`,
+      `e2e_llm_user_${testSuffix}@test.com`,
+    );
+    // 非管理员不能指定 number（否则先被 400 拒绝），题号由系统分配。
+    const denied = await importBundle(
+      llmManifest("U", undefined, true, true),
+      `# E2E LLM U 型题\n\n不应创建成功`,
+      user.token,
+    );
+    if (denied.status !== 403) {
+      throw new Error(
+        `普通用户导入 U 型 LLM 题应当 403，实际 ${denied.status} ${
+          JSON.stringify(denied.body)
+        }`,
+      );
+    }
+  },
+);
 
 e2eTest("[e2e/llm-gateway] 7.2 LLM 题未开网络被拒", async () => {
   if (!isE2E || !providerId) return;
