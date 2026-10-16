@@ -69,6 +69,7 @@ useSeoMeta({ title: '空间' });
     <AdminPageHeader title="空间" description="在不同社区、学校或团队中使用各自的资源与身份。"
       icon="i-lucide-building-2">
       <template #actions>
+        <UButton to="/join" variant="outline" icon="i-lucide-key-round">输入邀请码</UButton>
         <UButton v-if="canCreate || canRequest" icon="i-lucide-plus"
           @click="showCreate = true">{{ canRequest ? '申请创建' : '创建空间' }}</UButton>
       </template>
