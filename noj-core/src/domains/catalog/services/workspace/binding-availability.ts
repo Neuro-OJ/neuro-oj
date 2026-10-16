@@ -20,7 +20,7 @@ function bindingAvailabilityCondition() {
 export function domainProblemBindingAvailableWhere(
   bindingId: AnyColumn | SQL,
   domainId: AnyColumn | SQL,
-  options: { member: boolean },
+  options: { member: boolean | SQL },
 ): SQL {
   return availableBindingWhere(
     sql`b.id = ${bindingId}`,
@@ -33,7 +33,7 @@ export function domainProblemBindingAvailableWhere(
 export function domainProblemAvailableWhere(
   problemId: AnyColumn | SQL,
   domainId: AnyColumn | SQL,
-  options: { member: boolean },
+  options: { member: boolean | SQL },
 ): SQL {
   return availableBindingWhere(
     sql`b.problem_id = ${problemId}`,
@@ -45,7 +45,7 @@ export function domainProblemAvailableWhere(
 function availableBindingWhere(
   selector: SQL,
   domainId: AnyColumn | SQL,
-  member: boolean,
+  member: boolean | SQL,
 ): SQL {
   return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
     JOIN problems p ON p.id = b.problem_id JOIN domains src ON src.id = p.domain_id

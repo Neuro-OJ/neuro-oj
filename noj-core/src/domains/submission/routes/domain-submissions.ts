@@ -76,6 +76,8 @@ domainSubmissionsRouter.get(
         perPage,
         problemId: c.req.query("problem_id"),
         contestId: c.req.query("contest_id"),
+        username: c.req.query("username"),
+        kind: c.req.query("kind"),
       },
     );
     c.header("Cache-Control", "no-store");

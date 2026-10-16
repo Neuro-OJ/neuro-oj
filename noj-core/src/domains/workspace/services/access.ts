@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, type AnyColumn, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -20,6 +20,27 @@ import {
 import { domainPermissions } from "../types.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 import { effectiveDomainConfiguration } from "../../../shared/workspace/capabilities.ts";
+
+/** 跨域目录在数据库分页前检查当前成员关系，不从缓存枚举允许的域。 */
+export function domainMemberWhere(
+  domainId: AnyColumn | SQL,
+  actorId: string | null,
+): SQL {
+  return sql`EXISTS (SELECT 1 FROM domain_memberships access_member WHERE access_member.domain_id=${domainId}
+    AND access_member.user_id=${actorId} AND access_member.status='active')`;
+}
+/** 公共目录及本人可进入的私有域；平台治理权限显式传入。 */
+export function domainReadableWhere(
+  domainId: AnyColumn | SQL,
+  actorId: string | null,
+  platformAdmin = false,
+): SQL {
+  return sql`EXISTS (SELECT 1 FROM domains access_domain WHERE access_domain.id=${domainId} AND
+    (${platformAdmin} OR (access_domain.status<>'suspended' AND
+      (access_domain.configuration->>'access'='public' OR ${
+    domainMemberWhere(domainId, actorId)
+  }))))`;
+}
 
 /** 读取仅验证进入域所需字段，导航及其他模块配置由其边界处理。 */
 function assertDomainAccess(domain: typeof domains.$inferSelect) {

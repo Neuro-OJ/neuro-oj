@@ -11,10 +11,9 @@ import {
 } from "../../catalog/index.ts";
 import {
   getSubmission,
-  listSubmissions,
   resolveSubmissionId,
 } from "./submissions/submissions-crud.ts";
-import type { ListSubmissionsParams } from "./submissions/submissions-types.ts";
+import { listVisibleDomainSubmissionHistory } from "./own-submission-history.ts";
 import { applySubmissionProjection } from "./submissions/submission-projection.ts";
 import type { ResultVisibility } from "../../../shared/contest-types.ts";
 import type { ProblemReference } from "../../../shared/workspace/types.ts";
@@ -56,55 +55,9 @@ async function submissionMetadata(domainId: string, ids: string[]) {
 export async function listDomainSubmissions(
   slug: string,
   actorId: string,
-  query: Omit<
-    ListSubmissionsParams,
-    "domainId" | "platformAdmin" | "userId" | "userSearch"
-  >,
+  query: Parameters<typeof listVisibleDomainSubmissionHistory>[2],
 ) {
-  const access = await loadWorkspace(slug, actorId);
-  const result = await listSubmissions({
-    ...query,
-    userId: actorId,
-    domainId: access.domain.id,
-    platformAdmin: access.platformAdmin,
-  });
-  const metadata = await submissionMetadata(
-    access.domain.id,
-    result.data.map((row) => row.id),
-  );
-  const facts = await loadBindingAvailability(
-    getDb(),
-    access.domain.id,
-    metadata.flatMap((row) => row.binding_id ? [row.binding_id] : []),
-  );
-  const available = new Map(facts.map((row) => [row.id, row.available]));
-  const byId = new Map(metadata.map((row) => [row.id, row]));
-  return {
-    ...result,
-    data: result.data.map((row) => {
-      const source = byId.get(row.id)!;
-      const resourceAvailable = source.binding_id !== null &&
-        available.get(source.binding_id) === true;
-      return {
-        ...row,
-        domain_id: access.domain.id,
-        reference: domainProblemReference(
-          {
-            id: source.problem_id,
-            number: source.number,
-            domain_id: source.source_domain_id!,
-          },
-          source.source_domain_slug,
-          access.domain.id,
-        ),
-        resource_available: resourceAvailable,
-        problem: {
-          id: row.problem_id,
-          title: resourceAvailable ? source.title : "资源不可用",
-        },
-      };
-    }),
-  };
+  return await listVisibleDomainSubmissionHistory(slug, actorId, query);
 }
 
 /** 当前使用域授权后的详情读取；共享撤销保留本人代码与成绩，隐藏源评测输出。 */
@@ -132,7 +85,15 @@ export async function getDomainSubmission(
         ) as never,
       )[0]?.allowed === true;
   if (metadata.user_id !== actorId && !manager && !teacher) {
-    throw new NotFoundError("提交不存在");
+    const summary = (await listVisibleDomainSubmissionHistory(slug, actorId, {
+      id,
+      username: "",
+      page: 1,
+      perPage: 1,
+      kind: "submission",
+    })).data[0];
+    if (!summary) throw new NotFoundError("提交不存在");
+    return { ...summary, can_view_source: false, can_view_answers: false };
   }
   const result = await getSubmission(id, actorId, undefined, undefined, {
     domainId: access.domain.id,
@@ -182,6 +143,8 @@ export async function getDomainSubmission(
   }
   return {
     ...projected,
+    can_view_source: typeof projected.code === "string",
+    can_view_answers: false,
     domain_id: access.domain.id,
     domain_problem_binding_id: metadata.binding_id,
     reference: domainProblemReference(

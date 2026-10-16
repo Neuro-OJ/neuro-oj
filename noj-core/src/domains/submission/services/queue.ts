@@ -1,7 +1,8 @@
-import { and, eq, inArray, isNull, not, type SQL, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, not, or, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
+  domains,
   evaluationAttempts,
   problems,
   selfTests,
@@ -19,35 +20,63 @@ import {
   type JudgeQueuePool,
 } from "../../../shared/mq/judge-queues.ts";
 import { getLogger } from "@logtape/logtape";
+import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
-import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  domainMemberWhere,
+  domainReadableWhere,
+} from "../../workspace/index.ts";
 import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
 import type { DomainQueryScope } from "../../query/index.ts";
 import { unendedPublicContestForProblem } from "../../contest/index.ts";
+import { projectContestSubmissionReads } from "./submissions/contest-read-projection.ts";
+
+/** 实例队列仍按查看者的实时域权限过滤明细，全局数字另行统计。 */
+export interface QueueQueryScope extends DomainQueryScope {
+  instance?: boolean;
+  viewerId?: string;
+  platformAdmin?: boolean;
+}
 
 function queueResourceScope(
   table: typeof submissions | typeof selfTests,
-  scope: DomainQueryScope,
+  scope: QueueQueryScope,
 ) {
-  return sql`(${table.domain_id}=${scope.domainId} OR (${table.domain_id} IS NULL AND ${
-    scope.domainId === DEFAULT_DOMAIN_ID
-  }))
- AND NOT ${
+  const domainId = scope.instance
+    ? sql`coalesce(${table.domain_id},${DEFAULT_DOMAIN_ID})`
+    : sql`${scope.domainId}`;
+  const member = scope.instance
+    ? sql`(${!!scope.platformAdmin} OR ${
+      domainMemberWhere(domainId, scope.viewerId ?? null)
+    })`
+    : scope.member;
+  const entered = scope.instance
+    ? domainReadableWhere(domainId, scope.viewerId ?? null, scope.platformAdmin)
+    : sql`(${table.domain_id}=${scope.domainId} OR (${table.domain_id} IS NULL AND ${
+      scope.domainId === DEFAULT_DOMAIN_ID
+    }))`;
+  return sql`${entered}
+ AND (${
+    table === submissions
+      ? sql`${submissions.contest_id} IS NOT NULL OR`
+      : sql``
+  } NOT ${
     unendedPublicContestForProblem(
       table === submissions ? submissions.problem_id : selfTests.problem_id,
-      sql`${scope.domainId}`,
+      domainId,
     )
-  }
+  })
  AND ((${table.domain_id} IS NULL AND ${table.domain_problem_binding_id} IS NULL) OR ${
     domainProblemBindingAvailableWhere(
       table.domain_problem_binding_id,
-      sql`${scope.domainId}`,
-      { member: scope.member },
+      domainId,
+      { member },
     )
   })`;
 }
@@ -58,6 +87,8 @@ export function queueEventChannel(domainId: string) {
     ? Channels.queue
     : `noj:events:domain:${domainId}:queue`;
 }
+/** 全局频道只包含失效信号，不包含域、任务或评测内容。 */
+export const INSTANCE_QUEUE_CHANNEL = "noj:events:instance:queue";
 /** 归属从可信源记录读取，不接受 evaluator 或 Redis 消息覆盖。 */
 export async function publishQueueChange(submissionId: string) {
   const db = getDb(),
@@ -71,6 +102,7 @@ export async function publishQueueChange(submissionId: string) {
       queueEventChannel(row.domain_id ?? DEFAULT_DOMAIN_ID),
       { type: "queue:changed" },
     );
+    await publishSseEvent(INSTANCE_QUEUE_CHANNEL, { type: "queue:changed" });
   }
 }
 
@@ -93,6 +125,8 @@ export interface QueueItem {
   language: string;
   submitted_at: string;
   submitted_by: string;
+  domain_id?: string;
+  domain_slug?: string;
   /** 条目类型：正式提交或自测。 */
   kind: "submission" | "self_test";
   resource_pool?: JudgeQueuePool;
@@ -133,6 +167,12 @@ export interface QueueResponse {
   judging: QueueItem[];
   recently_completed: QueueItem[];
   stats: QueueStats;
+  scope?: "domain" | "instance";
+  visible_counts?: {
+    pending: number;
+    judging: number;
+    completed_today: number;
+  };
 }
 
 /** 单条评测队列的健康快照。 */
@@ -181,7 +221,7 @@ async function queryQueueRows(
   table: AnyPgTable,
   cols: QueueTableColumns,
   kind: QueueItem["kind"],
-  scope: DomainQueryScope,
+  scope: QueueQueryScope,
   where: SQL | undefined,
   orderBy?: SQL,
   limit?: number,
@@ -195,12 +235,20 @@ async function queryQueueRows(
     language: cols.language,
     submitted_at: cols.createdAt,
     submitted_by: users.username,
+    domain_id: kind === "submission"
+      ? submissions.domain_id
+      : selfTests.domain_id,
+    domain_slug: domains.slug,
   };
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.judgeFinishedAt) {
     selectFields.judge_finished_at = cols.judgeFinishedAt;
   }
   if (cols.status) selectFields.status = cols.status;
+  if (kind === "submission") {
+    selectFields.contest_id = submissions.contest_id;
+    selectFields.user_id = submissions.user_id;
+  }
   if (scoreFromAttempt) {
     selectFields.score = evaluationAttempts.score;
   } else if (cols.score) {
@@ -213,6 +261,12 @@ async function queryQueueRows(
     // deno-lint-ignore no-explicit-any
     .select(selectFields as any)
     .from(table)
+    .leftJoin(
+      domains,
+      sql`${domains.id}=coalesce(${
+        kind === "submission" ? submissions.domain_id : selfTests.domain_id
+      },${DEFAULT_DOMAIN_ID})`,
+    )
     .innerJoin(problems, eq(cols.problemId, problems.id))
     .innerJoin(users, eq(cols.userId, users.id));
   if (scoreFromAttempt) {
@@ -238,7 +292,21 @@ async function queryQueueRows(
 
   // deno-lint-ignore no-explicit-any
   const rows: any[] = await query;
-  return rows.map((r) => {
+  const projected = kind === "submission"
+    ? await projectContestSubmissionReads(
+      rows.map((row) => ({
+        id: row.id,
+        problem_id: row.problem_id,
+        user_id: row.user_id,
+        contest_id: row.contest_id,
+        status: row.status,
+        score: row.score,
+      })),
+      scope.viewerId ?? null,
+      scope.platformAdmin,
+    )
+    : null;
+  return rows.map((r, index) => {
     const item: QueueItem = {
       id: r.id as string,
       problem_id: r.problem_id as string,
@@ -247,15 +315,24 @@ async function queryQueueRows(
       submitted_at: r.submitted_at as string,
       submitted_by: r.submitted_by as string,
       kind,
+      domain_id: r.domain_id as string,
+      domain_slug: (r.domain_slug ?? "main") as string,
     };
-    if (r.judge_started_at !== undefined) {
+    const safe = projected?.[index];
+    const hidden = !!r.contest_id && safe &&
+      (!Object.hasOwn(safe, "status") ||
+        (safe as Record<string, unknown>).result_visibility === "hidden");
+    if (!hidden && r.judge_started_at !== undefined) {
       item.judge_started_at = r.judge_started_at as string | null;
     }
-    if (r.judge_finished_at !== undefined) {
+    if (!hidden && r.judge_finished_at !== undefined) {
       item.judge_finished_at = r.judge_finished_at as string | null;
     }
-    if (r.status !== undefined) item.status = r.status as string;
-    if (r.score !== undefined) item.score = r.score as number | null;
+    const visible = safe ?? r;
+    if (visible.status !== undefined) item.status = visible.status as string;
+    if (visible.score !== undefined) {
+      item.score = visible.score as number | null;
+    }
     return item;
   });
 }
@@ -520,9 +597,14 @@ function selfTestScope(
 export async function getQueueOverview(
   isAdmin = false,
   viewerUserId?: string,
-  scope: DomainQueryScope = { domainId: DEFAULT_DOMAIN_ID, member: isAdmin },
+  scope: QueueQueryScope = { domainId: DEFAULT_DOMAIN_ID, member: isAdmin },
 ): Promise<QueueResponse> {
+  scope = { ...scope, viewerId: viewerUserId, platformAdmin: isAdmin };
   const db = getDb();
+  const formalAccess = isAdmin ? undefined : or(
+    isNull(submissions.contest_id),
+    eq(submissions.user_id, viewerUserId ?? ""),
+  );
 
   // 1. 从 Redis 获取 pending submission_id 列表。
   // NOJ-033：Redis 不可用时优雅降级——pending 为空、统计用 DB 数据，
@@ -558,10 +640,7 @@ export async function getQueueOverview(
       },
       "submission",
       scope,
-      isAdmin ? inArray(submissions.id, pendingFormalIds) : and(
-        inArray(submissions.id, pendingFormalIds),
-        isNull(submissions.contest_id),
-      ),
+      and(inArray(submissions.id, pendingFormalIds), formalAccess),
     );
     for (const r of pendingRows) pendingMap.set(r.id, r);
   }
@@ -603,7 +682,7 @@ export async function getQueueOverview(
     judgingConditions.push(not(inArray(submissions.id, pendingFormalIds)));
   }
   if (!isAdmin) {
-    judgingConditions.push(isNull(submissions.contest_id));
+    judgingConditions.push(formalAccess!);
   }
   const judgingWhere = and(...judgingConditions);
 
@@ -671,7 +750,7 @@ export async function getQueueOverview(
       scope,
       isAdmin ? sql`${submissions.status} IN ('finished', 'error')` : and(
         sql`${submissions.status} IN ('finished', 'error')`,
-        isNull(submissions.contest_id),
+        formalAccess,
       ),
       sql`${submissions.judge_finished_at} DESC`,
       10,
@@ -712,7 +791,7 @@ export async function getQueueOverview(
     judgingWhereConditions.push(not(inArray(submissions.id, pendingFormalIds)));
   }
   if (!isAdmin) {
-    judgingWhereConditions.push(isNull(submissions.contest_id));
+    judgingWhereConditions.push(formalAccess!);
   }
   const judgingWhereStats = and(...judgingWhereConditions);
 
@@ -750,14 +829,22 @@ export async function getQueueOverview(
           ? sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`
           : and(
             sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`,
-            isNull(submissions.contest_id),
+            formalAccess,
           ),
       ),
     );
 
   const judgingCount = Number(judgingCountRow?.count ?? 0) +
     Number(selfJudgingCountRow?.count ?? 0);
-  const completedToday = Number(completedTodayRow?.count ?? 0);
+  const [completedSelfToday] = await db.select({
+    count: sql<number>`count(*)::int`,
+  }).from(selfTests).where(and(
+    sql`${selfTests.status} IN ('finished','error') AND ${selfTests.judge_finished_at}>=${today}`,
+    ...selfTestScope(isAdmin, viewerUserId),
+    queueResourceScope(selfTests, scope),
+  ));
+  const completedToday = Number(completedTodayRow?.count ?? 0) +
+    Number(completedSelfToday?.count ?? 0);
   const poolStats = Object.fromEntries(
     await Promise.all(JUDGE_RESOURCE_POOLS.map(async (pool) => {
       const queues = Object.values(JUDGE_POOL_QUEUES[pool]);
@@ -774,7 +861,7 @@ export async function getQueueOverview(
     })),
   ) as NonNullable<QueueStats["pools"]>;
   const resourceMemory = { reserved_mb: 0, budget_mb: 0 };
-  if (isAdmin && JUDGE_QUEUE_LAYOUT === "pools") {
+  if ((isAdmin || scope.instance) && JUDGE_QUEUE_LAYOUT === "pools") {
     const health = await getQueueHealth();
     for (const group of Object.values(health.resource_groups ?? {})) {
       const capacities = group.capacities as
@@ -832,17 +919,50 @@ export async function getQueueOverview(
       } catch { /* Redis 异常时仍展示队列快照。 */ }
     }),
   );
+  let globalCounts: {
+    pending: number;
+    judging: number;
+    completed_today: number;
+  } | undefined;
+  if (scope.instance) {
+    const rows = await db.execute(sql`SELECT
+      (SELECT count(*)::int FROM submissions WHERE status='judging' AND ${
+      pendingFormalIds.length
+        ? not(inArray(submissions.id, pendingFormalIds))
+        : sql`true`
+    }) + (SELECT count(*)::int FROM self_tests WHERE status='judging' AND ${
+      pendingSelfIds.length
+        ? not(inArray(selfTests.id, pendingSelfIds))
+        : sql`true`
+    }) AS judging,
+      (SELECT count(*)::int FROM submissions WHERE status IN ('finished','error') AND judge_finished_at>=${today}) +
+      (SELECT count(*)::int FROM self_tests WHERE status IN ('finished','error') AND judge_finished_at>=${today}) AS completed_today`);
+    const [counts] = unwrapRows<{ judging: number; completed_today: number }>(
+      rows as never,
+    );
+    globalCounts = {
+      pending: pendingIds.length,
+      judging: Number(counts.judging),
+      completed_today: Number(counts.completed_today),
+    };
+  }
   return {
     pending: pendingItems,
     judging: judgingItems,
     recently_completed: completedItems,
     stats: {
-      pending_count: pendingCount,
-      judging_count: judgingCount,
-      completed_today: completedToday,
-      ...(isAdmin && JUDGE_QUEUE_LAYOUT === "pools"
+      pending_count: globalCounts?.pending ?? pendingCount,
+      judging_count: globalCounts?.judging ?? judgingCount,
+      completed_today: globalCounts?.completed_today ?? completedToday,
+      ...((isAdmin || scope.instance) && JUDGE_QUEUE_LAYOUT === "pools"
         ? { pools: poolStats, resource_memory: resourceMemory }
         : {}),
+    },
+    scope: scope.instance ? "instance" : "domain",
+    visible_counts: {
+      pending: pendingCount,
+      judging: judgingCount,
+      completed_today: completedToday,
     },
   };
 }

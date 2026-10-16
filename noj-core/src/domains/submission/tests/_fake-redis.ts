@@ -90,6 +90,17 @@ async function handleConnection(
         case "EXPIRE":
           reply = renderRespInteger(1);
           break;
+        case "LRANGE":
+        case "HGETALL":
+        case "SMEMBERS":
+          reply = new TextEncoder().encode("*0\r\n");
+          break;
+        case "GET":
+          reply = new TextEncoder().encode("$-1\r\n");
+          break;
+        case "SCAN":
+          reply = new TextEncoder().encode("*2\r\n$1\r\n0\r\n*0\r\n");
+          break;
         case "DEL":
           reply = renderRespInteger(parsed.args.length);
           break;
