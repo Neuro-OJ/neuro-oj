@@ -7,6 +7,7 @@ import { useProblemStats } from "~/composables/useProblemStats"
 import type { ProblemStatsDetail } from "~/utils/problemStats"
 import type { SubmissionMode } from "~/utils/problemView"
 import { effectiveVisibility } from "~/utils/bundleImport"
+import { readAiDraftPassthrough } from "~/utils/aiDraftContent"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -76,6 +77,11 @@ watch(problemType, (type) => {
 }, { immediate: true })
 const submissionMode = ref<SubmissionMode>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
+/**
+ * 题包导入写入的脚本模板（编辑器不提供编辑入口）。草稿 PUT 是整体替换，
+ * 保存时必须原样带回，否则界面题模板被清空，评测时找不到模板里的函数。
+ */
+const templateContent = ref("")
 
 /** prediction 模式无 Solution 容器：隐藏 Solution 配置并省略 runtime_config.solution。 */
 const isPredictionMode = computed(() => submissionMode.value === 'prediction')
@@ -355,11 +361,6 @@ function applyRuntimeConfig(rc: RuntimeConfigPayload) {
   }
 }
 
-const SUBMISSION_MODES: readonly SubmissionMode[] = ["code", "artifact", "prediction", "ui"]
-function isSubmissionMode(value: unknown): value is SubmissionMode {
-  return SUBMISSION_MODES.includes(value as SubmissionMode)
-}
-
 /** 用草稿内容覆盖表单（kind=ai 的内容快照）。 */
 function applyDraftContent(content: Record<string, unknown>) {
   if (typeof content.title === "string") title.value = content.title
@@ -367,9 +368,9 @@ function applyDraftContent(content: Record<string, unknown>) {
   if (Array.isArray(content.samples)) {
     samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
   }
-  if (isSubmissionMode(content.submission_mode)) {
-    submissionMode.value = content.submission_mode
-  }
+  const passthrough = readAiDraftPassthrough(content)
+  if (passthrough.submission_mode) submissionMode.value = passthrough.submission_mode
+  if (passthrough.template_content !== undefined) templateContent.value = passthrough.template_content
   if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
     artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null
   }
@@ -487,7 +488,7 @@ function buildContent(): Record<string, unknown> {
     samples: samples.value,
     submission_mode: submissionMode.value,
     runtime_config: buildRuntimeConfig(),
-    template_content: "",
+    template_content: templateContent.value,
     artifact_max_size_mb: artifactMaxSizeMb.value,
     llm_config: buildLlmPayload() ?? null,
   }
