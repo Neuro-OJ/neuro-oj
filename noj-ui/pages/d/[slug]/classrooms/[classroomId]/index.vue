@@ -160,7 +160,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
                   {{ task.title }}
                 </NuxtLink>
                 <UBadge
-                  :color="assignmentPhase(task) === '进行中' ? 'primary' : assignmentPhase(task) === '已截止' ? 'neutral' : 'warning'"
+                  :color="assignmentPhase(task) === '进行中' ? 'primary' : assignmentPhase(task) === '已截止，可继续练习' ? 'neutral' : 'warning'"
                   variant="subtle"
                   size="sm"
                 >

@@ -11,10 +11,11 @@ import type { PublicProblemStats } from '~/utils/problemStats'
  * `submit_count`/`accepted_count`/`acceptance_rate` 三者同为空，
  * 这里用占位文案表达，**不用仍返回的 `attempt_count` 顶替**（防算术还原）。
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   problem: ProblemView
   stats?: PublicProblemStats | null
-}>()
+  problemsTo?: string
+}>(), { problemsTo: '/problems' })
 
 const router = useRouter()
 
@@ -44,13 +45,13 @@ const acceptanceText = computed(() => {
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">编号</dt>
-        <dd class="font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>
+        <dd class="min-w-0 break-words text-right font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">难度</dt>
         <dd><DifficultyBadge :difficulty="problem.difficulty" /></dd>
       </div>
-      <div class="flex items-center justify-between gap-3">
+      <div v-if="problem.owner_username" class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">提供者</dt>
         <dd class="min-w-0">
           <UserIdentity
@@ -76,7 +77,7 @@ const acceptanceText = computed(() => {
           :key="t.id"
           type="button"
           class="inline-flex cursor-pointer items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-          @click="router.push(`/problems?tag=${t.id}`)"
+          @click="router.push({ path: problemsTo, query: { tag: t.id } })"
         >
           {{ t.name }}
         </button>

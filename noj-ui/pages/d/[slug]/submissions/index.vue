@@ -6,7 +6,7 @@ import { formatDateTime, languageLabels } from '~/utils/submissionFormat';
 import { useToast } from '~/composables/useToast';
 import type { DomainSubmissionListQuery } from '~/composables/useDomainSubmissions';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], workspaceWidth: 'library', breadcrumbWidth: '1008px' });
 
 const route = useRoute();
 const router = useRouter();
@@ -159,20 +159,20 @@ useSeoMeta({ title: '提交' });
 
 <template>
   <div class="space-y-5">
-    <AdminPageHeader title="提交" description="当前域的代码、客观题、LLM、产物及预测提交" icon="i-lucide-file-code-2">
+    <LibraryPageHeader title="提交记录" description="查看评测结果，按用户名筛选提交" icon="i-lucide-file-code-2">
       <template #actions>
         <UButton color="neutral" variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新提交"
           :loading="status === 'pending'" @click="refresh()" />
       </template>
-    </AdminPageHeader>
+    </LibraryPageHeader>
 
     <!-- 筛选工具栏 -->
-    <div class="flex flex-wrap items-center gap-3 rounded border border-border bg-bg-panel p-3">
+    <div class="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-bg-panel p-4">
       <!-- 提交者筛选 -->
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-text-secondary whitespace-nowrap">提交者:</span>
-        <div class="relative w-44">
-          <UInput v-model="usernameInput" size="sm" placeholder="用户名（留空查全部）"
+      <div class="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+        <div class="min-w-40 flex-1">
+          <label for="submission-username" class="mb-1.5 block text-xs font-medium text-text-secondary">提交者</label>
+          <UInput id="submission-username" v-model="usernameInput" size="sm" placeholder="用户名（留空查全部）" class="w-full"
             aria-label="用户名"
             @keyup.enter="applyUsername(usernameInput)" />
         </div>
@@ -184,9 +184,9 @@ useSeoMeta({ title: '提交' });
       </div>
 
       <!-- 题型筛选 -->
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-text-secondary whitespace-nowrap">题型:</span>
-        <USelect v-model="kindFilter" size="sm" :items="kindOptions" class="w-36" />
+      <div class="min-w-36">
+        <label for="submission-kind" class="mb-1.5 block text-xs font-medium text-text-secondary">题型</label>
+        <USelect id="submission-kind" v-model="kindFilter" size="sm" :items="kindOptions" class="w-full" />
       </div>
 
       <!-- 当前其他筛选条件提示与重置 -->

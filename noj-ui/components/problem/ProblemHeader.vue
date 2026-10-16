@@ -18,6 +18,7 @@ const props = defineProps<{
   stats?: PublicProblemStats | null;
   /** 竞赛进行中时后端抑制统计，显示占位而非空白。 */
   suppressedReason?: 'running_contest' | null;
+  showOwner?: boolean;
 }>();
 
 /**
@@ -73,7 +74,7 @@ const suppressed = computed(
         <slot name="titleSuffix" />
       </div>
       <UserIdentity
-        v-if="problem.owner_username"
+        v-if="showOwner !== false && problem.owner_username"
         :user="{ id: problem.owner_id ?? '', username: problem.owner_username, avatar_url: problem.owner_avatar_url }"
         size="sm"
         class="mt-2"
@@ -81,7 +82,7 @@ const suppressed = computed(
     </div>
 
     <div class="flex flex-col items-end gap-3">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <slot name="actions" />
       </div>
       <dl class="flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5 text-xs text-text-secondary">

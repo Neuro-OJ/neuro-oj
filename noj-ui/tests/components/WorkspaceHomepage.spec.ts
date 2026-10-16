@@ -76,7 +76,7 @@ describe('明确的域首页不跳走', () => {
     domain.value = school();
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();
-    expect(view.text()).toContain('加入此域');
+    expect(view.text()).toContain('加入此空间');
     domain.value = { ...school(), is_member: true };
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();

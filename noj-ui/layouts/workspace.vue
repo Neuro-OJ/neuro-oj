@@ -27,7 +27,7 @@ const contentStatus = computed(() => {
 <template>
   <NuxtLayout name="default">
     <div class="mx-auto w-full px-4 py-6 sm:px-6"
-      :class="route.meta.workspaceWidth === 'home' ? 'max-w-[1360px]' : route.meta.workspaceWidth === 'library' ? 'max-w-[1008px]' : route.meta.problemWorkspace ? 'max-w-[1600px]' : 'max-w-6xl'">
+      :class="route.meta.workspaceWidth === 'home' ? 'max-w-[1360px]' : route.meta.workspaceWidth === 'library' ? 'max-w-[1008px]' : route.meta.workspaceWidth === 'problem' ? 'max-w-7xl' : route.meta.problemWorkspace ? 'max-w-[1600px]' : 'max-w-6xl'">
       <AsyncContent
         :status="contentStatus"
         :error="error ? (apiError?.message || '读取空间失败') : undefined" empty-text="空间不存在或不可访问"

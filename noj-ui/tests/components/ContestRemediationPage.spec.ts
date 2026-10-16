@@ -60,7 +60,7 @@ describe('比赛补题页面能力', () => {
     capabilities = ['assignments:manage'];
     const result = await view();
     expect(result.text()).not.toContain('比赛候选管理');
-    expect(result.text()).toContain('当前不能创建班级补题任务');
+    expect(result.text()).toContain('无权在此创建补题任务');
   });
   it('作业管理和学情读取齐备后显示候选管理；比赛读取仍由服务端授权', async () => {
     capabilities = ['assignments:manage', 'progress:read'];

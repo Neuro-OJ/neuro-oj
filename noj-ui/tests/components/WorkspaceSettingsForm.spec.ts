@@ -94,7 +94,8 @@ describe('空间设置与并发编辑', () => {
       props: { domain: detail(), modules, canArchive: false },
       global: { stubs },
     });
-    expect(view.text()).toContain('域类型：教学 · 创建后固定');
+    expect(view.text()).toContain('域类型：教学');
+    expect(view.text()).toContain('创建后不可更改');
     expect(view.text()).not.toContain('重新应用模板');
     expect(view.text()).toContain('访问与加入政策');
     expect(view.find('a[href="/d/school-one/settings/access"]').exists()).toBe(true);

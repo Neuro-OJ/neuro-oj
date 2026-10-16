@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<{
   /** 锚点 id，便于页内「题面」链接定位。 */
   anchor?: string
   /** 「在编辑器打开」目标；null 时不渲染该入口。 */
-  editorTo?: string | null
+  editorTo?: import('vue-router').RouteLocationRaw | null
   /** 「在编辑器打开」入口文案（提示词题改为「编写提示词」）。 */
   editorLabel?: string
   /** 「在编辑器打开」入口图标。 */
@@ -102,6 +102,7 @@ function copyStatement() {
           <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent" />
         </div>
         <MarkdownRenderer v-else :content="content" />
+        <slot name="after-content" />
       </template>
       <button
         v-if="!$slots.body && collapsible && !expanded"

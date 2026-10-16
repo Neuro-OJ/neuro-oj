@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
+definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library', breadcrumbWidth: '1008px' });
 const { slug } = useWorkspace(), { user } = useAuth(), api = useDomainQuery(), page = ref(1);
 const { data, error, status, refresh } = await useAsyncData(
   () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'rankings', String(page.value)),
@@ -15,7 +15,7 @@ useSeoMeta({ title: '域排行榜' });
 </script>
 <template>
   <div class="space-y-5">
-    <AdminPageHeader title="排行榜" description="仅统计当前域可展示资源和已公开比赛结果" />
+    <LibraryPageHeader title="排行榜" icon="i-lucide-award" description="当前域的训练与解题排名" />
     <div v-if="mine.data.value?.data" class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg/30 px-5 py-3.5 shadow-xs">
       <div class="flex items-center gap-3">
         <UIcon name="i-lucide-award" class="size-5 text-primary" />
@@ -39,8 +39,8 @@ useSeoMeta({ title: '域排行榜' });
               <th class="px-4 py-3 w-20 text-center">名次</th>
               <th class="px-4 py-3">用户</th>
               <th class="px-4 py-3 text-right">通过题数</th>
-              <th class="px-4 py-3 text-right">总提交数</th>
-              <th class="px-4 py-3 text-right">有效通过率</th>
+              <th class="hidden px-4 py-3 text-right sm:table-cell">总提交数</th>
+              <th class="hidden px-4 py-3 text-right sm:table-cell">有效通过率</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -64,8 +64,8 @@ useSeoMeta({ title: '域排行榜' });
                 <UserIdentity :user="{ id: row.user_id, username: row.username }" :link="false" />
               </td>
               <td class="px-4 py-3 text-right tabular-nums font-semibold text-text">{{ row.solved_count }}</td>
-              <td class="px-4 py-3 text-right tabular-nums text-text-secondary">{{ row.total_submissions }}</td>
-              <td class="px-4 py-3 text-right tabular-nums text-text-secondary">{{ (row.acceptance_rate * 100).toFixed(1) }}%</td>
+              <td class="hidden px-4 py-3 text-right tabular-nums text-text-secondary sm:table-cell">{{ row.total_submissions }}</td>
+              <td class="hidden px-4 py-3 text-right tabular-nums text-text-secondary sm:table-cell">{{ (row.acceptance_rate * 100).toFixed(1) }}%</td>
             </tr>
           </tbody>
         </table>

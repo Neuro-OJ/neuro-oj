@@ -56,6 +56,8 @@ async function view() {
     global: {
       components: { ProblemFilterBar },
       stubs: {
+        LibraryPageHeader: { template: '<header><slot name="actions" /></header>' },
+        ProblemId: { props: ['displayId'], template: '<span>{{ displayId }}</span>' },
         UCard: { template: '<div><slot /></div>' },
         UFormField: { template: '<label><slot /></label>' },
         UTable: {

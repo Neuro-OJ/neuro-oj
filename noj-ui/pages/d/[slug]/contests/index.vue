@@ -19,23 +19,11 @@ useSeoMeta({ title: '比赛' });
 </script>
 <template>
   <div class="space-y-5">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div
-          class="flex size-10 items-center justify-center rounded-lg border border-primary/20 bg-primary-bg text-primary shadow-xs">
-          <UIcon name="i-lucide-trophy" class="size-5" />
-        </div>
-        <div>
-          <h1 class="text-2xl font-bold text-text">比赛</h1>
-          <p class="mt-0.5 text-xs text-text-muted">OI、IOI、ACM/ICPC 与 AI 竞赛</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2.5">
-        <span
-          class="rounded-md border border-border bg-bg-sunken px-2.5 py-1 font-mono text-xs tabular-nums text-text-muted">共 {{ data?.pagination.total ?? '—' }} 场比赛</span>
+    <LibraryPageHeader title="比赛" icon="i-lucide-trophy" description="OI、IOI、ACM/ICPC 与 AI 竞赛" :count="`共 ${data?.pagination.total ?? '—'} 场比赛`">
+      <template #actions>
         <UButton v-if="can('contest:manage') || can('contest:manage_own')" :to="`/d/${slug}/contests/new`" size="sm" icon="i-lucide-plus">创建比赛</UButton>
-      </div>
-    </div>
+      </template>
+    </LibraryPageHeader>
     <AsyncContent :status="error?'error':data?.data.length?'data':status==='pending'?'loading':'empty'"
       :error="error?extractApiError(error).message:undefined" empty-text="暂无比赛" @retry="refresh()">
       <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">

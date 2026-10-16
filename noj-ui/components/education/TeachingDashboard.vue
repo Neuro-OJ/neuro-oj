@@ -125,7 +125,7 @@ watch(() => [props.slug, props.mode], () => {
               <span class="truncate">{{ task.classroom_name }}</span>
             </NuxtLink>
             <UBadge
-              :color="assignmentPhase(task) === '进行中' ? 'primary' : assignmentPhase(task) === '已截止' ? 'neutral' : 'warning'"
+              :color="assignmentPhase(task) === '进行中' ? 'primary' : assignmentPhase(task) === '已截止，可继续练习' ? 'neutral' : 'warning'"
               variant="subtle"
               size="sm"
             >
@@ -157,7 +157,7 @@ watch(() => [props.slug, props.mode], () => {
           <UAlert
             v-if="task.summary.updating"
             color="info"
-            title="成绩正在后台物化更新，稍后将自动刷新当前进度"
+            title="成绩正在更新，稍后将自动刷新"
           />
 
           <!-- 指标详情 -->
