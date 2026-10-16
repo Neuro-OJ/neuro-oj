@@ -12,7 +12,10 @@ import {
 import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { userWorkspacePreferences } from "../../../shared/db/schema.ts";
-import { parsePagination } from "../../../shared/http/pagination.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
 import type {
   DomainConfiguration,
   DomainLimits,
@@ -44,7 +47,7 @@ import {
 import {
   joinDomain,
   listDomainJoinRequests,
-  listDomainMembers,
+  listDomainMembersPage,
   removeDomainMember,
   reviewJoinRequest,
   setMemberRoles,
@@ -62,6 +65,10 @@ import {
   listDomainCreationRequests,
 } from "../services/governance.ts";
 import { getDomainResourceUsage } from "../services/resource-usage.ts";
+import {
+  readInstanceSettings,
+  saveInstanceSettings,
+} from "../../system/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 // 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
@@ -105,6 +112,33 @@ async function body(c: Parameters<typeof parseJsonBody>[0]) {
 }
 
 router.get("/instance", (c) => c.json({ data: getInstancePolicy() }));
+router.get(
+  "/admin/instance/settings/:section",
+  authMiddleware,
+  requireAdmin(),
+  async (c) => {
+    return c.json({
+      data: await readInstanceSettings(c.req.param("section")!),
+    });
+  },
+);
+router.patch(
+  "/admin/instance/settings/:section",
+  authMiddleware,
+  requireAdmin(),
+  async (c) => {
+    const input = await body(c);
+    assertObjectBody(input.values);
+    return c.json({
+      data: await saveInstanceSettings(
+        c.req.param("section")!,
+        input.values,
+        c.req.header("If-Match"),
+        c.var.userId!,
+      ),
+    });
+  },
+);
 router.get(
   "/domains",
   optionalAuthMiddleware,
@@ -185,12 +219,17 @@ router.post(
 router.post("/domain-invitations/accept", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await consumeDomainInvitation(input.token as string, c.var.userId!),
+    data: await consumeDomainInvitation(
+      (input.token ?? input.code) as string,
+      c.var.userId!,
+    ),
   });
 });
 router.post("/auth/domain-invitation", async (c) => {
   const input = await body(c);
-  return c.json({ data: await previewDomainInvitation(input.token as string) });
+  return c.json({
+    data: await previewDomainInvitation((input.token ?? input.code) as string),
+  });
 });
 router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   const { domain, context, membership, platformAdmin } = await loadWorkspace(
@@ -304,20 +343,23 @@ router.get(
   "/domains/:slug/members",
   authMiddleware,
   async (c) => {
-    const raw = c.req.query("page") ?? "1";
-    const page = Number(raw);
-    if (
-      !/^\d+$/.test(raw) || !Number.isSafeInteger(page) || page < 1 ||
-      page > 10000
-    ) throw new BadRequestError("成员页码非法");
+    const { page, perPage, offset } = parsePagination(c, {
+      defaultPerPage: 25,
+    });
+    const result = await listDomainMembersPage(
+      c.req.param("slug")!,
+      c.var.userId!,
+      {
+        offset,
+        perPage,
+        keyword: c.req.query("keyword"),
+      },
+    );
     return c.json({
-      data: await listDomainMembers(
-        c.req.param("slug")!,
-        c.var.userId!,
-        (page - 1) * 100,
-      ),
+      data: result.data,
       page,
-      per_page: 100,
+      per_page: perPage,
+      pagination: buildPaginationMeta(page, perPage, result.total),
     });
   },
 );
@@ -367,13 +409,24 @@ router.post("/domains/:slug/invitations", authMiddleware, async (c) => {
     data: await createDomainInvitation(
       c.req.param("slug")!,
       c.var.userId!,
-      input.email as string,
+      input,
     ),
   }, 201);
 });
 router.get("/domains/:slug/invitations", authMiddleware, async (c) => {
+  const pagination = parsePagination(c, { defaultPerPage: 25 });
+  const result = await listDomainInvitations(
+    c.req.param("slug")!,
+    c.var.userId!,
+    pagination,
+  );
   return c.json({
-    data: await listDomainInvitations(c.req.param("slug")!, c.var.userId!),
+    data: result.data,
+    pagination: buildPaginationMeta(
+      pagination.page,
+      pagination.perPage,
+      result.total,
+    ),
   });
 });
 router.delete(

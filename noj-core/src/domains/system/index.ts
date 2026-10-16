@@ -1,5 +1,6 @@
 export * from "./services/audit-log.ts";
 export * from "./services/system-settings.ts";
+export * from "./services/instance-settings.ts";
 export * from "./services/announcements.ts";
 export * from "./services/carousel.ts";
 export * from "./services/judge-images.ts";

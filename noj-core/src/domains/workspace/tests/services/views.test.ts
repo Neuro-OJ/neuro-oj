@@ -125,15 +125,22 @@ Deno.test("邀请视图：预览不枚举账号，目录不返回令牌或哈希
     "domain_slug",
     "email",
     "expires_at",
+    "max_uses",
+    "mode",
+    "used_count",
   ]);
   const list = await listDomainInvitations(domain.slug, operator);
-  assertEquals(Object.keys(list[0]).sort(), [
+  assertEquals(Object.keys(list.data[0]).sort(), [
+    "classroom_id",
     "created_at",
     "email",
     "expires_at",
     "id",
+    "max_uses",
+    "mode",
     "revoked_at",
     "used_at",
+    "used_count",
   ]);
   await consumeDomainInvitation(invitation.token, member);
   await assertRejects(

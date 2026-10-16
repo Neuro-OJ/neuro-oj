@@ -1,7 +1,13 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import { domainInvitations, domains } from "../../../shared/db/schema.ts";
+import {
+  classroomMemberships,
+  domainInvitationRedemptions,
+  domainInvitations,
+  domainMemberships,
+  domains,
+} from "../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
@@ -18,6 +24,49 @@ import {
   assertClassroomInvitationIssuer,
   joinInvitedClassroom,
 } from "../../education/index.ts";
+
+/** 邀请创建输入，旧调用方传邮箱时仍表示指定邮箱邀请。 */
+export interface DomainInvitationInput {
+  mode?: "email" | "general" | "once";
+  email?: string;
+  expires_at?: string;
+  max_uses?: number | null;
+}
+
+/** 链接令牌与分组短码共用兑换路径，不将凭据放入 API URL。 */
+export function isInvitationCredential(value: unknown): value is string {
+  return typeof value === "string" &&
+    (/^[0-9a-f-]{72}$/.test(value) ||
+      /^[2-9A-HJ-NP-Z]{12}$/.test(
+        value.replaceAll("-", "").trim().toUpperCase(),
+      ));
+}
+
+async function credentialWhere(value: string) {
+  if (!isInvitationCredential(value)) {
+    throw new NotFoundError("邀请无效或已失效");
+  }
+  return /^[0-9a-f-]{72}$/.test(value)
+    ? eq(domainInvitations.token_hash, await hashInvitationToken(value))
+    : eq(
+      domainInvitations.code_hash,
+      await hashInvitationToken(value.replaceAll("-", "").trim().toUpperCase()),
+    );
+}
+
+/** 邀请目录统一字段，永不包含原始凭据或摘要。 */
+export const invitationListColumns = {
+  id: domainInvitations.id,
+  classroom_id: domainInvitations.classroom_id,
+  mode: domainInvitations.mode,
+  email: domainInvitations.email,
+  max_uses: domainInvitations.max_uses,
+  used_count: domainInvitations.used_count,
+  expires_at: domainInvitations.expires_at,
+  used_at: domainInvitations.used_at,
+  revoked_at: domainInvitations.revoked_at,
+  created_at: domainInvitations.created_at,
+};
 
 /** 签发者退出或失去邀请能力后，旧链接也不能继续增加成员。 */
 async function assertInvitationIssuerActive(
@@ -57,18 +106,27 @@ async function assertInvitationIssuerActive(
 }
 
 /** 邀请目录只返回管理所需字段，永不返回令牌或哈希。 */
-export async function listDomainInvitations(slug: string, actorId: string) {
+export async function listDomainInvitations(
+  slug: string,
+  actorId: string,
+  pagination = { offset: 0, perPage: 25 },
+) {
   const { domain, context } = await loadWorkspace(slug, actorId);
   assertWorkspacePermission(context, "domain:invitations");
-  return await getDb().select({
-    id: domainInvitations.id,
-    email: domainInvitations.email,
-    expires_at: domainInvitations.expires_at,
-    used_at: domainInvitations.used_at,
-    revoked_at: domainInvitations.revoked_at,
-    created_at: domainInvitations.created_at,
-  }).from(domainInvitations).where(eq(domainInvitations.domain_id, domain.id))
-    .orderBy(domainInvitations.created_at).limit(100);
+  const where = and(
+    eq(domainInvitations.domain_id, domain.id),
+    isNull(domainInvitations.classroom_id),
+  );
+  const [total] = await getDb().select({ count: count() }).from(
+    domainInvitations,
+  ).where(where);
+  const data = await getDb().select(invitationListColumns).from(
+    domainInvitations,
+  ).where(where)
+    .orderBy(desc(domainInvitations.created_at), domainInvitations.id).limit(
+      pagination.perPage,
+    ).offset(pagination.offset);
+  return { data, total: total.count };
 }
 
 /** 持有有效邀请可预览限定的加入信息；使用请求体，避免令牌进入 API URL。 */
@@ -76,10 +134,7 @@ export async function previewDomainInvitation(
   token: string,
   executor: Executor = getDb(),
 ) {
-  if (typeof token !== "string" || !/^[0-9a-f-]{72}$/.test(token)) {
-    throw new NotFoundError("邀请无效或已失效");
-  }
-  const hash = await hashInvitationToken(token);
+  const credential = await credentialWhere(token);
   const [row] = await executor.select({
     invite: domainInvitations,
     domain: domains,
@@ -87,14 +142,14 @@ export async function previewDomainInvitation(
     domains,
     eq(domains.id, domainInvitations.domain_id),
   ).where(and(
-    eq(domainInvitations.token_hash, hash),
-    isNull(domainInvitations.used_at),
+    credential,
     isNull(domainInvitations.revoked_at),
     eq(domains.status, "active"),
   ));
   if (
     !row || !Number.isFinite(Date.parse(row.invite.expires_at)) ||
-    Date.parse(row.invite.expires_at) <= Date.now()
+    Date.parse(row.invite.expires_at) <= Date.now() ||
+    row.invite.max_uses !== null && row.invite.used_count >= row.invite.max_uses
   ) throw new NotFoundError("邀请无效或已失效");
   const authority = await assertInvitationIssuerActive(
     row.domain.slug,
@@ -113,6 +168,9 @@ export async function previewDomainInvitation(
     domain_slug: row.domain.slug,
     domain_name: row.domain.name,
     email: row.invite.email,
+    mode: row.invite.mode,
+    max_uses: row.invite.max_uses,
+    used_count: row.invite.used_count,
     expires_at: row.invite.expires_at,
     can_register: canRegister,
     ...(row.invite.classroom_id
@@ -139,7 +197,7 @@ export async function assertInvitationAccountRegistration(
   token: string,
   executor: Executor,
 ) {
-  const hash = await hashInvitationToken(token);
+  const credential = await credentialWhere(token);
   const [row] = await executor.select({
     invite: domainInvitations,
     domain: domains,
@@ -148,7 +206,7 @@ export async function assertInvitationAccountRegistration(
       domains,
       eq(domains.id, domainInvitations.domain_id),
     )
-    .where(eq(domainInvitations.token_hash, hash));
+    .where(credential);
   if (!row) {
     throw new ForbiddenError("注册邀请无效", "REGISTER_INVITATION_INVALID");
   }
@@ -170,19 +228,49 @@ export async function assertInvitationAccountRegistration(
   }
 }
 
-/** 创建单次、绑定邮箱的七日邀请；明文只在创建响应出现一次。 */
+/** 创建三种邀请，链接和短码只在创建响应出现一次。 */
 export async function createDomainInvitation(
   slug: string,
   actorId: string,
-  email: string,
+  input: string | DomainInvitationInput,
   options: { classroomId?: string; executor?: Executor } = {},
 ) {
+  const config = typeof input === "string" ? { email: input } : input;
+  const mode = config.mode ?? "email";
+  if (!["email", "general", "once"].includes(mode)) {
+    throw new BadRequestError("邀请类型非法");
+  }
+  const email = mode === "email" ? config.email?.trim().toLowerCase() : null;
   if (
-    typeof email !== "string" || email.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    mode === "email" &&
+    (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
   ) throw new BadRequestError("邀请邮箱非法");
+  if (mode !== "email" && config.email) {
+    throw new BadRequestError("通用及一次性邀请不绑定邮箱");
+  }
+  const maxUses = mode === "general" ? config.max_uses ?? null : 1;
+  if (
+    maxUses !== null &&
+    (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 2147483647)
+  ) throw new BadRequestError("使用人数须为正整数或不限人数");
+  if (mode !== "general" && config.max_uses != null && config.max_uses !== 1) {
+    throw new BadRequestError("指定邮箱和一次性邀请仅限一人使用");
+  }
+  const expiry = config.expires_at === undefined
+    ? Date.now() + 7 * 86400000
+    : Date.parse(config.expires_at);
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    throw new BadRequestError("邀请到期时间须晚于当前时间");
+  }
+  const expiresAt = new Date(expiry).toISOString();
   const token = crypto.randomUUID() + crypto.randomUUID();
   const tokenHash = await hashInvitationToken(token);
+  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const code = Array.from(
+    crypto.getRandomValues(new Uint8Array(12)),
+    (byte) => alphabet[byte % 32],
+  ).join("");
+  const codeHash = await hashInvitationToken(code);
   const write = async (tx: Executor) => {
     const { domain, context } = await loadWorkspace(slug, actorId, {
       write: true,
@@ -198,14 +286,15 @@ export async function createDomainInvitation(
       );
     } else assertWorkspacePermission(context, "domain:invitations");
     const id = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-      .toISOString();
     await tx.insert(domainInvitations).values({
       id,
       domain_id: domain.id,
       classroom_id: options.classroomId ?? null,
       token_hash: tokenHash,
-      email: email.trim().toLowerCase(),
+      code_hash: codeHash,
+      mode,
+      email,
+      max_uses: maxUses,
       expires_at: expiresAt,
       created_by: actorId,
       created_at: new Date().toISOString(),
@@ -213,7 +302,14 @@ export async function createDomainInvitation(
     await workspaceAudit(tx, actorId, domain.id, "domain.invite_create", {
       invitation_id: id,
     });
-    return { id, token, expires_at: expiresAt };
+    return {
+      id,
+      token,
+      code: code.match(/.{4}/g)!.join("-"),
+      mode,
+      max_uses: maxUses,
+      expires_at: expiresAt,
+    };
   };
   return options.executor
     ? await write(options.executor)
@@ -231,13 +327,10 @@ export async function consumeDomainInvitation(
       consumeDomainInvitation(token, userId, tx)
     );
   }
-  if (typeof token !== "string" || !/^[0-9a-f-]{72}$/.test(token)) {
-    throw new NotFoundError("邀请无效");
-  }
-  const tokenHash = await hashInvitationToken(token);
+  const credential = await credentialWhere(token);
   const [found] = await executor.select({
     domain_id: domainInvitations.domain_id,
-  }).from(domainInvitations).where(eq(domainInvitations.token_hash, tokenHash));
+  }).from(domainInvitations).where(credential);
   if (!found) throw new NotFoundError("邀请无效");
   const user = await lockActiveWorkspaceAccount(executor, userId);
   const [domain] = await executor.select().from(domains).where(
@@ -245,23 +338,53 @@ export async function consumeDomainInvitation(
   ).for("update");
   const [invite] = await executor.select().from(domainInvitations).where(
     and(
-      eq(domainInvitations.token_hash, tokenHash),
-      isNull(domainInvitations.used_at),
+      credential,
       isNull(domainInvitations.revoked_at),
     ),
   ).for("update");
   if (
     !domain || !invite || !user ||
-    !Number.isFinite(Date.parse(invite.expires_at)) ||
-    Date.parse(invite.expires_at) <= Date.now() ||
-    invite.email !== user.email.toLowerCase()
+    invite.mode === "email" && invite.email !== user.email.toLowerCase()
   ) throw new NotFoundError("邀请无效、过期或不属于此账号");
+  const result = {
+    domain_id: domain.id,
+    domain_slug: domain.slug,
+    ...(invite.classroom_id ? { classroom_id: invite.classroom_id } : {}),
+  };
+  const [redeemed] = await executor.select().from(domainInvitationRedemptions)
+    .where(and(
+      eq(domainInvitationRedemptions.invitation_id, invite.id),
+      eq(domainInvitationRedemptions.user_id, userId),
+    ));
+  if (redeemed) return result;
+  if (
+    Date.parse(invite.expires_at) <= Date.now() ||
+    invite.max_uses !== null && invite.used_count >= invite.max_uses
+  ) throw new NotFoundError("邀请已过期或使用人数已满");
   await assertInvitationIssuerActive(
     domain.slug,
     invite.created_by,
     executor,
     invite.classroom_id,
   );
+  const [existing] = invite.classroom_id
+    ? await executor.select({ status: classroomMemberships.status }).from(
+      classroomMemberships,
+    ).where(
+      and(
+        eq(classroomMemberships.classroom_id, invite.classroom_id),
+        eq(classroomMemberships.user_id, userId),
+      ),
+    )
+    : await executor.select({ status: domainMemberships.status }).from(
+      domainMemberships,
+    ).where(
+      and(
+        eq(domainMemberships.domain_id, domain.id),
+        eq(domainMemberships.user_id, userId),
+      ),
+    );
+  if (existing?.status === "active") return result;
   await addDomainMember(executor, domain.id, userId, true);
   if (invite.classroom_id) {
     await joinInvitedClassroom(
@@ -271,17 +394,20 @@ export async function consumeDomainInvitation(
       userId,
     );
   }
+  const now = new Date().toISOString();
+  await executor.insert(domainInvitationRedemptions).values({
+    invitation_id: invite.id,
+    user_id: userId,
+    redeemed_at: now,
+  });
   await executor.update(domainInvitations).set({
-    used_at: new Date().toISOString(),
+    used_count: invite.used_count + 1,
+    used_at: now,
   }).where(eq(domainInvitations.id, invite.id));
   await workspaceAudit(executor, userId, domain.id, "domain.invite_accept", {
     invitation_id: invite.id,
   });
-  return {
-    domain_id: domain.id,
-    domain_slug: domain.slug,
-    ...(invite.classroom_id ? { classroom_id: invite.classroom_id } : {}),
-  };
+  return result;
 }
 
 /** 撤销不会删除既有成员或邀请审计。 */
@@ -314,7 +440,7 @@ export async function revokeDomainInvitation(
         options.classroomId
           ? eq(domainInvitations.classroom_id, options.classroomId)
           : undefined,
-        isNull(domainInvitations.used_at),
+        isNull(domainInvitations.revoked_at),
       ),
     ).returning({ id: domainInvitations.id });
     if (!invite) throw new NotFoundError("邀请不存在或已使用");

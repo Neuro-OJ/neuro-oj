@@ -11,7 +11,10 @@ import {
   assertObjectBody,
   parseJsonBody,
 } from "../../../shared/http/request.ts";
-import { parsePagination } from "../../../shared/http/pagination.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
 import type {
   AssistantCapability,
   ClassroomRole,
@@ -178,26 +181,37 @@ router.post("/domains/:slug/classrooms/:id/transfer", async (c) => {
 
 /** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
 router.post("/domains/:slug/classrooms/:id/invitations", async (c) => {
-  const input = await body<{ email: string }>(c);
+  const input = await body<
+    import("../../workspace/index.ts").DomainInvitationInput
+  >(c);
   return c.json({
     data: await createClassroomInvitation(
       c.req.param("slug"),
       c.req.param("id"),
       c.var.userId,
-      input.email,
+      input,
     ),
   }, 201);
 });
 router.get(
   "/domains/:slug/classrooms/:id/invitations",
-  async (c) =>
-    c.json({
-      data: await listClassroomInvitations(
-        c.req.param("slug"),
-        c.req.param("id"),
-        c.var.userId,
+  async (c) => {
+    const pagination = parsePagination(c, { defaultPerPage: 25 });
+    const result = await listClassroomInvitations(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      pagination,
+    );
+    return c.json({
+      data: result.data,
+      pagination: buildPaginationMeta(
+        pagination.page,
+        pagination.perPage,
+        result.total,
       ),
-    }),
+    });
+  },
 );
 router.delete(
   "/domains/:slug/classrooms/:id/invitations/:inviteId",

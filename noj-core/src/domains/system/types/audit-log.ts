@@ -196,7 +196,7 @@ export type AuditDetail =
   | { action: "submissions.delete"; submission_id: string }
   | {
     action: "settings.update";
-    operation: "PUT" | "DELETE";
+    operation: "PUT" | "PATCH" | "DELETE";
     key: string;
     from: unknown;
     to: unknown;

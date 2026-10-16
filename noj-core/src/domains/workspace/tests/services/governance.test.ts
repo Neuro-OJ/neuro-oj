@@ -169,9 +169,9 @@ Deno.test({
       eq(domainLimits.domain_id, domain.id),
     );
     await consumeDomainInvitation(invite.token, invited);
-    await assertRejects(
-      () => consumeDomainInvitation(invite.token, invited),
-      NotFoundError,
+    assertEquals(
+      (await consumeDomainInvitation(invite.token, invited)).domain_id,
+      domain.id,
     );
     const revoked = await createDomainInvitation(
       domain.slug,

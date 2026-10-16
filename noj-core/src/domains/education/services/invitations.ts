@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
@@ -11,9 +11,11 @@ import {
 import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   createDomainInvitation,
+  invitationListColumns,
   revokeDomainInvitation,
   workspaceAudit,
 } from "../../workspace/index.ts";
+import type { DomainInvitationInput } from "../../workspace/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
 
 /** 单次班级邀请复用账号和域邀请流程，不能直接创建平台账号。 */
@@ -21,9 +23,9 @@ export async function createClassroomInvitation(
   slug: string,
   classroomId: string,
   actorId: string,
-  email: string,
+  input: string | DomainInvitationInput,
 ) {
-  return await createDomainInvitation(slug, actorId, email, { classroomId });
+  return await createDomainInvitation(slug, actorId, input, { classroomId });
 }
 
 /** 班级邀请目录不返回令牌或哈希；教练只管理此班邀请。 */
@@ -31,22 +33,24 @@ export async function listClassroomInvitations(
   slug: string,
   classroomId: string,
   actorId: string,
+  pagination = { offset: 0, perPage: 25 },
 ) {
   const access = await loadClassroom(slug, classroomId, actorId);
   assertClassroomCapability(access, "students:manage");
-  return await getDb().select({
-    id: domainInvitations.id,
-    email: domainInvitations.email,
-    expires_at: domainInvitations.expires_at,
-    used_at: domainInvitations.used_at,
-    revoked_at: domainInvitations.revoked_at,
-    created_at: domainInvitations.created_at,
-  }).from(domainInvitations).where(
-    and(
-      eq(domainInvitations.domain_id, access.domain.id),
-      eq(domainInvitations.classroom_id, classroomId),
-    ),
-  ).orderBy(domainInvitations.created_at).limit(100);
+  const where = and(
+    eq(domainInvitations.domain_id, access.domain.id),
+    eq(domainInvitations.classroom_id, classroomId),
+  );
+  const [total] = await getDb().select({ count: count() }).from(
+    domainInvitations,
+  ).where(where);
+  const data = await getDb().select(invitationListColumns).from(
+    domainInvitations,
+  ).where(where)
+    .orderBy(desc(domainInvitations.created_at), domainInvitations.id).limit(
+      pagination.perPage,
+    ).offset(pagination.offset);
+  return { data, total: total.count };
 }
 
 /** 班级撤销复用 Domain 事务，旧链接不会移除已经加入的学生。 */
