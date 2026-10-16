@@ -187,7 +187,7 @@ Deno.test({
       await page.setViewportSize({ width: 390, height: 844 });
       await gotoPage(page, `/d/${a}/settings`);
       await expect(
-        page.getByRole("combobox", { name: "域设置分组", exact: true }),
+        page.getByRole("combobox", { name: "域设置导航", exact: true }),
       ).toBeVisible();
       assertEquals(
         await page.evaluate(() =>

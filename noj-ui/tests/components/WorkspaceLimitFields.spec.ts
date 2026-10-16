@@ -19,6 +19,51 @@ const stubs = {
 };
 
 describe('四项工作空间额度', () => {
+  it('精确字节经过显示、单位切换和回切不改变实际提交值', async () => {
+    const precise = 1073741825;
+    const limits = { members: null, problems: null, storage_bytes: precise, submissions_per_minute: null };
+    const view = mount(WorkspaceLimitFields, { props: { modelValue: limits }, global: { stubs } });
+    const storage = view.get('input[aria-label="存储上限"]');
+    const unit = view.get('select[aria-label="存储单位"]');
+    expect((storage.element as HTMLInputElement).value).toBe(String(precise));
+    expect((unit.element as HTMLSelectElement).value).toBe('bytes');
+    await unit.setValue('gib');
+    expect(limits.storage_bytes).toBe(precise);
+    // 不可精确表达时可以给出提示，但不能自动把原额度舍入到整GiB。
+    await unit.setValue('bytes');
+    expect((storage.element as HTMLInputElement).value).toBe(String(precise));
+    expect(limits.storage_bytes).toBe(precise);
+    expect(view.emitted('valid')?.slice(-1)[0]).toEqual([true]);
+    await storage.setValue(String(Number.MAX_SAFE_INTEGER + 1));
+    expect(view.emitted('valid')?.slice(-1)[0]).toEqual([false]);
+    expect(limits.storage_bytes).toBe(precise);
+    view.unmount();
+  });
+
+  it('编辑其他字段不会把尚未填完的自定义额度静默恢复为继承', async () => {
+    const limits = { members: null, problems: null, storage_bytes: null, submissions_per_minute: null };
+    const view = mount(WorkspaceLimitFields, { props: { modelValue: limits }, global: { stubs } });
+    await view.get('select[aria-label="成员额度模式"]').setValue('custom');
+    await view.get('select[aria-label="每分钟正式提交额度模式"]').setValue('custom');
+    await view.get('input[aria-label="每分钟正式提交上限"]').setValue('30');
+    expect((view.get('select[aria-label="成员额度模式"]').element as HTMLSelectElement).value).toBe('custom');
+    expect(view.get('input[aria-label="成员上限"]').exists()).toBe(true);
+    expect(view.emitted('valid')?.slice(-1)[0]).toEqual([false]);
+    view.unmount();
+  });
+
+  it('重新读取替换配置后同步可见输入与基线，未修改时不显示预计变化', async () => {
+    const limits = { members: 20, problems: null, storage_bytes: null, submissions_per_minute: null };
+    const view = mount(WorkspaceLimitFields, { props: { modelValue: limits }, global: { stubs } });
+    expect(view.text()).not.toContain('保存后预计生效：');
+    await view.get('input[aria-label="成员上限"]').setValue('30');
+    expect(view.text()).toContain('保存后预计生效：');
+    await view.setProps({ modelValue: { ...limits, members: 40 } });
+    expect((view.get('input[aria-label="成员上限"]').element as HTMLInputElement).value).toBe('40');
+    expect(view.text()).not.toContain('保存后预计生效：');
+    view.unmount();
+  });
+
   it('存储与正式提交频率可编辑，0和null保留各自含义并显示实例有效上限', async () => {
     const limits = { members: null, problems: 0, storage_bytes: 274877906944, submissions_per_minute: 30 };
     const caps = { members: 40, problems: 100, storage_bytes: 137438953472, submissions_per_minute: 60 };

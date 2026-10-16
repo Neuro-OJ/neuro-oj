@@ -45,8 +45,8 @@ function initDraft() {
   const section = data.value?.data;
   if (!section) return;
   const vals = section.values;
-  defaultLimits.value = parseLimits(vals.domain_default_limits);
-  limitCaps.value = parseLimits(vals.domain_limit_caps);
+  defaultLimits.value = { ...parseLimits(vals.domain_default_limits) };
+  limitCaps.value = { ...parseLimits(vals.domain_limit_caps) };
   revision.value = section.revision ?? '';
   savedSnapshot.value = JSON.stringify({ defaults: defaultLimits.value, caps: limitCaps.value });
   saveError.value = '';
@@ -85,6 +85,7 @@ async function save() {
     savedSnapshot.value = JSON.stringify({ defaults: defaultLimits.value, caps: limitCaps.value });
     toast.success('资源额度政策已保存');
     await refresh();
+    if (!error.value) initDraft();
   } catch (err: unknown) {
     const apiErr = extractApiError(err);
     saveError.value = apiErr.message;

@@ -83,7 +83,7 @@ describe('空间设置与并发编辑', () => {
     api.update.mockRejectedValue({ statusCode: 409, data: { error: '配置已变化', code: 'CONFLICT' } });
     await view.get('form').trigger('submit');
     await flushPromises();
-    expect(api.update).toHaveBeenCalledWith('school-one', expect.objectContaining({ name: '尚未保存的修改' }), 7);
+    expect(api.update).toHaveBeenCalledWith('school-one', { name: '尚未保存的修改', description: '' }, 7);
     expect((name.element as HTMLInputElement).value).toBe('尚未保存的修改');
     expect(view.get('[role="alert"]').text()).toContain('配置已变化');
     expect(view.emitted('saved')).toBeUndefined();

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, onMounted, onUnmounted, reactive, ref, Suspense, watch } from 'vue';
+const copyToast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: copyToast }) }));
 import { useDomainSubmissions } from '~/composables/useDomainSubmissions';
 import { type QueueData, type QueueScope, useDomainQueue } from '~/composables/useDomainQueue';
 import QueueRow from '~/components/feature/QueueRow.vue';
@@ -25,7 +27,8 @@ const stubs = {
   UButton: {
     name: 'UButton',
     props: ['to', 'loading', 'disabled'],
-    template: '<button :data-to="to" @click="$emit(\'click\')"><slot /></button>',
+    emits: ['click'],
+    template: '<button :data-to="to" @click="$emit(\'click\', $event)"><slot /></button>',
   },
   UInput: {
     name: 'UInput',
@@ -123,6 +126,7 @@ beforeEach(() => {
   vi.stubGlobal('useWorkspace', () => ({ slug }));
   vi.stubGlobal('useAuth', () => ({ user }));
   vi.stubGlobal('useApi', () => ({ api: { get: getMock } }));
+  vi.stubGlobal('useToast', () => ({ toast: copyToast }));
   vi.stubGlobal('useEventSource', vi.fn());
   vi.stubGlobal('useAsyncData', async (_key: unknown, fetcher: () => Promise<unknown>) => {
     const data = ref<unknown>(null);
@@ -188,6 +192,35 @@ describe('useDomainQueue 契约调用', () => {
 });
 
 describe('QueueRow 任务跳转与自测展示', () => {
+  it('显示短号但复制完整编号，详情链接仍使用完整稳定标识', async () => {
+    const id = 'e2a18f30-7e72-4376-a910-8ae96ac34c12';
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const view = mount(QueueRow, {
+      props: {
+        item: {
+          id,
+          problem_id: '1001',
+          problem_title: 'A+B Problem',
+          language: 'cpp',
+          submitted_by: 'student',
+          submitted_at: '2026-10-16T00:00:00Z',
+          domain_slug: 'school',
+        },
+        now: Date.now(),
+      },
+      global: { stubs },
+    });
+    const link = view.get('a');
+    expect(link.text()).toBe('#e2a18f30…');
+    expect(link.attributes('href')).toBe(`/d/school/submissions/${id}`);
+    await view.findAll('button[aria-label="复制完整编号"]')[0].trigger('click');
+    await flushPromises();
+    expect(writeText).toHaveBeenCalledWith(id);
+    expect(copyToast.success).toHaveBeenCalled();
+    view.unmount();
+  });
+
   it('保留条目的 domain_slug 跳转对应空间详情，自测不造不可用链接', () => {
     const submissionItem = {
       id: 'sub12345678',
@@ -378,6 +411,15 @@ describe('评测队列页面', () => {
     expect(view.text()).toContain('明细仅显示你有权查看的任务');
     // 共享池标注为实例资源
     expect(view.text()).toContain('共享资源池（实例资源）');
+    const instance = view.findAll('button').find((button) => button.text() === '实例')!;
+    const domain = view.findAll('button').find((button) => button.text() === '当前域')!;
+    expect(instance.attributes('aria-pressed')).toBe('true');
+    expect(domain.attributes('aria-pressed')).toBe('false');
+    await domain.trigger('click');
+    await flushPromises();
+    expect(instance.attributes('aria-pressed')).toBe('false');
+    expect(domain.attributes('aria-pressed')).toBe('true');
+    view.unmount();
   });
 
   it('刷新失败保留原有数据与更新时间', async () => {

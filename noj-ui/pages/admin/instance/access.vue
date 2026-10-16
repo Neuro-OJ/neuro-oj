@@ -13,7 +13,7 @@ const { dialog } = useDialog();
 const key = computed(() => `instance-settings-access:${user.value?.id}`);
 const { data, status, error, refresh } = await useAsyncData(key, () => api.getSection('access'));
 
-// 活跃空间列表供默认域选择（Requirement 4: 默认域搜索现有admin domain列表，只选active）
+// 活跃空间列表供默认域选择
 const domainSearch = ref('');
 const domains = await useAsyncData(
   () => `instance-active-domains:${domainSearch.value}`,
@@ -87,18 +87,28 @@ async function save() {
   } catch (err: unknown) {
     const apiErr = extractApiError(err);
     saveError.value = apiErr.message;
-    // 409 冲突保留草稿 (Requirement 3: 409冲突保留草稿，428缺版本)
     toast.error(apiErr.message);
   } finally {
     saving.value = false;
   }
 }
 
+// 原始候选数据与空结果判断：按原始 API 候选数量判定，fallback 仅作当前值显示而不冒充搜索结果
+const rawDomainCandidates = computed(() => domains.data.value?.data ?? []);
+const hasSearch = computed(() => !!domainSearch.value.trim());
+const isSearchEmpty = computed(() => {
+  return hasSearch.value &&
+    domains.status.value !== 'pending' &&
+    !domains.error.value &&
+    rawDomainCandidates.value.length === 0;
+});
+
 const activeDomainOptions = computed(() => {
-  const list = (domains.data.value?.data ?? []).map((d) => ({
+  const list = rawDomainCandidates.value.map((d) => ({
     label: `${d.name} (${d.slug})`,
     value: d.slug,
   }));
+  // fallback 仅用于展示当前选中的默认域，避免未在首屏候选中时丢失展示
   if (draft.default_domain_slug && !list.some((item) => item.value === draft.default_domain_slug)) {
     list.unshift({
       label: `当前默认域: ${draft.default_domain_slug}`,
@@ -197,29 +207,40 @@ useSeoMeta({ title: '访问与注册政策 - 实例设置' });
 
             <!-- 默认工作空间 -->
             <div class="space-y-1.5 pt-1">
-              <label class="block text-sm font-medium text-text">默认工作空间</label>
+              <label for="default-domain-select" class="block text-sm font-medium text-text">默认工作空间</label>
               <div class="flex items-center gap-2 max-w-[400px]">
                 <USelectMenu
+                  id="default-domain-select"
                   v-model="draft.default_domain_slug"
                   v-model:search-term="domainSearch"
                   :items="activeDomainOptions"
                   value-key="value"
                   :ignore-filter="true"
+                  :loading="domains.status.value === 'pending'"
+                  :aria-busy="domains.status.value === 'pending'"
                   class="flex-1"
                   aria-label="默认工作空间"
+                  aria-describedby="domain-select-status"
                 />
               </div>
-              <p v-if="domains.status.value === 'pending'" class="text-xs text-text-muted flex items-center gap-1">
-                <UIcon name="i-lucide-loader-2" class="size-3.5 animate-spin" />
-                正在加载候选空间...
-              </p>
-              <p v-else-if="domains.error.value" class="text-xs text-error-text flex items-center gap-1">
-                <span>候选空间加载失败</span>
-                <button type="button" class="underline hover:text-text cursor-pointer ml-1" @click="domains.refresh()">重试</button>
-              </p>
-              <p v-else-if="domainSearch && activeDomainOptions.length === 0" class="text-xs text-text-muted">
-                未找到匹配的活跃空间
-              </p>
+              <div id="domain-select-status">
+                <p v-if="domains.status.value === 'pending'" role="status" aria-live="polite" class="text-xs text-text-muted flex items-center gap-1">
+                  <UIcon name="i-lucide-loader-2" class="size-3.5 animate-spin" />
+                  正在加载候选空间...
+                </p>
+                <p v-else-if="domains.error.value" role="alert" class="text-xs text-error-text flex items-center gap-1">
+                  <span>候选空间加载失败</span>
+                  <button
+                    type="button"
+                    class="underline hover:text-text cursor-pointer ml-1"
+                    aria-label="重试加载候选空间"
+                    @click="domains.refresh()"
+                  >重试</button>
+                </p>
+                <p v-else-if="isSearchEmpty" role="status" class="text-xs text-text-muted">
+                  未找到匹配“{{ domainSearch.trim() }}”的活跃空间
+                </p>
+              </div>
               <p class="text-xs text-text-secondary leading-relaxed">
                 用于未指定空间时的默认入口。旧题目、提交等兼容链接始终指向 main；只能选择状态正常的现有空间。
               </p>

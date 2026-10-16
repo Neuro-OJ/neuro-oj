@@ -599,7 +599,7 @@ Deno.test({
             `/domains/${slug}`,
             () =>
               applicant.page.getByRole("button", {
-                name: "保存设置",
+                name: "保存基本设置",
                 exact: true,
               }).click(),
           );

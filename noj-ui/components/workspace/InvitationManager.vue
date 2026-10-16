@@ -654,6 +654,8 @@ onMounted(() => {
               <button
                 type="button"
                 class="text-[11px] text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
+                :aria-expanded="!!expandedCards[row.id as string]"
+                :aria-controls="`invitation-details-${row.id}`"
                 @click="toggleCardDetails(row.id as string)"
               >
                 <span>{{ expandedCards[row.id as string] ? '收起详情' : '展开详情' }}</span>
@@ -667,6 +669,7 @@ onMounted(() => {
             <!-- 折叠的次要详情 -->
             <div
               v-if="expandedCards[row.id as string]"
+              :id="`invitation-details-${row.id}`"
               class="border-t border-border/60 pt-2 text-xs text-text-muted space-y-1 tabular-nums"
             >
               <div class="flex justify-between">

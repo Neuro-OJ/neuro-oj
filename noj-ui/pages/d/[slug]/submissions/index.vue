@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted } from 'vue';
 import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import { formatDateTime, languageLabels } from '~/utils/submissionFormat';
+import { useToast } from '~/composables/useToast';
 import type { DomainSubmissionListQuery } from '~/composables/useDomainSubmissions';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -12,6 +13,20 @@ const router = useRouter();
 const { slug } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainSubmissions();
+const { toast } = useToast();
+
+async function copySubmissionId(fullId: string) {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(fullId);
+      toast.success('已复制完整提交编号');
+    } else {
+      toast.error('当前浏览器不支持自动复制，请在提交详情查看完整编号');
+    }
+  } catch {
+    toast.error('复制失败，请手动选择复制');
+  }
+}
 
 const page = computed({
   get: () => Math.max(1, Number(route.query.page) || 1),
@@ -190,13 +205,25 @@ useSeoMeta({ title: '提交' });
       <div class="overflow-x-auto rounded border border-border bg-bg-panel shadow-card">
         <UTable :data="data?.data ?? []" :columns="columns" :ui="{ th: 'px-3 py-3 text-xs', td: 'px-3 py-3 text-sm' }">
           <template #id-cell="{ row }">
-            <NuxtLink
-              :to="workspacePath(slug!, `${row.original.kind === 'objective' ? 'objective-submissions' : 'submissions'}/${row.original.public_id || row.original.id}`)"
-              :title="`完整提交编号: ${row.original.public_id || row.original.id}`"
-              class="font-mono text-xs text-primary whitespace-nowrap hover:underline"
-            >
-              #{{ (row.original.public_id || row.original.id).length > 12 ? (row.original.public_id || row.original.id).slice(0, 8) + '…' : (row.original.public_id || row.original.id) }}
-            </NuxtLink>
+            <div class="flex items-center gap-1">
+              <NuxtLink
+                :to="workspacePath(slug!, `${row.original.kind === 'objective' ? 'objective-submissions' : 'submissions'}/${row.original.public_id || row.original.id}`)"
+                :title="`完整提交编号: ${row.original.public_id || row.original.id}`"
+                class="font-mono text-xs text-primary whitespace-nowrap hover:underline"
+              >
+                #{{ (row.original.public_id || row.original.id).length > 12 ? (row.original.public_id || row.original.id).slice(0, 8) + '…' : (row.original.public_id || row.original.id) }}
+              </NuxtLink>
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-copy"
+                class="size-5 p-0 opacity-60 hover:opacity-100"
+                aria-label="复制完整提交编号"
+                :title="`复制完整编号: ${row.original.public_id || row.original.id}`"
+                @click.stop="copySubmissionId(row.original.public_id || row.original.id)"
+              />
+            </div>
           </template>
           <template #problem-cell="{ row }">
             <NuxtLink v-if="row.original.resource_available"

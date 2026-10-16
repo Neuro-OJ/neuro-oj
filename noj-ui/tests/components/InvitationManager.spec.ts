@@ -120,6 +120,44 @@ beforeEach(() => {
 });
 
 describe('InvitationManager 邀请管理组件', () => {
+  it('手机摘要保留状态、到期和撤销，展开次要信息不改变邀请目标', async () => {
+    mockDialog.confirm.mockResolvedValue(true);
+    mockApi.delete.mockResolvedValue({ data: { success: true } });
+    const view = mount(InvitationManager, {
+      props: { domainSlug: 'school', writable: true },
+      global: { stubs },
+    });
+    await flushPromises();
+    const mobile = view.get('[class~="sm:hidden"]');
+    expect(mobile.text()).toContain('alice@example.com');
+    expect(mobile.text()).toContain('到期');
+    expect(mobile.text()).not.toContain('邀请 ID：');
+    const expand = mobile.findAll('button').find((button) => button.text().includes('展开详情'))!;
+    await expand.trigger('click');
+    expect(mobile.text()).toContain('邀请 ID：');
+    expect(mobile.text()).toContain('inv-1');
+    const revoke = mobile.findAll('button').find((button) => button.text() === '撤销')!;
+    await revoke.trigger('click');
+    await flushPromises();
+    expect(mockApi.delete).toHaveBeenCalledWith('/api/v1/domains/school/invitations/inv-1', expect.any(Object));
+    view.unmount();
+  });
+
+  it('有效期预设通过选中语义反映真实选择', async () => {
+    const view = mount(InvitationManager, {
+      props: { domainSlug: 'school', writable: true },
+      global: { stubs },
+    });
+    await flushPromises();
+    const seven = view.findAll('button').find((button) => button.text() === '7 天（默认）')!;
+    const thirty = view.findAll('button').find((button) => button.text() === '30 天')!;
+    expect(seven.attributes('aria-pressed')).toBe('true');
+    await thirty.trigger('click');
+    expect(seven.attributes('aria-pressed')).toBe('false');
+    expect(thirty.attributes('aria-pressed')).toBe('true');
+    view.unmount();
+  });
+
   it('只读模式（writable=false）不展示创建表单，列表中不展示撤销按钮', async () => {
     const view = mount(InvitationManager, {
       props: { domainSlug: 'cyber-arena', writable: false },

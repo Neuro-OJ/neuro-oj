@@ -110,6 +110,7 @@ beforeEach(() => {
       status.value = 'pending';
       try {
         data.value = await handler();
+        error.value = null;
         status.value = 'success';
       } catch (err) {
         error.value = err;
@@ -146,6 +147,64 @@ beforeEach(() => {
 });
 
 describe('实例访问与注册政策 - 默认工作空间搜索与选择', () => {
+  it('搜索无匹配时保留当前选择并明确显示空结果，候选失败可局部重试', async () => {
+    const wrapper = mount(
+      defineComponent({
+        render: () => h(Suspense, null, { default: () => h(AccessPage) }),
+      }),
+      { global: { stubs } },
+    );
+    await flushPromises();
+    mockAdminApi.domains.mockResolvedValue({ data: [] });
+    const search = wrapper.get('[data-testid="search-input"]');
+    await search.setValue('not-a-domain');
+    await flushPromises();
+    expect(wrapper.text()).toMatch(/未找到匹配/);
+    expect((wrapper.get('[data-testid="select-menu"] select').element as HTMLSelectElement).value).toBe('main');
+
+    mockAdminApi.domains.mockRejectedValue(new Error('候选列表不可用'));
+    await search.setValue('retry-domain');
+    await flushPromises();
+    expect(wrapper.text()).toContain('候选');
+    const retry = wrapper.findAll('button').find((button) => button.text() === '重试');
+    expect(retry).toBeDefined();
+    mockAdminApi.domains.mockResolvedValue({ data: [{ slug: 'main', name: '主空间', status: 'active' }] });
+    await retry!.trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('候选空间加载失败');
+    expect((wrapper.get('[data-testid="select-menu"] select').element as HTMLSelectElement).value).toBe('main');
+    wrapper.unmount();
+  });
+
+  it('切换注册模式保留邀请预设，保存提交原有政策值', async () => {
+    const wrapper = mount(
+      defineComponent({
+        render: () => h(Suspense, null, { default: () => h(AccessPage) }),
+      }),
+      { global: { stubs } },
+    );
+    await flushPromises();
+    const registration = wrapper.get('select[aria-label="账号注册模式"]');
+    await registration.setValue('invite');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await registration.setValue('admin_only');
+    expect(wrapper.text()).toContain('预设');
+    await registration.setValue('invite');
+    expect((wrapper.get('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(true);
+    mockAdminApi.updateSection.mockResolvedValue({ data: { revision: 'rev-access-2' } });
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(mockAdminApi.updateSection).toHaveBeenCalledWith(
+      'access',
+      expect.objectContaining({
+        instance_registration_mode: 'invite',
+        allow_domain_registration_invites: true,
+      }),
+      'rev-access-1',
+    );
+    wrapper.unmount();
+  });
+
   it('默认域选择器为 USelectMenu，通过 searchTerm 触发服务端 keyword 查询并支持 fallback 显示', async () => {
     const TestComponent = defineComponent({
       render() {

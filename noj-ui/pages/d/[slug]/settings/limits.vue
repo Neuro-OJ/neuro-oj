@@ -80,6 +80,7 @@ async function saveQuota() {
     toast.success('配额设置已保存');
     await context.refresh();
     await quotas.refresh();
+    loadQuota();
   } catch (cause) {
     quotaError.value = extractApiError(cause).message;
   } finally {
