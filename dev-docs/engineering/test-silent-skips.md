@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1102** 处（ignore=766 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
+> 当前命中 **1103** 处（ignore=767 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -861,10 +861,11 @@
 | noj-tests/e2e/browser/19_search_unified.test.ts | 129 | ignore |
 | noj-tests/e2e/browser/19_search_unified.test.ts | 171 | ignore |
 | noj-tests/e2e/browser/19_search_unified.test.ts | 197 | ignore |
+| noj-tests/e2e/browser/settings-experience.test.ts | 16 | ignore |
 | noj-tests/e2e/browser/workspace-bundle-import.test.ts | 24 | ignore |
 | noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 186 | ignore |
 | noj-tests/e2e/browser/workspace-domain-content.test.ts | 16 | ignore |
-| noj-tests/e2e/browser/workspace-governance.test.ts | 204 | ignore |
+| noj-tests/e2e/browser/workspace-governance.test.ts | 206 | ignore |
 | noj-tests/e2e/browser/workspace-input-modes.test.ts | 122 | ignore |
 | noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 187 | ignore |
 | noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 169 | ignore |
