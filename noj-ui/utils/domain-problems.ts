@@ -57,6 +57,10 @@ export interface DomainProblemDetail {
     accepted_submissions: number;
     progress: 'solved' | 'attempted' | 'unseen' | null;
   };
+  judge_backend?: DomainProblemSummary['judge_backend'];
+  owner?: { id: string; username: string; avatar_url: string | null } | null;
+  tags?: Array<{ id: string; name: string; kind: 'problem' | 'algorithm' }>;
+  has_hidden_algorithm_tags?: boolean;
   limits?: { time_limit_ms: number; memory_limit_mb: number } | null;
   content: DomainProblemContent;
 }

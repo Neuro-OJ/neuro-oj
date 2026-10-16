@@ -194,6 +194,35 @@ export function toProblemView(resource: ProblemResource): ProblemView {
   };
 }
 
+/** 域题目复用题面组件；题号与统计仍由使用域提供。 */
+export function toDomainProblemView(resource: import('./domain-problems.ts').DomainProblemDetail): ProblemView {
+  return toProblemView({
+    id: resource.reference.problem_id,
+    display_id: resource.reference.display_ref,
+    title: resource.content.title,
+    description: resource.content.description,
+    samples: resource.content.samples.map((sample, index) => ({ ...sample, id: String(index + 1) })),
+    difficulty: resource.difficulty ?? '',
+    type: 'T',
+    owner_id: resource.owner?.id ?? '',
+    owner_username: resource.owner?.username,
+    owner_avatar_url: resource.owner?.avatar_url,
+    is_objective: resource.content.kind === 'objective',
+    judge_type: resource.content.kind === 'oi' ? 'oi' : 'dual',
+    judge_backend: resource.judge_backend,
+    submission_mode: resource.content.submission_mode,
+    artifact_max_size_mb: resource.content.artifact_max_size_mb,
+    runtime_config: resource.limits ? { evaluator: resource.limits } : undefined,
+    tags: resource.tags,
+    has_hidden_algorithm_tags: resource.has_hidden_algorithm_tags,
+    version_id: resource.version_id,
+    version: resource.version,
+    effective_version_policy: resource.effective_version_mode === 'exact'
+      ? { mode: 'exact', version_id: resource.version_id }
+      : { mode: 'any' },
+  });
+}
+
 /**
  * 竞赛题目资源 → 视图。
  *
