@@ -2,7 +2,23 @@
 export const WORKSPACE_DDL: string[] = [
   'CREATE TABLE IF NOT EXISTS "domain_creation_requests" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"applicant_id" text NOT NULL,\n\t"slug" text NOT NULL,\n\t"name" text NOT NULL,\n\t"preset" text NOT NULL,\n\t"reason" text NOT NULL,\n\t"status" text DEFAULT \'pending\' NOT NULL,\n\t"domain_id" text,\n\t"reviewed_by" text,\n\t"reviewed_at" text,\n\t"created_at" text NOT NULL,\n\tCONSTRAINT "domain_creation_requests_status_check" CHECK ("domain_creation_requests"."status" IN (\'pending\', \'approved\', \'rejected\'))\n);',
   'CREATE TABLE IF NOT EXISTS "domain_feature_intervals" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"feature" text NOT NULL,\n\t"disabled_at" text NOT NULL,\n\t"enabled_at" text\n);',
-  'CREATE TABLE IF NOT EXISTS "domain_invitations" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"classroom_id" text,\n\t"token_hash" text NOT NULL,\n\t"email" text NOT NULL,\n\t"expires_at" text NOT NULL,\n\t"used_at" text,\n\t"revoked_at" text,\n\t"created_by" text NOT NULL,\n\t"created_at" text NOT NULL,\n\tCONSTRAINT "domain_invitations_token_hash_unique" UNIQUE("token_hash")\n);',
+  `CREATE TABLE IF NOT EXISTS domain_invitations (
+    id text PRIMARY KEY NOT NULL,
+    domain_id text NOT NULL,
+    classroom_id text,
+    token_hash text NOT NULL,
+    code_hash text,
+    mode text NOT NULL DEFAULT 'email',
+    email text,
+    max_uses integer DEFAULT 1,
+    used_count integer NOT NULL DEFAULT 0,
+    expires_at text NOT NULL,
+    used_at text,
+    revoked_at text,
+    created_by text NOT NULL,
+    created_at text NOT NULL,
+    CONSTRAINT domain_invitations_token_hash_unique UNIQUE(token_hash)
+  )`,
   'CREATE TABLE IF NOT EXISTS "domain_join_requests" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"user_id" text NOT NULL,\n\t"reason" text DEFAULT \'\' NOT NULL,\n\t"status" text DEFAULT \'pending\' NOT NULL,\n\t"reviewed_by" text,\n\t"reviewed_at" text,\n\t"created_at" text NOT NULL,\n\tCONSTRAINT "domain_join_requests_status_check" CHECK ("domain_join_requests"."status" IN (\'pending\', \'approved\', \'rejected\'))\n);',
   'CREATE TABLE IF NOT EXISTS "domain_limits" (\n\t"domain_id" text PRIMARY KEY NOT NULL,\n\t"members" integer,\n\t"problems" integer,\n\t"storage_bytes" bigint,\n\t"submissions_per_minute" integer,\n\tCONSTRAINT "domain_limits_bounds_check" CHECK (("domain_limits"."members" IS NULL OR "domain_limits"."members" >= 0) AND ("domain_limits"."problems" IS NULL OR "domain_limits"."problems" >= 0) AND ("domain_limits"."storage_bytes" IS NULL OR "domain_limits"."storage_bytes" >= 0) AND ("domain_limits"."submissions_per_minute" IS NULL OR "domain_limits"."submissions_per_minute" >= 0))\n);',
   'CREATE TABLE IF NOT EXISTS "domain_member_roles" (\n\t"membership_id" text NOT NULL,\n\t"role" text NOT NULL,\n\tCONSTRAINT "domain_member_roles_membership_id_role_pk" PRIMARY KEY("membership_id","role"),\n\tCONSTRAINT "domain_member_roles_role_check" CHECK ("domain_member_roles"."role" IN (\'owner\', \'admin\', \'editor\', \'educator\', \'moderator\', \'member\'))\n);',
@@ -33,9 +49,22 @@ export const WORKSPACE_DDL: string[] = [
   'CREATE INDEX "idx_domain_join_requests_domain_status" ON "domain_join_requests" USING btree ("domain_id","status");',
   'CREATE INDEX "idx_domain_memberships_user_status" ON "domain_memberships" USING btree ("user_id","status");',
   'CREATE INDEX "idx_domains_owner" ON "domains" USING btree ("owner_id");',
+  `ALTER TABLE domain_invitations ADD CONSTRAINT domain_invitations_code_hash_unique UNIQUE (code_hash)`,
+  `ALTER TABLE domain_invitations ADD CONSTRAINT domain_invitations_mode_check CHECK (mode IN ('email','general','once'))`,
+  `ALTER TABLE domain_invitations ADD CONSTRAINT domain_invitations_uses_check CHECK (used_count >= 0 AND (max_uses IS NULL OR max_uses > 0))`,
+  `ALTER TABLE domain_invitations ADD CONSTRAINT domain_invitations_target_check CHECK ((mode = 'email' AND email IS NOT NULL AND max_uses = 1) OR (mode = 'once' AND email IS NULL AND max_uses = 1) OR (mode = 'general' AND email IS NULL))`,
+  `CREATE TABLE IF NOT EXISTS domain_invitation_redemptions (
+    invitation_id text NOT NULL,
+    user_id text NOT NULL,
+    redeemed_at text NOT NULL,
+    CONSTRAINT domain_invitation_redemptions_invitation_id_user_id_pk PRIMARY KEY (invitation_id,user_id)
+  )`,
+  `ALTER TABLE domain_invitation_redemptions ADD CONSTRAINT domain_invitation_redemptions_invitation_id_domain_invitations_id_fk FOREIGN KEY (invitation_id) REFERENCES domain_invitations(id)`,
+  `ALTER TABLE domain_invitation_redemptions ADD CONSTRAINT domain_invitation_redemptions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES users(id)`,
 ];
 /** 测试重置时清理全部工作空间表。 */
 export const WORKSPACE_TABLES = [
+  "domain_invitation_redemptions",
   "domain_storage_objects",
   "domain_storage_uploads",
   "domain_creation_requests",
