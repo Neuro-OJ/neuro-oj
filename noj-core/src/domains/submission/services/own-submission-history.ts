@@ -226,7 +226,7 @@ async function readHistory(
     )
   })))`;
   const submissionMode =
-    sql`CASE WHEN owned.kind='objective' THEN 'objective' WHEN source_problem.llm_config IS NOT NULL THEN 'llm' ELSE source_problem.submission_mode END`;
+    sql`CASE WHEN owned.kind='objective' THEN 'objective' WHEN source_problem.submission_mode='code' AND source_problem.llm_config IS NOT NULL THEN 'llm' ELSE source_problem.submission_mode END`;
   const visible = sql`(owned.user_id=${actorId} OR (${available} AND
     (owned.contest_id IS NULL OR ${!!options.platformAdmin} OR EXISTS (
       SELECT 1 FROM contests permitted_contest WHERE permitted_contest.id=owned.contest_id AND
@@ -292,7 +292,7 @@ async function readHistory(
   LEFT JOIN contests contest ON contest.id=owned.contest_id
   LEFT JOIN evaluation_attempts attempt ON attempt.id=${
         options.visibleOnly
-          ? sql`coalesce(owned.latest_attempt_id,owned.effective_attempt_id)`
+          ? sql`CASE WHEN owned.kind='objective' THEN coalesce(owned.effective_attempt_id,owned.latest_attempt_id) ELSE coalesce(owned.latest_attempt_id,owned.effective_attempt_id) END`
           : sql`coalesce(owned.effective_attempt_id,owned.latest_attempt_id)`
       }
   WHERE ${where} ORDER BY owned.created_at DESC,owned.kind,owned.id DESC
