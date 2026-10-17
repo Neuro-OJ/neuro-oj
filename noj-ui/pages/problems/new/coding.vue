@@ -8,8 +8,10 @@ useHead({ title: '创建 Coding 编程题 - Neuro OJ' })
 const router = useRouter()
 const route = useRoute()
 
-function onSaved() {
-  router.replace("/my/problems")
+// 建题后直接进入该题编辑页：支持包只能在那里上传，题目也在那里核对与发布。
+// （此前跳到「我的题目」，而该列表只显示 U 型题，新建的 P 型题会"消失"。）
+function onSaved(problemId: string) {
+  router.replace(`/problems/${problemId}/edit`)
 }
 </script>
 

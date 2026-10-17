@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from "~/composables/useToast"
+import { effectiveVisibility } from "~/utils/bundleImport"
 import { extractApiError } from "~/utils/apiError"
 import { caseMaxScores } from "~/utils/oiWorkspace"
 interface Case { id: string; input: string; output: string; score?: number; time_limit_ms?: number; memory_limit_mb?: number }
@@ -95,7 +96,7 @@ async function save() {
   if(!title.value.trim() || !description.value.trim()) {error.value="标题和题面不能为空";return}
   saving.value=true;error.value=""
   try {
-    const payload={title:title.value.trim(),description:description.value,samples:samples.value,difficulty:difficulty.value,tag_ids:tagIds.value,visibility:visibility.value,judge_type:"oi",runtime_config:{...runtime.value,scoring_version:2}}
+    const payload={title:title.value.trim(),description:description.value,samples:samples.value,difficulty:difficulty.value,tag_ids:tagIds.value,visibility:effectiveVisibility(props.initialType,visibility.value),judge_type:"oi",runtime_config:{...runtime.value,scoring_version:2}}
     const form=new FormData();form.append("metadata",JSON.stringify({problem:{...payload,type:props.initialType},changes:changedFiles.value,removed:removedFiles.value,
       // 草稿 revision 是唯一乐观锁（迁移期不再用 updated_at）
       draft_revision:draftRevision.value??undefined,upload_paths:addedFiles.value.map(item=>item.path)}))

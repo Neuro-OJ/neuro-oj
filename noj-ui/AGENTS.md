@@ -48,6 +48,7 @@ noj-ui/
 ├── components/            # 可复用 Vue 组件（按功能分目录）
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
+│   ├── uiproblem/         # UiWorkspace / UiFrame（界面题：沙箱 iframe 渲染题包 ui.html，editor/[id].vue 按 submission_mode 选择）
 │   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
 │   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
@@ -408,6 +409,10 @@ cd dist
 - **前端测试已接入 CI**：`deno task test`（Deno 单测，含 server/ 代理与 composable 断言）
   + `deno task test:components`（vitest 组件测试），均已在 CI 运行；跨模块 E2E 见 noj-tests。
   （2026-09-12 更正：此处原写"无前端单元测试"，与代码不符）
+- **编辑器主题浏览器回归**：启动 UI 后执行
+  `E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme`，首次使用需运行
+  `deno run -A npm:playwright@1.62.0 install chromium`。测试用模拟 API 在真实 Chromium
+  中检查桌面/手机宽度的明暗切换、Markdown 颜色与对比度；CI 对构建产物执行同一任务。
 - **SEO 基础已具备**：动态页 `useSeoMeta`、OG、sitemap、robots 已加入；结构化数据与完整关键词策略仍待补充
 - **无图片优化**：仅 `logo.jpg`，未使用 Nuxt 图片优化
 - **无字体优化**：使用系统字体栈，无 web font 加载

@@ -23,6 +23,7 @@
     "npm:nuxt@*": "4.5.2_rolldown@1.2.12_typescript@5.9.3",
     "npm:nuxt@4.5.2": "4.5.2_rolldown@1.2.12_typescript@5.9.3",
     "npm:playwright@*": "1.62.0",
+    "npm:playwright@1.62.0": "1.62.0",
     "npm:qrcode@^1.5.4": "1.5.4",
     "npm:rolldown@1.2.12": "1.2.12",
     "npm:tailwindcss@^4.3.3": "4.3.3",

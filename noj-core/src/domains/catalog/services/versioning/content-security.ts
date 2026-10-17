@@ -1,9 +1,6 @@
 /** 草稿与发布共用运行配置的权限、资源与 LLM 准入规则。 */
 import type { Context } from "hono";
-import {
-  BadRequestError,
-  ForbiddenError,
-} from "../../../../shared/base/errors.ts";
+import { BadRequestError } from "../../../../shared/base/errors.ts";
 import type {
   ProblemContentV1,
   ProblemDraftContent,
@@ -14,6 +11,7 @@ import type {
 } from "../../types/runtime-config.ts";
 import type { ProblemIdentityRow } from "./draft.ts";
 import {
+  assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "../problems/problem-field-guard.ts";
@@ -46,9 +44,7 @@ export async function assertDraftContentSecurity(
     enforceResourceLimits(runtime);
   }
   if (content.kind === "ai" && content.llm_config) {
-    if (identity.type !== "P") {
-      throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
-    }
+    await assertLlmProblemPermission(identity.type, context, actorId);
     assertLlmLimitsWithinDefault(content.llm_config);
     await assertLlmModelsValid(content.llm_config);
     if (

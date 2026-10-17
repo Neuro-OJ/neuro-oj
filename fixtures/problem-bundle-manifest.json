@@ -150,6 +150,35 @@
           }
         }
       }
+    },
+    {
+      "name": "U 型 LLM 题结构合法，管理员准入由服务端校验",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "type": "U",
+        "llm": {
+          "provider_id": "old-provider",
+          "model": "old-model",
+          "max_calls": 10
+        },
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1,
+            "network": {
+              "enabled": true
+            }
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
     }
   ],
   "invalid": [

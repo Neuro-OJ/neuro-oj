@@ -6,6 +6,9 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import TestCase
+from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
+from io import BytesIO
 
 from noj_evaluator_sdk import llm
 
@@ -112,3 +115,47 @@ class LlmTest(TestCase):
             _Handler.response = old_response
             server.shutdown()
             server.server_close()
+
+    def _mock_response(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"choices": [{"message": {"content": "OK"}}]}'
+        return response
+
+    def test_transient_500_retries_once_and_recovers(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        failure = HTTPError("http://gateway", 500, "upstream", {}, BytesIO(b'{"error":"upstream_error"}'))
+        with patch("urllib.request.urlopen", side_effect=[failure, self._mock_response()]) as request, patch("time.sleep"):
+            response = llm.complete(model="model", messages=[{"role":"user","content":"hi"}], timeout=185)
+            self.assertEqual(response["choices"][0]["message"]["content"], "OK")
+            self.assertEqual(request.call_count, 2)
+            self.assertNotIn("timeout", json.loads(request.call_args.args[0].data))
+            self.assertNotIn("max_retries", json.loads(request.call_args.args[0].data))
+
+    def test_out_of_usage_is_not_retried(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        failure = HTTPError("http://gateway", 429, "quota", {}, BytesIO(b'{"error":{"code":"out_of_usage"}}'))
+        with patch("urllib.request.urlopen", side_effect=failure) as request, patch("time.sleep") as sleep:
+            with self.assertRaises(llm.LLMError) as error:
+                llm.complete(model="model", messages=[{"role":"user","content":"hi"}])
+            self.assertEqual(error.exception.error_code, "out_of_usage")
+            self.assertEqual(request.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_retries_are_bounded_on_connection_failure(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("timeout")) as request, patch("time.sleep"):
+            with self.assertRaises(llm.LLMError):
+                llm.complete(model="model", messages=[{"role":"user","content":"hi"}])
+            self.assertEqual(request.call_count, 2)
+
+    def test_rate_limit_waits_for_retry_after_then_recovers(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        failure = HTTPError("http://gateway", 429, "rate", {"Retry-After":"60"}, BytesIO(b'{"error":{"code":"rate_limit_exceeded"}}'))
+        with patch("urllib.request.urlopen", side_effect=[failure, self._mock_response()]) as request, patch("time.sleep") as sleep:
+            llm.complete(model="model", messages=[{"role":"user","content":"hi"}])
+            sleep.assert_called_once_with(60.0)
+            self.assertEqual(request.call_count, 2)

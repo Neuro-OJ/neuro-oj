@@ -799,6 +799,13 @@
       "when": 1791802052576,
       "tag": "0114_flashy_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1791803591287,
+      "tag": "0115_ui_submission_mode",
+      "breakpoints": true
     }
   ]
 }

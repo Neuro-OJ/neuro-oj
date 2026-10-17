@@ -31,6 +31,37 @@ use noj_judge::merge_output;
 
 /// 拉取任务失败后的重试间隔。
 const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+/// 重建长连接的超时：上游黑洞时 TCP 握手可能挂起数分钟，期间主循环无法响应关闭信号。
+const REDIS_RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 限时重建主循环复用的 Redis 长连接。
+///
+/// `MultiplexedConnection` 底层 TCP 断开后不会自动重连，继续复用会让上游恢复后
+/// 仍永久失败（2026-10-16 judge1 隧道断线后卡评测）。失败只记 warn，由调用方下一轮重试。
+async fn reconnect_redis(
+    client: &redis::Client,
+    purpose: &str,
+) -> Option<redis::aio::MultiplexedConnection> {
+    match tokio::time::timeout(
+        REDIS_RECONNECT_TIMEOUT,
+        client.get_multiplexed_async_connection(),
+    )
+    .await
+    {
+        Ok(Ok(conn)) => {
+            info!("已重建 Redis {}连接", purpose);
+            Some(conn)
+        }
+        Ok(Err(e)) => {
+            warn!("重建 Redis {}连接失败: {}", purpose, e);
+            None
+        }
+        Err(_) => {
+            warn!("重建 Redis {}连接超时", purpose);
+            None
+        }
+    }
+}
 
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
@@ -226,7 +257,7 @@ fn main() -> Result<()> {
         let user_claim_prefix = config.user_claim_prefix.clone();
         let user_claim_ttl_ms = config.user_claim_ttl_ms;
         // 专用连接：不与主循环的 BRPOPLPUSH 连接共用，避免阻塞命令影响 claim 延迟。
-        let claim_conn = redis_client
+        let mut claim_conn = redis_client
             .get_multiplexed_async_connection()
             .await
             .context("创建 per-user claim 连接失败")?;
@@ -395,7 +426,11 @@ fn main() -> Result<()> {
                         Ok(None) => { drop(permit); tokio::time::sleep(idle_poll_delay).await; continue; },
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
+                            drop(permit);
                             tokio::time::sleep(PULL_RETRY_DELAY).await;
+                            if let Some(conn) = reconnect_redis(&redis_client, "拉取").await {
+                                redis_conn = conn;
+                            }
                             continue;
                         }
                     };
@@ -423,9 +458,9 @@ fn main() -> Result<()> {
                     let claim_member =
                         user_claim::claim_member(&instance_id, &pulled.task.submission_id);
                     let is_active_user = {
-                        let mut claim_conn = claim_conn.clone();
+                        let mut conn = claim_conn.clone();
                         match user_claim::try_claim_user(
-                            &mut claim_conn,
+                            &mut conn,
                             &task_claim_prefix,
                             &pulled.task.user_id,
                             &claim_member,
@@ -442,6 +477,10 @@ fn main() -> Result<()> {
                                     error = %e,
                                     "占用用户槽位失败，任务放回队尾重试"
                                 );
+                                // 与拉取连接同理：断线后的连接不会自愈，否则任务会无限放回重试。
+                                if let Some(conn) = reconnect_redis(&redis_client, "claim").await {
+                                    claim_conn = conn;
+                                }
                                 true
                             }
                         }

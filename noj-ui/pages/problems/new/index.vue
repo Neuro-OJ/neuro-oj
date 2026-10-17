@@ -52,6 +52,26 @@ useHead({ title: '创建题目 - Neuro OJ' })
         </span>
       </NuxtLink>
 
+      <!-- 从题目包导入 -->
+      <NuxtLink
+        to="/problems/new/bundle"
+        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-primary/50 hover:shadow-md"
+      >
+        <span class="flex size-11 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+          <UIcon name="i-lucide-file-archive" class="size-5" />
+        </span>
+        <div>
+          <h2 class="text-base font-semibold text-text group-hover:text-primary">从题目包导入</h2>
+          <p class="mt-1 text-sm text-text-secondary leading-relaxed">
+            已有完整题目包 zip（含 problem.json 与 evaluate.py）？直接上传建题，无需手填表单。
+          </p>
+        </div>
+        <span class="mt-auto inline-flex items-center gap-1 text-sm font-medium text-primary">
+          上传题目包
+          <UIcon name="i-lucide-arrow-right" class="size-4 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </NuxtLink>
+
       <!-- OI 题 -->
       <NuxtLink
         to="/problems/new/coding?type=oi"

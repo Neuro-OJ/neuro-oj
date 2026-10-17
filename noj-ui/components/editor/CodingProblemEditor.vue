@@ -6,6 +6,8 @@ import { useToast } from "~/composables/useToast"
 import { useProblemStats } from "~/composables/useProblemStats"
 import type { ProblemStatsDetail } from "~/utils/problemStats"
 import type { SubmissionMode } from "~/utils/problemView"
+import { effectiveVisibility } from "~/utils/bundleImport"
+import { readAiDraftPassthrough } from "~/utils/aiDraftContent"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -40,7 +42,12 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const route = useRoute()
 const { user, fetchUser } = useAuth()
+/** 「从题目包导入」入口：管理后台与前台各有一页（跳转后的编辑页路径不同）。 */
+const bundleImportPath = computed(() =>
+  route.path.startsWith("/admin") ? "/admin/problem-import" : "/problems/new/bundle",
+)
 const { api } = useApi()
 const { toast } = useToast()
 const versions = useProblemVersions()
@@ -63,8 +70,18 @@ const publishing = ref(false)
 // ── 表单数据 ──
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const problemType = ref(props.initialType)
+// 主题库（P）题目必须公开；可见性选择只在 U 型下展示，切到 P 时同步为公开，
+// 避免隐藏字段残留「私有」导致建题被拒（「P 型题目必须公开」）。
+watch(problemType, (type) => {
+  visibility.value = effectiveVisibility(type, visibility.value)
+}, { immediate: true })
 const submissionMode = ref<SubmissionMode>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
+/**
+ * 题包导入写入的脚本模板（编辑器不提供编辑入口）。草稿 PUT 是整体替换，
+ * 保存时必须原样带回，否则界面题模板被清空，评测时找不到模板里的函数。
+ */
+const templateContent = ref("")
 
 /** prediction 模式无 Solution 容器：隐藏 Solution 配置并省略 runtime_config.solution。 */
 const isPredictionMode = computed(() => submissionMode.value === 'prediction')
@@ -97,16 +114,10 @@ async function loadStats() {
 // 支持包上传
 const hasSupportPackage = ref(false)
 
-/** 用于 SupportPackageUpload 组件的实际 problemId（创建模式下保存后才赋值） */
-const uploadProblemId = computed(() =>
-  isEditMode.value ? (props.problemId ?? null) : savedProblemId.value,
-)
-const savedProblemId = ref<string | null>(null)
-
 async function onPackageChanged(hasPackage: boolean) {
   hasSupportPackage.value = hasPackage
-  if (!uploadProblemId.value) return
-  const draft = await versions.getDraft(uploadProblemId.value)
+  if (!props.problemId) return
+  const draft = await versions.getDraft(props.problemId)
   draftRevision.value = draft.revision
   applyDraftContent(draft.content)
 }
@@ -357,9 +368,9 @@ function applyDraftContent(content: Record<string, unknown>) {
   if (Array.isArray(content.samples)) {
     samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
   }
-  if (content.submission_mode === "code" || content.submission_mode === "artifact") {
-    submissionMode.value = content.submission_mode
-  }
+  const passthrough = readAiDraftPassthrough(content)
+  if (passthrough.submission_mode) submissionMode.value = passthrough.submission_mode
+  if (passthrough.template_content !== undefined) templateContent.value = passthrough.template_content
   if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
     artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null
   }
@@ -477,7 +488,7 @@ function buildContent(): Record<string, unknown> {
     samples: samples.value,
     submission_mode: submissionMode.value,
     runtime_config: buildRuntimeConfig(),
-    template_content: "",
+    template_content: templateContent.value,
     artifact_max_size_mb: artifactMaxSizeMb.value,
     llm_config: buildLlmPayload() ?? null,
   }
@@ -487,7 +498,7 @@ function buildContent(): Record<string, unknown> {
 async function saveManagement(): Promise<void> {
   await api.put(`/api/v1/problems/${props.problemId}`, {
     difficulty: difficulty.value,
-    visibility: visibility.value,
+    visibility: effectiveVisibility(problemType.value, visibility.value),
     tag_ids: tagIds.value,
   })
 }
@@ -549,7 +560,8 @@ async function handleSubmit() {
   saveError.value = ""
   try {
     const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
-      title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
+      title: title.value.trim(), description: description.value.trim(), samples: samples.value,
+      visibility: effectiveVisibility(problemType.value, visibility.value),
       difficulty: difficulty.value,
       tag_ids: tagIds.value,
       type: problemType.value,
@@ -558,8 +570,7 @@ async function handleSubmit() {
       artifact_max_size_mb: artifactMaxSizeMb.value,
       llm: buildLlmPayload(),
     })
-    savedProblemId.value = res.data.id
-    toast.success("题目已创建（尚未发布：发布后才可作答）")
+    toast.success("题目已创建：请在编辑页上传支持包，核对后发布")
     emit("saved", res.data.id)
   } catch (err: unknown) {
     saveError.value = extractApiError(err).message
@@ -639,6 +650,7 @@ async function handleSubmit() {
               { label: '代码提交（code）', value: 'code' },
               { label: '产物提交（artifact / zip）', value: 'artifact' },
               { label: '预测提交（prediction / 单文件）', value: 'prediction' },
+              { label: '界面提交（ui，题包需含 ui.html）', value: 'ui' },
             ]"
             class="w-full"
           />
@@ -841,7 +853,15 @@ async function handleSubmit() {
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <UFormField v-if="problemType === 'U'" label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
       <ProblemSampleEditor v-model="samples" v-model:statement="description" />
-      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="!uploadProblemId || draftRevision === null" @package-changed="onPackageChanged" />
+      <SupportPackageUpload v-if="isEditMode" :problem-id="problemId ?? null" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="draftRevision === null" @package-changed="onPackageChanged" />
+      <div v-else class="flex flex-col gap-1 px-3.5 py-3 bg-gray-50 border border-border rounded-lg text-xs text-text-secondary">
+        <p class="font-semibold text-text">题目支持包</p>
+        <p>创建题目后会进入编辑页，在那里上传支持包（evaluate.py 与测试数据）。</p>
+        <p>
+          已有完整题目包（含 problem.json）？
+          <NuxtLink :to="bundleImportPath" class="text-primary font-semibold">直接从题目包导入</NuxtLink>，无需手填本表单。
+        </p>
+      </div>
     </section>
 
     <!-- 题目数据（仅编辑模式）：出题人视角的评测洞察 -->

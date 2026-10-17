@@ -16,15 +16,17 @@
 
 1. **设计题目**：确定题面、函数签名与评分规则（例如 `solve(input_str) -> str`，按返回值判分）。可参考[A+B 示例题](ab-example.md)。
 
-2. **创建题目**：在管理后台「题目」→「新建题目」，填写标题、描述（Markdown）、难度、题型与标签，并配置运行时限制（Evaluator / Solution 的时间与内存）。见[Web 题目编辑器](web-editor.md)。
+2. **创建题目**：二选一。
+   - **已有完整题目包**（含 `problem.json` 与 `evaluate.py`）：在「新建题目」页选择「从题目包导入」（管理后台为「题目」→「导入题目包」），上传 zip 即建题，题面与评测配置全部取自包内；也可以在命令行执行 `noj-cli problem push <目录|zip> --server <平台地址>`。导入后进入编辑页核对并发布。
+   - **从表单开始**：在「新建题目」填写标题、描述（Markdown）、难度、题型与标签，并配置运行时限制（Evaluator / Solution 的时间与内存）；创建后自动进入该题编辑页，在那里上传支持包。见[Web 题目编辑器](web-editor.md)。
 
 ::: warning 普通用户只能创建 U 型题
-U 型（用户题）任意登录用户可创建；**P 型（主题题）仅管理员可创建**，且 P 型题默认公开。
+U 型（用户题）任意登录用户可创建；**P 型（主题题）仅管理员可创建**，且 P 型题一律公开（编辑器只在 U 型下提供可见性选择）。
 :::
 
 3. **编写评测内容**：在本地编写 `evaluate.py` 与测试数据。测试数据格式**完全自由**（`visible.jsonl` / `hidden.jsonl` / SQLite / CSV 均可），只要 evaluator 能读取。见[测试数据与样例规范](../standards/test-data.md)。
 
-4. **打包上传**：将题面、`evaluate.py` 与测试数据整理为统一题目包 zip，在编辑器中上传。包结构与 manifest 要求见[题目包格式规范](../standards/problem-bundle.md)。
+4. **打包上传**：将题面、`evaluate.py` 与测试数据整理为统一题目包 zip（`noj-cli problem lint` 校验、`noj-cli problem pack` 打包），在编辑页「题目支持包」处上传；未发布的新题同样可以上传。包结构与 manifest 要求见[题目包格式规范](../standards/problem-bundle.md)。
 
 5. **自测发布**：
    1. 用一版参考答案提交，确认状态与得分符合预期。

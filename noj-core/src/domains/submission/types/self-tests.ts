@@ -72,3 +72,21 @@ export interface SelfTestDetail {
   judge_finished_at: string | null;
   created_at: string;
 }
+
+/**
+ * 自测列表项（不含代码与输出，供"运行历史"展示；代码按需经详情接口获取）。
+ */
+export interface SelfTestSummary {
+  id: string;
+  language: string;
+  status: SelfTestStatus;
+  /** 评测结果状态（新协议下为 finished / error），未完成时为 null。 */
+  result_status: string | null;
+  score: number;
+  created_at: string;
+}
+
+/** 自测列表默认条数。 */
+export const SELF_TEST_LIST_DEFAULT_LIMIT = 20;
+/** 自测列表最大条数。 */
+export const SELF_TEST_LIST_MAX_LIMIT = 100;

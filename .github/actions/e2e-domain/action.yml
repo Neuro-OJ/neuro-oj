@@ -8,27 +8,17 @@ inputs:
   browser:
     description: 是否运行 UI 浏览器门禁（true/false）
     required: false
-    default: 'false'
+    default: "false"
 
 runs:
   using: composite
   steps:
     # ── 安装工具链 ────────────────────────────
-
     - name: 安装 Deno
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
         deno-version-file: .dvmrc
 
-    - name: 安装 Rust
-      uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-      with:
-        # 固定 SHA 后不再能从 ref 名推断工具链，显式声明（审计 S1）
-        toolchain: stable
-        components: rustfmt, clippy
-
-    - name: 设置 Docker BuildKit
-      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: 校验本地 E2E SDK 镜像刷新逻辑
       run: bash scripts/e2e/check-setup.sh
       shell: bash
@@ -42,17 +32,6 @@ runs:
         key: deno-${{ hashFiles('noj-core/deno.lock') }}
         restore-keys: |
           deno-
-
-    - name: 缓存 Cargo 依赖
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          noj-judge/target
-        key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
-        restore-keys: |
-          cargo-e2e-
 
     # ════════════════════════════════════════════
     # 1. 构建基础设施：支持包 + 评测镜像（带 Docker 缓存）
@@ -70,60 +49,27 @@ runs:
       env:
         DENO_DIR: ${{ env.DENO_DIR }}
 
-    - name: 构建评测镜像 (noj-evaluator-python, 带 GHA 缓存)
-      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+    # 5 个镜像由 e2e.yml 的 e2e-images job 统一构建一次并以 artifact 分发，
+    # 各 Domain job 只加载，避免 12 个 job 各自重复构建（原 9–12 分钟）。
+    - name: 下载预构建镜像
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        context: noj-judge
-        file: noj-judge/docker/evaluator-python/Dockerfile
-        tags: noj-evaluator-python
-        load: true
-        cache-from: type=gha
-        cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
+        pattern: e2e-image-*
+        path: ${{ runner.temp }}/e2e-images
+        merge-multiple: true
 
-    - name: 构建评测镜像 (noj-solution-python, 带 GHA 缓存)
-      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-      with:
-        context: noj-judge
-        file: noj-judge/docker/solution-python/Dockerfile
-        tags: noj-solution-python
-        load: true
-        cache-from: type=gha
-        cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-    - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
-      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-      with:
-        context: noj-core
-        file: noj-core/Dockerfile.e2e
-        tags: noj-e2e-core
-        load: true
-        build-args: CACHE_BUST=${{ github.run_id }}
-        cache-from: type=gha,scope=${{ github.head_ref || github.ref_name }}
-        cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', github.head_ref || github.ref_name) }}
-
-    - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
-      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-      with:
-        context: noj-judge
-        file: noj-judge/Dockerfile.e2e
-        tags: noj-e2e-judge
-        load: true
-        cache-from: type=gha
-        cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-    - name: 构建 Docker Compose 镜像 (noj-llm-gateway, 带 GHA 缓存)
-      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-      with:
-        context: noj-llm-gateway
-        file: noj-llm-gateway/Dockerfile
-        tags: noj-e2e-llm-gateway
-        load: true
-        cache-from: type=gha
-        cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-    - name: 初始化 MinIO bucket
+    - name: 加载镜像并启动基础设施
       run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
+        set -euo pipefail
+        # 基础设施不依赖预构建镜像，拉取与健康检查在 docker load 期间执行。
+        docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" \
+          up -d postgres redis minio minio-init llm-mock &
+        infra_pid=$!
+        fail=0
+        ls "$RUNNER_TEMP"/e2e-images/*.tar | xargs -P 5 -n 1 docker load -i || fail=1
+        wait "$infra_pid" || fail=1
+        docker images
+        exit "$fail"
       shell: bash
 
     # ════════════════════════════════════════════
@@ -169,19 +115,22 @@ runs:
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
         # 用 env 间接传参，避免把 workflow 输入直接拼进 run 命令
         E2E_DOMAIN: ${{ inputs.domain }}
-      run: bash scripts/run-e2e-domain.sh "$E2E_DOMAIN"
+      run: deno task test:domain "$E2E_DOMAIN"
       shell: bash
 
-    - name: 安装 noj-ui 依赖
+    - name: 下载浏览器测试 UI
       if: inputs.browser == 'true'
-      working-directory: noj-ui
-      run: deno install
-      shell: bash
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: e2e-ui
+        path: ${{ runner.temp }}/e2e-ui
 
-    - name: 构建 noj-ui
+    - name: 加载浏览器测试 UI
       if: inputs.browser == 'true'
       working-directory: noj-ui
-      run: deno task build
+      run: |
+        tar -xf "$RUNNER_TEMP/e2e-ui/e2e-ui.tar"
+        test -f .output/server/index.mjs
       shell: bash
 
     - name: 启动 noj-ui

@@ -109,7 +109,7 @@ require_deprecation_acceptance() {
   fi
 
   # 2. 要求输入 y；非 y → 无副作用退出（退出码 0：用户主动取消不是错误）
-  if ! read_deprecation_answer "继续执行已废弃的 $script？输入 y 确认 [y/N]: "; then
+  if ! read_deprecation_answer "继续执行已废弃的 ${script}？输入 y 确认 [y/N]: "; then
     printf '✗ %s：无法读取确认输入。\n' "$script" >&2
     exit 2
   fi

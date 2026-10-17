@@ -112,6 +112,12 @@ const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
 const isPrediction = computed(() => problem.value != null && isPredictionView(problem.value))
 /** artifact 与 prediction 均不进入代码编辑器。 */
 const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
+/** 界面题：做题页渲染题包自带的 ui.html */
+const isUi = computed(() => problem.value?.submission_mode === 'ui')
+/** 入口按钮的图标 / 文案（代码题「开始编码」、界面题「打开界面」） */
+const entryIcon = computed(() => (isUi.value ? 'i-lucide-layout-dashboard' : 'i-lucide-code-2'))
+const entryLabel = computed(() => (isUi.value ? '打开界面' : '开始编码'))
+const statementEditorLabel = computed(() => (isUi.value ? '打开界面' : '在编辑器打开'))
 
 /**
  * 作答版本（Handbook §4.2）：提交必须原样回传该 ID。
@@ -350,8 +356,8 @@ const publishBlockReason = computed(() => {
                   size="lg"
                   :to="editorUrl"
                 >
-                  <UIcon name="i-lucide-code-2" class="size-5" />
-                  开始编码
+                  <UIcon :name="entryIcon" class="size-5" />
+                  {{ entryLabel }}
                 </UButton>
               </template>
             </ProblemHeader>
@@ -427,6 +433,8 @@ const publishBlockReason = computed(() => {
               v-model:expanded="statementExpanded"
               :content="problem.description"
               :editor-to="editorUrl"
+              :editor-label="statementEditorLabel"
+              :editor-icon="entryIcon"
               :edit-to="editUrl"
             />
 

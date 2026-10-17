@@ -2,6 +2,7 @@
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
+import { getEditorHistoryUrl } from '~/utils/editorHistory'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { isNotFoundError, isVersionConflictError } from '~/utils/apiError'
 import type { ProblemContestSecrecyNotice, SubmissionMode } from '~/utils/problemView'
@@ -126,6 +127,8 @@ const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'a
 const isPrediction = computed(() => workspaceProblem.value?.submission_mode === 'prediction')
 /** artifact 与 prediction 均不走代码编辑器。 */
 const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
+/** 界面题：渲染题包自带的 ui.html（沙箱 iframe），不进入代码编辑器 */
+const isUi = computed(() => workspaceProblem.value?.submission_mode === 'ui')
 
 /**
  * 作答版本（Handbook §4.2）：题库页取有效策略解析出的版本，竞赛页取竞赛固定版本。
@@ -206,9 +209,8 @@ function submissionFilter(s: WorkspaceSubmission): boolean {
   return !p || s.problem_id === p.problem_id
 }
 
-const historyUrl = computed(() => isContest.value
-  ? `/api/v1/contests/${contestId.value}/my-submissions?per_page=100`
-  : `/api/v1/submissions?problem_id=${problemId.value}&limit=20`)
+// 列表接口按内部 ID 过滤；网址中的公开题号（如 P17）不能作为 problem_id。
+const historyUrl = computed(() => getEditorHistoryUrl(workspaceProblem.value, contestId.value))
 
 const backUrl = computed(() => isContest.value
   ? `/contests/${contestId.value}/problems/${label.value}`
@@ -237,6 +239,20 @@ const editorSubtitle = computed(() => {
     ? `作答版本 v${answerVersionNumber.value}${isHistoricalVersion.value ? '（历史版本）' : ''}`
     : (answerVersion.value ? '作答版本' : '尚未发布版本')
   return base ? `${base} · ${versionText}` : versionText
+})
+
+/**
+ * 界面题的 ui.html 地址：必须与实际判卷的作答版本一致（否则控件与脚本模板对不上），
+ * 因此显式携带 `version_id`；竞赛模式携带 `contest_id` 走竞赛访问口径。
+ */
+const uiUrl = computed(() => {
+  const pid = workspaceProblem.value?.id
+  if (!pid) return undefined
+  const query = new URLSearchParams()
+  if (isContest.value) query.set('contest_id', contestId.value)
+  if (answerVersion.value) query.set('version_id', answerVersion.value)
+  const qs = query.toString()
+  return `/api/v1/problems/${pid}/ui${qs ? `?${qs}` : ''}`
 })
 
 const templateUrl = (pid: string) =>
@@ -314,6 +330,41 @@ const templateUrl = (pid: string) =>
         </UButton>
       </div>
     </div>
+
+    <!-- 提示词题：专用提示词编辑界面（props 与代码工作区一致） -->
+    <UiWorkspace
+      v-else-if="isUi"
+      class="flex-1 min-h-0"
+      :problem="workspaceProblem"
+      :pending="pending"
+      :error="error"
+      :retry="refresh"
+      :history-url="historyUrl"
+      :submit="submit"
+      :self-test="isContest ? undefined : selfTest"
+      :ui-url="uiUrl ?? ''"
+      :self-test-history-url="isContest || !workspaceProblem ? undefined : `/api/v1/problems/${workspaceProblem.id}/self-tests?limit=30`"
+      :draft-key="draftKey"
+      :open-submission-url="(id: string) => publicUrl('submission', id)"
+      :back-url="backUrl"
+      :back-label="'返回题目详情'"
+      :subtitle="editorSubtitle"
+      :can-submit="canSubmit"
+      :submission-filter="submissionFilter"
+      @accepted="refresh"
+    >
+      <template v-if="isContest" #toolbar-actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-trophy"
+          :to="`${publicUrl('contest', contestId)}/ranking`"
+        >
+          排名
+        </UButton>
+      </template>
+    </UiWorkspace>
 
     <!-- 工作区自身带 h-screen，作为 flex 子项被 flex-1 + min-h-0 压回剩余高度，
          以免上方提示横幅把满屏工作区挤出视口 -->

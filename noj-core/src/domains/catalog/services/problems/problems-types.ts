@@ -49,7 +49,7 @@ export interface ProblemResponse {
   judge_type: "dual" | "oi";
   /** 可公开的执行后端；客观题或配置不可用时为空。 */
   judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
-  /** 提交模式：code / artifact / prediction */
+  /** 提交模式：code / artifact / prediction / ui */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
@@ -109,7 +109,7 @@ export interface AdminProblemListItem {
   type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
-  submission_mode: "code" | "artifact" | "prediction";
+  submission_mode: "code" | "artifact" | "prediction" | "ui";
   artifact_max_size_mb: number | null;
   display_id: string;
 }
