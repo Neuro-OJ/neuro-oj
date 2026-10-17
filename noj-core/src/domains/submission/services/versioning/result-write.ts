@@ -11,6 +11,8 @@
  *
  * 平台错误（`platform_error`）**不替换已有正式判定**：只写尝试终态并把提交标记为
  * error，`submission_version_results` 与其他有效字段保持原样。
+ * judge 回传的正式提交平台错误可带 `autoRetry`：仍有剩余次数时同事务创建重试尝试，
+ * 提交保持 pending（见 `auto-retry.ts`）。
  */
 
 import { and, eq } from "drizzle-orm";
@@ -37,6 +39,10 @@ import {
   upsertCurrentVersionResult,
 } from "./projection.ts";
 import { completeJobItem } from "./job-worker.ts";
+import {
+  scheduleAutoRetryInTx,
+  type ScheduledAutoRetry,
+} from "./auto-retry.ts";
 
 /** 结果写入输入（可信封套字段，来自 JudgeResult）。 */
 export interface ApplyAttemptResultInput {
@@ -51,12 +57,19 @@ export interface ApplyAttemptResultInput {
   details?: Record<string, unknown>;
   timeMs?: number | null;
   memoryKb?: number | null;
+  /**
+   * 平台错误自动重试（仅 judge 回传的正式提交结果启用）。
+   *
+   * 提供且仍有剩余次数时，平台错误不把提交定为 `error`，而是在同一事务内创建新尝试；
+   * 派发阶段失败、sweeper 永久失败等内部路径不传此项，保持原有终态语义。
+   */
+  autoRetry?: { maxRetries: number };
 }
 
 /** 结果写入结论。 */
 export type ApplyAttemptOutcome =
   | { applied: "graded"; projection: SubmissionProjectionPlan }
-  | { applied: "platform_error" }
+  | { applied: "platform_error"; retry?: ScheduledAutoRetry }
   | { applied: "ignored"; reason: "not_found" | "already_terminal" | "stale" };
 
 /**
@@ -188,6 +201,16 @@ export async function applyAttemptResult(
   if (!applied) return { applied: "ignored", reason: "already_terminal" };
 
   if (input.resultKind === "platform_error") {
+    // 自动重试：同一事务、同一提交行锁内创建新尝试（sequence 递增，失败尝试保留
+    // error 终态作为持久化的次数依据）；提交保持 pending，批任务条目保持未完成。
+    if (input.autoRetry && source.kind === "submission") {
+      const retry = await scheduleAutoRetryInTx(db, {
+        failedAttemptId: input.attemptId,
+        source,
+        maxRetries: input.autoRetry.maxRetries,
+      });
+      if (retry) return { applied: "platform_error", retry };
+    }
     // 平台错误不替换正式判定：只记终态与运行状态
     await updateSubmissionRuntimeState(source, {
       latest_attempt_id: input.attemptId,

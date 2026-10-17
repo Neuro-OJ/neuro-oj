@@ -32,6 +32,12 @@ import { isAcceptedResult } from "../../../../shared/versioning/verdict.ts";
 import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
 import { runAttemptTerminalRevocationAfterCommit } from "../versioning/attempts.ts";
+import {
+  classifyPlatformErrorRetry,
+  readAutoRetryMarker,
+  resolvePlatformErrorMaxRetries,
+  type ScheduledAutoRetry,
+} from "../versioning/auto-retry.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -62,6 +68,11 @@ export interface SaveEvaluationResultOutcome {
   attempt_applied?: string | null;
   /** 本次结果落到的评测尝试 ID（旧协议无尝试时为 null），供 token 吊销等使用。 */
   attempt_id?: string | null;
+  /**
+   * 平台错误已调度自动重试时的新尝试信息（提交保持 pending）。
+   * `via_job=false` 时调用方须在事务提交后派发，失败由 sweeper 兜底。
+   */
+  auto_retry?: ScheduledAutoRetry | null;
 }
 
 /**
@@ -175,6 +186,20 @@ export async function saveEvaluationResult(
     }
 
     const attemptId = attempt.id;
+    // 只有偶发平台错误才自动重试（确定性/计费类与未知错误直接终结）
+    const retryDecision = resultKind === "platform_error"
+      ? classifyPlatformErrorRetry({
+        resultStatus: scoreInvalid ? "INVALID_SCORE" : safeResult.status,
+        output: safeResult.output,
+      })
+      : null;
+    if (retryDecision && !retryDecision.retryable) {
+      logger.info("平台错误不满足自动重试条件", {
+        submission_id: result.submission_id,
+        attempt_id: attemptId,
+        reason: retryDecision.reason,
+      });
+    }
     const appliedAttempt = await applyAttemptResult({
       attemptId,
       resultKind,
@@ -189,9 +214,26 @@ export async function saveEvaluationResult(
       details: safeResult.details,
       timeMs: safeResult.time_ms ?? null,
       memoryKb: safeResult.memory_kb ?? null,
+      // judge 回传的偶发平台错误按配置自动重试（次数持久化在尝试快照，见 auto-retry.ts）
+      ...(retryDecision?.retryable
+        ? { autoRetry: { maxRetries: resolvePlatformErrorMaxRetries() } }
+        : {}),
     }, tx);
     if (appliedAttempt.applied === "ignored") return null;
     const attemptApplied = appliedAttempt.applied;
+    const autoRetry = appliedAttempt.applied === "platform_error"
+      ? appliedAttempt.retry ?? null
+      : null;
+    if (autoRetry) {
+      logger.warn("评测平台错误，已自动调度重试", {
+        submission_id: result.submission_id,
+        failed_attempt_id: attemptId,
+        retry_attempt_id: autoRetry.attempt_id,
+        retry_count: autoRetry.retry_count,
+        reason: retryDecision?.reason,
+        via_job: autoRetry.via_job,
+      });
+    }
 
     // 事务性 Outbox：在同一事务内写入 SSE 事件，提交后由调用方发布 Redis。
     const outboxEvents: SseEventOutboxItem[] = [];
@@ -231,13 +273,16 @@ export async function saveEvaluationResult(
       applied: true,
       attempt_applied: attemptApplied,
       attempt_id: attemptId,
+      auto_retry: autoRetry,
       // 冻结快照：终态后处理据此推导已签发 token 的 TTL 上界（§6.7）
       task_snapshot: attempt.task_snapshot,
       created_at: sub.created_at,
       contest_id: sub.contest_id,
       user_id: sub.user_id,
       problem_id: sub.problem_id,
-      is_rejudge: attempt.source !== "initial",
+      // 初次提交的平台错误自动重试按 rejudge 来源落库，但语义上仍是首次结果
+      is_rejudge: attempt.source !== "initial" &&
+        readAutoRetryMarker(attempt.task_snapshot)?.origin_source !== "initial",
       artifact_storage_url: sub.artifact_storage_url,
       outbox_events: outboxEvents,
     };
@@ -247,7 +292,8 @@ export async function saveEvaluationResult(
 
   // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
   // 赛中数据隔离（DL-03）：未结束竞赛的提交不计入全站实时统计，也不广播 stats:updated，防止成为满分判分预言机。
-  if (!outcome.is_rejudge && outcome.created_at) {
+  // 已调度自动重试的平台错误不是最终结果，等重试尝试落库再计入。
+  if (!outcome.is_rejudge && !outcome.auto_retry && outcome.created_at) {
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {
@@ -288,6 +334,7 @@ export async function saveEvaluationResult(
     is_rejudge: outcome.is_rejudge,
     attempt_applied: outcome.attempt_applied ?? null,
     attempt_id: outcome.attempt_id ?? null,
+    auto_retry: outcome.auto_retry ?? null,
   };
 }
 
