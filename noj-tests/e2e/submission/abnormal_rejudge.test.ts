@@ -100,7 +100,6 @@ e2eTest(
 e2eTest(
   "[e2e/submission-abnormal] 未定义题面函数：finished + 0 分并附说明",
   async () => {
-    if (!isE2E) return;
     // `print(1)` 可正常加载但未定义 solve：evaluator SDK 兜底写出 0 分结果，
     // 不再因 NotFoundError 未捕获而落为平台错误（status=error）。
     const id = await submitCode(token, PROBLEM_ID, "print(1)\n");
