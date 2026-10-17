@@ -98,7 +98,7 @@ Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async ()
 
   assertEquals(res.status, 429);
   const body = await res.json();
-  assertEquals(body.error.code, "out_of_usage");
+  assertEquals(body.error.code, "rate_limit_exceeded");
   assertEquals(usageInserts[0].error_code, "rate_limit_exceeded");
 });
 
@@ -535,4 +535,85 @@ Deno.test("llm route: model_map 缺少别名映射时拒绝（403）", async () 
     messages: [{ role: "user", content: "ping" }],
   });
   assertEquals(res.status, 403);
+});
+
+Deno.test("llm route: 配额拒绝审计保留维度和预占数值，响应不暴露计数键", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = [
+    JSON.stringify({
+      code: "limit_exceeded",
+      counter: 2,
+      current: 990,
+      requested: 15,
+      limit: 1000,
+    }),
+  ];
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const res = await requestChat(app, await makeToken(testConfig), {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "ping" }],
+  });
+  assertEquals((await res.json()).error.code, "out_of_usage");
+  assertEquals(JSON.parse(String(usageInserts[0].request_params)).quota_limit, {
+    scope: "evaluation",
+    window: "evaluation",
+    metric: "tokens",
+    current: 990,
+    requested: 15,
+    limit: 1000,
+  });
+});
+
+Deno.test("llm route: 客户端断开取消上游并归还 token 预占", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const controller = new AbortController();
+  let upstreamAborted = false;
+  const restore = stubFetch((_url, init) =>
+    new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => {
+        upstreamAborted = true;
+        reject(new DOMException("cancelled", "AbortError"));
+      }, { once: true });
+      controller.abort();
+    })
+  );
+  try {
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${await makeToken(testConfig)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 768,
+      }),
+    });
+    assertEquals(res.status, 499);
+    assertEquals(upstreamAborted, true);
+    assertEquals(usageInserts[0].error_code, "client_closed_request");
+    // 限额脚本一次预扣，一次结算；失败的 token 预占被扣回而调用次数保留。
+    const settlement = redis.evalArgs.at(-1) as unknown[];
+    const meta = JSON.parse(String(settlement[0]));
+    assertEquals(meta.incs[0] < 0, true);
+  } finally {
+    restore();
+  }
 });

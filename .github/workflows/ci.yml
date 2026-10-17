@@ -2049,6 +2049,27 @@ jobs:
         working-directory: noj-ui
         run: deno task test
 
+      - name: 安装主题回归浏览器
+        working-directory: noj-ui
+        run: deno run -A npm:playwright@1.62.0 install --with-deps chromium
+
+      - name: 编辑器 Markdown 明暗主题回归
+        working-directory: noj-ui
+        env:
+          E2E_UI_URL: http://127.0.0.1:3064
+          NOJ_THEME_SCREENSHOTS: test-results/theme
+        run: |
+          PORT=3064 HOST=127.0.0.1 deno run -A .output/server/index.mjs > theme-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent "$E2E_UI_URL/editor/P22" > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          deno task test:theme
+
       # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -2058,6 +2079,8 @@ jobs:
           path: |
             noj-ui/.output/logs/
             noj-ui/.nuxt/dist/
+            noj-ui/test-results/theme/
+            noj-ui/theme-server.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

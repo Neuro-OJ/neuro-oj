@@ -91,25 +91,25 @@ OI 的 `runtime_config` 需要声明 `backend`、`languages`、`checker` 和
 }
 ```
 
-| 字段                   | 必填 | 说明                                                                                                                                        |
-| ---------------------- | :--: | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `format_version`       |  ✅  | 当前唯一支持 `1`；其他值导入返回 400                                                                                                        |
-| `title`                |  ✅  | 非空字符串                                                                                                                                  |
-| `runtime_config`       | ✅*  | 双容器配置（编程题必填）；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`）；`is_objective=true` 时禁止提供               |
-| `judge_type`           |  ❌  | `dual`（默认）或 `oi`；OI 题使用 C/C++ 测试点评测并禁止 `template`、`submission_mode`、`artifact_max_size_mb`、`llm`                        |
-| `is_objective`         |  ❌  | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config` / `evaluate.py`，必须含 `questions.json`                             |
-| `statement.md` 文件    |  ❌  | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400                                                                                |
-| `evaluate.py` 文件     | ✅*  | 编程题根级缺失 → 400；客观题包不要求                                                                                                        |
-| `questions.json` 文件  | ✅*  | 客观题包根级缺失 → 400；编程题包不要求                                                                                                      |
-| `number`               |  ❌  | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配                                                           |
-| `difficulty`           |  ❌  | `easy` / `medium` / `hard`，缺省 `medium`                                                                                                   |
-| `type`                 |  ❌  | `U` / `P`，缺省 `U`（P 型仅 admin）                                                                                                         |
-| `tags`                 |  ❌  | 标签名数组，按 name 匹配已有标签；不存在的名字被忽略并 warning（字段缺省则不处理）                                                          |
-| `samples`              |  ❌  | **已废弃**：该字段从不落库、没有任何消费者。为兼容存量题包，导入仍会容忍但会记录 warning 并忽略；新题包不要写它，题面样例请直接写进题面正文 |
-| `template`             |  ❌  | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供                                                       |
-| `submission_mode`      |  ❌  | 提交模式 `code`（缺省）/ `artifact` / `ui`（见[界面题](../problemsetters/ui-problem.md)，题包需含根级 `ui.html`）；客观题包禁止提供              |
-| `artifact_max_size_mb` |  ❌  | artifact 提交大小上限（MB），正整数或 `null`（缺省 `null` = 用平台硬上限）；客观题包禁止提供                                                |
-| `llm`                  |  ❌  | LLM 调用题配置 `{ max_calls?, max_tokens?, models? }`（非 null 即启用，均可选；`models` 为模型别名数组）；仅 P 型 + evaluator 联网可启用；客观题包禁止提供                |
+| 字段                   | 必填 | 说明                                                                                                                                                                       |
+| ---------------------- | :--: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format_version`       |  ✅  | 当前唯一支持 `1`；其他值导入返回 400                                                                                                                                       |
+| `title`                |  ✅  | 非空字符串                                                                                                                                                                 |
+| `runtime_config`       | ✅*  | 双容器配置（编程题必填）；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`）；`is_objective=true` 时禁止提供                                              |
+| `judge_type`           |  ❌  | `dual`（默认）或 `oi`；OI 题使用 C/C++ 测试点评测并禁止 `template`、`submission_mode`、`artifact_max_size_mb`、`llm`                                                       |
+| `is_objective`         |  ❌  | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config` / `evaluate.py`，必须含 `questions.json`                                                            |
+| `statement.md` 文件    |  ❌  | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400                                                                                                               |
+| `evaluate.py` 文件     | ✅*  | 编程题根级缺失 → 400；客观题包不要求                                                                                                                                       |
+| `questions.json` 文件  | ✅*  | 客观题包根级缺失 → 400；编程题包不要求                                                                                                                                     |
+| `number`               |  ❌  | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配                                                                                          |
+| `difficulty`           |  ❌  | `easy` / `medium` / `hard`，缺省 `medium`                                                                                                                                  |
+| `type`                 |  ❌  | `U` / `P`，缺省 `U`（P 型仅 admin）                                                                                                                                        |
+| `tags`                 |  ❌  | 标签名数组，按 name 匹配已有标签；不存在的名字被忽略并 warning（字段缺省则不处理）                                                                                         |
+| `samples`              |  ❌  | **已废弃**：该字段从不落库、没有任何消费者。为兼容存量题包，导入仍会容忍但会记录 warning 并忽略；新题包不要写它，题面样例请直接写进题面正文                                |
+| `template`             |  ❌  | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供                                                                                      |
+| `submission_mode`      |  ❌  | 提交模式 `code`（缺省）/ `artifact` / `ui`（见[界面题](../problemsetters/ui-problem.md)，题包需含根级 `ui.html`）；客观题包禁止提供                                        |
+| `artifact_max_size_mb` |  ❌  | artifact 提交大小上限（MB），正整数或 `null`（缺省 `null` = 用平台硬上限）；客观题包禁止提供                                                                               |
+| `llm`                  |  ❌  | LLM 调用题配置 `{ max_calls?, max_tokens?, models? }`（非 null 即启用，均可选；`models` 为模型别名数组）；P 型或管理员配置的 U 型 + evaluator 联网可启用；客观题包禁止提供 |
 
 > `categories` 字段已退役，统一使用 `tags`。 `runtime_config.solution`
 > 无需配置入口文件名：Solution 入口为评测内部约定，用户代码由 Judge Worker
@@ -130,7 +130,7 @@ OI 的 `runtime_config` 需要声明 `backend`、`languages`、`checker` 和
 - `format_version` 当前唯一支持 `1`；未知版本导入返回 HTTP 400。
 - `tags` 按 name 匹配已有标签；不存在的标签名被忽略并记录
   warning（**不会**因此导入失败）。
-- `llm` 校验：仅 P 型（`type="P"`）可启用，且必须开启 evaluator
+- `llm` 校验：P 型可启用；U 型（可保持私有）仅管理员可配置，且必须开启 evaluator
   网络；只校验可选预算字段，未知键（含存量的 `provider_id` / `model`）忽略。
 
 ::: warning ZIP 安全与上传入口约束
@@ -179,9 +179,12 @@ Provider、哪个模型由平台全局 默认统一决定（后台「LLM → Pro
 ```
 
 - `llm` 非 null 即启用；`max_calls` / `max_tokens` 均可选，若提供必须为正整数。
-- `llm.models` 可选：允许评测代码调用的模型别名（1–8 个，格式 `^[a-z][a-z0-9_-]{0,31}$`，不得重复），缺省 `["default"]`。题包只含别名，不含真实模型名；别名在目标平台由运营者配置，导入时未配置的别名只告警，评测前须配置，且同一道题的别名须属于同一个 Provider。
+- `llm.models` 可选：允许评测代码调用的模型别名（1–8 个，格式
+  `^[a-z][a-z0-9_-]{0,31}$`，不得重复），缺省
+  `["default"]`。题包只含别名，不含真实模型名；别名在目标平台由运营者配置，导入时未配置的别名只告警，评测前须配置，且同一道题的别名须属于同一个
+  Provider。
 - 旧 manifest 中的 `provider_id` / `model` 被容忍并忽略（不报错）。
-- 必须 P 型 + evaluator 联网，否则导入被拒。
+- 必须开启 evaluator 联网；U 型还要求管理员权限，否则导入被拒。
 - 安全与配额要求见[出 LLM 调用题](../problemsetters/llm-problem.md)。
 
 ### 客观题套卷

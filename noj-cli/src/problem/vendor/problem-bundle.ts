@@ -76,7 +76,7 @@ export interface ProblemBundleManifest {
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
   /**
-   * LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+   * LLM 配置（可空）：U 型须管理员配置，且必须开启 evaluator 网络。
    * 只声明预算；Provider/模型由平台全局默认决定。旧字段
    * `provider_id` / `model` 容忍并忽略。
    */
@@ -279,14 +279,11 @@ export function validateBundleManifest(
     );
   }
 
-  // LLM 配置校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+  // 此处只校验结构；U 型的管理员准入由平台导入、CRUD 和草稿/发布服务执行。
   let llm: LlmConfig | undefined;
   if (m.llm !== undefined && m.llm !== null) {
     if (!isValidLlmConfig(m.llm)) {
       throw new BadRequestError("manifest.llm 格式非法");
-    }
-    if ((m.type ?? "U") !== "P") {
-      throw new BadRequestError("仅 P 型/官方题可启用 LLM");
     }
     // prediction 路径不注入 NOJ_LLM_*（评测只跑 Evaluator），题目级 LLM 配置
     // 不会生效，导入期即拒绝而不是拖到提交期。
