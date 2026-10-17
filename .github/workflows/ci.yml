@@ -5,7 +5,7 @@
 # 并行检查三个模块：
 #   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
 #   - noj-ui:   Nuxt 4 前端（Deno 构建检查）
-#   - noj-judge: Rust Worker（格式/Clippy/单元测试）
+#   - noj-judge: Rust Worker（格式/Clippy/单元测试）+ Python SDK 单测
 #
 # 性能优化（2026-07）：
 #   - 引入 dorny/paths-filter：PR 上按改动模块只跑相关 job
@@ -2175,6 +2175,38 @@ jobs:
       - name: Clippy 检查 (cargo clippy)
         working-directory: noj-judge
         run: cargo clippy --locked --all-targets -- -D warnings
+
+      # Evaluator / Solution Python SDK 单测（纯 stdlib，无第三方依赖）。
+      # tests 目录没有 __init__.py，unittest discover 无法发现，故按文件名
+      # 展开为模块名逐个传入；timeout 防止测试线程卡死拖到 job 超时。
+      - name: 安装 Python（SDK 单测）
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Evaluator SDK 单测 (unittest)
+        working-directory: noj-judge/sdk/evaluator
+        env:
+          PYTHONPATH: .:../common
+        run: |
+          mods=()
+          for f in noj_evaluator_sdk/tests/test_*.py; do
+            m="${f%.py}"
+            mods+=("${m//\//.}")
+          done
+          timeout 300 python -m unittest -v "${mods[@]}"
+
+      - name: Solution SDK 单测 (unittest)
+        working-directory: noj-judge/sdk/solution
+        env:
+          PYTHONPATH: .:../common
+        run: |
+          mods=()
+          for f in noj_solution_sdk/tests/test_*.py; do
+            m="${f%.py}"
+            mods+=("${m//\//.}")
+          done
+          timeout 300 python -m unittest -v "${mods[@]}"
 
   judge-test:
     name: Judge Tests
