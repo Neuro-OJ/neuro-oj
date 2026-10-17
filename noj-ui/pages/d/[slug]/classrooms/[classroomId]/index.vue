@@ -5,8 +5,11 @@ import { extractApiError } from '~/utils/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
-const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi();
-const actor = useState<{ id: string } | null>('auth:user', () => null), page = ref(1);
+const route = useRoute();
+const { slug, domain } = useWorkspace();
+const education = useEducationApi();
+const actor = useState<{ id: string } | null>('auth:user', () => null);
+const page = ref(1);
 const id = computed(() => String(route.params.classroomId));
 
 const room = await useAsyncData(
@@ -19,7 +22,23 @@ const tasks = await useAsyncData(
   () => education.assignments(slug.value!, id.value, page.value),
 );
 
-useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
+const isCoach = computed(() => {
+  const r = room.data.value?.data;
+  return !!r && (r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant');
+});
+
+const canManageAssignments = computed(() => {
+  const r = room.data.value?.data;
+  return !!r && classroomCan(r, 'assignments:manage') && r.status === 'active' &&
+    domain.value?.status === 'active' && domain.value.configuration.features.assignment &&
+    domain.value.configuration.features.classroom;
+});
+
+const activeTasksCount = computed(() => {
+  return (tasks.data.value?.data ?? []).filter((t) => assignmentPhase(t) === '进行中').length;
+});
+
+useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
 </script>
 
 <template>
@@ -32,34 +51,60 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
       @retry="room.refresh()"
     >
       <div class="space-y-4">
-      <LibraryPageHeader :title="room.data.value?.data.name ?? '班级'"
-        :description="room.data.value?.data.description || '暂无班级说明'" icon="i-lucide-graduation-cap">
-        <template #actions>
-            <UButton
-              v-if="room.data.value && classroomCan(room.data.value.data, 'assignments:manage') && room.data.value.data.status === 'active' && domain?.status === 'active' && domain.configuration.features.assignment && domain.configuration.features.classroom"
-              :to="workspacePath(slug!, `classrooms/${id}/assignments/new`)"
-              color="primary"
-              icon="i-lucide-plus"
-            >
-              创建作业
-            </UButton>
-            <UButton
-              v-if="room.data.value && classroomCan(room.data.value.data, 'assignments:manage') && classroomCan(room.data.value.data, 'progress:read') && room.data.value.data.status === 'active' && domain?.status === 'active' && domain.configuration.features.assignment && domain.configuration.features.classroom"
-              :to="workspacePath(slug!, `classrooms/${id}/contest-remediation`)"
-              variant="outline"
-              color="neutral"
-              icon="i-lucide-list-checks"
-            >
-              按比赛补题
-            </UButton>
-        </template>
-      </LibraryPageHeader>
-      <div class="flex flex-wrap items-center gap-2">
-        <UBadge :color="room.data.value?.data.status === 'archived' ? 'neutral' : 'success'" variant="subtle">
-          {{ room.data.value?.data.status === 'archived' ? '已归档' : '正常教学' }}
-        </UBadge>
-        <UBadge v-if="room.data.value?.data.stage_tag" variant="subtle">{{ room.data.value.data.stage_tag }}</UBadge>
-      </div>
+        <LibraryPageHeader
+          :title="room.data.value?.data.name ?? '班级'"
+          :description="room.data.value?.data.description || '暂无班级说明'"
+          icon="i-lucide-graduation-cap"
+        >
+          <template #actions>
+            <div class="flex flex-wrap items-center gap-2">
+              <UButton
+                v-if="isCoach"
+                :to="workspacePath(slug!, `classrooms/${id}/members`)"
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-users"
+              >
+                班级成员
+              </UButton>
+              <UButton
+                v-if="canManageAssignments && classroomCan(room.data.value!.data, 'progress:read')"
+                :to="workspacePath(slug!, `classrooms/${id}/contest-remediation`)"
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-list-checks"
+              >
+                按比赛补题
+              </UButton>
+              <UButton
+                v-if="canManageAssignments"
+                :to="workspacePath(slug!, `classrooms/${id}/assignments/new`)"
+                color="primary"
+                icon="i-lucide-plus"
+              >
+                创建作业
+              </UButton>
+            </div>
+          </template>
+        </LibraryPageHeader>
+
+        <!-- 班级状态与学情统计栏 -->
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4 text-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge :color="room.data.value?.data.status === 'archived' ? 'neutral' : 'success'" variant="subtle" size="sm">
+              {{ room.data.value?.data.status === 'archived' ? '已归档' : '正常教学' }}
+            </UBadge>
+            <UBadge v-if="room.data.value?.data.stage_tag" variant="subtle" size="sm">
+              {{ room.data.value.data.stage_tag }}
+            </UBadge>
+          </div>
+
+          <div class="text-xs text-text-muted tabular-nums">
+            作业总计 <strong class="text-text font-semibold">{{ tasks.data.value?.data.length ?? 0 }}</strong> 份
+            <span class="ml-1 text-primary">（{{ activeTasksCount }} 份进行中）</span>
+          </div>
+        </div>
+
         <UAlert
           v-if="room.data.value?.data.status === 'archived'"
           color="warning"
@@ -73,9 +118,9 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-clipboard-list" class="size-5 text-primary" />
-          <h2 class="text-base font-semibold text-text">班级作业</h2>
+          <h2 class="text-base font-semibold text-text">班级作业任务</h2>
           <span v-if="tasks.data.value?.data.length" class="text-xs text-text-muted tabular-nums">
-            本页 {{ tasks.data.value.data.length }} 份
+            (共 {{ tasks.data.value.data.length }} 份)
           </span>
         </div>
       </div>
@@ -87,16 +132,16 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
         @retry="tasks.refresh()"
       >
         <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
-          <div
+          <article
             v-for="task in tasks.data.value?.data"
             :key="task.id"
-            class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+            class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 transition-colors hover:bg-bg-sunken/40"
           >
-            <div class="min-w-0 space-y-2">
+            <div class="min-w-0 space-y-2 flex-1">
               <div class="flex flex-wrap items-center gap-2">
                 <NuxtLink
                   :to="workspacePath(slug!, `assignments/${task.id}`)"
-                  class="break-words font-medium text-text hover:text-primary transition-colors"
+                  class="break-words font-semibold text-base text-text hover:text-primary transition-colors"
                 >
                   {{ task.title }}
                 </NuxtLink>
@@ -109,7 +154,11 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
                 </UBadge>
               </div>
 
-              <div class="flex flex-wrap items-center gap-3 text-xs text-text-muted">
+              <p v-if="task.description" class="text-xs text-text-secondary line-clamp-1">
+                {{ task.description }}
+              </p>
+
+              <div class="flex flex-wrap items-center gap-4 text-xs text-text-muted">
                 <span v-if="task.deadline_at" class="inline-flex items-center gap-1 tabular-nums">
                   <UIcon name="i-lucide-clock" class="size-3.5" />
                   截止时间：{{ new Date(task.deadline_at).toLocaleString() }}
@@ -118,37 +167,52 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
                   <UIcon name="i-lucide-calendar-off" class="size-3.5" />
                   未设截止时间
                 </span>
+                <span v-if="task.published_at" class="inline-flex items-center gap-1 tabular-nums">
+                  <UIcon name="i-lucide-calendar-check" class="size-3.5" />
+                  发布于：{{ new Date(task.published_at).toLocaleDateString() }}
+                </span>
               </div>
             </div>
 
-            <UButton
-              :to="workspacePath(slug!, `assignments/${task.id}`)"
-              variant="ghost"
-              color="primary"
-              size="sm"
-              trailing-icon="i-lucide-arrow-right"
-              class="self-start sm:self-auto shrink-0"
-            >
-              查看作业
-            </UButton>
-          </div>
+            <div class="flex flex-wrap items-center gap-2 sm:self-center shrink-0">
+              <UButton
+                :to="workspacePath(slug!, `assignments/${task.id}`)"
+                color="primary"
+                size="sm"
+                trailing-icon="i-lucide-arrow-right"
+              >
+                查看作业与矩阵
+              </UButton>
+            </div>
+          </article>
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center py-6 px-4 text-center">
-            <div class="flex size-10 items-center justify-center rounded-full bg-primary-bg text-primary mb-2">
-              <UIcon name="i-lucide-clipboard-x" class="size-5" />
+          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
+            <div class="flex size-12 items-center justify-center rounded-full bg-primary-bg text-primary mb-3">
+              <UIcon name="i-lucide-clipboard-plus" class="size-6" />
             </div>
-            <p class="font-medium text-text">暂无可查看的作业</p>
-            <p class="mt-1 text-xs text-text-muted">班级尚未发布任何作业，或当前账号无权查看未发布草稿。</p>
+            <p class="font-medium text-text">本班级尚未布置任何作业</p>
+            <p class="mt-1 text-xs text-text-muted max-w-sm">
+              教练可以点击上方「创建作业」开始布置题目任务，或使用「按比赛补题」为学员定制错题专练。
+            </p>
+            <UButton
+              v-if="canManageAssignments"
+              :to="workspacePath(slug!, `classrooms/${id}/assignments/new`)"
+              class="mt-4"
+              color="primary"
+              icon="i-lucide-plus"
+            >
+              创建第一份作业
+            </UButton>
           </div>
         </template>
       </AsyncContent>
 
-      <!-- 分页 -->
+      <!-- 分页控件 -->
       <div
         v-if="(tasks.data.value?.data.length ?? 0) >= 50 || page > 1"
-        class="flex items-center justify-between gap-3 text-sm"
+        class="flex items-center justify-between gap-3 text-sm pt-2"
       >
         <span class="text-text-muted">第 <strong class="text-text tabular-nums">{{ page }}</strong> 页</span>
         <div class="flex items-center gap-2">

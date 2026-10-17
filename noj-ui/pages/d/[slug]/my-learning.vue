@@ -3,7 +3,7 @@ import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const { slug } = useWorkspace(), { user } = useAuth(), api = useEducationApi(), page = ref(1);
 const key = computed(() => educationCacheKey(slug.value!, user.value?.id ?? null, 'my-learning', page.value));
@@ -30,6 +30,22 @@ useSeoMeta({ title: '我的学习' });
 
 <template>
   <div class="space-y-6">
+    <!-- 架构统一整合指引横幅 -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary-bg px-4 py-3 text-sm">
+      <div class="flex items-center gap-2 text-text">
+        <UIcon name="i-lucide-sparkles" class="size-4 text-primary shrink-0" />
+        <span>学习进度与作业任务现已全面升级并整合至全新统一的「班级研练中心」。</span>
+      </div>
+      <UButton
+        :to="{ path: workspacePath(slug!, 'classrooms'), query: { view: 'learning' } }"
+        color="primary"
+        size="sm"
+        trailing-icon="i-lucide-arrow-right"
+      >
+        前往班级研练中心
+      </UButton>
+    </div>
+
     <AdminPageHeader
       title="我的学习"
       description="查看收到的班级作业、个人答题达标进度、教练反馈与求助回复。"
@@ -43,7 +59,7 @@ useSeoMeta({ title: '我的学习' });
             color="neutral"
             icon="i-lucide-graduation-cap"
           >
-            我的班级
+            班级研练中心
           </UButton>
           <UButton
             :to="workspacePath(slug!, 'notifications')"

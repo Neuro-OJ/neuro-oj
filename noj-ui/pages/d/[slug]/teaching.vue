@@ -3,7 +3,7 @@ import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const { slug } = useWorkspace(), { user } = useAuth(), api = useEducationApi(), page = ref(1);
 const key = computed(() => educationCacheKey(slug.value!, user.value?.id ?? null, 'teaching-dashboard', page.value));
@@ -30,6 +30,22 @@ useSeoMeta({ title: '教学工作台' });
 
 <template>
   <div class="space-y-6">
+    <!-- 架构统一整合指引横幅 -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary-bg px-4 py-3 text-sm">
+      <div class="flex items-center gap-2 text-text">
+        <UIcon name="i-lucide-sparkles" class="size-4 text-primary shrink-0" />
+        <span>教学工作台现已全面升级并整合至全新统一的「班级研练中心」。</span>
+      </div>
+      <UButton
+        :to="{ path: workspacePath(slug!, 'classrooms'), query: { view: 'teaching' } }"
+        color="primary"
+        size="sm"
+        trailing-icon="i-lucide-arrow-right"
+      >
+        前往班级研练中心
+      </UButton>
+    </div>
+
     <AdminPageHeader
       title="教学工作台"
       description="统一管理空间教学任务、追踪学员达标进展、诊断资源失效与处理求助反馈。"
@@ -43,7 +59,7 @@ useSeoMeta({ title: '教学工作台' });
             color="neutral"
             icon="i-lucide-graduation-cap"
           >
-            管理班级
+            班级研练中心
           </UButton>
           <UButton
             :to="workspacePath(slug!, 'notifications')"
