@@ -1,6 +1,7 @@
 # 安全漏洞报告
 
-感谢帮助保护 Neuro OJ。请负责任地披露安全问题，避免在公开渠道暴露用户数据、凭据或可直接利用的细节。
+感谢帮助保护 Neuro
+OJ。请负责任地披露安全问题，避免在公开渠道暴露用户数据、凭据或可直接利用的细节。
 
 ## 私下报告渠道
 
@@ -8,7 +9,10 @@
 
 [报告一个安全漏洞](https://github.com/Neuro-OJ/neuro-oj/security/advisories/new)
 
-该入口依赖仓库启用 GitHub Private Vulnerability Reporting。若你看不到该入口，请不要在公开 Issue 中发布复现步骤、利用代码、敏感日志或凭据；可以在公开 Issue 中只说明“存在安全问题”，并请求维护者提供私下渠道。仓库没有在本文件中公布未经确认的个人邮箱或其他联系人。
+该入口依赖仓库启用 GitHub Private Vulnerability
+Reporting。若你看不到该入口，请不要在公开 Issue
+中发布复现步骤、利用代码、敏感日志或凭据；可以在公开 Issue
+中只说明“存在安全问题”，并请求维护者提供私下渠道。仓库没有在本文件中公布未经确认的个人邮箱或其他联系人。
 
 ## 报告内容
 
@@ -29,12 +33,15 @@
 
 ## 支持版本
 
-| 版本或分支 | 支持情况 |
-| --- | --- |
-| `v0.9.x`（当前正式版为 `v0.9.5`） | 当前安全支持目标；后续版本以 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 页面显示的最新正式版本为准 |
-| `main` | 活跃开发分支，接受安全修复；不等同于已发布的生产版本 |
-| 旧 Release、预发布版本和任意提交快照 | 不承诺持续支持；报告前请尽量在最新正式 Release 或 `main` 上复现 |
+| 版本或分支                           | 支持情况                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `v0.10.x`（当前正式版为 `v0.10.6`）  | 当前安全支持目标；后续版本以 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 页面显示的最新正式版本为准 |
+| `main`                               | 活跃开发分支，接受安全修复；不等同于已发布的生产版本                                                                     |
+| 旧 Release、预发布版本和任意提交快照 | 不承诺持续支持；报告前请尽量在最新正式 Release 或 `main` 上复现                                                          |
 
-升级到最新正式 Release 后仍能复现的问题，请在报告中注明原始版本和复现版本，便于维护者判断影响范围。
+升级到最新正式 Release
+后仍能复现的问题，请在报告中注明原始版本和复现版本，便于维护者判断影响范围。
 
-相关入口：[README](./README.md) · [贡献指南](./CONTRIBUTING.md) · [系统安全模型](./noj-docs/docs/system/security.md) · [安全漏洞私下报告](https://github.com/Neuro-OJ/neuro-oj/security/advisories/new)
+相关入口：[README](./README.md) · [贡献指南](./CONTRIBUTING.md) ·
+[系统安全模型](./noj-docs/docs/system/security.md) ·
+[安全漏洞私下报告](https://github.com/Neuro-OJ/neuro-oj/security/advisories/new)
