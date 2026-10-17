@@ -22,6 +22,7 @@ import { observability as metrics } from "../../../domains/observability/write.t
 
 const logger = getLogger(["noj", "submission"]);
 import { saveOiProgress } from "../services/oi-progress.ts";
+import { dispatchAutoRetryAttempt } from "./sweeper.ts";
 
 /**
  * 评测结果队列名称。
@@ -248,7 +249,8 @@ export async function handleResultMessage(data: unknown): Promise<void> {
     }
 
     // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
-    if (applied.created_at && !applied.is_rejudge) {
+    // 已调度自动重试的平台错误不是最终结果，不计入。
+    if (applied.created_at && !applied.is_rejudge && !applied.auto_retry) {
       const startedMs = Date.parse(applied.created_at);
       if (Number.isFinite(startedMs)) {
         metrics.observe(
@@ -268,6 +270,25 @@ export async function handleResultMessage(data: unknown): Promise<void> {
     // 这里只发布 Redis 实时通知，不再重复写库。
     for (const event of applied.outbox_events) {
       publishSseEventAfterTx(event.channel, event.payload, event.event_id);
+    }
+
+    // 平台错误自动重试：新尝试已随结果事务落库（提交保持 pending）。
+    // 批任务产生的尝试由 worker 派发；其余在此即时派发，失败不抛出——
+    // 抛出会让本消息重投，而重投的结果已是过时消息、不会再触发派发；
+    // 瞬时失败交由 sweeper 在尝试创建 2 分钟后按同一路径恢复。
+    if (applied.auto_retry && !applied.auto_retry.via_job) {
+      try {
+        await dispatchAutoRetryAttempt(
+          judgeResult.submission_id,
+          applied.auto_retry.attempt_id,
+        );
+      } catch (err) {
+        logger.error("自动重试即时派发失败，等待 sweeper 恢复", {
+          submission_id: judgeResult.submission_id,
+          attempt_id: applied.auto_retry.attempt_id,
+          err,
+        });
+      }
     }
 
     // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
