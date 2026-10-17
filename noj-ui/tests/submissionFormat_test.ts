@@ -71,6 +71,17 @@ Deno.test('formatDateTime: 空值占位，合法时间非占位', () => {
   assertEquals(out.includes('2026'), true);
 });
 
+Deno.test('formatDateTime: 固定 ISO 输出固定字符串（与进程时区无关）', () => {
+  // 断言字面量而非"包含年份"，这样进程时区为 UTC 或 Asia/Shanghai 时都会暴露差异。
+  assertEquals(formatDateTime('2026-08-17T00:00:00Z'), '2026/08/17 08:00:00');
+  // 带偏移量的输入等价于同一时刻，输出必须一致
+  assertEquals(formatDateTime('2026-08-17T08:00:00+08:00'), '2026/08/17 08:00:00');
+  // UTC 跨日：UTC 16:30 已是北京时间次日 00:30（跨年）
+  assertEquals(formatDateTime('2026-12-31T16:30:00Z'), '2027/01/01 00:30:00');
+  // UTC 与北京时间同日但时刻不同，防止回退成 UTC 展示
+  assertEquals(formatDateTime('2026-03-01T15:59:59Z'), '2026/03/01 23:59:59');
+});
+
 Deno.test('getResultDef: 已知/未知状态返回定义', () => {
   assertEquals(getResultDef('finished').label, '已评测');
   assertEquals(getResultDef('finished').class, 'accepted');
