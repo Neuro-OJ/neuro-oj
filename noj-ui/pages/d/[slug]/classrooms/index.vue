@@ -39,7 +39,7 @@ useSeoMeta({ title: '我的班级' });
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <LibraryPageHeader
       title="我的班级"
       description="在所属班级中查看作业、学习进度和教学反馈。"

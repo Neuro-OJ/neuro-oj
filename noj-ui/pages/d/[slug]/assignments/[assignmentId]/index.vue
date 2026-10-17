@@ -134,20 +134,20 @@ async function download() {
 useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
 </script>
 <template>
-  <div class="space-y-5">
+  <div class="flex flex-col gap-5">
     <AsyncContent
       :status="task.error.value ? 'error' : task.data.value ? 'data' : task.status.value === 'pending' ? 'loading' : 'empty'"
       :error="task.error.value ? extractApiError(task.error.value).message : undefined" @retry="task.refresh()">
-      <template v-if="task.data.value">
-        <UButton :to="workspacePath(slug!, `classrooms/${task.data.value.data.classroom_id}`)" variant="ghost"
+      <section v-if="task.data.value" class="flex flex-col gap-4">
+        <UButton class="self-start" :to="workspacePath(slug!, `classrooms/${task.data.value.data.classroom_id}`)" variant="ghost"
           icon="i-lucide-arrow-left">返回班级</UButton>
-        <AdminPageHeader class="mt-4" :title="task.data.value.data.title"
+        <AdminPageHeader :title="task.data.value.data.title"
           :description="assignmentPhase(task.data.value.data)" icon="i-lucide-clipboard-list" />
-        <UAlert v-if="task.data.value.data.publish_error" class="mt-4" color="warning" title="定时发布失败"
+        <UAlert v-if="task.data.value.data.publish_error" color="warning" title="定时发布失败"
           :description="task.data.value.data.publish_error" />
         <p v-if="task.data.value.data.state === 'scheduled'"
-          class="mt-3 text-sm text-text-muted">预定发布时间：{{ new Date(task.data.value.data.publish_at!).toLocaleString() }}</p>
-        <div v-if="can('assignments:manage')" class="mt-4 flex flex-wrap gap-3">
+          class="text-sm text-text-muted">预定发布时间：{{ new Date(task.data.value.data.publish_at!).toLocaleString() }}</p>
+        <div v-if="can('assignments:manage')" class="flex flex-wrap gap-3">
           <ClientOnly>
             <AssignmentActions :key="key" :slug="slug!" :task="task.data.value.data" :writable="!!classroomWritable"
               @changed="task.refresh()" />
@@ -158,13 +158,13 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
               :writable="!!classroomWritable" :can-read-progress="can('progress:read')" />
           </ClientOnly>
         </div>
-        <AssignmentDraftPreview v-if="can('assignments:manage') && !task.data.value.data.published_at" class="mt-4"
+        <AssignmentDraftPreview v-if="can('assignments:manage') && !task.data.value.data.published_at"
           :key="`${key}:${task.data.value.data.revision}`" :slug="slug!" :task="task.data.value.data" />
-        <MarkdownRenderer v-if="task.data.value.data.description" class="mt-4"
+        <MarkdownRenderer v-if="task.data.value.data.description"
           :content="task.data.value.data.description" />
         <p v-if="task.data.value.data.deadline_at"
-          class="mt-3 text-sm text-text-muted">截止：{{ new Date(task.data.value.data.deadline_at).toLocaleString() }}。截止后可以继续练习，按时成绩与补做进度分别统计。</p>
-      </template>
+          class="text-sm text-text-muted">截止：{{ new Date(task.data.value.data.deadline_at).toLocaleString() }}。截止后可以继续练习，按时成绩与补做进度分别统计。</p>
+      </section>
     </AsyncContent>
     <template v-if="task.data.value?.data.published_at && !task.error.value">
       <div class="flex flex-wrap items-end gap-3">
@@ -185,9 +185,11 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
               aria-label="完成状态筛选" />
           </AdminFormField>
           <AdminFormField label="学生搜索">
+            <div class="flex items-center gap-2">
             <UInput v-model="searchDraft" aria-label="学生搜索" placeholder="学生用户名"
               @keyup.enter="search = searchDraft.trim()" />
-            <UButton class="ml-2" variant="ghost" @click="search = searchDraft.trim()">搜索</UButton>
+            <UButton variant="ghost" @click="search = searchDraft.trim()">搜索</UButton>
+            </div>
           </AdminFormField>
           <AdminFormField label="题目">
             <USelect v-model="itemFilter"
@@ -207,13 +209,13 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         :error="matrix.error.value ? extractApiError(matrix.error.value).message : undefined" @retry="matrix.refresh()">
         <AssignmentMatrix v-if="matrix.data.value" :matrix="matrix.data.value.data" @select="select" />
         <div
-          class="mt-4 flex items-center gap-3"><UButton :disabled="page <= 1" variant="outline" @click="page--">上一页</UButton><span class="text-sm tabular-nums">{{ page }} · {{ matrix.data.value?.data.total ?? 0 }} 名学生</span><UButton :disabled="page * 50 >= (matrix.data.value?.data.total ?? 0)" variant="outline" @click="page++">下一页</UButton><UButton variant="ghost" icon="i-lucide-refresh-cw" @click="matrix.refresh()">刷新成绩</UButton></div>
+          class="flex flex-wrap items-center gap-3"><UButton :disabled="page <= 1" variant="outline" @click="page--">上一页</UButton><span class="text-sm tabular-nums">{{ page }} · {{ matrix.data.value?.data.total ?? 0 }} 名学生</span><UButton :disabled="page * 50 >= (matrix.data.value?.data.total ?? 0)" variant="outline" @click="page++">下一页</UButton><UButton variant="ghost" icon="i-lucide-refresh-cw" @click="matrix.refresh()">刷新成绩</UButton></div>
       </AsyncContent>
       <AsyncContent v-if="isStudent"
         :status="progress.error.value ? 'error' : progress.data.value ? 'data' : progress.status.value === 'pending' ? 'loading' : 'empty'"
         :error="progress.error.value ? extractApiError(progress.error.value).message : undefined"
         @retry="progress.refresh()">
-        <UCard v-for="item in progress.data.value?.data.items" :key="item.id" class="mb-3">
+        <UCard v-for="item in progress.data.value?.data.items" :key="item.id">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p class="font-medium">{{ item.reference.display_ref }}</p>
@@ -249,7 +251,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
         :target-user-id="selected?.userId" :target-user-name="selected?.username" :help-id="requestedHelp"
         :feedback-id="requestedFeedback" />
-      <UButton variant="outline" icon="i-lucide-history"
+      <UButton class="self-start" variant="outline" icon="i-lucide-history"
         @click="showHistory = !showHistory">{{ showHistory ? '收起变化依据' : '查看版本与策略变化依据' }}</UButton>
       <AssignmentHistory v-if="showHistory" :key="`${key}:history`" :slug="slug!" :assignment-id="id" />
       <USlideover v-model:open="drawer"

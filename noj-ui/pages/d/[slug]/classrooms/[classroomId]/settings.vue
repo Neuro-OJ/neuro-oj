@@ -110,7 +110,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
 useSeoMeta({ title: '班级设置' });
 </script>
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
     <LibraryPageHeader

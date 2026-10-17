@@ -62,7 +62,7 @@ function select(row: TeachingSubmission) {
 useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详情` });
 </script>
 <template>
-  <div class="space-y-5">
+  <div class="flex flex-col gap-5">
     <LibraryPageHeader :title="`${student?.username ?? '学生'} · 训练详情`" :description="classroom.name" icon="i-lucide-activity" />
     <UAlert v-if="student && (!student.effective_active || student.role !== 'student')" color="info"
       title="历史学生记录" description="仅保留本班已有作业或批注授权依据，不继续获取离班后的个人练习。" />
@@ -103,7 +103,7 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
     </template>
     <UAlert v-else color="info" title="未授予学生提交读取能力"
       description="学情读取和提交读取分别授权，此页面不会读取或展示学生代码。" />
-    <section v-if="progress || feedback" class="space-y-3">
+    <section v-if="progress || feedback" class="flex flex-col gap-3">
       <h2 class="font-semibold">本班作业{{ progress && feedback ? '学情与反馈' : progress ? '学情' : '反馈' }}</h2>
       <AsyncContent
         :status="tasks.error.value ? 'error' : tasks.status.value === 'pending' ? 'loading' : tasks.data.value?.data.length ? 'data' : 'empty'"
@@ -116,7 +116,7 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
         </div>
         <div
           v-if="(tasks.data.value?.data.length ?? 0) >= 50 || taskPage > 1"
-          class="mt-4 flex flex-wrap items-center justify-between gap-3"><UButton variant="outline" :disabled="taskPage === 1" @click="taskPage--">上一页作业</UButton><span class="text-sm tabular-nums">第 {{ taskPage }} 页</span><UButton variant="outline" :disabled="(tasks.data.value?.data.length ?? 0) < 50" @click="taskPage++">下一页作业</UButton></div>
+          class="flex flex-wrap items-center justify-between gap-3"><UButton variant="outline" :disabled="taskPage === 1" @click="taskPage--">上一页作业</UButton><span class="text-sm tabular-nums">第 {{ taskPage }} 页</span><UButton variant="outline" :disabled="(tasks.data.value?.data.length ?? 0) < 50" @click="taskPage++">下一页作业</UButton></div>
       </AsyncContent>
     </section>
     <USlideover v-model:open="open" title="原提交与教学批注" :ui="{ content: 'w-full sm:max-w-3xl' }">

@@ -29,7 +29,7 @@ useSeoMeta({ title: () => student.value ? `${student.value.username} 的训练�
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
     <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />

@@ -32,8 +32,8 @@ async function reload() {
 useSeoMeta({ title: '编辑作业草稿' });
 </script>
 <template>
-  <div class="space-y-5">
-    <UButton :to="workspacePath(slug!, `assignments/${id}`)" variant="ghost"
+  <div class="flex flex-col gap-5">
+    <UButton class="self-start" :to="workspacePath(slug!, `assignments/${id}`)" variant="ghost"
       icon="i-lucide-arrow-left">返回作业</UButton>
     <AdminPageHeader title="编辑作业草稿" :description="task.data.value?.data.title">
       <template #actions>

@@ -23,7 +23,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
     <AsyncContent

@@ -35,10 +35,10 @@ useSeoMeta({ title: '申请加入班级' });
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
       <NuxtLink
         :to="workspacePath(slug!, 'classrooms')"
-        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
+        class="inline-flex self-start items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
       >
         <UIcon name="i-lucide-arrow-left" class="size-4" />
         <span>我的班级</span>

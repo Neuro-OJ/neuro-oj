@@ -95,7 +95,7 @@ watch(
 );
 </script>
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <UAlert
       color="info"
       title="比赛成绩用于选取补题对象"
@@ -117,7 +117,7 @@ watch(
         </div>
       </template>
 
-      <div class="space-y-4">
+      <div class="flex flex-col gap-4">
         <AsyncContent
           :status="options.error.value ? 'error' : options.status.value === 'pending' ? 'loading' : options.data.value?.data.length ? 'data' : 'empty'"
           :error="options.error.value ? extractApiError(options.error.value).message : undefined"

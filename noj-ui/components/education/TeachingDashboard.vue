@@ -33,7 +33,7 @@ watch(() => [props.slug, props.mode], () => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <!-- 顶部核心数据概览指标卡片 -->
     <div class="grid grid-cols-2 md:grid-cols-3 gap-3.5">
       <div class="rounded-lg border border-border bg-white dark:bg-bg-panel p-4 shadow-card flex items-center gap-3.5">
