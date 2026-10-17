@@ -21,7 +21,8 @@ Thumbs.db
 # --- Deno ---
 .deno_cache/
 .deno_cov_cache/
-deno.lock  # 不锁定依赖版本——社区库遵循 semver 即可
+# deno.lock 受版本控制，是依赖事实源，不得加入忽略列表。
+# 依赖升级须经 `deno task` / `deno update` 更新并提交锁文件变更，禁止手改。
 
 # --- Node.js / npm ---
 node_modules/
@@ -112,3 +113,6 @@ dev-docs/review-snapshots/
 # --- Problem source (moved to separate private noj-problems repo) ---
 /problems/
 /noj-problems/
+
+# --- 安全扫描本地产物（security.yml 与 CONTRIBUTING.md 的本地复现命令） ---
+.security/

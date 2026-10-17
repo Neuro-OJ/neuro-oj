@@ -492,7 +492,8 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   {
     key: "NOJ_BYPASS_JWT_REVOKE",
     type: "boolean",
-    description: "跳过 JWT 吊销检查（仅开发调试）",
+    description:
+      "跳过 JWT 吊销检查（仅测试环境生效；生产环境设置后拒绝启动，不可用于运维）",
     is_secret: false,
     scope: "bootstrap",
     envKey: "NOJ_BYPASS_JWT_REVOKE",

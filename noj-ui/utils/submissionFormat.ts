@@ -251,7 +251,16 @@ export function formatAcceptanceRate(rate: number | null | undefined): string {
 }
 
 /**
- * 格式化 ISO 时间为中文可读格式。
+ * 站内展示统一使用的时区。
+ *
+ * SSR 容器默认时区为 UTC、浏览器为访问者本地时区，若不显式指定时区，
+ * 同一 ISO 时间会在首屏与水合后得到不同字符串，触发 Vue hydration mismatch。
+ * 站内时间统一按北京时间展示，保证服务端与客户端输出逐字节一致。
+ */
+export const DISPLAY_TIME_ZONE = 'Asia/Shanghai';
+
+/**
+ * 格式化 ISO 时间为中文可读格式（固定 `Asia/Shanghai`，与运行环境时区无关）。
  */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '--';
@@ -263,5 +272,6 @@ export function formatDateTime(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    timeZone: DISPLAY_TIME_ZONE,
   });
 }
