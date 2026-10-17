@@ -60,7 +60,7 @@ e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", a
   );
   const problemId = await getProblemIdByNumber(1001);
   // 必须提交能通过 1001 题 evaluator 的代码：`print(1)` 未定义 solve，
-  // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
+  // 只得 0 分（finished），无法区分“正常评测”与“消费者未卡死”。
   const submissionId = await submitCode(
     token,
     problemId,
