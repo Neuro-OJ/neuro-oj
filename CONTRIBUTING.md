@@ -141,7 +141,7 @@ jj config get signing.key
 jj sign -r @
 ```
 
-不要提交未签名提交，也不要修改迁移日志 `_journal.json` 或锁文件 `deno.lock` / `Cargo.lock`。
+不要提交未签名提交，也不要手改迁移日志 `_journal.json` 或锁文件 `deno.lock` / `Cargo.lock`。`deno.lock` 必须提交（受版本控制，是依赖事实源）：依赖升级须经 `deno task` / `deno update` 生成变更后一并提交，禁止手改。
 
 ## 文档与决策记录
 
