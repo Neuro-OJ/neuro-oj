@@ -611,5 +611,104 @@ class TestCapability(unittest.TestCase):
         _reset_capabilities_for_tests()
 
 
+class TestRpcClientShutdownRace(unittest.TestCase):
+    """RpcClient：关闭后注册 pending 必须即时拿到哨兵帧（消除注册/唤醒竞态，#680）。"""
+
+    def test_register_after_close_returns_shutdown_frame(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.close()
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_register_after_shutdown_pending_returns_shutdown_frame(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.shutdown_pending()
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_shutdown_pending_idempotent(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.shutdown_pending()
+        rpc.shutdown_pending()  # 幂等，不应抛
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_registered_pending_woken_by_shutdown(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        q = rpc.register_pending("x")
+        rpc.shutdown_pending()
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+
+class TestShutdownWakeups(unittest.TestCase):
+    """#680：IPC 断开（EOF / reader 异常 / 并发 close）必须唤醒 pending call。"""
+
+    def _run_call(self, harness, fn, *args, **kwargs):
+        before = len(harness.all_call_frames())
+        started = harness.start_call(fn, *args, **kwargs)
+        harness.wait_for_frames(before + 1)
+        return started
+
+    def test_call_raises_connection_error_on_stdin_eof(self):
+        """stdin 正常 EOF（host 退出）应唤醒 pending call → ConnectionError。"""
+        h = IpcHarness()
+        try:
+            t, _, errors = self._run_call(h, "slow")
+            # 模拟 host 退出：stdin EOF（for 迭代静默结束，不抛 EOFError）
+            h.runner_stdin_pipe.close()
+            t.join(timeout=3)
+            self.assertFalse(t.is_alive(), "stdin EOF 后 call 未返回（#680 回归）")
+            self.assertIsInstance(errors.get("e"), ConnectionError)
+            self.assertTrue(h.runner._closed, "EOF 后 runner 应标记为已关闭")
+        finally:
+            h.teardown()
+
+    def test_reader_exception_wakes_pending(self):
+        """reader 循环抛未知异常也应唤醒 pending call → ConnectionError。"""
+
+        def boom(_frame):
+            raise RuntimeError("reader boom")
+
+        h = IpcHarness()
+        orig = h.runner._handle_capability
+        h.runner._handle_capability = boom  # type: ignore[method-assign]
+        try:
+            t, _, errors = self._run_call(h, "slow")
+            # 触发 reader 处理下一帧 → 走 boom → 外层 except → finally 唤醒
+            h.send_host_response(
+                {"type": "capability", "id": "c", "name": "x", "args": []}
+            )
+            t.join(timeout=3)
+            self.assertFalse(t.is_alive(), "reader 异常后 call 未返回（#680 回归）")
+            self.assertIsInstance(errors.get("e"), ConnectionError)
+        finally:
+            h.runner._handle_capability = orig  # type: ignore[method-assign]
+            h.teardown()
+
+    def test_close_and_call_race_never_hangs(self):
+        """close 与 call 并发时 call 必须终止（不得永久阻塞，#680）。"""
+        for _ in range(15):
+            h = IpcHarness()
+            try:
+                t, _, _ = h.start_call("f", 1)
+                # 并发关闭：可能早于 call 的 _closed 检查，也可能晚于 register
+                h.runner.close()
+                t.join(timeout=2.0)
+                self.assertFalse(
+                    t.is_alive(),
+                    "close 与 call 并发时 call 未在超时内终止（#680 回归）",
+                )
+            finally:
+                h.teardown()
+
+
 if __name__ == "__main__":
     unittest.main()

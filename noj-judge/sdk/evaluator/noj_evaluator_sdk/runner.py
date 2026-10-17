@@ -165,15 +165,17 @@ class SolutionRunner:
         if timeout_ms is not None:
             frame["timeout_ms"] = timeout_ms
 
-        # 3. 注册 pending
+        # 3. 注册 pending。若通道已断开，register_pending 直接返回预置哨兵帧的队列。
         q = self._rpc.register_pending(call_id)
 
-        # 4. 写帧到 stdout
-        try:
-            self._write_out(frame)
-        except RejectedError:
-            self._rpc.pop_pending(call_id)
-            raise
+        # 4. 写帧到 stdout。已关闭时跳过写（避免往断开的通道写帧），交由下方
+        #    q.get() 取到哨兵帧、按约定抛 ConnectionError。
+        if not self._closed:
+            try:
+                self._write_out(frame)
+            except RejectedError:
+                self._rpc.pop_pending(call_id)
+                raise
 
         # 5. 阻塞等响应（超时由 judge 端 call_timeout_ms 控制，
         #    SDK 这里不设超时——避免与 judge 双重超时逻辑混淆）
@@ -195,50 +197,60 @@ class SolutionRunner:
     # ── 内部 ────────────────────────────────────────────
 
     def _reader_loop(self) -> None:
-        """后台线程：从 stdin 持续读 NDJSON 帧，分发到对应 pending queue。"""
+        """后台线程：从 stdin 持续读 NDJSON 帧，分发到对应 pending queue。
+
+        无论**正常 EOF**（host 退出 / stdin 被关闭时，`for line in sys.stdin`
+        迭代静默结束、并不抛 EOFError）、reader 异常，还是收到 `shutdown` 帧，
+        退出时都统一标记关闭并唤醒所有 pending——否则 `call()` 会永久阻塞在
+        `q.get()`（见 issue #680）。
+        """
         try:
-            for line in sys.stdin:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    frame = json.loads(line)
-                except json.JSONDecodeError as e:
-                    # 非 JSON 行被静默忽略（可能是 host 误输出，但协议约束应保证不发生）
-                    sys.stderr.write(
-                        f"[noj_evaluator_sdk] stdin 非 JSON 帧: {e}: {line!r}\n"
-                    )
-                    sys.stderr.flush()
-                    continue
+            try:
+                for line in sys.stdin:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        frame = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        # 非 JSON 行被静默忽略（可能是 host 误输出，但协议约束应保证不发生）
+                        sys.stderr.write(
+                            f"[noj_evaluator_sdk] stdin 非 JSON 帧: {e}: {line!r}\n"
+                        )
+                        sys.stderr.flush()
+                        continue
 
-                frame_type = frame.get("type")
+                    frame_type = frame.get("type")
 
-                if frame_type == "capability":
-                    # solution 请求调用 capability：查注册表并同步执行（写响应帧）
-                    self._handle_capability(frame)
-                elif frame_type in ("result", "error"):
-                    self._rpc.deliver_response(frame)
-                elif frame_type == "log":
-                    # log 帧直接打到 stderr（judge 也会收集并截断）
-                    stream = frame.get("stream", "stdout")
-                    data = frame.get("data", "")
-                    # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
-                    sys.stderr.write(data)
-                    if not data.endswith("\n"):
-                        sys.stderr.write("\n")
-                    sys.stderr.flush()
-                elif frame_type == "shutdown":
-                    self._closed = True
-                    self._rpc.shutdown_pending()
-                # 其它 type 忽略
-        except (EOFError, BrokenPipeError):
-            # stdin 关闭 → 整体失败
+                    if frame_type == "capability":
+                        # solution 请求调用 capability：查注册表并同步执行（写响应帧）
+                        self._handle_capability(frame)
+                    elif frame_type in ("result", "error"):
+                        self._rpc.deliver_response(frame)
+                    elif frame_type == "log":
+                        # log 帧直接打到 stderr（judge 也会收集并截断）
+                        stream = frame.get("stream", "stdout")
+                        data = frame.get("data", "")
+                        # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
+                        sys.stderr.write(data)
+                        if not data.endswith("\n"):
+                            sys.stderr.write("\n")
+                        sys.stderr.flush()
+                    elif frame_type == "shutdown":
+                        # host 主动关闭：停止读取，finally 统一唤醒 pending
+                        break
+                    # 其它 type 忽略
+            except (EOFError, BrokenPipeError):
+                # stdin 断开（个别 iterator 可能在 EOF 前才抛）：finally 统一收尾
+                pass
+            except Exception as e:
+                sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
+                sys.stderr.flush()
+        finally:
+            # 覆盖正常 EOF、reader 异常与 shutdown 帧：置位关闭标志并唤醒所有
+            # pending，确保 call() 立即抛 ConnectionError 而非永久阻塞（#680）。
             self._closed = True
             self._rpc.shutdown_pending()
-        except Exception as e:
-            sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
-            sys.stderr.flush()
-            self._closed = True
 
     def _write_out(self, frame: dict) -> None:
         """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
