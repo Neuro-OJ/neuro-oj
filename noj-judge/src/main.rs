@@ -619,6 +619,30 @@ fn main() -> Result<()> {
                             );
                         }
 
+                        // 平台错误先原子重投；仅最终结果进入 core，避免提前终结尝试或吊销 token。
+                        match judge::retry::retry_platform_error(
+                            &redis_client, &task_queue, &raw, &task, &result,
+                        ).await {
+                            Ok(judge::retry::RetryOutcome::Requeued(retry)) => {
+                                warn!(submission_id = %task.submission_id, retry,
+                                    "平台评测错误，已自动重试（最多 3 次）");
+                                task_metrics.task_finished(true);
+                                return;
+                            }
+                            Ok(judge::retry::RetryOutcome::AlreadyMoved) => {
+                                task_metrics.task_finished(true);
+                                return;
+                            }
+                            Err(error) => {
+                                // 保留 processing 消息供 sweeper 恢复，不能提前回写失败终态。
+                                error!(submission_id = %task.submission_id, error = %error,
+                                    "平台错误自动重投失败，等待队列恢复");
+                                task_metrics.task_finished(true);
+                                return;
+                            }
+                            Ok(judge::retry::RetryOutcome::Final) => {}
+                        }
+
                         // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
                         let push_succeeded = mq::push_result_with_retry(
                             &redis_client,
