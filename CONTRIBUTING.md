@@ -73,6 +73,39 @@ deno run -A scripts/verify-agent-note-format.ts
 
 按改动范围运行相关检查，并在 Pull Request 中记录实际执行的命令和结果。需要完整 CI 验证的改动仍应等待 GitHub Actions 完成。
 
+### 安全门禁
+
+[`.github/workflows/security.yml`](./.github/workflows/security.yml) 在 PR、`main` push 与每周定时任务上执行四类检查：
+
+| Job | 覆盖范围 | 触发时机 |
+| --- | --- | --- |
+| `dependency-review` | PR 新增依赖的已知漏洞，`high` / `critical` 直接失败（需组织启用 Dependency Graph） | 仅 PR |
+| `cargo-audit` | `noj-judge/Cargo.lock`（CodeQL 不支持 Rust，由它承担） | 依赖清单变更、定时 |
+| `osv-scanner` | 5 个 `deno.lock` 与 `noj-docs`、`noj-lmcc-extension` 的 `package-lock.json` | 依赖清单变更、定时 |
+| `codeql` | JavaScript / TypeScript 静态扫描 | 源码变更、`main` push、定时 |
+
+`dependency-review` 依赖 GitHub Dependency Graph；组织未启用时该 job 会显式跳过并在 job summary 告警（不是扫描通过），需要组织 owner 在 Settings → Code security 启用后自动生效。
+
+`osv-scanner` 目前没有 `deno.lock` 提取器，workflow 会先用 `scripts/security/deno-lock-to-package-lock.ts` 把 npm 依赖转成 `package-lock.json` 再扫描；jsr 依赖不在 npm 生态，不在扫描范围内。
+
+本地复现：
+
+```bash
+# Rust 依赖（首次需 cargo install cargo-audit --locked）
+cd noj-judge && cargo audit
+
+# deno.lock 与 package-lock.json（转换后逐个传给 osv-scanner）
+mkdir -p .security/osv/noj-ui
+deno run -A scripts/security/deno-lock-to-package-lock.ts \
+  noj-ui/deno.lock .security/osv/noj-ui/package-lock.json
+osv-scanner scan source \
+  --lockfile=noj-docs/package-lock.json \
+  --lockfile=noj-lmcc-extension/package-lock.json \
+  --lockfile=.security/osv/noj-ui/package-lock.json
+```
+
+`cargo-audit` 与 `osv-scanner` 当前处于**告警态**：发现存量漏洞只写警告与 job summary，不阻塞合并；工具安装失败、锁文件解析失败或结果文件缺失仍会让 job 失败。清完存量漏洞（见 issue #661）后改为硬失败，届时同步删除本文的告警态说明。
+
 ## 分支与 Pull Request
 
 `main` 是唯一集成分支，**禁止直接推送 `main`**：所有改动（含维护者的日常开发与缺陷修复）都从最新 `main` 派生主题分支，通过 Pull Request 合入。
