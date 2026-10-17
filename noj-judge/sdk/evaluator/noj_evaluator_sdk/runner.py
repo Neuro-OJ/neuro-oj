@@ -41,13 +41,81 @@ from .serialization import (
 )
 
 
+# ── 选手缺函数 → 0 分 ────────────────────────────────────
+#
+# 选手没有定义题面要求的函数（host 回 NotFound）是确定的选手侧结果，应判 0 分；
+# 但大量既有 evaluate.py 不捕获 NotFoundError（或捕获后原样 raise），进程以未捕获
+# 异常退出、不输出 `---RESULT---`，judge 只能归为平台错误（platform_error）。
+# 这里通过 sys.excepthook 在**未捕获**时兜底写出 0 分结果：evaluate.py 自行捕获
+# NotFoundError 的逻辑完全不受影响，且无需修改任何题目脚本。
+#
+# 只认 host 明确标注 `reason=not_registered` 的 NotFound：entry 加载失败（语法
+# 错误/导入失败）时注册表为空，同样回 NotFound，但那不是"缺函数"，保持平台错误；
+# 旧版 solution 镜像不带 reason，同样回退旧行为（混跑安全）。
+
+MISSING_FUNCTION_REASON = "not_registered"
+
+_HOOK_INSTALLED = False
+
+
+def _install_missing_function_hook() -> None:
+    """幂等安装 excepthook（链式调用原 hook，traceback 仍写 stderr）。"""
+    global _HOOK_INSTALLED
+    if _HOOK_INSTALLED:
+        return
+    _HOOK_INSTALLED = True
+    previous = sys.excepthook
+
+    def _hook(exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        try:
+            if (
+                isinstance(exc, NotFoundError)
+                and exc.fn
+                and exc.reason == MISSING_FUNCTION_REASON
+            ):
+                _write_missing_function_result(exc.fn)
+        except Exception as e:  # 兜底逻辑自身失败不得吞掉原异常
+            sys.stderr.write(f"[noj_evaluator_sdk] 写出缺函数结果失败: {e}\n")
+        previous(exc_type, exc, tb)
+
+    sys.excepthook = _hook
+
+
+def _write_missing_function_result(fn: str) -> bool:
+    """写出 0 分 `---RESULT---`；result 已写过时不重复写，返回是否写出。"""
+    from .result import Result
+
+    pkg = sys.modules.get(__package__ or "")
+    shared = getattr(pkg, "result", None)
+    writer = shared if isinstance(shared, Result) else Result()
+    if writer._written:
+        return False
+    message = f"未定义函数 {fn}"
+    writer.wrong_answer(
+        score=0,
+        message=message,
+        details={"error_code": "function_not_found", "function": fn},
+    )
+    sys.stderr.write(
+        f"[noj_evaluator_sdk] 选手未定义函数 {fn!r}，已按 0 分输出结果\n"
+    )
+    sys.stderr.flush()
+    return True
+
+
 class SolutionRunner:
     """阻塞式 Solution host 调用器。
 
     生命周期与 evaluate.py 进程一致。单实例即可复用。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, missing_function_as_zero: bool = True) -> None:
+        """`missing_function_as_zero`：选手未定义被调用函数（`NotFoundError`）且
+        evaluate.py 未捕获时，是否由 SDK 写出 0 分结果（默认开启）。关闭后恢复旧
+        行为：进程异常退出、无 `---RESULT---`，judge 判为平台错误。
+        """
+        if missing_function_as_zero:
+            _install_missing_function_hook()
         self._rpc = RpcClient()
         self._closed = False
         self._reader_thread = threading.Thread(
@@ -117,7 +185,7 @@ class SolutionRunner:
 
         # 6. 处理响应
         self._rpc.pop_pending(call_id)
-        return self._handle_response(response)
+        return self._handle_response(response, fn)
 
     def close(self) -> None:
         """主动关闭 runner（通常不需要，进程结束自动清理）。"""
@@ -241,7 +309,7 @@ class SolutionRunner:
 
         self._write_out(result_frame)
 
-    def _handle_response(self, frame: dict) -> Any:
+    def _handle_response(self, frame: dict, fn: Optional[str] = None) -> Any:
         """处理 result/error 帧，抛出对应异常或返回值。"""
         if frame.get("type") == "_shutdown":
             raise ConnectionError("Solution host 已关闭 / IPC 通道断开")
@@ -252,7 +320,7 @@ class SolutionRunner:
             if code == "CallTimeout":
                 raise SolutionTimeoutError(message)
             if code == "NotFound":
-                raise NotFoundError(message)
+                raise NotFoundError(message, fn=fn, reason=frame.get("reason"))
             if code == "Rejected":
                 raise RejectedError(message)
             # Exception / SystemError 等
