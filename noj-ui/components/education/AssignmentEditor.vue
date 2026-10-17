@@ -209,7 +209,7 @@ async function save() {
     <!-- 卡片 2：目标学生 -->
     <UCard>
       <template #header>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-users" class="size-5 text-primary" />
             <h2 class="font-semibold text-text">目标学生范围</h2>
@@ -261,7 +261,7 @@ async function save() {
     <!-- 卡片 3：题目与达标规则 -->
     <UCard>
       <template #header>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-list-checks" class="size-5 text-primary" />
             <h2 class="font-semibold text-text">题目与达标规则</h2>
@@ -279,17 +279,17 @@ async function save() {
             v-model="mode"
             :items="[{ label: '从本域题库逐道选题', value: 'items' }, { label: '从已引用题单整单导入', value: 'training' }]"
             aria-label="作业选题方式"
-            class="w-64"
+            class="w-full sm:w-64"
           />
         </div>
 
         <!-- 题单整单模式 -->
         <template v-if="mode === 'training'">
           <div class="rounded-lg border border-border bg-bg-sunken/30 p-4 space-y-3">
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <UInput
                 v-model="trainingLink"
-                class="grow"
+                class="min-w-0 grow"
                 placeholder="粘贴域内题单链接或编号"
                 aria-label="题单链接"
               />
@@ -304,7 +304,7 @@ async function save() {
             <p class="text-xs text-text-muted">
               发布时重新读取题单并固定题目集合；发布后题单后续增删不会改变本作业。
             </p>
-            <div class="flex items-center gap-3 pt-2">
+            <div class="flex flex-wrap items-center gap-3 pt-2">
               <span class="text-sm text-text-secondary">题单统一达标规则：</span>
               <USelect
                 v-model="trainingRequirement"
@@ -408,17 +408,17 @@ async function save() {
 
           <!-- 已添加题目列表 -->
           <div class="pt-2 border-t border-border space-y-2">
-            <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider">
+            <h3 class="text-sm font-semibold text-text">
               已选作业题目（{{ items.length }} / 200）
             </h3>
 
             <div
               v-for="(item, index) in items"
               :key="item.binding_id"
-              class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel px-3.5 py-2.5 shadow-card"
+              class="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3.5 py-3"
             >
               <span class="w-6 text-xs text-text-muted tabular-nums font-mono">{{ index + 1 }}.</span>
-              <span class="font-mono text-sm font-semibold text-primary mr-auto">{{ item.reference }}</span>
+              <span class="break-all font-mono text-sm font-semibold text-primary mr-auto">{{ item.reference }}</span>
 
               <div class="flex items-center gap-2">
                 <USelect
@@ -481,7 +481,7 @@ async function save() {
     </UCard>
 
     <!-- 底部操作底栏 -->
-    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-lg border border-border bg-white dark:bg-bg-panel p-4 shadow-card">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-border pt-5">
       <div class="flex items-center gap-2 text-xs text-text-muted">
         <UIcon name="i-lucide-info" class="size-4 shrink-0 text-primary" />
         <span>先保存草稿，再预览并发布。发布后题目集合和达标要求固定，版本及成绩口径仍跟随本域题库。</span>

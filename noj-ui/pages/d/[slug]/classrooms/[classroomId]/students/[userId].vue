@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { classroomCan, educationCacheKey } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), { user } = useAuth(), education = useEducationApi();
 const id = computed(() => String(route.params.classroomId)), studentId = computed(() => String(route.params.userId));
@@ -31,20 +30,7 @@ useSeoMeta({ title: () => student.value ? `${student.value.username} 的训练�
 
 <template>
   <div class="space-y-6">
-    <!-- 顶部面包屑与返回 -->
-    <div class="flex items-center gap-2 text-sm text-text-muted">
-      <NuxtLink
-        :to="workspacePath(slug!, `classrooms/${id}/students`)"
-        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
-      >
-        <UIcon name="i-lucide-arrow-left" class="size-4" />
-        <span>学生目录</span>
-      </NuxtLink>
-      <span class="text-border">/</span>
-      <span class="text-text font-medium truncate max-w-xs">{{ student?.username ?? '学员详情' }}</span>
-      <span class="text-border">/</span>
-      <span class="text-text-muted">训练档案</span>
-    </div>
+    <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
     <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
 

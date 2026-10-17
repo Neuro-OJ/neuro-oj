@@ -3,13 +3,14 @@ import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const { domain, slug, can } = useWorkspace();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const education = useEducationApi(), capture = useWorkspaceActionScope();
 const page = ref(1), open = ref(false), saving = ref(false);
 const form = reactive({ name: '', description: '', stage_tag: '' });
+const createError = ref('');
 
 const { data, status, error, refresh } = await useAsyncData(
   () => educationCacheKey(slug.value ?? '', actor.value?.id ?? null, 'classrooms', page.value),
@@ -20,12 +21,15 @@ async function create() {
   if (saving.value) return;
   const scope = capture();
   saving.value = true;
+  createError.value = '';
   try {
     const result = await education.createClassroom(scope.slug, { ...form });
     if (scope.isCurrent()) {
       open.value = false;
       await navigateTo(workspacePath(scope.slug, `classrooms/${result.data.id}`));
     }
+  } catch (e) {
+    if (scope.isCurrent()) createError.value = extractApiError(e).message;
   } finally {
     saving.value = false;
   }
@@ -36,7 +40,7 @@ useSeoMeta({ title: '我的班级' });
 
 <template>
   <div class="space-y-6">
-    <AdminPageHeader
+    <LibraryPageHeader
       title="我的班级"
       description="在所属班级中查看作业、学习进度和教学反馈。"
       icon="i-lucide-graduation-cap"
@@ -45,7 +49,7 @@ useSeoMeta({ title: '我的班级' });
         <div class="flex flex-wrap items-center gap-2">
           <UButton
             :to="workspacePath(slug!, 'teaching')"
-            variant="outline"
+            variant="ghost"
             color="neutral"
             icon="i-lucide-presentation"
           >
@@ -53,7 +57,7 @@ useSeoMeta({ title: '我的班级' });
           </UButton>
           <UButton
             :to="workspacePath(slug!, 'my-learning')"
-            variant="outline"
+            variant="ghost"
             color="neutral"
             icon="i-lucide-book-open"
           >
@@ -61,7 +65,7 @@ useSeoMeta({ title: '我的班级' });
           </UButton>
           <UButton
             :to="workspacePath(slug!, 'notifications')"
-            variant="outline"
+            variant="ghost"
             color="neutral"
             icon="i-lucide-bell"
           >
@@ -77,7 +81,7 @@ useSeoMeta({ title: '我的班级' });
           </UButton>
         </div>
       </template>
-    </AdminPageHeader>
+    </LibraryPageHeader>
 
     <AsyncContent
       :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.length ? 'data' : 'empty'"
@@ -89,27 +93,27 @@ useSeoMeta({ title: '我的班级' });
         <div
           v-for="room in data?.data"
           :key="room.id"
-          class="group flex flex-col justify-between rounded-lg border border-border bg-white p-5 shadow-card transition-all hover:border-primary/50 hover:shadow-dropdown dark:bg-bg-panel"
+          class="flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5"
         >
           <div>
             <div class="flex items-start justify-between gap-3">
-              <div class="flex items-center gap-3">
+              <div class="flex min-w-0 items-center gap-3">
                 <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
                   <UIcon name="i-lucide-school" class="size-5" />
                 </div>
-                <div>
-                  <h2 class="font-semibold text-text group-hover:text-primary transition-colors line-clamp-1">
-                    {{ room.name }}
+                <div class="min-w-0">
+                  <h2 class="font-semibold text-text break-words">
+                    <NuxtLink :to="workspacePath(slug!, `classrooms/${room.id}`)" class="hover:text-primary">{{ room.name }}</NuxtLink>
                   </h2>
-                  <p v-if="room.stage_tag" class="mt-0.5 text-xs text-text-muted">
+                  <p v-if="room.stage_tag" class="mt-0.5 text-xs text-text-muted break-words">
                     {{ room.stage_tag }}
                   </p>
                 </div>
               </div>
-              <UBadge v-if="room.status === 'archived'" color="neutral" variant="subtle" size="sm">
+              <UBadge v-if="room.status === 'archived'" color="neutral" variant="subtle" size="sm" class="shrink-0">
                 已归档
               </UBadge>
-              <UBadge v-else color="success" variant="subtle" size="sm">
+              <UBadge v-else color="success" variant="subtle" size="sm" class="shrink-0">
                 正常教学
               </UBadge>
             </div>
@@ -119,13 +123,10 @@ useSeoMeta({ title: '我的班级' });
             </p>
           </div>
 
-          <div class="mt-5 pt-3.5 border-t border-border flex items-center justify-between">
-            <span class="text-xs text-text-muted">
-              {{ room.status === 'archived' ? '历史班级' : '活跃班级' }}
-            </span>
+          <div class="mt-4 flex justify-end">
             <UButton
               :to="workspacePath(slug!, `classrooms/${room.id}`)"
-              variant="outline"
+              variant="ghost"
               color="primary"
               size="sm"
               trailing-icon="i-lucide-arrow-right"
@@ -137,7 +138,7 @@ useSeoMeta({ title: '我的班级' });
       </div>
 
       <template #empty>
-        <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-white dark:bg-bg-panel py-12 px-4 text-center shadow-card">
+        <div class="flex flex-col items-center justify-center py-8 px-4 text-center">
           <div class="flex size-12 items-center justify-center rounded-full bg-primary-bg text-primary mb-3">
             <UIcon name="i-lucide-graduation-cap" class="size-6" />
           </div>
@@ -160,8 +161,8 @@ useSeoMeta({ title: '我的班级' });
 
     <!-- 分页 -->
     <div
-      v-if="data?.data.length || page > 1"
-      class="flex items-center justify-between rounded-lg border border-border bg-white dark:bg-bg-panel px-4 py-3 shadow-card text-sm"
+      v-if="(data?.data.length ?? 0) >= 50 || page > 1"
+      class="flex items-center justify-between gap-3 text-sm"
     >
       <span class="text-text-muted">第 <strong class="text-text tabular-nums">{{ page }}</strong> 页</span>
       <div class="flex items-center gap-2">
@@ -178,6 +179,7 @@ useSeoMeta({ title: '我的班级' });
     <UModal v-model:open="open" title="创建新班级">
       <template #body>
         <form class="space-y-4" @submit.prevent="create">
+          <UAlert v-if="createError" color="error" :title="createError" />
           <AdminFormField label="班级名称" required>
             <UInput v-model="form.name" class="w-full" :maxlength="120" required aria-label="班级名称" placeholder="如：2026春季 NOIP 强化班" />
           </AdminFormField>
@@ -188,7 +190,7 @@ useSeoMeta({ title: '我的班级' });
             <UTextarea v-model="form.description" class="w-full" :maxlength="10000" aria-label="班级简介" placeholder="说明班级教学目标、课时安排或训练计划" />
           </AdminFormField>
           <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" @click="open = false">取消</UButton>
+            <UButton variant="ghost" color="neutral" :disabled="saving" @click="open = false">取消</UButton>
             <UButton type="submit" color="primary" :loading="saving" :disabled="!form.name.trim()">创建并进入班级</UButton>
           </div>
         </form>

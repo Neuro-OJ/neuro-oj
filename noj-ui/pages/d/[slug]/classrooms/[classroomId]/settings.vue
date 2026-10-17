@@ -2,7 +2,7 @@
 import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
   id = computed(() => String(route.params.classroomId));
@@ -12,6 +12,7 @@ const roster = await useAsyncData(() => `${key.value}:roster`, () => education.m
 const form = reactive({ name: '', description: '', stage_tag: '' });
 const originalRevision = ref(room.data.value?.data.revision ?? 0),
   saving = ref(false),
+  saved = ref(false),
   error = ref(''),
   successor = ref('');
 function reset() {
@@ -50,11 +51,13 @@ async function save() {
   const scope = capture(), classId = id.value;
   saving.value = true;
   error.value = '';
+  saved.value = false;
   try {
     await education.updateClassroom(scope.slug, classId, { ...form }, originalRevision.value);
     if (scope.isCurrent() && id.value === classId) {
       await room.refresh();
       reset();
+      saved.value = true;
     }
   } catch (e) {
     error.value = extractApiError(e).message;
@@ -102,45 +105,36 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   form.stage_tag = '';
   successor.value = '';
   error.value = '';
+  saved.value = false;
 });
 useSeoMeta({ title: '班级设置' });
 </script>
 <template>
   <div class="space-y-6">
-    <!-- 顶部面包屑与返回 -->
-    <div class="flex items-center gap-2 text-sm text-text-muted">
-      <NuxtLink
-        :to="workspacePath(slug!, `classrooms/${id}`)"
-        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
-      >
-        <UIcon name="i-lucide-arrow-left" class="size-4" />
-        <span>返回班级</span>
-      </NuxtLink>
-      <span class="text-border">/</span>
-      <span class="text-text font-medium truncate max-w-xs">{{ room.data.value?.data.name ?? '班级' }}</span>
-      <span class="text-border">/</span>
-      <span class="text-text-muted">班级设置</span>
-    </div>
+    <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
-    <AdminPageHeader
+    <LibraryPageHeader
       title="班级设置"
-      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」基本信息、主教练交接或班级生命周期` : '管理班级基本设置与生命周期'"
+      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」的基本信息、交接主教练或归档班级` : '管理班级信息与教学安排'"
       icon="i-lucide-settings"
     >
       <template #actions>
-        <UButton variant="outline" color="neutral" icon="i-lucide-refresh-cw" @click="reload">
+        <UButton variant="outline" color="neutral" icon="i-lucide-refresh-cw" :disabled="saving" :loading="room.status.value === 'pending'" @click="reload">
           重新读取
         </UButton>
       </template>
-    </AdminPageHeader>
+    </LibraryPageHeader>
 
     <UAlert
-      v-if="error || room.error.value"
+      v-if="error"
       color="error"
-      :title="error || extractApiError(room.error.value).message"
+      :title="error"
     />
 
-    <template v-if="writable">
+    <AsyncContent
+      :status="room.error.value ? 'error' : room.status.value === 'pending' ? 'loading' : room.data.value ? 'data' : 'empty'"
+      :error="room.error.value ? extractApiError(room.error.value).message : undefined" @retry="room.refresh()">
+    <div v-if="writable" class="space-y-6">
       <!-- 基本信息 -->
       <UCard>
         <template #header>
@@ -150,18 +144,21 @@ useSeoMeta({ title: '班级设置' });
           </div>
         </template>
 
-        <form class="space-y-4" @submit.prevent="save">
+        <form class="max-w-2xl space-y-5" @submit.prevent="save" @input="saved = false">
+          <div class="grid gap-5 sm:grid-cols-2">
           <AdminFormField label="班级名称" required>
             <UInput v-model="form.name" class="w-full" required :maxlength="120" aria-label="班级名称" />
           </AdminFormField>
           <AdminFormField label="阶段标签" hint="例如：提高组强化班 / 省选集训队">
             <UInput v-model="form.stage_tag" class="w-full" :maxlength="80" aria-label="阶段标签" />
           </AdminFormField>
+          </div>
           <AdminFormField label="班级简介">
-            <UTextarea v-model="form.description" class="w-full" :maxlength="10000" aria-label="班级简介" />
+            <UTextarea v-model="form.description" class="w-full" :rows="4" :maxlength="10000" aria-label="班级简介" />
           </AdminFormField>
-          <div class="pt-2 flex justify-end">
-            <UButton type="submit" color="primary" :loading="saving">保存班级设置</UButton>
+          <div class="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+            <span v-if="saved" role="status" class="text-sm text-success-text">班级设置已保存</span>
+            <UButton type="submit" color="primary" :loading="saving" :disabled="!form.name.trim()">保存班级设置</UButton>
           </div>
         </form>
       </UCard>
@@ -182,14 +179,18 @@ useSeoMeta({ title: '班级设置' });
 
           <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
 
-          <div class="flex flex-wrap items-center gap-3 pt-1">
+          <div class="flex flex-wrap items-end gap-3 pt-1">
+            <AdminFormField label="接任主教练" class="w-full sm:w-72">
             <USelect
               v-model="successor"
               :items="successors"
               placeholder="选择接任的主教练"
-              class="w-full sm:w-72"
+              class="w-full"
+              :loading="roster.status.value === 'pending'"
+              :disabled="saving || roster.status.value === 'pending' || !!roster.error.value || !successors.length"
               aria-label="接任主教练"
             />
+            </AdminFormField>
             <UButton
               :disabled="!successor || saving"
               variant="outline"
@@ -199,13 +200,16 @@ useSeoMeta({ title: '班级设置' });
               确认交接
             </UButton>
           </div>
+          <p v-if="roster.status.value === 'success' && !roster.error.value && !successors.length" class="text-sm text-text-muted">
+            暂无可接任的教练。请先在<NuxtLink :to="workspacePath(slug!, `classrooms/${id}/members`)" class="text-primary hover:underline">班级成员</NuxtLink>中将接任者设为教练。
+          </p>
         </div>
       </UCard>
 
       <!-- 归档班级 -->
       <UCard class="border-warning/40">
         <template #header>
-          <div class="flex items-center gap-2 text-warning">
+          <div class="flex items-center gap-2 text-warning-text">
             <UIcon name="i-lucide-archive" class="size-5" />
             <h2 class="font-semibold text-text">归档班级</h2>
           </div>
@@ -213,7 +217,7 @@ useSeoMeta({ title: '班级设置' });
 
         <div class="space-y-4">
           <p class="text-sm text-text-secondary leading-relaxed">
-            归档后班级将进入只读状态，停止发布新作业与新成员加入。学生和助教仍可随时查阅已布置作业的历史提交、答题表现与教练反馈。
+            归档后停止发布新作业与成员变更。获授权的成员仍可查阅历史作业、提交和反馈。
           </p>
           <UButton
             color="warning"
@@ -225,8 +229,9 @@ useSeoMeta({ title: '班级设置' });
           </UButton>
         </div>
       </UCard>
-    </template>
+    </div>
 
     <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置，无权修改配置或交接负责人" />
+    </AsyncContent>
   </div>
 </template>

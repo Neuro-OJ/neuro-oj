@@ -5,7 +5,8 @@ import StudentTraining from '~/components/education/StudentTraining.vue';
 import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
 const api = { studentSubmissions: vi.fn(), studentSubmission: vi.fn(), assignments: vi.fn() };
 const stubs = {
-  AdminPageHeader: { props: ['title'], template: '<h1>{{ title }}</h1>' },
+  LibraryPageHeader: { props: ['title'], template: '<h1>{{ title }}</h1>' },
+  AdminFormField: { template: '<div><slot /></div>' },
   AsyncContent: { template: '<div><slot /></div>' },
   UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
   UButton: { template: '<button><slot /></button>' },

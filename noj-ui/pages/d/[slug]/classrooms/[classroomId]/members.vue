@@ -5,7 +5,7 @@ import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import InvitationManager from '~/components/workspace/InvitationManager.vue';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
@@ -92,22 +92,9 @@ useSeoMeta({ title: '班级成员' });
 
 <template>
   <div class="space-y-6">
-    <!-- 顶部面包屑与返回 -->
-    <div class="flex items-center gap-2 text-sm text-text-muted">
-      <NuxtLink
-        :to="workspacePath(slug!, `classrooms/${id}`)"
-        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
-      >
-        <UIcon name="i-lucide-arrow-left" class="size-4" />
-        <span>返回班级</span>
-      </NuxtLink>
-      <span class="text-border">/</span>
-      <span class="text-text font-medium truncate max-w-xs">{{ room.data.value?.data.name ?? '班级' }}</span>
-      <span class="text-border">/</span>
-      <span class="text-text-muted">班级成员</span>
-    </div>
+    <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
-    <AdminPageHeader
+    <LibraryPageHeader
       title="班级成员"
       :description="room.data.value?.data.name ? `管理「${room.data.value.data.name}」的教练、助教与学生名单` : '管理班级成员与权限分配'"
       icon="i-lucide-user-check"
@@ -137,24 +124,24 @@ useSeoMeta({ title: '班级成员' });
 
     <!-- 成员名单列表 -->
     <AsyncContent
-      :status="roster.error.value ? 'error' : roster.status.value === 'pending' ? 'loading' : roster.data.value ? 'data' : 'empty'"
-      :error="roster.error.value ? extractApiError(roster.error.value).message : undefined"
+      :status="room.error.value || roster.error.value ? 'error' : room.status.value === 'pending' || roster.status.value === 'pending' ? 'loading' : roster.data.value?.data.length ? 'data' : 'empty'"
+      :error="room.error.value || roster.error.value ? extractApiError(room.error.value || roster.error.value).message : undefined"
       empty-text="暂无成员"
       @retry="refresh()"
     >
-      <div class="space-y-3">
+      <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
         <div
           v-for="member in roster.data.value?.data"
           :key="member.id"
-          class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-4 shadow-card hover:border-primary/40 transition-colors"
+          class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
         >
-          <div class="flex items-start gap-3">
+          <div class="flex min-w-0 items-start gap-3">
             <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-text-secondary font-semibold text-sm">
               {{ member.username.slice(0, 1).toUpperCase() }}
             </div>
-            <div>
+            <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="font-medium text-text">{{ member.username }}</span>
+                <span class="break-all font-medium text-text">{{ member.username }}</span>
                 <UBadge
                   :color="member.role === 'coach' ? 'primary' : member.role === 'assistant' ? 'info' : 'neutral'"
                   variant="subtle"
@@ -171,7 +158,7 @@ useSeoMeta({ title: '班级成员' });
                 </UBadge>
               </div>
 
-              <div v-if="member.capabilities?.length" class="mt-1.5 flex flex-wrap gap-1">
+              <div v-if="member.role === 'assistant' && member.capabilities?.length" class="mt-2 flex flex-wrap gap-1">
                 <span
                   v-for="cap in member.capabilities"
                   :key="cap"
@@ -183,7 +170,7 @@ useSeoMeta({ title: '班级成员' });
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2 self-end sm:self-auto shrink-0">
+          <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:shrink-0">
             <UButton
               v-if="member.role === 'student' && room.data.value && (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))"
               :to="workspacePath(slug!, `classrooms/${id}/students/${member.user_id}`)"
@@ -267,7 +254,7 @@ useSeoMeta({ title: '班级成员' });
           </AdminFormField>
 
           <div v-if="role === 'assistant'" class="space-y-2 rounded-lg border border-border p-3.5">
-            <span class="text-xs font-semibold text-text-muted uppercase tracking-wider">助教授权权限</span>
+            <span class="text-sm font-semibold text-text">助教授权权限</span>
             <div class="grid gap-2 sm:grid-cols-2 pt-1">
               <UCheckbox
                 v-for="(label, capability) in TEACHING_CAPABILITY_LABELS"

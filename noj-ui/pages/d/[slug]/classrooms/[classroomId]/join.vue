@@ -3,7 +3,7 @@ import { educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const route = useRoute(), { slug } = useWorkspace(), education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
@@ -35,9 +35,7 @@ useSeoMeta({ title: '申请加入班级' });
 </script>
 
 <template>
-  <div class="space-y-6 max-w-2xl mx-auto">
-    <!-- 顶部面包屑与返回 -->
-    <div class="flex items-center gap-2 text-sm text-text-muted">
+  <div class="space-y-6">
       <NuxtLink
         :to="workspacePath(slug!, 'classrooms')"
         class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
@@ -45,27 +43,28 @@ useSeoMeta({ title: '申请加入班级' });
         <UIcon name="i-lucide-arrow-left" class="size-4" />
         <span>我的班级</span>
       </NuxtLink>
-      <span class="text-border">/</span>
-      <span class="text-text font-medium truncate max-w-xs">{{ state.data.value?.data.name ?? '班级申请' }}</span>
-    </div>
 
-    <AdminPageHeader
+    <LibraryPageHeader
       title="申请加入班级"
       :description="state.data.value?.data.name ? `申请加入「${state.data.value.data.name}」` : '向班级教练提交加入申请'"
       icon="i-lucide-door-open"
     />
 
     <UAlert
-      v-if="error || state.error.value"
+      v-if="error"
       color="error"
-      :title="error || extractApiError(state.error.value).message"
+      :title="error"
     />
 
-    <template v-if="state.data.value">
+    <AsyncContent
+      :status="state.error.value ? 'error' : state.status.value === 'pending' ? 'loading' : state.data.value ? 'data' : 'empty'"
+      :error="state.error.value ? extractApiError(state.error.value).message : undefined"
+      @retry="state.refresh()">
+    <div v-if="state.data.value" class="max-w-2xl">
       <!-- 已经是班级成员 -->
       <UCard v-if="state.data.value.data.is_member">
         <div class="text-center py-6 space-y-3">
-          <div class="flex size-12 items-center justify-center rounded-full bg-success-bg text-success mx-auto">
+          <div class="flex size-12 items-center justify-center rounded-full bg-success-bg text-success-text mx-auto">
             <UIcon name="i-lucide-check-circle-2" class="size-6" />
           </div>
           <h2 class="text-lg font-semibold text-text">你已是该班级成员</h2>
@@ -81,7 +80,7 @@ useSeoMeta({ title: '申请加入班级' });
       <!-- 未加入：显示申请状态或申请表单 -->
       <UCard v-else>
         <template #header>
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
               <UIcon name="i-lucide-clipboard-pen" class="size-5 text-primary" />
               <h2 class="font-semibold text-text">提交学生入班申请</h2>
@@ -101,7 +100,7 @@ useSeoMeta({ title: '申请加入班级' });
             <div class="flex items-center justify-between text-xs text-text-muted">
               <span>申请提交时间：{{ new Date(state.data.value.data.request.created_at).toLocaleString() }}</span>
             </div>
-            <p v-if="state.data.value.data.request.reason" class="text-text-secondary text-xs">
+            <p v-if="state.data.value.data.request.reason" class="break-words whitespace-pre-wrap text-text-secondary text-sm">
               附言：{{ state.data.value.data.request.reason }}
             </p>
           </div>
@@ -128,6 +127,7 @@ useSeoMeta({ title: '申请加入班级' });
           </p>
         </div>
       </UCard>
-    </template>
+    </div>
+    </AsyncContent>
   </div>
 </template>

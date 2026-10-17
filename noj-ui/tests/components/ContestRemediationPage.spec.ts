@@ -36,7 +36,11 @@ beforeEach(() => {
   );
   vi.stubGlobal(
     'useAsyncData',
-    async (_key: unknown, loader: () => Promise<unknown>) => ({ data: ref(await loader()), error: ref(null) }),
+    async (_key: unknown, loader: () => Promise<unknown>) => ({
+      data: ref(await loader()),
+      error: ref(null),
+      status: ref('success'),
+    }),
   );
 });
 async function view() {
@@ -45,7 +49,9 @@ async function view() {
     global: {
       stubs: {
         UButton: true,
-        AdminPageHeader: true,
+        LibraryPageHeader: true,
+        ClassroomNavigation: true,
+        AsyncContent: { template: '<div><slot /></div>' },
         UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
         ClientOnly: { template: '<div><slot /></div>' },
         ContestRemediationBuilder: { template: '<p>比赛候选管理</p>' },

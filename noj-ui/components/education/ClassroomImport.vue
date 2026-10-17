@@ -91,8 +91,10 @@ function exportResult() {
       <UButton variant="ghost"
         @click="download('\uFEFFemail,username\r\n', 'classroom-import-template.csv')">下载空模板</UButton>
     </div>
-    <UTextarea v-model="csv" class="w-full" :rows="5" :disabled="busy" placeholder="email,username"
+    <AdminFormField label="CSV 名单" hint="上传文件，或直接粘贴包含表头的名单。">
+    <UTextarea v-model="csv" class="w-full font-mono" :rows="5" :disabled="busy" placeholder="email,username"
       aria-label="学生导入 CSV" />
+    </AdminFormField>
     <UCheckbox v-model="replace" class="mt-3" :disabled="busy" label="重签已有有效邀请（旧链接将失效）" />
     <UAlert v-if="error" class="mt-3" color="error" :title="error" />
     <UButton class="mt-3" variant="outline" :loading="busy" :disabled="!csv.trim()"
@@ -102,7 +104,7 @@ function exportResult() {
         class="mt-4 text-sm tabular-nums">共 {{ preview.summary.total }} 条：加入 {{ preview.summary.join }}，邀请 {{ preview.summary.invite }}，跳过 {{ preview.summary.skipped }}，错误 {{ preview.summary.errors }}。</p>
       <div class="mt-3 max-h-80 overflow-auto rounded border border-border">
         <table class="w-full text-left text-sm" aria-label="导入逐行预览">
-          <thead>
+          <thead class="sticky top-0 bg-bg-sunken text-text-secondary">
             <tr>
               <th class="p-2">行</th>
               <th class="p-2">邮箱／用户名</th>
@@ -113,7 +115,7 @@ function exportResult() {
           <tbody>
             <tr v-for="row in preview.rows" :key="row.row" class="border-t border-border">
               <td class="p-2 tabular-nums">{{ row.row }}</td>
-              <td class="p-2">{{ row.email || row.username }}</td>
+              <td class="p-2 break-all">{{ row.email || row.username }}</td>
               <td class="p-2">{{ CLASSROOM_IMPORT_LABELS[row.action] }}</td>
               <td class="p-2">{{ row.error }}</td>
             </tr>

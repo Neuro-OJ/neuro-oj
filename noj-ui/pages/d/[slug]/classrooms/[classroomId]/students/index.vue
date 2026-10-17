@@ -3,7 +3,7 @@ import { classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth(), education = useEducationApi();
 const id = computed(() => String(route.params.classroomId)),
@@ -35,22 +35,9 @@ useSeoMeta({ title: '班级学生训练目录' });
 
 <template>
   <div class="space-y-6">
-    <!-- 顶部面包屑与返回 -->
-    <div class="flex items-center gap-2 text-sm text-text-muted">
-      <NuxtLink
-        :to="workspacePath(slug!, `classrooms/${id}`)"
-        class="inline-flex items-center gap-1 text-text-secondary hover:text-primary transition-colors font-medium"
-      >
-        <UIcon name="i-lucide-arrow-left" class="size-4" />
-        <span>返回班级</span>
-      </NuxtLink>
-      <span class="text-border">/</span>
-      <span class="text-text font-medium truncate max-w-xs">{{ room.data.value?.data.name ?? '班级' }}</span>
-      <span class="text-border">/</span>
-      <span class="text-text-muted">学生训练目录</span>
-    </div>
+    <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
-    <AdminPageHeader
+    <LibraryPageHeader
       title="学生训练目录"
       :description="room.data.value?.data.name ? `查看「${room.data.value.data.name}」学员的个人训练进度与答题记录` : '查看班级学员训练进展'"
       icon="i-lucide-users"
@@ -61,20 +48,16 @@ useSeoMeta({ title: '班级学生训练目录' });
 
     <template v-if="allowed">
       <!-- 搜索与范围筛选栏 -->
-      <div class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-3.5 shadow-card">
-        <UInput
-          v-model="search"
-          placeholder="按学生用户名检索"
-          icon="i-lucide-search"
-          class="grow max-w-md"
-        />
-        <USelect
-          v-model="scope"
-          :items="[{ label: '当前在班学生', value: 'current' }, { label: '历史学生', value: 'historical' }, { label: '全部学生', value: 'all' }]"
-          aria-label="学生成员范围"
-          class="w-40"
-        />
-        <span class="text-xs text-text-muted ml-auto tabular-nums">
+      <div class="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-bg-panel p-4">
+        <AdminFormField label="学生用户名" class="w-full sm:w-auto sm:flex-1 sm:max-w-md">
+          <UInput v-model="search" placeholder="输入用户名搜索" icon="i-lucide-search" aria-label="学生用户名" class="w-full" />
+        </AdminFormField>
+        <AdminFormField label="成员范围" class="w-full sm:w-44">
+          <USelect v-model="scope"
+            :items="[{ label: '当前在班学生', value: 'current' }, { label: '历史学生', value: 'historical' }, { label: '全部学生', value: 'all' }]"
+            aria-label="学生成员范围" class="w-full" />
+        </AdminFormField>
+        <span class="pb-2 text-xs text-text-muted sm:ml-auto tabular-nums" role="status">
           共 {{ students.length }} 名学生
         </span>
       </div>
@@ -85,18 +68,18 @@ useSeoMeta({ title: '班级学生训练目录' });
         empty-text="暂无符合条件的学生"
         @retry="roster.refresh()"
       >
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid gap-3 md:grid-cols-2">
           <div
             v-for="student in students"
             :key="student.id"
-            class="flex items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-4 shadow-card hover:border-primary/50 transition-colors"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4"
           >
             <div class="flex items-center gap-3 min-w-0">
               <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-bg text-primary font-semibold text-sm">
                 {{ student.username.slice(0, 1).toUpperCase() }}
               </div>
               <div class="min-w-0">
-                <h3 class="font-semibold text-text truncate">{{ student.username }}</h3>
+                <h2 class="font-semibold text-text break-all">{{ student.username }}</h2>
                 <UBadge
                   :color="student.effective_active ? 'success' : 'neutral'"
                   variant="subtle"
@@ -122,10 +105,11 @@ useSeoMeta({ title: '班级学生训练目录' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-white dark:bg-bg-panel py-10 px-4 text-center shadow-card">
+          <div class="flex flex-col items-center justify-center py-6 px-4 text-center">
             <UIcon name="i-lucide-user-x" class="size-8 text-text-muted mb-2" />
             <p class="font-medium text-text">暂无符合条件的学生</p>
             <p class="text-xs text-text-muted mt-0.5">请尝试切换筛选范围或清空检索关键字</p>
+            <UButton v-if="search || scope !== 'current'" class="mt-3" variant="outline" color="neutral" @click="search = ''; scope = 'current'">重置筛选</UButton>
           </div>
         </template>
       </AsyncContent>

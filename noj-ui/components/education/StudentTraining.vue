@@ -63,25 +63,40 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
 </script>
 <template>
   <div class="space-y-5">
-    <AdminPageHeader :title="`${student?.username ?? '学生'} · 训练详情`" :description="classroom.name" />
+    <LibraryPageHeader :title="`${student?.username ?? '学生'} · 训练详情`" :description="classroom.name" icon="i-lucide-activity" />
     <UAlert v-if="student && (!student.effective_active || student.role !== 'student')" color="info"
       title="历史学生记录" description="仅保留本班已有作业或批注授权依据，不继续获取离班后的个人练习。" />
     <template v-if="read">
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-wrap items-end gap-3">
         <h2 class="mr-auto font-semibold">授权同域提交</h2>
+        <AdminFormField label="提交类型">
         <USelect v-model="kind"
           :items="[{ label: '全部类型', value: 'all' }, { label: '代码／产物', value: 'submission' }, { label: '客观题', value: 'objective' }]"
           aria-label="学生提交类型" />
-        <UButton variant="outline" @click="records.refresh()">刷新提交</UButton>
+        </AdminFormField>
+        <UButton variant="outline" color="neutral" :loading="records.status.value === 'pending'" @click="records.refresh()">刷新提交</UButton>
       </div>
       <p
-        class="text-xs text-text-muted">当前学生可查看全部同域练习；进行中比赛的受保密限制记录由服务端过滤。分数缺失不会按零分展示。</p>
+        class="text-sm text-text-secondary">展示获授权的同域提交；进行中比赛的保密结果暂不显示。</p>
       <AsyncContent
         :status="records.error.value ? 'error' : records.status.value === 'pending' ? 'loading' : records.data.value?.data.data.length ? 'data' : 'empty'"
         :error="records.error.value ? extractApiError(records.error.value).message : undefined"
         empty-text="暂无获授权的同域提交" @retry="records.refresh()">
         <div
-          class="divide-y divide-border rounded border border-border"><button v-for="row in records.data.value?.data.data" :key="`${row.kind}:${row.id}`" class="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-primary-bg" @click="select(row)"><div><span class="font-mono text-primary">{{ row.display_ref }}</span><span class="ml-3 text-sm">{{ row.kind === 'objective' ? '客观题' : row.has_artifact ? '产物' : row.language }}</span><p class="mt-1 text-xs text-text-muted">{{ new Date(row.created_at).toLocaleString() }}{{ row.contest_id ? ' · 比赛提交' : '' }}</p></div><span class="text-sm tabular-nums">{{ teachingSubmissionResult(row) }}</span></button></div>
+          class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+          <button v-for="row in records.data.value?.data.data" :key="`${row.kind}:${row.id}`"
+            class="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2"
+            @click="select(row)">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="break-all font-mono text-primary">{{ row.display_ref }}</span>
+                <span class="text-sm text-text-secondary">{{ row.kind === 'objective' ? '客观题' : row.has_artifact ? '产物' : row.language }}</span>
+              </div>
+              <p class="mt-1 text-xs tabular-nums text-text-muted">{{ new Date(row.created_at).toLocaleString() }}{{ row.contest_id ? ' · 比赛提交' : '' }}</p>
+            </div>
+            <span class="flex items-center gap-2 text-sm tabular-nums">{{ teachingSubmissionResult(row) }}<UIcon name="i-lucide-chevron-right" class="size-4 text-text-muted" /></span>
+          </button>
+        </div>
         <PaginationNav :current-page="page" :total-pages="Math.ceil((records.data.value?.data.total ?? 0) / 50)"
           @page-change="page = $event" />
       </AsyncContent>
@@ -93,15 +108,18 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
       <AsyncContent
         :status="tasks.error.value ? 'error' : tasks.status.value === 'pending' ? 'loading' : tasks.data.value?.data.length ? 'data' : 'empty'"
         :error="tasks.error.value ? extractApiError(tasks.error.value).message : undefined" @retry="tasks.refresh()">
-        <UCard v-for="task in tasks.data.value?.data" :key="task.id" class="mb-3">
+        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div v-for="task in tasks.data.value?.data" :key="task.id" class="p-4">
           <div
-            class="flex items-center justify-between gap-3"><span>{{ task.title }}</span><UButton :to="workspacePath(slug, `assignments/${task.id}`)" variant="outline">{{ progress ? '进入作业学情' : '进入作业反馈' }}</UButton></div>
-        </UCard>
+            class="flex flex-wrap items-center justify-between gap-3"><span class="min-w-0 break-words font-medium">{{ task.title }}</span><UButton :to="workspacePath(slug, `assignments/${task.id}`)" variant="ghost">{{ progress ? '进入作业学情' : '进入作业反馈' }}</UButton></div>
+        </div>
+        </div>
         <div
-          class="flex items-center justify-between gap-3"><UButton variant="outline" :disabled="taskPage === 1" @click="taskPage--">上一页作业</UButton><span class="text-sm tabular-nums">{{ taskPage }}</span><UButton variant="outline" :disabled="(tasks.data.value?.data.length ?? 0) < 50" @click="taskPage++">下一页作业</UButton></div>
+          v-if="(tasks.data.value?.data.length ?? 0) >= 50 || taskPage > 1"
+          class="mt-4 flex flex-wrap items-center justify-between gap-3"><UButton variant="outline" :disabled="taskPage === 1" @click="taskPage--">上一页作业</UButton><span class="text-sm tabular-nums">第 {{ taskPage }} 页</span><UButton variant="outline" :disabled="(tasks.data.value?.data.length ?? 0) < 50" @click="taskPage++">下一页作业</UButton></div>
       </AsyncContent>
     </section>
-    <USlideover v-model:open="open" title="原提交与教学批注">
+    <USlideover v-model:open="open" title="原提交与教学批注" :ui="{ content: 'w-full sm:max-w-3xl' }">
       <template #body>
         <AsyncContent
           :status="detail.error.value ? 'error' : detail.status.value === 'pending' ? 'loading' : detail.data.value ? 'data' : 'empty'"
