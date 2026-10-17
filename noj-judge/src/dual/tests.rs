@@ -14,7 +14,7 @@ struct EvalHarness {
     parser: LineParser,
     stderr_buf: String,
     stdout_full: String,
-    result_payload: Option<String>,
+    result_payload: ResultPayload,
     tracker: InFlightTracker,
 }
 
@@ -24,7 +24,7 @@ impl EvalHarness {
             parser: LineParser::new(),
             stderr_buf: String::new(),
             stdout_full: String::new(),
-            result_payload: None,
+            result_payload: ResultPayload::new(),
             tracker: InFlightTracker::new(2000),
         }
     }
@@ -343,7 +343,7 @@ async fn test_handle_eval_chunk_forwards_result_error_frames() {
     assert!(text.contains("\"type\":\"result\""));
     assert!(text.contains("\"type\":\"error\""));
     assert!(!text.contains("\"type\":\"log\""), "log 帧不应转发");
-    assert!(result_payload.is_none());
+    assert!(!result_payload.has_candidates());
     // 帧被记录到 stdout 全文（含未转发的 log）
     assert!(stdout_full.contains("\"type\":\"log\""));
 }
@@ -426,7 +426,7 @@ async fn test_handle_eval_chunk_result_marker_sets_payload() {
     .await
     .unwrap();
 
-    assert_eq!(result_payload.as_deref(), Some("{\"score\":100}"));
+    assert_eq!(result_payload.primary(), Some("{\"score\":100}"));
     assert!(stdout_full.contains("---RESULT---"));
 }
 
@@ -457,7 +457,8 @@ async fn test_result_marker_and_payload_split_across_chunks() {
     .await
     .unwrap();
     // 标记与 payload 跨 chunk 时，状态必须保持到下一 chunk。
-    assert_eq!(result_payload.as_deref(), Some(""));
+    assert!(result_payload.seen_marker());
+    assert!(!result_payload.has_candidates());
 
     handle_eval_chunk(
         &mut parser,
@@ -472,7 +473,7 @@ async fn test_result_marker_and_payload_split_across_chunks() {
     )
     .await
     .unwrap();
-    assert_eq!(result_payload.as_deref(), Some("{\"score\":100}"));
+    assert_eq!(result_payload.primary(), Some("{\"score\":100}"));
 }
 
 #[tokio::test]

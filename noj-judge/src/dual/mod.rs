@@ -32,6 +32,7 @@ use crate::dual::protocol::{
     FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
 };
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
+mod payload;
 mod pipe;
 mod result;
 
@@ -39,6 +40,7 @@ mod result;
 mod tests;
 
 pub(crate) use inject::inject_file_stream_to_container;
+pub use payload::ResultPayload;
 use pipe::{forward_frame, write_timeout_frame, PipeWriteOutcome};
 pub(crate) use result::build_judge_result;
 
@@ -575,7 +577,7 @@ async fn run_dual_loop(
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
 
-    let mut result_payload: Option<String> = None;
+    let mut result_payload = ResultPayload::new();
 
     // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值）
     let mut tracker = InFlightTracker::new(default_call_timeout_ms);
@@ -673,7 +675,7 @@ async fn run_dual_loop(
                     warn!("Solution stdin 已关闭（启动阶段），终止该方向转发");
                     solution_done = true;
                 }
-                if result_payload.as_ref().is_some_and(|p| !p.is_empty()) {
+                if result_payload.has_usable() {
                     break;
                 }
                 evaluator_started = true;
@@ -684,17 +686,21 @@ async fn run_dual_loop(
 
     // 阶段 2：正式评测——总超时从评测程序开始运行起算（题目 time_limit_ms）。
     //
-    // 修复（D0）：守卫条件必须是「payload **尚未完整取得**」，而不只是
-    // `is_none()`。阶段 1 是 `while !evaluator_started` 循环：一旦收到首条输出
-    // （例如只有 `---RESULT---` 标记的那一个 chunk）就会正常退出循环，此时
-    // `result_payload == Some("")`（已见标记、payload 待读）。若此处用 `is_none()`
-    // 判断，阶段 2 会被整体跳过，payload 永远不被读取 —— 随后尾部逻辑判定
-    // 「已见标记但无 payload」，把合法评测结果误判为 SystemError（提交丢分）。
+    // 修复（D0）：守卫条件必须是「结果**尚未完整取得**」，而不只是「未见标记」。
+    // 阶段 1 是 `while !evaluator_started` 循环：一旦收到首条输出
+    // （例如只有 `---RESULT---` 标记的那一个 chunk）就会正常退出循环，此时已见
+    // 标记但候选 payload 仍为空。若此处只看「是否已见标记」，阶段 2 会被整体跳过，
+    // payload 永远不被读取 —— 随后尾部逻辑判定「已见标记但无 payload」，把合法
+    // 评测结果误判为 SystemError（提交丢分）。
+    //
+    // Issue #654：退出条件从「已捕获任意非空行」改为「已捕获**可解析且含 score**
+    // 的候选」。否则「标记 → 噪声行 → 真 JSON」会在噪声行处提前收尾，真结果
+    // 永远读不到。
     //
     // 该缺陷表现为时序相关的偶发失败：标记与 payload 落在**同一个** chunk 时
     // （一次 handle_eval_chunk 内连续处理两行）恰好正常；分成两个 chunk 到达
     // （评测脚本先 flush 标记、稍后再写 payload）则必然丢结果。
-    if result_payload.as_deref().is_none_or(|p| p.is_empty()) {
+    if !result_payload.has_usable() {
         let deadline = tokio::time::sleep(Duration::from_millis(evaluator_timeout_ms));
         tokio::pin!(deadline);
 
@@ -706,7 +712,7 @@ async fn run_dual_loop(
             // 循环全程持有 `sol_input` 从不关闭、也从不向它发 shutdown 帧。因此
             // Solution 的 EOF 在生产中基本不会出现；若等它结束才收尾，必然拖到
             // 总超时（表现为 status=error「Evaluator 总超时」，而结果其实早已拿到）。
-            if result_payload.as_deref().is_some_and(|p| !p.is_empty()) {
+            if result_payload.has_usable() {
                 break 'outer;
             }
 
@@ -804,7 +810,7 @@ async fn run_dual_loop(
                     {
                         solution_done = true;
                     }
-                    if result_payload.as_ref().is_some_and(|p| !p.is_empty()) {
+                    if result_payload.has_usable() {
                         break 'outer;
                     }
                 }
@@ -865,14 +871,12 @@ async fn run_dual_loop(
         }
     }
 
-    // 解析最终结果
-    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
-        // payload 是 `---RESULT---` 后第一行 JSON
-        let parsed: serde_json::Value =
-            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
-        return result::build_judge_result(
+    // 解析最终结果：标记后的候选按出现顺序逐个尝试，取第一个「合法 JSON 且含
+    // score」的行（Issue #654：噪声行不得让整次评测变成 platform_error）。
+    if result_payload.has_candidates() {
+        return payload::resolve_payload(
             submission_id,
-            &parsed,
+            &result_payload,
             &eval_stderr_buf,
             &eval_stdout_full,
             rejudge_seq,
@@ -880,16 +884,14 @@ async fn run_dual_loop(
     }
 
     // 已见 RESULT 标记但 payload 行未以换行结束（EOF 残留）时，
-    // 把 drain 出的最后一行当作 payload，避免把合法结果误判为 SystemError。
+    // 把 drain 出的最后一行当作候选，避免把合法结果误判为 SystemError。
     // （幂等：循环内的 drain 已执行过时，此处不再产生内容。）
     drain_eval_tail(&mut eval_parser, &mut eval_stdout_full, &mut result_payload);
 
-    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
-        let parsed: serde_json::Value =
-            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
-        return result::build_judge_result(
+    if result_payload.has_candidates() {
+        return payload::resolve_payload(
             submission_id,
-            &parsed,
+            &result_payload,
             &eval_stderr_buf,
             &eval_stdout_full,
             rejudge_seq,
@@ -924,16 +926,14 @@ async fn run_dual_loop(
 fn drain_eval_tail(
     parser: &mut LineParser,
     stdout_full: &mut String,
-    result_payload: &mut Option<String>,
+    result_payload: &mut ResultPayload,
 ) {
     for line in parser.drain_remaining() {
         if let EvaluatorLine::Unknown(s) = line {
             append_capped(stdout_full, &s);
             append_capped(stdout_full, "\n");
-            // 仅当「已见标记、等待首条非空行」时吸收为 payload
-            if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
-                *result_payload = Some(s.trim().to_string());
-            }
+            // 仅在「已见标记」时吸收为候选（候选有界，见 ResultPayload）
+            result_payload.push_line(&s);
         }
     }
 }
@@ -949,7 +949,7 @@ async fn handle_eval_chunk(
     stderr_buf: &mut String,
     stdout_full: &mut String,
     sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
-    result_payload: &mut Option<String>,
+    result_payload: &mut ResultPayload,
     tracker: &mut InFlightTracker,
     chunk: LogOutput,
 ) -> Result<bool> {
@@ -972,8 +972,8 @@ async fn handle_eval_chunk(
     for line in lines {
         match line {
             EvaluatorLine::ResultMarker => {
-                // NOJ-160：用 Some("") 作为「已见标记、等待下一非空行」的跨 chunk 状态。
-                *result_payload = Some(String::new());
+                // NOJ-160：标记进入「等待候选」状态，跨 chunk 保持。
+                result_payload.on_marker();
                 append_capped(stdout_full, RESULT_MARKER);
                 append_capped(stdout_full, "\n");
             }
@@ -1025,9 +1025,9 @@ async fn handle_eval_chunk(
                 // 普通 evaluate.py 输出，丢弃
                 append_capped(stdout_full, &s);
                 append_capped(stdout_full, "\n");
-                if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
-                    *result_payload = Some(s.trim().to_string());
-                }
+                // Issue #654：标记后的非空行**全部**作为候选保留（有界），
+                // 由解析阶段依次尝试；只留首行会让噪声行吞掉真结果。
+                result_payload.push_line(&s);
             }
         }
     }
@@ -1114,7 +1114,7 @@ pub mod mod_test_helpers {
     pub async fn handle_eval_chunk_probe(
         parser: &mut LineParser,
         sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
-        result_payload: &mut Option<String>,
+        result_payload: &mut ResultPayload,
         tracker: &mut InFlightTracker,
         chunk: LogOutput,
     ) {
