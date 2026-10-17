@@ -48,6 +48,9 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-deno-version_test.ts",
   "scripts/check-action-pins_test.ts",
   "scripts/check-prod-env-injection_test.ts",
+  // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）。
+  // 转换失败会让 5 个 deno.lock 变成零扫描，必须由测试守住解析行为。
+  "scripts/security/deno-lock-to-package-lock_test.ts",
   // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
   // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
   "scripts/gate-list_test.ts",

@@ -112,3 +112,6 @@ dev-docs/review-snapshots/
 # --- Problem source (moved to separate private noj-problems repo) ---
 /problems/
 /noj-problems/
+
+# --- 安全扫描本地产物（security.yml 与 CONTRIBUTING.md 的本地复现命令） ---
+.security/
