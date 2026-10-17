@@ -31,7 +31,7 @@
             </div>
             <NuxtLink :to="userUrl(user?.username ?? '')" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-user-round" class="size-4" />用户主页</NuxtLink>
             <NuxtLink to="/my/problems" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-book-open" class="size-4" />我的题目</NuxtLink>
-            <NuxtLink to="/messages" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover relative" @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
+            <NuxtLink to="/messages" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover relative" @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" data-test="unread-badge" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
             <NuxtLink to="/settings" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
             <NuxtLink v-if="user?.is_admin" to="/admin" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-shield-check" class="size-4" />管理后台</NuxtLink>
             <div class="h-px bg-border my-1"></div>
@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue"
 import { userUrl } from "~/utils/publicIdentifiers";
 const router = useRouter()
 const { user, isLoggedIn, logout, fetchUser } = useAuth()
@@ -106,11 +107,12 @@ let unreadPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function fetchUnreadCount() {
     try {
-        const res = await api.get<{ data: { unread_count: number } }>(
+        // 后端返回顶层 { unread_count }，Nitro 代理透传、useApi 不解包（#657）
+        const res = await api.get<{ unread_count: number }>(
             "/api/v1/conversations/unread-count",
             { silent: true },
         )
-        unreadCount.value = res.data?.unread_count ?? 0
+        unreadCount.value = res?.unread_count ?? 0
     } catch {
         // 静默失败
     }

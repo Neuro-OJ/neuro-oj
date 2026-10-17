@@ -65,6 +65,11 @@ USER noj
 
 ENV PORT=3000
 
+# 运行时默认时区（镜像基底为 UTC）。站内时间统一按北京时间展示；
+# 显式声明可消除「容器 UTC / 浏览器本地」的隐式差异，避免 SSR 与水合结果不一致。
+# 展示层已在 formatDateTime 中固定 timeZone，这里只兜底其它依赖进程时区的逻辑。
+ENV TZ=Asia/Shanghai
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
