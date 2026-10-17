@@ -46,18 +46,17 @@ useSeoMeta({ title: '班级学生训练目录' });
     <UAlert v-if="room.error.value" color="error" :title="extractApiError(room.error.value).message" />
     <UAlert v-if="room.data.value && !allowed" color="info" title="当前账号未被授予本班学情或提交记录的读取权限" />
 
-    <template v-if="allowed">
-      <!-- 搜索与范围筛选栏 -->
-      <div class="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-bg-panel p-4">
-        <AdminFormField label="学生用户名" class="w-full sm:w-auto sm:flex-1 sm:max-w-md">
+    <section v-if="allowed" aria-label="学生训练名单" class="overflow-hidden rounded-lg border border-border bg-bg-panel">
+      <div class="flex flex-wrap items-end gap-3 border-b border-border p-4 sm:gap-4 sm:px-5">
+        <AdminFormField label="学生用户名" class="w-full sm:w-80">
           <UInput v-model="search" placeholder="输入用户名搜索" icon="i-lucide-search" aria-label="学生用户名" class="w-full" />
         </AdminFormField>
-        <AdminFormField label="成员范围" class="w-full sm:w-44">
+        <AdminFormField label="成员范围" class="w-44">
           <USelect v-model="scope"
             :items="[{ label: '当前在班学生', value: 'current' }, { label: '历史学生', value: 'historical' }, { label: '全部学生', value: 'all' }]"
             aria-label="学生成员范围" class="w-full" />
         </AdminFormField>
-        <span class="pb-2 text-xs text-text-muted sm:ml-auto tabular-nums" role="status">
+        <span v-if="roster.data.value" class="ml-auto pb-2 text-xs text-text-muted tabular-nums" role="status">
           共 {{ students.length }} 名学生
         </span>
       </div>
@@ -68,44 +67,42 @@ useSeoMeta({ title: '班级学生训练目录' });
         empty-text="暂无符合条件的学生"
         @retry="roster.refresh()"
       >
-        <div class="grid gap-3 md:grid-cols-2">
-          <div
+        <div class="hidden grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-4 border-b border-border bg-bg-sunken px-5 py-2.5 text-xs font-medium text-text-secondary sm:grid" aria-hidden="true">
+          <span>学生</span>
+          <span>成员状态</span>
+          <span class="text-right">训练记录</span>
+        </div>
+        <ul aria-label="学生名单" class="divide-y divide-border">
+          <li
             v-for="student in students"
             :key="student.id"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4"
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-bg text-primary font-semibold text-sm">
-                {{ student.username.slice(0, 1).toUpperCase() }}
-              </div>
+            <NuxtLink
+              :to="workspacePath(slug!, `classrooms/${id}/students/${student.user_id}`)"
+              class="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 transition-colors hover:bg-primary-bg focus-visible:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 sm:min-h-14 sm:grid-cols-[minmax(0,1fr)_7rem_7rem] sm:px-5"
+            >
               <div class="min-w-0">
-                <h2 class="font-semibold text-text break-all">{{ student.username }}</h2>
-                <UBadge
-                  :color="student.effective_active ? 'success' : 'neutral'"
-                  variant="subtle"
-                  size="xs"
-                  class="mt-1"
-                >
+                <span class="break-all text-sm font-medium text-text">{{ student.username }}</span>
+                <div class="mt-1 sm:hidden">
+                  <UBadge :color="student.effective_active ? 'success' : 'neutral'" variant="subtle" size="xs">
+                    {{ student.effective_active ? '在班学员' : '历史学员' }}
+                  </UBadge>
+                </div>
+              </div>
+              <div class="hidden sm:block">
+                <UBadge :color="student.effective_active ? 'success' : 'neutral'" variant="subtle" size="xs">
                   {{ student.effective_active ? '在班学员' : '历史学员' }}
                 </UBadge>
               </div>
-            </div>
-
-            <UButton
-              :to="workspacePath(slug!, `classrooms/${id}/students/${student.user_id}`)"
-              variant="outline"
-              color="primary"
-              size="sm"
-              trailing-icon="i-lucide-arrow-right"
-              class="shrink-0"
-            >
-              训练详情
-            </UButton>
-          </div>
-        </div>
+              <span class="inline-flex items-center justify-end gap-2 whitespace-nowrap text-sm font-medium text-primary">
+                训练详情<UIcon name="i-lucide-arrow-right" class="size-4" />
+              </span>
+            </NuxtLink>
+          </li>
+        </ul>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center py-6 px-4 text-center">
+          <div class="flex flex-col items-center justify-center px-4 text-center">
             <UIcon name="i-lucide-user-x" class="size-8 text-text-muted mb-2" />
             <p class="font-medium text-text">暂无符合条件的学生</p>
             <p class="text-xs text-text-muted mt-0.5">请尝试切换筛选范围或清空检索关键字</p>
@@ -113,6 +110,6 @@ useSeoMeta({ title: '班级学生训练目录' });
           </div>
         </template>
       </AsyncContent>
-    </template>
+    </section>
   </div>
 </template>
