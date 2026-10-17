@@ -5,7 +5,7 @@
  * 不参与统计/榜单/AC 活动。
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
@@ -23,11 +23,23 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import {
+  assertSubmissionLanguage,
+  LANGUAGE_EXT_MAP,
+  submissionModeForLanguage,
+  UI_FILE_NAME,
+  UI_LANGUAGE,
+} from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import { buildJudgeTaskLlm } from "../../gateway/index.ts";
+import {
+  registerAttemptTerminalRevocation,
+  runAttemptTerminalRevocationAfterCommit,
+} from "./versioning/attempts.ts";
 import {
   executionSnapshot,
+  scriptTemplateOf,
   versionSupportPackageDownload,
   versionSupportPackageUrl,
 } from "./versioning/version-execution.ts";
@@ -43,10 +55,13 @@ import {
 } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
+  SELF_TEST_LIST_DEFAULT_LIMIT,
+  SELF_TEST_LIST_MAX_LIMIT,
   type SelfTestDetail,
   type SelfTestInput,
   type SelfTestResponse,
   type SelfTestStatus,
+  type SelfTestSummary,
 } from "./../types/self-tests.ts";
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
@@ -67,18 +82,26 @@ export async function cancelSelfTest(id: string, c: Context): Promise<void> {
     "EX",
     3600,
   );
-  await db.update(selfTests).set({
-    status: "cancelled",
-    result_status: "cancelled",
-    judge_finished_at: new Date().toISOString(),
-  })
-    .where(
-      and(
-        eq(selfTests.id, id),
-        eq(selfTests.judge_run_id, row.judge_run_id),
-        inArray(selfTests.status, ["pending", "judging"]),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    const changed = await tx.update(selfTests).set({
+      status: "cancelled",
+      result_status: "cancelled",
+      judge_finished_at: new Date().toISOString(),
+    }).where(and(
+      eq(selfTests.id, id),
+      eq(selfTests.judge_run_id, row.judge_run_id!),
+      inArray(selfTests.status, ["pending", "judging"]),
+    )).returning({ id: selfTests.id });
+    const snapshot = row.task_snapshot as Record<string, unknown> | null;
+    if (changed.length && snapshot?.llm_execution) {
+      await registerAttemptTerminalRevocation(tx, {
+        attemptId: row.judge_run_id!,
+        submissionId: id,
+        taskSnapshot: row.task_snapshot,
+      });
+    }
+  });
+  await runAttemptTerminalRevocationAfterCommit(row.judge_run_id);
   await publishSseEvent(Channels.submission(id), {
     type: "submission:updated",
     id,
@@ -142,14 +165,16 @@ export async function createSelfTest(
   }
 
   // 验证语言（与正式提交保持一致）
-  const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
-  if (!supportedLanguages.includes(input.language)) {
-    throw new BadRequestError(`不支持的语言: ${input.language}`);
-  }
+  assertSubmissionLanguage(
+    problem.submission_mode,
+    input.language,
+    Object.keys(LANGUAGE_EXT_MAP),
+  );
 
   // 生成文件默认名
-  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
-    "main.txt";
+  const fileName = input.language === UI_LANGUAGE
+    ? UI_FILE_NAME
+    : input.file_name || LANGUAGE_EXT_MAP[input.language] || "main.txt";
 
   // 自测版本解析（Handbook §4.2）：与正式提交同一口径——显式版本逐字生效，
   // 未指定时按有效策略取默认作答版本；存量未版本化题目回退题目投影。
@@ -174,7 +199,7 @@ export async function createSelfTest(
     const content = versionResolution.version.content;
     assertVersionAcceptsSubmission(content, {
       language: input.language,
-      submissionMode: "code",
+      submissionMode: submissionModeForLanguage(input.language),
     });
     if (content.kind === "ai" || content.kind === "oi") {
       versionRuntimeConfig = content.runtime_config;
@@ -220,6 +245,17 @@ export async function createSelfTest(
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
+  const runId = crypto.randomUUID();
+  const llmConfig = versionContent.kind === "ai"
+    ? versionContent.llm_config
+    : null;
+  // 自测也按唯一 run_id 隔离 LLM 预算；快照只保存冻结配置，不落库短期 token。
+  const llmTask = llmConfig && !isOiRuntimeConfig(runtimeConfig)
+    ? await buildJudgeTaskLlm(llmConfig, id, problemId, userId, runtimeConfig, {
+      attemptId: runId,
+      problemVersionId: selfTestVersionId,
+    })
+    : undefined;
 
   const cases = input.cases ?? (versionContent.samples ?? []).map((sample) => ({
     id: sample.id,
@@ -237,6 +273,7 @@ export async function createSelfTest(
     throw new BadRequestError("自定义用例仅用于 OI 自测");
   }
   const task = await prepareJudgeTask({
+    run_id: runId,
     // 自测使用独立运行标识（不是评测尝试），但仍携带版本与协议版本
     submission_id: id,
     problem_id: problemId,
@@ -248,6 +285,10 @@ export async function createSelfTest(
     download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,
     code: input.code,
+    llm: llmTask,
+    script_template: input.language === UI_LANGUAGE
+      ? scriptTemplateOf(versionContent)
+      : undefined,
     file_name: fileName,
   });
 
@@ -264,7 +305,7 @@ export async function createSelfTest(
       // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
       problem_version_id: selfTestVersionId,
       task_snapshot: {
-        ...executionSnapshot(task),
+        ...executionSnapshot(task, llmConfig),
         ...(oiSelfTest ? { self_test_cases: cases } : {}),
       },
       created_at: now,
@@ -293,13 +334,24 @@ export async function createSelfTest(
     if (!isRetryableJudgeQueueError(mqErr)) {
       // 永久错误（消息超限 / 队列布局需协调升级）：立刻终态，并保留**具体原因码**，
       // 不能被泛化的 PLATFORM_ERROR 覆盖（capacity/network 仍保留 pending 等下轮）。
-      await db.update(selfTests)
-        .set({
+      await db.transaction(async (tx) => {
+        const changed = await tx.update(selfTests).set({
           status: "error",
           result_status: "DISPATCH_FAILED",
           judge_finished_at: new Date().toISOString(),
-        })
-        .where(eq(selfTests.id, id));
+        }).where(and(
+          eq(selfTests.id, id),
+          inArray(selfTests.status, ["pending", "judging"]),
+        )).returning({ id: selfTests.id });
+        if (changed.length && llmTask) {
+          await registerAttemptTerminalRevocation(tx, {
+            attemptId: runId,
+            submissionId: id,
+            taskSnapshot: executionSnapshot(task, llmConfig),
+          });
+        }
+      });
+      await runAttemptTerminalRevocationAfterCommit(runId);
     }
     throw new AppError(
       "自测失败：评测队列暂时不可用，请稍后重试",
@@ -318,6 +370,58 @@ export async function createSelfTest(
     status: "judging",
     created_at: now,
   };
+}
+
+/**
+ * 列出当前用户在某题下的自测（按创建时间倒序）。
+ *
+ * 只返回本人记录；访问口径与创建自测一致——无权访问的题目一律 404
+ * （被公开赛保密的题目同样 404，避免成为存在性预言机）。
+ * 列表不含代码与输出，界面参数/代码由前端按需调用 `getSelfTest` 获取。
+ */
+export async function listMySelfTests(
+  userId: string,
+  problemId: string,
+  limit = SELF_TEST_LIST_DEFAULT_LIMIT,
+  isAdmin = false,
+): Promise<SelfTestSummary[]> {
+  const db = getDb();
+  const [problem] = await db
+    .select()
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  if (!problem) {
+    throw new NotFoundError("题目不存在");
+  }
+  const { result: access } = await evaluateProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  const safeLimit = Math.min(
+    Math.max(Math.trunc(limit) || SELF_TEST_LIST_DEFAULT_LIMIT, 1),
+    SELF_TEST_LIST_MAX_LIMIT,
+  );
+  const rows = await db
+    .select({
+      id: selfTests.id,
+      language: selfTests.language,
+      status: selfTests.status,
+      result_status: selfTests.result_status,
+      score: selfTests.score,
+      created_at: selfTests.created_at,
+    })
+    .from(selfTests)
+    .where(
+      and(eq(selfTests.user_id, userId), eq(selfTests.problem_id, problemId)),
+    )
+    .orderBy(desc(selfTests.created_at))
+    .limit(safeLimit);
+  return rows.map((r) => ({ ...r, status: r.status as SelfTestStatus }));
 }
 
 /**
@@ -411,6 +515,7 @@ export async function saveSelfTestResult(
         problem_version_id: selfTests.problem_version_id,
         problem_id: selfTests.problem_id,
         judge_started_at: selfTests.judge_started_at,
+        task_snapshot: selfTests.task_snapshot,
       })
       .from(selfTests)
       .where(eq(selfTests.id, result.submission_id))
@@ -454,8 +559,20 @@ export async function saveSelfTestResult(
       })
       .where(eq(selfTests.id, result.submission_id));
 
+    const snapshot = existing.task_snapshot as Record<string, unknown> | null;
+    if (snapshot?.llm_execution) {
+      await registerAttemptTerminalRevocation(tx, {
+        attemptId: result.run_id!,
+        submissionId: result.submission_id,
+        taskSnapshot: existing.task_snapshot,
+      });
+    }
+
     return true;
   });
 
+  if (outcome === true) {
+    await runAttemptTerminalRevocationAfterCommit(result.run_id);
+  }
   return outcome === true;
 }

@@ -71,6 +71,12 @@ const ROUTES: BreadcrumbRoute[] = [
     }],
   },
   {
+    pattern: '/problems/new/bundle',
+    trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
+      key: 'breadcrumb.importBundle',
+    }],
+  },
+  {
     pattern: '/problems/new/objective',
     trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
       key: 'breadcrumb.newObjectiveProblem',

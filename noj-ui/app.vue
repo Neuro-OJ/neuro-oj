@@ -103,13 +103,6 @@ useHead({
   --c-text-on-dark: #f8fafc;
 }
 
-.editor-dark .prose-neuro {
-  --tw-prose-body: #f8fafc;
-  --tw-prose-headings: #f8fafc;
-  --tw-prose-links: #38bdf8;
-  --tw-prose-code: #00e07a;
-}
-
 /* CSS 变量（设计 Token）统一在 :root 中定义，main.css 的 @theme 通过 var() 引用。
    全局重置由 Tailwind Preflight 提供，字体和背景通过 Tailwind 类在 layouts 中应用。
    通用按钮已全部迁移为 Nuxt UI <UButton>，不再保留全局按钮工具类。 */

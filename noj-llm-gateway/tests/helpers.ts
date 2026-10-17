@@ -62,8 +62,10 @@ export class FakeRedis implements RedisClient {
 
   /** 记录 eval 调用传入的计数键（Lua 计数的实际作用域）。 */
   evalKeys: string[][] = [];
+  evalArgs: unknown[] = [];
 
-  eval(_script?: unknown, keys?: unknown): Promise<unknown> {
+  eval(_script?: unknown, keys?: unknown, args?: unknown): Promise<unknown> {
+    this.evalArgs.push(args);
     this.evalKeys.push(Array.isArray(keys) ? keys.map(String) : []);
     return Promise.resolve(this.evalResults.shift() ?? "ok");
   }

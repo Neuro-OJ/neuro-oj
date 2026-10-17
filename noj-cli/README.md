@@ -17,7 +17,7 @@ amd64）。
 
 ```bash
 # 1) 下载并校验二进制（Release 资产含 .sha256）
-VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签
+VERSION=v0.10.6   # 替换为目标 Release 标签
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
@@ -45,8 +45,8 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 >
 > **省略 `--ref` 时**，`install` / `update --latest` 选择最新的非 draft、非
 > prerelease 且资产齐备的 Release。发布流水线只在全部校验通过后才把预发布
-> 转正，因此已转正的 `-rc.N` / `-beta.N` 等标签同样会被选中。**v0.10.4-rc.1
-> 及更早**的 CLI 仍只认纯 `X.Y.Z` 标签，使用这些版本的二进制时请显式
+> 转正，因此已转正的 `-rc.N` / `-beta.N` 等标签同样会被选中。**0.10.4 及更早**的
+> CLI 仍只认纯 `X.Y.Z` 标签，使用这些版本的二进制时请显式
 > `--ref <标签>`。推荐始终用 `--ref` 指定与二进制一致的版本。
 
 > **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
@@ -129,7 +129,16 @@ noj-cli problem init <slug> [--type P|U] [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
 noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
+noj-cli problem push <目录|zip> --server https://noj.example.com [--publish]
 ```
+
+`problem push`
+把题目包推送到平台建题（与网页「从题目包导入」同一接口）：目录会先 lint
+再打包，有错误不上传；默认保存为草稿，`--publish` 导入后立即发布，输出编辑页
+地址。认证优先读环境变量
+`NOJ_TOKEN`，未设置时在终端提示登录（密码不回显，支持两步
+验证）；令牌不落盘。`--server` 也可用 `NOJ_SERVER` 指定，非本机地址必须是
+HTTPS。
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError'
+import { validateZipFileName } from '~/utils/bundleImport'
 
 const { api } = useApi()
 interface Props {
@@ -22,54 +23,19 @@ const uploading = ref(false)
 const uploadError = ref("")
 const showGuide = ref(false)
 
-// ── 拖拽状态 ──
-const isDragOver = ref(false)
-
-// ── 文件选择 ──
-const fileInput = ref<HTMLInputElement | null>(null)
-
-function triggerFileSelect() {
-  if (props.disabled || uploading.value) return
-  fileInput.value?.click()
-}
-
-function onFileSelect(e: Event) {
+// ── 「替换」按钮的文件选择（首次上传走 ZipDropZone） ──
+function onReplaceSelect(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
-  if (file) handleFile(file)
   // 重置 input，允许重复选择同一文件
   target.value = ""
-}
-
-// ── 拖拽事件 ──
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  if (!props.disabled && !uploading.value) isDragOver.value = true
-}
-
-function onDragLeave() {
-  isDragOver.value = false
-}
-
-function onDrop(e: DragEvent) {
-  e.preventDefault()
-  isDragOver.value = false
-  // 与点击路径一致：禁用 / 上传中不接受拖拽投放（否则绕过 disabled 直接发请求）
-  if (props.disabled || uploading.value) return
-  const file = e.dataTransfer?.files?.[0]
-  if (file) handleFile(file)
-}
-
-// ── 文件处理 ──
-function handleFile(file: File) {
-  // 前端验证：仅 .zip
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    uploadError.value = "仅支持 .zip 格式文件"
+  if (!file) return
+  const error = validateZipFileName(file.name)
+  if (error) {
+    uploadError.value = error
     return
   }
-
-  uploadError.value = ""
-  doUpload(file)
+  void doUpload(file)
 }
 
 /** UUID 判定：只有 UUID 才能与导入响应里的 `data.id` 直接比对。 */
@@ -222,7 +188,7 @@ async function handleDelete() {
       >
         <UIcon name="i-lucide-upload" class="size-3" />
         替换
-        <input ref="fileInput" type="file" accept=".zip" class="hidden" @change="onFileSelect" />
+        <input type="file" accept=".zip" class="hidden" :disabled="disabled || uploading" @change="onReplaceSelect" />
       </label>
       <button
         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-600 bg-transparent border border-red-200 rounded cursor-pointer transition-colors hover:bg-red-50"
@@ -235,53 +201,13 @@ async function handleDelete() {
     </div>
 
     <!-- 无支持包：上传区域 -->
-    <div v-else>
-      <!-- 拖拽上传区 -->
-      <div
-        class="relative flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed rounded-lg transition-colors cursor-pointer"
-        :class="[
-          isDragOver
-            ? 'border-signal bg-primary-bg'
-            : disabled || uploading
-              ? 'border-border bg-gray-50 cursor-not-allowed'
-              : 'border-border hover:border-primary hover:bg-primary-bg',
-        ]"
-        @dragover="onDragOver"
-        @dragleave="onDragLeave"
-        @drop="onDrop"
-        @click="triggerFileSelect"
-      >
-        <UIcon name="i-lucide-upload" class="text-text-secondary size-6" v-if="!uploading"/>
-        <div v-else class="animate-spin">
-          <svg class="size-6 text-primary" viewBox="0 0 24 24" fill="none">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        </div>
-
-        <template v-if="disabled">
-          <p class="text-xs text-text-muted text-center">请先保存题目后再上传支持包</p>
-        </template>
-        <template v-else-if="uploading">
-          <p class="text-xs text-text-secondary">上传中...</p>
-        </template>
-        <template v-else>
-          <p class="text-xs text-text-secondary text-center">
-            <span class="text-primary font-semibold">点击选择</span> 或将 zip 文件拖拽到此区域
-          </p>
-          <p class="text-xs text-text-muted">仅支持 .zip 格式</p>
-        </template>
-
-        <input
-          ref="fileInput"
-          type="file"
-          accept=".zip"
-          class="hidden"
-          :disabled="disabled || uploading"
-          @change="onFileSelect"
-        />
-      </div>
-    </div>
+    <ZipDropZone
+      v-else
+      :disabled="disabled"
+      :busy="uploading"
+      disabled-hint="创建题目后即可在编辑页上传支持包"
+      @file="doUpload"
+    />
   </div>
 </template>
 

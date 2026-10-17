@@ -5,7 +5,7 @@ import { contestHiddenRowClass } from "~/utils/contestHidden"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
 import { problemJudgeTypeLabel } from '~/utils/problemView'
 
-definePageMeta({ breadcrumbWidth: '960px' })
+definePageMeta({ breadcrumbWidth: '1200px' })
 const { api } = useApi()
 
 const router = useRouter()
@@ -217,7 +217,7 @@ const columns = computed(() => {
 <template>
   <!-- /problems/:id 和 /problems/new 等子路由由 NuxtPage 渲染 -->
   <NuxtPage v-if="route.path !== '/problems'" />
-  <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
+  <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[1200px] mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div class="flex items-center gap-3">
         <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
@@ -271,17 +271,18 @@ const columns = computed(() => {
           :columns="columns"
           :data="problems"
           :empty="t('problem.empty')"
+          :ui="{ base: 'w-full', th: 'px-2 lg:px-3 whitespace-nowrap', td: 'px-2 lg:px-3 whitespace-normal' }"
           :meta="{ class: { tr: (row) => `${contestHiddenRowClass(row.original.is_contest_hidden)} transition-colors hover:bg-primary-50/40` } }"
         >
           <template #display_id-cell="{ row }">
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
           <template #title-cell="{ row }">
-            <div class="flex flex-col gap-1">
-              <div class="flex items-center gap-2">
+            <div class="flex min-w-0 flex-col gap-1">
+              <div class="flex min-w-0 items-center gap-2">
                 <NuxtLink
                   :to="problemUrl(row.original.id, row.original.display_id)"
-                  class="text-text no-underline font-medium hover:text-primary transition-colors"
+                  class="min-w-0 wrap-anywhere text-text no-underline font-medium hover:text-primary transition-colors"
                 >
                   {{ row.original.title }}
                 </NuxtLink>
@@ -324,7 +325,7 @@ const columns = computed(() => {
             <span
               v-for="tag in row.original.tags"
               :key="tag.id"
-              class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary-bg text-primary border border-primary/20 mr-1"
+              class="inline-flex max-w-full wrap-anywhere items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary-bg text-primary border border-primary/20 mr-1"
             >{{ tag.name }}</span>
             <span v-if="!row.original.tags?.length" class="text-xs text-text-muted">--</span>
           </template>

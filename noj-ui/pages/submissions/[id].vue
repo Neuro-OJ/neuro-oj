@@ -357,6 +357,7 @@ const hljsLangMap: Record<string, string> = {
   cc: "cpp",
   c: "c",
   javascript: "javascript",
+  ui: "json",
 }
 const codeRef = ref<HTMLElement | null>(null)
 const codeLanguage = computed(() =>
@@ -728,7 +729,7 @@ watch(
         >
           <span class="flex items-center gap-2">
             <UIcon name="i-lucide-file-text" class="size-4" />
-            <span>提交代码</span>
+            <span>{{ submission.language === 'ui' ? '提交参数' : '提交代码' }}</span>
             <span class="text-[#8b949e]/60">{{ submission.file_name || "main.py" }}</span>
           </span>
           <span class="flex items-center gap-2">

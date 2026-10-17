@@ -80,6 +80,24 @@ Deno.test("production-config: 拒绝 mock、local、占位符和不安全地址"
   assert(errors.includes("TRUSTED_PROXIES"));
 });
 
+Deno.test("production-config: 生产环境禁止开启 NOJ_BYPASS_JWT_REVOKE（issue #655）", () => {
+  const config = validConfig();
+  config.bypassJwtRevoke = "1";
+
+  const errors = findProductionConfigErrors(config).join("\n");
+  assert(errors.includes("NOJ_BYPASS_JWT_REVOKE"));
+});
+
+Deno.test("production-config: 非生产环境允许 NOJ_BYPASS_JWT_REVOKE 测试短路", () => {
+  const config = validConfig();
+  config.environment = "test";
+  config.bypassJwtRevoke = "1";
+  assertEquals(findProductionConfigErrors(config), []);
+
+  config.environment = "development";
+  assertEquals(findProductionConfigErrors(config), []);
+});
+
 Deno.test("production-config: 缺少邮件和 S3 凭据时只报告配置键名", () => {
   const config = validConfig();
   const secret = "super-secret-value-must-not-appear";

@@ -33,7 +33,11 @@ import type { FrozenLlmExecution } from "../../../gateway/index.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import { getAttempt, isTerminalAttemptState } from "./attempts.ts";
-import type { JudgeTask } from "../../types/index.ts";
+import {
+  type JudgeTask,
+  submissionModeForLanguage,
+  toJudgeSubmissionMode,
+} from "../../types/index.ts";
 import {
   bumpSubmissionCountRevisions,
   lockProjectionHosts,
@@ -51,6 +55,7 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import {
   assertExecutionPreflight,
   executionSnapshot,
+  scriptTemplateOf,
   versionSupportPackageDownload,
 } from "./version-execution.ts";
 import { evaluationAttempts } from "../../../../shared/db/schema.ts";
@@ -428,7 +433,7 @@ async function dispatchClaimedJobItem(
         ? (content.kind === "ai" && content.submission_mode === "prediction"
           ? "prediction"
           : "artifact")
-        : "code",
+        : submissionModeForLanguage(source.language),
       artifactMaxSizeMb: content.kind === "ai"
         ? content.artifact_max_size_mb
         : null,
@@ -588,12 +593,17 @@ async function dispatchJudgeAttempt(input: {
       priority: input.priority,
       // 提交模式取自目标版本内容（发布后不可变）：prediction 提交据此走单容器
       // 评分路径，代码/产物提交沿用双容器。
-      submission_mode: content.kind === "ai" ? content.submission_mode : "code",
+      submission_mode: content.kind === "ai"
+        ? toJudgeSubmissionMode(content.submission_mode)
+        : "code",
       runtime_config: content.runtime_config,
       download_url: downloadUrl,
       artifact_download_url: artifactDownloadUrl,
       language: source.language,
       code: source.artifact_storage_url ? "" : source.code,
+      script_template: source.language === "ui"
+        ? scriptTemplateOf(content)
+        : undefined,
       file_name: source.file_name ?? undefined,
       llm: llmTask,
     });

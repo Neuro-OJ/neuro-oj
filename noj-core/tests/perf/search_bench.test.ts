@@ -98,6 +98,14 @@ Deno.test({
         await db.insert(users).values(batch);
       }
 
+      // 搜索只索引已发布题目（latest_version_id 非空，见 index-writer.buildProblemEntry），
+      // 批量补一个版本并回写 latest_version_id，否则索引为空、基准测的是空结果
+      await db.execute(sql`
+        INSERT INTO problem_versions (id, problem_id, version, content, published_at)
+        SELECT 'v-' || id, id, 1, '{}'::jsonb, ${now} FROM problems
+      `);
+      await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
+
       // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
       await reindexAll();
 
@@ -121,6 +129,7 @@ Deno.test({
           pElapsed.toFixed(0)
         }ms`,
       );
+      assert(pResult.items.length > 0, "高选择性题目搜索应命中至少一条结果");
       assert(pElapsed < 500, `高选择性题目搜索 ${pElapsed}ms 超 500ms 阈值`);
 
       // 全命中题目搜索：100k 条命中，监控最坏情景但允许共享 CI Runner 波动。

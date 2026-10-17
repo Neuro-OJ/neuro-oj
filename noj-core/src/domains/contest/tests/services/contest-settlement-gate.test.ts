@@ -27,10 +27,10 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
-  getContestRanking,
   getContestSettlementStatus,
   publishContestRankingSnapshot,
 } from "../../index.ts";
+import { getContestRanking } from "../../services/contest-ranking.ts";
 import { ConflictError } from "../../../../shared/base/errors.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 

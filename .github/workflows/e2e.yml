@@ -17,7 +17,7 @@
 #   - noj-tests 30 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
 #     ID 依赖，admin 改密竞态由 helper.ts loginAndChangePassword 并发
 #     兜底处理）
-#   - judge-sandbox 复用 sccache 编译缓存 + 7 个 binary 分 3 组并行
+#   - judge-sandbox 复用 sccache 编译缓存；AI 镜像测试独立于容器测试并行
 # =============================================================================
 
 name: E2E
@@ -37,15 +37,15 @@ on:
     # （注册验证 / 登录退出 / 代码提交到结果 / 核心失败反馈）依赖完整评测栈；
     # ci.yml 自身改动仍不触发（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
-      - 'dev-docs/**'
-      - 'noj-docs/**'
-      - '**/*.md'
-      - 'docker-compose.yml'
-      - 'LICENSE'
-      - 'scripts/db/**'
-      - '.github/dependabot.yml'
-      - '.github/actionlint.yaml'
-      - '.github/workflows/ci.yml'
+      - "dev-docs/**"
+      - "noj-docs/**"
+      - "**/*.md"
+      - "docker-compose.yml"
+      - "LICENSE"
+      - "scripts/db/**"
+      - ".github/dependabot.yml"
+      - ".github/actionlint.yaml"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 # 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
@@ -190,9 +190,42 @@ jobs:
               fh.write(f"e2e-domains={json.dumps(e2e_domains)}\n")
           PY
 
+  # UI 构建随 workflow 启动，与 changes / 沙箱并行，避免在 Domain 作业之间排队。
+  # 单域 API PR 也执行一次预构建；浏览器 job 仍按原有路径过滤，只加载同次运行的产物。
+  e2e-ui-build:
+    name: E2E UI Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: 缓存 UI 依赖
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: noj-ui/node_modules
+          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
+          restore-keys: |
+            npm-
+      - name: 安装依赖并构建 UI
+        working-directory: noj-ui
+        run: |
+          deno install
+          deno task build
+          # tar 保留 Nitro 的隐藏文件、权限和依赖链接。
+          tar -cf "$RUNNER_TEMP/e2e-ui.tar" .output
+      - name: 上传浏览器测试 UI
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-ui
+          path: ${{ runner.temp }}/e2e-ui.tar
+          retention-days: 1
+          compression-level: 1
+
   e2e-identity:
     name: E2E identity
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'identity') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -206,7 +239,7 @@ jobs:
 
   e2e-catalog:
     name: E2E catalog
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'catalog') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -220,7 +253,7 @@ jobs:
 
   e2e-submission:
     name: E2E submission
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'submission') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -234,7 +267,7 @@ jobs:
 
   e2e-contest:
     name: E2E contest
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'contest') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -248,7 +281,7 @@ jobs:
 
   e2e-system:
     name: E2E system
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'system') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -262,7 +295,7 @@ jobs:
 
   e2e-community:
     name: E2E community
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'community') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -276,7 +309,7 @@ jobs:
 
   e2e-messaging:
     name: E2E messaging
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'messaging') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -290,7 +323,7 @@ jobs:
 
   e2e-objective:
     name: E2E objective
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'objective') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -304,7 +337,7 @@ jobs:
 
   e2e-admin:
     name: E2E admin
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'admin') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -318,7 +351,7 @@ jobs:
 
   e2e-rate-limit:
     name: E2E Rate Limit
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'rate-limit') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -338,7 +371,7 @@ jobs:
 
   e2e-cross-domain:
     name: E2E Cross Domain
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'cross-domain') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -352,7 +385,7 @@ jobs:
 
   e2e-browser:
     name: E2E Browser
-    needs: changes
+    needs: [changes, e2e-images, e2e-ui-build]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -363,7 +396,64 @@ jobs:
       - uses: ./.github/actions/e2e-domain
         with:
           domain: browser
-          browser: 'true'
+          browser: "true"
+
+  # 统一构建 E2E 评测栈镜像一次，以 artifact 分发给各 Domain job。
+  # 此前每个 Domain job 各自构建同样的 5 个镜像（judge 的 Rust 依赖层单项 ~270s），
+  # 而测试本身只要几秒到两三分钟。
+  e2e-images:
+    name: E2E Image (${{ matrix.image }})
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e-domains != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: evaluator
+            context: noj-judge
+            file: noj-judge/docker/evaluator-python/Dockerfile
+            tag: noj-evaluator-python
+          - image: solution
+            context: noj-judge
+            file: noj-judge/docker/solution-python/Dockerfile
+            tag: noj-solution-python
+          - image: core
+            context: noj-core
+            file: noj-core/Dockerfile.e2e
+            tag: noj-e2e-core
+          - image: judge
+            context: noj-judge
+            file: noj-judge/Dockerfile.e2e
+            tag: noj-e2e-judge
+          - image: gateway
+            context: noj-llm-gateway
+            file: noj-llm-gateway/Dockerfile
+            tag: noj-e2e-llm-gateway
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 设置 Docker BuildKit
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: 构建镜像（带 GHA 缓存）
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          tags: ${{ matrix.tag }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
+          # COPY 按源码与锁文件内容使缓存失效；不使用 run_id 破坏依赖层缓存。
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', matrix.image) }}
+      - name: 上传镜像
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-image-${{ matrix.image }}
+          path: ${{ runner.temp }}/${{ matrix.image }}.tar
+          retention-days: 1
+          compression-level: 1
 
   judge-sandbox:
     name: Judge Sandbox E2E
@@ -371,6 +461,8 @@ jobs:
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       # 测试镜像基础镜像直连 Docker Hub（digest 固定在 Dockerfile.test-runner）：
       # 默认的 DaoCloud 代理从 GitHub runner 访问会间歇性 TLS handshake timeout
       NOJ_E2E_PYTHON_IMAGE_REPO: python
@@ -381,7 +473,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6380:6380
+          - 6380:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -401,32 +493,42 @@ jobs:
         # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        # mozilla/sccache-action 只安装二进制并导出 SCCACHE_PATH；
-        # 必须显式设置 RUSTC_WRAPPER 与 SCCACHE_GHA_ENABLED 才会真正缓存
-        # 编译产物（GHA cache backend，需要 job 级 actions: write）。
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
+      # RUSTC_WRAPPER / SCCACHE_GHA_ENABLED 放在 job env，后续 cargo 才能复用。
 
-      - name: 缓存 Cargo 依赖
+      - name: 缓存 Cargo 注册表
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            noj-judge/target
-          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('noj-judge/Cargo.lock') }}
           restore-keys: |
-            cargo-e2e-
+            cargo-registry-
 
-      - name: 编译 Judge E2E 测试目标
+      - name: 验证沙箱分组覆盖与失败传播
+        run: python3 -m unittest discover -s noj-judge/scripts -p 'test_ci_*.py'
+
+      - name: 并行编译沙箱测试与构建 OI 镜像
         working-directory: noj-judge
-        run: cargo build --tests
+        run: |
+          set -euo pipefail
+          build_args=(--locked)
+          # 单元/其他集成测试由 Judge Check 覆盖，此处只预编译全部沙箱目标。
+          for target in tests/e2e_*.rs; do
+            target_name="${target##*/}"
+            build_args+=(--test "${target_name%.rs}")
+          done
+          cargo build "${build_args[@]}" > "$RUNNER_TEMP/noj-sandbox-build.log" 2>&1 &
+          build_pid=$!
+          docker build -t noj-oi-cpp:latest docker/oi-cpp > "$RUNNER_TEMP/noj-oi-image-build.log" 2>&1 &
+          image_pid=$!
+          fail=0
+          wait "$build_pid" || fail=1
+          wait "$image_pid" || fail=1
+          cat "$RUNNER_TEMP/noj-sandbox-build.log" "$RUNNER_TEMP/noj-oi-image-build.log"
+          exit "$fail"
 
-      - name: 构建 OI 原生评测镜像
-        run: docker build -t noj-oi-cpp:latest noj-judge/docker/oi-cpp
-
-      - name: Judge E2E 测试（Docker 沙箱，2 组并行）
+      - name: Judge E2E 测试（Docker 沙箱，4 组并行）
         working-directory: noj-judge
         env:
           REDIS_URL: redis://localhost:6380/
@@ -442,7 +544,7 @@ jobs:
           # 必须列出全部 e2e_* 测试文件（e2e_container_pool 已随容器池移除而
           # 删除；e2e_dual_container / e2e_network_capability / e2e_abnormal /
           # e2e_solution_ai / e2e_prediction 为后续新增，漏登记会让测试只编译不执行）。
-          # 性能优化（2026-07）：目标分 2 组并行——组内串行
+          # 目标分 4 组并行——组内串行
           # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核。
           run_group() {
             for target in "$@"; do
@@ -450,7 +552,7 @@ jobs:
               echo "───────────────────────────────────────"
               echo "  $target"
               echo "───────────────────────────────────────"
-              NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
+              NOJ_RUN_E2E=1 cargo test --locked --test "$target" -- --ignored --test-threads=1
             done
           }
           # 分组约束：会创建 dual（evaluator + solution）标签容器的测试必须
@@ -460,12 +562,17 @@ jobs:
           p1=$!
           run_group e2e_support_package e2e_problem_limits e2e_oi_native &
           p2=$!
-          run_group e2e_dual_container e2e_network_capability e2e_solution_ai e2e_abnormal e2e_prediction &
+          run_group e2e_dual_container e2e_network_capability e2e_abnormal e2e_prediction &
           p3=$!
+          # AI 镜像用例只构建镜像并执行导入，不创建 dual 标签容器；
+          # 单独运行避免约 76s 的镜像构建阻塞双容器组。
+          run_group e2e_solution_ai &
+          p4=$!
           fail=0
           wait "$p1" || fail=1
           wait "$p2" || fail=1
           wait "$p3" || fail=1
+          wait "$p4" || fail=1
           exit "$fail"
 
       # 失败时上传 Docker 沙箱产物
@@ -476,7 +583,7 @@ jobs:
           name: judge-sandbox-logs
           path: |
             noj-judge/target/**/test-*.log
-            noj-judge/target/**/deps/
+            ${{ runner.temp }}/noj-*-build.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

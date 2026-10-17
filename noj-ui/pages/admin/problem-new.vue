@@ -10,8 +10,9 @@ const route = useRoute()
 
 useRequireLogin()
 
-function onSaved() {
-  router.replace("/admin/problems")
+// 建题后直接进入该题编辑页上传支持包、核对并发布（而不是退回列表再去找）。
+function onSaved(problemId: string) {
+  router.replace(`/admin/problem-edit/${problemId}`)
 }
 </script>
 

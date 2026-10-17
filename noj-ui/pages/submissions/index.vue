@@ -67,6 +67,7 @@ const languageOptions = [
   { value: "cpp", label: "C++" },
   { value: "c", label: "C" },
   { value: "javascript", label: "JavaScript" },
+  { value: "ui", label: "界面参数" },
 ]
 
 // 版本来源选项（提交时版本）
