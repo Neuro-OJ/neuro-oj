@@ -20,8 +20,10 @@ Status: implemented
 
 ## Decision
 
-- 单测改为断言 U 型 LLM manifest 能通过结构校验；E2E 7.2 改为「管理员可导入私有
-  U 型 LLM 题」与「普通用户导入被拒 403」两条，与 #651 的权限边界一致。
+- 单测改为断言 U 型 LLM manifest 能通过结构校验；E2E 7.2 合并为一条用例「U 型
+  LLM
+  题仅管理员可导入且保持私有」：管理员导入成功且保持私有，普通用户（不带题号）导入被拒
+  403，与 #651 的权限边界一致，且不增加静默跳过数量。
 - 编辑器「最近」卡片加 `data-testid="recent-submission"` 与
   `data-submission-id`，得分加
   `data-testid="recent-submission-score"`；浏览器测试从提交接口响应取得提交
