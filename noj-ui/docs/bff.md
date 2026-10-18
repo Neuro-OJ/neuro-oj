@@ -70,3 +70,14 @@ BFF_TEST_REDIS_URL=redis://127.0.0.1:6379 deno task test:bff:cache
 失败时的回源。只清理随机测试命名空间，不清空 Redis。
 
 题单只补齐当前页可用题目的题名和个人进度，不向来源域读取，不下发额外题面。摘要失败保留条目与作答链接，进度未知不计为未作答；统计明确标记为本页，不推算全题单完成率。共享设置由用户展开后读取。
+
+作业首屏同时提供前20题的题名摘要。编辑页及题目翻页使用 `GET /api/bff/v1/domains/:slug/problem-summaries?reference=1001&reference=1002`，最多20个引用，保留使用域授权与私有 no-store。此接口只返回题号、题名及读取失败标记，失败不回退来源域。
+
+## 学习流程的真实本机验收
+
+`deno task test:learning:browser` 使用已有本机测试数据，要求显式设置
+`E2E_UI_URL` 和 `E2E_ADMIN_PASS`（账号默认为 `e2e_admin`），拒绝远端地址。
+任务只登录、读取页面、切换筛选/摘要与修改未保存的简介，不提交业务修改。
+截图默认保存到 `/tmp/noj-learning-browser`，可由 `BROWSER_ARTIFACT_DIR` 指定。
+覆盖1440/768/390px、认证默认状态、登录后页面、题名进度、账号锚点保留输入及键盘展开学生。
+独立模拟 Core 的 `test:bff:ssr` 则覆盖角色分支、水合零重复请求、40人摘要和局部刷新。

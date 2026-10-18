@@ -65,7 +65,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
       <UButton v-if="training?.can_edit && domain?.status === 'active'" :to="workspacePath(slug!, `trainings/${id}/edit`)" variant="outline">编辑题单</UButton>
     </header>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'" :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-      <template v-if="data && training">
+      <div v-if="data && training" class="space-y-5">
         <section v-if="training.description" aria-label="题单说明" class="rounded border border-border bg-bg-panel p-5"><MarkdownRenderer :content="training.description" /></section>
         <section aria-labelledby="training-problems" class="overflow-hidden rounded border border-border bg-bg-panel">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-4">
@@ -83,7 +83,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
                 <p class="mt-1 text-xs text-text-secondary"><span class="font-mono">{{ item.display_ref }}</span><span v-if="item.kind"> · {{ item.kind === 'oi' ? 'OI 题' : item.kind === 'objective' ? '客观题' : 'AI 题' }}</span></p>
               </div>
               <span class="text-sm" :class="item.progress === 'solved' ? 'text-signal-deep' : 'text-text-secondary'">{{ progressLabel(item) }}</span>
-              <UButton v-if="item.binding_id && item.resource_available" :to="workspaceProblemPath(slug!, item.display_ref)" variant="outline" class="ml-auto shrink-0">{{ item.progress === 'solved' ? '再次练习' : '继续作答' }}</UButton>
+              <UButton v-if="item.binding_id && item.resource_available" :to="workspaceProblemPath(slug!, item.display_ref)" variant="outline" class="ml-auto min-h-11 shrink-0">{{ item.progress === 'solved' ? '再次练习' : '继续作答' }}</UButton>
               <UButton v-else-if="domain?.status === 'active' && item.can_import" :loading="importing === item.qualified_ref" :disabled="!!importing" @click="importProblem(item.qualified_ref)">引用题目到当前域</UButton>
             </li>
           </ol>
@@ -102,7 +102,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
             <DomainSharingForm v-if="sharing.data.value" :key="`share:${id}:${generation}`" :slug="slug!" kind="training" :reference="id" :initial="sharing.data.value.data" :writable="domain?.status === 'active'" />
           </div>
         </section>
-      </template>
+      </div>
     </AsyncContent>
   </div>
 </template>

@@ -10,3 +10,8 @@ vi.stubGlobal(
   'useRouter',
   () => ({ currentRoute: computed(() => (globalThis as unknown as { useRoute: () => unknown }).useRoute()) }),
 );
+
+vi.stubGlobal(
+  'useProblemSummaries',
+  () => ({ data: ref({ items: [] }), status: ref('success'), error: ref(null), refresh: vi.fn() }),
+);

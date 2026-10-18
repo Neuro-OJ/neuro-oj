@@ -3,6 +3,7 @@ import type { AuthUser } from './auth-user.ts';
 
 export type BffViewKind = 'home' | 'classroom' | 'assignment' | 'training';
 export type BffSectionName =
+  | 'problemSummaries'
   | 'training'
   | 'workspace'
   | 'banStatus'

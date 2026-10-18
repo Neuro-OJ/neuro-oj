@@ -18,6 +18,27 @@ const user = (id) => ({
   updated_at: "2026-10-01",
 });
 const page = { data: [], total: 0, page: 1, per_page: 50 };
+const teachingItems = [1001, 1002].map((number) => ({
+  id: `item-${number}`,
+  binding_id: `b-${number}`,
+  reference: { display_ref: String(number), qualified_ref: String(number) },
+  requirement: "accepted",
+  minimum_score: null,
+  resource_available: true,
+  answer_version_id: "version",
+  policy_revision: 1,
+}));
+const teachingCells = (actor) =>
+  teachingItems.map((item) => ({
+    user_id: actor,
+    item_id: item.id,
+    status: "not_started",
+    score: null,
+    accepted: false,
+    updating: false,
+    source_submission_id: null,
+    source_kind: null,
+  }));
 const fixture = Deno.serve(
   { hostname: "127.0.0.1", port: 0, onListen() {} },
   (request) => {
@@ -160,8 +181,34 @@ const fixture = Deno.serve(
         meta: { page: 1, total: 1, total_pages: 1 },
       });
     }
-    if (path.endsWith('/trainings/t')) return Response.json({ data: { id: 't', title: '题单首屏', description: '循序练习', can_share: false, can_edit: false, items: Array.from({ length: 21 }, (_, position) => ({ problem_id: String(position), binding_id: String(position), position, display_ref: String(1001 + position), qualified_ref: String(1001 + position), resource_available: true })) } });
-    if (/\/problems\/\d+$/.test(path)) return Response.json({ content: { title: '题目摘要', kind: 'oi' }, statistics: { progress: 'solved' } });
+    if (path.endsWith("/trainings/t")) {
+      return Response.json({
+        data: {
+          id: "t",
+          title: "题单首屏",
+          description: "循序练习",
+          can_share: false,
+          can_edit: false,
+          items: Array.from(
+            { length: 21 },
+            (_, position) => ({
+              problem_id: String(position),
+              binding_id: String(position),
+              position,
+              display_ref: String(1001 + position),
+              qualified_ref: String(1001 + position),
+              resource_available: true,
+            }),
+          ),
+        },
+      });
+    }
+    if (/\/problems\/\d+$/.test(path)) {
+      return Response.json({
+        content: { title: "题目摘要", kind: "oi" },
+        statistics: { progress: "solved" },
+      });
+    }
     if (path.endsWith("/problems")) {
       return Response.json({
         total: 1,
@@ -231,7 +278,7 @@ const fixture = Deno.serve(
           published_at: draftAssignment ? null : "2026-10-01",
           source_training_id: null,
           deadline_at: null,
-          items: [],
+          items: draftAssignment ? [] : teachingItems,
         },
       });
     }
@@ -239,8 +286,16 @@ const fixture = Deno.serve(
       return Response.json({
         data: {
           ...page,
-          items: [],
-          rows: [],
+          items: teachingItems,
+          rows: Array.from(
+            { length: 40 },
+            (_, i) => ({
+              user_id: `student-${i}`,
+              username: `学生${i}`,
+              recipient_status: "active",
+              cells: teachingCells(`student-${i}`),
+            }),
+          ),
           updating: false,
           scope: "on_time",
         },
@@ -249,8 +304,8 @@ const fixture = Deno.serve(
     if (path.endsWith("/progress")) {
       return Response.json({
         data: {
-          items: [],
-          cells: [],
+          items: teachingItems,
+          cells: teachingCells("student"),
           updating: false,
           scope: "on_time",
           recipient_status: "active",
@@ -360,7 +415,12 @@ try {
     });
     const paths = role === "guest"
       ? ["/d/school/trainings/t?page=2", "/d/school"]
-      : ["/d/school/trainings/t?page=2", "/d/school", "/d/school/classrooms/c", "/d/school/assignments/a"];
+      : [
+        "/d/school/trainings/t?page=2",
+        "/d/school",
+        "/d/school/classrooms/c",
+        "/d/school/assignments/a",
+      ];
     for (const path of paths) {
       requests.length = 0;
       api.length = 0;
@@ -377,7 +437,9 @@ try {
       );
       await tab.waitForTimeout(200);
       assert.deepEqual(errors, [], `${role} ${path} 水合错误`);
-      const expectedTitle = path.includes("/trainings/") ? "题单首屏" : path.endsWith("/classrooms/c")
+      const expectedTitle = path.includes("/trainings/")
+        ? "题单首屏"
+        : path.endsWith("/classrooms/c")
         ? "班级首屏"
         : path.endsWith("/assignments/a")
         ? "作业首屏"
@@ -432,8 +494,55 @@ try {
           hydrationApiRequests: initialApi.length,
         }),
       );
+      if (path.includes("/trainings/")) {
+        api.length = 0;
+        await tab.getByRole("link", { name: "上一页", exact: true }).click();
+        await tab.waitForURL("**/trainings/t?page=1");
+        await tab.locator(
+          'section[aria-labelledby="training-problems"] ol > li',
+        ).nth(19).waitFor();
+        assert.equal(
+          await tab.locator(
+            'section[aria-labelledby="training-problems"] ol > li',
+          ).count(),
+          20,
+        );
+        assert.equal(
+          api.filter((path) => path.startsWith("/api/bff/")).length,
+          1,
+          "题单翻页只发送一次聚合请求",
+        );
+        assert.equal(
+          api.filter((path) =>
+            !path.startsWith("/api/bff/") && !path.endsWith("/events")
+          ).length,
+          0,
+          "翻页不得逐题浏览器取数",
+        );
+      }
     }
     if (role === "coach") {
+      await tab.setViewportSize({ width: 390, height: 844 });
+      const toggles = tab.locator(
+        'ul[aria-label="学生成绩摘要"] button[aria-expanded]',
+      );
+      assert.equal(await toggles.count(), 40);
+      assert.equal(
+        await toggles.filter({ has: tab.locator('[aria-expanded="true"]') })
+          .count(),
+        0,
+      );
+      await toggles.nth(0).click();
+      assert.equal(await toggles.nth(0).getAttribute("aria-expanded"), "true");
+      await toggles.nth(1).click();
+      assert.equal(await toggles.nth(0).getAttribute("aria-expanded"), "false");
+      assert.equal(await toggles.nth(1).getAttribute("aria-expanded"), "true");
+      assert.equal(
+        await tab.evaluate(() =>
+          document.documentElement.scrollWidth <= innerWidth
+        ),
+        true,
+      );
       api.length = 0;
       await tab.getByRole("button", { name: "刷新成绩" }).click();
       await tab.waitForTimeout(200);

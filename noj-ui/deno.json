@@ -14,7 +14,8 @@
     "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A tests/ --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=60 coverage",
     "test:components": "deno run -A npm:vitest run",
     "test:bff:ssr": "deno run -A scripts/verify-bff-ssr.mjs",
-    "test:bff:cache": "deno run -A scripts/verify-bff-cache.mjs"
+    "test:bff:cache": "deno run -A scripts/verify-bff-cache.mjs",
+    "test:learning:browser": "deno run -A scripts/verify-learning-browser.mjs"
   },
   "lint": {
     "include": [

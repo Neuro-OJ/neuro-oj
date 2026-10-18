@@ -31,6 +31,11 @@ const items = ref(
     score: String((i.minimum_score ?? 6000) / 100),
   })),
 );
+const selectedPage = ref(1), knownTitles = ref<Record<string, string>>({});
+const visibleSelected = computed(() => items.value.slice((selectedPage.value - 1) * 20, selectedPage.value * 20));
+const itemSummaries = await useProblemSummaries(() => props.slug, () => visibleSelected.value.map(item => item.reference));
+const titleByReference = computed(() => ({ ...Object.fromEntries((itemSummaries.data.value?.items ?? []).filter(item => item.title).map(item => [item.reference, item.title!])), ...knownTitles.value }));
+watch(() => items.value.length, length => { selectedPage.value = Math.min(selectedPage.value, Math.max(1, Math.ceil(length / 20))); });
 const keyword = ref(''), searchDraft = ref(''), problemPage = ref(1), reference = ref('');
 const saving = ref(false), adding = ref(false), checking = ref(false), error = ref('');
 const snapshot = () => JSON.stringify({ title: title.value, description: description.value, deadline: deadline.value,
@@ -62,6 +67,7 @@ watch(trainingLink, () => {
   trainingPreview.value = [];
 });
 function add(item: TeachingProblemOption) {
+  knownTitles.value[item.reference.display_ref] = item.title;
   if (!items.value.some((i) => i.binding_id === item.binding_id) && items.value.length < 200) {
     items.value.push({
       binding_id: item.binding_id,
@@ -413,12 +419,12 @@ async function save() {
             </h3>
 
             <div
-              v-for="(item, index) in items"
+              v-for="(item, localIndex) in visibleSelected"
               :key="item.binding_id"
               class="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3.5 py-3"
             >
-              <span class="w-6 text-xs text-text-muted tabular-nums font-mono">{{ index + 1 }}.</span>
-              <span class="break-all font-mono text-sm font-semibold text-primary mr-auto">{{ item.reference }}</span>
+              <span class="w-6 text-xs text-text-muted tabular-nums font-mono">{{ (selectedPage - 1) * 20 + localIndex + 1 }}.</span>
+              <div class="min-w-0 flex-1"><p class="break-words text-sm font-medium">{{ titleByReference[item.reference] ?? `题目 ${item.reference}` }}</p><p class="mt-1 font-mono text-xs text-text-secondary">{{ item.reference }}</p></div>
 
               <div class="flex items-center gap-2">
                 <USelect
@@ -446,9 +452,9 @@ async function save() {
                   color="neutral"
                   size="xs"
                   icon="i-lucide-arrow-up"
-                  :disabled="index === 0"
+                  :disabled="(selectedPage - 1) * 20 + localIndex === 0"
                   aria-label="上移题目"
-                  @click="move(index, -1)"
+                  @click="move((selectedPage - 1) * 20 + localIndex, -1)"
                 />
                 <UButton
                   type="button"
@@ -456,9 +462,9 @@ async function save() {
                   color="neutral"
                   size="xs"
                   icon="i-lucide-arrow-down"
-                  :disabled="index === items.length - 1"
+                  :disabled="(selectedPage - 1) * 20 + localIndex === items.length - 1"
                   aria-label="下移题目"
-                  @click="move(index, 1)"
+                  @click="move((selectedPage - 1) * 20 + localIndex, 1)"
                 />
                 <UButton
                   type="button"
@@ -467,11 +473,12 @@ async function save() {
                   size="xs"
                   icon="i-lucide-trash-2"
                   aria-label="移除题目"
-                  @click="items.splice(index, 1)"
+                  @click="items.splice((selectedPage - 1) * 20 + localIndex, 1)"
                 />
               </div>
             </div>
 
+            <nav v-if="items.length > 20" class="flex items-center justify-between gap-3 py-3" aria-label="已选题目分页"><UButton type="button" variant="outline" :disabled="selectedPage <= 1" @click="selectedPage--">上一页</UButton><span class="text-sm tabular-nums">{{ selectedPage }} / {{ Math.ceil(items.length / 20) }}</span><UButton type="button" variant="outline" :disabled="selectedPage * 20 >= items.length" @click="selectedPage++">下一页</UButton></nav>
             <div v-if="!items.length" class="rounded-lg border border-dashed border-border py-6 text-center text-xs text-text-muted">
               请从上方搜索题库或按题号添加到本作业
             </div>

@@ -4,6 +4,7 @@ import type { WorkspaceDetail } from '../../utils/workspace.ts';
 import type { AssignmentDetail, ClassroomDetail } from '../../utils/education.ts';
 import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain-trainings.ts';
 import type { DomainProblemDetail, DomainProblemSummary } from '../../utils/domain-problems.ts';
+import { readProblemSummaries } from './bff-problem-summaries.ts';
 import { classroomCan } from '../../utils/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
 
@@ -153,6 +154,18 @@ export async function aggregateView(reader: CoreReader, input: {
       const room = classroom.data;
       const student = room.membership?.role === 'student' || room.historical_student === true;
       const reads: Promise<unknown>[] = [];
+      if (student || classroomCan(room, 'progress:read') || classroomCan(room, 'assignments:manage')) {
+        reads.push(
+          optional('problemSummaries', () =>
+            readProblemSummaries(
+              reader,
+              input.slug,
+              assignment.data.items?.slice(0, 20).filter((item) => item.answer_version_id).map((item) =>
+                item.reference.qualified_ref
+              ) ?? [],
+            )),
+        );
+      } else put('problemSummaries', { items: [] });
       if (!assignment.data.published_at && classroomCan(room, 'assignments:manage')) {
         reads.push(
           read('draftRoster', `${root}/classrooms/${encodeURIComponent(assignment.data.classroom_id)}/members`),

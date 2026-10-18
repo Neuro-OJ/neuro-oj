@@ -12,7 +12,7 @@ const oi = computed(() => (props.submission.result?.details as { oi?: OiSummary 
 const verdict = computed(() => props.submission.result?.verdict ?? oi.value?.verdict);
 const summary = computed(() => {
   const submission = props.submission, state = submission.status ?? submission.result?.status;
-  const platformFailure = state === 'error' || submission.result?.status === 'error' || submission.attempts?.at(-1)?.result_kind === 'platform_error';
+  const platformFailure = state === 'error' || submission.result?.status === 'error';
   if (platformFailure) return { label: '平台评测失败', description: '评测服务未能完成本次评测，不代表答案错误。请查看诊断，必要时联系管理员。', tone: 'error', icon: 'i-lucide-triangle-alert', pending: false };
   if (state === 'pending' || state === 'queued') return { label: '等待评测', description: '提交已受理，正在等待评测资源。', tone: 'neutral', icon: 'i-lucide-clock', pending: true };
   if (state === 'judging' || state === 'running') return { label: '正在评测', description: '评测正在进行，完成后将显示正式结果。', tone: 'neutral', icon: 'i-lucide-loader-2', pending: true };

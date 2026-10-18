@@ -24,7 +24,7 @@ export function useCommunityNotifications(account: boolean | (() => boolean) = f
       return;
     }
     try {
-      // 未读数轮询：静默失败，失败时归零不打扰用户
+      // 未读数轮询：静默失败，保留本作用域最近的成功值
       const result = await api.get<unknown>(
         request.apiPath('notifications/unread-count'),
         COMMUNITY_UNREAD_COUNT_REQUEST_OPTIONS,

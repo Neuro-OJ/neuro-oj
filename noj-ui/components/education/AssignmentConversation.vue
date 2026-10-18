@@ -147,7 +147,7 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
       <UAlert v-if="help.error.value" color="error" :title="extractApiError(help.error.value).message" />
       <UButton v-for="request in help.data.value?.data.data" :key="request.id" class="mb-2 w-full justify-start"
         color="neutral" variant="outline" @click="selectedHelp = request.id">
-        <span class="truncate">{{ request.body }}</span><UBadge :color="request.state === 'resolved' ? 'success' : 'warning'" variant="subtle">{{ request.state === 'resolved' ? '已处理' : '待处理' }}</UBadge>
+        <span class="min-w-0 flex-1 truncate">{{ request.body }}</span><UBadge class="shrink-0 whitespace-nowrap" :color="request.state === 'resolved' ? 'success' : 'warning'" variant="subtle">{{ request.state === 'resolved' ? '已处理' : '待处理' }}</UBadge>
       </UButton>
       <div v-if="(help.data.value?.data.total ?? 0) > 50" class="mt-3 flex gap-2">
         <UButton :disabled="helpPage <= 1" variant="ghost" @click="helpPage--">上一页</UButton>

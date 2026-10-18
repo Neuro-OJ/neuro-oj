@@ -52,6 +52,17 @@ const progress = await useViewAsyncData(
       ? education.progress(slug.value!, id.value, scope.value)
       : Promise.resolve(null),
 );
+const itemPage = ref(1);
+const allItems = computed(() => progress.data.value?.data.items ?? []);
+const visibleItems = computed(() => allItems.value.slice((itemPage.value - 1) * 20, itemPage.value * 20));
+const summaries = await useProblemSummaries(() => slug.value!, () => isStudent.value ? visibleItems.value.map(item => item.reference.qualified_ref) : (task.data.value?.data.items ?? []).slice(0, 20).map(item => item.reference.qualified_ref));
+const titles = computed(() => Object.fromEntries((summaries.data.value?.items ?? []).filter(item => item.title).map(item => [item.reference, item.title!])));
+const progressSummary = computed(() => {
+  const data = progress.data.value?.data;
+  if (!data) return '';
+  if (data.updating || data.cells.some(cell => cell.updating)) return '进度正在更新';
+  return `已达标 ${data.cells.filter(cell => cell.status === 'achieved').length} / ${data.items.length} 题`;
+});
 watch([matrix.data, progress.data], ([matrixValue, progressValue]) => {
   const current = selected.value;
   if (!current) return;
@@ -97,6 +108,7 @@ watch([scope, recipients, statusFilter, search, itemFilter, verdictFilter], () =
   page.value = 1;
 });
 watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
+  itemPage.value = 1;
   scope.value = 'on_time';
   recipients.value = 'current';
   statusFilter.value = 'all';
@@ -150,7 +162,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           :description="task.data.value.data.publish_error" />
         <p v-if="task.data.value.data.state === 'scheduled'"
           class="text-sm text-text-muted">预定发布时间：{{ new Date(task.data.value.data.publish_at!).toLocaleString() }}</p>
-        <div v-if="can('assignments:manage')" class="flex flex-wrap gap-3">
+        <details v-if="can('assignments:manage')" class="rounded border border-border bg-bg-panel p-3"><summary class="cursor-pointer text-sm font-medium">管理作业</summary><div class="mt-3 flex flex-wrap gap-3">
           <ClientOnly>
             <AssignmentActions :key="key" :slug="slug!" :task="task.data.value.data" :writable="!!classroomWritable"
               @changed="task.refresh()" />
@@ -160,9 +172,10 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             <AssignmentRemediation :key="`${key}:remediation`" :slug="slug!" :task="task.data.value.data"
               :writable="!!classroomWritable" :can-read-progress="can('progress:read')" />
           </ClientOnly>
-        </div>
+        </div></details>
         <AssignmentDraftPreview v-if="can('assignments:manage') && !task.data.value.data.published_at"
           :key="`${key}:${task.data.value.data.revision}`" :slug="slug!" :task="task.data.value.data" />
+        <p v-if="isStudent && progressSummary" class="text-base font-medium text-text tabular-nums">{{ progressSummary }}</p>
         <MarkdownRenderer v-if="task.data.value.data.description"
           :content="task.data.value.data.description" />
         <p v-if="task.data.value.data.deadline_at"
@@ -210,7 +223,8 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
       <AsyncContent v-if="can('progress:read')"
         :status="matrix.error.value ? 'error' : matrix.data.value ? 'data' : matrix.status.value === 'pending' ? 'loading' : 'empty'"
         :error="matrix.error.value ? extractApiError(matrix.error.value).message : undefined" @retry="matrix.refresh()">
-        <AssignmentMatrix v-if="matrix.data.value" :matrix="matrix.data.value.data" @select="select" />
+        <h2 class="mb-3 text-lg font-semibold">学生成绩</h2>
+        <AssignmentMatrix v-if="matrix.data.value" :matrix="matrix.data.value.data" :titles="titles" @select="select" />
         <div
           class="flex flex-wrap items-center gap-3"><UButton :disabled="page <= 1" variant="outline" @click="page--">上一页</UButton><span class="text-sm tabular-nums">{{ page }} · {{ matrix.data.value?.data.total ?? 0 }} 名学生</span><UButton :disabled="page * 50 >= (matrix.data.value?.data.total ?? 0)" variant="outline" @click="page++">下一页</UButton><UButton variant="ghost" icon="i-lucide-refresh-cw" @click="matrix.refresh()">刷新成绩</UButton></div>
       </AsyncContent>
@@ -218,10 +232,13 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         :status="progress.error.value ? 'error' : progress.data.value ? 'data' : progress.status.value === 'pending' ? 'loading' : 'empty'"
         :error="progress.error.value ? extractApiError(progress.error.value).message : undefined"
         @retry="progress.refresh()">
-        <UCard v-for="item in progress.data.value?.data.items" :key="item.id">
+        <section class="overflow-hidden rounded border border-border bg-bg-panel" aria-labelledby="assignment-items">
+        <h2 id="assignment-items" class="border-b border-border px-4 py-4 font-semibold">题目与进度</h2>
+        <div v-for="item in visibleItems" :key="item.id" class="border-b border-border p-4 last:border-0">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p class="font-medium">{{ item.reference.display_ref }}</p>
+              <p class="break-words font-medium">{{ titles[item.reference.qualified_ref] ?? `题目 ${item.reference.display_ref}` }}</p>
+              <p class="mt-1 text-xs text-text-secondary">{{ item.reference.display_ref }} · {{ item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score ?? 0) / 100} 分` }}</p>
               <p
                 class="mt-1 text-sm tabular-nums">{{ progress.data.value?.data.cells.find(c => c.item_id === item.id) ? teachingCellLabel(progress.data.value.data.cells.find(c => c.item_id === item.id)!) : '未开始' }}</p>
             </div>
@@ -240,7 +257,9 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
               <UBadge v-else color="warning">资源不可用</UBadge>
             </div>
           </div>
-        </UCard>
+        </div>
+        <nav v-if="allItems.length > 20" class="flex items-center justify-between gap-3 border-t border-border p-4" aria-label="作业题目分页"><UButton variant="outline" :disabled="itemPage <= 1" @click="itemPage--">上一页</UButton><span class="text-sm tabular-nums">{{ itemPage }} / {{ Math.ceil(allItems.length / 20) }}</span><UButton variant="outline" :disabled="itemPage * 20 >= allItems.length" @click="itemPage++">下一页</UButton></nav>
+        </section>
       </AsyncContent>
       <TrainingComparison v-if="isStudent && actor" :key="`${key}:own-comparison`" :slug="slug!" :assignment-id="id"
         :user-id="actor.id" :anchor="task.data.value.data.published_at" />
@@ -250,6 +269,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           class="text-sm">已选学生：<strong>{{ selected.username }}</strong> · 查看题目 {{ selected.reference }}。下方反馈发送给该学生，覆盖本份作业。</p>
         <UButton variant="outline" @click="selected = null">改为全体反馈</UButton>
       </div>
+      <h2 class="text-lg font-semibold">反馈与求助</h2>
       <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
         :target-user-id="selected?.userId" :target-user-name="selected?.username" :help-id="requestedHelp"

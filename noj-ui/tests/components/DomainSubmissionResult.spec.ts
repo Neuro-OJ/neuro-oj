@@ -39,6 +39,26 @@ describe('域提交结果呈现', () => {
       expect(view.find('.animate-pulse').exists()).toBe(true);
     }
   });
+  it('历史平台失败不覆盖当前正式完成结果', () => {
+    const view = mount(DomainSubmissionResult, {
+      props: {
+        submission: {
+          ...submission,
+          attempts: [{
+            attempt_id: 'old',
+            sequence: 1,
+            version: 1,
+            state: 'finished',
+            result_kind: 'platform_error',
+            score: 0,
+          }],
+        },
+      },
+      global: { stubs },
+    });
+    expect(view.text()).toContain('评测完成');
+    expect(view.text()).not.toContain('平台评测失败');
+  });
   it('正式 OI 判定使用 AC/WA/CE，不将已评测当作通过', () => {
     for (const verdict of ['AC', 'WA', 'CE']) {
       const view = mount(DomainSubmissionResult, {

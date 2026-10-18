@@ -72,3 +72,31 @@ describe('成绩矩阵', () => {
     expect(empty.findAll('button')).toHaveLength(0);
   });
 });
+
+describe('手机成绩摘要', () => {
+  it('40人默认折叠，每次只展开一人，翻页关闭旧展开且保持原提交入口', async () => {
+    const rows = Array.from(
+      { length: 40 },
+      (_, i) => ({
+        ...matrix.rows[0]!,
+        user_id: `u${i}`,
+        username: `长名字学生${i}`,
+        cells: [{ ...cell, user_id: `u${i}` }],
+      }),
+    );
+    const view = mount(AssignmentMatrix, { props: { matrix: { ...matrix, rows } }, global: { stubs } });
+    const summaries = view.get('ul[aria-label="学生成绩摘要"]');
+    const toggles = summaries.findAll('button[aria-expanded]');
+    expect(toggles).toHaveLength(40);
+    expect(toggles.every((button) => button.attributes('aria-expanded') === 'false')).toBe(true);
+    await toggles[0]!.trigger('click');
+    expect(toggles[0]!.attributes('aria-expanded')).toBe('true');
+    await toggles[1]!.trigger('click');
+    expect(toggles[0]!.attributes('aria-expanded')).toBe('false');
+    expect(toggles[1]!.attributes('aria-expanded')).toBe('true');
+    await summaries.findAll('li')[1]!.find('div button').trigger('click');
+    expect(view.emitted('select')?.[0]?.[0]).toBe('u1');
+    await view.setProps({ matrix: { ...matrix, page: 2, rows } });
+    expect(toggles[1]!.attributes('aria-expanded')).toBe('false');
+  });
+});
