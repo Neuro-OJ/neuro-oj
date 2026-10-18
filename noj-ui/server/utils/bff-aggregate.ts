@@ -69,7 +69,7 @@ export async function aggregateView(reader: CoreReader, input: {
     : Promise.resolve();
   tasks.push(communityTask.then(async () => {
     if (viewer && community?.enabled) await read('communityUnread', `${root}/community/notifications/unread-count`);
-    else put('communityUnread', { data: { unread_count: 0 } });
+    else put('communityUnread', { data: { count: 0 } });
   }));
 
   const loadView = async () => {

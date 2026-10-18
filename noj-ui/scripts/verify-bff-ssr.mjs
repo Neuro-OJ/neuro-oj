@@ -39,7 +39,7 @@ const fixture = Deno.serve(
     if (path === "/api/v1/me/domains") return Response.json({ data: [] });
     if (path === "/api/v1/conversations/unread-count") {
       return Response.json({
-        data: { unread_count: 0 },
+        unread_count: 0,
       });
     }
     if (path === "/api/v1/site/meta") {
@@ -117,7 +117,7 @@ const fixture = Deno.serve(
     }
     if (path.endsWith("/community/notifications/unread-count")) {
       return Response
-        .json({ data: { unread_count: 3 } });
+        .json({ data: { count: 3 } });
     }
     if (path.endsWith("/notifications")) {
       return Response.json({
