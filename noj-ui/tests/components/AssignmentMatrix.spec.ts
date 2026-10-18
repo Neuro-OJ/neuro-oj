@@ -45,7 +45,8 @@ describe('成绩矩阵', () => {
     const view = mount(AssignmentMatrix, { props: { matrix }, global: { stubs } });
     expect(view.text()).toContain('main:1001');
     expect(view.text()).toContain('至少 60 分');
-    expect(view.text()).toContain('100 · 已达标');
+    expect(view.get('button').attributes('aria-label')).toContain('100 · 已达标');
+    expect(view.text()).toContain('1/1 达标');
     await view.get('button').trigger('click');
     expect(view.emitted('select')?.[0]).toEqual(['student', cell]);
   });
@@ -58,7 +59,7 @@ describe('成绩矩阵', () => {
     const view = mount(AssignmentMatrix, { props: { matrix: updating }, global: { stubs } });
     expect(view.text()).toContain('成绩正在更新');
     expect(view.text()).toContain('更新中');
-    expect(view.findAll('button').map((b) => b.text()).join(' ')).not.toContain('100');
+    expect(view.findAll('button').map((b) => b.text()).join(' ')).not.toMatch(/\b100\b/);
     expect(view.text()).not.toContain('已达标');
   });
   it('历史学生和空筛选结果保持明确，不构造不存在的单元', () => {

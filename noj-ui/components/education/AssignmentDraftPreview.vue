@@ -28,8 +28,13 @@ const names = computed(() =>
 );
 </script>
 <template>
-  <UCard>
-    <h2 class="mb-3 font-semibold">发布预览</h2>
+  <section class="overflow-hidden rounded-md border border-border bg-bg-panel" aria-labelledby="assignment-draft-preview">
+    <div class="border-b border-border px-4 py-3 sm:px-5">
+      <h2 id="assignment-draft-preview" class="font-semibold">发布预览</h2>
+      <p class="mt-1 text-xs text-text-muted">发布前确认目标学生、题目与达标要求；发布后题目集合与要求固定。</p>
+    </div>
+    <div class="px-4 py-4 sm:px-5">
+    <h3 class="sr-only">发布范围</h3>
     <p class="text-sm">{{ task.target_student_ids ? '指定学生' : '全班学生' }}：{{ names.length }} 人</p>
     <p class="mt-2 text-sm text-text-secondary">{{ names.join('、') }}</p>
     <UAlert v-if="roster.error.value" class="mt-3" color="error" :title="extractApiError(roster.error.value).message" />
@@ -44,9 +49,10 @@ const names = computed(() =>
       <p
         class="mt-2 text-sm">统一要求：{{ task.source_training_rule?.requirement === 'accepted' ? '正式通过' : `至少 ${(task.source_training_rule?.minimum_score ?? 0) / 100} 分` }}</p>
     </template>
-    <ol v-else class="mt-3 space-y-2">
+    <ol v-else class="mt-3 divide-y divide-border rounded border border-border">
       <li v-for="(item, index) in task.items" :key="item.id"
-        class="flex flex-wrap justify-between gap-2 rounded border border-border p-3 text-sm"><span>{{ index + 1 }}. {{ item.reference.display_ref }}</span><span class="tabular-nums">{{ item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score ?? 0) / 100} 分` }}</span></li>
+        class="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm"><span>{{ index + 1 }}. {{ item.reference.display_ref }}</span><span class="tabular-nums">{{ item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score ?? 0) / 100} 分` }}</span></li>
     </ol>
-  </UCard>
+    </div>
+  </section>
 </template>

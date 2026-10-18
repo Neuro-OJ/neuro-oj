@@ -15,3 +15,6 @@ vi.stubGlobal(
   'useProblemSummaries',
   () => ({ data: ref({ items: [] }), status: ref('success'), error: ref(null), refresh: vi.fn() }),
 );
+
+// 页面通过该 composable 回填面包屑标题；页面测试不渲染布局，无需真实实现。
+vi.stubGlobal('useBreadcrumbParams', vi.fn());
