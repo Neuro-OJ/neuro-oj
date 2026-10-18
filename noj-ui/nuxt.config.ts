@@ -1,3 +1,4 @@
+import { CLIENT_ONLY_ROUTES } from './utils/ssr-routes';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -116,6 +117,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     apiBase,
     siteUrl,
+    bffRedisUrl: '',
+    bffCachePrefix: 'noj:ui:bff:v1',
     // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
     // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
     public: {
@@ -169,10 +172,12 @@ export default defineNuxtConfig({
   // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
   // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
+    ...Object.fromEntries(CLIENT_ONLY_ROUTES.map((path) => [path, { ssr: false }])),
+    '/api/bff/**': { headers: { 'cache-control': 'private, no-store' } },
     '/workspaces': { headers: { 'cache-control': 'no-store' } },
     '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
     '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
-    '/d/**': { headers: { 'cache-control': 'no-store' } },
+    '/d/**': { headers: { 'cache-control': 'private, no-store' } },
     '/d/*/members': { ssr: false },
     '/d/*/settings': { ssr: false },
     '/d/*/editor/**': { ssr: false },

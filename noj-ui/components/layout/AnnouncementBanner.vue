@@ -8,7 +8,8 @@ interface BannerPayload {
   banner_text: string;
   domain_id: string | null;
 }
-const { data, error, refresh } = await useAsyncData(
+const { data, error, refresh } = await useViewAsyncData(
+  'announcementBanner',
   () => workspaceCacheKey(slug.value, user.value?.id ?? null, 'announcement-banner'),
   () =>
     api.get<{ data: BannerPayload | null }>(`/api/v1/domains/${slug.value}/announcements/banner`, {

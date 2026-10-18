@@ -2,7 +2,7 @@
 import type { BundleImportResult } from "~/utils/bundleImport"
 
 definePageMeta({
-  ssr: false,
+
 })
 
 useHead({ title: '从题目包导入 - Neuro OJ' })

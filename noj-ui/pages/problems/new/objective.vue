@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  ssr: false,
+
 })
 
 useHead({ title: '创建客观题套卷 - Neuro OJ' })

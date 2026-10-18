@@ -5,7 +5,7 @@ import InstanceNav from '~/components/admin/InstanceNav.vue';
 import WorkspaceLimitFields from '~/components/workspace/WorkspaceLimitFields.vue';
 import type { WorkspaceLimits } from '~/utils/workspace';
 
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false });
+definePageMeta({ layout: 'admin', middleware: 'admin', });
 
 const api = useInstanceAdmin();
 const { user } = useAuth();

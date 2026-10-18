@@ -3,7 +3,8 @@ import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ domainSlug: string }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh } = await useViewAsyncData(
+  'announcements',
   () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-announcements'),
   () => api.list(1, 5),
 );

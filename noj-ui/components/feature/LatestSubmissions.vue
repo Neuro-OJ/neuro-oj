@@ -18,7 +18,8 @@ interface RecentSubmission {
   result: { status: string; score: number; time_ms: number | null; memory_kb: number | null } | null;
 }
 const scope = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'latest-submissions'));
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh } = await useViewAsyncData(
+  'activity',
   scope,
   () =>
     api.get<{ data: { recent: RecentSubmission[]; total: Snapshot; today: Snapshot } }>(

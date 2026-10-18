@@ -6,6 +6,12 @@ const route = useRoute();
 
 const apiError = computed(() => (error.value ? extractApiError(error.value) : null));
 const errStatus = computed(() => apiError.value?.status);
+if (import.meta.server) {
+  const event = useRequestEvent();
+  watch(errStatus, (code) => {
+    if (event && code) setResponseStatus(event, code);
+  }, { immediate: true });
+}
 const isAuthOrNotFound = computed(() => {
   const code = errStatus.value;
   return code === 401 || code === 403 || code === 404;

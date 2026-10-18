@@ -6,7 +6,7 @@ import { extractApiError } from '~/utils/apiError'
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { isLoggedIn } = useAuth()

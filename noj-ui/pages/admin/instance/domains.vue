@@ -5,7 +5,7 @@ import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import InstanceNav from '~/components/admin/InstanceNav.vue';
 
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false });
+definePageMeta({ layout: 'admin', middleware: 'admin', });
 
 const route = useRoute();
 const router = useRouter();

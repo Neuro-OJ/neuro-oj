@@ -22,8 +22,8 @@ const scope = useCommunityScope();
 const { unreadCount, loadUnreadCount } = useCommunityNotifications();
 watch([scope.key, communityEnabled], async () => {
   if (!import.meta.client || !communityEnabled.value) return;
-  await loadConfig(true);
-  if (user.value) await loadUnreadCount();
+  await loadConfig();
+  if (user.value) await loadUnreadCount(false);
 }, { immediate: true });
 // 角标无需独占常驻连接，避免多标签页耗尽 HTTP/1.1 连接；成绩页面继续使用实时 SSE。
 usePolling({
@@ -33,7 +33,8 @@ usePolling({
   immediate: false,
 });
 const educationApi = useEducationApi();
-const educationNotifications = useAsyncData(
+const educationNotifications = useViewAsyncData(
+  'educationNotifications',
   computed(() => `navbar-education:${slug.value}:${user.value?.id ?? ''}:${teachingEnabled.value}`),
   () => user.value && teachingEnabled.value && (workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)
     ? educationApi.notifications(slug.value)

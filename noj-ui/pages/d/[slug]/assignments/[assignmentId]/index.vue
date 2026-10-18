@@ -13,8 +13,9 @@ const selected = ref<{ userId: string; username: string; reference: string; cell
   drawer = ref(false),
   downloading = ref(false);
 const key = computed(() => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value));
-const task = await useAsyncData(() => `${key.value}:task`, () => education.assignment(slug.value!, id.value));
-const room = await useAsyncData(
+const task = await useViewAsyncData('assignment', () => `${key.value}:task`, () => education.assignment(slug.value!, id.value));
+const room = await useViewAsyncData(
+  'classroom',
   () => `${key.value}:classroom:${task.data.value?.data.classroom_id ?? ''}`,
   () => task.data.value ? education.classroom(slug.value!, task.data.value.data.classroom_id) : Promise.resolve(null),
 );
@@ -33,7 +34,8 @@ const query = computed(() => ({
   item_id: itemFilter.value === 'all' ? undefined : itemFilter.value,
   verdict: verdictFilter.value === 'all' ? undefined : verdictFilter.value,
 }));
-const matrix = await useAsyncData(
+const matrix = await useViewAsyncData(
+  'matrix',
   () =>
     `${key.value}:matrix:${JSON.stringify(query.value)}:${can('progress:read')}:${!!task.data.value?.data
       .published_at}`,
@@ -42,7 +44,8 @@ const matrix = await useAsyncData(
       ? education.matrix(slug.value!, id.value, query.value)
       : Promise.resolve(null),
 );
-const progress = await useAsyncData(
+const progress = await useViewAsyncData(
+  'progress',
   () => `${key.value}:progress:${scope.value}:${isStudent.value}:${!!task.data.value?.data.published_at}`,
   () =>
     isStudent.value && task.data.value?.data.published_at

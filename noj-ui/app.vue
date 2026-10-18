@@ -15,7 +15,7 @@ const { locale, t } = useI18n()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
-  fetch()
+  fetch(false)
 }
 
 // 登录/登出状态变化时重新获取封禁状态（SPA 导航不会重载页面，需手动刷新）

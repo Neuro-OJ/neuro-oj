@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CommunityBookmarks from '~/components/feature/community/CommunityBookmarks.vue';
-definePageMeta({ middleware: 'auth', ssr: false });
+definePageMeta({ middleware: 'auth', });
 const { key } = useCommunityScope();
 const route = useRoute();
 </script>

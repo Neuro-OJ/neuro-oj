@@ -11,7 +11,8 @@ const enabled = computed(() =>
   !!user.value && !!domain.value?.configuration.features.assignment &&
   (domain.value.is_member || domain.value.platform_admin)
 );
-const tasks = await useAsyncData(
+const tasks = await useViewAsyncData(
+  'dashboard',
   () => `${key.value}:${mode.value}:${enabled.value}`,
   () => enabled.value ? api.dashboard(slug.value!, mode.value, 1) : Promise.resolve(null),
 );

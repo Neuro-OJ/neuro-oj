@@ -8,9 +8,16 @@ export function useCommunityNotifications(account: boolean | (() => boolean) = f
   const stored = useState<{ key: string; count: number } | null>('community:unread-count', () => null);
   const unreadCount = computed(() => stored.value?.key === scope.key.value ? stored.value.count : 0);
   const { api } = useApi();
+  const seed = useViewSection<{ data: { unread_count: number } }>('communityUnread');
 
-  async function loadUnreadCount() {
+  if (seed.value?.data) stored.value = { key: scope.key.value, count: seed.value.data.data.unread_count };
+
+  async function loadUnreadCount(force = true) {
     const request = scope.capture();
+    if (!force && seed.value) {
+      stored.value = { key: request.key, count: seed.value.data?.data.unread_count ?? 0 };
+      return;
+    }
     try {
       // 未读数轮询：静默失败，失败时归零不打扰用户
       const result = await api.get<{ data: { unread_count: number } }>(

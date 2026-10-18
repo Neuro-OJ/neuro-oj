@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ ssr: false })
+definePageMeta({ })
 
 const route = useRoute()
 const contestId = route.params.contestId as string

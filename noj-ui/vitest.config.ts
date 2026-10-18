@@ -31,7 +31,7 @@ export default defineConfig({
     pool: 'threads',
     environment: 'happy-dom',
     globals: true,
-    setupFiles: ['./tests/setup.ts'],
+    setupFiles: ['./tests/vitest-setup.ts'],
     include: ['tests/**/*.spec.ts'],
   },
 });

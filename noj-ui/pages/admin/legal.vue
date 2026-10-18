@@ -9,7 +9,7 @@ import { useDialog } from "~/composables/useDialog";
 import { extractApiError } from "~/utils/apiError";
 import type { LegalKind, LegalVersionSummary } from "~/composables/useLegal";
 
-definePageMeta({ layout: "admin", middleware: "admin", ssr: false });
+definePageMeta({ layout: "admin", middleware: "admin", });
 
 const { toast } = useToast();
 const { dialog } = useDialog();

@@ -3,7 +3,7 @@ import { extractApiError } from '~/utils/apiError';
 import { useToast } from '~/composables/useToast';
 import InstanceNav from '~/components/admin/InstanceNav.vue';
 
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false });
+definePageMeta({ layout: 'admin', middleware: 'admin', });
 
 const api = useInstanceAdmin();
 const { user } = useAuth();

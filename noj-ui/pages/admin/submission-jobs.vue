@@ -27,7 +27,7 @@ import { publicUrl } from '~/utils/publicIdentifiers'
 definePageMeta({
   layout: 'admin',
   middleware: 'admin',
-  ssr: false,
+
 })
 
 useRequireLogin()

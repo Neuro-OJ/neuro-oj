@@ -8,7 +8,7 @@ import { getAvatarUploadError } from "~/utils/avatarUpload"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
 import { userUrl } from "~/utils/publicIdentifiers"
 
-definePageMeta({ ssr: false })
+definePageMeta({ })
 
 const auth = useAuth()
 const { user, isLoggedIn, loading, fetchUser } = auth

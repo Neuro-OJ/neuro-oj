@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import type { AssignmentDetail, MatrixData } from '~/utils/education';
+import type { AssignmentDetail, ClassroomMember, MatrixData } from '~/utils/education';
 import { currentPageRemediation } from '~/utils/education-remediation';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
@@ -14,15 +13,35 @@ const targets = ref('selected'),
   saving = ref(false),
   error = ref(''),
   key = ref(crypto.randomUUID());
-const roster = await useAsyncData(
-  () => educationCacheKey(props.slug, actor.value?.id ?? null, props.task.classroom_id, 'copy-roster'),
-  () => education.members(props.slug, props.task.classroom_id),
-);
+// 复制弹窗按用户操作读取名单，不占用详情页首屏请求。
+const roster = {
+  data: ref<{ data: ClassroomMember[] } | null>(null),
+  error: ref<unknown>(null),
+  status: ref<'idle' | 'pending' | 'success' | 'error'>('idle'),
+};
 const students = computed(() =>
   roster.data.value?.data.filter((m) => m.role === 'student' && m.effective_active) ?? []
 );
 const remediation = computed(() => props.matrix ? currentPageRemediation(props.matrix) : null);
-function prepare(fromMatrix = false) {
+async function prepare(fromMatrix = false) {
+  if (!props.writable || roster.status.value === 'pending') return;
+  const context = capture(), taskId = props.task.id;
+  roster.status.value = 'pending';
+  roster.error.value = null;
+  try {
+    const result = await education.members(context.slug, props.task.classroom_id);
+    if (!context.isCurrent() || props.task.id !== taskId || !props.writable) return;
+    roster.data.value = result;
+    roster.status.value = 'success';
+  } catch (cause) {
+    if (!context.isCurrent() || props.task.id !== taskId) return;
+    roster.data.value = null;
+    roster.error.value = cause;
+    roster.status.value = 'error';
+  } finally {
+    if (roster.status.value === 'pending') roster.status.value = 'idle';
+  }
+  if (!context.isCurrent() || props.task.id !== taskId || !props.writable) return;
   title.value = `${props.task.title}（补题）`;
   originalRevision.value = props.task.revision;
   selectedItems.value = [];
@@ -64,14 +83,16 @@ async function copy() {
 }
 watch([() => props.slug, () => props.task.id, () => actor.value?.id], () => {
   open.value = false;
+  roster.data.value = null;
+  roster.error.value = null;
 });
 </script>
 <template>
   <div v-if="writable">
     <div class="flex flex-wrap gap-2">
-      <UButton variant="outline" icon="i-lucide-copy" @click="prepare()">复制／布置补题</UButton>
+      <UButton variant="outline" icon="i-lucide-copy" :loading="roster.status.value === 'pending'" @click="prepare()">复制／布置补题</UButton>
       <UButton v-if="remediation" variant="outline" icon="i-lucide-list-filter"
-        :disabled="!remediation.studentIds.length" @click="prepare(true)">为当前页未达标学生布置补题</UButton>
+        :disabled="!remediation.studentIds.length" :loading="roster.status.value === 'pending'" @click="prepare(true)">为当前页未达标学生布置补题</UButton>
     </div>
     <UModal v-model:open="open" title="创建独立补题草稿">
       <template #body>

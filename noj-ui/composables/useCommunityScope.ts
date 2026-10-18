@@ -3,10 +3,10 @@ import { workspaceSlugFromPath } from '~/utils/workspace';
 
 /** URL 是内容域的唯一来源；账号通知与私信举报显式选择账号作用域。 */
 export function useCommunityScope(account: boolean | (() => boolean) = false) {
-  const route = useRoute();
+  const route = useRouter().currentRoute;
   const { user } = useAuth();
   const slug = computed(() =>
-    (typeof account === 'function' ? account() : account) ? null : workspaceSlugFromPath(route.path) ?? 'main'
+    (typeof account === 'function' ? account() : account) ? null : workspaceSlugFromPath(route.value.path) ?? 'main'
   );
   const key = computed(() => communityScopeKey(slug.value, user.value?.id ?? null));
   let mounted = true;

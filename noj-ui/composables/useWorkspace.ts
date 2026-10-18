@@ -16,12 +16,13 @@ import { extractApiError } from '~/utils/apiError';
 
 /** 当前空间始终由 URL 解析；异步数据按查看者分隔，切换期间不使用旧权限。 */
 export function provideWorkspaceContext() {
-  const route = useRoute();
+  const route = useRouter().currentRoute;
   const actor = useState<{ id: string } | null>('auth:user', () => null);
-  const slug = computed(() => workspaceSlugFromPath(route.path));
+  const slug = computed(() => workspaceSlugFromPath(route.value.path));
   const { api } = useApi();
   const key = computed(() => workspaceCacheKey(slug.value ?? '', actor.value?.id ?? null));
-  const state = useAsyncData<{ data: WorkspaceDetail | null }>(
+  const state = useViewAsyncData<{ data: WorkspaceDetail | null }>(
+    'workspace',
     key,
     async () => {
       if (!slug.value) return { data: null };
@@ -30,7 +31,6 @@ export function provideWorkspaceContext() {
       if (response.data.actor_id !== viewer) throw new Error('登录身份已变化，请刷新页面');
       return response;
     },
-    { watch: [slug, () => actor.value?.id] },
   );
 
   const isAuthOrNotFound = computed(() => {

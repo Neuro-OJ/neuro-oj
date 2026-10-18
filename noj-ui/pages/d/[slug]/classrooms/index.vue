@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ClassroomDetail } from '~/utils/education';
 import { assignmentPhase, educationCacheKey } from '~/utils/education';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
 import { teachingNeedsAttention } from '~/utils/education-dashboard';
@@ -32,7 +33,11 @@ const { data: roomsData, status: roomsStatus, error: roomsError, refresh: refres
 const isCoachOrManager = computed(() => {
   if (can('classroom:create')) return true;
   const list = roomsData.value?.data ?? [];
-  return list.some((r) => r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant');
+  return list.some((item) => {
+    // 列表契约未保证任职字段；旧快照或扩展响应中的可选身份仅用于入口展示。
+    const r: Partial<ClassroomDetail> = item;
+    return r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant';
+  });
 });
 
 // 当前激活的视图（带班教学 / 我的学习 / 班级大厅）

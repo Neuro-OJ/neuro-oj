@@ -14,7 +14,7 @@ import type { EditorLanguageConfig } from '~/utils/editorLanguages'
  * - 题目/提交/历史走竞赛接口，提交计入竞赛
  * - 仅参赛者/管理员可在进行中进入做题；结束后拦截（仅可查看）
  */
-definePageMeta({ layout: false, ssr: false })
+definePageMeta({ layout: false })
 
 const route = useRoute()
 const problemId = computed(() => route.params.id as string)
@@ -103,8 +103,7 @@ const workspaceProblem = computed(() => {
       submission_mode: p.submission_mode ?? 'code',
       judge_type: p.judge_type,
       supported_languages: p.supported_languages,
-      tags: [],
-    }
+      tags: [] }
   }
   const p = d as StandardProblem
   return {
@@ -117,8 +116,7 @@ const workspaceProblem = computed(() => {
     submission_mode: p.submission_mode ?? 'code',
     judge_type: p.judge_type,
     supported_languages: p.supported_languages,
-    tags: p.tags ?? [],
-  }
+    tags: p.tags ?? [] }
 })
 
 const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'artifact')
@@ -182,8 +180,7 @@ function submit(pid: string, language: string, code: string) {
       problem_id: pid,
       language,
       code,
-      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
-    })
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}) })
     .then((r) => r.data)
     .catch(async (err: unknown) => {
       if (isVersionConflictError(err)) await refresh()
@@ -197,8 +194,7 @@ function selfTest(pid: string, language: string, code: string) {
     .post<{ data: { id: string } }>(`/api/v1/problems/${pid}/self-test`, {
       language,
       code,
-      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
-    })
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}) })
     .then((r) => r.data)
 }
 
@@ -270,7 +266,7 @@ const templateUrl = (pid: string) =>
     <ProblemContestNotice :contests="secrecyNotices" class="mx-2 mt-2 shrink-0" />
 
     <!-- 题目不存在 / 被公开赛保密而对当前用户不可见：后端对两者返回同一个 404，
-         此处按"不存在"呈现（本页 ssr:false，无 HTTP 状态语义，故用页面态而非抛错） -->
+         此处按"不存在"呈现（本页 ，无 HTTP 状态语义，故用页面态而非抛错） -->
     <div
       v-if="notFound"
       class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"

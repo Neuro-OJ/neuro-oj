@@ -17,12 +17,14 @@
     "npm:dompurify@^3.4.12": "3.4.15",
     "npm:happy-dom@^15.7.4": "15.11.7",
     "npm:highlight.js@^11.11.1": "11.11.1",
+    "npm:ioredis@5.11.1": "5.11.1",
     "npm:katex@0.19": "0.19.0",
     "npm:markdown-it@^14.3.0": "14.3.0",
     "npm:monaco-editor@0.57": "0.57.0",
     "npm:nuxt@*": "4.5.2_rolldown@1.2.12_typescript@5.9.3",
     "npm:nuxt@4.5.2": "4.5.2_rolldown@1.2.12_typescript@5.9.3",
-    "npm:playwright@*": "1.62.0",
+    "npm:playwright@*": "1.62.1",
+    "npm:playwright@1.62.1": "1.62.1",
     "npm:qrcode@^1.5.4": "1.5.4",
     "npm:rolldown@1.2.12": "1.2.12",
     "npm:tailwindcss@^4.3.3": "4.3.3",
@@ -5231,13 +5233,13 @@
       ],
       "tarball": "https://registry.npmmirror.com/pkg-types/-/pkg-types-2.3.1.tgz"
     },
-    "playwright-core@1.62.0": {
-      "integrity": "sha512-nsNRyq0r2zsG8AcRHWknc9QRA5XCueC7gWMrs+Gx2tlZn9hcl8zudfh00lhJPY1DE7NmZ6bDsT9g2yey8mXljA==",
+    "playwright-core@1.62.1": {
+      "integrity": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==",
       "bin": true,
-      "tarball": "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.62.0.tgz"
+      "tarball": "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.62.1.tgz"
     },
-    "playwright@1.62.0": {
-      "integrity": "sha512-Z14dG305dgaLu6foB1TXQagFiW8JfSUIUaUuPaKQ6NtBPKF1P/qXcqfh6c6K/icPqdy37JmjbiBXf6JNg6Sylw==",
+    "playwright@1.62.1": {
+      "integrity": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==",
       "dependencies": [
         "playwright-core"
       ],
@@ -5245,7 +5247,7 @@
         "fsevents@2.3.2"
       ],
       "bin": true,
-      "tarball": "https://registry.npmmirror.com/playwright/-/playwright-1.62.0.tgz"
+      "tarball": "https://registry.npmmirror.com/playwright/-/playwright-1.62.1.tgz"
     },
     "pngjs@5.0.0": {
       "integrity": "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==",
@@ -7176,10 +7178,12 @@
         "npm:dompurify@^3.4.12",
         "npm:happy-dom@^15.7.4",
         "npm:highlight.js@^11.11.1",
+        "npm:ioredis@5.11.1",
         "npm:katex@0.19",
         "npm:markdown-it@^14.3.0",
         "npm:monaco-editor@0.57",
         "npm:nuxt@4.5.2",
+        "npm:playwright@1.62.1",
         "npm:qrcode@^1.5.4",
         "npm:rolldown@1.2.12",
         "npm:tailwindcss@^4.3.3",

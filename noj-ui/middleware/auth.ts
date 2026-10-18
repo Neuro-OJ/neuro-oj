@@ -39,7 +39,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
 
   if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
-  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth();
+  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth(to);
 
   // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
   await ensureAuthReady();

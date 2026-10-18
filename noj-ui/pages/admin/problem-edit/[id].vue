@@ -4,9 +4,7 @@ import { toProblemView, type ProblemResource } from '~/utils/problemView'
 
 definePageMeta({
   layout: "admin",
-  middleware: "admin",
-  ssr: false,
-})
+  middleware: "admin" })
 
 const router = useRouter()
 const route = useRoute()
