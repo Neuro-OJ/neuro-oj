@@ -131,3 +131,54 @@ Deno.test('BFF 精确路由匹配与跨域、账号、查询参数快照隔离',
   assert(!bffSnapshotMatches(snapshot, '/d/other?mode=a', 'student'));
   assert(!bffSnapshotMatches(snapshot, '/d/school?mode=a', 'coach'));
 });
+
+Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来源域读取', async () => {
+  const { reader, calls } = fixture();
+  const original = reader.get;
+  reader.get = <T>(path: string, options?: { timeout?: number; anonymous?: boolean }): Promise<T> => {
+    if (path.includes('/trainings/t')) {
+      calls.push(path);
+      return Promise.resolve(
+        {
+          data: {
+            id: 't',
+            title: '长题单',
+            items: Array.from(
+              { length: 100 },
+              (_, position) => ({
+                problem_id: String(position),
+                position,
+                display_ref: `main:${position}`,
+                binding_id: 'b',
+                resource_available: position !== 22,
+              }),
+            ),
+          },
+        } as T,
+      );
+    }
+    if (path.includes('/problems/')) {
+      calls.push(path);
+      if (path.endsWith('main%3A21')) return Promise.reject(new BffError(503, { error: '暂不可用' }));
+      return Promise.resolve({ content: { title: '题名', kind: 'oi' }, statistics: { progress: 'solved' } } as T);
+    }
+    return original(path, options);
+  };
+  const envelope = await aggregateView(reader, {
+    kind: 'training',
+    slug: 'school',
+    id: 't',
+    authenticated: false,
+    page: 2,
+  }, () => Promise.resolve({}));
+  const { data } = envelope.sections.training?.data as { data: import('../utils/domain-trainings.ts').TrainingView };
+  assertEquals(data.total, 100);
+  assertEquals(data.items.length, 20);
+  assertEquals(data.items[0]!.position, 20);
+  assertEquals(data.items[0]!.title, '题名');
+  assertEquals(data.items[0]!.progress, null);
+  assertEquals(data.items[1]!.summary_error, true);
+  assertEquals(calls.filter((p) => p.includes('/problems/')).length, 19);
+  assert(!calls.some((p) => p.startsWith('/api/v1/domains/main')));
+  assert(!JSON.stringify(envelope.sections.training).includes('statistics'));
+});

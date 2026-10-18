@@ -1,8 +1,9 @@
 import type { WorkspaceDetail } from './workspace.ts';
 import type { AuthUser } from './auth-user.ts';
 
-export type BffViewKind = 'home' | 'classroom' | 'assignment';
+export type BffViewKind = 'home' | 'classroom' | 'assignment' | 'training';
 export type BffSectionName =
+  | 'training'
   | 'workspace'
   | 'banStatus'
   | 'instanceNavigation'
@@ -53,9 +54,15 @@ export interface BffSnapshot {
 
 /** 精确匹配首批页面，其他页面不改变数据加载方式。 */
 export function bffViewRoute(path: string) {
-  const match = /^\/d\/([^/]+)(?:\/(classrooms|assignments)\/([^/]+))?\/?$/.exec(path);
+  const match = /^\/d\/([^/]+)(?:\/(classrooms|assignments|trainings)\/([^/]+))?\/?$/.exec(path);
   if (!match) return null;
-  const kind: BffViewKind = !match[2] ? 'home' : match[2] === 'classrooms' ? 'classroom' : 'assignment';
+  const kind: BffViewKind = !match[2]
+    ? 'home'
+    : match[2] === 'classrooms'
+    ? 'classroom'
+    : match[2] === 'trainings'
+    ? 'training'
+    : 'assignment';
   const root = `/api/bff/v1/domains/${match[1]}`;
   return {
     kind,

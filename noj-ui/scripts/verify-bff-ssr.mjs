@@ -160,6 +160,8 @@ const fixture = Deno.serve(
         meta: { page: 1, total: 1, total_pages: 1 },
       });
     }
+    if (path.endsWith('/trainings/t')) return Response.json({ data: { id: 't', title: '题单首屏', description: '循序练习', can_share: false, can_edit: false, items: Array.from({ length: 21 }, (_, position) => ({ problem_id: String(position), binding_id: String(position), position, display_ref: String(1001 + position), qualified_ref: String(1001 + position), resource_available: true })) } });
+    if (/\/problems\/\d+$/.test(path)) return Response.json({ content: { title: '题目摘要', kind: 'oi' }, statistics: { progress: 'solved' } });
     if (path.endsWith("/problems")) {
       return Response.json({
         total: 1,
@@ -357,8 +359,8 @@ try {
       }
     });
     const paths = role === "guest"
-      ? ["/d/school"]
-      : ["/d/school", "/d/school/classrooms/c", "/d/school/assignments/a"];
+      ? ["/d/school/trainings/t?page=2", "/d/school"]
+      : ["/d/school/trainings/t?page=2", "/d/school", "/d/school/classrooms/c", "/d/school/assignments/a"];
     for (const path of paths) {
       requests.length = 0;
       api.length = 0;
@@ -375,7 +377,7 @@ try {
       );
       await tab.waitForTimeout(200);
       assert.deepEqual(errors, [], `${role} ${path} 水合错误`);
-      const expectedTitle = path.endsWith("/classrooms/c")
+      const expectedTitle = path.includes("/trainings/") ? "题单首屏" : path.endsWith("/classrooms/c")
         ? "班级首屏"
         : path.endsWith("/assignments/a")
         ? "作业首屏"

@@ -9,6 +9,7 @@ BFF 不访问 Core 数据库，不增加 Core API，不允许客户端任意指�
 | --- | --- |
 | 空间首页 `/d/:slug` | `/api/bff/v1/domains/:slug/home` |
 | 班级概览 | `/api/bff/v1/domains/:slug/classrooms/:classroomId/overview` |
+| 题单详情（每页20题） | `/api/bff/v1/domains/:slug/trainings/:trainingId/overview?page=1` |
 | 作业详情 | `/api/bff/v1/domains/:slug/assignments/:assignmentId/overview` |
 
 信封包含 `kind`、经 Core 验证的 `viewer`、`workspace` 和 `sections`。模块结构为
@@ -67,3 +68,5 @@ BFF_TEST_REDIS_URL=redis://127.0.0.1:6379 deno task test:bff:cache
 
 该任务启动两个生产 UI 副本验证同一元信息缓存，并检查 30 秒 TTL 与 Redis 连接
 失败时的回源。只清理随机测试命名空间，不清空 Redis。
+
+题单只补齐当前页可用题目的题名和个人进度，不向来源域读取，不下发额外题面。摘要失败保留条目与作答链接，进度未知不计为未作答；统计明确标记为本页，不推算全题单完成率。共享设置由用户展开后读取。

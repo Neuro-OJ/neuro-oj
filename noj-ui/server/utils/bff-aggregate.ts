@@ -2,7 +2,8 @@ import type { BffEnvelope, BffSectionName, BffViewKind } from '../../utils/bff-v
 import type { AuthUser } from '../../utils/auth-user.ts';
 import type { WorkspaceDetail } from '../../utils/workspace.ts';
 import type { AssignmentDetail, ClassroomDetail } from '../../utils/education.ts';
-import type { DomainProblemSummary } from '../../utils/domain-problems.ts';
+import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain-trainings.ts';
+import type { DomainProblemDetail, DomainProblemSummary } from '../../utils/domain-problems.ts';
 import { classroomCan } from '../../utils/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
 
@@ -12,12 +13,15 @@ export async function aggregateView(reader: CoreReader, input: {
   slug: string;
   id?: string;
   authenticated: boolean;
+  page?: number;
   help?: string;
   feedback?: string;
   history?: boolean;
 }, siteMeta: () => Promise<unknown>): Promise<BffEnvelope> {
   const viewer = input.authenticated ? (await reader.get<{ data: AuthUser }>('/api/v1/auth/me')).data : null;
-  if (!viewer && input.kind !== 'home') throw new BffError(401, { error: '请先登录', code: 'UNAUTHORIZED' });
+  if (!viewer && input.kind !== 'home' && input.kind !== 'training') {
+    throw new BffError(401, { error: '请先登录', code: 'UNAUTHORIZED' });
+  }
   if (viewer?.must_change_password) throw new BffError(401, { error: '请先修改密码', code: 'MUST_CHANGE_PASSWORD' });
   const root = `/api/v1/domains/${encodeURIComponent(input.slug)}`;
   const workspaceResponse = await reader.get<{ data: WorkspaceDetail }>(root);
@@ -106,6 +110,34 @@ export async function aggregateView(reader: CoreReader, input: {
         reads.push(read('dashboard', `${root}/${teaching ? 'teaching' : 'my-learning'}?page=1`));
       } else put('dashboard', null);
       await Promise.all(reads);
+    } else if (input.kind === 'training') {
+      const { data } = await reader.get<{ data: DomainTrainingDetail }>(
+        `${root}/trainings/${encodeURIComponent(input.id!)}`,
+      );
+      const { items: all, ...training } = data;
+      const page = input.page ?? 1;
+      const items = await Promise.all(
+        all.slice((page - 1) * 20, page * 20).map(async (item): Promise<TrainingViewItem> => {
+          const row: TrainingViewItem = { ...item, title: null, kind: null, progress: null, summary_error: false };
+          if (!item.resource_available || !item.binding_id) return row;
+          try {
+            const problem = await reader.get<DomainProblemDetail>(
+              `${root}/problems/${encodeURIComponent(item.display_ref)}`,
+              { timeout: 2000 },
+            );
+            return {
+              ...row,
+              title: problem.content.title,
+              kind: problem.content.kind,
+              progress: viewer ? problem.statistics?.progress ?? null : null,
+            };
+          } catch (error) {
+            if (!(error instanceof BffError) || error.statusCode === 401) throw error;
+            return { ...row, summary_error: true };
+          }
+        }),
+      );
+      put('training', { data: { training, items, page, per_page: 20, total: all.length } });
     } else if (input.kind === 'classroom') {
       // 班级是主资源；鉴权通过后再读取作业。
       put('classroom', await reader.get(`${root}/classrooms/${encodeURIComponent(input.id!)}`));
