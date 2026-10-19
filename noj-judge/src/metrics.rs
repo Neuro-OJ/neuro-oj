@@ -65,6 +65,8 @@ impl JudgeMetrics {
         work_dir_bytes: u64,
     ) -> Heartbeat {
         Heartbeat {
+            // 版本随心跳上报，供 core 排空状态逐节点展示与滚动升级观测。
+            judge_version: env!("CARGO_PKG_VERSION"),
             active_tasks: self.active_tasks.load(Ordering::Relaxed),
             max_concurrent_tasks: self.max_concurrent_tasks,
             completed_tasks_total: self.completed_tasks_total.load(Ordering::Relaxed),
@@ -81,6 +83,8 @@ impl JudgeMetrics {
 
 #[derive(Debug, Serialize)]
 struct Heartbeat {
+    /// Judge Worker 版本号（Cargo.toml version），供 core 观测逐节点版本。
+    judge_version: &'static str,
     active_tasks: u64,
     max_concurrent_tasks: u64,
     completed_tasks_total: u64,
@@ -314,6 +318,14 @@ mod tests {
             metrics.result_push_failures_total.load(Ordering::Relaxed),
             1
         );
+    }
+
+    #[test]
+    fn heartbeat_snapshot_reports_judge_version() {
+        let metrics = JudgeMetrics::new(2);
+        let value =
+            serde_json::to_value(metrics.snapshot(0, 0, 0, 0)).expect("心跳快照必须可序列化");
+        assert_eq!(value["judge_version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

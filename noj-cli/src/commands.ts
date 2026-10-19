@@ -283,6 +283,18 @@ export const COMMANDS: readonly CommandSpec[] = [
       { name: "reindex", tier: "tier3", summary: "全量重建搜索索引" },
     ],
   },
+  {
+    // P1d：维护模式/排空（update 自动排空的执行通道；也可人工干预）。
+    name: "maintain",
+    tier: "tier3",
+    summary: "维护模式与排空（update 自动 enter/wait/exit）",
+    subcommands: [
+      { name: "enter", tier: "tier3", summary: "进入维护模式（幂等）" },
+      { name: "status", tier: "tier3", summary: "查看排空状态与阻塞项" },
+      { name: "wait", tier: "tier3", summary: "等待排空完成（默认 1800s）" },
+      { name: "exit", tier: "tier3", summary: "退出维护模式（幂等）" },
+    ],
+  },
 
   // ── 全局命令与选项 ──
   // `version` 是可分发命令（`dispatchCommand` 的 `case "version"`），且与部署

@@ -38,7 +38,23 @@ export const CONTAINER_COMMANDS: readonly string[][] = [
   ["problems", "build"],
   ["problems", "import"],
   ["search", "reindex"],
+  // 维护模式/排空（P1d）：update 自动排空的执行通道。容器内 maintain 只访问
+  // 已运行 core 的内部 HTTP API，不需要 compose 拉起依赖，故以 --no-deps 执行。
+  // 单条 ["maintain"] 覆盖帮助/用法（子命令由 prod/maintain.ts 校验）。
+  ["maintain"],
+  ["maintain", "enter"],
+  ["maintain", "status"],
+  ["maintain", "wait"],
+  ["maintain", "exit"],
 ];
+
+/**
+ * 以 `--no-deps` 执行的 Tier 3 顶层命令。
+ *
+ * `maintain` 对接**已运行**的 core 容器：它只发内部 HTTP 请求，不需要 compose
+ * 先创建/启动依赖服务（`run` 默认会拉起 depends_on）。
+ */
+const NO_DEPS_TOP_LEVELS: ReadonlySet<string> = new Set(["maintain"]);
 
 /** 解析结果。 */
 export interface ContainerCommandMatch {
@@ -46,6 +62,8 @@ export interface ContainerCommandMatch {
   service: string;
   /** 透传给容器内 CLI 的完整参数（含 Tier 3 前缀）。 */
   args: string[];
+  /** 是否以 `--no-deps` 执行（不创建/启动依赖服务）。 */
+  noDeps: boolean;
 }
 
 /**
@@ -59,10 +77,20 @@ export function parseContainerCommand(argv: string[]): ContainerCommandMatch {
   for (const prefix of sorted) {
     if (prefix.length > argv.length) continue;
     if (prefix.every((part, i) => argv[i] === part)) {
-      return { matched: true, service: CONTAINER_SERVICE, args: [...argv] };
+      return {
+        matched: true,
+        service: CONTAINER_SERVICE,
+        args: [...argv],
+        noDeps: NO_DEPS_TOP_LEVELS.has(prefix[0]!),
+      };
     }
   }
-  return { matched: false, service: CONTAINER_SERVICE, args: [] };
+  return {
+    matched: false,
+    service: CONTAINER_SERVICE,
+    args: [],
+    noDeps: false,
+  };
 }
 
 /** 构造 compose 参数。 */
@@ -72,6 +100,8 @@ export interface ComposeArgsOptions {
   service: string;
   /** 容器内 CLI 的子命令与参数。 */
   command: string[];
+  /** 以 `--no-deps` 运行（不创建/启动依赖服务；maintain 需要）。 */
+  noDeps?: boolean;
 }
 
 /**
@@ -88,6 +118,7 @@ export function buildComposeArgs(options: ComposeArgsOptions): string[] {
     options.composeFile,
     "run",
     "--rm",
+    ...(options.noDeps === true ? ["--no-deps"] : []),
     "--entrypoint",
     CONTAINER_CLI,
     options.service,

@@ -50,6 +50,7 @@ import {
   UsageError,
 } from "./util/args.ts";
 import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
+import { dispatchMaintain } from "./prod/maintain.ts";
 import { runDrill } from "./prod/drill/drill.ts";
 import { readEnvValues } from "./prod/drill/plan.ts";
 import { createLocalRedis } from "./prod/judge/config.ts";
@@ -178,17 +179,8 @@ export async function run(argv: string[]): Promise<number> {
       return EXIT_OK;
     }
 
-    // 全局选项剥离**之后**必须重新检查 help/version（评审 B-2）：
-    // `--profile stack --help`、`--debug --help`、`--debug --version`
-    // 此前会落到「未知命令: --help」或探测报错。
-    // help/version 只读且最高优先级（#517 E1/E2），剥离后它们可能在首位。
-    if (
-      topCommand === "--version" || topCommand === "-v" ||
-      topCommand === "version"
-    ) {
-      console.log(`noj-cli ${VERSION}`);
-      return EXIT_OK;
-    }
+    // help/version 只读且最高优先级（#517 E1/E2）：上面的检查已覆盖剥离后的
+    // 全部取值，这里只需保留 help 分支（version 分支与其等价，无需重复）。
     if (
       topCommand === "--help" || topCommand === "-h" || topCommand === "help"
     ) {
@@ -365,6 +357,14 @@ export async function dispatchContainer(
   match: { service: string; args: string[] },
   tail: string[],
 ): Promise<number> {
+  // maintain 有独立参数契约与帮助（prod/maintain.ts），固定 --no-deps 执行。
+  if (match.args[0] === "maintain") {
+    return await dispatchMaintain(match, {
+      findProductionDir: (dir) => findProductionDir(dir, Deno.cwd()),
+      parseInstallDir: parseInstallDirArg,
+      stripCliFlags: stripCliOwnedFlags,
+    });
+  }
   if (wantsHelp(tail)) {
     console.log(renderCommandHelp(
       `noj-cli ${match.args.join(" ")} [选项]`,
@@ -660,7 +660,6 @@ export function printHelp(): string {
 export const REMOVED_COMMANDS = new Set([
   "doctor",
   "deploy",
-  "maintain",
   "stack",
   "run-server",
 ]);
@@ -668,8 +667,10 @@ export const REMOVED_COMMANDS = new Set([
 /** 已登记的顶层命令（用于拼写建议，#517 E8）。 */
 export const KNOWN_TOP = new Set([
   // #518/#514：新命令必须登记，否则拼写建议看不到它们。
-  // T23：`doctor`/`deploy`/`maintain`/`stack`/`run-server` 已随双模态移除，
-  // 因此不再登记——它们不是"可用命令"，出现在拼写建议里会误导用户。
+  // T23：`doctor`/`deploy`/`stack`/`run-server` 已随双模态移除，因此不再登记——
+  // 它们不是"可用命令"，出现在拼写建议里会误导用户。`maintain` 于 P1d 以
+  // Tier 3 容器命令重新引入（维护模式/排空），故重新登记。
+  "maintain",
   "problem",
   "problems",
   "version",
@@ -1353,9 +1354,8 @@ export async function dispatchCommand(
       return EXIT_USAGE;
     }
     case "deploy":
-    case "maintain":
     case "stack": {
-      // T23：三个旧名（JSON 编排模式）随双模态一起移除，不再保留别名。
+      // T23：这两个旧名（JSON 编排模式）随双模态一起移除，不再保留别名。
       // 早期（#518）走"先加法后改名 + 别名保留一个版本周期"的过渡策略；
       // 现在配置真相源已唯一（.env.prod），继续保留别名只会让
       // "status/logs/backup 各有两个含义"的混乱延续下去。

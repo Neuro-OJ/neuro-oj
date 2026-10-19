@@ -199,6 +199,8 @@ import {
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
 import { resolveTargetConfig } from "./lifecycle/target.ts";
+import { drainAfterUpgrade, drainBeforeUpgrade } from "./lifecycle/drain.ts";
+import type { DrainOptions } from "./lifecycle/drain.ts";
 
 /** install 的步骤名（顺序即执行顺序，也是 `InstallResult.steps` 的顺序）。 */
 export type InstallStepName =
@@ -319,10 +321,7 @@ const GENERATED_SECRET_KEYS: readonly string[] = [
   "NOJ_LLM_STORE_KEY",
 ];
 
-// ---------------- 通用小工具 ----------------
-
-// 通用小工具（readEnvValues / isFile / statMode）已抽到 ./lifecycle/steps.ts，
-// 由本模块与 start/stop/restart/status 共用（T13 拆分，避免同形函数两份）。
+// ---------------- 通用小工具（readEnvValues/isFile/statMode 已抽到 ./lifecycle/steps.ts） ----------------
 
 /**
  * `.env.prod` 路径的**三态**判定（`stat` 而非 `-e`）。
@@ -1304,30 +1303,20 @@ export async function restart(
 
 // ---------------- update / upgrade（T16，production.sh:201-440 + deploy.sh:1034-1044） ----------------
 //
-// `update` 是生产升级的唯一入口，`upgrade` 是它的**别名**（bash :518-519 两个
-// 词进同一个函数）。两种模式：
+// `update` 是生产升级的唯一入口，`upgrade` 是别名。固定版本模式取自 `.env.prod`
+// 的 `NOJ_VERSION`（先同步部署文件再升级）；`--latest` 查询资产就绪的稳定
+// Release，归一化比较相等即 no-op（零 compose/备份/写配置），否则先写暂存配置、
+// 升级成功后才原子提交。
 //
-// - **固定版本**（无 `--latest`）：目标版本取自 `.env.prod` 的 `NOJ_VERSION`，
-//   先按该 ref 同步部署文件（bash `run_files_sync --files-only` 的等价），再走
-//   与 `upgrade` 完全相同的升级序列。用户改版本号即可升级/回滚，无需网络查询。
-// - **`--latest`**：查询最新**资产就绪**的稳定 Release（T16 `prod/release.ts`），
-//   与当前版本**归一化比较**；相等即 no-op（**零 compose、零备份、不写配置**），
-//   否则先把新版本写进**暂存配置**，同步文件 → 升级 → 成功后才原子提交配置。
+// 升级序列（P1a 起验签先于启动，P1d 起自动排空）：`prepare_and_check` → 解析目标
+// 配置 → `ensure_backup_passphrase` → **备份** → `compose pull` → **验签** →
+// **drain enter/wait** → `wait_for_stack` → **drain exit** → `record_deployment_metadata`。
 //
-// 升级序列（deploy.sh:1034-1044 逐条；P1a 起验签先于启动）：
-// `prepare_and_check` → 解析目标配置 → `ensure_backup_passphrase` → **备份**
-// → `compose pull` → **验签** → `wait_for_stack` → `record_deployment_metadata`。
-//
-// ## 备份子系统的边界（T17–T19 之前的有意非迁移）
-//
-// bash 的 `run_backup "upgrade"` 调 `backup.sh create`。TS 侧的生产备份
-// （`.nojbackup` 单文件容器）归 T17–T19；本任务**不**实现它，但**也不静默跳过**：
-// 备份是升级序列里不可省的一步（原 bash `test-deploy.sh` 有"升级前备份失败阻断升级"
-// 的用例），因此 `update` 经注入点 {@link UpdateOptions.backup} 调用——未注入时返回
-// **明确的运行失败**（退出码 1，且尚未 pull/up），而不是假装成功。
+// 备份是升级序列里不可省的一步：`update` 经注入点 {@link UpdateOptions.backup}
+// 调用，未注入即**明确的运行失败**（退出码 1，且尚未 pull/up），绝不静默跳过。
 
 /** update/upgrade 的注入点：在 {@link LifecycleOptions} 上追加升级专用项。 */
-export interface UpdateOptions extends LifecycleOptions {
+export interface UpdateOptions extends LifecycleOptions, DrainOptions {
   /** `--latest`：升级到最新稳定 Release；缺省按 `.env.prod` 的版本升级。 */
   latest?: boolean;
   /** 仓库地址（`NOJ_UPDATE_REPOSITORY`）；缺省官方仓库。 */
@@ -1430,6 +1419,8 @@ interface UpgradeOutcome {
   error: string | null;
   /** 备份产物路径（已走过的步骤才非 null）。 */
   backupPath: string | null;
+  /** 退出维护失败文案（服务已启动但仍在维护模式）；成功为 null。 */
+  drainExitError?: string | null;
 }
 
 /**
@@ -1483,29 +1474,21 @@ async function runUpdateSync(
 }
 
 /**
- * 升级编排（bash `deploy.sh:upgrade()` :1034-1044；P1a 起顺序即断言）：
- * 解析目标配置 → `ensure_backup_passphrase` → **备份** → `compose pull` →
- * **验签** → `wait_for_stack` → `record_deployment_metadata`。
- *
- * 与 `install` 的差异：不 seed 配置（只读既有 `.env.prod`）、不建 PATH（已注册）；
- * 多一步备份且**先于 pull**（原 bash `test-deploy.sh` 有"备份失败后仍拉镜像/起栈"
- * 的用例，故备份失败必须在任何 compose 变更之前返回）。
+ * 升级编排（bash `deploy.sh:upgrade()` :1034-1044；**顺序即断言**）：
+ * 解析目标配置 → 备份 → pull → **验签** → **drain enter/wait** → `waitForStack` →
+ * **drain exit** → 部署元数据。与 `install` 的差异：只读既有 `.env.prod`、不建
+ * PATH；备份**先于** pull（bash `test-deploy.sh` 的用例要求）。
  *
  * **目标发布集只解析一次**（P1a）：{@link resolveTargetConfig} 从生效 env 文件
- * （升级时优先暂存文件）给出唯一的目标版本 / env 键值 / compose 选项。验签消费
- * 其 `env`、pull/up 消费其 `composeOptions`，校验的镜像与启动的镜像必然同批；
- * 验签先于 `waitForStack`，校验失败绝不启动目标栈、不记录部署元数据。
- *
- * 验签放在 pull **之后**、启动之前：inspect/cosign 本可直接查 registry，保持 bash 的 pull
- * 先行次序可让失败只留下镜像缓存；关键不变量是**任何 `up` 之前必须通过验签**。
+ * （升级时优先暂存文件）给出唯一的目标版本/env/compose 选项，验签与 pull/up 同源；
+ * 验签先于 `waitForStack`，失败绝不启动目标栈、不记录元数据。
  */
 async function upgradeWith(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   /**
-   * 已写入**目标版本**的暂存环境文件（`stageConfigVersion` 的产物）。
-   * bash `production.sh:419` 用 `--env-file "$stage_file"` 让升级本身跑在暂存配置
-   * 上，成功后才 `mv` 覆盖 `.env.prod`（:427）——本实现同样把它当作生效 env 文件。
+   * 已写入**目标版本**的暂存环境文件；bash `production.sh:419` 用 `--env-file`
+   * 让升级本身跑在暂存配置上，成功后才覆盖 `.env.prod`（:427）。
    */
   stagedEnvFile?: string,
 ): Promise<UpgradeOutcome> {
@@ -1577,6 +1560,12 @@ async function upgradeWith(
     return { error, backupPath: backup.path };
   }
 
+  // ---- 自动排空（P1d）：验签后、启动目标栈前进入维护并等待在途任务清空 ----
+  const drainError = await drainBeforeUpgrade(opts, target, ctx);
+  if (drainError !== null) {
+    return { error: drainError, backupPath: backup.path };
+  }
+
   // ---- wait_for_stack（bash :1040，与 install/start 同源）----
   const wait = await waitForStack(
     opts.runner,
@@ -1584,10 +1573,19 @@ async function upgradeWith(
     (text) => emitHuman(text, ctx.io),
   );
   if (!wait.ok) {
-    const error = wait.error ?? WAIT_FAILURE_HINT;
+    let error = wait.error ?? WAIT_FAILURE_HINT;
     ctx.error(error);
+    // 已排空但栈没起来：尽力退出维护，避免残留维护态阻塞写请求
+    const drainExitError = await drainAfterUpgrade(opts, target, ctx);
+    if (drainExitError !== null) {
+      ctx.error(drainExitError);
+      error += "\n" + drainExitError;
+    }
     return { error, backupPath: backup.path };
   }
+
+  // ---- 退出维护（P1d）：目标栈健康后恢复写请求；失败显式报告半完成 ----
+  const drainExitError = await drainAfterUpgrade(opts, target, ctx);
 
   // ---- record_deployment_metadata（bash :1041）：目标版本 + 目标验签 digest ----
   await recordDeploymentMetadata({
@@ -1596,7 +1594,7 @@ async function upgradeWith(
     verified: verify.digests,
     backupDir: join(ctx.dir, "backups"),
   });
-  return { error: null, backupPath: backup.path };
+  return { error: null, backupPath: backup.path, drainExitError };
 }
 
 /** 小节标题（对照 bash `section`：`\n== <标题> ==\n`）。 */
@@ -1607,20 +1605,14 @@ function logSection(ctx: LifecycleContext, title: string): void {
 /**
  * `update`（production.sh:345-436）：两种模式共用同一套升级序列。
  *
- * 编排（**顺序即断言**）：
- * 1. `prepare_and_check`（六步前置，零变更命令）；
- * 2. `--latest`：查询最新稳定 Release → 与当前版本归一化比较 → 相等即 **no-op**
- *    （零 compose、零备份、零配置写入）；否则把目标版本写进**暂存配置**；
- * 3. 非 `--latest`：目标版本取自 `.env.prod`；
- * 4. **同步部署文件**（`--files-only` 语义，`.env.prod` 不受影响）；
- * 5. 解析目标配置 → `ensure_backup_passphrase` → **备份** → `compose pull` →
- *    **验签** → `wait_for_stack` → `record_deployment_metadata`；
- * 6. **仅升级成功后**才 `rename` 暂存配置到 `.env.prod`（bash :428-432）。
+ * 编排（**顺序即断言**）：前置校验（零变更）→ `--latest` 解析并比较版本（相等即
+ * no-op，零 compose/备份/写配置；否则先写暂存配置）→ 同步部署文件（`.env.prod`
+ * 不受影响）→ 升级序列 → **仅升级成功后**才提交暂存配置（bash :428-432）。
  *
- * 退出码：0 成功（含 no-op）；1 运行失败（前置不过、无最新版本、同步失败、
- * 备份失败、compose 失败、健康检查失败、配置提交失败）；用法错误 2 由 CLI 层产出。
- *
- * `--json` 模式 stdout 只含一个 JSON 文档（人类文字全部改道 stderr）。
+ * 退出码：0 成功（含 no-op）；1 运行失败（前置/版本/同步/备份/compose/健康检查/
+ * 配置提交/drain 失败）；用法错误 2 由 CLI 层产出。`--json` 时 stdout 只含一个
+ * JSON 文档（人类文字全部改道 stderr）。
+ * drain exit 失败属**半完成**：提交暂存配置后返回 1 并提示人工 `noj-cli maintain exit`。
  */
 export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   const ctx = lifecycleContext(opts);
@@ -1729,6 +1721,14 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
       result.backupPath = upgraded.backupPath;
       return result;
     }
+  }
+
+  // 退出维护失败：服务已升级但仍在维护模式——显式报告半完成（不得静默）
+  if (upgraded.drainExitError != null) {
+    const result = fail(from, to, upgraded.drainExitError);
+    result.filesSynced = true;
+    result.backupPath = upgraded.backupPath;
+    return result;
   }
 
   ctx.status("success", latest ? updateSuccessHint(to) : "生产服务已升级");

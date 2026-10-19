@@ -29,6 +29,7 @@ import {
 } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import { initProblem } from "./problems-init.ts";
+import { runMaintain } from "./maintain.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -363,6 +364,63 @@ const searchCmd = new Command()
     console.log("重建完成", counts);
   });
 
+// maintain 子命令：--url/--json 由 noj-cli 透传；Cliffy 中 .command() 之后的
+// option/action 注册到该子命令，因此每个子命令都要显式声明自己的选项。
+const maintainCmd = new Command()
+  .description("维护/排空操作（容器内通过 Core 内部 API 执行）")
+  .command("status", "查询维护与排空状态")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    Deno.exit(await runMaintain("status", { url: opts.url, json: opts.json }));
+  })
+  .command("enter", "进入维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    Deno.exit(await runMaintain("enter", { url: opts.url, json: opts.json }));
+  })
+  .command("exit", "退出维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    Deno.exit(await runMaintain("exit", { url: opts.url, json: opts.json }));
+  })
+  .command("wait", "等待排空完成（轮询 status）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .option("--timeout <seconds:number>", "等待排空超时秒数", { default: 1800 })
+  .option("--interval <seconds:number>", "轮询间隔秒数", { default: 5 })
+  .action(
+    async (opts: {
+      url?: string;
+      json?: boolean;
+      timeout: number;
+      interval: number;
+    }) => {
+      Deno.exit(
+        await runMaintain("wait", {
+          url: opts.url,
+          json: opts.json,
+          timeoutSeconds: opts.timeout,
+          intervalSeconds: opts.interval,
+        }),
+      );
+    },
+  );
+
 try {
   await new Command()
     .name("noj")
@@ -375,6 +433,7 @@ try {
     // 避免破坏既有脚本（deno task problems:build 等仍可用）。
     .command("problem", problemsCmd)
     .command("search", searchCmd)
+    .command("maintain", maintainCmd)
     .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
     .action(() => {
       return runDevSetup();

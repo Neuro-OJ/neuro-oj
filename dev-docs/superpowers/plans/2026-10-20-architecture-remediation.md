@@ -261,6 +261,15 @@ Nuxt 保留按视图聚合的 BFF，但改变消费方式：
 - 旧默认域写入与执行别名在协调发布中退役，保留一个发布周期的 `410 ENDPOINT_RETIRED` 提示，
   然后删除。现有显式域路由与可保留的页面深链接继续工作。
 
+> **过渡实现（2026-10-20，P1d）**：Core 新增内部维护/排空 API（`/api/v1/internal/drain`，
+> 专用 bootstrap 凭据 `NOJ_INTERNAL_SERVICE_TOKEN`，未配置时 503）；维护中间件放行
+> `/api/v1/internal/*`；Judge 心跳上报 `judge_version`；容器内 `/app/bin/noj maintain`
+> 提供 enter/status/wait/exit；`noj-cli maintain` 为人工入口，`update` 在验签后、启动目标栈前
+> 自动 enter + wait，目标栈健康后 exit（`--skip-drain` / `--drain-timeout` 可调）。
+> 从尚无 drain 端点的旧版本首次升级需先在 `.env.prod` 配置凭据，并使用 `--skip-drain`
+> （或手工开启维护模式）完成一次性切换；完整维护窗口（暂停领取、迁移、备份恢复顺序）
+> 仍归 P8。
+
 ## 5. 实施批次
 
 每个批次独立提交、独立验收，经 PR 合入 `main`。使用 jj、GPG 签名与中文提交；非平凡变更
@@ -326,7 +335,7 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
       `2f488599`；两者为待协调的并行链，详见
       [P0 基线文档](../../engineering/architecture-baseline-2026-10-20.md)）
 - [x] P1 安全顺序（验签前置、迁移锁失败终止、Gateway 真实探针）
-- [ ] P1 升级排空过渡能力
+- [x] P1 升级排空过渡能力（2026-10-20；P1 批次完成，P2 前暂停）
 - [ ] P2 运行与测试底座
 - [ ] P3 业务所有权
 - [ ] P4 可靠执行
@@ -353,6 +362,19 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
   - Gateway：`/health/ready` 真实检查数据库、Redis 与记账 worker 状态；
     `deno task test` 126 passed / 0 failed / 13 ignored（含新增 11 例）。
   - 三模块 fmt/lint/type check 通过；根门禁 `check-ci` 通过（见提交与 CI 记录）。
-- [ ] P1 升级排空的过渡能力
+- **P1 排空过渡能力（2026-10-20）**：Core 维护/排空内部 API、维护中间件放行
+  `/api/v1/internal/*`、Judge `judge_version` 心跳、容器内 `noj maintain` 与
+  `noj-cli maintain`、`update` 自动 enter/wait/exit 及首批过渡策略落地，详见
+  [P1d Agent Note](../../../.agents/notes/implemented/architecture/2026-10-20-maintenance-drain-transitional.md)。
+  - Core：`bash scripts/test-domain.sh system`（隔离 Redis DB）174 passed / 0 failed；
+    `bash scripts/test-shared.sh` 317 passed / 0 failed / 16 ignored（含新增 22 例）。
+  - CLI：`deno task test` 809 passed / 0 failed / 4 ignored（含 maintain、drain 编排与
+    update 失败路径新增 38 例）。
+  - Judge：`cargo test --lib metrics` 3 passed；`cargo clippy --all-targets -- -D warnings` 通过。
+  - 门禁：`check-ci` 217 passed / 0 failed；`check:config-usage`（144 键）、
+    `check:domains`、`gen-route-catalog --check`（+3 内部路由）、
+    `check-write-rate-limits`（内部凭据端点 exempt 登记）均通过。
+  - 环境说明：本机 plain `test-domain.sh system` 曾因共享 Redis 被其它后台部署消费
+    `noj:search:index` 出现 1 项环境性失败；隔离 `REDIS_URL=.../15` 后全绿，与本改动无关。
 
 验证记录按批次追加到本清单下方；远程 CI 结果以对应 PR 的当前检查为准，不提前记绿。

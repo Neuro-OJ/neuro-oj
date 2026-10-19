@@ -13,6 +13,8 @@ export interface RunContainerOptions {
   service: string;
   /** 容器内 CLI 的子命令与参数。 */
   command: string[];
+  /** 以 `--no-deps` 运行（不创建/启动依赖服务）。 */
+  noDeps?: boolean;
   /** 仅打印将执行的命令，不实际执行。 */
   dryRun?: boolean;
   /** 输出渲染后的命令（默认 console.log）。 */
@@ -34,6 +36,7 @@ export async function runInContainer(
     envFile,
     service: options.service,
     command: options.command,
+    noDeps: options.noDeps,
   });
 
   if (options.dryRun) {

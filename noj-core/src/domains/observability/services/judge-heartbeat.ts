@@ -12,6 +12,8 @@ const JUDGE_HEARTBEAT_PREFIX = "noj:observability:judge:";
 
 interface JudgeHeartbeat {
   schema_version?: number;
+  /** Judge Worker 自身版本号（来自 Cargo.toml，P1d 起写入心跳）。 */
+  judge_version?: string;
   active_tasks?: number;
   max_concurrent_tasks?: number;
   completed_tasks_total?: number;
@@ -51,6 +53,83 @@ export function emptyJudgeSnapshot(): JudgeSnapshot {
     work_dir_bytes: 0,
     last_seen_at: null,
   };
+}
+
+/** 单个 Judge Worker 的心跳报告（逐节点展示用的最小投影）。 */
+export interface JudgeNodeReport {
+  /** 实例标识，来自 Redis key 的 `noj:observability:judge:<instance_id>` 后缀。 */
+  instance_id: string;
+  /** Judge Worker 版本号；旧版本心跳无该字段。 */
+  judge_version?: string;
+  /** 调度协议版本；v1 起携带资源池容量信息。 */
+  scheduling_version?: number;
+  /** 共享硬件资源组名（v1 起）。 */
+  resource_group?: string;
+  /** 当前活跃任务数。 */
+  active_tasks: number;
+  /** 最大并发任务数。 */
+  max_concurrent_tasks: number;
+  /** 心跳写入时间（毫秒时间戳）。 */
+  updated_at_ms?: number;
+}
+
+/**
+ * 逐节点读取 Judge Worker 心跳报告（不聚合）。
+ *
+ * 与 `readJudgeHeartbeats` 共用 key 前缀与容错口径：SCAN 上限 1000，
+ * malformed 心跳忽略；结果按 instance_id 排序，保证同一批心跳输出稳定。
+ *
+ * 仅由组合根（app.ts）注入给排空状态服务——system 域不得直接 import
+ * observability 域（域边界门禁）。
+ *
+ * @param redis 已就绪的 Redis 连接
+ * @returns 逐节点心跳报告（无 worker 时为空数组）
+ */
+export async function readJudgeNodeReports(
+  redis: ReturnType<typeof getRedis>,
+): Promise<JudgeNodeReport[]> {
+  const reports: JudgeNodeReport[] = [];
+  let cursor = "0";
+  let scanned = 0;
+  do {
+    const [nextCursor, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      `${JUDGE_HEARTBEAT_PREFIX}*`,
+      "COUNT",
+      100,
+    );
+    cursor = nextCursor;
+    for (const key of keys) {
+      if (++scanned > 1000) break;
+      const raw = await redis.get(key);
+      if (!raw) continue;
+      try {
+        const hb = JSON.parse(raw) as JudgeHeartbeat;
+        reports.push({
+          instance_id: key.slice(JUDGE_HEARTBEAT_PREFIX.length),
+          ...(typeof hb.judge_version === "string" && hb.judge_version
+            ? { judge_version: hb.judge_version }
+            : {}),
+          ...(typeof hb.scheduling_version === "number"
+            ? { scheduling_version: hb.scheduling_version }
+            : {}),
+          ...(typeof hb.resource_group === "string"
+            ? { resource_group: hb.resource_group }
+            : {}),
+          active_tasks: numberOrZero(hb.active_tasks),
+          max_concurrent_tasks: numberOrZero(hb.max_concurrent_tasks),
+          ...(typeof hb.updated_at_ms === "number"
+            ? { updated_at_ms: hb.updated_at_ms }
+            : {}),
+        });
+      } catch {
+        // malformed 心跳忽略（与聚合读取同口径）
+      }
+    }
+    if (scanned > 1000) break;
+  } while (cursor !== "0");
+  return reports.sort((a, b) => a.instance_id.localeCompare(b.instance_id));
 }
 
 export async function readJudgeHeartbeats(

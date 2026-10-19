@@ -52,6 +52,11 @@ import {
   WAIT_FAILURE_HINT,
 } from "./lifecycle/steps.ts";
 import { configuredVersion } from "./release.ts";
+import type {
+  DrainContext,
+  DrainLifecycle,
+  DrainResult,
+} from "./lifecycle/drain.ts";
 import { PRODUCTION_MARKERS } from "../profile.ts";
 
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
@@ -3623,9 +3628,9 @@ Deno.test("uninstall --json：stdout 只有 JSON 文档，人类文字改道 std
 // 2. **顺序**：备份 → pull → wait → metadata（索引比较）；备份失败**不得** pull；
 // 3. **两段式配置**：升级成功前 `.env.prod` 逐字节不变，成功后一次性提交。
 
-/** 一次升级编排事件（备份 / 同步 / compose 调用同处一条时间轴，便于索引比较）。 */
+/** 一次升级编排事件（备份 / 同步 / compose / drain 同处一条时间轴，便于索引比较）。 */
 interface UpdateEvent {
-  kind: "backup" | "sync" | "run" | "delete";
+  kind: "backup" | "sync" | "run" | "delete" | "drain";
   detail: string;
 }
 
@@ -4475,6 +4480,234 @@ Deno.test("update：升级时 prepare_and_check 与 install 同源（六步前�
     assertStringIncludes(events[config]!.detail, "compose --env-file");
     assertStringIncludes(events[config]!.detail, "-f");
     assertEquals(events[config]!.detail.includes("--profile judge"), false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+// ── P1d：update 自动排空（注入 fake drain）───────────────────────────
+//
+// 自动排空的编排语义：验签后、启动目标栈前 enter+wait；目标栈健康后 exit。
+// 全部经注入的 {@link DrainLifecycle}（不起容器）；事件进同一条时间轴以便断言顺序。
+
+/** 造一个把 enter/wait/exit 记进事件时间轴的 fake drain。 */
+function makeDrain(
+  events: UpdateEvent[],
+  overrides: Partial<Record<"enter" | "wait" | "exit", DrainResult>> = {},
+  contexts: DrainContext[] = [],
+): DrainLifecycle {
+  const record = (
+    kind: "enter" | "wait" | "exit",
+    context: DrainContext,
+  ): Promise<DrainResult> => {
+    events.push({ kind: "drain", detail: kind });
+    contexts.push(context);
+    return Promise.resolve(
+      overrides[kind] ?? { ok: true, code: null, error: null },
+    );
+  };
+  return {
+    enter: (context) => record("enter", context),
+    wait: (context) => record("wait", context),
+    exit: (context) => record("exit", context),
+  };
+}
+
+/** update 的公共注入（与既有 update 用例同源）。 */
+function updateBase(
+  dir: string,
+  events: UpdateEvent[],
+  io: RenderIO,
+) {
+  return {
+    dir,
+    runner: makeUpdateRunner(events),
+    io,
+    color: NO_COLOR,
+    socketExists: SOCKET_PRESENT,
+    processEnv: {
+      NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+    },
+    warn: () => {},
+    syncFiles: () => Promise.resolve(),
+    backup: () =>
+      Promise.resolve({ ok: true, path: "/tmp/x.nojbackup", error: null }),
+  };
+}
+
+Deno.test("P1d update：drain enter/wait 在 up 前、exit 在 up（与 nginx 刷新）后", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      ...updateBase(dir, events, io),
+      drain: makeDrain(events),
+    });
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    const enter = indexOfUpdate(events, "drain", "enter");
+    const wait = indexOfUpdate(events, "drain", "wait");
+    const up = indexOfUpdate(events, "run", "up -d --wait");
+    const nginx = indexOfUpdate(events, "run", "--force-recreate");
+    const exit = indexOfUpdate(events, "drain", "exit");
+    assert(enter >= 0, "必须调用 drain.enter");
+    assert(wait > enter, "wait 必须在 enter 之后");
+    assert(up > wait, "启动目标栈必须在排空完成之后");
+    assert(exit > up, "exit 必须在 up 之后");
+    assert(exit > nginx, "exit 必须在反向代理刷新之后");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1d update：drain wait 失败 → 不 up、尽力 exit、暂存配置不提交", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const envFile = join(dir, ENV_FILE);
+    const before = await Deno.readTextFile(envFile);
+    const events: UpdateEvent[] = [];
+    const contexts: DrainContext[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      ...updateBase(dir, events, io),
+      latest: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.10.0")]),
+      drain: makeDrain(
+        events,
+        { wait: { ok: false, code: "timeout", error: "等待超时" } },
+        contexts,
+      ),
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "等待排空失败");
+    // 排空跑在**目标**配置上：--env-file 必须是暂存文件（升级失败后才被清理）
+    assertStringIncludes(
+      contexts[0]!.compose.envFile ?? "",
+      ".env.prod.latest",
+      "drain 必须使用暂存的目标配置，而不是旧 .env.prod",
+    );
+    assertEquals(contexts[0]!.compose.composeFile, join(dir, COMPOSE));
+    assertEquals(
+      events.some((e) => e.kind === "run" && e.detail.includes("up -d")),
+      false,
+      "排空失败不得启动目标栈",
+    );
+    assert(indexOfUpdate(events, "drain", "exit") >= 0, "必须尽力 exit");
+    assertEquals(
+      await Deno.readTextFile(envFile),
+      before,
+      "排空失败不得提交暂存配置",
+    );
+    const names: string[] = [];
+    for await (const entry of Deno.readDir(dir)) names.push(entry.name);
+    assertEquals(
+      names.filter((n) => n.startsWith(".env.prod.latest")),
+      [],
+      "失败路径必须清理暂存配置",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1d update：waitForStack 失败 + drain exit 失败 → error 显式报告残留维护态", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      ...updateBase(dir, events, io),
+      runner: makeUpdateRunner(
+        events,
+        (args) =>
+          args.includes("--wait")
+            ? { code: 1, stderr: "unhealthy" }
+            : undefined,
+      ),
+      drain: makeDrain(events, {
+        exit: { ok: false, code: "http_error", error: "500" },
+      }),
+    });
+    assertEquals(result.exitCode, 1);
+    // 基础失败原因仍在
+    assertStringIncludes(result.error ?? "", WAIT_FAILURE_HINT);
+    // exit 失败不得被丢弃：必须显式报告残留维护态与人工恢复命令
+    assertStringIncludes(result.error ?? "", "维护模式");
+    assertStringIncludes(result.error ?? "", "noj-cli maintain exit");
+    // 目标栈失败后确实尝试过 exit
+    assert(indexOfUpdate(events, "drain", "exit") >= 0);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1d update：旧 Core endpoint_unavailable → 告警并继续升级", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const events: UpdateEvent[] = [];
+    const { io, stdout } = captureRenderIO();
+    const unreachable: DrainResult = {
+      ok: false,
+      code: "endpoint_unavailable",
+      error: "404",
+    };
+    const result = await update({
+      ...updateBase(dir, events, io),
+      drain: makeDrain(events, { enter: unreachable, exit: unreachable }),
+    });
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(
+      indexOfUpdate(events, "drain", "wait"),
+      -1,
+      "旧 Core 没有端点，不得尝试 wait",
+    );
+    assert(indexOfUpdate(events, "run", "up -d --wait") >= 0, "必须继续升级");
+    assertStringIncludes(stdout.join(""), "旧版本");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1d update：--skip-drain 完全不调用 drain", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      ...updateBase(dir, events, io),
+      drain: makeDrain(events),
+      skipDrain: true,
+    });
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(events.filter((e) => e.kind === "drain"), []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1d update：drain exit 失败 → 服务已起但显式报告半完成", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const envFile = join(dir, ENV_FILE);
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      ...updateBase(dir, events, io),
+      latest: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.10.0")]),
+      drain: makeDrain(events, {
+        exit: { ok: false, code: "http_error", error: "500" },
+      }),
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "维护模式");
+    assertStringIncludes(result.error ?? "", "noj-cli maintain exit");
+    assert(
+      indexOfUpdate(events, "run", "up -d --wait") >= 0,
+      "目标栈必须已启动（半完成的另一半）",
+    );
+    // 升级本身成功：暂存配置照常提交（否则运行版本与 .env.prod 不一致）
+    assertEquals(await configuredVersion(envFile), "v0.10.0");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

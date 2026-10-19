@@ -21,6 +21,9 @@ x-core-env: &core-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
   TFA_ENCRYPTION_KEY: ${TFA_ENCRYPTION_KEY:?TFA_ENCRYPTION_KEY is required}
+  # 内部维护/排空 API 的服务凭据（可选 bootstrap 配置）：未设置时 drain 端点
+  # 返回 503，`noj-cli update` 的自动排空不可用（需 --skip-drain）。
+  NOJ_INTERNAL_SERVICE_TOKEN: ${NOJ_INTERNAL_SERVICE_TOKEN:-}
   OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
   OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
   OAUTH_OIDC_ISSUER_URL: ${OAUTH_OIDC_ISSUER_URL:-}

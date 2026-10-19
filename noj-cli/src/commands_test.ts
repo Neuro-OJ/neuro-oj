@@ -194,6 +194,19 @@ Deno.test("Tier 3 声明的顶层名必须都能被容器路由识别", () => {
   );
 });
 
+Deno.test("P1d: maintain 作为 Tier 3 命令声明完整且可从 help 发现", () => {
+  const maintain = findCommand("maintain");
+  assert(maintain !== undefined, "必须声明 maintain");
+  assertEquals(maintain.tier, "tier3");
+  const subs = new Set((maintain.subcommands ?? []).map((s) => s.name));
+  for (const sub of ["enter", "status", "wait", "exit"]) {
+    assert(subs.has(sub), `maintain 子命令声明缺少 ${sub}`);
+  }
+  // 顶层 help 必须可发现子命令（P1d 的可操作性：人工干预入口）
+  const text = renderCommandList();
+  assert(text.includes("maintain enter"), "顶层 help 应可发现 maintain enter");
+});
+
 // ── T23：双模态残留门禁 ──────────────────────────────────────────
 //
 // M5/M6/M7 的验收"rg 残留为空"在此**门禁化**——只靠一次性 grep 无法防止
@@ -201,7 +214,9 @@ Deno.test("Tier 3 声明的顶层名必须都能被容器路由识别", () => {
 // 而非文本面：命令注册表与 help 里不得再出现旧命令。
 
 Deno.test("T23 残留门禁: 命令注册表不含已删除的旧命令", () => {
-  const removed = ["stack", "deploy", "maintain", "run-server", "doctor"];
+  // P1d：`maintain` 已作为 Tier 3 容器命令重新引入（维护模式/排空），
+  // 不再属于"已删除的旧命令"，故从本清单移除。
+  const removed = ["stack", "deploy", "run-server", "doctor"];
   const declared = COMMANDS.map((c) => c.name);
   for (const name of removed) {
     assertEquals(
@@ -217,7 +232,7 @@ Deno.test("T23 残留门禁: 顶层 help 不列旧命令，且不出现旧分区
   const firstTokens = new Set(
     text.split("\n").map((l) => l.trim().split(/\s+/)[0] ?? ""),
   );
-  for (const name of ["stack", "deploy", "maintain", "run-server", "doctor"]) {
+  for (const name of ["stack", "deploy", "run-server", "doctor"]) {
     assertEquals(
       firstTokens.has(name),
       false,

@@ -56,6 +56,7 @@ import {
   type UpdateResult,
 } from "./lifecycle.ts";
 import type { LifecycleBaseResult } from "./lifecycle.ts";
+import { createDrainLifecycle } from "./lifecycle/drain.ts";
 import {
   type BackupPruneResult,
   type BackupVerifyResult,
@@ -574,6 +575,9 @@ export async function runProdUpdate(
 ): Promise<UpdateResult> {
   const d = prodDeps(deps);
   const passphraseFile = flagValue(args, "--passphrase-file");
+  // P1d：自动排空（--skip-drain 显式关闭；--drain-timeout 调 wait 超时）
+  const skipDrain = hasFlag(args, "--skip-drain");
+  const drainTimeoutSecs = optionalCount(args, "--drain-timeout");
   return await update({
     dir,
     runner: d.runner,
@@ -591,6 +595,13 @@ export async function runProdUpdate(
     backup: (ctx) => runUpgradeBackup(d, ctx, passphraseFile, deps),
     // `--files-only` 语义的部署文件同步：缺省走 T9 downloadReleaseFiles
     syncFiles: undefined,
+    // 默认排空实现：docker compose run --rm --no-deps --entrypoint … core maintain …
+    drain: skipDrain ? undefined : createDrainLifecycle({
+      runner: d.runner,
+      dockerBin: d.processEnv["NOJ_DEPLOY_DOCKER_BIN"],
+    }),
+    skipDrain,
+    drainTimeoutSecs,
   });
 }
 

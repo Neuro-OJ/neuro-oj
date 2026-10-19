@@ -4,6 +4,7 @@ import {
   assertCommandAllowedInProfile,
   detectProfileOrNull,
   dispatchCommand,
+  dispatchContainer,
   EXIT_FAILURE,
   EXIT_OK,
   EXIT_USAGE,
@@ -80,7 +81,6 @@ Deno.test("T23: 已移除的命令返回用法错误 2 并给出可粘贴的替�
   const originalErr = console.error;
   const cases: [string[], string][] = [
     [["deploy", "status"], "已移除"],
-    [["maintain", "logs"], "已移除"],
     [["stack", "up"], "已移除"],
     [["run-server"], "docker compose up -d"],
     [["doctor"], "noj-cli check"],
@@ -787,4 +787,79 @@ Deno.test("problem import: --domain 与包目录原样透传 core 容器", () =>
     ]),
     ["problem", "import", "--domain", "school", "--dir", "/packages"],
   );
+});
+
+// ── P1d：maintain（维护模式/排空）的容器包装 ──────────────────────
+
+Deno.test("P1d: maintain --help 由 CLI 回答（不要求生产目录）", async () => {
+  const original = console.log;
+  let out = "";
+  console.log = (...a: unknown[]) => {
+    out += a.join(" ") + "\n";
+  };
+  try {
+    assertEquals(await run(["maintain", "--help"]), EXIT_OK);
+  } finally {
+    console.log = original;
+  }
+  for (
+    const expected of ["maintain", "enter", "status", "wait", "exit", "--json"]
+  ) {
+    assertEquals(out.includes(expected), true, `help 缺少 ${expected}`);
+  }
+});
+
+Deno.test("P1d: maintain 以 --no-deps 进入容器（--dry-run 可见）", async () => {
+  const dir = makeProductionDir();
+  const original = console.log;
+  let out = "";
+  console.log = (...a: unknown[]) => {
+    out += a.join(" ") + "\n";
+  };
+  try {
+    // CLI 自身选项也进入 match.args（真实分发路径如此），maintain.ts 负责剥离
+    const match = parseContainerCommand([
+      "maintain",
+      "status",
+      "--json",
+      "--install-dir",
+      dir,
+      "--dry-run",
+    ]);
+    assertEquals(match.matched, true);
+    assertEquals(match.noDeps, true);
+    const code = await dispatchContainer(match, [
+      "status",
+      "--json",
+      "--install-dir",
+      dir,
+      "--dry-run",
+    ]);
+    assertEquals(code, EXIT_OK);
+  } finally {
+    console.log = original;
+    Deno.removeSync(dir, { recursive: true });
+  }
+  assertEquals(
+    out.includes(
+      "run --rm --no-deps --entrypoint /app/bin/noj core maintain status --json",
+    ),
+    true,
+    out,
+  );
+});
+
+Deno.test("P1d: maintain 未知子命令 → 宿主机用法错误（不起容器）", async () => {
+  const dir = makeProductionDir();
+  const originalErr = console.error;
+  console.error = () => {};
+  try {
+    assertEquals(
+      await run(["maintain", "bogus", "--install-dir", dir]),
+      EXIT_USAGE,
+    );
+  } finally {
+    console.error = originalErr;
+    Deno.removeSync(dir, { recursive: true });
+  }
 });
