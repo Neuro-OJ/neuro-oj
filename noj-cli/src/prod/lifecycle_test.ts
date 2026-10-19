@@ -4687,3 +4687,306 @@ Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── P1a（2026-10-20 架构整治）：先解析目标发布集、pull、验签，再启动 ──────────
+//
+// 旧实现的三处缺陷（本组用例钉住修复后的不变量）：
+// 1. 顺序：backup → pull → waitForStack（启动）→ verifyImageSignatures（验签在启动后）；
+// 2. 对象：验签读 prepareAndCheck 返回的旧 `.env.prod`，pull/up 读暂存 staged env；
+// 3. 失败语义：验签失败时目标栈已被启动（且 `--latest` 的暂存配置已提交）。
+//
+// 修复后 `ResolvedTargetConfig` 是唯一事实源，序列为
+// 解析目标配置 → 备份 → pull → 验签 → waitForStack → metadata → 提交暂存配置。
+
+/** 目标版本镜像的合法 digest 行（`verifyImageSignatures` 的解析输入）。 */
+const VERIFY_DIGEST_LINE = "Digest: sha256:" + "a".repeat(64) + "\n";
+
+/**
+ * 验签感知的 update runner：`docker buildx imagetools inspect` 返回合法 digest，
+ * `cosign verify` 的退出码可注入（模拟验签失败）。
+ */
+function makeSignedUpdateRunner(
+  events: UpdateEvent[],
+  opts: {
+    /** cosign verify 的退出码（0 = 通过）。 */
+    verifyCode?: number;
+    /** 每次 run 的旁路记录（断言镜像引用 / --env-file 用）。 */
+    onRun?: (cmd: string, args: string[]) => void;
+  } = {},
+): CommandRunner {
+  return {
+    run(cmd, args) {
+      events.push({ kind: "run", detail: cmd + " " + args.join(" ") });
+      opts.onRun?.(cmd, args);
+      if (cmd === "docker" && args[0] === "buildx") {
+        return Promise.resolve({
+          code: 0,
+          stdout: VERIFY_DIGEST_LINE,
+          stderr: "",
+        });
+      }
+      if (cmd === "cosign") {
+        return Promise.resolve({
+          code: opts.verifyCode ?? 0,
+          stdout: "",
+          stderr: "",
+        });
+      }
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(): SpawnHandle {
+      throw new Error("update 测试不 spawn");
+    },
+  };
+}
+
+Deno.test("P1a update：成功升级时事件顺序为 备份 → pull → 验签 → 启动（verify 早于 up）", async () => {
+  const dir = await makeInstalledDir({
+    NOJ_ENFORCE_IMAGE_SIGNATURES: "true",
+  });
+  try {
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const result = await update({
+      dir,
+      runner: makeSignedUpdateRunner(events),
+      io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+      syncFiles: () => Promise.resolve(),
+      backup: () => {
+        events.push({ kind: "backup", detail: "v0.9.5" });
+        return Promise.resolve({
+          ok: true,
+          path: "/tmp/x.nojbackup",
+          error: null,
+        });
+      },
+      now: new Date("2026-10-20T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    const backup = indexOfUpdate(events, "backup", "v0.9.5");
+    const pull = indexOfUpdate(events, "run", " pull");
+    const inspect = indexOfUpdate(events, "run", "imagetools inspect");
+    const verify = indexOfUpdate(events, "run", "cosign verify");
+    const up = indexOfUpdate(events, "run", "up -d --wait");
+    assert(backup >= 0, "必须先备份");
+    assert(pull > backup, "备份必须早于 pull");
+    assert(inspect > pull, "镜像 digest 检查必须在 pull 之后");
+    assert(verify > inspect, "cosign 校验必须在 digest 检查之后");
+    assert(up > verify, "验签必须**早于**启动目标栈（旧实现的缺陷之一）");
+    assert(up > pull, "启动必须在 pull 之后");
+    // 部署元数据在启动之后记录，且版本、digest 来自同一份目标配置
+    const manifest = await Deno.readTextFile(
+      join(dir, "backups/current-deployment.txt"),
+    );
+    assertStringIncludes(manifest, "version=v0.9.5");
+    assertStringIncludes(manifest, "noj-server sha256:");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1a update --latest：验签失败 → 绝无 up、不提交暂存配置、不记录部署元数据", async () => {
+  const dir = await makeInstalledDir({
+    NOJ_ENFORCE_IMAGE_SIGNATURES: "true",
+  });
+  try {
+    const envFile = join(dir, ENV_FILE);
+    const before = await Deno.readTextFile(envFile);
+    const events: UpdateEvent[] = [];
+    const { io, stderr } = captureRenderIO();
+    const backupPath = "/tmp/x.nojbackup";
+    const result = await update({
+      dir,
+      latest: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.10.0")]),
+      // 第一轮 digest 检查通过、cosign 校验失败：验签步骤必然被走到并失败。
+      runner: makeSignedUpdateRunner(events, { verifyCode: 1 }),
+      io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+      syncFiles: () => Promise.resolve(),
+      backup: () =>
+        Promise.resolve({ ok: true, path: backupPath, error: null }),
+    });
+
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "签名校验失败");
+    assertStringIncludes(stderr.join(""), "签名校验失败");
+    assertEquals(result.backupPath, backupPath, "备份确实执行过");
+    // ① pull 已发生（序列是 pull → 验签），但**没有任何 up**
+    assertEquals(
+      events.some((e) => e.kind === "run" && e.detail.includes(" pull")),
+      true,
+      "验签前应已按顺序 pull 目标镜像",
+    );
+    assertEquals(
+      events.some((e) => e.kind === "run" && e.detail.includes("up -d")),
+      false,
+      "验签失败后绝不允许启动目标栈",
+    );
+    assertEquals(
+      events.some((e) =>
+        e.kind === "run" && e.detail.includes("--force-recreate")
+      ),
+      false,
+      "验签失败后绝不允许刷新反向代理（那也是 up）",
+    );
+    // ② 没有 commitConfigVersion：.env.prod 逐字节不变（仍是旧版本）
+    assertEquals(await Deno.readTextFile(envFile), before);
+    assertStringIncludes(before, "NOJ_VERSION=v0.9.5");
+    // ③ 暂存配置被清理，不留下"待提交"的半成品
+    const names: string[] = [];
+    for await (const entry of Deno.readDir(dir)) names.push(entry.name);
+    assertEquals(names.filter((n) => n.startsWith(".env.prod.latest")), []);
+    // ④ 不记录成功元数据
+    await assertRejects(
+      () => Deno.readTextFile(join(dir, "backups/current-deployment.txt")),
+      Deno.errors.NotFound,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1a update --latest：验签镜像用目标版本、pull/up 读同一份暂存 env（唯一目标配置）", async () => {
+  const dir = await makeInstalledDir({
+    NOJ_ENFORCE_IMAGE_SIGNATURES: "true",
+  });
+  try {
+    const envFile = join(dir, ENV_FILE);
+    const images: string[] = [];
+    const composeEnvFiles: string[] = [];
+    const envTextDuringCompose: string[] = [];
+    const oldEnvDuringVerify: string[] = [];
+    const events: UpdateEvent[] = [];
+    const { io } = captureRenderIO();
+    const runner = makeSignedUpdateRunner(events, {
+      onRun: (cmd, args) => {
+        const at = args.indexOf("--env-file");
+        if (cmd === "docker" && at >= 0) {
+          const used = args[at + 1] ?? "";
+          // 只关心 pull 与两段 up：prepareAndCheck 的 config 仍校验真实 .env.prod。
+          if (args.includes("pull") || args.includes("up")) {
+            composeEnvFiles.push(used);
+            // 调用发生**当场**读取该 env 文件：内容必须是目标版本（而非旧 .env.prod）。
+            envTextDuringCompose.push(Deno.readTextFileSync(used));
+          }
+        }
+        if (args[0] === "buildx") {
+          images.push(args[3] ?? "");
+          // 验签发生时旧 .env.prod 尚未提交（两段式）。
+          oldEnvDuringVerify.push(Deno.readTextFileSync(envFile));
+        }
+      },
+    });
+    const result = await update({
+      dir,
+      latest: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.10.0")]),
+      runner,
+      io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+      syncFiles: () => Promise.resolve(),
+      backup: () => Promise.resolve({ ok: true, path: null, error: null }),
+    });
+
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    // ① 验签的镜像引用用**目标版本** v0.10.0（不是旧 .env.prod 的 v0.9.5）
+    assertEquals(images.length, 3, "judge 关闭时校验 3 个生产镜像");
+    for (const image of images) {
+      assertEquals(
+        image.endsWith(":v0.10.0"),
+        true,
+        "验签必须以目标版本镜像引用进行，实得：" + image,
+      );
+    }
+    // 验签时旧 .env.prod 仍是旧版本（目标配置来自暂存文件，而非已提交的旧配置）
+    for (const text of oldEnvDuringVerify) {
+      assertStringIncludes(text, "NOJ_VERSION=v0.9.5");
+    }
+    // ② pull 与两段 up 全部读**同一个**暂存 env 文件，且当时内容为目标版本
+    assert(composeEnvFiles.length >= 3, "至少 pull + 两段 up");
+    const staged = composeEnvFiles.filter((p) => p !== envFile);
+    assertEquals(
+      staged.length,
+      composeEnvFiles.length,
+      "pull/up 不得使用真实 .env.prod（那会用旧 NOJ_VERSION 拉镜像/起栈）",
+    );
+    assertEquals(
+      new Set(composeEnvFiles).size,
+      1,
+      "pull 与 up 必须读同一份目标配置，实得：" + composeEnvFiles.join(" | "),
+    );
+    assertEquals(envTextDuringCompose.length, composeEnvFiles.length);
+    for (const text of envTextDuringCompose) {
+      assertStringIncludes(text, "NOJ_VERSION=v0.10.0");
+    }
+    // ③ 成功后暂存配置才被提交为 .env.prod（仍是两段式）
+    assertStringIncludes(
+      await Deno.readTextFile(envFile),
+      "NOJ_VERSION=v0.10.0",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("P1a install：验签（步骤 6）先于 pull/up（步骤 7）——安装路径无同类缺陷", async () => {
+  const dir = await makeInstalledDir({ NOJ_ENFORCE_IMAGE_SIGNATURES: "true" });
+  try {
+    const events: string[] = [];
+    const calls: string[] = [];
+    const records: RunnerCall[] = [];
+    const passphrase = join(dir, "backup-passphrase");
+    await writePassphraseFile(passphrase);
+
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO([], events),
+      runner: makeRunner(
+        records,
+        (cmd, args) =>
+          cmd === "docker" && args[0] === "buildx"
+            ? { stdout: VERIFY_DIGEST_LINE }
+            : undefined,
+      ),
+      fetcher: makeFetcher(calls, events),
+      nonInteractive: true,
+      passphraseFile: passphrase,
+      processEnv: {},
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+    });
+
+    assertEquals(result.verified.length, 3, "judge 关闭时校验 3 个生产镜像");
+    const verify = records.findIndex((r) => r.cmd === "cosign");
+    const pull = records.findIndex((r) => r.args.includes("pull"));
+    const up = records.findIndex((r) => r.args.includes("up"));
+    assert(verify >= 0, "install 必须验签");
+    assert(pull > verify, "install 验签必须先于 pull");
+    assert(up > verify, "install 验签必须先于启动目标栈");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

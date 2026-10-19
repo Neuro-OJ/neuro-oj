@@ -2,7 +2,7 @@
 
 日期：2026-10-20
 状态：已批准，按 P0–P8 批次实施。本文件是实施、验收与交接的单一事实源；批次完成后在
-[跟踪清单](#8-跟踪清单)勾选并补充验证记录。
+[跟踪清单](#7-跟踪清单)勾选并补充验证记录。
 
 ## 1. 目标与既定取舍
 
@@ -325,7 +325,7 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
 - [x] 已固定受审版本与基线归属（2026-10-20，受审工作副本父提交 `fbc40624`；`main` 为
       `2f488599`；两者为待协调的并行链，详见
       [P0 基线文档](../../engineering/architecture-baseline-2026-10-20.md)）
-- [ ] P1 安全顺序（验签前置、迁移锁失败终止、Gateway 真实探针）——三轮修复进行中
+- [x] P1 安全顺序（验签前置、迁移锁失败终止、Gateway 真实探针）
 - [ ] P1 升级排空过渡能力
 - [ ] P2 运行与测试底座
 - [ ] P3 业务所有权
@@ -343,5 +343,16 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
   `gen-route-catalog.ts --check` 通过（64 个路由文件 / 355 条路由）、
   `gen-event-catalog.ts --check` 通过（9 个 SSE 频道）、
   `check-file-size.ts` 通过。
+- **P1 安全顺序（2026-10-20）**：三项修复 + 故障测试落地，详见
+  [P1 Agent Note](../../../.agents/notes/implemented/architecture/2026-10-20-p1-safety-ordering-fixes.md)。
+  - CLI：升级序列改为“解析目标配置 → 备份 → pull → 验签 → 启动 → 元数据 → 提交暂存
+    配置”，验签失败绝无 `up`/不提交暂存/不写元数据；`deno task test` 771 passed /
+    0 failed / 4 ignored。
+  - Core：迁移锁缺失/创建失败/查询抛错/等待超时统一 `MigrationLockError`，绝不执行
+    DDL；`bash scripts/test-shared.sh` 306 passed / 0 failed / 16 ignored（含新增 6 例）。
+  - Gateway：`/health/ready` 真实检查数据库、Redis 与记账 worker 状态；
+    `deno task test` 126 passed / 0 failed / 13 ignored（含新增 11 例）。
+  - 三模块 fmt/lint/type check 通过；根门禁 `check-ci` 通过（见提交与 CI 记录）。
+- [ ] P1 升级排空的过渡能力
 
 验证记录按批次追加到本清单下方；远程 CI 结果以对应 PR 的当前检查为准，不提前记绿。
