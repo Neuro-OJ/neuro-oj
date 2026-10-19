@@ -22,6 +22,7 @@ export interface DomainSubmission {
   language?: string;
   status?: string;
   code?: string | null;
+  file_name?: string | null;
   submitted_version?: number | null;
   can_view_source?: boolean;
   can_view_answers?: boolean;

@@ -361,12 +361,27 @@ export async function consumeDomainInvitation(
     Date.parse(invite.expires_at) <= Date.now() ||
     invite.max_uses !== null && invite.used_count >= invite.max_uses
   ) throw new NotFoundError("邀请已过期或使用人数已满");
-  await assertInvitationIssuerActive(
+  const authority = await assertInvitationIssuerActive(
     domain.slug,
     invite.created_by,
     executor,
     invite.classroom_id,
   );
+  // 班级邀请不能让无域成员管理权的教练绕过域加入审批。
+  if (!authority.platform_admin && !authority.domain_inviter) {
+    const [currentMember] = await executor.select({ id: domainMemberships.id })
+      .from(domainMemberships).where(and(
+        eq(domainMemberships.domain_id, domain.id),
+        eq(domainMemberships.user_id, userId),
+        eq(domainMemberships.status, "active"),
+      ));
+    if (!currentMember) {
+      throw new ForbiddenError(
+        "请先由域负责人批准加入本域，再使用班级邀请",
+        "DOMAIN_MEMBERSHIP_REQUIRED",
+      );
+    }
+  }
   const [existing] = invite.classroom_id
     ? await executor.select({ status: classroomMemberships.status }).from(
       classroomMemberships,
@@ -385,7 +400,9 @@ export async function consumeDomainInvitation(
       ),
     );
   if (existing?.status === "active") return result;
-  await addDomainMember(executor, domain.id, userId, true);
+  if (authority.platform_admin || authority.domain_inviter) {
+    await addDomainMember(executor, domain.id, userId, true);
+  }
   if (invite.classroom_id) {
     await joinInvitedClassroom(
       executor,

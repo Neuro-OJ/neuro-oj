@@ -35,8 +35,7 @@ export async function loadTeachingTextSource(
   executor: Executor = getDb(),
   lock = false,
 ) {
-  const student = access.classMembership?.role === "student" ||
-    !access.classMembership && !access.managesDomain;
+  const student = !access.managesDomain;
   if (!student) assertClassroomCapability(access, "submissions:read");
   const result = await executor.execute(
     sql`SELECT s.id, s.user_id, s.code, s.file_name, s.artifact_storage_url

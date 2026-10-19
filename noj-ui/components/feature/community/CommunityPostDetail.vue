@@ -24,7 +24,7 @@ const { userBanned } = useBanStatus()
 
 interface PostDetail {
   post: CommunityPost
-  author: { id: string; username: string }
+  author: import('~/utils/user-identity').UserSummary
   problem_title: string | null
   problem_reference: DomainProblemReference | null
   likes: number
@@ -323,7 +323,10 @@ watch(initialData, (value) => {
         </template>
         <template v-else>
           <h1 v-if="post.post.title" class="mb-5 text-2xl font-bold">{{ post.post.title }}</h1>
-          <MarkdownRenderer :content="post.post.content" :allow-external-images="config?.external_images_enabled === true" />
+          <AnnotationSurface v-if="post.post.type === 'solution' && scope.slug" :slug="scope.slug" :target="{ kind: 'solution', post_id: post.post.id }">
+            <MarkdownRenderer :content="post.post.content" :allow-external-images="config?.external_images_enabled === true" />
+          </AnnotationSurface>
+          <MarkdownRenderer v-else :content="post.post.content" :allow-external-images="config?.external_images_enabled === true" />
         </template>
 
         <div class="mt-6 flex gap-3 border-t border-border pt-4">

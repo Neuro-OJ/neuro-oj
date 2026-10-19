@@ -91,9 +91,9 @@ Deno.test({
       user_id: readerId,
       role_id: readerRoleId,
     });
-    await grantDefaultCatalogRole(userId, "editor");
+    await grantDefaultCatalogRole(userId, "coach");
     const adminToken = await signToken({ sub: adminId, role: "admin" });
-    await grantDefaultCatalogRole(userId, "editor");
+    await grantDefaultCatalogRole(userId, "coach");
     const userToken = await signToken({ sub: userId, role: "user" });
     const readerToken = await signToken({ sub: readerId, role: "user" });
 

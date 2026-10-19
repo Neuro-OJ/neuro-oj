@@ -12,7 +12,7 @@ import {
   submissions,
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
-import { setMemberRoles } from "../../../workspace/index.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 import { recomputeSubmissionProjection } from "../../../submission/index.ts";
 import {
   createAssignment,
@@ -125,14 +125,7 @@ Deno.test("教学提交：教练全部同域提交、助教独立源码授权、
       ),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.assistant, 1, {});
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -144,14 +137,7 @@ Deno.test("教学提交：教练全部同域提交、助教独立源码授权、
       ),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["submissions:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   assertEquals(
     (await getClassroomStudentSubmission(
       f.school.slug,
@@ -162,17 +148,8 @@ Deno.test("教学提交：教练全部同域提交、助教独立源码授权、
     )).code,
     "student source",
   );
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 3, {
-    role: "coach",
-  });
-  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 4);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.owner,
-    f.teacher,
-    5,
-  );
+  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 2);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -252,91 +229,24 @@ Deno.test("教学提交：学生离班保留作业依据，不开放发布前练
   assertEquals("code" in list.data[0], false);
 });
 
-Deno.test("教学提交：进行中比赛服从实际组织权限，教练身份不能绕过保密", async () => {
+Deno.test("教学提交：域教练按本域比赛管理权限读取，作者标记不能替代当前域角色", async () => {
   const f = await assignmentFixture(), contestId = crypto.randomUUID();
   await f.db.insert(contests).values({
-    id: contestId,
-    domain_id: f.school.id,
-    title: "保密比赛",
-    type: "oi",
-    created_by: f.owner,
-    start_time: new Date(Date.now() - 60000).toISOString(),
-    end_time: new Date(Date.now() + 60000).toISOString(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    id: contestId, domain_id: f.school.id, title: "保密比赛", type: "oi", created_by: f.owner,
+    start_time: new Date(Date.now() - 60000).toISOString(), end_time: new Date(Date.now() + 60000).toISOString(),
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   });
   const id = await code(f, { contestId });
-  assertEquals(
-    (await listClassroomStudentSubmissions(
-      f.school.slug,
-      f.classroom.id,
-      f.student,
-      f.teacher,
-    )).total,
-    0,
-  );
-  await assertRejects(
-    () =>
-      getClassroomStudentSubmission(
-        f.school.slug,
-        f.classroom.id,
-        id,
-        "submission",
-        f.teacher,
-      ),
-    NotFoundError,
-  );
-  assertEquals(
-    (await getClassroomStudentSubmission(
-      f.school.slug,
-      f.classroom.id,
-      id,
-      "submission",
-      f.owner,
-    )).code,
-    "student source",
-  );
-  await f.db.update(contests).set({ created_by: f.teacher }).where(
-    eq(contests.id, contestId),
-  );
-  await assertRejects(
-    () =>
-      getClassroomStudentSubmission(
-        f.school.slug,
-        f.classroom.id,
-        id,
-        "submission",
-        f.teacher,
-      ),
-    NotFoundError,
-  );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, [
-    "educator",
-    "editor",
-  ]);
-  assertEquals(
-    (await getClassroomStudentSubmission(
-      f.school.slug,
-      f.classroom.id,
-      id,
-      "submission",
-      f.teacher,
-    )).code,
-    "student source",
-  );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["educator"]);
-  await f.db.update(contests).set({
-    end_time: new Date(Date.now() - 1000).toISOString(),
-  }).where(eq(contests.id, contestId));
-  assertEquals(
-    (await listClassroomStudentSubmissions(
-      f.school.slug,
-      f.classroom.id,
-      f.student,
-      f.teacher,
-    )).total,
-    1,
-  );
+  assertEquals((await listClassroomStudentSubmissions(f.school.slug, f.classroom.id, f.student, f.teacher)).total, 1);
+  assertEquals((await getClassroomStudentSubmission(f.school.slug, f.classroom.id, id, "submission", f.teacher)).code, "student source");
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
+  await assertRejects(() => getClassroomStudentSubmission(f.school.slug, f.classroom.id, id, "submission", f.teacher), NotFoundError);
+  await f.db.update(contests).set({ created_by: f.teacher }).where(eq(contests.id, contestId));
+  await assertRejects(() => getClassroomStudentSubmission(f.school.slug, f.classroom.id, id, "submission", f.teacher), NotFoundError);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "coach");
+  assertEquals((await getClassroomStudentSubmission(f.school.slug, f.classroom.id, id, "submission", f.teacher)).code, "student source");
+  await f.db.update(contests).set({ end_time: new Date(Date.now() - 1000).toISOString() }).where(eq(contests.id, contestId));
+  assertEquals((await listClassroomStudentSubmissions(f.school.slug, f.classroom.id, f.student, f.teacher)).total, 1);
 });
 
 Deno.test("教学提交：客观题原答案可读，产物不暴露存储地址；列表和详情均不含评测输出", async () => {

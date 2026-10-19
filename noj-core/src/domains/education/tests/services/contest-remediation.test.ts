@@ -184,7 +184,7 @@ Deno.test("比赛补题：满分不能反推 AC，正式快照沿用冻结尝试
   assertEquals(basis[0].ranking_source, "official");
 });
 
-Deno.test("比赛补题：教练不能越过 OI 保密和本人榜，错误域及学生被拒", async () => {
+Deno.test("比赛补题：域教练使用本域比赛管理权限，错误域及普通学生被拒", async () => {
   const f = await fixture(),
     rule = {
       contest_id: f.contestId,
@@ -201,20 +201,12 @@ Deno.test("比赛补题：教练不能越过 OI 保密和本人榜，错误域�
       previewContestRemediation(f.school.slug, f.classroom.id, f.student, rule),
     ForbiddenError,
   );
-  await assertRejects(
-    () =>
-      previewContestRemediation(f.school.slug, f.classroom.id, f.teacher, rule),
-    ForbiddenError,
-  );
+  assertEquals((await previewContestRemediation(f.school.slug, f.classroom.id, f.teacher, rule)).students.length, 1);
   await f.db.update(contests).set({ type: "oi" }).where(
     eq(contests.id, f.contestId),
   );
-  await assertRejects(
-    () =>
-      previewContestRemediation(f.school.slug, f.classroom.id, f.teacher, rule),
-    NotFoundError,
-  );
-  // 域负责人也是实际组织者，能够处理获授权成绩；教师身份本身没有该权限。
+  assertEquals((await previewContestRemediation(f.school.slug, f.classroom.id, f.teacher, rule)).students.length, 1);
+  // 域负责人和域教练都具有本域比赛管理权限，普通成员不能借班级身份取得权限。
   assertEquals(
     (await previewContestRemediation(
       f.school.slug,

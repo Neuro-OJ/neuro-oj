@@ -93,9 +93,12 @@ export const domainMemberRoles = pgTable("domain_member_roles", {
   role: text("role").$type<DomainRole>().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.membership_id, t.role] }),
+  membershipUnique: unique("domain_member_roles_membership_unique").on(
+    t.membership_id,
+  ),
   roleCheck: check(
     "domain_member_roles_role_check",
-    sql`${t.role} IN ('owner', 'admin', 'editor', 'educator', 'moderator', 'member')`,
+    sql`${t.role} IN ('owner', 'coach', 'member')`,
   ),
 }));
 /** 数值限额：null 表示不额外限制。 */

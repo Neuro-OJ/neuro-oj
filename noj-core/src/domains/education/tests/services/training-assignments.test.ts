@@ -27,7 +27,6 @@ import {
   createAssignment,
   getAssignment,
   publishAssignment,
-  setClassroomMember,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
@@ -187,7 +186,7 @@ Deno.test("题单作业：只保存来源引用，发布时取当前顺序并建
   );
 });
 
-Deno.test("题单作业：助教作业授权可使用已存在题库引用，不自动取得题库管理能力", async () => {
+Deno.test("题单作业：新任域教练同时管理任务与题库引用，不要求班级任职", async () => {
   const f = await fixture();
   await importDomainTraining(f.school.slug, f.training.id, f.teacher);
   const initial = await createAssignment(
@@ -197,17 +196,7 @@ Deno.test("题单作业：助教作业授权可使用已存在题库引用，不
     f.taskInput,
   );
   await publishAssignment(f.school.slug, initial.id, f.teacher, 0, "initial");
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    {
-      role: "assistant",
-      capabilities: ["assignments:manage"],
-    },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const task = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -222,10 +211,7 @@ Deno.test("题单作业：助教作业授权可使用已存在题库引用，不
     "assistant",
   );
   assertEquals(published.state, "published");
-  await assertRejects(
-    () => importDomainTraining(f.school.slug, f.training.id, f.assistant),
-    ForbiddenError,
-  );
+  assertEquals((await importDomainTraining(f.school.slug, f.training.id, f.assistant)).training_id, f.training.id);
 });
 
 Deno.test("题单作业：并非题单授权即题目授权，发布失败回滚已预留引用和整个任务", async () => {
@@ -402,3 +388,4 @@ Deno.test("题单引用：跨域身份、定向授权与资源 revision 独立�
   assertEquals(unavailable.can_import, false);
   assertEquals("title" in unavailable, false);
 });
+import { setMemberRole } from "../../../workspace/index.ts";

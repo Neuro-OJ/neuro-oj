@@ -29,18 +29,19 @@ Deno.test('教学表单：本地时间往返 UTC，题单链接不改变使用�
   assertEquals(teachingTrainingId('/d/school/trainings/def/'), 'def');
   assertThrows(() => teachingTrainingId('/problems/1001'));
 });
-Deno.test('教学能力：助教固定授权不相互隐含，学生及历史任职不获得管理权限', () => {
+Deno.test('教学能力：域教学管理者管理全部班级，学生及旧班级任职不获得管理权限', () => {
   const base = {
     manages_domain: false,
-    membership: { role: 'assistant', status: 'active' },
-    capabilities: ['feedback:write'],
+    membership: { role: 'student', status: 'active' },
   } as ClassroomDetail;
-  assertEquals(classroomCan(base, 'feedback:write'), true);
+  assertEquals(classroomCan(base, 'feedback:write'), false);
   assertEquals(classroomCan(base, 'submissions:read'), false);
   assertEquals(classroomCan(base, 'assignments:manage'), false);
   assertEquals(classroomCan({ ...base, membership: { role: 'student', status: 'active' } }, 'feedback:write'), false);
   assertEquals(classroomCan({ ...base, membership: null }, 'feedback:write'), false);
-  assertEquals(classroomCan({ ...base, membership: { role: 'coach', status: 'active' } }, 'help:manage'), true);
+  assertEquals(classroomCan({ ...base, manages_domain: true }, 'help:manage'), true);
+  const legacy = { ...base, membership: { role: 'coach', status: 'active' }, capabilities: ['feedback:write'] };
+  assertEquals(classroomCan(legacy as unknown as ClassroomDetail, 'feedback:write'), false);
 });
 Deno.test('教学缓存：域、查看者、统计范围、页码和原提交分别隔离', () => {
   const key = educationCacheKey('school-a', 'student-a', 'task', 'on_time', 1);

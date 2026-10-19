@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import StudentTraining from '~/components/education/StudentTraining.vue';
-import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
+import type { ClassroomDetail } from '~/utils/education';
 const api = { studentSubmissions: vi.fn(), studentSubmission: vi.fn(), assignments: vi.fn() };
 const stubs = {
   LibraryPageHeader: { props: ['title'], template: '<h1>{{ title }}</h1>' },
@@ -74,13 +74,12 @@ beforeEach(() => {
     },
   });
 });
-async function view(capabilities: TeachingCapability[], historical = false) {
+async function view(coach: boolean, historical = false) {
   const classroom = {
     id: 'c1',
     name: '班级',
-    membership: { role: 'assistant', status: 'active' },
-    manages_domain: false,
-    capabilities,
+    membership: coach ? null : { role: 'student', status: 'active' },
+    manages_domain: coach,
   } as ClassroomDetail;
   const Wrapper = defineComponent({
     setup: () => () =>
@@ -106,9 +105,9 @@ async function view(capabilities: TeachingCapability[], historical = false) {
   await flushPromises();
   return result;
 }
-describe('学生训练权限分别授权', () => {
+describe('学生训练使用当前域教练权限', () => {
   it('授权产物详情使用班级和使用域下载接口，不提供存储直链', async () => {
-    const result = await view(['submissions:read']);
+    const result = await view(true);
     await result.findAll('button').find((button) => button.text().includes('main:1001'))!.trigger('click');
     await flushPromises();
     expect(api.studentSubmission).toHaveBeenCalledWith('school', 'c1', 'submission', 's1');
@@ -119,17 +118,17 @@ describe('学生训练权限分别授权', () => {
     expect(download.attributes('data-filename')).toBe('answer.zip');
     expect(result.find('[data-submission="s1"]').attributes('data-kind')).toBe('submission');
   });
-  it('只有学情读取不请求学生提交或原代码详情', async () => {
-    const result = await view(['progress:read']);
+  it('普通成员不请求他人的训练任务、提交或源码详情', async () => {
+    const result = await view(false);
     expect(api.studentSubmissions).not.toHaveBeenCalled();
     expect(api.studentSubmission).not.toHaveBeenCalled();
-    expect(api.assignments).toHaveBeenCalledWith('school', 'c1', 1);
+    expect(api.assignments).not.toHaveBeenCalled();
     expect(result.text()).toContain('未授予学生提交读取能力');
   });
-  it('只有提交读取可看同域记录，不请求学情任务，历史成员保留标记', async () => {
-    const result = await view(['submissions:read'], true);
+  it('域教练同时读取同域学情及提交，历史学生保持标记且未公开分数不显示零', async () => {
+    const result = await view(true, true);
     expect(api.studentSubmissions).toHaveBeenCalledWith('school', 'c1', 'student', 1, undefined);
-    expect(api.assignments).not.toHaveBeenCalled();
+    expect(api.assignments).toHaveBeenCalledWith('school', 'c1', 1);
     expect(result.text()).toContain('历史学生记录');
     expect(result.text()).toContain('main:1001');
     expect(result.text()).toContain('暂无有效成绩');

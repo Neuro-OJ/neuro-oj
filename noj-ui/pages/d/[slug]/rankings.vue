@@ -61,7 +61,7 @@ useSeoMeta({ title: '域排行榜' });
                 <span v-else class="text-text-muted text-xs">{{ row.rank }}</span>
               </td>
               <td class="px-4 py-3">
-                <UserIdentity :user="{ id: row.user_id, username: row.username }" :link="false" />
+                <UserIdentity :user="{ id: row.user_id, username: row.username, avatar_url: row.avatar_url }" :link="false" />
               </td>
               <td class="px-4 py-3 text-right tabular-nums font-semibold text-text">{{ row.solved_count }}</td>
               <td class="hidden px-4 py-3 text-right tabular-nums text-text-secondary sm:table-cell">{{ row.total_submissions }}</td>

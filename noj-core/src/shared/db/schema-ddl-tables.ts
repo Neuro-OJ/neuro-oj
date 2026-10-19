@@ -1,4 +1,5 @@
 import { WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
+import { ANNOTATION_TABLES } from "./schema-ddl-annotations.ts";
 import { DOMAIN_EXECUTION_TABLES } from "./schema-ddl-domain-execution.ts";
 import { CATALOG_WORKSPACE_TABLES } from "./schema-ddl-catalog-workspace.ts";
 import { EDUCATION_TABLES } from "./schema-ddl-education.ts";
@@ -9,6 +10,7 @@ import { SUBMISSION_ANNOTATIONS_TABLES } from "./schema-ddl-submission-annotatio
 
 /** 测试重置使用完整表清单，避免跨用例残留业务数据。 */
 export const ALL_TABLES = [
+  ...ANNOTATION_TABLES,
   ...WORKSPACE_TABLES,
   ...DOMAIN_EXECUTION_TABLES,
   ...CATALOG_WORKSPACE_TABLES,

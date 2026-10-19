@@ -61,6 +61,9 @@ export const WORKSPACE_DDL: string[] = [
   )`,
   `ALTER TABLE domain_invitation_redemptions ADD CONSTRAINT domain_invitation_redemptions_invitation_id_domain_invitations_id_fk FOREIGN KEY (invitation_id) REFERENCES domain_invitations(id)`,
   `ALTER TABLE domain_invitation_redemptions ADD CONSTRAINT domain_invitation_redemptions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES users(id)`,
+  `ALTER TABLE domain_member_roles DROP CONSTRAINT domain_member_roles_role_check`,
+  `ALTER TABLE domain_member_roles ADD CONSTRAINT domain_member_roles_role_check CHECK (role IN ('owner','coach','member'))`,
+  `ALTER TABLE domain_member_roles ADD CONSTRAINT domain_member_roles_membership_unique UNIQUE (membership_id)`,
 ];
 /** 测试重置时清理全部工作空间表。 */
 export const WORKSPACE_TABLES = [

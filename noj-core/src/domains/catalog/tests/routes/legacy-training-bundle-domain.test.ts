@@ -35,7 +35,7 @@ import { importProblemBundle } from "../../services/problems/problem-bundle.ts";
 
 Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生效且不聚合其他域成绩", async () => {
   await resetDbForTest();
-  const token = await createDefaultCatalogToken("admin"),
+  const token = await createDefaultCatalogToken("platform-admin"),
     actor = decodeJwt(token).sub!;
   const source = await createDomain({
     slug: "legacy-training-source",
@@ -193,7 +193,7 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
 
 Deno.test("旧整包导入存储额度不足时不留下空题目、草稿或绑定", async () => {
   await resetDbForTest();
-  const token = await createDefaultCatalogToken("admin"),
+  const token = await createDefaultCatalogToken("platform-admin"),
     actor = decodeJwt(token).sub!,
     db = getDb();
   await db.update(domainLimits).set({ storage_bytes: 0 }).where(

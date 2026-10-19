@@ -277,6 +277,10 @@ const ROUTES: BreadcrumbRoute[] = [
     pattern: '/d/:slug/settings',
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.settings' }],
   },
+  {
+    pattern: '/d/:slug/annotations',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.annotations' }],
+  },
   // ── 题库 ──
   {
     pattern: '/d/:slug/classrooms',

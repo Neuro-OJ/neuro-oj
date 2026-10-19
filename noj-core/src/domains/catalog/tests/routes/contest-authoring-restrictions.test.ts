@@ -7,7 +7,6 @@ import {
   contestParticipants,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   problems,
@@ -18,20 +17,21 @@ import { createDomain, DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 import { updateSetting } from "../../../system/index.ts";
 import {
   createDefaultCatalogToken,
+  grantDefaultCatalogRole,
   resetDbForTest,
 } from "../default-fixture.ts";
 import type { ObjectiveProblemContent } from "../../types/problem-content.ts";
 
 Deno.test({
   name:
-    "比赛维护权限: 参赛编辑者题面和固定版本隐藏答案、暂停草稿管理，实际组织者和赛后恢复",
+    "比赛维护权限: 普通参赛成员隐藏答案，域教练共同管理本域比赛，源域权限不受他域参赛影响",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await initRedisForTest();
-    const token = await createDefaultCatalogToken("editor");
-    const organizerToken = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("coach");
+    const organizerToken = await createDefaultCatalogToken("coach");
     const actor = decodeJwt(token).sub!,
       organizer = decodeJwt(organizerToken).sub!;
     const db = getDb(), now = new Date().toISOString();
@@ -120,35 +120,24 @@ Deno.test({
       user_id: actor,
       registered_at: now,
     }, { contest_id: contestId, user_id: organizer, registered_at: now }]);
-    const student = await read(path);
-    assertEquals(student.can_edit, false);
-    assertEquals(student.content.questions[0].answer, []);
-    assertEquals(student.content.questions[0].explanation, "");
-    for (
-      const url of [
-        `/api/v1/problems/1001`,
-        `/api/v1/problems/1001?version_id=${versionId}`,
-      ]
-    ) {
-      const data = (await read(url)).data;
-      assertEquals(data.questions[0].answer, []);
-      assertEquals(data.questions[0].explanation, "");
+    await grantDefaultCatalogRole(actor, "member");
+    for (const url of [path, "/api/v1/problems/1001", `/api/v1/problems/1001?version_id=${versionId}`, `/api/v1/problems/1001/versions/${versionId}`]) {
+      assertEquals((await jsonRequest(app, url, { token })).status, 404);
     }
-    const version =
-      (await read(`/api/v1/problems/1001/versions/${versionId}`)).data;
-    assertEquals(version.content.questions[0].answer, []);
+    const student = await read(`/api/v1/domains/main/contests/${contestId}/problems/A/objective-questions`);
+    assertEquals("answer" in student.data[0], false);
+    assertEquals("explanation" in student.data[0], false);
+    assertEquals(student.version_id, versionId);
     for (const url of [`${path}/draft`, "/api/v1/problems/1001/draft"]) {
-      const response = await jsonRequest(app, url, { token });
-      assertEquals(response.status, 403);
-      assertEquals(
-        (await response.json()).code,
-        "CONTEST_AUTHORING_RESTRICTED",
-      );
+      assertEquals((await jsonRequest(app, url, { token })).status, 403);
     }
-    // 本人创建且当前具有 manage_own 的比赛才属于真实组织权限。
+    // 历史作者或比赛 created_by 不代替当前域角色。
     await db.update(contests).set({ created_by: actor }).where(
       eq(contests.id, contestId),
     );
+    assertEquals((await jsonRequest(app, path, { token })).status, 404);
+    assertEquals((await jsonRequest(app, `${path}/draft`, { token })).status, 403);
+    await grantDefaultCatalogRole(actor, "coach");
     assertEquals((await read(path)).can_edit, true);
     assertEquals((await read(path)).content.questions[0].answer, [true]);
     assertEquals(
@@ -158,15 +147,8 @@ Deno.test({
     await db.update(contests).set({ created_by: organizer }).where(
       eq(contests.id, contestId),
     );
-    assertEquals((await read(path)).can_edit, false);
-    // 组织者的比赛管理能力不等于源题编辑权限；显式提升 editor 后可管理。
-    const [membership] = await db.select().from(domainMemberships).where(
-      eq(domainMemberships.user_id, organizer),
-    );
-    await db.insert(domainMemberRoles).values({
-      membership_id: membership.id,
-      role: "admin",
-    });
+    assertEquals((await read(path)).can_edit, true);
+    // 域教练共同管理全部题目与比赛，不再存在局部 editor/organizer 组合角色。
     assertEquals(
       (await read(path, organizerToken)).content.questions[0].answer,
       [true],
@@ -179,6 +161,10 @@ Deno.test({
     await db.update(contests).set({
       end_time: new Date(Date.now() - 30000).toISOString(),
     }).where(eq(contests.id, contestId));
+    await grantDefaultCatalogRole(actor, "member");
+    assertEquals((await read(path)).can_edit, false);
+    assertEquals((await read(path)).content.questions[0].answer, []);
+    await grantDefaultCatalogRole(actor, "coach");
     assertEquals((await read(path)).can_edit, true);
     assertEquals((await read(path)).content.questions[0].answer, [true]);
     assertEquals(

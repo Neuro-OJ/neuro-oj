@@ -1,5 +1,5 @@
 /** 产品空间的客户端契约；权限仍由每次服务端请求判定。 */
-export type WorkspaceRole = 'owner' | 'admin' | 'editor' | 'educator' | 'moderator' | 'member';
+export type WorkspaceRole = 'owner' | 'coach' | 'member';
 export type WorkspacePreset = 'community' | 'education' | 'team';
 export interface WorkspaceConfiguration {
   access: 'public' | 'members';
@@ -23,6 +23,7 @@ export interface WorkspaceRecord extends WorkspaceSummary {
 }
 export interface WorkspaceDetail extends WorkspaceRecord {
   actor_id: string | null;
+  role: WorkspaceRole | null;
   permissions: string[];
   is_member: boolean;
   platform_admin: boolean;
@@ -31,9 +32,11 @@ export interface WorkspaceMember {
   id: string;
   user_id: string;
   username: string;
+  avatar_url?: string | null;
+  user?: import('./user-identity').UserSummary;
   email: string;
   status: 'active' | 'removed';
-  roles: WorkspaceRole[];
+  role: WorkspaceRole;
   is_owner: boolean;
 }
 export interface WorkspaceInvitation {
@@ -60,6 +63,8 @@ export interface WorkspaceJoinRequest {
   id: string;
   user_id: string;
   username: string;
+  avatar_url?: string | null;
+  user?: import('./user-identity').UserSummary;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
@@ -120,10 +125,7 @@ export interface WorkspaceLimitUsage {
 }
 export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
   owner: '负责人',
-  admin: '管理员',
-  editor: '资源编辑者',
-  educator: '教学人员',
-  moderator: '社区管理员',
+  coach: '教练',
   member: '成员',
 };
 export const WORKSPACE_PRESETS = [

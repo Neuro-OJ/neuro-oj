@@ -5,6 +5,7 @@ import { checkIns, users } from "../../../../shared/db/schema.ts";
 import {
   checkIn,
   getCheckinHistory,
+  getCheckinLeaderboard,
   getCheckinStats,
   getTodayCheckIn,
 } from "../../index.ts";
@@ -16,6 +17,27 @@ import { hashPassword } from "../../services/security/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
+
+Deno.test({
+  name: "checkin: 排行榜批量带出头像，更新头像后无需逐行请求用户资料",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      await insertCheckin(userId, "2099-01-03", 1);
+      const avatar = "/api/v1/users/avatar-object?checksum_sha256=test_version";
+      await getDb().update(users).set({ avatar_url: avatar }).where(eq(users.id, userId));
+      const first = await getCheckinLeaderboard("2099-01", 1, 20, userId);
+      assertEquals(first.data.find(row => row.user_id === userId)?.avatar_url, avatar);
+      await getDb().update(users).set({ avatar_url: null }).where(eq(users.id, userId));
+      const next = await getCheckinLeaderboard("2099-01", 1, 20, userId);
+      assertEquals(next.data.find(row => row.user_id === userId)?.avatar_url, null);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
 
 const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");

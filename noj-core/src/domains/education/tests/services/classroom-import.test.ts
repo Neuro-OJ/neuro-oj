@@ -14,7 +14,10 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { banUser } from "../../../identity/index.ts";
-import { consumeDomainInvitation } from "../../../workspace/index.ts";
+import {
+  consumeDomainInvitation,
+  setMemberRole,
+} from "../../../workspace/index.ts";
 import {
   executeClassroomImport,
   previewClassroomImport,
@@ -30,7 +33,7 @@ Deno.test("批量入班：匹配本域账号、生成邀请、逐行错误和重
   const preview = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     csv,
   );
   assertEquals(preview.summary, {
@@ -43,7 +46,7 @@ Deno.test("批量入班：匹配本域账号、生成邀请、逐行错误和重
   const result = await executeClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     "batch",
     0,
     { csv, preview_hash: preview.preview_hash },
@@ -67,7 +70,7 @@ Deno.test("批量入班：匹配本域账号、生成邀请、逐行错误和重
   const replay = await executeClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     "batch",
     0,
     { csv, preview_hash: preview.preview_hash },
@@ -75,13 +78,13 @@ Deno.test("批量入班：匹配本域账号、生成邀请、逐行错误和重
   assertEquals(replay.replayed, true);
   assertEquals(replay.rows[2].token, undefined);
   assertEquals((await f.db.select().from(domainInvitations)).length, 1);
-  await banUser(f.teacher, "封禁", null, "0");
+  await banUser(f.owner, "封禁", null, "0");
   await assertRejects(
     () =>
       executeClassroomImport(
         f.school.slug,
         f.classroom.id,
-        f.teacher,
+        f.owner,
         "batch",
         0,
         { csv, preview_hash: preview.preview_hash },
@@ -90,13 +93,13 @@ Deno.test("批量入班：匹配本域账号、生成邀请、逐行错误和重
   );
 });
 
-Deno.test("批量入班：预览后成员／账号事实变化回滚，不能调整教学人员或跨域复用", async () => {
+Deno.test("批量入班：预览后账号事实变化回滚，教师入班不产生新权限且不能跨域复用", async () => {
   const f = await educationFixture(),
     csv = `email\n${f.student}@example.com\nnew@example.com`;
   const preview = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     csv,
   );
   await f.db.update(domainMemberships).set({ status: "removed" }).where(
@@ -110,7 +113,7 @@ Deno.test("批量入班：预览后成员／账号事实变化回滚，不能调
       executeClassroomImport(
         f.school.slug,
         f.classroom.id,
-        f.teacher,
+        f.owner,
         "changed",
         0,
         { csv, preview_hash: preview.preview_hash },
@@ -130,11 +133,10 @@ Deno.test("批量入班：预览后成员／账号事实变化回滚，不能调
   const staff = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `username\n${f.teacher}`,
   );
-  assertEquals(staff.rows[0].action, "error");
-  assertEquals(staff.rows[0].error, "教学人员身份需要单独调整");
+  assertEquals(staff.rows[0].action, "join");
 });
 
 Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤销旧链接", async () => {
@@ -142,12 +144,12 @@ Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤
   const preview = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     csv,
   );
   await assertRejects(
     () =>
-      executeClassroomImport(f.school.slug, f.classroom.id, f.teacher, "", 0, {
+      executeClassroomImport(f.school.slug, f.classroom.id, f.owner, "", 0, {
         csv,
         preview_hash: preview.preview_hash,
       }),
@@ -156,7 +158,7 @@ Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤
   const first = await executeClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     "first",
     0,
     { csv, preview_hash: preview.preview_hash },
@@ -164,14 +166,14 @@ Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤
   const pending = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     csv,
   );
   assertEquals(pending.rows[0].action, "already_invited");
   const replacement = await previewClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     csv,
     true,
   );
@@ -179,7 +181,7 @@ Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤
   const second = await executeClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     "replace",
     0,
     { csv, preview_hash: replacement.preview_hash, replace_pending: true },
@@ -195,7 +197,7 @@ Deno.test("批量邀请：重试只返回原记录，可显式预览重签并撤
   assertEquals(!!old[0].revoked_at, true);
 });
 
-Deno.test("批量入班：学生不可枚举账号，助教固定成员能力、封禁目标及 40 人批次", async () => {
+Deno.test("批量入班：学生不可枚举账号，教练不能邀请新域成员，负责人支持 40 人批次", async () => {
   const f = await educationFixture();
   await setClassroomMember(
     f.school.slug,
@@ -203,7 +205,7 @@ Deno.test("批量入班：学生不可枚举账号，助教固定成员能力、
     f.teacher,
     f.student,
     0,
-    { role: "student" },
+    {},
   );
   await assertRejects(
     () =>
@@ -215,14 +217,16 @@ Deno.test("批量入班：学生不可枚举账号，助教固定成员能力、
       ),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
+  await assertRejects(() =>
+    setClassroomMember(
+      f.school.slug,
+      f.classroom.id,
+      f.teacher,
+      f.assistant,
+      1,
+      { role: "assistant", capabilities: ["students:manage"] },
+    ), BadRequestError);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   await banUser(f.student, "目标封禁", null, "0");
   const blocked = await previewClassroomImport(
     f.school.slug,
@@ -239,13 +243,20 @@ Deno.test("批量入班：学生不可枚举账号，助教固定成员能力、
     f.assistant,
     csv,
   );
+  assertEquals(preview.summary.errors, 40);
+  const ownerPreview = await previewClassroomImport(
+    f.school.slug,
+    f.classroom.id,
+    f.owner,
+    csv,
+  );
   const result = await executeClassroomImport(
     f.school.slug,
     f.classroom.id,
-    f.assistant,
+    f.owner,
     "40",
-    2,
-    { csv, preview_hash: preview.preview_hash },
+    1,
+    { csv, preview_hash: ownerPreview.preview_hash },
   );
   assertEquals(result.rows.filter((r) => r.token).length, 40);
   assertEquals((await f.db.select().from(domainInvitations)).length, 40);

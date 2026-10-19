@@ -58,7 +58,6 @@ const acceptanceText = computed(() => {
             v-if="problem.owner_username"
             :user="{ id: problem.owner_id ?? '', username: problem.owner_username, avatar_url: problem.owner_avatar_url }"
             size="sm"
-            :show-avatar="false"
           />
           <span v-else class="text-text-secondary">平台</span>
         </dd>

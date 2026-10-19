@@ -13,7 +13,7 @@
     >
       <UserIdentity
         v-if="item.entity_type === 'user'"
-        :user="{ id: item.entity_id, username: String(item.metadata.username ?? '') }"
+        :user="{ id: item.entity_id, username: String(item.metadata.username ?? ''), avatar_url: typeof item.metadata.avatar_url === 'string' ? item.metadata.avatar_url : null }"
         :show-username="false"
         :link="false"
         size="md"

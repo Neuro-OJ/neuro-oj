@@ -18,7 +18,7 @@ function view(role: 'coach' | 'assistant' | 'student', capabilities: TeachingCap
       classroomId: 'class-one',
       classroom: {
         id: 'class-one',
-        manages_domain: false,
+        manages_domain: role === 'coach',
         membership: { role, status: 'active' },
         capabilities,
       } as ClassroomDetail,
@@ -40,12 +40,12 @@ describe('班级页面导航', () => {
     result.unmount();
   });
 
-  it('按助教实际授权展示入口，不因拥有学情权限展示成员或设置', async () => {
+  it('旧助教记录和授权数组不再产生教学管理入口', async () => {
     const result = view('assistant', ['progress:read']);
-    expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览', '学生训练']);
+    expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览']);
     route.path = '/d/school/classrooms/class-one/students/student-one';
     await result.vm.$nextTick();
-    expect(result.find('[aria-current="location"]').attributes('href')).toBe('/d/school/classrooms/class-one/students');
+    expect(result.find('[aria-current="location"]').exists()).toBe(false);
     expect(result.find('[aria-current="page"]').exists()).toBe(false);
     result.unmount();
   });

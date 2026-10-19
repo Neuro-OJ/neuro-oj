@@ -25,6 +25,7 @@ import {
   verifyContestAccess,
 } from "../../index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import { grantTeachingMainRoleForTest } from "../../../../../tests/workspace-fixtures.ts";
 
 await resetDbForTest();
 
@@ -86,11 +87,7 @@ async function createContestWithStatus(
   problemId: string,
   creatorId: string,
 ): Promise<string> {
-  const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, creatorId);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "editor",
-  }).onConflictDoNothing();
+  await grantTeachingMainRoleForTest(creatorId);
   const contest = await createContest({
     title: `竞赛访问测试 ${Date.now()}_${
       Math.random().toString(36).slice(2, 8)
@@ -194,10 +191,7 @@ Deno.test({
       const revoked = await verifyContestAccess(creator, contest, problem);
       assertEquals(revoked.organizer, false);
       assertEquals(revoked.allowed, true);
-      await getDb().insert(domainMemberRoles).values({
-        membership_id: member.id,
-        role: "editor",
-      });
+      await getDb().update(domainMemberRoles).set({ role: "coach" }).where(eq(domainMemberRoles.membership_id, member.id));
     }
     const [main] = await getDb().select().from(domains).where(
       eq(domains.id, DEFAULT_DOMAIN_ID),

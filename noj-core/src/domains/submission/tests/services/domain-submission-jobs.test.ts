@@ -23,7 +23,8 @@ import {
 import {
   DEFAULT_DOMAIN_ID,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
+  loadWorkspace,
 } from "../../../workspace/index.ts";
 import {
   acceptDomainSubmissionJob,
@@ -74,7 +75,8 @@ Deno.test({
   fn: async () => {
     const f = await fixture(), now = new Date().toISOString();
     await authorizeLegacyJobActorForTest(f.student);
-    await setMemberRoles("main", "0", f.student, ["admin"]);
+    const mainOwner = (await loadWorkspace("main", f.student)).domain.owner_id;
+    await setMemberRole("main", mainOwner, f.student, "coach");
     const problem = "legacy-domain-guard-problem",
       version = "legacy-domain-guard-version",
       binding = "legacy-domain-guard-binding",
@@ -154,7 +156,7 @@ Deno.test({
       (stored.request as { domain_slug?: string }).domain_slug,
       undefined,
     );
-    await setMemberRoles("main", "0", f.student, ["member"]);
+    await setMemberRole("main", mainOwner, f.student, "member");
     assertEquals(
       (await runSubmissionJobWorkerOnce("legacy-role-revoked", { limit: 1 }))
         .failed,
@@ -168,13 +170,13 @@ Deno.test({
     );
     assertEquals(rejected.data[0].reason_code, "DOMAIN_PERMISSION_DENIED");
     assertEquals(rejected.data[0].attempt_id, null);
-    await setMemberRoles("main", "0", f.student, ["admin"]);
+    await setMemberRole("main", mainOwner, f.student, "coach");
     const second = await acceptRejudgeJob(
       f.student,
       request,
       "before-membership-revoke",
     );
-    await removeDomainMember("main", "0", f.student);
+    await removeDomainMember("main", mainOwner, f.student);
     assertEquals(
       (await runSubmissionJobWorkerOnce("legacy-member-revoked", { limit: 1 }))
         .failed,
@@ -344,7 +346,7 @@ Deno.test({
       AppError,
     );
     assertEquals(denied.statusCode, 403);
-    await setMemberRoles(f.a.slug, f.owner, f.student, ["editor"]);
+    await setMemberRole(f.a.slug, f.owner, f.student, "coach");
     await f.db.update(contests).set({ created_by: f.student }).where(
       eq(contests.id, contest),
     );
@@ -354,7 +356,7 @@ Deno.test({
       request,
       "contest-organizer",
     );
-    await setMemberRoles(f.a.slug, f.owner, f.student, ["member"]);
+    await setMemberRole(f.a.slug, f.owner, f.student, "member");
     assertEquals(
       (await runSubmissionJobWorkerOnce("former-organizer", { limit: 1 }))
         .failed,

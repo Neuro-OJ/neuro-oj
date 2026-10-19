@@ -17,6 +17,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
+  loadWorkspace,
   removeDomainMember,
 } from "../../../workspace/index.ts";
 import {
@@ -353,7 +354,7 @@ Deno.test({
       `acc-private-key-${ts}`,
     );
     assertEquals(accepted.total_items, 1);
-    await removeDomainMember("main", "0", stranger);
+    await removeDomainMember("main", (await loadWorkspace("main", admin)).domain.owner_id, stranger);
 
     // 受理不校验可访问性；派发必须按**原用户**资格拒绝（管理员身份不外借）
     await assertRejects(

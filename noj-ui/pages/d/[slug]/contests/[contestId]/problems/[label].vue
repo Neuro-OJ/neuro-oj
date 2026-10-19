@@ -42,8 +42,11 @@ useSeoMeta({ title: () => data.value?.data.title ?? '比赛题目' });
         </div>
       </header>
       <article class="rounded border border-border bg-bg-panel p-5 shadow-card sm:p-7">
-        <MarkdownRenderer :content="data.data.description" />
-        <ProblemSamples :samples="data.data.samples ?? []" />
+        <AnnotationSurface v-if="data.data.reference && data.data.version_id" :slug="slug!" :target="{ kind: 'problem', reference: data.data.reference.qualified_ref, version_id: data.data.version_id, contest_id: id, field: 'description' }">
+          <MarkdownRenderer :content="data.data.description" />
+        </AnnotationSurface>
+        <MarkdownRenderer v-else :content="data.data.description" />
+        <ProblemSamples :samples="data.data.samples ?? []" :annotation="data.data.reference && data.data.version_id ? { slug: slug!, reference: data.data.reference.qualified_ref, version_id: data.data.version_id, contest_id: id } : undefined" />
       </article>
       <UAlert v-if="contest.error.value" color="error" :title="extractApiError(contest.error.value).message" />
       <DomainContestAnswer v-if="!codeLike && data.data.version_id" :key="key" :slug="slug!" :contest-id="id"

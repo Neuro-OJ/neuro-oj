@@ -26,7 +26,6 @@ import {
   setDomainProblemSharing,
 } from "../../../catalog/index.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
-import { setClassroomMember } from "../../index.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken, verifyToken } from "../../../identity/index.ts";
 import {
@@ -280,14 +279,7 @@ Deno.test("训练比较：明确半开窗、同域候选和权威通过，缺失
     )).after.accepted_items,
     1,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   assertEquals(
     (await getTrainingComparison(
       f.school.slug,
@@ -489,3 +481,4 @@ Deno.test("训练比较：客观题正式结果使用相同分值口径，错误
     BadRequestError,
   );
 });
+import { setMemberRole } from "../../../workspace/index.ts";

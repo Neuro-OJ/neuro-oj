@@ -14,9 +14,8 @@ const classroom = {
   status: 'active',
   revision: 3,
   primary_coach_id: 'coach',
-  manages_domain: false,
-  membership: { role: 'coach', status: 'active' },
-  capabilities: [],
+  manages_domain: true,
+  membership: null,
 };
 let roomStatus = 'success';
 let roomData: { data: typeof classroom } | null;
@@ -116,7 +115,7 @@ describe('班级设置反馈', () => {
   it('没有接任者时禁用选择，并提供前往班级成员的处理入口', async () => {
     const result = await view();
     expect(result.find('select').attributes('disabled')).toBeDefined();
-    expect(result.text()).toContain('暂无可接任的教练');
+    expect(result.text()).toContain('暂无可选择的联系人');
     expect(result.find('a').attributes('href')).toBe('/d/school/classrooms/room-one/members');
     result.unmount();
   });

@@ -24,7 +24,6 @@ import {
   listClassroomMembers,
   listClassrooms,
   loadClassroom,
-  removeClassroomMember,
   setClassroomMember,
   transferClassroom,
   updateClassroom,
@@ -33,6 +32,7 @@ import {
   consumeDomainInvitation,
   createDomainInvitation,
   removeDomainMember,
+  setMemberRole,
 } from "../../../workspace/index.ts";
 import { educationFixture } from "../_fixtures.ts";
 import { updateSetting } from "../../../system/index.ts";
@@ -45,18 +45,15 @@ Deno.test("班级：同账号两域身份、错误域路径和学生只读自身
     f.teacher,
     f.student,
     0,
-    { role: "student" },
+    {},
   );
   const other = await createClassroom(f.other.slug, f.owner, {
     name: "同名一班",
   });
-  await setClassroomMember(f.other.slug, other.id, f.owner, f.teacher, 0, {
-    role: "student",
-  });
+  await setClassroomMember(f.other.slug, other.id, f.owner, f.teacher, 0, {});
   assertEquals(
-    (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).membership
-      ?.role,
-    "coach",
+    (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).manages_domain,
+    true,
   );
   assertEquals(
     (await getClassroom(f.other.slug, other.id, f.teacher)).membership?.role,
@@ -79,157 +76,40 @@ Deno.test("班级：同账号两域身份、错误域路径和学生只读自身
   assertEquals((await listClassrooms(f.school.slug, f.assistant)).length, 0);
 });
 
-Deno.test("助教：能力独立、撤权即时生效、不能自授或任命教学人员", async () => {
+Deno.test("班级任职：不能自行授权或任命教练，现任域教练具有所有教学能力", async () => {
   const f = await educationFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    0,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
-  const access = await loadClassroom(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-  );
-  assertClassroomCapability(access, "progress:read");
-  assertThrows(
-    () => assertClassroomCapability(access, "submissions:read"),
-    ForbiddenError,
-  );
-  await assertRejects(
-    () =>
-      setClassroomMember(
-        f.school.slug,
-        f.classroom.id,
-        f.assistant,
-        f.student,
-        1,
-        { role: "student" },
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
-  const changed = await loadClassroom(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-  );
-  assertThrows(
-    () => assertClassroomCapability(changed, "progress:read"),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-    f.student,
-    2,
-    { role: "student" },
-  );
-  await assertRejects(
-    () =>
-      setClassroomMember(
-        f.school.slug,
-        f.classroom.id,
-        f.assistant,
-        f.assistant,
-        3,
-        { role: "assistant", capabilities: ["submissions:read"] },
-      ),
-    ForbiddenError,
-  );
-  await assertRejects(
-    () =>
-      setClassroomMember(
-        f.school.slug,
-        f.classroom.id,
-        f.assistant,
-        f.student,
-        3,
-        { role: "coach" },
-      ),
-    ForbiddenError,
-  );
-  await assertRejects(
-    () =>
-      transferClassroom(
-        f.school.slug,
-        f.classroom.id,
-        f.assistant,
-        f.student,
-        3,
-      ),
-    ForbiddenError,
-  );
+  await setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.assistant, 0, {});
+  const member = await loadClassroom(f.school.slug, f.classroom.id, f.assistant);
+  for (const capability of ["progress:read", "submissions:read", "students:manage"] as const) {
+    assertThrows(() => assertClassroomCapability(member, capability), ForbiddenError);
+  }
+  await assertRejects(() => setMemberRole(f.school.slug, f.assistant, f.assistant, "coach"), ForbiddenError);
+  await assertRejects(() => setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.assistant, 1, { role: "coach" }), BadRequestError);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
+  const teacher = await loadClassroom(f.school.slug, f.classroom.id, f.assistant);
+  for (const capability of ["progress:read", "submissions:read", "students:manage"] as const) {
+    assertClassroomCapability(teacher, capability);
+  }
+  await setClassroomMember(f.school.slug, f.classroom.id, f.assistant, f.student, 1, {});
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
+  const downgraded = await loadClassroom(f.school.slug, f.classroom.id, f.assistant);
+  assertThrows(() => assertClassroomCapability(downgraded, "progress:read"), ForbiddenError);
 });
 
-Deno.test("班级：主教练交接、教师离职、学生离班保留历史与撤销当前访问", async () => {
+Deno.test("班级联系人：交接不授予教练权限，域教练降级立即失权且保留学生历史", async () => {
   const f = await educationFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.student,
-    0,
-    { role: "student" },
-  );
-  await assertRejects(
-    () =>
-      removeClassroomMember(
-        f.school.slug,
-        f.classroom.id,
-        f.teacher,
-        f.teacher,
-        1,
-      ),
-    AppError,
-  );
-  const transferred = await transferClassroom(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.student,
-    1,
-  );
+  await setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.student, 0, {});
+  const transferred = await transferClassroom(f.school.slug, f.classroom.id, f.teacher, f.student, 1);
   assertEquals(transferred.primary_coach_id, f.student);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.student,
-    f.teacher,
-    2,
-  );
-  await assertRejects(
-    () => getClassroom(f.school.slug, f.classroom.id, f.teacher),
-    NotFoundError,
-  );
-  assertEquals(
-    (await f.db.select().from(classroomMemberships).where(
-      eq(classroomMemberships.user_id, f.teacher),
-    ))[0].status,
-    "removed",
-  );
+  assertEquals((await getClassroom(f.school.slug, f.classroom.id, f.student)).manages_domain, false);
+  await assertRejects(() => updateClassroom(f.school.slug, f.classroom.id, f.student, 2, { name: "越权" }), ForbiddenError);
+  assertEquals((await getClassroom(f.school.slug, f.classroom.id, f.teacher)).manages_domain, true);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
+  await assertRejects(() => getClassroom(f.school.slug, f.classroom.id, f.teacher), NotFoundError);
   await removeDomainMember(f.school.slug, f.owner, f.student);
-  await assertRejects(
-    () => getClassroom(f.school.slug, f.classroom.id, f.student),
-    NotFoundError,
-  );
-  assertEquals(
-    (await f.db.select().from(classrooms).where(
-      eq(classrooms.id, f.classroom.id),
-    ))[0].id,
-    f.classroom.id,
-  );
+  await assertRejects(() => getClassroom(f.school.slug, f.classroom.id, f.student), NotFoundError);
+  assertEquals((await f.db.select().from(classrooms).where(eq(classrooms.id, f.classroom.id)))[0].id, f.classroom.id);
+  assertEquals((await f.db.select().from(classroomMemberships).where(eq(classroomMemberships.user_id, f.student)))[0].status, "removed");
 });
 
 Deno.test("班级：revision、只读归档、关闭教学后仍能读取授权历史", async () => {
@@ -268,7 +148,7 @@ Deno.test("班级：revision、只读归档、关闭教学后仍能读取授权�
         f.teacher,
         f.student,
         2,
-        { role: "student" },
+        {},
       ),
     AppError,
   );
@@ -359,8 +239,9 @@ Deno.test("教学撤权：重新入域不恢复旧班级的教练或助教权限
     f.teacher,
     f.assistant,
     0,
-    { role: "assistant", capabilities: ["submissions:read"] },
+    {},
   );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   await removeDomainMember(f.school.slug, f.owner, f.assistant);
   const invite = await createDomainInvitation(
     f.school.slug,

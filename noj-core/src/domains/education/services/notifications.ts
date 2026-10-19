@@ -10,14 +10,14 @@ import {
 import {
   assignmentRecipients,
   assignments,
-  classroomMemberships,
+  domainMemberships,
   domains,
   educationNotificationEmails,
   educationNotifications,
   educationOutbox,
 } from "../../../shared/db/schema.ts";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
-import { loadWorkspace } from "../../workspace/index.ts";
+import { domainTeacherWhere, loadWorkspace } from "../../workspace/index.ts";
 import { getAssignmentFeedback } from "./feedback.ts";
 import { getAssignmentHelp } from "./help.ts";
 import { loadInteractionAccess } from "./interaction-access.ts";
@@ -118,23 +118,22 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
         .assignment_id!}
         UNION
-        SELECT cm.user_id FROM classroom_memberships cm WHERE cm.classroom_id = ${resource.assignment.classroom_id}
-          AND cm.status = 'active' AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS
-            (SELECT 1 FROM classroom_assistant_grants g WHERE g.membership_id = cm.id
-              AND g.capability IN ('progress:read', 'assignments:manage'))))
+        SELECT dm.user_id FROM domain_memberships dm WHERE dm.domain_id = ${event.domain_id}
+          AND ${domainTeacherWhere(sql`dm.domain_id`, sql`dm.user_id`)}
       ) audience ${
         after ? sql`WHERE user_id > ${after}` : sql``
       } ORDER BY user_id LIMIT 50`)
       : staff
-      ? tx.select({ user_id: classroomMemberships.user_id }).from(
-        classroomMemberships,
+      ? tx.select({ user_id: domainMemberships.user_id }).from(
+        domainMemberships,
       ).where(and(
-        eq(classroomMemberships.classroom_id, resource.assignment.classroom_id),
-        eq(classroomMemberships.status, "active"),
-        sql`(${classroomMemberships.role} = 'coach' OR (${classroomMemberships.role} = 'assistant' AND EXISTS
-          (SELECT 1 FROM classroom_assistant_grants g WHERE g.membership_id = ${classroomMemberships.id} AND g.capability = 'help:manage')))`,
-        after ? gt(classroomMemberships.user_id, after) : undefined,
-      )).orderBy(classroomMemberships.user_id).limit(50)
+        eq(domainMemberships.domain_id, event.domain_id),
+        domainTeacherWhere(
+          domainMemberships.domain_id,
+          domainMemberships.user_id,
+        ),
+        after ? gt(domainMemberships.user_id, after) : undefined,
+      )).orderBy(domainMemberships.user_id).limit(50)
       : tx.select({ user_id: assignmentRecipients.user_id }).from(
         assignmentRecipients,
       ).where(and(
@@ -226,12 +225,7 @@ function visibleNotifications(
       ON cm.classroom_id = r.classroom_id AND cm.user_id = r.user_id
     WHERE r.assignment_id = n.assignment_id AND r.user_id = ${actorId}
       AND (cm.status = 'active' OR cm.role = 'student'))`;
-  const staff = (capability: string) =>
-    sql`${governs} OR (${!!workspace
-      .membership} AND EXISTS (SELECT 1 FROM classroom_memberships cm
-    WHERE cm.classroom_id = a.classroom_id AND cm.user_id = ${actorId} AND cm.status = 'active'
-      AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS (SELECT 1 FROM classroom_assistant_grants g
-        WHERE g.membership_id = cm.id AND g.capability = ${capability})))))`;
+  const staff = (_capability: string) => sql`${governs}`;
   return sql`a.published_at IS NOT NULL AND (
     (n.type IN ('assignment','assignment_changed','resource_unavailable') AND ((${recipient}) OR (${
     staff("progress:read")

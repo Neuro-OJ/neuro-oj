@@ -8,16 +8,36 @@ import {
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 
-Deno.test("工作空间：管理员不能获得平台权限，角色组合只扩展当前域能力", () => {
-  const admin = domainPermissions(["admin"]);
-  assert(admin.has("llm:manage"));
-  assert(!admin.has("admin:full_access"));
-  assert(!admin.has("domain:transfer"));
-  assert(domainPermissions(["owner"]).has("domain:transfer"));
-  assert(!domainPermissions(["editor"]).has("submission:read_all"));
-  assert(!domainPermissions(["educator"]).has("classroom:manage_any"));
-  assert(domainPermissions(["editor", "educator"]).has("classroom:create"));
-  assertEquals(domainPermissions([]).size, 0);
+Deno.test("工作空间：教练管理全域业务，负责人独享域治理，成员保持参与者权限", () => {
+  const coach = domainPermissions("coach");
+  for (
+    const permission of [
+      "classroom:manage_any",
+      "submission:read_all",
+      "contest:manage",
+      "problem:write_any",
+      "training:write_any",
+    ]
+  ) {
+    assert(coach.has(permission));
+    assert(!domainPermissions("member").has(permission));
+  }
+  for (
+    const permission of [
+      "llm:manage",
+      "domain:transfer",
+      "domain:members",
+      "domain:invitations",
+      "domain:settings",
+    ]
+  ) {
+    assert(!coach.has(permission));
+    assert(domainPermissions("owner").has(permission));
+  }
+  assert(!coach.has("admin:full_access"));
+  assert(domainPermissions("member").has("contest:participate"));
+  assert(!domainPermissions("member").has("problem:create"));
+  assertEquals(domainPermissions(null).size, 0);
 });
 Deno.test("工作空间：三种类型均有社区和排行，仅教学类型提供教学，旧开关不改变能力", () => {
   for (const type of ["community", "education", "team"] as const) {

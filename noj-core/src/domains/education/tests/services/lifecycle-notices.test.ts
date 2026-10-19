@@ -18,6 +18,7 @@ import {
 } from "../../index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 async function drain() {
   for (let i = 0; i < 40; i++) {
     if (!(await processEducationBatch()).length) break;
@@ -26,14 +27,7 @@ async function drain() {
 
 Deno.test("任务通知：发布同事务创建，学生与授权教学人员收到，新生补入只通知本人", async () => {
   const f = await assignmentFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const task = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -42,16 +36,14 @@ Deno.test("任务通知：发布同事务创建，学生与授权教学人员收
   );
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
   await drain();
-  for (const actor of [f.teacher, f.assistant, f.student]) {
+  for (const actor of [f.owner, f.teacher, f.assistant, f.student]) {
     const notices = await listEducationNotifications(f.school.slug, actor);
     assertEquals(notices.total, 1);
     assertEquals(notices.data[0].type, "assignment");
     assertEquals("title" in notices.data[0], false);
     assertEquals("score" in notices.data[0], false);
   }
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 2, {
-    role: "student",
-  });
+  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 1, {});
   await drain();
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.owner)).data[0].type,
@@ -61,13 +53,7 @@ Deno.test("任务通知：发布同事务创建，学生与授权教学人员收
     (await listEducationNotifications(f.school.slug, f.student)).total,
     1,
   );
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.assistant)).total,
     0,

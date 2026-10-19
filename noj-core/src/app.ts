@@ -38,6 +38,7 @@ import { domainStatsSse } from "./domains/query/routes/sse.ts";
 import { domainSearchRouter } from "./domains/search/routes/search.ts";
 import { domainLlmRouter } from "./domains/gateway/routes/domain-llm.ts";
 import { educationRouter } from "./domains/education/routes/index.ts";
+import { annotationRouter } from "./domains/annotation/routes/index.ts";
 import { instanceAccessMiddleware } from "./domains/workspace/index.ts";
 import submissionSse from "./domains/submission/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
@@ -238,6 +239,7 @@ export function createApp(): Hono {
   app.route("/api/v1", domainSearchRouter);
   app.route("/api/v1", domainLlmRouter);
   app.route("/api/v1", educationRouter);
+  app.route("/api/v1", annotationRouter);
   app.route("/api/v1/admin", admin);
   // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {

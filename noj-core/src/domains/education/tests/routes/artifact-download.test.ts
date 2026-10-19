@@ -48,10 +48,7 @@ Deno.test({
         f.teacher,
         f.assistant,
         revision,
-        {
-          role: "assistant",
-          capabilities: ["progress:read"],
-        },
+        {},
       );
       const teacher = await signToken({ sub: f.teacher, role: "user" }),
         student = await signToken({ sub: f.student, role: "user" }),
@@ -63,7 +60,7 @@ Deno.test({
       assertEquals((await jsonRequest(app, base)).status, 401);
       assertEquals(
         (await jsonRequest(app, base, { token: assistant })).status,
-        403,
+        404,
       );
       assertEquals(
         (await jsonRequest(app, own, { token: teacher })).status,

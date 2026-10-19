@@ -19,6 +19,7 @@ import {
 } from "./schema-ddl-education-interactions.ts";
 import { EDUCATION_DELIVERY_DDL } from "./schema-ddl-education-delivery.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
+import { ANNOTATION_DDL } from "./schema-ddl-annotations.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
   // 1. users（issue #100：含 search_vector 列供 PGlite 模式测试）
@@ -1153,6 +1154,7 @@ $$ LANGUAGE plpgsql`,
   ...SUBMISSION_ANNOTATIONS_DDL,
   ...DOMAIN_EXECUTION_DDL,
   ...COMMUNITY_WORKSPACE_DDL,
+  ...ANNOTATION_DDL,
   "ALTER TABLE search_entries ADD CONSTRAINT search_entries_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)",
 ];
 

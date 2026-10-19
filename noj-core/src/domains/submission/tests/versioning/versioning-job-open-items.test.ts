@@ -142,7 +142,7 @@ async function seedProblem(problemId: string): Promise<string> {
 }
 
 async function seedJob(jobId: string): Promise<void> {
-  await authorizeLegacyJobActorForTest("oi-user", "admin");
+  await authorizeLegacyJobActorForTest("oi-user", "coach");
   await db.insert(submissionJobs).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,

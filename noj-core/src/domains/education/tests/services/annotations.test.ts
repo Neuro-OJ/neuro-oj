@@ -9,12 +9,14 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
+  annotationMessages,
   contests,
   submissionAnnotations,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
 import { deleteSubmission } from "../../../submission/index.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 import { getStorageProvider } from "../../../system/index.ts";
 import {
   createSubmissionAnnotation,
@@ -195,7 +197,7 @@ Deno.test("行批注：固定提交与哈希、行号验证、幂等、作者编
     annotation.id,
     f.owner,
     1,
-    { withdraw: true },
+    { withdraw: true, reason: "处理学生报告的错误教学批注" },
   );
   assertEquals(
     (await listSubmissionAnnotations(
@@ -207,161 +209,31 @@ Deno.test("行批注：固定提交与哈希、行号验证、幂等、作者编
     0,
   );
   assertEquals(
-    (await f.db.select().from(submissionAnnotations))[0].body,
+    (await f.db.select().from(annotationMessages))[0].body,
     "补充边界提示",
   );
 });
 
-Deno.test("行批注：错误域、同学、独立助教能力、离班历史及教师撤职即时生效", async () => {
+Deno.test("行批注：同学和错误域不可读，域教练任命和降级生效，离班保留授权历史", async () => {
   const f = await fixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "student" },
-  );
-  await assertRejects(
-    () =>
-      listSubmissionAnnotations(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.assistant,
-      ),
-    NotFoundError,
-  );
-  await assertRejects(
-    () =>
-      listSubmissionAnnotations(f.other.slug, f.classroom.id, f.id, f.owner),
-    NotFoundError,
-  );
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.student,
-        "student",
-        f.input,
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.assistant,
-        "feedback-only",
-        f.input,
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["submissions:read"] },
-  );
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.assistant,
-        "code-only",
-        f.input,
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    4,
-    { role: "assistant", capabilities: ["feedback:write", "submissions:read"] },
-  );
-  await createSubmissionAnnotation(
-    f.school.slug,
-    f.classroom.id,
-    f.id,
-    f.assistant,
-    "authorized",
-    f.input,
-  );
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.student,
-    5,
-  );
-  assertEquals(
-    (await listSubmissionAnnotations(
-      f.school.slug,
-      f.classroom.id,
-      f.id,
-      f.student,
-    )).total,
-    1,
-  );
-  assertEquals(
-    (await getClassroomStudentSubmission(
-      f.school.slug,
-      f.classroom.id,
-      f.id,
-      "submission",
-      f.teacher,
-    )).code,
-    "print(1)\r\nprint(2)\r\n",
-  );
+  await setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.assistant, 1, {});
+  await assertRejects(() => listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.assistant), NotFoundError);
+  await assertRejects(() => listSubmissionAnnotations(f.other.slug, f.classroom.id, f.id, f.owner), NotFoundError);
+  await assertRejects(() => createSubmissionAnnotation(f.school.slug, f.classroom.id, f.id, f.student, "student", f.input), ForbiddenError);
+  await assertRejects(() => setClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.assistant, 2, { role: "assistant", capabilities: ["feedback:write", "submissions:read"] }), BadRequestError);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
+  await createSubmissionAnnotation(f.school.slug, f.classroom.id, f.id, f.assistant, "authorized", f.input);
+  await removeClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.student, 2);
+  assertEquals((await listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.student)).total, 1);
+  assertEquals((await getClassroomStudentSubmission(f.school.slug, f.classroom.id, f.id, "submission", f.teacher)).code, "print(1)\r\nprint(2)\r\n");
   const later = await submission(f);
-  await assertRejects(
-    () =>
-      getTeachingTextFile(
-        f.school.slug,
-        f.classroom.id,
-        later,
-        f.teacher,
-        "solution.py",
-      ),
-    NotFoundError,
-  );
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 6, {
-    role: "coach",
-  });
-  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 7);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.owner,
-    f.teacher,
-    8,
-  );
-  await assertRejects(
-    () =>
-      listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.teacher),
-    NotFoundError,
-  );
+  await assertRejects(() => getTeachingTextFile(f.school.slug, f.classroom.id, later, f.teacher, "solution.py"), NotFoundError);
+  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 3);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
+  await assertRejects(() => listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.teacher), NotFoundError);
 });
 
-Deno.test("行批注：进行中比赛禁止教练旁路，数据库拒绝错学生引用及删除保留依据", async () => {
+Deno.test("行批注：比赛原文受限时不向学生发送引用，错学生引用及原文删除被拒", async () => {
   const f = await fixture(),
     contest = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -377,18 +249,7 @@ Deno.test("行批注：进行中比赛禁止教练旁路，数据库拒绝错学
     updated_at: now,
   });
   const hidden = await submission(f, { contest });
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        hidden,
-        f.teacher,
-        "hidden",
-        f.input,
-      ),
-    NotFoundError,
-  );
+  await assertRejects(() => createSubmissionAnnotation(f.school.slug, f.classroom.id, hidden, f.teacher, "recipient-source-hidden", f.input), NotFoundError);
   await assertRejects(
     () =>
       getTeachingTextFile(

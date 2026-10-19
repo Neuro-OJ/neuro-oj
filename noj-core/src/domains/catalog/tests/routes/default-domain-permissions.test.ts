@@ -31,7 +31,7 @@ Deno.test("默认题库权限：成员不能创建，编辑者可写本人草稿
     })).status,
     403,
   );
-  const editor = await createDefaultCatalogToken("editor");
+  const editor = await createDefaultCatalogToken("coach");
   const actor = decodeJwt(editor).sub!;
   const created = await createProblem(input, actor);
   for (
@@ -109,7 +109,7 @@ Deno.test("默认题库权限：成员不能创建，编辑者可写本人草稿
 Deno.test("旧入口只读写 main：其他域真实资源 ID 不进入默认题面、草稿或支持包", async () => {
   await resetDbForTest();
   await initRedisForTest();
-  const admin = await createDefaultCatalogToken("admin");
+  const admin = await createDefaultCatalogToken("platform-admin");
   const actor = decodeJwt(admin).sub!;
   const school = await createDomain({
     slug: "compat-school",

@@ -16,7 +16,6 @@ import {
   createClassroomInvitation,
   listClassroomInvitations,
   revokeClassroomInvitation,
-  setClassroomMember,
   updateClassroom,
 } from "../../index.ts";
 import {
@@ -24,6 +23,7 @@ import {
   consumeDomainInvitation,
   enrollRegisteredAccount,
   previewDomainInvitation,
+  setMemberRole,
 } from "../../../workspace/index.ts";
 import { updateSetting } from "../../../system/index.ts";
 import { registerUser } from "../../../identity/index.ts";
@@ -35,7 +35,7 @@ Deno.test("班级邀请：原子加入域基础成员和学生，令牌仅存哈
   const invite = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `${student}@example.com`,
   );
   const preview = await previewDomainInvitation(invite.token);
@@ -86,7 +86,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
   const invite = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `${student}@example.com`,
   );
   await f.db.insert(domainLimits).values({ domain_id: f.school.id, members: 4 })
@@ -120,28 +120,14 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
     () => previewDomainInvitation(invite.token),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    0,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const ta = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
     f.assistant,
     `${student}@example.com`,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(() => previewDomainInvitation(ta.token), NotFoundError);
   const archived = await createClassroomInvitation(
     f.school.slug,
@@ -149,7 +135,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
     f.teacher,
     `${student}@example.com`,
   );
-  await updateClassroom(f.school.slug, f.classroom.id, f.teacher, 2, {
+  await updateClassroom(f.school.slug, f.classroom.id, f.teacher, 0, {
     archive: true,
   });
   await assertRejects(

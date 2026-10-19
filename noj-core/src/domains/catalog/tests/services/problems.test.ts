@@ -485,7 +485,7 @@ Deno.test({
       updated_at: now,
     });
 
-    await grantDefaultCatalogRole(adminId, "admin");
+    await grantDefaultCatalogRole(adminId, "coach");
     // 注入 admin actor context（logAudit 依赖 RequestContext）
     enterTestContext({
       actorId: adminId,
@@ -612,7 +612,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await grantDefaultCatalogRole("admin-1", "admin");
+    await grantDefaultCatalogRole("admin-1", "coach");
     const created = await createProblem(
       {
         title: `admin 联网题 ${Date.now()}`,

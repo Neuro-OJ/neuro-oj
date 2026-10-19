@@ -10,7 +10,7 @@ import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 import { signToken } from "../../../identity/index.ts";
 import {
   removeDomainMember,
-  setMemberRoles,
+  transferDomain,
 } from "../../../workspace/index.ts";
 import { createComment, withDomainCommunity } from "../../index.ts";
 import { domainCommunityRouter } from "../../routes/domain-community.ts";
@@ -84,13 +84,6 @@ Deno.test({
       })).status,
       403,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["moderator"]);
-    assertEquals(
-      (await jsonRequest(application, `${target}/manage/boards`, {
-        token: student,
-      })).status,
-      200,
-    );
     assertEquals(
       (await jsonRequest(
         application,
@@ -124,7 +117,20 @@ Deno.test({
       )).status,
       409,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["member"]);
+    await transferDomain(f.target.slug, f.b, f.student);
+    assertEquals(
+      (await jsonRequest(application, `${target}/manage/boards`, {
+        token: student,
+      })).status,
+      200,
+    );
+    assertEquals(
+      (await jsonRequest(application, `${target}/manage/boards`, {
+        token: owner,
+      })).status,
+      403,
+    );
+    await transferDomain(f.target.slug, f.student, f.b);
     assertEquals(
       (await jsonRequest(application, `${target}/manage/boards`, {
         token: student,

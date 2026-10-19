@@ -45,7 +45,7 @@ async function createUser(prefix: string): Promise<string> {
   });
   await grantDefaultCatalogRole(
     id,
-    prefix.includes("owner") ? "editor" : "member",
+    prefix.includes("owner") ? "coach" : "member",
   );
   return id;
 }

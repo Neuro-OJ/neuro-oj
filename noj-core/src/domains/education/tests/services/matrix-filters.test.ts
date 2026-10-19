@@ -31,7 +31,7 @@ async function fixture() {
     f.teacher,
     f.assistant,
     1,
-    { role: "student" },
+    {},
   );
   const task = await createAssignment(
     f.school.slug,

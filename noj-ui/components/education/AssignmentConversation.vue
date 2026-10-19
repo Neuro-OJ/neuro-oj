@@ -118,13 +118,12 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
         :title="extractApiError(focusedFeedback.error.value).message" />
       <article v-if="feedbackId && focusedFeedback.data.value?.data.id === feedbackId"
         class="mb-4 rounded border border-primary p-3">
-        <p class="mb-2 text-xs text-text-muted">{{ focusedFeedback.data.value!.data.author_name }} · 本次通知的反馈</p>
+        <div class="mb-2 flex flex-wrap items-center gap-2 text-xs text-text-muted"><UserIdentity :user="focusedFeedback.data.value!.data.author ?? { id: focusedFeedback.data.value!.data.author_id, username: focusedFeedback.data.value!.data.author_name }" :domain="slug" size="sm" /><span>本次通知的反馈</span></div>
         <p class="whitespace-pre-wrap text-sm">{{ focusedFeedback.data.value!.data.body }}</p>
       </article>
       <UAlert v-if="feedback.error.value" color="error" :title="extractApiError(feedback.error.value).message" />
       <article v-for="note in feedback.data.value?.data.data" :key="note.id" class="mb-3 border-b border-border pb-3">
-        <p
-          class="mb-2 text-xs text-text-muted">{{ note.author_name }} · {{ note.target_user_id ? `给 ${note.target_name ?? note.target_user_id}` : '给全体目标学生' }}</p>
+        <div class="mb-2 flex flex-wrap items-center gap-2 text-xs text-text-muted"><UserIdentity :user="note.author ?? { id: note.author_id, username: note.author_name }" :domain="slug" size="sm" /><span>{{ note.target_user_id ? `给 ${note.target_name ?? note.target_user_id}` : '给全体目标学生' }}</span></div>
         <p class="whitespace-pre-wrap text-sm">{{ note.body }}</p>
       </article>
       <p v-if="feedback.status.value === 'success' && !feedback.data.value?.data.total"
@@ -164,7 +163,7 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
         <template v-if="detail.data.value?.data.id === selectedHelp">
           <p class="whitespace-pre-wrap text-sm">{{ detail.data.value.data.body }}</p>
           <article v-for="reply in detail.data.value.data.replies" :key="reply.id" class="border-t border-border pt-3">
-            <p class="text-xs text-text-muted">{{ reply.author_name }}</p>
+            <UserIdentity :user="reply.author ?? { id: reply.author_id ?? '', username: reply.author_name }" :domain="slug" size="sm" />
             <p class="mt-1 whitespace-pre-wrap text-sm">{{ reply.body }}</p>
           </article>
           <div v-if="(detail.data.value.data.reply_total ?? 0) > 50" class="flex gap-2">

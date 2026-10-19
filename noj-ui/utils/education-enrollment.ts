@@ -41,6 +41,7 @@ export interface ClassroomJoinRequest {
   id: string;
   user_id: string;
   username?: string;
+  user?: import('./user-identity').UserSummary;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;

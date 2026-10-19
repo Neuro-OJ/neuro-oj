@@ -41,6 +41,7 @@ export interface CheckinLeaderboardRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   /** 当月签到天数 */
   days: number;
 }
@@ -300,13 +301,13 @@ export async function getCheckinLeaderboard(
   const offset = (page - 1) * perPage;
 
   const ranked = sql`
-    SELECT user_id, username, days, rank FROM (
-      SELECT c.user_id AS user_id, u.username AS username, COUNT(*) AS days,
+    SELECT user_id, username, avatar_url, days, rank FROM (
+      SELECT c.user_id AS user_id, u.username AS username, u.avatar_url, COUNT(*) AS days,
              ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, u.username ASC) AS rank
       FROM ${checkIns} c
       JOIN ${users} u ON u.id = c.user_id
       WHERE c.checkin_date LIKE ${monthPrefix + "%"}
-      GROUP BY c.user_id, u.username
+      GROUP BY c.user_id, u.username, u.avatar_url
     ) t
   `;
 
@@ -319,6 +320,7 @@ export async function getCheckinLeaderboard(
     rank: Number(row.rank),
     user_id: row.user_id as string,
     username: row.username as string,
+    avatar_url: row.avatar_url as string | null,
     days: Number(row.days),
   }));
 

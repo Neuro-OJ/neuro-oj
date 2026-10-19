@@ -2,7 +2,6 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  domainMemberRoles,
   domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
@@ -14,11 +13,9 @@ import { publishBaselineVersionForTest } from "../../../../tests/helper.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
 import {
-  addDomainMember,
   DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
 } from "../../workspace/index.ts";
-import type { DomainRole } from "../../../shared/workspace/types.ts";
+import { grantTeachingMainRoleForTest } from "../../../../tests/workspace-fixtures.ts";
 import type { EffectiveVersionMode } from "../../../shared/versioning/types.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
 import { backfillDefaultCatalog } from "../../catalog/index.ts";
@@ -26,27 +23,17 @@ import { backfillDefaultCatalog } from "../../catalog/index.ts";
 /** 旧 main 服务夹具显式提供域角色，生产代码不继承平台旧业务权限。 */
 export async function authorizeLegacyJobActorForTest(
   userId = "0",
-  role: DomainRole = "editor",
+  role: "coach" | "member" = "coach",
 ) {
-  const db = getDb();
-  await ensureDefaultWorkspace();
-  const administrator = await addDomainMember(db, DEFAULT_DOMAIN_ID, "0", true);
-  await db.insert(domainMemberRoles).values({
-    membership_id: administrator.id,
-    role: "admin",
-  }).onConflictDoNothing();
+  await grantTeachingMainRoleForTest("0", "coach");
   if (userId !== "0") {
-    const member = await addDomainMember(db, DEFAULT_DOMAIN_ID, userId, true);
-    await db.insert(domainMemberRoles).values({
-      membership_id: member.id,
-      role,
-    }).onConflictDoNothing();
+    await grantTeachingMainRoleForTest(userId, role);
   }
 }
 
 /** 为旧版本策略用例建立真实 main 归属、绑定及既有提交归属，模拟迁移后的状态。 */
 export async function bindMainProblemForTest(problemId: string, actorId = "0") {
-  await authorizeLegacyJobActorForTest(actorId, "admin");
+  await authorizeLegacyJobActorForTest(actorId, "coach");
   const db = getDb(), now = new Date().toISOString();
   await db.update(problems).set({ domain_id: DEFAULT_DOMAIN_ID }).where(
     and(eq(problems.id, problemId), isNull(problems.domain_id)),
@@ -108,7 +95,7 @@ export async function bindMainProblemForTest(problemId: string, actorId = "0") {
 export async function acceptLegacyRejudgeJobForTest(
   ...args: Parameters<typeof acceptRejudgeJob>
 ) {
-  await authorizeLegacyJobActorForTest(args[0], "admin");
+  await authorizeLegacyJobActorForTest(args[0], "coach");
   await backfillDefaultCatalog();
   return await acceptRejudgeJob(...args);
 }

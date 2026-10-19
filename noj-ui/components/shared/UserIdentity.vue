@@ -1,51 +1,16 @@
-<template>
-    <component
-        :is="link ? NuxtLink : 'span'"
-        :to="link ? (to ?? userUrl(user.username)) : undefined"
-        class="inline-flex items-center gap-2 no-underline"
-        :class="{ 'cursor-pointer hover:opacity-80': link }"
-    >
-        <span
-            v-if="showAvatar"
-            class="relative inline-block shrink-0 rounded-full overflow-hidden"
-            :style="{ width: `${sizePx}px`, height: `${sizePx}px` }"
-        >
-            <img
-                v-if="(user.avatar_url || (loadAvatarWhenUnknown && user.avatar_url === undefined)) && !imgFailed"
-                :src="`/api/v1/users/${user.username}/avatar`"
-                :alt="user.username"
-                class="size-full object-cover"
-                loading="lazy"
-                @error="imgFailed = true"
-            />
-            <svg v-else viewBox="0 0 40 40" class="size-full" :style="{ backgroundColor: bgColor }" aria-hidden="true">
-                <text
-                    x="50%" y="54%" text-anchor="middle" dominant-baseline="middle"
-                    :fill="fgColor" font-size="18" font-weight="600"
-                >{{ initial }}</text>
-            </svg>
-        </span>
-        <span v-if="showUsername" class="truncate text-sm text-text-secondary">{{ user.username }}</span>
-    </component>
-</template>
-
 <script setup lang="ts">
-import { NuxtLink } from "#components";
-import { userUrl } from "~/utils/publicIdentifiers";
-
-interface IdentityUser {
-    id: string;
-    username: string;
-    avatar_url?: string | null;
-}
-
+import { NuxtLink } from '#components';
+import { userAvatarSrc, userIdentityLabel } from '~/utils/user-identity';
+import type { UserSummary } from '~/utils/user-identity';
+import { userUrl } from '~/utils/publicIdentifiers';
 const props = withDefaults(defineProps<{
-    user: IdentityUser;
+    user: UserSummary;
+    domain?: string | null;
     showUsername?: boolean;
     showAvatar?: boolean;
-    size?: 'sm' | 'md' | 'lg';
+    size?: 'xs' | 'sm' | 'md' | 'lg';
     link?: boolean;
-    to?: string;
+    to?: import('vue-router').RouteLocationRaw;
     loadAvatarWhenUnknown?: boolean;
 }>(), {
     showUsername: true,
@@ -55,29 +20,23 @@ const props = withDefaults(defineProps<{
     loadAvatarWhenUnknown: false,
 });
 
-// 图片加载失败 → 兜底切回首字母占位
-const imgFailed = ref(false);
-watch(
-    () => [props.user.id, props.user.avatar_url ?? ""],
-    () => { imgFailed.value = false; },
-);
-
-const SIZE_MAP = { sm: 24, md: 32, lg: 64 } as const;
-const sizePx = computed(() => SIZE_MAP[props.size]);
-
-// 首字母（中文用户名取首个字符，其他取大写首字母）
-const initial = computed(() => {
-    const name = props.user.username ?? "?";
-    return name.charAt(0).toUpperCase();
-});
-
-// 按 username 哈希稳定配色（同一用户全站一致）
-const hue = computed(() => {
-    const name = props.user.username ?? "";
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-    return h;
-});
-const bgColor = computed(() => `hsl(${hue.value} 60% 45%)`);
-const fgColor = computed(() => `hsl(${hue.value} 60% 95%)`);
+const workspace = useOptionalWorkspace();
+const domainContext = computed(() => props.domain === undefined ? workspace?.slug.value : props.domain);
+const label = computed(() => userIdentityLabel(props.user, domainContext.value));
+const linked = computed(() => props.link && props.user.state !== 'deleted' && !!props.user.username);
+const avatar = computed(() => userAvatarSrc(props.user, props.loadAvatarWhenUnknown));
+const initial = computed(() => Array.from(props.user.state === 'deleted' ? '注销' : props.user.username || '?')[0]!.toLocaleUpperCase());
+const sizes = { xs: 'size-4', sm: 'size-6', md: 'size-8', lg: 'size-16' } as const;
 </script>
+
+<template>
+  <component :is="linked ? NuxtLink : 'span'" :to="linked ? to ?? userUrl(user.username) : undefined"
+    :aria-label="!showUsername ? label : undefined" :title="label"
+    class="inline-flex min-w-0 max-w-full items-center gap-2 rounded no-underline"
+    :class="linked ? 'hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary' : ''">
+    <UAvatar v-if="showAvatar" :key="`${user.id}:${avatar ?? ''}`" :src="avatar" :alt="showUsername ? '' : label"
+      :text="initial" :aria-hidden="showUsername ? true : undefined" loading="lazy" color="primary"
+      :class="['shrink-0', sizes[size]]" />
+    <span v-if="showUsername" class="min-w-0 truncate text-sm text-inherit">{{ label }}</span>
+  </component>
+</template>

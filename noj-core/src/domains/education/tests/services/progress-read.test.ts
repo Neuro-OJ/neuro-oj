@@ -11,12 +11,12 @@ import {
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
 import { recomputeSubmissionProjection } from "../../../submission/index.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 import {
   createAssignment,
   getAssignmentMatrix,
   getMyAssignmentProgress,
   publishAssignment,
-  setClassroomMember,
 } from "../../index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -101,14 +101,7 @@ Deno.test("矩阵：学生仅本人进度，助教学情授权独立，数据不
     () => getMyAssignmentProgress(f.other.slug, f.task.id, f.student),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const matrix = await getAssignmentMatrix(
     f.school.slug,
     f.task.id,
@@ -117,17 +110,10 @@ Deno.test("矩阵：学生仅本人进度，助教学情授权独立，数据不
   assertEquals(matrix.total, 1);
   assertEquals(matrix.rows[0].cells[0].score, 7000);
   assertEquals(JSON.stringify(matrix).includes("secret"), false);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () => getAssignmentMatrix(f.school.slug, f.task.id, f.assistant),
-    ForbiddenError,
+    NotFoundError,
   );
 });
 

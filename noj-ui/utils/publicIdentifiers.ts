@@ -12,7 +12,7 @@ export function problemUrl(id: string, displayId?: string): string {
 }
 
 export function userUrl(username: string): string {
-  return `/users/${username}`;
+  return `/users/${encodeURIComponent(username)}`;
 }
 
 export function publicUrl(

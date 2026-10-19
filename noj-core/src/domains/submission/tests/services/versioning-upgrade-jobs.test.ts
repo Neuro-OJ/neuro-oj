@@ -198,6 +198,7 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   await db.update(contests).set({ created_by: "up-user-b" }).where(
     eq(contests.id, "up-c3"),
   );
+  await grantTeachingMainRoleForTest("up-user-a", "member");
   await assertRejects(
     () =>
       acceptUpgradeJob("up-user-a", {
@@ -210,6 +211,7 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   await db.update(contests).set({ created_by: "up-user-a" }).where(
     eq(contests.id, "up-c3"),
   );
+  await grantTeachingMainRoleForTest("up-user-a", "coach");
   const contest = await acceptUpgradeJob(
     "up-user-a",
     {
@@ -467,3 +469,4 @@ Deno.test("upgrade: 任务读取权限（本人可见 / 他人 403 / 管理员�
   );
   assertEquals(admin?.id, accepted.job_id);
 });
+import { grantTeachingMainRoleForTest } from "../../../../../tests/workspace-fixtures.ts";

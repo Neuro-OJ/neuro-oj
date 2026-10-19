@@ -69,7 +69,7 @@ Deno.test({
       updated_at: now,
     });
 
-    await grantDefaultCatalogRole(userId, "editor");
+    await grantDefaultCatalogRole(userId, "coach");
     await publishDefaultCatalogFixture(problemId);
     const userToken = await signToken({ sub: userId, role: "user" });
     const adminToken = await signToken({ sub: adminId, role: "admin" });

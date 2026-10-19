@@ -1,6 +1,7 @@
 import { and, count, eq, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publicUserSummary } from "../../../shared/identity/user-summary.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentFeedback, users } from "../../../shared/db/schema.ts";
 import {
@@ -104,6 +105,7 @@ export async function listAssignmentFeedback(
   const rows = await db.select({
     feedback: assignmentFeedback,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
     target_name: target.username,
     target_deleted_at: target.deleted_at,
@@ -121,6 +123,12 @@ export async function listAssignmentFeedback(
     data: rows.map((row) => ({
       ...row.feedback,
       author_name: row.deleted_at ? "已注销账号" : row.username,
+      author: publicUserSummary({
+        id: row.feedback.author_id,
+        username: row.username,
+        avatar_url: row.avatar_url,
+        deleted_at: row.deleted_at,
+      }),
       target_name: row.target_deleted_at ? "已注销账号" : row.target_name,
     })),
   };
@@ -141,6 +149,7 @@ export async function getAssignmentFeedback(
   const [row] = await executor.select({
     feedback: assignmentFeedback,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
     target_name: target.username,
     target_deleted_at: target.deleted_at,
@@ -161,6 +170,12 @@ export async function getAssignmentFeedback(
   return {
     ...row.feedback,
     author_name: row.deleted_at ? "已注销账号" : row.username,
+    author: publicUserSummary({
+      id: row.feedback.author_id,
+      username: row.username,
+      avatar_url: row.avatar_url,
+      deleted_at: row.deleted_at,
+    }),
     target_name: row.target_deleted_at ? "已注销账号" : row.target_name,
   };
 }
@@ -189,8 +204,7 @@ export async function updateAssignmentFeedback(
     interactionRevision(row.revision, revision);
     if (!input.withdraw) assertFeedbackAuthor(row.author_id, actorId);
     else if (
-      row.author_id !== actorId && !access.managesDomain &&
-      access.classMembership?.role !== "coach"
+      row.author_id !== actorId && !access.managesDomain
     ) throw new ForbiddenError("助教不能撤回其他作者的反馈");
     const now = new Date().toISOString();
     const [updated] = await tx.update(assignmentFeedback).set({

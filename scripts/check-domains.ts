@@ -47,6 +47,7 @@ const DOMAINS = new Set([
   "legal",
   "workspace",
   "education",
+  "annotation",
 ]);
 
 /** 允许业务域 import 的观测域子路径白名单。 */

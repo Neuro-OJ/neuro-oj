@@ -12,6 +12,8 @@
 const props = withDefaults(defineProps<{
   /** 题面原文（Markdown）。objective 形态下可为空。 */
   content: string
+  /** 批注始终使用明确的域与题目版本。 */
+  annotation?: { slug: string; target: import('~/utils/annotations').AnnotationTarget }
   /** 卡片标题。 */
   title?: string
   /** 锚点 id，便于页内「题面」链接定位。 */
@@ -97,7 +99,14 @@ function copyStatement() {
       <slot v-if="$slots.body" name="body" />
 
       <template v-else>
-        <div v-if="collapsible && !expanded" class="relative max-h-96 overflow-hidden">
+        <AnnotationSurface v-if="annotation" :slug="annotation.slug" :target="annotation.target">
+          <div v-if="collapsible && !expanded" class="relative max-h-96 overflow-hidden">
+            <MarkdownRenderer :content="content" />
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent" />
+          </div>
+          <MarkdownRenderer v-else :content="content" />
+        </AnnotationSurface>
+        <div v-else-if="collapsible && !expanded" class="relative max-h-96 overflow-hidden">
           <MarkdownRenderer :content="content" />
           <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent" />
         </div>

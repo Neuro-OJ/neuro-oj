@@ -19,6 +19,7 @@ import {
   setClassroomMember,
 } from "../../index.ts";
 import { educationFixture } from "../_fixtures.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 
 Deno.test("班级申请：链接只展示本人记录，重复申请不重复写入，审核原子加入学生且幂等", async () => {
   const f = await educationFixture();
@@ -166,7 +167,7 @@ Deno.test("班级申请：错误域拒绝，域成员退出后不能批准，已
   );
 });
 
-Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐含审核权限", async () => {
+Deno.test("班级申请：普通班级学生不可审核，域负责人任命教练后可以审核", async () => {
   const f = await educationFixture();
   const request = await requestClassroomJoin(
     f.school.slug,
@@ -180,7 +181,7 @@ Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐
     f.teacher,
     f.assistant,
     0,
-    { role: "assistant", capabilities: ["feedback:write"] },
+    {},
   );
   await assertRejects(
     () =>
@@ -195,21 +196,14 @@ Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐
       ),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   assertEquals(
     (await reviewClassroomJoin(
       f.school.slug,
       f.classroom.id,
       request.id,
       f.assistant,
-      2,
+      1,
       "granted",
       "approve",
     )).status,

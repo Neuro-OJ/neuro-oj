@@ -9,6 +9,7 @@ Deno.test("入班 API：申请、预览、If-Match、幂等及父路由认证和
   const f = await educationFixture();
   await initRedisForTest();
   const teacher = await signToken({ sub: f.teacher, role: "user" }),
+    owner = await signToken({ sub: f.owner, role: "user" }),
     student = await signToken({ sub: f.student, role: "user" });
   const app = createApp();
   app.route("/api/v1", educationRouter);
@@ -43,13 +44,13 @@ Deno.test("入班 API：申请、预览、If-Match、幂等及父路由认证和
   );
   const csv = "email\nnew@example.com";
   const preview = await jsonRequest(app, `${base}/imports/preview`, {
-    token: teacher,
+    token: owner,
     method: "POST",
     body: { csv },
   });
   const data = (await preview.json()).data;
   const executed = await jsonRequest(app, `${base}/imports/execute`, {
-    token: teacher,
+    token: owner,
     method: "POST",
     body: { csv, preview_hash: data.preview_hash },
     headers: { "If-Match": String(data.revision), "Idempotency-Key": "batch" },

@@ -4,6 +4,7 @@ import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { oiVerdict } from "../../submission/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
+import { sharedSubmissionAnnotationHistoryWhere } from "../../annotation/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
 
 /** 教学提交列表涵盖普通与客观题；账号及域归属始终来自路径和授权关系。 */
@@ -52,6 +53,10 @@ export function teachingSubmissionRelation(
       OR (s.kind = 'submission' AND EXISTS (SELECT 1 FROM submission_annotations n
         WHERE n.domain_id = ${domain} AND n.classroom_id = ${classroom}
           AND n.submission_id = s.id AND n.user_id = s.user_id))
+      OR (s.kind = 'submission' AND EXISTS (SELECT 1 FROM classroom_memberships history_member
+        WHERE history_member.classroom_id = ${classroom} AND history_member.domain_id = ${domain}
+          AND history_member.user_id = s.user_id AND history_member.role = 'student'
+          AND ${sharedSubmissionAnnotationHistoryWhere(domain, sql`s.id`, sql`s.user_id`, sql`history_member.joined_at`, sql`history_member.left_at`)}))
       OR EXISTS (SELECT 1 FROM assignment_recipients r JOIN assignments a ON a.id = r.assignment_id
         JOIN assignment_items i ON i.assignment_id = a.id
         WHERE r.classroom_id = ${classroom} AND r.user_id = s.user_id

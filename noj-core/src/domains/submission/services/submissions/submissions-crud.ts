@@ -6,6 +6,7 @@ import {
 } from "./submission-result-format.ts";
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 import { prepareEducationSubmissionDeletion } from "../../../education/index.ts";
+import { assertSubmissionAnnotationRetention } from "../../../annotation/index.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
  * 提交列表、创建、详情及删除。
@@ -1127,6 +1128,7 @@ export async function deleteSubmission(id: string): Promise<void> {
       current?.active_attempt_id ||
       (current && ["pending", "judging"].includes(current.status))
     ) throw new AppError("提交正在评测，不能删除", 409, "SOURCE_JUDGING");
+    await assertSubmissionAnnotationRetention(tx, id);
     await prepareEducationSubmissionDeletion(tx, {
       id,
       kind: "submission",

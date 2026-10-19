@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publicUserSummary } from "../../../shared/identity/user-summary.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   classroomJoinRequests,
@@ -175,6 +176,7 @@ export async function listClassroomJoinRequests(
   const rows = await db.select({
     request: classroomJoinRequests,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
   })
     .from(classroomJoinRequests).innerJoin(
@@ -190,6 +192,12 @@ export async function listClassroomJoinRequests(
     data: rows.map((r) => ({
       ...r.request,
       username: r.deleted_at ? "已注销账号" : r.username,
+      user: publicUserSummary({
+        id: r.request.user_id,
+        username: r.username,
+        avatar_url: r.avatar_url,
+        deleted_at: r.deleted_at,
+      }),
     })),
   };
 }

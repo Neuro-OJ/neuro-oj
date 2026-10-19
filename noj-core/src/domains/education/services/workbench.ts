@@ -19,14 +19,9 @@ function teachingCapability(
   managesDomain: boolean,
   capability: AssistantCapability,
 ): SQL {
-  return managesDomain ? sql`true` : sql`EXISTS (
-    SELECT 1 FROM classroom_memberships m
-    WHERE m.classroom_id = c.id AND m.domain_id = c.domain_id
-      AND m.user_id = ${actorId} AND m.status = 'active'
-      AND (m.role = 'coach' OR (m.role = 'assistant' AND EXISTS (
-        SELECT 1 FROM classroom_assistant_grants grant_row
-        WHERE grant_row.membership_id = m.id AND grant_row.capability = ${capability})))
-  )`;
+  void actorId;
+  void capability;
+  return sql`${managesDomain}`;
 }
 
 /** 与单元读取相同的八种持久事实范围，不将陈旧投影计为当前未达标。 */

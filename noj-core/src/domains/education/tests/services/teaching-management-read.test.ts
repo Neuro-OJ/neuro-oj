@@ -6,116 +6,49 @@ import {
   listClassroomMembers,
   publishAssignment,
   removeClassroomMember,
-  setClassroomMember,
   transferClassroom,
 } from "../../index.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
-Deno.test("教学管理读取：作业助教可选择学生，只有成员管理者读取他人助教授权", async () => {
+Deno.test("教学管理读取：域教练可选择所有班级学生，名册不包含教学角色或授权数组", async () => {
   const f = await assignmentFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["assignments:manage"] },
-  );
-  const roster = await listClassroomMembers(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-  );
-  assertEquals(roster.some((m) => m.user_id === f.student), true);
-  assertEquals(roster.every((m) => !("capabilities" in m)), true);
-  const managerRoster = await listClassroomMembers(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-  );
-  assertEquals(
-    managerRoster.find((m) => m.user_id === f.assistant)?.capabilities,
-    ["assignments:manage"],
-  );
-  assertEquals(
-    (await listClassroomMembers(f.school.slug, f.classroom.id, f.student)).map(
-      (m) => m.user_id,
-    ),
-    [f.student],
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
-  assertEquals(
-    (await listClassroomMembers(f.school.slug, f.classroom.id, f.assistant))
-      .map((m) => m.user_id),
-    [f.assistant],
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
+  const roster = await listClassroomMembers(f.school.slug, f.classroom.id, f.assistant);
+  assertEquals(roster.map(member => member.user_id), [f.student]);
+  assertEquals(roster.every(member => member.role === "student" && !("capabilities" in member)), true);
+  const managerRoster = await listClassroomMembers(f.school.slug, f.classroom.id, f.teacher);
+  assertEquals(managerRoster.every(member => !("capabilities" in member)), true);
+  assertEquals((await listClassroomMembers(f.school.slug, f.classroom.id, f.student)).map(member => member.user_id), [f.student]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
+  await assertRejects(() => listClassroomMembers(f.school.slug, f.classroom.id, f.assistant), NotFoundError);
 });
 
-Deno.test("教学管理读取：离班学生可读取历史班级但没有当前身份，离职教师仍不可访问", async () => {
+Deno.test("教学管理读取：离班学生保留历史，联系人变化不撤职，域角色降级立即失权", async () => {
   const f = await assignmentFixture();
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.student,
-    1,
-  );
+  await removeClassroomMember(f.school.slug, f.classroom.id, f.teacher, f.student, 1);
   const room = await getClassroom(f.school.slug, f.classroom.id, f.student);
   assertEquals(room.membership, null);
   assertEquals(room.historical_student, true);
-  assertEquals(room.capabilities, []);
+  assertEquals("capabilities" in room, false);
   assertEquals(room.manages_domain, false);
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 2, {
-    role: "coach",
-  });
-  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 3);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.owner,
-    f.teacher,
-    4,
-  );
-  await assertRejects(
-    () => getClassroom(f.school.slug, f.classroom.id, f.teacher),
-    NotFoundError,
-  );
-  await assertRejects(
-    () => getClassroom(f.other.slug, f.classroom.id, f.student),
-    NotFoundError,
-  );
+  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 2);
+  assertEquals((await getClassroom(f.school.slug, f.classroom.id, f.teacher)).manages_domain, true);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
+  await assertRejects(() => getClassroom(f.school.slug, f.classroom.id, f.teacher), NotFoundError);
+  await assertRejects(() => getClassroom(f.other.slug, f.classroom.id, f.student), NotFoundError);
 });
 
-Deno.test("教学管理读取：仅提交读取的助教可选择学生但不能取得其他助教授权", async () => {
+Deno.test("教学管理读取：教练无需班级任职，学生目录只返回学生而非所有域成员", async () => {
   const f = await assignmentFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    {
-      role: "assistant",
-      capabilities: ["submissions:read"],
-    },
-  );
-  const roster = await listClassroomMembers(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-  );
-  assertEquals(roster.some((member) => member.user_id === f.student), true);
-  assertEquals(roster.every((member) => !("capabilities" in member)), true);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
+  const roster = await listClassroomMembers(f.school.slug, f.classroom.id, f.assistant);
+  assertEquals(roster.map(member => member.user_id), [f.student]);
   const room = await getClassroom(f.school.slug, f.classroom.id, f.assistant);
-  assertEquals(room.capabilities, ["submissions:read"]);
+  assertEquals(room.membership, null);
+  assertEquals(room.manages_domain, true);
+  assertEquals("capabilities" in room, false);
 });
 
 Deno.test("作业管理读取：来源题号及发布依据可读，学生 DTO 不附带其他目标学生或源题内容", async () => {

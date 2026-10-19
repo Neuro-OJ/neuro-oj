@@ -35,7 +35,7 @@ beforeEach(() => {
         },
       }),
     classroom: () =>
-      Promise.resolve({ data: { id: 'room', status: 'active', membership: { role: 'coach' }, capabilities: [] } }),
+      Promise.resolve({ data: { id: 'room', status: 'active', membership: null, manages_domain: true } }),
     matrix: () =>
       Promise.resolve({
         data: {

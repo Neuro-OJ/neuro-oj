@@ -12,6 +12,7 @@ import {
   problemVersions,
 } from "../../../shared/db/schema.ts";
 import { createUserToken } from "../../../../tests/helper.ts";
+import { grantTeachingMainRoleForTest } from "../../../../tests/workspace-fixtures.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
@@ -63,43 +64,18 @@ export async function resetDbForTest(): Promise<void> {
   await createUserToken("admin");
   await ensureDefaultWorkspace();
   // 旧内部初始化用例明确授予系统账号本域管理能力；普通测试账号按用例单独授予。
-  await grantDefaultCatalogRole("0", "admin");
+  await grantDefaultCatalogRole("0", "coach");
 }
 
-/** 显式赋予测试账号 member / editor / admin，避免把普通用户自动升级。 */
-export async function grantDefaultCatalogRole(
-  userId: string,
-  role: "member" | "editor" | "admin",
-) {
-  const db = getDb();
-  const [existing] = await db.select().from(domainMemberships).where(
-    and(
-      eq(domainMemberships.user_id, userId),
-      eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
-    ),
-  );
-  const membershipId = existing?.id ?? crypto.randomUUID();
-  if (!existing) {
-    await db.insert(domainMemberships).values({
-      id: membershipId,
-      domain_id: DEFAULT_DOMAIN_ID,
-      user_id: userId,
-      joined_at: new Date().toISOString(),
-    });
-  }
-  await db.insert(domainMemberRoles).values({
-    membership_id: membershipId,
-    role,
-  })
-    .onConflictDoNothing();
+/** 测试中需要多个资源管理者时使用教学域的单值 coach，不扩大普通成员权限。 */
+export async function grantDefaultCatalogRole(userId: string, role: "member" | "coach") {
+  await grantTeachingMainRoleForTest(userId, role);
 }
 
-/** 建立具有指定默认域角色的测试凭据。 */
-export async function createDefaultCatalogToken(
-  role: "member" | "editor" | "admin",
-) {
-  const token = await createUserToken(role === "admin" ? "admin" : "user");
-  await grantDefaultCatalogRole(decodeJwt(token).sub!, role);
+/** 平台管理员与域角色分别指定，平台管理员仍作为普通域成员加入。 */
+export async function createDefaultCatalogToken(role: "member" | "coach" | "platform-admin") {
+  const token = await createUserToken(role === "platform-admin" ? "admin" : "user");
+  await grantDefaultCatalogRole(decodeJwt(token).sub!, role === "platform-admin" ? "member" : role);
   return token;
 }
 

@@ -256,17 +256,11 @@ async function selfTest() {
         <UButton class="w-full rounded-none sm:hidden" color="neutral" variant="outline" icon="i-lucide-code-2"
           @click="sidebarVisible=false">返回代码</UButton>
         <EditorSidebar class="min-h-0 flex-1" :active="tab" :problem="sidebarProblem" :show-self-test="!contest"
+          :annotation="{ slug, target: { kind: 'problem', reference: problem.reference.qualified_ref, version_id: problem.version_id, contest_id: contest?.id, field: 'description' } }"
           :theme-mode="theme" :draft-enabled="draftEnabled"
           @update:theme-mode="setTheme($event)" @update:draft-enabled="draftEnabled=$event" @clear-draft="clearCode">
           <template #after-description>
-            <div v-for="(sample,index) in problem.content.samples" :key="index" class="mt-4 space-y-2">
-              <h3 class="text-sm font-semibold">样例 {{ index + 1 }}</h3>
-              <p class="text-xs text-text-muted">输入</p>
-              <pre class="overflow-auto rounded bg-bg-sunken p-2 text-xs">{{ sample.input }}</pre>
-              <p class="text-xs text-text-muted">输出</p>
-              <pre class="overflow-auto rounded bg-bg-sunken p-2 text-xs">{{ sample.output }}</pre>
-              <MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" />
-            </div>
+            <ProblemSamples :samples="problem.content.samples" :annotation="{ slug, reference: problem.reference.qualified_ref, version_id: problem.version_id, contest_id: contest?.id }" />
           </template>
           <template #history>
             <h3 class="text-sm font-semibold">提交记录</h3>

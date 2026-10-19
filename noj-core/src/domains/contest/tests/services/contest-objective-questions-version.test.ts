@@ -12,7 +12,7 @@ import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
  * - 客户端同时传 `version_id=V2` 也不能覆盖竞赛固定版；
  * - 无竞赛上下文 → 题库默认作答版本（any → 最新版）；
  * - 显式 `versionId` → 该版本；
- * - 作答者响应裁剪答案与解析（`answer: []` / `explanation: ""`）。
+ * - 普通作答者响应不下发答案与解析字段。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
@@ -21,7 +21,6 @@ import {
   contestParticipants,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainProblemBindings,
   problems,
   problemVersions,
@@ -29,11 +28,11 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../objective/index.ts";
 import {
-  addDomainMember,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../../workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
+import { grantTeachingMainRoleForTest } from "../../../../../tests/workspace-fixtures.ts";
 
 await resetDbForTest({ refreshRankings: true });
 await ensureDefaultWorkspace();
@@ -53,11 +52,7 @@ async function seedUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
-  const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, id);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "editor",
-  });
+  await grantTeachingMainRoleForTest(id, "member");
   return id;
 }
 

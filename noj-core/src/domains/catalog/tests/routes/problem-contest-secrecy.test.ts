@@ -29,7 +29,7 @@ await initRedisForTest();
 
 /** 创建一道 public 的 U 型题，并指定 owner。 */
 async function createOwnedPublicProblem(ownerId: string): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   // 不带 userId 走服务端流程：绕过"敏感字段（evaluator.command）需权限"的守卫，
   // 随后再把 owner_id 落到目标用户，模拟"普通用户拥有的公开题"。
   const created = await createProblem({

@@ -59,6 +59,8 @@ export async function aggregateView(reader: CoreReader, input: {
   if (viewer) {
     tasks.push(read('userSpaces', '/api/v1/me/domains'), read('messageUnread', '/api/v1/conversations/unread-count'));
   }
+  if (viewer && workspace.is_member) tasks.push(read('annotationInbox', `${root}/annotations/inbox`));
+  else put('annotationInbox', { actor_id: viewer?.id ?? null, domain_slug: input.slug, data: [], unread_count: 0 });
   const features = workspace.configuration.features;
   if (features.assignment && member) tasks.push(read('educationNotifications', `${root}/notifications?page=1`));
   else put('educationNotifications', { data: { unread: 0 } });
@@ -152,7 +154,7 @@ export async function aggregateView(reader: CoreReader, input: {
       );
       put('classroom', classroom);
       const room = classroom.data;
-      const student = room.membership?.role === 'student' || room.historical_student === true;
+      const student = !room.manages_domain && (room.membership?.role === 'student' || room.historical_student === true);
       const reads: Promise<unknown>[] = [];
       if (student || classroomCan(room, 'progress:read') || classroomCan(room, 'assignments:manage')) {
         reads.push(

@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -31,7 +31,7 @@ import {
   requestDomainCreation,
   reviewDomainCreation,
   revokeDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
   transferDomain,
   updateDomain,
 } from "../../index.ts";
@@ -86,9 +86,13 @@ Deno.test({
       `${student}@example.com`,
     );
     await consumeDomainInvitation(invite.token, student);
-    await setMemberRoles(school.slug, operator, student, ["admin"]);
+    await setMemberRole(school.slug, operator, student, "coach");
     const access = await loadWorkspace(school.slug, student);
-    assertWorkspacePermission(access.context, "domain:settings");
+    assertWorkspacePermission(access.context, "classroom:manage_any");
+    assertThrows(
+      () => assertWorkspacePermission(access.context, "domain:settings"),
+      ForbiddenError,
+    );
     assert(!access.context.platformPermissions.has("admin:full_access"));
     await assertRejects(() => loadWorkspace(team.slug, student), NotFoundError);
     await assertRejects(
@@ -113,7 +117,7 @@ Deno.test({
       `${other}@example.com`,
     );
     await consumeDomainInvitation(extra.token, other);
-    await setMemberRoles(school.slug, student, other, ["editor"]);
+    await setMemberRole(school.slug, student, other, "coach");
     await removeDomainMember(school.slug, student, other);
     await assertRejects(() => loadWorkspace(school.slug, other), NotFoundError);
     assertEquals((await listDomains(other, true)).length, 0);

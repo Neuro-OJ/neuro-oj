@@ -22,8 +22,7 @@ export interface Classroom {
   primary_coach_id: string;
 }
 export interface ClassroomDetail extends Classroom {
-  membership: { role: 'coach' | 'assistant' | 'student'; status: string } | null;
-  capabilities: TeachingCapability[];
+  membership: { role: 'student'; status: string } | null;
   manages_domain: boolean;
   historical_student?: boolean;
 }
@@ -46,10 +45,11 @@ export interface ClassroomMember {
   id: string;
   user_id: string;
   username: string;
-  role: 'coach' | 'assistant' | 'student';
+  avatar_url?: string | null;
+  user?: import('./user-identity').UserSummary;
+  role: 'student';
   status: 'active' | 'removed';
   effective_active: boolean;
-  capabilities?: TeachingCapability[];
 }
 export interface AssignmentDraftInput {
   title: string;
@@ -152,7 +152,14 @@ export interface MatrixData {
   scope: 'on_time' | 'current';
   updating: boolean;
   items: TeachingItem[];
-  rows: { user_id: string; username: string; recipient_status: string; cells: TeachingCell[] }[];
+  rows: {
+    user_id: string;
+    username: string;
+    avatar_url?: string | null;
+    user?: import('./user-identity').UserSummary;
+    recipient_status: string;
+    cells: TeachingCell[];
+  }[];
 }
 export interface MyProgress {
   scope: 'on_time' | 'current';
@@ -177,6 +184,7 @@ export interface LineAnnotation {
   end_line: number;
   author_id: string;
   author_name?: string;
+  author?: import('./user-identity.ts').UserSummary;
   body: string;
   revision: number;
   created_at: string;
@@ -187,6 +195,7 @@ export interface AssignmentFeedback {
   target_name?: string | null;
   author_id: string;
   author_name: string;
+  author?: import('./user-identity.ts').UserSummary;
   body: string;
   revision: number;
   created_at: string;
@@ -198,7 +207,14 @@ export interface AssignmentHelp {
   body: string;
   state: 'open' | 'resolved';
   revision: number;
-  replies?: { id: string; author_name: string; body: string; created_at: string }[];
+  replies?: {
+    id: string;
+    author_id?: string;
+    author_name: string;
+    author?: import('./user-identity.ts').UserSummary;
+    body: string;
+    created_at: string;
+  }[];
   reply_page?: number;
   reply_total?: number;
 }
@@ -210,8 +226,8 @@ export interface TeachingPage<T> {
 }
 
 export function classroomCan(detail: ClassroomDetail, capability: TeachingCapability) {
-  return detail.manages_domain || detail.membership?.role === 'coach' ||
-    detail.membership?.role === 'assistant' && detail.capabilities.includes(capability);
+  void capability;
+  return detail.manages_domain;
 }
 /** 缓存包含使用域、查看者和资源／筛选，不依赖上次使用域。 */
 export function educationCacheKey(slug: string, actor: string | null, ...resources: unknown[]) {

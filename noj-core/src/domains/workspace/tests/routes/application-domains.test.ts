@@ -10,7 +10,7 @@ import { account } from "../../../education/tests/_fixtures.ts";
 import {
   ensureDefaultWorkspace,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../index.ts";
 
 await resetDbForTest();
@@ -78,7 +78,7 @@ Deno.test({
     const token = await signToken({ sub: f.student, role: "user" });
     const stranger = await signToken({ sub: outsider, role: "user" });
     const teacher = await signToken({ sub: f.teacher, role: "user" });
-    await setMemberRoles(f.other.slug, f.owner, f.student, ["educator"]);
+    await setMemberRole(f.other.slug, f.owner, f.student, "coach");
     const otherClass = await createClassroom(f.other.slug, f.student, {
       name: "另一域教练班级",
     });

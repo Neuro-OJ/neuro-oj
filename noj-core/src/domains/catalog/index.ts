@@ -53,3 +53,4 @@ export * from "./services/workspace/binding-availability.ts";
 export * from "./services/workspace/education-events.ts";
 
 export { domainResourceManagementRouter } from "./routes/domain-resource-management.ts";
+export { trimProblemContentForViewer } from "./services/versioning/version-read-view.ts";

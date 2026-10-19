@@ -42,6 +42,7 @@ const props = withDefaults(
   defineProps<{
     active: Tab;
     problem: Problem;
+    annotation?: { slug: string; target: import('~/utils/annotations').AnnotationTarget };
     submissions?: Submission[];
     activeSubmission?: PolledSubmission | null;
     isPollingActive?: boolean;
@@ -155,7 +156,7 @@ function formatElapsed(iso: string) {
         </div>
 
         <div class="prose prose-sm prose-neuro max-w-none">
-          <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
+          <AnnotationText :annotation="annotation"><MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" /></AnnotationText>
           <slot name="after-description" />
         </div>
       </div>

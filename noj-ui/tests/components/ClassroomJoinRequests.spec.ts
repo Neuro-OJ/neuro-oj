@@ -16,6 +16,7 @@ vi.mock('~/composables/useDialog', () => ({ useDialog: () => ({ dialog: mockDial
 
 const stubs = {
   UIcon: { template: '<span class="icon" />' },
+  UserIdentity: { props: ['user'], template: '<span>{{ user.username }}</span>' },
   UBadge: { template: '<span><slot /></span>' },
   UAlert: { props: ['title'], template: '<div class="alert">{{ title }}</div>' },
   AdminFormField: { props: ['label'], template: '<div><label>{{ label }}</label><slot /></div>' },

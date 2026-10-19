@@ -50,7 +50,7 @@ import {
   listDomainMembersPage,
   removeDomainMember,
   reviewJoinRequest,
-  setMemberRoles,
+  setMemberRole,
   transferDomain,
 } from "../services/members.ts";
 import {
@@ -232,10 +232,11 @@ router.post("/auth/domain-invitation", async (c) => {
   });
 });
 router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
-  const { domain, context, membership, platformAdmin } = await loadWorkspace(
-    c.req.param("slug")!,
-    c.var.userId ?? null,
-  );
+  const { domain, context, membership, platformAdmin, role } =
+    await loadWorkspace(
+      c.req.param("slug")!,
+      c.var.userId ?? null,
+    );
   return c.json({
     data: {
       ...domain,
@@ -245,6 +246,7 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
       ),
       permissions: [...context.domainPermissions],
       is_member: !!membership,
+      role,
       platform_admin: platformAdmin,
       actor_id: context.actorId,
     },
@@ -364,16 +366,16 @@ router.get(
   },
 );
 router.put(
-  "/domains/:slug/members/:userId/roles",
+  "/domains/:slug/members/:userId/role",
   authMiddleware,
   async (c) => {
     const input = await body(c);
     return c.json({
-      data: await setMemberRoles(
+      data: await setMemberRole(
         c.req.param("slug")!,
         c.var.userId!,
         c.req.param("userId")!,
-        input.roles as DomainRole[],
+        input.role as DomainRole,
       ),
     });
   },

@@ -25,6 +25,7 @@ deno.lock  # 不锁定依赖版本——社区库遵循 semver 即可
 
 # --- Node.js / npm ---
 node_modules/
+node_modules
 .nuxt/
 .output/
 dist/

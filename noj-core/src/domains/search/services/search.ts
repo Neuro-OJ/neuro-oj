@@ -23,6 +23,9 @@ function safeMetadata(ctx: SearchPermissionContext) {
   const sourceSlug = sql`coalesce(source_domain.slug,'main')`;
   const qualifiedRef = sql`${sourceSlug} || ':' || current_problem.number`;
   return sql`CASE
+ WHEN entity_type='user' THEN metadata || coalesce((
+  SELECT jsonb_build_object('username',u.username,'avatar_url',CASE WHEN u.avatar_url IS NULL THEN NULL ELSE '/api/v1/users/' || u.id || '/avatar?v=' || md5(u.avatar_url) END)
+  FROM users u WHERE u.id=search_entries.entity_id AND u.deleted_at IS NULL), '{}'::jsonb)
  WHEN entity_type='contest' THEN metadata-'problem_titles'-'problem_display_ids'
  WHEN entity_type='problem' THEN metadata || jsonb_build_object('reference',(
   SELECT jsonb_build_object(

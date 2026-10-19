@@ -11,6 +11,7 @@ export type BffSectionName =
   | 'announcementBanner'
   | 'userSpaces'
   | 'messageUnread'
+  | 'annotationInbox'
   | 'draftRoster'
   | 'draftTraining'
   | 'siteMeta'

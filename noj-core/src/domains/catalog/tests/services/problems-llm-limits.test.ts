@@ -40,7 +40,7 @@ async function createAdminUser(): Promise<string> {
     created_at: now,
     updated_at: now,
   });
-  await grantDefaultCatalogRole(id, "admin");
+  await grantDefaultCatalogRole(id, "coach");
   return id;
 }
 

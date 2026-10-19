@@ -159,7 +159,7 @@ function formatTime(iso: string): string {
         class="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors"
         @click="startConversation(u.id)"
       >
-        <UserIdentity :user="u" size="sm" />
+        <UserIdentity :user="u" :link="false" :domain="null" size="sm" />
         <UIcon name="i-lucide-plus" class="ml-auto text-text-secondary opacity-50 size-3.5" />
       </button>
     </div>

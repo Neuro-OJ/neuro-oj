@@ -13,7 +13,7 @@ import {
   createDomain,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  transferDomain,
 } from "../../../workspace/index.ts";
 import { signToken } from "../../../identity/index.ts";
 import {
@@ -295,7 +295,7 @@ Deno.test({
       assert(!replay.includes("earlier-private-id"));
       assert(!replay.includes("another-student"));
       assert(!replay.includes("secret"));
-      await setMemberRoles(f.domain.slug, f.owner, f.student, ["admin"]);
+      await transferDomain(f.domain.slug, f.owner, f.student);
       const asOrganizer = reader.read();
       _dispatchToLocalListenersForTest(
         Channels.contestSubmission(f.contest.id),
@@ -310,7 +310,7 @@ Deno.test({
           "organizer-visible-id",
         ),
       );
-      await setMemberRoles(f.domain.slug, f.owner, f.student, ["member"]);
+      await transferDomain(f.domain.slug, f.student, f.owner);
       const downgraded = reader.read();
       _dispatchToLocalListenersForTest(
         Channels.contestSubmission(f.contest.id),

@@ -834,6 +834,27 @@
       "when": 1792112673145,
       "tag": "0119_nasty_thena",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1792388646899,
+      "tag": "0120_domain_role_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1792389637772,
+      "tag": "0121_single_domain_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1792390507161,
+      "tag": "0122_global_annotations",
+      "breakpoints": true
     }
   ]
 }

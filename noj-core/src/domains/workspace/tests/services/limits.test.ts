@@ -31,7 +31,8 @@ import {
   getDomainEffectiveLimits,
   getInstancePolicy,
   joinDomain,
-  setMemberRoles,
+  setMemberRole,
+  transferDomain,
   updateDomain,
   updateDomainLimits,
 } from "../../index.ts";
@@ -127,16 +128,21 @@ Deno.test("配额治理：管理员只能降低，平台可提高；revision、�
     `${manager}@example.com`,
   );
   await consumeDomainInvitation(invite.token, manager);
-  await setMemberRoles(domain.slug, platform, manager, ["admin"]);
-  // 成员角色修改不修改域配置 revision，当前仍为 0。
-  const lowered = await updateDomainLimits(domain.slug, manager, 0, {
+  await setMemberRole(domain.slug, platform, manager, "coach");
+  await assertRejects(() =>
+    updateDomainLimits(domain.slug, manager, 0, {
+      ...unlimitedDomainLimits(),
+      members: 2,
+    }), ForbiddenError);
+  await transferDomain(domain.slug, platform, manager);
+  const lowered = await updateDomainLimits(domain.slug, manager, 1, {
     ...unlimitedDomainLimits(),
     members: 2,
   });
-  assertEquals(lowered.revision, 1);
+  assertEquals(lowered.revision, 2);
   await assertRejects(
     () =>
-      updateDomainLimits(domain.slug, manager, 1, {
+      updateDomainLimits(domain.slug, manager, 2, {
         ...unlimitedDomainLimits(),
         members: 3,
       }),
@@ -157,13 +163,13 @@ Deno.test("配额治理：管理员只能降低，平台可提高；revision、�
   );
   await assertRejects(
     () =>
-      updateDomainLimits(domain.slug, platform, 1, {
+      updateDomainLimits(domain.slug, platform, 2, {
         ...unlimitedDomainLimits(),
         members: 5,
       }),
     ForbiddenError,
   );
-  const raised = await updateDomainLimits(domain.slug, platform, 1, {
+  const raised = await updateDomainLimits(domain.slug, platform, 2, {
     ...unlimitedDomainLimits(),
     members: 4,
   });

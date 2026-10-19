@@ -22,7 +22,7 @@ import {
   createDomain,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  transferDomain,
 } from "../../../workspace/index.ts";
 import { importDomainProblem } from "../../../catalog/index.ts";
 import {
@@ -228,7 +228,7 @@ Deno.test({
       outsider = await account();
     await join(a.domain.slug, a.owner, student);
     await join(a.domain.slug, a.owner, editor);
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["editor"]);
+    await transferDomain(a.domain.slug, a.owner, editor);
     const p = await item(a.domain.id, a.owner);
     const contest = await createDomainContest(a.domain.slug, editor, {
       ...input(p.id),
@@ -272,7 +272,7 @@ Deno.test({
         ]),
       Error,
     );
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["member"]);
+    await transferDomain(a.domain.slug, editor, a.owner);
     await assertRejects(
       () => getDomainContestSettlement(a.domain.slug, contest.id, editor),
       NotFoundError,

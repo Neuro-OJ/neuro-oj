@@ -556,19 +556,7 @@ async function handleDeleteAccount() {
       <div class="px-6 py-6 flex flex-col gap-6">
         <!-- 头像管理（issue #229） -->
         <div class="flex items-center gap-6 pb-4 border-b border-border">
-          <span class="relative inline-block rounded-full overflow-hidden shrink-0" :style="{ width: '64px', height: '64px' }">
-            <img
-              v-if="user?.avatar_url"
-              :src="`/api/v1/users/${user.username}/avatar?t=${avatarPreviewKey}`"
-              alt="当前头像"
-              class="size-full object-cover"
-            />
-            <span
-              v-else
-              class="size-full flex items-center justify-center text-xl font-bold"
-              :style="{ backgroundColor: 'hsl(0 0% 92%)', color: 'hsl(0 0% 40%)' }"
-            >{{ user?.username?.charAt(0).toUpperCase() || "?" }}</span>
-          </span>
+          <UserIdentity v-if="user" :key="avatarPreviewKey" :user="user" :domain="null" :show-username="false" :link="false" size="lg" />
           <div class="flex flex-col gap-2">
             <div class="flex items-center gap-3">
               <UButton color="primary" variant="outline" :loading="avatarUploading" @click="avatarInput?.click()">
@@ -588,11 +576,8 @@ async function handleDeleteAccount() {
 
         <!-- 基本信息（只读） -->
         <div class="flex items-center gap-3 pb-4 border-b border-border">
-          <div class="w-12 h-12 rounded-full bg-primary-bg flex items-center justify-center text-primary text-xl font-bold shrink-0">
-            {{ user?.username?.charAt(0).toUpperCase() || "?" }}
-          </div>
           <div class="flex flex-col">
-            <span class="font-semibold text-text">{{ user?.username }}</span>
+            <UserIdentity v-if="user" :user="user" :domain="null" :link="false" />
             <span class="text-xs text-text-muted">{{ user?.email }}</span>
           </div>
         </div>

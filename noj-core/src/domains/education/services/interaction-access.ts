@@ -51,9 +51,8 @@ export function interactionStaff(
   access: Awaited<ReturnType<typeof loadInteractionAccess>>,
   capability: AssistantCapability,
 ) {
-  return access.managesDomain || access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.has(capability);
+  void capability;
+  return access.managesDomain;
 }
 
 /** 非教学管理者必须是本任务实际目标学生，不能借普通班级成员身份查看私人互动。 */

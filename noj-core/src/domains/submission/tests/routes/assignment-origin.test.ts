@@ -61,7 +61,7 @@ async function setup(mode: "code" | "artifact" | "oi" = "code") {
     200,
     {
       method: "PUT",
-      body: { role: "student" },
+      body: {},
       headers: { "If-Match": String(room.data.revision) },
     },
   );

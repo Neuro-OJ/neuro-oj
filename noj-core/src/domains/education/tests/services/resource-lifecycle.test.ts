@@ -55,9 +55,7 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
   const classroom = await createClassroom(f.other.slug, f.owner, {
     name: "引用班级",
   });
-  await setClassroomMember(f.other.slug, classroom.id, f.owner, f.student, 0, {
-    role: "student",
-  });
+  await setClassroomMember(f.other.slug, classroom.id, f.owner, f.student, 0, {});
   const task = await createAssignment(f.other.slug, classroom.id, f.owner, {
     title: "共享题作业",
     items: [{

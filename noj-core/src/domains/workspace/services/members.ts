@@ -1,5 +1,6 @@
 import { and, count, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publicUserSummary } from "../../../shared/identity/user-summary.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   domainJoinRequests,
@@ -147,6 +148,7 @@ export async function listDomainJoinRequests(slug: string, actorId: string) {
     id: domainJoinRequests.id,
     user_id: domainJoinRequests.user_id,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
     reason: domainJoinRequests.reason,
     status: domainJoinRequests.status,
@@ -160,6 +162,8 @@ export async function listDomainJoinRequests(slug: string, actorId: string) {
   return rows.map(({ deleted_at, ...row }) => ({
     ...row,
     username: deleted_at ? "已注销用户" : row.username,
+    avatar_url: deleted_at ? null : row.avatar_url,
+    user: publicUserSummary({ id: row.user_id, username: row.username, avatar_url: row.avatar_url, deleted_at }),
     can_approve: !deleted_at && row.status === "pending",
   }));
 }
@@ -213,53 +217,47 @@ export async function reviewJoinRequest(
   });
 }
 
-/** 只有负责人或平台管理员可以授予管理员，owner 不通过普通角色接口授予。 */
-export async function setMemberRoles(
+/** 负责人或平台治理人员设置单一角色；负责人必须通过交接设置。 */
+export async function setMemberRole(
   slug: string,
   actorId: string,
   userId: string,
-  roles: readonly DomainRole[],
+  role: DomainRole,
 ) {
-  if (
-    !Array.isArray(roles) || roles.length < 1 ||
-    roles.some((role) => !isDomainRole(role) || role === "owner")
-  ) throw new BadRequestError("域成员角色非法；负责人须通过交接设置");
+  if (!isDomainRole(role) || role === "owner") {
+    throw new BadRequestError("域成员角色非法；负责人须通过交接设置");
+  }
   return await getDb().transaction(async (tx) => {
-    const { domain, context, platformAdmin } = await loadWorkspace(
-      slug,
-      actorId,
-      { write: true, lock: true, executor: tx },
-    );
+    const { domain, context } = await loadWorkspace(slug, actorId, {
+      write: true,
+      lock: true,
+      executor: tx,
+    });
     assertWorkspacePermission(context, "domain:members");
+    if (role === "coach" && domain.preset !== "education") {
+      throw new BadRequestError("只有教学域可以任命教练");
+    }
     if (userId === domain.owner_id) {
       throw new ConflictError("不能通过角色编辑移除负责人");
     }
-    const [member] = await tx.select().from(domainMemberships).where(
-      and(
-        eq(domainMemberships.domain_id, domain.id),
-        eq(domainMemberships.user_id, userId),
-        eq(domainMemberships.status, "active"),
-      ),
-    );
+    const [member] = await tx.select().from(domainMemberships).where(and(
+      eq(domainMemberships.domain_id, domain.id),
+      eq(domainMemberships.user_id, userId),
+      eq(domainMemberships.status, "active"),
+    ));
     if (!member) throw new NotFoundError("成员不存在");
-    const previous = await tx.select().from(domainMemberRoles).where(
-      eq(domainMemberRoles.membership_id, member.id),
-    );
-    if (
-      (roles.includes("admin") || previous.some((r) => r.role === "admin")) &&
-      !platformAdmin && domain.owner_id !== actorId
-    ) throw new ForbiddenError("仅负责人可管理管理员角色");
     await tx.delete(domainMemberRoles).where(
       eq(domainMemberRoles.membership_id, member.id),
     );
-    await tx.insert(domainMemberRoles).values(
-      [...new Set(roles)].map((role) => ({ membership_id: member.id, role })),
-    );
+    await tx.insert(domainMemberRoles).values({
+      membership_id: member.id,
+      role,
+    });
     await workspaceAudit(tx, actorId, domain.id, "domain.member_roles", {
       user_id: userId,
-      roles,
+      role,
     });
-    return { user_id: userId, roles: [...new Set(roles)] };
+    return { user_id: userId, role };
   });
 }
 
@@ -270,7 +268,7 @@ export async function removeDomainMember(
   userId: string,
 ) {
   return await getDb().transaction(async (tx) => {
-    const { domain, context, platformAdmin } = await loadWorkspace(
+    const { domain, context } = await loadWorkspace(
       slug,
       actorId,
       { write: true, lock: true, executor: tx },
@@ -289,13 +287,6 @@ export async function removeDomainMember(
       ),
     );
     if (!member) throw new NotFoundError("成员不存在");
-    const roles = await tx.select().from(domainMemberRoles).where(
-      eq(domainMemberRoles.membership_id, member.id),
-    );
-    if (
-      actorId !== userId && roles.some((r) => r.role === "admin") &&
-      !platformAdmin && actorId !== domain.owner_id
-    ) throw new ForbiddenError("仅负责人可移除管理员");
     await tx.update(domainMemberships).set({
       status: "removed",
       left_at: new Date().toISOString(),
@@ -316,7 +307,7 @@ export async function removeDomainMember(
   });
 }
 
-/** 交接更新身份与负责人引用的同一事务，旧负责人保留管理员身份。 */
+/** 交接更新身份与负责人引用的同一事务，旧负责人恢复普通成员身份。 */
 export async function transferDomain(
   slug: string,
   actorId: string,
@@ -359,19 +350,12 @@ export async function transferDomain(
     );
     if (!previous) throw new ConflictError("当前负责人身份缺失");
     await tx.delete(domainMemberRoles).where(
-      and(
-        eq(domainMemberRoles.membership_id, previous.id),
-        eq(domainMemberRoles.role, "owner"),
-      ),
+      inArray(domainMemberRoles.membership_id, [previous.id, next.id]),
     );
-    await tx.insert(domainMemberRoles).values({
-      membership_id: previous.id,
-      role: "admin",
-    }).onConflictDoNothing();
-    await tx.insert(domainMemberRoles).values({
-      membership_id: next.id,
-      role: "owner",
-    }).onConflictDoNothing();
+    await tx.insert(domainMemberRoles).values([
+      { membership_id: previous.id, role: "member" },
+      { membership_id: next.id, role: "owner" },
+    ]);
     const [updated] = await tx.update(domains).set({
       owner_id: newOwnerId,
       revision: domain.revision + 1,
@@ -424,6 +408,7 @@ export async function listDomainMembersPage(
     id: domainMemberships.id,
     user_id: users.id,
     username: users.username,
+    avatar_url: users.avatar_url,
     email: users.email,
     deleted_at: users.deleted_at,
     status: domainMemberships.status,
@@ -449,13 +434,17 @@ export async function listDomainMembersPage(
       id: member.id,
       user_id: member.user_id,
       username: member.deleted_at ? "已注销用户" : member.username,
+      avatar_url: member.deleted_at ? null : member.avatar_url,
+      user: publicUserSummary({ id: member.user_id, username: member.username, avatar_url: member.avatar_url, deleted_at: member.deleted_at }),
       email: member.deleted_at ? "" : member.email,
       status: member.status,
-      roles: assignments.filter((role) => role.membership_id === member.id).map(
-        (
-          role,
-        ) => role.role,
-      ),
+      role: member.user_id === domain.owner_id
+        ? "owner"
+        : domain.preset === "education" && assignments.some((r) =>
+            r.membership_id === member.id && r.role === "coach"
+          )
+        ? "coach"
+        : "member",
       is_owner: member.user_id === domain.owner_id,
     })),
   };

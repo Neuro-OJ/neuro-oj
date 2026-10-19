@@ -101,7 +101,7 @@ export interface ReportRow {
 /** 社区帖子列表行 */
 export interface PostRow {
   post: CommunityPost;
-  author: { id: string; username: string };
+  author: import('~/utils/user-identity').UserSummary;
   likes: number;
   comments: number;
 }

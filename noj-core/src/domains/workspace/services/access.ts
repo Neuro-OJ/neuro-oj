@@ -12,7 +12,10 @@ import {
   ServiceUnavailableError,
   UnauthorizedError,
 } from "../../../shared/base/errors.ts";
-import type { WorkspaceContext } from "../../../shared/workspace/types.ts";
+import type {
+  DomainRole,
+  WorkspaceContext,
+} from "../../../shared/workspace/types.ts";
 import {
   assertActiveInstanceAccount,
   getUserPermissions,
@@ -28,6 +31,18 @@ export function domainMemberWhere(
 ): SQL {
   return sql`EXISTS (SELECT 1 FROM domain_memberships access_member WHERE access_member.domain_id=${domainId}
     AND access_member.user_id=${actorId} AND access_member.status='active')`;
+}
+/** 现任教学组的 SQL 条件；通知与查询在分页前使用同一角色边界。 */
+export function domainTeacherWhere(
+  domainId: AnyColumn | SQL | string,
+  actorId: AnyColumn | SQL | string,
+): SQL {
+  return sql`EXISTS (SELECT 1 FROM domain_memberships teacher
+    JOIN domains teaching_domain ON teaching_domain.id = teacher.domain_id
+    LEFT JOIN domain_member_roles teaching_role ON teaching_role.membership_id = teacher.id
+    WHERE teacher.domain_id = ${domainId} AND teacher.user_id = ${actorId}
+      AND teacher.status = 'active' AND teaching_domain.preset = 'education'
+      AND (teaching_domain.owner_id = teacher.user_id OR teaching_role.role = 'coach'))`;
 }
 /** 公共目录及本人可进入的私有域；平台治理权限显式传入。 */
 export function domainReadableWhere(
@@ -98,15 +113,29 @@ export async function loadWorkspace(
     ? await db.select({ role: domainMemberRoles.role }).from(domainMemberRoles)
       .where(eq(domainMemberRoles.membership_id, membership.id))
     : [];
+  // owner_id 是负责人唯一依据；旧角色、非教学域 coach 均不能扩大权限。
+  const role: DomainRole | null = !membership
+    ? null
+    : domain.owner_id === actorId
+    ? "owner"
+    : domain.preset === "education" && roles.some((row) => row.role === "coach")
+    ? "coach"
+    : "member";
   const context: WorkspaceContext = {
     domainId: domain.id,
     domainSlug: domain.slug,
     actorId,
     platformPermissions,
-    domainPermissions: domainPermissions(roles.map((row) => row.role)),
+    domainPermissions: domainPermissions(role),
     domainRevision: domain.revision,
   };
-  return { domain, membership: membership ?? null, context, platformAdmin };
+  return {
+    domain,
+    membership: membership ?? null,
+    role,
+    context,
+    platformAdmin,
+  };
 }
 
 /** 域内能力断言；平台管理员例外来自服务端实时 RBAC。 */

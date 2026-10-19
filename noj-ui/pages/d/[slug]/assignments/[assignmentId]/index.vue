@@ -22,8 +22,8 @@ const room = await useViewAsyncData(
 const can = (cap: TeachingCapability) =>
   !room.error.value && !!room.data.value && classroomCan(room.data.value.data, cap);
 const isStudent = computed(() =>
-  room.data.value?.data.membership?.role === 'student' ||
-  room.data.value?.data.historical_student === true
+  !room.data.value?.data.manages_domain && (room.data.value?.data.membership?.role === 'student' ||
+  room.data.value?.data.historical_student === true)
 );
 const query = computed(() => ({
   scope: scope.value,

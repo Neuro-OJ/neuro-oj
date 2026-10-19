@@ -28,13 +28,10 @@ describe('教学客户端契约', () => {
       headers: { 'If-Match': '7', 'Idempotency-Key': 'copy-key' },
     });
   });
-  it('助教能力只提交固定项，角色和成员变更使用班级 revision', () => {
+  it('入班只提交学生归属，拒绝沿用旧角色授权契约并携带班级 revision', () => {
     const education = useEducationApi();
-    education.setMember('school', 'class', 'assistant', 'assistant', ['assignments:manage'], 4);
-    expect(api.put).toHaveBeenCalledWith('/api/v1/domains/school/classrooms/class/members/assistant', {
-      role: 'assistant',
-      capabilities: ['assignments:manage'],
-    }, { headers: { 'If-Match': '4' } });
+    education.setMember('school', 'class', 'student', 4);
+    expect(api.put).toHaveBeenCalledWith('/api/v1/domains/school/classrooms/class/members/student', {}, { headers: { 'If-Match': '4' } });
     education.removeMember('school', 'class', 'student', 5);
     expect(api.delete).toHaveBeenCalledWith('/api/v1/domains/school/classrooms/class/members/student', {
       headers: { 'If-Match': '5' },

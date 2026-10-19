@@ -24,6 +24,7 @@ import {
   processEducationEvent,
 } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { setMemberRole } from "../../../workspace/index.ts";
 
 async function fixture() {
   const f = await assignmentFixture();
@@ -33,7 +34,7 @@ async function fixture() {
     f.teacher,
     f.assistant,
     1,
-    { role: "student" },
+    {},
   );
   const task = await createAssignment(
     f.school.slug,
@@ -122,14 +123,7 @@ Deno.test("教学通知：持久事件和反馈同事务，重复领取不重复
 
 Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不能恢复求助访问", async () => {
   const f = await fixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["help:manage"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const help = await createAssignmentHelp(
     f.school.slug,
     f.task.id,
@@ -144,14 +138,7 @@ Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不
   );
   assertEquals(assistant.total, 1);
   assertEquals(assistant.data[0].help_id, help.id);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.assistant)).total,
     0,

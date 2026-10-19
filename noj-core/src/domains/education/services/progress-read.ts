@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publicUserSummary } from "../../../shared/identity/user-summary.ts";
 import type { AssignmentProgressStatus } from "../../../shared/education-types.ts";
 import {
   assignmentItems,
@@ -84,6 +85,7 @@ export async function getAssignmentMatrix(
   const students = await db.select({
     recipient: assignmentRecipients,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
   })
     .from(assignmentRecipients).innerJoin(
@@ -109,6 +111,8 @@ export async function getAssignmentMatrix(
     rows: students.map((s) => ({
       user_id: s.recipient.user_id,
       username: s.deleted_at ? "已注销账号" : s.username,
+      avatar_url: s.deleted_at ? null : s.avatar_url,
+      user: publicUserSummary({ id: s.recipient.user_id, username: s.username, avatar_url: s.avatar_url, deleted_at: s.deleted_at }),
       recipient_status: s.recipient.status,
       joined_at: s.recipient.joined_at,
       left_at: s.recipient.left_at,

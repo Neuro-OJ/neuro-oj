@@ -13,7 +13,7 @@ usage() {
 
 可选 domain：
   identity catalog submission contest system community messaging objective
-  admin search query gateway content-review observability legal workspace education
+  admin search query gateway content-review observability legal workspace education annotation
 
 示例：bash scripts/test-domain.sh submission
 EOF
@@ -29,7 +29,7 @@ domain="$1"
 shift
 known_domains=(
   identity catalog submission contest system community messaging objective
-  admin search query gateway content-review observability legal workspace education
+  admin search query gateway content-review observability legal workspace education annotation
 )
 if [[ ! " ${known_domains[*]} " == *" $domain "* ]]; then
   echo "错误：未知 domain '$domain'" >&2

@@ -28,7 +28,6 @@ import type {
   LineAnnotation,
   MatrixData,
   MyProgress,
-  TeachingCapability,
   TeachingPage,
   TeachingProblemOption,
   TeachingText,
@@ -170,13 +169,11 @@ export function useEducationApi() {
       slug: string,
       id: string,
       userId: string,
-      role: ClassroomMember['role'],
-      capabilities: TeachingCapability[],
       current: number,
     ) =>
       api.put(
         `${classroom(slug, id)}/members/${encodeURIComponent(userId)}`,
-        { role, capabilities },
+        {},
         revision(current),
       ),
     removeMember: (slug: string, id: string, userId: string, current: number) =>
@@ -263,7 +260,7 @@ export function useEducationApi() {
       id: string,
       annotationId: string,
       current: number,
-      input: { body?: string; withdraw?: boolean },
+      input: { body?: string; withdraw?: boolean; reason?: string },
     ) =>
       api.patch<{ data: LineAnnotation }>(
         `${source(slug, classId, id)}/annotations/${encodeURIComponent(annotationId)}`,

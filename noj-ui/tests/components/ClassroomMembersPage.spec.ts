@@ -28,6 +28,13 @@ const stubs = {
     template: '<div><h1>{{ title }}</h1><p>{{ description }}</p></div>',
   },
   ClassroomNavigation: true,
+  UserIdentity: { props: ['user'], template: '<span>{{ user.username }}</span>' },
+  UTabs: {
+    props: ['items', 'modelValue'],
+    emits: ['update:modelValue'],
+    template:
+      '<nav><button v-for="item in items" :key="item.value" @click="$emit(\'update:modelValue\', item.value)">{{ item.label }}</button></nav>',
+  },
   UCard: { template: '<div><slot /></div>' },
   UButton: {
     props: ['disabled', 'to'],
@@ -72,6 +79,7 @@ beforeEach(() => {
   vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'teacher' }) }));
   vi.stubGlobal('useDialog', () => ({ dialog: mockDialog }));
   vi.stubGlobal('useToast', () => ({ toast: mockToast }));
+  vi.stubGlobal('useCopyText', () => ({ copyText: vi.fn() }));
   vi.stubGlobal('useWorkspace', () => ({
     slug: ref('edu-domain'),
     domain: mockDomain,
@@ -128,9 +136,12 @@ describe('pages/d/[slug]/classrooms/[classroomId]/members.vue', () => {
     const view = mount(Wrapper, { global: { stubs } });
     await flushPromises();
 
-    expect(view.text()).toContain('班级成员');
+    expect(view.text()).toContain('班级学生');
     expect(view.text()).toContain('算法进阶班');
     expect(view.text()).toContain('student_bob');
+
+    await view.findAll('button').find((button) => button.text() === '导入与邀请')!.trigger('click');
+    await flushPromises();
 
     // 验证 InvitationManager 被挂载且接收了 domainSlug 与 classroomId
     const inviteMgr = view.find('[data-testid="invitation-manager"]');
@@ -139,8 +150,10 @@ describe('pages/d/[slug]/classrooms/[classroomId]/members.vue', () => {
     expect(inviteMgr.attributes('data-classroom')).toBe('room-1');
     expect(inviteMgr.attributes('data-writable')).toBe('true');
 
-    // 同时保留了导入和申请组件
+    // 导入和申请分别位于明确的页签中。
     expect(view.find('[data-testid="classroom-import"]').exists()).toBe(true);
+    await view.findAll('button').find((button) => button.text() === '入班申请')!.trigger('click');
+    await flushPromises();
     expect(view.find('[data-testid="classroom-join-requests"]').exists()).toBe(true);
 
     view.unmount();

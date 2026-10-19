@@ -1,22 +1,24 @@
-import { and, count, eq, isNull, sql } from "drizzle-orm";
-import { getDb } from "../../../shared/db/connection.ts";
-import { submissionAnnotations, users } from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { workspaceAudit } from "../../workspace/index.ts";
-import { assertClassroomCapability, loadClassroom } from "./access.ts";
 import {
-  assertFeedbackAuthor,
-  interactionRevision,
-  interactionText,
-} from "./interaction-access.ts";
-import { educationOperation } from "./operations.ts";
-import { loadTeachingTextSource, readTeachingText } from "./submission-text.ts";
+  createAnnotation,
+  getAnnotation,
+  getAnnotationSource,
+  listAnnotations,
+  updateAnnotationMessage,
+  updateAnnotationThread,
+} from "../../annotation/index.ts";
+import { assertClassroomCapability, loadClassroom } from "./access.ts";
+import { loadTeachingTextSource } from "./submission-text.ts";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import { educationOperations } from "../../../shared/db/schema.ts";
+import { educationRequestHash } from "./operations.ts";
 
-/** 行批注输入中的哈希由预览接口提供，防止把旧文件的行号写入其他内容。 */
+/** 旧课堂入口仍明确创建定向教学反馈；新页面一律使用默认私密的全局入口。 */
 export interface SubmissionAnnotationInput {
   file_name: string;
   source_hash: string;
@@ -24,8 +26,49 @@ export interface SubmissionAnnotationInput {
   end_line: number;
   body: string;
 }
+type Detail = Awaited<ReturnType<typeof getAnnotation>>;
+function legacyShape(detail: Detail, classroomId: string) {
+  if (detail.target.kind !== "submission" || detail.visibility !== "teaching") {
+    throw new NotFoundError("行批注不存在");
+  }
+  const first = detail.messages[0];
+  return {
+    id: detail.id,
+    domain_id: detail.domain_id,
+    classroom_id: classroomId,
+    submission_id: detail.target.submission_id,
+    file_name: detail.target.file_name,
+    user_id: detail.student_id!,
+    author_id: detail.owner_id,
+    author_name: detail.author?.username,
+    author: detail.author,
+    source_hash: detail.content_hash,
+    start_line: detail.anchor.start_line,
+    end_line: detail.anchor.end_line,
+    body: first?.body ?? "",
+    revision: first?.revision ?? detail.revision,
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+    deleted_at: null as string | null,
+  };
+}
+async function classroomSource(
+  slug: string,
+  classroomId: string,
+  id: string,
+  actorId: string,
+  write = false,
+) {
+  const access = await loadClassroom(slug, classroomId, actorId, {
+    historicalStudent: !write,
+    write,
+  });
+  if (write) assertClassroomCapability(access, "feedback:write");
+  await loadTeachingTextSource(access, id);
+  return access;
+}
 
-/** 写批注需同时有源码读取和反馈能力，原提交锁与删除流程协调。 */
+/** 旧行号转换为规范选区；正文、幂等与通知只写入全局批注表。 */
 export async function createSubmissionAnnotation(
   slug: string,
   classroomId: string,
@@ -34,66 +77,59 @@ export async function createSubmissionAnnotation(
   key: string,
   input: SubmissionAnnotationInput,
 ) {
-  const body = interactionText(input.body);
+  const access = await classroomSource(slug, classroomId, id, actorId, true);
+  if (typeof key !== "string" || !key.trim() || key.length > 200) throw new BadRequestError("需要 Idempotency-Key", "IDEMPOTENCY_KEY_REQUIRED");
   if (
     typeof input.file_name !== "string" || !input.file_name ||
-    typeof input.source_hash !== "string" ||
-    !/^[a-f0-9]{64}$/.test(input.source_hash) ||
     !Number.isSafeInteger(input.start_line) ||
-    !Number.isSafeInteger(input.end_line) ||
-    input.start_line < 1 || input.end_line < input.start_line
-  ) throw new BadRequestError("批注文件、哈希或行范围错误");
-  return await getDb().transaction(async (tx) => {
-    const access = await loadClassroom(slug, classroomId, actorId, {
-      executor: tx,
-      write: true,
-    });
-    assertClassroomCapability(access, "feedback:write");
-    const source = await loadTeachingTextSource(access, id, tx, true);
-    const text = await readTeachingText(source, input.file_name);
-    if (text.source_hash !== input.source_hash) {
-      throw new ConflictError(
-        "文件内容已变化，请重新打开原提交",
-        "SOURCE_HASH_CONFLICT",
-      );
-    }
-    if (input.end_line > text.line_count) {
-      throw new BadRequestError("批注行范围超过文件长度");
-    }
-    return await educationOperation(
-      tx,
-      access.domain.id,
-      actorId,
-      "annotation.create",
-      key,
-      { classroomId, id, ...input, body },
-      async () => {
-        const now = new Date().toISOString();
-        const [annotation] = await tx.insert(submissionAnnotations).values({
-          id: crypto.randomUUID(),
-          domain_id: access.domain.id,
-          classroom_id: classroomId,
-          submission_id: id,
-          user_id: source.user_id,
-          author_id: actorId,
-          ...input,
-          body,
-          created_at: now,
-          updated_at: now,
-        }).returning();
-        await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
-          operation: "annotation.create",
-          classroom_id: classroomId,
-          submission_id: id,
-          annotation_id: annotation.id,
-        });
-        return annotation;
-      },
+    !Number.isSafeInteger(input.end_line) || input.start_line < 1 ||
+    input.end_line < input.start_line
+  ) throw new BadRequestError("批注文件或行范围错误");
+  const target = {
+    kind: "submission" as const,
+    submission_id: id,
+    file_name: input.file_name,
+  };
+  const source = await getAnnotationSource(slug, actorId, target),
+    text = source.blocks[0]!.text;
+  if (source.content_hash !== input.source_hash) {
+    throw new ConflictError(
+      "文件内容已变化，请重新打开原提交",
+      "SOURCE_HASH_CONFLICT",
     );
-  });
+  }
+  const lines = text.split("\n");
+  if (input.end_line > lines.length) {
+    throw new BadRequestError("批注行范围超过文件长度");
+  }
+  const start = input.start_line === 1
+    ? 0
+    : lines.slice(0, input.start_line - 1).join("\n").length + 1;
+  const end = lines.slice(0, input.end_line).join("\n").length;
+  const [previous] = await getDb().select().from(educationOperations).where(and(
+    eq(educationOperations.domain_id, access.domain.id), eq(educationOperations.actor_id, actorId),
+    eq(educationOperations.operation, "annotation.create"), eq(educationOperations.idempotency_key, key),
+  ));
+  if (previous) {
+    const hash = await educationRequestHash({ classroomId, id, ...input, body: typeof input.body === "string" ? input.body.trim() : input.body });
+    if (hash !== previous.request_hash) throw new ConflictError("幂等键已用于不同请求", "IDEMPOTENCY_CONFLICT");
+    const originalId = (previous.result as Record<string, unknown>).id;
+    if (typeof originalId !== "string") throw new NotFoundError("历史批注不存在");
+    return legacyShape(await getAnnotation(slug, actorId, originalId), classroomId);
+  }
+  return legacyShape(
+    await createAnnotation(slug, actorId, `legacy:${await educationRequestHash(key)}`, {
+      target,
+      content_hash: source.content_hash,
+      anchor: { block_id: "file", start, end },
+      body: input.body,
+      visibility: "teaching",
+    }),
+    classroomId,
+  );
 }
 
-/** 学生只读本人批注，撤回记录不在公开列表展示；注销作者仍保留身份依据。 */
+/** 兼容旧分页，但每条记录仍经全局会话的当前原文与受众校验。 */
 export async function listSubmissionAnnotations(
   slug: string,
   classroomId: string,
@@ -104,42 +140,30 @@ export async function listSubmissionAnnotations(
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
     throw new BadRequestError("分页格式错误");
   }
-  const access = await loadClassroom(slug, classroomId, actorId, {
-    historicalStudent: true,
-  });
-  await loadTeachingTextSource(access, id);
-  const condition = and(
-    eq(submissionAnnotations.domain_id, access.domain.id),
-    eq(submissionAnnotations.classroom_id, classroomId),
-    eq(submissionAnnotations.submission_id, id),
-    isNull(submissionAnnotations.deleted_at),
-  );
-  const db = getDb(),
-    [total] = await db.select({ count: count() }).from(submissionAnnotations)
-      .where(condition);
-  const rows = await db.select({
-    annotation: submissionAnnotations,
-    author: sql<
-      string
-    >`CASE WHEN ${users.deleted_at} IS NOT NULL THEN '已注销用户' ELSE ${users.username} END`,
-  })
-    .from(submissionAnnotations).innerJoin(
-      users,
-      eq(users.id, submissionAnnotations.author_id),
-    )
-    .where(condition).orderBy(
-      submissionAnnotations.created_at,
-      submissionAnnotations.id,
-    ).limit(50).offset((page - 1) * 50);
-  return {
-    page,
-    per_page: 50,
-    total: total.count,
-    data: rows.map((r) => ({ ...r.annotation, author_name: r.author })),
-  };
+  await classroomSource(slug, classroomId, id, actorId);
+  const visible: Awaited<ReturnType<typeof listAnnotations>>["data"] = [];
+  let cursor: string | undefined;
+  do {
+    const result = await listAnnotations(slug, actorId, {
+      shared: true,
+      teachingOnly: true,
+      submissionId: id,
+      cursor,
+      limit: 50,
+    });
+    visible.push(...result.data);
+    cursor = result.next_cursor ?? undefined;
+  } while (cursor);
+  const data = [];
+  for (const thread of visible.slice((page - 1) * 50, page * 50)) {
+    data.push(
+      legacyShape(await getAnnotation(slug, actorId, thread.id), classroomId),
+    );
+  }
+  return { page, per_page: 50, total: visible.length, data };
 }
 
-/** 编辑保留原提交、哈希及行范围；作者可改正文，教练或域治理人员可撤回。 */
+/** 兼容旧 ID；只改全局消息，撤回整个会话不会让旧表正文重新出现。 */
 export async function updateSubmissionAnnotation(
   slug: string,
   classroomId: string,
@@ -147,50 +171,32 @@ export async function updateSubmissionAnnotation(
   annotationId: string,
   actorId: string,
   revision: number | null,
-  input: { body?: string; withdraw?: boolean },
+  input: { body?: string; withdraw?: boolean; reason?: string },
 ) {
-  if (input.withdraw !== true && input.body === undefined) {
-    throw new BadRequestError("需要批注正文或撤回操作");
+  await classroomSource(slug, classroomId, id, actorId, true);
+  const detail = await getAnnotation(slug, actorId, annotationId),
+    previous = legacyShape(detail, classroomId);
+  if (previous.submission_id !== id) throw new NotFoundError("行批注不存在");
+  if (input.withdraw) {
+    await updateAnnotationThread(slug, actorId, annotationId, revision, {
+      withdraw: true,
+      reason: input.reason,
+    });
+    return {
+      ...previous,
+      revision: previous.revision + 1,
+      deleted_at: new Date().toISOString(),
+    };
   }
-  const body = input.body === undefined
-    ? undefined
-    : interactionText(input.body);
-  return await getDb().transaction(async (tx) => {
-    const access = await loadClassroom(slug, classroomId, actorId, {
-      executor: tx,
-      write: true,
-    });
-    assertClassroomCapability(access, "feedback:write");
-    await loadTeachingTextSource(access, id, tx, true);
-    const [annotation] = await tx.select().from(submissionAnnotations).where(
-      and(
-        eq(submissionAnnotations.id, annotationId),
-        eq(submissionAnnotations.domain_id, access.domain.id),
-        eq(submissionAnnotations.classroom_id, classroomId),
-        eq(submissionAnnotations.submission_id, id),
-        isNull(submissionAnnotations.deleted_at),
-      ),
-    ).for("update");
-    if (!annotation) throw new NotFoundError("批注不存在");
-    interactionRevision(annotation.revision, revision);
-    if (
-      body !== undefined ||
-      !access.managesDomain && access.classMembership?.role !== "coach"
-    ) {
-      assertFeedbackAuthor(annotation.author_id, actorId);
-    }
-    const [updated] = await tx.update(submissionAnnotations).set({
-      body,
-      revision: annotation.revision + 1,
-      updated_at: new Date().toISOString(),
-      deleted_at: input.withdraw ? new Date().toISOString() : undefined,
-    }).where(eq(submissionAnnotations.id, annotationId)).returning();
-    await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
-      operation: input.withdraw ? "annotation.withdraw" : "annotation.update",
-      classroom_id: classroomId,
-      submission_id: id,
-      annotation_id: annotationId,
-    });
-    return updated;
-  });
+  return legacyShape(
+    await updateAnnotationMessage(
+      slug,
+      actorId,
+      annotationId,
+      detail.messages[0]!.id,
+      revision,
+      { body: input.body },
+    ),
+    classroomId,
+  );
 }

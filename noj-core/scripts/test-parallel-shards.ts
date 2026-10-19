@@ -114,6 +114,7 @@ export const SHARDS: Shard[] = [
       "src/domains/workspace/tests/services",
       "src/domains/education/tests/routes",
       "src/domains/education/tests/services",
+      "src/domains/annotation/tests",
     ],
   },
 ];

@@ -100,6 +100,7 @@ annotationRouter.patch(`${path}/annotations/:annotationId`, async (c) => {
       {
         body: input.body as string | undefined,
         withdraw: input.withdraw === true,
+        reason: typeof input.reason === "string" ? input.reason : undefined,
       },
     ),
   });

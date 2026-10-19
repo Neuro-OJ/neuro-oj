@@ -32,7 +32,7 @@ const emit = defineEmits<{ select: [userId: string, cell: TeachingCell] }>();
         <tbody>
           <tr v-for="row in matrix.rows" :key="row.user_id" class="border-t border-border">
             <th
-              class="sticky left-0 z-10 bg-bg-panel p-3 text-left font-medium">{{ row.username }}<span v-if="row.recipient_status !== 'active'" class="block text-xs text-text-muted">历史学生</span></th>
+              class="sticky left-0 z-10 bg-bg-panel p-3 text-left font-medium"><UserIdentity :user="row.user ?? { id: row.user_id, username: row.username, avatar_url: row.avatar_url }" size="sm" /><span v-if="row.recipient_status !== 'active'" class="block text-xs text-text-muted">历史学生</span></th>
             <td v-for="cell in row.cells" :key="cell.item_id" class="p-2 tabular-nums">
               <UButton variant="ghost" :color="!cell.updating && cell.status === 'achieved' ? 'success' : 'neutral'"
                 :aria-label="`${row.username} ${matrix.items.find(i => i.id === cell.item_id)?.reference.display_ref} ${teachingCellLabel(cell)}`"
@@ -45,7 +45,7 @@ const emit = defineEmits<{ select: [userId: string, cell: TeachingCell] }>();
     <ul class="divide-y divide-border overflow-hidden rounded border border-border bg-bg-panel sm:hidden" aria-label="学生成绩摘要">
       <li v-for="row in matrix.rows" :key="row.user_id">
         <button type="button" class="flex min-h-16 w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-primary-hover-bg" :aria-expanded="expanded === row.user_id" :aria-controls="`student-results-${row.user_id}`" @click="expanded = expanded === row.user_id ? null : row.user_id">
-          <span class="min-w-0"><span class="block break-words font-medium">{{ row.username }}</span><span class="mt-1 block text-sm text-text-secondary tabular-nums">{{ rowSummary(row.cells) }}</span><span v-if="row.recipient_status !== 'active'" class="text-xs text-text-muted">历史学生</span></span>
+          <span class="min-w-0"><UserIdentity :user="row.user ?? { id: row.user_id, username: row.username, avatar_url: row.avatar_url }" :link="false" size="sm" /><span class="mt-1 block text-sm text-text-secondary tabular-nums">{{ rowSummary(row.cells) }}</span><span v-if="row.recipient_status !== 'active'" class="text-xs text-text-muted">历史学生</span></span>
           <UIcon :name="expanded === row.user_id ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4 shrink-0 text-text-secondary" />
         </button>
         <div :id="`student-results-${row.user_id}`" v-show="expanded === row.user_id" class="border-t border-border bg-bg-sunken/40 px-4">

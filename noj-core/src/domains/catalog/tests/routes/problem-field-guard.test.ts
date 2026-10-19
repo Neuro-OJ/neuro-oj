@@ -180,7 +180,7 @@ for (
 ) {
   await db.insert(userRoles).values({ user_id: userId, role_id: roleId })
     .onConflictDoNothing();
-  await grantDefaultCatalogRole(userId, "editor");
+  await grantDefaultCatalogRole(userId, "coach");
 }
 
 // 模块级预置收紧用户拥有的题目（供两个 PUT 用例复用）

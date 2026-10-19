@@ -69,7 +69,7 @@ async function createTestProblem(
       await createTestUser(ownerId);
     }
   }
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const now = new Date().toISOString();
   await db.insert(problems).values({
     domain_id: "00000000-0000-4000-8000-000000000001",

@@ -36,13 +36,13 @@ watch([key, room.data], () => {
   }
 });
 const writable = computed(() =>
-  room.data.value && (room.data.value.data.manages_domain || room.data.value.data.membership?.role === 'coach') &&
+  room.data.value && (room.data.value.data.manages_domain) &&
   room.data.value.data.status === 'active' && domain.value?.status === 'active' &&
   domain.value.configuration.features.classroom
 );
 const successors = computed(() =>
   roster.data.value?.data.filter((m) =>
-    m.role === 'coach' && m.effective_active && m.user_id !== room.data.value?.data.primary_coach_id
+    m.effective_active && m.user_id !== room.data.value?.data.primary_coach_id
   ).map((m) => ({ label: m.username, value: m.user_id })) ?? []
 );
 const capture = useWorkspaceActionScope();
@@ -71,7 +71,7 @@ async function lifecycle(action: 'transfer' | 'archive') {
   if (
     !await dialog.confirm(
       action === 'transfer'
-        ? '把主教练交接给所选教练？历史数据仍属于原班级。'
+        ? '更换班级联系人？此操作不改变任何人的域教练权限，历史数据仍属于原班级。'
         : '归档后停止新作业和成员写操作，保留获授权的历史。是否归档？',
     )
   ) return;
@@ -115,7 +115,7 @@ useSeoMeta({ title: '班级设置' });
 
     <LibraryPageHeader
       title="班级设置"
-      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」的基本信息、交接主教练或归档班级` : '管理班级信息与教学安排'"
+      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」的基本信息、联系人或归档班级` : '管理班级信息与教学安排'"
       icon="i-lucide-settings"
     >
       <template #actions>
@@ -163,32 +163,32 @@ useSeoMeta({ title: '班级设置' });
         </form>
       </UCard>
 
-      <!-- 主教练交接 -->
+      <!-- 联系人只承担联络信息，不参与授权 -->
       <UCard>
         <template #header>
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-user-check" class="size-5 text-primary" />
-            <h2 class="font-semibold text-text">主教练交接</h2>
+            <h2 class="font-semibold text-text">班级联系人</h2>
           </div>
         </template>
 
         <div class="space-y-3">
           <p class="text-sm text-text-secondary">
-            将主教练权限交接给班级内其他已被任命为教练身份的成员。历史作业与学情数据仍保留在当前班级。
+            联系人负责班级日常联络，不产生额外权限。教学权限统一来自域负责人和域教练，历史作业与学情保留在当前班级。
           </p>
 
           <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
 
           <div class="flex flex-wrap items-end gap-3 pt-1">
-            <AdminFormField label="接任主教练" class="w-full sm:w-72">
+            <AdminFormField label="新联系人" class="w-full sm:w-72">
             <USelect
               v-model="successor"
               :items="successors"
-              placeholder="选择接任的主教练"
+              placeholder="选择班级联系人"
               class="w-full"
               :loading="roster.status.value === 'pending'"
               :disabled="saving || roster.status.value === 'pending' || !!roster.error.value || !successors.length"
-              aria-label="接任主教练"
+              aria-label="新联系人"
             />
             </AdminFormField>
             <UButton
@@ -201,7 +201,7 @@ useSeoMeta({ title: '班级设置' });
             </UButton>
           </div>
           <p v-if="roster.status.value === 'success' && !roster.error.value && !successors.length" class="text-sm text-text-muted">
-            暂无可接任的教练。请先在<NuxtLink :to="workspacePath(slug!, `classrooms/${id}/members`)" class="text-primary hover:underline">班级成员</NuxtLink>中将接任者设为教练。
+            暂无可选择的联系人。请先在<NuxtLink :to="workspacePath(slug!, `classrooms/${id}/members`)" class="text-primary hover:underline">班级学生</NuxtLink>中添加已有域成员；联系人不产生教学权限。
           </p>
         </div>
       </UCard>

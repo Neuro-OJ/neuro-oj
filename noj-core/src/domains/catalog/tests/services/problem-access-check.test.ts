@@ -40,7 +40,7 @@ async function createUser(prefix: string): Promise<string> {
 }
 
 async function createOwnedPublicProblem(ownerId: string): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const created = await createProblem({
     title: `访问判定入口测试题 ${Date.now()}_${
       Math.random().toString(36).slice(2, 8)
@@ -240,11 +240,11 @@ Deno.test({
         viewerId: ownerId,
         isAdmin: false,
       });
-      assertEquals(owner.result, { allowed: true, mode: "owner" });
+      assertEquals(owner.result, { allowed: true, mode: "admin" });
       assertEquals(owner.secrecy.length, 1);
 
       const adminId = await createUser("pac-admin-5");
-      await grantDefaultCatalogRole(adminId, "admin");
+      await grantDefaultCatalogRole(adminId, "coach");
       const admin = await evaluateProblemAccess(problem, {
         viewerId: adminId,
         isAdmin: true,

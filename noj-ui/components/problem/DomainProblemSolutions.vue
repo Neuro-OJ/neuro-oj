@@ -41,7 +41,7 @@ const { data, error, status, refresh } = await useAsyncData(
           <UIcon name="i-lucide-file-text" class="size-4 shrink-0 text-text-muted" />
           <span class="break-words">{{ item.post.title }}</span>
         </NuxtLink>
-        <span class="flex items-center gap-3 text-xs text-text-muted"><UserIdentity :user="item.author" size="sm" :show-avatar="false" /><time :datetime="item.post.created_at">{{ formatDateTime(item.post.created_at) }}</time></span>
+        <span class="flex items-center gap-3 text-xs text-text-muted"><UserIdentity :user="item.author" :domain="slug" size="sm" /><time :datetime="item.post.created_at">{{ formatDateTime(item.post.created_at) }}</time></span>
       </li>
     </ul>
     <p v-else class="mt-4 text-sm text-text-muted">暂无题解，欢迎分享你的解题思路。</p>

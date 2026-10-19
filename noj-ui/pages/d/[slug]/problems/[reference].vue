@@ -77,9 +77,10 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           </div>
           <DomainProblemVersions v-if="showVersions" id="problem-versions" :key="`${slug}:${reference}:${user?.id}:versions`" :slug="slug!" :reference="reference" />
           <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description"
+            :annotation="{ slug: slug!, target: { kind: 'problem', reference, version_id: data.version_id, field: 'description' } }"
             :editor-to="!inlineAnswer ? solveTo : null" :editor-label="editorLabel"
             :editor-icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'" :edit-to="editTo">
-            <template #after-content><ProblemSamples :samples="data.content.samples" /></template>
+            <template #after-content><ProblemSamples :samples="data.content.samples" :annotation="{ slug: slug!, reference, version_id: data.version_id }" /></template>
           </ProblemStatement>
           <div v-if="inlineAnswer" id="answer" class="scroll-mt-24">
             <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}`" :slug="slug!" :problem="data" :assignment-origin="assignmentOrigin" @refresh="refresh()" />

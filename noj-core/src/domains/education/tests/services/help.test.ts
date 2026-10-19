@@ -32,7 +32,7 @@ async function fixture() {
     f.teacher,
     f.assistant,
     1,
-    { role: "student" },
+    {},
   );
   const task = await createAssignment(
     f.school.slug,
@@ -123,7 +123,7 @@ Deno.test("作业求助：只关联本人同域提交，目录与回复不向同
   );
 });
 
-Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本，学生追问重新打开", async () => {
+Deno.test("作业求助：域角色任命控制读取、幂等回复及状态前置版本，学生追问重新打开", async () => {
   const f = await fixture();
   const help = await createAssignmentHelp(
     f.school.slug,
@@ -132,26 +132,11 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
     "new",
     { body: "如何调试" },
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
   await assertRejects(
     () => getAssignmentHelp(f.school.slug, f.task.id, help.id, f.assistant),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["help:manage"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   const reply = await replyAssignmentHelp(
     f.school.slug,
     f.task.id,
@@ -292,3 +277,4 @@ Deno.test("作业求助：学生离班后保留旧讨论，但不能继续新的
     1,
   );
 });
+import { setMemberRole } from "../../../workspace/index.ts";

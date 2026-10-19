@@ -10,7 +10,6 @@ import {
 import { signToken } from "../../../identity/index.ts";
 import {
   createDomain,
-  setMemberRoles,
   updateDomain,
 } from "../../../workspace/index.ts";
 import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
@@ -230,7 +229,7 @@ Deno.test("资源管理 HTTP：引用分页、独立策略、下架恢复及源�
   assertEquals(down.resource_available, false);
   assertEquals(down.title, null);
   assertEquals(down.reference.display_ref, f.sourceRef);
-  await setMemberRoles(f.other.slug, f.owner, f.teacher, ["educator"]);
+  // 此账号在源域是教练，在目标域仍是普通成员，不能携带源域能力管理目标引用。
   const teacherToken = await signToken({ sub: f.teacher, role: "user" });
   assertEquals(
     (await jsonRequest(f.app, bindings, {

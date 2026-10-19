@@ -50,6 +50,7 @@ export interface CheckinRankingRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   /** 当月签到天数 */
   days: number;
 }

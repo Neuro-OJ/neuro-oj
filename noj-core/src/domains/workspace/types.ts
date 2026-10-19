@@ -21,67 +21,55 @@ const MEMBER = [
   "community:create",
   "community:comment",
 ] as const;
-const EDITOR = [
+const BUSINESS = [
   "problem:create",
   "problem:write_own",
   "problem:publish",
-  "training:create",
-  "training:import",
-  "problem:import",
-  "training:write_own",
-  "contest:create",
-  "contest:manage_own",
-] as const;
-const ADMIN = [
-  "domain:settings",
-  "domain:members",
-  "domain:invitations",
-  "domain:archive",
   "problem:write_any",
   "problem:delete_any",
   "problem:share",
   "problem:policy",
-  "submission:read_all",
-  "submission:rejudge",
+  "problem:import",
+  "training:create",
+  "training:import",
+  "training:write_own",
   "training:write_any",
   "training:share",
+  "contest:create",
+  "contest:manage_own",
   "contest:manage",
+  "submission:read_all",
+  "submission:rejudge",
+  "classroom:create",
   "classroom:manage_any",
-  "llm:manage",
-  "domain:limits",
   "community:moderate",
 ] as const;
+const GOVERNANCE = [
+  "domain:settings",
+  "domain:members",
+  "domain:invitations",
+  "domain:archive",
+  "domain:limits",
+  "domain:transfer",
+  "llm:manage",
+] as const;
 
-/** 仅生成域内权限；平台 user_roles 的业务权限不在此继承。 */
+/** 单一域角色产生固定能力；平台角色和旧班级任职不参与此映射。 */
 export function domainPermissions(
-  roles: readonly DomainRole[],
+  role: DomainRole | null,
 ): ReadonlySet<string> {
-  const permissions = new Set<string>();
-  for (const role of roles) {
-    for (const permission of MEMBER) permissions.add(permission);
-    if (role === "editor" || role === "admin" || role === "owner") {
-      for (const permission of EDITOR) permissions.add(permission);
-    }
-    if (role === "educator" || role === "admin" || role === "owner") {
-      permissions.add("classroom:create");
-      permissions.add("training:import");
-      permissions.add("problem:import");
-    }
-    if (role === "moderator") permissions.add("community:moderate");
-    if (role === "admin" || role === "owner") {
-      for (const permission of ADMIN) permissions.add(permission);
-    }
-    if (role === "owner") permissions.add("domain:transfer");
-  }
-  return permissions;
+  if (!role) return new Set();
+  return new Set([
+    ...MEMBER,
+    ...(role === "owner" || role === "coach" ? BUSINESS : []),
+    ...(role === "owner" ? GOVERNANCE : []),
+  ]);
 }
 
-/** 校验内置角色，拒绝平台权限或任意自定义角色。 */
+/** 普通域只有负责人和成员，教学域才允许教练。 */
 export function isDomainRole(value: unknown): value is DomainRole {
   return typeof value === "string" &&
-    ["owner", "admin", "editor", "educator", "moderator", "member"].includes(
-      value,
-    );
+    ["owner", "coach", "member"].includes(value);
 }
 /** slug 创建后固定；不能包含题号分隔符或路径。 */
 export function validateDomainSlug(value: unknown): asserts value is string {

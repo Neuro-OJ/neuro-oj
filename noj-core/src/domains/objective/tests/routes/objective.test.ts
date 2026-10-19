@@ -124,7 +124,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("coach");
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
@@ -150,7 +150,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("coach");
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
@@ -183,7 +183,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("coach");
     // 创建一个客观题套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -212,7 +212,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
     // 创建套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -291,7 +291,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
     const res = await jsonRequest(
       app,
       "/api/v1/problems/submissions?paper_id=00000000-0000-0000-0000-000000000000",
@@ -309,8 +309,8 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
-    const other = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
+    const other = await createDefaultCatalogToken("member");
 
     // 创建套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
@@ -451,8 +451,8 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
-    const solver = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
+    const solver = await createDefaultCatalogToken("coach");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -540,12 +540,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective route: 编辑者不能物理删除，已发布套卷保留版本及身份",
+  name: "objective route: 教练与平台管理员均不能物理删除已发布套卷",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -574,13 +574,13 @@ Deno.test({
       },
     );
 
+    await publishPaper(app, paperId, owner);
     const del = await jsonRequest(app, `/api/v1/problems/${paperId}`, {
       method: "DELETE",
       token: owner,
     });
-    assertEquals(del.status, 403);
-    await publishPaper(app, paperId, owner);
-    const admin = await createDefaultCatalogToken("admin");
+    assertEquals(del.status, 409);
+    const admin = await createDefaultCatalogToken("platform-admin");
     const governedDelete = await jsonRequest(
       app,
       `/api/v1/problems/${paperId}`,
@@ -602,7 +602,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("coach");
     // 服务层直接创建 编程题（内部 root 路径，不受普通用户敏感字段限制）
     const created = await createProblem({
       title: `编程题 ${Date.now()}`,
@@ -638,7 +638,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
@@ -696,7 +696,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
@@ -731,13 +731,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective route: 默认域管理员套卷不能由其他编辑者管理",
+  name: "objective route: 默认域管理员套卷不能由普通成员管理",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const admin = await createUserToken("admin");
-    const normal = await createDefaultCatalogToken("editor");
+    const normal = await createDefaultCatalogToken("member");
 
     // admin 创建 客观题套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
@@ -817,7 +817,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
@@ -905,8 +905,8 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createDefaultCatalogToken("editor");
-    const solver = await createDefaultCatalogToken("editor");
+    const owner = await createDefaultCatalogToken("coach");
+    const solver = await createDefaultCatalogToken("member");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",

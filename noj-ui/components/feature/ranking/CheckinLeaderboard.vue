@@ -97,7 +97,7 @@ const isCurrentMonth = computed(() => props.month >= currentUtcMonth())
                 <RankBadge :rank="row.rank" />
               </td>
               <td class="px-4 py-3.5">
-                <UserIdentity :user="{ id: row.user_id, username: row.username }" size="sm" />
+                <UserIdentity :user="{ id: row.user_id, username: row.username, avatar_url: row.avatar_url }" size="sm" />
               </td>
               <td class="w-28 px-4 py-3.5 text-right text-base font-bold text-signal-deep tabular-nums">
                 {{ row.days }}

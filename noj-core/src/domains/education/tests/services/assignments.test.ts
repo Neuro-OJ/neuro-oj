@@ -329,7 +329,7 @@ Deno.test("作业名单：新生只补入未截止全班任务，离班保留历
     f.teacher,
     f.assistant,
     1,
-    { role: "student" },
+    {},
   );
   const newcomer = await f.db.select().from(assignmentRecipients).where(
     eq(assignmentRecipients.user_id, f.assistant),
@@ -362,7 +362,7 @@ Deno.test("作业名单：新生只补入未截止全班任务，离班保留历
     f.teacher,
     f.student,
     3,
-    { role: "student" },
+    {},
   );
   const restored = await f.db.select().from(assignmentRecipients).where(
     eq(assignmentRecipients.user_id, f.student),

@@ -11,6 +11,9 @@ const props = defineProps<
   { slug: string; contestId: string; problem: ContestProblem & { version_id: string }; active: boolean }
 >();
 const emit = defineEmits<{ refresh: [] }>();
+function annotation(index: number, field: string) {
+  return props.problem.reference ? { slug: props.slug, target: { kind: 'problem' as const, reference: props.problem.reference.qualified_ref, version_id: props.problem.version_id, contest_id: props.contestId, field: `questions.${index}.${field}` } } : undefined;
+}
 const api = useDomainContestAnswers(),
   scope = useWorkspaceActionScope(),
   { dialog } = useDialog(),
@@ -137,12 +140,13 @@ async function submit() {
         class="border-b border-border py-4">
         <p
           class="mb-2 text-xs text-text-muted">第 {{ index + 1 }} 题 · {{ { single: '单选', multiple: '多选', judge: '判断' }[question.type] }}</p>
-        <MarkdownRenderer :content="question.prompt" />
+        <AnnotationText :annotation="annotation(index, 'prompt')"><MarkdownRenderer :content="question.prompt" /></AnnotationText>
         <div class="mt-3 flex flex-col gap-2">
-          <UCheckbox
-            v-for="item in question.type === 'judge' ? [{ key: true, text: '正确' }, { key: false, text: '错误' }] : question.options"
-            :key="String(item.key)" :label="item.text" :model-value="(answers[question.id] ?? []).includes(item.key)"
+          <div v-for="(item, optionIndex) in question.type === 'judge' ? [{ key: true, text: '正确' }, { key: false, text: '错误' }] : question.options" :key="String(item.key)" class="flex items-start gap-2">
+          <UCheckbox :aria-label="item.text" :model-value="(answers[question.id] ?? []).includes(item.key)"
             :disabled="!writable" @update:model-value="option(question.id, item.key, question.type === 'multiple')" />
+          <AnnotationText :annotation="question.type !== 'judge' ? annotation(index, `options.${optionIndex}.text`) : undefined"><span class="text-sm">{{ item.text }}</span></AnnotationText>
+          </div>
         </div>
       </div>
       <p class="text-xs text-text-muted">一次正式交卷；赛中不返回标准答案和逐题正确性。</p>

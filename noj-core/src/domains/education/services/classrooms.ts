@@ -3,7 +3,6 @@ import { recordEducationEvent } from "../../../shared/education-events.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
-  classroomMemberships,
   classrooms,
   domainMemberships,
   users,
@@ -102,15 +101,6 @@ export async function createClassroom(slug: string, actorId: string, input: {
       created_at: now,
       updated_at: now,
     }).returning();
-    await tx.insert(classroomMemberships).values({
-      id: crypto.randomUUID(),
-      domain_id: workspace.domain.id,
-      classroom_id: classroom.id,
-      user_id: coachId,
-      role: "coach",
-      joined_at: now,
-      appointed_at: now,
-    });
     await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {
       operation: "classroom.create",
       classroom_id: classroom.id,
@@ -130,7 +120,7 @@ export async function listClassrooms(slug: string, actorId: string, page = 1) {
     manage ? undefined : sql`EXISTS (SELECT 1 FROM classroom_memberships m
       JOIN domain_memberships d ON d.domain_id = m.domain_id AND d.user_id = m.user_id
       WHERE m.classroom_id = ${classrooms.id} AND m.user_id = ${actorId}
-      AND m.status = 'active' AND d.status = 'active')`,
+      AND m.role = 'student' AND m.status = 'active' AND d.status = 'active')`,
   )).orderBy(classrooms.created_at, classrooms.id).limit(50).offset(
     (page - 1) * 50,
   );
@@ -148,7 +138,6 @@ export async function getClassroom(
   return {
     ...access.classroom,
     membership: access.classMembership,
-    capabilities: [...access.capabilities],
     manages_domain: access.managesDomain,
     historical_student: !access.classMembership && !access.managesDomain,
   };

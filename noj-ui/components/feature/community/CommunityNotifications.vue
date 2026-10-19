@@ -109,7 +109,7 @@ onMounted(() => {
             <UIcon :name="notificationTypeIcon(item.notification.type)" class="size-3.5" />
           </span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ notificationTypeLabel(item.notification.type) }}</p>
+            <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" :link="false" size="sm" /></template><template v-else><strong>系统</strong></template>{{ notificationTypeLabel(item.notification.type) }}</p>
             <p v-if="item.notification.data.message" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.message }}</p>
             <p v-else-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
             <p v-if="item.notification.type === 'ban'" class="mt-1 text-xs text-text-secondary">

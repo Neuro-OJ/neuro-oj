@@ -11,6 +11,9 @@ import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/problemView';
 import { languageLabels } from '~/utils/submissionFormat';
 const props = defineProps<{ slug: string; problem: DomainProblemDetail; assignmentOrigin?: AssignmentSubmissionOrigin }>();
 const emit = defineEmits<{ refresh: [] }>();
+function annotation(index: number, field: string) {
+  return { slug: props.slug, target: { kind: 'problem' as const, reference: props.problem.reference.qualified_ref, version_id: props.problem.version_id, field: `questions.${index}.${field}` } };
+}
 const { user, isLoggedIn } = useAuth();
 const route = useRoute();
 const { domain } = useWorkspace();
@@ -171,14 +174,14 @@ async function submit() {
         class="mb-5 border-b border-border pb-5">
         <p
           class="mb-2 text-xs text-text-muted">第 {{ index + 1 }} 题 · {{ { single: '单选', multiple: '多选', judge: '判断' }[question.type] }}</p>
-        <MarkdownRenderer :content="question.prompt" />
+        <AnnotationText :annotation="annotation(index, 'prompt')"><MarkdownRenderer :content="question.prompt" /></AnnotationText>
         <div class="mt-3 flex flex-col gap-2">
-          <UCheckbox
-            v-for="option in question.type === 'judge' ? [{ key: true, text: '正确' }, { key: false, text: '错误' }] : question.options"
-            :key="String(option.key)"
-            :label="option.text" :model-value="(answers[question.key] ?? []).includes(option.key)"
+          <div v-for="(option, optionIndex) in question.type === 'judge' ? [{ key: true, text: '正确' }, { key: false, text: '错误' }] : question.options" :key="String(option.key)" class="flex items-start gap-2">
+          <UCheckbox :aria-label="option.text" :model-value="(answers[question.key] ?? []).includes(option.key)"
             :disabled="!writable || submitting"
             @update:model-value="setOption(question.key, option.key, question.type === 'multiple')" />
+          <AnnotationText :annotation="question.type !== 'judge' ? annotation(index, `options.${optionIndex}.text`) : undefined"><span class="text-sm">{{ option.text }}</span></AnnotationText>
+          </div>
         </div>
       </div>
     </template>

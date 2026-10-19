@@ -26,9 +26,9 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
         data = {
           data: {
             id: 'c',
-            membership: { role },
+            membership: role === 'student' || role === 'coach' ? { role: 'student' } : null,
             capabilities: role === 'coach' ? ['progress:read', 'feedback:write', 'help:manage'] : [],
-            manages_domain: false,
+            manages_domain: role === 'coach',
           },
         };
       } else if (pathname.endsWith('/assignments/a')) {
@@ -57,7 +57,7 @@ Deno.test('BFF 匿名首页不读取身份、签到、教学和关注流，公�
   assertEquals(calls.filter((path) => path === '/api/v1/domains/school').length, 1);
 });
 
-Deno.test('BFF 学生和教练成绩分支分开，助教无能力时不读取成绩和会话', async () => {
+Deno.test('BFF 学生和域教练成绩分支分开，旧助教记录不产生管理权限', async () => {
   for (const role of ['student', 'coach', 'assistant'] as const) {
     const { reader, calls } = fixture(role);
     await aggregateView(

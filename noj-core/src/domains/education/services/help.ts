@@ -1,5 +1,6 @@
 import { and, count, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publicUserSummary } from "../../../shared/identity/user-summary.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   assignmentHelpReplies,
@@ -196,6 +197,7 @@ export async function getAssignmentHelp(
   const rows = await db.select({
     reply: assignmentHelpReplies,
     username: users.username,
+    avatar_url: users.avatar_url,
     deleted_at: users.deleted_at,
   }).from(assignmentHelpReplies)
     .innerJoin(users, eq(users.id, assignmentHelpReplies.author_id)).where(
@@ -209,6 +211,12 @@ export async function getAssignmentHelp(
     replies: rows.map((row) => ({
       ...row.reply,
       author_name: row.deleted_at ? "已注销账号" : row.username,
+      author: publicUserSummary({
+        id: row.reply.author_id,
+        username: row.username,
+        avatar_url: row.avatar_url,
+        deleted_at: row.deleted_at,
+      }),
     })),
     reply_page: replyPage,
     reply_total: total.count,

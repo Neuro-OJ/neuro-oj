@@ -338,7 +338,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const db = getDb();
     const pid = `bundle-upsert-${ts}`;
     const now = new Date().toISOString();
@@ -418,7 +418,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -456,7 +456,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -479,7 +479,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -521,7 +521,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -953,7 +953,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -1100,7 +1100,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
-    await grantDefaultCatalogRole(OWNER_ID, "editor");
+    await grantDefaultCatalogRole(OWNER_ID, "coach");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 

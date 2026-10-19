@@ -57,7 +57,7 @@ async function makeUser(tag: string): Promise<string> {
 
 /** 创建客观题套卷。 */
 async function makePaper(ownerId: string): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
     domain_id: "00000000-0000-4000-8000-000000000001",

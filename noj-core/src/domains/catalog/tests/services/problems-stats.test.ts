@@ -443,7 +443,7 @@ Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 ma
   const { createDefaultCatalogToken } = await import("../default-fixture.ts");
   const { decodeJwt } = await import("jose");
   const { createDomain } = await import("../../../workspace/index.ts");
-  const actor = decodeJwt(await createDefaultCatalogToken("admin")).sub!;
+  const actor = decodeJwt(await createDefaultCatalogToken("platform-admin")).sub!;
   const school = await createDomain({
     slug: "statistics-school",
     name: "统计学校",

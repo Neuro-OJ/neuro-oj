@@ -36,8 +36,7 @@ import {
   updateSetting,
 } from "../../../system/index.ts";
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
-import { addDomainMember } from "../../../workspace/index.ts";
-import { domainMemberRoles } from "../../../../shared/db/schema.ts";
+import { grantTeachingMainRoleForTest } from "../../../../../tests/workspace-fixtures.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -58,11 +57,7 @@ async function setup(): Promise<void> {
     created_at: now,
     updated_at: now,
   });
-  const membership = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, ownerId);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: membership.id,
-    role: "editor",
-  });
+  await grantTeachingMainRoleForTest(ownerId);
   await getDb().insert(problems).values([
     {
       domain_id: DEFAULT_DOMAIN_ID,

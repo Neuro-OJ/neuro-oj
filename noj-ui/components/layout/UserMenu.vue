@@ -52,6 +52,16 @@ watch([() => user.value?.id, messages.data], ([actor, response], previous) => {
   if (actor && count !== null) lastMessages.value = { actor, count };
 }, { immediate: true });
 usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => messages.refresh(), immediate: false });
+const annotationInbox = useViewAsyncData(
+  'annotationInbox',
+  () => workspaceCacheKey(slug.value, user.value?.id ?? null, 'menu-annotation-inbox'),
+  () => user.value ? api.get<{ actor_id: string; domain_slug: string; unread_count: number }>(`/api/v1/domains/${encodeURIComponent(slug.value)}/annotations/inbox`, { silent: true }) : Promise.resolve(null),
+);
+const annotationUnread = computed(() => {
+  const value = annotationInbox.data.value;
+  return value?.actor_id === user.value?.id && value?.domain_slug === slug.value ? value.unread_count : 0;
+});
+usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => annotationInbox.refresh(), immediate: false });
 async function selectDomain(space: WorkspaceSummary) {
   await workspaces.remember(space.slug);
   await navigateTo(workspacePath(space.slug));
@@ -67,6 +77,7 @@ const items = computed(() => [
   [
     { label: '用户主页', icon: 'i-lucide-user-round', to: accountLink(userUrl(user.value?.username ?? '')) },
     { label: '提交', icon: 'i-lucide-file-code-2', to: workspacePath(slug.value, 'submissions') },
+    { label: '批注与问答', icon: 'i-lucide-notebook-pen', to: workspacePath(slug.value, 'annotations'), badge: annotationUnread.value || undefined },
     ...(user.value?.is_admin || workspace?.can('problem:write_own') || workspace?.can('problem:write_any')
       ? [{ label: '我的题目', icon: 'i-lucide-book-open', to: workspacePath(slug.value, 'problem-drafts') }]
       : []),

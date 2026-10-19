@@ -13,7 +13,8 @@ import {
   listDomainJoinRequests,
   listDomainMembers,
   previewDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
+  transferDomain,
 } from "../../index.ts";
 
 async function account(admin = false) {
@@ -45,12 +46,9 @@ Deno.test("域管理视图：成员角色批量返回，注销身份不暴露旧
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, member);
-  await setMemberRoles(domain.slug, operator, member, ["editor", "educator"]);
+  await setMemberRole(domain.slug, operator, member, "member");
   const list = await listDomainMembers(domain.slug, operator);
-  assertEquals(list.find((row) => row.user_id === member)?.roles.sort(), [
-    "editor",
-    "educator",
-  ]);
+  assertEquals(list.find((row) => row.user_id === member)?.role, "member");
   assertEquals(list.find((row) => row.user_id === operator)?.is_owner, true);
   await getDb().update(users).set({ deleted_at: new Date().toISOString() })
     .where(eq(users.id, member));
@@ -160,14 +158,14 @@ Deno.test("邀请视图：签发者撤权后预览和直接接受都立即拒绝
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, issuer);
-  await setMemberRoles(domain.slug, operator, issuer, ["admin"]);
+  await transferDomain(domain.slug, operator, issuer);
   const invitation = await createDomainInvitation(
     domain.slug,
     issuer,
     `${recipient}@example.com`,
   );
   await previewDomainInvitation(invitation.token);
-  await setMemberRoles(domain.slug, operator, issuer, ["member"]);
+  await transferDomain(domain.slug, issuer, operator);
   await assertRejects(
     () => previewDomainInvitation(invitation.token),
     NotFoundError,

@@ -327,7 +327,7 @@ Deno.test({
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).onConflictDoNothing();
-    await grantDefaultCatalogRole("cli-owner-id", "editor");
+    await grantDefaultCatalogRole("cli-owner-id", "coach");
     const problem = await createProblem(
       {
         title: `待收紧 ${ts}`,
@@ -359,7 +359,7 @@ Deno.test({
   fn: async () => {
     // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
     await ensureCliUser("cli-user-id");
-    await grantDefaultCatalogRole("cli-user-id", "editor");
+    await grantDefaultCatalogRole("cli-user-id", "coach");
     const problem = await createProblem(
       {
         title: `CLI user 默认 ${ts}`,
@@ -380,7 +380,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await ensureCliUser("cli-user");
-    await grantDefaultCatalogRole("cli-user", "editor");
+    await grantDefaultCatalogRole("cli-user", "coach");
     const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
     const zip = makeBundleZip({
       title: `CLI user 导入 ${ts}`,
@@ -536,7 +536,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const actorToken = await createDefaultCatalogToken("editor");
+    const actorToken = await createDefaultCatalogToken("coach");
     const actorId = decodeJwt(actorToken).sub!;
     const zip = makeBundleZip({
       runtime_config: {

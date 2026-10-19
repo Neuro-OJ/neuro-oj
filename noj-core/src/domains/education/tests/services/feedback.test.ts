@@ -32,7 +32,7 @@ async function fixture() {
     f.teacher,
     f.assistant,
     1,
-    { role: "student" },
+    {},
   );
   const task = await createAssignment(
     f.school.slug,
@@ -146,16 +146,8 @@ Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，
   );
 });
 
-Deno.test("作业反馈：助教反馈能力独立，编辑需前置版本及原作者，撤回保留历史", async () => {
+Deno.test("作业反馈：新任域教练可处理反馈，编辑需前置版本及原作者，撤回保留历史", async () => {
   const f = await fixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
   const original = await createAssignmentFeedback(
     f.school.slug,
     f.task.id,
@@ -175,14 +167,7 @@ Deno.test("作业反馈：助教反馈能力独立，编辑需前置版本及原
       }),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "coach");
   assertEquals(
     (await getAssignmentFeedback(
       f.school.slug,
@@ -319,3 +304,4 @@ Deno.test("作业反馈：离班及停用保持历史，作者注销有标识，
     "已注销账号",
   );
 });
+import { setMemberRole } from "../../../workspace/index.ts";

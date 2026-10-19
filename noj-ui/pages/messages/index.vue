@@ -1070,18 +1070,6 @@ function messageStatusText(msg: ConversationMessage): string {
 }
 
 // reaction 头像配色：与 UserIdentity（聊天气泡旁头像）一致，按 username 哈希稳定配色
-function avatarBgColor(username: string): string {
-  const name = username ?? ""
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360
-  return `hsl(${h} 60% 45%)`
-}
-function avatarFgColor(username: string): string {
-  const name = username ?? ""
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360
-  return `hsl(${h} 60% 95%)`
-}
 
 // 图片 URL 展示：本地临时消息用 objectURL；服务端消息经图片读取端点（noj-storage:// 无法直接作为 src）
 function displayImageUrl(msg: { id: string; image_url: string | null }, conversationId?: string): string {
@@ -1265,14 +1253,7 @@ onUnmounted(() => {
                                         <!-- reaction 框：头像 + 表情 统一框起来 -->
                                         <span class="flex items-center gap-1 pl-0.5 pr-1.5 py-0.5">
                                           <span class="flex -space-x-1">
-                                            <span                                    v-for="u in r.users.slice(0, 3)"                                    :key="u.id"                                    class="relative inline-flex w-4 h-4 rounded-full overflow-hidden border border-white text-[8px] font-semibold items-center justify-center"                                    :style="{ backgroundColor: avatarBgColor(u.username), color: avatarFgColor(u.username) }"                                    :title="u.username"                                  >
-                                              <!-- 首字母兜底常驻底层：无头像或图片加载失败时显示 -->
-                                              <span class="absolute inset-0 flex items-center justify-center">
-                                                {{ u.username.charAt(0).toUpperCase() }}</span>
-                                                <!-- 有头像用户：加载成功覆盖首字母；失败（404/错误）时隐藏露出首字母 -->
-                                                <img                                      v-if="u.avatar_url"                                      :src="`/api/v1/users/${u.username}/avatar`"                                      :alt="u.username"                                      class="relative w-full h-full object-cover"                                      loading="lazy"                                      @error="(e: Event) =>
-                                                { (e.target as HTMLImageElement).style.display = 'none' }"                                    />
-                                              </span>
+            <UserIdentity v-for="u in r.users.slice(0, 3)" :key="u.id" :user="u" :domain="null" :show-username="false" :link="false" size="xs" />
                                             </span>
                                             <span>
                                               {{ r.emoji }}</span>
@@ -1330,14 +1311,7 @@ onUnmounted(() => {
                                                 <!-- reaction 框：头像 + 表情 统一框起来 -->
                                                 <span class="flex items-center gap-1 pl-0.5 pr-1.5 py-0.5">
                                                   <span class="flex -space-x-1">
-                                                    <span                                  v-for="u in r.users.slice(0, 3)"                                  :key="u.id"                                  class="relative inline-flex w-4 h-4 rounded-full overflow-hidden border border-white text-[8px] font-semibold items-center justify-center"                                  :style="{ backgroundColor: avatarBgColor(u.username), color: avatarFgColor(u.username) }"                                  :title="u.username"                                >
-                                                      <!-- 首字母兜底常驻底层：无头像或图片加载失败时显示 -->
-                                                      <span class="absolute inset-0 flex items-center justify-center">
-                                                        {{ u.username.charAt(0).toUpperCase() }}</span>
-                                                        <!-- 有头像用户：加载成功覆盖首字母；失败（404/错误）时隐藏露出首字母 -->
-                                                        <img                                    v-if="u.avatar_url"                                    :src="`/api/v1/users/${u.username}/avatar`"                                    :alt="u.username"                                    class="relative w-full h-full object-cover"                                    loading="lazy"                                    @error="(e: Event) =>
-                                                        { (e.target as HTMLImageElement).style.display = 'none' }"                                  />
-                                                      </span>
+            <UserIdentity v-for="u in r.users.slice(0, 3)" :key="u.id" :user="u" :domain="null" :show-username="false" :link="false" size="xs" />
                                                     </span>
                                                     <span>
                                                       {{ r.emoji }}</span>

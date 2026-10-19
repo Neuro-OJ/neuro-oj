@@ -82,7 +82,7 @@ useSeoMeta({ title: '班级学生训练目录' });
               class="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 transition-colors hover:bg-primary-bg focus-visible:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 sm:min-h-14 sm:grid-cols-[minmax(0,1fr)_7rem_7rem] sm:px-5"
             >
               <div class="min-w-0">
-                <span class="break-all text-sm font-medium text-text">{{ student.username }}</span>
+                <UserIdentity :user="student.user ?? { id: student.user_id, username: student.username, avatar_url: student.avatar_url }" :domain="slug!" :link="false" size="sm" />
                 <div class="mt-1 sm:hidden">
                   <UBadge :color="student.effective_active ? 'success' : 'neutral'" variant="subtle" size="xs">
                     {{ student.effective_active ? '在班学员' : '历史学员' }}

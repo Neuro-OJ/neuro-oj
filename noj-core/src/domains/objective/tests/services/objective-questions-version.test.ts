@@ -47,7 +47,7 @@ async function makeUser(tag: string): Promise<string> {
 }
 
 async function makePaper(ownerId: string): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
     domain_id: "00000000-0000-4000-8000-000000000001",
@@ -231,7 +231,8 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   });
   assertEquals(contestRead.version_id, v1.version_id);
   assertEquals(contestRead.questions.map((q) => q.id), [q1.key]);
-  // 源题编辑者身份不能替代比赛组织身份获取答案或新草稿。
+  // 资源原作者降为普通成员后，参赛时也不能获取答案或新草稿。
+  await grantDefaultCatalogRole(owner, "member");
   await db.insert(contestParticipants).values({
     contest_id: contestId,
     user_id: owner,
@@ -249,6 +250,11 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   assertEquals(authorAsParticipant.questions[0].id, q1.key);
   assertEquals(authorAsParticipant.questions[0].answer, undefined);
   assertEquals(authorAsParticipant.questions[0].explanation, undefined);
+  await grantDefaultCatalogRole(owner, "coach");
+  const coachRead = await listPaperQuestionsWithAccess(paper, {
+    viewerId: owner, userId: owner, isAdmin: false, contestId,
+  });
+  assertEquals(coachRead.questions[0].answer, ["A"]);
   const organizerRead = await listPaperQuestionsWithAccess(paper, {
     viewerId: "0",
     userId: "0",

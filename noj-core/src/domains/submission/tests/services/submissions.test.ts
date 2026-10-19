@@ -346,6 +346,7 @@ Deno.test({
       updated_at: now,
     });
     try {
+      await grantTeachingMainRoleForTest(TEST_USER_ID, "member");
       await assertRejects(
         () =>
           createSubmission(TEST_USER_ID, {
@@ -1753,3 +1754,4 @@ Deno.test({
     );
   },
 });
+import { grantTeachingMainRoleForTest } from "../../../../../tests/workspace-fixtures.ts";

@@ -32,6 +32,7 @@
 | objective      | `src/domains/objective/`      | 客观题套卷、题目、练习提交                                               |
 | workspace      | `src/domains/workspace/`      | 产品 Domain、成员、角色、邀请、实例政策及限额                            |
 | education      | `src/domains/education/`      | 班级、作业、教学授权、学情、反馈、求助和补题                             |
+| annotation     | `src/domains/annotation/`     | 全局私密笔记、定向师生问答、不可变原文定位、当前授权及治理读取审计         |
 | submission     | `src/domains/submission/`     | 提交、评测结果、评测队列、重测、自测、SSE 事件                           |
 | contest        | `src/domains/contest/`        | 竞赛、参赛者、题目关联、澄清、榜单                                       |
 | community      | `src/domains/community/`      | 板块、帖子、评论、点赞、收藏、关注、动态、举报、审核、通知               |

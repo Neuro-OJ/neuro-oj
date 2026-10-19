@@ -8,7 +8,7 @@ import {
   classrooms,
   domainInvitations,
 } from "../../../shared/db/schema.ts";
-import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   createDomainInvitation,
   invitationListColumns,
@@ -101,9 +101,6 @@ export async function joinInvitedClassroom(
     ),
   );
   if (existing?.status === "active") return;
-  if (classroom.primary_coach_id === userId) {
-    throw new ConflictError("请先处理主教练交接，再通过学生邀请加入");
-  }
   const now = new Date().toISOString();
   const [member] = await executor.insert(classroomMemberships).values({
     id: existing?.id ?? crypto.randomUUID(),

@@ -39,7 +39,7 @@ async function createUserWithToken(): Promise<{ id: string; token: string }> {
 }
 
 async function seedProblem(ownerId: string, number: number): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
@@ -137,7 +137,7 @@ Deno.test({
   fn: async () => {
     _resetProblemStatsCacheForTest();
     const { id: ownerId, token: ownerToken } = await createUserWithToken();
-    await grantDefaultCatalogRole(ownerId, "editor");
+    await grantDefaultCatalogRole(ownerId, "coach");
     const problemId = await seedProblem(ownerId, 950004);
     try {
       const res = await jsonRequest(
@@ -297,7 +297,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await grantDefaultCatalogRole(ownerId, "editor");
+    await grantDefaultCatalogRole(ownerId, "coach");
     try {
       const res = await jsonRequest(
         app,

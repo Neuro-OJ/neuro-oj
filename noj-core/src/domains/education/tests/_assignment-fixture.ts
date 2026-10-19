@@ -16,7 +16,7 @@ export async function assignmentFixture() {
     f.teacher,
     f.student,
     0,
-    { role: "student" },
+    {},
   );
   const now = new Date().toISOString(),
     problemId = crypto.randomUUID(),

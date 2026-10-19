@@ -303,15 +303,10 @@ function handleBatchApproveAll() {
               @update:model-value="toggleSelect(request.id)"
             />
 
-            <!-- 用户首字母头像 -->
-            <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-text-secondary font-semibold text-sm">
-              {{ (request.username ?? request.user_id).slice(0, 1).toUpperCase() }}
-            </div>
-
             <!-- 核心申请信息 -->
             <div class="min-w-0 flex-1 space-y-1.5">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="break-all font-medium text-text">{{ request.username ?? request.user_id }}</span>
+                <UserIdentity :user="request.user ?? { id: request.user_id, username: request.username ?? '未知用户' }" :domain="slug" size="sm" />
                 <UBadge
                   :color="request.status === 'pending' ? 'warning' : request.status === 'approved' ? 'success' : 'error'"
                   variant="subtle"

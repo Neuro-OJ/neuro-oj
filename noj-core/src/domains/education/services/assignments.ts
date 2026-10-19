@@ -339,13 +339,8 @@ export async function listAssignments(
   const access = await loadClassroom(slug, classroomId, actorId, {
     historicalStudent: true,
   });
-  const staff = access.managesDomain ||
-    access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.size > 0;
-  const draftAccess = access.managesDomain ||
-    access.classMembership?.role === "coach" ||
-    access.capabilities.has("assignments:manage");
+  const staff = access.managesDomain;
+  const draftAccess = access.managesDomain;
   const rows = await getDb().select().from(assignments).where(
     and(
       eq(assignments.classroom_id, classroomId),

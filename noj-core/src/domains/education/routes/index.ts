@@ -15,10 +15,6 @@ import {
   buildPaginationMeta,
   parsePagination,
 } from "../../../shared/http/pagination.ts";
-import type {
-  AssistantCapability,
-  ClassroomRole,
-} from "../../../shared/education-types.ts";
 import {
   createClassroom,
   getClassroom,
@@ -136,9 +132,7 @@ router.get(
     }),
 );
 router.put("/domains/:slug/classrooms/:id/members/:userId", async (c) => {
-  const input = await body<
-    { role: ClassroomRole; capabilities?: AssistantCapability[] }
-  >(c);
+  const input = await body<Record<string, unknown>>(c);
   return c.json({
     data: await setClassroomMember(
       c.req.param("slug"),

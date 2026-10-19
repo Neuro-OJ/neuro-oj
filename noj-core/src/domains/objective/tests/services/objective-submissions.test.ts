@@ -59,7 +59,7 @@ async function makePaper(
   ownerId: string,
   visibility: "public" | "private" = "public",
 ): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "coach");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({

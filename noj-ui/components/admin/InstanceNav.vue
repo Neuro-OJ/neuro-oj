@@ -16,6 +16,7 @@ const items: NavItem[] = [
   { label: 'LLM 上限', to: '/admin/instance/llm-limits', icon: 'i-lucide-bot', group: '模型与额度' },
   { label: '空间目录', to: '/admin/instance/domains', icon: 'i-lucide-building-2', group: '治理' },
   { label: '创建申请', to: '/admin/instance/requests', icon: 'i-lucide-clipboard-check', group: '治理' },
+  { label: '批注查询', to: '/admin/instance/annotations', icon: 'i-lucide-notebook-pen', group: '治理' },
 ];
 
 const groupedItems = computed(() => {

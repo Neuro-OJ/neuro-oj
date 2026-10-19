@@ -66,7 +66,8 @@ useSeoMeta({ title: '空间提交详情' });
       </ClientOnly>
       <UCard v-if="data.data.can_view_source !== false && data.data.code != null">
         <h3 class="mb-3 font-semibold">原提交代码</h3>
-        <pre class="max-h-[32rem] overflow-auto whitespace-pre font-mono text-xs">{{ data.data.code }}</pre>
+        <AnnotationCode v-if="data.data.resource_available" :slug="slug!" :submission-id="data.data.id" :code="data.data.code || undefined" :file-name="data.data.file_name" />
+        <pre v-else class="max-h-[32rem] overflow-auto whitespace-pre font-mono text-xs">{{ data.data.code }}</pre>
       </UCard>
     </div>
   </AsyncContent>

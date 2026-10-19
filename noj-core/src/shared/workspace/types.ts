@@ -3,14 +3,7 @@ export const DEFAULT_DOMAIN_ID = "00000000-0000-4000-8000-000000000001";
 /** 默认工作空间的稳定网址标识。 */
 export const DEFAULT_DOMAIN_SLUG = "main";
 /** 内置角色只授予当前工作空间能力，不包含平台权限。 */
-export const DOMAIN_ROLES = [
-  "owner",
-  "admin",
-  "editor",
-  "educator",
-  "moderator",
-  "member",
-] as const;
+export const DOMAIN_ROLES = ["owner", "coach", "member"] as const;
 /** 工作空间成员角色。 */
 export type DomainRole = typeof DOMAIN_ROLES[number];
 /** 工作空间生命周期。 */

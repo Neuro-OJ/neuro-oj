@@ -39,7 +39,7 @@ import {
   ensureDefaultWorkspace,
   removeDomainMember,
   setDomainStatus,
-  setMemberRoles,
+  setMemberRole,
   updateDomain,
 } from "../../../workspace/index.ts";
 import { backfillDefaultCatalog } from "../../services/workspace/backfill.ts";
@@ -156,7 +156,7 @@ async function fixture() {
     );
     await consumeDomainInvitation(invite.token, id);
   }
-  await setMemberRoles(school.slug, platform, teacher, ["admin"]);
+  await setMemberRole(school.slug, platform, teacher, "coach");
   const now = new Date().toISOString();
   const problem = crypto.randomUUID();
   const second = crypto.randomUUID();

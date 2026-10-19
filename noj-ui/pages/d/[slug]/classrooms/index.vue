@@ -36,7 +36,7 @@ const isCoachOrManager = computed(() => {
   return list.some((item) => {
     // 列表契约未保证任职字段；旧快照或扩展响应中的可选身份仅用于入口展示。
     const r: Partial<ClassroomDetail> = item;
-    return r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant';
+    return r.manages_domain;
   });
 });
 
