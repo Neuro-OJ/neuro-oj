@@ -2241,7 +2241,7 @@ jobs:
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-nextest
       - name: 缓存 Cargo 注册表
