@@ -5,10 +5,12 @@ import {
   projectOiSelfTestDetails,
 } from "../services/submissions/oi-details.ts";
 import {
+  type ConsumerHandle,
   type ConsumerOptions,
   createConsumer,
   requestConsumerShutdown,
 } from "../../../shared/mq/base-consumer.ts";
+import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { getLogger } from "@logtape/logtape";
@@ -133,6 +135,17 @@ export const consumerAlive = { value: false };
 export type ResultConsumerFactory = (
   options: ConsumerOptions,
 ) => () => Promise<void>;
+
+/** 可停止的消费者工厂（P2a 结果池使用，返回带 requestShutdown 的句柄）。 */
+export type ManagedResultConsumerFactory = (
+  options: ConsumerOptions,
+) => ConsumerHandle;
+
+/** 结果消费者池启动选项（`consumerFactory` 仅供测试注入）。 */
+export interface ResultConsumerPoolOptions {
+  concurrency?: number;
+  consumerFactory?: ManagedResultConsumerFactory;
+}
 
 /**
  * 创建结果消费者池。
@@ -273,11 +286,83 @@ export async function handleResultMessage(data: unknown): Promise<void> {
 }
 
 /**
- * 启动结果消费者池。
+ * 启动结果消费者池并返回统一后台任务句柄（P2a）。
  *
  * 每个消费者使用独立 Redis 连接，但共享同一 processing 列表；Redis 的
  * BRPOPLPUSH 保证一条消息只会被一个连接领取。单条消息仍按原有顺序完成
  * “持久化 → LREM 确认”，因此不会改变 at-least-once 与幂等语义。
+ *
+ * `done` 在全部并发消费者退出后 resolve——关闭流程据此等待在途结果落库，
+ * 再关闭数据库连接。
+ *
+ * @returns 可停止、可等待的消费者池句柄
+ */
+export function startResultConsumerPool(
+  options: ResultConsumerPoolOptions = {},
+): ManagedTask {
+  const concurrency = options.concurrency ?? parseResultConsumerConcurrency();
+  const consumerFactory = options.consumerFactory ?? createConsumer;
+  logger.info("评测结果消费者池已配置", { concurrency });
+  // 每个消费者独立 aliveRef，汇总为"任一副本仍存活即健康"；否则单个消费者
+  // 退出会把整个池误报为不可用。
+  const states = Array.from({ length: concurrency }, () => false);
+  consumerAlive.value = false;
+  const aliveRefs = states.map((_, index) => ({
+    get value(): boolean {
+      return states[index] ?? false;
+    },
+    set value(value: boolean) {
+      states[index] = value;
+      consumerAlive.value = states.some(Boolean);
+    },
+  }));
+  const handles = aliveRefs.map((aliveRef) =>
+    consumerFactory({
+      queueName: RESULT_QUEUE,
+      logLabel: "评测结果",
+      aliveRef,
+      handleMessage: handleResultMessage,
+      requeueOnError: true,
+    })
+  );
+  // 关键：用 allSettled 等待**全部**消费者退出。Promise.all 会在任一连接失败时
+  // 提前 reject，此时其他消费者仍可能正在处理消息，done 却已 resolve。
+  const started = (async () => {
+    const results = await Promise.allSettled(handles.map((start) => start()));
+    const failures = results
+      .filter((result): result is PromiseRejectedResult =>
+        result.status === "rejected"
+      )
+      .map((result) => result.reason);
+    if (failures.length > 0) {
+      const detail = failures
+        .map((reason) =>
+          reason instanceof Error ? reason.message : String(reason)
+        )
+        .join("; ");
+      throw new AggregateError(
+        failures,
+        `评测结果消费者池有 ${failures.length} 个实例异常退出：${detail}`,
+      );
+    }
+  })();
+  // 先挂 no-op handler 防止早期无人 await 时触发 unhandledRejection；
+  // done 仍保留原拒绝供任务组汇总。
+  started.catch(() => {});
+  return {
+    name: "result-consumer-pool",
+    stop: () => {
+      for (const handle of handles) handle.requestShutdown();
+    },
+    done: started,
+  };
+}
+
+/**
+ * 启动结果消费者池（阻塞式旧入口，保留给既有调用方）。
+ *
+ * @deprecated 新代码用 {@link startResultConsumerPool} 获取可停止、可等待的句柄；
+ * 本函数不返回句柄，关闭流程无法等待在途结果处理完成。
  */
 export async function startResultConsumerWithRetry(): Promise<void> {
   const concurrency = parseResultConsumerConcurrency();

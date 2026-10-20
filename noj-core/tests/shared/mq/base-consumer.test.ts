@@ -29,7 +29,7 @@ async function connectRedisOrNull(): Promise<RedisClient | null> {
     await redis.ping();
     return redis;
   } catch {
-    await redis.disconnect().catch(() => {});
+    await Promise.resolve(redis.disconnect()).catch(() => {});
     return null;
   }
 }

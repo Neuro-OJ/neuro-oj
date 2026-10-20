@@ -5,7 +5,7 @@
  * - logAudit() —— service 层同步写入，失败仅 console.error
  * - listAuditLogs() —— 分页 + 多维度筛选，默认排除 root
  * - cleanupOldAuditLogs() —— 按 created_at 阈值删除
- * - startAuditLogRetentionTask() —— 后台 setInterval 任务
+ * - startAuditLogRetentionTask() —— 可停止、可等待的周期保留任务
  */
 
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
@@ -14,6 +14,10 @@ import { auditLogs } from "./../../../shared/db/schema.ts";
 import { getRequestContext } from "./request-context.ts";
 import { getSetting } from "./system-settings.ts";
 import { getLogger } from "@logtape/logtape";
+import {
+  type ManagedTask,
+  startPeriodicTask,
+} from "../../../shared/runtime/managed-task.ts";
 
 const logger = getLogger(["noj", "system"]);
 import type {
@@ -198,27 +202,56 @@ export async function cleanupOldAuditLogs(
   return r.affectedRows ?? r.rowCount ?? r.count ?? 0;
 }
 
-/** 启动后台保留任务（HTTP 启动后由 main.ts 调用） */
-export function startAuditLogRetentionTask(): void {
+/** 审计日志保留任务的轮询间隔：24 小时。 */
+const AUDIT_RETENTION_INTERVAL_MS = 86_400_000;
+
+/** 当前保留任务（单例；stop 后到 done 完成期间仍保留，防止重叠清理）。 */
+let _auditRetentionTask: ManagedTask | null = null;
+
+/**
+ * 启动后台保留任务（HTTP 启动后由 main.ts 调用）。
+ *
+ * 返回统一后台任务句柄（P2a）：关闭时先 `stop()` 清定时器，再等待在途清理
+ * 结束，避免数据库连接先关闭、清理任务继续写库。
+ *
+ * @returns 可停止、可等待的保留任务句柄
+ */
+export function startAuditLogRetentionTask(): ManagedTask {
+  if (_auditRetentionTask !== null) return _auditRetentionTask;
   const setting = getSetting("audit_log_retention_days");
   const days = typeof setting?.value === "number"
     ? Math.floor(setting.value)
     : 90;
   if (days <= 0) {
     logger.info("审计日志清理任务已禁用", { retention_days: days });
-    return;
+    return {
+      name: "audit-log-retention",
+      stop: () => {},
+      done: Promise.resolve(),
+    };
   }
-  // 启动立即跑一次
-  cleanupOldAuditLogs(days)
-    .then((n) => logger.info("审计日志启动清理完成", { removed: n }))
-    .catch((e) => logger.error("审计日志启动清理失败", { err: e }));
-  // 每 24h 重复
-  setInterval(() => {
-    cleanupOldAuditLogs(days)
-      .then((n) =>
-        n > 0 ? logger.info("审计日志周期清理完成", { removed: n }) : undefined
-      )
-      .catch((e) => logger.error("审计日志周期清理失败", { err: e }));
-  }, 86400 * 1000);
+  const task = startPeriodicTask({
+    name: "audit-log-retention",
+    intervalMs: AUDIT_RETENTION_INTERVAL_MS,
+    runImmediately: true,
+    run: async () => {
+      const removed = await cleanupOldAuditLogs(days);
+      if (removed > 0) {
+        logger.info("审计日志清理完成", { removed, retention_days: days });
+      }
+    },
+    onError: (err) => logger.error("审计日志清理失败", { err }),
+  });
+  _auditRetentionTask = task;
+  // done 完成后才释放单例；stop 后未完成期间重复启动返回同一句柄。
+  void task.done.then(() => {
+    if (_auditRetentionTask === task) _auditRetentionTask = null;
+  });
   logger.info("审计日志保留任务已启动", { retention_days: days });
+  return task;
+}
+
+/** 测试用：停止当前保留任务（不等待在途清理完成）。 */
+export function _resetAuditLogRetentionForTest(): void {
+  _auditRetentionTask?.stop();
 }

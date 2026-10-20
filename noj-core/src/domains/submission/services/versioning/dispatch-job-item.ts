@@ -25,6 +25,10 @@ import {
   submissions,
 } from "../../../../shared/db/schema.ts";
 import { getLogger } from "@logtape/logtape";
+import {
+  type ManagedTask,
+  startPeriodicTask,
+} from "../../../../shared/runtime/managed-task.ts";
 import { getStorageProvider } from "../../../system/index.ts";
 import type { LlmConfig } from "../../../catalog/index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
@@ -1024,7 +1028,7 @@ export async function runSubmissionJobWorkerOnce(
 export const SUBMISSION_JOB_WORKER_INTERVAL_MS = 3000;
 
 /** worker 句柄（单进程一个；多副本靠 SKIP LOCKED 与 lease 协调，无共享内存依赖）。 */
-let _jobWorkerTimer: ReturnType<typeof setInterval> | null = null;
+let _jobWorkerTask: ManagedTask | null = null;
 
 /**
  * 启动批量任务 worker（幂等）。
@@ -1032,22 +1036,33 @@ let _jobWorkerTimer: ReturnType<typeof setInterval> | null = null;
  * 多副本安全：条目领取使用 `FOR UPDATE SKIP LOCKED` + lease，实例标识仅用于
  * 续租归属；进程内只保存定时器句柄，不保存任何业务状态。
  */
-export function startSubmissionJobWorker(): void {
-  if (_jobWorkerTimer !== null) return;
+export function startSubmissionJobWorker(): ManagedTask {
+  if (_jobWorkerTask !== null) return _jobWorkerTask;
   const owner = `noj-core-${crypto.randomUUID()}`;
   logger.info("批任务 worker 已启动", {
     interval_ms: SUBMISSION_JOB_WORKER_INTERVAL_MS,
   });
-  _jobWorkerTimer = setInterval(() => {
-    void runSubmissionJobWorkerOnce(owner).catch((err) => {
-      logger.error("批任务 worker 执行失败", { err });
-    });
-  }, SUBMISSION_JOB_WORKER_INTERVAL_MS);
+  const task = startPeriodicTask({
+    name: "submission-job-worker",
+    intervalMs: SUBMISSION_JOB_WORKER_INTERVAL_MS,
+    run: () => runSubmissionJobWorkerOnce(owner).then(() => undefined),
+    onError: (err) => logger.error("批任务 worker 执行失败", { err }),
+  });
+  _jobWorkerTask = task;
+  // stop 后到 done 完成期间保留单例：此时重复 start 返回同一已停止句柄，
+  // 不会出现两个 worker（旧实现立即置 null 会让关闭过程中的重启重叠领取）。
+  void task.done.then(() => {
+    if (_jobWorkerTask === task) _jobWorkerTask = null;
+  });
+  return task;
 }
 
-/** 停止 worker（关闭流程用）。 */
+/**
+ * 停止 worker（关闭流程用；`stop` 后仍应等待 `done`）。
+ *
+ * 不在这里立即清空单例：done 完成后由 `startSubmissionJobWorker` 的清理回调
+ * 释放，避免 stop 与 start 之间出现重叠实例。
+ */
 export function stopSubmissionJobWorker(): void {
-  if (_jobWorkerTimer === null) return;
-  clearInterval(_jobWorkerTimer);
-  _jobWorkerTimer = null;
+  _jobWorkerTask?.stop();
 }

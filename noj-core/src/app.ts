@@ -64,11 +64,16 @@ import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 import { securityHeaders } from "./shared/http/security-headers.ts";
 import { createMaintenanceMode } from "./shared/http/maintenance.ts";
 import { getRedis } from "./shared/mq/connection.ts";
+import type { SseStreamScope } from "./shared/sse/sse-stream.ts";
 
-/**
- * 创建并配置 Hono 应用实例。
- */
-export function createApp(): Hono {
+/** 应用装配选项；外部运行资源由入口创建并传入。 */
+export interface CreateAppOptions {
+  /** 本次 Core 装配拥有的 SSE 流 scope；生产入口显式注入。 */
+  sseStreamScope?: SseStreamScope;
+}
+
+/** 创建并配置 Hono 应用实例。 */
+export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
   const observabilityRegistry = observability;
   registerPlatformMetrics(observabilityRegistry);
@@ -80,6 +85,19 @@ export function createApp(): Hono {
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);
+
+  // 显式 app 级注入 SSE scope：避免生产关闭流程依赖模块级全局默认值。
+  // 旧测试与未注入的调用仍可由 createSseStream 的默认 scope 兜底。
+  if (options.sseStreamScope) {
+    const scope = options.sseStreamScope;
+    app.use("*", async (c, next) => {
+      (c as unknown as { set(key: string, value: unknown): void }).set(
+        "sseStreamScope",
+        scope,
+      );
+      await next();
+    });
+  }
 
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。

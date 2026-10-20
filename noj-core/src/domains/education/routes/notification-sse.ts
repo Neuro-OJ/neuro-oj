@@ -97,10 +97,10 @@ educationNotificationSse.get(
         }
       };
       ctx.onUnsubscribe(onEvent(channel, (_channel, message) => {
-        void deliver(message).catch(() => ctx.close());
+        void ctx.run(() => deliver(message));
       }));
       ctx.onUnsubscribe(onEvent(progressChannel, (_channel, message) => {
-        void deliver(message).catch(() => ctx.close());
+        void ctx.run(() => deliver(message));
       }));
       await ctx.stream.writeSSE({
         event: "education:sync",

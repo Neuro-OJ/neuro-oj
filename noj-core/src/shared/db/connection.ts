@@ -1007,25 +1007,88 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
   if (shouldStartTx) await startRealTransaction();
 }
 
+/** 数据库关闭阶段的最小可关闭句柄；null 表示该资源未创建。 */
+export interface DbShutdownHandles {
+  /** 回滚活动测试事务。 */
+  rollback: (() => Promise<void>) | null;
+  /** 结束 postgres.js 连接池。 */
+  endClient: (() => Promise<void> | void) | null;
+  /** 关闭 PGlite 实例。 */
+  closePglite: (() => Promise<void> | void) | null;
+}
+
+function describeShutdownError(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  return String(error);
+}
+
+/**
+ * 关闭数据库相关资源：每个步骤都独立 settle，全部尝试后再聚合原始错误。
+ *
+ * 顺序固定为「回滚活动测试事务 → 结束连接池 → 关闭 PGlite」。某一步失败不会
+ * 跳过后续步骤；最终以 `AggregateError` 抛出，`errors` 保留每个步骤的原始错误。
+ * 该函数不读取模块单例，便于用最小 fake 在无网络条件下验证异常传播。
+ *
+ * @param handles 待关闭资源
+ */
+export async function closeDbResources(
+  handles: DbShutdownHandles,
+): Promise<void> {
+  const failures: Array<{ step: string; error: unknown }> = [];
+  const steps: Array<[string, (() => Promise<void> | void) | null]> = [
+    ["rollback-test-transaction", handles.rollback],
+    ["postgres-client", handles.endClient],
+    ["pglite", handles.closePglite],
+  ];
+  for (const [step, operation] of steps) {
+    if (!operation) continue;
+    try {
+      await operation();
+    } catch (error) {
+      failures.push({ step, error });
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((failure) => failure.error),
+      `数据库关闭失败：${
+        failures
+          .map((failure) =>
+            `${failure.step}: ${describeShutdownError(failure.error)}`
+          )
+          .join("；")
+      }`,
+    );
+  }
+}
+
 /**
  * 优雅关闭：结束 PGlite / postgres.js 连接。
- * 关闭失败只记录，不阻断进程退出。
+ *
+ * 关闭失败不再被吞掉：所有已创建资源都会尝试关闭，随后以 `AggregateError`
+ * 抛出，供 `performShutdown()` 记录为非零退出问题。单例引用在 `finally` 中
+ * 释放，避免重复关闭或关闭后继续复用。
  */
 export async function closeDbForShutdown(): Promise<void> {
+  const rollback = _testTransactionState.status === "active"
+    ? () => rollbackTestTransaction()
+    : null;
+  const client = _client;
+  const pglite = _pgliteInstance;
   try {
-    if (_testTransactionState.status === "active") {
-      await rollbackTestTransaction();
-    }
-    if (_client) {
-      await _client.end();
-      _client = null;
-    }
-    if (_pgliteInstance) {
-      await _pgliteInstance.close();
-      _pgliteInstance = null;
-    }
+    await closeDbResources({
+      rollback,
+      endClient: client ? () => client.end() : null,
+      closePglite: pglite ? () => pglite.close() : null,
+    });
+  } finally {
+    // 无论成功失败都不再复用即将关闭/已关闭的对象。
+    _client = null;
     _db = null;
-  } catch (err) {
-    logger.error("数据库连接关闭失败", { err });
+    _pgliteInstance = null;
+    _bootstrapPromise = null;
+    _pgliteTemplateLoaded = false;
+    _testTransactionState = { status: "idle" };
+    _testTransactionProxy = null;
   }
 }

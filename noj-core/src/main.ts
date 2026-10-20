@@ -3,20 +3,23 @@ import { closeDbForShutdown } from "./shared/db/connection.ts";
 import { runMigrations } from "./shared/db/migrate.ts";
 import {
   startQueueSweeper,
+  startResultConsumerPool,
   startSubmissionJobWorker,
 } from "./domains/submission/index.ts";
 import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
+import { createManagedTaskGroup } from "./shared/runtime/managed-task.ts";
 import {
-  requestResultConsumerShutdown,
-  startResultConsumerWithRetry,
-} from "./domains/submission/index.ts";
+  performShutdown,
+  type ShutdownHttp,
+} from "./shared/runtime/shutdown.ts";
 import { migrateLegacyJudgeQueue } from "./domains/submission/mq/legacy-judge-queue.ts";
 import { migratePoolJudgeQueues } from "./domains/submission/mq/pool-judge-queue.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
+import { createSseStreamScope } from "./shared/sse/sse-stream.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
-import { createReviewConsumer } from "./domains/content-review/index.ts";
+import { startReviewConsumer } from "./domains/content-review/index.ts";
 import { startSearchIndexConsumer } from "./domains/search/index.ts";
 import { startEducationWorker } from "./domains/education/index.ts";
 import {
@@ -52,7 +55,11 @@ import {
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
 } from "./shared/base/constants.ts";
 
-const app = createApp();
+// 每次 Core 装配拥有独立的 SSE 流 scope：通过 createApp 显式注入，关闭时据此
+// 同步结束所有已建立长连接，让 server.shutdown() 能完成排空。连接只存在于当前
+// 进程，多副本需各自关闭自己的 scope。
+const sseStreams = createSseStreamScope();
+const app = createApp({ sseStreamScope: sseStreams });
 
 const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
@@ -309,73 +316,165 @@ async function main() {
     logger.error("Redis 连接失败，评测分发功能不可用", { err });
   }
 
-  // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
-  void startResultConsumerWithRetry();
+  // 后台任务统一登记（P2a）：所有组件都提供 stop()/done，关闭时按逆序停止、
+  // 等待在途工作结束，再关闭 Redis 与数据库连接。登记顺序即启动顺序。
+  const backgroundTasks = createManagedTaskGroup();
+  const shutdownResources = [
+    { name: "redis", close: () => closeRedisForShutdown() },
+    { name: "database", close: () => closeDbForShutdown() },
+  ];
+  const noHttp: ShutdownHttp = { name: "http-server", shutdown: () => {} };
+  let server: ReturnType<typeof Deno.serve> | undefined;
 
-  // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
-  void createReviewConsumer()();
+  // 启动装配用小范围 try/catch 保护：任何一步（含端口占用、signal 注册失败）
+  // 失败时，已登记的后台任务与 Redis/DB 都走同一套清理，避免半启动泄漏。
+  try {
+    // 启动评测结果消费者池（后台运行，带自动重连，不阻塞 HTTP）
+    backgroundTasks.add(startResultConsumerPool());
 
-  // 启动搜索索引事件消费者（后台运行，带自动重连，不阻塞 HTTP）
-  void startSearchIndexConsumer()();
+    // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
+    backgroundTasks.add(startReviewConsumer());
 
-  // 启动 processing 超时重投 + pending 提交恢复 sweeper
-  startQueueSweeper();
+    // 启动搜索索引事件消费者（后台运行，带自动重连，不阻塞 HTTP）
+    backgroundTasks.add(startSearchIndexConsumer());
 
-  // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
-  startSubmissionJobWorker();
-  const educationWorker = startEducationWorker();
-  const storageReconciliation = startDomainStorageReconciliation();
+    // 启动 processing 超时重投 + pending 提交恢复 sweeper
+    backgroundTasks.add(startQueueSweeper());
 
-  // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
-  initEventSubscriber();
+    // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
+    backgroundTasks.add(startSubmissionJobWorker());
+    backgroundTasks.add(startEducationWorker());
+    backgroundTasks.add(startDomainStorageReconciliation());
 
-  // 启动 HTTP 服务（保留 server 句柄用于优雅关闭）
-  const server = Deno.serve({ port }, app.fetch);
+    // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
+    backgroundTasks.add(initEventSubscriber());
 
-  logger.info("noj-core 已启动", { url: `http://localhost:${port}` });
+    // 启动 HTTP 服务（保留 server 句柄用于优雅关闭）
+    server = Deno.serve({ port }, app.fetch);
 
-  // 启动后台审计日志保留任务
-  startAuditLogRetentionTask();
+    // 启动后台审计日志保留任务
+    backgroundTasks.add(startAuditLogRetentionTask());
 
-  // 启动 SSE 事件保留任务（A4：事件表保留策略，默认 7 天）
-  startSseEventRetentionTask();
+    // 启动 SSE 事件保留任务（A4：事件表保留策略，默认 7 天）
+    backgroundTasks.add(startSseEventRetentionTask());
 
-  // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求并排空，再关闭 Redis/DB。
-  let shuttingDown = false;
-  const gracefulShutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info("收到关闭信号，开始优雅关闭", { signal });
+    // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求与任务领取，再等全部
+    // 在途工作结束，最后关闭 Redis/DB；任一失败或超时都以非零码退出。
+    let shuttingDown = false;
+    const gracefulShutdown = async (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      logger.info("收到关闭信号，开始优雅关闭", { signal });
 
-    try {
-      requestResultConsumerShutdown();
-      educationWorker.stop();
-      storageReconciliation.stop();
-      // SSE 等长连接可能让 shutdown() 一直等待；加一个兜底超时，
-      // 超时后继续关闭资源并退出，避免被 K8s SIGKILL 前卡死。
-      await Promise.race([
-        server.shutdown(),
-        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
-      ]);
-      logger.info("HTTP 服务已停止接收新请求并完成排空");
-    } catch (err) {
-      logger.warn("HTTP 优雅关闭失败", { err });
+      const report = await performShutdown({
+        http: {
+          name: "http-server",
+          shutdown: () => server!.shutdown(),
+        },
+        tasks: backgroundTasks,
+        connections: {
+          name: "sse-streams",
+          closeAll: () => sseStreams.closeAll(),
+          doneAll: () => sseStreams.doneAll(),
+        },
+        resources: shutdownResources,
+        httpTimeoutMs: 10_000,
+        tasksTimeoutMs: 20_000,
+        connectionsTimeoutMs: 20_000,
+        resourceTimeoutMs: 10_000,
+      });
+
+      if (report.httpDrained) {
+        logger.info("HTTP 已完成排空");
+      } else {
+        logger.error("HTTP 未在时限内完成排空", { timeout_ms: 10_000 });
+      }
+      if (report.tasksSettled) {
+        logger.info("后台任务已结束在途工作", {
+          tasks: backgroundTasks.names(),
+        });
+      } else {
+        logger.error("后台任务未在时限内结束", { timeout_ms: 20_000 });
+      }
+      if (report.connectionsSettled) {
+        logger.info("SSE 长连接已完成收尾", {
+          closed: report.connectionsClosed,
+        });
+      } else {
+        logger.error("SSE 长连接未在时限内完成收尾", { timeout_ms: 20_000 });
+      }
+      for (const problem of report.problems) {
+        logger.error("关闭阶段问题", {
+          phase: problem.phase,
+          subject: problem.subject,
+          kind: problem.kind,
+          message: problem.message,
+        });
+      }
+
+      if (report.clean) {
+        logger.info("资源已清理，进程退出", { summary: report.summary });
+        Deno.exit(0);
+      }
+      if (report.forceExit) {
+        logger.error(
+          "非干净关闭：仍有在途工作，已跳过 Redis/数据库关闭并以非零码强制退出" +
+            "（连接由进程退出回收）",
+          { summary: report.summary },
+        );
+      } else {
+        logger.error("关闭结束但存在错误，以非零码退出", {
+          summary: report.summary,
+        });
+      }
+      Deno.exit(report.exitCode);
+    };
+
+    Deno.addSignalListener("SIGTERM", () => {
+      void gracefulShutdown("SIGTERM");
+    });
+    Deno.addSignalListener("SIGINT", () => {
+      void gracefulShutdown("SIGINT");
+    });
+
+    logger.info("noj-core 已启动", { url: `http://localhost:${port}` });
+  } catch (err) {
+    logger.error("启动装配失败，回滚已启动的后台任务与连接", { err });
+    const report = await performShutdown({
+      http: server
+        ? { name: "http-server", shutdown: () => server!.shutdown() }
+        : noHttp,
+      tasks: backgroundTasks,
+      connections: {
+        name: "sse-streams",
+        closeAll: () => sseStreams.closeAll(),
+        doneAll: () => sseStreams.doneAll(),
+      },
+      resources: shutdownResources,
+      httpTimeoutMs: server ? 10_000 : 0,
+      tasksTimeoutMs: 20_000,
+      connectionsTimeoutMs: 20_000,
+      resourceTimeoutMs: 10_000,
+    });
+    for (const problem of report.problems) {
+      logger.error("启动回滚关闭问题", {
+        phase: problem.phase,
+        subject: problem.subject,
+        kind: problem.kind,
+        message: problem.message,
+      });
     }
-
-    await Promise.allSettled([
-      closeRedisForShutdown(),
-      closeDbForShutdown(),
-    ]);
-    logger.info("资源已清理，进程退出");
-    Deno.exit(0);
-  };
-
-  Deno.addSignalListener("SIGTERM", () => {
-    void gracefulShutdown("SIGTERM");
-  });
-  Deno.addSignalListener("SIGINT", () => {
-    void gracefulShutdown("SIGINT");
-  });
+    if (report.forceExit) {
+      logger.error("启动回滚未能干净结束，强制退出（连接由进程退出回收）", {
+        summary: report.summary,
+      });
+    } else {
+      logger.error("启动失败，回滚完成，以非零码退出", {
+        summary: report.summary,
+      });
+    }
+    Deno.exit(1);
+  }
 }
 
 await main();

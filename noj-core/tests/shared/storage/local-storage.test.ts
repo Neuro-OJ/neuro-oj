@@ -10,12 +10,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { dirname, join } from "jsr:@std/path@^1";
 import { LocalStorageProvider } from "./../../../src/domains/system/services/storage/local.ts";
 
-// 项目根目录 = noj-core（本文件位于 tests/lib/storage/，向上 3 层：
-// storage → lib → tests → noj-core）。
-// 注意：LocalStorageProvider 默认目录 data/storage 是相对进程 cwd 解析的，
-// 测试须从 noj-core 目录运行（CI 与 deno task 均如此）。
-const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..", "..", "..");
-
 Deno.test("LocalStorageProvider: 原产物流式读取及取消释放文件句柄", async () => {
   const directory = await Deno.makeTempDir();
   const provider = new LocalStorageProvider(directory);
@@ -36,44 +30,36 @@ Deno.test("LocalStorageProvider: 原产物流式读取及取消释放文件句�
 });
 
 Deno.test("LocalStorageProvider: 默认落盘到 data/storage 而非 data/packages", async () => {
-  const provider = new LocalStorageProvider();
-  const url = await provider.put(
-    "test-key",
-    new TextEncoder().encode("hello"),
-    "application/zip",
-  );
-
-  // URL 格式：noj-storage://local/<base64>?checksum_sha256=<hex>
-  assertEquals(url.startsWith("noj-storage://local/"), true);
-
-  // 文件应在 data/storage/ 下
-  const parsed = url.split("?")[0].replace("noj-storage://local/", "");
-  const storageFile = join(PROJECT_ROOT, "data", "storage", `${parsed}.zip`);
-  const packagesFile = join(PROJECT_ROOT, "data", "packages", `${parsed}.zip`);
-
-  let storageExists = false;
-  let packagesExists = false;
+  // 默认路径也在临时 cwd 中验收，避免接触开发者真实 data/storage。
+  const directory = await Deno.makeTempDir();
+  const originalCwd = Deno.cwd();
+  const originalDirectory = Deno.env.get("SUPPORT_PACKAGE_DIR");
   try {
-    await Deno.stat(storageFile);
-    storageExists = true;
-  } catch {
-    // not found
-  }
-  try {
-    await Deno.stat(packagesFile);
-    packagesExists = true;
-  } catch {
-    // not found
-  }
-
-  assertEquals(storageExists, true, "文件应写入 data/storage/");
-  assertEquals(packagesExists, false, "文件不应写入 data/packages/");
-
-  // 清理
-  try {
-    await Deno.remove(storageFile);
-  } catch {
-    // ignore
+    Deno.chdir(directory);
+    Deno.env.delete("SUPPORT_PACKAGE_DIR");
+    const provider = new LocalStorageProvider();
+    const url = await provider.put(
+      "test-key",
+      new TextEncoder().encode("hello"),
+      "application/zip",
+    );
+    assertEquals(url.startsWith("noj-storage://local/"), true);
+    const key = url.split("?")[0].replace("noj-storage://local/", "");
+    assertEquals(
+      (await Deno.stat(join(directory, "data", "storage", `${key}.zip`)))
+        .isFile,
+      true,
+      "默认文件应写入 data/storage/",
+    );
+    await assertRejects(
+      () => Deno.stat(join(directory, "data", "packages", `${key}.zip`)),
+      Deno.errors.NotFound,
+    );
+  } finally {
+    Deno.chdir(originalCwd);
+    if (originalDirectory === undefined) Deno.env.delete("SUPPORT_PACKAGE_DIR");
+    else Deno.env.set("SUPPORT_PACKAGE_DIR", originalDirectory);
+    await Deno.remove(directory, { recursive: true });
   }
 });
 
@@ -196,28 +182,20 @@ Deno.test("LocalStorageProvider: putStream 超过大小限制时中止", async (
 });
 
 Deno.test("LocalStorageProvider: 图片 key 的 get/delete 使用正确路径", async () => {
-  const provider = new LocalStorageProvider();
-  const url = await provider.put(
-    "k",
-    new TextEncoder().encode("img"),
-    "image/webp",
-  );
-  const key = url.split("?")[0].replace("noj-storage://local/", "");
-  const file = join(PROJECT_ROOT, "data", "storage", key);
-  let exists = true;
+  const directory = await Deno.makeTempDir();
+  const provider = new LocalStorageProvider(directory);
   try {
-    await Deno.stat(file);
-  } catch {
-    exists = false;
+    const url = await provider.put(
+      "k",
+      new TextEncoder().encode("img"),
+      "image/webp",
+    );
+    const key = url.split("?")[0].replace("noj-storage://local/", "");
+    const file = join(directory, key);
+    assertEquals((await Deno.stat(file)).isFile, true, "图片文件应按 key 落盘");
+    await provider.delete(url);
+    await assertRejects(() => Deno.stat(file), Deno.errors.NotFound);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
   }
-  assertEquals(exists, true, "图片文件应落盘为 <key>（含扩展名）");
-  // 删除后文件消失
-  await provider.delete(url);
-  let gone = false;
-  try {
-    await Deno.stat(file);
-  } catch {
-    gone = true;
-  }
-  assertEquals(gone, true, "delete 应删除带扩展名文件");
 });

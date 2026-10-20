@@ -95,6 +95,9 @@
 | `domains/system/middleware/rate-limit.ts`             | 限流计数                                | 阈值被放大 N 倍                         | 单副本专用（文件内已注明）                                       |
 | `domains/query/services/rankings.ts`                  | 物化视图刷新节流                        | 各副本各刷一次                          | 单副本专用                                                       |
 | `domains/catalog/services/problems/problems-stats.ts` | 题目统计缓存 `statsCache`（5 分钟 TTL） | 各副本各自缓存，最多 5 分钟内读到旧统计 | 单副本专用（TTL 兜底）                                           |
+| `shared/runtime/`、`shared/mq/base-consumer.ts` | 受管任务句柄、关闭标记及可注销的停止等待者 | 只能停止本进程的任务；多副本必须逐个排空 | 单副本专用的生命周期装配；业务进度仍在 DB/Redis |
+| 教学、存储核对、审计、提交 worker 与 SSE 保留任务的 `start*` | 周期任务单例句柄，停止后等待在途轮次完成再释放 | 单例只阻止同进程重复启动；多副本依靠既有 DB 租约和业务幂等 | 单副本专用的启动/关闭控制，不承载业务事实 |
+| `shared/sse/sse-stream.ts` | 应用实例拥有的 SSE 连接注册表 | 每个副本关闭自己的流，客户端重连后重新授权 | 单副本专用的连接生命周期；Core 装配显式注入 scope |
 
 **跨副本失效的正确做法（务必注意）**：`getSetting()` 在缓存未命中时**不回查
 DB**， 而是走 env → default

@@ -134,6 +134,7 @@ async function submissionEvents(c: Context<AuthEnv>, selfTest = false) {
           return null;
         }
       },
+      (operation) => streamContext.run(operation),
     );
     for (
       const missed of await replaySseEvents([channel], lastEventId(c), 200)
@@ -199,6 +200,7 @@ async function queueEvents(c: Context<AuthEnv>, instance = false) {
           return null;
         }
       },
+      (operation) => streamContext.run(operation),
     );
     // 每次连接已通知客户端读取完整当前队列，无需逐条重放历史失效信号。
     // 重放会让页面为同一当前状态连续发起最多 200 次 REST 请求。

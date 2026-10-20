@@ -50,17 +50,17 @@ router.get("/", async (c) => {
 router.get("/events", authMiddleware, (c) => {
   return createSseStream(
     c,
-    ({ stream, closed, close, onUnsubscribe }) => {
-      onUnsubscribe(
+    (ctx) => {
+      ctx.onUnsubscribe(
         onEvent(
           Channels.announcements,
           (_channel, message) => {
-            if (closed) return;
-            stream.writeSSE({
-              event: "announcement:updated",
-              data: message,
-            }).catch(() => {
-              close();
+            void ctx.run(async () => {
+              if (ctx.closed) return;
+              await ctx.stream.writeSSE({
+                event: "announcement:updated",
+                data: message,
+              });
             });
           },
         ),

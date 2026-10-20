@@ -75,7 +75,7 @@ for (
         } catch {
           return;
         }
-        void push(payload).catch(ctx.close);
+        void ctx.run(() => push(payload));
       }));
       for (
         const event of await replaySseEvents(

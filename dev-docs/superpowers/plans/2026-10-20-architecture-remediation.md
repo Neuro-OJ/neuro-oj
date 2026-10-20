@@ -337,6 +337,8 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
 - [x] P1 安全顺序（验签前置、迁移锁失败终止、Gateway 真实探针）
 - [x] P1 升级排空过渡能力（2026-10-20；P1 批次完成，P2 前暂停）
 - [ ] P2 运行与测试底座
+  - [x] P2a Core ManagedTask 生命周期（`wnxrzsvv`，2026-10-20 完成集中审查及独立 PostgreSQL/Redis 验收）
+  - [ ] P2b 显式启动/迁移边界与隔离 PostgreSQL 测试底座（移除 PGlite、手写 DDL 和测试事务代理）
 - [ ] P3 业务所有权
 - [ ] P4 可靠执行
 - [ ] P5 Gateway 收敛
@@ -376,5 +378,21 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
     `check-write-rate-limits`（内部凭据端点 exempt 登记）均通过。
   - 环境说明：本机 plain `test-domain.sh system` 曾因共享 Redis 被其它后台部署消费
     `noj:search:index` 出现 1 项环境性失败；隔离 `REDIS_URL=.../15` 后全绿，与本改动无关。
+
+- **P2a Core 生命周期（2026-10-20）**：统一任务停止/等待、错误聚合和有界关闭；
+  消费者取消等待可注销，SSE 按连接代次订阅，全部 SSE 路由纳入显式 app scope，
+  在途事件授权查询/推送与 setup 均排空后才关闭依赖。详见
+  [P2a Agent Note](../../../.agents/notes/implemented/architecture/2026-10-20-core-managed-task-lifecycle.md)。
+  - 主代理最终验收：`deno task test:runtime` 69 passed / 0 failed（真实 loopback HTTP/SSE）；
+    `bash scripts/test-shared.sh` 396 passed / 0 failed / 6 ignored；17 个
+    `deno task test:domain <domain>` 合计 2052 passed / 0 failed / 12 ignored。
+    以上域/共享计数不重复计入各入口的 8 个迁移/种子检查；runtime 同时被共享入口发现。
+  - 数据库/Redis 使用本轮新建容器、每套新数据库及独立 Redis DB；存储路径与默认路径测试
+    均使用临时目录，未读取开发 `.env`、未操作已有生产/开发服务。
+  - `deno task check`（fmt/lint/全源码 type check）、`scripts/check-ci.ts`（含 217 个门禁
+    自测）、Agent Note 格式与 Markdown 链接检查通过。
+  - 现存 ignored 用例为可选 S3/性能等环境门控；本批未把依赖缺失当作已验收，相关入口与
+    门控清理仍属于 P2b。P2a 只验收受管组件及 SSE 生命周期，生产启动 DDL/seed 分离、
+    测试适配移除和剩余派生异步任务的可靠执行仍按 P2b/P4 继续推进。
 
 验证记录按批次追加到本清单下方；远程 CI 结果以对应 PR 的当前检查为准，不提前记绿。
