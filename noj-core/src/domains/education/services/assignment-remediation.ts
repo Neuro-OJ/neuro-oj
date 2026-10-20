@@ -12,7 +12,7 @@ import { enqueueEducationRefresh } from "../../../shared/education-events.ts";
 import {
   domainProblemReference,
   loadBindingAvailability,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   assertClassroomCapability,
   assertClassroomRevision,

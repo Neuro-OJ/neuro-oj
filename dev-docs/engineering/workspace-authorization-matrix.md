@@ -173,11 +173,11 @@ Participant
 比赛成绩在允许结果公开前不进入作业矩阵、公开统计和题单进度。
 赛后本人结果解除赛时字段限制，但资源授权仍需校验；正式榜继续使用发布快照，后续重测不自动改写。
 
-实现依据：[比赛关系](../../noj-core/src/domains/contest/services/domain-access.ts)、
-[比赛题目／窗口](../../noj-core/src/domains/contest/services/contest-access.ts)、
+实现依据：[比赛关系](../../noj-core/src/modules/contests/services/domain-access.ts)、
+[比赛题目／窗口](../../noj-core/src/modules/contests/services/contest-access.ts)、
 [结果裁剪](../../noj-core/src/domains/submission/services/submissions/submission-projection.ts)、
-[参赛出题者限制](../../noj-core/src/domains/catalog/services/workspace/problem-contest-authoring.ts)、
-[教学成绩依据](../../noj-core/src/domains/contest/services/teaching-basis.ts)。
+[参赛出题者限制](../../noj-core/src/modules/problems/services/workspace/problem-contest-authoring.ts)、
+[教学成绩依据](../../noj-core/src/modules/contests/services/teaching-basis.ts)。
 
 ## 6. 撤销、离班、离域与旧治理入口
 
@@ -204,7 +204,7 @@ Participant
 实现依据：[当前教师关系 SQL](../../noj-core/src/domains/education/services/submission-access-sql.ts)、
 [教学历史提交](../../noj-core/src/domains/education/services/student-submissions.ts)、
 [本人历史 DTO](../../noj-core/src/domains/submission/services/own-submission-history.ts)、
-[共享实时检查](../../noj-core/src/domains/catalog/services/workspace/problem-binding-access.ts)、
+[共享实时检查](../../noj-core/src/modules/problems/services/workspace/problem-binding-access.ts)、
 [旧治理路由](../../noj-core/src/domains/admin/routes/community.ts)。
 
 ## 7. Provider、限额与平台敏感评测字段
@@ -237,8 +237,8 @@ null，Gateway 内部历史数值用 -1 表示未限制。
 [Gateway 原子更新](../../noj-llm-gateway/src/routes/internal.ts)、
 [基础配额](../../noj-core/src/domains/workspace/services/limits.ts)、
 [域模型别名](../../noj-core/src/domains/gateway/services/llm-model-aliases.ts)、
-[敏感评测字段](../../noj-core/src/domains/catalog/services/problems/problem-field-guard.ts)、
-[草稿／发布安全](../../noj-core/src/domains/catalog/services/versioning/content-security.ts)。
+[敏感评测字段](../../noj-core/src/modules/problems/services/problems/problem-field-guard.ts)、
+[草稿／发布安全](../../noj-core/src/modules/problems/services/versioning/content-security.ts)。
 
 ## 8. 数据库约束与服务不变量
 

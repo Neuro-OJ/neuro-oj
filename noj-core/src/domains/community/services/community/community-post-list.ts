@@ -14,8 +14,8 @@ import {
   communityBookmarks,
   communityPosts,
   users,
-} from "./../../../../shared/db/schema.ts";
-import type { CommunityPostType } from "./../../types/community.ts";
+} from "../../../../shared/db/schema.ts";
+import type { CommunityPostType } from "../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,

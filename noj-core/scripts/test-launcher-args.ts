@@ -6,6 +6,11 @@
  */
 import { parseShardArgs } from "./test-parallel-args.ts";
 import { SHARDS } from "./test-parallel-shards.ts";
+import {
+  LEGACY_DOMAIN_NAMES,
+  resolveModuleTestTarget,
+  TARGET_MODULE_NAMES,
+} from "../../scripts/module-test-metadata.ts";
 
 export type LaunchMode =
   | "test"
@@ -26,24 +31,9 @@ export interface LauncherOptions {
   testArgs: string[];
 }
 
-const DOMAIN_NAMES = [
-  "identity",
-  "catalog",
-  "submission",
-  "contest",
-  "system",
-  "community",
-  "messaging",
-  "objective",
-  "admin",
-  "search",
-  "query",
-  "gateway",
-  "content-review",
-  "observability",
-  "legal",
-  "workspace",
-  "education",
+export const TEST_TARGET_NAMES = [
+  ...TARGET_MODULE_NAMES,
+  ...LEGACY_DOMAIN_NAMES,
 ] as const;
 
 const TEST_REPORTERS = new Set([
@@ -141,6 +131,36 @@ export function parseSafeTestArgs(args: readonly string[]): string[] {
   return testArgs;
 }
 
+/**
+ * Deno 对不存在的目录会直接失败；迁移期模块根可能尚未创建，因此在执行前
+ * 只保留真实存在的路径，同时把缺失根明确打印出来。新模块测试目录一旦创建，
+ * 下一次同一正式 task 会自动发现它，不能靠静默的旧 domain 列表漏跑。
+ */
+export async function existingTestPaths(paths: string[]): Promise<string[]> {
+  const existing: string[] = [];
+  const missing: string[] = [];
+  for (const path of paths) {
+    try {
+      await Deno.stat(path);
+      existing.push(path);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) missing.push(path);
+      else throw error;
+    }
+  }
+  if (missing.length > 0) {
+    console.warn(
+      `[test-launcher] 迁移期测试根尚未创建（已显式跳过，不代表已验收）：${
+        missing.join(", ")
+      }`,
+    );
+  }
+  if (existing.length === 0) {
+    throw new Error("测试启动器没有发现任何实际测试路径，拒绝假绿");
+  }
+  return existing;
+}
+
 /** 解析统一 CLI；未知 mode/domain、并发参数或非法 shard 参数必须失败。 */
 export function parseLauncherArgs(args: string[]): LauncherOptions {
   const rest = [...args];
@@ -164,10 +184,10 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
   let domain: string | undefined;
   if (mode === "domain") {
     domain = rest.shift();
-    if (
-      !domain || !DOMAIN_NAMES.includes(domain as (typeof DOMAIN_NAMES)[number])
-    ) {
-      throw new Error(`必须指定有效 domain：${DOMAIN_NAMES.join("、")}`);
+    if (!domain || !resolveModuleTestTarget(domain)) {
+      throw new Error(
+        `必须指定有效模块或 legacy domain：${TEST_TARGET_NAMES.join("、")}`,
+      );
     }
   }
 

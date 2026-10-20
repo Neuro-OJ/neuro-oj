@@ -4,7 +4,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 import {
   assertContestSubmissionLimit,
   verifyContestAccess,
-} from "../../../contest/index.ts";
+} from "../../../../modules/contests/index.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 import type { DispatchSource, JobUpgradeContext } from "./dispatch-job-item.ts";

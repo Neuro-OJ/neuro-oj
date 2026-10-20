@@ -13,9 +13,9 @@
 import type {
   ObjectiveAnswerValue,
   QuestionJudgement,
-} from "../../types/objective.ts";
+} from "../../../../modules/problems/types/objective.ts";
 import { SCORE_SCALE } from "../../../submission/index.ts";
-import type { ObjectiveQuestionSnapshot } from "../../../catalog/index.ts";
+import type { ObjectiveQuestionSnapshot } from "../../../../modules/problems/index.ts";
 
 /** 单题匹配状态。 */
 export type RegradeMatch =

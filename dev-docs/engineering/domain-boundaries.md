@@ -3,6 +3,35 @@
 > 本文档是 noj-core 代码级域隔离的事实来源。 每个域拥有自己的 routes / services
 > / types；跨域只允许通过域门面（`index.ts`）或事件协作。
 
+## P3 目标模块结构诊断
+
+P3 的目标分区、遗留域归属、表所有权以及正式测试/CI 映射统一记录在
+[`module-boundaries.json`](./module-boundaries.json)。脚本
+[`scripts/check-module-boundaries.ts`](../../scripts/check-module-boundaries.ts) 读取这份
+元数据并扫描 `noj-core/src/**/*.ts` 以及被源码导入的 JSON 资产的真实文件图。它不把目录改名当成迁移完成，
+也不把门面或类型签名当成运行时隔离：
+
+- 解析使用仓库已锁定的 TypeScript Compiler API `npm:typescript@5.9.2`，而不是手写
+  lexer。`import type`、`export type` 和只含 `type` 的具名导入只进入类型图；混合
+  具名导入、`export *` 以及字面量 `import("...")` 进入运行时图。模板表达式中的
+  dynamic import 会被 AST 遍历发现，变量路径则直接报告为无法解析；字符串、注释和
+  正则字面量不会产生依赖边。
+- Tarjan SCC 只在运行时边上计算。类型图另行统计，因此把副作用藏到名为
+  `types.ts` 的文件仍会被运行时图捕获。
+- 迁移期间运行 `deno run -A scripts/check-module-boundaries.ts` 只输出诊断；
+  目标模块尚未全部落盘时不会使既有 `check-ci` 变红。模块迁移完成后使用
+  `--strict`，再把该命令接入仓库门禁。
+- `facade-export-star`、HTTP 导入 system actor factory、runtime 反向导入业务模块、
+  业务模块反向依赖 read-models 都是结构规则。跨模块导入另一个模块的
+  `services/routes/workers/consumers` 目录只作为写侵入的语法诊断；它不能证明某个
+  函数的实际读写语义，语义级写调用仍需随应用用例迁移和行为测试确认。
+
+当前工作副本的迁移前诊断为 544 个生产文件（包含运行时 JSON 资产）、2821 条运行时边、472 条类型边、4
+个运行时 SCC，表扫描 109 张且没有表所有权缺口；目标 `modules/` 目录仍缺 8 个。
+这些数字是待迁移基线，不是 P3 完成证明。结构负例由
+`scripts/check-module-boundaries_test.ts` 提供，并已列入 `scripts/gate-list.ts` 的
+正式门禁自测集合；自测只验证检查器本身，暂不启用 `--strict` 生产结果。
+
 ## 共享层 `src/shared/`
 
 共享层只放“真正跨域复用且无业务归属”的基础设施，**不得反向依赖

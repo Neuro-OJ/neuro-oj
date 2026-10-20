@@ -23,44 +23,44 @@ import {
   submissions,
   submissionVersionResults,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   type CurrentVersionResult,
   type EffectiveVersionPolicy,
   policyFromColumns,
-} from "./../../../../shared/versioning/types.ts";
-import { selectEffectiveResults } from "./../../../../shared/versioning/effective-results.ts";
+} from "../../../../shared/versioning/types.ts";
+import { selectEffectiveResults } from "../../../../shared/versioning/effective-results.ts";
 import {
   AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "./../../../../shared/base/errors.ts";
-import { getDb } from "./../../../../shared/db/connection.ts";
+} from "../../../../shared/base/errors.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { consumeDomainSubmissionQuota } from "../../../workspace/index.ts";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
-import { checkPermission } from "./../../../identity/index.ts";
+import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { checkPermission } from "../../../identity/index.ts";
 import {
   assertDefaultProblemSource,
   evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../../catalog/index.ts";
-import { verifyContestAccess } from "../../../contest/index.ts";
+} from "../../../../modules/problems/index.ts";
+import { verifyContestAccess } from "../../../../modules/contests/index.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "./../../../../shared/security/public-id.ts";
+} from "../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
-import { assertContestSubmissionLimit } from "../../../contest/index.ts";
-import { deleteStorageObject } from "./../../../system/index.ts";
+import { assertContestSubmissionLimit } from "../../../../modules/contests/index.ts";
+import { deleteStorageObject } from "../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
-import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
+import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
+import { isOiRuntimeConfig } from "../../../../modules/problems/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
 import {
@@ -95,7 +95,7 @@ import {
 import {
   Channels,
   publishSseEvent,
-} from "./../../../../shared/sse/event-bus.ts";
+} from "../../../../shared/sse/event-bus.ts";
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,

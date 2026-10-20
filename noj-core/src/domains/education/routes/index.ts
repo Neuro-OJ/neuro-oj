@@ -6,7 +6,10 @@ import { annotationRouter } from "./annotations.ts";
 import { classroomEnrollmentRouter } from "./enrollment.ts";
 import { educationWorkbenchRouter } from "./workbench.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
-import { BadRequestError } from "../../../shared/base/errors.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "../../../shared/base/errors.ts";
 import {
   assertObjectBody,
   parseJsonBody,
@@ -31,13 +34,26 @@ import {
   setClassroomMember,
   transferClassroom,
 } from "../services/members.ts";
+import { listClassroomInvitations } from "../services/invitations.ts";
 import {
-  createClassroomInvitation,
-  listClassroomInvitations,
-  revokeClassroomInvitation,
-} from "../services/invitations.ts";
+  createClassroomInvitationCommand,
+  revokeClassroomInvitationCommand,
+} from "../../../modules/application/access.ts";
+import type { DomainInvitationInput } from "../../../modules/access/invitations.ts";
+import {
+  requireUserActor,
+  type UserActor,
+} from "../../../modules/access/contracts/actor.ts";
 
 const router = new Hono<AuthEnv>();
+
+/** authMiddleware 已注入验签后的 UserActor；HTTP body 不能构造身份。 */
+function authenticatedActor(c: Context<AuthEnv>): UserActor {
+  const actor = c.get("actor");
+  if (!actor) throw new UnauthorizedError("未提供认证身份");
+  return requireUserActor(actor);
+}
+
 async function body<T>(c: Context): Promise<T> {
   const input = await parseJsonBody<unknown>(c);
   assertObjectBody(input);
@@ -182,13 +198,13 @@ router.post("/domains/:slug/classrooms/:id/transfer", async (c) => {
 /** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
 router.post("/domains/:slug/classrooms/:id/invitations", async (c) => {
   const input = await body<
-    import("../../workspace/index.ts").DomainInvitationInput
+    DomainInvitationInput
   >(c);
   return c.json({
-    data: await createClassroomInvitation(
+    data: await createClassroomInvitationCommand(
+      authenticatedActor(c),
       c.req.param("slug"),
       c.req.param("id"),
-      c.var.userId,
       input,
     ),
   }, 201);
@@ -217,10 +233,10 @@ router.delete(
   "/domains/:slug/classrooms/:id/invitations/:inviteId",
   async (c) =>
     c.json({
-      data: await revokeClassroomInvitation(
+      data: await revokeClassroomInvitationCommand(
+        authenticatedActor(c),
         c.req.param("slug"),
         c.req.param("id"),
-        c.var.userId,
         c.req.param("inviteId"),
       ),
     }),

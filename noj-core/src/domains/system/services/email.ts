@@ -19,7 +19,7 @@ import { getSetting } from "./system-settings.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "system"]);
-import { observability as metrics } from "../../../domains/observability/write.ts";
+import { observability as metrics } from "../../observability/write.ts";
 
 /** 每个 Provider 模块必须实现的最小接口。 */
 interface EmailProviderModule {

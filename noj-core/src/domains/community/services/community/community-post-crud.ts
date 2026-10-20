@@ -6,21 +6,21 @@ import {
   problems,
   userRoles,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "./../../../../shared/base/errors.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+} from "../../../../shared/base/errors.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "./../../../../shared/security/public-id.ts";
+} from "../../../../shared/security/public-id.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "./../../types/community.ts";
+} from "../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,
@@ -38,8 +38,8 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
-import { domainProblemReference } from "../../../catalog/index.ts";
+import { isProblemInUnendedPublicContest } from "../../../../modules/contests/index.ts";
+import { domainProblemReference } from "../../../../modules/problems/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,

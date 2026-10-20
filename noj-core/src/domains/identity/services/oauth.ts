@@ -4,33 +4,32 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import {
   oauthAccounts,
   roles,
   systemSettings,
   userRoles,
   users,
-} from "./../../../shared/db/schema.ts";
+} from "../../../shared/db/schema.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../shared/security/admin-initialization.ts";
 import { signToken } from "./security/jwt.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import { isUserAdmin } from "./security/permissions.ts";
-import { logAuthEvent } from "../../system/index.ts";
+import { logAuthEvent } from "../../system/services/audit-log.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
-import { recordConsentsForRegistration } from "../../legal/index.ts";
-import {
-  enrollRegisteredAccount,
-  getInstanceAccessPolicy,
-} from "../../workspace/index.ts";
-import { getSetting } from "../../system/index.ts";
+import { recordConsentsForRegistration } from "../../../modules/platform/index.ts";
+import { getInstanceAccessPolicy } from "../../workspace/services/instance.ts";
+import { enrollRegisteredAccountTx } from "../../../modules/access/registration.ts";
+import { userActorFromAuthenticatedId } from "../../../modules/access/contracts/actor.ts";
+import { getSetting } from "../../../modules/platform/index.ts";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
-import type { UserResponse } from "./../types/auth.ts";
+import type { UserResponse } from "../types/auth.ts";
 
 /** 支持的 OAuth 身份提供商。 */
 export type OAuthProviderId = "github" | "oidc";
@@ -574,8 +573,13 @@ async function createOAuthUser(
       }).onConflictDoNothing();
     }
     // PIPL：与用户插入同事务写入隐私政策/服务条款同意记录（原子）。
-    await recordConsentsForRegistration(tx, userId, null, null);
-    await enrollRegisteredAccount(tx, userId);
+    await recordConsentsForRegistration(
+      tx,
+      userActorFromAuthenticatedId(userId),
+      null,
+      null,
+    );
+    await enrollRegisteredAccountTx(tx, userActorFromAuthenticatedId(userId));
   });
   await publishSearchIndexEvent("user", userId, "upsert");
   return userId;

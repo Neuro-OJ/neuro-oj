@@ -6,8 +6,11 @@ import {
 } from "../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { assignmentCellProjectionStaleSql } from "./progress-revisions.ts";
-import { loadBindingAvailability } from "../../catalog/index.ts";
-import { OI_VERDICTS, type OiVerdict } from "../../submission/index.ts";
+import { loadBindingAvailability } from "../../../modules/problems/index.ts";
+import {
+  OI_VERDICTS,
+  type OiVerdict,
+} from "../../../modules/evaluations/index.ts";
 import {
   ASSIGNMENT_PROGRESS_STATES,
   type AssignmentProgressStatus,

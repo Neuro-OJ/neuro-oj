@@ -1,15 +1,15 @@
 import { Hono } from "hono";
-import type { OptionalAuthEnv } from "./../../identity/index.ts";
+import type { OptionalAuthEnv } from "../../identity/index.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "./../../identity/index.ts";
+} from "../../identity/index.ts";
 import { getCheckinLeaderboard } from "../../identity/index.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "./../../../shared/http/pagination.ts";
+} from "../../../shared/http/pagination.ts";
 import {
   DEFAULT_DOMAIN_SLUG,
   ensureDefaultWorkspace,

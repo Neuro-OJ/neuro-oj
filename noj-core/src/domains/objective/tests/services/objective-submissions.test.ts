@@ -32,8 +32,8 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   getProblemDraft,
   saveProblemDraft,
-} from "../../../catalog/services/versioning/draft.ts";
-import { publishProblemVersion } from "../../../catalog/services/versioning/publish.ts";
+} from "../../../../modules/problems/services/versioning/draft.ts";
+import { publishProblemVersion } from "../../../../modules/problems/services/versioning/publish.ts";
 
 await resetDbForTest();
 const db = getDb();
@@ -718,6 +718,6 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+import { resetDbForTest } from "../../../../modules/problems/tests/default-fixture.ts";
 
-import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";
+import { grantDefaultCatalogRole } from "../../../../modules/problems/tests/default-fixture.ts";

@@ -8,7 +8,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   communityComments,
   communityPosts,
@@ -18,12 +18,12 @@ import {
   messages,
   userBans,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "./../../../../shared/base/errors.ts";
+} from "../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import {
   assertCommunityEnabled,
@@ -32,14 +32,14 @@ import {
 import {
   REPORT_CATEGORIES,
   type ReportCategory,
-} from "./../../types/community.ts";
+} from "../../types/community.ts";
 import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
-import { invalidateBanCache } from "./../../../identity/index.ts";
-import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
-import { parseStorageUrl } from "./../../../system/index.ts";
+import { invalidateBanCache } from "../../../identity/index.ts";
+import { isProblemInUnendedPublicContest } from "../../../../modules/contests/index.ts";
+import { getStorageProvider } from "../../../system/index.ts";
+import { parseStorageUrl } from "../../../system/index.ts";
 import {
   communityDb,
   communityDomainId,

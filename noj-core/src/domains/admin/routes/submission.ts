@@ -1,21 +1,23 @@
-import { MAX_SAFE_PAGE } from "./../../../shared/http/pagination.ts";
+import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
+import type { AuthEnv } from "../../identity/index.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
-  deleteSubmission,
+  deleteSubmissionCommand,
+  rejudgeProblemSubmissionsCommand,
+  rejudgeSubmissionCommand,
+} from "../../../modules/application/evaluations.ts";
+import {
   getSubmission,
   listSubmissions,
-  rejudgeProblemSubmissions,
-  rejudgeSubmission,
   resolveSubmissionId,
-} from "../../submission/services/submissions/submissions.ts";
+} from "../../../modules/evaluations/services/submissions/submissions-crud.ts";
 import {
   getQueueHealth,
   removePendingSubmission,
-} from "../../submission/services/queue.ts";
-import { resolveProblem } from "./../../catalog/index.ts";
-import { SUBMISSION_STATUSES } from "../../submission/types/index.ts";
+} from "../../../modules/evaluations/services/queue.ts";
+import { resolveProblem } from "../../../modules/problems/index.ts";
+import { SUBMISSION_STATUSES } from "../../../modules/evaluations/types/index.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 
 /**
@@ -96,7 +98,7 @@ router.get("/submissions", async (c) => {
 router.get("/submissions/:id", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
   // 传入 userId/userRole 确保管理员能看到 code/output/details
-  const result = await getSubmission(id, c.get("userId"), undefined, c);
+  const result = await getSubmission(id, c.var.actor.userId, undefined, c);
   return c.json({ data: result });
 });
 
@@ -106,7 +108,7 @@ router.get("/submissions/:id", async (c) => {
  */
 router.delete("/submissions/:id", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
-  await deleteSubmission(id);
+  await deleteSubmissionCommand(c.var.actor, id);
   await adminAudit(
     "submissions.delete",
     { action: "submissions.delete", submission_id: id },
@@ -137,8 +139,7 @@ router.delete("/queue/submissions/:id", async (c) => {
  */
 router.post("/submissions/:id/rejudge", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
-  const actorId = (c.get("userId") as string | undefined) ?? "0";
-  const job = await rejudgeSubmission(id, actorId);
+  const job = await rejudgeSubmissionCommand(c.var.actor, id);
   return c.json(
     {
       data: {
@@ -160,8 +161,7 @@ router.post("/submissions/:id/rejudge", async (c) => {
 router.post("/problems/:id/rejudge", async (c) => {
   const problem = await resolveProblem(c.req.param("id") as string);
   const id = problem.id;
-  const actorId = (c.get("userId") as string | undefined) ?? "0";
-  const job = await rejudgeProblemSubmissions(id, actorId);
+  const job = await rejudgeProblemSubmissionsCommand(c.var.actor, id);
   return c.json(
     {
       data: {

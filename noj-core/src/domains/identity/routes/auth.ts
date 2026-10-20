@@ -2,13 +2,13 @@ import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import { getLogger } from "@logtape/logtape";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { users } from "./../../../shared/db/schema.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { users } from "../../../shared/db/schema.ts";
 import {
   type AuthEnv,
   authMiddleware,
   getUserBanState,
-} from "./../middleware/auth.ts";
+} from "../middleware/auth.ts";
 import {
   changePassword,
   getUserProfile,
@@ -46,15 +46,15 @@ import {
   ForbiddenError,
   UnauthorizedError,
   ValidationError,
-} from "./../../../shared/base/errors.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { getUserPermissions } from "./../services/security/permissions.ts";
-import { signToken, verifyToken } from "./../services/security/jwt.ts";
-import { getLegalStatus } from "./../../legal/index.ts";
+} from "../../../shared/base/errors.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { getUserPermissions } from "../services/security/permissions.ts";
+import { signToken, verifyToken } from "../services/security/jwt.ts";
+import { getLegalStatus } from "../../legal/index.ts";
 import {
   revocationTtl,
   revokeJti,
-} from "./../services/security/revokedTokens.ts";
+} from "../services/security/revokedTokens.ts";
 import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
@@ -66,22 +66,22 @@ import {
   isLoginLocked,
   recordLoginBackoff,
   recordLoginFailure,
-} from "./../services/security/loginThrottle.ts";
+} from "../services/security/loginThrottle.ts";
 import {
   checkLoginAccountRateLimit,
   LOGIN_LIMITS,
   loginIpRateLimit,
   resolveLoginAccountKey,
   throwRateLimited,
-} from "./../middleware/login-rate-limit.ts";
+} from "../middleware/login-rate-limit.ts";
 import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
   ResetPasswordInput,
-} from "./../types/auth.ts";
-import { SECONDS_PER_DAY } from "./../../../shared/base/constants.ts";
+} from "../types/auth.ts";
+import { SECONDS_PER_DAY } from "../../../shared/base/constants.ts";
 import {
   enforceEmailVerificationResendRateLimit,
   enforcePasswordResetEmailRateLimit,

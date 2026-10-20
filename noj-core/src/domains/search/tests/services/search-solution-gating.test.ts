@@ -11,7 +11,7 @@ import {
 } from "../../services/index-writer.ts";
 import { searchFlat } from "../../services/search.ts";
 import { createPost } from "../../../community/index.ts";
-import { createContest } from "../../../contest/index.ts";
+import { createContest } from "../../../../modules/contests/index.ts";
 import {
   _resetSystemSettingsForTest,
   ensureRbacSeeds,

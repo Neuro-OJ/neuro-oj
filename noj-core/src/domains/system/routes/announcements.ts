@@ -12,16 +12,16 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware } from "./../../identity/index.ts";
-import { Channels, onEvent } from "./../../../shared/sse/event-bus.ts";
-import { createSseStream } from "./../../../shared/sse/sse-stream.ts";
-import { parsePagination } from "./../../../shared/http/pagination.ts";
+import { authMiddleware } from "../../identity/index.ts";
+import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
+import { createSseStream } from "../../../shared/sse/sse-stream.ts";
+import { parsePagination } from "../../../shared/http/pagination.ts";
 import {
   getLatestBannerAnnouncement,
   getPublicAnnouncement,
   listPublicAnnouncements,
   resolveAnnouncementId,
-} from "../services/announcements.ts";
+} from "../../../modules/platform/services/announcements.ts";
 
 const router = new Hono();
 

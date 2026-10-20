@@ -1,17 +1,17 @@
 import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 import { and, eq, type SQL, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   communityPosts,
   evaluationAttempts,
   problems,
   submissions,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   endedWindowCondition,
   unendedPublicContestForProblem,
-} from "./../../../contest/index.ts";
+} from "../../../../modules/contests/index.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,
@@ -26,7 +26,7 @@ import {
   submissionQueryVisibility,
 } from "../../../query/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../../catalog/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../../modules/problems/index.ts";
 
 type Db = ReturnType<typeof getDb>;
 function publicSubmissionCondition() {

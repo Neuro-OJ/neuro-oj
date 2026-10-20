@@ -1,12 +1,12 @@
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "./../middleware/auth.ts";
-import { optionalAuthMiddleware } from "./../middleware/auth.ts";
-import { checkPermission } from "./../services/security/permissions.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { type AuthEnv, authMiddleware } from "../middleware/auth.ts";
+import { optionalAuthMiddleware } from "../middleware/auth.ts";
+import { checkPermission } from "../services/security/permissions.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   BadRequestError,
   ValidationError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import {
   clearUserAvatar,
   getUserAvatarBytes,
@@ -97,7 +97,7 @@ users.post("/me/delete-account", authMiddleware, async (c) => {
     max: 3,
   });
   const body = await parseJsonBody<{ password?: string }>(c);
-  await deleteOwnAccount(c.get("userId"), body.password ?? "", getClientIp(c));
+  await deleteOwnAccount(c.get("actor"), body.password ?? "", getClientIp(c));
   return c.body(null, 204);
 });
 

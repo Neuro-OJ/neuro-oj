@@ -25,7 +25,7 @@ import {
 import type {
   ProblemContentV1,
   SubmissionMode,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 
 /** 解析结果：明确的提交时版本。 */
 export interface ResolvedSubmissionVersion {

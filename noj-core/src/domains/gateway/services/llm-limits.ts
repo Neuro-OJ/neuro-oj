@@ -6,7 +6,7 @@
  * - eval_token 签发调用 resolveLlmLimits 做 Math.min 防御。
  */
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import type { LlmConfig } from "../../catalog/index.ts";
+import type { LlmConfig } from "../../../modules/problems/index.ts";
 
 /** 平台默认单次评测 LLM 预算（环境变量非法时回退的安全值）。 */
 const DEFAULT_MAX_CALLS = 100;

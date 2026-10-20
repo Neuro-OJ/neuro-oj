@@ -1,27 +1,57 @@
-import { and, type AnyColumn, eq, type SQL, sql } from "drizzle-orm";
+/**
+ * 旧 workspace 路径兼容适配器。
+ *
+ * 业务实现已迁移到 `modules/access/policy.ts`。这里暂时保留旧的 string
+ * 参数和 `Executor` 形状，供尚未迁移的域调用方逐步切换；新代码必须从
+ * `modules/access` 使用显式 Actor 与 `DbRoot`/`DbTx` 合同。
+ */
+import { type AnyColumn, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import type { Executor } from "../../../shared/db/executor.ts";
-import {
-  domainMemberRoles,
-  domainMemberships,
-  domains,
-} from "../../../shared/db/schema.ts";
+import type { DbTx, Executor } from "../../../shared/db/executor.ts";
 import {
   ForbiddenError,
-  NotFoundError,
   ServiceUnavailableError,
-  UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import type { WorkspaceContext } from "../../../shared/workspace/types.ts";
 import {
-  assertActiveInstanceAccount,
-  getUserPermissions,
-} from "../../identity/index.ts";
-import { domainPermissions } from "../types.ts";
-import { getInstanceAccessPolicy } from "./instance.ts";
-import { effectiveDomainConfiguration } from "../../../shared/workspace/capabilities.ts";
+  guestActor,
+  userActorFromAuthenticatedId,
+} from "../../../modules/access/contracts/actor.ts";
+import {
+  loadDomainForJoiningTx,
+  loadWorkspace as loadAccessWorkspace,
+  loadWorkspaceTx,
+} from "../../../modules/access/policy.ts";
 
-/** 跨域目录在数据库分页前检查当前成员关系，不从缓存枚举允许的域。 */
+function actorFor(id: string | null) {
+  return id ? userActorFromAuthenticatedId(id) : guestActor();
+}
+
+/**
+ * Drizzle 的事务句柄本身也暴露 `transaction` 方法，不能用属性存在性把
+ * `DbTx` 当成 `DbRoot`。迁移期兼容层只把 getDb() 的单例视为根连接；所有
+ * 其它执行器都必须沿用当前事务，避免嵌套事务在已持锁的写用例中死锁。
+ */
+function isRootDb(executor: Executor): executor is ReturnType<typeof getDb> {
+  return executor === getDb();
+}
+
+function mapContext(
+  result: Awaited<ReturnType<typeof loadAccessWorkspace>>,
+): WorkspaceContext {
+  return {
+    domainId: result.context.domainId,
+    domainSlug: result.context.domainSlug,
+    actorId: result.context.actor.kind === "user"
+      ? result.context.actor.userId
+      : null,
+    platformPermissions: result.context.platformPermissions,
+    domainPermissions: result.context.domainPermissions,
+    domainRevision: result.context.domainRevision,
+  };
+}
+
+/** 跨域目录在数据库分页前检查当前成员关系。 */
 export function domainMemberWhere(
   domainId: AnyColumn | SQL,
   actorId: string | null,
@@ -29,7 +59,8 @@ export function domainMemberWhere(
   return sql`EXISTS (SELECT 1 FROM domain_memberships access_member WHERE access_member.domain_id=${domainId}
     AND access_member.user_id=${actorId} AND access_member.status='active')`;
 }
-/** 公共目录及本人可进入的私有域；平台治理权限显式传入。 */
+
+/** 公共目录及本人可进入的私有域。 */
 export function domainReadableWhere(
   domainId: AnyColumn | SQL,
   actorId: string | null,
@@ -42,78 +73,47 @@ export function domainReadableWhere(
   }))))`;
 }
 
-/** 读取仅验证进入域所需字段，导航及其他模块配置由其边界处理。 */
-function assertDomainAccess(domain: typeof domains.$inferSelect) {
-  if (
-    domain.configuration?.access !== "public" &&
-    domain.configuration?.access !== "members"
-  ) throw new ServiceUnavailableError("工作空间访问政策无效，请联系管理员修复");
-}
-
-/** 服务端实时解析域身份、成员及平台权限，不信任客户端的权限或上次使用域。 */
+/**
+ * 旧调用方的访问读取适配。带锁的调用只能传真实 DbTx；根连接回退到新
+ * 只读入口，避免在深层 helper 重新开启事务。
+ */
 export async function loadWorkspace(
   slug: string,
   actorId: string | null,
-  options: { write?: boolean; lock?: boolean | "share"; executor?: Executor } =
-    {},
+  options: {
+    write?: boolean;
+    lock?: boolean | "share";
+    executor?: Executor;
+  } = {},
 ) {
-  const db = options.executor ?? getDb();
-  if (getInstanceAccessPolicy().access === "authenticated" && !actorId) {
-    throw new UnauthorizedError("此实例需要登录");
-  }
-  if (actorId) await assertActiveInstanceAccount(actorId, db);
-  const query = db.select().from(domains).where(eq(domains.slug, slug));
-  const [domain] = options.lock
-    ? await query.for(options.lock === "share" ? "share" : "update")
-    : await query;
-  if (!domain) throw new NotFoundError("工作空间不存在");
-  domain.configuration = effectiveDomainConfiguration(
-    domain.preset,
-    domain.configuration,
-  );
-  const platformPermissions = actorId
-    ? await getUserPermissions(actorId, db)
-    : new Set<string>();
-  const platformAdmin = platformPermissions.has("admin:full_access");
-  assertDomainAccess(domain);
-  if (domain.status === "suspended" && !platformAdmin) {
-    throw new NotFoundError("工作空间不可用");
-  }
-  const [membership] = actorId
-    ? await db.select().from(domainMemberships).where(
-      and(
-        eq(domainMemberships.domain_id, domain.id),
-        eq(domainMemberships.user_id, actorId),
-        eq(domainMemberships.status, "active"),
-      ),
-    )
-    : [];
-  if (
-    !platformAdmin && !membership && domain.configuration.access === "members"
-  ) throw new NotFoundError("工作空间不存在或不可访问");
-  if (options.write && domain.status !== "active") {
-    throw new ForbiddenError("工作空间只读或停用", "DOMAIN_READ_ONLY");
-  }
-  const roles = membership
-    ? await db.select({ role: domainMemberRoles.role }).from(domainMemberRoles)
-      .where(eq(domainMemberRoles.membership_id, membership.id))
-    : [];
-  const context: WorkspaceContext = {
-    domainId: domain.id,
-    domainSlug: domain.slug,
-    actorId,
-    platformPermissions,
-    domainPermissions: domainPermissions(roles.map((row) => row.role)),
-    domainRevision: domain.revision,
+  const actor = actorFor(actorId);
+  const executor = options.executor;
+  const result = executor
+    ? isRootDb(executor)
+      ? await getDb().transaction((tx) =>
+        loadWorkspaceTx(tx, slug, actor, {
+          write: options.write,
+          lock: options.lock,
+        })
+      )
+      : await loadWorkspaceTx(executor as DbTx, slug, actor, {
+        write: options.write,
+        lock: options.lock,
+      })
+    : await loadAccessWorkspace(slug, actor, { write: options.write });
+  return {
+    domain: result.domain,
+    membership: result.membership,
+    context: mapContext(result),
+    platformAdmin: result.platformAdmin,
   };
-  return { domain, membership: membership ?? null, context, platformAdmin };
 }
 
-/** 域内能力断言；平台管理员例外来自服务端实时 RBAC。 */
+/** 旧 context 仅作兼容映射；新业务使用 modules/access 的显式 context。 */
 export function assertWorkspacePermission(
   context: WorkspaceContext,
   permission: string,
-) {
+): void {
   if (
     !context.actorId ||
     !context.platformPermissions.has("admin:full_access") &&
@@ -121,16 +121,22 @@ export function assertWorkspacePermission(
   ) throw new ForbiddenError("工作空间权限不足", "DOMAIN_PERMISSION_DENIED");
 }
 
-/** 成员加入入口能处理尚非成员的私有域，同时不返回域的私有内容。 */
+/** 旧加入读取适配；写入实现由 modules/access/members.ts 持有。 */
 export async function loadDomainForJoining(
   slug: string,
-  executor: Executor = getDb(),
+  executor?: Executor,
 ) {
-  const [domain] = await executor.select().from(domains).where(
-    and(eq(domains.slug, slug), eq(domains.status, "active")),
-  ).for("update");
-  if (!domain) throw new NotFoundError("工作空间不可加入");
-  assertDomainAccess(domain);
+  const domain = executor
+    ? isRootDb(executor)
+      ? await getDb().transaction((tx) => loadDomainForJoiningTx(tx, slug))
+      : await loadDomainForJoiningTx(executor as DbTx, slug)
+    : await getDb().transaction((tx) => loadDomainForJoiningTx(tx, slug));
+  if (
+    domain.configuration?.access !== "public" &&
+    domain.configuration?.access !== "members"
+  ) {
+    throw new ServiceUnavailableError("工作空间访问政策无效，请联系管理员修复");
+  }
   if (
     !["open", "approval", "invite"].includes(domain.configuration.join_policy)
   ) {

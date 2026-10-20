@@ -1,14 +1,14 @@
 import { Hono } from "hono";
-import { authMiddleware } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { authMiddleware } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import { resolveUserId } from "../../identity/index.ts";
-import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { Channels, onEvent } from "./../../../shared/sse/event-bus.ts";
-import { createSseStream } from "./../../../shared/sse/sse-stream.ts";
+import { parsePagination } from "../../../shared/http/pagination.ts";
+import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
+import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
   addReaction,
   clearConversationMessages,

@@ -1,0 +1,197 @@
+/**
+ * 题目敏感字段 RBAC 守卫（issue #207）。
+ *
+ * 将 runtime_config 中的高危敏感字段抽离为独立 RBAC 权限项，并按管理员配置
+ * 的全局上限约束资源限制字段：
+ *
+ * - SENSITIVE_FIELD_PERMISSIONS：敏感字段路径 → 权限项 静态映射。
+ *   seed-rbac 已按 NOJ-062 从 default user 角色撤销这些权限；管理员可显式
+ *   授权给特定角色，授权后不会被重启恢复覆盖。
+ * - RESOURCE_LIMIT_SETTINGS：资源限制字段 → 全局上限设置项 key 映射。
+ *   设置值 > 0 时启用上限，超限拒绝。
+ *
+ * 检查语义：仅当敏感字段的**生效值相对基线发生变化**时才触发检查。
+ * - 创建 / 导入新题：基线为平台默认值（command = `DEFAULT_EVALUATOR_COMMAND`，
+ *   network = 不联网）；
+ * - 更新 / 按 number 覆盖导入：基线为库中既有 runtime_config。
+ * `evaluator.command` 是必填字段、前端每次保存都会回传完整 runtime_config，
+ * 若按"显式设置即检查"，无权限用户将无法创建或保存任何编程题（NOJ-062 撤销
+ * 默认授权后即触发）。生效值归一化：command 空白 → 默认命令；network 仅
+ * `enabled === true` 视为联网（null / `{enabled:false}` 等价于无网，与 judge
+ * 端解析一致）。三条写入路径（CRUD 创建 / CRUD 更新 / 题目包导入）共用本守卫。
+ *
+ * CLI 场景（无 Hono Context）fail-closed：仅 root 用户（显式 userId 或
+ * 缺省默认）与显式 userRole="admin" 放行，其余拒绝——与既有权限检查模式
+ * （如 createProblem 的 `c ? assertPermission : userRole` 拒绝语义）一致。
+ *
+ * 未来新增敏感字段：在此文件扩展映射 + 在对应文档/测试中补充场景。
+ */
+
+import type { Context } from "hono";
+import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
+import {
+  checkPermission,
+  getUserPermissions,
+} from "../../../../domains/identity/index.ts";
+import { getSetting } from "../../../../domains/system/index.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
+import { isOiRuntimeConfig } from "../../types/runtime-config.ts";
+import type { ProblemRuntimeConfig } from "../../types/problems.ts";
+import { DEFAULT_EVALUATOR_COMMAND } from "../../types/problem-bundle.ts";
+
+/** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
+export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
+  "evaluator.command": "problem:field_evaluator_command",
+  "evaluator.network": "problem:field_evaluator_network",
+};
+
+/** 资源限制字段路径 → 全局上限设置项 key */
+export const RESOURCE_LIMIT_SETTINGS: Record<string, string> = {
+  "evaluator.time_limit_ms": "judge_max_evaluator_time_limit_ms",
+  "evaluator.memory_limit_mb": "judge_max_evaluator_memory_limit_mb",
+  "evaluator.workspace_size_mb": "judge_max_prediction_workspace_mb",
+  "solution.call_timeout_ms": "judge_max_solution_call_timeout_ms",
+  "solution.memory_limit_mb": "judge_max_solution_memory_limit_mb",
+};
+
+/** 已告警过的非数字上限 key（避免配置错误期间每次写入都刷屏日志） */
+const warnedInvalidLimits = new Set<string>();
+
+/**
+ * 计算敏感字段的生效值（用于与基线比较）。
+ *
+ * - `evaluator.command`：非空字符串原样返回，否则为默认评测命令；
+ * - `evaluator.network`：仅 `enabled === true` 视为联网；
+ * - 其他（未来扩展）字段：原始值序列化，null/undefined 归一为 null。
+ */
+function effectiveSensitiveValue(
+  path: string,
+  rc: ProblemRuntimeConfig | null | undefined,
+): string {
+  const [section, field] = path.split(".");
+  const container = (rc as unknown as
+    | Record<string, Record<string, unknown> | undefined>
+    | null
+    | undefined)?.[section];
+  const value = container && typeof container === "object"
+    ? container[field]
+    : undefined;
+  switch (path) {
+    case "evaluator.command":
+      return typeof value === "string" && value.trim()
+        ? value
+        : DEFAULT_EVALUATOR_COMMAND;
+    case "evaluator.network":
+      return String(
+        (value as { enabled?: unknown } | null | undefined)?.enabled === true,
+      );
+    default:
+      return JSON.stringify(value ?? null);
+  }
+}
+
+/**
+ * 对生效值相对基线发生变化的敏感字段执行 RBAC 权限检查。
+ *
+ * 基线：`previous` 为库中既有 runtime_config（更新路径）；缺省时按平台默认
+ * 值比较（创建路径）——使用默认评测命令、不联网的题目无需敏感字段权限。
+ *
+ * 有 Hono Context 时走 checkPermission（admin:full_access 通配放行），
+ * 无权限抛带 FORBIDDEN code 的 ForbiddenError（HTTP 403）。
+ * CLI 场景（无 Context）fail-closed：仅 root（显式 userId 或缺省默认）与
+ * 显式 userRole="admin" 放行，其余拒绝。
+ *
+ * @throws {ForbiddenError} 无对应权限（HTTP 403 / FORBIDDEN）
+ */
+export async function assertSensitiveFieldPermissions(
+  c: Context | undefined,
+  userId: string | undefined,
+  userRole: string | undefined,
+  runtimeConfig: ProblemRuntimeConfig,
+  previous?: ProblemRuntimeConfig | null,
+): Promise<void> {
+  if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  if (isOiRuntimeConfig(runtimeConfig)) return;
+
+  for (
+    const [path, permission] of Object.entries(SENSITIVE_FIELD_PERMISSIONS)
+  ) {
+    if (
+      effectiveSensitiveValue(path, runtimeConfig) ===
+        effectiveSensitiveValue(path, previous)
+    ) {
+      continue;
+    }
+    if (c) {
+      // 显式带 FORBIDDEN code（assertPermission 的 ForbiddenError 无 code）
+      if (!(await checkPermission(c, permission))) {
+        throw new ForbiddenError(
+          `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+          "FORBIDDEN",
+        );
+      }
+    } else if (
+      (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
+    ) {
+      const permissions = await getUserPermissions(userId!);
+      if (
+        !permissions.has("admin:full_access") && !permissions.has(permission)
+      ) {
+        throw new ForbiddenError(
+          `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+          "FORBIDDEN",
+        );
+      }
+    }
+  }
+}
+
+/**
+ * 对请求中的资源限制字段执行全局上限校验（settings-registry 的 judge_max_* 配置）。
+ *
+ * 上限配置为 0（默认）时不限制；> 0 且请求值超过上限时拒绝。
+ * 必填字段由 validateRuntimeConfig 保证为 number；未显式设置的字段跳过。
+ *
+ * @throws {AppError} HTTP 400 / RESOURCE_LIMIT_EXCEEDED（含上限与实际值）
+ */
+export function enforceResourceLimits(
+  runtimeConfig: ProblemRuntimeConfig,
+): void {
+  if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  if (isOiRuntimeConfig(runtimeConfig)) return;
+  const rc = runtimeConfig as unknown as Record<
+    string,
+    Record<string, unknown>
+  >;
+
+  for (const [path, settingKey] of Object.entries(RESOURCE_LIMIT_SETTINGS)) {
+    const [section, field] = path.split(".");
+    const value = rc[section]?.[field];
+    if (typeof value !== "number") continue; // 未显式设置或非法值（结构校验兜底）
+
+    const setting = getSetting(settingKey);
+    // env 兜底值可能为非数字（如 JUDGE_MAX_*=abc 经 parseInt 失败回落字符串）：
+    // 此时视为未配置（0），但显式告警便于运维发现配置错误（每 key 仅告警一次）
+    if (setting && typeof setting.value !== "number") {
+      if (!warnedInvalidLimits.has(settingKey)) {
+        warnedInvalidLimits.add(settingKey);
+        logger.warn(
+          "资源上限配置 {key} 的值非数字（{value}），按不限制处理",
+          { key: settingKey, value: String(setting.value) },
+        );
+      }
+    }
+    const limit = typeof setting?.value === "number" ? setting.value : 0;
+    if (limit > 0 && value > limit) {
+      throw new AppError(
+        `资源限制超限：${path}（${value}）超过管理员配置上限（${limit}）`,
+        400,
+        "RESOURCE_LIMIT_EXCEEDED",
+        { field: path, value, limit },
+      );
+    }
+  }
+}

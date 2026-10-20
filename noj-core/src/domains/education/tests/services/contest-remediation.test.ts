@@ -13,7 +13,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { publishDomainContestRanking } from "../../../contest/index.ts";
+import { publishDomainContestRanking } from "../../../../modules/contests/index.ts";
 import {
   createContestRemediation,
   previewContestRemediation,

@@ -6,7 +6,7 @@ import {
   conversations,
   messages,
   users,
-} from "./../../../shared/db/schema.ts";
+} from "../../../shared/db/schema.ts";
 import type { getReviewQueueItem } from "./review-queue.ts";
 
 /**
@@ -29,7 +29,7 @@ export async function getReviewQueueDetail(
   db: Executor,
 ): Promise<{
   queue:
-    typeof import("./../../../shared/db/schema.ts").contentReviewQueue.$inferSelect;
+    typeof import("../../../shared/db/schema.ts").contentReviewQueue.$inferSelect;
   context: Record<string, unknown>;
 }> {
   const context: Record<string, unknown> = {};

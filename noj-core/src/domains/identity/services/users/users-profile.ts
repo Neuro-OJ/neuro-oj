@@ -1,6 +1,6 @@
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { NotFoundError } from "./../../../../shared/base/errors.ts";
-import { scoreFromDb } from "../../../submission/index.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
+import { scoreFromDb } from "../../../../modules/evaluations/index.ts";
 import type { UserProfileResponse } from "./users-profile-types.ts";
 import {
   queryProfileCommunityStats,

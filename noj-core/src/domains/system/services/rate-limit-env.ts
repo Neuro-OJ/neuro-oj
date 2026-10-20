@@ -18,7 +18,7 @@ import {
   type CidrRange,
   ipInRange,
   parseCidr,
-} from "./../../../shared/security/cidr.ts";
+} from "../../../shared/security/cidr.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "system"]);

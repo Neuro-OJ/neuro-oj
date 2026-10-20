@@ -1,0 +1,433 @@
+import { type Context, Hono } from "hono";
+import busboy from "busboy";
+import { Readable } from "node:stream";
+import {
+  composeEvaluationAdmissionContext,
+  getEvaluationTodayStats,
+  getEvaluationTotalStats,
+  submitArtifactCommand,
+  submitCodeCommand,
+} from "../../application/evaluations.ts";
+import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
+import {
+  getSubmission,
+  listSubmissions,
+  resolveProblemSubmissionMode,
+  resolveSubmissionId,
+} from "../services/submissions/submissions.ts";
+import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
+import { versionRequired } from "../services/versioning/submission-version.ts";
+import { verifyContestAccess } from "../../contests/index.ts";
+import { getSubmissionQueueStatus } from "../services/queue.ts";
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../../../domains/identity/index.ts";
+import { checkPermission } from "../../../domains/identity/index.ts";
+import { rateLimit } from "../../../domains/system/index.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { createFileStream } from "../../../shared/http/file-stream.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
+import { SUBMISSION_STATUSES } from "../types/index.ts";
+import { enforceSubmissionRateLimit } from "../../../domains/system/index.ts";
+
+// 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
+// （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
+type Env = {
+  Variables: {
+    userId?: string;
+    userRole?: string;
+  };
+};
+
+const router = new Hono<Env>();
+
+/**
+ * 提交代码最大长度（字符数）。
+ *
+ * 限制原因：
+ * 1. Redis 单值上限 512MB，超大消息会导致 LPUSH 失败或集群分裂
+ * 2. 评测 worker 在 Docker 容器内加载代码，过大文件增加 IO 与内存开销
+ * 3. 防止恶意用户通过超大提交耗尽存储与带宽
+ *
+ * 100KB 足以覆盖绝大多数 ACM/OI 题目的解题代码；如有特殊需求可走管理员通道。
+ */
+const MAX_CODE_LENGTH = 100 * 1024;
+
+/** 解析布尔筛选参数：`1` / `true` 为真，其余（含缺省）为假。 */
+function parseFlag(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  return value === "1" || value === "true";
+}
+
+/**
+ * 提交列表（分页 + 筛选）。
+ * GET /api/v1/submissions
+ * 返回当前认证用户的提交记录，支持按 problem_id、language、status、日期范围筛选。
+ */
+router.get("/", authMiddleware, async (c) => {
+  const userId = c.var.userId as string;
+
+  // PR-6 评审修订：使用 parsePagination helper 替换 6 行样板
+  const { page, perPage } = parsePagination(c, {
+    defaultPerPage: 20,
+    maxPerPage: 100,
+  });
+
+  // 解析筛选参数
+  const problemId = c.req.query("problem_id") || undefined;
+  const problemSearch = c.req.query("problem_search") || undefined;
+  const submissionId = c.req.query("submission_id") || undefined;
+  const language = c.req.query("language") || undefined;
+  const status = c.req.query("status") || undefined;
+  const from = c.req.query("from") || undefined;
+  const to = c.req.query("to") || undefined;
+  const versionId = c.req.query("version_id") || undefined;
+  const versionOrigin = c.req.query("version_origin") || undefined;
+  const validOnly = parseFlag(c.req.query("valid_only"));
+  const acceptedOnly = parseFlag(c.req.query("accepted_only"));
+  const upgradable = parseFlag(c.req.query("upgradable"));
+
+  // status 参数校验
+  const validStatuses = SUBMISSION_STATUSES;
+  if (status && !(validStatuses as readonly string[]).includes(status)) {
+    throw new BadRequestError(
+      `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+    );
+  }
+  // 版本来源筛选（Handbook §4.4）：只允许两个已知取值
+  if (
+    versionOrigin && versionOrigin !== "known" &&
+    versionOrigin !== "legacy_unknown"
+  ) {
+    throw new BadRequestError(
+      `无效的版本来源：${versionOrigin}，有效值：known、legacy_unknown`,
+    );
+  }
+
+  const result = await listSubmissions({
+    userId,
+    problemId,
+    problemSearch,
+    submissionId,
+    language,
+    status,
+    from,
+    to,
+    versionId,
+    versionOrigin: versionOrigin as "known" | "legacy_unknown" | undefined,
+    validOnly,
+    acceptedOnly,
+    upgradable,
+    page,
+    perPage,
+  });
+
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+/**
+ * 解析 artifact 提交的 multipart/form-data 请求。
+ * 使用 busboy 流式解析，文件以 web ReadableStream 返回，避免整包读入内存。
+ *
+ * 一旦 `problem_id` 与文件流都就绪就立即 resolve（不等 busboy `close`），
+ * 由服务层马上消费文件流，从而避免 busboy 因文件缓冲满而暂停输入导致死锁。
+ */
+export function parseArtifactMultipart(
+  c: Context,
+  problemField: "problem_id" | "problem_ref" = "problem_id",
+  pathProblemReference?: string,
+): Promise<{
+  problem_id: string;
+  file_name: string;
+  file_stream: ReadableStream<Uint8Array>;
+  version_id: string;
+}> {
+  return new Promise((resolve, reject) => {
+    const contentType = c.req.header("content-type");
+    if (!contentType) {
+      reject(new BadRequestError("缺少 Content-Type"));
+      return;
+    }
+    const bb = busboy({ headers: { "content-type": contentType } });
+    let problemId = pathProblemReference ?? "";
+    let fileName = "";
+    let versionId = "";
+    let fileStream: ReadableStream<Uint8Array> | null = null;
+    let resolved = false;
+
+    /**
+     * 当 problem_id、file_name 与 file_stream 均已就绪时，立即 resolve 解析结果。
+     * 幂等：已 resolve 后再次调用直接返回，避免重复触发。
+     */
+    function maybeResolve() {
+      if (resolved) return;
+      // `version_id` 也是必需字段（Handbook §4.2）：必须等它到达再消费文件流，
+      // 否则先到的文件会让我们在不知道版本的情况下开始上传。
+      if (problemId && versionId && fileName && fileStream) {
+        resolved = true;
+        resolve({
+          problem_id: problemId,
+          file_name: fileName,
+          file_stream: fileStream,
+          version_id: versionId,
+        });
+      }
+    }
+
+    bb.on("field", (name: string, val: string) => {
+      if (name === problemField && !pathProblemReference) problemId = val;
+      if (name === "version_id") versionId = val;
+      maybeResolve();
+    });
+    bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
+      if (name === "file") {
+        fileName = info.filename;
+        fileStream = createFileStream(file as import("node:stream").Readable);
+        maybeResolve();
+      } else {
+        (file as import("node:stream").Readable).resume();
+      }
+    });
+    bb.on("error", (err: unknown) => {
+      if (!resolved) reject(err);
+    });
+    bb.on("close", () => {
+      if (resolved) return;
+      // 已收到文件但缺版本：明确要求升级客户端，不静默绑定最新版。
+      // 未消费的文件流必须主动取消，否则连接会一直挂着。
+      if (fileStream) void fileStream.cancel().catch(() => {});
+      if (!versionId) {
+        reject(versionRequired());
+        return;
+      }
+      reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+    });
+
+    Readable.fromWeb(
+      c.req.raw.body as unknown as import("node:stream/web").ReadableStream,
+    ).pipe(bb);
+  });
+}
+
+/**
+ * 创建提交。
+ */
+router.post("/", authMiddleware, async (c) => {
+  const userId = c.var.userId as string;
+  const actor = userActorFromAuthenticatedId(userId);
+
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    const parsed = await parseArtifactMultipart(c);
+    // 参数解析合法后执行提交限流
+    await enforceSubmissionRateLimit(c, userId);
+    // multipart 已解析但题目尚未加载：先只读解析题目模式用于分派，
+    // 服务层随后会重新校验模式、版本与访问规则。
+    const mode = await resolveProblemSubmissionMode(parsed.problem_id);
+    const context = await composeEvaluationAdmissionContext(actor, {
+      problemId: parsed.problem_id,
+      versionId: parsed.version_id,
+    });
+    const artifactMode = mode === "prediction" ? "prediction" : "artifact";
+    const result = await submitArtifactCommand(
+      actor,
+      context,
+      parsed,
+      artifactMode,
+    );
+    return c.json({ data: result }, 201);
+  }
+
+  const body = await parseJsonBody<Record<string, unknown>>(c);
+
+  // 必填字段验证
+  if (!body.problem_id || !body.language || !body.code) {
+    const missing: string[] = [];
+    if (!body.problem_id) missing.push("problem_id");
+    if (!body.language) missing.push("language");
+    if (!body.code) missing.push("code");
+    throw new BadRequestError(`缺少必填字段: ${missing.join(", ")}`);
+  }
+
+  // 大小限制：防止恶意大请求耗尽存储与 Redis 单值上限（512MB）
+  // 100KB 足以覆盖绝大多数代码提交；超过则提示客户端精简代码或拆分提交
+  if (typeof body.code !== "string") {
+    throw new BadRequestError("code 字段必须为字符串");
+  }
+  if (body.code.length > MAX_CODE_LENGTH) {
+    throw new BadRequestError(
+      `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
+    );
+  }
+
+  // 校验通过后执行提交限流，避免格式错误消耗配额
+  await enforceSubmissionRateLimit(c, userId);
+
+  const input = {
+    problem_id: body.problem_id as string,
+    language: body.language as string,
+    code: body.code as string,
+    file_name: body.file_name as string | undefined,
+    version_id: typeof body.version_id === "string" && body.version_id
+      ? body.version_id
+      : undefined,
+    contest_id: typeof body.contest_id === "string" && body.contest_id
+      ? body.contest_id
+      : undefined,
+  };
+  const context = await composeEvaluationAdmissionContext(actor, {
+    problemId: input.problem_id,
+    versionId: input.version_id,
+    contestId: input.contest_id,
+  });
+  const result = await submitCodeCommand(actor, context, {
+    ...input,
+    contest_id: context.contest?.contestId,
+  });
+
+  return c.json({ data: result }, 201);
+});
+
+/**
+ * 公开最新评测列表（无需登录）。
+ * GET /api/v1/submissions/public/recent
+ *
+ * 返回全站最近 N 条评测的基础数据（不含 code），用于首页"最新评测"卡片等场景。
+ * 限流策略：
+ *   - 登录用户：两次请求至少间隔 1s（防止过快的 UI 轮询拖慢服务）
+ *   - 未登录用户：两次请求至少间隔 5s（防止匿名滥用），per_page 上限 50
+ * 注意：注册顺序必须在 `/:id` 之前，避免被动态段吞掉。
+ */
+router.get(
+  "/public/recent",
+  optionalAuthMiddleware,
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    const isLoggedIn = !!c.var.userId;
+    // PR-6 评审修订：使用 parsePagination，根据登录态动态调整上下限
+    const { perPage } = parsePagination(c, {
+      defaultPerPage: isLoggedIn ? 20 : 10,
+      maxPerPage: isLoggedIn ? 100 : 50,
+    });
+
+    const result = await listSubmissions({
+      page: 1,
+      perPage,
+      excludeContest: true,
+    });
+    return c.json({ data: result.data });
+  },
+);
+
+/**
+ * 获取今日提交统计（首页"最新评测"卡片使用）。
+ * GET /api/v1/submissions/today-stats
+ * 必须在 /:id 之前注册，避免被动态段吞掉。
+ */
+router.get(
+  "/today-stats",
+  optionalAuthMiddleware,
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    // 未登录用户返回空统计，避免匿名泄露全局提交量
+    if (!c.var.userId) {
+      return c.json({ data: { total: 0, full_score: 0, not_full_score: 0 } });
+    }
+    const stats = await getEvaluationTodayStats(c.var.userId);
+    return c.json({ data: stats });
+  },
+);
+
+/**
+ * 获取全站历史累计提交统计（首页"最新评测"卡片"总共"模式使用）。
+ * GET /api/v1/submissions/total-stats
+ * 必须在 /:id 之前注册，避免被动态段吞掉。
+ */
+router.get(
+  "/total-stats",
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    const stats = await getEvaluationTotalStats();
+    return c.json({ data: stats });
+  },
+);
+
+/**
+ * 获取提交详情。
+ *
+ * 权限：基础数据公开访问；code/output/details 仅 owner 或 admin 可见。
+ * 服务层 `getSubmission` 根据 viewerId/viewerRole 自动裁剪字段。
+ */
+router.get("/:id", optionalAuthMiddleware, async (c) => {
+  const id = await resolveSubmissionId(c.req.param("id") as string);
+  const viewerId = c.var.userId ?? null;
+
+  const result = await getSubmission(
+    id,
+    viewerId,
+    undefined,
+    c,
+  );
+
+  let data = result;
+  if (result.contest_id) {
+    const isAdmin = viewerId
+      ? await checkPermission(c, "admin:full_access")
+      : false;
+    const contestAccess = await verifyContestAccess(
+      viewerId,
+      result.contest_id,
+      result.problem_id,
+    );
+    data = applySubmissionProjection(
+      result as unknown as Record<string, unknown>,
+      {
+        viewerId,
+        isAdmin,
+        isOwner: viewerId !== null && result.user_id === viewerId,
+        contest: {
+          running: contestAccess.running,
+          participant: contestAccess.allowed,
+          type: contestAccess.type,
+          organizer: contestAccess.organizer,
+        },
+      },
+    ) as unknown as typeof result;
+  }
+  return c.json({ data });
+});
+
+/**
+ * 获取提交的队列状态（排队位置、时间戳等）。
+ * GET /api/v1/submissions/:id/status
+ * 任意已登录用户均可查看，不限制提交所有者身份。
+ */
+router.get(
+  "/:id/status",
+  authMiddleware,
+  async (c) => {
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    const userId = c.var.userId as string;
+    // NOJ-049：仅提交所有者或实时 RBAC 的 submission:read_all 可查看队列状态。
+    const isAdmin = await checkPermission(c, "submission:read_all");
+    const result = await getSubmissionQueueStatus(
+      id,
+      userId,
+      isAdmin ? "admin" : undefined,
+    );
+    if (!result) {
+      throw new NotFoundError("提交不存在");
+    }
+    return c.json(result);
+  },
+);
+
+export default router;

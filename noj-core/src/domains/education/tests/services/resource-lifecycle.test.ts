@@ -18,7 +18,7 @@ import {
   resolveDomainProblem,
   setDomainProblemBindingState,
   setDomainProblemSharing,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { recomputeSubmissionProjection } from "../../../submission/index.ts";
 import {
   createAssignment,

@@ -13,7 +13,7 @@
 import { inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { evaluationAttempts } from "../../../shared/db/schema.ts";
-import type { QueueHealthResponse } from "../../submission/index.ts";
+import type { QueueHealthResponse } from "../../../modules/evaluations/index.ts";
 import { getSetting } from "./system-settings.ts";
 
 /** 排空阻塞原因（稳定取值，供 CLI / 运维脚本与 noj-cli 判断）。 */

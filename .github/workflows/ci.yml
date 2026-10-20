@@ -183,6 +183,7 @@ jobs:
           filters: |
             core:
               - 'noj-core/**'
+              - 'dev-docs/engineering/module-boundaries.json'
               - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
@@ -231,6 +232,7 @@ jobs:
             core-observability:
               - 'noj-core/src/domains/observability/**'
             core-shared:
+              - 'dev-docs/engineering/module-boundaries.json'
               - 'noj-core/src/shared/**'
               - 'noj-core/src/routes/**'
               - 'noj-core/src/app.ts'
@@ -288,25 +290,10 @@ jobs:
           CORE_OBSERVABILITY: ${{ steps.filter.outputs.core-observability }}
           CORE_WORKSPACE: ${{ steps.filter.outputs.core-workspace }}
           CORE_LEGAL: ${{ steps.filter.outputs.core-legal }}
+          CORE_EDUCATION: ${{ steps.filter.outputs.core-education }}
           CORE_SHARED: ${{ steps.filter.outputs.core-shared }}
         run: |
-          python3 - <<'PY'
-          import json, os
-          def flag(name):
-              return os.environ.get(name, '') == 'true'
-          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability","legal","workspace","education"]
-          core_domains = []
-          if flag('CORE_SHARED'):
-              core_domains = all_core[:]
-          else:
-              for d in all_core:
-                  if flag(f'CORE_{d.upper().replace("-", "_")}'):
-                      core_domains.append(d)
-          if flag('CORE_SHARED'):
-              core_domains.append('shared')
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"core-domains={json.dumps(core_domains)}\n")
-          PY
+          python3 scripts/select-core-ci.py
 
   # ===========================================================================
   # LMCC IDE / VS Code 扩展 — 类型检查与单元测试
@@ -2030,8 +2017,7 @@ jobs:
   # 分片入口必须和本地统一：每个分片从正式迁移/seed 模板克隆独立数据库，
   # 不共享 schema、truncate 或 Redis DB。
   #
-  # 只跑 `--shards 1`（core 分片）：db 分片由各 Core <domain> 作业覆盖
-  # 同等业务面的单 schema 版本。
+  # 正式并行入口覆盖全部分片和新旧模块测试；新增模块没有 legacy job 时也不能漏测。
   #
   # 注意：test-parallel.ts 现在只是统一启动器的兼容入口，不读取 .env。
   # ===========================================================================
@@ -2104,7 +2090,7 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: "4"
-        run: deno run -A scripts/test-parallel.ts --shards 1
+        run: deno task test:parallel
 
       - name: 上传失败日志
         if: failure() || cancelled()

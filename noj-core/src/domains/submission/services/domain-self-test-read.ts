@@ -8,8 +8,8 @@ import {
   domainProblemReference,
   loadBindingAvailability,
   resolveDomainProblem,
-} from "../../catalog/index.ts";
-import { assertDomainPracticeAllowed } from "../../contest/index.ts";
+} from "../../../modules/problems/index.ts";
+import { assertDomainPracticeAllowed } from "../../../modules/contests/index.ts";
 import { cancelSelfTest, getSelfTest } from "./self-tests.ts";
 
 /** 当前使用域题目下的本人自测目录；只投影列表字段，代码及结果详情按需读取。 */

@@ -33,7 +33,7 @@ import {
   saveDomainLlmQuota,
   saveDomainLlmSettings,
 } from "../../index.ts";
-import type { RuntimeConfig } from "../../../catalog/index.ts";
+import type { RuntimeConfig } from "../../../../modules/problems/index.ts";
 import { decodeBase64 } from "@std/encoding/base64";
 
 await resetDbForTest();

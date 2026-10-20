@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
+import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import {
   assertActiveInstanceAccount,

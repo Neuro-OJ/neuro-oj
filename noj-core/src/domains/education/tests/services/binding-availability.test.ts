@@ -9,7 +9,7 @@ import {
   problemShareSettings,
   problemShareTargets,
 } from "../../../../shared/db/schema.ts";
-import { loadBindingAvailability } from "../../../catalog/index.ts";
+import { loadBindingAvailability } from "../../../../modules/problems/index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("共享可用性：批量读取实时授权，目标域比赛不会把源题在全实例隐藏", async () => {

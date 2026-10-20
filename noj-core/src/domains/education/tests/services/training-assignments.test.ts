@@ -21,7 +21,7 @@ import {
   saveDomainTraining,
   setDomainProblemSharing,
   setDomainTrainingSharing,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import {
   copyAssignment,
   createAssignment,

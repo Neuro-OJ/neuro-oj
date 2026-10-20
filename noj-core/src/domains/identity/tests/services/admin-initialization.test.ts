@@ -14,9 +14,11 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
 import {
-  initializeFirstAdmin,
+  initializeFirstAdmin as initializeFirstAdminTx,
   sealExistingSiteAdminInitialization,
 } from "../../services/auth/admin-initialization.ts";
+import { createSystemActor } from "../../../../runtime/system-actors.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 import { registerUser } from "../../services/auth/auth-register.ts";
 import { isUserAdmin } from "../../services/security/permissions.ts";
 import { comparePassword } from "../../services/security/password.ts";
@@ -27,6 +29,10 @@ const input = {
   email: "admin@example.com",
   password: "InitialAdmin-2026-Xy9",
 };
+const bootstrapActor = createSystemActor("bootstrap");
+const initializeFirstAdmin = (
+  input: Parameters<typeof initializeFirstAdminTx>[0],
+) => initializeFirstAdminTx(input, bootstrapActor);
 function test(name: string, fn: () => Promise<void>) {
   Deno.test({
     name: `admin initialization: ${name}`,
@@ -155,7 +161,10 @@ test("完成后删除管理员仍不能重新初始化", async () => {
     email: "owner@example.com",
   });
   await transferDomain("main", user.id, successor.id);
-  await deleteOwnAccount(user.id, input.password);
+  await deleteOwnAccount(
+    userActorFromAuthenticatedId(user.id),
+    input.password,
+  );
   const [deleted] = await db.select().from(users).where(eq(users.id, user.id));
   assertEquals(!!deleted.deleted_at, true);
   await sealExistingSiteAdminInitialization();

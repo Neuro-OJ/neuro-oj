@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { contests } from "../../../../shared/db/schema.ts";
-import { computeContestStatus } from "../../../contest/index.ts";
+import { computeContestStatus } from "../../../../modules/contests/index.ts";
 import type { JudgeTaskPriority } from "../../types/index.ts";
 
 /** 评测任务来源，用于服务端推导优先级。 */

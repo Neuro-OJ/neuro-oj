@@ -14,26 +14,26 @@ import {
   DEFAULT_DOMAIN_ID,
 } from "../../workspace/index.ts";
 import type { Context } from "hono";
-import { getDb } from "./../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
 import {
   contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
   problemVersions,
-} from "./../../../shared/db/schema.ts";
-import { FULL_SCORE } from "./../../../shared/base/constants.ts";
+} from "../../../shared/db/schema.ts";
+import { FULL_SCORE } from "../../../shared/base/constants.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import { checkPermission } from "./../../identity/index.ts";
+} from "../../../shared/base/errors.ts";
+import { checkPermission } from "../../identity/index.ts";
 import {
   assertDefaultProblemSource,
   evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "./../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   applyAttemptResult,
@@ -43,14 +43,14 @@ import {
   lockDomainExecution,
   resolveDomainExecution,
   resolveSubmissionVersion,
-} from "./../../submission/index.ts";
-import type { ObjectiveQuestionSnapshot } from "./../../catalog/index.ts";
-import { loadProblemIdentity } from "./../../catalog/index.ts";
+} from "../../submission/index.ts";
+import type { ObjectiveQuestionSnapshot } from "../../../modules/problems/index.ts";
+import { loadProblemIdentity } from "../../../modules/problems/index.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
   resolvePaperId,
-} from "./objective-questions.ts";
+} from "../../../modules/problems/services/objective/objective-questions.ts";
 import {
   type ContestResponse,
   filterUnendedContestIds,
@@ -58,7 +58,7 @@ import {
   getContestProblems,
   isProblemInUnendedPublicContest,
   resolveContestId,
-} from "../../contest/index.ts";
+} from "../../../modules/contests/index.ts";
 import type {
   ObjectiveAttemptSummary,
   ObjectiveAttemptView,
@@ -66,9 +66,9 @@ import type {
   QuestionJudgement,
   SubmitObjectiveInput,
   SubmitObjectiveResponse,
-} from "./../types/objective.ts";
-import { validateAnswersPayload } from "./../types/objective.ts";
-import type { ObjectiveAnswerValue } from "./../types/objective.ts";
+} from "../../../modules/problems/types/objective.ts";
+import { validateAnswersPayload } from "../../../modules/problems/types/objective.ts";
+import type { ObjectiveAnswerValue } from "../../../modules/problems/types/objective.ts";
 
 /** ×100 分换算回百分制。 */
 const SCORE_SCALE_FACTOR = 100;

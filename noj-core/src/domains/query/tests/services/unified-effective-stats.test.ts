@@ -33,7 +33,7 @@ import { getGlobalRankings } from "../../index.ts";
 import {
   getProblemStatsDetail,
   getPublicProblemStats,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { getDashboardStats } from "../../services/dashboard.ts";
 import type { SubmissionStatus } from "../../../submission/types/index.ts";
 import type {

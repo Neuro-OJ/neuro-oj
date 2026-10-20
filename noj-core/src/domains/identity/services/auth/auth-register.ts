@@ -1,26 +1,28 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import {
   roles,
   systemSettings,
   userRoles,
   users,
-} from "./../../../../shared/db/schema.ts";
-import { hashPassword } from "./../security/password.ts";
-import { getEmailConfigStatus, logAuthEvent } from "../../../system/index.ts";
-import { recordConsentsForRegistration } from "../../../legal/index.ts";
+} from "../../../../shared/db/schema.ts";
+import { hashPassword } from "../security/password.ts";
+import { logAuthEvent } from "../../../system/services/audit-log.ts";
+import { getEmailConfigStatus } from "../../../system/services/email-status.ts";
+import { recordConsentsForRegistration } from "../../../../modules/platform/index.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
-} from "./../../../../shared/base/errors.ts";
-import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
+} from "../../../../shared/base/errors.ts";
+import type { RegisterInput, UserResponse } from "../../types/auth.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
 import {
   assertInstanceRegistration,
-  enrollRegisteredAccount,
-} from "../../../workspace/index.ts";
+  enrollRegisteredAccountTx,
+} from "../../../../modules/access/registration.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -221,11 +223,15 @@ export async function registerUser(
     // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
     await recordConsentsForRegistration(
       tx,
-      id,
+      userActorFromAuthenticatedId(id),
       clientIp ?? null,
       userAgent ?? null,
     );
-    await enrollRegisteredAccount(tx, id, input.invitation_token);
+    await enrollRegisteredAccountTx(
+      tx,
+      userActorFromAuthenticatedId(id),
+      input.invitation_token,
+    );
   }).catch((err) => {
     const conflict = conflictFromUniqueViolation(err);
     if (conflict) throw conflict;

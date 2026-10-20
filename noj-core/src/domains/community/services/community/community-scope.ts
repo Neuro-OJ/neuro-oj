@@ -15,7 +15,7 @@ import {
 import {
   domainProblemBindingAvailableWhere,
   resolveDomainProblem,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import {
   assertDomainFeatureEnabled,
   assertWorkspacePermission,

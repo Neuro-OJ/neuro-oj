@@ -10,19 +10,19 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
 import {
   conversationPreferences,
   messageDeletions,
   messageReactions,
   messages,
-} from "./../../../shared/db/schema.ts";
+} from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
-import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
+} from "../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "messaging"]);

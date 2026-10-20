@@ -17,11 +17,11 @@ import {
   type AuthEnv,
   authMiddleware,
   checkPermission,
-} from "./../../identity/index.ts";
+} from "../../identity/index.ts";
 import {
   BadRequestError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import {
   acceptUpgradeJob,
   getUpgradeJobForActor,

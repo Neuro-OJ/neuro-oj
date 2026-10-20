@@ -17,10 +17,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   assertDefaultProblemSource,
   resolveDefaultExecutionContexts,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../workspace/index.ts";
-import { loadDomainContest } from "../../../contest/index.ts";
+import { loadDomainContest } from "../../../../modules/contests/index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";

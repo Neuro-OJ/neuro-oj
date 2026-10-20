@@ -1,5 +1,5 @@
 import { resolveDomainExecution } from "../../submission/index.ts";
-import type { SubmitObjectiveInput } from "../types/objective.ts";
+import type { SubmitObjectiveInput } from "../../../modules/problems/types/objective.ts";
 import { submitObjectivePaper } from "./objective-submissions.ts";
 import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
 

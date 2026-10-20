@@ -17,7 +17,7 @@ import { getLogger } from "@logtape/logtape";
 import { publishSseEventAfterTx } from "../../../shared/sse/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { observability as metrics } from "../../../domains/observability/write.ts";
+import { observability as metrics } from "../../observability/write.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { saveOiProgress } from "../services/oi-progress.ts";

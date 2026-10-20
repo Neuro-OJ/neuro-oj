@@ -7,7 +7,7 @@ import {
   assignmentRecipients,
   assignments,
 } from "../../../shared/db/schema.ts";
-import { loadBindingAvailability } from "../../catalog/index.ts";
+import { loadBindingAvailability } from "../../../modules/problems/index.ts";
 import { loadAssignmentCandidates } from "./progress-candidates.ts";
 import {
   type EducationCandidate,

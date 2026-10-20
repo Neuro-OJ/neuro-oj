@@ -7,8 +7,8 @@ import {
   users,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError, ConflictError } from "../../../shared/base/errors.ts";
-import { loadBindingAvailability } from "../../catalog/index.ts";
-import { loadContestTeachingBasis } from "../../contest/index.ts";
+import { loadBindingAvailability } from "../../../modules/problems/index.ts";
+import { loadContestTeachingBasis } from "../../../modules/contests/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import {
   assertClassroomCapability,

@@ -26,7 +26,7 @@ import {
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { createContest } from "../../../contest/index.ts";
+import { createContest } from "../../../../modules/contests/index.ts";
 import { domainFixture } from "../services/domain-fixture.ts";
 
 Deno.test({

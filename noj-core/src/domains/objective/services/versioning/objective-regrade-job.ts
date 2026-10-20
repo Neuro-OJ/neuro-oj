@@ -27,9 +27,9 @@ import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   applyAttemptResult,
   createAttempt,
-} from "./../../../submission/index.ts";
-import type { ObjectiveAnswerValue } from "../../types/objective.ts";
-import { listVersionQuestions } from "./objective-drafts.ts";
+} from "../../../submission/index.ts";
+import type { ObjectiveAnswerValue } from "../../../../modules/problems/types/objective.ts";
+import { listVersionQuestions } from "../../../../modules/problems/services/objective/versioning/objective-drafts.ts";
 import {
   regradeAgainstSnapshot,
   type RegradeDetail,

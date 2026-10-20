@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, not, or, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
-import { getDb } from "./../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
 import {
   domains,
   evaluationAttempts,
@@ -8,8 +8,8 @@ import {
   selfTests,
   submissions,
   users,
-} from "./../../../shared/db/schema.ts";
-import { getRedis } from "./../../../shared/mq/connection.ts";
+} from "../../../shared/db/schema.ts";
+import { getRedis } from "../../../shared/mq/connection.ts";
 import {
   ALL_JUDGE_QUEUES,
   JUDGE_POOL_QUEUES,
@@ -23,17 +23,17 @@ import { getLogger } from "@logtape/logtape";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 
 const logger = getLogger(["noj", "submission"]);
-import { NotFoundError } from "./../../../shared/base/errors.ts";
-import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
-import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
+import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import {
   DEFAULT_DOMAIN_ID,
   domainMemberWhere,
   domainReadableWhere,
 } from "../../workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
-import { unendedPublicContestForProblem } from "../../contest/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../modules/problems/index.ts";
+import { unendedPublicContestForProblem } from "../../../modules/contests/index.ts";
 import { projectContestSubmissionReads } from "./submissions/contest-read-projection.ts";
 import type {
   QueueHealthEntry,

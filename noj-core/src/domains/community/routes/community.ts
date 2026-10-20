@@ -1,29 +1,29 @@
 import { Hono } from "hono";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   enforceBookmarkRateLimit,
   enforceCommentLikeRateLimit,
   enforceFollowRateLimit,
   enforcePostLikeRateLimit,
   enforceReportRateLimit,
-} from "./../../system/index.ts";
+} from "../../system/index.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
-} from "./../../../shared/base/errors.ts";
-import { assertPermission, checkPermission } from "./../../identity/index.ts";
+} from "../../../shared/base/errors.ts";
+import { assertPermission, checkPermission } from "../../identity/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,
   optionalAuthMiddleware,
-} from "./../../identity/index.ts";
+} from "../../identity/index.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "./../types/community.ts";
+} from "../types/community.ts";
 import { parseQueryLimit } from "../services/community/query-limit.ts";
 import {
   assertCommunityEnabled,
@@ -62,7 +62,7 @@ import {
 import {
   hasUnendedPublicContest,
   isProblemInUnendedPublicContest,
-} from "../../contest/index.ts";
+} from "../../../modules/contests/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,

@@ -20,9 +20,16 @@ import {
   shardDatabaseName,
 } from "../../scripts/test-launcher-resources.ts";
 import {
+  existingTestPaths,
   parseLauncherArgs,
   parseSafeTestArgs,
+  TEST_TARGET_NAMES,
 } from "../../scripts/test-launcher-args.ts";
+import {
+  LEGACY_DOMAIN_NAMES,
+  TARGET_MODULE_NAMES,
+  testRootsForTarget,
+} from "../../../scripts/module-test-metadata.ts";
 import {
   assert,
   assertEquals,
@@ -96,13 +103,30 @@ Deno.test("test-launcher: mode/domain/shard 参数发现明确", () => {
   assertThrows(
     () => parseLauncherArgs(["domain"]),
     Error,
-    "必须指定有效 domain",
+    "必须指定有效模块或 legacy domain",
   );
   assertThrows(
     () => parseLauncherArgs(["domain", "unknown"]),
     Error,
-    "必须指定有效 domain",
+    "必须指定有效模块或 legacy domain",
   );
+  assertEquals(
+    TARGET_MODULE_NAMES.length,
+    12,
+    "metadata 必须保留 12 个目标模块",
+  );
+  assertEquals(
+    LEGACY_DOMAIN_NAMES.length,
+    17,
+    "metadata 必须保留 17 个 legacy domain 别名",
+  );
+  for (const target of TEST_TARGET_NAMES) {
+    assertEquals(
+      parseLauncherArgs(["domain", target]).domain,
+      target,
+      `模块和 legacy domain 都必须可作为正式入口：${target}`,
+    );
+  }
   assertThrows(
     () => parseLauncherArgs(["test", "--shards", "1"]),
     Error,
@@ -158,6 +182,21 @@ Deno.test("test-launcher: mode/domain/shard 参数发现明确", () => {
     () => parseSafeTestArgs(["--reporter=unknown"]),
     Error,
     "不支持 reporter",
+  );
+});
+
+Deno.test("test-launcher: target 与 legacy alias 同时发现迁移期两套测试根", () => {
+  const targetRoots = testRootsForTarget("problems");
+  const legacyRoots = testRootsForTarget("catalog");
+  assert(
+    targetRoots.includes("src/modules/problems/tests") &&
+      targetRoots.includes("src/domains/catalog/tests") &&
+      targetRoots.includes("src/domains/objective/tests"),
+    "目标模块入口必须同时保留 problems 与 catalog/objective 测试根",
+  );
+  assert(
+    legacyRoots.join("\0") === targetRoots.join("\0"),
+    "legacy alias 与目标模块必须解析为同一组迁移期测试根",
   );
 });
 
@@ -324,4 +363,26 @@ Deno.test("test-launcher: 空库迁移负例和存量模板正例都可观测", 
     currentDatabase: "noj_test_run",
     usersTable: "users",
   }, "noj_test_run");
+});
+
+Deno.test("test-launcher: 缺失迁移根显式报告，全部缺失时拒绝假绿", async () => {
+  const root = await Deno.makeTempDir({ prefix: "noj-launcher-paths-" });
+  try {
+    await Deno.writeTextFile(
+      `${root}/present.test.ts`,
+      'Deno.test("x", () => {});',
+    );
+    const paths = await existingTestPaths([
+      `${root}/present.test.ts`,
+      `${root}/future-module/tests`,
+    ]);
+    assertEquals(paths, [`${root}/present.test.ts`]);
+    await assertRejects(
+      () => existingTestPaths([`${root}/missing-module/tests`]),
+      Error,
+      "没有发现任何实际测试路径",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });

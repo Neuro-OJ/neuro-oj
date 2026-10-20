@@ -1,7 +1,7 @@
 /** 社区初始数据，保持幂等，供启动期和测试环境复用。 */
 
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { communityBoards } from "./../../../../shared/db/schema.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { communityBoards } from "../../../../shared/db/schema.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,

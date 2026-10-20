@@ -3,13 +3,13 @@ import {
   isValidOiCostProfile,
   type OiCostProfile,
   validateOiRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   type JudgeType,
   judgeTypeForRuntimeConfig,
   type ProblemRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   buildUiSolutionScript,
   parseUiValues,

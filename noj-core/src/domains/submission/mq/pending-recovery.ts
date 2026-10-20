@@ -6,11 +6,11 @@ import { evaluationAttempts } from "../../../shared/db/schema.ts";
 import {
   buildOiSelfTestPackage,
   isOiRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import type {
   OiSelfTestCase,
   ProblemRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { buildJudgeTaskLlm } from "../../gateway/index.ts";
 import type { FrozenLlmExecution } from "../../gateway/index.ts";
 import { getStorageProvider } from "../../system/index.ts";

@@ -28,6 +28,7 @@ import {
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
 } from "../src/domains/identity/index.ts";
+import { createSystemActor } from "../src/runtime/system-actors.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import { initProblem } from "./problems-init.ts";
 import { runMaintain } from "./maintain.ts";
@@ -288,7 +289,10 @@ const bootstrapCmd = new Command()
     );
     const confirmation = await Secret.prompt("再次输入密码");
     if (password !== confirmation) throw new Error("两次密码不一致");
-    await initializeFirstAdmin({ ...opts, password });
+    await initializeFirstAdmin(
+      { ...opts, password },
+      createSystemActor("bootstrap"),
+    );
     console.log("首个管理员已创建，初始化入口已永久关闭；首次登录须修改密码。");
   })
   .command("admin", "维护/开发用管理员引导（可提升已有用户，不用于首次初始化）")

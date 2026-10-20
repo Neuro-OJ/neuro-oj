@@ -12,7 +12,7 @@ import {
   isOiRuntimeConfig,
   type LlmConfig,
   type ProblemContentV1,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

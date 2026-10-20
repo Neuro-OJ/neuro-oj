@@ -24,13 +24,13 @@ import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   createDraftQuestion,
   updateDraftQuestion,
-} from "../../services/versioning/objective-drafts.ts";
+} from "../../../../modules/problems/services/objective/versioning/objective-drafts.ts";
 import {
   getProblemDraft,
   type ProblemDraftContent,
   publishProblemVersion,
   saveProblemDraft,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import {
   bindPublishedProblemForTest,
   insertContestProblems,
@@ -785,8 +785,8 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+import { resetDbForTest } from "../../../../modules/problems/tests/default-fixture.ts";
 
 await resetDbForTest();
 
-import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";
+import { grantDefaultCatalogRole } from "../../../../modules/problems/tests/default-fixture.ts";

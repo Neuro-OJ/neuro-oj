@@ -1,22 +1,22 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   communityBookmarks,
   communityCommentLikes,
   communityComments,
   communityFollows,
   communityPostLikes,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,
-} from "./../../../../shared/base/errors.ts";
+} from "../../../../shared/base/errors.ts";
 import { createNotification } from "../notifications.ts";
 import { assertCommunityEnabled } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
-import type { CommunityConfig } from "./../../types/community.ts";
-import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+import type { CommunityConfig } from "../../types/community.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import {
   communityDb,
   communityDomainWhere,

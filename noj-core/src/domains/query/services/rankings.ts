@@ -1,15 +1,15 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { submissions } from "./../../../shared/db/schema.ts";
+import { submissions } from "../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { users } from "./../../../shared/db/schema.ts";
+import { users } from "../../../shared/db/schema.ts";
 import {
   getDomainRankingRows,
   PUBLIC_DEFAULT_QUERY_SCOPE,
 } from "./domain-query.ts";
-import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
-import { CONTEST_TIME_ISO_REGEX_SQL } from "./../../contest/index.ts";
+import { unwrapRows } from "../../../shared/base/sql-rows.ts";
+import { CONTEST_TIME_ISO_REGEX_SQL } from "../../../modules/contests/index.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "query"]);

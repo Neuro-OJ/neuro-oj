@@ -3,7 +3,14 @@
  *
  * 其他域（如 identity 注册路径）只经此门面引用本域能力。
  */
-export * from "./types.ts";
+export { isLegalKind, LEGAL_KINDS } from "./types.ts";
+export type {
+  LegalConsentStatus,
+  LegalDocumentSnapshot,
+  LegalKind,
+  LegalVersionSummary,
+  UserConsentSnapshot,
+} from "./types.ts";
 export {
   getConsentedVersions,
   getLegalStatus,
@@ -26,4 +33,18 @@ export {
   tsaEnabled,
   verifyTimestamp,
 } from "./services/tsa.ts";
-export * from "./services/data-requests.ts";
+export {
+  createDataRequest,
+  DATA_REQUEST_KINDS,
+  DATA_REQUEST_STATUSES,
+  DATA_REQUEST_TARGETS,
+  listAllDataRequests,
+  listUserDataRequests,
+  updateDataRequestStatus,
+} from "./services/data-requests.ts";
+export type {
+  DataRequestKind,
+  DataRequestRow,
+  DataRequestStatus,
+  DataRequestTarget,
+} from "./services/data-requests.ts";

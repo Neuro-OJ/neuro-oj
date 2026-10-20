@@ -1,18 +1,16 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./shared/db/connection.ts";
-import {
-  startQueueSweeper,
-  startResultConsumerPool,
-  startSubmissionJobWorker,
-} from "./domains/submission/index.ts";
+import { startQueueSweeper } from "./modules/evaluations/mq/sweeper.ts";
+import { startResultConsumerPool } from "./modules/evaluations/mq/consumer.ts";
+import { startSubmissionJobWorker } from "./modules/evaluations/services/versioning/dispatch-job-item.ts";
 import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import { createManagedTaskGroup } from "./shared/runtime/managed-task.ts";
 import {
   performShutdown,
   type ShutdownHttp,
 } from "./shared/runtime/shutdown.ts";
-import { migrateLegacyJudgeQueue } from "./domains/submission/mq/legacy-judge-queue.ts";
-import { migratePoolJudgeQueues } from "./domains/submission/mq/pool-judge-queue.ts";
+import { migrateLegacyJudgeQueue } from "./modules/evaluations/mq/legacy-judge-queue.ts";
+import { migratePoolJudgeQueues } from "./modules/evaluations/mq/pool-judge-queue.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { createSseStreamScope } from "./shared/sse/sse-stream.ts";

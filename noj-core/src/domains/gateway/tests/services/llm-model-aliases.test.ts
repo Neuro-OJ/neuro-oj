@@ -14,8 +14,8 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../../workspace/index.ts";
-import { isValidLlmConfig } from "../../../catalog/index.ts";
-import type { RuntimeConfig } from "../../../catalog/index.ts";
+import { isValidLlmConfig } from "../../../../modules/problems/index.ts";
+import type { RuntimeConfig } from "../../../../modules/problems/index.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 import {
   assertLlmModelsValid,

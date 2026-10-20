@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import {
   communityBoardRoleGrants,
   communityBoards,
-} from "./../../../../shared/db/schema.ts";
-import { NotFoundError } from "./../../../../shared/base/errors.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+} from "../../../../shared/db/schema.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import {
   communityDb,
   communityDomainId,

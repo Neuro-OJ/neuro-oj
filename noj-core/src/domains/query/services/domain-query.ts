@@ -2,9 +2,9 @@ import { type AnyColumn, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../modules/problems/index.ts";
 import { DEFAULT_DOMAIN_ID, loadWorkspace } from "../../workspace/index.ts";
-import { endedWindowCondition } from "../../contest/index.ts";
+import { endedWindowCondition } from "../../../modules/contests/index.ts";
 import { unifiedSubmissionSources } from "../../../shared/versioning/submission-sources.ts";
 import type { RankingRow, RankingsPage } from "./rankings.ts";
 

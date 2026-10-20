@@ -1,21 +1,35 @@
 /**
- * AsyncLocalStorage 上下文（issue #101）。
+ * HTTP 请求观测上下文（issue #101）。
  *
- * adminMiddleware 在请求作用域注入 RequestContext，
- * service 层通过 getRequestContext() 取用，避免污染函数签名。
+ * access 业务用例必须显式接收 UserActor；此 ALS 只为旧审计/日志适配器
+ * 保留 request scope 和客户端 IP。新代码不得从这里猜测授权身份。
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Context } from "hono";
 import { getClientIp } from "./rate-limit-env.ts";
+import {
+  type Actor,
+  guestActor,
+  isUserActor,
+  type UserActor,
+  userActorFromAuthenticatedId,
+} from "../../../modules/access/contracts/actor.ts";
 
 export interface RequestContext {
-  /** 当前用户 ID */
-  actorId: string;
+  /** 已完成认证的用户身份；匿名观测上下文可为 GuestActor。 */
+  actor?: Actor;
   /** 请求客户端 IP（X-Forwarded-For 优先） */
   actorIp: string;
-  /** 当前用户角色 */
-  actorRole: string;
+  /** 请求 ID 仅用于日志关联，不参与授权。 */
+  requestId?: string;
+  /**
+   * 旧审计适配字段。仅保留到审计调用方迁移完成，禁止作为权限输入。
+   * 新业务代码应显式接收 UserActor。
+   */
+  actorId: string;
+  /** @deprecated 仅旧日志兼容，禁止业务授权读取。 */
+  actorRole?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -32,11 +46,17 @@ export function withActorContext<T>(
   c: Context,
   fn: () => T,
 ): T {
+  const actor = c.get("actor") as UserActor | undefined;
+  const authenticatedActor = actor && isUserActor(actor)
+    ? actor
+    : userActorFromAuthenticatedId(c.get("userId"));
   return runWithContext(
     {
-      actorId: c.get("userId") ?? "",
+      actor: authenticatedActor,
       actorIp: getClientIp(c),
-      actorRole: c.get("userRole") ?? "",
+      actorId: authenticatedActor.userId,
+      // 旧日志字段仅观测；授权不读取它。
+      actorRole: c.get("userRole"),
     },
     fn,
   );
@@ -60,7 +80,10 @@ export function getRequestContext(): RequestContext {
  * 但上下文会跨异步边界持续，务必在测试 cleanup 中调用 leaveTestContext() 清理。
  */
 export function enterTestContext(ctx: RequestContext): void {
-  storage.enterWith(ctx);
+  // 兼容尚未迁移的旧审计测试，但没有 actorId 时保持匿名观测上下文。
+  const actor = ctx.actor ??
+    (ctx.actorId ? userActorFromAuthenticatedId(ctx.actorId) : guestActor());
+  storage.enterWith({ ...ctx, actor });
 }
 
 /** 清理测试中注入的 ALS 上下文（防止 enterWith 跨测试泄漏） */

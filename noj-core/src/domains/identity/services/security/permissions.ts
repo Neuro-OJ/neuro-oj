@@ -16,7 +16,7 @@
 import { sql } from "drizzle-orm";
 import { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../../../../shared/db/connection.ts";
-import type { Executor } from "../../../../shared/db/executor.ts";
+import type { DbRoot, DbTx } from "../../../../shared/db/executor.ts";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 
@@ -27,7 +27,7 @@ export const ADMIN_FULL_ACCESS = "admin:full_access";
 
 export async function getUserPermissions(
   userId: string,
-  executor?: Executor,
+  executor?: DbRoot | DbTx,
 ): Promise<Set<string>> {
   const db = executor ?? getDb();
 
@@ -65,7 +65,7 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
  * 供 admin 列表展示 / is_admin 筛选 / 封禁保护等批量场景使用，避免 N+1。
  */
 export async function getAdminUserIds(
-  executor?: Executor,
+  executor?: DbRoot | DbTx,
 ): Promise<Set<string>> {
   const db = executor ?? getDb();
 

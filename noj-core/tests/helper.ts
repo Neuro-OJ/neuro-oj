@@ -326,7 +326,7 @@ export async function publishBaselineVersionForTest(
     "../src/shared/db/schema.ts"
   );
   const { deriveDraftContentFromProblem } = await import(
-    "../src/domains/catalog/services/versioning/draft.ts"
+    "../src/modules/problems/services/versioning/draft.ts"
   );
   const { eq } = await import("drizzle-orm");
   const db = getDb();

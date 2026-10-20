@@ -28,24 +28,24 @@ import {
 } from "../../../shared/http/request.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { listAllProblems } from "../../catalog/services/problems/problems.ts";
-import { resolveProblem } from "../../catalog/services/problem-resolve.ts";
-import { inspectEvaluationPackage } from "../../catalog/services/bundle-parser.ts";
+import { listAllProblems } from "../../../modules/problems/services/problems/problems.ts";
+import { resolveProblem } from "../../../modules/problems/services/problem-resolve.ts";
+import { inspectEvaluationPackage } from "../../../modules/problems/services/bundle-parser.ts";
 import {
   getSupportPackageBytes,
   resolveProblemTemplate,
-} from "../../catalog/services/support-package.ts";
-import { isOiRuntimeConfig } from "../../catalog/types/runtime-config.ts";
+} from "../../../modules/problems/services/support-package.ts";
+import { isOiRuntimeConfig } from "../../../modules/problems/types/runtime-config.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
-import type { JudgeImageKind } from "../../catalog/types/problems.ts";
+import type { JudgeImageKind } from "../../../modules/problems/types/problems.ts";
 import {
   deleteTraining,
   getTraining,
   listAllTrainings,
   resolveTrainingId,
   updateTraining,
-} from "../../catalog/services/trainings.ts";
-import type { UpdateTrainingInput } from "../../catalog/types/trainings.ts";
+} from "../../../modules/problems/services/trainings.ts";
+import type { UpdateTrainingInput } from "../../../modules/problems/types/trainings.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";

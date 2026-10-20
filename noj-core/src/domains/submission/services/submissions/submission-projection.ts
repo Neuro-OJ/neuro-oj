@@ -3,7 +3,7 @@ import {
   projectMeteringDetails,
   projectOiDetails,
 } from "./oi-details.ts";
-import type { ContestType } from "../../../contest/index.ts";
+import type { ContestType } from "../../../../modules/contests/index.ts";
 import type { ResultVisibility } from "../../../../shared/contest-types.ts";
 /**
  * 统一提交结果投影（F-02/F-15 基础）。

@@ -12,7 +12,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { recomputeSubmissionProjection } from "../../../submission/index.ts";
-import { setDomainProblemBindingState } from "../../../catalog/index.ts";
+import { setDomainProblemBindingState } from "../../../../modules/problems/index.ts";
 import {
   createAssignment,
   exportAssignmentMatrixCsv,

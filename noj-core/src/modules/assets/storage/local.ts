@@ -1,0 +1,381 @@
+/**
+ * LocalStorageProvider — 本地文件系统存储实现
+ *
+ * ⚠️ 仅用于开发测试，不应在生产环境中使用。
+ * 首次实例化时输出明确废弃警告。
+ *
+ * 存储路径：`data/storage/<base64-key>.zip`（默认目录，可用 `SUPPORT_PACKAGE_DIR` 覆盖）
+ * URL 格式：`noj-storage://local/<base64>?checksum_sha256=<hex>`
+ *
+ * Judge 传输：返回 `noj-download://local?path=<绝对路径>&checksum_sha256=...`。
+ * 本地模式要求 core 与 judge 共享同一文件系统（同机开发，或容器化部署时挂载同一
+ * 存储卷），judge 直接读取磁盘文件，避免大文件 base64 内联到 Redis 消息。
+ *
+ * @module
+ */
+
+import { relative, resolve } from "jsr:@std/path@^1";
+import { sha256 } from "npm:@noble/hashes@2.2.0/sha2.js";
+import {
+  buildLocalDownloadUrl,
+  buildStorageUrl,
+  parseStorageUrl,
+  sha256Hex,
+  type StorageObjectInfo,
+  type StorageObjectStat,
+  type StorageProvider,
+  validateStorageKey,
+} from "./types.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
+
+/**
+ * 本地存储根目录（实例级，构造时解析，测试可用 SUPPORT_PACKAGE_DIR 覆盖）。
+ *
+ * 与构建产物目录（`data/packages/`）分离，避免混淆（problem-bundle-import）。
+ * 默认 `data/storage/`，可用 `SUPPORT_PACKAGE_DIR` 环境变量覆盖（历史配置名保留）。
+ */
+
+const DEPRECATED_WARNING = [
+  `[storage/local] ⚠️  本地文件存储仅用于开发测试，不应在生产环境中使用。`,
+  `[storage/local]    请设置 STORAGE_PROVIDER=s3 并配置 S3_ENDPOINT 以启用对象存储。`,
+].join("\n");
+
+/** contentType → 扩展名映射（仅图片需要；zip 保持无扩展名兼容既有 URL） */
+const EXT_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+/** 已知扩展名（get/delete 解析 key 时使用） */
+const KNOWN_EXTS = /\.(png|jpe?g|webp)$/i;
+
+/** 根据 contentType 推导文件扩展名；未知（含 zip）返回空串（无扩展名） */
+function extensionFor(contentType?: string): string {
+  return (contentType && EXT_BY_CONTENT_TYPE[contentType]) ?? "";
+}
+
+/**
+ * key → 磁盘文件路径（含根目录约束）。
+ *
+ * NOJ-061/NOJ-115：拒绝任何 `/`（local key 由服务端内容寻址生成，
+ * 天然无路径分隔），resolve 后再次断言仍在 storageDir 内。
+ */
+function filePathFor(storageDir: string, key: string): string {
+  validateStorageKey(key);
+  if (key.includes("/")) {
+    throw new Error(`local 存储 key 不得包含路径分隔符: ${key}`);
+  }
+  const suffix = KNOWN_EXTS.test(key) ? "" : ".zip";
+  const root = resolve(storageDir);
+  const filePath = resolve(root, `${key}${suffix}`);
+  const rel = relative(root, filePath);
+  if (rel === "" || rel.startsWith("..") || rel.startsWith("/")) {
+    throw new Error(`local 存储 key 越界: ${key}`);
+  }
+  return filePath;
+}
+
+/**
+ * 本地文件系统存储实现
+ *
+ * 数据以 zip 文件形式存储在 `${this.storageDir}/` 目录下，
+ * 文件名使用 SHA-256 的 base64url 编码（URL 安全）。
+ * 图片（头像等）按 contentType 附带扩展名：`<hash>.png` / `<hash>.jpg` / `<hash>.webp`。
+ */
+export class LocalStorageProvider implements StorageProvider {
+  private warned = false;
+
+  /**
+   * 存储根目录：显式传入优先（测试注入），否则 `SUPPORT_PACKAGE_DIR`，
+   * 最后回退 `data/storage`。
+   *
+   * 显式参数存在的意义：测试若用 `Deno.env.set` 覆盖环境变量，会**污染同进程
+   * 其他测试文件**（全量测试共用一个进程时，其他用例会写进临时目录而断言失败）。
+   */
+  private readonly storageDir: string;
+
+  constructor(storageDir?: string) {
+    this.storageDir = storageDir ?? Deno.env.get("SUPPORT_PACKAGE_DIR") ??
+      "data/storage";
+    this.emitDeprecationWarning();
+  }
+
+  private emitDeprecationWarning(): void {
+    if (this.warned) return;
+    this.warned = true;
+    logger.warn(DEPRECATED_WARNING);
+  }
+
+  /**
+   * 存储数据到本地文件系统
+   *
+   * 1. 计算 SHA-256 哈希
+   * 2. 将哈希编码为 base64url（URL 安全）
+   * 3. 以哈希为文件名写入存储根目录（`_key` 忽略——文件名由内容寻址决定）
+   * 4. 返回 `noj-storage://local/<base64>[.<ext>]?checksum_sha256=<hex>`
+   *
+   * 扩展名规则：`image/png→png`、`image/jpeg→jpg`、`image/webp→webp`；
+   * 其余 contentType（含 zip）保持无扩展名，兼容既有支持包 URL。
+   */
+  async put(
+    _key: string,
+    data: Uint8Array,
+    contentType?: string,
+  ): Promise<string> {
+    const hashHex = await sha256Hex(data);
+    // 使用 base64url 编码哈希作为文件名（URL 安全）
+    const base64Key = this.hexToBase64url(hashHex);
+    const ext = extensionFor(contentType);
+    // 磁盘文件：图片带扩展名（png/jpg/webp），zip 固定 .zip；
+    // URL key：图片带扩展名，zip 保持无扩展名（兼容既有 URL）
+    const fileName = ext ? `${base64Key}.${ext}` : `${base64Key}.zip`;
+    const filePath = `${this.storageDir}/${fileName}`;
+
+    // 原子写入：tmp 文件 + rename
+    const tmpPath = `${filePath}.tmp.${crypto.randomUUID()}`;
+    await Deno.mkdir(this.storageDir, { recursive: true });
+    await Deno.writeFile(tmpPath, data);
+    try {
+      await Deno.rename(tmpPath, filePath);
+    } catch {
+      // Windows 跨设备 rename 可能失败，fallback 到 copy + remove
+      await Deno.copyFile(tmpPath, filePath);
+      await Deno.remove(tmpPath);
+    }
+
+    return this.urlForUpload(_key, hashHex, contentType);
+  }
+
+  /**
+   * 预测 `put()` 将返回的 URL（不写盘）。
+   *
+   * local 是内容寻址：URL key 只由内容 SHA-256 决定（`_key` 忽略），扩展名由
+   * contentType 推导，因此上传前即可算出 URL 并先登记上传预约。
+   */
+  urlForUpload(_key: string, sha256Hex: string, contentType?: string): string {
+    const base64Key = this.hexToBase64url(sha256Hex);
+    const ext = extensionFor(contentType);
+    return buildStorageUrl(
+      "local",
+      ext ? `${base64Key}.${ext}` : base64Key,
+      sha256Hex,
+    );
+  }
+
+  /**
+   * 流式存储数据到本地文件系统。
+   *
+   * 与 put() 相同的内容寻址语义：先写临时文件，边写边计算 SHA-256，
+   * 完成后以哈希为文件名原子 rename 到存储目录。
+   */
+  async putStream(
+    _key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string> {
+    const hash = sha256.create();
+    const ext = extensionFor(contentType);
+    const tmpPath = `${this.storageDir}/.tmp-${crypto.randomUUID()}`;
+    await Deno.mkdir(this.storageDir, { recursive: true });
+    const file = await Deno.open(tmpPath, {
+      write: true,
+      create: true,
+      truncate: true,
+    });
+    let total = 0;
+    try {
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.length > 0) {
+          total += value.length;
+          if (maxSizeBytes !== undefined && total > maxSizeBytes) {
+            throw new Error(
+              `文件超过大小限制（${maxSizeBytes} 字节）`,
+            );
+          }
+          hash.update(value);
+          await file.write(value);
+        }
+      }
+    } catch (err) {
+      try {
+        file.close();
+      } catch {
+        // ignore close failure
+      }
+      await Deno.remove(tmpPath).catch(() => {});
+      throw err;
+    }
+    file.close();
+
+    const hashHex = Array.from(hash.digest())
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const base64Key = this.hexToBase64url(hashHex);
+    const fileName = ext ? `${base64Key}.${ext}` : `${base64Key}.zip`;
+    const filePath = `${this.storageDir}/${fileName}`;
+
+    try {
+      await Deno.rename(tmpPath, filePath);
+    } catch {
+      // Windows 跨设备 rename 可能失败，fallback 到 copy + remove
+      await Deno.copyFile(tmpPath, filePath);
+      await Deno.remove(tmpPath);
+    }
+
+    return buildStorageUrl("local", ext ? fileName : base64Key, hashHex);
+  }
+
+  /**
+   * 根据 `noj-storage://` URL 读取数据
+   */
+  get(url: string): Promise<Uint8Array> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+
+    return Deno.readFile(filePath);
+  }
+
+  /** 文件流在消费完成或取消时释放句柄，不生成客户端直链。 */
+  async getStream(url: string): Promise<ReadableStream<Uint8Array>> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const file = await Deno.open(filePathFor(this.storageDir, parsed.key), {
+      read: true,
+    });
+    return file.readable;
+  }
+
+  /**
+   * 根据 `noj-storage://` URL 删除数据
+   *
+   * 幂等操作：文件不存在时静默忽略
+   */
+  async delete(url: string): Promise<void> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    try {
+      await Deno.remove(filePath);
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        // 幂等删除
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 查询本地对象的存在性与大小（仅文件元数据，不读内容）。
+   */
+  async stat(url: string): Promise<StorageObjectStat> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    try {
+      const info = await Deno.stat(filePath);
+      return {
+        exists: true,
+        sizeBytes: info.size,
+        lastModified: info.mtime?.toISOString() ?? null,
+      };
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        return { exists: false, sizeBytes: null, lastModified: null };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 只读列举存储根目录中的对象。
+   *
+   * local provider 的 zip 文件名比 DB 中的逻辑 key 多一个 `.zip` 后缀，
+   * 因此盘点结果会去掉该后缀；图片对象保留 `.png/.jpg/.webp` 后缀。
+   * 临时文件也会列出，供报告识别上传中断留下的对象，但绝不在此删除。
+   */
+  async listObjects(): Promise<StorageObjectInfo[]> {
+    const objects: StorageObjectInfo[] = [];
+    try {
+      for await (const entry of Deno.readDir(this.storageDir)) {
+        if (!entry.isFile) continue;
+        const filePath = `${this.storageDir}/${entry.name}`;
+        let sizeBytes: number | null = null;
+        let lastModified: string | null = null;
+        try {
+          const stat = await Deno.stat(filePath);
+          sizeBytes = stat.size;
+          lastModified = stat.mtime?.toISOString() ?? null;
+        } catch {
+          // 文件在列举与 stat 之间消失：保留 key，容量记为未知。
+        }
+        const key = entry.name.endsWith(".zip")
+          ? entry.name.slice(0, -4)
+          : entry.name;
+        objects.push({ key, sizeBytes, lastModified });
+      }
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) return [];
+      throw err;
+    }
+    return objects.sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  /**
+   * 将 `noj-storage://` URL 转换为 `noj-download://local` URL。
+   *
+   * 本地模式 core 与 judge 共享文件系统，直接返回磁盘路径让 judge 读取，
+   * 避免把大文件 base64 内联到 Redis 消息（否则 artifact 上限会被 16MB
+   * 消息大小限制卡死）。
+   */
+  downloadUrl(storageUrl: string, _expiresIn?: number): Promise<string> {
+    const parsed = parseStorageUrl(storageUrl);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    return Promise.resolve(
+      buildLocalDownloadUrl(filePath, parsed.checksumSha256),
+    );
+  }
+
+  // ── 内部工具 ─────────────────────────────────────────────
+
+  /**
+   * 将十六进制字符串编码为 base64url（无填充）
+   */
+  private hexToBase64url(hex: string): string {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+    }
+    // base64url 编码（无填充）
+    return btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  /**
+   * 将 Uint8Array 编码为标准 Base64
+   */
+  private uint8ArrayToBase64(data: Uint8Array): string {
+    return btoa(String.fromCharCode(...data));
+  }
+}

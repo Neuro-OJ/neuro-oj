@@ -30,6 +30,10 @@ export interface Gate {
 /** 门禁自测文件（`deno test` 一次跑完，避免启动多次 Deno）。 */
 export const GATE_SELF_TESTS: string[] = [
   "scripts/check-domains_test.ts",
+  // P3 结构门禁自测：仅保留逻辑负例；生产迁移完成前由独立诊断命令运行，
+  // 暂不把 --strict 结构结果接入 REPO_GATES。
+  "scripts/check-module-boundaries_test.ts",
+  "scripts/select-core-ci_test.ts",
   "scripts/check-metrics_test.ts",
   "scripts/check-runtime-contract_test.ts",
   "scripts/check-runbooks_test.ts",

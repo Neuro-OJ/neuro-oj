@@ -6,7 +6,11 @@
  * "文件与生成结果一致"，从不校验生成结果是否正确。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { extractRoutes, generate } from "./gen-route-catalog.ts";
+import {
+  collectRouteFiles,
+  extractRoutes,
+  generate,
+} from "./gen-route-catalog.ts";
 
 function withTempFile(content: string, fn: (path: string) => void): void {
   const dir = Deno.makeTempDirSync({ prefix: "route-catalog-test-" });
@@ -82,4 +86,32 @@ Deno.test("gen-route-catalog: 真实仓库目录中不存在伪造路径", async
   assert(rows.length >= 200, `路由行数异常偏少：${rows.length}`);
   const fabricated = rows.filter((l) => !/^\| [A-Z]+ \| `\//.test(l));
   assertEquals(fabricated, [], "目录中出现不以 / 开头的伪造路径");
+});
+
+Deno.test("gen-route-catalog: 模块迁移后仍发现真实路由并排除测试和组合入口", () => {
+  const root = Deno.makeTempDirSync({ prefix: "route-module-discovery-" });
+  const base = `${root}/noj-core/src/modules/problems`;
+  try {
+    Deno.mkdirSync(`${base}/routes`, { recursive: true });
+    Deno.mkdirSync(`${base}/tests/routes`, { recursive: true });
+    Deno.writeTextFileSync(
+      `${base}/routes/problems.ts`,
+      'router.get("/problems", handler);',
+    );
+    Deno.writeTextFileSync(
+      `${base}/routes/index.ts`,
+      'router.get("/composition", handler);',
+    );
+    Deno.writeTextFileSync(
+      `${base}/tests/routes/problems.test.ts`,
+      'router.get("/fake", handler);',
+    );
+    assertEquals(collectRouteFiles(root), [`${base}/routes/problems.ts`]);
+    assertEquals(
+      collectRouteFiles(root).flatMap(extractRoutes).map((route) => route.path),
+      ["/problems"],
+    );
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
 });

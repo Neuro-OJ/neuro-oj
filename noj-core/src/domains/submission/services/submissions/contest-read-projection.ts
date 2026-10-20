@@ -6,7 +6,7 @@ import {
   domains,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../workspace/index.ts";
-import type { ContestType } from "../../../contest/index.ts";
+import type { ContestType } from "../../../../modules/contests/index.ts";
 import { applySubmissionProjection } from "./submission-projection.ts";
 
 /** 批量读取当前赛制与参赛关系，列表、详情共用，避免逐条查询比赛。 */

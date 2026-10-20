@@ -1,7 +1,7 @@
 import {
   getBuiltinOiCostProfile,
   isOiRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   buildJudgeTask,
   type BuildJudgeTaskInput,

@@ -1,25 +1,15 @@
 /**
- * 抽象存储层 — 公共导出
- *
- * 提供 StorageProvider 接口、URL 工具、LocalStorageProvider 和 S3StorageProvider 实现。
- *
- * 使用方式：
- * ```ts
- * import { getStorageProvider } from "#src/lib/storage/mod.ts";
- * const storage = await getStorageProvider();
- * const url = await storage.put("key", data);
- * ```
- *
- * @module
+ * @deprecated 对象存储业务能力已归 assets。该兼容入口将在 HTTP/runtime 组合层
+ * 完成切换后删除；生产新代码不得依赖 system 门面。
  */
-
 export {
   getStorageProvider,
   getStorageProviderKind,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "./factory.ts";
-export { LocalStorageProvider } from "./local.ts";
+} from "../../../../modules/assets/storage/factory.ts";
+export { LocalStorageProvider } from "../../../../modules/assets/storage/local.ts";
+export { S3StorageProvider } from "../../../../modules/assets/storage/s3.ts";
 export {
   assertStorageObjectBindable,
   collectStorageReferences,
@@ -39,24 +29,23 @@ export {
   StorageUploadInFlightError,
   uploadStorageObjectWithReservation,
   verifyStorageObject,
-} from "./registry.ts";
+} from "../../../../modules/assets/legacy.ts";
 export type {
   StorageDeleteOutcome,
   StorageObjectRecord,
   StorageReferenceReport,
   StorageUploadReservation,
-} from "./registry.ts";
-export { S3StorageProvider } from "./s3.ts";
-export { deliverStoredArtifact } from "./artifact-delivery.ts";
+} from "../../../../modules/assets/legacy.ts";
+export { deliverStoredArtifact } from "../../../../modules/assets/storage/artifact-delivery.ts";
 export {
   reconcileDomainStorageBatch,
   startDomainStorageReconciliation,
-} from "./domain-reconciliation.ts";
+} from "../../../../modules/assets/legacy.ts";
 export {
   buildStorageAuditReport,
   classifyStorageObjectKey,
   renderStorageAuditPrometheus,
-} from "./audit.ts";
+} from "../../../../modules/assets/legacy.ts";
 export {
   buildBase64DownloadUrl,
   buildLocalDownloadUrl,
@@ -67,17 +56,17 @@ export {
   parseDownloadUrl,
   parseStorageUrl,
   sha256Hex,
-} from "./types.ts";
+} from "../../../../modules/assets/storage/types.ts";
 export type {
   ParsedDownloadUrl,
   ParsedStorageUrl,
   StorageObjectInfo,
   StorageObjectStat,
   StorageProvider,
-} from "./types.ts";
+} from "../../../../modules/assets/storage/types.ts";
 export type {
   StorageAuditObject,
   StorageAuditReport,
   StorageReference,
   StorageReferenceKind,
-} from "./audit.ts";
+} from "../../../../modules/assets/legacy.ts";

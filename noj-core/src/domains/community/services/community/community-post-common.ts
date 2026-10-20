@@ -1,21 +1,21 @@
 import { eq, type SQL, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
-import { communityPosts, users } from "./../../../../shared/db/schema.ts";
+import { communityPosts, users } from "../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
-} from "./../../../../shared/base/errors.ts";
-import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
+} from "../../../../shared/base/errors.ts";
+import { resolveProblemIdOrNull } from "../../../../modules/problems/index.ts";
 import {
   endedWindowCondition,
   hasUnendedPublicContest,
   unendedPublicContestForProblem,
-} from "./../../../contest/index.ts";
+} from "../../../../modules/contests/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
   CommunityPostType,
-} from "./../../types/community.ts";
+} from "../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 import {
   communityDb,

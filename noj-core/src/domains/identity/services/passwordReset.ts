@@ -1,14 +1,14 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { passwordResetTokens, users } from "../../../shared/db/schema.ts";
 import { hashPassword } from "./security/password.ts";
 import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
 import {
   isEmailSuppressed,
   logAuthEvent,
   sendPasswordResetEmail,
-} from "./../../system/index.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
+} from "../../system/index.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "identity"]);

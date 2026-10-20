@@ -4,10 +4,10 @@ import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { assertActiveInstanceAccount } from "../../identity/index.ts";
 import { DEFAULT_DOMAIN_ID, loadWorkspace } from "../../workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../modules/problems/index.ts";
 import { contestResultVisibility } from "./submissions/submission-projection.ts";
 import { oiVerdict } from "./submissions/oi-details.ts";
-import type { ContestType } from "../../contest/index.ts";
+import type { ContestType } from "../../../modules/contests/index.ts";
 import type { ProblemReference } from "../../../shared/workspace/types.ts";
 import { currentTeacherSubmissionAccessWhere } from "../../education/index.ts";
 

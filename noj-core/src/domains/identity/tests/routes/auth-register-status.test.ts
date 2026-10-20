@@ -7,7 +7,10 @@
  * - 后续公开注册被 403 REGISTER_EMAIL_UNCONFIGURED 拦截
  * - 邮件就绪（mock 开发环境）时 register-status 返回 allowed=true
  */
-import { initializeFirstAdmin } from "../../services/auth/admin-initialization.ts";
+import {
+  initializeFirstAdmin as initializeFirstAdminTx,
+} from "../../services/auth/admin-initialization.ts";
+import { createSystemActor } from "../../../../runtime/system-actors.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -30,6 +33,9 @@ import { jsonRequest } from "../../../../../tests/helper.ts";
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();
+const initializeFirstAdmin = (
+  input: Parameters<typeof initializeFirstAdminTx>[0],
+) => initializeFirstAdminTx(input, createSystemActor("bootstrap"));
 
 /** 按 issue #426 场景重置设置缓存（provider 由 env 决定，bootstrap 作用域）。 */
 async function setupWithProvider(provider: "disabled" | "mock") {

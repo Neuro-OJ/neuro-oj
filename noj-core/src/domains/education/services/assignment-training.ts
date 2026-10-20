@@ -5,7 +5,7 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   importDomainProblem,
   readDomainTraining,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 
 /** 发布事务内展开当前题单，建立使用域绑定并固定顺序；任意题失效则整体回滚。 */
 export async function expandAssignmentTraining(

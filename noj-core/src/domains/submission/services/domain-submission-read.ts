@@ -8,7 +8,7 @@ import { loadWorkspace, workspaceAudit } from "../../workspace/index.ts";
 import {
   domainProblemReference,
   loadBindingAvailability,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   getSubmission,
   resolveSubmissionId,

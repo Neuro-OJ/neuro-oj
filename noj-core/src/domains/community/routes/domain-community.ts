@@ -48,7 +48,7 @@ import type {
 import { resolveCommunityProblem } from "../services/community/community-scope.ts";
 import { domainCommunityGovernanceRouter } from "./domain-governance.ts";
 import { domainCommunitySse } from "./sse.ts";
-import { hasUnendedPublicContest } from "../../contest/index.ts";
+import { hasUnendedPublicContest } from "../../../modules/contests/index.ts";
 import {
   enforceBookmarkRateLimit,
   enforceCommentLikeRateLimit,

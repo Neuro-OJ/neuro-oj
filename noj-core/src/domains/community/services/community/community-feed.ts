@@ -3,13 +3,13 @@ import {
   communityNotifications,
   communityPosts,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
-} from "./../../../../shared/base/errors.ts";
+} from "../../../../shared/base/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import { authorProjection } from "./community-post-select.ts";
 import {
   communityDb,

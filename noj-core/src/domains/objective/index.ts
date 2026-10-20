@@ -10,7 +10,7 @@ export {
   resolvePaperId,
   resolvePaperIdToUuid,
   serializeQuestion,
-} from "./services/objective-questions.ts";
+} from "../../modules/problems/services/objective/objective-questions.ts";
 export {
   getObjectiveSubmission,
   listObjectiveSubmissions,
@@ -23,8 +23,8 @@ export {
   judgeQuestion,
   type QuestionToJudge,
 } from "./services/objective-judge.ts";
-export * from "./types/objective.ts";
+export * from "../../modules/problems/types/objective.ts";
 export { submitDomainObjectivePaper } from "./services/domain-objective.ts";
-export * from "./services/versioning/objective-drafts.ts";
+export * from "../../modules/problems/services/objective/versioning/objective-drafts.ts";
 export * from "./services/versioning/objective-regrade.ts";
 export * from "./services/versioning/objective-regrade-job.ts";

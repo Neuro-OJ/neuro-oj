@@ -30,8 +30,8 @@ import {
   startPeriodicTask,
 } from "../../../../shared/runtime/managed-task.ts";
 import { getStorageProvider } from "../../../system/index.ts";
-import type { LlmConfig } from "../../../catalog/index.ts";
-import type { ProblemContentV1 } from "../../../catalog/index.ts";
+import type { LlmConfig } from "../../../../modules/problems/index.ts";
+import type { ProblemContentV1 } from "../../../../modules/problems/index.ts";
 import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
 import type { FrozenLlmExecution } from "../../../gateway/index.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";

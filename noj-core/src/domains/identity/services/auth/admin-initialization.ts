@@ -16,7 +16,8 @@ import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-init
 import { hashPassword } from "../security/password.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
 import type { RegisterInput } from "../../types/auth.ts";
-import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
+import type { SystemActor } from "../../../../modules/access/contracts/actor.ts";
+import { ensureDefaultWorkspaceTx } from "../../../../modules/access/domains.ts";
 
 /** 升级已有站点时永久关闭首次初始化；不改变任何用户权限。 */
 export async function sealExistingSiteAdminInitialization(): Promise<void> {
@@ -39,6 +40,7 @@ export async function sealExistingSiteAdminInitialization(): Promise<void> {
  */
 export async function initializeFirstAdmin(
   input: RegisterInput,
+  systemActor: SystemActor,
 ): Promise<void> {
   if (!/^[a-zA-Z0-9_]{3,30}$/.test(input.username)) {
     throw new BadRequestError("用户名仅允许字母、数字和下划线，长度 3-30");
@@ -78,7 +80,7 @@ export async function initializeFirstAdmin(
       updated_at: now,
     });
     await tx.insert(userRoles).values({ user_id: id, role_id: adminRole.id });
-    await ensureDefaultWorkspace(tx);
+    await ensureDefaultWorkspaceTx(tx, systemActor);
     createdUserId = id;
     return true;
   });

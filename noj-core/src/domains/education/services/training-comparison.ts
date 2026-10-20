@@ -11,8 +11,8 @@ import {
 import {
   domainProblemReference,
   loadBindingAvailability,
-} from "../../catalog/index.ts";
-import { endedWindowCondition } from "../../contest/index.ts";
+} from "../../../modules/problems/index.ts";
+import { endedWindowCondition } from "../../../modules/contests/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomCapability } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";

@@ -11,7 +11,7 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
@@ -19,9 +19,9 @@ import {
   systemSettings,
   userRoles,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import { PERMISSION_DEFS } from "../../../identity/index.ts";
-import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { ensureCommunitySeeds } from "../../../community/index.ts";
 
 // user 角色的默认权限（action 列表）

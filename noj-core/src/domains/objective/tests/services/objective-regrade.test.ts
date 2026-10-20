@@ -6,8 +6,8 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { regradeAgainstSnapshot } from "../../services/versioning/objective-regrade.ts";
-import type { ObjectiveQuestionSnapshot } from "../../../catalog/index.ts";
-import type { ObjectiveAnswerValue } from "../../types/objective.ts";
+import type { ObjectiveQuestionSnapshot } from "../../../../modules/problems/index.ts";
+import type { ObjectiveAnswerValue } from "../../../../modules/problems/types/objective.ts";
 
 function question(
   key: string,

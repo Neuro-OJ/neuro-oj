@@ -17,12 +17,12 @@ import {
   evaluateProblemAccess,
   loadBindingAvailability,
   resolveDomainProblem,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import {
   assertDomainPracticeAllowed,
   loadDomainContest,
   verifyContestAccess,
-} from "../../../contest/index.ts";
+} from "../../../../modules/contests/index.ts";
 import type { DispatchSource } from "./dispatch-job-item.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 

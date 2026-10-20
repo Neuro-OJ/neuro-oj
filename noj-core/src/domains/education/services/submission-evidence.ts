@@ -6,9 +6,12 @@ import {
   assignmentItems,
   assignmentRecipients,
 } from "../../../shared/db/schema.ts";
-import { loadBindingAvailability } from "../../catalog/index.ts";
-import { oiVerdict, projectOiDetails } from "../../submission/index.ts";
-import { endedWindowCondition } from "../../contest/index.ts";
+import { loadBindingAvailability } from "../../../modules/problems/index.ts";
+import {
+  oiVerdict,
+  projectOiDetails,
+} from "../../../modules/evaluations/index.ts";
+import { endedWindowCondition } from "../../../modules/contests/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomCapability } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";

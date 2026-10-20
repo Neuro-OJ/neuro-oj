@@ -10,7 +10,7 @@ import {
   LLM_DEFAULT_MODEL_ALIAS,
   LLM_MODEL_ALIAS_PATTERN,
   type LlmConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { getLlmProviderById } from "./llm.ts";
 import { getDomainLlmDefault } from "./domain-default.ts";
 

@@ -8,7 +8,7 @@ import {
   judgeQuestion,
   type QuestionToJudge,
 } from "../../index.ts";
-import type { ObjectiveAnswerValue } from "../../types/objective.ts";
+import type { ObjectiveAnswerValue } from "../../../../modules/problems/types/objective.ts";
 
 function q(
   id: string,

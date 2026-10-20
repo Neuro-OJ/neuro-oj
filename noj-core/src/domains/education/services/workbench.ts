@@ -7,7 +7,7 @@ import {
   enqueueEducationRefresh,
 } from "../../../shared/education-events.ts";
 import { loadWorkspace } from "../../workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../catalog/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../modules/problems/index.ts";
 import type {
   AssignmentState,
   AssistantCapability,

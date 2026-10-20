@@ -24,7 +24,7 @@ import {
   domainProblemReference,
   readDomainTraining,
   resolveDomainProblemInWorkspace,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   assertClassroomCapability,
   assertClassroomRevision,

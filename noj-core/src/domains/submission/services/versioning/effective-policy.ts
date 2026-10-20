@@ -35,7 +35,7 @@ import {
   DEFAULT_DOMAIN_SLUG,
   loadWorkspace,
 } from "../../../workspace/index.ts";
-import { setDomainProblemBindingPolicy } from "../../../catalog/index.ts";
+import { setDomainProblemBindingPolicy } from "../../../../modules/problems/index.ts";
 import {
   type EffectiveVersionPolicy,
   policyToColumns,

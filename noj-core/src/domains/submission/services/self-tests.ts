@@ -7,15 +7,15 @@ import { publishQueueChange } from "./queue.ts";
  */
 
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { problems, selfTests } from "./../../../shared/db/schema.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { problems, selfTests } from "../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import { checkPermission } from "./../../identity/index.ts";
+} from "../../../shared/base/errors.ts";
+import { checkPermission } from "../../identity/index.ts";
 import {
   consumeDomainSubmissionQuota,
   DEFAULT_DOMAIN_ID,
@@ -30,7 +30,7 @@ import {
 } from "./submissions/oi-details.ts";
 
 const logger = getLogger(["noj", "submission"]);
-import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import {
   assertSubmissionLanguage,
@@ -65,12 +65,12 @@ import {
   assertDefaultProblemSource,
   evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "./../../catalog/index.ts";
-import { buildOiSelfTestPackage } from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
+import { buildOiSelfTestPackage } from "../../../modules/problems/index.ts";
 import {
   isOiRuntimeConfig,
   type ProblemRuntimeConfig,
-} from "./../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
   SELF_TEST_LIST_DEFAULT_LIMIT,
@@ -80,7 +80,7 @@ import {
   type SelfTestResponse,
   type SelfTestStatus,
   type SelfTestSummary,
-} from "./../types/self-tests.ts";
+} from "../types/self-tests.ts";
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
 const MAX_OUTPUT_LENGTH = 8 * 1024;

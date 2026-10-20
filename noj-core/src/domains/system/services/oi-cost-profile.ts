@@ -1,7 +1,7 @@
 import {
   getBuiltinOiCostProfile,
   getOiMeteringStandard,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 /** 历史键仅用于拒绝旧写入口，数据库中的值不参与计量。 */
 export const OI_COST_PROFILE_SETTING_KEY = "oi_cost_profile_active";
 /** 每个实例使用同一内置标准，不读取历史成本表。 */

@@ -17,7 +17,7 @@ import {
   recordPublishedBindingChanges,
   saveProblemDraft,
   setDomainProblemBindingPolicy,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { setMemberRoles } from "../../../workspace/index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";

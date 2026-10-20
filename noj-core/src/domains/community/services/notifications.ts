@@ -6,19 +6,19 @@
  * 通知读取/已读等用户侧操作仍留在 community.ts（仅社区路由使用）。
  */
 
-import { communityNotifications } from "./../../../shared/db/schema.ts";
+import { communityNotifications } from "../../../shared/db/schema.ts";
 import { communityPosts } from "../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   communityDb,
   type CommunityScope,
 } from "./community/community-scope.ts";
-import { nowIso } from "./../../../shared/base/dates.ts";
+import { nowIso } from "../../../shared/base/dates.ts";
 import {
   Channels,
   publishSseEvent,
   publishSseEventAfterTx,
-} from "./../../../shared/sse/event-bus.ts";
+} from "../../../shared/sse/event-bus.ts";
 import { recordSseEvent } from "../../../shared/sse/sse-events.ts";
 
 /**

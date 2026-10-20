@@ -6,13 +6,14 @@
  */
 
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { enforceRateLimit } from "./../../system/index.ts";
+import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { enforceRateLimit } from "../../system/index.ts";
+import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   createDataRequest,
   listUserDataRequests,
-} from "../services/data-requests.ts";
+} from "../../../modules/platform/services/legal/data-requests.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -22,6 +23,7 @@ const REQUEST_LIMIT = { windowSec: 300, max: 10 };
 /** 提交删除/更正请求。 */
 router.post("/data-requests", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
+  const actor = requireUserActor(c.get("actor"));
   await enforceRateLimit(`data-request:user:${userId}`, REQUEST_LIMIT);
 
   const body = await parseJsonBody<{
@@ -32,7 +34,7 @@ router.post("/data-requests", authMiddleware, async (c) => {
   }>(c);
 
   const id = await createDataRequest(
-    userId,
+    actor,
     body.kind ?? "",
     body.target_type ?? "",
     body.target_id ?? null,

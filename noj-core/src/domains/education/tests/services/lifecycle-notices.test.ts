@@ -5,7 +5,7 @@ import { educationNotifications, users } from "../../../../shared/db/schema.ts";
 import {
   setDomainProblemBindingPolicy,
   setDomainProblemBindingState,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import {
   changeAssignmentLifecycle,
   createAssignment,

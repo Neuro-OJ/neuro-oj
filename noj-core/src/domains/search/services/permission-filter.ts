@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
 import { searchEntries } from "../../../shared/db/schema.ts";
-import { unendedPublicContestForProblem } from "../../contest/index.ts";
+import { unendedPublicContestForProblem } from "../../../modules/contests/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 import {
   domainProblemAvailableWhere,
   domainProblemBindingAvailableWhere,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { currentTeacherSubmissionAccessWhere } from "../../education/index.ts";
 import { submissionQueryVisibility } from "../../query/index.ts";
 

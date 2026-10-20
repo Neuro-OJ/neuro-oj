@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { users } from "./../../../../shared/db/schema.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "identity"]);
-import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
 /**
  * 确保 root 系统用户存在。
@@ -23,7 +23,7 @@ export async function ensureRootUser(): Promise<void> {
   if (existing.length > 0) return;
 
   const randomPassword = crypto.randomUUID();
-  const { hashPassword } = await import("./../security/password.ts");
+  const { hashPassword } = await import("../security/password.ts");
   const now = new Date().toISOString();
 
   await db.insert(users)

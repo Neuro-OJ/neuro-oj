@@ -1,15 +1,15 @@
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { users } from "./../../../../shared/db/schema.ts";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "./../../../../shared/base/errors.ts";
-import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+} from "../../../../shared/base/errors.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
 const BIO_MAX_LENGTH = 5000;
 

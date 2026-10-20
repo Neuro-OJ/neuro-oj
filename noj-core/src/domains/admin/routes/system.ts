@@ -7,7 +7,7 @@
  *
  * 审计分层：
  * - announcements.create/update/delete、settings.update/delete 在 service 层已调用
- *   logAudit，因此保持 service 层为唯一审计源，路由层不重复写。
+ *  显式审计合同，因此保持 service 层为唯一审计源，路由层不重复写。
  * - judge-images.create/update/delete、email-delivery.clear 原先未在 service 层审计，
  *   由路由层 withAudit 作为唯一审计源。
  */
@@ -23,7 +23,8 @@ import {
 } from "../../../shared/base/errors.ts";
 import { isBootstrap } from "../../../shared/config/settings-registry.ts";
 import { assertPermission } from "../../identity/index.ts";
-import { withActorContext } from "../../system/index.ts";
+import { getClientIp } from "../../system/services/rate-limit-env.ts";
+import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   MAX_SAFE_PAGE,
   parsePagination,
@@ -34,11 +35,11 @@ import {
   listAdminAnnouncements,
   resolveAnnouncementId,
   updateAnnouncement,
-} from "../../system/services/announcements.ts";
+} from "../../../modules/platform/services/announcements.ts";
 import type {
   CreateAnnouncementInput,
   UpdateAnnouncementInput,
-} from "../../system/services/announcements.ts";
+} from "../../../modules/platform/services/announcements.ts";
 import { listAuditLogs } from "../../system/services/audit-log.ts";
 import type { AuditAction } from "../../system/types/audit-log.ts";
 import {
@@ -50,18 +51,18 @@ import {
   deleteJudgeImage,
   listJudgeImages,
   updateJudgeImage,
-} from "../../system/services/judge-images.ts";
+} from "../../../modules/platform/services/judge-images.ts";
 import type {
   CreateJudgeImageInput,
   UpdateJudgeImageInput,
-} from "../../catalog/index.ts";
+} from "../../../modules/platform/types/judge-images.ts";
 import {
   cleanupBootstrapRow,
   getSetting,
   listSettings,
   resetSetting,
   updateSetting,
-} from "../../system/services/system-settings.ts";
+} from "../../../modules/platform/services/system-settings.ts";
 import { getEmailConfigStatus } from "../../system/services/email-status.ts";
 import { sendTestEmail } from "../../system/services/email.ts";
 import { getLogger } from "@logtape/logtape";
@@ -96,15 +97,7 @@ function auditRoute(
 
 const router = new Hono<AuthEnv>();
 
-// ── 公告管理（细粒度权限 announcement:manage + RequestContext 注入） ──────
-router.use("*", async (c, next) => {
-  if (c.req.path.startsWith("/api/v1/admin/system/announcements")) {
-    await assertPermission(c, "announcement:manage");
-    return withActorContext(c, () => next());
-  }
-  return next();
-});
-
+// ── 公告管理（细粒度权限 announcement:manage） ───────────────────────────
 router.get("/announcements", async (c) => {
   await assertPermission(c, "announcement:manage");
   const { page, perPage } = parsePagination(c);
@@ -121,7 +114,12 @@ router.get("/announcements", async (c) => {
 router.post("/announcements", async (c) => {
   await assertPermission(c, "announcement:manage");
   const body = await parseJsonBody<CreateAnnouncementInput>(c);
-  const item = await createAnnouncement(body);
+  const item = await createAnnouncement(
+    body,
+    requireUserActor(c.get("actor")),
+    undefined,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: item }, 201);
 });
 
@@ -136,7 +134,13 @@ router.put(
     await assertPermission(c, "announcement:manage");
     const id = await resolveAnnouncementId(c.req.param("id") as string);
     const body = await parseJsonBody<UpdateAnnouncementInput>(c);
-    const item = await updateAnnouncement(id, body);
+    const item = await updateAnnouncement(
+      id,
+      body,
+      requireUserActor(c.get("actor")),
+      undefined,
+      { ipAddress: getClientIp(c) },
+    );
     return c.json({ data: item });
   },
 );
@@ -151,7 +155,12 @@ router.delete(
   async (c) => {
     await assertPermission(c, "announcement:manage");
     const id = await resolveAnnouncementId(c.req.param("id") as string);
-    await deleteAnnouncement(id);
+    await deleteAnnouncement(
+      id,
+      requireUserActor(c.get("actor")),
+      undefined,
+      { ipAddress: getClientIp(c) },
+    );
     return c.body(null, 204);
   },
 );
@@ -287,7 +296,13 @@ router.put(
     if (!("value" in body)) {
       throw new BadRequestError("请求体必须包含 value 字段");
     }
-    const item = await updateSetting(key, body.value, c.get("userId"));
+    const item = await updateSetting(
+      key,
+      body.value,
+      requireUserActor(c.get("actor")),
+      undefined,
+      { ipAddress: getClientIp(c) },
+    );
     return c.json({ data: item }, 200);
   },
 );
@@ -304,11 +319,12 @@ router.delete(
         "OI 成本表不能通过通用设置接口删除",
       );
     }
-    const userId = c.get("userId");
+    const actor = requireUserActor(c.get("actor"));
+    const auditMeta = { ipAddress: getClientIp(c) };
     if (isBootstrap(key)) {
-      await cleanupBootstrapRow(key, userId);
+      await cleanupBootstrapRow(key, actor, auditMeta);
     } else {
-      await resetSetting(key, userId);
+      await resetSetting(key, actor, auditMeta);
     }
     return c.body(null, 204);
   },
@@ -346,7 +362,10 @@ router.post(
         throw new BadRequestError("镜像名不能为空");
       }
       setAuditBody(c, body);
-      const item = await createJudgeImage(body);
+      const item = await createJudgeImage(
+        body,
+        requireUserActor(c.get("actor")),
+      );
       return c.json({ data: item }, 201);
     },
   ),
@@ -380,7 +399,11 @@ router.put(
       const id = c.req.param("id") as string;
       const body = await parseJsonBody<UpdateJudgeImageInput>(c);
       setAuditBody(c, { id, input: body });
-      const item = await updateJudgeImage(id, body);
+      const item = await updateJudgeImage(
+        id,
+        body,
+        requireUserActor(c.get("actor")),
+      );
       return c.json({ data: item }, 200);
     },
   ),
@@ -403,7 +426,7 @@ router.delete(
     },
     async (c) => {
       const id = c.req.param("id") as string;
-      await deleteJudgeImage(id);
+      await deleteJudgeImage(id, requireUserActor(c.get("actor")));
       return c.body(null, 204);
     },
   ),

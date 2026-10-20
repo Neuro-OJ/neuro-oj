@@ -9,20 +9,18 @@ import {
   registerJudgeHeartbeatProvider,
 } from "./domains/observability/services/judge-heartbeat.ts";
 import { renderPrometheusMetrics } from "./domains/observability/services/snapshot.ts";
-import {
-  getQueueHealth,
-  registerSubmissionObservability,
-} from "./domains/submission/index.ts";
+import { getQueueHealth } from "./modules/evaluations/services/queue.ts";
+import { registerSubmissionObservability } from "./modules/evaluations/observability.ts";
 import { registerDbHealthProbe } from "./shared/db/connection.ts";
 import { registerRedisHealthProbe } from "./shared/mq/connection.ts";
 import { normalizeMetricRoute } from "./shared/observability/registry.ts";
 import admin from "./domains/admin/index.ts";
 import { identityRouter } from "./domains/identity/routes/index.ts";
-import { catalogRouter } from "./domains/catalog/routes/index.ts";
-import { submissionRouter } from "./domains/submission/routes/index.ts";
+import { catalogRouter } from "./modules/problems/routes/index.ts";
+import { submissionRouter } from "./modules/evaluations/routes/index.ts";
 import { queryRouter } from "./domains/query/routes/index.ts";
 import { searchRouter } from "./domains/search/routes/index.ts";
-import { contestRouter } from "./domains/contest/routes/index.ts";
+import { contestRouter } from "./modules/contests/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
@@ -30,15 +28,15 @@ import { internalLlmPolicyRouter } from "./domains/system/routes/internal-llm-po
 import { createInternalDrainRouter } from "./domains/system/routes/internal-drain.ts";
 import { legalRouter } from "./domains/legal/routes/index.ts";
 import { workspaceRouter } from "./domains/workspace/routes/index.ts";
-import { domainProblemsRouter } from "./domains/catalog/routes/domain-problems.ts";
-import { domainTrainingsRouter } from "./domains/catalog/routes/domain-trainings.ts";
-import { domainResourceManagementRouter } from "./domains/catalog/routes/domain-resource-management.ts";
-import { domainSubmissionsRouter } from "./domains/submission/routes/domain-submissions.ts";
-import { domainSubmissionJobsRouter } from "./domains/submission/routes/domain-submission-jobs.ts";
-import { ownSubmissionHistoryRouter } from "./domains/submission/routes/own-submission-history.ts";
-import { domainSubmissionSse } from "./domains/submission/routes/sse.ts";
+import { domainProblemsRouter } from "./modules/problems/routes/domain-problems.ts";
+import { domainTrainingsRouter } from "./modules/problems/routes/domain-trainings.ts";
+import { domainResourceManagementRouter } from "./modules/problems/routes/domain-resource-management.ts";
+import { domainSubmissionsRouter } from "./modules/evaluations/routes/domain-submissions.ts";
+import { domainSubmissionJobsRouter } from "./modules/evaluations/routes/domain-submission-jobs.ts";
+import { ownSubmissionHistoryRouter } from "./modules/evaluations/routes/own-submission-history.ts";
+import { domainSubmissionSse } from "./modules/evaluations/routes/sse.ts";
 import { domainObjectiveRouter } from "./domains/objective/routes/domain-objective.ts";
-import { domainContestRouter } from "./domains/contest/routes/domain-contests.ts";
+import { domainContestRouter } from "./modules/contests/routes/domain-contests.ts";
 import { domainCommunityRouter } from "./domains/community/routes/domain-community.ts";
 import { domainQueryRouter } from "./domains/query/routes/domain-query.ts";
 import { domainStatsSse } from "./domains/query/routes/sse.ts";
@@ -46,7 +44,7 @@ import { domainSearchRouter } from "./domains/search/routes/search.ts";
 import { domainLlmRouter } from "./domains/gateway/routes/domain-llm.ts";
 import { educationRouter } from "./domains/education/routes/index.ts";
 import { instanceAccessMiddleware } from "./domains/workspace/index.ts";
-import submissionSse from "./domains/submission/routes/sse.ts";
+import submissionSse from "./modules/evaluations/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
 import { getLogger } from "@logtape/logtape";

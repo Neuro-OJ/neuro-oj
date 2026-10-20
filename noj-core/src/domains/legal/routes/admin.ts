@@ -15,35 +15,30 @@ import {
   assertPermission,
   type AuthEnv,
   authMiddleware,
-} from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { ValidationError } from "./../../../shared/base/errors.ts";
-import { enforceRateLimit, withActorContext } from "./../../system/index.ts";
+} from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { ValidationError } from "../../../shared/base/errors.ts";
+import { enforceRateLimit } from "../../system/index.ts";
+import { getClientIp } from "../../system/services/rate-limit-env.ts";
+import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   getCurrentDocument,
   getVersionTsa,
   listVersions,
   publishVersion,
-} from "../services/documents.ts";
-import { verifyTimestamp } from "../services/tsa.ts";
+} from "../../../modules/platform/services/legal/documents.ts";
+import { verifyTimestamp } from "../../../modules/platform/services/legal/tsa.ts";
 import { isLegalKind } from "../types.ts";
 import type { LegalKind } from "../types.ts";
-import { getSetting } from "../../system/index.ts";
+import { getSetting } from "../../../modules/platform/services/system-settings.ts";
 import {
   DATA_REQUEST_STATUSES,
   type DataRequestStatus,
   listAllDataRequests,
   updateDataRequestStatus,
-} from "../services/data-requests.ts";
+} from "../../../modules/platform/services/legal/data-requests.ts";
 
 const router = new Hono<AuthEnv>();
-
-// 组级注入 Actor RequestContext：审计日志（logAudit）依赖 getRequestContext()，
-// 而管理员路径经 FINE_GRAINED_ADMIN_PREFIXES 跳过了注入上下文的 adminMiddleware。
-// 与 admin/routes/carousel.ts 同模式（2026-09-24 评审：legal 发布/处置此前无审计）。
-router.use("*", authMiddleware, (c, next) => {
-  return withActorContext(c, () => next());
-});
 
 /** 断言 kind 合法（路由层 400）。 */
 function requireKind(raw: string | undefined): LegalKind {
@@ -80,7 +75,8 @@ router.post("/documents/:kind/versions", authMiddleware, async (c) => {
     body.content ?? "",
     body.change_summary ?? null,
     body.is_material === true,
-    c.get("userId") as string,
+    requireUserActor(c.get("actor")),
+    { ipAddress: getClientIp(c) },
   );
   return c.json({ data: { kind, version } }, 201);
 });
@@ -158,8 +154,9 @@ router.patch("/data-requests/:id", authMiddleware, async (c) => {
   await updateDataRequestStatus(
     c.req.param("id") ?? "",
     body.status ?? "",
-    c.get("userId") as string,
+    requireUserActor(c.get("actor")),
     body.resolution ?? null,
+    { ipAddress: getClientIp(c) },
   );
   return c.json({ data: { updated: true } });
 });

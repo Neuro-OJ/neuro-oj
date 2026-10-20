@@ -12,7 +12,7 @@ import {
   type LegalKind,
   listVersions,
 } from "../index.ts";
-import { ValidationError } from "./../../../shared/base/errors.ts";
+import { ValidationError } from "../../../shared/base/errors.ts";
 
 const router = new Hono();
 

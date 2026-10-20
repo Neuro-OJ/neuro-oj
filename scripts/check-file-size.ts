@@ -31,7 +31,7 @@ export const SIZE_BASELINE: Record<string, number> = {
   //   messages.ts 1102 + messages-conversation-actions.ts 414 + messages-shared.ts 71
   // - noj-core/src/shared/config/settings-registry.ts 1380 →
   //   settings-registry.ts 946 + settings-registry-bootstrap.ts 458
-  "noj-core/src/domains/contest/services/contest-similarity.ts": 1315,
+  "noj-core/src/modules/contests/services/contest-similarity.ts": 1315,
   // 2026-09-21：`noj-cli` 是纯 TS 重写后的正式模块，此前**不在 SCAN_ROOTS**，
   // 其 3 个超阈值文件从未受棘轮约束（实测 lifecycle.ts 2097 行、cli.ts 1611 行、
   // config.ts 1218 行，门禁只报 3 个核心/UI 文件）。补入扫描根后按现状登记基线，

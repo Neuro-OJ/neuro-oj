@@ -14,12 +14,12 @@ import {
   loadWorkspace,
   workspaceAudit,
 } from "../../../workspace/index.ts";
-import { setDomainProblemBindingPolicy } from "../../../catalog/index.ts";
+import { setDomainProblemBindingPolicy } from "../../../../modules/problems/index.ts";
 import {
   assertDomainPracticeAllowed,
   loadDomainContest,
   verifyContestAccess,
-} from "../../../contest/index.ts";
+} from "../../../../modules/contests/index.ts";
 import { resolveDomainJobContexts } from "./domain-job-access.ts";
 import {
   getRejudgeJob,

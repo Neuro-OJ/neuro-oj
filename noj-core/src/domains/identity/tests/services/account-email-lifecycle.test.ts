@@ -16,15 +16,17 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   communityPosts,
+  roles,
+  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import { resetEmailProvider } from "../../../system/services/email.ts";
 import { takeMockEmailsForTest } from "../../../system/services/email-providers/mock.ts";
-import { runWithContext } from "../../../system/index.ts";
 import { getPost } from "../../../community/index.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 
 async function seedUser(verified = false) {
   const id = crypto.randomUUID();
@@ -40,6 +42,15 @@ async function seedUser(verified = false) {
     updated_at: now,
   });
   return id;
+}
+
+async function seedAdmin(verified = true) {
+  const userId = await seedUser(verified);
+  const [role] = await getDb().select({ id: roles.id }).from(roles).where(
+    eq(roles.name, "admin"),
+  );
+  await getDb().insert(userRoles).values({ user_id: userId, role_id: role.id });
+  return userId;
 }
 
 Deno.test("邮箱验证：注册路由发送 mock 邮件并由验证路由完成闭环", async () => {
@@ -204,12 +215,13 @@ Deno.test("账户注销：密码确认后身份匿名化且不可再次登录", 
 
 Deno.test("账户注销：root 被拒绝，管理员注销写入审计", async () => {
   await resetDbForTest();
-  await assertRejects(() => adminDeleteAccount("0"), ForbiddenError);
-  const userId = await seedUser(true);
-  await runWithContext(
-    { actorId: "0", actorIp: "127.0.0.1", actorRole: "root" },
-    () => adminDeleteAccount(userId),
+  await assertRejects(
+    () => adminDeleteAccount("0", userActorFromAuthenticatedId("operator")),
+    ForbiddenError,
   );
+  const actorId = await seedAdmin();
+  const userId = await seedUser(true);
+  await adminDeleteAccount(userId, userActorFromAuthenticatedId(actorId));
   const rows = await getDb().select().from(auditLogs).where(
     eq(auditLogs.target_id, userId),
   );

@@ -13,7 +13,7 @@ import {
 } from "../../services/index-writer.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
-import { backfillDefaultCatalog } from "../../../catalog/index.ts";
+import { backfillDefaultCatalog } from "../../../../modules/problems/services/workspace/backfill.ts";
 
 try {
   await connectRedis();

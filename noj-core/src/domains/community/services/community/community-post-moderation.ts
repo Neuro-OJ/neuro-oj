@@ -3,10 +3,10 @@ import {
   communityModerationActions,
   communityNotifications,
   communityPosts,
-} from "./../../../../shared/db/schema.ts";
-import { NotFoundError } from "./../../../../shared/base/errors.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
-import type { CommunityPostStatus } from "./../../types/community.ts";
+} from "../../../../shared/db/schema.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
+import type { CommunityPostStatus } from "../../types/community.ts";
 import { createNotification } from "../notifications.ts";
 import { logAudit } from "../../../system/index.ts";
 import {

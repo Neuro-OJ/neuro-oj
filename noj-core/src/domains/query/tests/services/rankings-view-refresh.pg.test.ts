@@ -38,7 +38,7 @@ import {
   inspectRankingView,
   refreshRankingsView,
 } from "../../index.ts";
-import { updateContest } from "../../../contest/index.ts";
+import { updateContest } from "../../../../modules/contests/index.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
 

@@ -34,7 +34,7 @@ import {
   assertDefaultProblemSource,
   canonicalJson,
   resolveDefaultExecutionContexts,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertWorkspacePermission,

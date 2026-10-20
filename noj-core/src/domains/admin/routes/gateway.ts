@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import type { AuthEnv } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {

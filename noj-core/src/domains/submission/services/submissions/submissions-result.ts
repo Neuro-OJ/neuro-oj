@@ -11,19 +11,19 @@
 import { eq } from "drizzle-orm";
 import { evaluationAttempts } from "../../../../shared/db/schema.ts";
 import { lockProjectionHosts } from "../versioning/projection.ts";
-import { sseEvents, submissions } from "./../../../../shared/db/schema.ts";
+import { sseEvents, submissions } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
-} from "./../../../../shared/base/errors.ts";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
+} from "../../../../shared/base/errors.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
-import { filterUnendedContestIds } from "../../../contest/index.ts";
+import { filterUnendedContestIds } from "../../../../modules/contests/index.ts";
 import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
-import { Channels } from "./../../../../shared/sse/event-bus.ts";
+import { Channels } from "../../../../shared/sse/event-bus.ts";
 import {
   isValidGradedScore,
   sanitizeJudgeResult,

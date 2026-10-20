@@ -4,7 +4,7 @@ import {
   emailDeliveryEvents,
   emailSuppressions,
 } from "../../../../shared/db/schema.ts";
-import { observability as metrics } from "../../../../domains/observability/write.ts";
+import { observability as metrics } from "../../../observability/write.ts";
 import type {
   EmailDeliveryEvent,
   NormalizedEmailDeliveryEvent,

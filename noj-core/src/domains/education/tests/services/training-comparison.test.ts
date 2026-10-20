@@ -24,7 +24,7 @@ import {
   importDomainProblem,
   setDomainProblemBindingPolicy,
   setDomainProblemSharing,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
 import { setClassroomMember } from "../../index.ts";
 import { createApp } from "../../../../app.ts";

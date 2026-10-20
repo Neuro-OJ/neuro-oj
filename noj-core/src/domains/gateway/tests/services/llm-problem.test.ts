@@ -8,10 +8,10 @@ import {
   assertThrows,
 } from "jsr:@std/assert@^1";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
-import { validateBundleManifest } from "../../../catalog/index.ts";
-import { isValidLlmConfig } from "../../../catalog/index.ts";
+import { validateBundleManifest } from "../../../../modules/problems/index.ts";
+import { isValidLlmConfig } from "../../../../modules/problems/index.ts";
 import { buildJudgeTaskLlm } from "../../services/llm-token.ts";
-import type { RuntimeConfig } from "../../../catalog/index.ts";
+import type { RuntimeConfig } from "../../../../modules/problems/index.ts";
 import {
   assertLlmLimitsWithinDefault,
   getDefaultLlmLimits,

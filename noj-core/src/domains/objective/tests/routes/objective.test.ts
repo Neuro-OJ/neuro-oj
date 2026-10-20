@@ -11,7 +11,7 @@ import {
   jsonRequest,
 } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { createProblem } from "../../../catalog/index.ts";
+import { createProblem } from "../../../../modules/problems/index.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 
@@ -1000,8 +1000,8 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+import { resetDbForTest } from "../../../../modules/problems/tests/default-fixture.ts";
 
-import { createDefaultCatalogToken } from "../../../catalog/tests/default-fixture.ts";
+import { createDefaultCatalogToken } from "../../../../modules/problems/tests/default-fixture.ts";
 
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";

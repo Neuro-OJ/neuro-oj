@@ -14,7 +14,7 @@ import { enqueueEducationRefresh } from "../../../shared/education-events.ts";
 import {
   domainProblemReference,
   loadBindingAvailability,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import { assertClassroomCapability } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";

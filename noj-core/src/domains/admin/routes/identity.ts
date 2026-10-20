@@ -235,7 +235,7 @@ router.delete("/users/:id", async (c) => {
     throw new ValidationError("请输入确认词 DELETE");
   }
   const targetUserId = await resolveUserId(c.req.param("id")! as string);
-  await adminDeleteAccount(targetUserId, c.get("userId"));
+  await adminDeleteAccount(targetUserId, c.get("actor"));
   return c.body(null, 204);
 });
 

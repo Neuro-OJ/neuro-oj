@@ -22,7 +22,7 @@ import {
   toggleBookmark,
   togglePostLike,
 } from "../../index.ts";
-import { createContest } from "../../../contest/index.ts";
+import { createContest } from "../../../../modules/contests/index.ts";
 import {
   ForbiddenError,
   NotFoundError,

@@ -14,7 +14,7 @@ import {
   removeDomainMember,
   setMemberRoles,
 } from "../../../workspace/index.ts";
-import { createDomainContest } from "../../../contest/index.ts";
+import { createDomainContest } from "../../../../modules/contests/index.ts";
 import { updateSetting } from "../../../system/index.ts";
 import {
   countPostsByType,

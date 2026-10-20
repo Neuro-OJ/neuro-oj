@@ -21,7 +21,7 @@ export type SelfTestStatus = typeof SELF_TEST_STATUSES[number];
 
 /** 创建自测的请求体（problem_id 从 URL 获取，不放在 body）。 */
 export interface SelfTestInput {
-  cases?: import("../../catalog/index.ts").OiSelfTestCase[];
+  cases?: import("../../../modules/problems/index.ts").OiSelfTestCase[];
   language: string;
   code: string;
   file_name?: string;

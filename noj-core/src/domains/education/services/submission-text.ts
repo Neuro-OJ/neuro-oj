@@ -11,7 +11,7 @@ import {
   deliverStoredArtifact,
   getStorageProvider,
 } from "../../system/index.ts";
-import { readEvaluationEntries } from "../../catalog/index.ts";
+import { readEvaluationEntries } from "../../../modules/problems/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
 import { teachingSubmissionRelation } from "./student-submissions.ts";

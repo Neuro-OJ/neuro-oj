@@ -17,7 +17,7 @@
  * @module
  */
 
-import { BadRequestError } from "./../../../../shared/base/errors.ts";
+import { BadRequestError } from "../../../../shared/base/errors.ts";
 
 /** pickle 类扩展名黑名单（反序列化风险）。 */
 const REJECTED_EXT: readonly string[] = [

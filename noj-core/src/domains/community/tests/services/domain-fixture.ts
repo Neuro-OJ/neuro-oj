@@ -19,7 +19,7 @@ import {
   initSystemSettings,
   updateSetting,
 } from "../../../system/index.ts";
-import { importDomainProblem } from "../../../catalog/index.ts";
+import { importDomainProblem } from "../../../../modules/problems/index.ts";
 import { createBoard, createPost, withDomainCommunity } from "../../index.ts";
 
 export async function domainFixture(prefix: string) {

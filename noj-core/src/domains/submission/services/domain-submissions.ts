@@ -3,7 +3,7 @@ import { createSubmission } from "./submissions/submissions-crud.ts";
 import { createArtifactSubmission } from "./submissions/artifact-submissions.ts";
 import { createPredictionSubmission } from "./submissions/prediction-submissions.ts";
 import { createSelfTest } from "./self-tests.ts";
-import type { ProblemContentV1 } from "../../catalog/index.ts";
+import type { ProblemContentV1 } from "../../../modules/problems/index.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 import type { SubmissionInput } from "./submissions/submissions-types.ts";
 import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";

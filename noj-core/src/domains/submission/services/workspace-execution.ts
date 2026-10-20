@@ -9,11 +9,11 @@ import {
   domains,
   problems,
 } from "../../../shared/db/schema.ts";
-import { resolveDomainProblem } from "../../catalog/index.ts";
+import { resolveDomainProblem } from "../../../modules/problems/index.ts";
 import {
   assertDomainPracticeAllowed,
   getDomainContestSubmissionTarget,
-} from "../../contest/index.ts";
+} from "../../../modules/contests/index.ts";
 
 /** URL 使用域和人类可读引用；不接受客户端传入绑定或源域覆盖。 */
 export interface DomainExecutionRequest {

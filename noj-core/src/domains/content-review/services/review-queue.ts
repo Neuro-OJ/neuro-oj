@@ -1,13 +1,13 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { contentReviewQueue } from "./../../../shared/db/schema.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { contentReviewQueue } from "../../../shared/db/schema.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
   NotFoundError,
   ValidationError,
-} from "./../../../shared/base/errors.ts";
-import { nowIso } from "./../../../shared/base/dates.ts";
+} from "../../../shared/base/errors.ts";
+import { nowIso } from "../../../shared/base/dates.ts";
 import { logAudit } from "../../system/index.ts";
 
 /**

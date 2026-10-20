@@ -1,16 +1,16 @@
 import { Hono } from "hono";
-import { authMiddleware, checkPermission } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
+import { authMiddleware, checkPermission } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../system/index.ts";
-import { resolveProblem } from "./../../catalog/index.ts";
+import { resolveProblem } from "../../../modules/problems/index.ts";
 import {
   cancelSelfTest,
   createSelfTest,
   getSelfTest,
   listMySelfTests,
 } from "../services/self-tests.ts";
-import type { SelfTestInput } from "./../types/self-tests.ts";
+import type { SelfTestInput } from "../types/self-tests.ts";
 
 type Env = {
   Variables: {

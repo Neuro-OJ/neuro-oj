@@ -9,8 +9,12 @@ import { isJtiRevoked } from "../services/security/revokedTokens.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { userBans, users } from "../../../shared/db/schema.ts";
 import { getCached } from "../services/security/banCache.ts";
-import { getClientIp } from "../../system/index.ts";
-import { runWithContext } from "../../system/index.ts";
+import { getClientIp } from "../../system/services/rate-limit-env.ts";
+import { runWithContext } from "../../system/services/request-context.ts";
+import {
+  guestActor,
+  userActorFromAuthenticatedId,
+} from "../../../modules/access/contracts/actor.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
@@ -162,17 +166,22 @@ export async function optionalAuthMiddleware(
   if (payload) {
     const account = await getActiveAccount(payload.sub);
     if (!account || account.sessionVersion !== payload.session_version) {
+      // 可选认证对无效或已注销 token 仍按匿名请求继续；下游不得看到悬空身份。
+      c.set("actor", guestActor());
       await next();
       return;
     }
     c.set("userId", payload.sub);
     c.set("userRole", payload.role);
+    c.set("actor", userActorFromAuthenticatedId(payload.sub));
     c.set("mustChangePassword", payload.must_change_password ?? false);
     c.set("emailVerified", account.emailVerified);
     if (payload.jti) c.set("jti", payload.jti);
     if (payload.exp) c.set("tokenExp", payload.exp);
 
     await checkBanStatus(c, payload.sub);
+  } else {
+    c.set("actor", guestActor());
   }
   await next();
 }
@@ -230,6 +239,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
 
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
+  c.set("actor", userActorFromAuthenticatedId(payload.sub));
   c.set("mustChangePassword", payload.must_change_password ?? false);
   c.set("emailVerified", account.emailVerified);
   if (payload.jti) c.set("jti", payload.jti);
@@ -277,9 +287,8 @@ export function getUserBanState(userId: string): Promise<UserBanState> {
  * 权限集（含角色继承链）包含 `admin:full_access` 即视为管理员，
  * 不依赖 JWT claim（JWT 不携带 is_admin）。
  *
- * 注入 RequestContext 到 AsyncLocalStorage（issue #101），使下游 service 层
- * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
- * 用于审计日志埋点。
+ * 注入旧 HTTP 观测上下文。新业务用例必须从显式 UserActor 参数取得身份；
+ * ALS 只保留 IP/日志关联兼容。
  */
 export async function adminMiddleware(
   c: Context,
@@ -292,6 +301,7 @@ export async function adminMiddleware(
 
   return runWithContext(
     {
+      actor: c.get("actor"),
       actorId: c.get("userId"),
       actorIp: getClientIp(c),
       actorRole: c.get("userRole"),

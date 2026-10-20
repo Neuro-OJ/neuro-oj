@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -9,14 +10,24 @@ import {
   parseJsonBody,
 } from "../../../shared/http/request.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
-import { BadRequestError } from "../../../shared/base/errors.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../../workspace/index.ts";
-import { withActorContext } from "../services/request-context.ts";
 import { enforceRateLimit } from "../services/hardening-rate-limit.ts";
-import { type ContentScope, contentSource } from "../services/content-scope.ts";
+import {
+  type ContentScope,
+  contentSource,
+} from "../../../modules/platform/services/content-scope.ts";
+import { getClientIp } from "../services/rate-limit-env.ts";
+import {
+  requireUserActor,
+  type UserActor,
+} from "../../../modules/access/contracts/actor.ts";
 import {
   type CarouselSlideInput,
   createSlide,
@@ -27,7 +38,7 @@ import {
   reorderSlides,
   updateSlide,
   uploadCarouselImage,
-} from "../services/carousel.ts";
+} from "../../../modules/platform/services/carousel.ts";
 import {
   createAnnouncement,
   type CreateAnnouncementInput,
@@ -39,13 +50,19 @@ import {
   resolveAnnouncementId,
   updateAnnouncement,
   type UpdateAnnouncementInput,
-} from "../services/announcements.ts";
+} from "../../../modules/platform/services/announcements.ts";
 
 type ContentEnv = OptionalAuthEnv & {
   Variables: { contentScope: ContentScope };
 };
 const router = new Hono<ContentEnv>();
 const prefix = "/domains/:slug";
+
+function authenticatedActor(c: Context<ContentEnv>): UserActor {
+  const actor = c.get("actor");
+  if (!actor) throw new UnauthorizedError("未提供认证身份");
+  return requireUserActor(actor);
+}
 const readPrefixes = [
   `${prefix}/announcements`,
   `${prefix}/announcements/*`,
@@ -83,7 +100,7 @@ for (
         { windowSec: 60, max: 30 },
       );
     }
-    return await withActorContext(c, next);
+    return await next();
   });
 }
 
@@ -144,7 +161,9 @@ router.post(slides, async (c) => {
   const input = await objectBody(c);
   const id = await createSlide(
     input as unknown as CarouselSlideInput,
+    authenticatedActor(c),
     c.var.contentScope,
+    { ipAddress: getClientIp(c) },
   );
   return c.json({ data: { id } }, 201);
 });
@@ -154,15 +173,31 @@ router.post(`${slides}/reorder`, async (c) => {
     !Array.isArray(input.ids) ||
     !input.ids.every((id) => typeof id === "string")
   ) throw new BadRequestError("请提供轮播 ID 列表");
-  await reorderSlides(input.ids, c.var.contentScope);
+  await reorderSlides(
+    input.ids,
+    authenticatedActor(c),
+    c.var.contentScope,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: { reordered: true } });
 });
 router.patch(`${slides}/:id`, async (c) => {
-  await updateSlide(c.req.param("id"), await objectBody(c), c.var.contentScope);
+  await updateSlide(
+    c.req.param("id"),
+    await objectBody(c),
+    authenticatedActor(c),
+    c.var.contentScope,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: { updated: true } });
 });
 router.delete(`${slides}/:id`, async (c) => {
-  await deleteSlide(c.req.param("id"), c.var.contentScope);
+  await deleteSlide(
+    c.req.param("id"),
+    authenticatedActor(c),
+    c.var.contentScope,
+    { ipAddress: getClientIp(c) },
+  );
   return c.body(null, 204);
 });
 router.post(`${prefix}/settings/carousel/images`, async (c) => {
@@ -170,7 +205,11 @@ router.post(`${prefix}/settings/carousel/images`, async (c) => {
   if (!(input.file instanceof File)) {
     throw new BadRequestError("请上传有效的图片文件");
   }
-  const url = await uploadCarouselImage(input.file, c.var.contentScope);
+  const url = await uploadCarouselImage(
+    input.file,
+    authenticatedActor(c),
+    c.var.contentScope,
+  );
   return c.json({ data: { image_storage_url: url } }, 201);
 });
 
@@ -193,7 +232,9 @@ router.post(
       data: sourced(
         await createAnnouncement(
           await objectBody(c) as unknown as CreateAnnouncementInput,
+          authenticatedActor(c),
           c.var.contentScope,
+          { ipAddress: getClientIp(c) },
         ),
       ),
     }, 201),
@@ -205,14 +246,21 @@ router.put(`${notices}/:id`, async (c) => {
       await updateAnnouncement(
         id,
         await objectBody(c) as UpdateAnnouncementInput,
+        authenticatedActor(c),
         c.var.contentScope,
+        { ipAddress: getClientIp(c) },
       ),
     ),
   });
 });
 router.delete(`${notices}/:id`, async (c) => {
   const id = await resolveAnnouncementId(c.req.param("id"));
-  await deleteAnnouncement(id, c.var.contentScope);
+  await deleteAnnouncement(
+    id,
+    authenticatedActor(c),
+    c.var.contentScope,
+    { ipAddress: getClientIp(c) },
+  );
   return c.body(null, 204);
 });
 

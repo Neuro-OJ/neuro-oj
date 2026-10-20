@@ -14,9 +14,9 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { problems } from "./../../../../shared/db/schema.ts";
-import { NotFoundError } from "./../../../../shared/base/errors.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { problems } from "../../../../shared/db/schema.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   type JudgeSubmissionMode,
   toJudgeSubmissionMode,

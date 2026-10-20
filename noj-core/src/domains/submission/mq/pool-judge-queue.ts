@@ -3,7 +3,7 @@ import {
   isOiRuntimeConfig,
   validateOiRuntimeConfig,
   validateRuntimeConfig,
-} from "../../catalog/index.ts";
+} from "../../../modules/problems/index.ts";
 import {
   buildJudgeQueues,
   JUDGE_QUEUE_LAYOUT,

@@ -6,6 +6,8 @@
  * `test-launcher.ts` 统一管理；本文件只保留可被零依赖测试导入的目录数据。
  */
 
+import { allTargetModuleTestRoots } from "../../scripts/module-test-metadata.ts";
+
 export interface Shard {
   /** 日志和资源命名使用的稳定名称。 */
   name: string;
@@ -89,6 +91,10 @@ export const SHARDS: Shard[] = [
       "src/domains/workspace/tests/services",
       "src/domains/education/tests/routes",
       "src/domains/education/tests/services",
+      // 迁移期模块测试与 legacy domain 测试同时进入正式分片。目录由
+      // module-boundaries.json 推导，新增 application/http/runtime 测试不会
+      // 因忘记手抄一条 shard 路径而静默漏跑。
+      ...allTargetModuleTestRoots(),
     ],
   },
 ];

@@ -10,9 +10,9 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { conversations } from "./../../../shared/db/schema.ts";
-import { NotFoundError } from "./../../../shared/base/errors.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { conversations } from "../../../shared/db/schema.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
 
 /** 消息内容最大长度 */
 export const MAX_MESSAGE_LENGTH = 10_000;

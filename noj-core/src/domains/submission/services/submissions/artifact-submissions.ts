@@ -14,39 +14,39 @@ import { publishQueueChange } from "../queue.ts";
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { problems, submissions } from "./../../../../shared/db/schema.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { problems, submissions } from "../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "./../../../../shared/base/errors.ts";
+} from "../../../../shared/base/errors.ts";
 import {
   assertStorageObjectBindable,
   compensateUploadedObject,
   getStorageProvider,
   registerStreamedStorageObject,
-} from "./../../../system/index.ts";
-import { generatePublicId } from "./../../../../shared/security/public-id.ts";
+} from "../../../system/index.ts";
+import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
-import { assertContestSubmissionLimit } from "../../../contest/index.ts";
-import { verifyContestAccess } from "../../../contest/index.ts";
+import { assertContestSubmissionLimit } from "../../../../modules/contests/index.ts";
+import { verifyContestAccess } from "../../../../modules/contests/index.ts";
 import {
   assertDefaultProblemSource,
   evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../../catalog/index.ts";
+} from "../../../../modules/problems/index.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
-import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
+import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
 import {
   Channels,
   publishSseEvent,
-} from "./../../../../shared/sse/event-bus.ts";
+} from "../../../../shared/sse/event-bus.ts";
 import { getLogger } from "@logtape/logtape";
 import { peekFirstChunk } from "./stream-peek.ts";
 
@@ -67,7 +67,7 @@ import {
   reserveDomainStorageUpload,
   settleDomainStorageUpload,
 } from "../../../workspace/index.ts";
-import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
+import { isOiRuntimeConfig } from "../../../../modules/problems/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";

@@ -12,25 +12,25 @@ import {
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
 import { versionRequired } from "../services/versioning/submission-version.ts";
-import { verifyContestAccess } from "../../contest/index.ts";
+import { verifyContestAccess } from "../../../modules/contests/index.ts";
 import { getCachedTodayStats, getCachedTotalStats } from "../../query/index.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "./../../identity/index.ts";
-import { checkPermission } from "./../../identity/index.ts";
+} from "../../identity/index.ts";
+import { checkPermission } from "../../identity/index.ts";
 import { rateLimit } from "../../system/index.ts";
 import {
   BadRequestError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { createFileStream } from "./../../../shared/http/file-stream.ts";
+} from "../../../shared/base/errors.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { createFileStream } from "../../../shared/http/file-stream.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "./../../../shared/http/pagination.ts";
+} from "../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
 import { enforceSubmissionRateLimit } from "../../system/index.ts";
 

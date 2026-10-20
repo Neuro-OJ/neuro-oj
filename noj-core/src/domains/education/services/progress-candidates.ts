@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
-import { endedWindowCondition } from "../../contest/index.ts";
+import { endedWindowCondition } from "../../../modules/contests/index.ts";
 import type { EducationCandidate } from "./progress-selection.ts";
 
 /** 只按作业域、题目、实际学生和时间索引读取，不扫描全实例提交。 */

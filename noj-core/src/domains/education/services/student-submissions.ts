@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { oiVerdict } from "../../submission/index.ts";
+import { oiVerdict } from "../../../modules/evaluations/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
 

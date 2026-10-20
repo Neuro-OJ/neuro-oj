@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -9,7 +10,11 @@ import {
   assertObjectBody,
   parseJsonBody,
 } from "../../../shared/http/request.ts";
-import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
+import {
+  AppError,
+  BadRequestError,
+  UnauthorizedError,
+} from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { userWorkspacePreferences } from "../../../shared/db/schema.ts";
 import {
@@ -17,7 +22,6 @@ import {
   parsePagination,
 } from "../../../shared/http/pagination.ts";
 import type {
-  DomainConfiguration,
   DomainLimits,
   DomainPreset,
   DomainRole,
@@ -30,28 +34,15 @@ import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../services/access.ts";
-import {
-  createDomain,
-  listDomains,
-  setDomainStatus,
-  updateDomain,
-} from "../services/domains.ts";
+import { listDomains } from "../services/domains.ts";
 import { getInstancePolicy } from "../services/instance.ts";
 import {
-  consumeDomainInvitation,
-  createDomainInvitation,
   listDomainInvitations,
   previewDomainInvitation,
-  revokeDomainInvitation,
 } from "../services/invitations.ts";
 import {
-  joinDomain,
   listDomainJoinRequests,
   listDomainMembersPage,
-  removeDomainMember,
-  reviewJoinRequest,
-  setMemberRoles,
-  transferDomain,
 } from "../services/members.ts";
 import {
   requestDomainCreation,
@@ -65,12 +56,34 @@ import {
   listDomainCreationRequests,
 } from "../services/governance.ts";
 import { getDomainResourceUsage } from "../services/resource-usage.ts";
+import { readInstanceSettings } from "../../system/index.ts";
 import {
-  readInstanceSettings,
-  saveInstanceSettings,
-} from "../../system/index.ts";
+  consumeDomainInvitationCommand,
+  createDomainCommand,
+  createDomainInvitationCommand,
+  joinDomainCommand,
+  removeDomainMemberCommand,
+  reviewJoinRequestCommand,
+  revokeDomainInvitationCommand,
+  setDomainStatusCommand,
+  setMemberRolesCommand,
+  transferDomainCommand,
+  updateDomainCommand,
+} from "../../../modules/application/access.ts";
+import { saveInstanceSettings as savePlatformInstanceSettings } from "../../../modules/platform/index.ts";
+import {
+  requireUserActor,
+  type UserActor,
+} from "../../../modules/access/contracts/actor.ts";
 
 const router = new Hono<OptionalAuthEnv>();
+
+/** authMiddleware 已注入 actor；HTTP 适配器在进入写用例前显式收紧类型。 */
+function authenticatedActor(c: Context<OptionalAuthEnv>): UserActor {
+  const actor = c.get("actor");
+  if (!actor) throw new UnauthorizedError("未提供认证身份");
+  return requireUserActor(actor);
+}
 // 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
 for (
   const path of [
@@ -130,11 +143,11 @@ router.patch(
     const input = await body(c);
     assertObjectBody(input.values);
     return c.json({
-      data: await saveInstanceSettings(
+      data: await savePlatformInstanceSettings(
         c.req.param("section")!,
         input.values,
         c.req.header("If-Match"),
-        c.var.userId!,
+        authenticatedActor(c),
       ),
     });
   },
@@ -151,13 +164,14 @@ router.get(
 );
 router.post("/domains", authMiddleware, async (c) => {
   const input = await body(c);
+  const actor = authenticatedActor(c);
   return c.json({
-    data: await createDomain({
+    data: await createDomainCommand(actor, {
       slug: input.slug as string,
       name: input.name as string,
       preset: presetValue(input.preset),
       description: input.description as string | undefined,
-    }, c.var.userId!),
+    }),
   }, 201);
 });
 router.post("/domain-creation-requests", authMiddleware, async (c) => {
@@ -219,9 +233,9 @@ router.post(
 router.post("/domain-invitations/accept", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await consumeDomainInvitation(
+    data: await consumeDomainInvitationCommand(
+      authenticatedActor(c),
       (input.token ?? input.code) as string,
-      c.var.userId!,
     ),
   });
 });
@@ -281,14 +295,16 @@ router.patch("/domains/:slug", authMiddleware, async (c) => {
     throw new BadRequestError("域类型创建后固定", "DOMAIN_TYPE_FIXED");
   }
   return c.json({
-    data: await updateDomain(
+    data: await updateDomainCommand(
+      authenticatedActor(c),
       c.req.param("slug")!,
-      c.var.userId!,
       revisionHeader(c.req.header("If-Match")),
       {
         name: input.name as string | undefined,
         description: input.description as string | undefined,
-        configuration: input.configuration as DomainConfiguration | undefined,
+        configuration: input.configuration as
+          | Record<string, unknown>
+          | undefined,
       },
     ),
   });
@@ -296,9 +312,9 @@ router.patch("/domains/:slug", authMiddleware, async (c) => {
 router.post("/domains/:slug/status", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await setDomainStatus(
+    data: await setDomainStatusCommand(
+      authenticatedActor(c),
       c.req.param("slug")!,
-      c.var.userId!,
       input.status as "active",
       revisionHeader(c.req.header("If-Match")),
     ),
@@ -307,9 +323,9 @@ router.post("/domains/:slug/status", authMiddleware, async (c) => {
 router.post("/domains/:slug/join", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await joinDomain(
+    data: await joinDomainCommand(
+      authenticatedActor(c),
       c.req.param("slug")!,
-      c.var.userId!,
       input.reason as string | undefined,
     ),
   });
@@ -330,10 +346,10 @@ router.post(
       );
     }
     return c.json({
-      data: await reviewJoinRequest(
+      data: await reviewJoinRequestCommand(
+        authenticatedActor(c),
         c.req.param("slug")!,
         c.req.param("id")!,
-        c.var.userId!,
         input.approved,
       ),
     });
@@ -369,9 +385,9 @@ router.put(
   async (c) => {
     const input = await body(c);
     return c.json({
-      data: await setMemberRoles(
+      data: await setMemberRolesCommand(
+        authenticatedActor(c),
         c.req.param("slug")!,
-        c.var.userId!,
         c.req.param("userId")!,
         input.roles as DomainRole[],
       ),
@@ -383,9 +399,9 @@ router.delete(
   authMiddleware,
   async (c) =>
     c.json({
-      data: await removeDomainMember(
+      data: await removeDomainMemberCommand(
+        authenticatedActor(c),
         c.req.param("slug")!,
-        c.var.userId!,
         c.req.param("userId")!,
       ),
     }),
@@ -396,9 +412,9 @@ router.post("/domains/:slug/transfer", authMiddleware, async (c) => {
     throw new BadRequestError("负责人账号非法");
   }
   return c.json({
-    data: await transferDomain(
+    data: await transferDomainCommand(
+      authenticatedActor(c),
       c.req.param("slug")!,
-      c.var.userId!,
       input.user_id,
     ),
   });
@@ -406,9 +422,9 @@ router.post("/domains/:slug/transfer", authMiddleware, async (c) => {
 router.post("/domains/:slug/invitations", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await createDomainInvitation(
+    data: await createDomainInvitationCommand(
+      authenticatedActor(c),
       c.req.param("slug")!,
-      c.var.userId!,
       input,
     ),
   }, 201);
@@ -434,9 +450,9 @@ router.delete(
   authMiddleware,
   async (c) =>
     c.json({
-      data: await revokeDomainInvitation(
+      data: await revokeDomainInvitationCommand(
+        authenticatedActor(c),
         c.req.param("slug")!,
-        c.var.userId!,
         c.req.param("id")!,
       ),
     }),

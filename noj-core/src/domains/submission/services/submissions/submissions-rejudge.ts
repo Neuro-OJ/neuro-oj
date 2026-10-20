@@ -14,15 +14,15 @@
  */
 
 import { getLogger } from "@logtape/logtape";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { problems } from "./../../../../shared/db/schema.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { problems } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { logAudit } from "./../../../system/index.ts";
+import { logAudit } from "../../../system/index.ts";
 import {
   type AcceptJobResult,
   acceptRejudgeJob,
   getRejudgeJob,
-} from "./../versioning/rejudge-jobs.ts";
+} from "../versioning/rejudge-jobs.ts";
 
 const logger = getLogger(["noj", "submission"]);
 

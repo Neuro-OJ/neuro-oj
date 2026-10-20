@@ -1,5 +1,5 @@
 import { type JWTPayload, jwtVerify, SignJWT } from "jose";
-import { getSetting } from "../../../system/index.ts";
+import { getSetting } from "../../../../modules/platform/index.ts";
 
 /**
  * JWT 签发者与接收者标识。

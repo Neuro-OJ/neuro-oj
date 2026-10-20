@@ -7,17 +7,18 @@
  */
 
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { ValidationError } from "./../../../shared/base/errors.ts";
-import { enforceRateLimit } from "./../../system/index.ts";
-import { getClientIp } from "./../../system/index.ts";
+import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { ValidationError } from "../../../shared/base/errors.ts";
+import { enforceRateLimit } from "../../system/index.ts";
+import { getClientIp } from "../../system/index.ts";
+import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   getCurrentDocument,
-  isLegalKind,
   type LegalKind,
-  recordConsent,
-} from "../index.ts";
+} from "../../../modules/platform/index.ts";
+import { isLegalKind } from "../types.ts";
+import { recordConsent } from "../../../modules/platform/services/legal/consent.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -31,6 +32,7 @@ const CONSENT_LIMIT = { windowSec: 30, max: 10 };
  */
 router.post("/consent", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
+  const actor = requireUserActor(c.get("actor"));
   await enforceRateLimit(`legal-consent:user:${userId}`, CONSENT_LIMIT);
 
   const body = await parseJsonBody<{ kind?: string }>(c);
@@ -45,7 +47,7 @@ router.post("/consent", authMiddleware, async (c) => {
   }
 
   await recordConsent(
-    userId,
+    actor,
     kind as LegalKind,
     doc.version,
     doc.content_hash,

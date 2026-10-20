@@ -1,6 +1,6 @@
 import { and, count, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
-import { recordSourceDomainEducationChange } from "../../catalog/index.ts";
+import { recordSourceDomainEducationChange } from "../../../modules/problems/index.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {

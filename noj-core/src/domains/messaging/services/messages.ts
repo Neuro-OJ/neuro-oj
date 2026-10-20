@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import {
   conversationPreferences,
   conversationReads,
@@ -10,15 +10,15 @@ import {
   messages,
   userBans,
   users,
-} from "./../../../shared/db/schema.ts";
+} from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
-import { getStorageProvider } from "./../../system/index.ts";
-import { isStorageUrl, parseStorageUrl } from "./../../system/index.ts";
-import { validateImageFile } from "./../../../shared/security/image-validation.ts";
+} from "../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import { getStorageProvider } from "../../system/index.ts";
+import { isStorageUrl, parseStorageUrl } from "../../system/index.ts";
+import { validateImageFile } from "../../../shared/security/image-validation.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "messaging"]);

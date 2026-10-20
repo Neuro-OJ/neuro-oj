@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import {
   getCarouselImageBytes,
   listEnabledSlides,
-} from "../services/carousel.ts";
+} from "../../../modules/platform/services/carousel.ts";
 
 const router = new Hono();
 

@@ -5,12 +5,12 @@ import {
   communityNotifications,
   communityPosts,
   users,
-} from "./../../../../shared/db/schema.ts";
+} from "../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "./../../../../shared/base/errors.ts";
+} from "../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import { createNotification } from "../notifications.ts";
 import {
@@ -24,7 +24,7 @@ import {
 } from "./community-post-common.ts";
 import { authorProjection } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { nowIso } from "./../../../../shared/base/dates.ts";
+import { nowIso } from "../../../../shared/base/dates.ts";
 import {
   communityDb,
   communityDomainId,

@@ -17,7 +17,7 @@ import {
 import { searchFlat, searchGrouped } from "../../services/search.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
-import { backfillDefaultCatalog } from "../../../catalog/index.ts";
+import { backfillDefaultCatalog } from "../../../../modules/problems/services/workspace/backfill.ts";
 
 await resetDbForTest();
 

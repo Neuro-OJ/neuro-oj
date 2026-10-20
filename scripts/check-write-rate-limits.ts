@@ -17,6 +17,9 @@
  * 自检：扫描不到任何路由文件 / 解析不到任何写路由 → 判定门禁失效并失败。
  */
 
+import { relative, resolve } from "node:path";
+import { collectRouteFiles } from "./gen-route-catalog.ts";
+
 export interface WriteRouteFile {
   file: string;
   writeRoutes: string[];
@@ -81,15 +84,15 @@ export const ALLOWLIST: Record<
       "管理后台版本策略/固定版本：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
   },
   // ── 题单/标签 CRUD：权限受限、频率低，矩阵文档列为可接受 ──
-  "noj-core/src/domains/catalog/routes/tags.ts": {
+  "noj-core/src/modules/problems/routes/tags.ts": {
     status: "exempt",
     reason: "标签 CRUD：tag:manage 权限受限（矩阵文档「已知未覆盖」）",
   },
-  "noj-core/src/domains/catalog/routes/trainings.ts": {
+  "noj-core/src/modules/problems/routes/trainings.ts": {
     status: "exempt",
     reason: "题单 CRUD：权限受限、频率低（矩阵文档「已知未覆盖」）",
   },
-  "noj-core/src/domains/catalog/routes/domain-trainings.ts": {
+  "noj-core/src/modules/problems/routes/domain-trainings.ts": {
     status: "exempt",
     reason:
       "域题单 CRUD：本域资源管理权限与审计，沿用题单低频管理豁免；不接受普通成员内容写入",
@@ -156,41 +159,8 @@ export async function checkWriteRateLimits(
   // 白名单只对"真实仓库根"有意义；临时夹具目录（单测）不触发陈旧条目检查
   const checkStale = options.checkStaleAllowlist ?? root === ".";
 
-  const domainsDir = `${root}/noj-core/src/domains`;
-  const files: string[] = [];
-  async function walk(dir: string): Promise<void> {
-    // Deno.readDir 惰性迭代：目录不存在时错误在 for await 处抛出
-    const entries: Deno.DirEntry[] = [];
-    try {
-      for await (const entry of Deno.readDir(dir)) entries.push(entry);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const path = `${dir}/${entry.name}`;
-      if (entry.isDirectory) {
-        if (entry.name === "tests") continue;
-        await walk(path);
-      } else if (
-        entry.isFile && entry.name.endsWith(".ts") &&
-        path.includes("/routes/") && !path.endsWith("/index.ts")
-      ) {
-        files.push(path);
-      }
-    }
-  }
-  await walk(domainsDir);
-  if (files.length === 0 && root === ".") {
-    return {
-      errors: [`无法读取路由目录 ${domainsDir}（目录结构或过滤规则已失效）`],
-      stats: {
-        scanned_files: 0,
-        write_routes: 0,
-        files_without_limits: 0,
-        pending_debt: 0,
-      },
-    };
-  }
+  // 与路由目录共用元数据发现，迁移到 modules 后仍检查同一批实际路由。
+  const files = collectRouteFiles(resolve(root));
 
   let writeRoutes = 0;
   for (const file of files) {
@@ -199,7 +169,7 @@ export async function checkWriteRateLimits(
     if (routes.length === 0) continue;
     writeRoutes += routes.length;
     inspected.push({
-      file: file.replace(/^\.\//, ""),
+      file: relative(resolve(root), file),
       writeRoutes: routes,
       hasRateLimitEvidence: hasRateLimitEvidence(text),
     });

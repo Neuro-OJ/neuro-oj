@@ -1,9 +1,9 @@
 /**
  * LLM eval_token 签发工具（与 noj-llm-gateway 共享 NOJ_LLM_SERVICE_TOKEN）。
  */
-import type { LlmConfig } from "./../../catalog/index.ts";
-import type { JudgeTaskLlm } from "../../submission/index.ts";
-import type { RuntimeConfig } from "../../catalog/index.ts";
+import type { LlmConfig } from "../../../modules/problems/index.ts";
+import type { JudgeTaskLlm } from "../../../modules/evaluations/index.ts";
+import type { RuntimeConfig } from "../../../modules/problems/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { getLlmProviderById, LlmGatewayError } from "./llm.ts";
@@ -16,7 +16,7 @@ import {
   type ResolvedLlmModels,
   resolveLlmModels,
 } from "./llm-model-aliases.ts";
-import { LLM_DEFAULT_MODEL_ALIAS } from "../../catalog/index.ts";
+import { LLM_DEFAULT_MODEL_ALIAS } from "../../../modules/problems/index.ts";
 
 const IV_LENGTH = 12;
 

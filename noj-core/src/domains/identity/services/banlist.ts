@@ -10,17 +10,17 @@
  */
 
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
-import { ipBans } from "./../../../shared/db/schema.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { ipBans } from "../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import {
   isBannedIp,
   isValidIpOrCidr,
-} from "./../../../shared/security/cidr.ts";
+} from "../../../shared/security/cidr.ts";
 import { getCached, invalidateBanCache } from "./security/banCache.ts";
 import { logAudit } from "../../system/index.ts";
 
