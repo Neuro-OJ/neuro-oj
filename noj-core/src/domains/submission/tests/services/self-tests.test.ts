@@ -8,7 +8,8 @@ import {
 } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
@@ -80,8 +81,6 @@ async function recoverSelfTestsAndReadMessages(): Promise<
   }
 }
 
-const skip = false; // PGlite 内存数据库始终可用
-
 const ts = Date.now();
 const USER_ID = `tst-st-user-${ts}`;
 const PROBLEM_ID = `tst-st-problem-${ts}`;
@@ -146,7 +145,6 @@ await db.insert(problems).values([
 
 Deno.test({
   name: "self-tests service: 不支持的语言抛出 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -164,7 +162,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: 客观题不支持自测",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -181,7 +178,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: 题目不存在抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -198,7 +194,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: getSelfTest 不存在抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -215,7 +210,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: saveSelfTestResult 对不存在记录返回 false",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -233,7 +227,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: saveSelfTestResult 写回且不影响正式表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -641,7 +634,6 @@ Deno.test({
 
 Deno.test({
   name: "self-tests service: 清理测试数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

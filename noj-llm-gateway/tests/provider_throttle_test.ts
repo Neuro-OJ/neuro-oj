@@ -1,8 +1,7 @@
 // Provider RPM / TPM 节流与排队测试。
 //
-// 前半部分用桩 eval 验证 TS 侧轮询 / 超时 / 中止逻辑；后半部分需要真实 Redis
-// （Lua 脚本无法在 FakeRedis 中执行），设置 NOJ_LLM_TEST_REDIS_URL 后运行：
-//   NOJ_LLM_TEST_REDIS_URL=redis://localhost:6379/15 deno task test
+// 前半部分用桩 eval 验证 TS 侧轮询 / 超时 / 中止逻辑；后半部分由正式
+// test-launcher 提供真实隔离 Redis（Lua 脚本无法在 FakeRedis 中执行）。
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   acquireProviderSlot,
@@ -12,6 +11,10 @@ import {
 } from "../src/provider-throttle.ts";
 import { createRedis, type RedisClient } from "../src/redis.ts";
 import { FakeRedis } from "./helpers.ts";
+import {
+  gatewayTestRedisPrefix,
+  gatewayTestRedisUrl as REDIS_URL,
+} from "./integration-env.ts";
 
 Deno.test("provider throttle: RPM/TPM 均为 0 时直接放行且不访问 Redis", async () => {
   const redis = new FakeRedis();
@@ -67,14 +70,12 @@ Deno.test("provider throttle: 客户端断开时中止排队并退出队列", as
 
 // ─── 真实 Redis：验证 Lua 脚本语义 ──────────────────────────────
 
-const REDIS_URL = Deno.env.get("NOJ_LLM_TEST_REDIS_URL") ?? "";
-
 /** 每个用例使用独立 Provider ID，结束后清理其全部键。 */
 async function withRedis(
   fn: (redis: RedisClient, providerId: string) => Promise<void>,
 ): Promise<void> {
   const redis = createRedis(REDIS_URL);
-  const providerId = `test-${crypto.randomUUID()}`;
+  const providerId = `${gatewayTestRedisPrefix}provider-${crypto.randomUUID()}`;
   // 预热连接：避免首个用例把建连耗时计入 waitedMs
   await redis.ping();
   try {
@@ -93,7 +94,6 @@ async function withRedis(
 const realRedisTest = (name: string, fn: () => Promise<void>) =>
   Deno.test({
     name,
-    ignore: !REDIS_URL,
     sanitizeOps: false,
     sanitizeResources: false,
     fn,

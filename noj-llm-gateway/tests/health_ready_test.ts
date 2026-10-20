@@ -1,7 +1,7 @@
 // /health/ready 就绪探针测试：注入假 DB/Redis/worker，不建立真实连接、不启动真实定时器。
-import { assertEquals, assertFalse } from "jsr:@std/assert@^1";
+import { assertEquals, assertFalse, assertThrows } from "jsr:@std/assert@^1";
 import type { Hono } from "hono";
-import { createApp } from "../src/app.ts";
+import { createApp, createReadyProbe } from "../src/app.ts";
 import type { Db } from "../src/db.ts";
 import type { RedisClient } from "../src/redis.ts";
 import {
@@ -84,6 +84,7 @@ function createFakeWorker(
     stop() {
       // 注入的状态源没有定时器，无需释放。
     },
+    done: Promise.resolve(),
     getStatus: () => ({ ...status }),
   };
 }
@@ -91,9 +92,9 @@ function createFakeWorker(
 /** 用假依赖创建 app；必须关闭后台任务，避免真实定时器/连接。 */
 function buildApp(
   deps: {
-    db?: Db | null;
-    redis?: RedisClient | null;
-    accountingWorker?: AccountingWorkerHandle | null;
+    db?: Db;
+    redis?: RedisClient;
+    accountingWorker?: AccountingWorkerHandle;
   } = {},
 ): Hono {
   return createApp(testConfig, {
@@ -102,7 +103,6 @@ function buildApp(
     accountingWorker: deps.accountingWorker === undefined
       ? createFakeWorker(createWorkerStatus())
       : deps.accountingWorker,
-    startBackgroundWorkers: false,
   });
 }
 
@@ -282,18 +282,49 @@ Deno.test("health/ready: 多类依赖同时失败时 detail 区分 db/redis/acco
   ]);
 });
 
-Deno.test("health/ready: 未配置 DB/Redis/worker 时返回 503 且标明未配置", async () => {
-  const app = buildApp({ db: null, redis: null, accountingWorker: null });
+Deno.test("createApp: 缺失必需 DB/Redis/worker 时拒绝组合", () => {
+  assertThrows(
+    () =>
+      createApp(testConfig, {
+        db: null,
+        redis: null,
+        accountingWorker: null,
+      } as never),
+    Error,
+    "必须",
+  );
+});
 
-  const { status, body } = await requestReady(app);
+Deno.test("createApp: accounting worker 缺少 done 时拒绝不可排空装配", () => {
+  assertThrows(
+    () =>
+      createApp(testConfig, {
+        db: createFakeDb().db,
+        redis: createFakeRedis().redis,
+        accountingWorker: {
+          stop() {},
+          getStatus: () => createWorkerStatus(),
+        },
+      } as never),
+    Error,
+    "缺少可等待的 done",
+  );
+});
 
-  assertEquals(status, 503);
-  assertEquals(body.checks, {
+Deno.test("health/ready: 探针收到未配置 DB/Redis/worker 时标明未配置", async () => {
+  const report = await createReadyProbe({
+    db: null,
+    redis: null,
+    accounting: null,
+  })();
+
+  assertEquals(report.ready, false);
+  assertEquals(report.checks, {
     database: "error",
     redis: "error",
     accounting: "error",
   });
-  assertEquals(body.detail, [
+  assertEquals(report.failures, [
     "database_not_configured",
     "redis_not_configured",
     "accounting_worker_missing",
@@ -302,7 +333,11 @@ Deno.test("health/ready: 未配置 DB/Redis/worker 时返回 503 且标明未配
 
 Deno.test("health/ready: /health 与 /health/live 语义不受就绪检查影响", async () => {
   const healthy = buildApp();
-  const failing = buildApp({ db: null, redis: null, accountingWorker: null });
+  const failing = buildApp({
+    db: createFakeDb(() => Promise.reject(new Error("db down"))).db,
+    redis: createFakeRedis(() => Promise.reject(new Error("redis down"))).redis,
+    accountingWorker: createFakeWorker(createWorkerStatus({ running: false })),
+  });
 
   for (const app of [healthy, failing]) {
     const healthRes = await app.request("/health");

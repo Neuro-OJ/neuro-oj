@@ -14,13 +14,14 @@
  *   3. 回填值取自 `created_at`（而非执行时刻）；
  *   4. 执行后列确为 NOT NULL（约束真的生效，不是"看起来通过"）。
  *
- * 依赖 preload 的每用例事务回滚：DROP/ADD COLUMN 与插入的探针数据都会自动回滚，
- * 不污染其他用例。
+ * 使用启动器提供的隔离数据库，并在用例结束时显式清理：DROP/ADD COLUMN 与插入的
+ * 探针数据不会污染其他测试运行。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
-import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
+import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 

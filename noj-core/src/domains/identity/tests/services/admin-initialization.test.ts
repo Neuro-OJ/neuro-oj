@@ -1,10 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, ne } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domains,
   roles,
@@ -25,8 +22,6 @@ import { isUserAdmin } from "../../services/security/permissions.ts";
 import { comparePassword } from "../../services/security/password.ts";
 import { deleteOwnAccount } from "../../index.ts";
 import { transferDomain } from "../../../workspace/index.ts";
-
-disableTestTransactionForFile();
 const input = {
   username: "site_admin",
   email: "admin@example.com",

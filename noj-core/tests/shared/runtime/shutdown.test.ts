@@ -317,10 +317,9 @@ Deno.test("shutdown: 依赖关闭失败会聚合问题并返回非零码", async
 });
 
 /**
- * 纯 test:runtime 下没有预加载事务，必须开启严格 sanitizer；
- * 共享 test-shared 使用 tests/preload.ts 开启数据库事务，SQL client 的
- * rollback 计时器不属于本测试，但 Deno sanitizer 会归因到当前用例造成误报。
- * 因此仅在无 DATABASE_URL 的隔离运行时启用资源检查（行为断言始终保留）。
+ * 纯 test:runtime 没有数据库资源时开启严格 sanitizer；共享测试进程可能持有
+ * PostgreSQL 连接池，其资源不属于本测试但 Deno sanitizer 会归因到当前用例造成
+ * 误报。因此仅在无 DATABASE_URL 的隔离运行时启用资源检查（行为断言始终保留）。
  */
 const STRICT_RESOURCE_SANITIZER = !Deno.env.get("DATABASE_URL");
 

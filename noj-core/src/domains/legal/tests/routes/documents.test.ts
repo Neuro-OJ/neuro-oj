@@ -4,7 +4,8 @@
  * 覆盖：当前文档列表（未发布为 null）、发布后返回、非法 kind 400、版本历史。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { publishVersion } from "../../index.ts";
 import { createApp } from "../../../../app.ts";

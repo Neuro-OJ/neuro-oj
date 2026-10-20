@@ -4,10 +4,11 @@
  * 覆盖：同意记录写入与幂等、取最新已同意版本、注册批量写入两文档、
  * 已同意版本映射。
  *
- * 依赖 PGlite 内存数据库。
+ * 依赖 独立测试数据库。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import {
   getConsentedVersions,

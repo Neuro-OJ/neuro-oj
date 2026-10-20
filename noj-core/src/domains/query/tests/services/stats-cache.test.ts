@@ -11,7 +11,7 @@ import {
  * - `applyNewResult()` 只失效缓存，重复调用不会重复计数；
  * - 缓存键包含全局投影 revision，策略/判定变化后立即换键（不依赖 TTL）。
  *
- * 依赖 PGlite/PG 测试库（resetDbForTest 保证空库起点）。
+ * 依赖 测试数据库/PG 测试库（resetDbForTest 保证空库起点）。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
@@ -22,7 +22,8 @@ import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   evaluationAttempts,
   problems,

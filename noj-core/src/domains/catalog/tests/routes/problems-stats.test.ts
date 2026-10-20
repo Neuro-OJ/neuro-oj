@@ -11,9 +11,6 @@ import { _resetProblemStatsCacheForTest } from "../../index.ts";
 // 测试进程通常没有本地 Redis；短路 JWT 撤销检查，避免 authMiddleware 503。
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipEnv = !hasEnv;
-
 await resetDbForTest();
 await initRedisForTest();
 await ensureRbacSeeds();
@@ -60,7 +57,6 @@ async function seedProblem(ownerId: string, number: number): Promise<string> {
 
 Deno.test({
   name: "problems-stats route: 公开统计匿名可读",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -87,7 +83,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-stats route: 深度统计未登录被拒",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -106,7 +101,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-stats route: 非 owner 普通用户被拒（403）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -131,7 +125,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-stats route: 题目 owner 可读深度统计",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -160,7 +153,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-stats route: window_days 非法值回退为 90",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -194,7 +186,6 @@ Deno.test({
  */
 Deno.test({
   name: "problems-stats route(C3): 私有题公开统计匿名必须 404（不泄露存在性）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -233,7 +224,6 @@ Deno.test({
 Deno.test({
   name:
     "problems-stats route(C3): 私有题存在与不存在返回同一状态码（无预言机）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -276,7 +266,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-stats route(C3): 私有题 owner 仍可读自己的公开统计",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -64,7 +64,7 @@ deno task dev        # 热重载开发
 deno task start      # 启动
 deno task test       # 运行测试
 deno task check      # fmt + lint + typecheck
-deno task db:migrate # 执行 LLM 表迁移（幂等）
+deno task db:migrate # 显式执行 LLM 表迁移并写入默认配额（幂等）
 deno task db:generate # 使用时间戳前缀生成下一份增量迁移
 ```
 
@@ -102,6 +102,15 @@ PostgreSQL 的 UPDATE 条件中比较 Domain、ID 和 revision，成功后原子
 Provider，没有本域配置时拒绝新尝试。 执行 token 的使用域必须与 Provider
 归属一致，任何不匹配在调用上游和扣额度前拒绝。
 
+HTTP 进程启动时只读取打包 journal/SQL 与数据库迁移 ledger 做严格兼容检查；发现
+缺失、额外记录、hash/timestamp 漂移或 ledger 查询失败会拒绝监听，并提示先执行
+`deno task db:migrate`。迁移与默认配额种子属于显式一次性步骤，生产 Compose 由
+`gateway-migrate` 服务运行，恢复演练也会显式执行该服务；网关 `createApp()` 不会
+隐式建立数据库/Redis 连接或启动后台 worker。旧版 runner 未记录 hash/timestamp
+的历史 ledger，只能由显式 `db:migrate` 按固定历史 manifest 回填；这一步采纳当前
+发布资产元数据，不能证明旧执行过程实际使用过相同字节。HTTP 启动随后仍会严格比较
+完整历史 manifest、journal 和 ledger，历史 SQL 缺失或 hash 漂移都会拒绝监听。
+
 迁移将原 Provider、用量和域内配额归入固定默认域，保留实例 global 配额。
 `0000_volatile_umar.sql` 是首次 Drizzle snapshot 登记文件（无 DDL），实际增量在
 `0005_domain_ownership.sql`；以后生成迁移使用时间戳前缀，不重编号历史文件。
@@ -112,14 +121,16 @@ Provider，没有本域配置时拒绝新尝试。 执行 token 的使用域必�
 Redis 测试可在隔离测试库运行：
 
 ```bash
-NOJ_GATEWAY_TEST_DATABASE_URL=postgres://noj:noj@127.0.0.1:5432/noj_gateway_test \
-NOJ_GATEWAY_TEST_REDIS_URL=redis://127.0.0.1:6379/14 deno task test
+TEST_PG_ADMIN_URL=postgres://noj:noj@127.0.0.1:5432/postgres \
+TEST_REDIS_URL=redis://127.0.0.1:6379/15 deno task test
 ```
 
-数据库测试为每次运行建立随机 schema，验证空库、原 0000–0004 升级、重复迁移及
-跨域 ID 请求。Redis 测试所有 Lua
-键使用随机前缀，验证并发最后一次额度、实际结算、
-域间独立及实例总额，结束后只删除本次键。没有相应环境变量时两项集成测试跳过。
+测试启动器每次运行创建唯一 PostgreSQL database，并把 child 的连接变量指向该库；
+启动器也为本 run 生成唯一 Redis prefix。数据库测试验证空库、原 0000–0004
+升级、重复迁移及跨域 ID 请求。Redis 测试所有 Lua 键使用 run prefix，验证并发
+最后一次额度、实际结算、域间独立及实例总额；启动器 finally 只用 SCAN + DEL
+清理本 run prefix，不执行 FLUSHDB。缺少 TEST_PG_ADMIN_URL 或 TEST_REDIS_URL
+时直接失败；纯逻辑测试使用 deno task test:logic，不连接外部服务。
 上游返回后的用量可能超过预估，结算会如实记录超额；预占额度并非上游账单的绝对封顶。
 
 ## 安全说明

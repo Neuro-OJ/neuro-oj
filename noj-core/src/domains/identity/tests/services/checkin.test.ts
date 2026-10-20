@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { checkIns, users } from "../../../../shared/db/schema.ts";
 import {
   checkIn,
@@ -14,11 +15,8 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { hashPassword } from "../../services/security/password.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
-
-const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
-  !!Deno.env.get("JWT_SECRET");
 
 /**
  * 创建独立测试用户，返回 user_id。
@@ -73,7 +71,6 @@ function daysAgoUtc(days: number): string {
 
 Deno.test({
   name: "checkin: 首次签到返回 streak=1",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -90,7 +87,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: 同日重复签到抛 ConflictError（评审 H2 + M3）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -116,7 +112,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: 并发签到两个都返回正确（评审 H2 关键）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -148,7 +143,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: 昨日签到后今日签到 streak 累加",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -177,7 +171,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: 断签后签到 streak 重置为 1",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -206,7 +199,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: getTodayCheckIn 未签到返回 checked_in=false",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -223,7 +215,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: getTodayCheckIn 已签到返回当前 streak",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -241,7 +232,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: getTodayCheckIn 今日未签到返回昨日 streak（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -259,7 +249,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: getCheckinStats 汇总 total/max/month/last（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -292,7 +281,6 @@ Deno.test({
 Deno.test({
   name:
     "checkin: getCheckinStats 今日未签到 current_streak 取昨日（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -317,7 +305,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin: getCheckinHistory 过滤最近 N 天与参数校验（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
-import {
-  getDb,
-  resetDbForTest as resetDatabase,
-} from "../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { resetDbForTest as resetDatabase } from "../../../../tests/helpers/db.ts";
 import {
   domainMemberRoles,
   domainMemberships,

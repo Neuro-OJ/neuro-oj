@@ -5,6 +5,7 @@ import type { EvalTokenPayload } from "./crypto.ts";
 import { logger } from "./logger.ts";
 import { recordUsage, type UsageEntry } from "./usage.ts";
 import { accountingBaselineId } from "./accounting-baseline.ts";
+import type { ManagedTask } from "./runtime.ts";
 
 export interface AccountingCounter {
   key: string;
@@ -408,6 +409,8 @@ export function evaluateAccountingWorkerHealth(
 export interface AccountingWorkerHandle {
   /** 停止定时器（幂等）；已在执行的轮次允许完成，不中断在途 DB/Redis 操作。 */
   stop(): void;
+  /** 停止后等待最后一轮 DB/Redis 操作完成。 */
+  done: Promise<void>;
   /** 读取当前运行状态快照（副本，调用方修改不影响 worker 内部状态）。 */
   getStatus(): AccountingWorkerStatus;
 }
@@ -432,6 +435,14 @@ export function startAccountingWorker(
     lastError: null,
     consecutiveFailures: 0,
   };
+  let inFlight: Promise<void> | null = null;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
+  const settleDone = (): void => {
+    if (!status.running && inFlight === null) resolveDone();
+  };
   const run = async (): Promise<void> => {
     if (!status.running) return;
     try {
@@ -446,14 +457,28 @@ export function startAccountingWorker(
       logger.warn("LLM结算重试失败: {error}", { error: status.lastError });
     }
   };
-  void run();
-  const timer = setInterval(() => void run(), ACCOUNTING_TICK_INTERVAL_MS);
+  const startRound = (): void => {
+    if (!status.running || inFlight !== null) return;
+    const current = run();
+    inFlight = current;
+    current.finally(() => {
+      if (inFlight === current) inFlight = null;
+      settleDone();
+    }).catch(() => {});
+  };
+  startRound();
+  const timer = setInterval(startRound, ACCOUNTING_TICK_INTERVAL_MS);
   Deno.unrefTimer(timer);
-  return {
+  const handle: AccountingWorkerHandle & ManagedTask = {
+    name: "gateway-accounting",
     stop() {
       status.running = false;
       clearInterval(timer);
+      settleDone();
     },
     getStatus: () => ({ ...status }),
+    done,
   };
+  done.catch(() => {});
+  return handle;
 }

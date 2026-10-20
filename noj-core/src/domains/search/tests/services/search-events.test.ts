@@ -1,4 +1,4 @@
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { connectRedis } from "../../../../shared/mq/connection.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";

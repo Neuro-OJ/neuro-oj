@@ -22,8 +22,6 @@ import {
   loadWorkspace,
   workspaceAudit,
 } from "../../workspace/index.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
-import { seedDomainLlmDefaults } from "./domain-default.ts";
 import {
   createLlmProvider,
   getLlmProviderById,
@@ -227,7 +225,6 @@ export function readDomainLlmSettings(slug: string, actorId: string) {
     false,
     "domain.llm_read",
     async (domainId, tx) => {
-      if (domainId === DEFAULT_DOMAIN_ID) await seedDomainLlmDefaults(tx);
       const [settings] = await tx.select().from(domainLlmSettings).where(
         eq(domainLlmSettings.domain_id, domainId),
       );
@@ -272,7 +269,6 @@ export function saveDomainLlmSettings(
     true,
     "domain.llm_settings",
     async (domainId, tx) => {
-      if (domainId === DEFAULT_DOMAIN_ID) await seedDomainLlmDefaults(tx);
       const [existing] = await tx.select().from(domainLlmSettings).where(
         eq(domainLlmSettings.domain_id, domainId),
       ).for("update");

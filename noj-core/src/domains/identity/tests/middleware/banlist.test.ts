@@ -8,7 +8,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { userBans, users } from "../../../../shared/db/schema.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { getUserBanState } from "../../middleware/auth.ts";

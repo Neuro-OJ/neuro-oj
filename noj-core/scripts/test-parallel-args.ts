@@ -8,7 +8,7 @@
  * 解析 --shards 参数，控制实际运行的分片数量。
  *
  * @param args - 命令行参数
- * @param availableShards - 脚本内置的分片数量（默认 2：unit / db）
+ * @param availableShards - 脚本内置的分片数量（默认 2：core / db）
  * @returns 实际要运行的分片数
  * @throws 参数非法或超过内置分片数时抛错（不再静默截断）
  */
@@ -25,8 +25,8 @@ export function parseShardArgs(
   }
   if (n > availableShards) {
     throw new Error(
-      `--shards ${n} 超过内置分片数 ${availableShards}（当前仅 unit/db 两个分片）；` +
-        `请改用 --shards ${availableShards}，或先扩展 scripts/test-parallel.ts 的 SHARDS`,
+      `--shards ${n} 超过内置分片数 ${availableShards}；` +
+        `请改用 --shards ${availableShards}，或先扩展分片清单`,
     );
   }
   return n;

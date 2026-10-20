@@ -192,8 +192,7 @@ export async function cleanupOldAuditLogs(
   const result = await db.delete(auditLogs).where(
     lte(auditLogs.created_at, cutoff),
   );
-  // 跨驱动兼容：PGlite 返回 { affectedRows }; postgres.js 返回 RowList 带 count
-  // Drizzle 类型未统一这两个字段，使用 unknown 强制访问
+  // postgres.js RowList 暴露 count；Drizzle 类型未统一该字段，使用 unknown 强制访问。
   const r = result as unknown as {
     affectedRows?: number;
     rowCount?: number;

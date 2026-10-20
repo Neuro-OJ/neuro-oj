@@ -2,7 +2,7 @@
  * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，
  * 让 pushJudgeTask 的队列操作不会触发真实 Redis 依赖。
  *
- * PGlite 测试模式下没有 Redis，但 Deno ESM 模块导出是 non-configurable，
+ * 测试数据库 测试模式下没有 Redis，但 Deno ESM 模块导出是 non-configurable，
  * 无法直接 monkey-patch pushJudgeTask。因此这里选择启动一个本地 mock Redis，
  * 把 REDIS_URL 指向它，让 pushJudgeTask 走完整 LPUSH 路径而无需外部依赖。
  */

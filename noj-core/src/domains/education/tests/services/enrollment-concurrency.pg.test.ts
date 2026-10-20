@@ -2,33 +2,22 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
-import {
-  disableTestTransactionForFile,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import * as schema from "../../../../shared/db/schema.ts";
 import { workspaceAudit } from "../../../workspace/index.ts";
 import { executeClassroomImport, previewClassroomImport } from "../../index.ts";
 import { educationFixture } from "../_fixtures.ts";
 
-const url = Deno.env.get("DATABASE_URL");
-if (url) disableTestTransactionForFile();
 function connection() {
-  const name = Deno.env.get("TEST_SCHEMA");
-  if (name && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-    throw new Error("非法测试 schema");
-  }
-  return postgres(url!, {
+  return postgres(Deno.env.get("DATABASE_URL")!, {
     max: 1,
     onnotice: () => {},
-    connection: name ? { options: `-csearch_path=${name},public` } : undefined,
   });
 }
 Deno.test({
   name:
     "批量入班并发 PG：等待域锁时保留账号保护，但不阻止持班级锁的教师写审计外键",
-  ignore: !url,
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {

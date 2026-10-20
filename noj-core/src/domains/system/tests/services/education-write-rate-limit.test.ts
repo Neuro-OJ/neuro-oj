@@ -8,7 +8,6 @@ import { RateLimitedError } from "../../../../shared/base/errors.ts";
 
 Deno.test({
   name: "教学写限流 helper：真实Redis第121次429，域和账号窗口独立",
-  ignore: !Deno.env.get("REDIS_URL"),
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {

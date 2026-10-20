@@ -10,11 +10,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 
-// PGlite 内存数据库始终可用
-const dbAvailable = true;
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipDb = !dbAvailable;
-const skipEnv = !hasEnv;
+// 独立测试数据库始终可用
 
 const ts = Date.now();
 
@@ -93,7 +89,6 @@ async function createProblemForTest(opts: {
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 返回分页列表",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -111,7 +106,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 支持分页参数",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -127,7 +121,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 按难度筛选",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -145,7 +138,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 按关键词搜索",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -160,7 +152,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems/:id 返回题目详情含分类",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -214,7 +205,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems/:id 不存在的题目返回 404",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -229,7 +219,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: POST /api/v1/problems 未登录返回 401",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -245,7 +234,6 @@ Deno.test({
 Deno.test({
   name:
     "problems route: POST /api/v1/problems 普通成员无默认域创建能力返回 403",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -280,7 +268,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: POST /api/v1/problems 管理员创建成功",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -319,7 +306,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: PUT /api/v1/problems/:id 非管理员返回 403",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -337,7 +323,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: DELETE /api/v1/problems/:id 非管理员返回 403",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -354,7 +339,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: XSS 防护 — 响应格式为 JSON",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -369,7 +353,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: 匿名读取 private U 题返回 404",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -382,7 +365,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: 非 owner 读取 public 题不含 storage/runtime/llm 字段",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -404,7 +386,6 @@ Deno.test({
 
 Deno.test({
   name: "problems route: 非 owner 匿名读取 public 题同样不返回敏感字段",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -451,7 +432,6 @@ Deno.test("problems route: 匿名选手可读取 OI 语言白名单但看不到�
 
 Deno.test({
   name: "problems route: 匿名读取 private 套卷 questions 返回 404",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

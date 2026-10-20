@@ -8,7 +8,7 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { resetDbForTest } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,

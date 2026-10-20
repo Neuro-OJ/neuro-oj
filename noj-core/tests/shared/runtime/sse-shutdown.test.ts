@@ -53,10 +53,9 @@ async function readAll(
 }
 
 /**
- * 纯 test:runtime 无预加载事务，开启严格 sanitizer；
- * test-shared 的 tests/preload.ts 会启动数据库事务，其 rollback 计时器不属于
- * 本测试但会被 Deno sanitizer 归因到当前用例，因此仅在无 DATABASE_URL 时启用。
- * 所有行为断言始终保留。
+ * 纯 test:runtime 没有数据库资源时开启严格 sanitizer；共享测试进程可能持有
+ * PostgreSQL 连接池，其资源不属于本测试但会被 Deno sanitizer 归因到当前用例，
+ * 因此仅在无 DATABASE_URL 时启用。所有行为断言始终保留。
  */
 const STRICT_RESOURCE_SANITIZER = !Deno.env.get("DATABASE_URL");
 

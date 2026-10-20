@@ -5,17 +5,15 @@ import { eq } from "drizzle-orm";
 import checkin from "../../routes/checkin.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { checkIns, users } from "../../../../shared/db/schema.ts";
 import { hashPassword } from "../../services/security/password.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 await initRedisForTest();
-
-const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
-  !!Deno.env.get("JWT_SECRET");
 
 /**
  * 注册最小 onError，与 src/app.ts 等价（处理 AppError → statusCode + body）。
@@ -73,7 +71,6 @@ async function cleanup(userId: string): Promise<void> {
 
 Deno.test({
   name: "checkin route: POST 未登录返回 401",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -85,7 +82,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /today 未登录返回 401",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -97,7 +93,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: POST 已登录首次签到返回 200 + streak=1",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -123,7 +118,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: 同日重复 POST 返回 409 CONFLICT_ERROR",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -149,7 +143,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /today 未签到返回 checked_in=false",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -172,7 +165,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /today 已签到返回 streak",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -198,7 +190,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /today 今日未签到返回昨日 streak（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -232,7 +223,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /stats 未登录且无 user_id 返回 401（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -244,7 +234,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /stats 已登录返回统计（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -276,7 +265,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /stats?user_id= 公开返回他人统计（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -299,7 +287,6 @@ Deno.test({
 Deno.test({
   name:
     "checkin route: GET /stats?user_id=支持 username 解析（issue 用户主页活跃度）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -325,7 +312,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /stats?user_id=不存在返回 404（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -340,7 +326,6 @@ Deno.test({
 
 Deno.test({
   name: "checkin route: GET /history 参数与结果（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -1,7 +1,8 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
@@ -61,12 +62,8 @@ async function seed() {
   await upsertSearchEntry((await buildUserEntry("u-search-route-1"))!);
 }
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 Deno.test({
   name: "search route: grouped 模式返回题目",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -86,7 +83,6 @@ Deno.test({
 
 Deno.test({
   name: "search route: flat 模式管理员可搜用户",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -106,7 +102,6 @@ Deno.test({
 
 Deno.test({
   name: "search route: 匿名搜用户返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -120,7 +115,6 @@ Deno.test({
 
 Deno.test({
   name: "search route: 限流触发返回 429",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -158,7 +152,6 @@ Deno.test({
 // 匿名 IP 配额挤占。
 Deno.test({
   name: "search route: 登录用户走用户维度桶，不受共享 IP 匿名配额影响",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -229,7 +222,6 @@ Deno.test({
 
 Deno.test({
   name: "search route: 登录用户仍受用户维度上限约束（429）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -292,7 +284,6 @@ async function clearUserSearchKeys(
 // 正常用户不会撞到，而超限时同样 429（在 IP 键上留痕）。
 Deno.test({
   name: "search route: 认证用户受粗粒度 IP 兜底上限约束（429）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

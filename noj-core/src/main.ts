@@ -1,6 +1,5 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./shared/db/connection.ts";
-import { runMigrations } from "./shared/db/migrate.ts";
 import {
   startQueueSweeper,
   startResultConsumerPool,
@@ -23,13 +22,6 @@ import { startReviewConsumer } from "./domains/content-review/index.ts";
 import { startSearchIndexConsumer } from "./domains/search/index.ts";
 import { startEducationWorker } from "./domains/education/index.ts";
 import {
-  ensureRootUser,
-  sealExistingSiteAdminInitialization,
-} from "./domains/identity/index.ts";
-import { ensureRbacSeeds } from "./domains/system/index.ts";
-import { ensureDefaultWorkspace } from "./domains/workspace/index.ts";
-import { seedDomainLlmDefaults } from "./domains/gateway/index.ts";
-import {
   getStorageProvider,
   startDomainStorageReconciliation,
 } from "./domains/system/index.ts";
@@ -39,6 +31,7 @@ import {
   initSystemSettings,
   listOrphanedBootstrapRows,
   listRuntimeEnvConflicts,
+  registerSettingsInvalidationListener,
 } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { describeLlmPlatformDefaultGap } from "./domains/gateway/index.ts";
@@ -54,6 +47,7 @@ import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
 } from "./shared/base/constants.ts";
+import { assertSchemaCompatible } from "./shared/db/schema-compat.ts";
 
 // 每次 Core 装配拥有独立的 SSE 流 scope：通过 createApp 显式注入，关闭时据此
 // 同步结束所有已建立长连接，让 server.shutdown() 能完成排空。连接只存在于当前
@@ -106,11 +100,14 @@ function buildProductionConfig(): ProductionConfig {
  * 初始化顺序：
  * 1. JWT_SECRET 强度校验（启动期致命错误）
  * 2. TFA 密钥强度校验（启动期致命错误）
- * 3. 数据库迁移、Root/RBAC 和系统设置初始化
+ * 3. 只读 schema 兼容检查与系统设置加载
  * 4. 生产配置校验
  * 5. Redis 连接验证
  * 6. 启动评测结果消费者（后台）
  * 7. 启动 HTTP 服务
+ *
+ * 迁移和系统种子属于显式 `noj db migrate` / `noj init system`，HTTP
+ * 启动绝不执行 DDL 或隐式初始化。
  */
 /**
  * 致命启动步骤：失败则记录错误并终止启动（避免带病运行）。
@@ -123,201 +120,14 @@ async function fatalStep(
     await fn();
   } catch (err) {
     logger.error("{name}失败，终止启动", { name, err });
-    Deno.exit(1);
+    throw new Error(`启动步骤失败：${name}`, { cause: err });
   }
 }
 
 async function main() {
-  // JWT 启动校验：HS256 要求至少 256 bit（32 字节）密钥强度
-  // 修复 issue 64 评论 §5.2：默认 .env 模板是 27 字符，低于安全阈值
-  const jwtSecret = Deno.env.get("JWT_SECRET");
-  if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
-    const actualLength = jwtSecret ? jwtSecret.length : 0;
-    logger.error(
-      "JWT_SECRET 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
-        "HS256 算法要求至少 256 bit 密钥强度，使用弱密钥会显著降低 token 防伪造能力。\n" +
-        "可通过 `openssl rand -base64 48` 生成强随机密钥。",
-      { actual: actualLength, min: MIN_JWT_SECRET_LENGTH },
-    );
-    Deno.exit(1);
-  }
-  // 占位值校验（2026-09-12 架构评审 §2.4）：
-  // `.env.prod.example` 的 `change-me-to-a-random-string-at-least-32-chars`
-  // 长度 46，仅靠长度校验会被放行；compose 的 `${JWT_SECRET:?}` 也只拦空值。
-  // 于是"照文档复制模板后直接部署"会以**公开已知的密钥**上线 → 可伪造任意用户 token。
-  const jwtPlaceholder = describePlaceholderSecret("JWT_SECRET", jwtSecret);
-  if (jwtPlaceholder) {
-    logger.error(
-      "{reason}。\n" +
-        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
-      { reason: jwtPlaceholder },
-    );
-    Deno.exit(1);
-  }
-
-  // TFA 加密密钥启动校验（fail-fast，评审 P2 修复）：
-  // TFA_ENCRYPTION_KEY 用于 AES-256-GCM 加密 TOTP secret，缺失/过短时
-  // 必须拒绝启动。否则 setup 请求会返回 500，或密钥丢失后已启用 TFA 的
-  // 用户无法登录（secret 无法解密）。
-  const tfaKey = Deno.env.get("TFA_ENCRYPTION_KEY");
-  if (!tfaKey || tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
-    const actualLength = tfaKey ? tfaKey.length : 0;
-    logger.error(
-      "TFA_ENCRYPTION_KEY 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
-        "TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n" +
-        "可通过 `openssl rand -base64 48` 生成强随机密钥。",
-      { actual: actualLength, min: MIN_TFA_ENCRYPTION_KEY_LENGTH },
-    );
-    Deno.exit(1);
-  }
-  const tfaPlaceholder = describePlaceholderSecret(
-    "TFA_ENCRYPTION_KEY",
-    tfaKey,
-  );
-  if (tfaPlaceholder) {
-    logger.error(
-      "{reason}。\n" +
-        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
-      { reason: tfaPlaceholder },
-    );
-    Deno.exit(1);
-  }
-
-  // 初始化数据库：迁移失败为致命错误，终止启动避免带病运行
-  // （与 PR #63 ensureRootUser 的失败处理保持一致策略）
-  await fatalStep("数据库迁移", () => runMigrations());
-
-  // 确保 root 系统用户存在（必需依赖，失败时终止启动）
-  await fatalStep("Root 用户创建", () => ensureRootUser());
-
-  // 初始化 RBAC 种子数据（幂等）
-  await fatalStep("RBAC 种子数据初始化", () => ensureRbacSeeds());
-  await fatalStep("默认工作空间初始化", () => ensureDefaultWorkspace());
-
-  await fatalStep("管理员初始化状态检查", sealExistingSiteAdminInitialization);
-
-  // 校验系统设置注册表（issue #99）
-  // 启动期检查：key 唯一、type 合法。开发期就发现问题。
-  await fatalStep("系统设置注册表校验", () => validateRegistry());
-
-  // 初始化系统设置缓存（issue #99）
-  // 从 system_settings 全量加载到内存 Map，失败时终止启动。
-  await fatalStep("系统设置缓存初始化", () => initSystemSettings());
-  await fatalStep("默认域 LLM 配置初始化", () => seedDomainLlmDefaults());
-
-  // 启动期 env 快照（issue #99）
-  // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
-  snapshotEnv();
-
-  // issue #426：启动摘要中明确邮件服务就绪状态。
-  // disabled 允许启动，但邮箱验证/密码找回不可用，公开注册会被禁止
-  // （仅保留首个引导用户），必须在开放注册前完成邮件配置。
-  const emailStatus = getEmailConfigStatus();
-  if (emailStatus.configured) {
-    logger.info("邮件服务已就绪", { provider: emailStatus.provider });
-  } else {
-    logger.warn(
-      "邮件服务未就绪：邮箱验证与密码找回不可用，公开注册已被禁止" +
-        "（仅允许站点引导阶段的首次注册）。开放公开注册前请在管理后台完成邮件配置并发送测试邮件。",
-      {
-        provider: emailStatus.provider,
-        missing: emailStatus.missing,
-      },
-    );
-  }
-
-  // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
-  // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。
-  try {
-    const conflicts = listRuntimeEnvConflicts();
-    if (conflicts.length > 0) {
-      logger.warn(
-        "以下 {count} 项 runtime 配置同时存在 DB 值与 env 兜底，" +
-          "当前 DB 值优先；建议移除 .env 中对应变量以避免歧义：",
-        {
-          count: conflicts.length,
-          keys: conflicts.map((c) => `${c.key} (${c.envKey})`),
-        },
-      );
-    }
-  } catch (err) {
-    // 检测失败不阻断启动（仅提示）
-    logger.warn("runtime env/DB 共存冲突检测失败", { err });
-  }
-
-  // 提示平台默认 LLM 配置**只配了一半**（2026-09-22 评审）：
-  // `llm_default_provider_id` / `llm_default_model` 必须同时配置，否则 LLM 题
-  // 提交会以 400 失败。部署者常只取消注释其中一项（模板里两项都是注释示例），
-  // 因此在启动时给出可操作告警，而不是等用户提交才暴露。
-  try {
-    const gap = describeLlmPlatformDefaultGap();
-    if (gap.length > 0) {
-      logger.warn(
-        "平台默认 LLM 配置不完整：{missing} 未设置，LLM 题提交会返回 400。" +
-          "请把 llm_default_provider_id 与 llm_default_model 配成一对" +
-          "（管理后台「系统设置」或 .env.prod）。",
-        { missing: gap.join(", ") },
-      );
-    }
-  } catch (err) {
-    // 检测失败不阻断启动（仅提示）
-    logger.warn("平台默认 LLM 配置完整性检测失败", { err });
-  }
-
-  // 提示 bootstrap（env-owned）项在 DB 中的残留旧值：
-  // 这些行已不参与取值（读取走 env），仅在管理后台可一键清理。
-  try {
-    const orphans = await listOrphanedBootstrapRows();
-    if (orphans.length > 0) {
-      logger.warn(
-        "以下 {count} 项已由环境变量接管，DB 旧值不再生效，" +
-          "可到管理后台「环境配置」一键清理：",
-        {
-          count: orphans.length,
-          keys: orphans.map((r) =>
-            `${r.key}（更新于 ${r.updated_at ?? "?"}，更新人 ${
-              r.updated_by ?? "?"
-            }）`
-          ),
-        },
-      );
-    }
-  } catch (err) {
-    // 残留检测失败不阻断启动（仅提示）
-    logger.warn("bootstrap 残留 DB 行检测失败", { err });
-  }
-
-  // Issue #330：生产配置必须在 HTTP 监听前完成 fail-fast 校验。
-  await fatalStep("生产配置校验", () => {
-    assertProductionConfig(buildProductionConfig());
-  });
-
-  // 存储 Provider 初始化（非致命，S3 bucket 创建失败仅 warn）
-  try {
-    const storage = await getStorageProvider();
-    if (typeof storage.ensureBucket === "function") {
-      await storage.ensureBucket();
-    }
-  } catch (err) {
-    logger.warn("存储 Provider 初始化失败", { err });
-  }
-
-  // 连接 Redis（共享连接供 producer 使用）
-  // Redis 是评测分发依赖而非核心数据依赖，连接失败时仍启动 HTTP 服务，
-  // 评测相关功能将通过健康检查暴露为 degraded。
-  try {
-    await connectRedis();
-    // 三级优先级队列升级：把旧单队列残留任务迁入 medium，避免升级瞬间
-    // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
-    await migratePoolJudgeQueues();
-    await migrateLegacyJudgeQueue();
-  } catch (err) {
-    if (err instanceof Error && /迁移|processing/.test(err.message)) throw err;
-    logger.error("Redis 连接失败，评测分发功能不可用", { err });
-  }
-
-  // 后台任务统一登记（P2a）：所有组件都提供 stop()/done，关闭时按逆序停止、
-  // 等待在途工作结束，再关闭 Redis 与数据库连接。登记顺序即启动顺序。
+  // 所有依赖检查和装配都在同一个回滚边界内。即使 schema/config 检查在 HTTP
+  // 监听前失败，前面已经创建的 PostgreSQL/Redis 句柄也必须经过统一关闭，不能
+  // 由 fatalStep 直接 Deno.exit 绕过清理。
   const backgroundTasks = createManagedTaskGroup();
   const shutdownResources = [
     { name: "redis", close: () => closeRedisForShutdown() },
@@ -326,9 +136,189 @@ async function main() {
   const noHttp: ShutdownHttp = { name: "http-server", shutdown: () => {} };
   let server: ReturnType<typeof Deno.serve> | undefined;
 
-  // 启动装配用小范围 try/catch 保护：任何一步（含端口占用、signal 注册失败）
-  // 失败时，已登记的后台任务与 Redis/DB 都走同一套清理，避免半启动泄漏。
   try {
+    // JWT 启动校验：HS256 要求至少 256 bit（32 字节）密钥强度
+    // 修复 issue 64 评论 §5.2：默认 .env 模板是 27 字符，低于安全阈值
+    const jwtSecret = Deno.env.get("JWT_SECRET");
+    if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
+      const actualLength = jwtSecret ? jwtSecret.length : 0;
+      logger.error(
+        "JWT_SECRET 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
+          "HS256 算法要求至少 256 bit 密钥强度，使用弱密钥会显著降低 token 防伪造能力。\n" +
+          "可通过 `openssl rand -base64 48` 生成强随机密钥。",
+        { actual: actualLength, min: MIN_JWT_SECRET_LENGTH },
+      );
+      throw new Error("JWT_SECRET 未设置或长度不足，拒绝启动");
+    }
+    // 占位值校验（2026-09-12 架构评审 §2.4）：
+    // `.env.prod.example` 的 `change-me-to-a-random-string-at-least-32-chars`
+    // 长度 46，仅靠长度校验会被放行；compose 的 `${JWT_SECRET:?}` 也只拦空值。
+    // 于是"照文档复制模板后直接部署"会以**公开已知的密钥**上线 → 可伪造任意用户 token。
+    const jwtPlaceholder = describePlaceholderSecret("JWT_SECRET", jwtSecret);
+    if (jwtPlaceholder) {
+      logger.error(
+        "{reason}。\n" +
+          "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+        { reason: jwtPlaceholder },
+      );
+      throw new Error("JWT_SECRET 使用了公开占位值，拒绝启动");
+    }
+
+    // TFA 加密密钥启动校验（fail-fast，评审 P2 修复）：
+    // TFA_ENCRYPTION_KEY 用于 AES-256-GCM 加密 TOTP secret，缺失/过短时
+    // 必须拒绝启动。否则 setup 请求会返回 500，或密钥丢失后已启用 TFA 的
+    // 用户无法登录（secret 无法解密）。
+    const tfaKey = Deno.env.get("TFA_ENCRYPTION_KEY");
+    if (!tfaKey || tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
+      const actualLength = tfaKey ? tfaKey.length : 0;
+      logger.error(
+        "TFA_ENCRYPTION_KEY 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
+          "TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n" +
+          "可通过 `openssl rand -base64 48` 生成强随机密钥。",
+        { actual: actualLength, min: MIN_TFA_ENCRYPTION_KEY_LENGTH },
+      );
+      throw new Error("TFA_ENCRYPTION_KEY 未设置或长度不足，拒绝启动");
+    }
+    const tfaPlaceholder = describePlaceholderSecret(
+      "TFA_ENCRYPTION_KEY",
+      tfaKey,
+    );
+    if (tfaPlaceholder) {
+      logger.error(
+        "{reason}。\n" +
+          "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+        { reason: tfaPlaceholder },
+      );
+      throw new Error("TFA_ENCRYPTION_KEY 使用了公开占位值，拒绝启动");
+    }
+
+    // HTTP 进程只读核对打包迁移资产与数据库 ledger；迁移必须由显式运维命令执行。
+    await fatalStep("数据库 schema 兼容性检查", async () => {
+      await assertSchemaCompatible();
+    });
+
+    // 校验系统设置注册表（issue #99）
+    // 启动期检查：key 唯一、type 合法。开发期就发现问题。
+    await fatalStep("系统设置注册表校验", () => validateRegistry());
+
+    // 初始化系统设置缓存（issue #99）
+    // 从 system_settings 全量加载到内存 Map，失败时终止启动。
+    await fatalStep("系统设置缓存初始化", () => initSystemSettings());
+    // 启动期 env 快照（issue #99）
+    // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
+    snapshotEnv();
+
+    // issue #426：启动摘要中明确邮件服务就绪状态。
+    // disabled 允许启动，但邮箱验证/密码找回不可用，公开注册会被禁止
+    // （仅保留首个引导用户），必须在开放注册前完成邮件配置。
+    const emailStatus = getEmailConfigStatus();
+    if (emailStatus.configured) {
+      logger.info("邮件服务已就绪", { provider: emailStatus.provider });
+    } else {
+      logger.warn(
+        "邮件服务未就绪：邮箱验证与密码找回不可用，公开注册已被禁止" +
+          "（仅允许站点引导阶段的首次注册）。开放公开注册前请在管理后台完成邮件配置并发送测试邮件。",
+        {
+          provider: emailStatus.provider,
+          missing: emailStatus.missing,
+        },
+      );
+    }
+
+    // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
+    // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。
+    try {
+      const conflicts = listRuntimeEnvConflicts();
+      if (conflicts.length > 0) {
+        logger.warn(
+          "以下 {count} 项 runtime 配置同时存在 DB 值与 env 兜底，" +
+            "当前 DB 值优先；建议移除 .env 中对应变量以避免歧义：",
+          {
+            count: conflicts.length,
+            keys: conflicts.map((c) => `${c.key} (${c.envKey})`),
+          },
+        );
+      }
+    } catch (err) {
+      // 检测失败不阻断启动（仅提示）
+      logger.warn("runtime env/DB 共存冲突检测失败", { err });
+    }
+
+    // 提示平台默认 LLM 配置**只配了一半**（2026-09-22 评审）：
+    // `llm_default_provider_id` / `llm_default_model` 必须同时配置，否则 LLM 题
+    // 提交会以 400 失败。部署者常只取消注释其中一项（模板里两项都是注释示例），
+    // 因此在启动时给出可操作告警，而不是等用户提交才暴露。
+    try {
+      const gap = describeLlmPlatformDefaultGap();
+      if (gap.length > 0) {
+        logger.warn(
+          "平台默认 LLM 配置不完整：{missing} 未设置，LLM 题提交会返回 400。" +
+            "请把 llm_default_provider_id 与 llm_default_model 配成一对" +
+            "（管理后台「系统设置」或 .env.prod）。",
+          { missing: gap.join(", ") },
+        );
+      }
+    } catch (err) {
+      // 检测失败不阻断启动（仅提示）
+      logger.warn("平台默认 LLM 配置完整性检测失败", { err });
+    }
+
+    // 提示 bootstrap（env-owned）项在 DB 中的残留旧值：
+    // 这些行已不参与取值（读取走 env），仅在管理后台可一键清理。
+    try {
+      const orphans = await listOrphanedBootstrapRows();
+      if (orphans.length > 0) {
+        logger.warn(
+          "以下 {count} 项已由环境变量接管，DB 旧值不再生效，" +
+            "可到管理后台「环境配置」一键清理：",
+          {
+            count: orphans.length,
+            keys: orphans.map((r) =>
+              `${r.key}（更新于 ${r.updated_at ?? "?"}，更新人 ${
+                r.updated_by ?? "?"
+              }）`
+            ),
+          },
+        );
+      }
+    } catch (err) {
+      // 残留检测失败不阻断启动（仅提示）
+      logger.warn("bootstrap 残留 DB 行检测失败", { err });
+    }
+
+    // Issue #330：生产配置必须在 HTTP 监听前完成 fail-fast 校验。
+    await fatalStep("生产配置校验", () => {
+      assertProductionConfig(buildProductionConfig());
+    });
+
+    // 存储 Provider 初始化（非致命，S3 bucket 创建失败仅 warn）
+    try {
+      const storage = await getStorageProvider();
+      if (typeof storage.ensureBucket === "function") {
+        await storage.ensureBucket();
+      }
+    } catch (err) {
+      logger.warn("存储 Provider 初始化失败", { err });
+    }
+
+    // 连接 Redis（共享连接供 producer 使用）
+    // Redis 是评测分发依赖而非核心数据依赖，连接失败时仍启动 HTTP 服务，
+    // 评测相关功能将通过健康检查暴露为 degraded。
+    try {
+      await connectRedis();
+      // 三级优先级队列升级：把旧单队列残留任务迁入 medium，避免升级瞬间
+      // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
+      await migratePoolJudgeQueues();
+      await migrateLegacyJudgeQueue();
+    } catch (err) {
+      if (err instanceof Error && /迁移|processing/.test(err.message)) {
+        throw err;
+      }
+      logger.error("Redis 连接失败，评测分发功能不可用", { err });
+    }
+
+    // 后台任务统一登记（P2a）：所有组件都提供 stop()/done，关闭时按逆序停止、
+    // 等待在途工作结束，再关闭 Redis 与数据库连接。登记顺序即启动顺序。
     // 启动评测结果消费者池（后台运行，带自动重连，不阻塞 HTTP）
     backgroundTasks.add(startResultConsumerPool());
 
@@ -348,6 +338,8 @@ async function main() {
 
     // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
     backgroundTasks.add(initEventSubscriber());
+    // 系统设置跨副本失效监听必须归入同一任务组：停止时退订并等待在途 reload。
+    backgroundTasks.add(registerSettingsInvalidationListener());
 
     // 启动 HTTP 服务（保留 server 句柄用于优雅关闭）
     server = Deno.serve({ port }, app.fetch);

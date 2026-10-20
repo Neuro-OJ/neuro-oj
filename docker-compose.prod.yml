@@ -121,6 +121,35 @@ services:
       - noj-net
     restart: "no"
 
+  # ── Gateway 一次性初始化：迁移 + 默认配额 ─────────────────────────
+  # Gateway HTTP 进程只读校验打包 journal/SQL 与数据库 ledger；所有 DDL 与默认
+  # 配额写入必须由此显式步骤完成。升级时镜像变化会使该服务重新创建；恢复演练
+  # 通过 `up` 保留完成态，让后续 HTTP 服务复用同一个 one-shot 依赖，不隐式重跑。
+  gateway-migrate:
+    mem_limit: "${GATEWAY_MIGRATE_MEM_LIMIT:-512m}"
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
+    entrypoint: ["deno", "run", "-A", "src/db/migrate-cli.ts"]
+    environment:
+      NOJ_ENV: production
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_COLOR: ${LOG_COLOR:-never}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+      NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
+      NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
+      DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - noj-net
+    restart: "no"
+
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
@@ -131,6 +160,8 @@ services:
       <<: *core-env
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      gateway-migrate:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
@@ -357,6 +388,8 @@ services:
     expose:
       - "8001"
     depends_on:
+      gateway-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

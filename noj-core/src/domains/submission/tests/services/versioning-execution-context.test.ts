@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
+  domainLlmSettings,
   evaluationAttempts,
   llmTokenRevocations,
   problems,
@@ -99,7 +100,9 @@ class TrackingLocalStorageProvider extends LocalStorageProvider {
   }
 }
 
-function stubLlmGatewayProvider(enabled: boolean): () => void {
+async function stubLlmGatewayProvider(
+  enabled: boolean,
+): Promise<() => Promise<void>> {
   const envNames = [
     "NOJ_LLM_DEFAULT_PROVIDER_ID",
     "NOJ_LLM_DEFAULT_MODEL",
@@ -108,6 +111,27 @@ function stubLlmGatewayProvider(enabled: boolean): () => void {
   ] as const;
   const oldEnv = envNames.map((name) => [name, Deno.env.get(name)] as const);
   const originalFetch = globalThis.fetch;
+  const db = getDb();
+  const [oldDomainSetting] = await db.select().from(domainLlmSettings).where(
+    eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID),
+  );
+  // getDomainLlmDefault 不再从 env 隐式 seed；依赖默认域的评测用例必须显式
+  // 建立使用域配置，Provider 是否启用仍由下面的 Gateway stub 决定。
+  await db.insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: "prov-default",
+    model: "test-model",
+    revision: (oldDomainSetting?.revision ?? 0) + 1,
+    updated_at: now,
+  }).onConflictDoUpdate({
+    target: domainLlmSettings.domain_id,
+    set: {
+      provider_id: "prov-default",
+      model: "test-model",
+      revision: (oldDomainSetting?.revision ?? 0) + 1,
+      updated_at: now,
+    },
+  });
   Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
   Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "test-model");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
@@ -132,11 +156,23 @@ function stubLlmGatewayProvider(enabled: boolean): () => void {
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     )) as typeof fetch;
-  return () => {
+  return async () => {
     globalThis.fetch = originalFetch;
     for (const [name, value] of oldEnv) {
       if (value === undefined) Deno.env.delete(name);
       else Deno.env.set(name, value);
+    }
+    if (oldDomainSetting) {
+      await db.update(domainLlmSettings).set({
+        provider_id: oldDomainSetting.provider_id,
+        model: oldDomainSetting.model,
+        revision: oldDomainSetting.revision,
+        updated_at: oldDomainSetting.updated_at,
+      }).where(eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID));
+    } else {
+      await db.delete(domainLlmSettings).where(
+        eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID),
+      );
     }
     _resetSystemSettingsForTest();
   };
@@ -558,7 +594,7 @@ Deno.test("artifact preflight: Provider 停用时上传文件由统一补偿清�
     },
   );
 
-  const restoreLlm = stubLlmGatewayProvider(false);
+  const restoreLlm = await stubLlmGatewayProvider(false);
 
   try {
     await assertRejects(
@@ -586,7 +622,7 @@ Deno.test("artifact preflight: Provider 停用时上传文件由统一补偿清�
       0,
     );
   } finally {
-    restoreLlm();
+    await restoreLlm();
   }
 });
 
@@ -598,7 +634,7 @@ Deno.test({
   fn: async () => {
     const fake = startFakeRedis();
     const previousRedisUrl = Deno.env.get("REDIS_URL") ?? null;
-    const restoreLlm = stubLlmGatewayProvider(true);
+    const restoreLlm = await stubLlmGatewayProvider(true);
     const db = getDb();
     try {
       resetRedisForTest();
@@ -712,7 +748,7 @@ Deno.test({
       );
       // 永久入队失败在任务未派发成功的情况下终结了尝试；不把它描述成 token 已送达 judge。
     } finally {
-      restoreLlm();
+      await restoreLlm();
       resetRedisForTest();
       if (previousRedisUrl === null) Deno.env.delete("REDIS_URL");
       else Deno.env.set("REDIS_URL", previousRedisUrl);

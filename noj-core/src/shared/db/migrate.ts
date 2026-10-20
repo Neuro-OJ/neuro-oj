@@ -1,12 +1,18 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { getDb } from "./connection.ts";
-import { dirname, resolve } from "jsr:@std/path@^1";
+import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "db"]);
 
-const __dirname = dirname(new URL(import.meta.url).pathname);
+const __dirname = dirname(fromFileUrl(import.meta.url));
+
+/** 解析与生产迁移器相同的发布集迁移目录。 */
+export function resolveMigrationsDirectory(): string {
+  return Deno.env.get("NOJ_MIGRATIONS_DIR") ??
+    resolve(__dirname, "../../../drizzle");
+}
 
 /**
  * 迁移串行化用的 advisory lock 命名空间（int4 第一参数）。
@@ -22,8 +28,8 @@ const MIGRATION_LOCK_RETRY_MS = 2_000;
 /**
  * 由 schema 名派生 advisory lock 的第二个键。
  *
- * 作用：让**不同 schema**（如测试分片 test_unit / test_db）互不阻塞，
- * 而**同一 schema** 的两个迁移器仍然串行。
+ * 作用：让不同迁移锁域互不阻塞，而同一锁域的两个迁移器仍然串行。
+ * 测试隔离使用独立数据库，不使用 `TEST_SCHEMA`。
  */
 export function schemaLockKey(schema: string | undefined): number {
   // FNV-1a 32-bit，取正数以适配 int4 参数
@@ -104,19 +110,17 @@ function defaultMigrationLockDeps(): MigrationLockDeps {
  *
  * 实现要点（踩过的坑）：会话级 advisory lock 绑定**连接**，所以锁必须与迁移在
  * 同一条连接上才有效——但**不能**从主连接池 `reserve()`：drizzle 的迁移事务需要
- * 自己的连接，而测试模式连接池是 `max: 1`（见 connection.ts），预留唯一连接后
- * 迁移器永远拿不到连接 → **自死锁**（实测挂死 5 分钟）。
+ * 自己的连接，预留主连接池连接后迁移器可能无法取得连接。
  * 因此这里建立一条**独立的单连接**专门持锁，主连接池保持可用。
  *
  * 失败语义（2026-10-20 架构整治 P1b）：**拿不到锁必须失败，绝不调用 fn() 执行 DDL**。
- * - 未配置 DATABASE_URL：抛错（迁移只走真实 PG 路径；PGlite 测试模式由
- *   schema-ddl 引导，不经过 runMigrations）；
+ * - 未配置 DATABASE_URL：抛错；
  * - 创建专用锁连接失败 / `pg_try_advisory_lock` 抛错 / 等待超过上限：抛
  *   `MigrationLockError`，错误信息带 schema、等待时长与排查建议；
  * - 等待策略不变：最多 5 分钟、每 2 秒重试一次；超时改为失败而不是无锁继续；
  * - 无论成败，`finally` 都会解锁（已持有时）并关闭专用连接（会话级锁随连接释放）。
  *
- * @param schema 迁移目标 schema（TEST_SCHEMA 分片；undefined 表示 public）
+ * @param schema 迁移锁域（undefined 表示 public）
  * @param fn 持锁成功后执行的迁移函数
  * @param overrides 依赖覆盖（仅测试注入假连接/假时钟；生产不传，默认行为不变）
  * @returns fn 的返回值
@@ -135,8 +139,8 @@ export async function withMigrationLock<T>(
 
   const databaseUrl = deps.getDatabaseUrl();
   if (!databaseUrl) {
-    // PGlite 测试模式由 schema-ddl 引导，不经过 runMigrations；能走到这里的调用方
-    // 都是要执行真实文件迁移的路径，缺 DATABASE_URL 属于配置缺失，必须失败。
+    // 能走到这里的调用方都是要执行真实文件迁移的路径，缺 DATABASE_URL
+    // 属于配置缺失，必须失败。
     throw new MigrationLockError(
       `未配置 DATABASE_URL，无法获取数据库迁移 advisory lock（schema=${schemaName}）。` +
         "迁移禁止在无锁状态下执行 DDL，已终止；请配置 DATABASE_URL 指向可用的 PostgreSQL 后重试。",
@@ -216,17 +220,13 @@ export async function withMigrationLock<T>(
 }
 
 /**
- * 在启动时执行数据库迁移。
- * 使用 Drizzle ORM 内置的 migrator 读取 drizzle/ 目录下的 SQL 迁移文件，
- * 按文件名排序执行。
- *
- * TEST_SCHEMA 分片模式：migrator 默认把迁移记录表（__drizzle_migrations）
- * 建在固定的 `drizzle` schema，各分片共享同一份记录会导致"已迁移"误判
- * 跳过（并行分片建表失败的根因）。设置 migrationsSchema 为 TEST_SCHEMA
- * 后，迁移记录表与业务表落在同一 schema，分片之间完全隔离。
+ * 执行显式数据库迁移。
+ * 由 `noj db migrate` / 开发 `dev-setup` 调用；HTTP 进程不调用此函数。
+ * 使用 Drizzle ORM 内置的 migrator 读取发布集中的 SQL 迁移文件，
+ * 按 journal 顺序执行。
  *
  * 拿不到迁移锁（未配置 DATABASE_URL、锁连接创建失败、等待超时）时抛
- * `MigrationLockError`，调用方必须按失败处理（main.ts 为致命步骤）。
+ * `MigrationLockError`，调用方必须按失败处理（CLI 与 dev-setup 均应终止）。
  */
 export async function runMigrations(): Promise<void> {
   try {
@@ -235,18 +235,12 @@ export async function runMigrations(): Promise<void> {
     // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖；
     // deno compile 后 import.meta.url 指向二进制路径，生产镜像通过
     // NOJ_MIGRATIONS_DIR 显式指定迁移目录。
-    const migrationsFolder = Deno.env.get("NOJ_MIGRATIONS_DIR") ??
-      resolve(__dirname, "../../../drizzle");
-    const migrationsSchema = Deno.env.get("TEST_SCHEMA") || undefined;
+    const migrationsFolder = resolveMigrationsDirectory();
     logger.info("开始数据库迁移", {
       migrations_folder: migrationsFolder,
-      migrations_schema: migrationsSchema ?? "drizzle",
+      migrations_schema: "drizzle",
     });
-    await withMigrationLock(migrationsSchema, () =>
-      migrate(db, {
-        migrationsFolder,
-        ...(migrationsSchema ? { migrationsSchema } : {}),
-      }));
+    await withMigrationLock(undefined, () => migrate(db, { migrationsFolder }));
     logger.info("数据库迁移完成");
   } catch (err) {
     logger.error("数据库迁移失败", { err });

@@ -1,6 +1,7 @@
 import { assert } from "jsr:@std/assert@^1";
 import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
-import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 import { parsePagination } from "../../src/shared/http/pagination.ts";
@@ -53,7 +54,7 @@ Deno.test({
     };
 
     try {
-      // Seed 100k problems（分批插入，避免 PGlite OOM）
+      // Seed 100k problems（分批插入，避免 测试数据库 OOM）
       const BATCH = 1000;
       const now = new Date().toISOString();
       for (let i = 0; i < 100; i++) {

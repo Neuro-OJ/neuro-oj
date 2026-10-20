@@ -4,12 +4,13 @@
  * 覆盖：CRUD 校验（400）、公开列表仅 active + 置顶排序 + excerpt 截断 + 分页、
  * 非 active 详情 404、审计日志、删除。
  *
- * 依赖 PGlite 内存数据库（无 DATABASE_URL 也可运行）。
+ * 依赖测试启动器提供的独立 PostgreSQL 数据库。
  * 服务层经 getRequestContext() 取操作者，测试用 enterTestContext 注入。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { desc, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   announcements,
   auditLogs,
@@ -28,9 +29,6 @@ import {
   listPublicAnnouncements,
   updateAnnouncement,
 } from "../../index.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 
 const TEST_CTX = {
   actorId: "test-admin-uuid",
@@ -57,7 +55,6 @@ async function setup() {
 
 Deno.test({
   name: "announcements service: create 默认置顶/发布 + 审计日志",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -81,7 +78,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements service: 创建校验 title/content 长度",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -109,7 +105,6 @@ Deno.test({
 Deno.test({
   name:
     "announcements service: 公开列表仅 active + 置顶优先 + excerpt 截断 + 分页",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -147,7 +142,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements service: 公开详情 active 可见 / 下架 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -177,7 +171,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements service: 管理列表含下架 + is_active 筛选 + 审计 update",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -227,7 +220,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements service: 删除 + 审计 + 不存在 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -256,7 +248,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements service: update 校验 title 超长",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -11,7 +11,8 @@ import {
   getSubmissionQueueStatus,
   removePendingSubmission,
 } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   connectRedis,
   getRedis,
@@ -32,9 +33,6 @@ import {
   ALL_JUDGE_QUEUES,
   JUDGE_QUEUES,
 } from "../../../../shared/mq/judge-queues.ts";
-
-const hasDb = !!Deno.env.get("DATABASE_URL");
-const skip = !hasDb;
 
 const ts = Date.now();
 const USER_ID = `tst-queue-user-${ts}`;
@@ -224,7 +222,6 @@ await setup();
 
 Deno.test({
   name: "queue service: getPendingSubmissionIds 返回空列表（队列空）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -237,7 +234,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getPendingSubmissionIds 返回 pending ID",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -254,7 +250,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: 移除 pending 提交并记录审计日志",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -306,7 +301,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getPendingSubmissionIds 跳过无效 JSON",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -322,7 +316,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getQueueOverview 返回正确结构",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -338,7 +331,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getQueueOverview 自测按查看者隔离（审计 VULN-11）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -381,7 +373,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getSubmissionQueueStatus 不存在返回 null",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -392,7 +383,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getSubmissionQueueStatus 所有者可查看",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -407,7 +397,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getSubmissionQueueStatus 非所有者返回 null",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -421,7 +410,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: getSubmissionQueueStatus admin 可查看任意",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -437,7 +425,6 @@ Deno.test({
 
 Deno.test({
   name: "queue service: 清理测试数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

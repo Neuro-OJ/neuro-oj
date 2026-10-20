@@ -147,8 +147,7 @@ Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
   const oldUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
   Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://127.0.0.1:8001");
-  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
-  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  await configureMainDomainDefault("prov-default", "qwen-plus");
   const restore = stubProviderFetch(true);
   try {
     const llmTask = await buildJudgeTaskLlm(
@@ -169,8 +168,6 @@ Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
     if (oldUrl === undefined) Deno.env.delete("NOJ_LLM_GATEWAY_URL");
     else Deno.env.set("NOJ_LLM_GATEWAY_URL", oldUrl);
-    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
-    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();
   }
 });
@@ -500,6 +497,29 @@ const RUNTIME: RuntimeConfig = {
   },
 };
 
+/** LLM 题 token 测试显式准备 main 域配置，读取路径不得隐式 seed。 */
+async function configureMainDomainDefault(
+  providerId: string,
+  model: string,
+): Promise<void> {
+  await ensureDefaultWorkspace();
+  await getDb().insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: providerId,
+    model,
+    revision: 1,
+    updated_at: new Date().toISOString(),
+  }).onConflictDoUpdate({
+    target: domainLlmSettings.domain_id,
+    set: {
+      provider_id: providerId,
+      model,
+      revision: 1,
+      updated_at: new Date().toISOString(),
+    },
+  });
+}
+
 Deno.test("llm-token: 未配置使用域默认时抛错", async () => {
   await ensureDefaultWorkspace();
   await getDb().insert(domainLlmSettings).values({
@@ -527,12 +547,11 @@ Deno.test("llm-token: 未配置使用域默认时抛错", async () => {
   }
 });
 
-Deno.test("llm-token: 使用平台默认填充 provider/model 与预算", async () => {
+Deno.test("llm-token: 使用显式主域默认填充 provider/model 与预算", async () => {
   _resetSystemSettingsForTest();
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
-  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
-  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  await configureMainDomainDefault("prov-default", "qwen-plus");
   const restore = stubProviderFetch(true);
   try {
     const task = await buildJudgeTaskLlm(
@@ -549,8 +568,6 @@ Deno.test("llm-token: 使用平台默认填充 provider/model 与预算", async 
     restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
-    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
-    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();
   }
 });
@@ -559,8 +576,7 @@ Deno.test("llm-token: 默认 Provider 停用时抛错", async () => {
   _resetSystemSettingsForTest();
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
-  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
-  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  await configureMainDomainDefault("prov-default", "qwen-plus");
   const restore = stubProviderFetch(false);
   try {
     await assertRejects(
@@ -574,8 +590,6 @@ Deno.test("llm-token: 默认 Provider 停用时抛错", async () => {
     restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
-    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
-    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();
   }
 });
@@ -584,8 +598,7 @@ Deno.test("llm-token: Provider 不存在（provider_not_found）时抛 BadReques
   _resetSystemSettingsForTest();
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
-  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-missing");
-  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  await configureMainDomainDefault("prov-missing", "qwen-plus");
   const restore = stubProviderFetch(true, {
     status: 404,
     error: "provider_not_found",
@@ -602,8 +615,6 @@ Deno.test("llm-token: Provider 不存在（provider_not_found）时抛 BadReques
     restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
-    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
-    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();
   }
 });
@@ -612,8 +623,7 @@ Deno.test("llm-token: gateway 故障（5xx）时上抛 LlmGatewayError 而非 40
   _resetSystemSettingsForTest();
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
-  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
-  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  await configureMainDomainDefault("prov-default", "qwen-plus");
   const restore = stubProviderFetch(true, {
     status: 503,
     error: "gateway_error",
@@ -634,8 +644,6 @@ Deno.test("llm-token: gateway 故障（5xx）时上抛 LlmGatewayError 而非 40
     restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
-    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
-    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();
   }
 });

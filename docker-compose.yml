@@ -6,6 +6,11 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   postgres:
@@ -20,6 +25,11 @@ services:
       POSTGRES_DB: noj
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noj -d noj"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   # 镜像来源变更（2026-09-26）：MinIO 官方镜像已全部下架（`minio/minio`、`minio/mc`
@@ -59,6 +69,56 @@ services:
       echo 'MinIO bucket initialized';
       "
 
+  # Core 的 DDL 与系统基础数据初始化必须先于同库的 Gateway LLM 表迁移。
+  # 这里不启动 Core HTTP；源码开发仍由 `deno task dev` 提供 HTTP 进程。
+  migrate:
+    build: ./noj-core
+    environment:
+      NOJ_ENV: development
+      NOJ_PROJECT_ROOT: /app
+      NOJ_MIGRATIONS_DIR: /app/drizzle
+      DATABASE_URL: postgres://noj:noj@postgres:5432/noj
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-012345678901234567890123456789}
+      TFA_ENCRYPTION_KEY: ${TFA_ENCRYPTION_KEY:-dev-tfa-key-012345678901234567890123456789}
+      NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:-dev-llm-service-token-0123456789abcdef}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
+      STORAGE_PROVIDER: local
+      EMAIL_PROVIDER: disabled
+      NOJ_FORCE_PASSWORD_CHANGE: "false"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        /app/bin/noj db migrate &&
+        /app/bin/noj init system
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  # 网关迁移与默认配额种子必须作为独立一次性步骤执行；HTTP 进程只做只读
+  # schema 检查，不在启动时隐式建表或写入默认数据。
+  llm-gateway-migrate:
+    build: ./noj-llm-gateway
+    environment:
+      NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:-dev-llm-service-token-0123456789abcdef}
+      NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:-dev-llm-store-key-0123456789abcdef}
+      DATABASE_URL: postgres://noj:noj@postgres:5432/noj
+      REDIS_URL: redis://redis:6379/0
+    entrypoint: ["deno", "run", "-A", "src/db/migrate-cli.ts"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
   llm-gateway:
     build: ./noj-llm-gateway
     container_name: noj-llm-gateway
@@ -74,8 +134,12 @@ services:
       DATABASE_URL: postgres://noj:noj@postgres:5432/noj
       REDIS_URL: redis://redis:6379/0
     depends_on:
-      - postgres
-      - redis
+      llm-gateway-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

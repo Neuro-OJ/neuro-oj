@@ -480,16 +480,6 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     visible: false,
   },
   {
-    key: "TEST_SCHEMA",
-    type: "string",
-    description: "测试隔离 schema（search_path 分片）",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "TEST_SCHEMA",
-    category: "other",
-    visible: false,
-  },
-  {
     key: "NOJ_MIGRATIONS_DIR",
     type: "string",
     description: "迁移文件目录覆盖",

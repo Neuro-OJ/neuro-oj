@@ -19,10 +19,8 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { recordInstanceEducationModulesChange } from "../../../shared/education-modules.ts";
-import {
-  getDb,
-  registerDbResetCallback,
-} from "../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 import { systemSettings } from "../../../shared/db/schema.ts";
 import { ValidationError } from "../../../shared/base/errors.ts";
 import { validateWorkspaceSetting } from "../../../shared/workspace/resource-policy.ts";
@@ -114,8 +112,8 @@ interface SettingsChangedPayload {
   key?: string;
 }
 
-/** 记录已注册监听，避免重复注册（模块可能被多次导入/测试往返）。 */
-let _settingsInvalidationListenerRegistered = false;
+/** 当前受管的跨副本监听；生产由 main.ts 显式登记到任务组。 */
+let _settingsInvalidationTask: ManagedTask | null = null;
 
 /**
  * 刷新本地设置缓存（跨副本失效的**执行**端）。
@@ -128,8 +126,8 @@ let _settingsInvalidationListenerRegistered = false;
  */
 export async function refreshSettingsCache(key?: string): Promise<void> {
   if (key) {
-    // bootstrap（env-owned）项不缓存 DB 值，跳过
-    if (isBootstrap(key)) return;
+    // bootstrap（env-owned）项仍走统一重载路径：它会清理任何历史残留的
+    // DB 缓存，避免旧版本进程留下的值在热更新后继续可见。
     await reloadSingleKey(key);
     return;
   }
@@ -139,30 +137,68 @@ export async function refreshSettingsCache(key?: string): Promise<void> {
 /**
  * 注册跨副本失效监听（幂等）。
  *
- * 由模块加载时自动调用；单测可直接调用
- * `_dispatchToLocalListenersForTest` 模拟"收到其它副本的变更通知"。
+ * 由 main.ts 显式登记到 ManagedTaskGroup；单测可直接调用后在用例结束时
+ * stop/done。`_dispatchToLocalListenersForTest` 可模拟其它副本的通知。
  */
-export function registerSettingsInvalidationListener(): void {
-  if (_settingsInvalidationListenerRegistered) return;
-  _settingsInvalidationListenerRegistered = true;
-  onEvent(Channels.settings, (_channel, message) => {
+export function registerSettingsInvalidationListener(): ManagedTask {
+  if (_settingsInvalidationTask) return _settingsInvalidationTask;
+
+  let stopped = false;
+  let resolveStopRequested: () => void = () => {};
+  const stopRequested = new Promise<void>((resolve) => {
+    resolveStopRequested = resolve;
+  });
+  const inFlight = new Set<Promise<void>>();
+
+  const handleMessage = (_channel: string, message: string): void => {
+    if (stopped) return;
     let payload: SettingsChangedPayload | null = null;
     try {
       payload = JSON.parse(message) as SettingsChangedPayload;
     } catch {
       payload = null;
     }
-    void refreshSettingsCache(payload?.key).then(() => {
+    const reload = refreshSettingsCache(payload?.key).then(() => {
       logger.info("收到设置变更通知，已刷新本地设置缓存", {
         key: payload?.key ?? "(全部)",
       });
     }).catch((err) => {
-      logger.warn("收到设置变更通知但刷新本地缓存失败", {
+      // 失效通知不是可忽略的 cache hint：刷新失败会让本副本继续使用旧值。
+      // 保留错误对象并用 error 级别记录，便于告警系统发现跨副本不一致风险。
+      logger.error("收到设置变更通知但刷新本地缓存失败", {
         key: payload?.key ?? "(全部)",
         err,
       });
     });
-  });
+    inFlight.add(reload);
+    // 删除动作在 finally 中完成，stop() 之后 done 会等待所有实际 reload。
+    void reload.finally(() => inFlight.delete(reload)).catch(() => {});
+  };
+
+  const unsubscribe = onEvent(Channels.settings, handleMessage);
+  const done = (async (): Promise<void> => {
+    await stopRequested;
+    while (inFlight.size > 0) {
+      await Promise.allSettled([...inFlight]);
+    }
+  })();
+  done.catch(() => {});
+
+  const task: ManagedTask = {
+    name: "system-settings-invalidation",
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      unsubscribe();
+      resolveStopRequested();
+    },
+    done,
+  };
+  _settingsInvalidationTask = task;
+  void done.then(() => {
+    if (_settingsInvalidationTask === task) _settingsInvalidationTask = null;
+  }).catch(() => {});
+  return task;
 }
 
 /**
@@ -174,16 +210,6 @@ export function notifySettingsChanged(key?: string): void {
   const payload: SettingsChangedPayload = { type: "settings:changed", key };
   publishEvent(Channels.settings, JSON.stringify(payload));
 }
-
-// 注册 DB 重置回调：TRUNCATE system_settings 表时同步清内存缓存
-registerDbResetCallback(() => {
-  cache = new Map();
-  _initialized = false;
-});
-
-// 模块加载即注册跨副本失效监听（幂等）——与上面的 registerDbResetCallback 同为
-// 模块级副作用，保证任何用到本模块的进程都能收到失效通知。
-registerSettingsInvalidationListener();
 
 // ─── 敏感字段掩码 ───────────────────────────────────────────
 
@@ -321,7 +347,7 @@ function validateValueType(
  * 启动期初始化：从 DB 全量加载到 Map。
  * 应在 main.ts 启动顺序的"DB 迁移之后"调用一次。
  *
- * 测试环境（NOJ_ENV=test 或 PGlite 模式）也安全：DB 可能是空的，Map 为空。
+ * 测试环境也安全：DB 可能是空的，Map 为空。
  */
 export async function initSystemSettings(): Promise<void> {
   if (_initialized) return;
@@ -681,7 +707,6 @@ export async function updateSetting(
   }
 
   // 失效缓存单条，异步 reload
-  cache.delete(key);
   await reloadSingleKey(key);
   // 通知其它副本失效（2026-09-12 评审 §2.6）
   notifySettingsChanged(key);
@@ -760,8 +785,7 @@ export async function resetSetting(
     });
   } else await db.delete(systemSettings).where(eq(systemSettings.key, key));
 
-  cache.delete(key);
-  // 重置后不需要 reload（已经从 Map 删除，下次读会走 env/default 兜底）
+  await reloadSingleKey(key);
   // 其它副本同样需要失效（2026-09-12 评审 §2.6）
   notifySettingsChanged(key);
 
@@ -785,6 +809,11 @@ export async function resetSetting(
 
 /** 从 DB 重新加载单条 key 到缓存 */
 export async function reloadSingleKey(key: string): Promise<void> {
+  if (isBootstrap(key)) {
+    // bootstrap 由 env 所有，任何残留 DB 行都不可进入缓存；显式清理本地旧值。
+    cache.delete(key);
+    return;
+  }
   const db = getDb();
   const rows = await db
     .select()
@@ -869,7 +898,7 @@ export async function cleanupBootstrapRow(
   const oldRaw = rows.length > 0 ? rows[0].value : undefined;
 
   await db.delete(systemSettings).where(eq(systemSettings.key, key));
-  cache.delete(key);
+  await reloadSingleKey(key);
   // 清理残留同样广播（2026-09-12 评审 §2.6）
   notifySettingsChanged(key);
 

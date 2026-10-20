@@ -1,6 +1,7 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
 import {
@@ -10,10 +11,6 @@ import {
   withAudit,
 } from "../../services/admin-audit.ts";
 import type { AuditMeta } from "../../types/admin-audit.ts";
-
-const hasDb = true;
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasDb || !hasEnv;
 
 const TEST_CTX = {
   actorId: "admin-audit-test-admin",
@@ -39,7 +36,6 @@ async function clean() {
 
 Deno.test({
   name: "admin-audit: withAudit 在成功响应后写入审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -80,7 +76,6 @@ Deno.test({
 
 Deno.test({
   name: "admin-audit: adminAudit 直接写入审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -102,7 +97,6 @@ Deno.test({
 
 Deno.test({
   name: "admin-audit: withAudit 非 2xx 不写审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

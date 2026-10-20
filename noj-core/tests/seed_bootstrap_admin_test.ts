@@ -10,7 +10,8 @@
  */
 
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "./../src/shared/db/connection.ts";
+import { getDb } from "./../src/shared/db/connection.ts";
+import { resetDbForTest } from "./helpers/db.ts";
 import { and, eq, inArray, not } from "drizzle-orm";
 import {
   auditLogs,
@@ -32,9 +33,6 @@ import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
 } from "../src/domains/system/index.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 
 /**
  * 引导管理员兜底的核心逻辑（简化版——直接引 seed.ts 代码路径）。
@@ -114,7 +112,6 @@ async function cleanupUser(userId: string): Promise<void> {
 
 Deno.test({
   name: "seed bootstrap: 新数据库无可登录 admin",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -130,7 +127,6 @@ Deno.test({
 
 Deno.test({
   name: "seed bootstrap: 已有 admin 时跳过创建",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -164,7 +160,6 @@ Deno.test({
 
 Deno.test({
   name: "seed bootstrap: ADMIN_EMAIL 已设置时跳过",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -189,7 +184,6 @@ Deno.test({
 
 Deno.test({
   name: "seed bootstrap: 引导管理员 must_change_password=true",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -241,7 +235,6 @@ Deno.test({
 Deno.test({
   name:
     "seed bootstrap: ensureBootstrapAdmin 创建的管理员写入 user_roles（issue #186）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -273,7 +266,6 @@ Deno.test({
 Deno.test({
   name:
     "seed bootstrap: ensureAdminFromEnv 创建的管理员写入 user_roles（issue #186）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -320,7 +312,6 @@ Deno.test({
 Deno.test({
   name:
     "seed bootstrap: NOJ_FORCE_PASSWORD_CHANGE=false 时引导管理员不强制改密（devtool 默认）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -371,7 +362,6 @@ Deno.test({
 Deno.test({
   name:
     "seed bootstrap: ensureAdminFromEnv 提升已有用户时写入 user_roles（issue #186）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -10,7 +10,8 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
@@ -29,10 +30,6 @@ import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 await initRedisForTest();
 
 await resetDbForTest();
-
-const hasDb = true;
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(hasDb && hasJwt);
 
 // 必须先初始化系统设置（default 值入库），PR-2 修改才生效
 snapshotEnv();
@@ -61,7 +58,6 @@ async function listAuditActions(): Promise<string[]> {
 
 Deno.test({
   name: "dead-switch: allow_register=false 时 /register 返 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -90,7 +86,6 @@ Deno.test({
 
 Deno.test({
   name: "dead-switch: allow_register=true 时 /register 正常",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -114,7 +109,6 @@ Deno.test({
 
 Deno.test({
   name: "maintenance: maintenance_mode=true 时 POST 返 503 + MAINTENANCE code",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -146,7 +140,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /register 写入 auth.register",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -174,7 +167,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /login 成功写入 auth.login_success",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -208,7 +200,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /login 失败写入 auth.login_failure（reason=user_not_found）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -237,7 +228,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /login 失败写入 auth.login_failure（reason=wrong_password）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -277,7 +267,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /change-password 写入 auth.change_password",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -316,7 +305,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /forgot-password 未注册邮箱仍写审计（email_exists=false）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -344,7 +332,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /forgot-password 已注册邮箱写 email_exists=true",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -386,7 +373,6 @@ Deno.test({
 
 Deno.test({
   name: "audit: /reset-password 成功写入 auth.password_reset",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -453,7 +439,6 @@ Deno.test({
 // 清理：重置系统设置快照
 Deno.test({
   name: "dead-switch: 清理 system_settings 快照",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: () => {

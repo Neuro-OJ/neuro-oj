@@ -11,9 +11,6 @@ import { connectRedis } from "../../../../shared/mq/connection.ts";
 import { runMigrations } from "../../../../shared/db/migrate.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 // 全局初始化（连接 Redis + 运行迁移）
 let ready = false;
 async function ensureReady() {
@@ -33,7 +30,6 @@ async function ensureReady() {
 
 Deno.test({
   name: "queue route: GET /api/v1/queue 无 token 返回 401",
-  ignore: skip,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/queue");
@@ -44,7 +40,6 @@ Deno.test({
 Deno.test({
   name:
     "queue route: GET /api/v1/admin/submission/queue/health 无 token 返回 401",
-  ignore: skip,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/admin/submission/queue/health");
@@ -55,7 +50,6 @@ Deno.test({
 Deno.test({
   name:
     "queue route: GET /api/v1/admin/submission/queue/health 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -75,7 +69,6 @@ Deno.test({
 Deno.test({
   name:
     "queue route: GET /api/v1/admin/submission/queue/health 管理员返回 200 且结构完整",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -108,7 +101,6 @@ Deno.test({
 
 Deno.test({
   name: "queue route: GET /api/v1/queue 非管理员返回 200",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -136,7 +128,6 @@ Deno.test({
 
 Deno.test({
   name: "queue route: GET /api/v1/queue 管理员返回 200",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -164,7 +155,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions/:id/status: 无 token 返回 401",
-  ignore: skip,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions/123/status");
@@ -174,7 +164,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions/:id/status: 有效 token 但提交不存在返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -196,7 +185,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions/:id/status: 非提交者也可访问（不限制身份）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -216,7 +204,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions/:id: 增强详情接口提交不存在时返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

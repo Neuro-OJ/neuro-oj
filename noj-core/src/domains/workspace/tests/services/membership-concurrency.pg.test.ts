@@ -2,11 +2,8 @@ import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
   domainInvitations,
@@ -28,21 +25,13 @@ import {
 } from "../../index.ts";
 
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
-if (DATABASE_URL) disableTestTransactionForFile();
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** 独立物理连接，不能用单连接业务池的排队冒充 PostgreSQL 行锁。 */
 function connection() {
-  const schema = Deno.env.get("TEST_SCHEMA");
-  if (schema && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
-    throw new Error("非法测试 schema");
-  }
   return postgres(DATABASE_URL!, {
     max: 1,
-    connection: schema
-      ? { options: `-csearch_path=${schema},public` }
-      : undefined,
     onnotice: () => {},
   });
 }
@@ -118,7 +107,6 @@ for (const kind of ["join", "invitation", "approval"] as const) {
   Deno.test({
     name:
       `成员并发 PG：${kind} 在注销已持账号锁时不抢域锁、不留下已注销的有效成员`,
-    ignore: !DATABASE_URL,
     sanitizeResources: false,
     sanitizeOps: false,
     fn: async () => {
@@ -171,7 +159,6 @@ for (const kind of ["join", "invitation", "approval"] as const) {
 
   Deno.test({
     name: `成员并发 PG：${kind} 等待域锁时持有账号锁，先加入后注销正确释放名额`,
-    ignore: !DATABASE_URL,
     sanitizeResources: false,
     sanitizeOps: false,
     fn: async () => {
@@ -226,7 +213,6 @@ for (const kind of ["join", "invitation", "approval"] as const) {
 
 Deno.test({
   name: "成员并发 PG：两个独立连接竞争最后一个名额，仅成功一次且失败不消费邀请",
-  ignore: !DATABASE_URL,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

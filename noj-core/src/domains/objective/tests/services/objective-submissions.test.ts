@@ -649,7 +649,7 @@ Deno.test({
     };
     await db.insert(objectiveSubmissions).values(row);
     // 绕过先查直接插入同约束记录 → 触发 23505
-    // 放在 savepoint 中执行，避免错误中断外层测试事务
+    // 放在显式事务中执行，避免错误中断后续测试操作。
     const txDb = getDb();
     await assertRejects(
       () =>
@@ -659,7 +659,7 @@ Deno.test({
             id: crypto.randomUUID(),
           });
         }),
-      // 允许任意错误类型（postgres.js 与 PGlite 错误结构不同），
+      // 允许任意错误类型（postgres.js 与 测试数据库 错误结构不同），
       // 仅验证唯一约束确实存在
     );
     const rows = await db.select().from(objectiveSubmissions).where(

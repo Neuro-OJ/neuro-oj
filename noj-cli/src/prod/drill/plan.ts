@@ -19,10 +19,10 @@
  *
  * 1. **独立项目名**：默认 `noj-drill`，且**拒绝含 `prod`**——`down -v` 会删掉
  *    同名项目的**数据卷**，与生产同名等于删生产数据；
- * 2. **独立子网**：覆盖文件只改 `noj-net` 的 `ipam.config[0].subnet`，避免与
- *    生产 `noj-net` 冲突；
- * 3. **不映射宿主机端口**：覆盖文件**不含** `ports:`，因此演练不会占用
- *    8080/5432 等生产端口，也不会对外暴露。
+ * 2. **独立子网**：覆盖文件把 `noj-net` 的 `ipam.config[0].subnet` 改成演练值，
+ *    避免与生产 `noj-net` 冲突；
+ * 3. **不映射宿主机端口**：覆盖文件用 Compose 的 `!reset []` 清空生产文件
+ *    中的端口映射，因此演练不会占用 8080/5432 等生产端口，也不会对外暴露。
  *
  * 数据卷隔离不需要额外配置：Compose 的卷名前缀是项目名，故演练卷天然是
  * `<演练项目名>_pgdata` 等，与生产卷不重叠。
@@ -140,8 +140,9 @@ export const DRILL_NETWORK_NAME = "noj-net";
 /**
  * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` :321-339 的等价）。
  *
- * 只做**一件事**：把 `noj-net` 的子网改为演练子网。**刻意不含** `ports:`——这是
- * "不映射宿主机端口"的落点，由测试逐字断言。
+ * 覆盖两类隔离属性：把 `noj-net` 的子网改为演练子网，并用 Compose 的
+ * `!reset []` 清空生产服务继承的宿主机端口映射。后者必须写在合并后的配置里；
+ * 仅仅让覆盖文件不出现 `ports:` 并不能移除生产文件的映射。
  *
  * ## 为什么不再声明 `verifier` 服务（评审发现）
  *
@@ -155,7 +156,14 @@ export const DRILL_NETWORK_NAME = "noj-net";
  * 被 CI/文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
  */
 export function renderDrillOverride(subnet: string): string {
-  return `# restore-drill 自动生成的隔离覆盖：独立子网，避免与生产 noj-net 冲突。
+  return `# restore-drill 自动生成的隔离覆盖：独立子网且不继承生产宿主机端口。
+services:
+  nginx:
+    ports: !reset []
+  prometheus:
+    ports: !reset []
+  alertmanager:
+    ports: !reset []
 networks:
   ${DRILL_NETWORK_NAME}:
     ipam:

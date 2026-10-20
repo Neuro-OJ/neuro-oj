@@ -5,7 +5,7 @@
  * 管理端点（非 admin 403 / 创建 201 / 发布下架 / 删除 204 / 更新 404 / 校验 400）、
  * RBAC seed（announcement:manage 权限存在且 admin 角色拥有）。
  *
- * 依赖 PGlite 内存数据库 + JWT_SECRET（helper 自动 seed RBAC）。
+ * 依赖 独立测试数据库 + JWT_SECRET（helper 自动 seed RBAC）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
@@ -14,7 +14,8 @@ import {
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   permissions,
   rolePermissions,
@@ -22,11 +23,6 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipDb = !hasDb;
-const skipEnv = !hasEnv;
 
 const ts = Date.now();
 
@@ -54,7 +50,6 @@ async function createViaApi(
 
 Deno.test({
   name: "announcements route: 公开列表未登录 200 空列表 + 404",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -77,7 +72,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: 非 admin 写操作 403",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -98,7 +92,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: admin 发布 → 公开可见 → 置顶排序 → 下架消失",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -159,7 +152,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: 分页 meta 生效",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -181,7 +173,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: 创建校验 400 + 更新不存在 404 + 删除 204",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -254,7 +245,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: 管理列表含下架 + is_active 筛选",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -283,7 +273,6 @@ Deno.test({
 Deno.test({
   name:
     "announcements route: 仅 announcement:manage 用户（无 full_access）可通过管理端点",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -356,7 +345,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements route: RBAC seed 含 announcement:manage 且 admin 拥有",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -388,7 +376,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements: /banner 无横幅公告时返回 null",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -403,7 +390,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements: /banner 返回最新带 banner_text 的 active 公告",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -430,7 +416,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements: /banner 忽略已下架公告",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -463,7 +448,6 @@ Deno.test({
 
 Deno.test({
   name: "announcements: banner_text 空白串保存为 null（不出横幅）",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

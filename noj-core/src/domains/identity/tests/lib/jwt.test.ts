@@ -6,20 +6,13 @@ import {
 import { decodeJwt, SignJWT } from "jose";
 import { signToken, verifyToken } from "../../services/security/jwt.ts";
 
-// 本文件只测试 JWT 签发/校验的纯逻辑，不依赖真实数据库。
-//
-// 此前每个用例都带基于 hasJwtSecret 的 ignore 守卫：CI 由工作流注入 JWT_SECRET 时
-// 用例会真正执行，但一旦密钥缺失整个文件就"静默跳过"——既产生假绿，也让静默跳过
-// 基线因上游新增用例而失败（该文件 ignore 数 6 → 7）。
-//
-// 改为无条件兜底注入仅测试用的固定密钥（长度 ≥32，满足 main.ts 的强度校验），
-// 用例始终真正执行；CI 已注入的值优先，不受影响。与 noj-core/scripts/test-domain.sh
-// 中 JWT_SECRET 的兜底语义一致。
-const TEST_JWT_SECRET = "jwt-lib-test-secret-at-least-32-characters";
-Deno.env.set(
-  "JWT_SECRET",
-  Deno.env.get("JWT_SECRET") || TEST_JWT_SECRET,
-);
+// 本文件只测试 JWT 签发/校验的纯逻辑，但仍要求测试启动器显式提供必需密钥。
+const jwtSecret = Deno.env.get("JWT_SECRET");
+if (!jwtSecret) {
+  throw new Error(
+    "JWT_SECRET 未设置：即使是纯 JWT 测试也不得用固定密钥掩盖缺失配置",
+  );
+}
 
 Deno.test({
   name: "jwt: 会话版本往返且拒绝畸形版本",
@@ -35,7 +28,7 @@ Deno.test({
         .setProtectedHeader({ alg: "HS256" })
         .setIssuer("noj-core").setAudience("noj-ui")
         .setSubject("version-user").setIssuedAt().setExpirationTime("1h")
-        .sign(new TextEncoder().encode(Deno.env.get("JWT_SECRET")));
+        .sign(new TextEncoder().encode(jwtSecret));
       await assertRejects(() => verifyToken(invalid), Error, "会话版本无效");
     }
   },
@@ -87,7 +80,7 @@ Deno.test({
 Deno.test({
   name: "jwt: verifyToken 拒绝非 HS256 算法（NOJ-000）",
   fn: async () => {
-    const secret = new TextEncoder().encode(Deno.env.get("JWT_SECRET"));
+    const secret = new TextEncoder().encode(jwtSecret);
     const token = await new SignJWT({ role: "user" })
       .setProtectedHeader({ alg: "HS384" })
       .setIssuer("noj-core")

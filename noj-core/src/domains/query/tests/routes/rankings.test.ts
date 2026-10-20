@@ -2,17 +2,15 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import rankings from "../../routes/rankings.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { checkIns, users } from "../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../identity/index.ts";
 import { signToken } from "../../../identity/index.ts";
 import { eq } from "drizzle-orm";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest({ refreshRankings: true });
-
-const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
-  !!Deno.env.get("JWT_SECRET");
 
 /**
  * 注册最小 onError，与 src/app.ts 等价（处理 AppError → statusCode + body）。
@@ -58,7 +56,6 @@ function jsonRequest(
 
 Deno.test({
   name: "rankings route: GET / 无需 token 公开访问",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -75,7 +72,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings route: GET /me 未登录返回 401",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -87,7 +83,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings route: GET /?page=0 返回 400",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -101,7 +96,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings route: GET /?limit=abc 返回 400",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -155,7 +149,6 @@ async function cleanupCheckinUsers(ids: string[]): Promise<void> {
 Deno.test({
   name:
     "rankings route: GET /checkin 公开返回月度活跃榜且排序正确（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -194,7 +187,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings route: GET /checkin 登录时返回 user_rank（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -218,7 +210,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings route: GET /checkin?month=非法 返回 400（issue #184）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

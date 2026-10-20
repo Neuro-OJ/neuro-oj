@@ -67,7 +67,7 @@ function assertKind(kind: string): asserts kind is LegalKind {
   }
 }
 
-/** 判断数据库错误是否为唯一约束冲突（PG 23505；PGlite 在 `cause.code`）。 */
+/** 判断数据库错误是否为 PostgreSQL 唯一约束冲突（23505）。 */
 function isUniqueViolation(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const rec = err as Record<string, unknown>;

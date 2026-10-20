@@ -1,6 +1,7 @@
 import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainMemberRoles,
   domainProblemBindings,
@@ -67,7 +68,7 @@ async function fixture() {
   return { db, user, now, first, binding, other };
 }
 
-/** 仅历史回填用例恢复扩展阶段的列；标准 preload 外层事务回滚这些 DDL。 */
+/** 仅历史回填用例恢复扩展阶段的列；专用测试数据库不会自动回滚这些 DDL。 */
 async function reopenLegacyColumns(db: ReturnType<typeof getDb>) {
   await db.execute(
     sql`ALTER TABLE submissions ALTER COLUMN domain_id DROP NOT NULL, ALTER COLUMN domain_problem_binding_id DROP NOT NULL`,
@@ -76,8 +77,54 @@ async function reopenLegacyColumns(db: ReturnType<typeof getDb>) {
     sql`ALTER TABLE submission_jobs ALTER COLUMN domain_id DROP NOT NULL`,
   );
   await db.execute(
-    sql`ALTER TABLE submission_job_items ALTER COLUMN domain_id DROP NOT NULL, DROP CONSTRAINT submission_job_items_binding_required_check`,
+    sql`ALTER TABLE submission_job_items ALTER COLUMN domain_id DROP NOT NULL, DROP CONSTRAINT IF EXISTS submission_job_items_binding_required_check`,
   );
+}
+
+/** 回填用例必须把临时的扩展阶段 schema 恢复为正式 schema，避免污染后续用例。 */
+async function restoreExecutionColumns(db: ReturnType<typeof getDb>) {
+  await db.execute(
+    sql`ALTER TABLE submissions ALTER COLUMN domain_id SET NOT NULL, ALTER COLUMN domain_problem_binding_id SET NOT NULL`,
+  );
+  await db.execute(
+    sql`ALTER TABLE submission_jobs ALTER COLUMN domain_id SET NOT NULL`,
+  );
+  await db.execute(
+    sql`ALTER TABLE submission_job_items ALTER COLUMN domain_id SET NOT NULL`,
+  );
+  await db.execute(sql.raw(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'submission_job_items'::regclass
+          AND conname = 'submission_job_items_binding_required_check'
+      ) THEN
+        ALTER TABLE submission_job_items
+          ADD CONSTRAINT submission_job_items_binding_required_check
+          CHECK (
+            domain_problem_binding_id IS NOT NULL
+            OR status IN ('failed', 'skipped')
+          );
+      END IF;
+    END
+    $$;
+  `));
+}
+
+async function withLegacyExecutionColumns<T>(
+  db: ReturnType<typeof getDb>,
+  fn: () => Promise<T>,
+  cleanup?: () => Promise<void>,
+): Promise<T> {
+  await reopenLegacyColumns(db);
+  try {
+    return await fn();
+  } finally {
+    await cleanup?.();
+    await restoreExecutionColumns(db);
+  }
 }
 
 Deno.test("执行归属：源题相同也不能将其他域绑定写入默认域提交", async () => {
@@ -248,112 +295,124 @@ Deno.test("执行归属：任务幂等键包含域，条目不能放入另一域
 
 Deno.test("执行回填：保留 ID、代码、受理时间及未知版本，重复回填幂等", async () => {
   const f = await fixture(), id = crypto.randomUUID();
-  await reopenLegacyColumns(f.db);
-  await f.db.execute(
-    sql`INSERT INTO submissions (id, user_id, problem_id, language, code, created_at)
-    VALUES (${id}, ${f.user}, ${f.first.id}, 'python3', 'immutable-code', ${f.now})`,
-  );
-  // 实际追加 SQL 从扩展状态完成回填与收缩，不能仅证明空库建表。
-  const migration = await Deno.readTextFile(
-    new URL(
-      "../../../../../drizzle/0116_peaceful_gorilla_man.sql",
-      import.meta.url,
-    ),
-  );
-  const backfill = migration.split("-- BEGIN EXECUTION WORKSPACE BACKFILL")[1]
-    .split("-- END EXECUTION WORKSPACE BACKFILL")[0];
-  const contraction = migration.split("--> statement-breakpoint").filter((
-    statement,
-  ) =>
-    /ALTER TABLE "(submissions|objective_submissions|self_tests|submission_jobs|submission_job_items)" ALTER COLUMN "(domain_id|domain_problem_binding_id)" SET NOT NULL/
-      .test(statement) ||
-    statement.includes(
-      'ADD CONSTRAINT "submission_job_items_binding_required_check"',
-    )
-  );
-  for (
-    const statement of [
-      ...backfill.split("--> statement-breakpoint"),
-      ...contraction,
-    ]
-  ) {
-    if (statement.trim()) await f.db.execute(sql.raw(statement));
-  }
-  await backfillExecutionWorkspaces();
-  await backfillExecutionWorkspaces();
-  const [row] = await f.db.select().from(submissions).where(
-    eq(submissions.id, id),
-  );
-  assertEquals([
-    row.id,
-    row.code,
-    row.created_at,
-    row.version_origin,
-    row.submitted_version_id,
-  ], [id, "immutable-code", f.now, "legacy_unknown", null]);
-  assertEquals(row.domain_id, DEFAULT_DOMAIN_ID);
-  assertEquals(row.domain_problem_binding_id, f.binding.id);
+  await withLegacyExecutionColumns(f.db, async () => {
+    await f.db.execute(
+      sql`INSERT INTO submissions (id, user_id, problem_id, language, code, created_at)
+      VALUES (${id}, ${f.user}, ${f.first.id}, 'python3', 'immutable-code', ${f.now})`,
+    );
+    // 实际追加 SQL 从扩展状态完成回填与收缩，不能仅证明空库建表。
+    const migration = await Deno.readTextFile(
+      new URL(
+        "../../../../../drizzle/0116_peaceful_gorilla_man.sql",
+        import.meta.url,
+      ),
+    );
+    const backfill = migration.split("-- BEGIN EXECUTION WORKSPACE BACKFILL")[1]
+      .split("-- END EXECUTION WORKSPACE BACKFILL")[0];
+    const contraction = migration.split("--> statement-breakpoint").filter((
+      statement,
+    ) =>
+      /ALTER TABLE "(submissions|objective_submissions|self_tests|submission_jobs|submission_job_items)" ALTER COLUMN "(domain_id|domain_problem_binding_id)" SET NOT NULL/
+        .test(statement) ||
+      statement.includes(
+        'ADD CONSTRAINT "submission_job_items_binding_required_check"',
+      )
+    );
+    for (
+      const statement of [
+        ...backfill.split("--> statement-breakpoint"),
+        ...contraction,
+      ]
+    ) {
+      if (statement.trim()) await f.db.execute(sql.raw(statement));
+    }
+    await backfillExecutionWorkspaces();
+    await backfillExecutionWorkspaces();
+    const [row] = await f.db.select().from(submissions).where(
+      eq(submissions.id, id),
+    );
+    assertEquals([
+      row.id,
+      row.code,
+      row.created_at,
+      row.version_origin,
+      row.submitted_version_id,
+    ], [id, "immutable-code", f.now, "legacy_unknown", null]);
+    assertEquals(row.domain_id, DEFAULT_DOMAIN_ID);
+    assertEquals(row.domain_problem_binding_id, f.binding.id);
+  });
 });
 
 Deno.test("执行回填：无合法源题的 failed/skipped 条目保留原始引用和空绑定", async () => {
   const f = await fixture(), jobId = crypto.randomUUID();
-  await reopenLegacyColumns(f.db);
-  await f.db.execute(sql`INSERT INTO submission_jobs
-    (id, actor_id, kind, idempotency_key, request_hash, status, created_at)
-    VALUES (${jobId}, ${f.user}, 'rejudge', 'terminal-history', 'history', 'completed_with_errors', ${f.now})`);
-  for (const [ordinal, status] of ["failed", "skipped"].entries()) {
-    await f.db.execute(sql`INSERT INTO submission_job_items
-      (id, job_id, ordinal, source_kind, source_id, problem_id, target_version_ref, status, created_at)
-      VALUES (${crypto.randomUUID()}, ${jobId}, ${ordinal}, 'submission', ${`deleted-source-${ordinal}`},
-        ${
-      ordinal ? "" : "deleted-problem-reference"
-    }, 'deleted-version-reference', ${status}, ${f.now})`);
-  }
-  await backfillExecutionWorkspaces();
-  const summaries = await backfillExecutionWorkspaces();
-  assertEquals(summaries.find((row) => row.kind === "items")?.incomplete, 0);
-  const items = await f.db.select().from(submissionJobItems).where(
-    eq(submissionJobItems.job_id, jobId),
-  ).orderBy(submissionJobItems.ordinal);
-  assertEquals(
-    items.map((item) => [
-      item.domain_id,
-      item.domain_problem_binding_id,
-      item.problem_id,
-      item.status,
-      item.target_version_ref,
-    ]),
-    [
+  await withLegacyExecutionColumns(f.db, async () => {
+    await f.db.execute(sql`INSERT INTO submission_jobs
+      (id, actor_id, kind, idempotency_key, request_hash, status, created_at)
+      VALUES (${jobId}, ${f.user}, 'rejudge', 'terminal-history', 'history', 'completed_with_errors', ${f.now})`);
+    for (const [ordinal, status] of ["failed", "skipped"].entries()) {
+      await f.db.execute(sql`INSERT INTO submission_job_items
+        (id, job_id, ordinal, source_kind, source_id, problem_id, target_version_ref, status, created_at)
+        VALUES (${crypto.randomUUID()}, ${jobId}, ${ordinal}, 'submission', ${`deleted-source-${ordinal}`},
+          ${
+        ordinal ? "" : "deleted-problem-reference"
+      }, 'deleted-version-reference', ${status}, ${f.now})`);
+    }
+    await backfillExecutionWorkspaces();
+    const summaries = await backfillExecutionWorkspaces();
+    assertEquals(summaries.find((row) => row.kind === "items")?.incomplete, 0);
+    const items = await f.db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.job_id, jobId),
+    ).orderBy(submissionJobItems.ordinal);
+    assertEquals(
+      items.map((item) => [
+        item.domain_id,
+        item.domain_problem_binding_id,
+        item.problem_id,
+        item.status,
+        item.target_version_ref,
+      ]),
       [
-        DEFAULT_DOMAIN_ID,
-        null,
-        "deleted-problem-reference",
-        "failed",
-        "deleted-version-reference",
+        [
+          DEFAULT_DOMAIN_ID,
+          null,
+          "deleted-problem-reference",
+          "failed",
+          "deleted-version-reference",
+        ],
+        [DEFAULT_DOMAIN_ID, null, "", "skipped", "deleted-version-reference"],
       ],
-      [DEFAULT_DOMAIN_ID, null, "", "skipped", "deleted-version-reference"],
-    ],
-  );
+    );
+  });
 });
 
 Deno.test("执行回填：空题目引用不能让无绑定 pending 条目通过核对，事务回滚", async () => {
   const f = await fixture(), jobId = crypto.randomUUID();
-  await reopenLegacyColumns(f.db);
-  await f.db.execute(sql`INSERT INTO submission_jobs
-    (id, actor_id, kind, idempotency_key, request_hash, created_at)
-    VALUES (${jobId}, ${f.user}, 'rejudge', 'pending-history', 'history', ${f.now})`);
-  await f.db.execute(sql`INSERT INTO submission_job_items
-    (id, job_id, ordinal, source_kind, source_id, problem_id, status, created_at)
-    VALUES (${crypto.randomUUID()}, ${jobId}, 0, 'submission', 'deleted-source', '', 'pending', ${f.now})`);
-  const error = await assertRejects(
-    () => backfillExecutionWorkspaces(),
-    AppError,
+  await withLegacyExecutionColumns(
+    f.db,
+    async () => {
+      await f.db.execute(sql`INSERT INTO submission_jobs
+        (id, actor_id, kind, idempotency_key, request_hash, created_at)
+        VALUES (${jobId}, ${f.user}, 'rejudge', 'pending-history', 'history', ${f.now})`);
+      await f.db.execute(sql`INSERT INTO submission_job_items
+        (id, job_id, ordinal, source_kind, source_id, problem_id, status, created_at)
+        VALUES (${crypto.randomUUID()}, ${jobId}, 0, 'submission', 'deleted-source', '', 'pending', ${f.now})`);
+      const error = await assertRejects(
+        () => backfillExecutionWorkspaces(),
+        AppError,
+      );
+      assertEquals(error.code, "EXECUTION_BACKFILL_INCOMPLETE");
+      const [job] = await f.db.select().from(submissionJobs).where(
+        eq(submissionJobs.id, jobId),
+      );
+      assertEquals(job.domain_id, null);
+    },
+    async () => {
+      await f.db.delete(submissionJobItems).where(
+        eq(submissionJobItems.job_id, jobId),
+      );
+      await f.db.delete(submissionJobs).where(eq(submissionJobs.id, jobId));
+    },
   );
-  assertEquals(error.code, "EXECUTION_BACKFILL_INCOMPLETE");
-  const [job] = await f.db.select().from(submissionJobs).where(
-    eq(submissionJobs.id, jobId),
-  );
-  assertEquals(job.domain_id, null);
 });
 
 Deno.test("执行写入：客观题使用服务端默认域，忽略客户端伪造归属", async () => {

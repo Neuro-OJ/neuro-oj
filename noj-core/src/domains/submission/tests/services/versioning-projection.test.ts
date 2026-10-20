@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 /**
  * 有效成绩投影写入服务测试（Handbook §3.1、§3.2、§1.3）。
  *

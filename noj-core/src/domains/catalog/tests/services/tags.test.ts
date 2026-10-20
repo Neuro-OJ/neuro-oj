@@ -24,9 +24,6 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { enterTestContext } from "../../../system/index.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 await resetDbForTest();
 await initRedisForTest();
 
@@ -34,7 +31,6 @@ const ts = Date.now();
 
 Deno.test({
   name: "tags service: 创建标签成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -50,7 +46,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 重名标签返回 ConflictError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -68,7 +63,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 非法 kind 返回 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -84,7 +78,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 更新标签维护 updated_at 并写审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -131,7 +124,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 删除标签级联清理关联并写审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -201,7 +193,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 合并标签重指向关联并删除源标签",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -281,7 +272,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: 合并到自身返回 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -297,7 +287,6 @@ Deno.test({
 
 Deno.test({
   name: "tags service: listTags 返回 problem_count 并按 name 升序",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

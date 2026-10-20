@@ -10,20 +10,15 @@ import {
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { judgeImages } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipDb = !hasDb;
-const skipEnv = !hasEnv;
 
 const ts = Date.now();
 
 Deno.test({
   name: "judge-images route: GET /api/v1/judge-images 公开返回列表",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -44,7 +39,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images route: GET /api/v1/judge-images 无需认证",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -58,7 +52,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: GET /api/v1/admin/system/judge-images 管理员返回列表",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -77,7 +70,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: GET /api/v1/admin/system/judge-images 非管理员返回 403",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -94,7 +86,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: POST /api/v1/admin/system/judge-images 管理员创建成功",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -124,7 +115,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: POST /api/v1/admin/system/judge-images 非法 mode 返回 400",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -149,7 +139,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: PUT /api/v1/admin/system/judge-images/:id 管理员更新成功",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -197,7 +186,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 管理员删除成功",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -232,7 +220,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 不存在的返回 404",
-  ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -252,7 +239,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images route: 未登录访问 admin 端点返回 401",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -266,7 +252,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "judge-images route: cleanup",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -20,9 +20,6 @@ import {
 import { listVersionQuestions } from "../../../objective/index.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 const now = new Date().toISOString();
 const ts = Date.now();
 
@@ -45,7 +42,6 @@ const runtimeConfig = {
 
 Deno.test({
   name: "bundle publish: 导入后同步草稿并显式发布 V1（AI 题）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -99,7 +95,6 @@ Deno.test({
 
 Deno.test({
   name: "bundle publish: 客观题导入写草稿并以稳定 key 进入版本",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

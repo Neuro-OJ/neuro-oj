@@ -1,7 +1,8 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import type { Executor } from "../../../../shared/db/executor.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainProblemBindings,
   domains,
@@ -17,7 +18,7 @@ import {
   presetConfiguration,
 } from "../../../workspace/index.ts";
 
-/** 每个违规写入使用独立 savepoint，避免事务中止制造假阳性。 */
+/** 每个违规写入使用独立事务，避免事务中止制造假阳性。 */
 async function constraintRejected(
   write: (tx: Executor) => PromiseLike<unknown>,
 ) {

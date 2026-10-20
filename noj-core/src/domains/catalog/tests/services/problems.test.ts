@@ -34,9 +34,7 @@ import type {
   RuntimeConfig,
 } from "../../types/runtime-config.ts";
 
-// PGlite 内存数据库始终可用
-const dbAvailable = true;
-const skip = !dbAvailable;
+// 独立测试数据库始终可用
 
 const ts = Date.now();
 
@@ -130,7 +128,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 列表返回正确分页结构",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -144,7 +141,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 创建题目成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -165,7 +161,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 新建 P 型默认 public",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -185,7 +180,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 创建题目非法难度返回 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -204,7 +198,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 创建题目时关联标签",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -233,7 +226,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 获取题目详情含标签",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -246,7 +238,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 更新题目",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -340,7 +331,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 更新非法难度返回 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -353,7 +343,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 按难度筛选",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -373,7 +362,6 @@ Deno.test({
 // 按关键词搜索——自包含测试
 Deno.test({
   name: "problems service: 按关键词搜索",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -399,7 +387,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 删除题目",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -421,7 +408,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 有自测记录的题目仍可删除（self_tests FK）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -466,7 +452,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: deleteProblem 写一条 problems.delete 审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -533,7 +518,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 不存在的题目抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -548,7 +532,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 分页 limit 和 page 生效",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -561,7 +544,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 系统调用（root 身份）开启 evaluator 联网放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -596,7 +578,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: admin 开启 evaluator 联网放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -632,12 +613,9 @@ Deno.test({
 
 // Task 4：schema CHECK 三值。
 //
-// 注意：本地 PGlite 模板由 `scripts/prepare-pglite-template.ts` 从 schema-ddl.ts
-// 生成，而 `deno task test:domain catalog` 在无 DATABASE_URL 时会先重建模板，
-// 因此以下用例在 PGlite 下直接覆盖 DDL 的三值 CHECK。
+// 迁移已经按 PostgreSQL 约束创建测试库，以下用例直接覆盖三值 CHECK。
 Deno.test({
   name: "problems service: 创建 prediction 模式题目成功（CHECK 允许第三值）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -664,7 +642,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: code 模式缺 solution 创建被拒（创建期强制）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -695,7 +672,6 @@ Deno.test({
 // solution 的 code/artifact 题（提交期才 500）。
 Deno.test({
   name: "problems service: prediction 题改为 code 且省略 runtime_config 被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -736,7 +712,6 @@ Deno.test({
 Deno.test({
   name:
     "problems service: prediction 题改为 code 且提供缺 solution 的 runtime_config 被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -783,7 +758,6 @@ Deno.test({
 Deno.test({
   name:
     "problems service: prediction 题改为 artifact 且省略 runtime_config 被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -813,7 +787,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 非法 submission_mode 被拒（CHECK 允许值以外）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -835,7 +808,6 @@ Deno.test({
 // 直连 DB 写入非法值：绕过服务层枚举校验，验证 DB CHECK 本身。
 Deno.test({
   name: "problems service: DB CHECK 拒绝非法 submission_mode（bogus）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -862,7 +834,6 @@ Deno.test({
 // 题目级 llm_config 不会生效。创建/更新期 fail-fast，避免提交期才暴露。
 Deno.test({
   name: "problems service: prediction 题携带 llm 创建被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -897,7 +868,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: 已配 LLM 的题目切为 prediction 被拒（需先移除 LLM）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -975,7 +945,6 @@ Deno.test({
 
 Deno.test({
   name: "problems service: prediction 题更新时添加 llm 被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

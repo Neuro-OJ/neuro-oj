@@ -7,10 +7,12 @@ import {
   v2ResultForTest,
 } from "../_versioning-fixtures.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { eq, inArray } from "drizzle-orm";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 
 import {
+  educationOutbox,
   evaluationAttempts,
   problems,
   selfTests,
@@ -28,8 +30,6 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
-
-const skip = false;
 
 const ts = Date.now();
 const USER_ID = `tst-consumer-st-user-${ts}`;
@@ -176,7 +176,6 @@ await db.insert(submissions).values({
 
 Deno.test({
   name: "mq/consumer self-test: st_ 前缀结果写入 self_tests 且不写正式表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -213,7 +212,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer self-test: 非 st_ 前缀结果写入正式表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -243,7 +241,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer self-test: 重复自测终态结果幂等忽略",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -283,7 +280,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer: 2 分钟后恢复 pending 正式提交",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -329,7 +325,6 @@ Deno.test({
 Deno.test({
   name:
     "mq/consumer self-test: 可恢复 pending 自测成功入队且保留 judge_started_at",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -366,7 +361,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer self-test: pending 自测缺少 runtime_config 被标记 error",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -384,7 +378,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer: pending 正式提交缺少 runtime_config 被标记 error",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -402,7 +395,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer self-test: 清理数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -422,6 +414,9 @@ Deno.test({
     );
     await db.delete(selfTests).where(
       eq(selfTests.id, RECOVERABLE_SELF_TEST_ID),
+    );
+    await db.delete(educationOutbox).where(
+      inArray(educationOutbox.problem_id, [PROBLEM_ID, BAD_PROBLEM_ID]),
     );
     await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await deleteProblemFixtures(eq(problems.id, BAD_PROBLEM_ID));

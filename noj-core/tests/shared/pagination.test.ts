@@ -161,7 +161,7 @@ Deno.test({
   },
 });
 
-// ── 2026-09-21 修复：路由级端到端（真实 PG / PGlite 路径）──
+// ── 2026-09-21 修复：路由级端到端（真实 PG / 测试数据库 路径）──
 Deno.test({
   name: "pagination: /api/v1/problems 超大 page 返回 400 而非 500",
   sanitizeResources: false,

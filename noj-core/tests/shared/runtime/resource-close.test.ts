@@ -18,81 +18,55 @@ import {
 } from "../../../src/shared/mq/connection.ts";
 import { performShutdown } from "../../../src/shared/runtime/shutdown.ts";
 
-Deno.test("resource-close: DB 各步骤按顺序执行并全部成功", async () => {
+Deno.test("resource-close: DB 客户端关闭成功", async () => {
   const events: string[] = [];
   await closeDbResources({
-    rollback: () => {
-      events.push("rollback");
-      return Promise.resolve();
-    },
     endClient: () => {
       events.push("client");
-    },
-    closePglite: () => {
-      events.push("pglite");
     },
   });
-  assertEquals(events, ["rollback", "client", "pglite"]);
+  assertEquals(events, ["client"]);
 });
 
-Deno.test("resource-close: DB 单步失败仍关闭其余资源并聚合原始错误", async () => {
+Deno.test("resource-close: DB 客户端失败聚合原始错误", async () => {
   const events: string[] = [];
-  const rollbackError = new Error("rollback failed");
-  const error = await closeDbResources({
-    rollback: () => {
-      events.push("rollback");
-      return Promise.reject(rollbackError);
-    },
-    endClient: () => {
-      events.push("client");
-    },
-    closePglite: () => {
-      events.push("pglite");
-    },
-  }).then(
-    () => undefined,
-    (reason: unknown) => reason,
-  );
-
-  assertEquals(events, ["rollback", "client", "pglite"]);
-  assert(error instanceof AggregateError);
-  assertEquals(error.errors.length, 1);
-  assert(error.errors[0] === rollbackError);
-  assert(error.message.includes("rollback-test-transaction"));
-  assert(error.message.includes("rollback failed"));
-});
-
-Deno.test("resource-close: DB 多步失败全部尝试并保留每个原始错误", async () => {
-  const events: string[] = [];
-  const rollbackError = new Error("rollback failed");
   const clientError = new Error("client end failed");
-  const pgliteError = new Error("pglite close failed");
   const error = await closeDbResources({
-    rollback: () => {
-      events.push("rollback");
-      return Promise.reject(rollbackError);
-    },
     endClient: () => {
       events.push("client");
       throw clientError;
     },
-    closePglite: () => {
-      events.push("pglite");
-      throw pgliteError;
+  }).then(
+    () => undefined,
+    (reason: unknown) => reason,
+  );
+
+  assertEquals(events, ["client"]);
+  assert(error instanceof AggregateError);
+  assertEquals(error.errors.length, 1);
+  assert(error.errors[0] === clientError);
+  assert(error.message.includes("postgres-client"));
+  assert(error.message.includes("client end failed"));
+});
+
+Deno.test("resource-close: DB 错误保持 AggregateError 结构", async () => {
+  const events: string[] = [];
+  const clientError = new Error("client end failed");
+  const error = await closeDbResources({
+    endClient: () => {
+      events.push("client");
+      throw clientError;
     },
   }).then(
     () => undefined,
     (reason: unknown) => reason,
   );
 
-  assertEquals(events, ["rollback", "client", "pglite"]);
+  assertEquals(events, ["client"]);
   assert(error instanceof AggregateError);
-  assertEquals(error.errors.length, 3);
-  assert(error.errors.includes(rollbackError));
+  assertEquals(error.errors.length, 1);
   assert(error.errors.includes(clientError));
-  assert(error.errors.includes(pgliteError));
   assert(error.message.includes("postgres-client"));
-  assert(error.message.includes("pglite"));
 });
 
 Deno.test("resource-close: 未初始化的 DB 关闭安全完成", async () => {
@@ -226,12 +200,10 @@ Deno.test("resource-close: performShutdown 捕获资源关闭失败且继续关�
         name: "database",
         close: () =>
           closeDbResources({
-            rollback: null,
             endClient: () => {
               events.push("db");
               throw dbError;
             },
-            closePglite: null,
           }),
       },
       {
@@ -293,9 +265,7 @@ Deno.test("resource-close: performShutdown 在替代关闭成功后保持 clean"
         name: "database",
         close: () =>
           closeDbResources({
-            rollback: () => Promise.resolve(),
             endClient: () => {},
-            closePglite: () => {},
           }),
       },
       {
@@ -324,11 +294,9 @@ Deno.test("resource-close: closeDbResources 单点失败以 AggregateError 拒�
   await assertRejects(
     () =>
       closeDbResources({
-        rollback: null,
         endClient: () => {
           throw new Error("fatal db end");
         },
-        closePglite: null,
       }),
     AggregateError,
     "fatal db end",

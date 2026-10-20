@@ -5,17 +5,15 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { GatewayConfig } from "./config.ts";
 import { requestIdMiddleware } from "./context.ts";
-import { createDb, type Db } from "./db.ts";
-import { createRedis, type RedisClient } from "./redis.ts";
+import type { Db } from "./db.ts";
+import type { RedisClient } from "./redis.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
 import { renderMetrics } from "./metrics.ts";
-import { startUsageRetention } from "./usage.ts";
 import {
   type AccountingWorkerHandle,
   type AccountingWorkerStatus,
   evaluateAccountingWorkerHealth,
-  startAccountingWorker,
 } from "./accounting.ts";
 
 /** /health/ready 单类依赖的检查结果。 */
@@ -51,16 +49,14 @@ export interface ReadyProbeDeps {
   accounting: (() => AccountingWorkerStatus | null) | null;
 }
 
-/** createApp 的可选依赖注入点（测试与外部生命周期管理使用）。 */
+/** createApp 的显式依赖注入点；组合根必须提供全部必需资源。 */
 export interface CreateAppDeps {
-  /** 覆盖数据库连接；显式传 null 表示无数据库。缺省按 config.databaseUrl 创建。 */
-  db?: Db | null;
-  /** 覆盖 Redis 连接；显式传 null 表示无 Redis。缺省按 config.redisUrl 创建。 */
-  redis?: RedisClient | null;
-  /** 覆盖记账 worker 句柄；显式传 null 表示无 worker。缺省由 createApp 启动。 */
-  accountingWorker?: AccountingWorkerHandle | null;
-  /** 是否启动后台任务（usage retention 与默认记账 worker），缺省 true；单测必须置 false。 */
-  startBackgroundWorkers?: boolean;
+  /** 数据库连接；不能省略或传 null。 */
+  db: Db;
+  /** Redis 连接；不能省略或传 null。 */
+  redis: RedisClient;
+  /** 记账 worker 句柄；后台任务必须由组合根显式创建并注入。 */
+  accountingWorker: AccountingWorkerHandle;
 }
 
 /** 数据库探针：真实执行 SELECT 1，失败只返回非敏感类别代码。 */
@@ -137,14 +133,25 @@ export function createReadyProbe(
 /**
  * 创建 Hono 应用；DB/Redis 可用时挂载代理与内部管理路由。
  *
- * 生产入口只传 config；测试可经 deps 注入假 db/redis/worker 并置
- * startBackgroundWorkers=false，从而不建立真实连接、不启动真实定时器。
+ * 生产入口由组合根显式注入 DB/Redis/worker；测试可经 deps 注入假依赖，
+ * 从而不建立真实连接、不启动真实定时器。
  *
  * @param config 网关配置
- * @param deps 可选依赖注入（测试/外部生命周期管理用）
+ * @param deps 显式依赖注入（测试/外部生命周期管理用）
  * @returns Hono 应用实例
  */
-export function createApp(config: GatewayConfig, deps: CreateAppDeps = {}) {
+export function createApp(config: GatewayConfig, deps: CreateAppDeps) {
+  if (!deps.db || !deps.redis || !deps.accountingWorker) {
+    throw new Error(
+      "createApp 必须由组合根显式注入 PostgreSQL、Redis 与 accounting worker",
+    );
+  }
+  if (
+    typeof deps.accountingWorker.stop !== "function" ||
+    typeof deps.accountingWorker.done?.then !== "function"
+  ) {
+    throw new Error("createApp 注入的 accounting worker 缺少可等待的 done");
+  }
   const app = new Hono();
 
   // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
@@ -159,30 +166,9 @@ export function createApp(config: GatewayConfig, deps: CreateAppDeps = {}) {
     }),
   );
 
-  const db = deps.db !== undefined
-    ? deps.db
-    : config.databaseUrl
-    ? createDb(config.databaseUrl)
-    : null;
-  const redis = deps.redis !== undefined
-    ? deps.redis
-    : config.redisUrl
-    ? createRedis(config.redisUrl)
-    : null;
-
-  const startBackgroundWorkers = deps.startBackgroundWorkers ?? true;
-  let accountingWorker: AccountingWorkerHandle | null = deps.accountingWorker ??
-    null;
-  if (startBackgroundWorkers && db && redis) {
-    // llm_usage 保留期清理（G-04）：多副本经 Redis 锁互斥，仅一个副本执行
-    startUsageRetention(db, redis, config.usageRetentionDays);
-    // 未显式注入（undefined）时启动默认记账 worker；显式 null 表示调用方声明无 worker，
-    // 不得回退启动（否则就绪探针会掩盖调用方禁用记账的意图）。P5 接入优雅关闭。
-    if (deps.accountingWorker === undefined) {
-      accountingWorker = startAccountingWorker(db, redis);
-    }
-  }
-  const worker = accountingWorker;
+  // createApp 只组合 HTTP 路由。数据库、Redis 与后台任务必须由 main/runtime
+  // 显式创建并注入，避免测试或其它装配点因构造 app 产生隐藏连接和 worker。
+  const { db, redis, accountingWorker: worker } = deps;
   const readyProbe = createReadyProbe({
     db,
     redis,
@@ -226,10 +212,8 @@ export function createApp(config: GatewayConfig, deps: CreateAppDeps = {}) {
     return c.body(renderMetrics());
   });
 
-  if (db && redis) {
-    app.route("/", createLlmRouter({ config, db, redis }));
-    app.route("/", createInternalRouter({ config, db, redis }));
-  }
+  app.route("/", createLlmRouter({ config, db, redis }));
+  app.route("/", createInternalRouter({ config, db, redis }));
 
   app.notFound((c) => c.json({ error: "not_found" }, 404));
 

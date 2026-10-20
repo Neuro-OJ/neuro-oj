@@ -260,10 +260,9 @@ export async function saveEvaluationResult(
     }
   }
 
-  // PR-4 评审修订：异步触发榜单物化视图刷新
-  // 不 await：避免阻塞主业务（saveEvaluationResult 是热路径）
-  // 失败仅 console.error（rankings.ts 内已处理）
-  refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
+  // 刷新属于本次结果处理的在途工作，消费者必须等待它结束后才能完成关闭排空。
+  // 正式结果已经提交；刷新失败由 rankings.ts 记录并使用内联查询，不回滚正式成绩。
+  await refreshRankingsView();
 
   // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销本次 eval_token。
   //

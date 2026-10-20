@@ -3,14 +3,14 @@
  *
  * 覆盖：
  * - 凭据语义：未配置 → 503 drain_unavailable；错误 → 401；正确 → 200；
- * - enter/exit 幂等与 maintenance 设置真实变化（PGlite，不依赖真实 PG/Redis）；
+ * - enter/exit 幂等与 maintenance 设置真实变化（测试数据库，不依赖真实 PG/Redis）；
  * - status 结构与 blockers（注入 fake 依赖，不依赖真实 Redis）。
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import type { QueueHealthResponse } from "../../../submission/index.ts";
 import {
   _resetSystemSettingsForTest,

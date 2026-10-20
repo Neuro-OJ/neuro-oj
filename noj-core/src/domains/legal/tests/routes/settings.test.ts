@@ -5,7 +5,7 @@
  * （响应结构保持 { contact, deployment } 兼容）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createApp } from "../../../../app.ts";
 import { getBuildInfo } from "../../../../shared/base/build-info.ts";
 

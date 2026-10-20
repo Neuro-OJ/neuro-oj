@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
@@ -55,7 +55,7 @@ const now = new Date().toISOString();
 const db = getDb();
 const ts = Date.now();
 
-// 真实 PG（独立 schema）不含 PGlite 的 root / 镜像种子
+// 真实 PG（独立 schema）不含 测试数据库 的 root / 镜像种子
 await db.insert(users).values({
   id: "0",
   username: "root",

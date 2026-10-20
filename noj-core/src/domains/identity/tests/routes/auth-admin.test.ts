@@ -8,7 +8,8 @@ import {
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   problems,
@@ -23,18 +24,13 @@ import { jsonRequest } from "../../../../../tests/helper.ts";
 
 const ts = Date.now();
 
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasDb || !hasEnv;
-
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
   name:
     "admin route: PATCH /api/v1/admin/identity/users/:id/role 未登录返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -54,7 +50,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PATCH /api/v1/admin/identity/users/:id/role 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -77,7 +72,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PATCH /api/v1/admin/identity/users/:id/role 管理员提升用户（role_ids 格式）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -110,7 +104,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PATCH /api/v1/admin/identity/users/:id/role 无效 role_ids 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -138,7 +131,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PATCH /api/v1/admin/identity/users/:id/role 缺少 role_ids 字段返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -162,7 +154,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/query/dashboard/stats 未登录返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -174,7 +165,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/query/dashboard/stats 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -189,7 +179,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/query/dashboard/stats 管理员可访问",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -210,7 +199,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/catalog/problems 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -225,7 +213,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/catalog/problems 管理员可访问",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -246,7 +233,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: GET /api/v1/admin/submission/submissions/:id 未登录返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -262,7 +248,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: GET /api/v1/admin/submission/submissions/:id 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -282,7 +267,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE /api/v1/admin/submission/submissions/:id 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -303,7 +287,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 未登录返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -320,7 +303,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -339,7 +321,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 非管理员返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -356,7 +337,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 无字段返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -374,7 +354,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PUT /api/v1/admin/identity/users/:id 邮箱格式非法返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -393,7 +372,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/identity/users 支持 keyword 参数",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -412,7 +390,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/identity/users 支持 role 参数",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -467,7 +444,6 @@ async function cleanupTestUser(id: string) {
 
 Deno.test({
   name: "admin route: PATCH /users/:id/ban 审计唯一且 detail 准确",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -505,7 +481,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PATCH /users/:id/unban 审计唯一",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -546,7 +521,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: DELETE /users/:id 审计唯一且 detail 保留用户名",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -584,7 +558,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 成功更新 bio",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -624,7 +597,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 邮箱冲突返回 409",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -659,7 +631,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 不存在用户返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -681,7 +652,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/0 拒绝修改 root",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -700,7 +670,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: PUT /api/v1/admin/identity/users/:id 强化邮箱正则拒绝 TLD 1 字符",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -730,7 +699,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /api/v1/admin/identity/users keyword 实际筛选命中",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -761,7 +729,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE /api/v1/admin/submission/submissions/:id 管理员真删除",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -846,7 +813,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE 在途评测（pending/judging 或 active_attempt_id）返回 409 且不删除",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -910,7 +876,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: DELETE /api/v1/admin/submission/submissions/:missing-id 返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -931,7 +896,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 未登录返回 401",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -948,7 +912,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 非管理员返回 403",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -969,7 +932,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交仍受理并记录",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -996,7 +958,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 未登录返回 401",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1013,7 +974,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 非管理员返回 403",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1034,7 +994,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 不存在的题目返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1058,7 +1017,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 活跃提交被跳过而非整批拒绝",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1150,7 +1108,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中受理但不改状态",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1235,7 +1192,6 @@ Deno.test({
 Deno.test({
   name:
     "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 无已完结提交返回空",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

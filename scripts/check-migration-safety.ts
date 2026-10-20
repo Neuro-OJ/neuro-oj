@@ -123,9 +123,8 @@ export function stripSqlStringLiterals(statement: string): string {
  *
  * 背景（2026-09-19 D0 排查结论，长期无门禁）：drizzle-kit 在**引用已存在于
  * 其它 schema（含 public）的表**时，会生成 `REFERENCES "public"."foo"("id")`。
- * 这类迁移在 `public` search_path 之外的 schema 上执行时，FK 会跨 schema 指向
- * `public.foo`，于是分片测试（`TEST_SCHEMA=test_unit` / `test_db`，见
- * `scripts/test-parallel.ts`）里「父行刚插入却报 FK 失败」——报错与真实原因
+ * 这类迁移在 `public` search_path 之外的独立测试数据库上执行时，FK 会跨 schema
+ * 指向 `public.foo`，于是测试里「父行刚插入却报 FK 失败」——报错与真实原因
  * 相距甚远，是当时排查耗时的主要来源。
  *
  * 仓库历史上有 0056/0063/0066 三个迁移带该前缀，靠人工修订去掉；但**没有任何
@@ -238,7 +237,7 @@ export async function checkMigrationSafety(
   for (const ref of findHardcodedPublicSchemaRefs(allStatements)) {
     errors.push(
       `${ref.file}: ${ref.text}\n    → 迁移硬编码了 REFERENCES "public". 前缀；` +
-        `分片测试（TEST_SCHEMA）下 FK 会跨 schema 指向 public。` +
+        `独立测试 search_path 下 FK 会跨 schema 指向 public。` +
         `请去掉 \`"public".\` 限定符（按 search_path 解析）。`,
     );
   }

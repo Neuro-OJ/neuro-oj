@@ -4,7 +4,8 @@
  * 覆盖：非 legal:manage 访问 403；发布版本；请求列表与状态更新。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   permissions,

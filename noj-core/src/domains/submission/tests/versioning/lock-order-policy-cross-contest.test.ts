@@ -41,19 +41,14 @@ import {
  * 3. 连续 {@link ROUNDS} 轮完整重建夹具后，**最终策略与投影状态逐字节一致**
  *    （投影结果与并发顺序无关，且可重复运行稳定）。
  *
- * 仅在有真实 PostgreSQL（`DATABASE_URL`）时运行：PGlite 是单连接内存库，
- * 无法建立真实行锁竞争，也不能验证 40P01。本文件关闭 preload 事务包装
- * （并发用例必须各自持有真实事务），夹具按固定 ID 自愈清理。
+ * 仅使用真实 PostgreSQL 建立物理连接和行锁竞争，并按固定 ID 自愈清理夹具。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { inArray, like, sql } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import type { RootDb } from "../../../../shared/db/executor.ts";
 import * as schema from "../../../../shared/db/schema.ts";
 import {
@@ -74,9 +69,6 @@ import {
   type RejudgeRequest,
 } from "../../services/versioning/rejudge-jobs.ts";
 import { rawConnectionOptions } from "../../../../../tests/helper/pg-raw-connection.ts";
-
-const HAS_PG = !!Deno.env.get("DATABASE_URL");
-if (HAS_PG) disableTestTransactionForFile();
 
 /** 并发重复轮数：要求连续 5 轮稳定（最终状态完全一致）。 */
 const ROUNDS = 5;
@@ -120,7 +112,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 新建一条带标识的原生连接（复用 TEST_SCHEMA / search_path 启动参数）。 */
+/** 新建一条带标识的原生 PostgreSQL 连接。 */
 function createClient(appName: string): ReturnType<typeof postgres> {
   const url = Deno.env.get("DATABASE_URL");
   if (!url) throw new Error("DATABASE_URL 未设置：真实 PG 用例不应执行");
@@ -399,8 +391,8 @@ async function seedRound(): Promise<void> {
 /**
  * 按固定 ID 自愈清理本用例的全部夹具（含已提交的任务、条目与 revision 行）。
  *
- * 本文件关闭了 preload 事务包装，失败中断会留下已提交的行；每轮开始/结束都清理，
- * 保证重复运行不因唯一约束或残留状态误报。删除顺序遵循外键依赖。
+ * 失败中断会留下已提交的行；每轮开始/结束都清理，保证重复运行不因唯一约束或
+ * 残留状态误报。删除顺序遵循外键依赖。
  */
 async function cleanupFixedIds(): Promise<void> {
   const db = getDb();
@@ -648,7 +640,6 @@ async function projectionFingerprint(): Promise<string> {
 Deno.test({
   name:
     "pg lock-order: 交叉竞赛的批量策略修改并发受理不死锁，且投影与顺序无关（问题2/task-8）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -749,7 +740,6 @@ Deno.test({
  */
 Deno.test({
   name: "pg lock-order: 省略 testRootDb 的生产受理路径行为不变（task-8 回归）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -6,7 +6,8 @@ import {
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getUserProfileAggregate, updateUserProfile } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   evaluationAttempts,
   problems,
@@ -18,9 +19,6 @@ import {
   ValidationError,
 } from "../../../../shared/base/errors.ts";
 import { eq } from "drizzle-orm";
-
-const hasRealPg = !!Deno.env.get("DATABASE_URL");
-const skip = !hasRealPg;
 
 const ts = Date.now();
 const TEST_USER_ID = `tst-u-${ts}`;
@@ -41,7 +39,6 @@ await db.insert(users).values({
 
 Deno.test({
   name: "users service: getUserProfileAggregate 返回完整用户主页数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -59,7 +56,6 @@ Deno.test({
 
 Deno.test({
   name: "users service: getUserProfileAggregate 不存在的用户抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -73,7 +69,6 @@ Deno.test({
 
 Deno.test({
   name: "users service: updateUserProfile 更新 bio 成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -86,7 +81,6 @@ Deno.test({
 
 Deno.test({
   name: "users service: updateUserProfile bio 超长抛出 ValidationError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -100,7 +94,6 @@ Deno.test({
 
 Deno.test({
   name: "users service: updateUserProfile 不存在的用户抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -114,7 +107,6 @@ Deno.test({
 
 Deno.test({
   name: "users service: 清理测试数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -125,10 +117,19 @@ Deno.test({
 
 Deno.test({
   name: "users service: 最近提交读最近终态尝试（含存量回退）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    // 该用例排在“清理测试数据”之后也必须独立成立；不要复用已被清理的模块用户。
+    const recentUserId = `tst-recent-user-${ts}`;
+    await db.insert(users).values({
+      id: recentUserId,
+      username: `tstrecent-${ts}`,
+      email: `tstrecent-${ts}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
     const problemId = `tst-recent-prob-${ts}`;
     await db.insert(problems).values({
       domain_id: DEFAULT_DOMAIN_ID,
@@ -146,7 +147,7 @@ Deno.test({
     await db.insert(submissions).values([
       {
         id: `tst-recent-s1-${ts}`,
-        user_id: TEST_USER_ID,
+        user_id: recentUserId,
         problem_id: problemId,
         ...await problemExecutionForTest(problemId),
         language: "python3",
@@ -157,7 +158,7 @@ Deno.test({
       },
       {
         id: `tst-recent-s2-${ts}`,
-        user_id: TEST_USER_ID,
+        user_id: recentUserId,
         problem_id: problemId,
         ...await problemExecutionForTest(problemId),
         language: "python3",
@@ -206,8 +207,8 @@ Deno.test({
       effective_attempt_id: `tst-recent-a2-${ts}`,
     }).where(eq(submissions.id, `tst-recent-s2-${ts}`));
 
-    const profile = await getUserProfileAggregate(TEST_USER_ID, false, {
-      viewerId: TEST_USER_ID,
+    const profile = await getUserProfileAggregate(recentUserId, false, {
+      viewerId: recentUserId,
     });
     const byId = new Map(
       profile.recent_submissions.map((row) => [row.id, row]),
@@ -225,5 +226,6 @@ Deno.test({
       eq(evaluationAttempts.problem_id, problemId),
     );
     await deleteProblemFixtures(eq(problems.id, problemId));
+    await db.delete(users).where(eq(users.id, recentUserId));
   },
 });

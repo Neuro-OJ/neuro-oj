@@ -13,14 +13,15 @@ import {
   settleCall,
 } from "../src/accounting.ts";
 import { bootstrapAccountingBaseline } from "../src/accounting-baseline.ts";
-
-const databaseUrl = Deno.env.get("NOJ_GATEWAY_TEST_DATABASE_URL");
-const redisUrl = Deno.env.get("NOJ_GATEWAY_TEST_REDIS_URL");
+import {
+  gatewayTestDatabaseUrl as databaseUrl,
+  gatewayTestRedisUrl as redisUrl,
+  runRedisPrefix,
+} from "./integration-env.ts";
 
 Deno.test({
   name:
     "账本 PG/Redis：结算后响应丢失重试不重扣、重启补算、Redis丢失重建及未知预占",
-  ignore: !databaseUrl || !redisUrl,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -32,7 +33,7 @@ Deno.test({
     let db = createDb(url.toString());
     // @ts-ignore - Deno 对 ioredis 构造函数的类型解析限制
     const connection = new IORedis(redisUrl!, { maxRetriesPerRequest: 1 });
-    const prefix = "gateway-accounting-test:" + crypto.randomUUID() + ":";
+    const prefix = runRedisPrefix("accounting");
     const keys = new Set<string>();
     let loseSettlementReply = false;
     let serverGeneration = "server-1";
@@ -262,7 +263,6 @@ Deno.test({
 
 Deno.test({
   name: "历史基线 PG/Redis：仅测量旧计数、缺失拒绝、DB提交失败重放不翻倍",
-  ignore: !databaseUrl || !redisUrl,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -274,7 +274,7 @@ Deno.test({
     const db = createDb(url.toString());
     // @ts-ignore - Deno 对 ioredis 构造函数的类型解析限制
     const connection = new IORedis(redisUrl!, { maxRetriesPerRequest: 1 });
-    const prefix = "gateway-baseline-test:" + crypto.randomUUID() + ":";
+    const prefix = runRedisPrefix("baseline");
     const keys = new Set<string>();
     const redis = {
       get: (key: string) => connection.get(prefix + key),

@@ -10,7 +10,8 @@
  * 不在测试里硬编码第二份服务清单。
  */
 
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
+import { fromFileUrl } from "@std/path";
 import type {
   CmdResult,
   CommandRunner,
@@ -36,6 +37,99 @@ const COMPOSE_URL = new URL(
   "../../../docker-compose.prod.yml",
   import.meta.url,
 );
+const DEV_COMPOSE_URL = new URL("../../../docker-compose.yml", import.meta.url);
+
+interface ComposeConfigService {
+  depends_on?: Record<
+    string,
+    { condition?: string; required?: boolean } | string
+  >;
+  command?: unknown;
+  entrypoint?: unknown;
+  ports?: unknown[];
+  restart?: string;
+}
+
+interface ComposeConfigDocument {
+  services?: Record<string, ComposeConfigService>;
+}
+
+/**
+ * 通过 Docker Compose 自己的解析器读取配置，而不是只扫描 YAML 文本。
+ * 该测试只执行 `config`，不会创建网络、卷或容器。
+ */
+async function readRealComposeConfig(
+  composeUrl: URL,
+  env: Record<string, string> = {},
+): Promise<ComposeConfigDocument> {
+  let envFile: string | undefined;
+  try {
+    const args = ["compose"];
+    if (Object.keys(env).length > 0) {
+      envFile = await Deno.makeTempFile({ prefix: "noj-compose-config-" });
+      await Deno.writeTextFile(
+        envFile,
+        Object.entries(env).map(([key, value]) => `${key}=${value}`).join(
+          "\n",
+        ) +
+          "\n",
+      );
+      args.push("--env-file", envFile);
+    }
+    args.push(
+      "-f",
+      fromFileUrl(composeUrl),
+      "config",
+      "--format",
+      "json",
+    );
+    const result = await new Deno.Command("docker", {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    if (result.code !== 0) {
+      throw new Error(
+        `docker compose config 解析失败（exit=${result.code}）`,
+      );
+    }
+    return JSON.parse(
+      new TextDecoder().decode(result.stdout),
+    ) as ComposeConfigDocument;
+  } finally {
+    if (envFile !== undefined) await Deno.remove(envFile).catch(() => {});
+  }
+}
+
+function dependencyCondition(
+  service: ComposeConfigService | undefined,
+  dependency: string,
+): string | undefined {
+  const value = service?.depends_on?.[dependency];
+  return typeof value === "object" && value !== null
+    ? value.condition
+    : undefined;
+}
+
+const REAL_CONFIG_ENV = {
+  NOJ_VERSION: "compose-test",
+  POSTGRES_PASSWORD: "compose-test-postgres-password",
+  REDIS_PASSWORD: "compose-test-redis-password",
+  JWT_SECRET: "compose-test-jwt-secret-012345678901234567890123456789",
+  TFA_ENCRYPTION_KEY: "compose-test-tfa-key-012345678901234567890123456789",
+  APP_URL: "http://compose-test.invalid",
+  CORS_ALLOWED_ORIGINS: "http://compose-test.invalid",
+  TRUSTED_PROXIES: "172.28.0.0/16",
+  STORAGE_PROVIDER: "s3",
+  S3_ACCESS_KEY: "compose-test-storage-user",
+  S3_SECRET_KEY: "compose-test-storage-password",
+  S3_BUCKET: "compose-test-bucket",
+  EMAIL_PROVIDER: "disabled",
+  MINIO_ROOT_USER: "compose-test-minio-root",
+  MINIO_ROOT_PASSWORD: "compose-test-minio-password",
+  NOJ_LLM_SERVICE_TOKEN: "compose-test-llm-service-token",
+  NOJ_LLM_STORE_KEY: "compose-test-llm-store-key",
+};
 
 /**
  * 缩进感知地解析 compose 的顶层 `services:` 段。
@@ -178,6 +272,189 @@ Deno.test("服务集核对: 带 profile 的服务仅来自真实文件解析结�
       );
     }
   }
+});
+
+Deno.test("Gateway 编排: 迁移种子服务先于 HTTP 服务且为完成依赖", async () => {
+  const text = await Deno.readTextFile(COMPOSE_URL);
+  const migrationStart = text.indexOf("\n  gateway-migrate:");
+  const gatewayStart = text.indexOf("\n  llm-gateway:");
+  assert(migrationStart >= 0, "生产 compose 缺少 gateway-migrate 服务");
+  assert(
+    gatewayStart > migrationStart,
+    "Gateway HTTP 服务必须排在迁移服务之后",
+  );
+
+  const gatewayEnd = text.indexOf("\n  nginx:", gatewayStart + 4);
+  assert(gatewayEnd > gatewayStart, "无法解析 llm-gateway 服务段");
+  const gatewayBlock = text.slice(gatewayStart, gatewayEnd);
+  assert(
+    gatewayBlock.includes("gateway-migrate:") &&
+      gatewayBlock.includes("condition: service_completed_successfully"),
+    "llm-gateway 必须等待 gateway-migrate 成功完成",
+  );
+
+  const gatewayMigrationEnd = text.indexOf("\n  core:", migrationStart);
+  assert(
+    gatewayMigrationEnd > migrationStart,
+    "无法解析 gateway-migrate 服务段",
+  );
+  const gatewayMigrationBlock = text.slice(migrationStart, gatewayMigrationEnd);
+  assert(
+    gatewayMigrationBlock.includes("migrate:") &&
+      gatewayMigrationBlock.includes(
+        "condition: service_completed_successfully",
+      ),
+    "gateway-migrate 必须等待 Core migrate 成功完成，避免并发修改共享 LLM 表",
+  );
+});
+
+Deno.test("真实 Compose 解析: Core/Gateway one-shot 依赖与 HTTP 启动边界", async () => {
+  const document = await readRealComposeConfig(COMPOSE_URL, REAL_CONFIG_ENV);
+  const services = document.services ?? {};
+  const migrate = services["migrate"];
+  const gatewayMigrate = services["gateway-migrate"];
+  const core = services["core"];
+  const gateway = services["llm-gateway"];
+
+  assert(migrate !== undefined, "生产 compose 必须有 Core migrate service");
+  assert(
+    gatewayMigrate !== undefined,
+    "生产 compose 必须有 Gateway migrate service",
+  );
+  assert(core !== undefined, "生产 compose 必须有 Core HTTP service");
+  assert(gateway !== undefined, "生产 compose 必须有 Gateway HTTP service");
+
+  assertEquals(
+    dependencyCondition(gatewayMigrate, "migrate"),
+    "service_completed_successfully",
+    "Gateway DDL 必须在 Core migrate/init 成功后执行",
+  );
+  assertEquals(
+    dependencyCondition(core, "migrate"),
+    "service_completed_successfully",
+    "Core HTTP 必须等待 Core migrate/init",
+  );
+  assertEquals(
+    dependencyCondition(core, "gateway-migrate"),
+    "service_completed_successfully",
+    "Core HTTP 必须等待 Gateway migrate/seed，避免业务 HTTP 与共享表 DDL 并行",
+  );
+  assertEquals(
+    dependencyCondition(gateway, "gateway-migrate"),
+    "service_completed_successfully",
+    "Gateway HTTP 必须等待 Gateway migrate/seed",
+  );
+  assertEquals(migrate.restart, "no", "Core migrate 必须是一次性 service");
+  assertEquals(
+    gatewayMigrate.restart,
+    "no",
+    "Gateway migrate 必须是一次性 service",
+  );
+  assert(
+    /db migrate/.test(JSON.stringify(migrate.command ?? migrate.entrypoint)) &&
+      /init system/.test(JSON.stringify(migrate.command ?? migrate.entrypoint)),
+    "Core one-shot 必须显式执行迁移与系统初始化",
+  );
+  assert(
+    /migrate-cli\.ts/.test(
+      JSON.stringify(gatewayMigrate.command ?? gatewayMigrate.entrypoint),
+    ),
+    "Gateway one-shot 必须显式执行 migrate-cli",
+  );
+
+  const coreCommand = JSON.stringify(core.command ?? core.entrypoint ?? "");
+  const gatewayCommand = JSON.stringify(
+    gateway.command ?? gateway.entrypoint ?? "",
+  );
+  assert(
+    !/migrate|init system/i.test(coreCommand),
+    "Core HTTP service 不得在启动命令中隐式执行 DDL/init",
+  );
+  assert(
+    !/migrate|seed/i.test(gatewayCommand),
+    "Gateway HTTP service 不得在启动命令中隐式执行 DDL/seed",
+  );
+
+  // 真实 Compose 归一化后的端口映射是审计边界：业务服务只能 expose 到
+  // noj-net，宿主机唯一公开入口是 nginx。
+  assertEquals(core.ports ?? [], [], "Core 不得映射宿主机端口");
+  assertEquals(gateway.ports ?? [], [], "Gateway 不得映射宿主机端口");
+  assert(
+    (services["nginx"]?.ports?.length ?? 0) > 0,
+    "nginx 应是实际的宿主机 HTTP 入口",
+  );
+});
+
+Deno.test("真实 Compose 解析: 开发 Gateway 也由完成态 one-shot 门控", async () => {
+  const document = await readRealComposeConfig(DEV_COMPOSE_URL);
+  const services = document.services ?? {};
+  const coreMigrate = services["migrate"];
+  const migration = services["llm-gateway-migrate"];
+  const gateway = services["llm-gateway"];
+  assert(coreMigrate !== undefined, "开发 compose 必须有 Core migrate service");
+  assert(
+    migration !== undefined,
+    "开发 compose 必须有 Gateway migrate service",
+  );
+  assert(gateway !== undefined, "开发 compose 必须有 Gateway HTTP service");
+  assertEquals(coreMigrate.restart, "no");
+  assertEquals(migration.restart, "no");
+  assert(
+    /db migrate/.test(
+      JSON.stringify(coreMigrate.command ?? coreMigrate.entrypoint),
+    ) && /init system/.test(
+      JSON.stringify(coreMigrate.command ?? coreMigrate.entrypoint),
+    ),
+    "开发 Core one-shot 必须显式执行迁移与系统初始化",
+  );
+  assertEquals(
+    dependencyCondition(migration, "migrate"),
+    "service_completed_successfully",
+    "开发 Gateway DDL 必须在 Core migrate/init 完成后执行",
+  );
+  assertEquals(
+    dependencyCondition(gateway, "llm-gateway-migrate"),
+    "service_completed_successfully",
+  );
+  assertEquals(gateway.ports ?? [], [{
+    mode: "ingress",
+    protocol: "tcp",
+    published: "8001",
+    target: 8001,
+  }]);
+  assert(
+    JSON.stringify(gateway.command ?? gateway.entrypoint ?? "")
+      .match(/migrate|seed/i) === null,
+    "开发 Gateway HTTP service 不得隐式执行迁移/seed",
+  );
+  assertEquals(
+    services["core"],
+    undefined,
+    "开发 compose 只提供 Core one-shot，不得额外启动 Core HTTP",
+  );
+});
+
+Deno.test("Gateway 镜像资产: 显式迁移入口与 journal/SQL 一起打包", async () => {
+  const dockerfile = await Deno.readTextFile(
+    fromFileUrl(
+      new URL("../../../noj-llm-gateway/Dockerfile", import.meta.url),
+    ),
+  );
+  assert(
+    dockerfile.includes("COPY drizzle/ ./drizzle/"),
+    "Gateway Dockerfile 必须把 drizzle 发布集复制进镜像",
+  );
+  assert(
+    dockerfile.includes("test -f drizzle/meta/_journal.json") &&
+      dockerfile.includes("test -f src/db/migrate-cli.ts"),
+    "构建阶段必须拒绝缺少迁移入口或 journal 的镜像",
+  );
+  assert(
+    dockerfile.includes(
+      "deno cache --lock=deno.lock src/main.ts src/db/migrate-cli.ts",
+    ),
+    "构建阶段必须预热 HTTP 与显式迁移 CLI 的依赖",
+  );
 });
 
 Deno.test("composeArgs: 基础形状为数组，且把 --env-file/-f 排在子命令之前", () => {

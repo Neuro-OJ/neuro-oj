@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 /**
  * 批任务 worker 原语测试（Handbook §5.7）。
  *
@@ -38,8 +38,8 @@ await resetDbForTest();
 
 const now = new Date().toISOString();
 
-// 幂等 seed：本文件在**无 preload 事务隔离**（例如单文件直接 `deno test`）时，
-// 模块级与逐用例 seed 会共享同一份持久数据，重复插入 `problems_pkey` 会失败。
+// 幂等 seed：测试数据库中的模块级与逐用例 seed 会共享同一份持久数据，重复插入
+// `problems_pkey` 会失败。
 await getDb().insert(users).values({
   id: "jw-admin",
   username: "jw-admin",
@@ -85,7 +85,7 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
   return ids;
 }
 
-/** 建题 + 版本（幂等：preload 事务下逐用例回滚，无隔离时重复调用不得报错）。 */
+/** 建题 + 版本（幂等：重复调用不得报错）。 */
 async function seedProblemAndVersion(): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({

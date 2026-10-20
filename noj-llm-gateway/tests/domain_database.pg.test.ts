@@ -3,12 +3,10 @@ import { createDb } from "../src/db.ts";
 import { runMigrations } from "../src/db/migrate.ts";
 import { createInternalRouter } from "../src/routes/internal.ts";
 import { testConfig } from "./helpers.ts";
-
-const databaseUrl = Deno.env.get("NOJ_GATEWAY_TEST_DATABASE_URL");
+import { gatewayTestDatabaseUrl as databaseUrl } from "./integration-env.ts";
 
 Deno.test({
   name: "域数据库：空库与历史库迁移、Provider与quota跨域ID不越界",
-  ignore: !databaseUrl,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {

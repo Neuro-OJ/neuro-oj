@@ -144,7 +144,10 @@ deno task check:types
 
 工作空间另有七个真实 PostgreSQL 并发场景：三种成员新增入口各覆盖注销先完成与
 加入先完成，以及两人竞争最后一个名额。测试用独立数据库连接和锁依赖屏障，
-没有配置 DATABASE_URL 时明确跳过，不将 PGlite 顺序测试当作并发证明。
+由正式测试启动器创建隔离的真实 PostgreSQL 数据库。运行前显式提供
+`TEST_PG_ADMIN_URL`、`TEST_REDIS_URL`、`TEST_STORAGE_ROOT` 与 `JWT_SECRET`；
+必需依赖缺失直接失败。完整资源约定见
+[测试规范](../../../../dev-docs/engineering/testing.md)。
 
 catalog 的工作空间场景覆盖来源题号、版本同题约束、绑定策略独立、回填幂等、
 实时授权及容量检查；不代表提交、附件、搜索、IDE 和教学全部入口已验收。

@@ -4,7 +4,8 @@
  * 覆盖：创建、本人列表、状态机合法/非法转换、未知请求报错。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,

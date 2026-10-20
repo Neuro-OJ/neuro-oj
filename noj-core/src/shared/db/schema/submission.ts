@@ -415,7 +415,7 @@ export const submissions = pgTable(
     // 六个尝试指针（在途/最近/有效/通过/竞赛有效/竞赛通过）的外键
     // **故意不在此声明**：`evaluation_attempts.submission_id → submissions.id`
     // 与本表指针构成类型层面的互相引用，`foreignKey()` 立即求值列数组会让
-    // TypeScript 推出 `any`（TS7022/TS7024）。外键由迁移与 PGlite DDL 以
+    // TypeScript 推出 `any`（TS7022/TS7024）。外键由 PostgreSQL 迁移以
     // `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... ON DELETE SET NULL`
     // 建立（Handbook §6.1「循环外键使用延迟类型引用」）。
   }),

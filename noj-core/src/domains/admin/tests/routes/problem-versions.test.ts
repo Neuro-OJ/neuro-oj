@@ -12,7 +12,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contestProblems,
   contests,
@@ -32,9 +33,6 @@ import {
   ensureDefaultWorkspace,
 } from "../../../workspace/index.ts";
 import { bindDefaultCatalogFixture } from "../../../catalog/tests/default-fixture.ts";
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
 
 const now = new Date().toISOString();
 const ts = Date.now();
@@ -127,7 +125,6 @@ async function seedProblem(tag: string): Promise<{
 
 Deno.test({
   name: "problem versions route: 题库策略切换的乐观锁与参数校验",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -228,7 +225,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 竞赛策略与固定版本升级的相互作用",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

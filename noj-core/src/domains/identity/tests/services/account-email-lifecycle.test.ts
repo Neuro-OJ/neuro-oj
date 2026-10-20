@@ -11,7 +11,8 @@ import {
 import { authMiddleware } from "../../middleware/auth.ts";
 import { hashPassword } from "../../services/security/password.ts";
 import { hashResetToken } from "../../services/security/resetToken.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   communityPosts,
@@ -112,7 +113,6 @@ Deno.test("邮箱验证：过期令牌被拒绝", async () => {
 
 Deno.test("邮箱验证：未验证用户写提交被拦截，验证后解锁", async () => {
   await resetDbForTest();
-  Deno.env.set("JWT_SECRET", "email-test-secret-at-least-32-characters-long");
   const userId = await seedUser(false);
   const token = await new SignJWT({ role: "user", must_change_password: false })
     .setProtectedHeader({ alg: "HS256" })

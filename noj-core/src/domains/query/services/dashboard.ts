@@ -56,15 +56,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 /**
  * 统一取查询结果的首行。
  *
- * postgres.js 返回 array-like、PGlite 返回 { rows }，统一取第一条记录。
+ * postgres.js RowList 在运行时是数组，统一取第一条记录。
  *
  * @param result 查询结果（数组或 { rows } 结构）
  * @returns 首行数据；结果为空时返回 undefined
  */
-function executeRow<T>(
-  result: T[] | { rows: T[] },
-): T | undefined {
-  return Array.isArray(result) ? result[0] : result.rows[0];
+function executeRow<T>(result: T[]): T | undefined {
+  return result[0];
 }
 
 /**

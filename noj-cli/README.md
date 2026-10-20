@@ -82,16 +82,16 @@ noj-cli uninstall --all --yes  # 连数据卷与安装目录一起删除（需�
 ```
 
 `upgrade` 是 `update` 的别名。升级序列为：同步部署文件 → **备份** → 拉取镜像 →
-**验签** → **进入维护并等待排空** → 启动并等待健康检查 → **退出维护** → 记录元数据；
-任一阶段失败即中止且不宣称成功。
+**验签** → **进入维护并等待排空** → 启动并等待健康检查 → **退出维护** →
+记录元数据； 任一阶段失败即中止且不宣称成功。
 
 ### 维护模式与自动排空（P1d）
 
 `update` 默认在**验签通过之后、启动目标栈之前**调用 core 的内部排空 API：
 
 1. `maintain enter`：进入维护模式（此后写请求返回 503 `MAINTENANCE`）；
-2. `maintain wait`：轮询直到在途评测、judge/result 队列全部清空
-   （默认间隔 5 秒、超时 1800 秒，可用 `--drain-timeout <秒>` 调整）；
+2. `maintain wait`：轮询直到在途评测、judge/result 队列全部清空 （默认间隔 5
+   秒、超时 1800 秒，可用 `--drain-timeout <秒>` 调整）；
 3. 启动目标栈并通过健康检查后 `maintain exit`，恢复写请求。
 
 进入/等待失败会**中止升级**（不启动目标栈、不提交暂存配置）并尽力退出维护模式，
@@ -110,8 +110,8 @@ openssl rand -hex 32    # → NOJ_INTERNAL_SERVICE_TOKEN=<上一步输出>
 - **首次从尚无该 API 的旧版本升级**：旧 Core 返回 `endpoint_unavailable`，
   `update` 会打印告警并**继续升级**（一次性切换）；升级完成后设置该变量即可
   让后续升级启用自动排空。若仍希望显式跳过，用 `--skip-drain`。
-- 人工干预：`noj-cli maintain enter|status|wait|exit`（Tier 3，容器内执行；
-  支持 `--json`、`--timeout`、`--interval` 透传）。
+- 人工干预：`noj-cli maintain enter|status|wait|exit`（Tier 3，容器内执行； 支持
+  `--json`、`--timeout`、`--interval` 透传）。
 
 **备份是 `.nojbackup` 单文件**（tar.zst + 整包 GPG AES-256，manifest 标
 `payload_layout=prod-raw`），同级 `.sha256` 为校验文件。包内含 `postgres.dump`

@@ -1,5 +1,6 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { createContest } from "../../services/contests.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";

@@ -5,7 +5,8 @@
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { judgeImages } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
@@ -20,13 +21,10 @@ import {
   ValidationError,
 } from "../../../../shared/base/errors.ts";
 
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 const ts = Date.now();
 
 Deno.test({
   name: "judge-images service: listJudgeImages 返回数组",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -40,7 +38,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: createJudgeImage 创建成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -62,7 +59,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: createJudgeImage 非法 mode 拒绝",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -81,7 +77,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: createJudgeImage 空镜像名拒绝",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -100,7 +95,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: updateJudgeImage 更新成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -125,7 +119,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: updateJudgeImage 不存在的 id 返回 NotFound",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -139,7 +132,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: deleteJudgeImage 删除成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -160,7 +152,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: validateJudgeImage 有效镜像通过",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -172,7 +163,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: validateJudgeImage all_versions 带标签通过",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -185,7 +175,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images service: validateJudgeImage all_versions 保留完整 repository 路径",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -213,7 +202,6 @@ Deno.test({
 Deno.test({
   name:
     "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -227,7 +215,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-images service: validateJudgeImage 空白名单返回 ValidationError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -246,7 +233,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "judge-images service: cleanup",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

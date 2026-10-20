@@ -1226,6 +1226,19 @@ Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 
       return out.join(" ");
     };
     const subs = calls.map(subcommandOf);
+    const minioInitAt = subs.findIndex((x) =>
+      x.startsWith("up -d") && x.trim().endsWith("minio-init")
+    );
+    assert(
+      minioInitAt >= 0,
+      `MinIO 初始化必须作为保留完成态的 Compose service，实得：${
+        subs.join(" | ")
+      }`,
+    );
+    assert(
+      !subs.some((x) => x === "run minio-init"),
+      "恢复不得用 run --rm 删除 minio-init 的完成状态",
+    );
     const stopAt = subs.indexOf("stop redis");
     // 注意：`subcommandOf` 会剥掉 `--rm` 这类旗标，故匹配的是 `run redis …`
     const rdbAt = subs.findIndex((x) =>

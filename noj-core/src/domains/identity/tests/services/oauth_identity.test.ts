@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { oauthAccounts, users } from "../../../../shared/db/schema.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";

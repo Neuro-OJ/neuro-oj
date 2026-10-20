@@ -8,11 +8,11 @@ import { createApp } from "../../../../app.ts";
 import { _resetBanCacheForTest } from "../../services/security/banCache.ts";
 import { _resetBanlistForTest, addIpBan } from "../../index.ts";
 import { signToken } from "../../services/security/jwt.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ipBans, userBans, users } from "../../../../shared/db/schema.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
-const HAS_SECRET = !!Deno.env.get("JWT_SECRET");
 const ADMIN_ID = crypto.randomUUID();
 const USER_ID = crypto.randomUUID();
 let userToken = "";
@@ -52,7 +52,6 @@ const app = createApp();
 
 Deno.test({
   name: "ban-status: 未登录 + IP 未封禁 → 无封禁",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -71,7 +70,6 @@ Deno.test({
 
 Deno.test({
   name: "ban-status: 未登录 + IP 被封 → ip_banned:true",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -90,7 +88,6 @@ Deno.test({
 
 Deno.test({
   name: "ban-status: 已登录 + 用户被封 → user_banned:true",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -117,7 +114,6 @@ Deno.test({
 
 Deno.test({
   name: "ban-status: 已登录 + 未封禁 → 无封禁",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -135,7 +131,6 @@ Deno.test({
 
 Deno.test({
   name: "ban-status: IP 封禁过期 → ip_banned:false",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -156,7 +151,6 @@ Deno.test({
 
 Deno.test({
   name: "ban-status: 临时封禁到期后 user_banned:false",
-  ignore: !HAS_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

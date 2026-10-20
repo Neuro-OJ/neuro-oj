@@ -15,7 +15,7 @@
  * 对象确实落盘 / 被删除，而非让 fake 自证；Redis 使用 `tests/mq/_setup.ts`
  * 的 RESP mock（仅需 EVAL/LPUSH 即走完整入队路径）。
  *
- * 环境约定（与同目录 `submissions.test.ts` 一致）：PGlite 内存数据库始终可用，
+ * 环境约定（与同目录 `submissions.test.ts` 一致）：独立测试数据库始终可用，
  * 因此 `ignore` 仅取决于进程是否禁用了 DB。
  */
 
@@ -31,7 +31,8 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../../workspace/index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainMemberRoles,
   domainMemberships,
@@ -51,9 +52,6 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { type FakeRedis, startFakeRedis } from "../mq/_setup.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 
 // 建立 schema + 评测镜像白名单种子（validateJudgeImageWithKind 依赖）。
 await resetDbForTest();
@@ -126,7 +124,7 @@ async function insertFixture(
   return { userId, problemId, versionId };
 }
 
-/** 删除 fixture 数据（事务回滚已隔离，这里保证非 preload 运行也不留残留）。 */
+/** 删除 fixture 数据，保证每次运行都不留下残留。 */
 async function deleteFixture(fixture: Fixture): Promise<void> {
   const db = getDb();
   const subs = await db.select({ id: submissions.id }).from(submissions).where(
@@ -221,7 +219,6 @@ async function withFakeRedis<T>(
 
 Deno.test({
   name: "prediction-submissions: .csv 成功落库并推送 prediction 任务",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -296,7 +293,6 @@ Deno.test({
 
 Deno.test({
   name: "prediction-submissions: .pkl 被格式校验拒绝",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -326,7 +322,6 @@ Deno.test({
 
 Deno.test({
   name: "prediction-submissions: 超过题目大小上限的文件被拒绝且不留孤儿",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -366,7 +361,6 @@ Deno.test({
 
 Deno.test({
   name: "prediction-submissions: 非 prediction 题经 prediction 服务被拒",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -392,7 +386,6 @@ Deno.test({
 
 Deno.test({
   name: "prediction-submissions: 瞬时入队失败保留预测文件供 sweeper 恢复",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -431,7 +424,6 @@ Deno.test({
 
 Deno.test({
   name: "prediction-submissions: 清理测试数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

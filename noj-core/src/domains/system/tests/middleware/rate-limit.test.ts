@@ -11,7 +11,7 @@ import { optionalAuthMiddleware } from "../../../identity/index.ts";
 import { Hono } from "hono";
 import { AppError } from "../../../../shared/base/errors.ts";
 import type { Context } from "hono";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 
 // 显式启用限流中间件（NOJ_ENV=test 时默认关闭）。
 //
@@ -35,8 +35,6 @@ async function withRateLimitEnabled<T>(fn: () => Promise<T> | T): Promise<T> {
     else Deno.env.set(RATE_LIMIT_ENV_KEY, previous);
   }
 }
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 // PR-1：optionalAuthMiddleware 校验 JWT 撤销需 Redis
 await initRedisForTest();
@@ -87,7 +85,6 @@ function createTestApp(loggedInMs: number, loggedOutMs: number) {
 
 Deno.test({
   name: "rate limit: 未登录连续两次请求第二次返回 429",
-  ignore: !hasEnv,
   fn: () =>
     withRateLimitEnabled(async () => {
       _resetRateLimitForTest();
@@ -108,7 +105,6 @@ Deno.test({
 
 Deno.test({
   name: "rate limit: 登录用户连续两次请求间隔 < 1s 返回 429",
-  ignore: !hasEnv,
   fn: () =>
     withRateLimitEnabled(async () => {
       _resetRateLimitForTest();
@@ -133,7 +129,6 @@ Deno.test({
 
 Deno.test({
   name: "rate limit: 不同 IP 的未登录请求互不影响",
-  ignore: !hasEnv,
   fn: () =>
     withRateLimitEnabled(async () => {
       _resetRateLimitForTest();
@@ -161,7 +156,6 @@ Deno.test({
 
 Deno.test({
   name: "rate limit: 不同登录用户互不影响",
-  ignore: !hasEnv,
   fn: () =>
     withRateLimitEnabled(async () => {
       _resetRateLimitForTest();
@@ -183,7 +177,6 @@ Deno.test({
 
 Deno.test({
   name: "rate limit: 重复触发 _resetRateLimitForTest 不抛错",
-  ignore: !hasEnv,
   fn: () => {
     _resetRateLimitForTest();
     _resetRateLimitForTest();
@@ -192,7 +185,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions 路由: GET /public/recent 未登录 per_page 上限 50",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   // 引入路由会触发 DB 连接；放在测试里加载避免顶层副作用
@@ -222,7 +214,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions 路由: GET /public/recent 登录用户 per_page 上限 100",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: () =>
@@ -250,7 +241,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions 路由: GET /public/recent 无 token 触发未登录限流（429）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: () =>
@@ -277,7 +267,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions 路由: GET /public/recent 登录用户触发登录限流（429，1s）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: () =>

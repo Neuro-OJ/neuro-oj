@@ -3,13 +3,11 @@ import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发/锁协议验证（tracking #12、#30；2026-10-11 复审问题 1、5）。
  *
- * PGlite 是单连接内存库，无法验证行锁排队与互斥，因此这些用例只在设置了
- * `DATABASE_URL` 时运行（`ignore: !HAS_PG`）。本文件关闭 preload 事务包装
- * （并发用例必须各自持锁），所有夹具在用例结束时显式清理。
+ * 用例使用真实 PostgreSQL 验证行锁排队与互斥（并发用例必须各自持锁），所有
+ * 夹具在用例结束时显式清理。
  *
- * 原生连接一律走 `tests/helper/pg-raw-connection.ts`：裸 `postgres(DATABASE_URL)`
- * 不带 `TEST_SCHEMA` 的 search_path，会在分片/独立 schema 下操作另一套表
- * （2026-10-11 复审问题 5，"可绑定检查 + 插入引用"必须在同一真实事务内）。
+ * 原生连接一律走 `tests/helper/pg-raw-connection.ts`，确保“可绑定检查 + 插入引用”
+ * 在同一真实事务内完成。
  *
  * 验证的协议（Handbook §2.5、§5.1）：
  * 1. **存储删除守卫**：登记行锁、引用检查与物理删除在同一事务内完成，
@@ -27,10 +25,7 @@ import {
   createRawClient,
   withRawTransaction,
 } from "../../../../../tests/helper/pg-raw-connection.ts";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domainProblemBindings,
   educationOutbox,
@@ -61,9 +56,6 @@ import { LocalStorageProvider } from "../../../system/services/storage/local.ts"
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import { setProblemEffectiveVersionPolicy } from "../../services/versioning/effective-policy.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
-
-const HAS_PG = !!Deno.env.get("DATABASE_URL");
-if (HAS_PG) disableTestTransactionForFile();
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-lock-order-" });
 setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
@@ -195,8 +187,8 @@ async function cleanupStorageObject(storageUrl: string): Promise<void> {
 }
 
 /**
- * 本文件关闭了 preload 事务包装，失败中断可能留下夹具；按题号自愈清理，
- * 保证重复运行/失败重跑不会因唯一约束或残留状态而误报。
+ * 失败中断可能留下夹具；按题号自愈清理，保证重复运行/失败重跑不会因唯一约束
+ * 或残留状态而误报。
  */
 async function cleanupByNumber(number: number): Promise<void> {
   const rows = await db.select({ id: problems.id }).from(problems).where(
@@ -207,7 +199,6 @@ async function cleanupByNumber(number: number): Promise<void> {
 
 Deno.test({
   name: "pg lock: 删除与绑定互斥——已删对象不可能被新引用绑定（#12）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -292,7 +283,6 @@ Deno.test({
 Deno.test({
   name:
     "pg lock: 删除执行期间重传并绑定——绝不出现 ready 但物理缺失（复审问题 1）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -402,7 +392,6 @@ Deno.test({
 
 Deno.test({
   name: "pg lock: 未过期上传预约阻止删除且不删物理文件（复审问题 1）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -475,7 +464,6 @@ Deno.test({
 Deno.test({
   name:
     "pg lock: 流式重传在登记行锁内 stat 复核后可恢复 ready 并绑定（问题 7）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -556,7 +544,6 @@ Deno.test({
 Deno.test({
   name:
     "pg lock: 流式复核与删除并发——终态只能是 ready+存在或 deleted+缺失（问题 7）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -676,7 +663,6 @@ Deno.test({
 
 Deno.test({
   name: "pg lock: 策略切换与结果写入互斥且不丢更新（#30）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

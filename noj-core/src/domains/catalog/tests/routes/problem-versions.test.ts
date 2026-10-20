@@ -23,9 +23,6 @@ import {
   jsonRequest,
 } from "../../../../../tests/helper.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 const ts = Date.now();
 
 await resetDbForTest();
@@ -79,7 +76,6 @@ function draftContent(title: string, description = "题面") {
 
 Deno.test({
   name: "problem versions route: 创建即建草稿（revision=1，非派生）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -105,7 +101,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 草稿写入缺 If-Match 返回 428，过时返回 409",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -146,7 +141,6 @@ Deno.test({
 Deno.test({
   name:
     "problem versions route: 发布预检 → 发布 V1 → 相同内容重复发布 unchanged",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -234,7 +228,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 客观题版本对非编辑者裁剪标准答案",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -312,7 +305,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 非编辑者读取草稿被拒（403）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -330,7 +322,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 有版本的源题拒绝物理删除并保留草稿及版本",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -383,7 +374,6 @@ Deno.test({
 Deno.test({
   name:
     "problem versions route: 详情返回默认作答版本，?version_id 显式读取历史版本",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -460,7 +450,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 未发布题目对普通访问者 404，编辑者可读",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -534,7 +523,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 公共列表排除未发布题目，发布后纳入",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -587,7 +575,6 @@ Deno.test({
 Deno.test({
   name:
     "problem versions route: 已发布题目的内容更新只进草稿、管理信息立即生效（批次 2e）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -675,7 +662,6 @@ Deno.test({
 
 Deno.test({
   name: "problem versions route: 未发布内容仅保存草稿，不修改题目投影",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -709,7 +695,6 @@ Deno.test({
 Deno.test({
   name:
     "problem versions route: exact 策略下默认详情内容与版本号一致（#2 默认/竞赛口径统一）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -817,7 +802,6 @@ Deno.test({
 Deno.test({
   name:
     "problem versions route: 非编辑者读历史版本不下发评测配置/模板（#5 按字段裁剪）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

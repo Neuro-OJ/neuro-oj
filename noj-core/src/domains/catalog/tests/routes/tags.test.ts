@@ -23,10 +23,7 @@ import {
 import { signToken } from "../../../identity/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
-// 模块级 bootstrap：确保表已创建（PGlite 模式）
+// 模块级 bootstrap：确保表已创建（测试数据库 模式）
 await resetDbForTest();
 await initRedisForTest();
 
@@ -54,7 +51,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: POST /api/v1/tags 未登录返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -70,7 +66,6 @@ Deno.test({
 Deno.test({
   name:
     "tags route: POST /api/v1/tags 默认用户返回 403（tag:manage 默认仅 admin）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -88,7 +83,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: POST /api/v1/tags admin 创建成功 201",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -114,7 +108,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: POST /api/v1/tags 非法 kind 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -132,7 +125,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: DELETE /api/v1/tags 不存在的标签返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -149,7 +141,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: merge 缺少 target_id 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -167,7 +158,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: 自定义角色授予 tag:manage 后可写（RBAC 可配置）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -258,7 +248,6 @@ Deno.test({
 
 Deno.test({
   name: "tags route: 题目按标签筛选命中",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -1,4 +1,5 @@
-import { getDb, resetDbForTest } from "../../../shared/db/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import {
   domainProblemBindings,
   problems,
@@ -176,8 +177,8 @@ export async function withQueue(fn: () => Promise<void>) {
   } finally {
     redis.disconnect();
     resetRedisForTest();
-    if (previous) Deno.env.set("REDIS_URL", previous);
-    else Deno.env.delete("REDIS_URL");
+    if (previous === undefined) Deno.env.delete("REDIS_URL");
+    else Deno.env.set("REDIS_URL", previous);
     await fake.stop();
   }
 }

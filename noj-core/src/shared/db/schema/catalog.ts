@@ -322,7 +322,7 @@ export const problems = pgTable(
     // 与 `problems.(id, required_version_id) → problem_versions.(problem_id, id)`
     // **故意不在此声明**：`problem_versions.problem_id → problems.id` 与它们构成
     // 类型层面的互相引用，而 `drizzle-orm@0.45` 的 `foreignKey()` 立即求值列数组，
-    // TypeScript 会推出 `any`（TS7022/TS7024）。两条约束由迁移与 PGlite DDL 以
+    // TypeScript 会推出 `any`（TS7022/TS7024）。两条约束由 PostgreSQL 迁移以
     // `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` 建立，语义完全一致。
   }),
 );

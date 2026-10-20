@@ -116,13 +116,13 @@ noj-core/
 │   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
 │   │   ├── base/          # errors / logging / constants / dates / sql-rows
 │   │   ├── config/        # settings-registry / production-config
-│   │   ├── db/            # connection / migrate / schema / schema-ddl
+│   │   ├── db/            # connection / migrate / schema
 │   │   ├── http/          # request / pagination / file-stream / hono-env
 │   │   ├── mq/            # Redis connection / base-consumer
 │   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
 │   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
 │   │   ├── security/      # cidr / public-id / image-validation
-│   │   ├── testing/       # 共享测试夹具（赛期门控等；PGlite 模板在 shared/db）
+│   │   ├── testing/       # 共享测试夹具（赛期门控等）
 │   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
 │   │   └── search-events.ts # 搜索索引事件（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
@@ -253,37 +253,47 @@ deno task problems:build
 # 对象存储只读盘点（仅 SELECT + LIST，不删除对象）
 deno task storage:audit -- --pretty --output /tmp/storage-audit.json
 
-# 测试
-deno task test              # 串行全量（无 DATABASE_URL 时走 PGlite 内存库）
-deno task test:parallel     # 并行分片（需本地 PG：TEST_SCHEMA=test_unit/test_db
-                            # 双 schema 隔离，两组并行，全绿约 2-3 min）
-deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis）
+# 测试（统一由 scripts/test-launcher.ts 管理隔离资源）
+# 运行前必须显式提供专用资源，启动器不会读取 .env：
+#   TEST_PG_ADMIN_URL=postgres://.../postgres
+#   TEST_REDIS_URL=redis://.../0
+#   TEST_STORAGE_ROOT=/tmp/noj-core-test-runs
+#   JWT_SECRET=<至少32字符的测试密钥>
+# `deno task test:logic` 只运行纯逻辑/生命周期 fake，不需要这些外部资源。
+deno task test              # 全量真实 PostgreSQL（空库迁移 + 显式 seed + run 清理）
+deno task test:shared       # 共享/全局测试
+deno task test:parallel     # 独立模板克隆的并行分片（每 shard 独立数据库）
+deno task test:smoke        # HTTP 冒烟（真实 PostgreSQL + 隔离 Redis）
+deno task test:logic        # 纯逻辑/契约测试（不连接 PostgreSQL、Redis 或 Docker）
+deno task test:perf         # 显式开启性能基准（真实 PostgreSQL）
+deno task test:watch        # 长驻 watch，退出时清理本 run 资源
+deno task test:domain identity # 指定 Domain（其余 domain 同理）
 ```
 
-### 测试并行分片（TEST_SCHEMA）
+### 测试并行分片（独立数据库）
 
 产品工作空间基础与扩展资源迁移见
 [`src/domains/workspace/README.md`](src/domains/workspace/README.md)。
 默认域资源回填使用 `deno task db:catalog-backfill`，先完成迁移并处理核实后的旧 U
 题数据；它不删除数据，不覆盖已有绑定配置。新增域资源 API 全链路隔离仍在实现中。
 
-`deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
-`unit`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内
-services/routes/mq 测试、db/迁移/种子） 两组，每组独占一个 PG
-schema（`test_unit` / `test_db`），进程级并行互不干扰：
+`deno task test:parallel`（`scripts/test-launcher.ts`）把测试按目录分为
+`core`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内
+services/routes/mq 测试、db/迁移/种子）两组。启动器先创建本 run 唯一模板库，
+用正式迁移和显式测试种子建立模板，再以 `CREATE DATABASE ... TEMPLATE ...`
+克隆每个分片；每个分片同时获得带本 run/shard owner label 的独立 Redis 容器与
+独立存储目录。`TEST_REDIS_URL` 是模板迁移与显式 seed 使用的 bootstrap endpoint，
+启动器先检查它可用，测试流量随后只进入启动器本次创建的 Redis 容器。
 
-- `src/shared/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup
-  参数 `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema
-  （TRUNCATE / SELECT / INSERT 均自动隔离）
-- `src/shared/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同
-  schema， 避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
-- 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是
-  PGlite 模式（无需迁移），本地 unit 分片走真实 PG（需 00_migrate_test）
-
-注意：迁移 SQL 中历史文件（0010/0027/0029）曾带 drizzle-kit 生成的
-`REFERENCES "public"."xxx"` 硬编码前缀，分片下 FK 会错指 public schema （已在
-2026-07 修复为不带前缀，按 search_path 解析）。新增迁移请保持 不带 schema
-前缀，否则分片测试会静默失败。
+分片不共享 schema、迁移记录、truncate、Redis 进程或存储路径，也不在任何共享
+Redis 上执行 `FLUSHDB`。启动器要求 `docker` 与 `redis:7-alpine` 可用；缺失时
+直接失败，不降级到 fake Redis 或开发 `.env`。测试进程 通过
+`NOJ_TEST_DATABASE_OWNED=1`、非空 `NOJ_TEST_DATABASE_PREFIX` 与精确
+`NOJ_TEST_DATABASE_NAME` 声明本 run 所有权；helper 还必须核对
+`SELECT current_database()`，清理只能触碰本 run 创建的资源。
+存储路径会先递归创建 `TEST_STORAGE_ROOT` 下的父目录，再以非递归、独占方式创建
+`<run-prefix>`；若 run 目录已存在则直接失败，finally 只删除本次成功创建的 run
+目录， 不会删除父目录。
 
 ## 基础设施
 
@@ -426,8 +436,8 @@ docker compose down     # 停止
 | `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                          | PK, FK→messages, FK→users                                                                                                        |
 
 > 上表为核心表速查。完整 Schema 共 **66 张表**（`src/shared/db/schema/`，
-> 按域拆分；`schema.ts` 为 barrel 导出；权威清单见 `src/shared/db/schema-ddl.ts`
-> 的 `ALL_TABLES`），另有：
+> 按域拆分；`schema.ts` 为 barrel 导出；数据库结构以 Drizzle schema
+> 与正式迁移为准），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
@@ -710,11 +720,12 @@ flat/grouped 两种返回。设计文档见
 ## 测试约定
 
 - Agent 必须通过 `deno task` 运行测试，**优先 `deno task test:parallel`**；
-  零外部 PostgreSQL 时用 `deno task test`，快速反馈用 `deno task test:smoke`。
-  不要直接手拼 `deno test`（会丢失 BCRYPT_SALT_ROUNDS、PGlite 模板、preload
-  事务隔离等配置）。
-- DB 依赖测试检查 `!!Deno.env.get("DATABASE_URL")` 和
-  `!!Deno.env.get("JWT_SECRET")`，缺失时设置 `ignore: true` 静默跳过
+  快速反馈用 `deno task test:smoke`。正式入口由 `scripts/test-launcher.ts`
+  创建真实 PostgreSQL/Redis/存储隔离资源，缺少
+  `TEST_PG_ADMIN_URL`、`TEST_REDIS_URL`、`TEST_STORAGE_ROOT` 或 `JWT_SECRET`
+  时必须失败。不要直接手拼 `deno test`，也不要使用开发 `.env`。
+- DB 依赖测试在启动器创建的数据库中运行；必要依赖缺失必须失败，不能用
+  `ignore: true` 静默跳过。
 - 使用 `sanitizeResources: false, sanitizeOps: false`（postgres.js 连接池触发
   Deno 资源泄漏检测）
 - `resetDbForTest()` 在每个测试前重置单例状态

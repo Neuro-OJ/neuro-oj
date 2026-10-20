@@ -6,8 +6,7 @@ import {
 /**
  * 榜单物化视图刷新回归（Handbook §3.5，缺陷 #49）——**仅真实 PostgreSQL 运行**。
  *
- * PGlite 没有物化视图（`hasMaterializedView()` 返回 false，读取恒走内联路径），
- * 因此本文件在无 `DATABASE_URL` 时整体忽略，需由 Lead 在真实 PG 上**串行**执行：
+ * 本文件使用真实 PostgreSQL 物化视图，需由测试启动器在独立数据库上**串行**执行：
  *
  *   cd noj-core && BCRYPT_SALT_ROUNDS=4 deno test -A --no-check \
  *     --preload=tests/preload.ts src/domains/query/tests/services/rankings-view-refresh.pg.test.ts
@@ -24,10 +23,7 @@ import {
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contests,
   educationOutbox,
@@ -46,15 +42,10 @@ import { updateContest } from "../../../contest/index.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
 
-const hasPg = !!Deno.env.get("DATABASE_URL");
-
 // 本文件专门验证物化视图刷新：`refreshRankingsView()` 会真实执行
 // `REFRESH MATERIALIZED VIEW CONCURRENTLY`（该语句**允许**在事务块内执行，见
-// rankings.ts 的根因勘误），并在测试事务内主动跳过（`isInsideTestTransaction()`
-// 短路，属测试适配）。因此这里关闭 preload 事务包装，让刷新真正跑起来；
+// rankings.ts 的根因勘误）。这里直接使用真实 PostgreSQL 连接，让刷新真正跑起来；
 // 用例自带唯一 runId 夹具并显式清理。
-if (hasPg) disableTestTransactionForFile();
-
 const now = new Date().toISOString();
 const FULL_SCORE = 10000;
 
@@ -106,7 +97,6 @@ function sleep(ms: number): Promise<void> {
 Deno.test({
   name:
     "rankings view(#49): 落后时读内联，刷新在 advisory lock 内记录覆盖 revision 且与内联口径一致",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -405,7 +395,6 @@ async function cleanupBoundaryFixture(fixture: BoundaryFixture): Promise<void> {
 Deno.test({
   name:
     "rankings view(#8-①): 赛期自然结束且无任何新写入时，视图不再可信、内联口径正确",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -468,7 +457,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings view(#8-②): 刷新后再跨过一个结束边界仍需刷新",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -541,7 +529,6 @@ Deno.test({
 Deno.test({
   name:
     "rankings view(#8-③): 修改 end_time / affect_global_ranking 立即失效（无需等边界）",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -652,7 +639,6 @@ function isCanonicalIso(value: string): boolean {
 Deno.test({
   name:
     "rankings view(#4-①): 刷新事务等锁跨过比赛结束 → 事务时钟记账，绝不误判 trusted",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -764,7 +750,6 @@ Deno.test({
 Deno.test({
   name:
     "rankings view(#4-②): 应用时钟偏移不影响 materialized_at（以数据库时钟为准）",
-  ignore: !hasPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

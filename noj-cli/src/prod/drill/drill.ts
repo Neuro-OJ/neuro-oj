@@ -86,6 +86,7 @@ import {
   REPORT_FILE_NAME,
   snapshotCreatedAt,
 } from "./report.ts";
+import { resolveCoreBaseUrl } from "./network.ts";
 import { runBusinessVerification } from "./verify.ts";
 
 /** {@link runDrill} 的注入点：一切外部访问都可替换。 */
@@ -588,6 +589,37 @@ async function compose(
   return res.code;
 }
 
+/** 启动并等待一个 Compose 一次性服务，保留失败阶段的业务错误。 */
+const START_SERVICE_ERRORS = {
+  migrate: "数据库迁移失败（migrate）",
+  "gateway-migrate":
+    "Gateway 数据库迁移与默认配额初始化失败（gateway-migrate）",
+  core: "隔离 core 启动失败",
+} as const;
+
+async function startComposeService(
+  ctx: DrillContext,
+  runner: CommandRunner,
+  dockerBin: string,
+  service: string,
+  waitTimeout: number,
+): Promise<void> {
+  const code = await compose(ctx, runner, dockerBin, [
+    "up",
+    "-d",
+    "--wait",
+    "--wait-timeout",
+    String(waitTimeout),
+    service,
+  ]);
+  if (code !== 0) {
+    throw new Error(
+      START_SERVICE_ERRORS[service as keyof typeof START_SERVICE_ERRORS] ??
+        `隔离服务启动失败：${service}`,
+    );
+  }
+}
+
 /** `restore_data_services()`（bash :340-376）：启动隔离数据服务并恢复三类数据。 */
 /**
  * 恢复三类数据服务（**委托给 `backup/data_restore.ts` 的共享序列**）。
@@ -892,24 +924,20 @@ async function startBusinessServices(
   opts: DrillRunOptions,
   log: (line: string) => void,
 ): Promise<{ evaluator: string; solution: string }> {
-  log("✓ 执行迁移并启动 core");
-  // 同上：迁移失败必须立刻显式报错，否则会表现为 core 起不来
-  // （"隔离 core 启动失败"），掩盖"其实是迁移失败"这一根因。
-  if (await compose(ctx, runner, dockerBin, ["run", "--rm", "migrate"]) !== 0) {
-    throw new Error("数据库迁移失败（migrate）");
-  }
-  if (
-    await compose(ctx, runner, dockerBin, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(waitTimeout),
-      "core",
-    ]) !== 0
-  ) {
-    throw new Error("隔离 core 启动失败");
-  }
+  const start = (service: keyof typeof START_SERVICE_ERRORS) =>
+    startComposeService(ctx, runner, dockerBin, service, waitTimeout);
+  log("✓ 执行 Core 迁移/初始化（一次性服务）");
+  // 这里必须使用 Compose 的 service 容器，而不是 `run --rm`：Core 迁移完成
+  // 状态是后续 gateway-migrate/core 的 `service_completed_successfully` 依赖
+  // 的依据。删除 one-shot 容器后再 `up core` 会让 Compose 重跑迁移，恢复演练
+  // 就无法证明生产启动路径只执行一次显式 DDL。
+  await start("migrate");
+
+  log("✓ 执行 Gateway 迁移/默认配额初始化（一次性服务）");
+  await start("gateway-migrate");
+
+  log("✓ 启动隔离 Core HTTP 服务");
+  await start("core");
 
   if (!ctx.judge) {
     log("! 跳过 judge（--skip-judge）：演练不包含真实评测");
@@ -969,45 +997,6 @@ async function startBusinessServices(
   }
   log(`✓ 评测镜像：evaluator=${evaluator} solution=${solution}`);
   return { evaluator, solution };
-}
-
-/**
- * 解析 core 的 API 基址（**经容器 IP**，不依赖端口映射）。
- *
- * 隔离演练**不映射宿主机端口**（#516 要求），因此不能走 `localhost:8080`。
- * 取法：`compose ps -q core` 得到容器 ID → `docker inspect` 读它在演练网络里的
- * IP → `http://<ip>:8000/api/v1`。
- */
-async function resolveCoreBaseUrl(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-): Promise<string> {
-  const idRes = await runner.run(
-    dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command: ["ps", "-q", "core"],
-    }),
-  );
-  const containerId = idRes.stdout.trim().split("\n")[0]?.trim() ?? "";
-  if (containerId === "") throw new Error("无法定位隔离 core 容器");
-
-  const inspect = await runner.run(dockerBin, [
-    "inspect",
-    "--format",
-    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-    containerId,
-  ]);
-  const ip = inspect.stdout.trim();
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    throw new Error(`无法解析隔离 core 的容器 IP：${JSON.stringify(ip)}`);
-  }
-  return `http://${ip}:8000/api/v1`;
 }
 
 /** 写报告（权限 600）与指标目录准备。 */

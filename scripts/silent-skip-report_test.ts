@@ -206,21 +206,15 @@ Deno.test("silent-skip: ignore: true / false / ! 的分类不被新规则改变"
 });
 
 Deno.test("silent-skip: 真实仓库的变量守卫文件被计入", async () => {
-  // 防回归：这两个文件此前零命中，是全仓库最典型的整文件环境守卫。
+  // 防回归：S3 测试用 skip 变量统一守卫整组外部服务用例。
+  const s3Path = "noj-core/tests/shared/storage/s3.test.ts";
   const real = await Deno.readTextFile(
-    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
+    s3Path,
   );
-  const hits = scanFile(
-    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
-    real,
-  );
+  const hits = scanFile(s3Path, real);
   assertEquals(
     hits.length > 0,
     true,
-    `messages.test.ts 的 ignore: skip 应被计入，实际 ${hits.length}`,
+    `s3.test.ts 的 ignore: skip 应被计入，实际 ${hits.length}`,
   );
-  const audit = await Deno.readTextFile(
-    "noj-core/src/domains/system/tests/services/audit-log.test.ts",
-  );
-  assertEquals(scanFile("audit-log.test.ts", audit).length > 0, true);
 });

@@ -1,22 +1,14 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { decodeJwt } from "jose";
 import { getUserProfile, loginUser, registerUser } from "../../index.ts";
-import {
-  disableTestTransactionForFile,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   ConflictError,
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
 
 // 并发注册用例依赖真实并发与唯一约束竞争，事务回滚隔离会改变语义，故关闭
-disableTestTransactionForFile();
-
-// PGlite 内存数据库始终可用
-const dbAvailable = true;
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(dbAvailable && hasJwt);
+// 独立测试数据库始终可用
 
 const ts = Date.now();
 const TEST_USER = {
@@ -26,13 +18,12 @@ const TEST_USER = {
 };
 
 // 模块级 setup：创建跨测试共享的 TEST_USER
-// 在 PGlite 模式下每次 resetDbForTest() 会 TRUNCATE，因此放在模块级执行一次
+// 在 测试数据库 模式下每次 resetDbForTest() 会 TRUNCATE，因此放在模块级执行一次
 await resetDbForTest();
 await registerUser(TEST_USER);
 
 Deno.test({
   name: "auth service: registerUser 创建用户并返回 UserResponse",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -51,7 +42,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 重复用户名注册抛出 ConflictError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -71,7 +61,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 重复邮箱注册抛出 ConflictError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -90,7 +79,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 并发注册同一用户名仅一个成功，其余返回 ConflictError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -119,7 +107,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 并发注册同一邮箱仅一个成功，其余返回 ConflictError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -147,7 +134,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: loginUser 用用户名登录成功返回 token",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -165,7 +151,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: loginUser 用邮箱登录成功返回 token",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -181,7 +166,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 错误密码抛出 UnauthorizedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -199,7 +183,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 不存在的用户抛出 UnauthorizedError（统一消息防枚举）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -217,7 +200,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: getUserProfile 返回用户信息",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -238,7 +220,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 不存在的用户 ID 抛出 UnauthorizedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -253,7 +234,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 首个和后续公开注册用户均保持普通权限",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -276,7 +256,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service: 并发首次公开注册不产生管理员",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

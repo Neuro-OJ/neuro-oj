@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, or } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   conversations,
   userBans,
@@ -26,11 +27,8 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
-
-const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
-  !!Deno.env.get("JWT_SECRET");
 
 /**
  * 创建独立测试用户。
@@ -68,7 +66,6 @@ async function cleanup(...userIds: string[]): Promise<void> {
 
 Deno.test({
   name: "messages: 创建新会话成功",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -90,7 +87,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 已有会话返回相同会话",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -114,7 +110,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 拒绝自聊",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -133,7 +128,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 对方用户不存在返回 404",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -152,7 +146,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 发送消息成功",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -174,7 +167,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 非参与者发送消息被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -198,7 +190,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 获取会话列表",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -217,7 +208,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 空会话列表",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -233,7 +223,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 获取消息列表（分页）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -256,7 +245,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 非参与者查看消息被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -280,7 +268,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 标记已读和未读计数",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -309,7 +296,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 非参与者查询他人会话未读数被拒绝（IDOR）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -340,7 +326,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 总未读计数",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -364,7 +349,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 自己发送的消息不产生未读",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -396,7 +380,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 软删除消息",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -427,7 +410,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 删除不存在消息返回 404",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -447,7 +429,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 发送图片消息成功（type=image + image_url）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -475,7 +456,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 图片消息缺少 image_url 被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -498,7 +478,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 引用回复成功且列表返回 reply_to 摘要",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -527,7 +506,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 引用其他会话的消息被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -559,7 +537,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 转发消息快照复制并标记来源用户",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -597,7 +574,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 转发已转发的消息保留原始来源",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -636,7 +612,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 转发不可信消息被拒（非参与者）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -669,7 +644,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 添加/替换/取消 Reaction",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -711,7 +685,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 非法 emoji 被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -735,7 +708,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 对方已读后自己发送的消息 read=true",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -764,7 +736,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 转发图片消息时 type 同步为 image",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -799,7 +770,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 图片消息 image_url 非存储 URL 被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -834,7 +804,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 已读位置跨会话消息被拒",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -864,7 +833,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 编辑消息（5 分钟内，仅发送者，仅文本）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -894,7 +862,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 撤回消息（2 分钟内，仅发送者）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -925,7 +892,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 已撤回消息不可转发/引用/Reaction",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -972,7 +938,6 @@ Deno.test({
 
 Deno.test({
   name: "messages: 社交封禁用户不可私聊（发送/创建会话均拦截）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

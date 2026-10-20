@@ -2,8 +2,9 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { SignJWT } from "jose";
-import { PGlite } from "@electric-sql/pglite";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
+import { withRawClient } from "../../../../../tests/helper/pg-raw-connection.ts";
 import { passwordResetTokens, users } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import {
@@ -315,10 +316,9 @@ sessionTest("并发改密只有一个旧凭据更新能成功", async () => {
 });
 
 sessionTest("新增迁移保留旧用户并赋予初始会话版本", async () => {
-  const db = new PGlite();
-  try {
-    await db.exec(
-      "CREATE TABLE users (id TEXT PRIMARY KEY); INSERT INTO users VALUES ('existing'); CREATE TABLE search_entries (id TEXT PRIMARY KEY);",
+  await withRawClient(async (client) => {
+    await client.unsafe(
+      "CREATE TEMP TABLE users (id TEXT PRIMARY KEY); INSERT INTO users VALUES ('existing');",
     );
     const migration = await Deno.readTextFile(
       new URL(
@@ -326,12 +326,12 @@ sessionTest("新增迁移保留旧用户并赋予初始会话版本", async () =
         import.meta.url,
       ),
     );
-    await db.exec(migration);
-    const result = await db.query("SELECT id, session_version FROM users");
-    assertEquals(result.rows, [{ id: "existing", session_version: 0 }]);
-  } finally {
-    await db.close();
-  }
+    await client.unsafe(migration);
+    const result = await client.unsafe(
+      "SELECT id, session_version FROM users",
+    ) as Array<{ id: string; session_version: number }>;
+    assertEquals(Array.from(result), [{ id: "existing", session_version: 0 }]);
+  });
 });
 
 sessionTest(

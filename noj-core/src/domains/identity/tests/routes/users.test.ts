@@ -1,18 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !(hasEnv && hasDb);
 
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 不存在的用户返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -26,7 +21,6 @@ Deno.test({
 
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 公开访问无需 token",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -40,7 +34,6 @@ Deno.test({
 
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 返回结构正确",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

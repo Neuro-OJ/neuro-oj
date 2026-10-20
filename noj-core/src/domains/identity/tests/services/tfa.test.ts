@@ -1,7 +1,8 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { tfaRecoveryCodes, users } from "../../../../shared/db/schema.ts";
 import { hashPassword } from "../../services/security/password.ts";
 import { UnauthorizedError } from "../../../../shared/base/errors.ts";
@@ -16,7 +17,6 @@ import {
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
 
-const skip = false;
 const ts = Date.now();
 
 async function seedUser() {
@@ -41,7 +41,6 @@ function currentCode(secret: string): string {
 
 Deno.test({
   name: "tfa service: setupTfa 生成 secret 并加密存储，状态仍为未启用",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -59,7 +58,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: confirmTfa 正确验证码启用并返回 10 个恢复码",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -74,7 +72,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: confirmTfa 错误验证码抛出 UnauthorizedError 且不启用",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -91,7 +88,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: disableTfa 使用 TOTP 禁用并清除 secret 和恢复码",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -116,7 +112,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: disableTfa 使用恢复码禁用并消费该恢复码",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -131,7 +126,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: regenerateRecoveryCodes 作废旧码并返回新码",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -152,7 +146,6 @@ Deno.test({
 
 Deno.test({
   name: "tfa service: verifyTfaCodeForUser 恢复码一次性消费",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

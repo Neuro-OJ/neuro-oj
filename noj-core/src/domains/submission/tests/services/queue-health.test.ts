@@ -11,20 +11,15 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
+import { judgeQueueFor } from "../../../../shared/mq/judge-queues.ts";
 import { getQueueHealth } from "../../index.ts";
 
-const hasRedis = !!Deno.env.get("REDIS_URL");
-const skip = !hasRedis;
-
 // 模块级初始化：连接共享 Redis
-if (hasRedis) {
-  resetRedisForTest();
-  await connectRedis();
-}
+resetRedisForTest();
+await connectRedis();
 
 Deno.test({
   name: "queue health: getQueueHealth 返回完整结构",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -48,12 +43,11 @@ Deno.test({
 
 Deno.test({
   name: "queue health: 主队列存在消息时长度 > 0",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const redis = getRedis();
-    const queue = "noj:judge:queue:medium";
+    const queue = judgeQueueFor("ai", "medium");
     const before = await getQueueHealth();
     const beforeLen = before.judge.queue_length;
 
