@@ -7,8 +7,22 @@
  */
 
 // access
-export { domainCreationRequests, domainFeatureIntervals, domainJoinRequests, domainLlmSettings, domainLimits, domainMemberRoles, domainMemberships, domainResourceCounters, domains, userWorkspacePreferences } from "./workspace.ts";
-export { domainInvitationRedemptions, domainInvitations } from "./workspace-invitations.ts";
+export {
+  domainCreationRequests,
+  domainFeatureIntervals,
+  domainJoinRequests,
+  domainLimits,
+  domainLlmSettings,
+  domainMemberRoles,
+  domainMemberships,
+  domainResourceCounters,
+  domains,
+  userWorkspacePreferences,
+} from "./workspace.ts";
+export {
+  domainInvitationRedemptions,
+  domainInvitations,
+} from "./workspace-invitations.ts";
 export {
   checkIns,
   oauthAccounts,
@@ -26,10 +40,10 @@ export {
 export {
   problemDraftObjects,
   problemDrafts,
+  problems,
   problemTags,
   problemVersionObjects,
   problemVersions,
-  problems,
   tags,
   trainingProblems,
   trainings,
@@ -135,14 +149,11 @@ export {
 export { carouselSlides } from "./carousel.ts";
 export {
   dataRequests,
-  legalDocumentVersions,
   legalDocuments,
+  legalDocumentVersions,
   userConsents,
 } from "./legal.ts";
-export {
-  emailDeliveryEvents,
-  emailSuppressions,
-} from "./email.ts";
+export { emailDeliveryEvents, emailSuppressions } from "./email.ts";
 
 // read-models
 export { queryProjectionRevisions } from "./query.ts";

@@ -266,11 +266,7 @@ export async function ensureDefaultWorkspaceTx(
       ],
       set: { used: members.count },
     });
-    const ownerActor = {
-      kind: "system",
-      purpose: actor.purpose,
-    } as const;
-    await workspaceAuditTx(tx, ownerActor, current.id, "domain.transfer", {
+    await workspaceAuditTx(tx, actor, current.id, "domain.transfer", {
       operation: "bootstrap_owner",
       previous_owner_id: ROOT_USER_ID,
       owner_id: ownerId,

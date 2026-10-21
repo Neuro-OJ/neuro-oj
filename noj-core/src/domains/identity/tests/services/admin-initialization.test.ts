@@ -17,7 +17,7 @@ import {
   initializeFirstAdmin as initializeFirstAdminTx,
   sealExistingSiteAdminInitialization,
 } from "../../services/auth/admin-initialization.ts";
-import { createSystemActor } from "../../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../modules/runtime/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 import { registerUser } from "../../services/auth/auth-register.ts";
 import { isUserAdmin } from "../../services/security/permissions.ts";

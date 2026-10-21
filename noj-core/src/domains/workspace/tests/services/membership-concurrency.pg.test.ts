@@ -15,6 +15,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { adminDeleteAccount } from "../../../identity/index.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 import {
   consumeDomainInvitation,
   createDomain,
@@ -186,7 +187,7 @@ for (const kind of ["join", "invitation", "approval"] as const) {
         assertEquals((lockError as unknown as { code: string }).code, "55P03");
         await blocker.unsafe("COMMIT");
         await pending;
-        await adminDeleteAccount(target, owner);
+        await adminDeleteAccount(target, userActorFromAuthenticatedId(owner));
         const [history] = await getDb().select().from(domainMemberships).where(
           and(
             eq(domainMemberships.domain_id, domain.id),

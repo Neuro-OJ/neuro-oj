@@ -18,6 +18,7 @@ import {
   deleteOwnAccount,
   hashPassword,
 } from "../../../identity/index.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
@@ -86,8 +87,9 @@ Deno.test("域负责人注销：本人及平台入口均拒绝，拒绝时头像
   }).where(eq(users.id, owner));
   for (
     const action of [
-      () => deleteOwnAccount(owner, "Owner-2026-Ab1"),
-      () => adminDeleteAccount(owner, operator),
+      () =>
+        deleteOwnAccount(userActorFromAuthenticatedId(owner), "Owner-2026-Ab1"),
+      () => adminDeleteAccount(owner, userActorFromAuthenticatedId(operator)),
     ]
   ) {
     const failure = await assertRejects(action, ConflictError);
@@ -100,7 +102,7 @@ Deno.test("域负责人注销：本人及平台入口均拒绝，拒绝时头像
   }
   await joinDomain(domain.slug, next);
   await transferDomain(domain.slug, owner, next);
-  await deleteOwnAccount(owner, "Owner-2026-Ab1");
+  await deleteOwnAccount(userActorFromAuthenticatedId(owner), "Owner-2026-Ab1");
   assertEquals((await loadWorkspace(domain.slug, next)).domain.owner_id, next);
   const [history] = await getDb().select().from(domainMemberships).where(
     eq(domainMemberships.user_id, owner),

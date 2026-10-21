@@ -365,6 +365,7 @@ export {
 export {
   importDomainProblemBundle,
 } from "./services/workspace/problem-bundle-import.ts";
+export { backfillDefaultCatalog } from "./services/workspace/backfill.ts";
 export {
   assertDefaultProblemSource,
   resolveDefaultExecutionContext,

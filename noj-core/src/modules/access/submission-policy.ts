@@ -131,7 +131,7 @@ export async function getProblemSubmissionSummaries(
   const visibleScope = { ...scope, includeAllEndedContests: true };
   const result = await getDb().execute(
     sql`WITH visible_sources AS (
-      SELECT * FROM ${unifiedSubmissionSources} s
+      SELECT * FROM (SELECT * FROM ${unifiedSubmissionSources}) s
       WHERE ${
       submissionQueryVisibility(visibleScope, {
         domainId: sql`s.domain_id`,

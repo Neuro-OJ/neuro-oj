@@ -10,7 +10,7 @@
 import {
   initializeFirstAdmin as initializeFirstAdminTx,
 } from "../../services/auth/admin-initialization.ts";
-import { createSystemActor } from "../../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../modules/runtime/system-actors.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";

@@ -28,7 +28,8 @@ import {
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
 } from "../src/domains/identity/index.ts";
-import { createSystemActor } from "../src/runtime/system-actors.ts";
+import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
+import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import { initProblem } from "./problems-init.ts";
 import { runMaintain } from "./maintain.ts";
@@ -44,7 +45,7 @@ import {
   backfillDefaultCatalog,
   importDomainProblemBundle,
   publishDomainProblemVersion,
-} from "../src/domains/catalog/index.ts";
+} from "../src/modules/problems/index.ts";
 import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
@@ -148,7 +149,7 @@ async function importProblemPackages(
       // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
       const problem = await importDomainProblemBundle(
         slug,
-        workspace.actorId,
+        userActorFromAuthenticatedId(workspace.actorId),
         data,
         "current",
       );
@@ -159,7 +160,7 @@ async function importProblemPackages(
         const published = await publishDomainProblemVersion(
           slug,
           String(problem.number),
-          workspace.actorId,
+          userActorFromAuthenticatedId(workspace.actorId),
           problem.draft_revision,
           "题目包导入",
         );
@@ -263,7 +264,7 @@ const dbCmd = new Command()
   )
   .action(async () => {
     const { backfillExecutionWorkspaces } = await import(
-      "../src/domains/submission/index.ts"
+      "../src/modules/evaluations/index.ts"
     );
     console.log(JSON.stringify(await backfillExecutionWorkspaces()));
   });
