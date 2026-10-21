@@ -25,6 +25,7 @@ import {
   type DomainInvitationInput,
   revokeDomainInvitationTx,
 } from "../access/invitations.ts";
+import type { InvitationRegistrationBoundary } from "../access/registration.ts";
 import {
   type AccessWriteMeta,
   joinDomainTx,
@@ -281,4 +282,14 @@ export function revokeClassroomInvitationCommand(
     classroomId,
     meta,
   });
+}
+
+/**
+ * 注册开户时使用的邀请边界。
+ *
+ * 班级邀请签发者是否仍有教学授权属于 education 事实，必须由 application
+ * 绑定；access 只消费这个已组合能力，不反向导入 education 服务。
+ */
+export function registrationInvitationBoundary(): InvitationRegistrationBoundary {
+  return accessClassroomInvitationBoundary();
 }

@@ -212,6 +212,86 @@ export function createDomainInvitation(
   );
 }
 
+/**
+ * 邀请签发者的开户授权事实（只读，复用调用方事务）。
+ *
+ * 与 `consumeDomainInvitationTx` 分离：开户发生在账号已插入、成员尚未加入的
+ * 注册事务里，需要先判断签发者是否具备“邀请新账号”的平台/域权限；班级邀请
+ * 的签发者授权由 application 注入的 classroom 边界核验，教学能力本身不等于
+ * 开户能力。
+ */
+export async function loadInvitationAccountAuthorityTx(
+  tx: DbTx,
+  token: string,
+  options: ClassroomInvitationBoundary = {},
+): Promise<
+  | {
+    domainSlug: string;
+    classroomId: string | null;
+    platformAdmin: boolean;
+    domainInviter: boolean;
+  }
+  | null
+> {
+  const credential = await credentialWhere(token);
+  const [invite] = await tx.select().from(domainInvitations).where(and(
+    credential,
+    isNull(domainInvitations.revoked_at),
+  )).for("update");
+  if (!invite) return null;
+  const [domain] = await tx.select().from(domains).where(and(
+    eq(domains.id, invite.domain_id),
+    eq(domains.status, "active"),
+  )).for("update");
+  if (!domain) return null;
+  if (
+    Date.parse(invite.expires_at) <= Date.now() ||
+    invite.max_uses !== null && invite.used_count >= invite.max_uses
+  ) return null;
+  try {
+    if (invite.classroom_id) {
+      if (!options.assertIssuerTx) return null;
+      await options.assertIssuerTx(
+        tx,
+        domain.slug,
+        invite.classroom_id,
+        userActorFromAuthenticatedId(invite.created_by),
+      );
+    }
+    const issuer = await loadWorkspaceTx(
+      tx,
+      domain.slug,
+      userActorFromAuthenticatedId(invite.created_by),
+    );
+    if (invite.classroom_id) {
+      // 班级签发者的域邀请权限仍需真实解析；没有该权限时不能开新账号。
+      return {
+        domainSlug: domain.slug,
+        classroomId: invite.classroom_id,
+        platformAdmin: issuer.platformAdmin,
+        domainInviter: issuer.context.domainPermissions.has(
+          "domain:invitations",
+        ),
+      };
+    }
+    const domainInviter = issuer.context.domainPermissions.has(
+      "domain:invitations",
+    );
+    if (!issuer.platformAdmin && !domainInviter) return null;
+    return {
+      domainSlug: domain.slug,
+      classroomId: null,
+      platformAdmin: issuer.platformAdmin,
+      domainInviter,
+    };
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ForbiddenError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function assertInvitationIssuerActiveTx(
   tx: DbTx,
   domainSlug: string,

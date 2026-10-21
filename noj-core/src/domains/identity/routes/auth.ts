@@ -48,6 +48,7 @@ import {
   ValidationError,
 } from "../../../shared/base/errors.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
+import { registrationInvitationBoundary } from "../../../modules/application/access.ts";
 import { getUserPermissions } from "../services/security/permissions.ts";
 import { signToken, verifyToken } from "../services/security/jwt.ts";
 import { getLegalStatus } from "../../legal/index.ts";
@@ -172,6 +173,7 @@ auth.post("/register", async (c) => {
     body,
     clientIp,
     c.req.header("user-agent") ?? null,
+    { invitationBoundary: registrationInvitationBoundary() },
   );
   const emailVerification = await sendEmailVerification(
     user.id,

@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
+import { registrationInvitationBoundary } from "../../../../modules/application/access.ts";
 import {
   AppError,
   ForbiddenError,
@@ -22,7 +23,7 @@ import {
 import {
   assertInstanceRegistration,
   consumeDomainInvitation,
-  enrollRegisteredAccount,
+  enrollRegisteredAccountTxLegacy,
   previewDomainInvitation,
 } from "../../../workspace/index.ts";
 import { updateSetting } from "../../../system/index.ts";
@@ -171,7 +172,9 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
   await assertRejects(
     () =>
       f.db.transaction((tx) =>
-        enrollRegisteredAccount(tx, student, coachInvite.token)
+        enrollRegisteredAccountTxLegacy(tx, student, coachInvite.token, {
+          invitationBoundary: registrationInvitationBoundary(),
+        })
       ),
     ForbiddenError,
   );
@@ -182,7 +185,9 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
     `${student}@example.com`,
   );
   await f.db.transaction((tx) =>
-    enrollRegisteredAccount(tx, student, adminInvite.token)
+    enrollRegisteredAccountTxLegacy(tx, student, adminInvite.token, {
+      invitationBoundary: registrationInvitationBoundary(),
+    })
   );
   assertEquals(
     (await f.db.select().from(classroomMemberships).where(
@@ -214,6 +219,8 @@ Deno.test("班级邀请注册：账号与两层成员同事务，额度失败不
     email,
     password: "NewStudentPass123!",
     invitation_token: invite.token,
+  }, undefined, null, {
+    invitationBoundary: registrationInvitationBoundary(),
   });
   const [member] = await f.db.select().from(classroomMemberships)
     .where(eq(classroomMemberships.user_id, registered.id));
@@ -236,6 +243,8 @@ Deno.test("班级邀请注册：账号与两层成员同事务，额度失败不
       email: secondEmail,
       password: "NewStudentPass123!",
       invitation_token: blocked.token,
+    }, undefined, null, {
+      invitationBoundary: registrationInvitationBoundary(),
     }), ForbiddenError);
   assertEquals(
     (await f.db.select().from(users).where(eq(users.email, secondEmail)))

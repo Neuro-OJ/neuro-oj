@@ -21,6 +21,7 @@ import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-init
 import {
   assertInstanceRegistration,
   enrollRegisteredAccountTx,
+  type InvitationRegistrationBoundary,
 } from "../../../../modules/access/registration.ts";
 import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 
@@ -143,6 +144,7 @@ export async function registerUser(
   input: RegisterInput,
   clientIp?: string,
   userAgent?: string | null,
+  options: { invitationBoundary?: InvitationRegistrationBoundary } = {},
 ): Promise<UserResponse> {
   assertInstanceRegistration(input.invitation_token);
   // 密码强度校验（issue 64 评论 §6.5）
@@ -231,6 +233,11 @@ export async function registerUser(
       tx,
       userActorFromAuthenticatedId(id),
       input.invitation_token,
+      {
+        ...(options.invitationBoundary
+          ? { invitationBoundary: options.invitationBoundary }
+          : {}),
+      },
     );
   }).catch((err) => {
     const conflict = conflictFromUniqueViolation(err);
