@@ -1,0 +1,54 @@
+/**
+ * legal 域删除/更正请求路由（用户侧）。
+ *
+ * POST /api/v1/legal/data-requests —— 提交请求
+ * GET  /api/v1/legal/data-requests —— 查看自己的请求
+ */
+
+import { Hono } from "hono";
+import { authMiddleware } from "../../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../../shared/http/hono-env.ts";
+import { parseJsonBody } from "../../../../shared/http/request.ts";
+import { enforceRateLimit } from "../../system/services/hardening-rate-limit.ts";
+import { requireUserActor } from "../../../access/contracts/actor.ts";
+import {
+  createDataRequest,
+  listUserDataRequests,
+} from "../../services/legal/data-requests.ts";
+
+const router = new Hono<AuthEnv>();
+
+/** 提交请求限流：每用户 5 分钟最多 10 次。 */
+const REQUEST_LIMIT = { windowSec: 300, max: 10 };
+
+/** 提交删除/更正请求。 */
+router.post("/data-requests", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  const actor = requireUserActor(c.get("actor"));
+  await enforceRateLimit(`data-request:user:${userId}`, REQUEST_LIMIT);
+
+  const body = await parseJsonBody<{
+    kind?: string;
+    target_type?: string;
+    target_id?: string | null;
+    detail?: string;
+  }>(c);
+
+  const id = await createDataRequest(
+    actor,
+    body.kind ?? "",
+    body.target_type ?? "",
+    body.target_id ?? null,
+    body.detail ?? "",
+  );
+  return c.json({ data: { id } }, 201);
+});
+
+/** 查看自己的请求列表。 */
+router.get("/data-requests", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  const rows = await listUserDataRequests(userId);
+  return c.json({ data: rows });
+});
+
+export default router;

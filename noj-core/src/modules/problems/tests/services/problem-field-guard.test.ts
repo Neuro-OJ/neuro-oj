@@ -28,10 +28,10 @@ import {
   ForbiddenError,
 } from "../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createProblem, updateProblem } from "../../index.ts";
 import { importProblemBundle } from "../../index.ts";
-import { resetSetting, updateSetting } from "../../../../domains/system/index.ts";
+import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 
 // 独立测试数据库始终可用
 

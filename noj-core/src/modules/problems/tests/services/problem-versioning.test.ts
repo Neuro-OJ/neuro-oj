@@ -25,10 +25,10 @@ import {
   publishProblemVersion,
   resolveProblemAnswerVersion,
 } from "../../services/versioning/publish.ts";
-import { registerReadyStorageObject } from "../../../../domains/system/services/storage/registry.ts";
-import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
-import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { registerReadyStorageObject } from "../../../platform/system/index.ts";
+import { setStorageProviderForTest } from "../../../platform/system/index.ts";
+import { LocalStorageProvider } from "../../../platform/system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import type {
   AiProblemContent,
   ProblemDraftContent,

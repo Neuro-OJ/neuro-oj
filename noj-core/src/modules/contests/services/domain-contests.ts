@@ -15,9 +15,9 @@ import {
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  workspaceAudit,
-} from "../../../domains/workspace/index.ts";
-import { assertActiveInstanceAccount } from "../../../domains/identity/index.ts";
+} from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { assertActiveInstanceAccount } from "../../access/contracts/cross-module/identity_services_security_account-access.ts";
 import type {
   ContestType,
   CreateContestInput,

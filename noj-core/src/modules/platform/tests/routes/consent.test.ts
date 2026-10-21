@@ -9,9 +9,9 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { userConsents, users } from "../../../../shared/db/schema.ts";
-import { publishVersion } from "../../../../domains/legal/index.ts";
+import { publishVersion } from "../../legal-legacy/index.ts";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/services/security/jwt.ts";
+import { signToken } from "../../../access/identity/index.ts";
 
 const PUBLISHER = "legal-consent-publisher";
 

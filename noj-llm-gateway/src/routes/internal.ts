@@ -2,6 +2,7 @@
  * core↔gateway 内部管理 API（使用 NOJ_LLM_SERVICE_TOKEN 鉴权）。
  */
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Db } from "../db.ts";
 import type { GatewayConfig } from "../config.ts";
 import type { RedisClient } from "../redis.ts";
@@ -19,6 +20,16 @@ import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
 import { reconcileAccounting } from "../accounting.ts";
 import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
 import { requireRevision } from "../revision.ts";
+import {
+  deleteDomainModelAlias,
+  listDomainModelAliases,
+  listDomainModelCapabilities,
+  ModelAuthorityError,
+  readDomainModelSettings,
+  resolveDomainModelSelection,
+  updateDomainModelSettings,
+  upsertDomainModelAlias,
+} from "../model-authority.ts";
 import { createInternalPolicyRouter } from "./internal-policy.ts";
 
 export interface InternalDeps {
@@ -35,6 +46,17 @@ export interface InternalDeps {
  * gateway 是独立模块（不 import core 的源码），故此处独立定义并说明来源。
  */
 const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
+
+function modelAuthorityErrorResponse(
+  c: Context,
+  error: unknown,
+) {
+  if (!(error instanceof ModelAuthorityError)) throw error;
+  return c.json(
+    { error: error.code },
+    error.status as 400 | 404 | 409,
+  );
+}
 
 /** 创建 core↔gateway 内部管理路由；所有端点均需服务间 Bearer Token。 */
 export function createInternalRouter(deps: InternalDeps): Hono {
@@ -170,6 +192,98 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         : 502;
       return c.json({ error: code }, status);
     }
+  });
+
+  // Gateway 模型权威：Core 只通过这些端点读写执行域配置。
+  app.get("/internal/model-aliases", async (c) => {
+    return c.json({ data: await listDomainModelAliases(deps.db, domain(c)) });
+  });
+  app.put("/internal/model-aliases/:alias", async (c) => {
+    const revision = requireRevision(c);
+    const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
+    if (!actorId) return c.json({ error: "actor_required" }, 400);
+    try {
+      const body = await c.req.json<{
+        provider_id: string;
+        model: string;
+        description?: string;
+      }>();
+      return c.json({
+        data: await upsertDomainModelAlias(
+          deps.db,
+          domain(c),
+          c.req.param("alias"),
+          body,
+          revision,
+          actorId,
+        ),
+      }, revision === 0 ? 201 : 200);
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.delete("/internal/model-aliases/:alias", async (c) => {
+    const revision = requireRevision(c);
+    try {
+      const deleted = await deleteDomainModelAlias(
+        deps.db,
+        domain(c),
+        c.req.param("alias"),
+        revision,
+      );
+      return deleted
+        ? c.body(null, 204)
+        : c.json({ error: "alias_not_found" }, 404);
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.get("/internal/settings", async (c) => {
+    return c.json({ data: await readDomainModelSettings(deps.db, domain(c)) });
+  });
+  app.put("/internal/settings", async (c) => {
+    const revision = requireRevision(c);
+    const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
+    if (!actorId) return c.json({ error: "actor_required" }, 400);
+    try {
+      const body = await c.req.json<{
+        provider_id: string | null;
+        model: string | null;
+      }>();
+      return c.json({
+        data: await updateDomainModelSettings(
+          deps.db,
+          domain(c),
+          body,
+          revision,
+          actorId,
+        ),
+      });
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.post("/internal/execution-config", async (c) => {
+    try {
+      const body = await c.req.json<{ aliases?: unknown }>();
+      if (!Array.isArray(body.aliases)) {
+        return c.json({ error: "invalid_aliases" }, 400);
+      }
+      return c.json({
+        data: await resolveDomainModelSelection(
+          deps.db,
+          domain(c),
+          body.aliases as string[],
+        ),
+      });
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.get("/internal/model-capabilities", async (c) => {
+    return c.json({
+      data: await listDomainModelCapabilities(deps.db, domain(c)),
+    });
   });
 
   // 用量查询（支持多条件筛选 + 分页）

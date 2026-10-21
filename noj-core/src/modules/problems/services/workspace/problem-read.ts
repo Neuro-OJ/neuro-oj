@@ -22,11 +22,11 @@ import {
   tags,
   users,
 } from "../../../../shared/db/schema.ts";
-import { loadWorkspace } from "../../../../domains/workspace/index.ts";
+import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   domainProblemProgressWhere,
   getProblemSubmissionSummaries,
-} from "../../../access/index.ts";
+} from "../../../access/submission-policy.ts";
 import { isValidDifficulty } from "../../types/problems.ts";
 import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
 import type { ProblemContentV1 } from "../../types/problem-content.ts";

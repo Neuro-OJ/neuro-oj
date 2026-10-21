@@ -26,23 +26,23 @@ import {
   assertStorageObjectBindable,
   compensateUploadedObject,
   registerStreamedStorageObject,
-} from "../../../assets/index.ts";
-import { getStorageProvider } from "../../../assets/storage/factory.ts";
+} from "../../../assets/contracts/cross-module/services_registry.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../../../platform/index.ts";
-import { assertContestSubmissionLimit } from "../../../contests/index.ts";
-import { verifyContestAccess } from "../../../contests/index.ts";
+import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
+import { assertContestSubmissionLimit } from "../../../contests/contracts/cross-module/services_contests.ts";
+import { verifyContestAccess } from "../../../contests/contracts/cross-module/services_contest-access.ts";
 import {
   assertDefaultProblemSource,
-  evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../../problems/index.ts";
+} from "../../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { evaluateProblemAccess } from "../../../problems/contracts/cross-module/services_problem-access-check.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
-import { buildJudgeTaskLlm } from "../../../../domains/gateway/index.ts";
+import { buildJudgeTaskLlm } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import { Channels, publishSseEvent } from "../../../../shared/sse/event-bus.ts";
 import { getLogger } from "@logtape/logtape";
 import { peekFirstChunk } from "./stream-peek.ts";
@@ -55,16 +55,18 @@ import {
   lockDomainExecution,
   resolveDomainExecution,
 } from "../workspace-execution.ts";
+import { revalidateEvaluationAdmissionTx } from "../../contracts/admission.ts";
+import type { DomainEvaluationAdmissionPlan } from "../../contracts/admission.ts";
 import {
   attachDomainStorageUpload,
-  consumeDomainSubmissionQuota,
-  DEFAULT_DOMAIN_ID,
   growDomainStorageUpload,
   releaseDomainStorageUpload,
   reserveDomainStorageUpload,
   settleDomainStorageUpload,
-} from "../../../../domains/workspace/index.ts";
-import { isOiRuntimeConfig } from "../../../problems/index.ts";
+} from "../../../assets/contracts/cross-module/services_storage-quota.ts";
+import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { isOiRuntimeConfig } from "../../../problems/types/runtime-config.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
@@ -207,6 +209,7 @@ export function createArtifactSubmission(
   contestId?: string,
   isAdmin = false,
   domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SubmissionResponse> {
   return createUploadedSubmission(
     ARTIFACT_SPEC,
@@ -215,6 +218,7 @@ export function createArtifactSubmission(
     contestId,
     isAdmin,
     domainRequest,
+    admissionPlan,
   );
 }
 
@@ -233,6 +237,7 @@ export async function createUploadedSubmission(
   contestId?: string,
   isAdmin = false,
   domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
@@ -242,9 +247,10 @@ export async function createUploadedSubmission(
   if (domainRequest && requestedContestId && !domainRequest.contestId) {
     throw new BadRequestError("域内练习不能携带比赛上下文");
   }
-  const domainExecution = domainRequest
-    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
-    : null;
+  const domainExecution = admissionPlan?.resolved ??
+    (domainRequest
+      ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+      : null);
   if (
     domainExecution?.contestId && requestedContestId &&
     domainExecution.contestId !== requestedContestId
@@ -481,7 +487,15 @@ export async function createUploadedSubmission(
 
     try {
       await db.transaction(async (tx) => {
-        const workspace = domainExecution && domainRequest
+        const workspace = admissionPlan
+          ? await revalidateEvaluationAdmissionTx(
+            tx,
+            admissionPlan.context,
+            admissionPlan.request,
+            userId,
+            input.version_id ?? admissionPlan.context.problem.versionId,
+          )
+          : domainExecution && domainRequest
           ? await lockDomainExecution(
             domainExecution,
             domainRequest,

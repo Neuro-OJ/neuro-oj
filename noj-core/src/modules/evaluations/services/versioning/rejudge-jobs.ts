@@ -32,15 +32,15 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   assertDefaultProblemSource,
-  canonicalJson,
   resolveDefaultExecutionContexts,
-} from "../../../problems/index.ts";
+} from "../../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { canonicalJson } from "../../../problems/types/problem-content.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertWorkspacePermission,
-  DEFAULT_DOMAIN_SLUG,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
 import type {
   EffectiveVersionPolicy,
   SubmissionJobItemStatus,

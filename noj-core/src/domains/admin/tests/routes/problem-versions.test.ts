@@ -31,7 +31,7 @@ import { createContest } from "../../../../modules/contests/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../workspace/index.ts";
+} from "../../../../modules/access/workspace/index.ts";
 import { bindDefaultCatalogFixture } from "../../../../modules/problems/tests/default-fixture.ts";
 
 const now = new Date().toISOString();

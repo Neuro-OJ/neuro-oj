@@ -4,7 +4,6 @@ import { computed, ref } from 'vue';
 vi.stubGlobal('useViewAsyncData', (_section: unknown, ...args: unknown[]) => {
   return (globalThis as unknown as { useAsyncData: (...args: unknown[]) => unknown }).useAsyncData(...args);
 });
-vi.stubGlobal('useViewSection', () => ref(undefined));
 
 vi.stubGlobal(
   'useRouter',

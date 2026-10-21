@@ -18,7 +18,7 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
   removeDomainMember,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   contestParticipants,
   contests,

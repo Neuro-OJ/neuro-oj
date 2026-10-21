@@ -1,4 +1,4 @@
-/** 旧服务测试的正式评测夹具：显式建立活动尝试，再构造协议 v2 封套。 */
+/** 旧服务测试的正式评测夹具：显式建立活动尝试，再构造协议 v3 封套。 */
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
@@ -17,11 +17,11 @@ import {
   addDomainMember,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../access/workspace/index.ts";
 import type { DomainRole } from "../../../shared/workspace/types.ts";
 import type { EffectiveVersionMode } from "../../../shared/versioning/types.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
-import { backfillDefaultCatalog } from "../../problems/services/workspace/backfill.ts";
+import { backfillDefaultCatalog } from "../../problems/index.ts";
 
 /** 旧 main 服务夹具显式提供域角色，生产代码不继承平台旧业务权限。 */
 export async function authorizeLegacyJobActorForTest(
@@ -142,7 +142,9 @@ export async function v2ResultForTest(
     );
     return {
       ...result,
-      evaluation_protocol_version: 2,
+      evaluation_protocol_version: 3,
+      task_kind: "self_test",
+      self_test_run_id: row?.judge_run_id ?? "missing-run",
       run_id: row?.judge_run_id ?? "missing-run",
       problem_version_id: row?.problem_version_id ?? "missing-version",
       rejudge_seq: result.rejudge_seq ?? 0,
@@ -164,7 +166,8 @@ export async function v2ResultForTest(
     : [];
   return {
     ...result,
-    evaluation_protocol_version: 2,
+    evaluation_protocol_version: 3,
+    task_kind: "submission",
     attempt_id: attemptId ?? "missing-attempt",
     run_id: attemptId ?? "missing-attempt",
     problem_version_id: attempt?.problem_version_id ?? "missing-version",
@@ -176,7 +179,7 @@ export async function v2ResultForTest(
   };
 }
 
-/** 将本用例给出的判定放入其已经建立的协议 v2 绑定。 */
+/** 将本用例给出的判定放入其已经建立的协议 v3 绑定。 */
 export async function saveV2ResultForTest(result: JudgeResult) {
   return await saveEvaluationResult(
     { kind: "system", purpose: "background_task" },

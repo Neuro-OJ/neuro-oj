@@ -10,7 +10,10 @@ import {
   problemBindingHistory,
 } from "../../../../shared/db/schema.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { createDomain, DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import {
+  createDomain,
+  DEFAULT_DOMAIN_ID,
+} from "../../../access/workspace/index.ts";
 import { createDomainProblem, createProblem } from "../../index.ts";
 import {
   createDefaultCatalogToken,

@@ -18,7 +18,7 @@ import type { ProblemResponseWithTags } from "../../types/problems.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../../shared/workspace/types.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import {

@@ -15,13 +15,13 @@
 import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import {
   assertPermission,
-  authMiddleware,
   checkPermission,
-} from "../../identity/index.ts";
-import { withActorContext } from "../../system/index.ts";
+} from "../../../modules/access/identity/services/security/permissions.ts";
+import { authMiddleware } from "../../../modules/access/identity/middleware/auth.ts";
+import { withActorContext } from "../../../modules/platform/system/services/request-context.ts";
 import {
   assertObjectBody,
   parseJsonBody,
@@ -36,7 +36,7 @@ import {
   resolveProblemTemplate,
 } from "../../../modules/problems/services/support-package.ts";
 import { isOiRuntimeConfig } from "../../../modules/problems/types/runtime-config.ts";
-import { validateJudgeImageWithKind } from "../../system/index.ts";
+import { validateJudgeImageWithKind } from "../../../modules/platform/system/services/judge-images.ts";
 import type { JudgeImageKind } from "../../../modules/problems/types/problems.ts";
 import {
   deleteTraining,

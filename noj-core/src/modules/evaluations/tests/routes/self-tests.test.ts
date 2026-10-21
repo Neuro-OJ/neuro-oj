@@ -7,13 +7,13 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 
 import { problems, selfTests, users } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   initRedisForTest,
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { addDomainMember } from "../../../../domains/workspace/index.ts";
+import { addDomainMember } from "../../../access/workspace/index.ts";
 
 // 限流开关**只**在需要它的用例内临时打开（见下方"超过每用户限流阈值返回 429"）。
 //

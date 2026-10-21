@@ -6,8 +6,8 @@ import { ForbiddenError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  workspaceAudit,
-} from "../../../domains/workspace/index.ts";
+} from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
 import { isParticipant } from "./contests.ts";
 
 /** 先解析域，再解析比赛 ID；有效 ID 不能绕过路径域及当前成员关系。 */

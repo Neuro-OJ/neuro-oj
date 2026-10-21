@@ -167,8 +167,8 @@ export {
 
 // runtime
 export {
-  backgroundTasks,
   type BackgroundTaskRow,
+  backgroundTasks,
   type BackgroundTaskStatus,
   type NewBackgroundTaskRow,
 } from "./background-tasks.ts";

@@ -25,7 +25,7 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { logAudit } from "../../../domains/system/index.ts";
+import { logAudit } from "../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { unendedPublicContestForProblem } from "../../access/contest-policy.ts";
 
 /** 标签 kind 枚举。 */

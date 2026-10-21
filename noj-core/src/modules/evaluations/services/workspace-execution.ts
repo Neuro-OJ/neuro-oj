@@ -1,7 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
-import { resolveAssignmentSubmissionOrigin } from "../../../domains/education/index.ts";
+import { resolveAssignmentSubmissionOrigin } from "../../education/contracts/cross-module/services_assignment-submission-origin.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -9,11 +9,9 @@ import {
   domains,
   problems,
 } from "../../../shared/db/schema.ts";
-import { resolveDomainProblem } from "../../problems/index.ts";
-import {
-  assertDomainPracticeAllowed,
-  getDomainContestSubmissionTarget,
-} from "../../contests/index.ts";
+import { resolveDomainProblem } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
+import { assertDomainPracticeAllowed } from "../../contests/contracts/cross-module/services_practice-admission.ts";
+import { getDomainContestSubmissionTarget } from "../../contests/contracts/cross-module/services_domain-content.ts";
 
 /** URL 使用域和人类可读引用；不接受客户端传入绑定或源域覆盖。 */
 export interface DomainExecutionRequest {

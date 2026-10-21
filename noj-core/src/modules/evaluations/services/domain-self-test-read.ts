@@ -3,13 +3,11 @@ import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { domains, problems, selfTests } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
-import { loadWorkspace } from "../../../domains/workspace/index.ts";
-import {
-  domainProblemReference,
-  loadBindingAvailability,
-  resolveDomainProblem,
-} from "../../problems/index.ts";
-import { assertDomainPracticeAllowed } from "../../contests/index.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
+import { loadBindingAvailability } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
+import { resolveDomainProblem } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
+import { assertDomainPracticeAllowed } from "../../contests/contracts/cross-module/services_practice-admission.ts";
 import { cancelSelfTest, getSelfTest } from "./self-tests.ts";
 
 /** 当前使用域题目下的本人自测目录；只投影列表字段，代码及结果详情按需读取。 */

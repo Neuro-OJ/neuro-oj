@@ -62,6 +62,7 @@ import {
   updateTag,
 } from "../problems/services/tags.ts";
 import {
+  deleteDomainTraining,
   type DomainTrainingInput,
   saveDomainTraining,
 } from "../problems/services/workspace/trainings.ts";
@@ -97,7 +98,7 @@ import {
   globalScopeKey,
   problemScopeKey,
   recomputeProblemBindingProjections,
-} from "../evaluations/index.ts";
+} from "../evaluations/services/versioning/projection.ts";
 
 export interface CreateProblemCommandOptions {
   readonly allowServerDerivedFields: boolean;
@@ -337,6 +338,14 @@ export function updateTrainingCommand(
 
 export function deleteTrainingCommand(actor: UserActor, id: string) {
   return deleteTraining(id, actor.userId);
+}
+
+export function deleteDomainTrainingCommand(
+  actor: UserActor,
+  slug: string,
+  id: string,
+) {
+  return deleteDomainTraining(slug, actor.userId, id);
 }
 
 export function addTrainingProblemCommand(

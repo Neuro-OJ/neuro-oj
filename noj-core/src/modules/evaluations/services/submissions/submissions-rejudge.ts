@@ -18,7 +18,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import type { UserActor } from "../../../access/contracts/actor.ts";
-import { logAudit } from "../../../../domains/system/index.ts";
+import { logAudit } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
   type AcceptJobResult,
   acceptRejudgeJob,

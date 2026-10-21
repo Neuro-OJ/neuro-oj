@@ -6,7 +6,7 @@ import { createProblem, updateProblem } from "../../index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
-import { getDefaultLlmLimits } from "../../../../domains/gateway/index.ts";
+import { getDefaultLlmLimits } from "../../../platform/gateway/index.ts";
 
 // 与 problems.test.ts 一致：独立测试数据库始终可用
 const ts = Date.now();

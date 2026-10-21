@@ -6,30 +6,33 @@
  * 内部的锁、尝试、结果与投影函数只在 `DbTx` 上工作。
  */
 import { getDb } from "../../shared/db/connection.ts";
+import { AppError } from "../../shared/base/errors.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
 import type { SystemActor, UserActor } from "../access/contracts/actor.ts";
-import { DEFAULT_DOMAIN_SLUG, loadWorkspace } from "../access/index.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../shared/workspace/types.ts";
+import { loadWorkspace } from "../access/policy.ts";
 import {
   getContestPolicySnapshot,
   resolveContestId,
   verifyContestAccess,
 } from "../access/contest-policy.ts";
-import { filterUnendedContestIds } from "../contests/index.ts";
+import { filterUnendedContestIds } from "../contests/services/problem-secrecy.ts";
 import { getProblemVersionSnapshot } from "../problems/contracts/read.ts";
 import { getPaperOrThrow } from "../problems/services/objective/objective-questions.ts";
 import { evaluateProblemAccess } from "../problems/services/problem-access-check.ts";
 import type { ProblemAccessInput } from "../problems/services/problem-access.ts";
-import { resolveAssignmentSubmissionOrigin } from "../../domains/education/index.ts";
+import { resolveAssignmentSubmissionOrigin } from "../education/services/assignment-submission-origin.ts";
 import {
   applyNewResult,
   getCachedTodayStats,
   getCachedTotalStats,
-  refreshRankingsView,
-} from "../../domains/query/index.ts";
+} from "../read-models/queries/services/stats-cache.ts";
+import { refreshRankingsView } from "../read-models/queries/services/rankings.ts";
 import {
   assertEvaluationAdmission,
   type EvaluationAdmissionContext,
 } from "../evaluations/contracts/read.ts";
+import type { DomainEvaluationAdmissionPlan } from "../evaluations/contracts/admission.ts";
 import {
   createSubmission,
   deleteSubmission,
@@ -63,10 +66,8 @@ import {
   type ApplyAttemptOutcome,
   type ApplyAttemptResultInput,
 } from "../evaluations/services/versioning/result-write.ts";
-import {
-  type SaveEvaluationResultOutcome,
-  saveEvaluationResultTx,
-} from "../evaluations/services/submissions/submissions-result.ts";
+import { saveEvaluationResultTx } from "../evaluations/services/submissions/submissions-result.ts";
+import type { SaveEvaluationResultOutcome } from "../evaluations/services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../evaluations/types/index.ts";
 import { runAttemptTerminalRevocationAfterCommit } from "../evaluations/services/versioning/attempts.ts";
 import type { AssignmentSubmissionOrigin } from "../../shared/education-types.ts";
@@ -74,16 +75,16 @@ import type {
   SubmitObjectiveInput,
   SubmitObjectiveResponse,
 } from "../problems/types/objective.ts";
+import { submitObjectivePaper } from "../evaluations/services/objective/objective-submissions.ts";
 import {
   getObjectiveSubmissionForActor,
   listObjectiveSubmissionsForActor,
-  submitObjectivePaper,
 } from "../evaluations/services/objective/objective-submissions.ts";
-import {
-  type ObjectiveRegradeJobInput,
-  type ObjectiveRegradeJobResult,
-  rejudgeObjectiveSubmissionForJobTx,
+import type {
+  ObjectiveRegradeJobInput,
+  ObjectiveRegradeJobResult,
 } from "../evaluations/services/objective/versioning/objective-regrade-job.ts";
+import { rejudgeObjectiveSubmissionForJobTx } from "../evaluations/services/objective/versioning/objective-regrade-job.ts";
 import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
@@ -105,8 +106,8 @@ import {
   cancelDomainSubmissionJob,
   type DomainJobRequest,
 } from "../evaluations/services/versioning/domain-jobs.ts";
+import type { PolicyChangeResult } from "../evaluations/services/versioning/effective-policy.ts";
 import {
-  type PolicyChangeResult,
   setContestProblemEffectiveVersionPolicyTx,
   setProblemEffectiveVersionPolicyTx,
   upgradeContestProblemPinnedVersionTx,
@@ -163,6 +164,16 @@ export async function composeEvaluationAdmissionContext(
     canReadOwn: paper.owner_id === actor.userId,
     contestAccess,
   });
+  // 先完成资源授权，再检查版本字段。否则无权访问者可以通过省略版本号
+  // 观测到版本受理协议（409 VERSION_REQUIRED），绕过题目保密/私有资源的
+  // 统一 403 口径。版本与比赛策略的细粒度冲突仍在下方快照校验中处理。
+  if (!access.result.allowed) {
+    throw new AppError(
+      "评测受理上下文不允许提交",
+      403,
+      "EVALUATION_ADMISSION_DENIED",
+    );
+  }
   const versionId = requireEvaluationVersion(input.versionId);
   const version = await getProblemVersionSnapshot(paper.id, versionId);
   if (!version) {
@@ -200,7 +211,7 @@ export async function composeEvaluationAdmissionContext(
  * 也在这里完成一次受理前复核；底层 lockDomainExecution 会在真正写入事务中按
  * 同样的绑定和 actor 再复核，保证这份 DTO 不能绕过撤销或成员变更。
  */
-export async function composeDomainEvaluationAdmissionContext(
+export async function composeDomainEvaluationAdmissionPlan(
   actor: UserActor,
   input: {
     slug: string;
@@ -209,7 +220,7 @@ export async function composeDomainEvaluationAdmissionContext(
     contestId?: string;
     assignment?: AssignmentSubmissionOrigin;
   },
-): Promise<EvaluationAdmissionContext> {
+): Promise<DomainEvaluationAdmissionPlan> {
   const request: DomainExecutionRequest = {
     slug: input.slug,
     reference: input.reference,
@@ -243,20 +254,32 @@ export async function composeDomainEvaluationAdmissionContext(
     })
     : null;
   return {
-    problem,
-    access: {
-      problemId: problem.problemId,
-      allowed: true,
-      canSubmit: true,
-      mode: "public",
-      sourceDomainId: resolved.source.id,
-      bindingId: resolved.binding.id,
+    request,
+    resolved,
+    context: {
+      problem,
+      access: {
+        problemId: problem.problemId,
+        allowed: true,
+        canSubmit: true,
+        mode: "public",
+        sourceDomainId: resolved.source.id,
+        bindingId: resolved.binding.id,
+      },
+      contest,
+      assignment: assignmentOrigin?.assignment_id
+        ? { assignmentId: assignmentOrigin.assignment_id, dueAt: null }
+        : null,
     },
-    contest,
-    assignment: assignmentOrigin?.assignment_id
-      ? { assignmentId: assignmentOrigin.assignment_id, dueAt: null }
-      : null,
   };
+}
+
+/** 兼容只需要读取快照的 application 调用方；提交路径使用完整 plan。 */
+export async function composeDomainEvaluationAdmissionContext(
+  actor: UserActor,
+  input: Parameters<typeof composeDomainEvaluationAdmissionPlan>[1],
+): Promise<EvaluationAdmissionContext> {
+  return (await composeDomainEvaluationAdmissionPlan(actor, input)).context;
 }
 
 /** 读取当前用户在竞赛中的提交；查询范围由显式 UserActor 固定。 */
@@ -370,7 +393,7 @@ export function submitArtifactCommand(
 /** 域内代码提交：执行上下文必须由 application 组合后显式传入。 */
 export function submitDomainCodeCommand(
   actor: UserActor,
-  context: EvaluationAdmissionContext,
+  plan: DomainEvaluationAdmissionPlan,
   input: {
     slug: string;
     reference: string;
@@ -380,11 +403,11 @@ export function submitDomainCodeCommand(
     contestId?: string;
   },
 ) {
-  assertActorMatchesAdmission(actor, context);
-  assertEvaluationAdmission(context, {
-    problemId: context.problem.problemId,
+  assertActorMatchesAdmission(actor, plan.context);
+  assertEvaluationAdmission(plan.context, {
+    problemId: plan.context.problem.problemId,
     versionId: input.submission.version_id ?? "",
-    contestId: input.contestId ?? null,
+    contestId: input.contestId ?? plan.context.contest?.contestId ?? null,
   });
   return createDomainSubmission(
     input.slug,
@@ -392,13 +415,14 @@ export function submitDomainCodeCommand(
     actor.userId,
     input.submission,
     input.contestId,
+    plan,
   );
 }
 
 /** 域内产物提交，沿用上传补偿与配额状态机。 */
 export function submitDomainArtifactCommand(
   actor: UserActor,
-  context: EvaluationAdmissionContext,
+  plan: DomainEvaluationAdmissionPlan,
   input: Parameters<typeof createDomainArtifactSubmission>[0] extends string ? {
       slug: string;
       reference: string;
@@ -407,11 +431,11 @@ export function submitDomainArtifactCommand(
     }
     : never,
 ) {
-  assertActorMatchesAdmission(actor, context);
-  assertEvaluationAdmission(context, {
-    problemId: context.problem.problemId,
+  assertActorMatchesAdmission(actor, plan.context);
+  assertEvaluationAdmission(plan.context, {
+    problemId: plan.context.problem.problemId,
     versionId: input.submission.version_id ?? "",
-    contestId: input.contestId ?? null,
+    contestId: input.contestId ?? plan.context.contest?.contestId ?? null,
   });
   return createDomainArtifactSubmission(
     input.slug,
@@ -419,30 +443,33 @@ export function submitDomainArtifactCommand(
     actor.userId,
     input.submission,
     input.contestId,
+    plan,
   );
 }
 
 /** 域内自测，不进入正式有效成绩投影。 */
 export function submitDomainSelfTestCommand(
   actor: UserActor,
-  context: EvaluationAdmissionContext,
+  plan: DomainEvaluationAdmissionPlan,
   input: {
     slug: string;
     reference: string;
     selfTest: SelfTestInput & { assignment?: AssignmentSubmissionOrigin };
   },
 ) {
-  assertActorMatchesAdmission(actor, context);
-  assertEvaluationAdmission(context, {
-    problemId: context.problem.problemId,
+  assertActorMatchesAdmission(actor, plan.context);
+  assertEvaluationAdmission(plan.context, {
+    problemId: plan.context.problem.problemId,
     versionId: input.selfTest.version_id ?? "",
-    contestId: null,
+    contestId: plan.context.contest?.contestId ?? null,
   });
   return createDomainSelfTest(
     input.slug,
     input.reference,
     actor.userId,
     input.selfTest,
+    false,
+    plan,
   );
 }
 

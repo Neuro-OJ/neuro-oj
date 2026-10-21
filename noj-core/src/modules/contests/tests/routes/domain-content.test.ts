@@ -11,9 +11,9 @@ import {
   problemVersions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { createDomain } from "../../../../domains/workspace/index.ts";
+import { createDomain } from "../../../access/workspace/index.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { createDomainContest, getContestProblems } from "../../index.ts";
 import { domainContestRouter } from "../../routes/domain-contests.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";

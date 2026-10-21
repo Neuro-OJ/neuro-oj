@@ -14,16 +14,18 @@
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   assertWorkspacePermission,
+  loadWorkspace,
+} from "../../access/contracts/cross-module/workspace_services_access.ts";
+import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../../shared/workspace/types.ts";
 import {
   readDomainTraining,
   resolveDomainTraining,
 } from "./workspace/training-access.ts";
 import { resolveDomainProblem } from "./workspace/problem-binding-access.ts";
-import { submissionQueryVisibility } from "../../access/index.ts";
+import { submissionQueryVisibility } from "../../access/submission-policy.ts";
 import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {

@@ -320,7 +320,7 @@ Deno.test({
     await db.insert(userRoles).values({ user_id: userId, role_id: roleId });
 
     const { signToken } = await import(
-      "../../../../domains/identity/index.ts"
+      "../../../access/identity/index.ts"
     );
     const token = await signToken({ sub: userId, role: "user" });
 

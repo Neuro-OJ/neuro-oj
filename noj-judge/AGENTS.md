@@ -304,7 +304,7 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   "time_ms": 42,
   "memory_kb": null,
   "rejudge_seq": 0,
-  "evaluation_protocol_version": 2,
+  "evaluation_protocol_version": 3,
   "run_id": "attempt-uuid",
   "attempt_id": "attempt-uuid",
   "problem_version_id": "version-uuid",
@@ -312,12 +312,13 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 }
 ```
 
-> **版本化封套（协议 v2，Handbook §5.5/§5.6）**：`main.rs`
+> **版本化封套（协议 v3，Handbook §5.5/§5.6）**：`main.rs`
 > 在推送前对**全部**成功 / 失败 / 超时结果统一调用
 > `JudgeResult::apply_protocol`，回显 `run_id` （=
 > `evaluation_attempts.id`）、`attempt_id`（缺省回退为 `run_id`，自测任务也
 > 因此完整）、`problem_version_id` 与
-> `evaluation_protocol_version=2`，并显式给出 `result_kind`（`graded` /
+> `evaluation_protocol_version=3`，并显式给出 `task_kind`、对应运行标识和
+> `result_kind`（`graded` /
 > `platform_error`）。协议字段**只**走可信封套，不写入 evaluator 可控的
 > `details`。`envelope_gaps()` 在推送前复核，不完整时记 error 日志 ——core
 > 会整体拒绝这类结果（`applied=false`），提交将卡在 judging。 Wire 字段集合由

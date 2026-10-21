@@ -22,7 +22,7 @@ import {
   tags,
   users,
 } from "../../../../shared/db/schema.ts";
-import { enterTestContext } from "../../../../domains/system/index.ts";
+import { enterTestContext } from "../../../platform/system/index.ts";
 
 await resetDbForTest();
 await initRedisForTest();

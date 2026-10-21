@@ -28,7 +28,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
-import { enterTestContext } from "../../../../domains/system/index.ts";
+import { enterTestContext } from "../../../platform/system/index.ts";
 import {
   ALL_JUDGE_QUEUES,
   JUDGE_QUEUES,

@@ -1,12 +1,11 @@
-import {
-  getBuiltinOiCostProfile,
-  isOiRuntimeConfig,
-} from "../../problems/index.ts";
+import { getBuiltinOiCostProfile } from "../../problems/types/oi-cost-profile.ts";
+import { isOiRuntimeConfig } from "../../problems/types/runtime-config.ts";
 import {
   buildJudgeTask,
   type BuildJudgeTaskInput,
   EVALUATION_PROTOCOL_VERSION,
   type JudgeTask,
+  type JudgeTaskKind,
 } from "../types/index.ts";
 
 /** 正式评测任务的封套输入（Handbook §5.5）。 */
@@ -24,9 +23,11 @@ export interface PrepareJudgeTaskInput extends BuildJudgeTaskInput {
  * 构造评测任务（唯一入口）。
  *
  * 版本化封套规则（Handbook §5.5）：
- * - `run_id = attempt_id`（正式提交）；无尝试时 OI 任务生成随机 ID 供进度/取消使用；
+ * - 正式提交使用 `attempt_id`；自测使用显式 `self_test_run_id`；没有持久尝试记录的
+ *   兼容调用才生成随机运行 ID，生产队列门禁会拒绝缺少正式尝试标识的消息；
  * - `problem_version_id` 仅在**已知**时下发（迁移期存量题目无版本）；
- * - `evaluation_protocol_version = 2`，judge 回显该版本号与 `result_kind`。
+ * - `evaluation_protocol_version = 3`，judge 回显 task_kind、对应运行标识与
+ *   `result_kind`。
  *
  * WASM 任务只绑定内置标准，禁止注入本机或题目自定义成本。
  */
@@ -37,9 +38,14 @@ export function prepareJudgeTask(
       input.runtime_config.backend === "wasm"
     ? getBuiltinOiCostProfile()
     : undefined;
-  const runId = input.attempt_id ?? input.run_id ?? crypto.randomUUID();
+  const taskKind: JudgeTaskKind = input.task_kind ?? "submission";
+  const runId = taskKind === "self_test"
+    ? input.self_test_run_id ?? input.run_id ?? crypto.randomUUID()
+    : input.attempt_id ?? input.run_id ?? crypto.randomUUID();
   return buildJudgeTask({
     ...input,
+    task_kind: taskKind,
+    ...(taskKind === "self_test" ? { self_test_run_id: runId } : {}),
     // 初次尝试也必须显式下发 sequence=0；协议 v2 结果拒绝缺失的序列号。
     rejudge_seq: input.rejudge_seq ?? 0,
     ...(runId ? { run_id: runId } : {}),

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
-import { getDashboardStats } from "../../query/services/dashboard.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
+import { getDashboardStats } from "../../../modules/read-models/queries/services/dashboard.ts";
 
 /**
  * 管理端仪表盘路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

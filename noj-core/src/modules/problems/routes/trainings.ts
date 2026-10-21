@@ -7,10 +7,10 @@
 
 import { Hono } from "hono";
 import {
-  type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import {
   assertObjectBody,
   parseJsonBody,

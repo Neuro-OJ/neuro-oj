@@ -10,14 +10,11 @@
  * - 只登记"哪个域/学生/题目发生了变化"，不携带成绩（消费者从数据库读最新事实）；
  * - 携带必要的定位字段与 projection revision，供异步重算判断陈旧。
  *
- * 实现暂由 `shared/education-events.ts` 承载（P3.5 迁入本模块），这里只提供
+ * 实现由本模块 `facts.ts` 承载；这里只提供
  * 稳定的、必填事务的窄门面，避免调用方继续使用可选 executor 的旧入口。
  */
 import type { DbTx } from "../../../shared/db/executor.ts";
-import {
-  type EducationEvent,
-  recordEducationEvent,
-} from "../../../shared/education-events.ts";
+import { type EducationEvent, recordEducationEvent } from "./facts.ts";
 
 /** 题目内容或可见性变化：让引用该题的教学单元陈旧。 */
 export interface ProblemChangeEvent {

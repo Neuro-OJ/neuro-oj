@@ -1,9 +1,7 @@
 import { Hono } from "hono";
-import type { OptionalAuthEnv } from "../../../domains/identity/index.ts";
-import {
-  getUserPermissions,
-  optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+import type { OptionalAuthEnv } from "../../../shared/http/hono-env.ts";
+import { getUserPermissions } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { optionalAuthMiddleware } from "../../access/identity/middleware/auth.ts";
 import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
 import { lastEventId } from "../../../shared/sse/server-helpers.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";

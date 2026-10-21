@@ -26,7 +26,7 @@ import {
   bindPublishedProblemForTest,
   insertContestProblems,
 } from "../../../../../tests/helper.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 
 const now = new Date().toISOString();

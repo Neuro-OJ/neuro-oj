@@ -9,10 +9,14 @@ import {
   users,
 } from "../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from "../../shared/base/errors.ts";
+import { getEmailConfigStatus } from "../platform/contracts/cross-module/system_services_email-status.ts";
+import { getSetting } from "../platform/contracts/cross-module/services_system-settings.ts";
+import { getInstanceAccessPolicy } from "../platform/contracts/resource-policy.ts";
 import {
   type UserActor,
   userActorFromAuthenticatedId,
@@ -84,7 +88,7 @@ export interface ClassroomInvitationBoundary {
     slug: string,
     classroomId: string,
     actor: UserActor,
-  ) => Promise<void>;
+  ) => Promise<{ classroomName?: string } | void>;
   /** 由 application 注入的班级成员事实写入。 */
   joinTx?: (
     tx: DbTx,
@@ -92,6 +96,94 @@ export interface ClassroomInvitationBoundary {
     classroomId: string,
     actor: UserActor,
   ) => Promise<void>;
+}
+
+async function previewDomainInvitationTx(
+  tx: DbTx,
+  token: string,
+  options: ClassroomInvitationBoundary = {},
+) {
+  const credential = await credentialWhere(token);
+  const [row] = await tx.select({
+    invite: domainInvitations,
+    domain: domains,
+  }).from(domainInvitations).innerJoin(
+    domains,
+    eq(domains.id, domainInvitations.domain_id),
+  ).where(and(
+    credential,
+    isNull(domainInvitations.revoked_at),
+    eq(domains.status, "active"),
+  ));
+  if (
+    !row || !Number.isFinite(Date.parse(row.invite.expires_at)) ||
+    Date.parse(row.invite.expires_at) <= Date.now() ||
+    row.invite.max_uses !== null && row.invite.used_count >= row.invite.max_uses
+  ) throw new NotFoundError("邀请无效或已失效");
+
+  let classroomName: string | undefined;
+  if (row.invite.classroom_id) {
+    if (!options.assertIssuerTx) throw new NotFoundError("邀请无效或已失效");
+    try {
+      classroomName = (await options.assertIssuerTx(
+        tx,
+        row.domain.slug,
+        row.invite.classroom_id,
+        userActorFromAuthenticatedId(row.invite.created_by),
+      ))?.classroomName;
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        [401, 403, 404].includes(error.statusCode)
+      ) throw new NotFoundError("邀请无效或已失效");
+      throw error;
+    }
+  } else {
+    await assertInvitationIssuerActiveTx(
+      tx,
+      row.domain.slug,
+      row.invite.created_by,
+    );
+  }
+
+  const authority = await loadWorkspaceTx(
+    tx,
+    row.domain.slug,
+    userActorFromAuthenticatedId(row.invite.created_by),
+  );
+  const policy = getInstanceAccessPolicy();
+  const canRegister = getSetting("allow_register")?.value !== false &&
+    getEmailConfigStatus().configured &&
+    policy.registration_mode !== "admin_only" &&
+    (policy.registration_mode === "open" &&
+        policy.allow_domain_registration_invites &&
+        authority.context.domainPermissions.has("domain:invitations") ||
+      authority.platformAdmin);
+  return {
+    domain_slug: row.domain.slug,
+    domain_name: row.domain.name,
+    email: row.invite.email,
+    mode: row.invite.mode,
+    max_uses: row.invite.max_uses,
+    used_count: row.invite.used_count,
+    expires_at: row.invite.expires_at,
+    can_register: canRegister,
+    ...(row.invite.classroom_id
+      ? {
+        classroom_id: row.invite.classroom_id,
+        classroom_name: classroomName,
+      }
+      : {}),
+  };
+}
+
+/** 公开邀请预览；班级授权由 application 注入，不能在 access 内猜测教学事实。 */
+export function previewDomainInvitation(
+  token: string,
+  options: ClassroomInvitationBoundary = {},
+) {
+  const db: DbRoot = getDb();
+  return db.transaction((tx) => previewDomainInvitationTx(tx, token, options));
 }
 
 function validateInvitationInput(input: string | DomainInvitationInput) {
@@ -366,12 +458,22 @@ export async function consumeDomainInvitationTx(
       throw new ForbiddenError("班级邀请必须通过教学写入入口");
     }
     // 班级邀请的签发者权限由课堂能力决定；教师不需要域级邀请权限。
-    await assertIssuerTx(
-      tx,
-      domain.slug,
-      invite.classroom_id,
-      userActorFromAuthenticatedId(invite.created_by),
-    );
+    try {
+      await assertIssuerTx(
+        tx,
+        domain.slug,
+        invite.classroom_id,
+        userActorFromAuthenticatedId(invite.created_by),
+      );
+    } catch (error) {
+      // 失效班级、撤职和能力撤销对公开兑换路径统一表现为不存在，
+      // 避免把签发者当前教学状态泄露给持有旧令牌的调用方。
+      if (
+        error instanceof AppError &&
+        [401, 403, 404].includes(error.statusCode)
+      ) throw new NotFoundError("邀请无效或已失效");
+      throw error;
+    }
   } else {
     await assertInvitationIssuerActiveTx(tx, domain.slug, invite.created_by);
   }

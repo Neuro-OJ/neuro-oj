@@ -19,7 +19,7 @@ import {
   submissionQuotaRedisKey,
   submissionUserQuotaRedisKey,
   tryConsumeRateLimit,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/system/index.ts";
 import {
   consumeSubmissionQuotaForUpgrade,
   UPGRADE_QUOTA_CONSUME_SCRIPT,

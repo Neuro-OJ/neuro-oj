@@ -4,12 +4,12 @@ import { problems } from "../../../../shared/db/schema.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   compensateUploadedObject,
   uploadStorageObjectWithReservation,
-} from "../../../../domains/system/index.ts";
-import { assertLlmLimitsWithinDefault } from "../../../../domains/gateway/index.ts";
+} from "../../../assets/contracts/cross-module/services_registry.ts";
+import { assertLlmLimitsWithinDefault } from "../../../platform/contracts/cross-module/gateway_services_llm-limits.ts";
 import { createDomainProblemForActor } from "../problems/problems-crud.ts";
 import {
   assertSensitiveFieldPermissions,

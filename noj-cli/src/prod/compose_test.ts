@@ -10,7 +10,7 @@
  * 不在测试里硬编码第二份服务清单。
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl } from "@std/path";
 import type {
   CmdResult,
@@ -25,6 +25,7 @@ import {
   composeLogs,
   composePs,
   composePull,
+  composeRun,
   composeUp,
   PROD_COMPOSE_FILE,
   PROD_ENV_FILE,
@@ -760,6 +761,47 @@ Deno.test("composePull: 拉取镜像，参数形状与位置参数正确", async
   });
   assertEquals(dry, ["compose", "--env-file", ENV, "-f", COMPOSE, "pull"]);
   assertEquals(calls.length, 1);
+});
+
+Deno.test("composeRun: 一次性迁移服务不启动依赖且拒绝非法服务名", async () => {
+  const { runner, calls } = fakeRunner(0, "migration ok\n");
+  const result = await composeRun(
+    runner,
+    {
+      composeFile: COMPOSE,
+      envFile: ENV,
+      judge: true,
+    },
+    "migrate",
+    ["--check"],
+  );
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(calls, [[
+    "docker",
+    "compose",
+    "--env-file",
+    ENV,
+    "-f",
+    COMPOSE,
+    "--profile",
+    "judge",
+    "run",
+    "--rm",
+    "--no-deps",
+    "migrate",
+    "--check",
+  ]]);
+  assertEquals(result.stdout, "migration ok\n");
+
+  assertThrows(
+    () =>
+      composeRun(runner, {
+        composeFile: COMPOSE,
+        envFile: ENV,
+      }, "Migrate"),
+    Error,
+    "服务名非法",
+  );
 });
 
 Deno.test("dryRun: 不执行 runner，只返回将执行的参数数组", async () => {

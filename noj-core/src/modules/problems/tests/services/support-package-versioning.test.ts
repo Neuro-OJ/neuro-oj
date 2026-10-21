@@ -23,9 +23,9 @@ import {
   saveProblemDraft,
 } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
-import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
-import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
+import { setStorageProviderForTest } from "../../../platform/system/index.ts";
+import { LocalStorageProvider } from "../../../platform/system/index.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 
 const now = new Date().toISOString();

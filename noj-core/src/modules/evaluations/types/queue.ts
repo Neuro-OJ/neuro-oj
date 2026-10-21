@@ -1,4 +1,4 @@
-import type { DomainQueryScope } from "../../../domains/query/index.ts";
+import type { DomainQueryScope } from "../../read-models/contracts/cross-module/queries_services_domain-query.ts";
 import type { JudgeQueuePool } from "../../../shared/mq/judge-queues.ts";
 
 /** 实例队列按查看者的实时域权限过滤明细，全局数字另行统计。 */

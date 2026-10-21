@@ -15,14 +15,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { checkPermission } from "../../../domains/identity/index.ts";
-import {
-  consumeDomainSubmissionQuota,
-  DEFAULT_DOMAIN_ID,
-} from "../../../domains/workspace/index.ts";
+import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { consumeDomainSubmissionQuota } from "../../access/contracts/cross-module/workspace_services_submission-limit.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../../platform/index.ts";
+import { validateJudgeImageWithKind } from "../../platform/contracts/cross-module/services_judge-images.ts";
 import { getLogger } from "@logtape/logtape";
 import {
   oiVerdict,
@@ -34,14 +32,14 @@ import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import {
   assertSubmissionLanguage,
-  LANGUAGE_EXT_MAP,
   submissionModeForLanguage,
   UI_FILE_NAME,
   UI_LANGUAGE,
-} from "../types/index.ts";
+} from "../types/ui-solution.ts";
+import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
-import { buildJudgeTaskLlm } from "../../../domains/gateway/index.ts";
+import { buildJudgeTaskLlm } from "../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import {
   registerAttemptTerminalRevocation,
   runAttemptTerminalRevocationAfterCommit,
@@ -51,6 +49,8 @@ import {
   lockDomainExecution,
   resolveDomainExecution,
 } from "./workspace-execution.ts";
+import { revalidateEvaluationAdmissionTx } from "../contracts/admission.ts";
+import type { DomainEvaluationAdmissionPlan } from "../contracts/admission.ts";
 import {
   executionSnapshot,
   scriptTemplateOf,
@@ -63,14 +63,14 @@ import {
 } from "./versioning/submission-version.ts";
 import {
   assertDefaultProblemSource,
-  evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../problems/index.ts";
-import { buildOiSelfTestPackage } from "../../problems/index.ts";
+} from "../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { evaluateProblemAccess } from "../../problems/contracts/cross-module/services_problem-access-check.ts";
+import { buildOiSelfTestPackage } from "../../problems/contracts/cross-module/services_oi-self-test-package.ts";
 import {
   isOiRuntimeConfig,
   type ProblemRuntimeConfig,
-} from "../../problems/index.ts";
+} from "../../problems/types/runtime-config.ts";
 import {
   SELF_TEST_ID_PREFIX,
   SELF_TEST_LIST_DEFAULT_LIMIT,
@@ -152,11 +152,13 @@ export async function createSelfTest(
   input: SelfTestInput,
   isAdmin = false,
   domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SelfTestResponse> {
   const db = getDb();
-  const domainExecution = domainRequest
-    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
-    : null;
+  const domainExecution = admissionPlan?.resolved ??
+    (domainRequest
+      ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+      : null);
   if (domainExecution && domainExecution.problem.id !== problemId) {
     throw new NotFoundError("域题目引用与内部身份不一致");
   }
@@ -309,7 +311,9 @@ export async function createSelfTest(
     throw new BadRequestError("自定义用例仅用于 OI 自测");
   }
   const task = await prepareJudgeTask({
+    task_kind: "self_test",
     run_id: runId,
+    self_test_run_id: runId,
     // 自测使用独立运行标识（不是评测尝试），但仍携带版本与协议版本
     submission_id: id,
     problem_id: problemId,
@@ -330,7 +334,15 @@ export async function createSelfTest(
 
   try {
     await db.transaction(async (tx) => {
-      const workspace = domainExecution && domainRequest
+      const workspace = admissionPlan
+        ? await revalidateEvaluationAdmissionTx(
+          tx,
+          admissionPlan.context,
+          admissionPlan.request,
+          userId,
+          input.version_id ?? admissionPlan.context.problem.versionId,
+        )
+        : domainExecution && domainRequest
         ? await lockDomainExecution(
           domainExecution,
           domainRequest,
@@ -563,8 +575,12 @@ export async function saveSelfTestResult(
 ): Promise<boolean> {
   const db = getDb();
   if (
-    result.evaluation_protocol_version !== 2 || !result.run_id ||
+    result.evaluation_protocol_version !== 3 ||
+    result.task_kind !== "self_test" ||
+    !result.self_test_run_id || result.attempt_id !== undefined ||
+    result.run_id !== result.self_test_run_id ||
     !result.problem_version_id ||
+    !Number.isInteger(result.rejudge_seq) || result.rejudge_seq! < 0 ||
     !["graded", "platform_error"].includes(result.result_kind ?? "")
   ) return false;
 
@@ -597,7 +613,7 @@ export async function saveSelfTestResult(
       return null;
     }
     if (
-      existing.judge_run_id !== result.run_id ||
+      existing.judge_run_id !== result.self_test_run_id ||
       existing.problem_version_id !== result.problem_version_id
     ) return null;
 
@@ -630,7 +646,7 @@ export async function saveSelfTestResult(
     const snapshot = existing.task_snapshot as Record<string, unknown> | null;
     if (snapshot?.llm_execution) {
       await registerAttemptTerminalRevocation(tx, {
-        attemptId: result.run_id!,
+        attemptId: result.self_test_run_id!,
         submissionId: result.submission_id,
         taskSnapshot: existing.task_snapshot,
       });
@@ -640,7 +656,7 @@ export async function saveSelfTestResult(
   });
 
   if (outcome === true) {
-    await runAttemptTerminalRevocationAfterCommit(result.run_id);
+    await runAttemptTerminalRevocationAfterCommit(result.self_test_run_id);
     await publishSseEvent(Channels.submission(result.submission_id), {
       type: "self-test:updated",
       id: result.submission_id,

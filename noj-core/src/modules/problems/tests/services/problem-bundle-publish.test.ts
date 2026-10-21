@@ -17,7 +17,7 @@ import {
   publishImportedProblem,
   syncProblemDraftFromProjection,
 } from "../../services/problems/problem-bundle.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import { listVersionQuestions } from "../../services/objective/versioning/objective-drafts.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 

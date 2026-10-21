@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
+  deleteDomainTrainingCommand,
   importDomainTrainingCommand,
   saveDomainTrainingCommand,
   setDomainTrainingSharingCommand,
 } from "../../application/problems.ts";
 import {
-  type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -77,6 +78,29 @@ domainTrainingsRouter.patch(`${prefix}/:id`, authMiddleware, async (c) => {
       },
     ),
   });
+});
+domainTrainingsRouter.put(`${prefix}/:id`, authMiddleware, async (c) => {
+  const input = await parseJsonBody<DomainTrainingInput>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await saveDomainTrainingCommand(
+      userActorFromAuthenticatedId(c.var.userId),
+      c.req.param("slug")!,
+      input,
+      {
+        id: c.req.param("id")!,
+        revision: revision(c.req.header("If-Match")),
+      },
+    ),
+  });
+});
+domainTrainingsRouter.delete(`${prefix}/:id`, authMiddleware, async (c) => {
+  await deleteDomainTrainingCommand(
+    userActorFromAuthenticatedId(c.var.userId),
+    c.req.param("slug")!,
+    c.req.param("id")!,
+  );
+  return c.body(null, 204);
 });
 domainTrainingsRouter.post(
   `${prefix}/:id/sharing`,

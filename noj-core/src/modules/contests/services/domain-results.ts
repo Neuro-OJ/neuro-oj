@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { contestProblems } from "../../../shared/db/schema.ts";
 import { ForbiddenError, NotFoundError } from "../../../shared/base/errors.ts";
-import { workspaceAudit } from "../../../domains/workspace/index.ts";
+import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
 import { getContestProblems } from "./contest-problems.ts";
 import { loadDomainContest } from "./domain-access.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";

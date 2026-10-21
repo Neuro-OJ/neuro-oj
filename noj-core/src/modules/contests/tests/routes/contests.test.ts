@@ -19,7 +19,7 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   initRedisForTest,
   jsonRequest,

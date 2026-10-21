@@ -2,8 +2,8 @@ import { getRedis } from "../../../shared/mq/connection.ts";
 import {
   isOiRuntimeConfig,
   validateOiRuntimeConfig,
-  validateRuntimeConfig,
-} from "../../problems/index.ts";
+} from "../../problems/types/runtime-config.ts";
+import { validateRuntimeConfig } from "../../problems/contracts/cross-module/services_problems_problems-types.ts";
 import {
   buildJudgeQueues,
   JUDGE_QUEUE_LAYOUT,
@@ -26,6 +26,18 @@ export function normalizePoolTask(
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return null;
     }
+    if (value.evaluation_protocol_version !== 3) return null;
+    if (value.task_kind !== "submission" && value.task_kind !== "self_test") {
+      return null;
+    }
+    if (
+      value.task_kind === "self_test" &&
+      (typeof value.self_test_run_id !== "string" || !value.self_test_run_id)
+    ) return null;
+    if (
+      value.task_kind === "submission" &&
+      (typeof value.attempt_id !== "string" || !value.attempt_id)
+    ) return null;
     for (
       const key of [
         "submission_id",
@@ -45,7 +57,7 @@ export function normalizePoolTask(
     if (isOiRuntimeConfig(value.runtime_config)) {
       validateOiRuntimeConfig(
         value.runtime_config,
-        value.submission_id.startsWith("st_"),
+        value.task_kind === "self_test",
       );
     } else {
       validateRuntimeConfig(
@@ -60,7 +72,8 @@ export function normalizePoolTask(
     const task = buildJudgeTask(
       {
         ...value,
-        // 旧消息缺 submission_mode 时按 code 兼容（与 judge 侧缺省一致）。
+        // 迁移窗口只接受带完整 v3 封套的消息；submission_mode 仍允许 code 的
+        // 历史语义，因为它不是任务归属字段。
         submission_mode: value.submission_mode ?? "code",
         priority: value.priority ?? priority,
       } as BuildJudgeTaskInput,

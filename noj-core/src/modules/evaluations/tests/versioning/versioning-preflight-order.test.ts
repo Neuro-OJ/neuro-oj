@@ -24,10 +24,12 @@ import {
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { getLlmPlatformDefault } from "../../../../domains/gateway/index.ts";
-import { LocalStorageProvider } from "../../../../modules/assets/storage/local.ts";
-import { setStorageProviderForTest } from "../../../../modules/assets/storage/factory.ts";
-import { buildStorageUrl } from "../../../../modules/assets/storage/types.ts";
+import { getLlmPlatformDefault } from "../../../platform/gateway/index.ts";
+import {
+  buildStorageUrl,
+  LocalStorageProvider,
+  setStorageProviderForTest,
+} from "../../../assets/storage/mod.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
@@ -245,39 +247,57 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await withFakeRedis(async () => {
-      const platformConfigured = getLlmPlatformDefault() !== null;
-      const actor = await makeUser("llm");
-      const { problemId, versionId } = await seedProblem("llm", { llm: true });
-      const submissionId = await seedSubmission(problemId, actor, versionId);
+      const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+      const oldFetch = globalThis.fetch;
+      Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "preflight-test-token");
+      globalThis.fetch = (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ error: "domain_llm_not_configured" }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          ),
+        )) as typeof fetch;
+      try {
+        const platformConfigured = getLlmPlatformDefault() !== null;
+        const actor = await makeUser("llm");
+        const { problemId, versionId } = await seedProblem("llm", {
+          llm: true,
+        });
+        const submissionId = await seedSubmission(problemId, actor, versionId);
 
-      const { itemId, outcome } = await acceptClaimAndDispatch(
-        actor,
-        submissionId,
-        "pf-order-w1",
-      );
-      assertEquals(outcome, "failed");
-      const item = await loadItem(itemId);
-      assertEquals(item.status, "failed");
-      assertEquals(item.attempt_id, null);
-      if (!platformConfigured) {
-        assertEquals(
-          item.reason_message?.includes("LLM Provider") ?? false,
-          true,
+        const { itemId, outcome } = await acceptClaimAndDispatch(
+          actor,
+          submissionId,
+          "pf-order-w1",
         );
+        assertEquals(outcome, "failed");
+        const item = await loadItem(itemId);
+        assertEquals(item.status, "failed");
+        assertEquals(item.attempt_id, null);
+        if (!platformConfigured) {
+          assertEquals(
+            item.reason_message?.includes("LLM Provider") ?? false,
+            true,
+          );
+        }
+        // 不留尝试行（预检失败发生在创建尝试之前）
+        assertEquals(
+          (await db.select().from(evaluationAttempts).where(
+            eq(evaluationAttempts.submission_id, submissionId),
+          )).length,
+          0,
+        );
+        // 源提交的活动指针保持为空、状态未被改成 pending
+        const [source] = await db.select().from(submissions).where(
+          eq(submissions.id, submissionId),
+        );
+        assertEquals(source.active_attempt_id, null);
+        assertEquals(source.status, "finished");
+      } finally {
+        globalThis.fetch = oldFetch;
+        if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+        else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
       }
-      // 不留尝试行（预检失败发生在创建尝试之前）
-      assertEquals(
-        (await db.select().from(evaluationAttempts).where(
-          eq(evaluationAttempts.submission_id, submissionId),
-        )).length,
-        0,
-      );
-      // 源提交的活动指针保持为空、状态未被改成 pending
-      const [source] = await db.select().from(submissions).where(
-        eq(submissions.id, submissionId),
-      );
-      assertEquals(source.active_attempt_id, null);
-      assertEquals(source.status, "finished");
     });
   },
 });

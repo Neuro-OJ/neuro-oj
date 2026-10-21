@@ -1,15 +1,17 @@
 import {
   isOiRuntimeConfig,
+  validateOiRuntimeConfig,
+} from "../../problems/types/runtime-config.ts";
+import {
   isValidOiCostProfile,
   type OiCostProfile,
-  validateOiRuntimeConfig,
-} from "../../problems/index.ts";
+} from "../../problems/types/oi-cost-profile.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   type JudgeType,
   judgeTypeForRuntimeConfig,
   type ProblemRuntimeConfig,
-} from "../../problems/index.ts";
+} from "../../problems/types/runtime-config.ts";
 import {
   buildUiSolutionScript,
   parseUiValues,
@@ -65,10 +67,11 @@ export function toJudgeSubmissionMode(
 /**
  * 当前评测协议版本（Handbook §5.5）。
  *
- * `2` = 任务携带 `run_id`（= 评测尝试 ID）与题目版本，judge 在结果里回显
- * `run_id` 并显式给出 `result_kind`，core 因此能把结果精确落到对应尝试上。
+ * `3` = 任务显式区分正式提交与自测，并分别携带尝试/自测运行标识；judge
+ * 在结果里回显可信封套，core 因此不会按 ID 前缀或当前在途记录猜测归属。
  */
-export const EVALUATION_PROTOCOL_VERSION = 2;
+export const EVALUATION_PROTOCOL_VERSION = 3;
+export type JudgeTaskKind = "submission" | "self_test";
 /** 资源池由服务端运行配置决定，不能由提交者声明。 */
 export type JudgeResourcePool = "oi-wasm" | "oi-native" | "ai";
 
@@ -88,6 +91,8 @@ export function judgeResourcePool(
 export interface JudgeTask {
   scheduling_version: 1;
   resource_pool: JudgeResourcePool;
+  /** 协议 v3 的显式任务语义，禁止从 submission_id 前缀推断。 */
+  task_kind: JudgeTaskKind;
   /**
    * 评测尝试标识（正式提交下 = `evaluation_attempts.id`，Handbook §5.5）。
    *
@@ -98,8 +103,10 @@ export interface JudgeTask {
   attempt_id?: string;
   /** 本次评测使用的题目版本 UUID（版本化后正式提交必填）。 */
   problem_version_id?: string;
-  /** 评测协议版本；`2` = run_id/attempt 绑定 + 显式 result_kind。 */
+  /** 评测协议版本；v3 要求显式 task_kind 与对应运行标识。 */
   evaluation_protocol_version?: number;
+  /** 自测运行标识；仅 task_kind=self_test 携带。 */
+  self_test_run_id?: string;
   /** 提交 UUID */
   submission_id: string;
   /** 题目 UUID */
@@ -136,9 +143,13 @@ export interface JudgeTask {
  * `buildJudgeTask` 的输入。`code` 允许为空串（artifact 提交不带源码）。
  */
 export interface BuildJudgeTaskInput {
+  /** 协议 v3 任务语义；生产入口必须显式传入，自测不得靠 ID 前缀识别。 */
+  task_kind?: JudgeTaskKind;
   run_id?: string;
   /** 正式尝试 ID，与 run_id 同值。 */
   attempt_id?: string;
+  /** 自测运行标识；task_kind=self_test 时必填。 */
+  self_test_run_id?: string;
   /** 本次评测使用的题目版本；已知时由服务端注入（客户端不可声明）。 */
   problem_version_id?: string;
   /** 评测协议版本；正式提交走 `EVALUATION_PROTOCOL_VERSION`。 */
@@ -186,6 +197,13 @@ export interface BuildJudgeTaskInput {
  * judge 侧看到的始终是 `python3` 代码（见 `ui-solution.ts`）。
  */
 export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
+  const taskKind = input.task_kind ?? "submission";
+  if (taskKind === "self_test" && !input.self_test_run_id && !input.run_id) {
+    throw new BadRequestError("自测任务缺少 self_test_run_id");
+  }
+  if (taskKind === "submission" && input.self_test_run_id !== undefined) {
+    throw new BadRequestError("正式提交不能携带 self_test_run_id");
+  }
   const inferredType = judgeTypeForRuntimeConfig(input.runtime_config);
   if (input.judge_type !== undefined && input.judge_type !== inferredType) {
     throw new BadRequestError("judge_type 与 runtime_config 不一致");
@@ -193,7 +211,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   if (isOiRuntimeConfig(input.runtime_config)) {
     validateOiRuntimeConfig(
       input.runtime_config,
-      input.submission_id.startsWith("st_"),
+      taskKind === "self_test",
     );
     if (
       !input.runtime_config.languages.includes(input.language as "c" | "cc")
@@ -214,6 +232,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   const task: JudgeTask = {
     scheduling_version: 1,
     resource_pool: judgeResourcePool(input.runtime_config),
+    task_kind: taskKind,
     submission_id: input.submission_id,
     problem_id: input.problem_id,
     user_id: input.user_id,
@@ -238,9 +257,12 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   else if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) {
     task.run_id = input.run_id;
-    if (!input.submission_id.startsWith("st_")) {
+    if (taskKind === "submission") {
       task.attempt_id = input.attempt_id ?? input.run_id;
     }
+  }
+  if (taskKind === "self_test") {
+    task.self_test_run_id = input.self_test_run_id ?? input.run_id;
   }
   if (input.problem_version_id !== undefined) {
     task.problem_version_id = input.problem_version_id;
@@ -266,8 +288,10 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
 export const JUDGE_TASK_FIELDS: readonly string[] = [
   "scheduling_version",
   "resource_pool",
+  "task_kind",
   "run_id",
   "attempt_id",
+  "self_test_run_id",
   "problem_version_id",
   "evaluation_protocol_version",
   "submission_id",
@@ -307,6 +331,8 @@ export interface JudgeResult {
   memory_kb?: number;
   /** 重测序列号，由 noj-judge 透传。用于 saveEvaluationResult 校验。 */
   rejudge_seq?: number;
+  /** 可信结果封套中的任务语义。 */
+  task_kind?: JudgeTaskKind;
   /**
    * 评测协议版本（Handbook §5.5）。
    * 缺省（undefined）= 旧协议：core 用提交的 `active_attempt_id` 兜底解析尝试。
@@ -316,6 +342,8 @@ export interface JudgeResult {
   attempt_id?: string;
   /** 本次执行的 run_id（新 judge 回显；与 `attempt_id` 同值，二者任一可定位尝试）。 */
   run_id?: string;
+  /** 自测结果的唯一运行标识；正式结果不得携带。 */
+  self_test_run_id?: string;
   /** 本次执行使用的题目版本 UUID。 */
   problem_version_id?: string;
   /**

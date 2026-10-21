@@ -15,7 +15,7 @@ import {
   scoreContest,
 } from "./contest-scoring.ts";
 import type { KaggleRankingRow } from "../types/contests.ts";
-import type { ProblemContentV1 } from "../../problems/contracts/read.ts";
+import type { ProblemContentV1 } from "../../problems/types/problem-content.ts";
 
 /** 多赛制按受理候选计算榜单；正式判定优先，重测平台失败保留已有成绩。 */
 export async function getFormatRanking(

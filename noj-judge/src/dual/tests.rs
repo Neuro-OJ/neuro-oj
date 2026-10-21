@@ -219,6 +219,9 @@ fn test_build_judge_result_valid_score_without_status_is_graded_finished() {
         "run_id": "attempt-ok",
         "attempt_id": "attempt-ok",
         "problem_version_id": "ver-ok",
+        "task_kind": "submission",
+        "evaluation_protocol_version": 3,
+        "rejudge_seq": 0,
         "runtime_config": {
             "evaluator": {
                 "image": "noj-evaluator-python",

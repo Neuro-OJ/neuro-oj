@@ -1,12 +1,12 @@
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
 import { applyAttemptResultTx } from "../services/versioning/tx-contracts.ts";
-import type { SystemActor, UserActor } from "../../access/contracts/actor.ts";
+import type { SystemActor, UserActor } from "../../access/index.ts";
 import type { ApplyAttemptResultInput } from "../services/versioning/result-write.ts";
 import {
   saveEvaluationResultTx,
 } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { recordSseEventTx } from "../../runtime/contracts/sse-events.ts";
+import { recordSseEventTx } from "../../runtime/index.ts";
 declare const root: DbRoot;
 declare const tx: DbTx;
 declare const actor: UserActor;

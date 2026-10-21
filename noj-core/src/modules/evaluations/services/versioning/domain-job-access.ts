@@ -10,19 +10,15 @@ import {
 import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
-  DEFAULT_DOMAIN_ID,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
-import {
-  evaluateProblemAccess,
-  loadBindingAvailability,
-  resolveDomainProblem,
-} from "../../../problems/index.ts";
-import {
-  assertDomainPracticeAllowed,
-  loadDomainContest,
-  verifyContestAccess,
-} from "../../../contests/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { evaluateProblemAccess } from "../../../problems/contracts/cross-module/services_problem-access-check.ts";
+import { loadBindingAvailability } from "../../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
+import { resolveDomainProblem } from "../../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
+import { assertDomainPracticeAllowed } from "../../../contests/contracts/cross-module/services_practice-admission.ts";
+import { loadDomainContest } from "../../../contests/contracts/cross-module/services_domain-access.ts";
+import { verifyContestAccess } from "../../../contests/contracts/cross-module/services_contest-access.ts";
 import type { DispatchSource } from "./dispatch-job-item.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 

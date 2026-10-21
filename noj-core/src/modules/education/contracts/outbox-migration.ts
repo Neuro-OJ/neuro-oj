@@ -13,7 +13,7 @@
  * - 已处理（`processed_at` 非空）的行不迁移——它们已经完成，迁移只会制造重复工作；
  * - 迁移只读 outbox、只写 background_tasks，不修改旧表（回滚安全）。
  */
-import { and, asc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import { educationOutbox } from "../../../shared/db/schema.ts";
 import { enqueueTaskTx } from "../../runtime/tasks/repository.ts";
@@ -38,11 +38,52 @@ export interface EducationOutboxMigrationResult {
   readonly items: readonly EducationOutboxMigrationItem[];
   /** 本批之后仍待迁移的行数（已处理行不计）。 */
   readonly remaining: number;
+  /** 本批最后一行的稳定游标；调用方应把它传给下一批。 */
+  readonly nextCursor: EducationOutboxMigrationCursor | null;
+}
+
+/** 迁移批次游标；按创建时间与主键联合排序，避免同一时间戳漏行。 */
+export interface EducationOutboxMigrationCursor {
+  readonly createdAt: string;
+  readonly id: string;
 }
 
 /** 旧 outbox 行的稳定任务去重键：保证重复迁移映射到同一条任务。 */
 export function educationOutboxDedupeKey(outboxId: string): string {
   return `outbox:${outboxId}`;
+}
+
+/**
+ * 在事实事务内登记对应的通用任务。
+ *
+ * 生产者和历史迁移都走同一个映射，避免新旧任务的 payload 形状漂移；旧
+ * outbox 仍然保留完整分页游标，通用任务只携带可恢复的摘要。
+ */
+export async function enqueueEducationOutboxTaskTx(
+  tx: DbTx,
+  row: typeof educationOutbox.$inferSelect,
+): Promise<EnqueueTaskResult> {
+  const payload = row.payload ?? {};
+  const hasCursor = typeof payload._education_cursor === "object" &&
+    payload._education_cursor !== null;
+  return await enqueueTaskTx(tx, {
+    taskType: "education.recompute",
+    targetKind: row.assignment_id ? "assignment" : "domain",
+    targetId: row.assignment_id ?? row.domain_id,
+    dedupeKey: educationOutboxDedupeKey(row.id),
+    payloadVersion: 1,
+    payload: {
+      outbox_id: row.id,
+      domain_id: row.domain_id,
+      event_type: row.event_type,
+      user_id: row.user_id,
+      problem_id: row.problem_id,
+      classroom_id: row.classroom_id,
+      assignment_id: row.assignment_id,
+      education_cursor: hasCursor ? payload._education_cursor : null,
+    },
+    availableAt: row.available_at,
+  });
 }
 
 /**
@@ -54,18 +95,25 @@ export function educationOutboxDedupeKey(outboxId: string): string {
 export async function migrateEducationOutboxTx(
   tx: DbTx,
   limit = EDUCATION_OUTBOX_MIGRATION_BATCH,
+  after?: EducationOutboxMigrationCursor,
 ): Promise<EducationOutboxMigrationResult> {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new RangeError("迁移批量必须是正整数");
   }
-  // 只迁移"尚未处理"的行；顺序按创建时间稳定推进，避免饿死旧任务。
+  // 只迁移"尚未处理"的行；迁移时不读取旧租约状态。切换顺序要求旧 worker
+  // 已停止；若旧租约来自崩溃残留，通用 handler 会等待它到期后再领取。
   const rows = await tx.select().from(educationOutbox).where(
     and(
       isNull(educationOutbox.processed_at),
-      or(
-        isNull(educationOutbox.leased_until),
-        lte(educationOutbox.leased_until, new Date().toISOString()),
-      ),
+      after
+        ? or(
+          gt(educationOutbox.created_at, after.createdAt),
+          and(
+            eq(educationOutbox.created_at, after.createdAt),
+            gt(educationOutbox.id, after.id),
+          ),
+        )
+        : undefined,
     ),
   ).orderBy(asc(educationOutbox.created_at), asc(educationOutbox.id)).limit(
     limit,
@@ -77,24 +125,7 @@ export async function migrateEducationOutboxTx(
     const hasCursor = typeof payload._education_cursor === "object" &&
       payload._education_cursor !== null;
     // payload 只带可恢复依据：定位字段 + 游标 + 原事件类型，不带成绩。
-    const result: EnqueueTaskResult = await enqueueTaskTx(tx, {
-      taskType: "education.recompute",
-      targetKind: row.assignment_id ? "assignment" : "domain",
-      targetId: row.assignment_id ?? row.domain_id,
-      dedupeKey: educationOutboxDedupeKey(row.id),
-      payloadVersion: 1,
-      payload: {
-        outbox_id: row.id,
-        domain_id: row.domain_id,
-        event_type: row.event_type,
-        user_id: row.user_id,
-        problem_id: row.problem_id,
-        classroom_id: row.classroom_id,
-        assignment_id: row.assignment_id,
-        education_cursor: hasCursor ? payload._education_cursor : null,
-      },
-      availableAt: row.available_at,
-    });
+    const result = await enqueueEducationOutboxTaskTx(tx, row);
     items.push({
       outboxId: row.id,
       taskId: result.taskId,
@@ -109,16 +140,14 @@ export async function migrateEducationOutboxTx(
   }).from(educationOutbox).where(
     and(
       isNull(educationOutbox.processed_at),
-      or(
-        isNull(educationOutbox.leased_until),
-        lte(educationOutbox.leased_until, new Date().toISOString()),
-      ),
-      rows.length
-        ? gt(educationOutbox.id, rows[rows.length - 1].id)
-        : undefined,
     ),
   );
-  return { items, remaining: remaining?.count ?? 0 };
+  const last = rows.at(-1);
+  return {
+    items,
+    remaining: remaining?.count ?? 0,
+    nextCursor: last ? { createdAt: last.created_at, id: last.id } : null,
+  };
 }
 
 /**

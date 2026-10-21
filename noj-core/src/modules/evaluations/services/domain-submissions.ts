@@ -1,9 +1,10 @@
 import { resolveDomainExecution } from "./workspace-execution.ts";
+import type { DomainEvaluationAdmissionPlan } from "../contracts/admission.ts";
 import { createSubmission } from "./submissions/submissions-crud.ts";
 import { createArtifactSubmission } from "./submissions/artifact-submissions.ts";
 import { createPredictionSubmission } from "./submissions/prediction-submissions.ts";
 import { createSelfTest } from "./self-tests.ts";
-import type { ProblemContentV1 } from "../../problems/index.ts";
+import type { ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 import type { SubmissionInput } from "./submissions/submissions-types.ts";
 import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
@@ -17,9 +18,15 @@ export async function createDomainSubmission(
     assignment?: AssignmentSubmissionOrigin;
   },
   contestId?: string,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ) {
-  const request = { slug, reference, contestId, assignment: input.assignment };
-  const resolved = await resolveDomainExecution(
+  const request = admissionPlan?.request ?? {
+    slug,
+    reference,
+    contestId,
+    assignment: input.assignment,
+  };
+  const resolved = admissionPlan?.resolved ?? await resolveDomainExecution(
     request,
     userId,
     input.version_id,
@@ -36,6 +43,7 @@ export async function createDomainSubmission(
     resolved.contestId,
     false,
     request,
+    admissionPlan,
   );
   return {
     ...result,
@@ -58,9 +66,15 @@ export async function createDomainArtifactSubmission(
     >
     & { assignment?: AssignmentSubmissionOrigin },
   contestId?: string,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ) {
-  const request = { slug, reference, contestId, assignment: input.assignment };
-  const resolved = await resolveDomainExecution(
+  const request = admissionPlan?.request ?? {
+    slug,
+    reference,
+    contestId,
+    assignment: input.assignment,
+  };
+  const resolved = admissionPlan?.resolved ?? await resolveDomainExecution(
     request,
     userId,
     input.version_id,
@@ -81,6 +95,7 @@ export async function createDomainArtifactSubmission(
     resolved.contestId,
     false,
     request,
+    admissionPlan,
   );
   return {
     ...result,
@@ -97,9 +112,15 @@ export async function createDomainSelfTest(
   reference: string,
   userId: string,
   input: SelfTestInput & { assignment?: AssignmentSubmissionOrigin },
+  isAdmin = false,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ) {
-  const request = { slug, reference, assignment: input.assignment };
-  const resolved = await resolveDomainExecution(
+  const request = admissionPlan?.request ?? {
+    slug,
+    reference,
+    assignment: input.assignment,
+  };
+  const resolved = admissionPlan?.resolved ?? await resolveDomainExecution(
     request,
     userId,
     input.version_id,
@@ -108,8 +129,9 @@ export async function createDomainSelfTest(
     userId,
     resolved.problem.id,
     input,
-    false,
+    isAdmin,
     request,
+    admissionPlan,
   );
   return {
     ...result,

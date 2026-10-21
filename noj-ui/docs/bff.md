@@ -17,9 +17,12 @@ BFF 不访问 Core 数据库，不增加 Core API，不允许客户端任意指�
 模块名与类型见 `utils/bff-view.ts`。作业详情包含当前角色可见的成绩、反馈和求助，
 以及 `help`、`feedback`、`history=1` 通知深链指定的初始内容。
 
-全局路由中间件在页面守卫前建立视图。`useViewAsyncData` 首次加载消费模块，水合
-复用 Nuxt payload；刷新、分页、筛选和 SSE 事件继续调用原有细粒度接口。快照按
-完整 URL 与实际账号隔离，其他页面沿用原流程。聚合不提供数据库事务快照。
+全局 `00-bff.global.ts` 现在是空操作：它不在导航阶段预取视图，也不向共享异步键
+写入私有快照。每个页面自己调用 BFF 并拥有 `useAsyncData` 的 key、AbortSignal 和
+首屏 DTO；历史名称 `useViewAsyncData` 只是 `useAsyncData` 的兼容包装。这样 SSR
+结果由同一个页面数据键进入 Nuxt payload，水合不会把旧页面的响应注入新页面；刷新、
+分页、筛选和 SSE 事件继续调用原有细粒度接口。快照按完整 URL 与实际账号隔离，聚合
+不提供数据库事务快照。
 
 ## 调度与错误
 

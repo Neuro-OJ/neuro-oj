@@ -17,7 +17,7 @@ import {
   claimTasks,
   completeTaskTx,
   enqueueTaskTx,
-} from "../../runtime/tasks/repository.ts";
+} from "../../runtime/index.ts";
 import { handleSearchIndexTask } from "../../application/search-handlers.ts";
 
 async function reset(): Promise<void> {

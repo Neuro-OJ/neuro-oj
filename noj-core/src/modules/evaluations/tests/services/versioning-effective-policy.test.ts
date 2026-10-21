@@ -36,7 +36,7 @@ import {
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 import { fixture as domainFixture } from "../_domain-execution-fixture.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 
 const now = new Date().toISOString();
 

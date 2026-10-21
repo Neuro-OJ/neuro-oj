@@ -12,14 +12,12 @@ import {
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
-import { setDomainProblemBindingPolicy } from "../../../problems/index.ts";
-import {
-  assertDomainPracticeAllowed,
-  loadDomainContest,
-  verifyContestAccess,
-} from "../../../contests/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { setDomainProblemBindingPolicy } from "../../../problems/contracts/cross-module/services_workspace_problem-bindings.ts";
+import { assertDomainPracticeAllowed } from "../../../contests/contracts/cross-module/services_practice-admission.ts";
+import { loadDomainContest } from "../../../contests/contracts/cross-module/services_domain-access.ts";
+import { verifyContestAccess } from "../../../contests/contracts/cross-module/services_contest-access.ts";
 import { resolveDomainJobContexts } from "./domain-job-access.ts";
 import {
   getRejudgeJob,

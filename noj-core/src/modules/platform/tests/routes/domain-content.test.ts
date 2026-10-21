@@ -6,11 +6,11 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { domainLimits, domains, users } from "../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   createDomain,
   getDomainStorageUsage,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   createAnnouncement,
   createSlide,
@@ -18,12 +18,12 @@ import {
   initSystemSettings,
   runWithContext,
   updateAnnouncement,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 import {
   buildAnnouncementEntry,
   upsertSearchEntry,
-} from "../../../../domains/search/index.ts";
-import { searchFlat } from "../../../../domains/search/index.ts";
+} from "../../../read-models/index.ts";
+import { searchFlat } from "../../../read-models/index.ts";
 
 await initRedisForTest();
 

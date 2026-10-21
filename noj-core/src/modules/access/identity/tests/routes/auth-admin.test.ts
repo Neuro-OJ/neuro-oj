@@ -1,0 +1,1251 @@
+import { problemExecutionForTest } from "../../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
+import { assertEquals } from "jsr:@std/assert@^1";
+import {
+  bindPublishedProblemForTest,
+  createUserToken,
+  deleteProblemFixtures,
+  initRedisForTest,
+} from "../../../../../../tests/helper.ts";
+import { createApp } from "../../../../../app.ts";
+import { getDb } from "../../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
+import {
+  auditLogs,
+  problems,
+  roles,
+  submissionJobItems,
+  submissionJobs,
+  submissions,
+  users,
+} from "../../../../../shared/db/schema.ts";
+import { eq } from "drizzle-orm";
+import { jsonRequest } from "../../../../../../tests/helper.ts";
+
+const ts = Date.now();
+
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
+await resetDbForTest();
+await initRedisForTest();
+
+Deno.test({
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/some-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+      },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 管理员提升用户（role_ids 格式）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const db = getDb();
+    const token = await createUserToken("admin");
+
+    // 获取一个有效角色 ID
+    const rows = await db.select({ id: roles.id }).from(roles).limit(1);
+    const roleId = rows[0]?.id ?? "00000000-0000-0000-0000-000000000000";
+
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: [roleId] },
+        token,
+      },
+    );
+    // target-id 不存在 → 404；存在且不可自修改 → 400 均可——测试鉴权通过
+    assertEquals(
+      [200, 400, 404].includes(res.status),
+      true,
+      `预期 2xx/400/404，实际 ${res.status}`,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 无效 role_ids 返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
+        token,
+      },
+    );
+    // 用户不存在返回 404，用户存在但 role_ids 无效返回 400
+    assertEquals(
+      [400, 404].includes(res.status),
+      true,
+      `预期 400/404，实际 ${res.status}`,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 缺少 role_ids 字段返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: {},
+        token,
+      },
+    );
+    assertEquals(res.status, 400);
+  },
+});
+
+// ─── 仪表盘统计 ──────────────────────────────────────────
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats");
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
+      token,
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 管理员可访问",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
+      token,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(typeof body.data.total_users, "number");
+    assertEquals(typeof body.data.total_problems, "number");
+    assertEquals(typeof body.data.total_submissions, "number");
+  },
+});
+
+// ─── 题目列表 ────────────────────────────────────────────
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/catalog/problems 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(app, "/api/v1/admin/catalog/problems", {
+      token,
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/catalog/problems 管理员可访问",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/catalog/problems", {
+      token,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+    assertEquals(typeof body.total, "number");
+  },
+});
+
+// ─── 提交详情 ────────────────────────────────────────────
+
+Deno.test({
+  name:
+    "admin route: GET /api/v1/admin/submission/submissions/:id 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: GET /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        method: "DELETE",
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/submissions/some-id",
+      { method: "DELETE" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/submissions/some-id",
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+// ─── 用户编辑 ───────────────────────────────────────────
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
+      method: "PUT",
+      body: { bio: "新简介" },
+      token,
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 无字段返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
+      method: "PUT",
+      body: {},
+      token,
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 邮箱格式非法返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
+      method: "PUT",
+      body: { email: "not-an-email" },
+      token,
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+// ─── 用户搜索筛选 ──────────────────────────────────────
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/identity/users 支持 keyword 参数",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users?keyword=admin",
+      { token },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/identity/users 支持 role 参数",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users?role=admin",
+      {
+        token,
+      },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+  },
+});
+
+// ─── 功能性测试（issue #71 review）──────────────────────────
+
+/** 在 DB 中直接插入一个测试用户（绕过 register 路由以便复用现成字段） */
+async function insertTestUser(
+  username: string,
+  email: string,
+  bio = "",
+): Promise<string> {
+  const db = getDb();
+  const id = `adm-${username}`;
+  const now = new Date().toISOString();
+  await db.insert(users).values({
+    id,
+    username,
+    email,
+    password_hash: "x",
+    bio,
+    created_at: now,
+    updated_at: now,
+  });
+  return id;
+}
+
+async function cleanupTestUser(id: string) {
+  try {
+    const db = getDb();
+    await db.delete(users).where(eq(users.id, id));
+  } catch {
+    // ignore
+  }
+}
+
+// ─── 审计唯一性（service 层已写审计的路由不得重复写）────────────
+
+Deno.test({
+  name: "admin route: PATCH /users/:id/ban 审计唯一且 detail 准确",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_ban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.ban"),
+    );
+    assertEquals(rows.length, 1, "users.ban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).reason,
+      "spam",
+    );
+  },
+});
+
+Deno.test({
+  name: "admin route: PATCH /users/:id/unban 审计唯一",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_unban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+
+    const banRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(banRes.status, 200);
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/unban`,
+      { method: "PATCH", token },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.unban"),
+    );
+    assertEquals(rows.length, 1, "users.unban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+  },
+});
+
+Deno.test({
+  name: "admin route: DELETE /users/:id 审计唯一且 detail 保留用户名",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_delete_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}`,
+      {
+        method: "DELETE",
+        body: { confirmation: "DELETE" },
+        token,
+      },
+    );
+    assertEquals(res.status, 204);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.delete"),
+    );
+    assertEquals(rows.length, 1, "users.delete 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "user");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).username,
+      username,
+    );
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 成功更新 bio",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const username = `adm_bio_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+
+    try {
+      const token = await createUserToken("admin");
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { bio: "管理员更新的简介" },
+          token,
+        },
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.data.bio, "管理员更新的简介");
+
+      // 验证 DB 中已更新
+      const db = getDb();
+      const rows = await db
+        .select({ bio: users.bio })
+        .from(users)
+        .where(eq(users.id, targetId))
+        .limit(1);
+      assertEquals(rows[0]?.bio, "管理员更新的简介");
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 邮箱冲突返回 409",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const userA = `adm_email_a_${ts}`;
+    const userB = `adm_email_b_${ts}`;
+    const emailA = `adm_email_a_${ts}@example.com`;
+    const emailB = `adm_email_b_${ts}@example.com`;
+    const idA = await insertTestUser(userA, emailA);
+    const idB = await insertTestUser(userB, emailB);
+
+    try {
+      const token = await createUserToken("admin");
+      // 试图把 B 的邮箱改成 A 的，应 409
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${idB}`,
+        {
+          method: "PUT",
+          body: { email: emailA },
+          token,
+        },
+      );
+      assertEquals(res.status, 409);
+    } finally {
+      await cleanupTestUser(idA);
+      await cleanupTestUser(idB);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 不存在用户返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/nonexistent-user-id",
+      {
+        method: "PUT",
+        body: { bio: "不存在" },
+        token,
+      },
+    );
+    assertEquals(res.status, 404);
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/0 拒绝修改 root",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/0", {
+      method: "PUT",
+      body: { bio: "试图改 root" },
+      token,
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 强化邮箱正则拒绝 TLD 1 字符",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const username = `adm_tld_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+
+    try {
+      const token = await createUserToken("admin");
+      // "a@b.c" TLD 只有 1 字符 → 应被强化正则拒绝
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { email: "weak@example.c" },
+          token,
+        },
+      );
+      assertEquals(res.status, 400);
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/identity/users keyword 实际筛选命中",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const uniq = `kwfilter_${ts}`;
+    const username = `${uniq}_user`;
+    const targetId = await insertTestUser(username, `${uniq}@example.com`);
+
+    try {
+      const token = await createUserToken("admin");
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users?keyword=${uniq}`,
+        { token },
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      // 至少包含新建的测试用户
+      const ids = body.data.map((u: { id: string }) => u.id);
+      assertEquals(ids.includes(targetId), true);
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 管理员真删除",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+
+    // 需要测试用户（FK）和测试题目（FK）—— 通过 createSubmission 复用
+    const { problems } = await import("../../../../../shared/db/schema.ts");
+    const userId = `adm-del-user-${ts}`;
+    const problemId = `adm-del-prob-${ts}`;
+    const submissionId = `adm-del-sub-${ts}`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: userId,
+      username: userId,
+      email: `${userId}@example.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: problemId,
+      title: `del-test-${ts}`,
+      description: "x",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      owner_id: userId,
+      number: 70000 + (ts & 0x7fff),
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 直接插 DB 提交行（避免 createSubmission 触发 Redis MQ）。
+    // 状态必须是终态：版本化后删除入口**按设计拒绝**在途评测
+    // （`pending`/`judging` 或存在 `active_attempt_id` → 409 SOURCE_JUDGING）。
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
+      language: "python3",
+      code: "print('hi')",
+      file_name: "main.py",
+      status: "finished",
+      created_at: now,
+    });
+
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/submissions/${submissionId}`,
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 204);
+
+    // 验证 DB 中已删除
+    const rows = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, submissionId))
+      .limit(1);
+    assertEquals(rows.length, 0);
+    // 事务回滚会自动清理本用例数据，无需手动 cleanup
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE 在途评测（pending/judging 或 active_attempt_id）返回 409 且不删除",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+
+    const { problems } = await import("../../../../../shared/db/schema.ts");
+    const userId = `adm-busy-user-${ts}`;
+    const problemId = `adm-busy-prob-${ts}`;
+    const submissionId = `adm-busy-sub-${ts}`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: userId,
+      username: userId,
+      email: `${userId}@example.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: problemId,
+      title: `busy-test-${ts}`,
+      description: "x",
+      difficulty: "easy",
+      owner_id: userId,
+      number: 71000 + (ts & 0x7fff),
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
+      language: "python3",
+      code: "print('hi')",
+      status: "judging",
+      created_at: now,
+    });
+
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/submissions/${submissionId}`,
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 409);
+
+    // 在途提交必须保留（不能"删一半"）
+    const rows = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, submissionId))
+      .limit(1);
+    assertEquals(rows.length, 1);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:missing-id 返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000",
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 404);
+  },
+});
+
+// ─── 重测 API ────────────────────────────────────────────
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
+      { method: "POST" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
+      {
+        method: "POST",
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交仍受理并记录",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+      {
+        method: "POST",
+        token,
+      },
+    );
+    // 统一任务契约：源不存在不再整批拒绝，而是受理成任务（该 ID 从来不是成员，
+    // 因此条目数为 0）；若提交是"受理后被删除"，条目保留并由 worker 标 skipped
+    assertEquals(res.status, 202);
+    const body = await res.json();
+    assertEquals(typeof body.data.job_id, "string");
+    assertEquals(body.data.total_items, 0);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 未登录返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/problems/some-id/rejudge",
+      { method: "POST" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/problems/some-id/rejudge",
+      {
+        method: "POST",
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 不存在的题目返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/problems/00000000-0000-0000-0000-000000000000/rejudge",
+      {
+        method: "POST",
+        token,
+      },
+    );
+    assertEquals(res.status, 404);
+  },
+});
+
+// ─── 重测业务路径 ─────────────────────────────────────
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 活跃提交被跳过而非整批拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    const problemId = `rej-test-problem-${ts}`;
+    const testUserId = await insertTestUser(
+      `rej-user-${ts}`,
+      `rej-${ts}@test.noj`,
+    );
+
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: problemId,
+      title: `重测测试 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 80000 + (ts & 0x7fff),
+      owner_id: "0",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const judgingSubId = `rej-sub-judging-${ts}`;
+    const bindingId = await bindPublishedProblemForTest(problemId);
+    await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
+      id: judgingSubId,
+      user_id: testUserId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      judge_started_at: now,
+      created_at: now,
+    });
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
+      { method: "POST", token },
+    );
+    // Handbook §5.7：活动提交属于条目 skipped，不整批拒绝
+    assertEquals(res.status, 202);
+    const body = await res.json();
+    assertEquals(body.data.total_items, 1);
+    const [item] = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    assertEquals(item.source_id, judgingSubId);
+    // 该提交没有提交时版本（存量 unknown）→ 受理阶段即不可按版本重测；
+    // 有版本的活动提交由 worker 在派发阶段标 SOURCE_JUDGING（见 dispatch 测试）
+    assertEquals(["skipped", "pending"].includes(item.status), true);
+    if (item.status === "skipped") {
+      assertEquals(item.reason_code, "LEGACY_VERSION_UNKNOWN");
+    }
+
+    await db.delete(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
+    await db.delete(submissions).where(eq(submissions.id, judgingSubId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中受理但不改状态",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const now = new Date().toISOString();
+    const ts = Date.now();
+    const problemId = `single-rej-problem-${ts}`;
+    const userId = await insertTestUser(
+      `single-rej-user-${ts}`,
+      `single-rej-${ts}@test.noj`,
+    );
+    const submissionId = `single-rej-submission-${ts}`;
+
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: problemId,
+      title: `单条重测测试 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 81000 + (ts & 0x7fff),
+      owner_id: "0",
+      created_at: now,
+      updated_at: now,
+    });
+    const bindingId = await bindPublishedProblemForTest(problemId);
+    await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      judge_started_at: now,
+      created_at: now,
+    });
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
+      { method: "POST", token },
+    );
+    // 统一任务受理不再改写提交状态：评测中的提交保持 judging（不会卡 pending）
+    assertEquals(res.status, 202);
+    const body = await res.json();
+    assertEquals(typeof body.data.job_id, "string");
+
+    const [submission] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(submission.status, "judging");
+    assertEquals(submission.active_attempt_id, null);
+
+    await db.delete(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
+    await db.delete(submissions).where(eq(submissions.id, submissionId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 无已完结提交返回空",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    const problemId = `rej-empty-${ts}`;
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: problemId,
+      title: `重测空 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 85000 + (ts & 0x7fff),
+      owner_id: "0",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
+      { method: "POST", token },
+    );
+    // 空集合返回已完成、总数为 0 的任务（Handbook §4.3）
+    assertEquals(res.status, 202);
+    const body = await res.json();
+    assertEquals(body.data.total_items, 0);
+    assertEquals(
+      ["completed", "completed_with_errors"].includes(body.data.status),
+      true,
+    );
+
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
+    await deleteProblemFixtures(eq(problems.id, problemId));
+  },
+});

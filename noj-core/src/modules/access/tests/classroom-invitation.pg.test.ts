@@ -12,12 +12,9 @@ import {
 import {
   consumeDomainInvitationCommand,
   createClassroomInvitationCommand,
-} from "../../application/access.ts";
+} from "../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../contracts/actor.ts";
-import {
-  account,
-  educationFixture,
-} from "../../../domains/education/tests/_fixtures.ts";
+import { account, educationFixture } from "../../education/tests/_fixtures.ts";
 
 Deno.test({
   name: "application access：班级邀请在同一事务内写入域成员和学生任职",

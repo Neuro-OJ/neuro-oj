@@ -1,10 +1,8 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { enforceProblemImportRateLimit } from "../../../domains/system/index.ts";
+import { enforceProblemImportRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import {
   type UserActor,
   userActorFromAuthenticatedId,

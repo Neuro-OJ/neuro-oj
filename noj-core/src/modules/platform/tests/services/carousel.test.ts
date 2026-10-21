@@ -25,7 +25,7 @@ import {
   reorderSlides,
   updateSlide,
   uploadCarouselImage,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 
 const ts = Date.now();
 
@@ -335,7 +335,7 @@ Deno.test({
     const id = await createSlide({ kind: "image", image_storage_url: url });
 
     const { getCarouselImageBytes } = await import(
-      "../../../../domains/system/index.ts"
+      "../../system/index.ts"
     );
     const result = await getCarouselImageBytes(id);
     assertEquals(result.contentType, "image/png");
@@ -343,7 +343,7 @@ Deno.test({
 
     // 2026-09-25 评审：停用后的幻灯片不得再通过公开端点取图
     const { updateSlide } = await import(
-      "../../../../domains/system/index.ts"
+      "../../system/index.ts"
     );
     await updateSlide(id, { is_enabled: false });
     await assertRejects(

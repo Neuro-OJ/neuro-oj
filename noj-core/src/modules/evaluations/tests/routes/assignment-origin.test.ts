@@ -12,7 +12,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import type { AssignmentSubmissionOrigin } from "../../../../shared/education-types.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { fixture, withQueue } from "../_domain-execution-fixture.ts";
 import { saveV2ResultForTest } from "../_versioning-fixtures.ts";
 

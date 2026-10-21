@@ -28,7 +28,7 @@ async function loadFixture(): Promise<JudgeTask> {
   return JSON.parse(await Deno.readTextFile(FIXTURE_URL)) as JudgeTask;
 }
 
-Deno.test("JudgeTask 协议 v2: 初次代码和产物发送序列 0，重测保留显式序列", async () => {
+Deno.test("JudgeTask 协议 v3: 初次代码和产物发送序列 0，重测保留显式序列", async () => {
   const fixture = await loadFixture();
   for (const artifact of [false, true]) {
     const input = {
@@ -47,7 +47,8 @@ Deno.test("JudgeTask 协议 v2: 初次代码和产物发送序列 0，重测保�
         : {}),
     };
     const initial = JSON.parse(JSON.stringify(prepareJudgeTask(input)));
-    assertEquals(initial.evaluation_protocol_version, 2);
+    assertEquals(initial.evaluation_protocol_version, 3);
+    assertEquals(initial.task_kind, "submission");
     assertEquals(initial.rejudge_seq, 0);
     assertEquals(initial.run_id, input.attempt_id);
     assertEquals(initial.attempt_id, input.attempt_id);
@@ -62,6 +63,7 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    task_kind: fixture.task_kind,
     problem_version_id: fixture.problem_version_id,
     evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
@@ -86,6 +88,7 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    task_kind: fixture.task_kind,
     problem_version_id: fixture.problem_version_id,
     evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
@@ -104,13 +107,17 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   });
   assertEquals(
     Object.keys(built).sort(),
-    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) =>
+      !["oi_cost_profile", "self_test_run_id"].includes(key)
+    ).sort(),
     "JudgeTask 字段集合变化时必须同步 JUDGE_TASK_FIELDS 与 Rust 结构体",
   );
   // fixture 自身也必须是完整字段集（防止 fixture 落后于契约）
   assertEquals(
     Object.keys(fixture).sort(),
-    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) =>
+      !["oi_cost_profile", "self_test_run_id"].includes(key)
+    ).sort(),
     "契约 fixture 必须包含全部字段",
   );
 });
@@ -143,6 +150,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
     [
       "scheduling_version",
       "resource_pool",
+      "task_kind",
       "code",
       "language",
       "priority",
@@ -165,6 +173,7 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    task_kind: fixture.task_kind,
     problem_version_id: fixture.problem_version_id,
     evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
@@ -231,6 +240,8 @@ Deno.test("JudgeTask 契约: OI WASM携带可信独立成本快照", async () =>
   assertEquals(JSON.parse(JSON.stringify(built)), fixture);
   assertEquals(
     new Set([...Object.keys(await loadFixture()), ...Object.keys(fixture)]),
-    new Set(JUDGE_TASK_FIELDS),
+    new Set(
+      JUDGE_TASK_FIELDS.filter((key) => key !== "self_test_run_id"),
+    ),
   );
 });

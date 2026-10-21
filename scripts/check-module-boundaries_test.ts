@@ -48,6 +48,7 @@ function testConfig(): BoundaryConfig {
       legacyDomains: [],
     })),
     legacyDomainToModule: {},
+    legacyTestTargets: {},
     tableOwnership: { schemaOwners: {}, tableExceptions: {} },
     testCiMapping: {},
     rules: {},
@@ -215,6 +216,28 @@ Deno.test("type-only 边不会触发 runtime cycle 或跨模块运行时方向�
       violation.rule === "business-read-model-dependency"
     ),
     "type-only 合同不应被误报成业务运行时依赖",
+  );
+});
+
+Deno.test("业务模块不得直接导入另一业务模块的写 capability", () => {
+  const report = analyzeSources(
+    new Map([
+      [
+        "src/modules/problems/services/write.ts",
+        `import { registerContestProblem } from "../../contests/services/contests.ts";`,
+      ],
+      [
+        "src/modules/contests/services/contests.ts",
+        `export const registerContestProblem = () => {};`,
+      ],
+    ]),
+    testConfig(),
+  );
+  assert(
+    report.violations.some((violation) =>
+      violation.rule === "cross-module-service-import"
+    ),
+    "跨业务写 capability 的深路径导入必须由 AST 门禁拒绝",
   );
 });
 

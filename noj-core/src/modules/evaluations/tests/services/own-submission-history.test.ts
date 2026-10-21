@@ -12,8 +12,8 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import { setDomainProblemSharing } from "../../../problems/index.ts";
-import { removeDomainMember } from "../../../../domains/workspace/index.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { removeDomainMember } from "../../../access/workspace/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   createDomainSubmission,
   getOwnSubmissionHistory,

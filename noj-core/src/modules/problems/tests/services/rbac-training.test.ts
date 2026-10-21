@@ -6,7 +6,7 @@ import {
   rolePermissions,
   roles,
 } from "../../../../shared/db/schema.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 
 await resetDbForTest();
 

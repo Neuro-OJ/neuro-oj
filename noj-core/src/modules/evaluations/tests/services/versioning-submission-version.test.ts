@@ -9,7 +9,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 import {
   contests,
   problems,

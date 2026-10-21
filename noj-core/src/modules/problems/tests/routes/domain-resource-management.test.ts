@@ -7,13 +7,13 @@ import {
   problemBindingHistory,
   problems,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   createDomain,
   setMemberRoles,
   updateDomain,
-} from "../../../../domains/workspace/index.ts";
-import { assignmentFixture } from "../../../../domains/education/tests/_assignment-fixture.ts";
+} from "../../../access/workspace/index.ts";
+import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { domainResourceManagementRouter } from "../../routes/domain-resource-management.ts";
 import { domainTrainingsRouter } from "../../routes/domain-trainings.ts";

@@ -1,5 +1,5 @@
 import type { Executor } from "../../../shared/db/executor.ts";
-import { rescheduleContestEducation } from "../../../shared/education-contests.ts";
+import { rescheduleContestEducation } from "../../education/contracts/contest-facts.ts";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
@@ -23,7 +23,7 @@ import {
   comparePassword,
   hashPassword,
   isBcryptHash,
-} from "../../../domains/identity/index.ts";
+} from "../../access/contracts/cross-module/identity_services_security_password.ts";
 import {
   generatePublicId,
   resolvePublicId,
@@ -32,25 +32,24 @@ import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import {
   bumpProjectionRevision,
   globalScopeKey,
-} from "../../evaluations/index.ts";
-import {
-  assertDefaultProblemSource,
-  type ProblemContentV1,
-} from "../../problems/contracts/read.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../evaluations/contracts/cross-module/services_versioning_projection.ts";
+import { assertDefaultProblemSource } from "../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
 import { findContestRow } from "./contest-row.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
-import { normalizeContestTime } from "./contest-window.ts";
+import {
+  computeContestStatus,
+  normalizeContestTime,
+} from "./contest-window.ts";
+export { computeContestStatus } from "./contest-window.ts";
 import {
   type ContestConfig,
   type ContestKind,
   type ContestProblemInput,
   type ContestResponse,
-  type ContestStatus,
   type ContestType,
   type CreateContestInput,
   isValidContestConfig,
@@ -408,23 +407,6 @@ export function resolveContestId(value: string): Promise<string> {
     value,
     "竞赛不存在",
   );
-}
-
-/**
- * 根据开始/结束时间计算竞赛当前状态（pending / running / ended）。
- *
- * @param startTime 开始时间字符串
- * @param endTime 结束时间字符串
- * @returns 竞赛状态
- */
-export function computeContestStatus(
-  startTime: string,
-  endTime: string,
-): ContestStatus {
-  const now = Date.now();
-  if (now < Date.parse(startTime)) return "pending";
-  if (now < Date.parse(endTime)) return "running";
-  return "ended";
 }
 
 /**

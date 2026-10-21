@@ -11,14 +11,14 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import {
   initRedisForTest,
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
-import { createDomain } from "../../../../domains/workspace/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
+import { createDomain } from "../../../access/workspace/index.ts";
 
 // 测试进程通常没有本地 Redis；直接短路 JWT 撤销检查，避免 authMiddleware 503。
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");

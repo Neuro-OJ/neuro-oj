@@ -14,6 +14,7 @@
 import type { Db } from "./db.ts";
 import type { QuotaRow } from "./limits.ts";
 import type { DomainQuotaCaps } from "./quota-policy.ts";
+import { POLICY_RESERVATION_ADVISORY_LOCK } from "./policy-lock.ts";
 
 /** 单行政策的固定主键。 */
 export const INSTANCE_POLICY_ID = "instance";
@@ -174,6 +175,15 @@ export async function withLockedPolicy<T>(
 ): Promise<T> {
   const result = await db.begin(async (connection) => {
     const tx = connection as unknown as Db;
+    // 与 withReservationLock 的共享 advisory lock 配对，覆盖整个预占边界。
+    // 仅依赖 FOR UPDATE 会让预占连接在语句结束后释放行锁，无法冻结政策读取到
+    // Redis 预占完成；事务级排他锁在政策提交前保持到整个写事务结束。
+    await tx`
+      SELECT pg_advisory_xact_lock(
+        ${POLICY_RESERVATION_ADVISORY_LOCK.classId},
+        ${POLICY_RESERVATION_ADVISORY_LOCK.objectId}
+      )
+    `;
     // 缺行时先插入空政策（revision 0 = "从未写入"），保证锁与后续读取一定命中
     // 同一行，同时让首次写入仍可用 expectedRevision=0 通过乐观锁。
     await tx`

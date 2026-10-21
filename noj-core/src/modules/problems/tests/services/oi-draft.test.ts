@@ -27,13 +27,13 @@ import {
   saveProblemDraft,
 } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import {
   getStorageProvider,
   setStorageProviderForTest,
-} from "../../../../domains/system/services/storage/factory.ts";
+} from "../../../platform/system/index.ts";
 import { readOiArchive } from "../../services/oi-archive.ts";
-import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
+import { LocalStorageProvider } from "../../../platform/system/index.ts";
 import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 const now = new Date().toISOString();

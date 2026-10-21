@@ -11,7 +11,7 @@ import { and, asc, eq, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
-import { getSetting } from "../../platform/index.ts";
+import { getSetting } from "../../platform/contracts/cross-module/services_system-settings.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
 import {

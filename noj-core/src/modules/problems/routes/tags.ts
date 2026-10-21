@@ -1,12 +1,10 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { ValidationError } from "../../../shared/base/errors.ts";
-import { requirePermission } from "../../../domains/identity/index.ts";
-import { withActorContext } from "../../../domains/system/index.ts";
+import { requirePermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { withActorContext } from "../../platform/contracts/cross-module/system_services_request-context.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   createTagCommand,

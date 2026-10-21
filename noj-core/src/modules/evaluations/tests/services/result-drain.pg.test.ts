@@ -12,7 +12,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { createAttempt } from "../../services/versioning/attempts.ts";
-import { saveEvaluationResult } from "../../services/submissions/submissions-result.ts";
+import { saveEvaluationResultCommand } from "../../../application/evaluations.ts";
 
 Deno.test({
   name: "result drain: 正式结果提交后仍等待真实榜单刷新完成",
@@ -66,17 +66,18 @@ Deno.test({
     });
     const barrier = createRawClient();
     const observer = createRawClient();
-    let processing: ReturnType<typeof saveEvaluationResult> | undefined;
+    let processing: ReturnType<typeof saveEvaluationResultCommand> | undefined;
     let settled = false;
     try {
       await barrier`BEGIN`;
       const [owner] = await barrier`SELECT pg_backend_pid() AS pid`;
       // 非并发刷新取得视图排他锁；正式结果事务不访问此视图，仍可正常提交。
       await barrier`REFRESH MATERIALIZED VIEW user_rankings`;
-      processing = saveEvaluationResult(
+      processing = saveEvaluationResultCommand(
         { kind: "system", purpose: "background_task" },
         {
-          evaluation_protocol_version: 2,
+          evaluation_protocol_version: 3,
+          task_kind: "submission",
           submission_id: submissionId,
           attempt_id: attempt.id,
           problem_version_id: versionId,

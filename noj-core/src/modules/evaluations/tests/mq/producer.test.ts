@@ -19,7 +19,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../index.ts";
-import type { RuntimeConfig } from "../../../problems/types/runtime-config.ts";
+import type { RuntimeConfig } from "../../../problems/index.ts";
 
 // ── 测试用 JudgeTask ────────────────────────────────
 
@@ -27,6 +27,7 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
   return {
     scheduling_version: 1,
     resource_pool: "ai",
+    task_kind: "submission",
     submission_id: "test-sub-001",
     problem_id: "1001",
     user_id: "test-user-001",

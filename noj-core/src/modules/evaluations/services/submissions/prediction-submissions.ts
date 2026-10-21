@@ -14,6 +14,7 @@
 
 import type { SubmissionResponse } from "./submissions-types.ts";
 import type { DomainExecutionRequest } from "../workspace-execution.ts";
+import type { DomainEvaluationAdmissionPlan } from "../../contracts/admission.ts";
 import {
   createUploadedSubmission,
   type UploadedSubmissionInput,
@@ -52,6 +53,7 @@ export function createPredictionSubmission(
   contestId?: string,
   isAdmin = false,
   domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SubmissionResponse> {
   return createUploadedSubmission(
     PREDICTION_SPEC,
@@ -60,5 +62,6 @@ export function createPredictionSubmission(
     contestId,
     isAdmin,
     domainRequest,
+    admissionPlan,
   );
 }

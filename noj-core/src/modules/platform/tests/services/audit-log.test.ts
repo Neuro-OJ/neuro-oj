@@ -2,15 +2,12 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, users } from "../../../../shared/db/schema.ts";
-import {
-  enterTestContext,
-  leaveTestContext,
-} from "../../../../domains/system/index.ts";
+import { enterTestContext, leaveTestContext } from "../../system/index.ts";
 import {
   cleanupOldAuditLogs,
   listAuditLogs,
   logAudit,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 
 const TEST_CTX = {
   actorId: "test-admin-uuid",

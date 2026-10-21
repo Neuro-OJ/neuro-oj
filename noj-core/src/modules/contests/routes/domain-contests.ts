@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import {
   authMiddleware,
-  type OptionalAuthEnv,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { type OptionalAuthEnv } from "../../../shared/http/hono-env.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   addDomainContestParticipantsCommand,
@@ -39,8 +39,13 @@ import {
   isValidContestType,
   type UpdateContestInput,
 } from "../types/contests.ts";
-import { enforceContestRegisterRateLimit } from "../../../domains/system/index.ts";
+import { enforceContestRegisterRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { loadDomainContest } from "../services/domain-access.ts";
+import {
+  createClarification,
+  listClarifications,
+  replyToClarification,
+} from "../services/contest-clarifications.ts";
 import { domainContestSseRouter } from "./sse.ts";
 import {
   getDomainContestObjectiveQuestions,
@@ -150,6 +155,65 @@ domainContestRouter.post(`${path}/:id/register`, authMiddleware, async (c) => {
   );
   return c.json({ message: "竞赛注册成功" }, 201);
 });
+domainContestRouter.get(
+  `${path}/:id/clarifications`,
+  async (c) => {
+    const access = await loadDomainContest(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId ?? null,
+    );
+    const { page, perPage } = parsePagination(c);
+    const result = await listClarifications(
+      access.contest.id,
+      c.var.userId ?? undefined,
+      { page, perPage },
+    );
+    return c.json({
+      data: result.data,
+      pagination: buildPaginationMeta(page, perPage, result.total),
+    });
+  },
+);
+domainContestRouter.post(
+  `${path}/:id/clarifications`,
+  authMiddleware,
+  async (c) => {
+    const access = await loadDomainContest(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+      { write: true },
+    );
+    return c.json({
+      data: await createClarification(
+        access.contest.id,
+        c.var.userId!,
+        await body<{ content?: string; problem_id?: string }>(c),
+      ),
+    }, 201);
+  },
+);
+domainContestRouter.post(
+  `${path}/:id/clarifications/:clarId/reply`,
+  authMiddleware,
+  async (c) => {
+    const access = await loadDomainContest(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+      { manage: true },
+    );
+    return c.json({
+      data: await replyToClarification(
+        access.contest.id,
+        c.req.param("clarId")!,
+        c.var.userId!,
+        await body<{ content?: string; is_public?: boolean }>(c),
+      ),
+    }, 201);
+  },
+);
 domainContestRouter.get(
   `${path}/:id/problems`,
   authMiddleware,

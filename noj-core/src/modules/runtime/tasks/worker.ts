@@ -14,8 +14,10 @@ import type { DbRoot } from "../../../shared/db/executor.ts";
 import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 import {
   type ClaimedTask,
+  isTaskRescheduleResult,
   TASK_DEFAULT_CLAIM_LIMIT,
   TASK_DEFAULT_LEASE_MS,
+  TASK_TYPES,
   type TaskHandlerMap,
 } from "./contracts.ts";
 import {
@@ -23,6 +25,7 @@ import {
   completeTaskTx,
   failTaskTx,
   renewTaskLease,
+  rescheduleTaskTx,
 } from "./repository.ts";
 
 const logger = getLogger(["noj", "runtime", "tasks"]);
@@ -62,7 +65,8 @@ export function startTaskWorker(
   const leaseDurationMs = options.leaseDurationMs ?? TASK_DEFAULT_LEASE_MS;
 
   // 启动前校验 handler 覆盖：缺类型必须显式失败，不能静默跳过任务。
-  for (const [taskType, handler] of Object.entries(options.handlers)) {
+  for (const taskType of TASK_TYPES) {
+    const handler = options.handlers[taskType];
     if (typeof handler !== "function") {
       throw new TypeError(`任务类型 ${taskType} 的 handler 不是函数`);
     }
@@ -124,8 +128,22 @@ export function startTaskWorker(
         return;
       }
       const result = await handler(task, controller.signal);
+      if (isTaskRescheduleResult(result)) {
+        const rescheduled = await db.transaction((tx) =>
+          rescheduleTaskTx(tx, task.id, task.leaseToken, result)
+        );
+        if (!rescheduled) {
+          logger.warn("任务重新调度时租约已失效", { task_id: task.id });
+        }
+        return;
+      }
       const completed = await db.transaction((tx) =>
-        completeTaskTx(tx, task.id, task.leaseToken, result ?? {})
+        completeTaskTx(
+          tx,
+          task.id,
+          task.leaseToken,
+          result && !isTaskRescheduleResult(result) ? result : {},
+        )
       );
       if (!completed) {
         // handler 已完成但租约已被回收：任务会被其他 worker 重做，这里只记录。

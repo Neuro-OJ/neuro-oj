@@ -12,16 +12,16 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-import { verifyToken } from "../../../../domains/identity/index.ts";
+import { verifyToken } from "../../../access/identity/index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   getStorageProvider,
   uploadStorageObjectWithReservation,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/system/index.ts";
 import { parseDomainDraftBundle } from "../../services/workspace/problem-bundle-edit.ts";
 import {
   importDomainProblem,
@@ -148,6 +148,24 @@ Deno.test({
       updated_at: now,
     });
     const storage = await getStorageProvider(), urls: string[] = [];
+    const oldGatewayToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+    const oldFetch = globalThis.fetch;
+    Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "workspace-ui-test-token");
+    globalThis.fetch = (async (input: Request | URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/internal/model-capabilities")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { alias: "default", description: "使用当前工作空间默认模型" },
+              { alias: "fast", description: "学校域能力" },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return await oldFetch(input);
+    }) as typeof fetch;
     try {
       for (const [index, versionId] of versions.entries()) {
         await getDb().insert(problemVersions).values({
@@ -271,6 +289,12 @@ Deno.test({
         404,
       );
     } finally {
+      globalThis.fetch = oldFetch;
+      if (oldGatewayToken === undefined) {
+        Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      } else {
+        Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldGatewayToken);
+      }
       await Promise.all(urls.map((url) => storage.delete(url)));
     }
   },

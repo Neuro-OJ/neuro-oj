@@ -26,6 +26,7 @@ import {
   TASK_MAX_FAILURES,
   type TaskHealth,
   type TaskPayload,
+  type TaskRescheduleResult,
   type TaskType,
 } from "./contracts.ts";
 import { computeRetryDecision } from "./retry-policy.ts";
@@ -236,6 +237,42 @@ export async function completeTaskTx(
 }
 
 /**
+ * 任务已完成一页但仍需继续：清除当前租约并重新进入 pending。
+ *
+ * 这不是失败重试，不增加 failure_count；游标已经持久化到业务事实，下一次
+ * 领取只需继续读取最新事实。token 不匹配时不允许覆盖其他 worker 的状态。
+ */
+export async function rescheduleTaskTx(
+  tx: DbTx,
+  taskId: string,
+  token: string,
+  result: TaskRescheduleResult,
+): Promise<boolean> {
+  if (Number.isNaN(Date.parse(result.availableAt))) {
+    throw new RangeError("任务重新调度时刻必须是 ISO 8601 时间");
+  }
+  const now = new Date(await databaseNowMs(tx)).toISOString();
+  const rows = await tx.update(backgroundTasks).set({
+    status: "pending",
+    payload: result.payload,
+    available_at: result.availableAt,
+    failure_count: 0,
+    lease_token: null,
+    lease_owner: null,
+    lease_expiry: null,
+    last_result: { rescheduled: true },
+    last_error: null,
+    finished_at: null,
+    updated_at: now,
+  }).where(and(
+    eq(backgroundTasks.id, taskId),
+    eq(backgroundTasks.status, "leased"),
+    eq(backgroundTasks.lease_token, token),
+  )).returning({ id: backgroundTasks.id });
+  return rows.length > 0;
+}
+
+/**
  * 失败任务：增加失败次数、安排指数退避；达到 20 次转终态 failed。
  *
  * 租约已失效（token 不匹配）时返回 `false`，不修改任何行。
@@ -319,6 +356,7 @@ export async function readTaskHealth(
   ));
   const [leased] = await db.select({
     count: sql<number>`count(*)::int`,
+    oldest: sql<string | null>`min(${backgroundTasks.created_at})`,
     next: sql<string | null>`min(${backgroundTasks.lease_expiry})`,
   }).from(backgroundTasks).where(eq(backgroundTasks.status, "leased"));
   const [failed] = await db.select({
@@ -328,6 +366,9 @@ export async function readTaskHealth(
   const oldestReadyAgeMs = ready?.oldest
     ? Math.max(0, nowMs - Date.parse(ready.oldest))
     : 0;
+  const oldestLeasedAgeMs = leased?.oldest
+    ? Math.max(0, nowMs - Date.parse(leased.oldest))
+    : 0;
   const nextLeaseExpiryMs = leased?.next
     ? Math.max(0, Date.parse(leased.next) - nowMs)
     : 0;
@@ -336,6 +377,7 @@ export async function readTaskHealth(
     leased: leased?.count ?? 0,
     failed: failed?.count ?? 0,
     oldestReadyAgeMs,
+    oldestLeasedAgeMs,
     nextLeaseExpiryMs,
   };
 }

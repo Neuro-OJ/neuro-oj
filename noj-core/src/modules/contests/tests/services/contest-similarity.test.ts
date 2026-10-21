@@ -22,8 +22,8 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import {

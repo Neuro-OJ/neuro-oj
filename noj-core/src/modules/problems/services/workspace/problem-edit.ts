@@ -12,8 +12,8 @@ import {
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  lockActiveWorkspaceAccount,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 import { getProblemDraft, saveProblemDraft } from "../versioning/draft.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";

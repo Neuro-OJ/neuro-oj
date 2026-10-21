@@ -34,11 +34,11 @@ import {
 import {
   getAdminUserIds,
   getUserPermissions,
-} from "../../domains/identity/services/security/permissions.ts";
+} from "./identity/services/security/permissions.ts";
 import {
   getInstanceAccessPolicy,
   getInstanceResourcePolicy,
-} from "../../domains/workspace/services/instance.ts";
+} from "./workspace/services/instance.ts";
 import {
   combineDomainLimits,
   constrainDomainConfiguration,

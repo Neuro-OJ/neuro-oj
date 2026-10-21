@@ -23,7 +23,7 @@ import {
   UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import { unwrapRows } from "../../shared/base/sql-rows.ts";
-import { getSetting } from "../platform/index.ts";
+import { getSetting } from "../platform/contracts/cross-module/services_system-settings.ts";
 import { effectiveDomainConfiguration } from "../../shared/workspace/capabilities.ts";
 import {
   type GuestActor,

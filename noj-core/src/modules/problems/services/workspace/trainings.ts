@@ -6,13 +6,19 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { trainingProblems, trainings } from "../../../../shared/db/schema.ts";
+import {
+  domainTrainingBindings,
+  trainingProblems,
+  trainings,
+  trainingShareSettings,
+  trainingShareTargets,
+} from "../../../../shared/db/schema.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 
 /** 域题单完整编辑表单使用来源题号；题单不复制源题内容。 */
@@ -139,5 +145,52 @@ export async function saveDomainTraining(
       revision: saved.revision,
     });
     return saved;
+  });
+}
+
+/** 删除本域自有题单；存在跨域引用时拒绝，避免历史题单链接失效。 */
+export async function deleteDomainTraining(
+  slug: string,
+  actorId: string,
+  trainingId: string,
+): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    const workspace = await loadWorkspace(slug, actorId, {
+      executor: tx,
+      write: true,
+      lock: true,
+    });
+    const [training] = await tx.select().from(trainings).where(and(
+      eq(trainings.id, trainingId),
+      eq(trainings.domain_id, workspace.domain.id),
+    )).for("update");
+    if (!training) throw new NotFoundError("题单不在此域");
+    assertWorkspacePermission(
+      workspace.context,
+      training.created_by === actorId
+        ? "training:delete_own"
+        : "training:delete_any",
+    );
+    const [reference] = await tx.select({ id: domainTrainingBindings.id })
+      .from(domainTrainingBindings)
+      .where(eq(domainTrainingBindings.training_id, trainingId))
+      .limit(1);
+    if (reference) {
+      throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
+    }
+    await tx.delete(trainingProblems).where(
+      eq(trainingProblems.training_id, trainingId),
+    );
+    await tx.delete(trainingShareTargets).where(
+      eq(trainingShareTargets.training_id, trainingId),
+    );
+    await tx.delete(trainingShareSettings).where(
+      eq(trainingShareSettings.training_id, trainingId),
+    );
+    await tx.delete(trainings).where(eq(trainings.id, trainingId));
+    await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {
+      operation: "training.delete",
+      training_id: trainingId,
+    });
   });
 }

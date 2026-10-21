@@ -296,9 +296,16 @@ R7 `.nojbackup` 统一备份流；并收敛 M1–M7（删双模态）。
 
 ## 未取证项（诚实标注，不应视为通过）
 
+> 2026-10-23 最终架构整治收口：下列条目是本节形成时的历史缺口。P3–P8 的代码与自动化
+> 验收已完成；真实专用 rootless daemon 上的 `backup drill --skip-judge --keep` 已通过
+> 数据恢复和 Core/Gateway 登录、题目读取、摘要业务验收。完整 Judge 业务 verifier 因
+> rootless 宿主到容器 IP 不可路由未宣称通过，浏览器验收因本环境浏览器控制服务模块缺失
+> 未执行；两者均不能被下面的自动化证据替代。
+
 1. `install`/`update --latest` 在**真实 Release** 上的端到端（取决于是否已发布含新资产）；
 2. 编译产物在**仅含 docker/curl/openssl** 的最小环境（本机已证实"不依赖仓库脚本"）；
-3. `backup drill` 在真实 Docker 上的完整演练（本机 Docker 可用，但需拉生产镜像起栈）；
+3. `backup drill` 的完整 Judge 业务链（`--skip-judge` 的真实恢复和业务验收已通过，
+   rootless 宿主到容器 IP 的路由限制阻断了完整 verifier）；
 4. `judge install` 在真实 rootless daemon 上；
 5. 每个 `test-*.sh` 到 TS 测试的**逐条**覆盖映射表（覆盖已承接，映射未做）；
 6. 真实 `pg_dump` 产物被 `pg_restore --list` 解析。

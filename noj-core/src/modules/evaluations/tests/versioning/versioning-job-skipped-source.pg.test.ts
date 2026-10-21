@@ -678,6 +678,12 @@ async function dispatchDuringObjectivePolicyChange(
           eq(problems.id, fixture.problemId),
         ).for("update");
       } else {
+        // 竞赛策略事务同样先持有域宿主，再按题目 → 竞赛顺序取锁；否则
+        // 派发侧的 domain → problem → contest 会与策略侧 problem → contest
+        // → domain 形成真实环。
+        await tx.select({ id: domains.id }).from(domains).where(
+          eq(domains.id, DEFAULT_DOMAIN_ID),
+        ).for("share");
         await tx.select({ id: problems.id }).from(problems).where(
           eq(problems.id, fixture.problemId),
         ).for("share");

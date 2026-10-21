@@ -26,9 +26,9 @@ import {
 import {
   deleteStorageObject,
   uploadStorageObjectWithReservation,
-} from "../../assets/index.ts";
+} from "../../assets/contracts/cross-module/services_registry.ts";
 import type { UserActor } from "../../access/contracts/actor.ts";
-import { getDomainOwnedStorageBytes } from "../../assets/index.ts";
+import { getDomainOwnedStorageBytes } from "../../assets/contracts/cross-module/services_storage-quota.ts";
 import {
   IMAGE_MAGIC_MIME,
   type ImageFile,

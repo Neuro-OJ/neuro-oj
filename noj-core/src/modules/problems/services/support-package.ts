@@ -12,10 +12,10 @@ import {
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   deleteStorageObject,
-  getStorageProvider,
-  parseStorageUrl,
   registerReadyStorageObject,
-} from "../../../domains/system/index.ts";
+} from "../../assets/contracts/cross-module/services_registry.ts";
+import { getStorageProvider } from "../../assets/storage/mod.ts";
+import { parseStorageUrl } from "../../assets/storage/types.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);

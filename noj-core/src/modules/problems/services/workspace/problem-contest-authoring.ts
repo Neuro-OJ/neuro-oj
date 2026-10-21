@@ -3,10 +3,8 @@ import type { AnyColumn, SQL } from "drizzle-orm";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import { unwrapFirstRow } from "../../../../shared/base/sql-rows.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  type loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { type loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { runningWindowCondition } from "../../../access/contest-policy.ts";
 
 /** 列表与详情共用同一赛中维护限制，列表在一条查询中计算，避免逐题身份加载。 */

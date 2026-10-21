@@ -12,7 +12,7 @@ import {
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { deleteProblem } from "../../services/problems/problems-crud.ts";
 
 async function source(objective = false) {

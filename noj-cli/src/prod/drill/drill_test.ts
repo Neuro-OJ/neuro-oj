@@ -17,6 +17,7 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "@std/assert";
 import { fromFileUrl, join } from "@std/path";
 import type {
@@ -27,6 +28,7 @@ import type {
 import { makeTempDir } from "../../testing/helpers.ts";
 import {
   allocateDrillDir,
+  assertDedicatedDockerHost,
   assertSubnetCidr,
   DEFAULT_DRILL_PROJECT_NAME,
   DRILL_NETWORK_NAME,
@@ -36,6 +38,8 @@ import {
   readEnvValues,
   renderDrillOverride,
   resolveReportPath,
+  uniqueDrillProjectName,
+  uniqueDrillSubnet,
   valueOr,
 } from "./plan.ts";
 import {
@@ -56,6 +60,7 @@ import { makeIdempotentGlobals, runDrill, tailLines } from "./drill.ts";
 interface Call {
   cmd: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 const PROD_COMPOSE_FILE = fromFileUrl(
@@ -99,8 +104,8 @@ function makeRunner(
   } = {},
 ): CommandRunner {
   return {
-    run(cmd, args) {
-      calls.push({ cmd, args: [...args] });
+    run(cmd, args, options) {
+      calls.push({ cmd, args: [...args], env: options?.env });
       if (opts.throwOn?.(cmd, args)) {
         return Promise.reject(new Deno.errors.NotFound(`spawn ${cmd} failed`));
       }
@@ -385,6 +390,8 @@ async function baseOptions(
     ops: makeUnpackOps(),
     passphraseFile: await makePassphrase(root),
     projectName: "noj-drill",
+    dockerHost: "unix:///tmp/noj-restore-drill-test/docker.sock",
+    subnet: "172.29.0.0/16",
     drillDir: join(root, "drill-run"),
     report: join(root, "report.txt"),
     metricsDir: join(root, "metrics"),
@@ -533,6 +540,26 @@ Deno.test("T19 项目名/子网：复用既有校验（含 prod 拒绝与主机�
   assertEquals(DEFAULT_DRILL_PROJECT_NAME, "noj-drill");
 });
 
+Deno.test("P8 隔离 daemon：只接受专用 socket，默认项目/子网每次可唯一生成", () => {
+  assertDedicatedDockerHost(
+    "unix:///run/noj-restore-drill/20261022-120000/docker.sock",
+  );
+  assertThrows(
+    () => assertDedicatedDockerHost("unix:///var/run/docker.sock"),
+    Error,
+  );
+  assertThrows(
+    () => assertDedicatedDockerHost("tcp://127.0.0.1:2375"),
+    Error,
+  );
+  assertEquals(
+    uniqueDrillProjectName(new Date("2026-10-22T12:34:56Z"), "deadbeef"),
+    "noj-drill-20261022123456-deadbeef",
+  );
+  assertEquals(uniqueDrillSubnet(0), "172.29.1.0/24");
+  assertEquals(uniqueDrillSubnet(253), "172.29.254.0/24");
+});
+
 // ---------------- 退出码语义 ----------------
 
 Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", async () => {
@@ -637,6 +664,7 @@ Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报
       }),
       ops: makeUnpackOps(),
       passphraseFile: await makePassphrase(root),
+      dockerHost: "unix:///tmp/noj-restore-drill-test/docker.sock",
       drillDir: join(root, "drill-run"),
       report: join(root, "report.txt"),
       now: () => new Date("2026-09-19T12:00:00Z"),
@@ -1241,8 +1269,8 @@ Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋�
       // 我第一版就是这样写的：`includes("minio-init")` 命中了 `mc mirror`，
       // 于是演练在更早处失败、本用例**恒真**——移除修复也照样通过。
       failOn: (args) =>
-        args.includes("up") && args.includes("minio-init") &&
-        args.includes("--wait") && !args.includes("-c"),
+        args.includes("wait") && args.includes("minio-init") &&
+        !args.includes("-c"),
     });
     const result = await runDrill(await baseOptions(root, runner));
     assertEquals(result.exitCode, 1, "minio-init 失败应使演练失败");
@@ -1263,7 +1291,7 @@ Deno.test("P2b: gateway-migrate 失败必须阻止业务服务启动并点名根
     const runner: CommandRunner = {
       run(cmd, args) {
         if (
-          args.includes("up") && args.includes("--wait") &&
+          args.includes("wait") &&
           args.includes("gateway-migrate")
         ) {
           return Promise.resolve({
@@ -1298,7 +1326,7 @@ Deno.test("P2b: Core migrate/init 失败必须阻止 Gateway 与业务服务启�
     const runner: CommandRunner = {
       run(cmd, args) {
         if (
-          args.includes("up") && args.includes("--wait") &&
+          args.includes("wait") &&
           args.includes("migrate") && !args.includes("gateway-migrate")
         ) {
           return Promise.resolve({
@@ -1340,7 +1368,7 @@ Deno.test("P2b: 演练按 Core → Gateway → Core HTTP 顺序执行且不重�
       .filter((call) => call.args.includes("compose"))
       .map((call) => call.args);
     const migrationUp = composeCommands.filter((args) =>
-      args.includes("up") && args.includes("--wait") &&
+      args.includes("wait") &&
       (args.includes("migrate") || args.includes("gateway-migrate"))
     );
     const coreUp = composeCommands.findIndex((args) =>

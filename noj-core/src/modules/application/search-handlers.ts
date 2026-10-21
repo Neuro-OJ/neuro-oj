@@ -11,7 +11,7 @@
  */
 import { getLogger } from "@logtape/logtape";
 import type { ClaimedTask } from "../runtime/tasks/contracts.ts";
-import { processSearchIndexEvent } from "../../domains/search/services/index-writer.ts";
+import { processSearchIndexEvent } from "../read-models/search/services/index-writer.ts";
 import type { SearchEntityType } from "../../shared/search-events.ts";
 
 const logger = getLogger(["noj", "application", "search-tasks"]);

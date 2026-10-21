@@ -6,12 +6,12 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
-import { getDefaultLlmLimits } from "../../../../domains/gateway/index.ts";
+import { getDefaultLlmLimits } from "../../../platform/gateway/index.ts";
 
 const ts = Date.now();
 const OWNER_ID = `bundle-owner-${ts}`;
@@ -137,7 +137,7 @@ async function ensureUser(id: string): Promise<void> {
   // issue #207：普通用户 = 真实注册用户（user 角色默认拥有敏感字段权限）。
   // resetDbForTest 会 TRUNCATE roles，需先幂等重建系统角色再分配。
   const { ensureRbacSeeds } = await import(
-    "../../../../domains/system/index.ts"
+    "../../../platform/system/index.ts"
   );
   await ensureRbacSeeds();
   const { roles, userRoles } = await import("../../../../shared/db/schema.ts");
@@ -1174,5 +1174,5 @@ import {
   listDraftObjects,
 } from "../../services/versioning/draft.ts";
 import { publishImportedProblem } from "../../services/problems/problem-bundle.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import { decodeJwt } from "jose";

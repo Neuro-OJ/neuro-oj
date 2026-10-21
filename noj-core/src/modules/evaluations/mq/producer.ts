@@ -156,9 +156,15 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
         )
         : 0,
     };
-    if (task.submission_id.startsWith("st_")) {
+    if (task.task_kind === "self_test") {
+      if (!task.self_test_run_id) {
+        throw new JudgeQueueError(
+          "permanent",
+          "协议 v3 自测任务缺少 self_test_run_id",
+        );
+      }
       await db.update(selfTests).set({
-        judge_run_id: task.run_id,
+        judge_run_id: task.self_test_run_id,
         judge_progress: initial,
       }).where(
         and(

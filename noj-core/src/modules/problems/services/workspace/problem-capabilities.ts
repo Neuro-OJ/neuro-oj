@@ -2,8 +2,8 @@ import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
-import { listLlmModelAliasCapabilities } from "../../../../domains/gateway/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { listLlmGatewayModelCapabilities } from "../../../platform/contracts/cross-module/gateway_services_llm.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 import { resolveProblemUiHtml } from "../support-package.ts";
 import type { ProblemContentV1 } from "../../types/problem-content.ts";
@@ -15,7 +15,7 @@ export async function readDomainModelCapabilities(
 ) {
   const workspace = await loadWorkspace(slug, actorId);
   assertWorkspacePermission(workspace.context, "problem:create");
-  return await listLlmModelAliasCapabilities(workspace.domain.id);
+  return await listLlmGatewayModelCapabilities(workspace.domain.id);
 }
 
 /** 界面文件和题面使用同一授权绑定与作答版本，源共享撤销即时生效。 */

@@ -46,6 +46,12 @@ export const RELEASE_FILES: readonly ReleaseFile[] = [
   { asset: "env.prod.example", target: ".env.prod.example" },
 ];
 
+/** 发布集合同的 Release 侧资产与安装目录目标名（均不以点号开头）。 */
+export const RELEASE_SET_FILE: ReleaseFile = {
+  asset: "release-set.json",
+  target: "release-set.json",
+};
+
 /** 资产下载器：返回对应 URL 的响应；默认注入全局 fetch。 */
 export type Fetcher = (url: string) => Promise<Response>;
 
@@ -288,6 +294,67 @@ export async function downloadReleaseFiles(
     for (const { bak } of backups) {
       if (keepBackups.has(bak)) continue;
       await Deno.remove(bak).catch(() => {});
+    }
+  }
+}
+
+/**
+ * 下载并校验单一发布集资产。
+ *
+ * 发布集不与 compose/example 混在同一批旧资产事务里，避免改变首装既有的
+ * 两文件兼容契约；升级时由 `runUpdateSync` 在同一目标 ref 下额外拉取它。
+ */
+export async function downloadReleaseSet(
+  opts: DownloadReleaseFilesOptions,
+): Promise<string> {
+  const repository = validateRepository(opts.repository);
+  validateRef(opts.ref);
+  const targetDir = validateTargetDir(opts.targetDir);
+  const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
+  const target = join(targetDir, RELEASE_SET_FILE.target);
+  if (!opts.overwrite && await fileExists(target)) {
+    throw new Error(
+      `${RELEASE_SET_FILE.target} 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
+    );
+  }
+  await Deno.mkdir(targetDir, { recursive: true });
+  const tmp = join(targetDir, `.release-set-${crypto.randomUUID()}.tmp`);
+  const backup = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
+  let backedUp = false;
+  let keepBackup = false;
+  try {
+    const bytes = await downloadVerified({
+      repository,
+      ref: opts.ref,
+      asset: RELEASE_SET_FILE.asset,
+      fetcher,
+    });
+    await Deno.writeFile(tmp, bytes);
+    if (opts.overwrite && await fileExists(target)) {
+      await Deno.rename(target, backup);
+      backedUp = true;
+    }
+    await Deno.rename(tmp, target);
+    if (backedUp) await Deno.remove(backup);
+    return target;
+  } catch (error) {
+    await Deno.remove(tmp).catch(() => {});
+    if (backedUp) {
+      await Deno.remove(target).catch(() => {});
+      await Deno.rename(backup, target).catch((restoreError) => {
+        keepBackup = true;
+        throw new Error(
+          `发布集写入失败且无法还原旧文件：${target}（${
+            (restoreError as Error).message
+          }）`,
+          { cause: error },
+        );
+      });
+    }
+    throw error;
+  } finally {
+    if (!keepBackup && await fileExists(backup)) {
+      await Deno.remove(backup).catch(() => {});
     }
   }
 }

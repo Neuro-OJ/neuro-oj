@@ -30,12 +30,12 @@ import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
-import { loadWorkspace } from "../../../../domains/workspace/index.ts";
+import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   problemAuthoringRestrictedByContest,
   problemAuthoringRestrictionSql,
 } from "../workspace/problem-contest-authoring.ts";
-import { submissionQueryVisibility } from "../../../access/index.ts";
+import { submissionQueryVisibility } from "../../../access/submission-policy.ts";
 import {
   domains,
   problems,

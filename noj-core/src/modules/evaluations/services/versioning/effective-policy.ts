@@ -27,13 +27,15 @@ import {
   problems,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import { logAudit } from "../../../../domains/system/index.ts";
+import { logAudit } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
   assertWorkspacePermission,
+  loadWorkspace,
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../../shared/workspace/types.ts";
 import { setProblemEffectivePolicyTx } from "../../../problems/contracts/policy-write.ts";
 // `contest_problems` 归 contests 所有：评测只经其窄事务合同读写策略行。
 import {

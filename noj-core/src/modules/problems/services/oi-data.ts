@@ -11,7 +11,7 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { problems } from "../../../shared/db/schema.ts";
 import { assertProblemEditPermissionForActor } from "./problems/problems-crud.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { getUserPermissions } from "../../../domains/identity/index.ts";
+import { getUserPermissions } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { resolveProblem } from "./problem-resolve.ts";
 import type { UserActor } from "../../access/contracts/actor.ts";
 

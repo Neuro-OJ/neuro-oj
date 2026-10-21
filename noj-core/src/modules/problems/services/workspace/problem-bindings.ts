@@ -11,13 +11,11 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
-import {
-  assertWorkspacePermission as assertAccessWorkspacePermission,
-  loadWorkspaceTx,
-  setDomainResourceCounterTx,
-  userActorFromAuthenticatedId,
-  workspaceAuditTx,
-} from "../../../../modules/access/index.ts";
+import { assertWorkspacePermission as assertAccessWorkspacePermission } from "../../../access/policy.ts";
+import { loadWorkspaceTx } from "../../../access/policy.ts";
+import { setDomainResourceCounterTx } from "../../../access/resource-counters.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { workspaceAuditTx } from "../../../access/audit.ts";
 import { recordProblemChangeTx } from "../../../education/contracts/events.ts";
 import { recordProblemEducationChange } from "./education-events.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
@@ -31,9 +29,9 @@ import {
 import type { EffectiveVersionPolicy } from "../../../../shared/versioning/types.ts";
 import {
   assertWorkspacePermission as assertLegacyWorkspacePermission,
-  getDomainEffectiveLimits,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { getDomainEffectiveLimits } from "../../../access/contracts/cross-module/workspace_services_limits.ts";
 import {
   assertCurrentProblemShare,
   legacyWorkspaceFromAccess,

@@ -1,6 +1,6 @@
 import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   deleteSubmissionCommand,
@@ -16,7 +16,7 @@ import {
   getQueueHealth,
   removePendingSubmission,
 } from "../../../modules/evaluations/services/queue.ts";
-import { resolveProblem } from "../../../modules/problems/index.ts";
+import { resolveProblem } from "../../../modules/problems/services/problem-resolve.ts";
 import { SUBMISSION_STATUSES } from "../../../modules/evaluations/types/index.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 

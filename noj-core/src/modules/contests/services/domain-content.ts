@@ -8,15 +8,13 @@ import {
 } from "../../../shared/db/schema.ts";
 import { ForbiddenError, NotFoundError } from "../../../shared/base/errors.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import {
-  domainProblemReference,
-  type ProblemContentV1,
-} from "../../problems/contracts/read.ts";
-import { serializeQuestion } from "../../problems/contracts/read.ts";
+import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
+import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
+import { serializeQuestion } from "../../problems/contracts/cross-module/services_objective_objective-questions.ts";
 import {
   resolveProblemTemplate,
   resolveProblemUiHtml,
-} from "../../problems/contracts/templates.ts";
+} from "../../problems/contracts/cross-module/services_support-package.ts";
 import { getDomainContestProblems } from "./domain-results.ts";
 import { loadDomainContest } from "./domain-access.ts";
 import { computeContestStatus } from "./contests.ts";

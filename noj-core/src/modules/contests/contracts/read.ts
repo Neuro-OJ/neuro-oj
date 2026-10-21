@@ -19,8 +19,8 @@ import {
   resolveContestId,
   runningWindowCondition,
   unendedPublicContestForProblem,
-  verifyContestAccess as verifyContestAccessWithActor,
 } from "../../access/contest-policy.ts";
+import { verifyContestAccess as verifyContestAccessWithActor } from "../../access/contest-policy.ts";
 export {
   filterProblemsInRunningContest,
   getContestPolicySnapshot,

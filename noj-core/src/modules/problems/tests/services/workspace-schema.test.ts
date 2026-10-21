@@ -16,7 +16,7 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
   presetConfiguration,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 
 /** 每个违规写入使用独立事务，避免事务中止制造假阳性。 */
 async function constraintRejected(

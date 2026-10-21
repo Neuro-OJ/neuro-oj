@@ -14,8 +14,8 @@ import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "../problems/problem-field-guard.ts";
-import { assertLlmLimitsWithinDefault } from "../../../../domains/gateway/index.ts";
-import { validateJudgeImageWithKind } from "../../../../domains/system/index.ts";
+import { assertLlmLimitsWithinDefault } from "../../../platform/contracts/cross-module/gateway_services_llm-limits.ts";
+import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
 
 /** 草稿可不完整，但显式修改敏感字段始终受权限和平台上限约束。 */
 export async function assertDraftContentSecurity(

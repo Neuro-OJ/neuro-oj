@@ -42,7 +42,7 @@ Deno.test({
     await resetDbForTest();
     // 经 settings 服务写入（会刷新缓存）；直接插表不会命中 getSetting 的缓存。
     const { updateSetting } = await import(
-      "../../../../domains/system/services/system-settings.ts"
+      "../../system/services/system-settings.ts"
     );
     await updateSetting("legal_contact", "ops@example.test", "0");
     await updateSetting("legal_operator_name", "示例社团", "0");
@@ -97,7 +97,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const { updateSetting } = await import(
-      "../../../../domains/system/services/system-settings.ts"
+      "../../system/services/system-settings.ts"
     );
     await updateSetting("legal_icp_number", "京ICP备00000000号", "0");
     await updateSetting("legal_icp_url", "https://beian.miit.gov.cn/", "0");

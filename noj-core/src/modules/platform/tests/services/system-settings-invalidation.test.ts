@@ -26,7 +26,7 @@ import {
   refreshSettingsCache,
   registerSettingsInvalidationListener,
   updateSetting,
-} from "../../../../domains/system/services/system-settings.ts";
+} from "../../system/services/system-settings.ts";
 
 const RUNTIME_KEY = "legal_contact";
 const ACTOR_ID = "0";

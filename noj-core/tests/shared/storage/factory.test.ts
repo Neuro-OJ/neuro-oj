@@ -7,8 +7,8 @@ import {
   getStorageProviderKind,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../src/domains/system/services/storage/factory.ts";
-import type { StorageProvider } from "../../../src/domains/system/services/storage/types.ts";
+} from "../../../src/modules/platform/system/services/storage/factory.ts";
+import type { StorageProvider } from "../../../src/modules/platform/system/services/storage/types.ts";
 
 class FakeProvider implements StorageProvider {
   put(_key: string, data: Uint8Array): Promise<string> {

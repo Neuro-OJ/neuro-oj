@@ -37,11 +37,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
-// 经 search 域公开门面引用：跨业务模块只允许走门面（tracking #23 的事务内索引）。
-import {
-  buildProblemEntry,
-  upsertSearchEntry,
-} from "../../../../domains/search/index.ts";
+import { enqueueSearchIndexTaskTx } from "../../../application/search-tasks.ts";
 import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
   assertContentKindTransition,
@@ -55,9 +51,11 @@ import {
 import {
   assertStorageObjectBindable,
   getStorageObject,
+} from "../../../assets/contracts/cross-module/services_registry.ts";
+import {
   getStorageProvider,
   parseStorageUrl,
-} from "../../../../domains/system/index.ts";
+} from "../../../assets/storage/mod.ts";
 import {
   draftBaselineConflict,
   type DraftObjectRef,
@@ -638,8 +636,7 @@ export async function publishProblemVersion(
       input.actor.kind === "user" ? input.actor.userId : null,
       now,
     );
-    const searchEntry = await buildProblemEntry(problemId, tx);
-    if (searchEntry) await upsertSearchEntry(searchEntry, tx);
+    await enqueueSearchIndexTaskTx(tx, "problem", problemId, "upsert");
 
     return {
       problem_id: problemId,

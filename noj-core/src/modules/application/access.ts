@@ -23,6 +23,7 @@ import {
   consumeDomainInvitationTx,
   createDomainInvitationTx,
   type DomainInvitationInput,
+  previewDomainInvitation,
   revokeDomainInvitationTx,
 } from "../access/invitations.ts";
 import type { InvitationRegistrationBoundary } from "../access/registration.ts";
@@ -34,7 +35,7 @@ import {
   setMemberRolesTx,
   transferDomainTx,
 } from "../access/members.ts";
-import type { DomainPreset, DomainRole } from "../access/types.ts";
+import type { DomainPreset, DomainRole } from "../../shared/workspace/types.ts";
 import {
   accessClassroomInvitationBoundary,
   accessDomainChangeBoundary,
@@ -232,6 +233,11 @@ export function createClassroomInvitationCommand(
     classroomId,
     meta,
   });
+}
+
+/** 邀请预览也必须经 application 绑定班级签发者授权，避免公开入口绕过教学状态。 */
+export function previewDomainInvitationCommand(token: string) {
+  return previewDomainInvitation(token, accessClassroomInvitationBoundary());
 }
 
 export function consumeDomainInvitationCommand(

@@ -24,7 +24,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { enterTestContext } from "../../../../domains/system/index.ts";
+import { enterTestContext } from "../../../platform/system/index.ts";
 import {
   bindPublishedProblemForTest,
   publishBaselineVersionForTest,

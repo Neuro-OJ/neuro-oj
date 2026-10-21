@@ -1,15 +1,13 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import {
   enforceSelfTestRateLimit,
   enforceSubmissionRateLimit,
-} from "../../../domains/system/index.ts";
+} from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import {
-  composeDomainEvaluationAdmissionContext,
+  composeDomainEvaluationAdmissionPlan,
   submitDomainArtifactCommand,
   submitDomainCodeCommand,
   submitDomainSelfTestCommand,
@@ -112,7 +110,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
     const parsed = await parseArtifactMultipart(c, "problem_ref", label);
     await enforceSubmissionRateLimit(c, c.var.userId);
     const assignment = parseAssignmentOrigin(c.req.query());
-    const context = await composeDomainEvaluationAdmissionContext(
+    const plan = await composeDomainEvaluationAdmissionPlan(
       c.var.actor,
       {
         slug: c.req.param("slug")!,
@@ -122,7 +120,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
         assignment,
       },
     );
-    const result = await submitDomainArtifactCommand(c.var.actor, context, {
+    const result = await submitDomainArtifactCommand(c.var.actor, plan, {
       slug: c.req.param("slug")!,
       reference: parsed.problem_id,
       submission: {
@@ -162,7 +160,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
   const versionId = typeof body.version_id === "string"
     ? body.version_id
     : undefined;
-  const context = await composeDomainEvaluationAdmissionContext(
+  const plan = await composeDomainEvaluationAdmissionPlan(
     c.var.actor,
     {
       slug: c.req.param("slug")!,
@@ -172,7 +170,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
       assignment,
     },
   );
-  const result = await submitDomainCodeCommand(c.var.actor, context, {
+  const result = await submitDomainCodeCommand(c.var.actor, plan, {
     slug: c.req.param("slug")!,
     reference: problemRef,
     submission: {
@@ -243,7 +241,7 @@ domainSubmissionsRouter.post(
     const versionId = typeof body.version_id === "string"
       ? body.version_id
       : undefined;
-    const context = await composeDomainEvaluationAdmissionContext(
+    const plan = await composeDomainEvaluationAdmissionPlan(
       c.var.actor,
       {
         slug: c.req.param("slug")!,
@@ -252,7 +250,7 @@ domainSubmissionsRouter.post(
         assignment,
       },
     );
-    const result = await submitDomainSelfTestCommand(c.var.actor, context, {
+    const result = await submitDomainSelfTestCommand(c.var.actor, plan, {
       slug: c.req.param("slug")!,
       reference: c.req.param("reference")!,
       selfTest: {

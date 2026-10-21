@@ -7,7 +7,7 @@ import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   compensateUploadedObject,
   uploadStorageObjectWithReservation,
-} from "../../../../domains/system/index.ts";
+} from "../../../assets/contracts/cross-module/services_registry.ts";
 import { judgeOptions } from "../objective/objective-questions.ts";
 import {
   parseBundleZip,

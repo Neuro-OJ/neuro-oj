@@ -10,6 +10,8 @@
 # 安装器（scripts/deploy/install.sh）同时只选择非 draft、非 prerelease 且
 # 已包含 CLI 资产的 Release，双重避免"版本可见但资产未就绪"。
 # 每次 Release 构建并推送 7 个镜像，平台为 linux/amd64（公测阶段只支持 amd64）。
+# 转正前由 verify-release 的同一组 digest 元数据生成 release-set.json，避免
+# CLI、镜像、迁移与协议版本在发布后各自漂移。
 # =============================================================================
 
 name: Release Images
@@ -467,6 +469,31 @@ jobs:
     steps:
       - name: 检出仓库以解析 Release
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: 下载已验证的七个镜像 digest 元数据
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-metadata-*
+          path: release-metadata
+          merge-multiple: true
+      - name: 生成并校验不可变发布集
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        working-directory: noj-cli
+        run: |
+          set -Eeuo pipefail
+          deno run -A ../scripts/release/generate-release-set.ts ../release-metadata "$VERSION" ../noj-core/drizzle ../noj-llm-gateway/drizzle ../release-set.json
+          sha256sum ../release-set.json > ../release-set.json.sha256
+          test "$(awk '{print $1}' ../release-set.json.sha256)" = "$(sha256sum ../release-set.json | awk '{print $1}')"
+      - name: 上传不可变发布集资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          gh release upload "$VERSION" release-set.json release-set.json.sha256 --clobber
       - name: 将预发布转正为正式 Release
         env:
           GH_TOKEN: ${{ github.token }}

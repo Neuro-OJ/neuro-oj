@@ -14,7 +14,7 @@ import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   createDomainProblem,
   createProblem,
@@ -36,7 +36,7 @@ async function fixture() {
   });
   await ensureDefaultWorkspace();
   // 平台创建政策由现有测试 helper 配置；域内部授权不依赖平台管理员角色。
-  const { updateSetting } = await import("../../../../domains/system/index.ts");
+  const { updateSetting } = await import("../../../platform/system/index.ts");
   await updateSetting("domain_creation_policy", "open", "0");
   const a = await createDomain({
     slug: "number-school-a",

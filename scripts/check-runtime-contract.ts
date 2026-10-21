@@ -7,7 +7,7 @@
  */
 
 import { resolve } from "node:path";
-import { RUNTIME_DESCRIPTORS } from "../noj-core/src/domains/observability/services/runtime-contract.ts";
+import { RUNTIME_DESCRIPTORS } from "../noj-core/src/modules/platform/observability/services/runtime-contract.ts";
 
 export async function checkRuntimeContract(root = "."): Promise<string[]> {
   const errors: string[] = [];
@@ -26,7 +26,10 @@ export async function checkRuntimeContract(root = "."): Promise<string[]> {
     resolve(root, "noj-llm-gateway/src/metrics.ts"),
   ).catch(() => "");
   const corePlatform = await Deno.readTextFile(
-    resolve(root, "noj-core/src/domains/observability/metrics/platform.ts"),
+    resolve(
+      root,
+      "noj-core/src/modules/platform/observability/metrics/platform.ts",
+    ),
   ).catch(() => "");
 
   for (const descriptor of RUNTIME_DESCRIPTORS) {

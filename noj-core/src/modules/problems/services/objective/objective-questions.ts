@@ -31,13 +31,11 @@ import { resolveProblemAnswerVersion } from "../versioning/publish.ts";
 import {
   guestActor,
   userActorFromAuthenticatedId,
-} from "../../../access/index.ts";
+} from "../../../access/contracts/actor.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import type { ObjectiveQuestionSnapshot } from "../../types/problem-content.ts";
-import {
-  resolveContestId,
-  verifyContestAccess,
-} from "../../../access/contest-policy.ts";
+import { resolveContestId } from "../../../contests/contracts/read.ts";
+import { verifyContestAccess } from "../../../access/contest-policy.ts";
 import {
   JUDGE_OPTIONS,
   type ObjectiveOption,

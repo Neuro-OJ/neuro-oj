@@ -25,7 +25,7 @@ import {
   maskSecret,
   resetSetting,
   updateSetting,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,

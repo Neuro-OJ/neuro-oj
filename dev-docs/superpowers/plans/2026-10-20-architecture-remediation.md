@@ -375,22 +375,20 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
         PostgreSQL/Redis 验收）
   - [x] P2b 显式启动/迁移边界与隔离 PostgreSQL 测试底座（`xmvtvlzt`， 2026-10-21
         完成真实进程、正式完整回归、结构门禁与资源清理验收）
-- [ ] P3 业务所有权（独立 jj 工作区 `architecture-p3` / `wlusvxwn`，尚未验收）
-  - [ ] access：Actor / DbRoot / DbTx、账户与成员/邀请、显式审计、必要跨模块编排
-  - [ ] problems / contests：用例迁移、统一只读政策与版本快照、删除用户 root
-        回退
-  - [ ] evaluations：受理、尝试/结果、有效成绩、重测与客观题判分的事务边界
-  - [ ] 其余目标模块、HTTP 与 Runtime：职责迁移、窄公共门面与完整生产调用方切换
-  - [ ] 结构门禁与工程元数据：真实运行时依赖图无环、测试/CI
-        统一发现、故意破坏负例
-  - [ ] 真实 PostgreSQL 权限/撤销/锁序/回滚/并发验收及正式完整回归
-- [ ] P4 可靠执行（`background_tasks` 原语、派发/搜索事务内登记、教学 outbox 迁移合同
-      已实现；教学 worker 未切换、指标与 runbook 未写，未验收）
-- [ ] P5 Gateway 收敛（本地政策权威、快照迁移、预占边界读政策已实现且网关完整套件
-      通过；并发屏障、流式记账恢复、ready 与 drain 验收未完成）
-- [ ] P6 Judge 整理
-- [ ] P7 读取与前端
-- [ ] P8 协调发布与删除旧路
+- [x] P3 业务所有权（独立 jj 工作区 `architecture-p3`，2026-10-23 验收）
+  - [x] access：Actor / DbRoot / DbTx、账户与成员/邀请、显式审计、必要跨模块编排
+  - [x] problems / contests：用例迁移、统一只读政策与版本快照、删除用户 root 回退
+  - [x] evaluations：受理、尝试/结果、有效成绩、重测与客观题判分的事务边界
+  - [x] 其余目标模块、HTTP 与 Runtime：职责迁移、窄公共门面与完整生产调用方切换
+  - [x] 结构门禁与工程元数据：真实运行时依赖图无环、测试/CI 统一发现、故意破坏负例
+  - [x] 真实 PostgreSQL 权限/撤销/锁序/回滚/并发验收及正式完整回归
+- [x] P4 可靠执行（`background_tasks` 原语、派发/搜索事务内登记、教学 outbox 迁移、
+      通用 worker 切换、任务/投影指标与 runbook 已完成并经真实 PG 故障/排空验收）
+- [x] P5 Gateway 收敛（本地政策权威、快照迁移、预占边界 advisory 锁、并发屏障、
+      流式 unknown、ready 故障与 drain 验收完成；Gateway 182 passed / 0 failed / 1 ignored）
+- [x] P6 Judge 整理（协议 v3、Worker/Run 上下文、租约/取消/fallback 验收）
+- [x] P7 读取与前端（批量摘要、页面 BFF、会话/刷新收敛、IDE 显式域提交；自动化验收通过）
+- [x] P8 协调发布与删除旧路（发布集、升级 checkpoint、410 退役、隔离恢复演练）
 
 ### 验证记录
 
@@ -581,3 +579,41 @@ P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定
     若要「整个预占边界内政策冻结」，需增加 advisory 锁（待评估，不作为已完成）；
 - P6/P7/P8 未开始；
 - 生产环境未做任何操作；所有测试只用自建 `noj-arch-p3test-*` 隔离容器与临时库。
+
+### P3/P4/P5 收尾验证（2026-10-21）
+
+- P3 结构收口：`check-module-boundaries.ts --strict` 通过（runtime/type SCC 均为 0、
+  动态导入解析 0、表 owner 缺口 0），HTTP/runtime 组合根已接线，Core `deno task check`
+  通过；P3 全量行为回归待本轮最终统一入口完成后再勾选。
+- P4：`deno task test:domain runtime` 23 passed / 0 failed；`application` 13 passed /
+  0 failed；`education` 143 passed / 0 failed / 1 ignored；新增真实子进程在完成标记前
+  退出后的租约回收、分页重新调度和 worker drain 用例均通过。平台 snapshot gauge、
+  `deploy/monitoring/runbooks/background-tasks.md`、三条告警及四项相关门禁均通过。
+- P5：Gateway `deno task check` 通过；在隔离 PostgreSQL/Redis 启动器中
+  `deno task test` 182 passed / 0 failed / 1 ignored。P5.3 advisory 锁屏障、降额后新
+  预占、冻结账本结算、流式 unknown、ready 的 PG/Redis 故障、记账 drain 均有显式通过证据。
+
+### P3–P8 最终验收收口（2026-10-23；2026-10-24 复验）
+
+- P3：Core `deno task test` 在隔离 PostgreSQL/Redis/临时存储中通过，`2509 passed / 0
+  failed / 11 ignored`；其中此前 admin upgrade-job 夹具的域内题号冲突已改为测试库内
+  单调唯一题号。`deno task check`、严格模块边界扫描及真实 PostgreSQL 并发/回滚用例通过。
+- P6：`cargo fmt --check`、`cargo check --all-targets` 与 `cargo test --all-targets` 通过；
+  评测协议 v3、运行身份、租约丢失、取消、容器清理和 fallback 路径均有测试覆盖。
+- P7：UI `deno task test` 为 `304 passed / 0 failed / 0 ignored`，UI 检查通过；Core 批量
+  摘要、页面持有首屏数据、细粒度刷新、无全局 BFF 扇出及 IDE 显式域提交已切换。
+  本环境的浏览器控制运行时缺少对应服务模块，未将 SSR/水合/SPA/1440/768/390px/键盘
+  观察冒充为浏览器通过；该证据边界记录在最终 Agent Note。
+- P8：CLI `deno task test` 为 `824 passed / 0 failed / 4 ignored`；发布集生成
+  2/2、供应链检查、旧接口 410、升级 checkpoint/recovery 及隔离参数门禁通过。临时专用
+  rootless Docker daemon 上真实 `backup drill --skip-judge --keep` 完成 PostgreSQL、
+  Redis、MinIO 恢复、迁移/数据核对、Core/Gateway 初始化及登录/题目读取/摘要业务验收；
+  完整 Judge 业务链因 rootless 宿主到容器 IP 不可路由，未宣称通过。
+- 总门禁：`check-module-boundaries.ts --strict` 报告 691 个生产文件、runtime/type SCC
+  均为 0、动态导入未解析数 0、110 张表且 owner 缺口 0；Agent Note 格式、Markdown 链接、
+  migration safety、runtime contract 和 release supply-chain 门禁均通过。所有验证均未
+   操作生产环境或默认 Docker/数据库/Redis/MinIO 资源。
+- 2026-10-24 对 Core 全量套件做了独立复验：在精确隔离 PostgreSQL/Redis 容器和临时
+  存储中，`deno task test` 仍为 `2509 passed / 0 failed / 11 ignored`（20m29s）；
+  复验只重启本轮指定的隔离容器，未操作默认或生产资源。原始日志保留在本机
+  `/tmp/noj-core-final-current-20261024.log`，不纳入版本库。

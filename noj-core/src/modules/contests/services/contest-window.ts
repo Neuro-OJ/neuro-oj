@@ -28,6 +28,18 @@
  * 3. **DB 形态约束**：迁移 `0083` 规范化存量行并加 `NOT VALID` 形态 CHECK。
  */
 import { type AnyColumn, type SQL, sql } from "drizzle-orm";
+import type { ContestStatus } from "../types/contests.ts";
+
+/** 根据开始/结束时间计算竞赛当前状态；它只依赖时间合同，不依赖竞赛写服务。 */
+export function computeContestStatus(
+  startTime: string,
+  endTime: string,
+): ContestStatus {
+  const now = Date.now();
+  if (now < Date.parse(startTime)) return "pending";
+  if (now < Date.parse(endTime)) return "running";
+  return "ended";
+}
 
 /**
  * 规范竞赛时间形态的正则（与 `Date.prototype.toISOString()` 输出一致）。

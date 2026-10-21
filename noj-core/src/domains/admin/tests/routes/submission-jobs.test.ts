@@ -26,6 +26,7 @@ import {
 
 const now = new Date().toISOString();
 const ts = Date.now();
+let nextTestProblemNumber = 2_000_000_000;
 
 await resetDbForTest();
 await initRedisForTest();
@@ -70,7 +71,8 @@ async function seedProblemAndSubmission(tag: string): Promise<{
     title: `任务路由题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 98000 + Math.floor(Math.random() * 900),
+    // 不与同一测试数据库中其他文件的随机夹具争用域内唯一题号。
+    number: nextTestProblemNumber++,
     owner_id: "0",
     judge_type: "dual",
     runtime_config: runtimeConfig,

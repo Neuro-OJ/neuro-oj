@@ -3,15 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problemVersionObjects } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { validateJudgeImageWithKind } from "../../../platform/index.ts";
-import { getStorageProvider } from "../../../assets/storage/factory.ts";
-import {
-  enforceResourceLimits,
-  isOiRuntimeConfig,
-  type LlmConfig,
-  type ProblemContentV1,
-} from "../../../problems/index.ts";
-import { resolveLlmLimits } from "../../../../domains/gateway/index.ts";
+import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
+import { enforceResourceLimits } from "../../../problems/contracts/cross-module/services_problems_problem-field-guard.ts";
+import { isOiRuntimeConfig } from "../../../problems/types/runtime-config.ts";
+import { type LlmConfig } from "../../../problems/types/problems.ts";
+import { type ProblemContentV1 } from "../../../problems/types/problem-content.ts";
+import { resolveLlmLimits } from "../../../platform/contracts/cross-module/gateway_services_llm-limits.ts";
 import type { JudgeTask } from "../../types/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 

@@ -22,7 +22,7 @@ import {
   contests,
   problems,
 } from "../../../shared/db/schema.ts";
-import { logAudit } from "../../../domains/system/index.ts";
+import { logAudit } from "../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { getFormatRanking } from "./format-ranking.ts";
 
 export async function publishContestRankingSnapshot(

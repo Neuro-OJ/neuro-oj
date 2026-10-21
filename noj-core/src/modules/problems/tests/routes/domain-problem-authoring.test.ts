@@ -16,17 +16,17 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-import { verifyToken } from "../../../../domains/identity/index.ts";
+import { verifyToken } from "../../../access/identity/index.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   resetStorageProvider,
   setStorageProviderForTest,
   updateSetting,
-} from "../../../../domains/system/index.ts";
-import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
+} from "../../../platform/system/index.ts";
+import { LocalStorageProvider } from "../../../platform/system/index.ts";
 import { domainProblemsRouter } from "../../routes/domain-problems.ts";
 
 const runtime = {

@@ -41,7 +41,7 @@ import {
   mergeSubmissionProjection,
   selectEffectiveResults,
 } from "../../../../shared/versioning/effective-results.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 /** 投影来源：两类正式提交之一。 */
 export type ProjectionSourceKind = "submission" | "objective";

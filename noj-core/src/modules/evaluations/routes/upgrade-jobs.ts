@@ -13,17 +13,15 @@
  */
 
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-  checkPermission,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
+import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   getUpgradeJobForActor,
   type UpgradeRequest,
 } from "../services/versioning/upgrade-jobs.ts";
-import { enforceUpgradeJobRateLimit } from "../../../domains/system/index.ts";
+import { enforceUpgradeJobRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { acceptUpgradeJobCommand } from "../../application/evaluations.ts";
 
 const router = new Hono<AuthEnv>();

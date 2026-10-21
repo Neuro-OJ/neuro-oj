@@ -185,18 +185,13 @@ Deno.test("test-launcher: mode/domain/shard 参数发现明确", () => {
   );
 });
 
-Deno.test("test-launcher: target 与 legacy alias 同时发现迁移期两套测试根", () => {
+Deno.test("test-launcher: 目标模块只发现已迁移的测试根", () => {
   const targetRoots = testRootsForTarget("problems");
-  const legacyRoots = testRootsForTarget("catalog");
   assert(
     targetRoots.includes("src/modules/problems/tests") &&
-      targetRoots.includes("src/domains/catalog/tests") &&
-      targetRoots.includes("src/domains/objective/tests"),
-    "目标模块入口必须同时保留 problems 与 catalog/objective 测试根",
-  );
-  assert(
-    legacyRoots.join("\0") === targetRoots.join("\0"),
-    "legacy alias 与目标模块必须解析为同一组迁移期测试根",
+      !targetRoots.some((root) => root.startsWith("src/domains/")) &&
+      !targetRoots.some((root) => root.includes("legacy-")),
+    "目标模块入口不得重新发现已删除的 legacy 测试根",
   );
 });
 

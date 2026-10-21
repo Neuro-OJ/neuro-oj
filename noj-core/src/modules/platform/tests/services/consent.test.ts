@@ -17,7 +17,7 @@ import {
   publishVersion,
   recordConsent,
   recordConsentsForRegistration,
-} from "../../../../domains/legal/index.ts";
+} from "../../legal-legacy/index.ts";
 
 const USER = "legal-test-user";
 const PUBLISHER = "legal-test-publisher";

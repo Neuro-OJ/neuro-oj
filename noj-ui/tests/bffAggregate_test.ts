@@ -2,8 +2,7 @@
 import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@^1';
 import { aggregateView } from '../server/utils/bff-aggregate.ts';
 import { BffError, type CoreReader } from '../server/utils/bff-request.ts';
-import { bffSnapshotMatches, bffViewRoute } from '../utils/bff-view.ts';
-import type { BffSnapshot } from '../utils/bff-view.ts';
+import { bffViewRoute } from '../utils/bff-view.ts';
 
 function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', community = false) {
   const calls: string[] = [];
@@ -38,6 +37,26 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
         data = { data: { enabled: true, follows_enabled: true, moments_enabled: true } };
       }
       return Promise.resolve(data as T);
+    },
+    post<T>(path: string, body: unknown): Promise<T> {
+      calls.push(`POST ${path}`);
+      if (path.endsWith('/problem-summaries')) {
+        const references = (body as { references: string[] }).references;
+        return Promise.resolve({
+          data: {
+            items: references.map((reference) => ({
+              reference,
+              availability: 'available',
+              title: '题名',
+              kind: 'oi',
+              answer_version_id: 'v1',
+              answer_version: 1,
+              progress: null,
+            })),
+          },
+        } as T);
+      }
+      return Promise.resolve({ data: [] } as T);
     },
   };
   return { reader, calls, workspace };
@@ -125,11 +144,6 @@ Deno.test('BFF 精确路由匹配与跨域、账号、查询参数快照隔离',
   assertEquals(bffViewRoute('/d/school/classrooms/c')?.kind, 'classroom');
   assertEquals(bffViewRoute('/d/school/classrooms/c/members'), null);
   assertEquals(bffViewRoute('/d/school/assignments/a')?.endpoint, '/api/bff/v1/domains/school/assignments/a/overview');
-  const snapshot = { path: '/d/school?mode=a', actorId: 'student' } as BffSnapshot;
-  assert(bffSnapshotMatches(snapshot, '/d/school?mode=a#section', 'student'));
-  assert(!bffSnapshotMatches(snapshot, '/d/school?mode=b', 'student'));
-  assert(!bffSnapshotMatches(snapshot, '/d/other?mode=a', 'student'));
-  assert(!bffSnapshotMatches(snapshot, '/d/school?mode=a', 'coach'));
 });
 
 Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来源域读取', async () => {
@@ -157,12 +171,36 @@ Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来�
         } as T,
       );
     }
-    if (path.includes('/problems/')) {
-      calls.push(path);
-      if (path.endsWith('main%3A21')) return Promise.reject(new BffError(503, { error: '暂不可用' }));
-      return Promise.resolve({ content: { title: '题名', kind: 'oi' }, statistics: { progress: 'solved' } } as T);
-    }
     return original(path, options);
+  };
+  reader.post = <T>(path: string, body: unknown): Promise<T> => {
+    calls.push(`POST ${path}`);
+    const references = (body as { references: string[] }).references;
+    return Promise.resolve({
+      data: {
+        items: references.map((reference) =>
+          reference.endsWith('21')
+            ? {
+              reference,
+              availability: 'unavailable',
+              title: null,
+              kind: null,
+              answer_version_id: null,
+              answer_version: null,
+              progress: null,
+            }
+            : {
+              reference,
+              availability: 'available',
+              title: '题名',
+              kind: 'oi',
+              answer_version_id: 'v1',
+              answer_version: 1,
+              progress: null,
+            }
+        ),
+      },
+    } as T);
   };
   const envelope = await aggregateView(reader, {
     kind: 'training',
@@ -171,14 +209,17 @@ Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来�
     authenticated: false,
     page: 2,
   }, () => Promise.resolve({}));
-  const { data } = envelope.sections.training?.data as { data: import('../utils/domain-trainings.ts').TrainingView };
+  const { data } = envelope.sections.training?.data as unknown as {
+    data: import('../utils/domain-trainings.ts').TrainingView;
+  };
   assertEquals(data.total, 100);
   assertEquals(data.items.length, 20);
   assertEquals(data.items[0]!.position, 20);
   assertEquals(data.items[0]!.title, '题名');
   assertEquals(data.items[0]!.progress, null);
   assertEquals(data.items[1]!.summary_error, true);
-  assertEquals(calls.filter((p) => p.includes('/problems/')).length, 19);
+  assertEquals(calls.filter((p) => p.startsWith('POST ') && p.includes('/problem-summaries')).length, 1);
+  assert(!calls.some((p) => p.includes('/problems/')));
   assert(!calls.some((p) => p.startsWith('/api/v1/domains/main')));
   assert(!JSON.stringify(envelope.sections.training).includes('statistics'));
 });

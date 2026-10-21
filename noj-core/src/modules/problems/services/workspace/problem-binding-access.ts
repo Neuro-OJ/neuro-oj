@@ -15,16 +15,14 @@ import {
 import {
   assertWorkspacePermission,
   loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   guestActor,
-  loadWorkspaceTx,
   userActorFromAuthenticatedId,
-} from "../../../../modules/access/index.ts";
-import {
-  loadPublicContestSecrecy,
-  verifyContestAccess,
-} from "../../../access/contest-policy.ts";
+} from "../../../access/contracts/actor.ts";
+import { loadWorkspaceTx } from "../../../access/policy.ts";
+import { loadPublicContestSecrecy } from "../../../contests/contracts/read.ts";
+import { verifyContestAccess } from "../../../access/contest-policy.ts";
 import {
   domainProblemReference,
   parseDomainProblemReference,

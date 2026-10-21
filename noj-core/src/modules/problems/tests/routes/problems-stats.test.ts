@@ -4,8 +4,8 @@ import { createApp } from "../../../../app.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, userRoles, users } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _resetProblemStatsCacheForTest } from "../../services/problems/problems-stats.ts";
 
 // 测试进程通常没有本地 Redis；短路 JWT 撤销检查，避免 authMiddleware 503。

@@ -31,12 +31,13 @@ interface FakeDbHandle {
 
 /** 构造假数据库连接（只实现就绪探针用到的查询能力）。 */
 function createFakeDb(
-  query: () => Promise<unknown> = () => Promise.resolve([{ ok: 1 }]),
+  query: (sql?: string) => Promise<unknown> = (sql) =>
+    Promise.resolve(sql?.includes("FROM llm_policy") ? [] : [{ ok: 1 }]),
 ): FakeDbHandle {
   let queries = 0;
-  const db = (() => {
+  const db = ((strings: TemplateStringsArray) => {
     queries += 1;
-    return query();
+    return query(strings.join("?"));
   }) as unknown as Db;
   return { db, queries: () => queries };
 }
@@ -131,12 +132,13 @@ Deno.test("health/ready: DB 查询、Redis ping 与记账 worker 全正常返回
   assertEquals(body.service, "noj-llm-gateway");
   assertEquals(body.checks, {
     database: "ok",
+    policy: "ok",
     redis: "ok",
     accounting: "ok",
   });
   assertEquals(body.detail, undefined);
-  // 探针必须真实访问 DB 与 Redis，而不是只读常量。
-  assertEquals(db.queries(), 1);
+  // 探针必须真实访问 DB、政策表与 Redis，而不是只读常量。
+  assertEquals(db.queries(), 2);
   assertEquals(redis.pings(), 1);
 });
 
@@ -154,10 +156,11 @@ Deno.test("health/ready: 数据库查询失败返回 503(db) 且不回显敏感�
   assertEquals(body.status, "not_ready");
   assertEquals(body.checks, {
     database: "error",
+    policy: "error",
     redis: "ok",
     accounting: "ok",
   });
-  assertEquals(body.detail, ["database_unavailable"]);
+  assertEquals(body.detail, ["database_unavailable", "policy_unavailable"]);
   assertFalse(raw.includes("ECONNREFUSED"));
   assertFalse(raw.includes("password=secret"));
 });
@@ -173,6 +176,7 @@ Deno.test("health/ready: Redis ping 失败返回 503(redis)", async () => {
   assertEquals(status, 503);
   assertEquals(body.checks, {
     database: "ok",
+    policy: "ok",
     redis: "error",
     accounting: "ok",
   });
@@ -192,6 +196,7 @@ Deno.test("health/ready: 记账 worker 已停止返回 503(accounting)", async (
   assertEquals(status, 503);
   assertEquals(body.checks, {
     database: "ok",
+    policy: "ok",
     redis: "ok",
     accounting: "error",
   });
@@ -272,14 +277,37 @@ Deno.test("health/ready: 多类依赖同时失败时 detail 区分 db/redis/acco
   assertEquals(status, 503);
   assertEquals(body.checks, {
     database: "error",
+    policy: "error",
     redis: "error",
     accounting: "error",
   });
   assertEquals(body.detail, [
     "database_unavailable",
+    "policy_unavailable",
     "redis_unavailable",
     "accounting_worker_stopped",
   ]);
+});
+
+Deno.test("health/ready: 本地持久政策不可读时返回 503(policy)", async () => {
+  const app = buildApp({
+    db: createFakeDb((sql) =>
+      sql?.includes("FROM llm_policy")
+        ? Promise.reject(new Error("policy table unavailable"))
+        : Promise.resolve([{ ok: 1 }])
+    ).db,
+  });
+
+  const { status, body } = await requestReady(app);
+
+  assertEquals(status, 503);
+  assertEquals(body.checks, {
+    database: "ok",
+    policy: "error",
+    redis: "ok",
+    accounting: "ok",
+  });
+  assertEquals(body.detail, ["policy_unavailable"]);
 });
 
 Deno.test("createApp: 缺失必需 DB/Redis/worker 时拒绝组合", () => {
@@ -321,11 +349,13 @@ Deno.test("health/ready: 探针收到未配置 DB/Redis/worker 时标明未配�
   assertEquals(report.ready, false);
   assertEquals(report.checks, {
     database: "error",
+    policy: "error",
     redis: "error",
     accounting: "error",
   });
   assertEquals(report.failures, [
     "database_not_configured",
+    "policy_not_configured",
     "redis_not_configured",
     "accounting_worker_missing",
   ]);

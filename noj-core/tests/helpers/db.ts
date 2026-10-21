@@ -11,15 +11,15 @@ import { getDb } from "../../src/shared/db/connection.ts";
 import { runMigrations } from "../../src/shared/db/migrate.ts";
 import { judgeImages } from "../../src/shared/db/schema.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
-import { ensureRootUser } from "../../src/domains/identity/index.ts";
+import { ensureRootUser } from "../../src/modules/access/identity/index.ts";
 import {
   ensureRbacSeeds,
   seedJudgeImages,
-} from "../../src/domains/system/index.ts";
+} from "../../src/modules/platform/system/index.ts";
 import {
   _resetSystemSettingsForTest,
-} from "../../src/domains/system/services/system-settings.ts";
-import { ensureDefaultWorkspace } from "../../src/domains/workspace/index.ts";
+} from "../../src/modules/platform/system/services/system-settings.ts";
+import { ensureDefaultWorkspace } from "../../src/modules/access/workspace/index.ts";
 
 /** 测试数据库必须由启动器声明的环境标记。 */
 export const TEST_DATABASE_OWNED_ENV = "NOJ_TEST_DATABASE_OWNED";
@@ -229,7 +229,7 @@ export async function resetDbForTest(
   await seedTestDatabase();
   if (options.refreshRankings) {
     const { refreshRankingsView } = await import(
-      "../../src/domains/query/services/rankings.ts"
+      "../../src/modules/read-models/queries/services/rankings.ts"
     );
     await refreshRankingsView({ throwOnError: true });
   }

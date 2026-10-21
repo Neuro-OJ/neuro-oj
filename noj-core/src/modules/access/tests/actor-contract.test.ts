@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
-import { createSystemActor } from "../../runtime/system-actors.ts";
+import { createSystemActor } from "../../runtime/index.ts";
 import {
   guestActor,
   requireUserActor,

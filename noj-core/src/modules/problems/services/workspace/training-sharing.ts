@@ -17,8 +17,8 @@ import {
 import {
   assertWorkspacePermission,
   loadWorkspace,
-  workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 
 /** 题单分享独立于题目分享，修改使用 revision 并保存域治理审计。 */
 export async function setDomainTrainingSharing(

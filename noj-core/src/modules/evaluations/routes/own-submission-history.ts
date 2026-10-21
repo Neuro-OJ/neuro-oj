@@ -1,8 +1,6 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,

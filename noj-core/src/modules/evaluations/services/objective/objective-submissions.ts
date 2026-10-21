@@ -9,10 +9,8 @@
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
-import {
-  consumeDomainSubmissionQuota,
-  DEFAULT_DOMAIN_ID,
-} from "../../../../domains/workspace/index.ts";
+import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import type { Context } from "hono";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -29,12 +27,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { checkPermission } from "../../../../domains/identity/index.ts";
+import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   assertDefaultProblemSource,
-  evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../../problems/index.ts";
+} from "../../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { evaluateProblemAccess } from "../../../problems/contracts/cross-module/services_problem-access-check.ts";
 import { judgePaper } from "./objective-judge.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
 import { createAttempt } from "../versioning/attempts.ts";
@@ -47,21 +45,23 @@ import {
   loadPublishedVersionContent,
   resolveSubmissionVersion,
 } from "../versioning/submission-version.ts";
-import type { ObjectiveQuestionSnapshot } from "../../../problems/index.ts";
-import { loadProblemIdentity } from "../../../problems/index.ts";
+import type { ObjectiveQuestionSnapshot } from "../../../problems/types/problem-content.ts";
+import { loadProblemIdentity } from "../../../problems/contracts/cross-module/services_versioning_draft.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
   resolvePaperId,
-} from "../../../problems/index.ts";
+} from "../../../problems/contracts/cross-module/services_objective_objective-questions.ts";
+import { type ContestResponse } from "../../../contests/types/contests.ts";
 import {
-  type ContestResponse,
   filterUnendedContestIds,
-  getContest,
-  getContestProblems,
   isProblemInUnendedPublicContest,
+} from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import {
+  getContest,
   resolveContestId,
-} from "../../../contests/index.ts";
+} from "../../../contests/contracts/cross-module/services_contests.ts";
+import { getContestProblems } from "../../../contests/contracts/cross-module/services_contest-problems.ts";
 import type {
   ObjectiveAttemptSummary,
   ObjectiveAttemptView,

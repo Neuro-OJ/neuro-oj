@@ -71,6 +71,8 @@ export const UPDATE_RELEASE_ASSETS: readonly string[] = [
   "noj-cli-linux-amd64",
   "noj-cli-linux-amd64.sha256",
   ...RELEASE_FILES.flatMap(({ asset }) => [asset, `${asset}.sha256`]),
+  "release-set.json",
+  "release-set.json.sha256",
 ];
 
 /** 稳定版本标签报错文案（bash :253 逐字，仅版本号参数化）。 */

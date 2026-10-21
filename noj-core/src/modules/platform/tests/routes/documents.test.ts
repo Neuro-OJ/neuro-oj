@@ -7,7 +7,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
-import { publishVersion } from "../../../../domains/legal/index.ts";
+import { publishVersion } from "../../legal-legacy/index.ts";
 import { createApp } from "../../../../app.ts";
 
 const PUBLISHER = "legal-route-publisher";

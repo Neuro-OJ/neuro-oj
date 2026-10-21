@@ -3,25 +3,29 @@ import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/
 import { extractApiError } from '~/utils/apiError';
 import type { BffEnvelope } from '~/utils/bff-view';
 import type { TrainingView, TrainingViewItem } from '~/utils/domain-trainings';
+import { useResourceRefresh } from '~/composables/useResourceRefresh';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const route = useRoute(), { slug, domain } = useWorkspace(), { user } = useAuth(), { api } = useApi();
 const resources = useDomainResources(), capture = useWorkspaceActionScope();
 const id = computed(() => String(route.params.trainingId));
 const page = computed(() => Math.max(1, Number(route.query.page) || 1));
-const importing = ref(''), failure = ref(''), generation = ref(0), sharingOpen = ref(false);
-const { data, status, error, refresh } = await useViewAsyncData(
-  'training',
+const importing = ref(''), failure = ref(''), sharingOpen = ref(false);
+const resource = useResourceRefresh();
+const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'training-view', id.value, String(page.value)),
-  async () => {
-    const view = await api.get<BffEnvelope>(`/api/bff/v1/domains/${encodeURIComponent(slug.value!)}/trainings/${encodeURIComponent(id.value)}/overview`, { query: { page: page.value }, silent: true });
-    return view.sections.training?.data as { data: TrainingView };
+  (_app, { signal }) => api.get<BffEnvelope>(
+    `/api/bff/v1/domains/${encodeURIComponent(slug.value!)}/trainings/${encodeURIComponent(id.value)}/overview`,
+    { query: { page: page.value }, signal, silent: true },
+  ).then((view) => view.sections.training?.data as unknown as { data: TrainingView }),
+  {
+    watch: [page, slug, id],
   },
 );
 const training = computed(() => data.value?.data.training);
 const sharing = await useAsyncData(
-  () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'training-sharing', id.value, String(generation.value)),
+  () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'training-sharing', id.value, String(resource.generation.value)),
   () => sharingOpen.value && training.value?.can_share ? resources.sharing(slug.value!, 'training', id.value) : Promise.resolve(null),
-  { watch: [sharingOpen] },
+  { watch: [sharingOpen, resource.generation] },
 );
 const solved = computed(() => data.value?.data.items.filter(item => item.progress === 'solved').length ?? 0);
 const known = computed(() => data.value?.data.items.filter(item => item.progress != null).length ?? 0);
@@ -49,7 +53,7 @@ async function importProblem(reference: string) {
   }
 }
 async function reloadSharing() {
-  generation.value++;
+  resource.begin();
   await sharing.refresh();
 }
 useSeoMeta({ title: () => training.value?.title ?? '题单' });
@@ -99,7 +103,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
           <div v-if="sharingOpen" class="mt-4 space-y-3">
             <UButton variant="outline" size="sm" @click="reloadSharing">重新读取共享政策</UButton>
             <UAlert v-if="sharing.error.value" color="error" :title="extractApiError(sharing.error.value).message" />
-            <DomainSharingForm v-if="sharing.data.value" :key="`share:${id}:${generation}`" :slug="slug!" kind="training" :reference="id" :initial="sharing.data.value.data" :writable="domain?.status === 'active'" />
+            <DomainSharingForm v-if="sharing.data.value" :key="`share:${id}:${resource.generation.value}`" :slug="slug!" kind="training" :reference="id" :initial="sharing.data.value.data" :writable="domain?.status === 'active'" />
           </div>
         </section>
       </div>

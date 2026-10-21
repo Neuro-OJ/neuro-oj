@@ -1,4 +1,4 @@
-import type { TeachingItem } from './education';
+import type { TeachingItem } from './education.ts';
 
 export interface AssignmentRemediationPreview {
   source: { kind: 'assignment'; id: string; title: string; revision: number; scope: 'on_time' | 'current' };

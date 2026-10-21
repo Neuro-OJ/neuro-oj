@@ -15,7 +15,7 @@ import {
   listJudgeImages,
   updateJudgeImage,
   validateJudgeImage,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 import {
   NotFoundError,
   ValidationError,

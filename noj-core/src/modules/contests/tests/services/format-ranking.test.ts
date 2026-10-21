@@ -19,7 +19,7 @@ import {
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { getSubmission, listSubmissions } from "../../../../domains/submission/index.ts";
+import { getSubmission, listSubmissions } from "../../../evaluations/index.ts";
 import {
   addParticipants,
   createContest,

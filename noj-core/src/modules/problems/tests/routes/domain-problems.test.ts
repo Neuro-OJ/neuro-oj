@@ -8,14 +8,14 @@ import {
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { problemTags, tags } from "../../../../shared/db/schema.ts";
-import { verifyToken } from "../../../../domains/identity/index.ts";
+import { verifyToken } from "../../../access/identity/index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
-import { updateSetting } from "../../../../domains/system/index.ts";
+} from "../../../access/workspace/index.ts";
+import { updateSetting } from "../../../platform/system/index.ts";
 import { domainProblemsRouter } from "../../routes/domain-problems.ts";
 
 async function fixture() {
@@ -119,6 +119,38 @@ Deno.test({
     assertEquals((await published.json()).version, 1);
     const page = await jsonRequest(app, `${path}?limit=1`, { token });
     assertEquals((await page.json()).total, 1);
+    const summaries = await jsonRequest(
+      app,
+      "/api/v1/domains/api-school/problem-summaries",
+      { token, method: "POST", body: { references: ["1001", "9999"] } },
+    );
+    assertEquals(summaries.status, 200);
+    const summaryBody = await summaries.json();
+    assertEquals(summaryBody.data.items.length, 2);
+    assertEquals(summaryBody.data.items[0].reference, "1001");
+    assertEquals(summaryBody.data.items[0].availability, "available");
+    assertEquals(summaryBody.data.items[0].title, "修改后的套卷");
+    assertEquals(summaryBody.data.items[0].kind, "objective");
+    assertEquals(summaryBody.data.items[0].answer_version, 1);
+    assertEquals(typeof summaryBody.data.items[0].answer_version_id, "string");
+    assertEquals(summaryBody.data.items[0].progress, "unseen");
+    assertEquals(summaryBody.data.items[1], {
+      reference: "9999",
+      availability: "unavailable",
+      title: null,
+      kind: null,
+      answer_version_id: null,
+      answer_version: null,
+      progress: null,
+    });
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/domains/api-school/problem-summaries", {
+        token,
+        method: "POST",
+        body: { references: Array(51).fill("1001") },
+      })).status,
+      400,
+    );
     const studentToken = await createUserToken("user");
     const student = await verifyToken(studentToken);
     const teacher = await verifyToken(token);

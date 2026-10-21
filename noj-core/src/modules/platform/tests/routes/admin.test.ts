@@ -15,7 +15,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/services/security/jwt.ts";
+import { signToken } from "../../../access/identity/index.ts";
 
 /** 创建普通用户（无 legal:manage）并签发 token。 */
 async function makePlainUser(id: string) {
@@ -73,7 +73,7 @@ Deno.test({
 
     // 建一个含 legal:manage 的角色并授予该用户
     const { ensureRbacSeeds } = await import(
-      "../../../../domains/system/services/seed/seed-rbac.ts"
+      "../../system/services/seed/seed-rbac.ts"
     );
     await ensureRbacSeeds();
     const { eq: eqOp } = await import("drizzle-orm");
@@ -148,7 +148,7 @@ Deno.test({
       .onConflictDoNothing();
 
     const { ensureRbacSeeds } = await import(
-      "../../../../domains/system/services/seed/seed-rbac.ts"
+      "../../system/services/seed/seed-rbac.ts"
     );
     await ensureRbacSeeds();
     const { eq: eqOp } = await import("drizzle-orm");
@@ -191,7 +191,7 @@ Deno.test({
 
     // 2. 处置数据请求 → legal.data_request_update
     const { createDataRequest } = await import(
-      "../../../../domains/legal/services/data-requests.ts"
+      "../../legal-legacy/services/data-requests.ts"
     );
     // 请求需要一个真实用户；直接用刚建的管理员账号作为请求人。
     const requestId = await createDataRequest(

@@ -19,8 +19,7 @@ import type {
   CreateContestInput,
   UpdateContestInput,
 } from "../contests/types/contests.ts";
-import { loadWorkspace } from "../access/policy.ts";
-import { assertWorkspacePermission } from "../access/policy.ts";
+import { assertWorkspacePermission, loadWorkspace } from "../access/policy.ts";
 import type { UserActor } from "../access/contracts/actor.ts";
 
 export interface ContestCommandOptions {

@@ -14,13 +14,13 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
-import { _resetSystemSettingsForTest } from "../../../../domains/system/services/system-settings.ts";
+import { _resetSystemSettingsForTest } from "../../../platform/system/index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
   addDomainMember,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { rebuildPendingTask } from "../../mq/pending-recovery.ts";
 import { recoverPendingSelfTests } from "../../mq/sweeper.ts";
@@ -29,6 +29,7 @@ import {
   createSelfTest,
   saveSelfTestResult,
 } from "../../services/self-tests.ts";
+import type { JudgeResult } from "../../types/index.ts";
 
 await resetDbForTest();
 
@@ -62,26 +63,31 @@ Deno.test({
       );
       Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
       _resetSystemSettingsForTest();
-      globalThis.fetch = (() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              data: {
-                domain_id: DEFAULT_DOMAIN_ID,
-                revision: 1,
-                id: "self-test-provider",
-                name: "test",
-                base_url: "http://provider.test",
-                cost_per_1k_tokens: 0,
-                api_key_masked: "sk-****",
-                enabled: true,
-                created_at: now,
-                updated_at: now,
-              },
-            }),
-            { headers: { "Content-Type": "application/json" } },
-          ),
-        )) as typeof fetch;
+      globalThis.fetch = ((input: Request | URL | string) => {
+        const path = new URL(String(input)).pathname;
+        const data = path.endsWith("/internal/execution-config")
+          ? {
+            provider_id: "self-test-provider",
+            models: [{ alias: "default", model: "self-test-model" }],
+          }
+          : {
+            domain_id: DEFAULT_DOMAIN_ID,
+            revision: 1,
+            id: "self-test-provider",
+            name: "test",
+            base_url: "http://provider.test",
+            cost_per_1k_tokens: 0,
+            api_key_masked: "sk-****",
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+          };
+        return Promise.resolve(
+          new Response(JSON.stringify({ data }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }) as typeof fetch;
       await getRedis().connect();
       await db.insert(users).values({
         id: userId,
@@ -189,8 +195,10 @@ Deno.test({
       assertEquals(recovered.llm?.allowed_models, ["self-test-model"]);
       assert(recovered.llm?.eval_token !== task.llm.eval_token);
 
-      const result = {
-        evaluation_protocol_version: 2,
+      const result: JudgeResult = {
+        evaluation_protocol_version: 3,
+        task_kind: "self_test",
+        self_test_run_id: task.run_id!,
         submission_id: created.id,
         problem_version_id: versionId,
         run_id: task.run_id,

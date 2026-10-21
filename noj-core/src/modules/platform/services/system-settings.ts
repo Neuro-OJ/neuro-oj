@@ -19,7 +19,7 @@
 import { eq, inArray } from "drizzle-orm";
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
 import type { UserActor } from "../../access/contracts/actor.ts";
-import { recordInstanceEducationModulesChange } from "../../../shared/education-modules.ts";
+import { recordInstanceEducationModulesChange } from "../../education/contracts/module-facts.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 import { systemSettings } from "../../../shared/db/schema.ts";

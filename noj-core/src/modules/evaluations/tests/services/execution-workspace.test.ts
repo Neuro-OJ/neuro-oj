@@ -22,12 +22,12 @@ import {
   createDomain,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
-import { updateSetting } from "../../../../domains/system/index.ts";
-import { submitObjectivePaper } from "../../../../domains/objective/index.ts";
+} from "../../../access/workspace/index.ts";
+import { updateSetting } from "../../../platform/system/index.ts";
+import { submitObjectivePaper } from "../../index.ts";
 import { backfillExecutionWorkspaces } from "../../index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 async function fixture() {
   await resetDbForTest();

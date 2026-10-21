@@ -46,6 +46,7 @@ export interface BoundaryConfig {
   coreSourceRoot: string;
   targetModules: ModuleSpec[];
   legacyDomainToModule: Record<string, string>;
+  legacyTestTargets: Record<string, string[]>;
   tableOwnership: TableOwnershipConfig;
   testCiMapping: Record<string, TestCiMapping>;
   rules: Record<string, boolean>;
@@ -617,6 +618,19 @@ export function validateBoundaryConfig(config: BoundaryConfig): string[] {
       errors.push(
         `legacy 域 ${legacy} 未在模块 ${target}.legacyDomains 中登记`,
       );
+    }
+  }
+  for (
+    const [legacy, targets] of Object.entries(config.legacyTestTargets ?? {})
+  ) {
+    if (!Array.isArray(targets) || targets.length === 0) {
+      errors.push(`legacy 测试目标 ${legacy} 必须至少包含一个模块`);
+      continue;
+    }
+    for (const target of targets) {
+      if (!nameSet.has(target)) {
+        errors.push(`legacy 测试目标 ${legacy} 指向未知模块 ${target}`);
+      }
     }
   }
   const ownership = config.tableOwnership ??

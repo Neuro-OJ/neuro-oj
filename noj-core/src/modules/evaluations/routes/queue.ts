@@ -1,18 +1,12 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { getQueueOverview } from "../services/queue.ts";
-import {
-  assertActiveInstanceAccount,
-  getUserPermissions,
-} from "../../../domains/identity/index.ts";
-import {
-  DEFAULT_DOMAIN_SLUG,
-  ensureDefaultWorkspace,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
+import { assertActiveInstanceAccount } from "../../access/contracts/cross-module/identity_services_security_account-access.ts";
+import { getUserPermissions } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 
 const router = new Hono<AuthEnv>();
 /** 新客户端显式指定域，实例概览不依赖用户能否进入默认域。 */

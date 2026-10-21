@@ -14,7 +14,7 @@ import {
 import type { ClassroomInvitationBoundary } from "./invitations.ts";
 import { addDomainMemberTx } from "./members.ts";
 import { ensureDefaultWorkspaceTx } from "./domains.ts";
-import { getInstanceAccessPolicy } from "../../domains/workspace/services/instance.ts";
+import { getInstanceAccessPolicy } from "./workspace/services/instance.ts";
 
 /**
  * 邀请开户授权边界。

@@ -1,7 +1,7 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 /**
  * 升级额度**桶选择**的回归（第三轮复审问题 6，P2）。
  *
@@ -34,7 +34,7 @@ import {
 import {
   SUBMISSION_QUOTA_BUCKETS,
   submissionQuotaRedisKey,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/system/index.ts";
 import { consumeSubmissionQuotaForUpgrade } from "../../services/versioning/upgrade-quota.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";

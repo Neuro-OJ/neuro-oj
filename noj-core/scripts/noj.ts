@@ -27,10 +27,10 @@ import {
   ensureRootUser,
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
-} from "../src/domains/identity/index.ts";
+} from "../src/modules/access/identity/index.ts";
 import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
-import { ensureRbacSeeds } from "../src/domains/system/index.ts";
+import { ensureRbacSeeds } from "../src/modules/platform/system/index.ts";
 import { initProblem } from "./problems-init.ts";
 import { runMaintain } from "./maintain.ts";
 import {
@@ -39,15 +39,15 @@ import {
   ensureE2EPwChangeUser,
   seedJudgeImages,
   seedTags,
-} from "../src/domains/system/index.ts";
-import { seedDomainLlmDefaults } from "../src/domains/gateway/index.ts";
+} from "../src/modules/platform/system/index.ts";
+import { seedDomainLlmDefaults } from "../src/modules/platform/gateway/index.ts";
 import {
   backfillDefaultCatalog,
   importDomainProblemBundle,
   publishDomainProblemVersion,
 } from "../src/modules/problems/index.ts";
-import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
-import { reindexAll } from "../src/domains/search/index.ts";
+import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
+import { reindexAll } from "../src/modules/read-models/search/index.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??

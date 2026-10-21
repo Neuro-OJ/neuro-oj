@@ -7,6 +7,7 @@ export type {
   UserActor,
   UserId,
 } from "./contracts/actor.ts";
+export type { AuthEnv, OptionalAuthEnv } from "../../shared/http/hono-env.ts";
 export {
   guestActor,
   isSystemActor,
@@ -67,8 +68,11 @@ export {
 export type { DomainResourceName } from "./resource-counters.ts";
 export {
   adjustDomainResourceCounterTx,
+  lockDomainResourceCounterTx,
   setDomainResourceCounterTx,
+  setDomainResourceReservedTx,
 } from "./resource-counters.ts";
+export type { InvitationRegistrationBoundary } from "./registration.ts";
 export { allocateDomainProblemNumberTx } from "./domain-capabilities.ts";
 export {
   filterProblemsInRunningContest,
@@ -117,6 +121,7 @@ export {
   hashInvitationToken,
   isInvitationCredential,
   listDomainInvitations,
+  previewDomainInvitation,
   revokeDomainInvitation,
   revokeDomainInvitationTx,
 } from "./invitations.ts";

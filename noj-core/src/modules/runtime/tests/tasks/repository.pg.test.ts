@@ -23,6 +23,7 @@ import {
   readTaskHealth,
   renewTaskLease,
   requeueFailedTaskTx,
+  rescheduleTaskTx,
 } from "../../tasks/repository.ts";
 
 const TYPE = "search.index" as const;
@@ -140,6 +141,37 @@ Deno.test("task repository[真实 PG]: 旧 token 无法续租/完成/失败", as
   );
   const row = await getTaskById(claimed.id, db);
   assertEquals(row?.status, "succeeded");
+});
+
+Deno.test("task repository[真实 PG]: 分页完成后可用同一任务重新调度且不计失败", async () => {
+  await reset();
+  const db = getDb();
+  await db.transaction((tx) =>
+    enqueueTaskTx(tx, {
+      taskType: TYPE,
+      targetKind: "problem",
+      targetId: "p-reschedule",
+      dedupeKey: "page",
+      payload: { cursor: null },
+    })
+  );
+  const [claimed] = await claimTasks("worker-1", 1, 60_000, db);
+  const availableAt = new Date(Date.now() + 1000).toISOString();
+  assertEquals(
+    await db.transaction((tx) =>
+      rescheduleTaskTx(tx, claimed.id, claimed.leaseToken, {
+        __task_control: "reschedule",
+        availableAt,
+        payload: { cursor: "page-2" },
+      })
+    ),
+    true,
+  );
+  const pending = await getTaskById(claimed.id, db);
+  assertEquals(pending?.status, "pending");
+  assertEquals(pending?.failure_count, 0);
+  assertEquals(pending?.payload.cursor, "page-2");
+  assertEquals(pending?.available_at, availableAt);
 });
 
 Deno.test("task repository[真实 PG]: 过期租约可回收并计入失败次数", async () => {

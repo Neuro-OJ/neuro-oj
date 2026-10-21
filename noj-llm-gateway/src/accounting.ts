@@ -6,6 +6,9 @@ import { logger } from "./logger.ts";
 import { recordUsage, type UsageEntry } from "./usage.ts";
 import { accountingBaselineId } from "./accounting-baseline.ts";
 import type { ManagedTask } from "./runtime.ts";
+import { POLICY_RESERVATION_ADVISORY_LOCK } from "./policy-lock.ts";
+
+export { POLICY_RESERVATION_ADVISORY_LOCK } from "./policy-lock.ts";
 
 export interface AccountingCounter {
   key: string;
@@ -55,13 +58,30 @@ export async function withReservationLock<T>(
 ): Promise<T> {
   const connection = await db.reserve();
   try {
+    // 共享锁覆盖整个“读政策 → 写入 ledger → Redis 预占 → 记录结果”边界。
+    // 政策写入在事务内取得同一标识的排他锁，因此不能在预占已冻结其政策后插入。
+    await connection`
+      SELECT pg_advisory_lock_shared(
+        ${POLICY_RESERVATION_ADVISORY_LOCK.classId},
+        ${POLICY_RESERVATION_ADVISORY_LOCK.objectId}
+      )
+    `;
     await connection`SELECT pg_advisory_lock_shared(184789, 3)`;
     return await operation(connection as unknown as Db);
   } finally {
     try {
       await connection`SELECT pg_advisory_unlock_shared(184789, 3)`;
     } finally {
-      connection.release();
+      try {
+        await connection`
+          SELECT pg_advisory_unlock_shared(
+            ${POLICY_RESERVATION_ADVISORY_LOCK.classId},
+            ${POLICY_RESERVATION_ADVISORY_LOCK.objectId}
+          )
+        `;
+      } finally {
+        connection.release();
+      }
     }
   }
 }

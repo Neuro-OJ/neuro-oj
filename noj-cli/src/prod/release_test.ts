@@ -44,6 +44,8 @@ const READY_ASSETS = [
   // Release 资产名非点号开头（GitHub 会改写点号名为 default.<name>）。
   "env.prod.example",
   "env.prod.example.sha256",
+  "release-set.json",
+  "release-set.json.sha256",
 ];
 
 /** 资产就绪的稳定 Release 条目。 */

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   getRejudgeJob,

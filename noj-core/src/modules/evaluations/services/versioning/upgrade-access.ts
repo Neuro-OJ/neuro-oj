@@ -1,10 +1,8 @@
 /** 升级以当前域授权执行，新提交仍归原用户并复用比赛受理预算。 */
 import { AppError } from "../../../../shared/base/errors.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
-import {
-  assertContestSubmissionLimit,
-  verifyContestAccess,
-} from "../../../contests/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { assertContestSubmissionLimit } from "../../../contests/contracts/cross-module/services_contests.ts";
+import { verifyContestAccess } from "../../../contests/contracts/cross-module/services_contest-access.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 import type { DispatchSource, JobUpgradeContext } from "./dispatch-job-item.ts";

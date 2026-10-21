@@ -24,7 +24,7 @@ import {
   createDomainInvitation,
   removeDomainMember,
   setMemberRoles,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
 import {
   addDomainContestParticipants,

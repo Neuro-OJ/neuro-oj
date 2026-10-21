@@ -25,7 +25,7 @@ import {
   trainingShareSettings,
   trainingShareTargets,
 } from "../../../../shared/db/schema.ts";
-import { loadWorkspace } from "../../../../domains/workspace/index.ts";
+import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   assertCurrentProblemShare,
   resolveDomainProblem,

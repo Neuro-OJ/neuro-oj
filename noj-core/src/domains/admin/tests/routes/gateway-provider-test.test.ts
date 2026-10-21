@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import router, { describeProviderTestFailure } from "../../routes/gateway.ts";
-import { LlmGatewayError } from "../../../gateway/services/llm.ts";
+import { LlmGatewayError } from "../../../../modules/platform/gateway/services/llm.ts";
 
 /**
  * 以桩替换 fetch 与 gateway 环境变量，捕获 core → gateway 的请求并返回指定响应。

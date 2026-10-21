@@ -2,17 +2,20 @@ import { Hono } from "hono";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   createDomainProblemCommand,
+  deleteProblemCommand,
+  deleteSupportPackageCommand,
   importDomainProblemBundleCommand,
   importDomainProblemDraftBundleCommand,
   publishDomainProblemVersionCommand,
   saveDomainProblemDraftCommand,
   setDomainProblemBindingStateCommand,
+  updateProblemCommand,
 } from "../../application/problems.ts";
 import {
-  type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
 import {
   assertObjectBody,
@@ -26,20 +29,25 @@ import {
   readDomainProblemTemplate,
 } from "../services/workspace/problem-read.ts";
 import {
+  loadEditableDomainProblem,
   preflightDomainProblemVersion,
   readDomainProblemDraft,
 } from "../services/workspace/problem-edit.ts";
-import type { CreateProblemInput } from "../types/problems.ts";
+import type {
+  CreateProblemInput,
+  UpdateProblemInput,
+} from "../types/problems.ts";
 import type { ProblemDraftContent } from "../types/problem-content.ts";
 import { draftRevisionRequired } from "../services/versioning/draft.ts";
 import { listEditableDomainProblemDrafts } from "../services/workspace/problem-draft-list.ts";
 import { domainProblemFilesRouter } from "./domain-problem-files.ts";
-import { enforceProblemImportRateLimit } from "../../../domains/system/index.ts";
+import { enforceProblemImportRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
 import {
   readDomainModelCapabilities,
   readDomainProblemUi,
 } from "../services/workspace/problem-capabilities.ts";
+import { readDomainProblemSummaries } from "../services/workspace/problem-summaries.ts";
 
 /** 显式域题库入口，保留使用域上下文及来源题号。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
@@ -231,6 +239,33 @@ domainProblemsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
     }),
   );
 });
+domainProblemsRouter.post(
+  "/domains/:slug/problem-summaries",
+  optionalAuthMiddleware,
+  async (c) => {
+    const input = await parseJsonBody<{ references?: unknown }>(c);
+    assertObjectBody(input);
+    if (
+      !Array.isArray(input.references) ||
+      input.references.length < 1 ||
+      input.references.length > 50 ||
+      input.references.some((reference) => typeof reference !== "string")
+    ) {
+      throw new BadRequestError(
+        "每次必须提供 1-50 个有效题号",
+        "INVALID_PROBLEM_SUMMARIES",
+      );
+    }
+    c.header("Cache-Control", "private, no-store");
+    return c.json({
+      data: await readDomainProblemSummaries(
+        c.req.param("slug")!,
+        input.references,
+        c.var.userId ?? null,
+      ),
+    });
+  },
+);
 domainProblemsRouter.get(
   `${prefix}/:reference`,
   optionalAuthMiddleware,
@@ -345,5 +380,57 @@ domainProblemsRouter.post(
         input,
       ),
     });
+  },
+);
+
+domainProblemsRouter.patch(
+  `${prefix}/:reference`,
+  authMiddleware,
+  async (c) => {
+    const actor = userActorFromAuthenticatedId(c.var.userId);
+    const resource = await loadEditableDomainProblem(
+      c.req.param("slug")!,
+      c.req.param("reference")!,
+      actor,
+    );
+    const input = await parseJsonBody<UpdateProblemInput>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await updateProblemCommand(actor, resource.problem.id, input, {
+        allowServerDerivedFields: false,
+      }),
+    });
+  },
+);
+
+domainProblemsRouter.delete(
+  `${prefix}/:reference/support-package`,
+  authMiddleware,
+  async (c) => {
+    const actor = userActorFromAuthenticatedId(c.var.userId);
+    const resource = await loadEditableDomainProblem(
+      c.req.param("slug")!,
+      c.req.param("reference")!,
+      actor,
+    );
+    const revision = draftRevision(c.req.header("If-Match"));
+    await deleteSupportPackageCommand(actor, resource.problem.id, revision);
+    return c.json({ data: { support_package_storage_url: null } });
+  },
+);
+
+domainProblemsRouter.delete(
+  `${prefix}/:reference`,
+  authMiddleware,
+  async (c) => {
+    const actor = userActorFromAuthenticatedId(c.var.userId);
+    const resource = await loadEditableDomainProblem(
+      c.req.param("slug")!,
+      c.req.param("reference")!,
+      actor,
+      { write: true },
+    );
+    await deleteProblemCommand(actor, resource.problem.id);
+    return c.body(null, 204);
   },
 );

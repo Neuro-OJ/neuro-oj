@@ -448,10 +448,18 @@ Deno.test("parseBackupArgs: restore 旗标", () => {
   assertEquals(a.passphraseFile, "/pw");
 });
 
-Deno.test("parseBackupArgs: drill report 旗标", () => {
-  const a = parseBackupArgs(["drill", "x.nojbackup", "--report", "/r.json"]);
+Deno.test("parseBackupArgs: drill 隔离 daemon 与 report 旗标", () => {
+  const a = parseBackupArgs([
+    "drill",
+    "x.nojbackup",
+    "--report",
+    "/r.json",
+    "--docker-host",
+    "unix:///run/noj-restore-drill/test/docker.sock",
+  ]);
   assertEquals(a.sub, "drill");
   assertEquals(a.report, "/r.json");
+  assertEquals(a.dockerHost, "unix:///run/noj-restore-drill/test/docker.sock");
 });
 
 Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {

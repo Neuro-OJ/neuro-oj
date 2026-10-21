@@ -8,9 +8,9 @@ import {
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  ensureDefaultWorkspace,
-  loadWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
 /** 在准备下载或 LLM 令牌前拒绝用旧入口执行其他域的源题。 */
 export function assertDefaultProblemSource(

@@ -5,7 +5,8 @@ import {
   problemDrafts,
   problems,
 } from "../../../../shared/db/schema.ts";
-import { loadWorkspace, workspaceAudit } from "../../../../domains/workspace/index.ts";
+import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 
 /** 可编辑源题草稿目录，包括尚未发布题目；不返回源内容或共享引用。 */

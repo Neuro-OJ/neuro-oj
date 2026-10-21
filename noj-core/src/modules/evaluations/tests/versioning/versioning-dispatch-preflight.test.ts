@@ -22,10 +22,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
-import {
-  resetSetting,
-  updateSetting,
-} from "../../../../domains/system/index.ts";
+import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";

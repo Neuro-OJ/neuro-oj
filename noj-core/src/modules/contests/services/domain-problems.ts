@@ -7,11 +7,9 @@ import {
   problemVersions,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import {
-  assertCurrentProblemShare,
-  domainProblemReference,
-  type ProblemContentV1,
-} from "../../problems/contracts/read.ts";
+import { assertCurrentProblemShare } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
+import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
+import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
 import type { ContestType } from "../types/contests.ts";
 

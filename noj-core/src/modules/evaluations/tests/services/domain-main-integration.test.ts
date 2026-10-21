@@ -25,15 +25,15 @@ import { getDomainContestTemplate } from "../../../contests/index.ts";
 import {
   buildJudgeTaskLlm,
   getDomainLlmDefault,
-  listLlmModelAliasCapabilities,
+  listLlmGatewayModelCapabilities,
   readDomainLlmModelAliases,
   saveDomainLlmModelAlias,
-} from "../../../../domains/gateway/index.ts";
+} from "../../../platform/gateway/index.ts";
 import {
   LocalStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/system/index.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -46,7 +46,7 @@ import {
 import { fixture } from "../_domain-execution-fixture.ts";
 import { createApp } from "../../../../app.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 const secret = "integration-llm-service-token-0123456789abcdef";
 async function openToken(token: string) {
@@ -108,18 +108,65 @@ Deno.test("主线融合 Domain：共享 UI 使用域别名与冻结凭据，自�
   resetRedisForTest();
   Deno.env.set("REDIS_URL", fake.url);
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", secret);
-  globalThis.fetch = ((_input: Request | URL | string, init?: RequestInit) => {
+  const aliasModels = new Map([
+    [f.a.id, "school-a-model"],
+    [f.b.id, "school-b-model"],
+  ]);
+  globalThis.fetch = ((input: Request | URL | string, init?: RequestInit) => {
     const domain = new Headers(init?.headers).get("X-Noj-Domain-Id");
+    const path = new URL(String(input)).pathname;
+    const requestBody = typeof init?.body === "string"
+      ? JSON.parse(init.body) as {
+        aliases?: string[];
+        provider_id?: string;
+        model?: string;
+      }
+      : {};
+    const fallbackAliasModel = domain === f.a.id
+      ? "school-a-model"
+      : "school-b-model";
+    if (
+      domain && path.includes("/internal/model-aliases/") &&
+      init?.method === "PUT" && requestBody.model
+    ) {
+      aliasModels.set(domain, requestBody.model);
+    }
+    const aliasModel = aliasModels.get(domain ?? "") ?? fallbackAliasModel;
+    const alias = {
+      domain_id: domain,
+      alias: "fast",
+      provider_id: `provider-${domain}`,
+      model: requestBody.model ?? aliasModel,
+      description: "fast capability",
+      revision: 1,
+      updated_at: now,
+    };
+    const data = path.endsWith("/internal/execution-config")
+      ? {
+        provider_id: `provider-${domain}`,
+        models: (requestBody.aliases ?? []).map((alias) => ({
+          alias,
+          model: alias === "fast" ? aliasModel : "default-model",
+        })),
+      }
+      : path.endsWith("/internal/model-capabilities")
+      ? [
+        { alias: "default", description: "default capability" },
+        { alias: "fast", description: "fast capability" },
+      ]
+      : path.endsWith("/internal/model-aliases") && init?.method === undefined
+      ? [alias]
+      : path.includes("/internal/model-aliases/")
+      ? alias
+      : {
+        id: `provider-${domain}`,
+        domain_id: domain,
+        enabled: true,
+        revision: 1,
+      };
     return Promise.resolve(
       new Response(
-        JSON.stringify({
-          data: {
-            id: `provider-${domain}`,
-            domain_id: domain,
-            enabled: true,
-            revision: 1,
-          },
-        }),
+        JSON.stringify({ data }),
         { headers: { "content-type": "application/json" } },
       ),
     );
@@ -136,7 +183,7 @@ Deno.test("主线融合 Domain：共享 UI 使用域别名与冻结凭据，自�
     }, 0);
     assertEquals(await getDomainLlmDefault(f.a.id), null);
     assertEquals(
-      (await listLlmModelAliasCapabilities(f.a.id)).map((r) => r.alias),
+      (await listLlmGatewayModelCapabilities(f.a.id)).map((r) => r.alias),
       ["default", "fast"],
     );
     await assertRejects(

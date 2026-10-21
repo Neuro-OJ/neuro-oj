@@ -9,7 +9,7 @@ import type {
   ProblemAccessDecision,
   ProblemVersionSnapshot,
 } from "../../problems/contracts/read.ts";
-import type { ContestPolicySnapshot } from "../../contests/contracts/read.ts";
+import type { ContestPolicySnapshot } from "../../access/contest-policy.ts";
 import { AppError } from "../../../shared/base/errors.ts";
 
 /** 评测来源；objective 与普通提交共享尝试/投影协议。 */

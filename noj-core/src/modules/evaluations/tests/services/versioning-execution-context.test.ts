@@ -15,8 +15,8 @@ import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 import {
   domainLlmSettings,
   evaluationAttempts,
@@ -48,10 +48,12 @@ import {
   problemScopeKey,
 } from "../../services/versioning/projection.ts";
 import type { ProblemContentV1 } from "../../../problems/index.ts";
-import { setStorageProviderForTest } from "../../../../modules/assets/storage/factory.ts";
-import { LocalStorageProvider } from "../../../../modules/assets/storage/local.ts";
-import { buildStorageUrl } from "../../../../modules/assets/storage/types.ts";
-import { _resetSystemSettingsForTest } from "../../../../domains/system/services/system-settings.ts";
+import {
+  buildStorageUrl,
+  LocalStorageProvider,
+  setStorageProviderForTest,
+} from "../../../assets/storage/mod.ts";
+import { _resetSystemSettingsForTest } from "../../../platform/system/index.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import {
   getRedis,
@@ -138,25 +140,31 @@ async function stubLlmGatewayProvider(
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
   Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
   _resetSystemSettingsForTest();
-  globalThis.fetch = (() =>
-    Promise.resolve(
-      new Response(
-        JSON.stringify({
-          data: {
-            id: "prov-default",
-            domain_id: "00000000-0000-4000-8000-000000000001",
-            name: "test",
-            base_url: "http://provider.test",
-            cost_per_1k_tokens: 0,
-            api_key_masked: "sk-****",
-            enabled,
-            created_at: now,
-            updated_at: now,
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    )) as typeof fetch;
+  globalThis.fetch = ((input: Request | URL | string) => {
+    const path = new URL(String(input)).pathname;
+    const data = path.endsWith("/internal/execution-config")
+      ? {
+        provider_id: "prov-default",
+        models: [{ alias: "default", model: "test-model" }],
+      }
+      : {
+        id: "prov-default",
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        name: "test",
+        base_url: "http://provider.test",
+        cost_per_1k_tokens: 0,
+        api_key_masked: "sk-****",
+        enabled,
+        created_at: now,
+        updated_at: now,
+      };
+    return Promise.resolve(
+      new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }) as typeof fetch;
   return async () => {
     globalThis.fetch = originalFetch;
     for (const [name, value] of oldEnv) {
@@ -540,7 +548,8 @@ Deno.test("execution result: 非法评分按平台错误处理，不产生正式
       score: undefined as unknown as number,
       output: "---RESULT---\n{}",
       details: {},
-      evaluation_protocol_version: 2,
+      evaluation_protocol_version: 3,
+      task_kind: "submission",
       attempt_id: attemptId,
       run_id: attemptId,
       problem_version_id: "ec-p5-v1",
@@ -1331,7 +1340,8 @@ Deno.test("read model: 详情返回全部尝试历史与最近/有效/通过指�
       score: 5000,
       output: "ok",
       details: {},
-      evaluation_protocol_version: 2,
+      evaluation_protocol_version: 3,
+      task_kind: "submission",
       attempt_id: firstAttemptId,
       run_id: firstAttemptId,
       problem_version_id: "ec-p7-v1",
@@ -1360,7 +1370,8 @@ Deno.test("read model: 详情返回全部尝试历史与最近/有效/通过指�
       score: 0,
       output: "wa",
       details: {},
-      evaluation_protocol_version: 2,
+      evaluation_protocol_version: 3,
+      task_kind: "submission",
       attempt_id: second.id,
       run_id: second.id,
       problem_version_id: "ec-p7-v2",

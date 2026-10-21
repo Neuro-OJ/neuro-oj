@@ -20,10 +20,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../../../shared/base/errors.ts";
-import {
-  enterTestContext,
-  leaveTestContext,
-} from "../../../../domains/system/index.ts";
+import { enterTestContext, leaveTestContext } from "../../system/index.ts";
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -31,7 +28,7 @@ import {
   listAdminAnnouncements,
   listPublicAnnouncements,
   updateAnnouncement,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 
 const TEST_CTX = {
   actorId: "test-admin-uuid",

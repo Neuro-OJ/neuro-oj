@@ -17,10 +17,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   assertDefaultProblemSource,
   resolveDefaultExecutionContexts,
-} from "../../../problems/index.ts";
+} from "../../../problems/contracts/cross-module/services_workspace_execution-context.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { DEFAULT_DOMAIN_SLUG } from "../../../../domains/workspace/index.ts";
-import { loadDomainContest } from "../../../contests/index.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
+import { loadDomainContest } from "../../../contests/contracts/cross-module/services_domain-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
@@ -33,7 +33,7 @@ import {
   submissionJobs,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import { getUserPermissions } from "../../../../domains/identity/index.ts";
+import { getUserPermissions } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   hashCanonical,
   insertJobItemsBatched,

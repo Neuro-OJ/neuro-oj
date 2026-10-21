@@ -78,8 +78,12 @@ export async function saveOiProgress(
   message: Record<string, unknown>,
 ): Promise<void> {
   const id = message.submission_id;
-  if (typeof id !== "string" || typeof message.run_id !== "string") return;
-  const selfTest = id.startsWith("st_");
+  const taskKind = message.task_kind;
+  if (
+    typeof id !== "string" || typeof message.run_id !== "string" ||
+    (taskKind !== "submission" && taskKind !== "self_test")
+  ) return;
+  const selfTest = taskKind === "self_test";
   const progress = projectOiProgress(message.progress, selfTest);
   if (!progress) return;
   const db = getDb();

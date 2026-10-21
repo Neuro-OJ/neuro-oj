@@ -15,12 +15,12 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { updateSetting } from "../../../../domains/system/services/system-settings.ts";
+import { updateSetting } from "../../system/services/system-settings.ts";
 import {
   timestampHash,
   tsaEnabled,
   verifyTimestamp,
-} from "../../../../domains/legal/index.ts";
+} from "../../legal-legacy/index.ts";
 import {
   buildForgedTimeStampRespWithCert,
   buildTestTimeStampResp,
@@ -442,7 +442,7 @@ Deno.test({
 
     // 先算出内容哈希以构造匹配的 TSA 响应
     const { hashContent, publishVersion, getVersionTsa } = await import(
-      "../../../../domains/legal/index.ts"
+      "../../legal-legacy/index.ts"
     );
     const content = "# 政策正文（TSA 落库）";
     const hash = await hashContent(content);

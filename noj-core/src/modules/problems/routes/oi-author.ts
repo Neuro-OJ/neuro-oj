@@ -1,14 +1,14 @@
 import {
   assertWorkspacePermission,
+  loadWorkspace,
+} from "../../access/policy.ts";
+import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  loadWorkspace,
-} from "../../access/index.ts";
+} from "../../../shared/workspace/types.ts";
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   createProblemCommand,
@@ -31,7 +31,7 @@ import type {
   CreateProblemInput,
   UpdateProblemInput,
 } from "../types/problems.ts";
-import { enforceProblemImportRateLimit } from "../../../domains/system/index.ts";
+import { enforceProblemImportRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const router = new Hono<AuthEnv>();
 router.use("*", authMiddleware);

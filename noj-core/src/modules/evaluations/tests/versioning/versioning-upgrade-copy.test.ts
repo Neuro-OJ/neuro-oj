@@ -1,7 +1,7 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 /**
  * 升级副本的统计 revision 与额度回归（复审问题 6、9，P2）。
  *

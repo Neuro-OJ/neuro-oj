@@ -15,8 +15,10 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { handleSearchIndexTask } from "../../../application/search-handlers.ts";
 import {
   auditLogs,
+  backgroundTasks,
   problemDraftObjects,
   problemDrafts,
   problems,
@@ -26,6 +28,7 @@ import {
   storageObjects,
 } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { claimTasks, completeTaskTx } from "../../../runtime/index.ts";
 import {
   draftRevisionRequired,
   getProblemDraft,
@@ -39,11 +42,11 @@ import {
 } from "../../services/versioning/publish.ts";
 import { importProblemBundle } from "../../services/problems/problem-bundle.ts";
 import { assertDraftContentSecurity } from "../../services/versioning/content-security.ts";
-import { registerReadyStorageObject } from "../../../../domains/system/services/storage/registry.ts";
-import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
-import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
-import { buildStorageUrl } from "../../../../domains/system/services/storage/types.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { registerReadyStorageObject } from "../../../platform/system/index.ts";
+import { setStorageProviderForTest } from "../../../platform/system/index.ts";
+import { LocalStorageProvider } from "../../../platform/system/index.ts";
+import { buildStorageUrl } from "../../../platform/system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 
 const now = new Date().toISOString();
@@ -293,7 +296,27 @@ Deno.test("publish hardening #23: 审计与搜索索引随发布事务持久化"
     published.version_id,
   );
 
-  // 搜索索引：已发布题目必须在同一事务内可查到（否则"已发布但索引永久缺失"）
+  // 搜索索引：发布事务先登记可恢复任务；索引内容由 worker 从最新事实构建。
+  const tasks = await getDb().select().from(backgroundTasks).where(
+    and(
+      eq(backgroundTasks.task_type, "search.index"),
+      eq(backgroundTasks.target_kind, "problem"),
+      eq(backgroundTasks.target_id, "ph-outbox"),
+      eq(backgroundTasks.dedupe_key, "problem:upsert"),
+    ),
+  );
+  assertEquals(tasks.length, 1);
+  assertEquals(tasks[0].status, "pending");
+  const claimed = (await claimTasks("publish-hardening-test", 10, 60_000))
+    .find((task) => task.id === tasks[0].id);
+  if (!claimed) throw new Error("未能领取发布产生的搜索索引任务");
+  await handleSearchIndexTask(claimed);
+  assertEquals(
+    await getDb().transaction((tx) =>
+      completeTaskTx(tx, claimed.id, claimed.leaseToken, { ok: true })
+    ),
+    true,
+  );
   const entries = await getDb().select().from(searchEntries).where(
     and(
       eq(searchEntries.entity_type, "problem"),

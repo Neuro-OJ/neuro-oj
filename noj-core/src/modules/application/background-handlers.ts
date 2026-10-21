@@ -7,10 +7,15 @@
  * 启动时缺任何已登记任务类型的 handler 都必须显式失败——静默跳过会让任务
  * 永远停在 pending，形成"看起来在跑、实际不处理"的假绿。
  */
-import type { TaskHandlerMap, TaskType } from "../runtime/tasks/contracts.ts";
+import type {
+  TaskHandler,
+  TaskHandlerMap,
+  TaskType,
+} from "../runtime/tasks/contracts.ts";
 import { TASK_TYPES } from "../runtime/tasks/contracts.ts";
 import { handleSearchIndexTask } from "./search-handlers.ts";
 import { handleEvaluationDispatchTask } from "./dispatch-handlers.ts";
+import { handleEducationTask } from "./education-handlers.ts";
 
 /**
  * 组装生产 handler 表。
@@ -19,12 +24,7 @@ import { handleEvaluationDispatchTask } from "./dispatch-handlers.ts";
  * 完成而事实没有生效。
  */
 export function createBackgroundHandlers(): TaskHandlerMap {
-  const handlers: Record<
-    TaskType,
-    (task: never, signal: AbortSignal) => Promise<
-      Record<string, unknown> | void
-    >
-  > = {
+  const handlers: Record<TaskType, TaskHandler> = {
     "search.index": (task) =>
       handleSearchIndexTask(
         task as Parameters<typeof handleSearchIndexTask>[0],
@@ -33,9 +33,8 @@ export function createBackgroundHandlers(): TaskHandlerMap {
       handleEvaluationDispatchTask(
         task as Parameters<typeof handleEvaluationDispatchTask>[0],
       ),
-    // 教学重算由 education 模块的 worker 负责（P4 后续批次接入）。
-    "education.recompute": () =>
-      Promise.reject(new Error("education.recompute 处理器尚未接入")),
+    // 教学任务只调度旧 outbox 的单页适配器；旧 progress worker 不再启动。
+    "education.recompute": handleEducationTask,
     // 对象回收在 application 组合层实现（引用守卫 + 域计数释放）。
     "storage.reclaim": () =>
       Promise.reject(new Error("storage.reclaim 处理器尚未接入")),

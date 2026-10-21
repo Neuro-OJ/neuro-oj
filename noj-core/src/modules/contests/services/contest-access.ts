@@ -8,7 +8,8 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { contestProblems, domains } from "../../../shared/db/schema.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import { DEFAULT_DOMAIN_ID, loadWorkspace } from "../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   ForbiddenError,
   NotFoundError,

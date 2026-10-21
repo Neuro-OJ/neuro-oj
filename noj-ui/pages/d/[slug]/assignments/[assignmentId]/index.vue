@@ -22,9 +22,8 @@ const feedbackTarget = ref<{ userId: string; username: string } | null>(null);
 const askSignal = ref(0), askItemId = ref<string | null>(null);
 const pendingHelp = ref(0);
 const key = computed(() => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value));
-const task = await useViewAsyncData('assignment', () => `${key.value}:task`, () => education.assignment(slug.value!, id.value));
-const room = await useViewAsyncData(
-  'classroom',
+const task = await useAsyncData(() => `${key.value}:task`, () => education.assignment(slug.value!, id.value));
+const room = await useAsyncData(
   () => `${key.value}:classroom:${task.data.value?.data.classroom_id ?? ''}`,
   () => task.data.value ? education.classroom(slug.value!, task.data.value.data.classroom_id) : Promise.resolve(null),
 );
@@ -45,8 +44,7 @@ const query = computed(() => ({
   item_id: itemFilter.value === 'all' ? undefined : itemFilter.value,
   verdict: verdictFilter.value === 'all' ? undefined : verdictFilter.value,
 }));
-const matrix = await useViewAsyncData(
-  'matrix',
+const matrix = await useAsyncData(
   () =>
     `${key.value}:matrix:${JSON.stringify(query.value)}:${can('progress:read')}:${!!task.data.value?.data
       .published_at}`,
@@ -54,14 +52,15 @@ const matrix = await useViewAsyncData(
     can('progress:read') && task.data.value?.data.published_at
       ? education.matrix(slug.value!, id.value, query.value)
       : Promise.resolve(null),
+  { watch: [query, task.data, room.data] },
 );
-const progress = await useViewAsyncData(
-  'progress',
+const progress = await useAsyncData(
   () => `${key.value}:progress:${scope.value}:${isStudent.value}:${!!task.data.value?.data.published_at}`,
   () =>
     isStudent.value && task.data.value?.data.published_at
       ? education.progress(slug.value!, id.value, scope.value)
       : Promise.resolve(null),
+  { watch: [scope, isStudent, task.data] },
 );
 const itemPage = ref(1);
 const allItems = computed(() => progress.data.value?.data.items ?? []);
@@ -618,8 +617,9 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             :key="`${key}:${selected.userId}:${selected.cell.item_id}:${scope}`" :slug="slug!" :assignment-id="id"
             :classroom-id="task.data.value!.data.classroom_id" :user-id="selected.userId"
             :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
-          <TrainingComparison v-if="can('progress:read') && !isStudent" :key="`${key}:${selected.userId}:comparison`"
-            :slug="slug!" :assignment-id="id" :user-id="selected.userId" :anchor="task.data.value!.data.published_at" />
+          <TrainingComparison v-if="can('progress:read') && !isStudent && task.data.value?.data.published_at"
+            :key="`${key}:${selected.userId}:comparison`" :slug="slug!" :assignment-id="id"
+            :user-id="selected.userId" :anchor="task.data.value!.data.published_at!" />
           <SubmissionReview
             v-if="isStudent && selected.cell.source_submission_id && selected.cell.source_kind === 'submission'"
             :key="selected.cell.source_submission_id" :slug="slug!" :classroom-id="task.data.value!.data.classroom_id"

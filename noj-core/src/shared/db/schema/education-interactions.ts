@@ -15,10 +15,7 @@ import {
   assignments,
   educationOutbox,
 } from "./assignment.ts";
-import {
-  objectiveSubmissions,
-  submissions,
-} from "./evaluation-records.ts";
+import { objectiveSubmissions, submissions } from "./evaluation-records.ts";
 
 /** 整体或学生反馈默认向目标学生可见，作者注销不级联删除教学历史。 */
 export const assignmentFeedback = pgTable("assignment_feedback", {

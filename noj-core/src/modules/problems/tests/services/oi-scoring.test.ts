@@ -5,7 +5,7 @@ import { validateOiSelfTestCases } from "../../services/oi-self-test-package.ts"
 import { buildOiSelfTestPackage } from "../../services/oi-self-test-package.ts";
 import { decodeBase64 } from "@std/encoding/base64";
 import { unzipSync } from "fflate";
-import { sha256Hex } from "../../../../domains/system/index.ts";
+import { sha256Hex } from "../../../platform/system/index.ts";
 import { isAcceptedResult } from "../../../../shared/base/accepted-result.ts";
 
 Deno.test("OI 默认整数等分与显式分数一致，余数分给末尾", () => {

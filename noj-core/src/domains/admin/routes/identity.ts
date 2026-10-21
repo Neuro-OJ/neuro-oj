@@ -17,7 +17,7 @@ import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { eq } from "drizzle-orm";
-import type { AuthEnv } from "../../identity/middleware/auth.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   BadRequestError,
@@ -25,14 +25,14 @@ import {
 } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { users } from "../../../shared/db/schema.ts";
-import { listUsers } from "../../identity/services/auth.ts";
+import { listUsers } from "../../../modules/access/identity/services/auth.ts";
 import {
   adminUpdateUserProfile,
   banUser,
   getUserBanHistory,
   resolveUserId,
   unbanUser,
-} from "../../identity/services/users.ts";
+} from "../../../modules/access/identity/services/users.ts";
 import {
   createRole,
   deleteRole,
@@ -40,13 +40,13 @@ import {
   listRoles,
   updateRole,
   updateUserRoles,
-} from "../../identity/services/admin-roles.ts";
-import { adminDeleteAccount } from "../../identity/services/account-deletion.ts";
+} from "../../../modules/access/identity/services/admin-roles.ts";
+import { adminDeleteAccount } from "../../../modules/access/identity/services/account-deletion.ts";
 import {
   addIpBan,
   listIpBans,
   removeIpBan,
-} from "../../identity/services/banlist.ts";
+} from "../../../modules/access/identity/services/banlist.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";

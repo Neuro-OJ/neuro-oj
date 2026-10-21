@@ -5,7 +5,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problems,
@@ -13,7 +13,7 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
 

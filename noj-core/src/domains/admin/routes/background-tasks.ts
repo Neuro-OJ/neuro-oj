@@ -11,7 +11,7 @@
  * 只读端点与重试都要求管理员权限；重试写入审计日志，便于追责。
  */
 import { Hono } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   getTaskById,

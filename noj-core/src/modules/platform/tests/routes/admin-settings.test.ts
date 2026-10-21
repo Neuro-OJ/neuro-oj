@@ -18,7 +18,7 @@ import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../../../../domains/system/index.ts";
+} from "../../system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,

@@ -7,6 +7,8 @@ import type { GatewayConfig } from "./config.ts";
 import { requestIdMiddleware } from "./context.ts";
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
+import { INSTANCE_POLICY_ID } from "./policy-operations.ts";
+import type { PolicyCapsInput } from "./policy-operations.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
 import { renderMetrics } from "./metrics.ts";
@@ -23,6 +25,8 @@ export type ReadyCheckStatus = "ok" | "error";
 export interface ReadyChecks {
   /** 数据库是否可执行真实查询（SELECT 1）。 */
   database: ReadyCheckStatus;
+  /** 本地政策表是否可读；空表表示尚未写入，按空政策继续服务。 */
+  policy: ReadyCheckStatus;
   /** Redis ping 是否成功。 */
   redis: ReadyCheckStatus;
   /** 记账 worker 是否运行且最近没有持续失败。 */
@@ -78,6 +82,31 @@ async function checkDatabase(db: Db | null): Promise<string | null> {
   }
 }
 
+/** 政策探针：确认 Gateway 本地政策表可读，不回查 Core。 */
+async function checkPolicy(db: Db | null): Promise<string | null> {
+  if (!db) return "policy_not_configured";
+  try {
+    const rows = (await db`
+      SELECT revision, day_max_calls, day_max_tokens, day_max_cost,
+             month_max_calls, month_max_tokens, month_max_cost, updated_at
+      FROM llm_policy WHERE id = ${INSTANCE_POLICY_ID}
+    `) as unknown as Array<Partial<PolicyCapsInput> & { revision?: unknown }>;
+    // 迁移后尚未有实例政策行时，readCurrentPolicy 的空政策语义仍有效；
+    // 若已有行，则至少验证 revision 是合法的非负整数，避免错误行假装 ready。
+    if (
+      rows.length > 1 ||
+      rows.length === 1 &&
+        (!Number.isSafeInteger(Number(rows[0]?.revision)) ||
+          Number(rows[0]?.revision) < 0)
+    ) {
+      return "policy_unavailable";
+    }
+    return null;
+  } catch {
+    return "policy_unavailable";
+  }
+}
+
 /** Redis 探针：ping 成功即视为可写（失败只返回非敏感类别代码）。 */
 async function checkRedis(redis: RedisClient | null): Promise<string | null> {
   if (!redis) return "redis_not_configured";
@@ -113,17 +142,19 @@ export function createReadyProbe(
   deps: ReadyProbeDeps,
 ): () => Promise<ReadyReport> {
   return async () => {
-    const [database, redis, accounting] = await Promise.all([
+    const [database, policy, redis, accounting] = await Promise.all([
       checkDatabase(deps.db),
+      checkPolicy(deps.db),
       checkRedis(deps.redis),
       checkAccounting(deps.accounting),
     ]);
     const checks: ReadyChecks = {
       database: database === null ? "ok" : "error",
+      policy: policy === null ? "ok" : "error",
       redis: redis === null ? "ok" : "error",
       accounting: accounting === null ? "ok" : "error",
     };
-    const failures = [database, redis, accounting].filter(
+    const failures = [database, policy, redis, accounting].filter(
       (failure): failure is string => failure !== null,
     );
     return { ready: failures.length === 0, checks, failures };

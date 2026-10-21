@@ -9,7 +9,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   isStorageUrl,
   parseStorageUrl,
-} from "./../../../src/domains/system/services/storage/types.ts";
+} from "../../../src/modules/platform/system/services/storage/types.ts";
 
 /** 检查 MinIO 是否可用（不抛出 env 权限错误） */
 function hasMinioConfig(): boolean {
@@ -30,7 +30,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",
@@ -62,7 +62,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",
@@ -95,7 +95,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",
@@ -124,7 +124,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",
@@ -154,7 +154,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",
@@ -175,7 +175,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { S3StorageProvider } = await import(
-      "./../../../src/domains/system/services/storage/s3.ts"
+      "../../../src/modules/platform/system/services/storage/s3.ts"
     );
     const provider = new S3StorageProvider({
       endpoint: Deno.env.get("S3_ENDPOINT") || "http://localhost:9000",

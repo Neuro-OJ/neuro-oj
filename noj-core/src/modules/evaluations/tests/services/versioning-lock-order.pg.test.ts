@@ -47,12 +47,12 @@ import {
   reserveStorageObjectUpload,
   StorageObjectMissingError,
   StorageUploadInFlightError,
-} from "../../../../modules/assets/services/registry.ts";
+} from "../../../assets/index.ts";
 import {
   getStorageProvider,
   setStorageProviderForTest,
-} from "../../../../modules/assets/storage/factory.ts";
-import { LocalStorageProvider } from "../../../../modules/assets/storage/local.ts";
+} from "../../../assets/storage/mod.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import { setProblemEffectiveVersionPolicy } from "../../services/versioning/effective-policy.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";

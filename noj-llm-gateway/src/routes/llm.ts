@@ -24,7 +24,7 @@ import {
   ProviderQueueTimeoutError,
   type ProviderSlot,
 } from "../provider-throttle.ts";
-import { calcBilledUsage } from "../billing.ts";
+import { calcBilledUsage, type UpstreamUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
 import {
@@ -48,6 +48,11 @@ interface ChatCompletionRequest {
   temperature?: number;
   top_p?: number;
   [key: string]: unknown;
+}
+
+interface StreamingUsageResult {
+  remainder: string;
+  usage?: UpstreamUsage;
 }
 
 const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
@@ -92,6 +97,43 @@ function buildChatUrl(baseUrl: string): string {
   if (base.endsWith("/chat/completions")) return base;
   if (base.endsWith("/v1")) return `${base}/chat/completions`;
   return `${base}/v1/chat/completions`;
+}
+
+/** 从跨 chunk 的 SSE 文本中提取 OpenAI stream_options.include_usage 结尾块。 */
+function extractStreamingUsage(text: string): StreamingUsageResult {
+  const lines = text.split(/\r?\n/);
+  const remainder = lines.pop() ?? "";
+  let usage: UpstreamUsage | undefined;
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(data) as Record<string, unknown>;
+      const candidate = parsed.usage;
+      if (candidate && typeof candidate === "object") {
+        usage = candidate as UpstreamUsage;
+      }
+    } catch {
+      // 非 JSON 的 SSE 注释/增量内容不影响继续转发；最终 usage 块必须可解析。
+    }
+  }
+  return { remainder, ...(usage ? { usage } : {}) };
+}
+
+/** 给流式上游请求补齐最终 usage 选项，但保留调用方其它 stream_options。 */
+function prepareUpstreamRequestBody(
+  body: ChatCompletionRequest,
+): ChatCompletionRequest {
+  if (body.stream !== true) return body;
+  const options = body.stream_options;
+  const streamOptions = options && typeof options === "object"
+    ? options as Record<string, unknown>
+    : {};
+  return {
+    ...body,
+    stream_options: { ...streamOptions, include_usage: true },
+  };
 }
 
 /** 计算字符串 SHA-256 的十六进制摘要，用于用量审计的 prompt 哈希。 */
@@ -140,6 +182,238 @@ function providerQueueTimeoutError(retryAfterSeconds: number): Response {
       },
     },
   );
+}
+
+interface StreamingResponseOptions {
+  response: Response;
+  payload: Awaited<ReturnType<typeof verifyEvalToken>>;
+  body: ChatCompletionRequest;
+  callId: string;
+  startedAt: number;
+  promptTokens: number;
+  estimatedCost: number;
+  costPer1kTokens: number;
+  upstreamModel: string;
+  aliasForAudit?: string;
+  providerSlot: ProviderSlot;
+  requestSignal: AbortSignal;
+  deps: LlmDeps;
+}
+
+/**
+ * 转发 SSE 并把“流结束”作为记账完成边界。
+ *
+ * 上游响应已经建立后，客户端断开、上游读失败或没有最终 usage 都不能证明未计费，
+ * 因而只写 unknown，不自动重发上游。只有收到可解析的最终 usage，才持久化实际用量
+ * 并尝试幂等结算；结算失败保留 pending，由后台 worker 重试。
+ */
+async function createStreamingResponse(
+  options: StreamingResponseOptions,
+): Promise<Response> {
+  const {
+    response,
+    payload,
+    body,
+    callId,
+    startedAt,
+    promptTokens,
+    estimatedCost,
+    costPer1kTokens,
+    upstreamModel,
+    aliasForAudit,
+    providerSlot,
+    requestSignal,
+    deps,
+  } = options;
+  const decoder = new TextDecoder();
+  let pendingText = "";
+  let streamUsage: UpstreamUsage | undefined;
+  let closed = false;
+  let clientCancelled = false;
+  let finalization: Promise<void> | null = null;
+
+  const makeUsageEntry = async (
+    status: string,
+    errorCode: string | null,
+    usage: UpstreamUsage | undefined,
+  ) => {
+    const billed = calcBilledUsage(usage, promptTokens, 0);
+    const actualCost = usage
+      ? estimateCost(billed.billedTotalTokens, costPer1kTokens)
+      : estimatedCost;
+    return {
+      id: callId,
+      domain_id: payload.domain_id,
+      submission_id: payload.submission_id,
+      attempt_id: payload.attempt_id ?? null,
+      problem_version_id: payload.problem_version_id ?? null,
+      problem_id: payload.problem_id,
+      user_id: payload.user_id,
+      provider_id: payload.provider_id,
+      model: upstreamModel,
+      request_messages: body.messages,
+      request_params: pickParams(body, aliasForAudit),
+      prompt_tokens: billed.promptTokens,
+      completion_tokens: billed.completionTokens,
+      total_tokens: billed.totalTokens,
+      cached_prompt_tokens: billed.cachedPromptTokens,
+      billed_prompt_tokens: billed.billedPromptTokens,
+      billed_total_tokens: billed.billedTotalTokens,
+      estimated_cost: actualCost,
+      latency_ms: Date.now() - startedAt,
+      status,
+      error_code: errorCode,
+      prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+      created_at: new Date().toISOString(),
+    };
+  };
+
+  const recordUnknownOutcome = async (errorCode: string): Promise<void> => {
+    await recordUnknownCall(deps.db, callId).catch((error) => {
+      logger.warn("流式调用标记 unknown 失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    const entry = await makeUsageEntry("error", errorCode, undefined);
+    await recordUsage(deps.db, entry).catch((error) => {
+      logger.warn("流式 unknown 审计写入失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    // 已经拿到上游 HTTP 响应但没有可读 body，仍不能把账本留在“已预占”状态。
+    // 这和客户端断开/上游读失败同属无法证明实际用量的 unknown 结果，且绝不重发上游。
+    await recordUnknownOutcome("stream_body_missing");
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    headers.set("x-noj-call-id", callId);
+    return new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+
+  const finalize = (
+    usage: UpstreamUsage | undefined,
+    unknownReason: string,
+  ): Promise<void> => {
+    if (finalization) return finalization;
+    finalization = (async () => {
+      if (!usage) {
+        await recordUnknownOutcome(unknownReason);
+        return;
+      }
+      const billed = calcBilledUsage(usage, promptTokens, 0);
+      await providerSlot.settle(billed.totalTokens).catch(() => undefined);
+      const actualCost = estimateCost(
+        billed.billedTotalTokens,
+        costPer1kTokens,
+      );
+      const entry = await makeUsageEntry(
+        response.ok ? "ok" : "error",
+        response.ok ? null : String(response.status),
+        usage,
+      );
+      try {
+        await persistCallUsage(
+          deps.db,
+          callId,
+          entry,
+          billed.billedTotalTokens,
+          actualCost,
+        );
+      } catch (error) {
+        await recordUnknownOutcome("accounting_persist_failed");
+        logger.warn("流式调用实际用量持久化失败: {error}", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      try {
+        const settled = await settleCall(deps.db, deps.redis, callId);
+        if (settled !== "ok") inc("noj_llm_quota_exhausted_total");
+      } catch (error) {
+        // ledger 已是 pending，不能把已知用量改写成 unknown；worker 会按同一 ID 重放。
+        logger.warn("流式调用结算暂挂: {error}", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })().catch((error) => {
+      logger.warn("流式调用记账失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    return finalization;
+  };
+
+  const onAbort = () => {
+    clientCancelled = true;
+    void reader.cancel("client_closed_stream").catch(() => undefined);
+    void finalize(undefined, "client_closed_stream").then(detachAbort);
+  };
+  const detachAbort = (): void => {
+    requestSignal.removeEventListener("abort", onAbort);
+  };
+  if (requestSignal.aborted) onAbort();
+  else requestSignal.addEventListener("abort", onAbort, { once: true });
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (closed) return;
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          closed = true;
+          pendingText += decoder.decode();
+          const parsed = extractStreamingUsage(pendingText + "\n");
+          if (parsed.usage) streamUsage = parsed.usage;
+          await finalize(
+            clientCancelled || requestSignal.aborted ? undefined : streamUsage,
+            clientCancelled || requestSignal.aborted
+              ? "client_closed_stream"
+              : "stream_usage_unknown",
+          );
+          detachAbort();
+          controller.close();
+          return;
+        }
+        pendingText += decoder.decode(result.value, { stream: true });
+        const parsed = extractStreamingUsage(pendingText);
+        pendingText = parsed.remainder;
+        if (parsed.usage) streamUsage = parsed.usage;
+        controller.enqueue(result.value);
+      } catch (error) {
+        closed = true;
+        await finalize(
+          undefined,
+          requestSignal.aborted
+            ? "client_closed_stream"
+            : "upstream_stream_error",
+        );
+        detachAbort();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      closed = true;
+      clientCancelled = true;
+      await reader.cancel(reason).catch(() => undefined);
+      await finalize(undefined, "client_closed_stream");
+      detachAbort();
+    },
+  });
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.set("x-noj-call-id", callId);
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 /** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
@@ -216,9 +490,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const body = await c.req.json<ChatCompletionRequest>().catch(() => null);
     if (!body || !Array.isArray(body.messages)) {
       return c.json({ error: "invalid_request" }, 400);
-    }
-    if (body.stream) {
-      return c.json({ error: "stream_not_supported" }, 400);
     }
     const model = body.model ?? "";
     if (!payload.allowed_models.includes(model)) {
@@ -413,9 +684,14 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           "Authorization": `Bearer ${providerSecret.apiKey}`,
         },
         body: JSON.stringify(
-          upstreamModel === model ? body : { ...body, model: upstreamModel },
+          prepareUpstreamRequestBody(
+            upstreamModel === model ? body : { ...body, model: upstreamModel },
+          ),
         ),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.any([
+          AbortSignal.timeout(120_000),
+          c.req.raw.signal,
+        ]),
         redirect: "error",
       });
     } catch {
@@ -444,6 +720,24 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         created_at: new Date().toISOString(),
       });
       return c.json({ error: "upstream_error" }, 502);
+    }
+
+    if (body.stream === true) {
+      return createStreamingResponse({
+        response: upstreamRes,
+        payload,
+        body,
+        callId,
+        startedAt,
+        promptTokens,
+        estimatedCost,
+        costPer1kTokens: providerSecret.provider.cost_per_1k_tokens,
+        upstreamModel,
+        ...(aliasForAudit === undefined ? {} : { aliasForAudit }),
+        providerSlot,
+        requestSignal: c.req.raw.signal,
+        deps,
+      });
     }
 
     let upstreamText = "";

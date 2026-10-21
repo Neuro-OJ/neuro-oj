@@ -23,7 +23,7 @@ import {
 import {
   removeDomainMember,
   setDomainStatus,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   createDomainSubmission,
   getSubmission,
@@ -304,11 +304,28 @@ Deno.test({
     await f.db.update(problems).set({ latest_version_id: version }).where(
       eq(problems.id, f.problemId),
     );
-    const error = await assertRejects(
-      () => createDomainSubmission(f.a.slug, f.ref, f.student, input(version)),
-      AppError,
-    );
-    assertEquals(error.code, "DOMAIN_LLM_NOT_CONFIGURED");
-    assertEquals((await f.db.select().from(submissions)).length, 0);
+    const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+    const oldFetch = globalThis.fetch;
+    Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "domain-submission-test-token");
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: "domain_llm_not_configured" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+      )) as typeof fetch;
+    try {
+      const error = await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, f.ref, f.student, input(version)),
+        AppError,
+      );
+      assertEquals(error.code, "DOMAIN_LLM_NOT_CONFIGURED");
+      assertEquals((await f.db.select().from(submissions)).length, 0);
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
+    }
   },
 });

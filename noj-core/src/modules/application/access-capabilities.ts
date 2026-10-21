@@ -10,11 +10,11 @@ import type { UserActor } from "../access/contracts/actor.ts";
 import type { DomainChangeBoundary } from "../access/domains.ts";
 import type { ClassroomInvitationBoundary } from "../access/invitations.ts";
 import type { MemberRemovalBoundary } from "../access/members.ts";
-import { retireDomainEducationMemberships } from "../../domains/education/services/account-lifecycle.ts";
+import { retireDomainEducationMemberships } from "../education/services/account-lifecycle.ts";
 import {
   assertClassroomInvitationIssuer,
   joinInvitedClassroom,
-} from "../../domains/education/services/invitations.ts";
+} from "../education/services/invitations.ts";
 import { recordSourceDomainEducationChange } from "../problems/services/workspace/education-events.ts";
 
 /** 成员移除必须同步结束相关班级任职，且与域成员事实共用同一 DbTx。 */
@@ -40,12 +40,13 @@ export function accessClassroomInvitationBoundary(): ClassroomInvitationBoundary
       classroomId: string,
       actor: UserActor,
     ) => {
-      await assertClassroomInvitationIssuer(
+      const classroom = await assertClassroomInvitationIssuer(
         slug,
         classroomId,
         actor.userId,
         tx,
       );
+      return { classroomName: classroom.name };
     },
     joinTx: async (
       tx: DbTx,

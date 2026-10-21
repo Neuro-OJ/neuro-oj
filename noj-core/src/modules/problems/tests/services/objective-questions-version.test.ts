@@ -28,7 +28,7 @@ import {
 } from "../../index.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 const db = getDb();
 const now = new Date().toISOString();

@@ -20,6 +20,7 @@ import {
 import {
   allTargetModuleTestRoots,
   TARGET_MODULE_NAMES,
+  testRootsForTarget,
 } from "../../../scripts/module-test-metadata.ts";
 
 const CORE_ROOT = new URL("../../", import.meta.url).pathname.replace(
@@ -70,26 +71,33 @@ async function collectTestFiles(): Promise<string[]> {
 }
 
 Deno.test("shards: 每个 domain 的 tests 目录都被某个分片覆盖", () => {
-  // 显式断言 observability / admin 在列（防止回归到 2026-09-21 前的遗漏）。
-  for (const domain of ["observability", "admin", "workspace", "education"]) {
-    const covered = SHARDS.some((s) =>
-      s.dirs.some((d) => d.startsWith(`src/domains/${domain}/tests`))
-    );
-    assert(covered, `domain ${domain} 的测试未被任何分片覆盖`);
+  // 显式断言关键迁移期测试根在列，避免旧 domain 名称掩盖模块迁移后的遗漏。
+  for (
+    const root of [
+      "src/modules/platform/observability/tests",
+      "src/domains/admin/tests",
+      "src/modules/access/workspace/tests",
+      "src/modules/education/tests",
+    ]
+  ) {
+    const covered = SHARDS.some((s) => s.dirs.some((d) => d.startsWith(root)));
+    assert(covered, `测试根 ${root} 未被任何分片覆盖`);
   }
 });
 
-Deno.test("shards: 12 个 target module 的 tests 根都登记到分片", () => {
-  assertEquals(
-    allTargetModuleTestRoots().length,
-    TARGET_MODULE_NAMES.length,
-    "metadata 的 target module 数量与测试根数量必须一致",
+Deno.test("shards: target modules 的全部 tests 根都登记到分片", () => {
+  const roots = allTargetModuleTestRoots();
+  assert(
+    roots.length >= TARGET_MODULE_NAMES.length,
+    "target module 至少应各有一个测试根",
   );
-  for (const root of allTargetModuleTestRoots()) {
-    assert(
-      isCoveredByShards(`${root}/future.test.ts`),
-      `target module 测试根未进入并行分片：${root}`,
-    );
+  for (const moduleName of TARGET_MODULE_NAMES) {
+    for (const root of testRootsForTarget(moduleName)) {
+      assert(
+        isCoveredByShards(`${root}/future.test.ts`),
+        `target module 测试根未进入并行分片：${root}`,
+      );
+    }
   }
 });
 
@@ -169,9 +177,13 @@ Deno.test(
 Deno.test("shards: 性能基准按登记豁免（而非被静默遗漏）", () => {
   // 反向证据：perf 文件确实存在于文件系统，但被显式排除。
   assert(isPerfExcluded("tests/perf/search_bench.test.ts"));
-  assert(isPerfExcluded("src/domains/search/tests/perf/search_bench.test.ts"));
   assert(
-    isPerfExcluded("src/domains/education/tests/perf/matrix-bench.test.ts"),
+    isPerfExcluded(
+      "src/modules/read-models/search/tests/perf/search_bench.test.ts",
+    ),
+  );
+  assert(
+    isPerfExcluded("src/modules/education/tests/perf/matrix-bench.test.ts"),
   );
   assert(!isPerfExcluded("tests/security-headers.test.ts"));
 });

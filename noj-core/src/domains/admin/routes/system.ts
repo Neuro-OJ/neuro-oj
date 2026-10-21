@@ -13,7 +13,7 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   BadRequestError,
@@ -22,8 +22,8 @@ import {
   ValidationError,
 } from "../../../shared/base/errors.ts";
 import { isBootstrap } from "../../../shared/config/settings-registry.ts";
-import { assertPermission } from "../../identity/index.ts";
-import { getClientIp } from "../../system/services/rate-limit-env.ts";
+import { assertPermission } from "../../../modules/access/identity/services/security/permissions.ts";
+import { getClientIp } from "../../../modules/platform/system/services/rate-limit-env.ts";
 import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   MAX_SAFE_PAGE,
@@ -40,12 +40,12 @@ import type {
   CreateAnnouncementInput,
   UpdateAnnouncementInput,
 } from "../../../modules/platform/services/announcements.ts";
-import { listAuditLogs } from "../../system/services/audit-log.ts";
-import type { AuditAction } from "../../system/types/audit-log.ts";
+import { listAuditLogs } from "../../../modules/platform/system/services/audit-log.ts";
+import type { AuditAction } from "../../../modules/platform/system/types/audit-log.ts";
 import {
   clearEmailSuppression,
   listEmailSuppressions,
-} from "../../system/services/email-delivery/service.ts";
+} from "../../../modules/platform/system/services/email-delivery/service.ts";
 import {
   createJudgeImage,
   deleteJudgeImage,
@@ -63,8 +63,8 @@ import {
   resetSetting,
   updateSetting,
 } from "../../../modules/platform/services/system-settings.ts";
-import { getEmailConfigStatus } from "../../system/services/email-status.ts";
-import { sendTestEmail } from "../../system/services/email.ts";
+import { getEmailConfigStatus } from "../../../modules/platform/system/services/email-status.ts";
+import { sendTestEmail } from "../../../modules/platform/system/services/email.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "admin"]);
@@ -74,7 +74,7 @@ import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 import {
   getOiCostProfileStatus,
   OI_COST_PROFILE_SETTING_KEY,
-} from "../../system/services/oi-cost-profile.ts";
+} from "../../../modules/platform/system/services/oi-cost-profile.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();

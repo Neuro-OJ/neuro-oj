@@ -1,9 +1,9 @@
 import { type Context, Hono } from "hono";
 import {
-  type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { and, eq } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
@@ -26,7 +26,7 @@ import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
-} from "../../../domains/system/index.ts";
+} from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   createObjectiveQuestionCommand,
@@ -47,7 +47,7 @@ import {
   listObjectiveSubmissionsCommand,
   submitObjectivePaperCommand,
 } from "../../application/evaluations.ts";
-import { listLlmModelAliases } from "../../../domains/gateway/index.ts";
+import { listLlmModelAliases } from "../../platform/contracts/cross-module/gateway_services_llm-model-aliases.ts";
 import { LLM_DEFAULT_MODEL_ALIAS } from "../types/problems.ts";
 import {
   assertProblemEditPermissionForActor,
@@ -85,7 +85,7 @@ import {
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
-} from "../../../domains/identity/index.ts";
+} from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,
@@ -95,12 +95,18 @@ import {
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
 } from "../services/support-package.ts";
-import { listPaperQuestionsWithAccess, serializeQuestion } from "../index.ts";
+import {
+  assertObjectivePaper,
+  assertPaperManageableForActor,
+  getPaperOrThrow,
+  listPaperQuestionsWithAccess,
+  serializeQuestion,
+} from "../services/objective/objective-questions.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
-} from "../index.ts";
+} from "../types/objective.ts";
 import type { ObjectiveQuestionSnapshot } from "../types/problem-content.ts";
 
 const router = new Hono<AuthEnv>();
@@ -1077,6 +1083,12 @@ router.post("/:id/questions", authMiddleware, async (c) => {
     }
   >(c);
   const paperId = (await resolveProblem(c.req.param("id") as string)).id;
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  await assertPaperManageableForActor(
+    paper,
+    userActorFromAuthenticatedId(userId),
+  );
   const revision = parseExpectedRevision(c, body.expected_revision);
   const actor = userActorFromAuthenticatedId(userId);
   const data = await createObjectiveQuestionCommand(
@@ -1100,6 +1112,12 @@ router.put("/:id/questions/:qid", authMiddleware, async (c) => {
     }
   >(c);
   const paperId = (await resolveProblem(c.req.param("id") as string)).id;
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  await assertPaperManageableForActor(
+    paper,
+    userActorFromAuthenticatedId(userId),
+  );
   const revision = parseExpectedRevision(c, body.expected_revision);
   const actor = userActorFromAuthenticatedId(userId);
   const data = await updateObjectiveQuestionCommand(
@@ -1125,6 +1143,12 @@ router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
     { expected_revision?: number } | undefined
   >(c).catch(() => undefined);
   const paperId = (await resolveProblem(c.req.param("id") as string)).id;
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  await assertPaperManageableForActor(
+    paper,
+    userActorFromAuthenticatedId(userId),
+  );
   const revision = parseExpectedRevision(c, body?.expected_revision);
   const actor = userActorFromAuthenticatedId(userId);
   await deleteObjectiveQuestionCommand(
@@ -1160,7 +1184,7 @@ router.post("/:id/submit", authMiddleware, async (c) => {
   const result = await submitObjectivePaperCommand(
     actor,
     context,
-    paperId,
+    context.problem.problemId,
     body,
   );
   return c.json({ data: result }, 201);

@@ -5,7 +5,7 @@ import {
   normalizeResultStatus,
 } from "./submission-result-format.ts";
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
-import { prepareEducationSubmissionDeletion } from "../../../../domains/education/index.ts";
+import { prepareEducationSubmissionDeletion } from "../../../education/contracts/cross-module/services_submission-lifecycle.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
  * 提交列表、创建、详情及删除。
@@ -38,15 +38,15 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
-import { consumeDomainSubmissionQuota } from "../../../../domains/workspace/index.ts";
+import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
-import { checkPermission } from "../../../../domains/identity/index.ts";
+import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   assertDefaultProblemSource,
-  evaluateProblemAccess,
   resolveDefaultExecutionContext,
-} from "../../../problems/index.ts";
-import { verifyContestAccess } from "../../../contests/index.ts";
+} from "../../../problems/contracts/cross-module/services_workspace_execution-context.ts";
+import { evaluateProblemAccess } from "../../../problems/contracts/cross-module/services_problem-access-check.ts";
+import { verifyContestAccess } from "../../../contests/contracts/cross-module/services_contest-access.ts";
 import {
   generatePublicId,
   resolvePublicId,
@@ -55,30 +55,32 @@ import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../../../platform/index.ts";
-import { assertContestSubmissionLimit } from "../../../contests/index.ts";
-import { deleteStorageObject } from "../../../assets/index.ts";
+import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
+import { assertContestSubmissionLimit } from "../../../contests/contracts/cross-module/services_contests.ts";
+import { deleteStorageObject } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { enqueueTaskTx } from "../../../runtime/tasks/repository.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
-import { buildJudgeTaskLlm } from "../../../../domains/gateway/index.ts";
-import { isOiRuntimeConfig } from "../../../problems/index.ts";
+import { buildJudgeTaskLlm } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
+import { isOiRuntimeConfig } from "../../../problems/types/runtime-config.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
 import {
   assertSubmissionLanguage,
-  LANGUAGE_EXT_MAP,
   submissionModeForLanguage,
   UI_FILE_NAME,
   UI_LANGUAGE,
-} from "../../types/index.ts";
+} from "../../types/ui-solution.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   type DomainExecutionRequest,
   lockDomainExecution,
   resolveDomainExecution,
 } from "../workspace-execution.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { revalidateEvaluationAdmissionTx } from "../../contracts/admission.ts";
+import type { DomainEvaluationAdmissionPlan } from "../../contracts/admission.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
@@ -383,6 +385,7 @@ export async function createSubmission(
   contestId?: string,
   isAdmin = false,
   domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
@@ -392,9 +395,10 @@ export async function createSubmission(
   if (domainRequest && requestedContestId && !domainRequest.contestId) {
     throw new BadRequestError("域内练习提交不能携带比赛上下文");
   }
-  const domainExecution = domainRequest
-    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
-    : null;
+  const domainExecution = admissionPlan?.resolved ??
+    (domainRequest
+      ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+      : null);
   if (
     domainExecution?.contestId && requestedContestId &&
     domainExecution.contestId !== requestedContestId
@@ -606,7 +610,15 @@ export async function createSubmission(
 
   try {
     await db.transaction(async (tx) => {
-      const workspace = domainExecution && domainRequest
+      const workspace = admissionPlan
+        ? await revalidateEvaluationAdmissionTx(
+          tx,
+          admissionPlan.context,
+          admissionPlan.request,
+          userId,
+          input.version_id ?? admissionPlan.context.problem.versionId,
+        )
+        : domainExecution && domainRequest
         ? await lockDomainExecution(
           domainExecution,
           domainRequest,

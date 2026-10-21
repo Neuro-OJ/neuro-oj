@@ -13,7 +13,7 @@ import { createUserToken } from "../../../../tests/helper.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../access/workspace/index.ts";
 import { deriveDraftContentFromProblem } from "../services/versioning/draft.ts";
 
 /** 原始 SQL 夹具显式建立已发布版本和 main 绑定，不在产品读路径补历史数据。 */

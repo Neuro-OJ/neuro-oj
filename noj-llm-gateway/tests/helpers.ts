@@ -78,6 +78,7 @@ export class FakeRedis implements RedisClient {
 export function createFakeDb(provider: ProviderRow | null): {
   db: Db;
   usageInserts: Record<string, unknown>[];
+  ledger: Map<string, Record<string, unknown>>;
 } {
   const usageInserts: Record<string, unknown>[] = [];
   const ledger = new Map<string, Record<string, unknown>>();
@@ -196,7 +197,7 @@ export function createFakeDb(provider: ProviderRow | null): {
   ) => operation(db);
   (db as unknown as { reserve: unknown }).reserve = () => Promise.resolve(db);
   (db as unknown as { release: unknown }).release = () => {};
-  return { db, usageInserts };
+  return { db, usageInserts, ledger };
 }
 
 export async function makeProvider(storeKey: string): Promise<ProviderRow> {

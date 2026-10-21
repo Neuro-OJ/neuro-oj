@@ -30,7 +30,7 @@ import {
   addDomainMember,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
@@ -46,7 +46,7 @@ import {
   LocalStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/system/index.ts";
 import {
   getRedis,
   resetRedisForTest,

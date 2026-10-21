@@ -1,13 +1,11 @@
 import { Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-  checkPermission,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
+import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { enforceSelfTestRateLimit } from "../../../domains/system/index.ts";
-import { resolveProblem } from "../../problems/index.ts";
+import { enforceSelfTestRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
+import { resolveProblem } from "../../problems/contracts/cross-module/services_problem-resolve.ts";
 import {
   composeEvaluationAdmissionContext,
   submitSelfTestCommand,

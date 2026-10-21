@@ -1,11 +1,8 @@
 import { unzipSync, zipSync } from "fflate";
 import { encodeBase64 } from "@std/encoding/base64";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import {
-  buildBase64DownloadUrl,
-  getStorageProvider,
-  sha256Hex,
-} from "../../../domains/system/index.ts";
+import { buildBase64DownloadUrl, sha256Hex } from "../../assets/storage/mod.ts";
+import { getStorageProvider } from "../../assets/storage/mod.ts";
 import type { OiRuntimeConfig } from "../types/runtime-config.ts";
 
 /** 自测只接收用户输入和可选预期输出，不接受文件路径或 checker。 */

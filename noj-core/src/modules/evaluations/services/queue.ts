@@ -25,15 +25,15 @@ import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 const logger = getLogger(["noj", "submission"]);
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
-import { logAudit } from "../../../domains/system/index.ts";
+import { logAudit } from "../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
-  DEFAULT_DOMAIN_ID,
   domainMemberWhere,
   domainReadableWhere,
-} from "../../../domains/workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../problems/index.ts";
-import { unendedPublicContestForProblem } from "../../contests/index.ts";
+} from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { domainProblemBindingAvailableWhere } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
+import { unendedPublicContestForProblem } from "../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { projectContestSubmissionReads } from "./submissions/contest-read-projection.ts";
 import type {
   QueueHealthEntry,

@@ -4,7 +4,7 @@ import {
 } from "./problems/problems.ts";
 import type { ProblemViewer } from "./problems/problems-list.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 
 /** 旧无域入口只定位默认域；历史 P 数字链接转换为数字，U 入口拒绝。 */
 export async function resolveProblem(id: string, viewer?: ProblemViewer) {

@@ -18,11 +18,9 @@ import {
 } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  assertWorkspacePermission as assertAccessWorkspacePermission,
-  loadWorkspaceTx,
-  userActorFromAuthenticatedId,
-} from "../../../../modules/access/index.ts";
+import { assertWorkspacePermission as assertAccessWorkspacePermission } from "../../../access/policy.ts";
+import { loadWorkspaceTx } from "../../../access/policy.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   domainProblemBindings,
   domains,
@@ -36,9 +34,9 @@ import {
 import {
   assertWorkspacePermission as assertLegacyWorkspacePermission,
   loadWorkspace as loadLegacyWorkspace,
-  validateDomainSlug,
-  workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { validateDomainSlug } from "../../../access/workspace/types.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";

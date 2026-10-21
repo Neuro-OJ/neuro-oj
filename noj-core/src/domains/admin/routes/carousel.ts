@@ -12,11 +12,12 @@
  */
 
 import { Hono } from "hono";
-import { assertPermission, type AuthEnv } from "../../identity/index.ts";
+import { assertPermission } from "../../../modules/access/identity/services/security/permissions.ts";
+import { type AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { enforceRateLimit } from "../../system/index.ts";
-import { getClientIp } from "../../system/services/rate-limit-env.ts";
+import { enforceRateLimit } from "../../../modules/platform/system/services/hardening-rate-limit.ts";
+import { getClientIp } from "../../../modules/platform/system/services/rate-limit-env.ts";
 import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   type CarouselSlideInput,

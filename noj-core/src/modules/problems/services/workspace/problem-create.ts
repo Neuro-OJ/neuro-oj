@@ -5,10 +5,8 @@ import {
   ConflictError,
 } from "../../../../shared/base/errors.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
-import {
-  allocateDomainProblemNumberTx,
-  setDomainResourceCounterTx,
-} from "../../../../modules/access/index.ts";
+import { allocateDomainProblemNumberTx } from "../../../access/domain-capabilities.ts";
+import { setDomainResourceCounterTx } from "../../../access/resource-counters.ts";
 import {
   domainProblemBindings,
   problemBindingHistory,
@@ -16,11 +14,11 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   assertWorkspacePermission,
-  getDomainEffectiveLimits,
   loadWorkspace,
-  lockActiveWorkspaceAccount,
-  workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import { getDomainEffectiveLimits } from "../../../access/contracts/cross-module/workspace_services_limits.ts";
+import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
+import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 
 /** 创建事务锁住使用域，检查题库容量并原子分配编号；绑定写入后才提交。 */
 export async function prepareDomainProblemCreation(

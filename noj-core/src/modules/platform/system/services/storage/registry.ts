@@ -1,0 +1,31 @@
+/** @deprecated 存储对象登记已归 assets；仅保留旧测试/迁移入口。 */
+export {
+  assertStorageObjectBindable,
+  collectStorageReferences,
+  compensateUploadedObject,
+  deleteStorageObject,
+  deleteStorageObjectTx,
+  getStorageObject,
+  registerLegacyStorageObject,
+  registerReadyStorageObject,
+  registerReadyStorageObjectTx,
+  registerStorageObject,
+  registerStreamedStorageObject,
+  registerStreamedStorageObjectTx,
+  releaseStorageObjectUploadReservation,
+  reserveStorageObjectUpload,
+  reserveStorageObjectUploadForContent,
+  reserveStorageObjectUploadTx,
+  STORAGE_UPLOAD_RESERVATION_TTL_MS,
+  StorageObjectDeletedError,
+  StorageObjectMissingError,
+  StorageUploadInFlightError,
+  uploadStorageObjectWithReservation,
+  verifyStorageObject,
+} from "../../../../assets/legacy.ts";
+export type {
+  StorageDeleteOutcome,
+  StorageObjectRecord,
+  StorageReferenceReport,
+  StorageUploadReservation,
+} from "../../../../assets/legacy.ts";

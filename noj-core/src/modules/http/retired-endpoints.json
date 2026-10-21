@@ -1,0 +1,170 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/v1/problems",
+    "replacement": "POST /api/v1/domains/:slug/problems",
+    "reason": "题目创建必须绑定显式工作空间"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/problems/:id",
+    "replacement": "PUT /api/v1/domains/:slug/problems/:reference/draft 或 POST /api/v1/domains/:slug/problems/:reference/state",
+    "reason": "题目内容与域绑定状态必须分开写入"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/problems/:id/visibility",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/state",
+    "reason": "题目可见性属于显式域绑定状态"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/problems/:id",
+    "replacement": "DELETE /api/v1/domains/:slug/problems/:reference",
+    "reason": "题目删除必须带域上下文"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/import-bundle",
+    "replacement": "POST /api/v1/domains/:slug/problems/import-bundle",
+    "reason": "题包导入必须绑定显式工作空间"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/problems/:id/draft",
+    "replacement": "PUT /api/v1/domains/:slug/problems/:reference/draft",
+    "reason": "草稿写入必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/:id/versions",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/publish",
+    "reason": "版本发布必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/:id/questions",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/draft",
+    "reason": "客观题小题写入必须进入显式域草稿"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/problems/:id/questions/:qid",
+    "replacement": "PUT /api/v1/domains/:slug/problems/:reference/draft",
+    "reason": "客观题小题写入必须进入显式域草稿"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/problems/:id/questions/:qid",
+    "replacement": "PUT /api/v1/domains/:slug/problems/:reference/draft",
+    "reason": "客观题小题写入必须进入显式域草稿"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/:id/submit",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/objective-submissions",
+    "reason": "客观题交卷必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/:id/self-test",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/self-tests",
+    "reason": "自测受理必须绑定显式工作空间"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/problems/:id/support-package",
+    "replacement": "DELETE /api/v1/domains/:slug/problems/:reference/support-package",
+    "reason": "支持包修改必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/problems/oi-author/:id/save",
+    "replacement": "POST /api/v1/domains/:slug/problems/:reference/oi/save",
+    "reason": "OI 草稿文件写入必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/submissions",
+    "replacement": "POST /api/v1/domains/:slug/submissions",
+    "reason": "正式评测受理必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/self-tests/:id/cancel",
+    "replacement": "POST /api/v1/domains/:slug/self-tests/:id/cancel",
+    "reason": "自测控制必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/submission-upgrade-jobs",
+    "replacement": "POST /api/v1/domains/:slug/submission-jobs",
+    "reason": "提交升级必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/contests",
+    "replacement": "POST /api/v1/domains/:slug/contests",
+    "reason": "竞赛创建必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/contests/:id/register",
+    "replacement": "POST /api/v1/domains/:slug/contests/:id/register",
+    "reason": "竞赛报名必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/contests/:id/submit",
+    "replacement": "POST /api/v1/domains/:slug/contests/:id/problems/:label/submissions",
+    "reason": "竞赛执行必须绑定显式工作空间与题目标签"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/contests/:id/clarifications",
+    "replacement": "POST /api/v1/domains/:slug/contests/:id/clarifications",
+    "reason": "竞赛答疑必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/contests/:id/clarifications/:clarId/reply",
+    "replacement": "POST /api/v1/domains/:slug/contests/:id/clarifications/:clarId/reply",
+    "reason": "竞赛答疑回复必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/trainings",
+    "replacement": "POST /api/v1/domains/:slug/trainings",
+    "reason": "题单创建必须绑定显式工作空间"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/trainings/:id",
+    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id",
+    "reason": "题单修改必须绑定显式工作空间"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/trainings/:id",
+    "replacement": "DELETE /api/v1/domains/:slug/trainings/:id",
+    "reason": "题单删除必须绑定显式工作空间"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/trainings/:id/problems",
+    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
+    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/trainings/:id/problems",
+    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
+    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/trainings/:id/problems/:problemId",
+    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
+    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
+  }
+]

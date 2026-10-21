@@ -16,7 +16,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
-import { adjustDomainResourceCounterTx } from "../../../../modules/access/index.ts";
+import { adjustDomainResourceCounterTx } from "../../../access/resource-counters.ts";
 import {
   assertProblemEvaluationDeletionAllowedTx,
   deleteProblemEvaluationRowsTx,
@@ -40,16 +40,14 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import {
-  deleteStorageObject,
-  getStorageProvider,
-} from "../../../../domains/system/index.ts";
+import { deleteStorageObject } from "../../../assets/contracts/cross-module/services_registry.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
-import { validateJudgeImageWithKind } from "../../../../domains/system/index.ts";
-import { logAudit } from "../../../../domains/system/index.ts";
-import { assertLlmLimitsWithinDefault } from "../../../../domains/gateway/index.ts";
+import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
+import { logAudit } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
+import { assertLlmLimitsWithinDefault } from "../../../platform/contracts/cross-module/gateway_services_llm-limits.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -97,7 +95,7 @@ import {
   type ProblemDraftContent,
 } from "../../types/problem-content.ts";
 import type { RuntimeConfig } from "../../types/runtime-config.ts";
-import { registerLegacyStorageObject } from "../../../../domains/system/index.ts";
+import { registerLegacyStorageObject } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { assertProblemHasNoRetainedReferences } from "../workspace/problem-retention.ts";
 import { assertProblemAuthoringOutsideParticipation } from "../workspace/problem-contest-authoring.ts";
 import {
@@ -106,12 +104,16 @@ import {
 } from "../workspace/problem-create.ts";
 import {
   assertWorkspacePermission,
+  loadWorkspace,
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
+} from "../../../../shared/workspace/types.ts";
+import {
   ensureDefaultWorkspace,
-  loadWorkspace,
   workspaceAudit,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。

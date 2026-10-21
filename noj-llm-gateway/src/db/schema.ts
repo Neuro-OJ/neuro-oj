@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -132,6 +133,57 @@ export const llmQuotas = pgTable(
     ),
     revisionCheck: check(
       "llm_quotas_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
+  }),
+);
+
+/** 使用域的默认模型选择；模型权威与 Provider 权威同属 Gateway。 */
+export const llmGatewayDomainSettings = pgTable(
+  "llm_gateway_domain_settings",
+  {
+    domain_id: text("domain_id").primaryKey(),
+    provider_id: text("provider_id"),
+    model: text("model"),
+    revision: integer("revision").notNull().default(1),
+    updated_at: text("updated_at").notNull(),
+    updated_by: text("updated_by").notNull(),
+  },
+  (table) => ({
+    revisionCheck: check(
+      "llm_gateway_domain_settings_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
+    selectionCheck: check(
+      "llm_gateway_domain_settings_selection_check",
+      sql`(${table.provider_id} IS NULL AND ${table.model} IS NULL) OR
+        (${table.provider_id} IS NOT NULL AND ${table.model} IS NOT NULL
+          AND length(trim(${table.provider_id})) > 0
+          AND length(trim(${table.model})) > 0)`,
+    ),
+  }),
+);
+
+/** 使用域的模型别名；`default` 保留给 llm_gateway_domain_settings。 */
+export const llmGatewayModelAliases = pgTable(
+  "llm_gateway_model_aliases",
+  {
+    domain_id: text("domain_id").notNull(),
+    alias: text("alias").notNull(),
+    provider_id: text("provider_id").notNull(),
+    model: text("model").notNull(),
+    description: text("description").notNull().default(""),
+    revision: integer("revision").notNull().default(1),
+    updated_at: text("updated_at").notNull(),
+    updated_by: text("updated_by").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.domain_id, table.alias] }),
+    domainIdx: index("idx_llm_gateway_model_aliases_domain").on(
+      table.domain_id,
+    ),
+    revisionCheck: check(
+      "llm_gateway_model_aliases_revision_check",
       sql`${table.revision} >= 1`,
     ),
   }),

@@ -18,11 +18,10 @@ import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
   compensateUploadedObject,
   getStorageObject,
-  getStorageProvider,
-  parseStorageUrl,
-  sha256Hex,
   uploadStorageObjectWithReservation,
-} from "../../../../domains/system/index.ts";
+} from "../../../assets/contracts/cross-module/services_registry.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
+import { parseStorageUrl, sha256Hex } from "../../../assets/storage/mod.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   type DraftObjectRef,

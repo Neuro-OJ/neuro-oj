@@ -3,9 +3,9 @@ import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  ensureDefaultWorkspace,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { findContestRow } from "./contest-row.ts";
 import { resolveContestId } from "./contests.ts";
 

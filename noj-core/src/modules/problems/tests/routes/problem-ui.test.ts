@@ -17,8 +17,8 @@ import {
 import {
   getStorageProvider,
   uploadStorageObjectWithReservation,
-} from "../../../../domains/system/index.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+} from "../../../platform/system/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 
 /**
  * 界面题 `GET /api/v1/problems/:id/ui` 与 `/template` 的路由测试。

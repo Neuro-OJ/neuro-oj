@@ -27,9 +27,9 @@ import {
   roles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
-import { resetSetting, updateSetting } from "../../../../domains/system/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
+import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 
 const ts = Date.now();
 const now = new Date().toISOString();

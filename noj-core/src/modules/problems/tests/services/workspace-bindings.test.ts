@@ -31,7 +31,7 @@ import {
   recomputeProblemProjections,
   recomputeSubmissionProjection,
   upsertCurrentVersionResult,
-} from "../../../../domains/submission/index.ts";
+} from "../../../evaluations/index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
@@ -42,7 +42,7 @@ import {
   setDomainStatus,
   setMemberRoles,
   updateDomain,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { backfillDefaultCatalog } from "../../services/workspace/backfill.ts";
 import { resolveDomainProblem } from "../../services/workspace/problem-binding-access.ts";
 import {
@@ -51,7 +51,7 @@ import {
 import {
   setDomainProblemBindingPolicyCommand,
   setDomainProblemBindingPolicyCommandTx,
-} from "../../../application/problems.ts";
+} from "../../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
 import {

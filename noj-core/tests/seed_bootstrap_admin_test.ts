@@ -26,13 +26,13 @@ import {
   userRoles,
   users,
 } from "./../src/shared/db/schema.ts";
-import { registerUser } from "../src/domains/identity/index.ts";
-import { hashPassword } from "./../src/domains/identity/services/security/password.ts";
-import { getAdminUserIds } from "./../src/domains/identity/services/security/permissions.ts";
+import { registerUser } from "../src/modules/access/identity/index.ts";
+import { hashPassword } from "../src/modules/access/identity/services/security/password.ts";
+import { getAdminUserIds } from "../src/modules/access/identity/services/security/permissions.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
-} from "../src/domains/system/index.ts";
+} from "../src/modules/platform/system/index.ts";
 
 /**
  * 引导管理员兜底的核心逻辑（简化版——直接引 seed.ts 代码路径）。

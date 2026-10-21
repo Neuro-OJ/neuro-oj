@@ -33,7 +33,7 @@ import {
   addDomainMember,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest({ refreshRankings: true });

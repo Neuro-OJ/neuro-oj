@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import type { EffectiveVersionPolicy } from "../../../shared/versioning/types.ts";
-import { resolveProblemIdOrThrow } from "../../../modules/problems/index.ts";
-import { resolveContestId } from "../../../modules/contests/index.ts";
+import { resolveProblemIdOrThrow } from "../../../modules/problems/services/problem-resolve.ts";
+import { resolveContestId } from "../../../modules/contests/services/contests.ts";
 import {
   setContestProblemEffectiveVersionPolicyCommand,
   setProblemEffectiveVersionPolicyCommand,

@@ -26,6 +26,19 @@ import {
   resolveDomainExecution,
 } from "../services/workspace-execution.ts";
 
+/**
+ * application 在锁外组合的一次使用域受理计划。
+ *
+ * `resolved` 只用于外部 IO 与任务构造；真正写入前必须由
+ * `revalidateEvaluationAdmissionTx` 在调用方事务内重新取得事实。这样底层写服务
+ * 不需要自行寻找 contests/education 上下文，也不会把锁外快照误当成最终授权。
+ */
+export type DomainEvaluationAdmissionPlan = Readonly<{
+  readonly request: DomainExecutionRequest;
+  readonly context: EvaluationAdmissionContext;
+  readonly resolved: Awaited<ReturnType<typeof resolveDomainExecution>>;
+}>;
+
 /** 锁内复核结果：可直接写入提交/尝试行的定位事实。 */
 export interface RevalidatedEvaluationAdmission {
   readonly domain_id: string;

@@ -39,7 +39,7 @@ compose 服务名一致），并加载**两个**规则文件：
 
 - `deploy/monitoring/noj-alerts.yml`：运维告警，手工维护；
 - `deploy/monitoring/noj-slo-alerts.yml`：SLO 燃烧率告警，由
-  `noj-core/src/domains/observability/slo.ts` 经 `scripts/gen-alert-rules.ts`
+  `noj-core/src/modules/platform/observability/slo.ts` 经 `scripts/gen-alert-rules.ts`
   生成，**勿手工编辑**。
 
 Alertmanager 配置模板、凭据注入与投递演练见 `deploy/monitoring/README.md`。

@@ -3,17 +3,13 @@ import { eq } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { evaluationAttempts } from "../../../shared/db/schema.ts";
-import {
-  buildOiSelfTestPackage,
-  isOiRuntimeConfig,
-} from "../../problems/index.ts";
-import type {
-  OiSelfTestCase,
-  ProblemRuntimeConfig,
-} from "../../problems/index.ts";
-import { buildJudgeTaskLlm } from "../../../domains/gateway/index.ts";
-import type { FrozenLlmExecution } from "../../../domains/gateway/index.ts";
-import { getStorageProvider } from "../../assets/storage/factory.ts";
+import { buildOiSelfTestPackage } from "../../problems/contracts/cross-module/services_oi-self-test-package.ts";
+import { isOiRuntimeConfig } from "../../problems/types/runtime-config.ts";
+import type { OiSelfTestCase } from "../../problems/contracts/cross-module/services_oi-self-test-package.ts";
+import type { ProblemRuntimeConfig } from "../../problems/types/runtime-config.ts";
+import { buildJudgeTaskLlm } from "../../platform/contracts/cross-module/gateway_services_llm-token.ts";
+import type { FrozenLlmExecution } from "../../platform/contracts/cross-module/gateway_services_llm-token.ts";
+import { getStorageProvider } from "../../assets/storage/mod.ts";
 import { prepareJudgeTask } from "../services/prepare-judge-task.ts";
 import { loadPublishedVersionContent } from "../services/versioning/submission-version.ts";
 import {
@@ -122,8 +118,11 @@ export async function rebuildPendingTask(
     ? "low"
     : await resolveJudgeTaskPriority(row.contest_id ?? null, "submission");
   const task = prepareJudgeTask({
+    task_kind: source === "self_test" ? "self_test" : "submission",
     run_id: runId,
-    ...(source === "submission" ? { attempt_id: runId } : {}),
+    ...(source === "submission"
+      ? { attempt_id: runId }
+      : { self_test_run_id: runId }),
     problem_version_id: versionId,
     submission_id: row.id,
     problem_id: row.problem_id,

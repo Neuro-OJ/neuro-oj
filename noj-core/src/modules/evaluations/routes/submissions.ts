@@ -17,14 +17,14 @@ import {
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
 import { versionRequired } from "../services/versioning/submission-version.ts";
-import { verifyContestAccess } from "../../contests/index.ts";
+import { verifyContestAccess } from "../../contests/contracts/cross-module/services_contest-access.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
-import { checkPermission } from "../../../domains/identity/index.ts";
-import { rateLimit } from "../../../domains/system/index.ts";
+} from "../../access/identity/middleware/auth.ts";
+import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { rateLimit } from "../../platform/system/middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { createFileStream } from "../../../shared/http/file-stream.ts";
@@ -33,7 +33,7 @@ import {
   parsePagination,
 } from "../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
-import { enforceSubmissionRateLimit } from "../../../domains/system/index.ts";
+import { enforceSubmissionRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）

@@ -20,8 +20,8 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 
 // 模块级 bootstrap：确保表已创建（测试数据库 模式）
 await resetDbForTest();

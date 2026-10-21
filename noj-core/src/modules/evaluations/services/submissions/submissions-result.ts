@@ -88,8 +88,10 @@ export async function saveEvaluationResultTx(
   }
 
   if (
-    result.evaluation_protocol_version !== 2 || !result.run_id ||
+    result.evaluation_protocol_version !== 3 ||
+    result.task_kind !== "submission" || !result.run_id ||
     !result.problem_version_id ||
+    result.self_test_run_id !== undefined ||
     (result.result_kind !== "graded" &&
       result.result_kind !== "platform_error") ||
     result.attempt_id !== result.run_id ||

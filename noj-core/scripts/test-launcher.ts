@@ -333,8 +333,8 @@ function pathsFor(options: LauncherOptions): string[] {
       return [
         "tests/00_migrate_test.ts",
         "tests/perf",
-        "src/domains/search/tests/perf",
-        "src/domains/education/tests/perf",
+        "src/modules/read-models/search/tests/perf",
+        "src/modules/education/tests/perf",
       ];
     case "test":
     case "pg":

@@ -9,18 +9,14 @@ export function useCommunityNotifications(account: boolean | (() => boolean) = f
   const stored = useState<{ key: string; count: number } | null>('community:unread-count', () => null);
   const unreadCount = computed(() => stored.value?.key === scope.key.value ? stored.value.count : 0);
   const { api } = useApi();
-  const seed = useViewSection<unknown>('communityUnread');
   const update = (key: string, value: unknown, slug: string | null) => {
     const count = readUnreadCount(value, slug === null ? 'account' : 'domain');
     if (count !== null) stored.value = { key, count };
   };
 
-  if (seed.value?.data) update(scope.key.value, seed.value.data, scope.slug.value);
-
   async function loadUnreadCount(force = true) {
     const request = scope.capture();
-    if (!force && seed.value) {
-      update(request.key, seed.value.data, request.slug);
+    if (!force && stored.value?.key === request.key) {
       return;
     }
     try {

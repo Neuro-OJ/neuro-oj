@@ -75,6 +75,22 @@ async function compose(
 }
 
 /**
+ * 启动并等待一次性 Compose service。
+ *
+ * Compose 的 `up --wait` 只等待服务进入 running/healthy；对正常退出的
+ * one-shot service（例如 `minio-init`）会把 exit 0 误报成命令失败。先保留
+ * 容器状态地 `up -d`，再用 `compose wait` 读取其真实退出码，才能同时满足
+ * `depends_on: service_completed_successfully` 与恢复错误可见性。
+ */
+async function startOneShotService(
+  ctx: DataRestoreContext,
+  service: string,
+): Promise<number> {
+  if (await compose(ctx, ["up", "-d", service]) !== 0) return 1;
+  return await compose(ctx, ["wait", service]);
+}
+
+/**
  * 把文件喂给一条 compose 子命令的 stdin（**文件重定向，不经字符串**）。
  *
  * 用 `sh -c 'bin="$1"; src="$2"; shift 2; exec "$bin" "$@" < "$src"'`：
@@ -130,16 +146,7 @@ export async function restoreDataServices(
   // `depends_on: service_completed_successfully` 复用。不能用 `run --rm`：
   // 那会删除完成状态，后续 `up core` 只能再次执行初始化，恢复与演练的
   // 生命周期因此不再是可观察的单一 one-shot 链。
-  if (
-    await compose(ctx, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(ctx.waitTimeout),
-      "minio-init",
-    ]) !== 0
-  ) {
+  if (await startOneShotService(ctx, "minio-init") !== 0) {
     throw new Error("MinIO 初始化失败（minio-init）");
   }
 

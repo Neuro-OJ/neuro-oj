@@ -27,12 +27,12 @@
 import { getRedis } from "../../../../shared/mq/connection.ts";
 import type { RateLimitConfig } from "../../../../shared/rate-limit/rate-limit.ts";
 import { getLogger } from "@logtape/logtape";
+import { isRateLimitEnabled } from "../../../platform/contracts/cross-module/system_services_rate-limit-env.ts";
 import {
-  isRateLimitEnabled,
   SUBMISSION_QUOTA_BUCKETS,
   type SubmissionQuotaBucket,
   submissionQuotaRedisKey,
-} from "../../../../domains/system/index.ts";
+} from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const logger = getLogger(["noj", "submission"]);
 

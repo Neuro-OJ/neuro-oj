@@ -1,8 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { assignmentFixture } from "../../../../domains/education/tests/_assignment-fixture.ts";
+import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
 import { domainTrainingsRouter } from "../../routes/domain-trainings.ts";
 
 Deno.test("域题单 API：创建和编辑验证域及角色、revision；私有题单不向其他成员开放", async () => {

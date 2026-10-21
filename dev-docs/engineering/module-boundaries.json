@@ -121,6 +121,25 @@
     "search": "read-models",
     "admin": "http"
   },
+  "legacyTestTargets": {
+    "objective": [
+      "problems",
+      "evaluations"
+    ],
+    "workspace": [
+      "access",
+      "problems",
+      "assets",
+      "application",
+      "education"
+    ],
+    "system": [
+      "platform",
+      "assets",
+      "application",
+      "runtime"
+    ]
+  },
   "tableOwnership": {
     "schemaOwners": {
       "assignment-progress.ts": "education",

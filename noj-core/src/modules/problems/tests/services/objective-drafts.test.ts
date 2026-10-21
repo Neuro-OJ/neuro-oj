@@ -21,7 +21,7 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../index.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 const now = new Date().toISOString();
 

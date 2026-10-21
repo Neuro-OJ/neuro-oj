@@ -1,8 +1,6 @@
 import { type Context, Hono } from "hono";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
@@ -14,14 +12,12 @@ import {
   subscribeToChannel,
 } from "../../../shared/sse/server-helpers.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
-import {
-  DEFAULT_DOMAIN_SLUG,
-  ensureDefaultWorkspace,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { getDomainSubmission } from "../services/domain-submission-read.ts";
 import { getDomainSelfTest } from "../services/domain-self-test-read.ts";
-import { assertActiveInstanceAccount } from "../../../domains/identity/index.ts";
+import { assertActiveInstanceAccount } from "../../access/contracts/cross-module/identity_services_security_account-access.ts";
 import {
   INSTANCE_QUEUE_CHANNEL,
   queueEventChannel,

@@ -30,7 +30,7 @@ import type {
 } from "../../types/problem-content.ts";
 import { problemContentKindOf } from "../../types/problem-content.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
-import { assertStorageObjectBindable } from "../../../../domains/system/index.ts";
+import { assertStorageObjectBindable } from "../../../assets/contracts/cross-module/services_registry.ts";
 
 /** 未保存过草稿时的虚拟 revision。 */
 export const PROBLEM_DRAFT_VIRTUAL_REVISION = 0;

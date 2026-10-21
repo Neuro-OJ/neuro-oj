@@ -26,6 +26,15 @@ import {
   markEducationOutboxMigratedTx,
   migrateEducationOutboxTx,
 } from "../contracts/outbox-migration.ts";
+import { recordEducationEvent } from "../contracts/facts.ts";
+import { handleEducationTask } from "../../application/education-handlers.ts";
+import {
+  claimTasks,
+  completeTaskTx,
+  getTaskById,
+  rescheduleTaskTx,
+} from "../../runtime/tasks/repository.ts";
+import { isTaskRescheduleResult } from "../../runtime/tasks/contracts.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -123,6 +132,87 @@ Deno.test("outbox migration[真实 PG]: 保留任务身份、失败次数与可�
     (task.payload.education_cursor as { student_after: string }).student_after,
     "u-5",
   );
+});
+
+Deno.test("education facts[真实 PG]: outbox 与通用任务同事务提交或回滚", async () => {
+  await reset();
+  const f = await seedEducation();
+  try {
+    await db.transaction(async (tx) => {
+      await recordEducationEvent(tx, {
+        domain_id: f.domainId,
+        assignment_id: f.assignmentId,
+        event_type: "assignment.refresh",
+      });
+      throw new Error("模拟教学事实事务失败");
+    });
+  } catch {
+    // 预期回滚
+  }
+  assertEquals((await db.select().from(educationOutbox)).length, 0);
+  assertEquals((await db.select().from(backgroundTasks)).length, 0);
+
+  await db.transaction((tx) =>
+    recordEducationEvent(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      event_type: "assignment.refresh",
+    })
+  );
+  assertEquals((await db.select().from(educationOutbox)).length, 1);
+  const [task] = await db.select().from(backgroundTasks);
+  assertEquals(task.task_type, "education.recompute");
+  assertEquals(
+    task.payload.outbox_id,
+    (await db.select().from(educationOutbox))[0].id,
+  );
+});
+
+Deno.test("education background task[真实 PG]: 分页结果重新入队，完成后不重复处理", async () => {
+  await reset();
+  const f = await seedEducation();
+  await db.transaction((tx) =>
+    recordEducationEvent(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      event_type: "assignment.refresh",
+    })
+  );
+
+  const [first] = await claimTasks("education-test-1", 1, 60_000, db);
+  const firstResult = await handleEducationTask(
+    first,
+    new AbortController().signal,
+  );
+  if (!isTaskRescheduleResult(firstResult)) {
+    throw new Error("第一轮教学任务应返回分页重新调度");
+  }
+  // 真实 worker 会调用同一仓库原语，确保 handler 返回的分页游标能恢复到
+  // 下一轮领取，而不是由测试直接改写任务状态。
+  assertEquals(
+    await db.transaction((tx) =>
+      rescheduleTaskTx(tx, first.id, first.leaseToken, firstResult)
+    ),
+    true,
+  );
+
+  const [second] = await claimTasks("education-test-2", 1, 60_000, db);
+  const secondResult = await handleEducationTask(
+    second,
+    new AbortController().signal,
+  );
+  if (isTaskRescheduleResult(secondResult)) {
+    throw new Error("第二轮教学任务不应再次重新调度");
+  }
+  assertEquals(
+    await db.transaction((tx) =>
+      completeTaskTx(tx, second.id, second.leaseToken, secondResult ?? {})
+    ),
+    true,
+  );
+  const [outbox] = await db.select().from(educationOutbox);
+  assertEquals(outbox.processed_at !== null, true);
+  assertEquals((await getTaskById(first.id, db))?.status, "succeeded");
 });
 
 Deno.test("outbox migration[真实 PG]: 重复迁移幂等且不产生重复任务", async () => {

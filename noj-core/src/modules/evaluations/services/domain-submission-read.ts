@@ -1,17 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { currentTeacherSubmissionAccessWhere } from "../../../domains/education/index.ts";
+import { currentTeacherSubmissionAccessWhere } from "../../education/contracts/cross-module/services_submission-access-sql.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { domains, problems, submissions } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
-import {
-  loadWorkspace,
-  workspaceAudit,
-} from "../../../domains/workspace/index.ts";
-import {
-  domainProblemReference,
-  loadBindingAvailability,
-} from "../../problems/index.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
+import { loadBindingAvailability } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
 import {
   getSubmission,
   resolveSubmissionId,

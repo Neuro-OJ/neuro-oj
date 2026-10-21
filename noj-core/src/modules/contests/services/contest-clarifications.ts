@@ -29,10 +29,10 @@ import {
   NotFoundError,
   RateLimitedError,
 } from "../../../shared/base/errors.ts";
-import { isUserAdmin } from "../../../domains/identity/index.ts";
+import { isUserAdmin } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
-import { createNotification } from "../../../domains/community/index.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../domains/workspace/index.ts";
+import { createNotification } from "../../communication/contracts/cross-module/community_services_notifications.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { checkRateLimit } from "../../../shared/rate-limit/rate-limit.ts";
 
 const MAX_CONTENT_LENGTH = 5000;

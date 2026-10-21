@@ -1,10 +1,10 @@
 // JudgeResult 跨模块契约测试（defect #28：结果封套必须完整携带
-// attempt_id / run_id / problem_version_id / result_kind）。
+// task_kind / attempt_id / self_test_run_id / run_id / problem_version_id / result_kind）。
 //
 // 对齐 noj-core 的 `JudgeResult` 接口
 // （noj-core/src/domains/submission/types/index.ts）与 `saveEvaluationResult`
-// 的准入条件：协议号必须为 2、`run_id` / `problem_version_id` 非空、
-// `result_kind ∈ {graded, platform_error}`、`attempt_id === run_id`。
+// 的准入条件：协议号必须为 3、任务语义与对应运行标识非空、
+// `result_kind ∈ {graded, platform_error}`、正式提交 `attempt_id === run_id`。
 // core 对不满足者直接 `applied=false`（零写入、零事件），因此 judge 侧的任何
 // 成功/失败/超时构造入口都必须补齐这些字段。
 //
@@ -22,7 +22,7 @@ use noj_judge::types::{
 };
 
 /// JudgeResult wire 字段全集（core 侧 `JudgeResult` 接口）。
-const JUDGE_RESULT_FIELDS: [&str; 13] = [
+const JUDGE_RESULT_FIELDS: [&str; 14] = [
     "submission_id",
     "status",
     "score",
@@ -31,6 +31,7 @@ const JUDGE_RESULT_FIELDS: [&str; 13] = [
     "time_ms",
     "memory_kb",
     "rejudge_seq",
+    "task_kind",
     "run_id",
     "attempt_id",
     "problem_version_id",
@@ -59,7 +60,9 @@ fn full_result() -> JudgeResult {
         time_ms: Some(42),
         memory_kb: Some(18432),
         rejudge_seq: Some(1),
+        task_kind: None,
         run_id: None,
+        self_test_run_id: None,
         attempt_id: None,
         problem_version_id: None,
         evaluation_protocol_version: None,
@@ -85,7 +88,8 @@ fn judge_result_wire_fields_match_core_interface() {
     );
 
     // core `saveEvaluationResult` 的准入条件
-    assert_eq!(value["evaluation_protocol_version"], 2);
+    assert_eq!(value["evaluation_protocol_version"], 3);
+    assert_eq!(value["task_kind"], "submission");
     assert_eq!(value["result_kind"], "graded");
     assert_eq!(value["run_id"], value["attempt_id"]);
     assert!(value["run_id"].as_str().is_some_and(|s| !s.is_empty()));
@@ -108,11 +112,11 @@ fn judge_result_wire_fields_match_core_interface() {
 
 #[test]
 fn judge_result_envelope_uses_protocol_version_constant() {
-    assert_eq!(EVALUATION_PROTOCOL_VERSION, 2);
+    assert_eq!(EVALUATION_PROTOCOL_VERSION, 3);
 }
 
 #[test]
-fn judge_result_protocol_version_is_always_2_and_details_get_no_protocol_fields() {
+fn judge_result_protocol_version_is_always_3_and_details_get_no_protocol_fields() {
     let task = fixture_task();
     // 模拟 main.rs 的成功路径：结果取得后统一 apply_protocol 再推送。
     let mut result = full_result();
@@ -120,7 +124,7 @@ fn judge_result_protocol_version_is_always_2_and_details_get_no_protocol_fields(
     result.apply_protocol(&task);
 
     let value = serde_json::to_value(&result).unwrap();
-    assert_eq!(value["evaluation_protocol_version"], 2);
+    assert_eq!(value["evaluation_protocol_version"], 3);
     assert!(result.envelope_gaps().is_empty());
 
     // 即便 evaluator 在 details 里伪造 run_id，judge 也不改写/依赖它（core 不读取）；
@@ -156,7 +160,7 @@ fn all_construction_entries_carry_complete_envelope() {
             result.envelope_gaps()
         );
         let value = serde_json::to_value(&*result).unwrap();
-        assert_eq!(value["evaluation_protocol_version"], 2);
+        assert_eq!(value["evaluation_protocol_version"], 3);
         assert_eq!(value["run_id"], task.run_id.clone().unwrap());
         assert_eq!(value["attempt_id"], value["run_id"]);
     }
@@ -173,13 +177,14 @@ fn all_construction_entries_carry_complete_envelope() {
     assert_eq!(entries[0].result_kind.as_deref(), Some("graded"));
 }
 
-/// 自测任务（core 不补 `attempt_id`）：judge 必须用 `run_id` 补齐，
-/// 否则 core 会因 `attempt_id !== run_id` 整体丢弃结果。
+/// 自测任务使用显式 `self_test_run_id`，不按自测 ID 前缀或 attempt 回退。
 #[test]
-fn self_test_task_result_envelope_backfills_attempt_id() {
+fn self_test_task_result_envelope_uses_explicit_run_id() {
     let mut value = serde_json::to_value(fixture_task()).unwrap();
-    value["submission_id"] = json!("st_11111111-1111-4111-8111-111111111111");
+    value["submission_id"] = json!("self-test-11111111");
+    value["task_kind"] = json!("self_test");
     value.as_object_mut().unwrap().remove("attempt_id");
+    value["self_test_run_id"] = value["run_id"].clone();
     let task: JudgeTask = serde_json::from_value(value).expect("自测任务必须可反序列化");
     assert!(task.attempt_id.is_none());
 
@@ -187,11 +192,10 @@ fn self_test_task_result_envelope_backfills_attempt_id() {
     result.apply_protocol(&task);
 
     assert_eq!(
-        result.attempt_id, result.run_id,
-        "缺 attempt_id 时必须回退为 run_id"
+        result.self_test_run_id, result.run_id,
+        "自测必须回显明确的 self_test_run_id"
     );
-    let value = serde_json::to_value(&result).unwrap();
-    assert_eq!(value["attempt_id"], value["run_id"]);
+    assert_eq!(result.attempt_id, None);
     assert!(result.envelope_gaps().is_empty());
 }
 
@@ -211,11 +215,11 @@ fn legacy_task_without_run_id_reports_envelope_gaps() {
     result.apply_protocol(&task);
 
     let gaps = result.envelope_gaps();
-    assert_eq!(gaps, vec!["run_id", "attempt_id", "problem_version_id"]);
+    assert_eq!(gaps, vec!["attempt_id", "run_id", "problem_version_id"]);
     let value = serde_json::to_value(&result).unwrap();
     assert!(value.get("run_id").is_none());
     assert!(value.get("attempt_id").is_none());
-    assert_eq!(value["evaluation_protocol_version"], 2);
+    assert_eq!(value["evaluation_protocol_version"], 3);
     assert_eq!(value["result_kind"], "graded");
 }
 

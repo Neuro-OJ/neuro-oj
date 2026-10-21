@@ -14,7 +14,6 @@ import {
   pgTable,
   primaryKey,
   text,
-  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";

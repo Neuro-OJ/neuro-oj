@@ -16,8 +16,8 @@ import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-} from "../../../domains/workspace/index.ts";
-import { updateSetting } from "../../../domains/system/index.ts";
+} from "../../access/workspace/index.ts";
+import { updateSetting } from "../../platform/system/index.ts";
 import { startFakeRedis } from "./_fake-redis.ts";
 async function account() {
   const id = crypto.randomUUID(), now = new Date().toISOString();

@@ -2,7 +2,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { createSubmission } from "../../services/submissions/submissions-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";

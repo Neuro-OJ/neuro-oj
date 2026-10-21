@@ -1,7 +1,8 @@
-# noj-core 域边界与所有权
+# noj-core 模块边界与所有权
 
-> 本文档是 noj-core 代码级域隔离的事实来源。 每个域拥有自己的 routes / services
-> / types；跨域只允许通过域门面（`index.ts`）或事件协作。
+> 本文档说明 noj-core 当前模块化边界；机器可读的所有权与测试映射以
+> [`module-boundaries.json`](./module-boundaries.json) 为准。业务模块通过窄合同和
+> application 组合协作，运行时与 HTTP 层不得反向依赖业务实现。
 
 ## P3 目标模块结构诊断
 
@@ -18,24 +19,21 @@ P3 的目标分区、遗留域归属、表所有权以及正式测试/CI 映射�
   正则字面量不会产生依赖边。
 - Tarjan SCC 只在运行时边上计算。类型图另行统计，因此把副作用藏到名为
   `types.ts` 的文件仍会被运行时图捕获。
-- 迁移期间运行 `deno run -A scripts/check-module-boundaries.ts` 只输出诊断；
-  目标模块尚未全部落盘时不会使既有 `check-ci` 变红。模块迁移完成后使用
-  `--strict`，再把该命令接入仓库门禁。
+- 模块迁移完成后使用 `--strict`；该命令已经接入仓库门禁，不能用目录改名或
+  兼容门面掩盖运行时依赖环。
 - `facade-export-star`、HTTP 导入 system actor factory、runtime 反向导入业务模块、
   业务模块反向依赖 read-models 都是结构规则。跨模块导入另一个模块的
   `services/routes/workers/consumers` 目录只作为写侵入的语法诊断；它不能证明某个
   函数的实际读写语义，语义级写调用仍需随应用用例迁移和行为测试确认。
 
-当前工作副本的迁移前诊断为 544 个生产文件（包含运行时 JSON 资产）、2821 条运行时边、472 条类型边、4
-个运行时 SCC，表扫描 109 张且没有表所有权缺口；目标 `modules/` 目录仍缺 8 个。
-这些数字是待迁移基线，不是 P3 完成证明。结构负例由
-`scripts/check-module-boundaries_test.ts` 提供，并已列入 `scripts/gate-list.ts` 的
-正式门禁自测集合；自测只验证检查器本身，暂不启用 `--strict` 生产结果。
+当前结构门禁同时检查运行时/类型依赖图、未解析动态导入、模块门面、表所有权与
+目标根目录；故意破坏用例由 `scripts/check-module-boundaries_test.ts` 提供，并列入
+`scripts/gate-list.ts` 的门禁自测集合。生产依赖图必须保持 runtime/type SCC 为 0。
 
 ## 共享层 `src/shared/`
 
-共享层只放“真正跨域复用且无业务归属”的基础设施，**不得反向依赖
-`src/domains/**`**。
+共享层只放“真正跨模块复用且无业务归属”的基础设施，**不得反向依赖
+`src/modules/**`**。
 
 | 子目录                  | 职责                                           |
 | ----------------------- | ---------------------------------------------- |
@@ -49,27 +47,26 @@ P3 的目标分区、遗留域归属、表所有权以及正式测试/CI 映射�
 | `shared/security/`      | CIDR、公共 ID、图片校验                        |
 | `shared/observability/` | 低层 kernel：指标注册表、写侧契约、日志上下文  |
 
-> 注：`shared/middleware/` 目录**已删除**（2026-09-10 观测域重构把
-> request-context 中间件迁入 `domains/observability/`），不再保留兼容目录。
+> 注：request-context、健康路由和平台观测实现位于
+> `src/modules/platform/observability/`；shared 只保留无业务归属的观测契约和写入
+> kernel。
 
-## 域目录
+## 模块目录
 
-| 域             | 目录（目标）                  | 主要职责                                                                 |
-| -------------- | ----------------------------- | ------------------------------------------------------------------------ |
-| identity       | `src/domains/identity/`       | 注册/登录、JWT、TFA、密码重置、OAuth、用户资料、RBAC、用户封禁           |
-| catalog        | `src/domains/catalog/`        | 题目、标签、题目包、支持包、题单                                         |
-| objective      | `src/domains/objective/`      | 客观题套卷、题目、练习提交                                               |
-| workspace      | `src/domains/workspace/`      | 产品 Domain、成员、角色、邀请、实例政策及限额                            |
-| education      | `src/domains/education/`      | 班级、作业、教学授权、学情、反馈、求助和补题                             |
-| submission     | `src/domains/submission/`     | 提交、评测结果、评测队列、重测、自测、SSE 事件                           |
-| contest        | `src/domains/contest/`        | 竞赛、参赛者、题目关联、澄清、榜单                                       |
-| community      | `src/domains/community/`      | 板块、帖子、评论、点赞、收藏、关注、动态、举报、审核、通知               |
-| messaging      | `src/domains/messaging/`      | 私信、会话、已读、删除                                                   |
-| system         | `src/domains/system/`         | 系统设置、公告、审计日志、IP 封禁、Judge 镜像                            |
-| gateway        | `src/domains/gateway/`        | LLM Provider、用量、配额；远期迁入 noj-llm-gateway                       |
-| query          | `src/domains/query/`          | 搜索、统计、排行榜、Dashboard 等读模型                                   |
-| content-review | `src/domains/content-review/` | 内容审核、DM 私信审核消费者                                              |
-| observability  | `src/domains/observability/`  | 平台指标、探针、快照聚合、健康/指标路由、Judge 心跳、SLO、外部运行时契约 |
+| 模块          | 目录（当前）                  | 主要职责                                                                 |
+| ------------- | ----------------------------- | ------------------------------------------------------------------------ |
+| access        | `src/modules/access/`          | 身份、认证、RBAC、工作空间成员/邀请、授权和资源政策                       |
+| problems      | `src/modules/problems/`        | 题目、标签、题目包、支持包、题单与题面版本                               |
+| evaluations   | `src/modules/evaluations/`     | 提交、评测结果、评测队列、重测、自测与有效成绩                           |
+| contests      | `src/modules/contests/`        | 竞赛、参赛者、题目关联、澄清与竞赛读模型                                 |
+| education     | `src/modules/education/`       | 班级、作业、教学授权、学情、反馈、求助和补题                             |
+| communication | `src/modules/communication/`  | 社区、私信、内容审核与通知                                               |
+| assets        | `src/modules/assets/`          | 对象存储、容量预约、存储对象生命周期                                     |
+| platform      | `src/modules/platform/`        | 系统设置、审计、法律文档、Gateway 平台能力与观测/健康/SLO                 |
+| read-models   | `src/modules/read-models/`     | 搜索、统计、排行榜、Dashboard 等只读投影                                 |
+| application   | `src/modules/application/`      | 跨模块事务编排、后台任务 handler 与系统组合入口                           |
+| http          | `src/modules/http/`             | HTTP 路由、middleware 与 admin 聚合装配                                  |
+| runtime       | `src/modules/runtime/`          | 持久后台任务、生命周期、系统 actor 与运行时合同                          |
 
 ## 表所有权
 
@@ -88,26 +85,18 @@ P3 的目标分区、遗留域归属、表所有权以及正式测试/CI 映射�
 > 注：`check_ins` 由 identity 域拥有（用户签到）；`sse_events` 由 submission
 > 域拥有（评测/状态事件），未来若作为通用 outbox 再调整为 shared。
 
-## 跨域规则
+## 模块规则
 
-1. 域 A 不得 import 域 B 的 `services/` 或 `routes/` 深路径。
-2. 跨域只能 import `src/domains/<B>/index.ts`（门面）。
-3. 共享内核 `src/shared/` 不得反向依赖 `src/domains/**`。
-4. `src/domains/<domain>/tests/**`
-   可跨域深路径导入以构造集成场景；域边界规则只约束生产代码。
-5. 业务域可 import
-   `src/domains/observability/write.ts`（写侧门面），但不得深路径 import
-   观测域的 `services/`、`routes/`、`metrics/`。
-6. `domains/admin` 可 import `src/domains/observability/index.ts`
-   （历史上用于挂载观测管理路由；该管理端点已于 2026-09-10 移除，
-   故当前**没有任何代码使用此例外**，它仅作为规则保留，避免未来需要时再开口子）。
-   **其他业务域不享受该例外**——观测域的 `index.ts` 是受限门面。
-7. `domains/observability` 不得 import 任何其他业务域；聚合通过 `app.ts`
-   组合根注入 provider 完成。
-
-> 规则 5/6 由 `scripts/check-domains.ts` 强制执行：
-> `PUBLIC_SUBPATHS.observability = ["write.ts"]`、`INDEX_IMPORT_RESTRICTED.observability = ["admin"]`。
-> 回归用例见 `scripts/check-domains_test.ts`。
+1. 模块的表写入必须落在 `module-boundaries.json` 声明的 owner 内；跨模块写入只能
+   通过明确的 `contracts/` 或 application 事务合同完成。
+2. `src/shared/` 只依赖 shared 与无业务归属的基础设施，不得反向依赖模块实现。
+3. `runtime` 不得反向导入业务模块；业务 handler 由 application 注入。
+4. `read-models` 只提供查询/投影能力，不成为业务写入链的隐式依赖。
+5. `http` 负责路由装配，跨模块业务事务由 `application` 组合，不在路由中拼接深层
+   service 实现。
+6. 模块内 tests 可构造跨模块集成场景，但生产代码必须通过严格边界检查；当前门禁为
+   `deno run -A scripts/check-module-boundaries.ts --strict`，负例见
+   `scripts/check-module-boundaries_test.ts`。
 
 ## 多副本约束（2026-09-12 架构评审 §2.6）
 
@@ -117,13 +106,13 @@ P3 的目标分区、遗留域归属、表所有权以及正式测试/CI 映射�
 
 | 位置                                                  | 状态                                    | 多副本后果                              | 现状                                                             |
 | ----------------------------------------------------- | --------------------------------------- | --------------------------------------- | ---------------------------------------------------------------- |
-| `domains/system/services/system-settings.ts`          | 配置缓存 `Map`                          | A 副本改设置，B 副本读到旧值            | **已修**：变更广播 `noj:events:settings`，各副本重新加载（见下） |
-| `domains/query/services/stats-cache.ts`               | 站点统计计数器                          | `/stats` 随负载均衡抖动                 | 单副本专用（未修）                                               |
-| `domains/submission/mq/sweeper.ts`                    | `_firstSeen`/`_lastRequeue`             | 重复重投判定失准，可能双份投递          | 单副本专用（重投本身 at-least-once 幂等）                        |
-| `domains/identity/.../banCache.ts`                    | 封禁缓存（60s TTL）                     | 封禁生效延迟不一致（最长 60s）          | 单副本专用（TTL 兜底）                                           |
-| `domains/system/middleware/rate-limit.ts`             | 限流计数                                | 阈值被放大 N 倍                         | 单副本专用（文件内已注明）                                       |
-| `domains/query/services/rankings.ts`                  | 物化视图刷新节流                        | 各副本各刷一次                          | 单副本专用                                                       |
-| `domains/catalog/services/problems/problems-stats.ts` | 题目统计缓存 `statsCache`（5 分钟 TTL） | 各副本各自缓存，最多 5 分钟内读到旧统计 | 单副本专用（TTL 兜底）                                           |
+| `modules/platform/system/services/system-settings.ts` | 配置缓存 `Map`                          | A 副本改设置，B 副本读到旧值            | **已修**：变更广播 `noj:events:settings`，各副本重新加载（见下） |
+| `modules/read-models/queries/services/stats-cache.ts`  | 站点统计计数器                          | `/stats` 随负载均衡抖动                 | 单副本专用（未修）                                               |
+| `modules/evaluations/mq/sweeper.ts`                   | `_firstSeen`/`_lastRequeue`             | 重复重投判定失准，可能双份投递          | 单副本专用（重投本身 at-least-once 幂等）                        |
+| `modules/access/identity/.../banCache.ts`             | 封禁缓存（60s TTL）                     | 封禁生效延迟不一致（最长 60s）          | 单副本专用（TTL 兜底）                                           |
+| `modules/platform/system/middleware/rate-limit.ts`    | 限流计数                                | 阈值被放大 N 倍                         | 单副本专用（文件内已注明）                                       |
+| `modules/read-models/queries/services/rankings.ts`    | 物化视图刷新节流                        | 各副本各刷一次                          | 单副本专用                                                       |
+| `modules/problems/services/problems/problems-stats.ts` | 题目统计缓存 `statsCache`（5 分钟 TTL） | 各副本各自缓存，最多 5 分钟内读到旧统计 | 单副本专用（TTL 兜底）                                           |
 | `shared/runtime/`、`shared/mq/base-consumer.ts` | 受管任务句柄、关闭标记及可注销的停止等待者 | 只能停止本进程的任务；多副本必须逐个排空 | 单副本专用的生命周期装配；业务进度仍在 DB/Redis |
 | 教学、存储核对、审计、提交 worker 与 SSE 保留任务的 `start*` | 周期任务单例句柄，停止后等待在途轮次完成再释放 | 单例只阻止同进程重复启动；多副本依靠既有 DB 租约和业务幂等 | 单副本专用的启动/关闭控制，不承载业务事实 |
 | `shared/sse/sse-stream.ts` | 应用实例拥有的 SSE 连接注册表 | 每个副本关闭自己的流，客户端重连后重新授权 | 单副本专用的连接生命周期；Core 装配显式注入 scope |
@@ -133,7 +122,7 @@ DB**， 而是走 env → default
 兜底链。因此失效必须是**重新加载**（`refreshSettingsCache()`， 先读 DB
 再原子替换缓存），**不能只 `cache.delete()`** —— 只删缓存会让副本读到默认值
 而非真实新值。回归用例：
-`domains/system/tests/services/system-settings-invalidation.test.ts`。
+`modules/platform/tests/services/system-settings-invalidation.test.ts`。
 
 新增设置项/新配置读取方无需额外适配：只要走
 `getSetting()`，就会自动获得该失效通道。

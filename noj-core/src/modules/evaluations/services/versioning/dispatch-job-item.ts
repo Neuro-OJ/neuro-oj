@@ -29,19 +29,16 @@ import {
   type ManagedTask,
   startPeriodicTask,
 } from "../../../../shared/runtime/managed-task.ts";
-import { getStorageProvider } from "../../../assets/storage/factory.ts";
-import type { LlmConfig } from "../../../problems/index.ts";
-import type { ProblemContentV1 } from "../../../problems/index.ts";
-import { buildJudgeTaskLlm } from "../../../../domains/gateway/index.ts";
-import type { FrozenLlmExecution } from "../../../../domains/gateway/index.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
+import type { LlmConfig } from "../../../problems/types/problems.ts";
+import type { ProblemContentV1 } from "../../../problems/types/problem-content.ts";
+import { buildJudgeTaskLlm } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
+import type { FrozenLlmExecution } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import { getAttempt, isTerminalAttemptState } from "./attempts.ts";
-import {
-  type JudgeTask,
-  submissionModeForLanguage,
-  toJudgeSubmissionMode,
-} from "../../types/index.ts";
+import { submissionModeForLanguage } from "../../types/ui-solution.ts";
+import { type JudgeTask, toJudgeSubmissionMode } from "../../types/index.ts";
 import {
   bumpSubmissionCountRevisions,
   lockProjectionHosts,

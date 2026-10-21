@@ -32,8 +32,8 @@ import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   checkPermission,
   getUserPermissions,
-} from "../../../../domains/identity/index.ts";
-import { getSetting } from "../../../../domains/system/index.ts";
+} from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);

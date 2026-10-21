@@ -18,11 +18,11 @@ import {
   UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
-import { comparePassword } from "../../domains/identity/services/security/password.ts";
+import { comparePassword } from "./identity/services/security/password.ts";
 import {
   getAdminUserIds,
   getUserPermissions,
-} from "../../domains/identity/services/security/permissions.ts";
+} from "./identity/services/security/permissions.ts";
 import type { UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import {

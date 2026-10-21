@@ -4,7 +4,7 @@ import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, userRoles, users } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
 
 // 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();

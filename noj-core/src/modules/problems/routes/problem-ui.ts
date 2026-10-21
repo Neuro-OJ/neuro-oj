@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   ADMIN_FULL_ACCESS,
-  type AuthEnv,
-  authMiddleware,
   resolvePermissions,
-} from "../../../domains/identity/index.ts";
+} from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { resolveProblem } from "../services/problem-resolve.ts";
 import { evaluateProblemAccessWithContestId } from "../services/problem-access-check.ts";
 import { resolveProblemAnswerVersion } from "../services/versioning/publish.ts";

@@ -1,10 +1,10 @@
 /**
  * Core 测试发现与 CI 映射的单一元数据读取点。
  *
- * `dev-docs/engineering/module-boundaries.json` 是唯一事实源：目标模块、迁移期
- * legacy domain 别名、测试 task 和 CI job 都从那里读取。Core 的测试启动器通过
- * 本模块取得同一份值，因此新增模块测试目录不会只被静态结构诊断发现，而在
- * `test:domain` / 并行分片中静默漏跑。
+ * `dev-docs/engineering/module-boundaries.json` 是唯一事实源：目标模块、旧命令
+ * 别名、测试 task 和 CI job 都从那里读取。Core 的测试启动器通过本模块取得同一
+ * 份值，因此新增模块测试目录不会只被静态结构诊断发现，而在 `test:domain` /
+ * 并行分片中静默漏跑。
  */
 import metadata from "../dev-docs/engineering/module-boundaries.json" with {
   type: "json",
@@ -25,6 +25,7 @@ export interface ModuleTestTarget {
 export interface ModuleTestMetadata {
   targetModules: ModuleTestTarget[];
   legacyDomainToModule: Record<string, string>;
+  legacyTestTargets: Record<string, string[]>;
   testCiMapping: Record<string, ModuleTestMapping>;
 }
 
@@ -46,7 +47,28 @@ function coreRelativeRoot(root: string): string {
   return root.replace(/^noj-core\//, "");
 }
 
-/** 解析目标模块名或迁移期 legacy domain 别名。 */
+/** 一个业务模块可以由多个明确的子模块组成；测试发现必须覆盖所有子根。 */
+function targetTestRoots(module: ModuleTestTarget): string[] {
+  const root = coreRelativeRoot(module.root);
+  const nested = module.name === "access"
+    ? ["identity", "workspace"].map((part) => `${root}/${part}/tests`)
+    : module.name === "communication"
+    ? ["community", "messaging", "review"].map((part) =>
+      `${root}/${part}/tests`
+    )
+    : module.name === "platform"
+    ? ["system", "gateway", "observability", "legal-legacy"].map((part) =>
+      `${root}/${part}/tests`
+    )
+    : module.name === "read-models"
+    ? ["queries", "search"].map((part) => `${root}/${part}/tests`)
+    : module.name === "http"
+    ? ["src/domains/admin/tests"]
+    : [];
+  return [`${root}/tests`, ...nested];
+}
+
+/** 解析目标模块名或旧命令别名。 */
 export function resolveModuleTestTarget(
   targetOrLegacy: string,
 ): ModuleTestTarget | undefined {
@@ -62,18 +84,29 @@ export function resolveModuleTestTarget(
 }
 
 /**
- * 返回迁移期目标的测试根：legacy 与 modules/** 同时保留，且去重。
- * 不在磁盘上的根由 launcher 在执行前过滤，这样空的未来模块不会阻止仍在
- * legacy 目录中的测试运行；一旦模块测试目录创建，就会自动进入同一 task。
+ * 返回目标模块的测试根。旧 domain 名称只作为命令兼容别名解析到目标模块，
+ * 不再把已删除的 `src/domains/*` 实现重新纳入测试发现。
  */
 export function testRootsForTarget(targetOrLegacy: string): string[] {
-  const target = resolveModuleTestTarget(targetOrLegacy);
-  if (!target) return [];
-  const roots = [
-    ...target.legacyDomains.map((domain) => `src/domains/${domain}/tests`),
-    `${coreRelativeRoot(target.root)}/tests`,
+  const targetNames =
+    MODULE_TEST_METADATA.targetModules.some((module) =>
+        module.name === targetOrLegacy
+      )
+      ? [targetOrLegacy]
+      : MODULE_TEST_METADATA.legacyTestTargets[targetOrLegacy] ??
+        (MODULE_TEST_METADATA.legacyDomainToModule[targetOrLegacy]
+          ? [MODULE_TEST_METADATA.legacyDomainToModule[targetOrLegacy]]
+          : []);
+  return [
+    ...new Set(
+      targetNames.flatMap((name) => {
+        const target = MODULE_TEST_METADATA.targetModules.find((module) =>
+          module.name === name
+        );
+        return target ? targetTestRoots(target) : [];
+      }),
+    ),
   ];
-  return [...new Set(roots)];
 }
 
 /** 返回所有目标及其 legacy 别名的测试根，供并行分片覆盖检查复用。 */
@@ -89,7 +122,5 @@ export function allModuleTestRoots(): string[] {
 
 /** 返回当前 12 个 target module 的测试根，不含已登记的 legacy roots。 */
 export function allTargetModuleTestRoots(): string[] {
-  return MODULE_TEST_METADATA.targetModules.map((module) =>
-    `${coreRelativeRoot(module.root)}/tests`
-  );
+  return MODULE_TEST_METADATA.targetModules.flatMap(targetTestRoots);
 }

@@ -1,4 +1,4 @@
-import { submissionQueryVisibility } from "../../../access/index.ts";
+import { submissionQueryVisibility } from "../../../access/submission-policy.ts";
 import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。

@@ -82,6 +82,16 @@ Deno.test("gate-list: 关键门禁不得被删除", () => {
     hasGate(["deno", "run", "-A", "scripts/check-test-discovery.ts"]),
     "测试可发现性门禁必须在清单内",
   );
+  assert(
+    hasGate([
+      "deno",
+      "run",
+      "-A",
+      "scripts/check-module-boundaries.ts",
+      "--strict",
+    ]),
+    "P3 模块边界严格门禁必须在清单内",
+  );
   // Deno 版本一致性
   assert(
     hasGate(["deno", "run", "-A", "scripts/check-deno-version.ts"]),
@@ -90,7 +100,9 @@ Deno.test("gate-list: 关键门禁不得被删除", () => {
   // PGlite/schema parity 门禁已随测试后端删除；正式迁移由真实 PostgreSQL
   // 启动器与迁移安全/快照链门禁共同验证。
   assert(
-    !REPO_GATES.some((g) => g.args.some((arg) => arg.includes("schema-parity"))),
+    !REPO_GATES.some((g) =>
+      g.args.some((arg) => arg.includes("schema-parity"))
+    ),
     "已删除的 schema parity 门禁不得回归",
   );
 });

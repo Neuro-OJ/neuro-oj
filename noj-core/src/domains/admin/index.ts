@@ -14,8 +14,11 @@
  * 此处必须跳过对应路径，否则组级通配 use 会先于独立 router 拦截请求。
  */
 import { Hono } from "hono";
-import type { AuthEnv } from "../identity/index.ts";
-import { adminMiddleware, authMiddleware } from "../identity/index.ts";
+import type { AuthEnv } from "../../modules/access/identity/middleware/auth.ts";
+import {
+  adminMiddleware,
+  authMiddleware,
+} from "../../modules/access/identity/middleware/auth.ts";
 import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
 import submissionAdminRouter from "./routes/submission.ts";
@@ -28,7 +31,7 @@ import carouselAdminRouter from "./routes/carousel.ts";
 import communityAdminRouter from "./routes/community.ts";
 import gatewayAdminRouter from "./routes/gateway.ts";
 import backgroundTasksAdminRouter from "./routes/background-tasks.ts";
-import legalAdminRouter from "../legal/routes/admin.ts";
+import legalAdminRouter from "../../modules/platform/legal-legacy/routes/admin.ts";
 
 const router = new Hono<AuthEnv>();
 

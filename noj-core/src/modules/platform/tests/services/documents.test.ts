@@ -17,7 +17,7 @@ import {
   hashContent,
   listVersions,
   publishVersion,
-} from "../../../../domains/legal/index.ts";
+} from "../../legal-legacy/index.ts";
 
 const PUBLISHER = "legal-test-publisher";
 

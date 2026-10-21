@@ -15,7 +15,10 @@ import {
   trainings,
 } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { createDomain, DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import {
+  createDomain,
+  DEFAULT_DOMAIN_ID,
+} from "../../../access/workspace/index.ts";
 import {
   bindPublishedProblemForTest,
   jsonRequest,

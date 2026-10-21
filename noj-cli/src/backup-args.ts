@@ -35,6 +35,8 @@ export interface BackupArgs {
   subnet: string | undefined;
   /** #516：演练 Compose 项目名。 */
   projectName: string | undefined;
+  /** #516：演练专用 Docker daemon 的 Unix socket。 */
+  dockerHost: string | undefined;
   /** #516：RPO 上限（小时）。 */
   rpoMaxHours: number | undefined;
   /** #516：RTO 上限（分钟）。 */
@@ -65,6 +67,7 @@ export function parseBackupArgs(args: string[]): BackupArgs {
     skipJudge: false,
     subnet: undefined,
     projectName: undefined,
+    dockerHost: undefined,
     rpoMaxHours: undefined,
     rtoMaxMinutes: undefined,
     keepFlag: false,
@@ -160,6 +163,9 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         break;
       case "--project-name":
         out.projectName = takeValue("--project-name");
+        break;
+      case "--docker-host":
+        out.dockerHost = takeValue("--docker-host");
         break;
       case "--rpo-max-hours": {
         const raw = takeValue("--rpo-max-hours");

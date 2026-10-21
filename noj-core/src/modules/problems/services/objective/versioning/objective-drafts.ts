@@ -23,8 +23,8 @@ import {
   saveProblemDraft,
 } from "../../versioning/draft.ts";
 import {
-  problemContentKindOf,
   type ObjectiveQuestionSnapshot,
+  problemContentKindOf,
   type ProblemDraftContent,
 } from "../../../types/problem-content.ts";
 import {

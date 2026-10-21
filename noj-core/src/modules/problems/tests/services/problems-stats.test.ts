@@ -5,7 +5,7 @@ import {
   deleteProblemFixtures,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
@@ -443,7 +443,7 @@ Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 ma
   const { createDefaultCatalogToken } = await import("../default-fixture.ts");
   const { decodeJwt } = await import("jose");
   const { createDomain } = await import(
-    "../../../../domains/workspace/index.ts"
+    "../../../access/workspace/index.ts"
   );
   const actor = decodeJwt(await createDefaultCatalogToken("admin")).sub!;
   const school = await createDomain({

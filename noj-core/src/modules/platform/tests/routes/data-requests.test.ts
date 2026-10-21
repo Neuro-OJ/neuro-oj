@@ -8,7 +8,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../../domains/identity/services/security/jwt.ts";
+import { signToken } from "../../../access/identity/index.ts";
 
 async function makeUser(id: string) {
   const db = getDb();

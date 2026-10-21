@@ -2,17 +2,15 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { assertActiveInstanceAccount } from "../../../domains/identity/index.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
-import { domainProblemBindingAvailableWhere } from "../../problems/index.ts";
+import { assertActiveInstanceAccount } from "../../access/contracts/cross-module/identity_services_security_account-access.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
+import { domainProblemBindingAvailableWhere } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
 import { contestResultVisibility } from "./submissions/submission-projection.ts";
 import { oiVerdict } from "./submissions/oi-details.ts";
-import type { ContestType } from "../../contests/index.ts";
+import type { ContestType } from "../../contests/types/contests.ts";
 import type { ProblemReference } from "../../../shared/workspace/types.ts";
-import { currentTeacherSubmissionAccessWhere } from "../../../domains/education/index.ts";
+import { currentTeacherSubmissionAccessWhere } from "../../education/contracts/cross-module/services_submission-access-sql.ts";
 
 export type OwnSubmissionKind = "submission" | "objective";
 /** 由已授权服务器入口指定；查询条件在计数和分页之前执行。 */

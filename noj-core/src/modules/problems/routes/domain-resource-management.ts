@@ -5,10 +5,8 @@ import {
   setDomainProblemBindingPolicyCommand,
   setDomainProblemSharingCommand,
 } from "../../application/problems.ts";
-import {
-  type AuthEnv,
-  authMiddleware,
-} from "../../../domains/identity/index.ts";
+import { authMiddleware } from "../../access/identity/middleware/auth.ts";
+import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
 import {

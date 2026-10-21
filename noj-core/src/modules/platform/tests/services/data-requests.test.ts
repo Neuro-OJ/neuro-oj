@@ -15,7 +15,7 @@ import {
   createDataRequest,
   listUserDataRequests,
   updateDataRequestStatus,
-} from "../../../../domains/legal/index.ts";
+} from "../../legal-legacy/index.ts";
 
 const USER = "dr-test-user";
 

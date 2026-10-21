@@ -8,8 +8,8 @@ import {
   _dispatchToLocalListenersForTest,
   Channels,
 } from "../../../../shared/sse/event-bus.ts";
-import { signToken } from "../../../../domains/identity/index.ts";
-import { removeDomainMember } from "../../../../domains/workspace/index.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { removeDomainMember } from "../../../access/workspace/index.ts";
 import { setDomainProblemSharing } from "../../../problems/index.ts";
 import {
   createDomainSelfTest,

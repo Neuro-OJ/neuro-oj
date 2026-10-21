@@ -18,10 +18,10 @@ import {
 import type { Executor } from "../../../../shared/db/executor.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
-import { assertStorageObjectBindable } from "../../../assets/index.ts";
+import { assertStorageObjectBindable } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
 import { assertDomainJobExecution } from "./domain-job-access.ts";
-import { consumeDomainSubmissionQuota } from "../../../../domains/workspace/index.ts";
+import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
 import { createAttempt } from "./attempts.ts";
 import {
   bumpSubmissionCountRevisions,

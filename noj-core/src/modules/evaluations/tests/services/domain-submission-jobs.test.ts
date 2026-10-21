@@ -24,7 +24,7 @@ import {
   DEFAULT_DOMAIN_ID,
   removeDomainMember,
   setMemberRoles,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 import {
   acceptDomainSubmissionJob,
   cancelDomainSubmissionJob,

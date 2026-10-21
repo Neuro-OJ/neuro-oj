@@ -268,6 +268,7 @@ export type {
   SubmissionStatus,
 } from "./types/index.ts";
 export {
+  assertNever,
   assertSubmissionLanguage,
   buildJudgeTask,
   buildUiSolutionScript,

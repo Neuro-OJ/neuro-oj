@@ -16,8 +16,8 @@ import {
   createDomain,
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
-import { updateSetting } from "../../../../domains/system/index.ts";
+} from "../../../access/workspace/index.ts";
+import { updateSetting } from "../../../platform/system/index.ts";
 import {
   addParticipants,
   createContest,

@@ -1,5 +1,8 @@
 import { assert } from "jsr:@std/assert@^1";
-import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
+import {
+  reindexAll,
+  searchFlat,
+} from "../../src/modules/read-models/search/index.ts";
 import { getDb } from "./../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";

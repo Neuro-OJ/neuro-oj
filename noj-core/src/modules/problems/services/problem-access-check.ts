@@ -22,12 +22,12 @@ import { domainProblemBindings, problems } from "../../../shared/db/schema.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-  loadWorkspace,
-} from "../../../domains/workspace/index.ts";
+} from "../../../shared/workspace/types.ts";
+import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import {
   guestActor,
   userActorFromAuthenticatedId,
-} from "../../access/index.ts";
+} from "../../access/contracts/actor.ts";
 import {
   type ProblemAccessContext,
   type ProblemAccessInput,
@@ -37,8 +37,8 @@ import {
 import {
   loadPublicContestSecrecy,
   type PublicContestSecrecyRef,
-  verifyContestAccess,
-} from "../../access/contest-policy.ts";
+} from "../../contests/contracts/read.ts";
+import { verifyContestAccess } from "../../access/contest-policy.ts";
 
 /** 判定结果 + 触发保密的公开赛列表（owner/管理员据此渲染保密提示）。 */
 export type ProblemAccessEvaluation = {

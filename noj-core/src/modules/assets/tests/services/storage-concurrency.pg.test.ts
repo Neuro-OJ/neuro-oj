@@ -9,8 +9,8 @@ import { domainLimits } from "../../../../shared/db/schema.ts";
 import * as schema from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { createUserToken } from "../../../../../tests/helper.ts";
-import { verifyToken } from "../../../../domains/identity/index.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { verifyToken } from "../../../access/identity/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import { updateSetting } from "../../../platform/index.ts";
 import {
   getDomainStorageUsage,
@@ -19,7 +19,7 @@ import {
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 
 function connection() {
   return postgres(Deno.env.get("DATABASE_URL")!, {

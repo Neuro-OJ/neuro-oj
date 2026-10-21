@@ -11,7 +11,7 @@
  */
 
 import type { StorageProvider } from "./types.ts";
-import { getSetting } from "../../platform/services/system-settings.ts";
+import { getSetting } from "../../platform/contracts/cross-module/services_system-settings.ts";
 
 let instance: StorageProvider | null = null;
 

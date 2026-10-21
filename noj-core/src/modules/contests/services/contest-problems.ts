@@ -5,16 +5,18 @@ import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import {
   getJudgeBackend,
+  type ProblemRuntimeConfig,
+} from "../../problems/types/runtime-config.ts";
+import {
   getSubmissionLanguages,
   isValidSubmissionMode,
-  type ProblemContentV1,
-  type ProblemRuntimeConfig,
-  projectProblemContent,
   type SubmissionMode,
-} from "../../problems/contracts/read.ts";
+} from "../../problems/types/problems.ts";
+import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
+import { projectProblemContent } from "../../problems/contracts/read.ts";
 import type { ContestProblemResponse, ContestType } from "../types/contests.ts";
 import { findContestRow } from "./contest-row.ts";
-import { computeContestStatus } from "./contests.ts";
+import { computeContestStatus } from "./contest-window.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
 
 /**

@@ -17,7 +17,7 @@ import {
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 import {
   evaluationAttempts,
   problems,
@@ -419,7 +419,8 @@ Deno.test("pipeline: 协议 v2 结果经 run_id 精确落到尝试", async () =>
   const outcome = await saveV2ResultForTest({
     submission_id: submissionId,
     run_id: attemptId,
-    evaluation_protocol_version: 2,
+    evaluation_protocol_version: 3,
+    task_kind: "submission",
     result_kind: "graded",
     status: "finished",
     score: 10000,

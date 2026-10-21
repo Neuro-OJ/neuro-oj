@@ -22,10 +22,8 @@ import {
   problems,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
-import type {
-  ProblemContentV1,
-  SubmissionMode,
-} from "../../../problems/index.ts";
+import type { ProblemContentV1 } from "../../../problems/types/problem-content.ts";
+import type { SubmissionMode } from "../../../problems/types/problems.ts";
 
 /** 解析结果：明确的提交时版本。 */
 export interface ResolvedSubmissionVersion {

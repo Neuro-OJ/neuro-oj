@@ -26,7 +26,7 @@ import {
   getObjectiveSubmission,
   listObjectiveSubmissions,
   submitDomainObjectivePaper,
-} from "../../../../domains/objective/index.ts";
+} from "../../index.ts";
 import {
   createDomainArtifactSubmission,
   createDomainSelfTest,

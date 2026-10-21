@@ -35,6 +35,20 @@ export interface TaskPayload {
   readonly [key: string]: unknown;
 }
 
+/** handler 已完成一页但业务事实仍有后续工作时使用的控制结果。 */
+export interface TaskRescheduleResult {
+  readonly __task_control: "reschedule";
+  readonly availableAt: string;
+  readonly payload: TaskPayload;
+}
+
+export function isTaskRescheduleResult(
+  value: unknown,
+): value is TaskRescheduleResult {
+  return typeof value === "object" && value !== null &&
+    (value as { __task_control?: unknown }).__task_control === "reschedule";
+}
+
 /** 入队输入。 */
 export interface EnqueueTaskInput {
   readonly taskType: TaskType;
@@ -78,6 +92,8 @@ export interface TaskHealth {
   readonly failed: number;
   /** 最老待领取任务的年龄（毫秒）；无待领取任务为 0。 */
   readonly oldestReadyAgeMs: number;
+  /** 最老租约中任务的处理时长（毫秒）；无处理中的任务为 0。 */
+  readonly oldestLeasedAgeMs: number;
   /** 最早到期的租约剩余毫秒；无租约为 0。 */
   readonly nextLeaseExpiryMs: number;
 }
@@ -103,7 +119,7 @@ export const TASK_DEFAULT_CLAIM_LIMIT = 10;
 export type TaskHandler = (
   task: ClaimedTask,
   signal: AbortSignal,
-) => Promise<Record<string, unknown> | void>;
+) => Promise<Record<string, unknown> | TaskRescheduleResult | void>;
 
 /** 按任务类型注册的 handler 集合；缺失类型必须在启动时显式失败。 */
 export type TaskHandlerMap = Readonly<

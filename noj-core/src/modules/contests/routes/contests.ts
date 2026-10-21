@@ -1,11 +1,11 @@
 import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
-import type { OptionalAuthEnv } from "../../../domains/identity/index.ts";
+import type { OptionalAuthEnv } from "../../../shared/http/hono-env.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../domains/identity/index.ts";
+} from "../../access/identity/middleware/auth.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   createContestCommand,
@@ -30,7 +30,7 @@ import {
 } from "../../../shared/http/pagination.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { createFileStream } from "../../../shared/http/file-stream.ts";
-import { checkPermission } from "../../../domains/identity/index.ts";
+import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   getContestRankingView,
   getLatestContestRankingSnapshot,
@@ -54,7 +54,7 @@ import { resolveDefaultContestAccess } from "../services/default-access.ts";
 import {
   enforceContestRegisterRateLimit,
   enforceContestSubmissionRateLimit,
-} from "../../../domains/system/index.ts";
+} from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;

@@ -21,7 +21,7 @@ import {
 } from "../../index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 import {
@@ -44,7 +44,7 @@ import {
   RateLimitedError,
 } from "../../../../shared/base/errors.ts";
 import { eq, sql } from "drizzle-orm";
-import { enterTestContext } from "../../../../domains/system/index.ts";
+import { enterTestContext } from "../../../platform/system/index.ts";
 import {
   type LogRecord,
   resetLogSink,

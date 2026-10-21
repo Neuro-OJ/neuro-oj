@@ -3,12 +3,12 @@ import { eq } from "drizzle-orm";
 import { domainLimits, submissions } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getRedis } from "../../../../shared/mq/connection.ts";
-import { getDomainStorageUsage } from "../../../../domains/workspace/index.ts";
+import { getDomainStorageUsage } from "../../../access/workspace/index.ts";
 import {
+  LocalStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../../domains/system/index.ts";
-import { LocalStorageProvider } from "../../../../modules/assets/storage/local.ts";
+} from "../../../assets/storage/mod.ts";
 import {
   createDomainArtifactSubmission,
   createDomainSelfTest,

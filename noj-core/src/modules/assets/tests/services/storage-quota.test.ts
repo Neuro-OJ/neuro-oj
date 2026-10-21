@@ -10,8 +10,8 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { AppError, ConflictError } from "../../../../shared/base/errors.ts";
 import { createUserToken } from "../../../../../tests/helper.ts";
-import { verifyToken } from "../../../../domains/identity/index.ts";
-import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { verifyToken } from "../../../access/identity/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import {
   compensateUploadedObject,
   registerLegacyStorageObject,
@@ -36,7 +36,7 @@ import { updateSetting } from "../../../platform/index.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../../domains/workspace/index.ts";
+} from "../../../access/workspace/index.ts";
 
 async function fixture() {
   await resetDbForTest();

@@ -10,7 +10,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { ensureDefaultWorkspace } from "../../../../domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 
 import {
   contests,

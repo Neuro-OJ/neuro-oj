@@ -6,7 +6,7 @@ import {
   domainProblemBindings,
   problems,
 } from "../../../../shared/db/schema.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../domains/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import { createProblem } from "../../index.ts";
 import { resolveDefaultExecutionContext } from "../../services/workspace/execution-context.ts";
 import { resetDbForTest } from "../default-fixture.ts";

@@ -12,7 +12,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { domainProblemReference } from "../../problems/contracts/read.ts";
+import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
 import { loadDomainContest } from "./domain-access.ts";
 import { computeContestStatus } from "./contests.ts";
 import {

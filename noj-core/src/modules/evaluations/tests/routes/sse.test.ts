@@ -13,9 +13,9 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../../domains/identity/services/security/jwt.ts";
+import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _dispatchToLocalListenersForTest } from "../../../../shared/sse/event-bus.ts";
 import {
   INSTANCE_QUEUE_CHANNEL,
