@@ -164,3 +164,11 @@ export {
   domainStorageObjects,
   domainStorageUploads,
 } from "./workspace-storage.ts";
+
+// runtime
+export {
+  backgroundTasks,
+  type BackgroundTaskRow,
+  type BackgroundTaskStatus,
+  type NewBackgroundTaskRow,
+} from "./background-tasks.ts";

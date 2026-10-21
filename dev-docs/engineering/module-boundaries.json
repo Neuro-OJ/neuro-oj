@@ -147,7 +147,8 @@
       "system.ts": "platform",
       "workspace-invitations.ts": "access",
       "workspace-storage.ts": "assets",
-      "workspace.ts": "access"
+      "workspace.ts": "access",
+      "background-tasks.ts": "runtime"
     },
     "tableExceptions": {
       "system.ts": {
