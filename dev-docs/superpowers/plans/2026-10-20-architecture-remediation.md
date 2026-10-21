@@ -508,3 +508,63 @@ P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定
 真实 PostgreSQL 约束失败后回滚域成员/邀请使用次数并可重试。主代理的三个日志位于
 `/tmp/noj-p3-access-*-review.log`。旧身份/工作空间入口与 Executor 兼容仍待清理，
 因此 access/P3 跟踪项继续保持未完成。
+
+### P3/P4/P5 续作进展（2026-10-21 晚，尚未整体验收）
+
+本轮从 P2b 签名检查点 `e6f391b5` 继续，按「每个逻辑单元一个签名 change」推进。
+以下只记录**已实际执行并观察到的证据**；未跑完整回归前不勾选批次完成。
+
+新增签名 change（均位于 `wip/architecture-remediation-p3` 祖先链）：
+
+| change | 内容 |
+|---|---|
+| `wlusvxwn` | P3 阶段一：身份与事务合同收紧、业务所有权迁移（接手时已有） |
+| `vqrwploy` | 修复邀请注册开户授权检查（接手时已有） |
+| `umkvrqmt` | P3 二之一：审计写入收口 + 系统身份装配 |
+| `muqprktz` | P3 二之二：发布改用显式 Actor + 事务内搜索索引 |
+| `nrrymxnw` | P3 三之一：题目删除分三段 + 各 owner 事务写合同 |
+| `tmrqwkmn` | P3 三之二：评测策略经 owner 合同写入 + runtime SSE 事实入口 |
+| `kuvrztqo` | P3 三之三：教学事实登记改经 education 合同 |
+| `qzwlsuln` | P3 三之四：竞赛别名报名语义 + 存储容量应用用例 |
+| `qvooxnyl` | P3.4：`revalidateEvaluationAdmissionTx` + 评测类型负例 |
+| `xpysvkok` | P4.1：`background_tasks` 表（迁移 0120）+ 任务原语 |
+| `okrvorot` | P4.2：搜索索引事务内登记 + 应用 handler |
+| `yzxvrlly` | P4.3：评测派发任务同事务登记 + 恢复 handler + 共享测试陈旧路径修复 |
+| `ukqnxnxk` | P4.4：任务管理路由 + `background_task.retry` 审计（迁移 0121） |
+| `ztzypzxk` | P4.5：教学 outbox 幂等迁移合同 |
+| `qrlolyxs` | P5.1：Gateway 实例政策本地持久权威（迁移 20261021105927） |
+| `qmlzsqks` | P5.2：政策快照导出/导入 + Core 旧端点降级为只读归档 |
+
+本轮已实际执行的验证（均为 `deno task` / 规定脚本，使用自建隔离资源）：
+
+- `test:domain access`：400 passed / 0 failed
+- `test:domain assets`：37 passed / 0 failed
+- `test:domain problems`：468 passed / 4 failed（4 项经基线 workspace 复现，属 P3 起点既有失败）
+- `test:domain evaluations`：457 passed / 2 failed（同上，基线既有）
+- `test:domain contests`：126 passed / 0 failed
+- `test:domain education`：136 passed / 0 failed / 1 ignored
+- `test:domain read-models`：86 passed / 0 failed / 1 ignored
+- `test:domain runtime`：20 passed / 0 failed（含新增任务原语与真实 PG 仓库测试）
+- `test:domain application`：13 passed / 0 failed（含新增派发恢复测试）
+- `test:domain platform`：265 passed / 0 failed
+- `test:domain admin`：37 passed / 0 failed
+- `test:domain gateway`：269 passed / 0 failed
+- `test:domain system`（internal 过滤）：3 passed / 0 failed
+- `bash scripts/test-shared.sh`：415 passed / 0 failed / 6 ignored
+- Gateway 纯逻辑套件（`tests/*_test.ts`）：137 passed / 0 failed
+- Gateway `tests/policy_operations.pg.test.ts`（真实 PG，独立 schema）：5 passed / 0 failed
+- `deno check src/main.ts tests/types/*.ts`：通过
+- `deno run -A scripts/check-module-boundaries.ts`：679 生产文件 / 110 表 / owner 缺口 0 /
+  type SCC 0；**runtime SCC 仍 3**、缺 `communication`/`http` 两个目标根、
+  facade `export *` 136 项、跨模块服务导入 7 项、runtime→业务 12 项、业务→读模型 5 项
+
+已明确记录的缺口（不勾选完成）：
+
+- P3.4 只建立并类型验证了锁内复核合同，提交/自测命令尚未调用它；
+- P3.5–P3.8 未开始：education/communication/read-models 模块迁移、HTTP/runtime 装配、
+  删除旧实现、`--strict` 接入根门禁、P3 完整回归；
+- P4 教学 worker 尚未切到新任务表（迁移合同已就绪但未接线），任务指标 runbook 未写；
+- P5 只完成政策本地权威与迁移合同；降额/预占锁序的并发屏障测试、记账恢复、
+  unknown 调用、ready 与 drain 未实现；
+- P6/P7/P8 未开始；
+- 生产环境未做任何操作；所有测试只用自建 `noj-arch-p3test-*` 隔离容器与临时库。
