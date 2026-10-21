@@ -1,22 +1,25 @@
 import { and, eq } from "drizzle-orm";
-import type { Executor } from "../../../../shared/db/executor.ts";
+import type { DbTx } from "../../../../shared/db/executor.ts";
 import {
   domainProblemBindings,
   problemBindingHistory,
   problems,
 } from "../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
-import { recordEducationEvent } from "../../../../shared/education-events.ts";
+import {
+  recordModuleChangeTx,
+  recordProblemChangeTx,
+} from "../../../education/contracts/events.ts";
 
 /** 发布持有源题宿主锁；any 的作答默认版本变化同事务保存每个使用域的依据。 */
 export async function recordPublishedBindingChanges(
-  executor: Executor,
+  tx: DbTx,
   problemId: string,
   versionId: string,
   actorId: string | null,
   now: string,
 ) {
-  const bindings = await executor.select().from(domainProblemBindings).where(
+  const bindings = await tx.select().from(domainProblemBindings).where(
     and(
       eq(domainProblemBindings.problem_id, problemId),
       eq(domainProblemBindings.effective_version_mode, "any"),
@@ -26,11 +29,11 @@ export async function recordPublishedBindingChanges(
   );
   for (const binding of bindings) {
     const revision = binding.revision + 1;
-    await executor.update(domainProblemBindings).set({
+    await tx.update(domainProblemBindings).set({
       revision,
       updated_at: now,
     }).where(eq(domainProblemBindings.id, binding.id));
-    await executor.insert(problemBindingHistory).values({
+    await tx.insert(problemBindingHistory).values({
       id: crypto.randomUUID(),
       binding_id: binding.id,
       problem_id: problemId,
@@ -43,20 +46,19 @@ export async function recordPublishedBindingChanges(
       reason: "源题发布新版本",
       created_at: now,
     });
-    await recordEducationEvent(executor, {
-      domain_id: binding.domain_id,
-      problem_id: problemId,
-      event_type: "problem.changed",
+    await recordProblemChangeTx(tx, {
+      domainId: binding.domain_id,
+      problemId,
     });
   }
 }
 
 /** 域进入政策或状态变化影响其全部引用，按域顺序登记避免相反钟锁顺序。 */
 export async function recordSourceDomainEducationChange(
-  executor: Executor,
+  tx: DbTx,
   sourceDomainId: string,
 ) {
-  const rows = await executor.select({ id: domainProblemBindings.domain_id })
+  const rows = await tx.select({ id: domainProblemBindings.domain_id })
     .from(domainProblemBindings)
     .innerJoin(problems, eq(problems.id, domainProblemBindings.problem_id))
     .where(eq(problems.domain_id, sourceDomainId));
@@ -64,31 +66,29 @@ export async function recordSourceDomainEducationChange(
     const domainId of [...new Set([sourceDomainId, ...rows.map((r) => r.id)])]
       .sort()
   ) {
-    await recordEducationEvent(executor, {
-      domain_id: domainId,
-      event_type: domainId === sourceDomainId
-        ? "module.changed"
-        : "problem.changed",
-    });
+    if (domainId === sourceDomainId) {
+      await recordModuleChangeTx(tx, { domainId });
+    } else {
+      await recordProblemChangeTx(tx, { domainId });
+    }
   }
 }
 
 /** 可见性、共享和下架变化只登记使用域事件，不在资源事务更新教学矩阵。 */
 export async function recordProblemEducationChange(
-  executor: Executor,
+  tx: DbTx,
   problemId: string,
 ) {
-  const bindings = await executor.select({
+  const bindings = await tx.select({
     domain_id: domainProblemBindings.domain_id,
   }).from(domainProblemBindings)
     .where(eq(domainProblemBindings.problem_id, problemId)).orderBy(
       domainProblemBindings.domain_id,
     );
   for (const binding of bindings) {
-    await recordEducationEvent(executor, {
-      domain_id: binding.domain_id,
-      problem_id: problemId,
-      event_type: "problem.changed",
+    await recordProblemChangeTx(tx, {
+      domainId: binding.domain_id,
+      problemId,
     });
   }
 }

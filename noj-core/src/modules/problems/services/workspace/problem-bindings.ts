@@ -3,7 +3,6 @@ import {
   domainProblemBindingAvailableWhere,
   loadBindingAvailability,
 } from "./binding-availability.ts";
-import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import {
   AppError,
   BadRequestError,
@@ -17,7 +16,10 @@ import {
   loadWorkspaceTx,
   setDomainResourceCounterTx,
   userActorFromAuthenticatedId,
+  workspaceAuditTx,
 } from "../../../../modules/access/index.ts";
+import { recordProblemChangeTx } from "../../../education/contracts/events.ts";
+import { recordProblemEducationChange } from "./education-events.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import {
   domainProblemBindings,
@@ -31,7 +33,6 @@ import {
   assertWorkspacePermission as assertLegacyWorkspacePermission,
   getDomainEffectiveLimits,
   loadWorkspace,
-  workspaceAudit,
 } from "../../../../domains/workspace/index.ts";
 import {
   assertCurrentProblemShare,
@@ -42,7 +43,6 @@ import {
   domainProblemReference,
   parseDomainProblemReference,
 } from "./problem-reference.ts";
-import { recordProblemEducationChange } from "./education-events.ts";
 
 function isDbTx(executor: Executor): executor is DbTx {
   return "rollback" in executor && "setTransaction" in executor &&
@@ -55,9 +55,9 @@ async function recordBinding(
   answerVersionId: string | null,
   actorId: string,
   reason: string,
-  executor: Executor,
+  tx: DbTx,
 ) {
-  await executor.insert(problemBindingHistory).values({
+  await tx.insert(problemBindingHistory).values({
     id: crypto.randomUUID(),
     binding_id: binding.id,
     problem_id: binding.problem_id,
@@ -70,24 +70,31 @@ async function recordBinding(
     reason,
     created_at: new Date().toISOString(),
   });
+  // 源题（owned）状态变化会影响所有使用域的引用，必须让全部绑定陈旧；
+  // 共享引用（shared）只影响它自己的使用域。
   if (binding.kind === "owned") {
-    await recordProblemEducationChange(executor, binding.problem_id);
+    await recordProblemEducationChange(tx, binding.problem_id);
   } else {
-    await recordEducationEvent(executor, {
-      domain_id: binding.domain_id,
-      problem_id: binding.problem_id,
-      event_type: "problem.changed",
+    await recordProblemChangeTx(tx, {
+      domainId: binding.domain_id,
+      problemId: binding.problem_id,
     });
   }
-  await workspaceAudit(executor, actorId, binding.domain_id, "domain.update", {
-    operation: "problem.binding",
-    binding_id: binding.id,
-    problem_id: binding.problem_id,
-    revision: binding.revision,
-    reason,
-    visibility: binding.visibility,
-    disabled_at: binding.disabled_at,
-  });
+  await workspaceAuditTx(
+    tx,
+    userActorFromAuthenticatedId(actorId),
+    binding.domain_id,
+    "domain.update",
+    {
+      operation: "problem.binding",
+      binding_id: binding.id,
+      problem_id: binding.problem_id,
+      revision: binding.revision,
+      reason,
+      visibility: binding.visibility,
+      disabled_at: binding.disabled_at,
+    },
+  );
 }
 
 /** 显式引用公开源题；同域重复请求复用绑定且不重复扣容量。 */

@@ -16,8 +16,8 @@
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { recordEducationEvent } from "../../../../shared/education-events.ts";
-import type { Executor } from "../../../../shared/db/executor.ts";
+import { recordEvaluationChangeTx } from "../../../education/contracts/events.ts";
+import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
   contests,
@@ -485,23 +485,25 @@ export async function recomputeSubmissionProjection(
       contest_id: objectiveSubmissions.contest_id,
     }).from(objectiveSubmissions).where(eq(objectiveSubmissions.id, source.id));
   if (identity?.domain_id) {
-    await recordEducationEvent(executor, {
-      domain_id: identity.domain_id,
-      user_id: identity.user_id,
-      problem_id: source.problem_id,
-      event_type: "submission.changed",
+    // 教学事实登记归 education：这里只经其窄事务合同登记定位，不带成绩。
+    await recordEvaluationChangeTx(executor as DbTx, {
+      domainId: identity.domain_id,
+      userId: identity.user_id,
+      problemId: source.problem_id,
+      contestId: identity.contest_id,
     });
     if (identity.contest_id) {
       const [contest] = await executor.select({ end_time: contests.end_time })
         .from(contests).where(eq(contests.id, identity.contest_id));
       if (contest && contest.end_time > new Date().toISOString()) {
-        await recordEducationEvent(executor, {
-          domain_id: identity.domain_id,
-          user_id: identity.user_id,
-          problem_id: source.problem_id,
-          event_type: "submission.changed",
-          payload: { contest_id: identity.contest_id },
-        }, { availableAt: contest.end_time });
+        // 比赛结束前不生成绩效：延后到 end_time 的同一事实登记。
+        await recordEvaluationChangeTx(executor as DbTx, {
+          domainId: identity.domain_id,
+          userId: identity.user_id,
+          problemId: source.problem_id,
+          contestId: identity.contest_id,
+          availableAt: contest.end_time,
+        });
       }
     }
   }

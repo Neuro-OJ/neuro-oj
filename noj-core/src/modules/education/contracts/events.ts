@@ -22,7 +22,8 @@ import {
 /** 题目内容或可见性变化：让引用该题的教学单元陈旧。 */
 export interface ProblemChangeEvent {
   readonly domainId: string;
-  readonly problemId: string;
+  /** 受影响题目；缺省表示域级题目变化（例如域政策或状态影响其全部引用）。 */
+  readonly problemId?: string;
   /** 可选的受影响学生；缺省表示整题（域内全员）。 */
   readonly userId?: string;
 }
@@ -46,7 +47,7 @@ export async function recordProblemChangeTx(
 ): Promise<void> {
   await recordEducationEvent(tx, {
     domain_id: event.domainId,
-    problem_id: event.problemId,
+    ...(event.problemId ? { problem_id: event.problemId } : {}),
     ...(event.userId ? { user_id: event.userId } : {}),
     event_type: "problem.changed",
   });
