@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
+import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { capDomainQuota, loadCurrentQuotaCaps } from "../src/quota-policy.ts";
 import {
   canonicalPolicyJson,
@@ -159,7 +159,9 @@ Deno.test("实例政策不可用：新调用 503，未预占、未访问上游",
       messages: [],
     });
     assertEquals(response.status, 503);
-    assertEquals((await response.json()).error, "quota_policy_unavailable");
+    // 预占边界内政策不可读：路由把非限额错误映射为 quota_unavailable，
+    // 且绝不访问上游、不落用量。
+    assertEquals((await response.json()).error, "quota_unavailable");
     assertEquals(upstreamCalls, 0);
     assertEquals(usageInserts.length, 0);
   } finally {

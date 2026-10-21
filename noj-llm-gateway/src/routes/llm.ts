@@ -18,7 +18,6 @@ import {
   settleCall,
 } from "../accounting.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
-import { loadCurrentQuotaCaps } from "../quota-policy.ts";
 import {
   acquireProviderSlot,
   ProviderQueueAbortedError,
@@ -281,12 +280,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       promptTokens + completionTokens,
       providerSecret.provider.cost_per_1k_tokens,
     );
-    let domainQuotaCaps;
-    try {
-      domainQuotaCaps = await loadCurrentQuotaCaps(deps.db);
-    } catch {
-      return c.json({ error: "quota_policy_unavailable" }, 503);
-    }
+    // 政策读取发生在**预占步骤**（enforceAndCount 的 withReservationLock 内），
+    // 不在 Provider 排队之前读一份：排队期间提交的降额必须对本次新预占生效。
+    // 持久政策不可读时预占步骤抛错，由下方 catch 映射为 503 quota_unavailable；
+    // 请求不会发往上游，也不消耗 Provider 窗口额度。
 
     // Provider 级 RPM / TPM：超限时排队等待（多副本共享 Redis 队列），放在额度
     // 扣减之前——排队超时的请求不消耗用户/题目配额。
@@ -363,7 +360,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
         callId,
-        domainQuotaCaps,
         model,
         promptTokens,
         completionTokens,

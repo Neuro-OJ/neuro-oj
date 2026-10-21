@@ -139,6 +139,22 @@ export function createFakeDb(provider: ProviderRow | null): {
     if (sql.includes("FROM llm_quotas")) {
       return Promise.resolve([]);
     }
+    // P5：预占在受控边界内读取实例政策行（共享锁）。测试默认"无额外上限"。
+    if (sql.includes("INSERT INTO llm_policy")) {
+      return Promise.resolve([]);
+    }
+    if (sql.includes("FROM llm_policy")) {
+      return Promise.resolve([{
+        revision: 0,
+        day_max_calls: null,
+        day_max_tokens: null,
+        day_max_cost: null,
+        month_max_calls: null,
+        month_max_tokens: null,
+        month_max_cost: null,
+        updated_at: new Date(0).toISOString(),
+      }]);
+    }
     if (sql.includes("INSERT INTO llm_usage")) {
       const cols = [
         "id",

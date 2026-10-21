@@ -358,3 +358,31 @@ export async function _resetPolicyForTest(db: Db): Promise<void> {
   await db`DELETE FROM llm_policy_operations`;
   await db`DELETE FROM llm_policy`;
 }
+
+/**
+ * 预占步骤读取政策：**共享锁**读同一行。
+ *
+ * 语义（交接文档 §5.2）：
+ * - 预占与政策写入争用同一行的锁：`FOR SHARE` 与政策写入的 `FOR UPDATE` 互斥；
+ * - 已完成预占的调用按原账本结算（其 counters 已冻结在 ledger 中）；
+ * - 政策写入提交后开始的新预占必然读到新政策（行锁保证读发生在提交之后）。
+ *
+ * 使用共享锁而不是排他锁：并发预占之间不互相阻塞，只有政策写入会等待。
+ */
+export async function readPolicyForReservation(
+  tx: Db,
+): Promise<DomainQuotaCaps> {
+  // 缺行时先建立空政策行，避免"无行可锁"导致政策写入与预占之间没有共同锁点。
+  await tx`
+    INSERT INTO llm_policy (id, revision, updated_at)
+    VALUES (${INSTANCE_POLICY_ID}, 0, ${new Date().toISOString()})
+    ON CONFLICT (id) DO NOTHING
+  `;
+  const rows = await tx`
+    SELECT revision, day_max_calls, day_max_tokens, day_max_cost,
+           month_max_calls, month_max_tokens, month_max_cost, updated_at
+    FROM llm_policy WHERE id = ${INSTANCE_POLICY_ID} FOR SHARE
+  `;
+  const policy = rowToPolicy(rows[0] as Parameters<typeof rowToPolicy>[0]);
+  return { day: policy.day, month: policy.month };
+}

@@ -14,6 +14,10 @@ import {
 } from "../src/accounting.ts";
 import { bootstrapAccountingBaseline } from "../src/accounting-baseline.ts";
 import {
+  applyPolicyOperationTx,
+  emptyPolicyCaps,
+} from "../src/policy-operations.ts";
+import {
   gatewayTestDatabaseUrl as databaseUrl,
   gatewayTestRedisUrl as redisUrl,
   runRedisPrefix,
@@ -169,6 +173,14 @@ Deno.test({
         day: { max_calls: 1, max_tokens: null, max_cost: null },
         month: { max_calls: null, max_tokens: null, max_cost: null },
       };
+      // P5：实例政策只存在于 Gateway 本地 llm_policy 行；预占在锁内读同一行，
+      // 因此"降额提交之后开始的新预占"必须使用新政策。
+      await applyPolicyOperationTx(db, {
+        operationId: "accounting-policy-limit-1",
+        expectedRevision: 0,
+        caps,
+        actorId: "test",
+      });
       const schoolB = {
         ...payload,
         domain_id: "school-b",
@@ -177,15 +189,19 @@ Deno.test({
       await enforceAndCount(db, redis, schoolB, {
         ...reserve,
         callId: "school-b-first",
-        domainQuotaCaps: caps,
       });
       const lowered = { ...caps, day: { ...caps.day, max_calls: 0 } };
+      await applyPolicyOperationTx(db, {
+        operationId: "accounting-policy-limit-0",
+        expectedRevision: 1,
+        caps: lowered,
+        actorId: "test",
+      });
       await assertRejects(
         () =>
           enforceAndCount(db, redis, schoolB, {
             ...reserve,
             callId: "school-b-after-lower",
-            domainQuotaCaps: lowered,
           }),
         Error,
         "limit_exceeded",
@@ -193,6 +209,13 @@ Deno.test({
       const [denied] =
         await db`SELECT state FROM llm_call_ledger WHERE id='school-b-after-lower'`;
       assertEquals(denied.state, "denied");
+      // 恢复空政策，避免实例级日上限影响后续恢复与结算断言。
+      await applyPolicyOperationTx(db, {
+        operationId: "accounting-policy-reset",
+        expectedRevision: 2,
+        caps: emptyPolicyCaps(),
+        actorId: "test",
+      });
       const [raw] =
         await db`SELECT request_messages,request_params FROM llm_usage WHERE id='call-a'`;
       assertEquals(raw.request_messages, []);

@@ -293,7 +293,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "gateway migration: 十条迁移 ledger 按 numeric id 通过 HTTP 启动兼容检查",
+    "gateway migration: 全部迁移 ledger 按 numeric id 通过 HTTP 启动兼容检查",
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
@@ -312,23 +312,16 @@ Deno.test({
         SELECT id, name FROM llm_schema_migrations ORDER BY id ASC
       `;
       const plan = await readGatewayMigrationPlan();
-      assertEquals(rows.length, 10);
+      // 迁移数量由 manifest + journal 决定，新增迁移时不需要改这个测试。
+      assertEquals(rows.length, plan.length);
       assertEquals(
         rows.map((row) => row.name),
         plan.map((entry) => entry.name),
       );
-      assertEquals(rows.map((row) => row.id), [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-      ]);
+      assertEquals(
+        rows.map((row) => row.id),
+        plan.map((_, index) => index + 1),
+      );
     } finally {
       await db.end();
       await admin.unsafe(`DROP SCHEMA "${schema}" CASCADE`);
