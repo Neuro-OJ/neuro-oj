@@ -153,3 +153,37 @@ export async function rebuildPendingTask(
   }
   return task;
 }
+
+/**
+ * 从数据库加载一条正式提交的恢复行（派发任务处理器使用）。
+ *
+ * 与 sweeper 的批量查询同口径：JOIN `problems` 取运行时投影，再交给
+ * {@link rebuildPendingTask} 从活动尝试与版本快照重建同一 run。
+ * 行不存在返回 null（提交已被删除，任务应幂等结束）。
+ */
+export async function loadSubmissionRecoveryRow(
+  submissionId: string,
+): Promise<PendingRecoveryRow | null> {
+  const { submissions, problems } = await import(
+    "../../../shared/db/schema.ts"
+  );
+  const [row] = await getDb().select({
+    id: submissions.id,
+    language: submissions.language,
+    code: submissions.code,
+    file_name: submissions.file_name,
+    rejudge_seq: submissions.rejudge_seq,
+    problem_id: submissions.problem_id,
+    runtime_config: problems.runtime_config,
+    support_package_storage_url: problems.support_package_storage_url,
+    user_id: submissions.user_id,
+    domain_id: submissions.domain_id,
+    contest_id: submissions.contest_id,
+    active_attempt_id: submissions.active_attempt_id,
+    artifact_storage_url: submissions.artifact_storage_url,
+  }).from(submissions).innerJoin(
+    problems,
+    eq(problems.id, submissions.problem_id),
+  ).where(eq(submissions.id, submissionId)).limit(1);
+  return row ?? null;
+}

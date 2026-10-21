@@ -25,7 +25,7 @@ import {
   assertStringIncludes,
 } from "jsr:@std/assert@^1";
 import { join } from "node:path";
-import { validateBundleManifest } from "../../src/domains/catalog/types/problem-bundle.ts";
+import { validateBundleManifest } from "../../src/modules/problems/types/problem-bundle.ts";
 import {
   initProblem,
   InvalidSlugError,
@@ -267,6 +267,7 @@ Deno.test("initProblem: manifest 通过平台校验器 validateBundleManifest", 
       runtime.evaluator.image,
       "noj-evaluator-python",
     );
+    assert(runtime.solution, "双容器 manifest 必须带 solution 配置");
     assertEquals(runtime.solution.image, "noj-solution-python");
     // 不得留下未替换占位符
     const raw = await Deno.readTextFile(join(dir, "problem.json"));

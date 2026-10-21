@@ -59,6 +59,7 @@ import { validateJudgeImageWithKind } from "../../../platform/index.ts";
 import { assertContestSubmissionLimit } from "../../../contests/index.ts";
 import { deleteStorageObject } from "../../../assets/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
+import { enqueueTaskTx } from "../../../runtime/tasks/repository.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "../../../../domains/gateway/index.ts";
 import { isOiRuntimeConfig } from "../../../problems/index.ts";
@@ -669,6 +670,15 @@ export async function createSubmission(
       await bumpSubmissionCountRevisions(tx, {
         problem_id: input.problem_id,
         contest_id: resolvedContestId,
+      });
+      // 可恢复派发任务与提交、attempt 同事务提交：Redis 暂时不可用时提交仍是
+      // pending，由任务 worker 按同一 attempt/run identity 重试派发（P4）。
+      await enqueueTaskTx(tx, {
+        taskType: "evaluation.dispatch",
+        targetKind: "submission",
+        targetId: id,
+        dedupeKey: attemptId,
+        payload: { attempt_id: attemptId, submission_id: id },
       });
     });
   } catch (err) {

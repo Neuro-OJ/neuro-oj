@@ -15,7 +15,7 @@ import {
   computeProblemContentHash,
   problemContentKindOf,
   validateProblemContent,
-} from "../../../src/domains/catalog/types/problem-content.ts";
+} from "../../../src/modules/problems/types/problem-content.ts";
 import {
   isPolicyCoherent,
   resolveContestAnswerVersion,
