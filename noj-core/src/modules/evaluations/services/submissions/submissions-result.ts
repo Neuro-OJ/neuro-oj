@@ -24,7 +24,7 @@ import type { SystemActor } from "../../../access/contracts/actor.ts";
 import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "../../../../shared/sse/event-bus.ts";
-import { recordSseEventTx } from "../../../../shared/sse/sse-events.ts";
+import { recordSseEventTx } from "../../../runtime/contracts/sse-events.ts";
 import {
   isValidGradedScore,
   sanitizeJudgeResult,

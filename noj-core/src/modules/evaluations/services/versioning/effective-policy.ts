@@ -21,9 +21,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import {
-  contestProblems,
   contests,
-  domainProblemBindings,
   domains,
   objectiveSubmissions,
   problems,
@@ -36,7 +34,12 @@ import {
   DEFAULT_DOMAIN_SLUG,
   loadWorkspace,
 } from "../../../../domains/workspace/index.ts";
-import { setDomainProblemBindingPolicy } from "../../../problems/index.ts";
+import { setProblemEffectivePolicyTx } from "../../../problems/contracts/policy-write.ts";
+// `contest_problems` 归 contests 所有：评测只经其窄事务合同读写策略行。
+import {
+  lockContestProblemPolicyTx,
+  writeContestProblemPolicyTx,
+} from "../../../contests/contracts/policy-write.ts";
 import {
   type EffectiveVersionPolicy,
   policyToColumns,
@@ -218,53 +221,45 @@ export async function setProblemEffectiveVersionPolicy(
       { executor: tx, write: true },
     );
     assertWorkspacePermission(workspace.context, "problem:policy");
-    const [source] = await tx.select({ number: problems.number }).from(problems)
-      .where(
-        and(
-          eq(problems.id, problemId),
-          eq(problems.domain_id, DEFAULT_DOMAIN_ID),
-        ),
-      );
+    // 兼容入口只接受默认域题目；归属判断是只读事实，不构成跨模块写入。
+    const [source] = await tx.select({ id: problems.id }).from(problems).where(
+      and(
+        eq(problems.id, problemId),
+        eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+      ),
+    ).limit(1);
     if (!source) {
       throw new AppError("默认域题目不存在", 404, "PROBLEM_NOT_FOUND");
     }
-    const [binding] = await tx.select({ id: domainProblemBindings.id }).from(
-      domainProblemBindings,
-    ).where(and(
-      eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
-      eq(domainProblemBindings.problem_id, problemId),
-      eq(domainProblemBindings.kind, "owned"),
-    ));
-    if (!binding) {
-      throw new AppError("默认域题目不存在", 404, "PROBLEM_NOT_FOUND");
-    }
-    const updated = await setDomainProblemBindingPolicy(
-      DEFAULT_DOMAIN_SLUG,
-      String(source.number),
+    // 绑定行归 problems 所有：只经其窄事务合同加锁并写入策略与变更依据。
+    const change = await setProblemEffectivePolicyTx(tx as DbTx, {
+      domainId: DEFAULT_DOMAIN_ID,
+      problemId,
+      expectedRevision: input.expectedRevision,
+      policy: input.policy,
       actorId,
-      input.expectedRevision,
-      input.policy,
-      "默认域兼容入口修改有效版本策略",
-      tx,
-    );
+      reason: "默认域兼容入口修改有效版本策略",
+    });
     // 题库策略与当前有效成绩必须在同一事务内立即重算；题库模块只负责
     // binding/history 写入，评测模块拥有 submission/objective projection。
     await recomputeProblemBindingProjections(tx, {
-      id: binding.id,
+      id: change.binding_id,
       problem_id: problemId,
       domain_id: DEFAULT_DOMAIN_ID,
     });
     const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(
       submissions,
     )
-      .where(eq(submissions.domain_problem_binding_id, binding.id));
+      .where(eq(submissions.domain_problem_binding_id, change.binding_id));
     const [objectiveCount] = await tx.select({
       total: sql<number>`count(*)::int`,
     }).from(objectiveSubmissions)
-      .where(eq(objectiveSubmissions.domain_problem_binding_id, binding.id));
+      .where(
+        eq(objectiveSubmissions.domain_problem_binding_id, change.binding_id),
+      );
     return {
       policy: input.policy,
-      revision: updated.revision,
+      revision: change.revision,
       affected_submissions: count.total + objectiveCount.total,
     };
   };
@@ -295,17 +290,12 @@ export async function setContestProblemEffectiveVersionPolicy(
       problemIds: [problemId],
       contestIds: [contestId],
     }, { problemLock: "share" });
-    const [row] = await tx.select({
-      pinned: contestProblems.pinned_version_id,
-      mode: contestProblems.effective_version_mode,
-      required: contestProblems.required_version_id,
-      revision: contestProblems.effective_policy_revision,
-    }).from(contestProblems).where(
-      and(
-        eq(contestProblems.contest_id, contestId),
-        eq(contestProblems.problem_id, problemId),
-      ),
-    ).for("update");
+    // 策略行归 contests 所有：经其窄事务合同加锁读取，不直接 SELECT 该表。
+    const row = await lockContestProblemPolicyTx(
+      tx as DbTx,
+      contestId,
+      problemId,
+    );
     if (!row) {
       throw new AppError(
         "该题目不属于此竞赛",
@@ -322,17 +312,17 @@ export async function setContestProblemEffectiveVersionPolicy(
     const nextRevision = row.revision + 1;
     const pinned = input.policy.mode === "exact"
       ? input.policy.version_id
-      : row.pinned;
-    await tx.update(contestProblems).set({
-      effective_version_mode: columns.effective_version_mode,
-      required_version_id: columns.required_version_id,
-      pinned_version_id: pinned,
-      effective_policy_revision: nextRevision,
-    }).where(
-      and(
-        eq(contestProblems.contest_id, contestId),
-        eq(contestProblems.problem_id, problemId),
-      ),
+      : row.pinned_version_id;
+    await writeContestProblemPolicyTx(
+      tx as DbTx,
+      contestId,
+      problemId,
+      {
+        effective_version_mode: columns.effective_version_mode,
+        required_version_id: columns.required_version_id,
+        pinned_version_id: pinned,
+      },
+      nextRevision,
     );
 
     const affected = await recomputeContestProblemProjections(
@@ -345,7 +335,7 @@ export async function setContestProblemEffectiveVersionPolicy(
       revision: nextRevision,
       affected_submissions: affected,
       pinned,
-      previous: { mode: row.mode, required: row.required },
+      previous: { mode: row.mode, required: row.required_version_id },
     };
   };
   const result = executor ? await write(executor) : await db.transaction(write);
@@ -406,17 +396,12 @@ export async function upgradeContestProblemPinnedVersion(
       problemIds: [problemId],
       contestIds: [contestId],
     }, { problemLock: "share" });
-    const [row] = await tx.select({
-      pinned: contestProblems.pinned_version_id,
-      mode: contestProblems.effective_version_mode,
-      required: contestProblems.required_version_id,
-      revision: contestProblems.effective_policy_revision,
-    }).from(contestProblems).where(
-      and(
-        eq(contestProblems.contest_id, contestId),
-        eq(contestProblems.problem_id, problemId),
-      ),
-    ).for("update");
+    // 策略行归 contests 所有：经其窄事务合同加锁读取。
+    const row = await lockContestProblemPolicyTx(
+      tx as DbTx,
+      contestId,
+      problemId,
+    );
     if (!row) {
       throw new AppError(
         "该题目不属于此竞赛",
@@ -445,7 +430,7 @@ export async function upgradeContestProblemPinnedVersion(
     // 确定本次生效的策略
     let policy: EffectiveVersionPolicy = input.policy ??
       (row.mode === "exact"
-        ? { mode: "exact", version_id: row.required as string }
+        ? { mode: "exact", version_id: row.required_version_id as string }
         : { mode: "any" });
     if (input.policy) {
       await assertPolicyVersionUsable(problemId, input.policy, tx);
@@ -467,16 +452,16 @@ export async function upgradeContestProblemPinnedVersion(
 
     const columns = policyToColumns(policy);
     const nextRevision = row.revision + 1;
-    await tx.update(contestProblems).set({
-      pinned_version_id: input.versionId,
-      effective_version_mode: columns.effective_version_mode,
-      required_version_id: columns.required_version_id,
-      effective_policy_revision: nextRevision,
-    }).where(
-      and(
-        eq(contestProblems.contest_id, contestId),
-        eq(contestProblems.problem_id, problemId),
-      ),
+    await writeContestProblemPolicyTx(
+      tx as DbTx,
+      contestId,
+      problemId,
+      {
+        effective_version_mode: columns.effective_version_mode,
+        required_version_id: columns.required_version_id,
+        pinned_version_id: input.versionId,
+      },
+      nextRevision,
     );
 
     const affected = await recomputeContestProblemProjections(
@@ -489,8 +474,8 @@ export async function upgradeContestProblemPinnedVersion(
       revision: nextRevision,
       affected_submissions: affected,
       pinned_version_id: input.versionId,
-      previous: { mode: row.mode, required: row.required },
-      previousPinned: row.pinned,
+      previous: { mode: row.mode, required: row.required_version_id },
+      previousPinned: row.pinned_version_id,
     };
   };
   const result = executor
