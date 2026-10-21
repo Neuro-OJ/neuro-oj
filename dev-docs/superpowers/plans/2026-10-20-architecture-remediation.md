@@ -384,8 +384,10 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
   - [ ] 结构门禁与工程元数据：真实运行时依赖图无环、测试/CI
         统一发现、故意破坏负例
   - [ ] 真实 PostgreSQL 权限/撤销/锁序/回滚/并发验收及正式完整回归
-- [ ] P4 可靠执行
-- [ ] P5 Gateway 收敛
+- [ ] P4 可靠执行（`background_tasks` 原语、派发/搜索事务内登记、教学 outbox 迁移合同
+      已实现；教学 worker 未切换、指标与 runbook 未写，未验收）
+- [ ] P5 Gateway 收敛（本地政策权威、快照迁移、预占边界读政策已实现且网关完整套件
+      通过；并发屏障、流式记账恢复、ready 与 drain 验收未完成）
 - [ ] P6 Judge 整理
 - [ ] P7 读取与前端
 - [ ] P8 协调发布与删除旧路
@@ -534,6 +536,7 @@ P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定
 | `ztzypzxk` | P4.5：教学 outbox 幂等迁移合同 |
 | `qrlolyxs` | P5.1：Gateway 实例政策本地持久权威（迁移 20261021105927） |
 | `qmlzsqks` | P5.2：政策快照导出/导入 + Core 旧端点降级为只读归档 |
+| `wloqosxo` | P5.2：预占边界内读取本地政策（降额与预占同一政策行锁序）+ 网关回归收敛 |
 
 本轮已实际执行的验证（均为 `deno task` / 规定脚本，使用自建隔离资源）：
 
@@ -551,7 +554,10 @@ P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定
 - `test:domain gateway`：269 passed / 0 failed
 - `test:domain system`（internal 过滤）：3 passed / 0 failed
 - `bash scripts/test-shared.sh`：415 passed / 0 failed / 6 ignored
-- Gateway 纯逻辑套件（`tests/*_test.ts`）：137 passed / 0 failed
+- Gateway 正式完整套件（`deno task test`，启动器自建 run 数据库 + Redis namespace）：
+  171 passed / 0 failed / 1 ignored
+- Gateway `deno task check`（fmt / lint / check）：通过（`drizzle/meta` 生成物纳入
+  fmt exclude，与 `noj-core` 一致）
 - Gateway `tests/policy_operations.pg.test.ts`（真实 PG，独立 schema）：5 passed / 0 failed
 - `deno check src/main.ts tests/types/*.ts`：通过
 - `deno run -A scripts/check-module-boundaries.ts`：679 生产文件 / 110 表 / owner 缺口 0 /
@@ -564,7 +570,14 @@ P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定
 - P3.5–P3.8 未开始：education/communication/read-models 模块迁移、HTTP/runtime 装配、
   删除旧实现、`--strict` 接入根门禁、P3 完整回归；
 - P4 教学 worker 尚未切到新任务表（迁移合同已就绪但未接线），任务指标 runbook 未写；
-- P5 只完成政策本地权威与迁移合同；降额/预占锁序的并发屏障测试、记账恢复、
-  unknown 调用、ready 与 drain 未实现；
+- P5 已实现本地政策权威、快照迁移合同与 P5.2 预占边界读政策（网关正式完整套件
+  171 passed 通过）；仍缺：
+  - `quota_policy_concurrency_test.ts` 真实并发屏障（降额提交与新预占的先后、
+    在途预占按冻结账本结算）；
+  - 流式连接中断结算、`unknown` 调用的显式用例、ready 故障与 drain 验收；
+  - **锁语义已核对**：`readPolicyForReservation` 的 `FOR SHARE` 是语句级（预占边界
+    连接不是事务），它只保证政策读语句与未提交的 `FOR UPDATE` 写入互斥；
+    「降额提交之后开始的新预占使用新政策」由 READ COMMITTED 的读取时序成立。
+    若要「整个预占边界内政策冻结」，需增加 advisory 锁（待评估，不作为已完成）；
 - P6/P7/P8 未开始；
 - 生产环境未做任何操作；所有测试只用自建 `noj-arch-p3test-*` 隔离容器与临时库。

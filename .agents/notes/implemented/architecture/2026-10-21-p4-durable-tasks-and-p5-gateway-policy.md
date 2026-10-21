@@ -54,6 +54,11 @@ P5 侧的问题是 Gateway 每次调用都要 fetch Core 的 `/api/v1/internal/l
   `readGatewayPolicy`，导入使用稳定 operation ID（政策摘要），重复导入不覆盖新政策。
 - 旧 Core 端点 `/api/v1/internal/llm/quota-caps` 标注 `Deprecation`/`Sunset`，
   只作迁移期只读归档与旧 Gateway 兼容，不再被正常业务路径调用。
+- 预占步骤在账本边界（`withReservationLock`）内调用 `readPolicyForReservation`
+  读取本地政策；路由层在 Provider 排队之前不再预读政策，也不存在
+  `domainQuotaCaps` 注入点，因此排队期间提交的降额对本次新预占生效。
+  `FOR SHARE` 读与政策写入的事务级 `FOR UPDATE` 互斥；预占边界本身不是事务，
+  故「整个边界内政策冻结」尚未用 advisory 锁实现（见计划缺口）。
 
 ## Alternatives considered
 
@@ -73,7 +78,7 @@ P5 侧的问题是 Gateway 每次调用都要 fetch Core 的 `/api/v1/internal/l
   人工重试有审计，不抢占有效租约。
 - Gateway 不再依赖 Core 可用性读取政策；降额与预占通过同一政策行锁确定先后。
 - 尚未完成（明确记录，不作为已完成）：教学 worker 切到新任务表、任务指标 runbook、
-  P5 降额/预占并发屏障测试、记账 unknown/恢复、ready 与 drain 验收。
+  P5 降额/预占真实并发屏障测试、流式中断与 unknown 显式用例、ready 与 drain 验收。
 - 迁移 0120/0121（Core）与 `20261021105927`（Gateway）均由 drizzle-kit 生成；
   Gateway 迁移中重复生成的历史 provider 列 ALTER 已移除并写明原因（历史 manifest
   已添加该列，重复执行会 duplicate column）。
