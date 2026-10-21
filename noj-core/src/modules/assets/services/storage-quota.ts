@@ -3,12 +3,16 @@ import { AppError, ConflictError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
 import {
-  domainResourceCounters,
   domainStorageObjects,
   domainStorageUploads,
   storageObjects,
 } from "../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
+import {
+  lockDomainResourceCounterTx,
+  setDomainResourceCounterTx,
+  setDomainResourceReservedTx,
+} from "../../access/resource-counters.ts";
 import { getDomainEffectiveLimits } from "./domain-limits.ts";
 
 const TTL_MS = 15 * 60 * 1000;
@@ -59,14 +63,13 @@ function size(value: number) {
 async function lockQuota(domainId: string, tx: DbTx) {
   // 初始化建立对象外键先于计数锁；删除链也按对象 → 计数顺序执行。
   const baseline = await initializeOwnedObjects(domainId, tx);
-  await tx.insert(domainResourceCounters).values({
-    domain_id: domainId,
-    resource: "storage_bytes",
-  }).onConflictDoNothing();
-  const [counter] = await tx.select().from(domainResourceCounters).where(and(
-    eq(domainResourceCounters.domain_id, domainId),
-    eq(domainResourceCounters.resource, "storage_bytes"),
-  )).for("update");
+  // 计数行归 access 所有：初始化并锁定由 access 的合同完成，拿到的必然是
+  // 存在且已加锁的行，不会静默更新 0 行。
+  const locked = await lockDomainResourceCounterTx(
+    tx,
+    domainId,
+    "storage_bytes",
+  );
   // 初始化可能等待其他结算，取得计数锁后重读已提交的实际归属。
   const [current] = unwrapRows<{ used: number | string }>(
     (await tx.execute(
@@ -74,13 +77,13 @@ async function lockQuota(domainId: string, tx: DbTx) {
     )) as never,
   );
   baseline.used = Number(current.used);
-  if (counter.used !== baseline.used) {
-    counter.used = baseline.used;
-    await tx.update(domainResourceCounters).set({ used: baseline.used }).where(
-      and(
-        eq(domainResourceCounters.domain_id, domainId),
-        eq(domainResourceCounters.resource, "storage_bytes"),
-      ),
+  let reserved = locked.reserved;
+  if (locked.used !== baseline.used) {
+    await setDomainResourceCounterTx(
+      tx,
+      domainId,
+      "storage_bytes",
+      baseline.used,
     );
   }
   const now = new Date().toISOString();
@@ -94,12 +97,13 @@ async function lockQuota(domainId: string, tx: DbTx) {
     .returning({ bytes: domainStorageUploads.byte_size });
   const released = expired.reduce((sum, row) => sum + row.bytes, 0);
   if (released) {
-    counter.reserved -= released;
-    await tx.update(domainResourceCounters).set({ reserved: counter.reserved })
-      .where(and(
-        eq(domainResourceCounters.domain_id, domainId),
-        eq(domainResourceCounters.resource, "storage_bytes"),
-      ));
+    reserved -= released;
+    await setDomainResourceReservedTx(
+      tx,
+      domainId,
+      "storage_bytes",
+      reserved,
+    );
   }
   const { effective } = await getDomainEffectiveLimits(domainId, tx);
   if (effective.storage_bytes !== null && baseline.unknown > 0) {
@@ -108,7 +112,7 @@ async function lockQuota(domainId: string, tx: DbTx) {
       "DOMAIN_STORAGE_BASELINE_REQUIRED",
     );
   }
-  return { ...counter, limit: effective.storage_bytes };
+  return { used: baseline.used, reserved, limit: effective.storage_bytes };
 }
 
 function capacity(
@@ -122,16 +126,18 @@ function capacity(
   }
 }
 
+/**
+ * 结算 used/reserved；调用方必须已在 `lockQuota` 内取得计数行锁。
+ * 计数表归 access 所有，这里只经 access 的窄合同写入。
+ */
 async function updateCounter(
   domainId: string,
   tx: DbTx,
   used: number,
   reserved: number,
 ) {
-  await tx.update(domainResourceCounters).set({ used, reserved }).where(and(
-    eq(domainResourceCounters.domain_id, domainId),
-    eq(domainResourceCounters.resource, "storage_bytes"),
-  ));
+  await setDomainResourceCounterTx(tx, domainId, "storage_bytes", used);
+  await setDomainResourceReservedTx(tx, domainId, "storage_bytes", reserved);
 }
 
 /** 仅可信上传链调用：在写入物理字节前预留已知容量，ID 可供内部重试复用。 */

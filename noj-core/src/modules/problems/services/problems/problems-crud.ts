@@ -4,7 +4,8 @@
  * 设计要点：
  * - 创建题目、初始草稿、标签、本域绑定及编号同事务
  * - updateProblem 拒绝已撤除的分类，题号保持不可变
- * - deleteProblem 手动清理 submissions / evaluation_results（FK 无 CASCADE）
+ * - deleteProblem 只清理 problems 拥有的表；评测行的在途检查与删除经
+ *   evaluations 的合同由 application 编排（P3 §3.3）
  *
  * 依赖：
  * - validateRuntimeConfig / types.ts：DTO 与 runtime 校验
@@ -16,12 +17,15 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
 import { adjustDomainResourceCounterTx } from "../../../../modules/access/index.ts";
+import {
+  assertProblemEvaluationDeletionAllowedTx,
+  deleteProblemEvaluationRowsTx,
+} from "../../../evaluations/contracts/problem-deletion.ts";
 import { recordProblemEducationChange } from "../workspace/education-events.ts";
 import {
   contestProblems,
   domainProblemBindings,
   domains,
-  objectiveSubmissions,
   problemBindingHistory,
   problemDraftObjects,
   problemDrafts,
@@ -29,8 +33,6 @@ import {
   problemTags,
   problemVersionObjects,
   problemVersions,
-  selfTests,
-  submissions,
 } from "../../../../shared/db/schema.ts";
 import {
   AppError,
@@ -1040,12 +1042,12 @@ export interface DeleteProblemTxResult {
 }
 
 /**
- * 删除题目的本地事务部分。
+ * 删除第一阶段：锁内完成全部授权与保留性检查。
  *
- * application command 负责把本地题目清理和 evaluations 投影 revision 放进同一
- * 外层 DbTx；存储、审计和搜索通知只能在提交成功后由调用方触发。
+ * 只读不写；返回后续阶段需要的题目事实与待回收对象。必须与
+ * `deleteProblemOwnedRowsTx` 在同一事务中执行，否则锁会提前释放。
  */
-export async function deleteProblemTx(
+export async function prepareProblemDeletionTx(
   id: string,
   userId: string,
   tx: DbTx,
@@ -1102,48 +1104,39 @@ export async function deleteProblemTx(
     eq(contestProblems.problem_id, id),
   ).limit(1);
   if (lockedContestRef) throw new ConflictError("题目已被竞赛引用，无法删除");
-  const [active] = await tx.select({ id: submissions.id }).from(submissions)
-    .where(and(
-      eq(submissions.problem_id, id),
-      sql`(${submissions.active_attempt_id} IS NOT NULL OR ${submissions.status} IN ('pending', 'judging'))`,
-    )).limit(1);
-  const [activeObjective] = await tx.select({ id: objectiveSubmissions.id })
-    .from(objectiveSubmissions).where(and(
-      eq(objectiveSubmissions.paper_id, id),
-      sql`${objectiveSubmissions.active_attempt_id} IS NOT NULL`,
-    )).limit(1);
-  const [activeSelfTest] = await tx.select({ id: selfTests.id }).from(selfTests)
-    .where(and(
-      eq(selfTests.problem_id, id),
-      sql`${selfTests.status} IN ('pending', 'judging')`,
-    )).limit(1);
-  if (active || activeObjective || activeSelfTest) {
-    throw new AppError(
-      "题目存在正在执行的评测，不能删除",
-      409,
-      "SOURCE_JUDGING",
-    );
-  }
+  // 在途评测检查与保留引用检查都必须在**删除任何行之前**完成：
+  // 先删评测行会让保留性守卫看不到历史提交，从而误删有历史的源题。
+  await assertProblemEvaluationDeletionAllowedTx(tx, id);
   await assertProblemHasNoRetainedReferences(id, tx);
-  await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
+  return { problem, objectUrls: [...objectUrls] };
+}
+
+/**
+ * 删除第三阶段：删除 problems 拥有的行。
+ *
+ * 调用方必须已经依次完成 `prepareProblemDeletionTx` 与 evaluations 的
+ * `deleteProblemEvaluationRowsTx`。`self_tests` 通过绑定外键引用
+ * `domain_problem_bindings`，所以评测行必须先清空，否则绑定删除会 23503。
+ */
+export async function deleteProblemOwnedRowsTx(
+  id: string,
+  domainId: string | null,
+  tx: DbTx,
+): Promise<void> {
   await tx.delete(problemBindingHistory).where(
     eq(problemBindingHistory.problem_id, id),
   );
   const bindings = await tx.delete(domainProblemBindings).where(
     eq(domainProblemBindings.problem_id, id),
   ).returning();
-  if (problem.domain_id && bindings.length) {
+  if (domainId && bindings.length) {
     await adjustDomainResourceCounterTx(
       tx,
-      problem.domain_id,
+      domainId,
       "problems",
       -bindings.length,
     );
   }
-  await tx.delete(submissions).where(eq(submissions.problem_id, id));
-  await tx.delete(objectiveSubmissions).where(
-    eq(objectiveSubmissions.paper_id, id),
-  );
   await tx.delete(problemDraftObjects).where(
     eq(problemDraftObjects.problem_id, id),
   );
@@ -1163,7 +1156,6 @@ export async function deleteProblemTx(
   await tx.delete(problemDrafts).where(eq(problemDrafts.problem_id, id));
   await tx.delete(problemVersions).where(eq(problemVersions.problem_id, id));
   await tx.delete(problems).where(eq(problems.id, id));
-  return { problem, objectUrls: [...objectUrls] };
 }
 
 export async function finalizeDeletedProblem(
@@ -1194,7 +1186,13 @@ export async function finalizeDeletedProblem(
   await publishSearchIndexEvent("problem", id, "delete");
 }
 
-/** 兼容旧 CLI/测试入口；HTTP/application 新路径使用 deleteProblemTx。 */
+/**
+ * 迁移期兼容入口；HTTP/application 新路径使用 `deleteProblemCommand`。
+ *
+ * 它保留同样的**单一外层事务**语义：problems 删自身表、evaluations 清理评测行
+ * 一起提交，避免旧调用方拿到"题目已删但 self_tests/submissions 仍存在"的半成品。
+ * 新代码不得再使用本入口——application 编排会在提交后统一登记审计、投影与搜索。
+ */
 export async function deleteProblem(
   id: string,
   userId?: string,
@@ -1202,8 +1200,11 @@ export async function deleteProblem(
   c?: Context,
 ): Promise<void> {
   const actorId = c?.var.userId ?? userId ?? ROOT_USER_ID;
-  const result = await getDb().transaction((tx) =>
-    deleteProblemTx(id, actorId, tx)
-  );
+  const result = await getDb().transaction(async (tx) => {
+    const deleted = await prepareProblemDeletionTx(id, actorId, tx);
+    await deleteProblemEvaluationRowsTx(tx, id);
+    await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
+    return deleted;
+  });
   await finalizeDeletedProblem(id, result);
 }

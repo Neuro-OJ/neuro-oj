@@ -12,10 +12,12 @@ import {
   assertProblemEditPermissionForActor,
   createDomainProblemForActor,
   createProblemForActor,
-  deleteProblemTx,
+  deleteProblemOwnedRowsTx,
   finalizeDeletedProblem,
+  prepareProblemDeletionTx,
   updateProblemForActor,
 } from "../problems/services/problems/problems-crud.ts";
+import { deleteProblemEvaluationRowsTx } from "../evaluations/contracts/problem-deletion.ts";
 import {
   importDomainProblemForActor,
   setDomainProblemBindingPolicyForActorTx,
@@ -158,7 +160,16 @@ export function deleteProblemCommand(
 ): Promise<void> {
   return (async () => {
     const deleted = await getDb().transaction(async (tx) => {
-      const result = await deleteProblemTx(problemId, actor.userId, tx);
+      // 唯一外层事务，顺序固定：先完成 problems 的授权/锁/保留性检查，
+      // 再由 evaluations 清理评测行（self_tests 外键依赖绑定行），
+      // 最后删 problems 拥有行并登记投影 revision；任一步失败全部回滚。
+      const result = await prepareProblemDeletionTx(
+        problemId,
+        actor.userId,
+        tx,
+      );
+      await deleteProblemEvaluationRowsTx(tx, problemId);
+      await deleteProblemOwnedRowsTx(problemId, result.problem.domain_id, tx);
       await bumpProjectionRevision(tx, globalScopeKey());
       await bumpProjectionRevision(tx, problemScopeKey(problemId));
       return result;

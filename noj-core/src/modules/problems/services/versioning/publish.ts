@@ -16,7 +16,6 @@
  * 9. 事务内写审计；提交后由 application/read-model 发送搜索索引事件。
  */
 
-import type { Context } from "hono";
 import {
   assertDraftContentSecurity,
   assertPublishedRuntimeSafety,
@@ -28,13 +27,13 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import type { Actor } from "../../../access/contracts/actor.ts";
 import { appendAuditLogTx } from "../../../platform/contracts/audit.ts";
+import { updateStorageObjectSha256Tx } from "../../../assets/contracts/object-metadata.ts";
 import {
   domainProblemBindings,
   problemDrafts,
   problems,
   problemVersionObjects,
   problemVersions,
-  storageObjects,
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
@@ -199,11 +198,12 @@ function resolveFileSha(
  *
  * 返回 `{ shaByUrl, missing }`：`missing` 非空表示存在无法取得实际哈希的引用，
  * 发布必须失败（存量未知哈希可在本次核实后升级为已知）。
- * `persist` 为事务执行器时把解析出的哈希写回登记行，后续发布无需重复解析。
+ * 传入事务时不把解析出的哈希直接写进 assets 的表，而是经 assets 的
+ * `updateStorageObjectSha256Tx` 合同写回登记行：跨模块只走 owner 的窄能力。
  */
 async function resolveFileShas(
   refs: readonly DraftObjectRef[],
-  persist?: Executor,
+  persist?: DbTx,
 ): Promise<{
   shaByUrl: Map<string, string | null>;
   missing: DraftObjectRef[];
@@ -220,9 +220,7 @@ async function resolveFileShas(
     }
     // 存量登记为未知哈希时补齐实际值（不再把空串当作哈希输入）。
     if (persist && !record?.sha256) {
-      await persist.update(storageObjects).set({ sha256: sha }).where(
-        eq(storageObjects.storage_url, ref.storage_url),
-      );
+      await updateStorageObjectSha256Tx(persist, ref.storage_url, sha);
     }
   }
   return { shaByUrl, missing };
