@@ -78,17 +78,22 @@ export async function deleteContestCommand(
   return deleteContest(contestId);
 }
 
-export async function registerForContestCommand(
+/**
+ * 默认域别名入口：登录用户自助报名公开竞赛。
+ *
+ * 与 `registerForDomainContestCommand` 的区别是**不做域成员资格断言**：
+ * 旧 `/api/v1/contests/:id/register` 的既有语义是"任意已认证用户可报名公开竞赛"，
+ * 路由中间件已经把竞赛限定在默认域，并只接受该域可见的竞赛。域内报名（
+ * `/api/v1/domains/:slug/contests/:ref/register`）仍要求 `contest:participate`。
+ *
+ * 该别名将在 P8 退役；在此之前保持基线行为，不能借迁移收紧成 403。
+ */
+export function registerForContestCommand(
   actor: UserActor,
   contestId: string,
   password: string | undefined,
-  options: ContestCommandOptions,
+  _options: ContestCommandOptions,
 ): Promise<void> {
-  await requireContestPermission(
-    actor,
-    options.domainSlug,
-    "contest:participate",
-  );
   return registerForContest(contestId, actor.userId, password);
 }
 
