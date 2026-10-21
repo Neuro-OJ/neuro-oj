@@ -84,7 +84,8 @@ export type AuditAction =
   | "llm_model_alias.upsert"
   | "llm_model_alias.delete"
   | "legal.publish_version"
-  | "legal.data_request_update";
+  | "legal.data_request_update"
+  | "background_task.retry";
 
 export type AuditDetail = {
   action: AuditAction;

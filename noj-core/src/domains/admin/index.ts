@@ -27,6 +27,7 @@ import systemAdminRouter from "./routes/system.ts";
 import carouselAdminRouter from "./routes/carousel.ts";
 import communityAdminRouter from "./routes/community.ts";
 import gatewayAdminRouter from "./routes/gateway.ts";
+import backgroundTasksAdminRouter from "./routes/background-tasks.ts";
 import legalAdminRouter from "../legal/routes/admin.ts";
 
 const router = new Hono<AuthEnv>();
@@ -61,5 +62,7 @@ router.route("/community", communityAdminRouter);
 router.route("/gateway", gatewayAdminRouter);
 router.route("/legal", legalAdminRouter);
 router.route("/carousel", carouselAdminRouter);
+// P4 持久后台任务：运维查看积压/健康并人工重试终态失败任务。
+router.route("/background-tasks", backgroundTasksAdminRouter);
 
 export default router;
