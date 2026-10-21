@@ -18,6 +18,7 @@ import {
   saveProblemDraft,
   setDomainProblemBindingPolicy,
 } from "../../../../modules/problems/index.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 import { setMemberRoles } from "../../../workspace/index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -124,7 +125,7 @@ Deno.test("真实发布：源版本发布自动记录 any 作答切换，exact �
   });
   const published = await publishProblemVersion(f.problemId, {
     expectedRevision: draft.revision,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.unchanged, false);
   const bindings = await f.db.select().from(domainProblemBindings);

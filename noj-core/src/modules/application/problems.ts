@@ -197,7 +197,7 @@ export function publishProblemVersionCommand(
     return publishProblemVersion(problemId, {
       expectedRevision: input.expectedRevision,
       changeNote: input.changeNote,
-      actorId: actor.userId,
+      actor,
     });
   })();
 }

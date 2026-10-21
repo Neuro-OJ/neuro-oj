@@ -27,6 +27,7 @@ import { updateSetting } from "../../../../domains/system/index.ts";
 import { submitObjectivePaper } from "../../../../domains/objective/index.ts";
 import { backfillExecutionWorkspaces } from "../../index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 async function fixture() {
   await resetDbForTest();
@@ -438,7 +439,7 @@ Deno.test("执行写入：客观题使用服务端默认域，忽略客户端伪
   });
   const published = await publishProblemVersion(f.first.id, {
     expectedRevision: 2,
-    actorId: f.user,
+    actor: userActorFromAuthenticatedId(f.user),
   });
   const input = {
     answers: { sum: ["A"] },

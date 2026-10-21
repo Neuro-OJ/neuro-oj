@@ -25,7 +25,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import type { Executor } from "../../../../shared/db/executor.ts";
+import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
+import type { Actor } from "../../../access/contracts/actor.ts";
+import { appendAuditLogTx } from "../../../platform/contracts/audit.ts";
 import {
   domainProblemBindings,
   problemDrafts,
@@ -36,6 +38,11 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+// 经 search 域公开门面引用：跨业务模块只允许走门面（tracking #23 的事务内索引）。
+import {
+  buildProblemEntry,
+  upsertSearchEntry,
+} from "../../../../domains/search/index.ts";
 import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
   assertContentKindTransition,
@@ -48,12 +55,10 @@ import {
 } from "../../types/problem-content.ts";
 import {
   assertStorageObjectBindable,
-  getRequestContext,
   getStorageObject,
   getStorageProvider,
   parseStorageUrl,
 } from "../../../../domains/system/index.ts";
-import { auditLogs } from "../../../../shared/db/schema.ts";
 import {
   draftBaselineConflict,
   type DraftObjectRef,
@@ -364,6 +369,9 @@ export async function preflightProblemDraft(
 /**
  * 发布草稿为新版本。
  *
+ * `actor` 是显式业务身份：审计与版本作者都取自它，不接受可选 userId 或从
+ * Hono Context 猜测操作者。
+ *
  * @throws {AppError} 428 缺少预期 revision；409 revision/基线冲突或对象在删除中；
  *                    400 内容不完整
  */
@@ -372,8 +380,7 @@ export async function publishProblemVersion(
   input: {
     expectedRevision: number | null | undefined;
     changeNote?: string;
-    actorId?: string | null;
-    context?: Context;
+    actor: Actor;
     /** 域路由在发布事务内重新确认授权，与资源写入共用锁和连接。 */
     authorize?: (executor: Executor) => Promise<void>;
   },
@@ -408,8 +415,7 @@ export async function publishProblemVersion(
   await assertDraftContentSecurity(
     checkedIdentity,
     checkedDraft.content,
-    input.actorId,
-    input.context,
+    input.actor.kind === "user" ? input.actor.userId : null,
   );
   const db = getDb();
   const outcome = await db.transaction(async (tx) => {
@@ -559,7 +565,7 @@ export async function publishProblemVersion(
       content: content as unknown as Record<string, unknown>,
       content_sha256: contentHash,
       change_note: input.changeNote ?? "",
-      published_by: input.actorId ?? null,
+      published_by: input.actor.kind === "user" ? input.actor.userId : null,
       published_at: now,
     });
     if (refs.length > 0) {
@@ -612,28 +618,30 @@ export async function publishProblemVersion(
         base_version_id: versionId,
         revision: nextDraftRevision,
         content: content as unknown as Record<string, unknown>,
-        updated_by: input.actorId ?? null,
+        updated_by: input.actor.kind === "user" ? input.actor.userId : null,
         updated_at: now,
       });
     }
 
-    // 步骤 9：审计随版本事务持久化（Handbook §5.3 第 9 步）。
-    // 搜索索引属于独立 read-model，由提交后的 application 事件驱动，不能在
-    // problems 业务事务内调用 search writer。
+    // 步骤 9：审计与搜索索引随版本事务持久化（Handbook §5.3 第 9 步）。
+    // 索引行与版本同事务写入：提交即已发布即可见，不会出现"已发布但索引永久缺失"。
+    // 事务内只写 read-model 的表，不跨模块调用业务写入口。
     await writePublishAudit(tx, problemId, {
       version: nextVersion,
       versionId,
       changeNote: input.changeNote ?? "",
-      actorId: input.actorId ?? null,
+      actor: input.actor,
       now,
     });
     await recordPublishedBindingChanges(
       tx,
       problemId,
       versionId,
-      input.actorId ?? null,
+      input.actor.kind === "user" ? input.actor.userId : null,
       now,
     );
+    const searchEntry = await buildProblemEntry(problemId, tx);
+    if (searchEntry) await upsertSearchEntry(searchEntry, tx);
 
     return {
       problem_id: problemId,
@@ -655,43 +663,32 @@ export async function publishProblemVersion(
 /**
  * 在发布事务内写审计行（tracking #23）。
  *
- * 直接写 `audit_logs` 而不调用 `logAudit`：后者的实现（system 域）只接受根连接，
- * 无法参与本事务。无 RequestContext 的 CLI/脚本路径静默跳过（与 `logAudit` 一致）。
+ * 通过 platform 的 `appendAuditLogTx` 在同一事务内写入；操作者身份由调用方
+ * 显式传入的 `UserActor`/`SystemActor` 决定，不再从 RequestContext/ALS 猜测，
+ * 也不再把根连接当作可参与本事务的句柄。
  */
 async function writePublishAudit(
-  tx: Executor,
+  tx: DbTx,
   problemId: string,
   detail: {
     version: number;
     versionId: string;
     changeNote: string;
-    actorId: string | null;
+    actor: Actor;
     now: string;
   },
 ): Promise<void> {
-  let actorId: string | null = detail.actorId;
-  let actorIp = "unknown";
-  try {
-    const ctx = getRequestContext();
-    actorId = ctx.actorId ?? actorId;
-    actorIp = ctx.actorIp || "unknown";
-  } catch {
-    // 无 RequestContext：CLI/脚本发布，仅记录 actorId（不产生请求 IP）
-  }
-  await tx.insert(auditLogs).values({
-    id: crypto.randomUUID(),
-    admin_id: actorId,
+  await appendAuditLogTx(tx, {
+    actor: detail.actor,
     action: "problems.version_published",
-    target_type: "problem",
-    target_id: problemId,
+    target: { type: "problem", id: problemId },
     detail: {
       action: "problems.version_published",
       version: detail.version,
       version_id: detail.versionId,
       change_note: detail.changeNote,
     },
-    ip_address: actorIp,
-    created_at: detail.now,
+    createdAt: detail.now,
   });
 }
 

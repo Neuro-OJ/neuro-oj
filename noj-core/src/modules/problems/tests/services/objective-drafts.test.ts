@@ -21,6 +21,7 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 const now = new Date().toISOString();
 
@@ -185,6 +186,7 @@ Deno.test("objective draft: 发布后快照冻结，草稿继续编辑不影响�
   const published = await publishProblemVersion("od-p5", {
     expectedRevision: 3,
     changeNote: "V1",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.version, 1);
 

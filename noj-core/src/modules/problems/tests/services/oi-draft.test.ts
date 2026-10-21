@@ -27,6 +27,7 @@ import {
   saveProblemDraft,
 } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   getStorageProvider,
   setStorageProviderForTest,
@@ -179,6 +180,7 @@ Deno.test("oi draft: 发布后版本数据与草稿分离", async () => {
   }, entriesOf({ "1.in": "v1-input", "1.out": "v1-output" }));
   const published = await publishProblemVersion("oid-p4", {
     expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
   });
 
   // 草稿改成 v2 数据并再发布草稿版本（Revision 递增到 3）
@@ -212,6 +214,7 @@ Deno.test("oi draft: 发布后版本数据与草稿分离", async () => {
   );
   const v2 = await publishProblemVersion("oid-p4", {
     expectedRevision: metadata.revision,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(decode(await loadOiDataFromVersion(v2.version_id)), {
     "2.in": "v2-input",

@@ -36,6 +36,7 @@ import {
   insertContestProblems,
 } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -105,6 +106,7 @@ async function publishDraft(
   const published = await publishProblemVersion(problemId, {
     expectedRevision: revision + 1,
     changeNote,
+    actor: userActorFromAuthenticatedId("0"),
   });
   return { version_id: published.version_id, version: published.version };
 }
@@ -540,6 +542,7 @@ Deno.test({
     const v2 = await publishProblemVersion(paper, {
       expectedRevision: await rev(paper),
       changeNote: "V2",
+      actor: userActorFromAuthenticatedId("0"),
     });
 
     const { getObjectiveSubmission, listObjectiveSubmissions } = await import(

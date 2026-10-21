@@ -69,7 +69,7 @@ export async function syncProblemDraftFromProjection(
  */
 export async function publishImportedProblem(
   problemId: string,
-  actorId?: string | null,
+  actor: UserActor,
   changeNote = "题目包导入",
 ): Promise<{ version_id: string; version: number; unchanged: boolean }> {
   await requireProblemById(problemId);
@@ -80,7 +80,7 @@ export async function publishImportedProblem(
   const published = await publishProblemVersion(problemId, {
     expectedRevision: revision,
     changeNote,
-    actorId: actorId ?? null,
+    actor,
   });
   return {
     version_id: published.version_id,
@@ -95,7 +95,7 @@ export function publishImportedProblemForActor(
   problemId: string,
   changeNote = "题目包导入",
 ) {
-  return publishImportedProblem(problemId, actor.userId, changeNote);
+  return publishImportedProblem(problemId, actor, changeNote);
 }
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */

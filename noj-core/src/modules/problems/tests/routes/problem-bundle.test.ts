@@ -230,7 +230,10 @@ Deno.test({
     assertEquals(row.template_content, null);
     const importedDraft = await getProblemDraft(problemId);
     assertEquals(importedDraft.content.template_content, TEMPLATE_SKELETON);
-    await publishImportedProblem(problemId, decodeJwt(token).sub!);
+    await publishImportedProblem(
+      problemId,
+      userActorFromAuthenticatedId(decodeJwt(token).sub!),
+    );
 
     // ③ 端点校验：编辑器实际拿到的内容
     const tplRes = await app.request(
@@ -290,7 +293,10 @@ Deno.test({
     );
     assertEquals(goneRes.status, 200);
     assertEquals((await goneRes.json()).data.content, TEMPLATE_SKELETON);
-    await publishImportedProblem(problemId, decodeJwt(token).sub!);
+    await publishImportedProblem(
+      problemId,
+      userActorFromAuthenticatedId(decodeJwt(token).sub!),
+    );
     const publishedGone = await app.request(
       `/api/v1/problems/${problemId}/template`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -1168,4 +1174,5 @@ import {
   listDraftObjects,
 } from "../../services/versioning/draft.ts";
 import { publishImportedProblem } from "../../services/problems/problem-bundle.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { decodeJwt } from "jose";

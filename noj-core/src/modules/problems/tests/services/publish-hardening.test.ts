@@ -43,6 +43,7 @@ import { registerReadyStorageObject } from "../../../../domains/system/services/
 import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
 import { buildStorageUrl } from "../../../../domains/system/services/storage/types.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 
 const now = new Date().toISOString();
@@ -144,7 +145,7 @@ Deno.test("publish hardening #24: 首次保存草稿继承基线的版本文件�
   });
   const published = await publishProblemVersion("ph-base-refs", {
     expectedRevision: 1,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.version, 1);
 
@@ -207,7 +208,11 @@ Deno.test("publish hardening #22: 文件实际 SHA 未知时拒绝发布", async
   assertEquals(preflight.content_hash, null);
 
   await assertRejects(
-    () => publishProblemVersion("ph-sha", { expectedRevision: 1 }),
+    () =>
+      publishProblemVersion("ph-sha", {
+        expectedRevision: 1,
+        actor: userActorFromAuthenticatedId("0"),
+      }),
     AppError,
     "SHA",
   );
@@ -246,7 +251,7 @@ Deno.test("publish hardening #22: URL 携带 checksum 时补齐登记哈希并�
 
   const published = await publishProblemVersion("ph-sha-ok", {
     expectedRevision: 1,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.unchanged, false);
   // 版本文件引用与投影都带上该对象
@@ -270,7 +275,7 @@ Deno.test("publish hardening #23: 审计与搜索索引随发布事务持久化"
 
   const published = await publishProblemVersion("ph-outbox", {
     expectedRevision: 1,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
     changeNote: "首个版本",
   });
   assertEquals(published.version, 1);
@@ -347,6 +352,7 @@ Deno.test("publish hardening #20: 预检后替换文件引用不得发布预检�
 
   const published = await publishProblemVersion("ph-rev-bind", {
     expectedRevision: preflight.revision,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.unchanged, false);
   const versionRefs = await getDb().select().from(problemVersionObjects).where(
@@ -361,7 +367,11 @@ Deno.test("publish hardening #20: 预检后替换文件引用不得发布预检�
 
   // revision 乐观锁：陈旧的 expectedRevision 一律 409
   await assertRejects(
-    () => publishProblemVersion("ph-rev-bind", { expectedRevision: 1 }),
+    () =>
+      publishProblemVersion("ph-rev-bind", {
+        expectedRevision: 1,
+        actor: userActorFromAuthenticatedId("0"),
+      }),
     AppError,
     "revision",
   );
@@ -376,7 +386,7 @@ Deno.test("publish hardening #21: 改回历史内容生成新版本而不是 unc
   });
   const v1 = await publishProblemVersion("ph-aba", {
     expectedRevision: 1,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(v1.version, 1);
 
@@ -387,7 +397,7 @@ Deno.test("publish hardening #21: 改回历史内容生成新版本而不是 unc
   });
   const v2 = await publishProblemVersion("ph-aba", {
     expectedRevision: 3,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(v2.version, 2);
 
@@ -399,7 +409,7 @@ Deno.test("publish hardening #21: 改回历史内容生成新版本而不是 unc
   });
   const v3 = await publishProblemVersion("ph-aba", {
     expectedRevision: 5,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(v3.unchanged, false);
   assertEquals(v3.version, 3);
@@ -413,6 +423,7 @@ Deno.test("publish hardening #21: 改回历史内容生成新版本而不是 unc
   // 再次发布同一内容才是 unchanged（与最新版比较）
   const again = await publishProblemVersion("ph-aba", {
     expectedRevision: 6,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(again.unchanged, true);
   assertEquals(again.version_id, v3.version_id);
@@ -427,7 +438,7 @@ Deno.test("publish hardening #18: 客观题包不能导入到已发布编程题"
   });
   const published = await publishProblemVersion("ph-kind", {
     expectedRevision: 1,
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(published.version, 1);
 
@@ -491,7 +502,10 @@ Deno.test("publish hardening #55: 目标题目模式写草稿并校验 revision"
     expectedRevision: 0,
     actorId: "0",
   });
-  await publishProblemVersion(paperId, { expectedRevision: 1, actorId: "0" });
+  await publishProblemVersion(paperId, {
+    expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
+  });
   await bindDefaultCatalogFixture(paperId);
   const before = await getDb().select({ id: problems.id }).from(problems);
   const revision = (await getProblemDraft(paperId)).revision;

@@ -139,7 +139,7 @@ export async function publishDomainProblemVersion(
   return await publishProblemVersion(resource.problem.id, {
     expectedRevision,
     changeNote,
-    actorId: actor.userId,
+    actor,
     authorize: async (tx) => {
       const current = await loadEditableDomainProblem(
         slug,

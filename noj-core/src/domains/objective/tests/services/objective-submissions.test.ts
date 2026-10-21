@@ -34,6 +34,7 @@ import {
   saveProblemDraft,
 } from "../../../../modules/problems/services/versioning/draft.ts";
 import { publishProblemVersion } from "../../../../modules/problems/services/versioning/publish.ts";
+import { userActorFromAuthenticatedId } from "../../../../modules/access/contracts/actor.ts";
 
 await resetDbForTest();
 const db = getDb();
@@ -155,7 +156,10 @@ async function makeQuestion(
     },
     expectedRevision: draft.revision,
   });
-  await publishProblemVersion(paperId, { expectedRevision: saved.revision });
+  await publishProblemVersion(paperId, {
+    expectedRevision: saved.revision,
+    actor: userActorFromAuthenticatedId("0"),
+  });
   return key;
 }
 

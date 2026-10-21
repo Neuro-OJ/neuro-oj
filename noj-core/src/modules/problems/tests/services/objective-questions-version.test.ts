@@ -28,6 +28,7 @@ import {
 } from "../../index.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -105,6 +106,7 @@ async function publish(
   return await publishProblemVersion(problemId, {
     expectedRevision: revision + 1,
     changeNote: note,
+    actor: userActorFromAuthenticatedId("0"),
   });
 }
 

@@ -23,6 +23,7 @@ import {
   saveProblemDraft,
 } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
@@ -99,7 +100,10 @@ Deno.test("support package: 下载绑定已发布版本，草稿替换不影响�
     content: aiContent("print(1)"),
     expectedRevision: 1,
   });
-  const v1 = await publishProblemVersion("sp-p1", { expectedRevision: 2 });
+  const v1 = await publishProblemVersion("sp-p1", {
+    expectedRevision: 2,
+    actor: userActorFromAuthenticatedId("0"),
+  });
 
   const ref = await resolveSupportPackageRef("sp-p1");
   assertEquals(ref?.source, "version");
@@ -137,7 +141,10 @@ Deno.test("support package: 下载绑定已发布版本，草稿替换不影响�
   );
 
   // 发布第二版后下载切到 B
-  const v2 = await publishProblemVersion("sp-p1", { expectedRevision: 4 });
+  const v2 = await publishProblemVersion("sp-p1", {
+    expectedRevision: 4,
+    actor: userActorFromAuthenticatedId("0"),
+  });
   assertEquals(v2.version, 2);
   assertEquals(
     new TextDecoder().decode(
@@ -157,7 +164,10 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
     content: aiContent("t"),
     expectedRevision: 1,
   });
-  const v1 = await publishProblemVersion("sp-p2", { expectedRevision: 2 });
+  const v1 = await publishProblemVersion("sp-p2", {
+    expectedRevision: 2,
+    actor: userActorFromAuthenticatedId("0"),
+  });
 
   await deleteSupportPackage("sp-p2", "0", "admin");
 
@@ -191,6 +201,7 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
   assertEquals(await getDraftSupportPackageUrl("sp-p2"), null);
   const v2 = await publishProblemVersion("sp-p2", {
     expectedRevision: saved.revision,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(v2.version, 2);
   assertEquals(await resolveSupportPackageRef("sp-p2"), null);
@@ -235,7 +246,10 @@ Deno.test("support package: 模板优先从版本内容读取（不下载支持�
     content: aiContent("# 版本内模板\nprint(42)"),
     expectedRevision: 1,
   });
-  await publishProblemVersion("sp-p4", { expectedRevision: 2 });
+  await publishProblemVersion("sp-p4", {
+    expectedRevision: 2,
+    actor: userActorFromAuthenticatedId("0"),
+  });
 
   const template = await resolveProblemTemplate({
     id: "sp-p4",

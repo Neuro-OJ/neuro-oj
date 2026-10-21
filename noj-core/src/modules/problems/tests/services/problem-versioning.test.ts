@@ -28,6 +28,7 @@ import {
 import { registerReadyStorageObject } from "../../../../domains/system/services/storage/registry.ts";
 import { setStorageProviderForTest } from "../../../../domains/system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../../domains/system/services/storage/local.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import type {
   AiProblemContent,
   ProblemDraftContent,
@@ -163,7 +164,11 @@ Deno.test("publish: 内容不完整时预检拒绝，不产生版本", async () 
   assert(preflight.errors.some((issue) => issue.code === "CONTENT_INCOMPLETE"));
 
   await assertRejects(
-    () => publishProblemVersion("pv-pub-incomplete", { expectedRevision: 1 }),
+    () =>
+      publishProblemVersion("pv-pub-incomplete", {
+        expectedRevision: 1,
+        actor: userActorFromAuthenticatedId("0"),
+      }),
     Error,
     "发布预检未通过",
   );
@@ -183,7 +188,7 @@ Deno.test("publish: 发布成功分配 V1、更新最新版投影与草稿基线
   const result = await publishProblemVersion("pv-pub-ok", {
     expectedRevision: 1,
     changeNote: "首次发布",
-    actorId: "0",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(result.unchanged, false);
   assertEquals(result.version, 1);
@@ -233,12 +238,14 @@ Deno.test("publish: 相同内容重复发布返回 unchanged，不制造空版�
   });
   const first = await publishProblemVersion("pv-pub-same", {
     expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
   });
 
   // 再次发布同一内容（草稿 revision 已被发布递增为 2）
   const second = await publishProblemVersion("pv-pub-same", {
     expectedRevision: 2,
     changeNote: "换个说明但内容相同",
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(second.unchanged, true);
   assertEquals(second.version_id, first.version_id);
@@ -256,6 +263,7 @@ Deno.test("publish: 同内容不同草稿修订也算 unchanged（哈希不含�
   });
   const first = await publishProblemVersion("pv-pub-hash", {
     expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
   });
   // 草稿 revision 2 → 修改后改回相同内容（revision 3）→ 仍为 unchanged
   await saveProblemDraft("pv-pub-hash", {
@@ -268,6 +276,7 @@ Deno.test("publish: 同内容不同草稿修订也算 unchanged（哈希不含�
   });
   const third = await publishProblemVersion("pv-pub-hash", {
     expectedRevision: 4,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(third.unchanged, true);
   assertEquals(third.version_id, first.version_id);
@@ -282,11 +291,15 @@ Deno.test("publish: revision 过时与基线冲突都返回 409", async () => {
   });
   const published = await publishProblemVersion("pv-pub-conflict", {
     expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
   });
 
   // revision 过时（当前 2）→ 409
   await assertRejects(() =>
-    publishProblemVersion("pv-pub-conflict", { expectedRevision: 1 })
+    publishProblemVersion("pv-pub-conflict", {
+      expectedRevision: 1,
+      actor: userActorFromAuthenticatedId("0"),
+    })
   );
 
   // 基线被人为改回 null（模拟"另一个人已发布过别的版本"）→ 409
@@ -294,7 +307,11 @@ Deno.test("publish: revision 过时与基线冲突都返回 409", async () => {
     eq(problemDrafts.problem_id, "pv-pub-conflict"),
   );
   await assertRejects(
-    () => publishProblemVersion("pv-pub-conflict", { expectedRevision: 2 }),
+    () =>
+      publishProblemVersion("pv-pub-conflict", {
+        expectedRevision: 2,
+        actor: userActorFromAuthenticatedId("0"),
+      }),
     Error,
     "基线",
   );
@@ -333,6 +350,7 @@ Deno.test("publish: 文件引用复制到版本，草稿后续替换不影响历
 
   const first = await publishProblemVersion("pv-pub-files", {
     expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
   });
   const versionObjects = await getDb().select().from(problemVersionObjects)
     .where(eq(problemVersionObjects.version_id, first.version_id));
@@ -367,6 +385,7 @@ Deno.test("publish: 文件引用复制到版本，草稿后续替换不影响历
   // 第二次发布（内容相同但文件哈希不同 → 是新版本）
   const second = await publishProblemVersion("pv-pub-files", {
     expectedRevision: 2,
+    actor: userActorFromAuthenticatedId("0"),
   });
   assertEquals(second.unchanged, false);
   assertEquals(second.version, 2);
@@ -384,13 +403,19 @@ Deno.test("publish: exact 策略下默认作答版本取要求版本", async () 
     content: aiContent("exact 版"),
     expectedRevision: 0,
   });
-  const v1 = await publishProblemVersion("pv-exact", { expectedRevision: 1 });
+  const v1 = await publishProblemVersion("pv-exact", {
+    expectedRevision: 1,
+    actor: userActorFromAuthenticatedId("0"),
+  });
   // 发布第二版
   await saveProblemDraft("pv-exact", {
     content: aiContent("exact 版二"),
     expectedRevision: 2,
   });
-  const v2 = await publishProblemVersion("pv-exact", { expectedRevision: 3 });
+  const v2 = await publishProblemVersion("pv-exact", {
+    expectedRevision: 3,
+    actor: userActorFromAuthenticatedId("0"),
+  });
   assertEquals(v2.version, 2);
 
   // any → 最新版

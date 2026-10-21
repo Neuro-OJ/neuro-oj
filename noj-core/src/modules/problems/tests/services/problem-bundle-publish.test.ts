@@ -17,6 +17,7 @@ import {
   publishImportedProblem,
   syncProblemDraftFromProjection,
 } from "../../services/problems/problem-bundle.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { listVersionQuestions } from "../../services/objective/versioning/objective-drafts.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
@@ -64,7 +65,10 @@ Deno.test({
     const revision = await syncProblemDraftFromProjection(created.id, "0");
     assertEquals(revision > 0, true);
 
-    const published = await publishImportedProblem(created.id, "0");
+    const published = await publishImportedProblem(
+      created.id,
+      userActorFromAuthenticatedId("0"),
+    );
     assertEquals(published.version, 1);
     assertEquals(published.unchanged, false);
 
@@ -82,7 +86,10 @@ Deno.test({
     );
 
     // 相同内容重复发布：复用既有版本，不制造空版本
-    const again = await publishImportedProblem(created.id, "0");
+    const again = await publishImportedProblem(
+      created.id,
+      userActorFromAuthenticatedId("0"),
+    );
     assertEquals(again.unchanged, true);
     assertEquals(again.version_id, published.version_id);
 
@@ -128,7 +135,10 @@ Deno.test({
     );
 
     // 导入即写草稿（旧表只是兼容镜像）
-    const published = await publishImportedProblem(created.id, ROOT_USER_ID);
+    const published = await publishImportedProblem(
+      created.id,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
     const questions = await listVersionQuestions(published.version_id);
     assertEquals(questions.length, 2);
     // 显式 key 原样保留；缺省 key 生成 UUID（不是按序号猜测）
@@ -139,7 +149,10 @@ Deno.test({
     assertEquals(questions[1].answer, [true]);
 
     // 重复发布相同内容 → unchanged，不制造空版本
-    const again = await publishImportedProblem(created.id, ROOT_USER_ID);
+    const again = await publishImportedProblem(
+      created.id,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
     assertEquals(again.unchanged, true);
     assertEquals(again.version, published.version);
 
