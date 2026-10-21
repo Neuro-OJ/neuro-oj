@@ -19,6 +19,7 @@ import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
 import { reconcileAccounting } from "../accounting.ts";
 import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
 import { requireRevision } from "../revision.ts";
+import { createInternalPolicyRouter } from "./internal-policy.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -387,6 +388,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       );
     }
   });
+
+  // P5：实例政策成为 Gateway 本地权威；Core 不再是被查询的政策来源。
+  app.route("/", createInternalPolicyRouter({ db: deps.db }));
 
   return app;
 }

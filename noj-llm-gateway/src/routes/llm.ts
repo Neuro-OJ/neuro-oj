@@ -283,7 +283,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     );
     let domainQuotaCaps;
     try {
-      domainQuotaCaps = await loadCurrentQuotaCaps(deps.config);
+      domainQuotaCaps = await loadCurrentQuotaCaps(deps.db);
     } catch {
       return c.json({ error: "quota_policy_unavailable" }, 503);
     }
