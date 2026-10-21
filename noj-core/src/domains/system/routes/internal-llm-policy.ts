@@ -7,7 +7,17 @@ import { UnauthorizedError } from "../../../shared/base/errors.ts";
 import { validateWorkspaceSetting } from "../../../shared/workspace/resource-policy.ts";
 import { getSetting } from "../services/system-settings.ts";
 
-/** Gateway 每次调用前读取持久上限；内部凭据独立于用户登录和域角色。 */
+/**
+ * 旧 Core 政策读取端点（迁移期只读归档）。
+ *
+ * P5 之后政策权威在 Gateway 本地 `llm_policy`，Gateway **不再**调用本端点。
+ * 保留它的唯一用途是：
+ * - 迁移窗口内供运维核对旧值（`exportGatewayPolicySnapshot` 也直接读设置）；
+ * - 兼容尚未升级的旧 Gateway 进程（协调发布期间）。
+ *
+ * 一旦协调发布完成，正常业务路径不得再依赖它；下一个删除周期会移除本路由。
+ * 这里显式标注 deprecated，避免被误当作权威来源重新接入。
+ */
 export const internalLlmPolicyRouter = new Hono();
 internalLlmPolicyRouter.get("/internal/llm/quota-caps", async (c) => {
   const configured = String(getSetting("NOJ_LLM_SERVICE_TOKEN")?.value ?? "");
@@ -28,6 +38,8 @@ internalLlmPolicyRouter.get("/internal/llm/quota-caps", async (c) => {
   });
   const text = row ? JSON.parse(row.value) as string : fallback;
   c.header("Cache-Control", "no-store");
+  c.header("Deprecation", "true");
+  c.header("Sunset", "policy-authority-moved-to-gateway");
   return c.json({
     data: validateWorkspaceSetting("domain_llm_quota_caps", text),
   });

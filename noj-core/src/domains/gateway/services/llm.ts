@@ -372,3 +372,98 @@ export async function testLlmProvider(
     domainId,
   );
 }
+
+/** 实例 LLM 政策快照（Core → Gateway 迁移用）。 */
+export interface GatewayPolicySnapshot {
+  readonly revision: number;
+  readonly day: {
+    max_calls: number | null;
+    max_tokens: number | null;
+    max_cost: number | null;
+  };
+  readonly month: {
+    max_calls: number | null;
+    max_tokens: number | null;
+    max_cost: number | null;
+  };
+  readonly updated_at: string;
+}
+
+/**
+ * 导出旧 Core 政策快照（只读）。
+ *
+ * 迁移顺序固定：旧政策快照 → Gateway schema 迁移 → 导入 → 值/revision/摘要核对
+ * → 切换读写。本函数只读取 `domain_llm_quota_caps` 设置，不写任何状态；
+ * 切换后该设置只作只读迁移归档，不再作为调用时权威或 fallback。
+ */
+export async function exportGatewayPolicySnapshot(): Promise<
+  GatewayPolicySnapshot
+> {
+  const { getSetting } = await import("../../system/index.ts");
+  const raw = getSetting("domain_llm_quota_caps")?.value;
+  const fallback = {
+    day: { max_calls: null, max_tokens: null, max_cost: null },
+    month: { max_calls: null, max_tokens: null, max_cost: null },
+  };
+  let caps: {
+    day: GatewayPolicySnapshot["day"];
+    month: GatewayPolicySnapshot["month"];
+  };
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const value = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+    caps = value ?? fallback;
+  } catch {
+    caps = fallback;
+  }
+  return {
+    // 旧设置没有 revision 概念：迁移起点固定为 0，导入后由 Gateway 递增。
+    revision: 0,
+    day: caps.day ?? fallback.day,
+    month: caps.month ?? fallback.month,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * 把旧 Core 政策导入 Gateway（维护窗口内幂等）。
+ *
+ * 以 operation ID `policy-import-<摘要>` 调用 Gateway `PUT /internal/policy`；
+ * 重复导入命中同一 operation ID 时返回原结果，不会覆盖更新的政策。
+ */
+export async function importGatewayPolicySnapshot(
+  snapshot: GatewayPolicySnapshot,
+  actorId: string,
+): Promise<{ revision: number; imported: boolean }> {
+  const operationId = `policy-import-${(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(
+      JSON.stringify({ day: snapshot.day, month: snapshot.month }),
+    ),
+  ).then((digest) =>
+    [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 32)
+  ))}`;
+  const body = await request<{
+    data: { revision: number; status: string };
+  }>("/internal/policy", {
+    method: "PUT",
+    headers: {
+      "X-Noj-Operation-Id": operationId,
+      "X-Noj-Expected-Revision": String(snapshot.revision),
+      "X-Noj-Actor-Id": actorId,
+    },
+    body: JSON.stringify({ day: snapshot.day, month: snapshot.month }),
+  });
+  return { revision: body.data.revision, imported: true };
+}
+
+/** 读取 Gateway 当前政策（核对导入结果）。 */
+export async function readGatewayPolicy(): Promise<GatewayPolicySnapshot> {
+  const body = await request<{ data: GatewayPolicySnapshot }>(
+    "/internal/policy",
+  );
+  return body.data;
+}
