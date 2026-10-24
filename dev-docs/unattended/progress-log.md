@@ -302,6 +302,11 @@ R7 `.nojbackup` 统一备份流；并收敛 M1–M7（删双模态）。
 > rootless 宿主到容器 IP 不可路由未宣称通过，浏览器验收因本环境浏览器控制服务模块缺失
 > 未执行；两者均不能被下面的自动化证据替代。
 
+> 2026-10-24 复验：在同一隔离证据边界下，Core `deno task test` 再次为 `2509 passed / 0
+> failed / 11 ignored`（20m29s）；精确命名的 PostgreSQL/Redis 测试容器已在复验后停止。
+> 最终代码与文档变更已由 `2150e33b`（`feat(root): 完成 P3–P8 架构整治收口`）签名提交，
+> bookmark 为 `wip/architecture-remediation-p3`。
+
 1. `install`/`update --latest` 在**真实 Release** 上的端到端（取决于是否已发布含新资产）；
 2. 编译产物在**仅含 docker/curl/openssl** 的最小环境（本机已证实"不依赖仓库脚本"）；
 3. `backup drill` 的完整 Judge 业务链（`--skip-judge` 的真实恢复和业务验收已通过，
