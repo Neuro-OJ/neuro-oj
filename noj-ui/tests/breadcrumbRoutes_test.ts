@@ -33,7 +33,7 @@ const EXCLUDED_PREFIXES = [
 const EXCLUDED_EXACT = ['index.vue'];
 
 /** 独立全屏布局（`layout: false`），不经过 default 布局，无面包屑。 */
-const LAYOUTLESS = ['editor/[id].vue'];
+const LAYOUTLESS = ['editor/[id].vue', 'react/[...path].vue'];
 
 async function collectPageRoutes(dir: URL, prefix = ''): Promise<string[]> {
   const routes: string[] = [];
@@ -66,6 +66,13 @@ function isExcluded(file: string): boolean {
   if (LAYOUTLESS.includes(file)) return true;
   return EXCLUDED_PREFIXES.some((prefix) => file === prefix || file.startsWith(prefix));
 }
+
+Deno.test('breadcrumb 门禁：独立布局白名单确实关闭默认布局', async () => {
+  for (const file of LAYOUTLESS) {
+    const source = await Deno.readTextFile(new URL(file, PAGES_DIR));
+    assert(/layout:\s*false/.test(source), `${file} 必须明确关闭默认布局`);
+  }
+});
 
 Deno.test('breadcrumb 门禁：每个内容页都能解析出非空层级', async () => {
   const files = await collectPageRoutes(PAGES_DIR);

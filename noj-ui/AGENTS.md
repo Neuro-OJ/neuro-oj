@@ -1,6 +1,8 @@
 # noj-ui — Neuro OJ 核心前端
 
-基于 **Nuxt 4 + Vue 3** 的用户界面。
+当前默认入口基于 **Nuxt 4 + Vue 3**；React + shadcn/ui 按批次迁移。
+`/react` 首批入口及工程边界见 [`react/README.md`](react/README.md)。
+React 源码位于 `react/`，不依赖 Nuxt composable；Nuxt 只提供过渡期 SSR 与认证代理适配。
 
 ## 职责
 
@@ -212,6 +214,7 @@ cd dist
 
 ## 样式规范
 
+- `react/` 的通用组件统一使用 **shadcn/ui**；其余 Vue 页面沿用下列规范。
 - **通用组件必须使用 Nuxt UI v4（`U*` 组件：UButton/UInput/UModal/UTable/UBadge 等），禁止手写通用组件**
 - **布局/排版样式使用 Tailwind CSS v4 utility 类，禁止手写 CSS**
 - 组件模板中直接使用 Tailwind utility 类

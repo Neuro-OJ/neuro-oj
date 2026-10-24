@@ -1,6 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { reactTsxPlugin } from './scripts/react-tsx';
 
 const apiBase = process.env.NUXT_API_BASE ?? 'http://localhost:8000';
 // 站点对外地址（用于 sitemap/canonical 等需要**绝对 URL** 的场景）。
@@ -75,6 +76,11 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
+
+  // React 首批迁移入口独立于 Vue 编译器，认证代理与部署产物继续共用。
+  vite: {
+    plugins: [reactTsxPlugin()],
+  },
 
   // 关闭 Nuxt UI 内置的 @nuxtjs/color-mode：站点目前只有亮色主题
   // （--c-* 仅在编辑器 .editor-dark 内切换，大量组件硬编码 bg-white），

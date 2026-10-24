@@ -7,18 +7,22 @@
     "preview": "deno run -A npm:nuxt preview",
     "lint": "deno lint",
     "fmt": "deno fmt",
-    "check": "deno fmt --check && deno lint && deno task check:types && deno task check:types:nuxt",
+    "check": "deno fmt --check && deno lint && deno task check:types && deno task check:types:nuxt && deno task check:types:react",
     "check:types": "deno check utils tests/*_test.ts tests/setup.ts",
     "check:types:nuxt": "deno run -A npm:nuxt typecheck && node --stack-size=4000 node_modules/vue-tsc/bin/vue-tsc.js --noEmit",
     "test": "deno test -A --ignore=tests/browser tests/",
     "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A --ignore=tests/browser tests/ --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=60 coverage",
     "test:components": "deno run -A npm:vitest run",
-    "test:theme": "deno test -A tests/browser/editorTheme.browser.test.ts"
+    "test:theme": "deno test -A tests/browser/editorTheme.browser.test.ts",
+    "check:types:react": "deno run -A npm:typescript/tsc --project react/tsconfig.json",
+    "test:react": "node node_modules/vitest/vitest.mjs run --config react/vitest.config.ts",
+    "test:react:browser": "deno test -A tests/browser/react.browser.test.ts"
   },
   "lint": {
     "include": [
       "**/*.vue",
-      "**/*.ts"
+      "**/*.ts",
+      "react/**/*.tsx"
     ],
     "rules": {
       "exclude": [
@@ -29,7 +33,8 @@
   "fmt": {
     "include": [
       "**/*.vue",
-      "**/*.ts"
+      "**/*.ts",
+      "react/**/*.tsx"
     ],
     "options": {
       "singleQuote": true,

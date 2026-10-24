@@ -3,6 +3,12 @@ import { mount } from '@vue/test-utils';
 import { ref, watch } from 'vue';
 import ObjectiveRichText from '~/components/objective/ObjectiveRichText.vue';
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
+import { sanitizeHtmlAsync } from '~/utils/sanitize';
+
+vi.mock('~/utils/sanitize', () => ({
+  sanitizeHtmlAsync: vi.fn((raw: string) => Promise.resolve(raw)),
+  sanitizeHtmlSync: (raw: string) => raw,
+}));
 
 // 组件测试环境没有 Nuxt 自动导入：MarkdownRenderer 运行时引用的全局标识符在此补齐。
 // happy-dom 下 DOMPurify 会剥掉全部标签（`<p>hi</p>` → `hi`），无法反映浏览器行为，
@@ -10,7 +16,6 @@ import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
 Object.assign(globalThis, {
   ref,
   watch,
-  sanitizeHtmlAsync: (raw: string) => Promise.resolve(raw),
 });
 
 async function render(content: string) {
@@ -40,16 +45,12 @@ describe('ObjectiveRichText', () => {
 
   it('净化剥离 style 时 KaTeX 排版样式仍保留（公式在净化之后回填）', async () => {
     // 模拟生产 DOMPurify 的 FORBID_ATTR: ['style']
-    const original = (globalThis as Record<string, unknown>).sanitizeHtmlAsync;
-    (globalThis as Record<string, unknown>).sanitizeHtmlAsync = (raw: string) =>
-      Promise.resolve(raw.replace(/\sstyle="[^"]*"/g, ''));
-    try {
-      const wrapper = await render('$$\\frac{a}{b}$$');
-      expect(wrapper.find('.katex-display .mfrac').exists()).toBe(true);
-      expect(wrapper.findAll('.katex [style]').length).toBeGreaterThan(0);
-    } finally {
-      (globalThis as Record<string, unknown>).sanitizeHtmlAsync = original;
-    }
+    vi.mocked(sanitizeHtmlAsync).mockImplementationOnce((raw: string) =>
+      Promise.resolve(raw.replace(/\sstyle="[^"]*"/g, ''))
+    );
+    const wrapper = await render('$$\\frac{a}{b}$$');
+    expect(wrapper.find('.katex-display .mfrac').exists()).toBe(true);
+    expect(wrapper.findAll('.katex [style]').length).toBeGreaterThan(0);
   });
 
   it('属性值中的公式占位符不回填（防止属性逃逸）', async () => {

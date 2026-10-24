@@ -4,6 +4,28 @@
  */
 @import "tailwindcss";
 @import "@nuxt/ui";
+@import "tw-animate-css";
+@source "../../react";
+
+/* shadcn/ui 语义别名，全部引用现有 NOJ token，不改变 Vue 页面主题。 */
+@theme inline {
+  --color-background: var(--c-bg-page);
+  --color-foreground: var(--c-text);
+  --color-card: var(--c-bg-panel);
+  --color-card-foreground: var(--c-text);
+  --color-popover: var(--c-bg-panel);
+  --color-popover-foreground: var(--c-text);
+  --color-primary-foreground: var(--c-text-on-color);
+  --color-secondary: var(--c-bg-sunken);
+  --color-secondary-foreground: var(--c-text-secondary);
+  --color-muted: var(--c-bg-sunken);
+  --color-muted-foreground: var(--c-text-muted);
+  --color-accent: var(--c-primary-hover-bg);
+  --color-accent-foreground: var(--c-text);
+  --color-destructive: var(--c-error-text);
+  --color-input: var(--c-border);
+  --color-ring: var(--c-primary);
+}
 
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ----
  * inline 让工具类在使用处读取 --c-*，跟随 .editor-dark 的局部主题。
@@ -394,4 +416,12 @@
  * 下拉展开层」。须用 !important 压过内联样式（radix/reka 惯例层级）。 */
 [data-reka-popper-content-wrapper] {
   z-index: 50 !important;
+}
+
+/* shadcn 基础边框仅作用于 React 根节点和其 Portal，业务状态色仍由 utility 覆盖。 */
+@layer base {
+  [data-noj-react], [data-noj-react] *, [data-noj-react] ::before, [data-noj-react] ::after {
+    border-color: var(--c-border);
+  }
+  [data-noj-react] a { color: var(--c-primary); }
 }

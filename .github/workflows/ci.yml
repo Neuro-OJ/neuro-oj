@@ -2041,6 +2041,14 @@ jobs:
         working-directory: noj-ui
         run: deno task check:types:nuxt
 
+      - name: React 页面类型检查
+        working-directory: noj-ui
+        run: deno task check:types:react
+
+      - name: React SSR 回归
+        working-directory: noj-ui
+        run: deno task test:react
+
       - name: 构建检查 (deno task build)
         working-directory: noj-ui
         run: deno task build
@@ -2070,6 +2078,23 @@ jobs:
           done
           deno task test:theme
 
+      - name: React 核心流程浏览器回归
+        working-directory: noj-ui
+        env:
+          E2E_UI_URL: http://127.0.0.1:3065
+          NOJ_REACT_SCREENSHOTS: test-results/react
+        run: |
+          NUXT_API_BASE=http://127.0.0.1:8071 NUXT_NOJ_ENV=development PORT=3065 HOST=127.0.0.1 deno run -A .output/server/index.mjs > react-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent "$E2E_UI_URL/robots.txt" > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          deno task test:react:browser
+
       # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -2081,6 +2106,8 @@ jobs:
             noj-ui/.nuxt/dist/
             noj-ui/test-results/theme/
             noj-ui/theme-server.log
+            noj-ui/test-results/react/
+            noj-ui/react-server.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true
