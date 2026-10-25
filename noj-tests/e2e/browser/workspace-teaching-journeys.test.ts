@@ -498,12 +498,20 @@ Deno.test({
       await step(
         "学生求助，教师反馈、回复并处理，学生 Web 读取反馈与回复",
         async () => {
+          await student.page.getByRole("tab", {
+            name: "反馈与求助",
+            exact: true,
+          }).click();
+          await student.page.getByRole("button", {
+            name: "向老师求助",
+            exact: true,
+          }).click();
           await student.page.getByRole("textbox", {
             name: "求助正文",
             exact: true,
           }).fill(question);
           await student.page.getByRole("button", {
-            name: "向老师求助",
+            name: "发送求助",
             exact: true,
           }).click();
           await expect(
@@ -514,6 +522,14 @@ Deno.test({
           ).toBeVisible();
           await teacher.page.reload();
           await ready(teacher.page);
+          await teacher.page.getByRole("tab", {
+            name: "反馈与求助",
+            exact: true,
+          }).click();
+          await teacher.page.getByRole("button", {
+            name: "写反馈",
+            exact: true,
+          }).click();
           await teacher.page.getByRole("textbox", {
             name: "作业反馈正文",
             exact: true,

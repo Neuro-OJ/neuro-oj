@@ -439,8 +439,10 @@ Deno.test({
             name: "搜索学生用户名",
             exact: true,
           }).fill(pupils[0].username);
-          await coach.page.getByRole("button", { name: "搜索", exact: true })
-            .click();
+          await coach.page.getByRole("textbox", {
+            name: "搜索学生用户名",
+            exact: true,
+          }).press("Enter");
           await expect(
             coach.page.getByRole("button", {
               name: `${pupils[0].username} ${number} 0 · 未达标`,
@@ -452,12 +454,15 @@ Deno.test({
           assertEquals(exported.text.trim().split(/\r?\n/).length, 2);
           assertStringIncludes(exported.text, pupils[0].username);
           assertStringIncludes(exported.text, '"未达标","0"');
-          await choose(coach.page, "成绩统计范围", "当前补做进度");
+          await coach.page.getByRole("group", { name: "统计范围", exact: true })
+            .getByRole("button", { name: "当前补做", exact: true }).click();
           const currentCsv = await download(coach.page, "导出 CSV");
           assertEquals(currentCsv.name, `assignment-${taskId}-current.csv`);
           await goto(coach.page, `/d/${slug}/classrooms/${classId}/members`);
           await remove(coach.page, slug, classId, pupils[1]);
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
+          await coach.page.getByRole("button", { name: "筛选", exact: true })
+            .click();
           await choose(coach.page, "学生范围", "历史学生");
           await expect(coach.page.getByRole("table", { name: "学生成绩矩阵" }))
             .toContainText(pupils[1].username);
