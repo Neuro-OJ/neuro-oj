@@ -408,11 +408,14 @@ Deno.test({
         await learner.page.getByPlaceholder("搜索题单名称").fill(trainingTitle);
         await learner.page.getByRole("button", { name: "搜索", exact: true })
           .click();
-        await learner.page.getByRole("heading", {
-          name: trainingTitle,
-          exact: true,
-        }).locator("..").getByRole("link", { name: "查看题单", exact: true })
-          .click();
+        // 当前 Domain 题单列表由整张 NuxtLink 卡片承载，不再渲染旧的
+        // “查看题单”子链接；以卡片内标题定位仍保持题单唯一性。
+        await learner.page.getByRole("link").filter({
+          has: learner.page.getByRole("heading", {
+            name: trainingTitle,
+            exact: true,
+          }),
+        }).click();
         await learner.page.waitForURL((url) =>
           url.pathname === `/d/main/trainings/${training.data.id}`
         );

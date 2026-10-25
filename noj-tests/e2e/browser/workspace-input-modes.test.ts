@@ -186,7 +186,7 @@ Deno.test({
             name: "查看评测",
             exact: true,
           }).click();
-          await expect(session.page.getByText("50.0 分", { exact: true }))
+          await expect(session.page.getByText("50.0", { exact: true }))
             .toBeVisible();
           const secondId = await upload(second, b, prediction!);
           const next = await finished(b, secondId, student.token);
@@ -197,7 +197,7 @@ Deno.test({
           ], [bId, prediction!.v2, 10000]);
           await second.getByRole("link", { name: "查看评测", exact: true })
             .click();
-          await expect(second.getByText("100.0 分", { exact: true }))
+          await expect(second.getByText("100.0", { exact: true }))
             .toBeVisible();
         },
       );

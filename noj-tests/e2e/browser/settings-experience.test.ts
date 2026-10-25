@@ -96,6 +96,9 @@ Deno.test({
       await page.getByRole("button", { name: "重新读取设置", exact: true })
         .click();
       await page.getByRole("button", { name: "确认", exact: true }).click();
+      // 成功重载后表单回到干净状态；重新编辑才应恢复可写，而不是把
+      // “干净表单不可保存”误判为权限/加载失败。
+      await description.fill("恢复后可以保存的简介");
       await expect(
         page.getByRole("button", { name: "保存基本设置", exact: true }),
       )

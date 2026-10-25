@@ -255,6 +255,13 @@ Deno.test({
             `${actor.email},${actor.username}`
           ).join("\n") +
             `\n${pupils[0].email},${pupils[0].username}\ninvalid-email,\n`;
+          await coach.page.getByRole("tab", {
+            name: "批量导入与邀请",
+            exact: true,
+          }).click();
+          await expect(
+            coach.page.getByRole("textbox", { name: "学生导入 CSV" }),
+          ).toBeVisible();
           await coach.page.getByLabel("学生 CSV 文件", { exact: true })
             .setInputFiles({
               name: "classroom.csv",

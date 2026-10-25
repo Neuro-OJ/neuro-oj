@@ -296,7 +296,8 @@ async function submitCodeViaUI(code: string): Promise<string> {
     { key: `noj:draft:${key}`, content: code },
   );
   await goto(`/d/main/problems/${problemNumber}`);
-  await p.getByRole("link", { name: "开始编码", exact: true }).click();
+  // 题目页同时有页头 CTA 和正文 CTA；两者指向同一真实作答入口。
+  await p.getByRole("link", { name: "开始编码", exact: true }).first().click();
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   const created = p.waitForResponse((response) => {

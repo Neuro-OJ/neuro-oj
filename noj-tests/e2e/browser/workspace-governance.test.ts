@@ -469,13 +469,13 @@ Deno.test({
             }).fill("30");
             await expect(
               manager.page.getByRole("button", {
-                name: "保存配额",
+                name: "保存配额配置",
                 exact: true,
               }),
             )
               .toBeEnabled();
             await expect(
-              other.getByRole("button", { name: "保存配额", exact: true }),
+              other.getByRole("button", { name: "保存配额配置", exact: true }),
             )
               .toBeEnabled();
             const first = await write(
@@ -484,7 +484,7 @@ Deno.test({
               `/domains/${slug}/limits`,
               () =>
                 manager.page.getByRole("button", {
-                  name: "保存配额",
+                  name: "保存配额配置",
                   exact: true,
                 }).click(),
             );
@@ -493,7 +493,7 @@ Deno.test({
               "PATCH",
               `/domains/${slug}/limits`,
               () =>
-                other.getByRole("button", { name: "保存配额", exact: true })
+                other.getByRole("button", { name: "保存配额配置", exact: true })
                   .click(),
               409,
             );

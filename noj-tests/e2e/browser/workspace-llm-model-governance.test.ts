@@ -257,7 +257,11 @@ Deno.test({
             await expect(
               stale.getByRole("textbox", { name: "别名实际模型", exact: true }),
             ).toHaveValue(`${modelA}-stale-input`);
-            await expect(stale.getByText(/revision 已变化/)).toBeVisible();
+            // Core 将 Gateway 的冲突映射为稳定的用户可读错误；revision
+            // 细节仍由请求/响应和后续状态查询核对，不依赖内部原始文案。
+            await expect(
+              stale.getByText("LLM 资源已修改，请重新读取", { exact: true }),
+            ).toBeVisible();
             const state = await llmFixtureApi<
               { data: Array<{ model: string; domain_id: string }> }
             >("GET", `/domains/${a.slug}/llm/model-aliases`, a.owner.token);
