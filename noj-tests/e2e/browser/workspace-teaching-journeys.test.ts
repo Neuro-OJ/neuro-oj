@@ -617,6 +617,14 @@ Deno.test({
               modal.getByRole("button", { name: "创建补题草稿", exact: true })
                 .click(),
           );
+          // 创建响应先返回，组件随后才导航到新草稿详情；先绑定目标 URL，
+          // 再读取标题和指定人数，避免在旧作业页上抢跑断言。
+          await teacher.page.waitForURL(
+            (url) =>
+              url.pathname === `/d/${slug}/assignments/${created.data.id}`,
+            { timeout: 15000 },
+          );
+          await ready(teacher.page);
           await expect(
             teacher.page.getByRole("heading", {
               name: `${title} 补题`,

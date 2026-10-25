@@ -603,8 +603,10 @@ Deno.test({
         async () => {
           await goto(coach.page, `/d/${slug}/classrooms/${classId}/settings`);
           await choose(coach.page, "接任主教练", pupils[39].username);
-          await coach.page.getByRole("button", { name: "交接", exact: true })
-            .click();
+          await coach.page.getByRole("button", {
+            name: "确认交接",
+            exact: true,
+          }).click();
           await write(
             coach.page,
             "POST",
