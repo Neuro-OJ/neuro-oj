@@ -506,6 +506,15 @@ Deno.test({
         async () => {
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
           await coach.page.getByRole("button", {
+            name: "管理作业",
+            exact: true,
+          }).click();
+          const manager = coach.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(manager).toBeVisible();
+          await manager.getByRole("button", {
             name: "为全班未达标学生布置补题",
             exact: true,
           }).click();

@@ -529,10 +529,14 @@ Deno.test({
             .toBeVisible();
           await teacher.page.reload();
           await ready(teacher.page);
-          await teacher.page.getByRole("tab", {
-            name: "反馈与求助",
-            exact: true,
-          }).click();
+          // reload 后作业详情的任务、班级与矩阵数据分开恢复；只等待 Vue
+          // 挂载会早于权限标签渲染，先等教师矩阵稳定再切换反馈标签。
+          await expect(
+            teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
+          ).toBeVisible({ timeout: 15000 });
+          await teacher.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first().click();
           await teacher.page.getByRole("button", {
             name: "写反馈",
             exact: true,
@@ -574,6 +578,15 @@ Deno.test({
         "教师从未达标名单生成补题、预览并发布，390px矩阵保持操作可用",
         async () => {
           await teacher.page.getByRole("button", {
+            name: "管理作业",
+            exact: true,
+          }).click();
+          const manager = teacher.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(manager).toBeVisible();
+          await manager.getByRole("button", {
             name: "为全班未达标学生布置补题",
             exact: true,
           }).click();
