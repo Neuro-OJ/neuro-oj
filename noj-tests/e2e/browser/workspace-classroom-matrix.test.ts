@@ -541,7 +541,18 @@ Deno.test({
           remediationId = created.data.id;
           await expect(coach.page.getByText("指定学生：1 人", { exact: true }))
             .toBeVisible();
+          // 创建补题草稿后会导航到新的草稿详情页；发布入口仍收在该页的
+          // “发布与设置”抽屉中，不能复用创建前页面的隐藏控件。
           await coach.page.getByRole("button", {
+            name: "发布与设置",
+            exact: true,
+          }).click();
+          const publishManager = coach.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(publishManager).toBeVisible();
+          await publishManager.getByRole("button", {
             name: "发布作业",
             exact: true,
           }).click();

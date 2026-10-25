@@ -567,6 +567,15 @@ Deno.test({
           await expect(helpButton(teacher.page, question, "已处理"))
             .toBeVisible();
           await student.page.reload();
+          await ready(student.page);
+          await expect(
+            student.page.locator('[role="tab"]').filter({
+              hasText: "反馈与求助",
+            }).first(),
+          ).toBeVisible({ timeout: 15000 });
+          await student.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first().click();
           await expect(student.page.getByText(feedback, { exact: true }))
             .toBeVisible();
           await helpButton(student.page, question, "已处理").click();
