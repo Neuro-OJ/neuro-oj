@@ -142,7 +142,7 @@ cargo fmt
 | `JUDGE_AI_TASK_CONCURRENCY`          | `2`                            | AI 活跃提交上限                                                                                                                                                                                                                                                                                                                                                         |
 | `JUDGE_RESOURCE_MEMORY_MB`           | `auto`                         | 有效宿主/cgroup 内存的 50%，也可指定 MiB；同组配置必须一致                                                                                                                                                                                                                                                                                                              |
 | `JUDGE_CPU_LIMIT_MILLICORES`         | `1000`                         | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                                                                                                                                                                                                                                                                                               |
-| `JUDGE_PREDICTION_WORKSPACE_MB`      | `2048`                         | prediction 题 Evaluator `/workspace`（tmpfs）缺省大小（MB，有效范围 512-16384；题目可用 `runtime_config.evaluator.workspace_size_mb` 覆盖）。**仅 judge 消费**，noj-core 不读取 |
+| `JUDGE_PREDICTION_WORKSPACE_MB`      | `2048`                         | prediction 题 Evaluator `/workspace`（tmpfs）缺省大小（MB，有效范围 512-16384；题目可用 `runtime_config.evaluator.workspace_size_mb` 覆盖）。**仅 judge 消费**，noj-core 不读取                                                                                                                                                                                         |
 | `JUDGE_INSTANCE_ID`                  | 确定性派生 `noj-{hash12}`      | 实例标识（日志/claim 前缀/容器实例标签）。解析优先级：环境变量 → `WORK_DIR/.instance_id` → `auto:{canonical_work_dir}:{hostname}:{machine_id}` 派生并落盘；重启后保持不变。**注意**：`WORK_DIR` 是实例 ID 的持久化位置，多副本部署若共享同一 `WORK_DIR`（命名卷）必须为每个副本显式设置唯一 `JUDGE_INSTANCE_ID`，否则副本间实例标签冲突（启动清扫会回收彼此的在跑容器） |
 | `JUDGE_IMAGE_PREFIX`                 | `noj-`                         | 允许的评测镜像名前缀（启动期与调度期复验）                                                                                                                                                                                                                                                                                                                              |
 | `JUDGE_OI_IMAGE`                     | `noj-oi-cpp`                   | OI C/C++ 固定编译/运行镜像；必须以 `JUDGE_IMAGE_PREFIX` 开头，不从题目消息读取                                                                                                                                                                                                                                                                                          |
@@ -342,6 +342,9 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   上限、readonly rootfs + tmpfs
   `/tmp`（`size=256M,mode=1777,noexec,nosuid,nodev`）与
   `/workspace`（`size=512M,mode=1777,noexec,nosuid,nodev`）
+- **平台错误自动重试**：`platform_error` 首次执行外最多重试 3 次；Redis
+  原子重投原消息， 按 run
+  共享计数并保留七天。成功/正式判定/取消不重试，中间失败不写回 core。
 - **结果重试**：推送结果最多重试 3
   次（指数退避），全部失败则序列化到本地文件系统
 - **孤儿容器清理**：启动时按**确定性实例标签**

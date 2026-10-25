@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-const props = defineProps<{ domainSlug: string }>();
 const { api } = useApi(), { user } = useAuth();
 interface Snapshot {
   total: number;
@@ -17,16 +16,20 @@ interface RecentSubmission {
   problem: { title: string };
   result: { status: string; score: number; time_ms: number | null; memory_kb: number | null } | null;
 }
+type ActivityData = { data: { recent: RecentSubmission[]; total: Snapshot; today: Snapshot } };
+const props = defineProps<{ domainSlug: string; initialData?: ActivityData }>();
 const scope = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'latest-submissions'));
 const { data, status, error, refresh } = await useViewAsyncData(
   'activity',
   scope,
   () =>
-    api.get<{ data: { recent: RecentSubmission[]; total: Snapshot; today: Snapshot } }>(
+    api.get<ActivityData>(
       `/api/v1/domains/${props.domainSlug}/activity`,
       { silent: true },
     ),
+  { immediate: !props.initialData },
 );
+const activity = computed(() => props.initialData ?? data.value);
 const events = useEventSource({
   url: `/api/v1/domains/${props.domainSlug}/submissions/stats/events`,
   scopeKey: scope,
@@ -46,15 +49,15 @@ const events = useEventSource({
       <h2 class="text-sm font-semibold text-text">最新评测</h2>
       <span class="size-1.5 rounded-full" :class="events.state.value === 'connected' ? 'bg-signal' : 'bg-text-muted'"
         :title="events.state.value === 'connected' ? '实时更新' : '定时刷新'" />
-      <StatsToggle :today-stats="data?.data.today ?? null" :total-stats="data?.data.total ?? null" />
+      <StatsToggle :today-stats="activity?.data.today ?? null" :total-stats="activity?.data.total ?? null" />
     </div>
     <div class="flex-1 p-3">
       <AsyncContent
-        :status="error ? 'error' : !data && status === 'pending' ? 'loading' : data?.data.recent.length ? 'data' : 'empty'"
+        :status="error ? 'error' : activity?.data.recent.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
         :error="error ? extractApiError(error).message : undefined"
         :empty-text="user ? '你在此域还没有评测记录' : '暂无公开评测记录'" @retry="refresh()">
         <div class="space-y-2">
-          <SubmissionCard v-for="submission in data?.data.recent" :key="submission.id" :domain-slug="domainSlug"
+          <SubmissionCard v-for="submission in activity?.data.recent" :key="submission.id" :domain-slug="domainSlug"
             :submission="{...submission,public_id:submission.public_id ?? undefined}" />
         </div>
       </AsyncContent>

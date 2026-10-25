@@ -45,6 +45,8 @@ export async function resolveDomainExecution(
     {
       executor,
       write: true,
+      // 作答仅重读政策；保持 admission 已持有的共享锁，避免 SHARE 升级死锁。
+      domainLock: "share",
       contestId: contestTarget?.contestId,
     },
   );

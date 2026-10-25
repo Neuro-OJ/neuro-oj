@@ -193,7 +193,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
 /** 探测 judge 是否可用：提交样例题并等待评测有结果。
  *
  * 与 helper.isJudgeAvailable 不同：这里把 status=error 也视为可用——
- * 提交 print(1) 对样例题必然 SystemError（用户代码无 solve 函数），
+ * 提交 print(1) 对样例题判 0 分（用户代码无 solve 函数；旧镜像为 error），
  * 但评测链路完整跑通本身就证明 judge worker 可用。
  */
 async function judgeAvailable(): Promise<boolean> {

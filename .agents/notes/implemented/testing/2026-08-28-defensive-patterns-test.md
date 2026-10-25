@@ -8,12 +8,14 @@ Status: implemented
 
 ## Decision
 
-新增 `noj-core/tests/defensive-patterns_test.ts`，覆盖存储 key 的路径穿越与非法段校验：
+新增 `noj-core/tests/defensive-patterns_test.ts`，覆盖存储 key
+的路径穿越与非法段校验：
 
 - 拒绝 `../`、绝对路径、反斜杠、NUL、`.`/空段。
 - 允许合法 key。
 
-`noj-judge` 的 ZIP 路径穿越、条目数、单文件/总大小限制已有 `sandbox/container.rs` 内单元测试覆盖，本次不重复添加。
+`noj-judge` 的 ZIP 路径穿越、条目数、单文件/总大小限制已有
+`sandbox/container.rs` 内单元测试覆盖，本次不重复添加。
 
 ## Alternatives considered
 

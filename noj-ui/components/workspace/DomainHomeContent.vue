@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+import type { EducationDashboardData } from '~/utils/education-dashboard';
+const props = defineProps<{ initialData?: { data: EducationDashboardData } }>();
 const { slug, domain, can } = useWorkspace(), { user } = useAuth();
 const api = useEducationApi();
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'home-tasks'));
@@ -15,7 +17,9 @@ const tasks = await useViewAsyncData(
   'dashboard',
   () => `${key.value}:${mode.value}:${enabled.value}`,
   () => enabled.value ? api.dashboard(slug.value!, mode.value, 1) : Promise.resolve(null),
+  { immediate: !props.initialData },
 );
+const dashboard = computed(() => props.initialData ?? tasks.data.value);
 useEducationNotifications(async () => {
   if (enabled.value) await tasks.refresh();
 }, enabled);
@@ -31,11 +35,11 @@ useEducationNotifications(async () => {
         trailing-icon="i-lucide-arrow-right">{{ mode === 'teaching' ? '教学工作台' : '我的学习' }}</UButton>
     </div>
     <AsyncContent
-      :status="tasks.error.value ? 'error' : tasks.status.value === 'pending' ? 'loading' : tasks.data.value?.data.assignments.length ? 'data' : 'empty'"
+      :status="tasks.error.value ? 'error' : dashboard?.data.assignments.length ? 'data' : tasks.status.value === 'pending' ? 'loading' : 'empty'"
       :error="tasks.error.value ? extractApiError(tasks.error.value).message : undefined"
       empty-text="当前没有进行中的任务" @retry="tasks.refresh()">
       <ul class="mt-2 divide-y divide-border">
-        <li v-for="task in tasks.data.value?.data.assignments.slice(0,3)" :key="task.id">
+        <li v-for="task in dashboard?.data.assignments.slice(0,3)" :key="task.id">
           <NuxtLink :to="workspacePath(slug!, `assignments/${task.id}`)"
             class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm no-underline hover:text-primary">
             <span

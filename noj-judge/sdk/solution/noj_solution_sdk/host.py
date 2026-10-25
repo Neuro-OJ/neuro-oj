@@ -59,6 +59,12 @@ _CALL_QUEUE: "queue.Queue[object]" = queue.Queue()
 # worker 退出哨兵
 _POISON = object()
 
+# 用户 entry 是否加载成功（main 在启动 worker 之前写入，worker 只读）。
+# 区分两类 NotFound：entry 正常加载但没有该函数（选手缺函数，确定性 0 分）与
+# entry 加载失败（语法错误/导入失败，注册表为空）——evaluator SDK 据
+# `reason` 字段决定是否代为判 0 分。
+_ENTRY_LOADED = False
+
 
 def _validate_call_args(args: list) -> None:
     """校验 call 帧的参数类型（防御性，evaluator 端已校验）。"""
@@ -79,6 +85,7 @@ def _execute_call(call_id: str, fn_name: str, args: list) -> None:
                 "id": call_id,
                 "code": "NotFound",
                 "message": f"function {fn_name!r} not registered",
+                "reason": "not_registered" if _ENTRY_LOADED else "entry_load_failed",
             }
         )
         return
@@ -268,8 +275,10 @@ def main() -> None:
     reader.start()
 
     # 3. 加载用户 entry
+    global _ENTRY_LOADED
     try:
         _load_entry(args.entry)
+        _ENTRY_LOADED = True
     except SystemExit:
         raise
     except Exception as e:

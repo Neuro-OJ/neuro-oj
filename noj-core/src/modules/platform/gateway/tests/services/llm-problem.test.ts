@@ -68,28 +68,29 @@ Deno.test("llm-bundle: P 型 + 网络开启通过", () => {
   assertEquals(manifest.llm?.max_calls, 30);
 });
 
-Deno.test("llm-bundle: U 型携带 llm 被拒", () => {
-  assertThrows(() =>
-    validateBundleManifest({
-      format_version: 1,
-      title: "LLM 题",
-      type: "U",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          time_limit_ms: 60000,
-          memory_limit_mb: 512,
-          network: { enabled: true },
-        },
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 5000,
-          memory_limit_mb: 512,
-        },
+// 题包解析器只做结构校验；U 型 LLM 的管理员准入由导入/CRUD/草稿服务执行
+//（#651，见 catalog/tests/routes/private-llm.test.ts）。
+Deno.test("llm-bundle: 格式 2携带 llm 通过结构校验", () => {
+  const manifest = validateBundleManifest({
+    format_version: 2,
+    title: "LLM 题",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        time_limit_ms: 60000,
+        memory_limit_mb: 512,
+        network: { enabled: true },
       },
-      llm: { provider_id: "p1", model: "qwen-plus" },
-    })
-  );
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 512,
+      },
+    },
+    llm: { provider_id: "p1", model: "qwen-plus" },
+  });
+  assertEquals(manifest.format_version, 2);
+  assert(manifest.llm);
 });
 
 Deno.test("llm-bundle: 未开启网络被拒", () => {

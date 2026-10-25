@@ -102,7 +102,12 @@ export async function resolveDomainProblem(
   slug: string,
   reference: string,
   actorId: string | null,
-  options: { executor?: Executor; write?: boolean; contestId?: string } = {},
+  options: {
+    executor?: Executor;
+    write?: boolean;
+    contestId?: string;
+    domainLock?: "share";
+  } = {},
 ) {
   const executor = options.executor ?? getDb();
   const workspace = isDbTx(executor)
@@ -111,7 +116,7 @@ export async function resolveDomainProblem(
         executor,
         slug,
         actorId ? userActorFromAuthenticatedId(actorId) : guestActor(),
-        { write: options.write, lock: options.write },
+        { write: options.write, lock: options.domainLock ?? options.write },
       ),
     )
     : await loadWorkspace(slug, actorId, {

@@ -73,11 +73,21 @@ ans2 = runner.call("solve", big_graph, timeout_ms=3000)
 
 | 异常类型                   | 对应协议状态码              | 产生诱因与处理准则                                               |
 | -------------------------- | --------------------------- | ---------------------------------------------------------------- |
-| **`NotFoundError`**        | `NotFound`                  | 选手代码未声明该顶层函数。通常直接判定该用例 0 分                |
+| **`NotFoundError`**        | `NotFound`                  | 选手代码未声明该顶层函数。未捕获时 SDK 兜底判 0 分（见下文）     |
 | **`RejectedError`**        | `Rejected`                  | 参数/返回值不符合类型白名单，或序列化后单帧体量 > 1 MiB          |
 | **`SolutionTimeoutError`** | `CallTimeout`               | 单次函数执行耗时突破 `timeout_ms` 阈值                           |
 | **`SystemError`**          | `Exception` / `SystemError` | 选手函数执行崩溃抛错。异常消息包含由宿主清洗过绝对路径的安全堆栈 |
 | **`ConnectionError`**      | IPC 断开                    | Solution Host 进程提前闪退或 IPC 管道破裂                        |
+
+### 选手缺函数的兜底判分
+
+`NotFoundError` 携带 `fn`（被调用的函数名）与 `reason`（Solution host 给出的细分原因）：
+
+- `reason == "not_registered"`：选手代码正常加载，但未定义该函数。若 evaluate.py **未捕获**该异常，SDK 会在进程退出前写出 0 分结果 `{"score": 0, "details": {"message": "未定义函数 solve", "error_code": "function_not_found", "function": "solve"}}`，最终为 `finished` + 0 分；
+- `reason == "entry_load_failed"`：选手代码语法错误或导入失败（注册表为空），**不兜底**，仍判为 `error`；
+- 缺少 `reason`（旧版 solution 镜像）：不兜底，保持旧行为。
+
+evaluate.py 自行 `try/except NotFoundError` 并写出结果时，SDK 不会重复输出；结果已写出后才抛出的异常也不会追加第二个 RESULT。如需关闭兜底，可使用 `SolutionRunner(missing_function_as_zero=False)`。
 
 ### 参数与返回值严格白名单校验
 

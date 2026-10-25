@@ -39,17 +39,21 @@ async function ensureConnected() {
 }
 
 /**
- * 临时覆盖 NOJ_ENV 使限流逻辑可工作。
- * .env 中 NOJ_ENV=test 会禁用限流，而本测试需要验证限流行为。
+ * 只在当前用例开启限流。
+ *
+ * 不要临时删除/修改 NOJ_ENV：并行 runner 中它是整个测试进程共享的环境变量，
+ * 另一个测试恢复该变量会让本用例在第 10 次检查时突然退回“限流关闭”语义。
+ * `isRateLimitEnabled()` 在 NOJ_ENV=test 时允许 RATE_LIMIT_ENABLED 显式覆盖，
+ * 因此只改这个专用开关即可。
  */
 async function withRateLimitEnabled<T>(fn: () => Promise<T>): Promise<T> {
-  const orig = Deno.env.get("NOJ_ENV");
-  Deno.env.delete("NOJ_ENV");
+  const orig = Deno.env.get("RATE_LIMIT_ENABLED");
+  Deno.env.set("RATE_LIMIT_ENABLED", "true");
   try {
     return await fn();
   } finally {
-    if (orig !== undefined) Deno.env.set("NOJ_ENV", orig);
-    else Deno.env.delete("NOJ_ENV");
+    if (orig !== undefined) Deno.env.set("RATE_LIMIT_ENABLED", orig);
+    else Deno.env.delete("RATE_LIMIT_ENABLED");
   }
 }
 

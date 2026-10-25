@@ -258,7 +258,8 @@ export async function handleResultMessage(data: unknown): Promise<void> {
     }
 
     // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
-    if (applied.created_at && !applied.is_rejudge) {
+    // 已调度自动重试的平台错误不是最终结果，不计入。
+    if (applied.created_at && !applied.is_rejudge && !applied.auto_retry) {
       const startedMs = Date.parse(applied.created_at);
       if (Number.isFinite(startedMs)) {
         metrics.observe(
@@ -279,6 +280,8 @@ export async function handleResultMessage(data: unknown): Promise<void> {
     for (const event of applied.outbox_events) {
       publishSseEventAfterTx(event.channel, event.payload, event.event_id);
     }
+
+    // 业务重试的派发任务已在结果事务内登记，由持久 worker 恢复。
 
     // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
     await publishQueueChange(judgeResult.submission_id);

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-const props = defineProps<{ domainSlug: string }>();
+import type { DomainProblemSummary } from '~/utils/domain-problems';
+const props = defineProps<{ domainSlug: string; initialData?: DomainProblemSummary[] }>();
 const api = useDomainProblems(), { user } = useAuth();
 async function sample() {
   const first = await api.list(props.domainSlug, 1);
@@ -13,7 +14,9 @@ const { data, status, error, refresh } = await useViewAsyncData(
   'randomProblems',
   () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'random-problems'),
   sample,
+  { immediate: !props.initialData },
 );
+const problems = computed(() => props.initialData ?? data.value ?? []);
 </script>
 <template>
   <section class="flex h-full min-h-64 flex-col rounded border border-border bg-bg-panel">
@@ -25,10 +28,10 @@ const { data, status, error, refresh } = await useViewAsyncData(
     </div>
     <div class="flex-1 p-3">
       <AsyncContent
-        :status="error ? 'error' : !data && status === 'pending' ? 'loading' : data?.length ? 'data' : 'empty'"
+        :status="error ? 'error' : problems.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
         :error="error ? extractApiError(error).message : undefined" empty-text="暂无可浏览的题目" @retry="refresh()">
         <ul class="space-y-2">
-          <li v-for="problem in data" :key="problem.binding_id">
+          <li v-for="problem in problems" :key="problem.binding_id">
             <NuxtLink :to="workspaceProblemPath(domainSlug, problem.reference.display_ref)"
               class="block rounded border border-border p-3 no-underline transition-colors hover:border-primary hover:bg-primary-hover-bg">
               <p

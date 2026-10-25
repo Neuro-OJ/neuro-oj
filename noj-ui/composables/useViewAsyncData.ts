@@ -8,7 +8,11 @@ export function useViewAsyncData<T>(
   _section: string,
   key: MaybeRefOrGetter<string>,
   handler: () => Promise<T>,
-  options: { watch?: import('vue').WatchSource[]; immediate?: boolean } = {},
+  options: {
+    watch?: import('vue').WatchSource[];
+    immediate?: boolean;
+    dedupe?: 'cancel' | 'defer';
+  } = {},
 ) {
   return useAsyncData<T>(key, handler, options);
 }

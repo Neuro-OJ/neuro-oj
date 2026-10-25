@@ -64,8 +64,10 @@
 import type { FeedItem } from '~/composables/useCommunity';
 import { stripMarkdown } from '~/utils/markdown';
 import { extractApiError } from '~/utils/apiError';
+import type { CommunityConfig } from '~/composables/useCommunity';
 
 const { api } = useApi();
+const props = defineProps<{ initialData?: FeedItem[]; initialConfig?: CommunityConfig }>();
 const scope = useCommunityScope().capture();
 
 const { isLoggedIn } = useAuth();
@@ -81,8 +83,8 @@ const refreshing = ref(false);
  */
 const available = computed(
   () =>
-    isLoggedIn.value && config.value?.follows_enabled === true &&
-    config.value?.moments_enabled === true,
+    isLoggedIn.value && (props.initialConfig ?? config.value)?.follows_enabled === true &&
+    (props.initialConfig ?? config.value)?.moments_enabled === true,
 );
 
 const feed = await useViewAsyncData(
@@ -95,8 +97,9 @@ const feed = await useViewAsyncData(
       query: { view: 'following', limit: 5 }, silent: true,
     });
   },
+  { immediate: !props.initialData },
 );
-const items = computed(() => feed.data.value?.data ?? []);
+const items = computed(() => props.initialData ?? feed.data.value?.data ?? []);
 const loading = computed(() => feed.status.value === 'pending');
 const error = computed(() => feed.error.value ? extractApiError(feed.error.value).message : '');
 async function refresh() {

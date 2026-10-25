@@ -562,7 +562,7 @@ export async function saveEvaluationResultCommand(
   if (!outcome.applied) return outcome;
 
   // 统计只计算首次结果；竞赛结束前保持全站统计隔离，避免泄露判分信号。
-  if (!outcome.is_rejudge && outcome.created_at) {
+  if (!outcome.is_rejudge && !outcome.auto_retry && outcome.created_at) {
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {

@@ -251,6 +251,12 @@ export async function saveProblemDraft(
     expectedRevision: number | null | undefined;
     actorId?: string | null;
     context?: Context;
+    /**
+     * 客户端直接提交的草稿内容（`PUT /problems/:id/draft`）。为 true 时，AI 题的
+     * `template_content` 以当前草稿为准、忽略客户端值：模板只能由题包导入流程
+     * 写入（与 `updateProblem` 的守卫同一口径），编辑器回传的空串不能清掉它。
+     */
+    fromClient?: boolean;
   },
   executor?: Executor,
 ): Promise<ProblemDraftView> {
@@ -278,6 +284,7 @@ export async function saveProblemDraft(
   }
 
   const write = async (tx: Executor): Promise<ProblemDraftView> => {
+    let content = input.content;
     // 锁定题目行：串行化同一题的草稿编辑与发布，防止 revision 丢失
     await tx.execute(
       sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
@@ -291,6 +298,19 @@ export async function saveProblemDraft(
     ).limit(1);
     const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
     if (current !== expected) throw draftRevisionConflict(expected, current);
+
+    // 界面题的评测脚本由模板生成：编辑器保存时回传空模板曾把导入的模板清空，
+    // 发布后所有界面提交都因缺少模板函数而评测出错（2026-10-16 P23 事故）。
+    if (input.fromClient && content.kind === "ai") {
+      const base = row
+        ? row.content as ProblemDraftContent
+        : (await getProblemDraft(problemId, identity, tx)).content;
+      const template = base.kind === "ai" &&
+          typeof base.template_content === "string"
+        ? base.template_content
+        : "";
+      content = { ...content, template_content: template };
+    }
 
     // 仅首次物化继承基线引用；已有草稿的空引用可能表示用户主动删除，不能补回。
     if (!row) {
@@ -309,7 +329,7 @@ export async function saveProblemDraft(
 
     if (row) {
       await tx.update(problemDrafts).set({
-        content: input.content,
+        content,
         revision: nextRevision,
         base_version_id: baseVersionId,
         updated_by: input.actorId ?? null,
@@ -320,7 +340,7 @@ export async function saveProblemDraft(
         problem_id: problemId,
         base_version_id: baseVersionId,
         revision: nextRevision,
-        content: input.content,
+        content,
         updated_by: input.actorId ?? null,
         updated_at: now,
       });
@@ -330,7 +350,7 @@ export async function saveProblemDraft(
       problem_id: problemId,
       base_version_id: baseVersionId,
       revision: nextRevision,
-      content: input.content,
+      content,
       updated_by: input.actorId ?? null,
       updated_at: now,
       synthesized: false,
