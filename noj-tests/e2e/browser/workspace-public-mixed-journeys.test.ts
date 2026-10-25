@@ -101,12 +101,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    decodeURIComponent(new URL(response.url()).pathname) === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending;
+  const [response] = await Promise.all([
+    page.waitForResponse((result) =>
+      decodeURIComponent(new URL(result.url()).pathname) === `/api/v1${path}` &&
+      result.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await response.json();
   assertEquals(
     response.ok(),
@@ -648,11 +649,11 @@ Deno.test({
           await learner.page.getByRole("button", { name: "更多", exact: true })
             .click();
           await learner.page.getByRole("menuitem", {
-            name: "教学工作台",
+            name: "班级研练",
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
-            url.pathname === `/d/${schoolB}/teaching`
+            url.pathname === `/d/${schoolB}/classrooms`
           );
         },
       );
@@ -669,12 +670,10 @@ Deno.test({
                 exact: true,
               }),
             ).toBeVisible();
-            await expect(
-              page.getByRole("heading", {
-                name: `共同源题 ${suffix}`,
-                exact: true,
-              }).locator("..").getByText(reference, { exact: true }),
-            ).toBeVisible();
+            // 编号徽章与标题位于 ProblemHeader 的同级区域，不在 h1 的
+            // 直接父节点内；全局精确文本仍只匹配当前题目的来源编号。
+            await expect(page.getByText(reference, { exact: true }))
+              .toBeVisible();
           }
           const first = await handIn(
             learner.page,

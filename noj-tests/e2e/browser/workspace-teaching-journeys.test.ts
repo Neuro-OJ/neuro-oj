@@ -69,12 +69,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const response = page.waitForResponse((result) =>
-    new URL(result.url()).pathname === path &&
-    result.request().method() === method
-  );
-  await action();
-  const result = await response;
+  const [result] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === path &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await result.json();
   if (!result.ok()) {
     throw new Error(
@@ -308,7 +309,7 @@ Deno.test({
             `/api/v1/domains/${slug}/classrooms`,
             () =>
               teacher.page.getByRole("button", {
-                name: "创建并进入",
+                name: "创建并进入班级",
                 exact: true,
               }).click(),
           );

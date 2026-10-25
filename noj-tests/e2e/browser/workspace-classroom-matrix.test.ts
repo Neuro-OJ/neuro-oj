@@ -76,12 +76,14 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const result = await pending, body = await result.json();
+  const [result] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === `/api/v1${path}` &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
+  const body = await result.json();
   assertEquals(
     result.ok(),
     true,
@@ -123,7 +125,7 @@ async function setRole(
     page,
     "PUT",
     `/domains/${slug}/classrooms/${classId}/members/${actor.id}`,
-    () => modal.getByRole("button", { name: "保存身份与授权" }).click(),
+    () => modal.getByRole("button", { name: "保存身份配置" }).click(),
   );
 }
 async function remove(

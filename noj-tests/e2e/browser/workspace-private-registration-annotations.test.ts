@@ -53,12 +53,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === path &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending;
+  const [response] = await Promise.all([
+    page.waitForResponse((result) =>
+      new URL(result.url()).pathname === path &&
+      result.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await response.json();
   assertEquals(response.ok(), true, JSON.stringify(body));
   return body;
@@ -671,7 +672,7 @@ Deno.test({
             `/d/${slug}/classrooms/${classroomId}/settings`,
           );
           await teacher.page.getByRole("button", {
-            name: "归档并保留历史",
+            name: "归档此班级并保留历史",
             exact: true,
           }).click();
           const archived = await write(
@@ -684,7 +685,10 @@ Deno.test({
           );
           assertEquals(archived.data.status, "archived");
           await expect(
-            teacher.page.getByText("当前只能读取班级设置", { exact: true }),
+            teacher.page.getByText(
+              "当前只能读取班级设置，无权修改配置或交接负责人",
+              { exact: true },
+            ),
           ).toBeVisible();
           const ownPanel = await openStudentReview(
             student.page,

@@ -125,8 +125,10 @@ Deno.test({
           `/api/v1/domains/${slug}/invitations` &&
         response.request().method() === "POST"
       );
-      await page.getByRole("button", { name: "生成邀请", exact: true }).click();
-      const invitation = await invitationResponse;
+      const [invitation] = await Promise.all([
+        invitationResponse,
+        page.getByRole("button", { name: "生成邀请", exact: true }).click(),
+      ]);
       assertEquals(invitation.status(), 201);
       const body = await invitation.json();
       assertEquals(body.data.mode, "once");
@@ -251,23 +253,36 @@ Deno.test({
       const quota = limits.body as {
         data: { configured: Record<string, number | null>; revision: number };
       };
-      const preciseBytes = 1073741825;
+      const baselineBytes = 1073741824;
+      const preciseBytes = baselineBytes + 1;
       const configured = await api("PATCH", `/api/v1/domains/${slug}/limits`, {
         token,
         headers: { "If-Match": String(quota.data.revision) },
-        body: { ...quota.data.configured, storage_bytes: preciseBytes },
+        body: { ...quota.data.configured, storage_bytes: baselineBytes },
       });
       assertEquals(configured.status, 200, JSON.stringify(configured.body));
       await gotoPage(page, `/d/${slug}/settings/limits`);
-      await expect(page.getByRole("button", { name: "保存配额", exact: true }))
+      await expect(
+        page.getByRole("button", { name: "保存配额配置", exact: true }),
+      )
         .toBeVisible();
       await capture("limits-390");
-      const savedQuota = page.waitForResponse((response) =>
-        new URL(response.url()).pathname === `/api/v1/domains/${slug}/limits` &&
-        response.request().method() === "PATCH"
-      );
-      await page.getByRole("button", { name: "保存配额", exact: true }).click();
-      const quotaResponse = await savedQuota;
+      // API 夹具先写入基线值；页面随后切换到字节单位并编辑为目标值，
+      // 真实表单因此进入 dirty 状态，保存按钮才具备写入前提。
+      await page.getByRole("combobox", { name: "存储单位", exact: true })
+        .click();
+      await page.getByRole("option", { name: "字节", exact: true }).click();
+      await page.getByRole("spinbutton", { name: "存储空间上限", exact: true })
+        .fill(String(preciseBytes));
+      const [quotaResponse] = await Promise.all([
+        page.waitForResponse((response) =>
+          new URL(response.url()).pathname ===
+            `/api/v1/domains/${slug}/limits` &&
+          response.request().method() === "PATCH"
+        ),
+        page.getByRole("button", { name: "保存配额配置", exact: true })
+          .click(),
+      ]);
       assertEquals(quotaResponse.status(), 200);
       assertEquals(
         quotaResponse.request().postDataJSON().storage_bytes,
