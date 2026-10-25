@@ -145,8 +145,17 @@ async function runTests(
     redisUrl,
     redisPrefix,
   );
+  const forwardedArgs = parseTestArgs(testArgs);
+  const coverageEnabled = forwardedArgs.some((arg) =>
+    arg === "--coverage" || arg.startsWith("--coverage=")
+  );
+  const denoTestArgs = ["test", "-A"];
+  // 正式普通测试沿用快速启动模式；覆盖率任务不加 --no-check，确保 coverage
+  // 门禁同时保留测试文件的类型检查，避免 CI 只跑行为而漏掉新增类型错误。
+  if (!coverageEnabled) denoTestArgs.push("--no-check");
+  denoTestArgs.push(...forwardedArgs, "tests");
   const child = new Deno.Command("deno", {
-    args: ["test", "-A", "--no-check", ...parseTestArgs(testArgs), "tests"],
+    args: denoTestArgs,
     env,
     stdout: "inherit",
     stderr: "inherit",

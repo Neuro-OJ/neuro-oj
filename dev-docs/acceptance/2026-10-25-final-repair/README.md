@@ -9,7 +9,7 @@
 - Domain 资源同时接受公开 ID 与内部 UUID 时，先解析并使用 canonical internal ID，避免跨域授权、比赛 admission 和排名查询混用标识；
 - Core 的平台错误自动重试持久化到 background task，Judge 不再重复承担业务重试；
 - Provider 错误码、邀请政策、资源清理和版本化评测夹具保持同一合同；
-- Gateway 迁移目录覆盖纳入配置声明，覆盖率阶段的最小 Redis/HTTP 测试替身补齐类型；
+- Gateway 迁移目录覆盖纳入配置声明，覆盖率阶段的最小 Redis/HTTP 测试替身补齐类型，并让 coverage 经过同一套隔离 PG/Redis 测试启动器；
 - 并行验收中的登录限流测试不再修改进程级 `NOJ_ENV`，改用显式 `RATE_LIMIT_ENABLED` 覆盖，避免测试隔离竞态；
 - 空间首页 SSR 首屏使用 Domain home BFF 聚合 envelope，避免组件级 Core 直读和身份相关的 SSR 500；
 - BFF SSR 夹具补齐 `problem-summaries` 合同，覆盖身份、水合、SPA 单请求和局部刷新。
@@ -30,7 +30,7 @@ Domain 资源边界不再把 URL 中的 `public_id` 当作数据库主键直接�
 | Core contests 域 | 128 passed / 0 failed | 含公开 ID/内部 ID canonicalization、ranking、admission |
 | Core access 精确回归 | 1 passed / 0 failed / 402 filtered | login throttle 失败累加；另有单文件 6/6 隔离回归 |
 | Core 静态门禁 | passed | fmt、lint、types、contracts |
-| LLM Gateway | 184 passed / 0 failed / 1 ignored | Provider 状态与跨域 400/404 合同；coverage 入口本地 85.9% lines / 85.7% branches / 84.9% functions |
+| LLM Gateway | 184 passed / 0 failed / 1 ignored | Provider 状态与跨域 400/404 合同；coverage 入口本地隔离 PG/Redis 86.1% lines / 85.7% branches / 84.9% functions |
 | Judge | 297 passed / 0 failed | `cargo fmt --check`、`cargo check --all-targets` 通过；Docker E2E 按环境跳过 |
 | CLI | 526 passed / 0 failed / 4 ignored | check、普通测试、production 测试 |
 | UI Deno 测试 | 310 passed / 0 failed | 生产构建前后的非组件测试 |

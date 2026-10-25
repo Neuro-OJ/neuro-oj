@@ -8,7 +8,7 @@
     "test": "deno run -A scripts/test-launcher.ts",
     "test:logic": "deno test -A --no-check tests/test-launcher_test.ts tests/attempt_scope_test.ts tests/billing_test.ts tests/config_registry_test.ts tests/config_test.ts tests/crypto_test.ts tests/domain_isolation_test.ts tests/health_ready_test.ts tests/internal_usage_sql_test.ts tests/limits_test.ts tests/logger_test.ts tests/metrics_test.ts tests/providers_test.ts tests/quota_policy_test.ts tests/replay_test.ts tests/routes_llm_test.ts tests/upstream_guard_test.ts tests/usage_retention_test.ts",
     "test:upstream": "deno test -A --no-check tests/real_api_test.ts",
-    "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=54 coverage",
+    "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno run -A scripts/test-launcher.ts --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=54 coverage",
     "test:snapshot": "deno test -A --no-check tests/replay_test.ts",
     "test:snapshot:record": "deno run -A scripts/record-replay.ts",
     "db:migrate": "deno run --env-file=.env -A src/db/migrate-cli.ts",
