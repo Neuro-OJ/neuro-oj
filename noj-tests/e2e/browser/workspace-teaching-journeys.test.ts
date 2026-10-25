@@ -474,6 +474,12 @@ Deno.test({
           );
           await expect(student.page.getByText("0 · 未达标", { exact: true }))
             .toBeVisible({ timeout: 15000 });
+          // 发布抽屉在发布后保持打开；重新进入作业详情，确保教师从真实矩阵页
+          // 读取异步回写的成绩，而不是定位抽屉背后的隐藏控件。
+          await gotoPage(
+            teacher.page,
+            `/d/${slug}/assignments/${assignmentId}`,
+          );
           await teacher.page.getByRole("button", {
             name: "刷新成绩",
             exact: true,

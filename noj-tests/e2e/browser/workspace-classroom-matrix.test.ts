@@ -436,7 +436,7 @@ Deno.test({
             .click();
           await choose(coach.page, "完成状态筛选", "未达标");
           await coach.page.getByRole("textbox", {
-            name: "学生搜索",
+            name: "搜索学生用户名",
             exact: true,
           }).fill(pupils[0].username);
           await coach.page.getByRole("button", { name: "搜索", exact: true })
