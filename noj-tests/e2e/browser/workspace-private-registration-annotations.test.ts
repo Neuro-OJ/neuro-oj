@@ -129,9 +129,10 @@ async function submit(
   await page.waitForURL((url) =>
     url.pathname === `/d/${slug}/submissions/${id}`
   );
-  const result = page.getByRole("heading", { name: "评测结果", exact: true })
-    .locator("..");
-  await expect(result.getByText(new RegExp(`^${score}(?:\\.0+)?\\s*分$`)))
+  // DomainSubmissionResult 使用结果状态标题（如“通过”/“评测完成”），
+  // 分数是独立指标胶囊，不再挂在旧的“评测结果”标题下。
+  // 分数数值与单位是相邻的独立节点；定位格式化后的数值节点。
+  await expect(page.getByText(score.toFixed(1), { exact: true }).first())
     .toBeVisible({
       timeout: 60_000,
     });

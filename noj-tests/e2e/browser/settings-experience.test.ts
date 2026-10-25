@@ -113,6 +113,11 @@ Deno.test({
       assertEquals(links.some((href) => href?.includes("#")), false);
       await settingsNav.getByRole("link", { name: "邀请", exact: false })
         .click();
+      // 成功重载后这里又编辑了简介；域设置离开保护会先询问是否放弃。
+      // 先确认离开，再等待目标页，避免把预期的未保存保护误报成导航失败。
+      await page.getByRole("dialog", { name: "未保存的修改" })
+        .getByRole("button", { name: "确认", exact: true })
+        .click();
       await page.waitForURL(`**/d/${slug}/settings/invitations`);
       await page.getByRole("button", { name: /一次性邀请/ }).click();
       const invitationResponse = page.waitForResponse((response) =>

@@ -537,7 +537,11 @@ Deno.test({
             student.token,
           );
           await gotoPage(applicant.page, `/d/${slug}/settings`);
-          await expect(applicant.page.getByText("创建后固定", { exact: false }))
+          await expect(
+            applicant.page.getByText(/创建后(?:固定|不可更改)/, {
+              exact: false,
+            }),
+          )
             .toBeVisible();
           await expect(
             applicant.page.getByRole("button", {

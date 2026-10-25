@@ -419,10 +419,10 @@ Deno.test({
         await learner.page.waitForURL((url) =>
           url.pathname === `/d/main/trainings/${training.data.id}`
         );
-        await learner.page.getByRole("link", {
-          name: "在当前域作答",
-          exact: true,
-        }).click();
+        // 题单条目当前直接使用“继续作答/再次练习”进入题目页；旧的
+        // “在当前域作答”按钮已随 Domain 题单重构移除。
+        await learner.page.getByRole("link", { name: /(?:继续|再次)作答/ })
+          .click();
         await learner.page.waitForURL((url) =>
           url.pathname === `/d/main/problems/${problem.number}`
         );

@@ -206,7 +206,7 @@ Deno.test({
         async () => {
           await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
           await session.page.getByRole("link", {
-            name: "打开作答界面",
+            name: "打开界面",
             exact: true,
           }).click();
           await frame(session.page).getByLabel("参数提示").fill("first");

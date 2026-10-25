@@ -607,14 +607,17 @@ Deno.test({
           });
           const path =
             `/api/v1/domains/${slug}/classrooms/${classroomId}/submissions/objective/${objectiveSubmissionId}/attempts`;
-          const attempts = teacher.page.waitForResponse((response) =>
-            response.request().method() === "GET" &&
-            new URL(response.url()).pathname === path
-          );
-          await panel.locator("div.divide-y > button").filter({
-            hasText: "客观题",
-          }).click();
-          const response = await attempts;
+          // 将监听与点击绑定在同一个 Promise.all 中，失败时也会被当前
+          // step 捕获，避免先创建未被消费的 waitForResponse 悬空拒绝。
+          const [response] = await Promise.all([
+            teacher.page.waitForResponse((result) =>
+              result.request().method() === "GET" &&
+              new URL(result.url()).pathname === path
+            ),
+            panel.locator("div.divide-y > button").filter({
+              hasText: "客观题",
+            }).click(),
+          ]);
           assertEquals(response.status(), 200);
           const evidence = await response.json();
           assertEquals(evidence.data.data.length, 1);

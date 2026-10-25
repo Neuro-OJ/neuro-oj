@@ -94,8 +94,11 @@ async function choose(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 function memberRow(page: Page, username: string) {
-  return page.getByText(username, { exact: true }).first().locator("..")
-    .locator("..");
+  // 成员名位于左侧信息列，操作按钮位于同一行的右侧列；按行的稳定
+  // transition-colors 标记收敛两列，而不是依赖内部 div 层级。
+  return page.locator("div.transition-colors").filter({
+    has: page.getByText(username, { exact: true }),
+  }).first();
 }
 async function setRole(
   page: Page,
