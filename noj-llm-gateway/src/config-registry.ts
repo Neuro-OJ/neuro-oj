@@ -71,6 +71,12 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     defaultValue: "http://127.0.0.1:8000",
   },
   {
+    key: "NOJ_GATEWAY_MIGRATIONS_DIR",
+    description: "Gateway 迁移文件目录覆盖（未设置时使用随包 drizzle 目录）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
     key: "DATABASE_URL",
     description: "PostgreSQL 连接串（配额与用量表）",
     isSecret: true,

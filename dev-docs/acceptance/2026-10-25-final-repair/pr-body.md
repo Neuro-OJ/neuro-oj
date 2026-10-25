@@ -7,6 +7,7 @@
 - Domain 竞赛访问统一接受 public ID / UUID 后解析 canonical internal ID，授权、题目绑定、参与者和排名不再混用标识；
 - Core 持久化平台错误自动重试，Judge 删除重复业务重试路径；
 - Provider 错误码、邀请注册政策、客观题竞赛 admission 与测试清理合同收口；
+- Gateway 迁移目录覆盖纳入配置声明，并修复覆盖率 job 中最小测试替身的类型错误；
 - 空间首页首屏改为消费 Domain home BFF 聚合 envelope，覆盖 SSR、身份分支、浏览器水合、SPA 单请求和局部刷新；
 - 更新文件规模棘轮与验收 Agent Note。
 
@@ -17,6 +18,7 @@
 - Core 双分片并行真实 PostgreSQL/Redis：2246 passed / 0 failed / 2 ignored（20m31s；login throttle 环境隔离修复后复验）。
 - Core contests：128 passed / 0 failed；evaluations：485 passed / 0 failed。
 - Gateway：184 passed / 0 failed / 1 ignored；Judge：297 passed / 0 failed；CLI：526 passed / 0 failed / 4 ignored。
+- Gateway coverage 入口：184 passed / 0 failed / 1 ignored；All files 85.9% lines / 85.7% branches / 84.9% functions（本地隔离 PG/Redis）。
 - UI：Deno 310 passed / 0 failed；组件 367 passed / 0 failed；BFF SSR 与 Redis cache 验收通过。
 
 ## 验收边界

@@ -29,11 +29,22 @@ import {
   runRedisPrefix,
 } from "./integration-env.ts";
 
+/** 该用例只需 ioredis 的三项操作，避免 Deno 下默认导出类型解析漂移。 */
+type RedisConnection = {
+  get(key: string): Promise<string | null>;
+  eval(
+    script: string,
+    keyCount: number,
+    ...args: (string | number)[]
+  ): Promise<unknown>;
+  quit(): Promise<unknown>;
+};
+
 interface Resources {
   admin: ReturnType<typeof createDb>;
   db: ReturnType<typeof createDb>;
   redis: RedisClient;
-  connection: IORedis;
+  connection: RedisConnection;
   schema: string;
   url: string;
   prefix: string;
@@ -63,19 +74,21 @@ async function createResources(): Promise<Resources> {
   url.searchParams.set("options", "-csearch_path=" + schema);
   const db = createDb(url.toString());
   // @ts-ignore - Deno 对 ioredis 构造函数的类型解析限制
-  const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1 });
+  const connection = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 1,
+  }) as unknown as RedisConnection;
   const prefix = runRedisPrefix("policy-concurrency");
-  const redis: RedisClient = {
+  const redis = {
     serverId: () => Promise.resolve("policy-concurrency-server"),
-    get: (key) => connection.get(prefix + key),
-    eval: (script, keys, args) =>
+    get: (key: string) => connection.get(prefix + key),
+    eval: (script: string, keys: string[], args: (string | number)[]) =>
       connection.eval(
         script,
         keys.length,
-        ...keys.map((key) => prefix + key),
+        ...keys.map((key: string) => prefix + key),
         ...args,
       ),
-  };
+  } as unknown as RedisClient;
   try {
     await runMigrations(url.toString());
     return {
