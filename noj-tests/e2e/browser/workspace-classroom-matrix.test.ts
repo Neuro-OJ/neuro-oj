@@ -432,6 +432,8 @@ Deno.test({
         "实际筛选未达标学生并下载CSV，移除学生后切换历史名单与窄屏读取",
         async () => {
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
+          await coach.page.getByRole("button", { name: "筛选", exact: true })
+            .click();
           await choose(coach.page, "完成状态筛选", "未达标");
           await coach.page.getByRole("textbox", {
             name: "学生搜索",

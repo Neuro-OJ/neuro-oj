@@ -169,6 +169,9 @@ async function objectiveFixture(slug: string, admin: string, title: string) {
 }
 
 async function publish(page: Page, slug: string, assignmentId: string) {
+  // 作业详情页把生命周期操作收进“发布与设置”抽屉；先打开当前可见的
+  // 管理入口，再在抽屉内执行真实发布确认。
+  await page.getByRole("button", { name: "发布与设置", exact: true }).click();
   await page.getByRole("button", { name: "发布作业", exact: true }).click();
   await write(
     page,
