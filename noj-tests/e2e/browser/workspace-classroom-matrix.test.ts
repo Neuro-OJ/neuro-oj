@@ -653,6 +653,11 @@ Deno.test({
             }),
           ).toBeVisible();
           await goto(successor.page, `/d/${slug}/assignments/${taskId}`);
+          const feedbackTab = successor.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first();
+          await expect(feedbackTab).toBeVisible({ timeout: 15000 });
+          await feedbackTab.click();
           await expect(
             successor.page.getByText(`助教反馈 ${suffix}`, { exact: true }),
           ).toBeVisible();

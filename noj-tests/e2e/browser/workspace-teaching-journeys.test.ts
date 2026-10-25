@@ -636,9 +636,20 @@ Deno.test({
           ).toBeVisible();
           await publish(teacher.page, slug, created.data.id);
           await gotoPage(student.page, `/d/${slug}/classrooms/${classroomId}`);
+          const remediationTitle = `${title} 补题`;
+          await student.page.getByRole("link", {
+            name: remediationTitle,
+            exact: true,
+          }).click();
+          await student.page.waitForURL(
+            (url) =>
+              url.pathname === `/d/${slug}/assignments/${created.data.id}`,
+            { timeout: 15000 },
+          );
+          await ready(student.page);
           await expect(
             student.page.getByRole("heading", {
-              name: `${title} 补题`,
+              name: remediationTitle,
               exact: true,
             }),
           ).toBeVisible();
