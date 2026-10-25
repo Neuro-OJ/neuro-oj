@@ -126,7 +126,7 @@
 | noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 187 | ignore |
 | noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 173 | ignore |
 | noj-tests/e2e/browser/workspace-public-mixed-journeys.test.ts | 198 | ignore |
-| noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 185 | ignore |
+| noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 195 | ignore |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 112 | early-return |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 122 | early-return |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 176 | early-return |
