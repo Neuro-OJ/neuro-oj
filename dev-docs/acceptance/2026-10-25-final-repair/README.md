@@ -13,6 +13,8 @@
 - 并行验收中的登录限流测试不再修改进程级 `NOJ_ENV`，改用显式 `RATE_LIMIT_ENABLED` 覆盖，避免测试隔离竞态；
 - 空间首页 SSR 首屏使用 Domain home BFF 聚合 envelope，避免组件级 Core 直读和身份相关的 SSR 500；
 - BFF SSR 夹具补齐 `problem-summaries` 合同，覆盖身份、水合、SPA 单请求和局部刷新。
+- 编辑器主题浏览器 fixture 改为真实 `/d/main/solve/:reference` Domain 作答入口；390px
+  场景通过“切换侧栏”交互打开默认收起的题面后再验收 Markdown 排版。
 
 ## 2. Domain 重点结论
 
@@ -38,6 +40,7 @@ Domain 资源边界不再把 URL 中的 `public_id` 当作数据库主键直接�
 | UI 类型/格式/静态检查 | passed | fmt、lint、Deno/Nuxt typecheck |
 | UI BFF SSR | passed | 四种身份；真实构建、SSR、浏览器水合、SPA 单请求、局部刷新 |
 | UI BFF Redis cache | passed | 两个生产构建副本共享 Redis 命中；TTL 30 秒；Redis 不可用时 200 + bypass 降级 |
+| UI 编辑器主题浏览器 | 2 passed / 0 failed | 本地生产构建后 Chromium 1440px、390px；Domain solve fixture 与窄屏侧栏交互 |
 
 并行 Core 的第一次旧候选曾有 2240 passed / 6 failed / 2 ignored；本轮修复 contest fixture 的稳定清理方式，并让 login throttle 测试只使用显式 `RATE_LIMIT_ENABLED`，不再删除/恢复共享的 `NOJ_ENV`。修复后的新双分片 run 已得到 2246 passed / 0 failed / 2 ignored（20m31s）。这证明当前验收栈在本地并行 runner 下无已知失败，但生产签核仍须等待 CI、人工 review 及下方外部证据。
 

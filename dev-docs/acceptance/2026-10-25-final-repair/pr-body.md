@@ -9,6 +9,7 @@
 - Provider 错误码、邀请注册政策、客观题竞赛 admission 与测试清理合同收口；
 - Gateway 迁移目录覆盖纳入配置声明，并修复覆盖率 job 中最小测试替身的类型错误；coverage 入口改用隔离 PG/Redis 测试启动器，避免集成测试在 CI 中缺失资源而失败；
 - 空间首页首屏改为消费 Domain home BFF 聚合 envelope，覆盖 SSR、身份分支、浏览器水合、SPA 单请求和局部刷新；
+- 编辑器主题浏览器 fixture 改用真实 Domain solve 入口，并覆盖 390px 窄屏侧栏交互；
 - 更新文件规模棘轮与验收 Agent Note。
 
 ## 验证
@@ -20,6 +21,7 @@
 - Gateway：184 passed / 0 failed / 1 ignored；Judge：297 passed / 0 failed；CLI：526 passed / 0 failed / 4 ignored。
 - Gateway coverage 入口：184 passed / 0 failed / 1 ignored；All files 86.1% lines / 85.7% branches / 84.9% functions（本地隔离 PG/Redis，覆盖率模式保留类型检查）。
 - UI：Deno 310 passed / 0 failed；组件 367 passed / 0 failed；BFF SSR 与 Redis cache 验收通过。
+- UI 编辑器主题：Chromium 1440px、390px 均通过（2 passed / 0 failed），使用 Domain solve fixture。
 
 ## 验收边界
 
