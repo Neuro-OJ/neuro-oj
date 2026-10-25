@@ -62,6 +62,13 @@ async function select(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
+/** 求助卡片的状态文本与正文由不同节点渲染，按用户可见卡片定位。 */
+function helpButton(page: Page, body: string, state: "待处理" | "已处理") {
+  return page.locator('section[aria-label="反馈与求助"] button').filter({
+    hasText: body,
+  }).filter({ hasText: state }).first();
+}
+
 /** 页面写操作的响应同时作为稳定资源定位依据。 */
 async function write(
   page: Page,
@@ -514,12 +521,8 @@ Deno.test({
             name: "发送求助",
             exact: true,
           }).click();
-          await expect(
-            student.page.getByRole("button", {
-              name: `${question} 待处理`,
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(helpButton(student.page, question, "待处理"))
+            .toBeVisible();
           await teacher.page.reload();
           await ready(teacher.page);
           await teacher.page.getByRole("tab", {
@@ -540,10 +543,7 @@ Deno.test({
           }).click();
           await expect(teacher.page.getByText(feedback, { exact: true }))
             .toBeVisible();
-          await teacher.page.getByRole("button", {
-            name: `${question} 待处理`,
-            exact: true,
-          }).click();
+          await helpButton(teacher.page, question, "待处理").click();
           await teacher.page.getByRole("textbox", {
             name: "求助回复",
             exact: true,
@@ -556,19 +556,12 @@ Deno.test({
             name: "标记已处理",
             exact: true,
           }).click();
-          await expect(
-            teacher.page.getByRole("button", {
-              name: `${question} 已处理`,
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(helpButton(teacher.page, question, "已处理"))
+            .toBeVisible();
           await student.page.reload();
           await expect(student.page.getByText(feedback, { exact: true }))
             .toBeVisible();
-          await student.page.getByRole("button", {
-            name: `${question} 已处理`,
-            exact: true,
-          }).click();
+          await helpButton(student.page, question, "已处理").click();
           await expect(student.page.getByText(reply, { exact: true }))
             .toBeVisible();
         },

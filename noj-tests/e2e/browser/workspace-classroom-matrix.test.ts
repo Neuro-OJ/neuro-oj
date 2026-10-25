@@ -449,14 +449,20 @@ Deno.test({
               exact: true,
             }),
           ).toBeVisible({ timeout: 15000 });
-          const exported = await download(coach.page, "导出 CSV");
+          const exported = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(exported.name, `assignment-${taskId}-on_time.csv`);
           assertEquals(exported.text.trim().split(/\r?\n/).length, 2);
           assertStringIncludes(exported.text, pupils[0].username);
           assertStringIncludes(exported.text, '"未达标","0"');
           await coach.page.getByRole("group", { name: "统计范围", exact: true })
             .getByRole("button", { name: "当前补做", exact: true }).click();
-          const currentCsv = await download(coach.page, "导出 CSV");
+          const currentCsv = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(currentCsv.name, `assignment-${taskId}-current.csv`);
           await goto(coach.page, `/d/${slug}/classrooms/${classId}/members`);
           await remove(coach.page, slug, classId, pupils[1]);
@@ -466,7 +472,10 @@ Deno.test({
           await choose(coach.page, "学生范围", "历史学生");
           await expect(coach.page.getByRole("table", { name: "学生成绩矩阵" }))
             .toContainText(pupils[1].username);
-          const historicalCsv = await download(coach.page, "导出 CSV");
+          const historicalCsv = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(historicalCsv.text.trim().split(/\r?\n/).length, 2);
           assertStringIncludes(historicalCsv.text, pupils[1].username);
           assertStringIncludes(historicalCsv.text, "历史学生");
