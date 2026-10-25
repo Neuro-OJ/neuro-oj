@@ -25,7 +25,8 @@ coverage 模式不加 `--no-check`，因此覆盖率门禁仍会检查测试文�
 
 ## Consequences
 
-- CI 与本地 coverage 现在使用同一套隔离资源合同，真实集成用例不再因环境变量缺失而失败。
+- CI 的 Coverage Check job 声明专属 PostgreSQL/Redis service，与本地 coverage 使用同一套
+  隔离资源合同，真实集成用例不再因环境变量或 service 缺失而失败。
 - coverage 结果包含启动器代码本身，当前本地隔离 PG/Redis 证据为 184 passed / 0 failed /
   1 ignored，All files 86.1% lines、85.7% branches、84.9% functions。
 - coverage 任务会创建临时数据库和 Redis namespace，必须依赖显式的测试资源入口；不会读取开发

@@ -24,6 +24,7 @@
     "npm:nuxt@*": "4.6.0_rolldown@1.2.13_acorn@8.19.0_ioredis@5.11.1_typescript@5.9.3_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_vue-tsc@3.3.11",
     "npm:nuxt@4.6.0": "4.6.0_rolldown@1.2.13_acorn@8.19.0_ioredis@5.11.1_typescript@5.9.3_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_vue-tsc@3.3.11",
     "npm:playwright@*": "1.62.1",
+    "npm:playwright@1.62.0": "1.62.0",
     "npm:playwright@1.62.1": "1.62.1",
     "npm:qrcode@^1.5.4": "1.5.4",
     "npm:rolldown@1.2.13": "1.2.13",
@@ -5245,15 +5246,31 @@
       ],
       "tarball": "https://registry.npmmirror.com/pkg-types/-/pkg-types-2.4.0.tgz"
     },
+    "playwright-core@1.62.0": {
+      "integrity": "sha512-nsNRyq0r2zsG8AcRHWknc9QRA5XCueC7gWMrs+Gx2tlZn9hcl8zudfh00lhJPY1DE7NmZ6bDsT9g2yey8mXljA==",
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.62.0.tgz"
+    },
     "playwright-core@1.62.1": {
       "integrity": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==",
       "bin": true,
       "tarball": "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.62.1.tgz"
     },
+    "playwright@1.62.0": {
+      "integrity": "sha512-Z14dG305dgaLu6foB1TXQagFiW8JfSUIUaUuPaKQ6NtBPKF1P/qXcqfh6c6K/icPqdy37JmjbiBXf6JNg6Sylw==",
+      "dependencies": [
+        "playwright-core@1.62.0"
+      ],
+      "optionalDependencies": [
+        "fsevents@2.3.2"
+      ],
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/playwright/-/playwright-1.62.0.tgz"
+    },
     "playwright@1.62.1": {
       "integrity": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==",
       "dependencies": [
-        "playwright-core"
+        "playwright-core@1.62.1"
       ],
       "optionalDependencies": [
         "fsevents@2.3.2"
