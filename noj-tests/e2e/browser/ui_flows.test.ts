@@ -299,25 +299,33 @@ async function submitCodeViaUI(code: string): Promise<string> {
   await p.getByRole("link", { name: "开始编码", exact: true }).click();
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
+  const created = p.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/domains/main/submissions";
+  });
   await p.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
     name: "提交评测",
     exact: true,
   }).click();
-  await p.getByRole("link", { name: "查看评测", exact: true }).click();
-  await p.waitForURL(/\/d\/main\/submissions\//);
+  const response = await created;
+  if (response.status() !== 201) {
+    throw new Error(`提交评测失败（HTTP ${response.status()}）`);
+  }
+  const body = await response.json() as { data?: { id?: string } };
+  const submissionId = body.data?.id;
+  if (!submissionId) throw new Error("提交评测响应缺少 submission id");
+  return submissionId;
 }
 
-/** 读取当前提交详情的得分；尚未获得终态时返回 null。 */
-async function currentScoreText(): Promise<string | null> {
+/** 从当前提交详情页的结果卡片读取得分；尚未获得终态时返回 null。 */
+async function verdictText(): Promise<string | null> {
   const p = mustPage();
-  const result = p.getByRole("heading", { name: "评测结果", exact: true });
-  if (await result.count() === 0) return null;
-  const span = result.locator("..").locator("span").filter({
-    hasText: /^\d+(?:\.\d+)?\s*分$/,
-  }).first();
-  if ((await span.count()) === 0) return null;
-  const text = (await span.first().textContent()) ?? "";
-  return /\d+\s*分/.test(text) ? text.trim() : null;
+  const scoreLabel = p.getByText("得分", { exact: true });
+  if (await scoreLabel.count() === 0) return null;
+  const text = (await scoreLabel.first().locator("..").textContent()) ?? "";
+  const match = text.match(/(\d+(?:\.\d+)?)\s*分/);
+  return match ? `${match[1]} 分` : null;
 }
 
 /**
@@ -329,10 +337,16 @@ async function waitForVerdict(
   submissionId: string,
   timeoutMs = 180_000,
 ): Promise<string> {
+  const p = mustPage();
+  await p.goto(
+    `${UI_URL}/d/main/submissions/${encodeURIComponent(submissionId)}`,
+    { waitUntil: "domcontentloaded" },
+  );
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const text = await verdictText(submissionId);
+    const text = await verdictText();
     if (text !== null) return text;
+    await p.reload({ waitUntil: "domcontentloaded" });
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(
@@ -402,8 +416,8 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", a
       TEST_PASSWORD,
     );
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    await submitCodeViaUI(CODE_SAMPLES.accepted);
-    const score = await waitForNewVerdict(null);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.accepted);
+    const score = await waitForVerdict(submissionId);
     // 独立题包满分 10 分，允许 UI 保留小数位。
     if (Number.parseFloat(score) !== 10) {
       throw new Error(`期望满分「10 分」，实际「${score}」`);
@@ -425,11 +439,8 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
       TEST_PASSWORD,
     );
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    // 先读取上一条（3/4 满分卡片的分数），等待新结论覆盖
-    await goto(`/d/main/problems/${problemNumber}`);
-    const prev = await currentScoreText();
-    await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
-    const score = await waitForNewVerdict(prev);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
+    const score = await waitForVerdict(submissionId);
     if (Number.parseFloat(score) === 10) {
       throw new Error(`错误答案不应满分，实际「${score}」`);
     }
