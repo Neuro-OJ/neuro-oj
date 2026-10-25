@@ -150,6 +150,22 @@ export async function buildJudgeTaskLlm(
           "DOMAIN_LLM_NOT_CONFIGURED",
         );
       }
+      // Provider 停用/删除后，Gateway 解析默认模型会返回 provider_not_found 等
+      // 4xx 业务错误。这里必须转成稳定的 400；否则 LlmGatewayError 冒泡到全局
+      // 错误处理会被当成未处理错误返回 500（CI llm-gateway「Provider停用阻止新
+      // 提交」回归复现）。
+      if (
+        error instanceof LlmGatewayError &&
+        [400, 404].includes(error.status) &&
+        (error.code === "provider_not_found" ||
+          error.code === "provider_unavailable" ||
+          error.code === "provider_disabled")
+      ) {
+        throw new BadRequestError(
+          "题目所用模型别名对应的 LLM Provider 不存在或已停用",
+          "LLM_PROVIDER_UNAVAILABLE",
+        );
+      }
       throw error;
     }
   }

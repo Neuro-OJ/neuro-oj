@@ -29,6 +29,7 @@ import {
   requireWorkspaceUser,
 } from "./policy.ts";
 import { type AccessWriteMeta, addDomainMemberTx } from "./members.ts";
+import { canRegisterWithInvitation } from "./invitation-registration-policy.ts";
 
 export interface DomainInvitationInput {
   mode?: "email" | "general" | "once";
@@ -152,13 +153,16 @@ async function previewDomainInvitationTx(
     userActorFromAuthenticatedId(row.invite.created_by),
   );
   const policy = getInstanceAccessPolicy();
-  const canRegister = getSetting("allow_register")?.value !== false &&
-    getEmailConfigStatus().configured &&
-    policy.registration_mode !== "admin_only" &&
-    (policy.registration_mode === "open" &&
-        policy.allow_domain_registration_invites &&
-        authority.context.domainPermissions.has("domain:invitations") ||
-      authority.platformAdmin);
+  const canRegister = canRegisterWithInvitation({
+    allowRegister: getSetting("allow_register")?.value !== false,
+    emailConfigured: getEmailConfigStatus().configured,
+    registrationMode: policy.registration_mode,
+    allowDomainRegistrationInvites: policy.allow_domain_registration_invites,
+    domainInviter: authority.context.domainPermissions.has(
+      "domain:invitations",
+    ),
+    platformAdmin: authority.platformAdmin,
+  });
   return {
     domain_slug: row.domain.slug,
     domain_name: row.domain.name,

@@ -159,7 +159,13 @@ async function requireEnabledProvider(
   domainId: string,
 ): Promise<void> {
   const provider = await getProviderById(db, providerId, domainId);
-  if (!provider || !provider.enabled) {
+  if (!provider) {
+    // 跨域/不存在的 Provider 一律 404：不通过 400/404 差异泄露其他域资源存在性
+    // （E2E「学校管理员不能选择其他域 Provider」合同要求 404）。
+    throw new ModelAuthorityError(404, "provider_not_found");
+  }
+  if (!provider.enabled) {
+    // 本域 Provider 已停用是可由管理员修复的状态，保留 400 语义。
     throw new ModelAuthorityError(400, "provider_not_found");
   }
 }

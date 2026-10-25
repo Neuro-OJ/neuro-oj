@@ -50,6 +50,22 @@ Deno.test({
 
       const empty = await readDomainModelSettings(db, "domain-a");
       assertEquals(empty.revision, 0);
+      // 他域已存在与随机不存在的 Provider 必须具有相同的不可见语义。
+      for (const providerId of [providerA.id, crypto.randomUUID()]) {
+        const error = await assertRejects(
+          () =>
+            updateDomainModelSettings(
+              db,
+              "domain-foreign",
+              { provider_id: providerId, model: "default-model" },
+              0,
+              "foreign-actor",
+            ),
+          ModelAuthorityError,
+          "provider_not_found",
+        );
+        assertEquals(error.status, 404);
+      }
       const settings = await updateDomainModelSettings(
         db,
         "domain-a",
@@ -134,11 +150,12 @@ Deno.test({
         "domain-a",
         providerA.revision,
       );
-      await assertRejects(
+      const disabled = await assertRejects(
         () => resolveDomainModelSelection(db, "domain-a", ["default"]),
         ModelAuthorityError,
         "provider_not_found",
       );
+      assertEquals(disabled.status, 400);
       assertEquals(
         await deleteDomainModelAlias(db, "domain-a", "fast", 1),
         true,

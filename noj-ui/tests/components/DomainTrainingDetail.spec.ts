@@ -60,8 +60,8 @@ beforeEach(() => {
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal(
     'useAsyncData',
-    async (_key: unknown, handler: () => Promise<unknown>) => ({
-      data: ref(await handler()),
+    async (_key: unknown, handler: (app?: unknown, ctx?: { signal?: AbortSignal }) => Promise<unknown>) => ({
+      data: ref(await handler(undefined, { signal: undefined })),
       status: ref('success'),
       error: ref(null),
       refresh: vi.fn(),
