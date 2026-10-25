@@ -398,6 +398,10 @@ Deno.test({
           await expect(
             assistant.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toContainText(pupils[0].username);
+          await assistant.page.getByRole("tab", {
+            name: "反馈与求助",
+            exact: true,
+          }).click();
           await assistant.page.getByRole("textbox", { name: "作业反馈正文" })
             .fill(`助教反馈 ${suffix}`);
           await write(assistant.page, "POST", `${assignment()}/feedback`, () =>

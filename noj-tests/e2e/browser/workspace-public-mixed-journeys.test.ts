@@ -670,9 +670,15 @@ Deno.test({
                 exact: true,
               }),
             ).toBeVisible();
-            // 编号徽章与标题位于 ProblemHeader 的同级区域，不在 h1 的
-            // 直接父节点内；全局精确文本仍只匹配当前题目的来源编号。
-            await expect(page.getByText(reference, { exact: true }))
+            // 题号同时出现在面包屑、ProblemHeader 徽章和右侧元信息中；
+            // 这里锁定包含当前题目标题的 ProblemHeader，避免全局严格定位歧义。
+            const problemHeader = page.locator("main header").filter({
+              has: page.getByRole("heading", {
+                name: `共同源题 ${suffix}`,
+                exact: true,
+              }),
+            });
+            await expect(problemHeader.getByText(reference, { exact: true }))
               .toBeVisible();
           }
           const first = await handIn(

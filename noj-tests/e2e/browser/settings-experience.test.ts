@@ -272,7 +272,7 @@ Deno.test({
       await page.getByRole("combobox", { name: "存储单位", exact: true })
         .click();
       await page.getByRole("option", { name: "字节", exact: true }).click();
-      await page.getByRole("spinbutton", { name: "存储空间上限", exact: true })
+      await page.getByRole("spinbutton", { name: "存储上限", exact: true })
         .fill(String(preciseBytes));
       const [quotaResponse] = await Promise.all([
         page.waitForResponse((response) =>

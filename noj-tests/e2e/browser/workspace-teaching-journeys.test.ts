@@ -314,7 +314,10 @@ Deno.test({
               }).click(),
           );
           classroomId = created.data.id;
-          await teacher.page.getByRole("link", {
+          await teacher.page.getByRole("navigation", {
+            name: "班级导航",
+            exact: true,
+          }).getByRole("link", {
             name: "班级成员",
             exact: true,
           }).click();
