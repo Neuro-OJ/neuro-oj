@@ -482,14 +482,16 @@ Deno.test({
           await coach.page.setViewportSize({ width: 390, height: 844 });
           await expect(coach.page.getByRole("table", { name: "学生成绩矩阵" }))
             .toBeHidden();
-          const card = coach.page.locator("div.sm\\:hidden").filter({
-            has: coach.page.getByRole("heading", {
-              name: pupils[1].username,
-              exact: true,
-            }),
-          });
-          await card.getByRole("button", { name: "未开始", exact: true })
-            .click();
+          const card = coach.page.locator(
+            'ul[aria-label="学生成绩摘要"] > li',
+          ).filter({ hasText: pupils[1].username }).first();
+          // 窄屏矩阵先展开学生行，再从题目单元格打开提交详情；该组件不再
+          // 使用旧的 heading/div.sm:hidden 卡片结构。
+          await card.locator(":scope > button").click();
+          await card.getByRole("button", {
+            name: `${pupils[1].username} ${number} 未开始`,
+            exact: true,
+          }).click();
           await expect(
             coach.page.getByRole("dialog", {
               name: `${pupils[1].username} · ${number}`,

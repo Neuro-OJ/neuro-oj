@@ -64,9 +64,13 @@ async function select(page: Page, label: string, option: string) {
 
 /** 求助卡片的状态文本与正文由不同节点渲染，按用户可见卡片定位。 */
 function helpButton(page: Page, body: string, state: "待处理" | "已处理") {
-  return page.locator('section[aria-label="反馈与求助"] button').filter({
-    hasText: body,
-  }).filter({ hasText: state }).first();
+  const bodyButton = page.locator(
+    'section[aria-label="反馈与求助"] button',
+  ).filter({ hasText: body }).first();
+  // 正文在卡片内的 button 中，状态在其后的元信息 div 中；不能把状态
+  // 当作 button 的后代文本筛选。
+  return bodyButton.locator("xpath=..").filter({ hasText: state })
+    .getByRole("button").first();
 }
 
 /** 页面写操作的响应同时作为稳定资源定位依据。 */
