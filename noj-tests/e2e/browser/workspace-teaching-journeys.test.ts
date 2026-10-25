@@ -321,6 +321,10 @@ Deno.test({
             name: "班级成员",
             exact: true,
           }).click();
+          await teacher.page.getByRole("tab", {
+            name: "批量导入与邀请",
+            exact: true,
+          }).click();
           await teacher.page.getByRole("button", { name: /指定邮箱/ }).click();
           await teacher.page.getByRole("textbox", {
             name: "受邀人邮箱",

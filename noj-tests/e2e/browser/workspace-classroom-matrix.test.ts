@@ -402,6 +402,10 @@ Deno.test({
             name: "反馈与求助",
             exact: true,
           }).click();
+          await assistant.page.getByRole("button", {
+            name: "写反馈",
+            exact: true,
+          }).click();
           await assistant.page.getByRole("textbox", { name: "作业反馈正文" })
             .fill(`助教反馈 ${suffix}`);
           await write(assistant.page, "POST", `${assignment()}/feedback`, () =>
