@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理测试（Handbook §4.3、§2.10、§5.7）。
  *
@@ -6,10 +8,13 @@
  * 「整场统一 V3 缺一题 → 整次受理 400 且不产生任务」、策略变更作用域校验与生效、
  * 重试只带 failed/skipped、任务状态由条目聚合。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 import {
+  domainProblemBindings,
   objectiveSubmissions,
   problems,
   problemVersions,
@@ -26,6 +31,8 @@ import {
   type RejudgeRequest,
   retryRejudgeJob,
 } from "../../services/versioning/rejudge-jobs.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -50,10 +57,10 @@ async function seedProblem(
 ) {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -74,6 +81,7 @@ async function seedProblem(
   await db.update(problems).set({
     latest_version_id: `${problemId}-v${versions[versions.length - 1]}`,
   }).where(eq(problems.id, problemId));
+  await bindMainProblemForTest(problemId, "admin-1");
 }
 
 async function seedSubmission(
@@ -82,6 +90,7 @@ async function seedSubmission(
   options: { versionId?: string | null; contestId?: string | null } = {},
 ): Promise<void> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id,
     user_id: "0",
     problem_id: problemId,
@@ -94,6 +103,7 @@ async function seedSubmission(
     version_origin: options.versionId === null ? "legacy_unknown" : "known",
     created_at: now,
   });
+  await bindMainProblemForTest(problemId, "admin-1");
 }
 
 function request(overrides: Partial<RejudgeRequest> = {}): RejudgeRequest {
@@ -303,6 +313,7 @@ Deno.test("jobs: problem 范围覆盖两类提交", async () => {
     eq(problems.id, "rj-p8"),
   );
   await getDb().insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("rj-p8"),
     id: "rj-o8",
     paper_id: "rj-p8",
     user_id: "0",
@@ -376,9 +387,15 @@ Deno.test("jobs: 策略变更作用域校验与生效", async () => {
   const [problem] = await db.select().from(problems).where(
     eq(problems.id, "rj-p9"),
   );
-  assertEquals(problem.effective_version_mode, "exact");
-  assertEquals(problem.required_version_id, "rj-p9-v2");
-  assertEquals(problem.effective_policy_revision, 1);
+  assertEquals(problem.effective_version_mode, "any");
+  assertEquals(problem.required_version_id, null);
+  assertEquals(problem.effective_policy_revision, 0);
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "rj-p9"),
+  );
+  assertEquals(binding.effective_version_mode, "exact");
+  assertEquals(binding.required_version_id, "rj-p9-v2");
+  assertEquals(binding.revision, 1);
 
   // 预期 revision 过时 → 409（且不产生新任务）
   await assertRejects(
@@ -399,7 +416,7 @@ Deno.test("jobs: 策略变更作用域校验与生效", async () => {
         "key-10",
       ),
     Error,
-    "有效版本策略已被修改",
+    "题库配置已变化",
   );
   const stale = await db.select().from(submissionJobs).where(
     eq(submissionJobs.idempotency_key, "key-10"),
@@ -481,6 +498,78 @@ Deno.test("jobs: 手动所选超过 500 条被拒绝", async () => {
     Error,
     "不得超过 500 条",
   );
+});
+
+Deno.test("jobs: 无合法题目上下文的重试保持 skipped，合法条目继续 pending", async () => {
+  await seedProblem("rj-retry-context", 993101);
+  const db = getDb(), jobId = crypto.randomUUID();
+  await db.insert(submissionJobs).values({
+    id: jobId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    kind: "rejudge",
+    actor_id: "admin-1",
+    idempotency_key: "retry-context-parent",
+    request_hash: "parent",
+    request: request(),
+    status: "completed_with_errors",
+    created_at: now,
+  });
+  await db.insert(submissionJobItems).values(
+    ["rj-retry-context", "deleted-problem", ""].map((problem_id, ordinal) => ({
+      id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
+      job_id: jobId,
+      ordinal,
+      source_kind: "submission" as const,
+      source_id: `retry-context-source-${ordinal}`,
+      problem_id,
+      status: "failed" as const,
+      created_at: now,
+    })),
+  );
+  const retried = await retryRejudgeJob(
+    "admin-1",
+    jobId,
+    "retry-context-child",
+  );
+  assertEquals(retried.status, "queued");
+  const rows = await db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.job_id, retried.job_id),
+  ).orderBy(submissionJobItems.ordinal);
+  assertEquals(rows.map((row) => row.status), [
+    "pending",
+    "skipped",
+    "skipped",
+  ]);
+  assertEquals(
+    rows[0].domain_problem_binding_id,
+    "main-binding-rj-retry-context",
+  );
+  assertEquals(
+    rows.slice(1).map((
+      row,
+    ) => [row.domain_problem_binding_id, row.reason_code, !!row.finished_at]),
+    [
+      [null, "SOURCE_DELETED", true],
+      [null, "SOURCE_DELETED", true],
+    ],
+  );
+  const repeated = await retryRejudgeJob(
+    "admin-1",
+    jobId,
+    "retry-context-child",
+  );
+  assertEquals([repeated.job_id, repeated.existing], [retried.job_id, true]);
+  const terminal = await retryRejudgeJob(
+    "admin-1",
+    retried.job_id,
+    "retry-context-terminal",
+  );
+  assertEquals([terminal.status, terminal.total_items], ["completed", 2]);
+  const [job] = await db.select().from(submissionJobs).where(
+    eq(submissionJobs.id, terminal.job_id),
+  );
+  assertEquals([job.status, !!job.finished_at], ["completed", true]);
 });
 
 Deno.test("jobs: 状态由条目聚合（running / completed）", async () => {

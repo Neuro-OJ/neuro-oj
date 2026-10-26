@@ -1,3 +1,7 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 尝试终态统一吊销 LLM token 的回归（复审问题 3，P1）。
  *
@@ -32,13 +36,15 @@ import {
   scheduleDispatchRetryOrFail,
 } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { recoverPendingSubmissions } from "../../mq/sweeper.ts";
 import {
   getRedis,
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -108,6 +114,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -119,11 +126,11 @@ async function seedProblem(
   const problemId = `rev-prob-${tag}-${ts}`;
   const versionId = `rev-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `吊销测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 96200 + Math.floor(Math.random() * 700),
     owner_id: "0",
     judge_type: "dual",
@@ -162,6 +169,7 @@ async function seedSubmission(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: userId,
     problem_id: problemId,
@@ -516,6 +524,7 @@ Deno.test({
       const submissionId = crypto.randomUUID();
       const attemptId = `rev-sweep-attempt-${ts}`;
       await db.insert(submissions).values({
+        ...(await problemExecutionForTest(problemId)),
         id: submissionId,
         user_id: actor,
         problem_id: problemId,

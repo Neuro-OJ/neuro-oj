@@ -18,9 +18,11 @@
  * 时间比较按「时刻」而非「文本」，复用 `unendedWindowCondition`
  * （`::timestamptz` + 形态守卫），杜绝字典序比较对 `+08:00` 形态静默 fail-open。
  */
-import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { AnyColumn } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { contestProblems, contests } from "./../../../shared/db/schema.ts";
 import { unendedWindowCondition } from "./contest-window.ts";
 
@@ -43,8 +45,10 @@ export type PublicContestSecrecyRef = {
  */
 export async function loadPublicContestSecrecy(
   problemId: string,
+  executor: Executor = getDb(),
+  domainId?: string,
 ): Promise<PublicContestSecrecyRef[]> {
-  const rows = await getDb()
+  const rows = await executor
     .select({
       contestId: contests.id,
       publicId: contests.public_id,
@@ -54,6 +58,14 @@ export async function loadPublicContestSecrecy(
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       eq(contestProblems.problem_id, problemId),
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))
@@ -84,11 +96,17 @@ export async function loadPublicContestSecrecy(
  */
 export function unendedPublicContestForProblem(
   problemIdExpr: AnyColumn | SQL,
+  domainIdExpr?: AnyColumn | SQL,
 ): SQL {
   return sql`EXISTS (
     SELECT 1 FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     WHERE cp.problem_id = ${problemIdExpr}
+      ${
+    domainIdExpr
+      ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
+      : sql``
+  }
       AND c.kind = 'public'
       AND ${unendedWindowCondition(sql`c.end_time`)}
   )`;
@@ -106,13 +124,23 @@ export function unendedPublicContestForProblem(
  */
 export async function isProblemInUnendedPublicContest(
   problemId: string,
+  domainId?: string,
+  executor: Executor = getDb(),
 ): Promise<boolean> {
-  const rows = await getDb()
+  const rows = await executor
     .select({ contestId: contests.id })
     .from(contestProblems)
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       eq(contestProblems.problem_id, problemId),
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))
@@ -127,11 +155,22 @@ export async function isProblemInUnendedPublicContest(
  *
  * @returns 存在未结束公开赛时为 true。
  */
-export async function hasUnendedPublicContest(): Promise<boolean> {
-  const rows = await getDb()
+export async function hasUnendedPublicContest(
+  domainId?: string,
+  executor: Executor = getDb(),
+): Promise<boolean> {
+  const rows = await executor
     .select({ contestId: contests.id })
     .from(contests)
     .where(and(
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))

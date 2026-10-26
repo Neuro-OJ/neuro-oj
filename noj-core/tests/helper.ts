@@ -254,6 +254,72 @@ export async function createUserToken(
  * @param content 版本内容（缺省按题目行派生）
  * @returns 新版本 ID
  */
+/** 显式发布夹具同时建立所属域题库；已有独立策略不被初始化覆盖。 */
+export async function bindPublishedProblemForTest(
+  problemId: string,
+): Promise<string> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem) throw new Error(`题目不存在：${problemId}`);
+  await db.insert(domainProblemBindings).values({
+    id: `owned-binding-${problem.id}`,
+    domain_id: problem.domain_id,
+    problem_id: problem.id,
+    kind: "owned",
+    visibility: problem.visibility === "public" ? "public" : "members",
+    effective_version_mode: problem.effective_version_mode as "any" | "exact",
+    required_version_id: problem.required_version_id,
+    revision: problem.effective_policy_revision,
+    created_by: problem.owner_id ?? "0",
+    created_at: problem.created_at,
+    updated_at: problem.updated_at,
+  }).onConflictDoNothing();
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, problem.domain_id),
+    eq(domainProblemBindings.problem_id, problem.id),
+  ));
+  return binding.id;
+}
+
+/** 源题执行夹具显式携带所属域与真实绑定；共享执行须由用例指定使用域。 */
+export async function problemExecutionForTest(problemId: string) {
+  const bindingId = await bindPublishedProblemForTest(problemId);
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { domainProblemBindings } = await import("../src/shared/db/schema.ts");
+  const { eq } = await import("drizzle-orm");
+  const [binding] = await getDb().select({
+    domain_id: domainProblemBindings.domain_id,
+    domain_problem_binding_id: domainProblemBindings.id,
+  }).from(domainProblemBindings).where(eq(domainProblemBindings.id, bindingId));
+  return binding;
+}
+
+/** 仅测试清理：调用方先释放提交/比赛，再显式删除题库绑定和源题。 */
+export async function deleteProblemFixtures(
+  where: import("drizzle-orm").SQL,
+): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { inArray } = await import("drizzle-orm");
+  const db = getDb();
+  const rows = await db.select({ id: problems.id }).from(problems).where(where);
+  if (rows.length) {
+    await db.delete(domainProblemBindings).where(
+      inArray(domainProblemBindings.problem_id, rows.map((row) => row.id)),
+    );
+  }
+  await db.delete(problems).where(where);
+}
+
 export async function publishBaselineVersionForTest(
   problemId: string,
   content?: Record<string, unknown>,
@@ -271,6 +337,7 @@ export async function publishBaselineVersionForTest(
     eq(problems.id, problemId),
   ).limit(1);
   if (!row) throw new Error(`题目不存在：${problemId}`);
+  await bindPublishedProblemForTest(problemId);
   // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
   // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
   if (row.latest_version_id) return row.latest_version_id;
@@ -343,6 +410,43 @@ export interface ContestProblemFixtureRow {
   effective_policy_revision?: number;
 }
 
+/** 按父比赛的真实使用域取得赛题绑定；跨域题必须先建立目标域引用。 */
+export async function contestProblemExecutionForTest(
+  contestId: string,
+  problemId: string,
+) {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contests, domainProblemBindings, problems } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [contest] = await db.select().from(contests).where(
+    eq(contests.id, contestId),
+  );
+  if (!contest) throw new Error("比赛夹具的父比赛不存在");
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, contest.domain_id),
+    eq(domainProblemBindings.problem_id, problemId),
+  ));
+  if (binding) {
+    return {
+      domain_id: contest.domain_id,
+      domain_problem_binding_id: binding.id,
+    };
+  }
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem || problem.domain_id !== contest.domain_id) {
+    throw new Error("共享赛题夹具缺少比赛使用域的题库绑定");
+  }
+  return {
+    domain_id: contest.domain_id,
+    domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
+  };
+}
+
 /**
  * 插入竞赛题目关联，自动补齐**必填**的固定版本（Handbook §2.6）。
  *
@@ -357,16 +461,20 @@ export async function insertContestProblems(
   input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
 ): Promise<void> {
   const { getDb } = await import("../src/shared/db/connection.ts");
-  const { contestProblems } = await import("../src/shared/db/schema.ts");
+  const { contestProblems } = await import(
+    "../src/shared/db/schema.ts"
+  );
   const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
     ? input
     : [input as ContestProblemFixtureRow];
   const resolved = [];
   for (const row of rows) {
+    const versionId = row.pinned_version_id ??
+      await publishBaselineVersionForTest(row.problem_id);
     resolved.push({
       ...row,
-      pinned_version_id: row.pinned_version_id ??
-        await publishBaselineVersionForTest(row.problem_id),
+      ...await contestProblemExecutionForTest(row.contest_id, row.problem_id),
+      pinned_version_id: versionId,
     });
   }
   await getDb().insert(contestProblems).values(resolved);

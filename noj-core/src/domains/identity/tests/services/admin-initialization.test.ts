@@ -6,9 +6,9 @@ import {
   resetDbForTest,
 } from "../../../../shared/db/connection.ts";
 import {
+  domains,
   roles,
   systemSettings,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -23,6 +23,8 @@ import {
 import { registerUser } from "../../services/auth/auth-register.ts";
 import { isUserAdmin } from "../../services/security/permissions.ts";
 import { comparePassword } from "../../services/security/password.ts";
+import { deleteOwnAccount } from "../../index.ts";
+import { transferDomain } from "../../../workspace/index.ts";
 
 disableTestTransactionForFile();
 const input = {
@@ -64,6 +66,10 @@ test("空站创建管理员、密码仅存哈希且强制改密，不输出凭�
   );
   assertEquals(user.must_change_password, true);
   assertEquals(user.email_verified, false);
+  const [main] = await getDb().select().from(domains).where(
+    eq(domains.slug, "main"),
+  );
+  assertEquals(main.owner_id, user.id);
   await assertRejects(() => initializeFirstAdmin(input), ConflictError);
 });
 
@@ -148,8 +154,15 @@ test("完成后删除管理员仍不能重新初始化", async () => {
   const [user] = await db.select().from(users).where(
     eq(users.username, input.username),
   );
-  await db.delete(userRoles).where(eq(userRoles.user_id, user.id));
-  await db.delete(users).where(eq(users.id, user.id));
+  const successor = await registerUser({
+    ...input,
+    username: "replacement_owner",
+    email: "owner@example.com",
+  });
+  await transferDomain("main", user.id, successor.id);
+  await deleteOwnAccount(user.id, input.password);
+  const [deleted] = await db.select().from(users).where(eq(users.id, user.id));
+  assertEquals(!!deleted.deleted_at, true);
   await sealExistingSiteAdminInitialization();
   await assertRejects(() => initializeFirstAdmin(input), ConflictError);
 });

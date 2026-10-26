@@ -46,7 +46,6 @@ import { SLUG_PATTERN } from "./init.ts";
 export interface ProblemInitAnswers {
   slug: string;
   title?: string;
-  type: string;
   difficulty: string;
 }
 
@@ -54,7 +53,6 @@ export interface ProblemInitAnswers {
 export interface InitPromptPlan {
   askSlug: boolean;
   askTitle: boolean;
-  askType: boolean;
   askDifficulty: boolean;
 }
 
@@ -62,13 +60,11 @@ export interface InitPromptPlan {
 export function planInitPrompts(partial: {
   slug?: string;
   title?: string;
-  type?: string;
   difficulty?: string;
 }): InitPromptPlan {
   return {
     askSlug: !partial.slug,
     askTitle: !partial.title,
-    askType: !partial.type,
     askDifficulty: !partial.difficulty,
   };
 }
@@ -112,7 +108,6 @@ export function isBackWord(raw: string): boolean {
 const FIELD_FLAGS: Readonly<Record<string, string>> = {
   slug: "--slug <slug>",
   title: "--title <title>",
-  type: "--type P|U",
   difficulty: "--difficulty easy|medium|hard",
   "确认": "--yes",
 };
@@ -135,8 +130,8 @@ export function eofHint(field: string): string {
   );
 }
 
-/** 引导的四步（顺序即提问顺序，也是回退的依据）。 */
-type Field = "slug" | "title" | "type" | "difficulty";
+/** 引导的三步（顺序即提问顺序，也是回退的依据）。 */
+type Field = "slug" | "title" | "difficulty";
 
 /** 一个待提问步骤。 */
 interface Step {
@@ -150,7 +145,6 @@ export function buildSteps(plan: InitPromptPlan): Step[] {
   const fields: { field: Field; label: string }[] = [];
   if (plan.askSlug) fields.push({ field: "slug", label: "题目 slug" });
   if (plan.askTitle) fields.push({ field: "title", label: "题目标题" });
-  if (plan.askType) fields.push({ field: "type", label: "题目归属" });
   if (plan.askDifficulty) fields.push({ field: "difficulty", label: "难度" });
   return fields.map((f, i) => ({
     field: f.field,
@@ -171,7 +165,6 @@ export async function guideProblemInit(
   partial: {
     slug?: string;
     title?: string;
-    type?: string;
     difficulty?: string;
   },
 ): Promise<ProblemInitAnswers> {
@@ -182,7 +175,6 @@ export async function guideProblemInit(
   const answers: ProblemInitAnswers = {
     slug: partial.slug ?? "",
     title: partial.title,
-    type: partial.type ?? "",
     difficulty: partial.difficulty ?? "",
   };
 
@@ -236,7 +228,7 @@ export async function guideProblemInit(
   // 最后确认一次（确认环节的 EOF 也走同一上限）。
   const ok = await confirmWithLimit(
     io,
-    `确认生成：${answers.slug}（${answers.type} / ${answers.difficulty}）`,
+    `确认生成：${answers.slug}（${answers.difficulty}）`,
   );
   if (!ok) throw new Error("已取消");
 
@@ -255,9 +247,6 @@ function applyAnswer(
       break;
     case "title":
       answers.title = value;
-      break;
-    case "type":
-      answers.type = value;
       break;
     case "difficulty":
       answers.difficulty = value;
@@ -318,14 +307,6 @@ async function askField(
       if (isBackWord(raw)) return { kind: "back" };
       const value = raw === "" ? answers.slug : raw;
       return { kind: "ok", value };
-    }
-    case "type": {
-      const idx = await select(io, step.prompt, [
-        "P（主题库，默认）",
-        "U（用户题库，visibility=private）",
-      ], { backWords: BACK_WORDS, defaultIndex: 0 });
-      if (idx === -1) return { kind: "back" };
-      return { kind: "ok", value: idx === 0 ? "P" : "U" };
     }
     case "difficulty": {
       const idx = await select(io, step.prompt, [

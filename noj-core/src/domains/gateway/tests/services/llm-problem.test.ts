@@ -1,5 +1,5 @@
 /**
- * LLM 题目配置与 token 签发测试（纯函数，无需 DB）。
+ * LLM 题目能力、使用域默认配置与 token 签发测试。
  */
 import {
   assert,
@@ -23,6 +23,12 @@ import {
   LlmGatewayError,
 } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { domainLlmSettings } from "../../../../shared/db/schema.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
   assert(isValidLlmConfig({}));
@@ -63,11 +69,10 @@ Deno.test("llm-bundle: P 型 + 网络开启通过", () => {
 
 // 题包解析器只做结构校验；U 型 LLM 的管理员准入由导入/CRUD/草稿服务执行
 //（#651，见 catalog/tests/routes/private-llm.test.ts）。
-Deno.test("llm-bundle: U 型携带 llm 通过结构校验", () => {
+Deno.test("llm-bundle: 格式 2 携带 llm 通过结构校验", () => {
   const manifest = validateBundleManifest({
-    format_version: 1,
+    format_version: 2,
     title: "LLM 题",
-    type: "U",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -83,7 +88,7 @@ Deno.test("llm-bundle: U 型携带 llm 通过结构校验", () => {
     },
     llm: { provider_id: "p1", model: "qwen-plus" },
   });
-  assertEquals(manifest.type, "U");
+  assertEquals(manifest.format_version, 2);
   assert(manifest.llm);
 });
 
@@ -459,6 +464,7 @@ function stubProviderFetch(
   const body = failure ? { error: failure.error } : {
     data: {
       id: "prov-default",
+      domain_id: "00000000-0000-4000-8000-000000000001",
       name: "stub",
       base_url: "http://stub",
       cost_per_1k_tokens: 0,
@@ -495,7 +501,17 @@ const RUNTIME: RuntimeConfig = {
   },
 };
 
-Deno.test("llm-token: 未配置平台默认时抛错", async () => {
+Deno.test("llm-token: 未配置使用域默认时抛错", async () => {
+  await ensureDefaultWorkspace();
+  await getDb().insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: null,
+    model: null,
+    updated_at: new Date().toISOString(),
+  }).onConflictDoUpdate({
+    target: domainLlmSettings.domain_id,
+    set: { provider_id: null, model: null },
+  });
   _resetSystemSettingsForTest();
   Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
   Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");

@@ -32,6 +32,7 @@ import {
 import { isUserAdmin } from "./../../identity/index.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../community/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 import { checkRateLimit } from "./../../../shared/rate-limit/rate-limit.ts";
 
 const MAX_CONTENT_LENGTH = 5000;
@@ -313,6 +314,8 @@ export async function replyToClarification(
       problem_label: problemLabel,
       is_public: input.is_public,
     },
+    undefined,
+    contest.domain_id ?? DEFAULT_DOMAIN_ID,
   );
 
   const senders = await getSenders([userId]);

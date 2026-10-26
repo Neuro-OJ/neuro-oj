@@ -20,14 +20,23 @@
  */
 
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
-import { eq, like } from "drizzle-orm";
+import { eq, inArray, like } from "drizzle-orm";
 import { createPredictionSubmission, JUDGE_QUEUES } from "../../index.ts";
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  deleteProblemFixtures,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import {
+  addDomainMember,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  domainMemberRoles,
+  domainMemberships,
   evaluationAttempts,
   problems,
-  problemVersions,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -89,6 +98,7 @@ async function insertFixture(
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `预测提交测试题 ${unique.slice(0, 8)}`,
     description: "prediction 服务行为测试",
@@ -104,7 +114,6 @@ async function insertFixture(
     },
     number: nextProblemNumber(),
     owner_id: "0",
-    type: "P",
     visibility: "public",
     submission_mode: mode,
     artifact_max_size_mb: artifactMaxSizeMb ?? null,
@@ -112,6 +121,8 @@ async function insertFixture(
     updated_at: now,
   });
   const versionId = await publishBaselineVersionForTest(problemId);
+  await ensureDefaultWorkspace();
+  await addDomainMember(db, DEFAULT_DOMAIN_ID, userId);
   return { userId, problemId, versionId };
 }
 
@@ -129,13 +140,18 @@ async function deleteFixture(fixture: Fixture): Promise<void> {
   await db.delete(submissions).where(
     eq(submissions.problem_id, fixture.problemId),
   );
-  await db.update(problems).set({ latest_version_id: null }).where(
-    eq(problems.id, fixture.problemId),
+  await deleteProblemFixtures(eq(problems.id, fixture.problemId));
+  await db.delete(domainMemberRoles).where(
+    inArray(
+      domainMemberRoles.membership_id,
+      db.select({ id: domainMemberships.id }).from(domainMemberships).where(
+        eq(domainMemberships.user_id, fixture.userId),
+      ),
+    ),
   );
-  await db.delete(problemVersions).where(
-    eq(problemVersions.problem_id, fixture.problemId),
+  await db.delete(domainMemberships).where(
+    eq(domainMemberships.user_id, fixture.userId),
   );
-  await db.delete(problems).where(eq(problems.id, fixture.problemId));
   await db.delete(users).where(eq(users.id, fixture.userId));
 }
 

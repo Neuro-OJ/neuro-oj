@@ -7,12 +7,33 @@
   ],
   "valid": [
     {
+      "name": "格式 2 LLM 能力别名保留，执行映射归使用域",
+      "manifest": {
+        "format_version": 2,
+        "title": "能力别名",
+        "llm": { "models": ["default", "fast"], "max_calls": 10 },
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1,
+            "network": { "enabled": true }
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
+    },
+    {
       "name": "最小合法编程题",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "A+B Problem",
         "difficulty": "easy",
-        "type": "P",
         "runtime_config": {
           "evaluator": {
             "image": "noj/evaluator-python:1",
@@ -31,19 +52,17 @@
     {
       "name": "客观题套卷（无 runtime_config）",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "选择题套卷",
         "difficulty": "medium",
-        "type": "U",
         "is_objective": true
       }
     },
     {
       "name": "artifact 提交 + 标签 + 独立样例",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "产物题",
-        "type": "U",
         "submission_mode": "artifact",
         "artifact_max_size_mb": 64,
         "tags": [
@@ -71,11 +90,10 @@
       }
     },
     {
-      "name": "LLM 旧形状 provider_id/model 被容忍",
+      "name": "LLM 执行配置被移除，保留单次预算",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
-        "type": "P",
         "llm": {
           "provider_id": "old-provider",
           "model": "old-model",
@@ -102,9 +120,8 @@
     {
       "name": "传统 OI 题",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "A+B OI",
-        "type": "P",
         "judge_type": "oi",
         "runtime_config": {
           "backend": "native",
@@ -133,12 +150,20 @@
       }
     },
     {
-      "name": "prediction 题：runtime_config 仅有 evaluator（无 solution）",
+      "name": "旧格式 P 包升级",
       "manifest": {
         "format_version": 1,
+        "type": "P",
+        "title": "旧客观题",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "prediction 题：runtime_config 仅有 evaluator（无 solution）",
+      "manifest": {
+        "format_version": 2,
         "title": "预测题",
         "difficulty": "hard",
-        "type": "P",
         "submission_mode": "prediction",
         "runtime_config": {
           "evaluator": {
@@ -185,21 +210,21 @@
     {
       "name": "格式版本不支持",
       "manifest": {
-        "format_version": 2,
+        "format_version": 3,
         "title": "x"
       }
     },
     {
       "name": "title 为空",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "   "
       }
     },
     {
       "name": "非法难度",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "difficulty": "insane"
       }
@@ -207,14 +232,14 @@
     {
       "name": "缺 runtime_config（非客观题）",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x"
       }
     },
     {
       "name": "客观题带 runtime_config",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "is_objective": true,
         "runtime_config": {
@@ -235,7 +260,7 @@
     {
       "name": "template 路径穿越",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "template": "../evil.py",
         "runtime_config": {
@@ -256,9 +281,8 @@
     {
       "name": "LLM 未开 evaluator 网络",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
-        "type": "P",
         "llm": {
           "max_calls": 1
         },
@@ -280,7 +304,7 @@
     {
       "name": "tags 含空串",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "tags": [
           "ok",
@@ -291,7 +315,7 @@
     {
       "name": "submission_mode 非法",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "submission_mode": "binary"
       }
@@ -299,7 +323,7 @@
     {
       "name": "OI 题不允许模板",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
         "judge_type": "oi",
         "template": "template.c",
@@ -329,11 +353,56 @@
       }
     },
     {
-      "name": "prediction 题携带 llm（judge 不注入 NOJ_LLM_*）",
+      "name": "旧格式 U 包要求转换",
       "manifest": {
         "format_version": 1,
-        "title": "预测 LLM 题",
+        "type": "U",
+        "title": "旧题",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "格式 2 禁止旧分类",
+      "manifest": {
+        "format_version": 2,
         "type": "P",
+        "title": "题",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "格式 1 未声明分类不自动转换",
+      "manifest": {
+        "format_version": 1,
+        "title": "题",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "样例重复 ID",
+      "manifest": {
+        "format_version": 2,
+        "title": "题",
+        "is_objective": true,
+        "samples": [
+          {
+            "id": "same",
+            "input": "",
+            "output": ""
+          },
+          {
+            "id": "same",
+            "input": "",
+            "output": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "prediction 题携带 llm（judge 不注入 NOJ_LLM_*）",
+      "manifest": {
+        "format_version": 2,
+        "title": "预测 LLM 题",
         "submission_mode": "prediction",
         "llm": {
           "provider_id": "p1",

@@ -1,6 +1,10 @@
-// ⚠️ **本文件是 noj-core 的刻意副本**（issue #514 决策：noj-cli 不依赖主仓库导入映射）。
+// ⚠️ 本文件是 noj-core 的刻意副本，修改时同步两处并运行共享契约测试。
 // 原始路径：noj-core/src/domains/catalog/services/bundle-parser.ts
-// 修改时必须同步两处，并运行 noj-cli/src/problem/contract_test.ts（共享 fixture 契约测试）。
+import {
+  normalizeHydroOiConfig,
+  normalizeNojOiConfig,
+  parseConfigYaml,
+} from "./oi-config-import.ts";
 /**
  * 统一题目包（Problem Bundle）zip 解析与剥离。
  *
@@ -18,7 +22,15 @@
 
 import { unzipSync, zipSync } from "fflate";
 import { BadRequestError } from "./errors.ts";
-import { BUNDLE_METADATA_ENTRIES } from "./problem-bundle.ts";
+import {
+  BUNDLE_FORMAT_VERSION,
+  BUNDLE_METADATA_ENTRIES,
+  DEFAULT_TEMPLATE_FILE,
+  isValidTemplateFileName,
+  MAX_TEMPLATE_BYTES,
+  normalizeBundleManifestFormat,
+} from "./problem-bundle.ts";
+import { validateOiRuntimeConfig } from "./runtime-config.ts";
 
 /** 对齐 judge 端 `MAX_ZIP_ENTRIES`。 */
 export const MAX_ZIP_ENTRIES = 1000;
@@ -27,12 +39,47 @@ export const MAX_FILE_SIZE = 64 * 1024 * 1024;
 /** 对齐 judge 端 `MAX_TOTAL_SIZE`（512 MiB）。 */
 export const MAX_TOTAL_SIZE = 512 * 1024 * 1024;
 
+/** 读取 ZIP 文件，解压前验证路径与大小；选择器只解压需要预览的条目。 */
+export function readEvaluationEntries(
+  data: Uint8Array,
+  includeContents = true,
+  paths?: string[],
+  include?: (name: string, size: number) => boolean,
+): Record<string, Uint8Array> {
+  let count = 0;
+  let total = 0;
+  try {
+    return unzipSync(data, {
+      filter: (file) => {
+        assertSafeEntryPath(file.name);
+        count++;
+        total += file.originalSize;
+        if (
+          count > MAX_ZIP_ENTRIES || file.originalSize > MAX_FILE_SIZE ||
+          total > MAX_TOTAL_SIZE
+        ) {
+          throw new BadRequestError("评测包超过条目数量或解压大小限制");
+        }
+        if (file.name.endsWith("/")) return false;
+        paths?.push(file.name);
+        return includeContents &&
+          (!include || include(file.name, file.originalSize));
+      },
+    });
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error;
+    throw new BadRequestError("评测包不是有效的 ZIP");
+  }
+}
+
 /**
  * 解析后的统一题目包。
  */
 export interface ParsedProblemBundle {
   /** 校验并规范化后的 manifest（`problem.json`）。 */
   manifest: Record<string, unknown>;
+  /** 格式升级与移除部署执行配置的提示。 */
+  warnings: string[];
   /** `statement.md` 内容（不存在时为 null）。 */
   statement: string | null;
   /** `questions.json` 内容（客观题包；不存在为 null） */
@@ -55,7 +102,10 @@ export interface EvaluationPackageInspection {
  * 与 judge 端 `extract_zip_entries` 的校验语义一致。
  */
 function assertSafeEntryPath(name: string): void {
-  if (name.startsWith("/")) {
+  if (
+    name.startsWith("/") || name.includes("\\") || name.includes("\0") ||
+    /^[A-Za-z]:/.test(name)
+  ) {
     throw new BadRequestError(`zip 条目含绝对路径：${name}`);
   }
   const segments = name.split("/");
@@ -74,6 +124,35 @@ function assertSafeEntryPath(name: string): void {
  * @throws {BadRequestError} 根级缺 problem.json / 根级缺 evaluate.py /
  *   ZIP 安全校验失败 / manifest 非法 JSON
  */
+/** 唯一外层目录可作为题包根；先验证原路径，避免隐藏路径穿越。 */
+function normalizeBundleRoot(
+  source: Record<string, Uint8Array>,
+): Record<string, Uint8Array> {
+  for (const path of Object.keys(source)) assertSafeEntryPath(path);
+  let files = source;
+  while (
+    !Object.hasOwn(files, "problem.json") &&
+    !Object.hasOwn(files, "problem.yaml")
+  ) {
+    const names = Object.keys(files).filter((path) => !path.endsWith("/"));
+    if (!names.length || names.some((path) => !path.includes("/"))) break;
+    const folders = new Set(names.map((path) => path.split("/")[0]));
+    if (folders.size !== 1) break;
+    const prefix = `${names[0]!.split("/")[0]}/`;
+    const unwrapped: Record<string, Uint8Array> = Object.create(null);
+    for (const [path, bytes] of Object.entries(files)) {
+      if (path.startsWith(prefix) && path.length > prefix.length) {
+        unwrapped[path.slice(prefix.length)] = bytes;
+      }
+    }
+    files = unwrapped;
+  }
+  return Object.hasOwn(files, "problem.json") ||
+      Object.hasOwn(files, "problem.yaml")
+    ? files
+    : source;
+}
+
 export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
   let files: Record<string, Uint8Array>;
   try {
@@ -134,27 +213,57 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     }
   }
 
-  if (!rootNames.has("problem.json")) {
+  files = normalizeBundleRoot(files);
+  rootNames.clear();
+  for (const name of Object.keys(files)) {
+    if (!name.includes("/")) rootNames.add(name);
+  }
+  let manifest: Record<string, unknown>;
+  let statementFile = files["statement.md"];
+  if (files["problem.json"]) {
+    try {
+      const parsed = JSON.parse(
+        new TextDecoder().decode(files["problem.json"]),
+      );
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error();
+      }
+      manifest = parsed;
+    } catch {
+      throw new BadRequestError("problem.json 不是合法的 JSON 对象");
+    }
+    if (manifest.judge_type === "oi") {
+      const configFile = files["config.yaml"] ?? files["config.yml"];
+      manifest.runtime_config = normalizeNojOiConfig(
+        configFile ? parseConfigYaml(configFile) : manifest.runtime_config,
+      );
+    }
+  } else if (files["problem.yaml"]) {
+    const metadata = parseConfigYaml(files["problem.yaml"]);
+    const configFile = files["testdata/config.yaml"] ??
+      files["testdata/config.yml"];
+    manifest = {
+      format_version: BUNDLE_FORMAT_VERSION,
+      title: metadata.title,
+      judge_type: "oi",
+      runtime_config: normalizeHydroOiConfig(
+        configFile ? parseConfigYaml(configFile) : {},
+        files,
+      ),
+    };
+    statementFile = files["problem.md"] ?? files["problem_zh.md"] ??
+      files["statement.md"];
+    if (!statementFile) {
+      throw new BadRequestError("Hydro 题包缺少题面 problem.md");
+    }
+  } else {
     throw new BadRequestError(
-      "zip 根级缺少 problem.json（必须使用统一题目包格式）",
+      "zip 根级缺少 problem.json 或 Hydro problem.yaml",
     );
   }
-  const manifestFile = files["problem.json"];
-  const statementFile = files["statement.md"];
 
-  let manifest: Record<string, unknown>;
-  try {
-    const text = new TextDecoder().decode(manifestFile);
-    const parsed = JSON.parse(text);
-    if (
-      typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
-    ) {
-      throw new Error("not-object");
-    }
-    manifest = parsed as Record<string, unknown>;
-  } catch {
-    throw new BadRequestError("problem.json 不是合法的 JSON 对象");
-  }
+  const normalized = normalizeBundleManifestFormat(manifest);
+  manifest = normalized.manifest;
 
   const isObjective = manifest.is_objective === true;
   if (isObjective) {
@@ -162,6 +271,25 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       throw new BadRequestError(
         "客观题套卷包必须包含 questions.json（小题数组）",
       );
+    }
+  } else if (manifest.judge_type === "oi") {
+    validateOiRuntimeConfig(manifest.runtime_config);
+    const config = manifest.runtime_config;
+    const referenced = config.subtasks.flatMap((subtask) =>
+      subtask.cases.flatMap((testCase) => [testCase.input, testCase.output])
+    );
+    if (config.checker.type === "testlib") {
+      referenced.push(config.checker.path!);
+    }
+    referenced.push(
+      ...(config.compile_extra_files ?? []),
+      ...(config.checker_extra_files ?? []),
+      ...(config.user_extra_files ?? []),
+    );
+    for (const path of referenced) {
+      if (!Object.hasOwn(files, path)) {
+        throw new BadRequestError(`OI 题包缺少引用文件：${path}`);
+      }
     }
   } else if (!rootNames.has("evaluate.py")) {
     throw new BadRequestError(
@@ -181,6 +309,7 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
 
   return {
     manifest,
+    warnings: normalized.warnings,
     statement: statementFile ? new TextDecoder().decode(statementFile) : null,
     questions,
     entries: files,
@@ -228,15 +357,45 @@ export function inspectEvaluationPackage(
  * `evaluate.py` 保持根级。返回重建后的 zip 字节。
  */
 export function stripMetadataEntries(data: Uint8Array): Uint8Array {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(data, {
-      filter: (file) =>
-        !(BUNDLE_METADATA_ENTRIES as readonly string[]).includes(file.name),
-    });
-  } catch {
-    throw new BadRequestError("zip 解析失败：文件不是有效的 zip 格式");
-  }
-
+  const files = normalizeBundleRoot(readEvaluationEntries(data));
+  for (const path of BUNDLE_METADATA_ENTRIES) delete files[path];
   return zipSync(files, { level: 6 });
+}
+
+/** 读取题包内模板文件的结果。 */
+export type BundleTemplateReadResult =
+  | { status: "ok"; content: string }
+  /** 包内不存在该条目（题目可以不提供模板，不必然算错误） */
+  | { status: "missing" }
+  /** 条目存在但超过 {@link MAX_TEMPLATE_BYTES}，拒绝落库 */
+  | { status: "too_large"; size: number };
+
+/**
+ * 从已解析的题包条目中读取编辑器初始代码模板（starter code）。
+ *
+ * 文件名由 manifest `template` 声明（缺省 `template.py`），仅接受**纯文件名**
+ * （`isValidTemplateFileName`），非法值回退默认名——与打包侧、编辑器读取侧
+ * 共用同一规则，避免通过 `../` 读到包外条目。
+ *
+ * 兼容 `./name` 前缀形式：部分 zip 工具给根级条目加 `./`（本仓库的出题脚本
+ * `build_bundle.sh` 即如此）。
+ *
+ * @param entries `parseBundleZip` 返回的条目表（路径 → 字节）
+ * @param templateFile manifest 声明的模板文件名（可为空 → 默认 `template.py`）
+ */
+export function readBundleTemplate(
+  entries: Record<string, Uint8Array>,
+  templateFile?: string | null,
+): BundleTemplateReadResult {
+  const name = typeof templateFile === "string" &&
+      isValidTemplateFileName(templateFile)
+    ? templateFile
+    : DEFAULT_TEMPLATE_FILE;
+
+  const raw = entries[name] ?? entries[`./${name}`];
+  if (!raw) return { status: "missing" };
+  if (raw.byteLength > MAX_TEMPLATE_BYTES) {
+    return { status: "too_large", size: raw.byteLength };
+  }
+  return { status: "ok", content: new TextDecoder().decode(raw) };
 }

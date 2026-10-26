@@ -187,11 +187,14 @@ Deno.test("schema: ALL_TABLES 覆盖全部 Drizzle 表（resetDbForTest 不得�
   // 看不到这类名单遗漏。这里从两份事实源交叉核对：
   //   1) schema-ddl.ts 的 CREATE TABLE 语句（测试模式建表的事实源）
   //   2) Drizzle schema 模块导出的表名（生产迁移的事实源）
-  const { ALL_TABLES } = await import("../../src/shared/db/schema-ddl.ts");
-  const ddl = await Deno.readTextFile(
-    new URL("../../src/shared/db/schema-ddl.ts", import.meta.url),
+  const { ALL_TABLES, SCHEMA_DDL } = await import(
+    "../../src/shared/db/schema-ddl.ts"
   );
-  const ddlTables = [...ddl.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)]
+  // 使用实际执行的 DDL，包括拆分模块；不能仅扫描主文件而遗漏导入的表。
+  const ddl = SCHEMA_DDL.join("\n");
+  const ddlTables = [
+    ...ddl.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/gi),
+  ]
     .map((m) => m[1]);
 
   const listed = new Set<string>(ALL_TABLES as readonly string[]);

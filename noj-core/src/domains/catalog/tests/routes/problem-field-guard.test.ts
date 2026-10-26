@@ -18,7 +18,7 @@ import {
   loadProblemIdentity,
 } from "../../services/versioning/draft.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 
 import {
   permissions,
@@ -89,10 +89,9 @@ function makeBundleZip(
   manifestOverrides: Record<string, unknown> = {},
 ): Uint8Array {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `导入测试题 ${ts}`,
     difficulty: "easy",
-    type: "U",
     runtime_config: VALID_RUNTIME_CONFIG,
     ...manifestOverrides,
   };
@@ -181,11 +180,13 @@ for (
 ) {
   await db.insert(userRoles).values({ user_id: userId, role_id: roleId })
     .onConflictDoNothing();
+  await grantDefaultCatalogRole(userId, "editor");
 }
 
 // 模块级预置收紧用户拥有的题目（供两个 PUT 用例复用）
 const FIELD_OWN_PROBLEM_ID = `field-own-${ts}`;
 await db.insert(problems).values({
+  domain_id: "00000000-0000-4000-8000-000000000001",
   id: FIELD_OWN_PROBLEM_ID,
   title: "旧标题",
   description: "旧题面",
@@ -193,7 +194,6 @@ await db.insert(problems).values({
   runtime_config: VALID_RUNTIME_CONFIG,
   number: 90000 + (ts % 5000),
   owner_id: TIGHTENED_ID,
-  type: "U",
   created_at: now,
   updated_at: now,
 }).onConflictDoNothing();
@@ -513,3 +513,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

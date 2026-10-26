@@ -5,11 +5,11 @@
  * 通过 Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
  *   1. 注册 → 跳转邮箱验证页（registered=1&sent=1，依赖 register.vue 的 sent 作用域）
  *   2. 登录 → 退出（UserMenu → 登出 → 确认弹窗）
- *   3. 代码提交到评测结果（编辑器输入 → 提交评测 → 侧栏出现得分）
+ *   3. 代码提交到评测结果（恢复草稿 → 提交评测 → 提交详情得分）
  *   4. 核心失败反馈（错误答案提交 → 已完成且非满分）
  *
  * 运行前置（完整栈，同 noj-tests E2E）：
- *   - noj-core（E2E_BASE_URL，默认 :8099）+ judge worker + 种子题 P1001
+ *   - noj-core（E2E_BASE_URL，默认 :8099）+ judge worker
  *   - noj-ui 已构建并监听 E2E_UI_URL（默认 :3000），NUXT_API_BASE 指向 noj-core
  *   - Playwright 浏览器：`deno run -A npm:playwright install chromium`
  *
@@ -17,7 +17,18 @@
  * Fork PR 无需任何生产凭据（issue #427 验收项）。
  */
 
-import { CODE_SAMPLES, registerUser, TEST_PASSWORD } from "../helper.ts";
+import {
+  api,
+  apiGet,
+  BASE_URL,
+  CODE_SAMPLES,
+  getAdminToken,
+  registerUser,
+  TEST_PASSWORD,
+} from "../helper.ts";
+import { assertEquals } from "jsr:@std/assert@^1.0.13";
+import { strToU8, zipSync } from "npm:fflate@0.8.2";
+import { domainAnswerKey } from "../../../noj-ui/utils/domain-problems.ts";
 
 const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
@@ -29,6 +40,100 @@ const USERNAME = `ui_browser_${ts}`;
 const EMAIL = `${USERNAME}@test.com`;
 // 提交流程专用：#441 邮件就绪门槛要求已验证邮箱，经 API 注册并完成验证
 const SUBMIT_USER = `ui_submit_${ts}`;
+let submitToken = "";
+let problemNumber = 0;
+
+/** 当前 main 域编辑者导入独立 v2 题包并显式发布，种子题的比赛保密不影响此旅程。 */
+async function prepareProblemFixture(): Promise<void> {
+  const email = `ui_editor_${ts}@test.com`;
+  const editor = await registerUser(`ui_editor_${ts}`, email, TEST_PASSWORD);
+  const admin = await getAdminToken();
+  const invitation = await api("POST", "/api/v1/domains/main/invitations", {
+    token: admin,
+    body: { email },
+  });
+  assertEquals(invitation.status, 201);
+  const joined = await api("POST", "/api/v1/domain-invitations/accept", {
+    token: editor,
+    body: {
+      token: (invitation.body as { data: { token: string } }).data.token,
+    },
+  });
+  assertEquals(joined.status, 200);
+  const identity = await apiGet("/api/v1/auth/me", editor);
+  assertEquals(identity.status, 200);
+  const userId = (identity.body as { data: { id: string } }).data.id;
+  const granted = await api(
+    "PUT",
+    `/api/v1/domains/main/members/${userId}/roles`,
+    {
+      token: admin,
+      body: { roles: ["editor"] },
+    },
+  );
+  assertEquals(granted.status, 200);
+  const bytes = zipSync({
+    "problem.json": strToU8(JSON.stringify({
+      format_version: 2,
+      title: `uibrowser${ts} 独立加法题`,
+      difficulty: "easy",
+      judge_type: "dual",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          time_limit_ms: 10000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 5000,
+          memory_limit_mb: 256,
+        },
+      },
+    })),
+    "statement.md": strToU8(
+      "# A+B\nsolve(input_str) 接受两个整数，返回它们的和。满分10分。",
+    ),
+    "evaluate.py": strToU8(`from noj_evaluator_sdk import SolutionRunner, result
+runner = SolutionRunner()
+try:
+    if runner.call("solve", "1 2") == "3":
+        result.accept(score=10)
+    else:
+        result.wrong_answer(score=0)
+finally:
+    runner.close()
+`),
+  });
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
+    "browser.zip",
+  );
+  const imported = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${editor}` },
+      body: form,
+    },
+  );
+  const response = await imported.json();
+  assertEquals(imported.status, 201, JSON.stringify(response));
+  const problem = response.data as { number: number; draft_revision: number };
+  problemNumber = problem.number;
+  const published = await api(
+    "POST",
+    `/api/v1/domains/main/problems/${problem.number}/publish`,
+    {
+      token: editor,
+      headers: { "If-Match": String(problem.draft_revision) },
+      body: { change_note: "浏览器实际评测独立公开版本" },
+    },
+  );
+  assertEquals(published.status, 200, JSON.stringify(published.body));
+}
 
 // ── 共享浏览器会话 ────────────────────────────────
 let browser: import("npm:playwright@1.62.1").Browser | null = null;
@@ -118,6 +223,25 @@ async function loginViaUI(username: string, password: string): Promise<void> {
   await p.waitForURL((u) => !u.pathname.startsWith("/login"), {
     timeout: 15_000,
   });
+  // 读取同一浏览器账号的当前法律状态；需要重新同意时操作真实弹窗，不绕过记录端点。
+  const identity = await p.request.get(`${UI_URL}/api/v1/auth/me`);
+  assertEquals(identity.status(), 200);
+  const current = await identity.json() as {
+    data: {
+      legal?: Record<string, { needs_consent: boolean; is_material: boolean }>;
+    };
+  };
+  if (
+    Object.values(current.data.legal ?? {}).some((item) =>
+      item.needs_consent && item.is_material
+    )
+  ) {
+    const consent = p.getByRole("dialog", { name: "政策更新通知" });
+    await consent.waitFor({ state: "visible", timeout: 15_000 });
+    await consent.getByRole("button", { name: "我已知悉并同意", exact: true })
+      .click();
+    await consent.waitFor({ state: "hidden", timeout: 15_000 });
+  }
 }
 
 async function logoutViaUI(): Promise<void> {
@@ -136,47 +260,57 @@ async function logoutViaUI(): Promise<void> {
  * 不模拟键入/粘贴：Monaco auto-indent 会破坏 insertText 的缩进
  * （IndentationError → solution host 注册不到 solve 函数），headless 下
  * 剪贴板 API 又被权限拒绝，合成 paste 事件在 Chromium 中无法携带数据。
- * 改用编辑器的 localStorage 草稿（noj:draft:<problemId>）预置代码，
+ * 改用当前账号、使用域、源题、版本和语言对应的编辑器草稿预置代码，
  * 恢复路径与真实用户「刷新后继续上次代码」完全一致。
  */
 async function submitCodeViaUI(code: string): Promise<string> {
   const p = page!;
+  const identity = await apiGet("/api/v1/auth/me", submitToken);
+  const detail = await apiGet(
+    `/api/v1/domains/main/problems/${problemNumber}`,
+    submitToken,
+  );
+  if (identity.status !== 200 || detail.status !== 200) {
+    throw new Error("无法读取当前作答身份或默认域题目");
+  }
+  const actor = (identity.body as { data: { id: string } }).data.id;
+  const problem = detail.body as {
+    reference: { problem_id: string };
+    version_id: string;
+    supported_languages: string[];
+  };
+  const key = domainAnswerKey(
+    actor,
+    "main",
+    problem.reference.problem_id,
+    problem.version_id,
+    problem.supported_languages[0],
+  );
   await p.addInitScript(
     ({ key, content }) => {
       localStorage.setItem(
         key,
-        JSON.stringify({ content, updatedAt: Date.now() }),
+        JSON.stringify({ code: content, answers: {} }),
       );
     },
-    { key: "noj:draft:P1001", content: code },
+    { key: `noj:draft:${key}`, content: code },
   );
-  await goto("/editor/P1001");
+  await goto(`/d/main/problems/${problemNumber}`);
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
-  await p.waitForTimeout(300);
-  // 以提交接口返回的 ID 定位「最近」卡片：提交后轮询数据就绪前，卡片会短暂
-  // 显示历史中的上一条提交，按得分文本变化判断新结论会被旧结论误导。
-  const created = p.waitForResponse((res) =>
-    res.request().method() === "POST" &&
-    new URL(res.url()).pathname === "/api/v1/submissions"
-  );
   await p.getByRole("button", { name: "提交评测", exact: true }).click();
-  const res = await created;
-  if (res.status() !== 201) {
-    throw new Error(`提交失败：HTTP ${res.status()} ${await res.text()}`);
-  }
-  const body = await res.json() as { data: { id: string } };
-  return body.data.id;
+  await p.getByRole("link", { name: "查看评测", exact: true }).click();
+  await p.waitForURL(/\/d\/main\/submissions\//);
 }
 
-/** 读取指定提交在侧栏「最近」卡片的得分文本；未到终态或卡片未就绪时返回 null */
-async function verdictText(submissionId: string): Promise<string | null> {
+/** 读取当前提交详情的得分；尚未获得终态时返回 null。 */
+async function currentScoreText(): Promise<string | null> {
   const p = mustPage();
-  const span = p.locator(
-    `[data-testid="recent-submission"][data-submission-id="${submissionId}"] ` +
-      '[data-testid="recent-submission-score"]',
-    { hasText: /\d+\s*分/ },
-  );
+  const result = p.getByRole("heading", { name: "评测结果", exact: true });
+  if (await result.count() === 0) return null;
+  const span = result.locator("..").locator("span").filter({
+    hasText: /^\d+(?:\.\d+)?\s*分$/,
+  }).first();
   if ((await span.count()) === 0) return null;
   const text = (await span.first().textContent()) ?? "";
   return /\d+\s*分/.test(text) ? text.trim() : null;
@@ -214,6 +348,8 @@ Deno.test("[ui/browser] 前置：浏览器会话启动", async () => {
     await launch();
     const ui = await fetch(UI_URL);
     if (!ui.ok) throw new Error(`noj-ui 未就绪 (${UI_URL} → ${ui.status})`);
+    await ui.body?.cancel();
+    await prepareProblemFixture();
     failed = false;
   } finally {
     if (failed) await teardown(true);
@@ -256,12 +392,16 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", a
   try {
     await launch();
     // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
-    await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
+    submitToken = await registerUser(
+      SUBMIT_USER,
+      `${SUBMIT_USER}@test.com`,
+      TEST_PASSWORD,
+    );
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    const submissionId = await submitCodeViaUI(CODE_SAMPLES.accepted);
-    const score = await waitForVerdict(submissionId);
-    // P1001 满分 10 分（evaluate.py：内容 8 + 格式 2），UI formatScore 显示「10 分」
-    if (score !== "10 分") {
+    await submitCodeViaUI(CODE_SAMPLES.accepted);
+    const score = await waitForNewVerdict(null);
+    // 独立题包满分 10 分，允许 UI 保留小数位。
+    if (Number.parseFloat(score) !== 10) {
       throw new Error(`期望满分「10 分」，实际「${score}」`);
     }
     failed = false;
@@ -275,11 +415,18 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
   let failed = true;
   try {
     await launch();
-    await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
+    submitToken = await registerUser(
+      SUBMIT_USER,
+      `${SUBMIT_USER}@test.com`,
+      TEST_PASSWORD,
+    );
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-    const submissionId = await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
-    const score = await waitForVerdict(submissionId);
-    if (score === "10 分") {
+    // 先读取上一条（3/4 满分卡片的分数），等待新结论覆盖
+    await goto(`/d/main/problems/${problemNumber}`);
+    const prev = await currentScoreText();
+    await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
+    const score = await waitForNewVerdict(prev);
+    if (Number.parseFloat(score) === 10) {
       throw new Error(`错误答案不应满分，实际「${score}」`);
     }
     failed = false;

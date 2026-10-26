@@ -1,9 +1,11 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 公开赛保密事实取数测试（DB）。
  *
  * 判定口径：题目被关联到 `kind = 'public'` 且 `now < end_time` 的竞赛 ⇒ 保密；
  * 赛前（pending）也保密，赛后（ended）自动失效，邀请赛（invite）不参与。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -39,13 +41,13 @@ async function createProblem(prefix: string): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `保密判定测试题 ${prefix}`,
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number: Math.floor(Math.random() * 1_000_000) + 9_000_000,
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -105,7 +107,7 @@ async function cleanup(
 ): Promise<void> {
   for (const id of contestIds) await deleteContest(id).catch(() => {});
   for (const id of problemIds) {
-    await getDb().delete(problems).where(eq(problems.id, id)).catch(() => {});
+    await deleteProblemFixtures(eq(problems.id, id)).catch(() => {});
   }
   for (const id of userIds) {
     await getDb().delete(users).where(eq(users.id, id)).catch(() => {});

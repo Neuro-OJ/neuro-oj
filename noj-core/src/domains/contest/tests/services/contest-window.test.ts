@@ -470,6 +470,7 @@ Deno.test({
     let rejected = false;
     try {
       await getDb().insert(contests).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: crypto.randomUUID(),
         title: "非规范时间写入",
         description: "",
@@ -509,6 +510,7 @@ Deno.test({
     let rejected = false;
     try {
       await getDb().insert(contests).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: crypto.randomUUID(),
         title: "语义非法时间写入",
         description: "",
@@ -541,6 +543,7 @@ Deno.test({
     let rejected = false;
     try {
       await getDb().insert(contests).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: crypto.randomUUID(),
         title: "非规范封榜时间",
         description: "",
@@ -560,3 +563,4 @@ Deno.test({
     assertEquals(rejected, true);
   },
 });
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

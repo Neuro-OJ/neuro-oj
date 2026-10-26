@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { createContest } from "../../services/contests.ts";
@@ -24,6 +25,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-contest-event",
       title: "事件竞赛题目",
       description: "desc",
@@ -31,7 +33,6 @@ Deno.test({
       runtime_config: {},
       number: 1,
       owner_id: "0",
-      type: "U",
       created_at: now,
       updated_at: now,
     });

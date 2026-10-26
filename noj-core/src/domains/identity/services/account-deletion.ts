@@ -18,23 +18,34 @@ import {
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { comparePassword } from "./security/password.ts";
 import { logAudit, logAuthEvent } from "../../system/index.ts";
-import { clearUserAvatar } from "./users/users-avatar.ts";
+import { deleteAvatarIfUnreferenced } from "./users/users-avatar.ts";
 import { getAdminUserIds, isUserAdmin } from "./security/permissions.ts";
+import {
+  assertAccountHasNoOwnedDomain,
+  retireAccountWorkspaceMemberships,
+} from "../../workspace/index.ts";
 
 async function anonymizeUser(
   userId: string,
   actorId?: string,
+  expectedPasswordHash?: string,
 ): Promise<string> {
   if (userId === ROOT_USER_ID) {
     throw new ForbiddenError("系统 root 账户不可注销");
   }
   const db = getDb();
-  const [existing] = await db.select().from(users).where(eq(users.id, userId))
-    .limit(1);
-  if (!existing || existing.deleted_at) throw new NotFoundError("用户不存在");
-  if (existing.avatar_url) await clearUserAvatar(userId);
   const now = new Date().toISOString();
-  await db.transaction(async (tx) => {
+  const existing = await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(users).where(eq(users.id, userId))
+      .for("update");
+    if (!existing || existing.deleted_at) throw new NotFoundError("用户不存在");
+    if (
+      expectedPasswordHash && existing.password_hash !== expectedPasswordHash
+    ) {
+      throw new UnauthorizedError("密码已变化，请重新确认", "PASSWORD_INVALID");
+    }
+    await assertAccountHasNoOwnedDomain(tx, userId);
+    await retireAccountWorkspaceMemberships(tx, userId, actorId ?? userId);
     await tx.update(users).set({
       username: "已注销用户",
       email: `deleted-${userId}@deleted.invalid`,
@@ -63,7 +74,13 @@ async function anonymizeUser(
       unbanned_by: actorId ?? userId,
       updated_at: now,
     }).where(and(eq(userBans.user_id, userId), isNull(userBans.unbanned_at)));
+    return existing;
   });
+  if (existing.avatar_url) {
+    try {
+      await deleteAvatarIfUnreferenced(db, userId, existing.avatar_url);
+    } catch { /* 沿用头像清理幂等行为；账号注销已提交。 */ }
+  }
   return existing.username;
 }
 
@@ -82,7 +99,7 @@ export async function deleteOwnAccount(
   if (!await comparePassword(password, user.password_hash)) {
     throw new UnauthorizedError("密码不正确", "PASSWORD_INVALID");
   }
-  await anonymizeUser(userId);
+  await anonymizeUser(userId, undefined, user.password_hash);
   await publishSearchIndexEvent("user", userId, "delete");
   await logAuthEvent(userId, clientIp ?? "unknown", "auth.delete_account", {
     user_id: userId,

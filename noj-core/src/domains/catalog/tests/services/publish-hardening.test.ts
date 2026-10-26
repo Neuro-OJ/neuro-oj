@@ -14,7 +14,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   problemDraftObjects,
@@ -61,10 +61,10 @@ function useTempStorage(): LocalStorageProvider {
 /** 插入一道 AI（dual/code）题目身份行。 */
 async function seedAiProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: "初始标题",
     description: "初始题面",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -74,6 +74,7 @@ async function seedAiProblem(id: string, number: number): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await bindDefaultCatalogFixture(id);
 }
 
 /** 完整 AI 草稿内容。 */
@@ -108,10 +109,9 @@ function objectiveZip(number: number): Uint8Array {
   const enc = new TextEncoder();
   return zipSync({
     "problem.json": enc.encode(JSON.stringify({
-      format_version: 1,
+      format_version: 2,
       title: `客观题包 ${number}`,
       difficulty: "easy",
-      type: "P",
       number,
       is_objective: true,
     })),
@@ -459,10 +459,10 @@ Deno.test("publish hardening #55: 目标题目模式写草稿并校验 revision"
   // 目标题目模式用于"编辑器上传支持包"：目标必须与包同题型（客观题包 → 客观题卷）
   const paperId = "ph-target";
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id: paperId,
     title: "目标客观题卷",
     description: "题面",
-    type: "P",
     number: 950008,
     owner_id: "0",
     difficulty: "easy",
@@ -492,6 +492,7 @@ Deno.test("publish hardening #55: 目标题目模式写草稿并校验 revision"
     actorId: "0",
   });
   await publishProblemVersion(paperId, { expectedRevision: 1, actorId: "0" });
+  await bindDefaultCatalogFixture(paperId);
   const before = await getDb().select({ id: problems.id }).from(problems);
   const revision = (await getProblemDraft(paperId)).revision;
   assertEquals(revision, 2);
@@ -573,7 +574,6 @@ Deno.test("publish hardening #16: 草稿运行配置结构校验与敏感字段�
       assertDraftContentSecurity(
         {
           id: "ph-draft-validate",
-          type: "P",
           runtime_config: null,
         } as unknown as Parameters<typeof assertDraftContentSecurity>[0],
         {
@@ -605,3 +605,8 @@ Deno.test("publish hardening: 草稿缺失 revision 的 428 语义", async () =>
   assertEquals(error instanceof AppError, true);
   assertEquals((error as AppError).status, draftRevisionRequired().status);
 });
+
+import {
+  bindDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";

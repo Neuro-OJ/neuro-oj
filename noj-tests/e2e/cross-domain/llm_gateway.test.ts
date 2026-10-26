@@ -1,421 +1,608 @@
-/**
- * LLM Gateway 全链路 E2E 测试。
- *
- * 覆盖：
- * - 7.1 创建 Provider → 创建 P 型 LLM 题 → 提交 → evaluator 经 gateway 调用 Mock LLM → 用量落库
- * - 7.2 管理员可导入私有 U 型 LLM 题、普通用户被拒；LLM 题未开网络被拒
- * - 7.3 重测重新签发 token（重测后产生新的用量记录）
- *
- * 依赖环境：
- * - NOJ_RUN_E2E=1
- * - noj-core / noj-judge / noj-llm-gateway 已启动
- * - E2E_LLM_MOCK_URL 指向一个 OpenAI 兼容 Mock 服务（例如 http://llm-mock:8002/v1）
- *   Mock 需对 POST /chat/completions 返回 {"ok": true, "choices": []}
- * - E2E_LLM_MOCK_MODEL 可选，默认 e2e-mock
- */
+/** 真实 LLM 链路：公开源题 → 两学校独立 Provider/模型 → Judge → Gateway → Mock → 用量。 */
+import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
 import {
-  apiGet,
-  apiPost,
-  apiPut,
+  api,
   BASE_URL,
   e2eTest,
   getAdminToken,
-  getOrCreateUser,
-  isE2E,
-  isJudgeAvailable,
-  pollSubmission,
-  publishProblemVersion,
-  submitCode,
-  waitForJobCompleted,
+  registerUser,
+  TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
 
-const testSuffix = Date.now().toString(36);
-const MOCK_MODEL = Deno.env.get("E2E_LLM_MOCK_MODEL") || "e2e-mock";
+const suffix = Date.now().toString(36);
 const MOCK_URL = Deno.env.get("E2E_LLM_MOCK_URL") ||
   "http://noj-e2e-llm-mock:8002/v1";
+const source = `llm-source-${suffix}`,
+  schoolA = `llm-a-${suffix}`,
+  schoolB = `llm-b-${suffix}`,
+  empty = `llm-empty-${suffix}`;
+const modelA = `school-a-${suffix}`, modelB = `school-b-${suffix}`;
+let admin = "",
+  student = "",
+  ownerA = "",
+  ownerB = "",
+  providerA = "",
+  providerB = "";
+let domainA = "",
+  domainB = "",
+  problemId = "",
+  number = 0,
+  versionId = "",
+  submissionA = "",
+  submissionB = "";
+let originalAttempt = "";
 
-let adminToken = "";
-let judgeAvailable = false;
-let providerId = "";
-let problemId = "";
-let submissionId = "";
-let usageCountBeforeRejudge = 0;
+interface Usage {
+  domain_id: string;
+  submission_id: string;
+  problem_id: string;
+  problem_version_id: string;
+  attempt_id: string;
+  provider_id: string;
+  model: string;
+  total_tokens: number;
+  status: string;
+}
 
-const EVALUATOR_PY = `# E2E LLM Gateway 测试评测脚本
-import json
-from noj_evaluator_sdk import llm
+async function call(
+  method: string,
+  path: string,
+  token: string,
+  body?: unknown,
+  revision?: number,
+) {
+  const result = await api(method, path, {
+    token,
+    body,
+    ...(revision === undefined
+      ? {}
+      : { headers: { "If-Match": String(revision) } }),
+  });
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(
+      `${method} ${path}: ${result.status} ${JSON.stringify(result.body)}`,
+    );
+  }
+  return result.body;
+}
+async function join(slug: string, token: string, email: string) {
+  const invite = await call(
+    "POST",
+    `/api/v1/domains/${slug}/invitations`,
+    admin,
+    { email },
+  ) as { data: { token: string } };
+  await call("POST", "/api/v1/domain-invitations/accept", token, {
+    token: invite.data.token,
+  });
+}
+async function configure(
+  slug: string,
+  token: string,
+  provider: string,
+  model: string,
+) {
+  const settings = await call(
+    "GET",
+    `/api/v1/domains/${slug}/llm/settings`,
+    token,
+  ) as { data: { revision: number } };
+  return await call("PUT", `/api/v1/domains/${slug}/llm/settings`, token, {
+    provider_id: provider,
+    model,
+  }, settings.data.revision);
+}
 
-try:
-    resp = llm.complete(
-        model=${JSON.stringify(MOCK_MODEL)},
-        messages=[{"role": "user", "content": "ping"}],
-    )
-    ok = bool(resp.get("ok"))
-    result = {
-        "score": 100 if ok else 0,
-        "details": resp,
-    }
-except Exception as error:
-    result = {
-        "score": 0,
-        "details": {"error": str(error)},
-    }
-
-print("---RESULT---")
-print(json.dumps(result, default=str), flush=True)
+/** SDK 从冻结的使用域执行配置选择模型，不携带源域模型。 */
+const evaluator = `from noj_evaluator_sdk import llm, result
+response = llm.complete(messages=[{"role": "user", "content": "ping"}])
+if response.get("ok") and response.get("usage", {}).get("total_tokens") == 8:
+    result.accept(score=100)
+else:
+    result.wrong_answer(score=0, message="Mock response mismatch")
 `;
 
-async function makeZip(
-  manifest: string,
-  problemStatement: string,
-): Promise<Uint8Array> {
+async function importBundle(network = true) {
   const dir = await Deno.makeTempDir();
-  const enc = new TextEncoder();
   try {
-    await Deno.writeFile(`${dir}/problem.json`, enc.encode(manifest));
-    await Deno.writeFile(`${dir}/statement.md`, enc.encode(problemStatement));
-    await Deno.writeFile(`${dir}/evaluate.py`, enc.encode(EVALUATOR_PY));
-    const zipPath = `${dir}/bundle.zip`;
-    const cmd = new Deno.Command("zip", {
-      args: ["-r", zipPath, "."],
+    await Deno.writeTextFile(
+      `${dir}/problem.json`,
+      JSON.stringify({
+        format_version: 2,
+        title: `共享 LLM 题 ${suffix}`,
+        difficulty: "easy",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 30000,
+            memory_limit_mb: 512,
+            network: { enabled: network },
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 5000,
+            memory_limit_mb: 512,
+          },
+        },
+        llm: { max_calls: 30 },
+      }),
+    );
+    await Deno.writeTextFile(
+      `${dir}/statement.md`,
+      "# 共享 LLM 题\n不同学校使用各自模型与预算。",
+    );
+    await Deno.writeTextFile(`${dir}/evaluate.py`, evaluator);
+    const packed = await new Deno.Command("zip", {
+      args: ["-r", `${dir}/bundle.zip`, "."],
       cwd: dir,
-    });
-    const out = await cmd.output();
-    if (out.code !== 0) throw new Error("zip 打包失败");
-    return await Deno.readFile(zipPath);
+    }).output();
+    assertEquals(packed.code, 0);
+    const bytes = await Deno.readFile(`${dir}/bundle.zip`);
+    const body = new FormData();
+    body.set(
+      "file",
+      new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
+      "llm.zip",
+    );
+    const response = await fetch(
+      `${BASE_URL}/api/v1/domains/${source}/problems/import-bundle`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${admin}` },
+        body,
+      },
+    );
+    return { status: response.status, body: await response.json() };
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
 }
 
-async function importBundle(
-  manifest: string,
-  problemStatement: string,
-  token = adminToken,
-): Promise<{ status: number; body: unknown }> {
-  const zip = await makeZip(manifest, problemStatement);
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob(
-      [zip.buffer.slice(
-        zip.byteOffset,
-        zip.byteOffset + zip.byteLength,
-      ) as ArrayBuffer],
-      { type: "application/zip" },
-    ),
-    `e2e-llm-${testSuffix}.zip`,
-  );
-  const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    body = null;
-  }
-  return { status: res.status, body };
-}
-
-function llmManifest(
-  type: "P" | "U",
-  number: number | undefined,
-  withNetwork: boolean,
-  includeLlm: boolean,
-): string {
-  return JSON.stringify({
-    format_version: 1,
-    title: `E2E LLM ${type} ${testSuffix}`,
-    difficulty: "easy",
-    type,
-    number,
-    runtime_config: {
-      evaluator: {
-        image: "noj-evaluator-python",
-        time_limit_ms: 30000,
-        memory_limit_mb: 512,
-        network: withNetwork ? { enabled: true } : undefined,
-      },
-      solution: {
-        image: "noj-solution-python",
-        call_timeout_ms: 5000,
-        memory_limit_mb: 512,
-      },
-    },
-    ...(includeLlm ? { llm: { max_calls: 30 } } : {}),
-  });
-}
-
-e2eTest("[e2e/llm-gateway] Setup: 管理员登录 + 检查 judge", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  adminToken = await getAdminToken();
-  judgeAvailable = await isJudgeAvailable();
-  if (!judgeAvailable) {
-    console.warn("⚠ judge 不可用，LLM 评测闭环部分跳过（仍执行 API 校验用例）");
-  }
-
-  // 创建 Provider 指向 Mock LLM
-  const res = await apiPost(
-    "/api/v1/admin/gateway/llm/providers",
+async function submit(slug: string) {
+  const response = await call(
+    "POST",
+    `/api/v1/domains/${slug}/submissions`,
+    student,
     {
-      name: `e2e-mock-${testSuffix}`,
-      base_url: MOCK_URL,
-      api_key: "e2e-mock-key",
-      enabled: true,
+      problem_ref: `${source}:${number}`,
+      version_id: versionId,
+      language: "python3",
+      code: "def solve(): return 1",
     },
-    adminToken,
-  );
-  if (res.status !== 201) {
-    throw new Error(
-      `创建 LLM Provider 失败: ${res.status} ${JSON.stringify(res.body)}`,
-    );
+  ) as { data: { id: string } };
+  return response.data.id;
+}
+async function finished(slug: string, id: string) {
+  for (let attempt = 0; attempt < 90; attempt++) {
+    const response = await call(
+      "GET",
+      `/api/v1/domains/${slug}/submissions/${id}`,
+      student,
+    ) as {
+      data: { status: string; result: { score: number } | null };
+    };
+    if (response.data.status === "error") {
+      throw new Error(`LLM 平台错误：${JSON.stringify(response.data)}`);
+    }
+    if (response.data.status === "finished") {
+      assertEquals(response.data.result?.score, 10000);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  providerId = (res.body as { data: { id: string } }).data.id;
+  throw new Error(`LLM 评测等待超时 ${slug}:${id}`);
+}
+async function usage(slug: string, token: string, id: string) {
+  const response = await call(
+    "GET",
+    `/api/v1/domains/${slug}/llm/usage?submission_id=${id}`,
+    token,
+  ) as { data: Usage[] };
+  return response.data;
+}
 
-  // 平台默认：题目不再携带 provider/model，改由平台设置提供
-  const setProvider = await apiPut(
-    "/api/v1/admin/system/settings/llm_default_provider_id",
-    { value: providerId },
-    adminToken,
-  );
-  if (setProvider.status !== 200) {
-    throw new Error(
-      `写入默认 Provider 失败: ${setProvider.status} ${
-        JSON.stringify(setProvider.body)
-      }`,
-    );
-  }
-  const setModel = await apiPut(
-    "/api/v1/admin/system/settings/llm_default_model",
-    { value: MOCK_MODEL },
-    adminToken,
-  );
-  if (setModel.status !== 200) {
-    throw new Error(
-      `写入默认模型失败: ${setModel.status} ${JSON.stringify(setModel.body)}`,
-    );
-  }
-});
-
-// #651 起 U 型题可由管理员配置 LLM（保持私有），普通用户仍不得配置。
 e2eTest(
-  "[e2e/llm-gateway] 7.2 U 型 LLM 题仅管理员可导入且保持私有",
+  "[e2e/llm-gateway] Setup：两私有学校、独立负责人和同源共享版本",
   async () => {
-    if (!isE2E || !providerId) return;
-    const number = 91000 + (Date.now() % 1000);
-    const res = await importBundle(
-      llmManifest("U", number, true, true),
-      `# E2E LLM U 型题\n\n管理员私有 LLM 题`,
+    await waitForServer();
+    admin = await getAdminToken();
+    ownerA = await registerUser(
+      `llm_a_${suffix}`,
+      `llm_a_${suffix}@test.com`,
+      TEST_PASSWORD,
     );
-    if (res.status !== 200 && res.status !== 201) {
-      throw new Error(
-        `管理员导入 U 型 LLM 题应当成功，实际 ${res.status} ${
-          JSON.stringify(res.body)
-        }`,
+    ownerB = await registerUser(
+      `llm_b_${suffix}`,
+      `llm_b_${suffix}@test.com`,
+      TEST_PASSWORD,
+    );
+    student = await registerUser(
+      `llm_student_${suffix}`,
+      `llm_student_${suffix}@test.com`,
+      TEST_PASSWORD,
+    );
+    for (
+      const [slug, preset] of [[source, "community"], [schoolA, "education"], [
+        schoolB,
+        "education",
+      ], [empty, "education"]]
+    ) {
+      const created = await call("POST", "/api/v1/domains", admin, {
+        slug,
+        name: slug,
+        preset,
+      }) as { data: { id: string } };
+      if (slug === schoolA) domainA = created.data.id;
+      if (slug === schoolB) domainB = created.data.id;
+    }
+    for (
+      const [slug, token, email] of [[
+        schoolA,
+        ownerA,
+        `llm_a_${suffix}@test.com`,
+      ], [schoolB, ownerB, `llm_b_${suffix}@test.com`]]
+    ) {
+      await join(slug, token, email);
+      const me = await call("GET", "/api/v1/auth/me", token) as {
+        data: { id: string; is_admin: boolean };
+      };
+      assertEquals(me.data.is_admin, false);
+      await call("POST", `/api/v1/domains/${slug}/transfer`, admin, {
+        user_id: me.data.id,
+      });
+    }
+    for (const slug of [schoolA, schoolB, empty]) {
+      await join(
+        slug,
+        student,
+        `llm_student_${suffix}@test.com`,
       );
     }
-    const problem = (res.body as {
-      data: { type: string; visibility: string };
-    }).data;
-    if (problem.type !== "U" || problem.visibility !== "private") {
-      throw new Error(
-        `U 型 LLM 题应保持私有，实际 type=${problem.type} visibility=${problem.visibility}`,
-      );
+    for (
+      const [slug, token, model] of [[schoolA, ownerA, modelA], [
+        schoolB,
+        ownerB,
+        modelB,
+      ]]
+    ) {
+      const provider = await call(
+        "POST",
+        `/api/v1/domains/${slug}/llm/providers`,
+        token,
+        {
+          name: `${slug}-provider`,
+          base_url: MOCK_URL,
+          api_key: "isolated-e2e-mock-key",
+          enabled: true,
+        },
+        0,
+      ) as { data: { id: string } };
+      if (slug === schoolA) providerA = provider.data.id;
+      else providerB = provider.data.id;
+      await configure(slug, token, provider.data.id, model);
     }
-
-    const user = await getOrCreateUser(
-      "llm_gateway_user",
-      `e2e_llm_user_${testSuffix}`,
-      `e2e_llm_user_${testSuffix}@test.com`,
+    const imported = await importBundle();
+    assertEquals(imported.status, 201);
+    const draft = imported.body.data as {
+      problem_id: string;
+      number: number;
+      draft_revision: number;
+    };
+    problemId = draft.problem_id;
+    number = draft.number;
+    const published = await call(
+      "POST",
+      `/api/v1/domains/${source}/problems/${number}/publish`,
+      admin,
+      { change_note: "LLM V1" },
+      draft.draft_revision,
+    ) as { version_id: string };
+    versionId = published.version_id;
+    const sharing = await call(
+      "GET",
+      `/api/v1/domains/${source}/problems/${number}/sharing`,
+      admin,
+    ) as { data: { revision: number } };
+    await call(
+      "POST",
+      `/api/v1/domains/${source}/problems/${number}/sharing`,
+      admin,
+      {
+        enabled: true,
+        scope: "selected",
+        target_domain_slugs: [schoolA, schoolB, empty],
+      },
+      sharing.data.revision,
     );
-    // 非管理员不能指定 number（否则先被 400 拒绝），题号由系统分配。
-    const denied = await importBundle(
-      llmManifest("U", undefined, true, true),
-      `# E2E LLM U 型题\n\n不应创建成功`,
-      user.token,
-    );
-    if (denied.status !== 403) {
-      throw new Error(
-        `普通用户导入 U 型 LLM 题应当 403，实际 ${denied.status} ${
-          JSON.stringify(denied.body)
-        }`,
-      );
+    for (
+      const [slug, token] of [[schoolA, ownerA], [schoolB, ownerB], [
+        empty,
+        admin,
+      ]]
+    ) {
+      await call("POST", `/api/v1/domains/${slug}/problem-bindings`, token, {
+        source_ref: `${source}:${number}`,
+      });
     }
   },
 );
 
-e2eTest("[e2e/llm-gateway] 7.2 LLM 题未开网络被拒", async () => {
-  if (!isE2E || !providerId) return;
-  const number = 92000 + (Date.now() % 1000);
-  const res = await importBundle(
-    llmManifest("P", number, false, true),
-    `# E2E LLM 未开网络\n\n不应创建成功`,
-  );
-  if (res.status < 400) {
-    throw new Error(`未开网络的 LLM 导入应当失败，实际 ${res.status}`);
-  }
-});
-
-e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () => {
-  if (!isE2E || !providerId || !judgeAvailable) return;
-  const number = 93000 + (Date.now() % 1000);
-  const imported = await importBundle(
-    llmManifest("P", number, true, true),
-    `# E2E LLM P 型题\n\nMock LLM 应答 ok=true 时应 finished 且得分>0`,
-  );
-  if (imported.status !== 201 && imported.status !== 200) {
-    throw new Error(
-      `导入 P 型 LLM 题失败: ${imported.status} ${
-        JSON.stringify(imported.body)
-      }`,
-    );
-  }
-  problemId = (imported.body as { data: { id: string } }).data.id;
-  // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
-  await publishProblemVersion(adminToken, problemId, "E2E LLM 题 V1");
-
-  submissionId = await submitCode(
-    adminToken,
-    problemId,
-    "def solve(): return 1",
-  );
-  const result = await pollSubmission(adminToken, submissionId, 60, 2000, true);
-  if (result.status !== "finished" || result.score <= 0) {
-    const detailRes = await apiGet(
-      `/api/v1/submissions/${submissionId}`,
-      adminToken,
-    );
-    const detail = (detailRes.body as {
-      data?: { result?: { output?: string; details?: unknown } };
-    }).data;
-    throw new Error(
-      `LLM 评测预期 finished 且分数 >0，实际 ${result.status} (score=${result.score}) output=${
-        detail?.result?.output ?? "(无)"
-      } details=${JSON.stringify(detail?.result?.details ?? {})}`,
-    );
-  }
-
-  // 用量审计落库
-  const usage = await apiGet(
-    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
-    adminToken,
-  );
-  if (usage.status !== 200) {
-    throw new Error(
-      `用量查询失败: ${usage.status} ${JSON.stringify(usage.body)}`,
-    );
-  }
-  const rows = (usage.body as { data: unknown[] }).data;
-  if (rows.length === 0) {
-    throw new Error("LLM 用量未落库");
-  }
-});
-
-e2eTest("[e2e/llm-gateway] 7.3 重测重新签发 token", async () => {
-  if (!isE2E || !submissionId || !judgeAvailable) return;
-  // 记录重测前用量行数
-  const before = await apiGet(
-    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
-    adminToken,
-  );
-  usageCountBeforeRejudge =
-    ((before.body as { data: unknown[] }).data ?? []).length;
-
-  const rejudge = await apiPost(
-    `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
-    {},
-    adminToken,
-  );
-  // 统一任务受理（Handbook §4.3）：202 + 任务 ID
-  if (rejudge.status !== 202) {
-    throw new Error(
-      `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
-    );
-  }
-  const jobId = (rejudge.body as { data: { job_id: string } }).data.job_id;
-
-  // 先等任务终态：只轮询提交会在"上一条 finished 仍可见"时提前返回，
-  // 从而在重测真正执行前就检查用量（实测误报"token 未重新签发"）。
-  await waitForJobCompleted(adminToken, jobId);
-  await pollSubmission(adminToken, submissionId, 60, 2000, true);
-
-  const after = await apiGet(
-    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
-    adminToken,
-  );
-  const afterRows = (after.body as { data: unknown[] }).data ?? [];
-  if (afterRows.length <= usageCountBeforeRejudge) {
-    throw new Error("重测后未产生新的 LLM 用量记录（token 可能未重新签发）");
-  }
-});
-
-e2eTest("[e2e/llm-gateway] 更新 LLM 题关闭网络被拒", async () => {
-  if (!isE2E || !problemId) return;
-  const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
-  const problem = (detail.body as {
-    data?: {
-      runtime_config?: { evaluator?: { network?: { enabled?: boolean } } };
-    };
-  }).data;
-  const rc = problem?.runtime_config as {
-    evaluator: {
-      image: string;
-      time_limit_ms: number;
-      memory_limit_mb: number;
-      network: { enabled: boolean };
-    };
-    solution: {
-      image: string;
-      call_timeout_ms: number;
-      memory_limit_mb: number;
-    };
-  };
-  const res = await apiPut(
-    `/api/v1/problems/${problemId}`,
-    {
-      runtime_config: {
-        ...rc,
-        evaluator: { ...rc.evaluator, network: { enabled: false } },
+e2eTest(
+  "[e2e/llm-gateway] 学校管理员不能选择、改写或列出其他域 Provider",
+  async () => {
+    const settings = await call(
+      "GET",
+      `/api/v1/domains/${schoolA}/llm/settings`,
+      ownerA,
+    ) as { data: { revision: number } };
+    const rejected = await api(
+      "PUT",
+      `/api/v1/domains/${schoolA}/llm/settings`,
+      {
+        token: ownerA,
+        headers: { "If-Match": String(settings.data.revision) },
+        body: { provider_id: providerB, model: modelB },
       },
-    },
-    adminToken,
-  );
-  if (res.status < 400) {
-    throw new Error(`关闭 LLM 题网络应当失败，实际 ${res.status}`);
-  }
+    );
+    assertEquals(rejected.status, 404);
+    const cross = await api(
+      "PUT",
+      `/api/v1/domains/${schoolA}/llm/providers/${providerB}`,
+      {
+        token: ownerA,
+        headers: { "If-Match": "1" },
+        body: { enabled: false },
+      },
+    );
+    assertEquals(cross.status, 404);
+    assertEquals(
+      (await api("GET", `/api/v1/domains/${schoolB}/llm/providers`, {
+        token: ownerA,
+      })).status,
+      404,
+    );
+    const actual = await call(
+      "GET",
+      `/api/v1/domains/${schoolA}/llm/settings`,
+      ownerA,
+    ) as { data: { provider_id: string; model: string } };
+    assertEquals(actual.data.provider_id, providerA);
+    assertEquals(actual.data.model, modelA);
+  },
+);
+
+e2eTest(
+  "[e2e/llm-gateway] 无本域 Provider 的共享 LLM 题在提交前被拒绝",
+  async () => {
+    const response = await api("POST", `/api/v1/domains/${empty}/submissions`, {
+      token: student,
+      body: {
+        problem_ref: `${source}:${number}`,
+        version_id: versionId,
+        language: "python3",
+        code: "def solve(): return 1",
+      },
+    });
+    assertEquals(response.status, 400);
+    assertEquals(
+      (response.body as { code: string }).code,
+      "DOMAIN_LLM_NOT_CONFIGURED",
+    );
+    const list = await call(
+      "GET",
+      `/api/v1/domains/${empty}/submissions?problem_id=${problemId}`,
+      student,
+    ) as { pagination: { total: number } };
+    assertEquals(list.pagination.total, 0);
+  },
+);
+
+e2eTest("[e2e/llm-gateway] LLM 题包未开网络仍拒绝导入", async () => {
+  assertEquals((await importBundle(false)).status, 400);
 });
 
 e2eTest(
-  "[e2e/llm-gateway] 已发布 LLM 题不允许改为客观题（题型不可变）",
+  "[e2e/llm-gateway] 同源题在两学校完成真实评测，各自模型和持久用量隔离",
   async () => {
-    if (!isE2E || !problemId) return;
-    // Handbook §2.3：首次发布后固定 kind 与 AI 提交模式，跨题型转换必须新建题目。
-    // 因此对已发布的 LLM 题改 is_objective 应被 409 拒绝，而不是静默改行后
-    // 与已发布版本内容不一致。
-    const res = await apiPut(
-      `/api/v1/problems/${problemId}`,
-      { is_objective: true },
-      adminToken,
+    submissionA = await submit(schoolA);
+    submissionB = await submit(schoolB);
+    await finished(schoolA, submissionA);
+    await finished(schoolB, submissionB);
+    for (
+      const [slug, token, id, domain, provider, model] of [
+        [schoolA, ownerA, submissionA, domainA, providerA, modelA],
+        [schoolB, ownerB, submissionB, domainB, providerB, modelB],
+      ]
+    ) {
+      const rows = await usage(slug, token, id);
+      assertEquals(rows.length, 1);
+      assertEquals(rows[0].domain_id, domain);
+      assertEquals(rows[0].problem_id, problemId);
+      assertEquals(rows[0].problem_version_id, versionId);
+      assertEquals(rows[0].provider_id, provider);
+      assertEquals(rows[0].model, model);
+      assertEquals(rows[0].total_tokens, 8);
+      assertNotEquals(rows[0].attempt_id, null);
+      if (slug === schoolA) originalAttempt = rows[0].attempt_id;
+    }
+    assertEquals(await usage(schoolA, ownerA, submissionB), []);
+    assertEquals(await usage(schoolB, ownerB, submissionA), []);
+    assertEquals(
+      (await api(
+        "GET",
+        `/api/v1/domains/${schoolB}/submissions/${submissionA}`,
+        { token: student },
+      )).status,
+      404,
     );
-    if (res.status !== 409) {
-      throw new Error(
-        `题型不可变应返回 409，实际 ${res.status} ${JSON.stringify(res.body)}`,
+  },
+);
+
+e2eTest(
+  "[e2e/llm-gateway] 重测新尝试重新签 token 并使用当时本域模型，另一学校不受影响",
+  async () => {
+    const newModel = `${modelA}-rejudge`;
+    await configure(schoolA, ownerA, providerA, newModel);
+    const response = await api(
+      "POST",
+      `/api/v1/domains/${schoolA}/submission-jobs`,
+      {
+        token: ownerA,
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: {
+          kind: "rejudge",
+          scope: {
+            type: "selected",
+            submissions: [{ kind: "submission", id: submissionA }],
+          },
+          target: { mode: "submitted" },
+          policy_changes: [],
+        },
+      },
+    );
+    assertEquals(response.status, 202);
+    const job = (response.body as { data: { job_id: string } }).data.job_id;
+    for (let attempt = 0; attempt < 90; attempt++) {
+      const current = await call(
+        "GET",
+        `/api/v1/domains/${schoolA}/submission-jobs/${job}`,
+        ownerA,
+      ) as { data: { status: string } };
+      if (current.data.status === "completed") break;
+      if (current.data.status === "completed_with_errors" || attempt === 89) {
+        throw new Error(`重测任务未成功完成 ${JSON.stringify(current)}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    await finished(schoolA, submissionA);
+    const rows = await usage(schoolA, ownerA, submissionA);
+    assertEquals(rows.length, 2);
+    assertEquals(
+      rows.find((row) => row.attempt_id === originalAttempt)!.model,
+      modelA,
+    );
+    const fresh = rows.find((row) => row.attempt_id !== originalAttempt)!;
+    assertEquals(fresh.model, newModel);
+    assertEquals(fresh.provider_id, providerA);
+    assertEquals(fresh.domain_id, domainA);
+    assertEquals(fresh.total_tokens, 8);
+    const nextB = await submit(schoolB);
+    await finished(schoolB, nextB);
+    assertEquals((await usage(schoolB, ownerB, nextB))[0].model, modelB);
+  },
+);
+
+e2eTest(
+  "[e2e/llm-gateway] 已发布题规则不可变，Provider停用阻止新提交并保留历史",
+  async () => {
+    const path = `/api/v1/domains/${source}/problems/${number}`;
+    const draft = await call("GET", `${path}/draft`, admin) as {
+      revision: number;
+      content: Record<string, unknown> & {
+        runtime_config: { evaluator: Record<string, unknown> };
+      };
+    };
+    const disabled = structuredClone(draft.content);
+    disabled.runtime_config.evaluator.network = { enabled: false };
+    const noNetwork = await api("PUT", `${path}/draft`, {
+      token: admin,
+      headers: { "If-Match": String(draft.revision) },
+      body: { content: disabled },
+    });
+
+    async function checkProviderDisabled() {
+      const providers = await call(
+        "GET",
+        `/api/v1/domains/${schoolA}/llm/providers`,
+        ownerA,
+      ) as {
+        data: { id: string; revision: number }[];
+      };
+      const before = await call(
+        "GET",
+        `/api/v1/domains/${schoolA}/submissions?problem_id=${problemId}`,
+        student,
+      ) as {
+        pagination: { total: number };
+      };
+      await call(
+        "PUT",
+        `/api/v1/domains/${schoolA}/llm/providers/${providerA}`,
+        ownerA,
+        { enabled: false },
+        providers.data.find((provider) => provider.id === providerA)!
+          .revision,
+      );
+      const rejected = await api(
+        "POST",
+        `/api/v1/domains/${schoolA}/submissions`,
+        {
+          token: student,
+          body: {
+            problem_ref: `${source}:${number}`,
+            version_id: versionId,
+            language: "python3",
+            code: "def solve(): return 1",
+          },
+        },
+      );
+      assertEquals(rejected.status, 400);
+      const after = await call(
+        "GET",
+        `/api/v1/domains/${schoolA}/submissions?problem_id=${problemId}`,
+        student,
+      ) as {
+        pagination: { total: number };
+      };
+      assertEquals(after.pagination.total, before.pagination.total);
+      assertEquals((await usage(schoolA, ownerA, submissionA)).length, 2);
+      const other = await call(
+        "GET",
+        `/api/v1/domains/${schoolB}/llm/providers`,
+        ownerB,
+      ) as {
+        data: { id: string; enabled: boolean }[];
+      };
+      assertEquals(
+        other.data.find((provider) => provider.id === providerB)!.enabled,
+        true,
       );
     }
-    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
-    const problem = (detail.body as {
-      data?: { is_objective?: boolean; llm_config?: unknown };
-    }).data;
-    if (problem?.is_objective !== false) {
-      throw new Error("被拒的题型切换不得改写题目行");
-    }
-    if (problem?.llm_config == null) {
-      throw new Error("被拒的题型切换不得清空已发布版本的 llm_config");
-    }
+    assertEquals(noNetwork.status, 400);
+    const kind = await api("PUT", `${path}/draft`, {
+      token: admin,
+      headers: { "If-Match": String(draft.revision) },
+      body: {
+        content: {
+          kind: "objective",
+          title: "错误转换",
+          description: "不可转换",
+          samples: [],
+          questions: [{
+            key: "immutable-kind-test",
+            sort_order: 0,
+            type: "single",
+            prompt: "选择 A",
+            options: [{ key: "A", text: "A" }, { key: "B", text: "B" }],
+            answer: ["A"],
+            explanation: "A",
+          }],
+        },
+      },
+    });
+    assertEquals(kind.status, 400);
+    assertEquals(
+      (kind.body as { code: string }).code,
+      "CONTENT_KIND_IMMUTABLE",
+    );
+    const detail = await call("GET", path, admin) as {
+      version_id: string;
+      content: { kind: string; llm_config: unknown };
+    };
+    assertEquals(detail.version_id, versionId);
+    assertEquals(detail.content.kind, "ai");
+    assertNotEquals(detail.content.llm_config, null);
+    await checkProviderDisabled();
   },
 );

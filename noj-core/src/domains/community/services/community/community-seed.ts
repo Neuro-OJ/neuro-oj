@@ -2,6 +2,10 @@
 
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { communityBoards } from "./../../../../shared/db/schema.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 
 const DEFAULT_BOARDS = [
   {
@@ -23,13 +27,15 @@ const DEFAULT_BOARDS = [
  */
 export async function ensureCommunitySeeds(): Promise<void> {
   const db = getDb();
+  await ensureDefaultWorkspace(db);
   const now = new Date().toISOString();
   for (const board of DEFAULT_BOARDS) {
     await db.insert(communityBoards).values({
       id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
       ...board,
       created_at: now,
       updated_at: now,
-    }).onConflictDoNothing({ target: communityBoards.slug });
+    }).onConflictDoNothing();
   }
 }

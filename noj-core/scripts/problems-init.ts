@@ -2,7 +2,7 @@
 //
 // 设计目标：让出题人从「可评测的最小骨架」起步，而不是从空目录 + 记忆规范起步。
 // 生成的内容**严格对齐** noj-docs 的题目包与质量规范：
-//   - problem.json：format_version=1、必填字段齐备、无占位符（除 LLM 题的 provider 占位）
+//   - problem.json：format_version=2、无 type、必填字段齐备
 //   - evaluate.py：标准 details.cases 输出、隐藏用例不泄露输入/期望/实际、
 //     运行期异常上抛（不吞异常 → judge 收尾为 error）
 //   - template.py：入口保持 NotImplementedError（质量规范：模板 MUST NOT 含可满分实现）
@@ -21,8 +21,6 @@ export interface ProblemInitOptions {
   slug: string;
   /** 题目标题；缺省用 slug。 */
   title?: string;
-  /** 题型：U（客观题）/ P（编程题）。缺省 P。 */
-  type?: "U" | "P";
   /** 难度。缺省 medium。 */
   difficulty?: "easy" | "medium" | "hard";
   /** 目标根目录（缺省 data/problems-src）。 */
@@ -94,12 +92,11 @@ function defaultProblemSrcDir(): string {
 
 function problemJson(
   opts: Required<
-    Pick<ProblemInitOptions, "slug" | "title" | "type" | "difficulty">
+    Pick<ProblemInitOptions, "slug" | "title" | "difficulty">
   >,
 ): string {
   const manifest = {
-    format_version: 1,
-    type: opts.type,
+    format_version: 2,
     title: opts.title,
     difficulty: opts.difficulty,
     // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会
@@ -503,10 +500,6 @@ export async function initProblem(
 ): Promise<ProblemInitResult> {
   validateSlug(opts.slug);
 
-  const type = opts.type ?? "P";
-  if (type !== "U" && type !== "P") {
-    throw new Error(`题型非法：${type}（仅允许 U / P）`);
-  }
   const difficulty = opts.difficulty ?? "medium";
   if (!["easy", "medium", "hard"].includes(difficulty)) {
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
@@ -561,7 +554,7 @@ export async function initProblem(
   }
 
   const files: Array<[string, string]> = [
-    ["problem.json", problemJson({ slug: opts.slug, title, type, difficulty })],
+    ["problem.json", problemJson({ slug: opts.slug, title, difficulty })],
     ["statement.md", statementMarkdown(title)],
     ["template.py", templatePy()],
     ["evaluate.py", evaluatePy()],

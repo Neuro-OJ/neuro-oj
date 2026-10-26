@@ -1,9 +1,14 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 公开站点统计端点路由层测试。
  *
  * 依赖 PGlite 内存数据库（DATABASE_URL 未设置时自动启用，始终可用），
  * 测试前自动运行迁移并 seed（见 00_migrate_test.ts）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -80,10 +85,10 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "统计通过数题",
       description: "d",
-      type: "P",
       number: 96000 + (Date.now() % 1000),
       owner_id: "0",
       difficulty: "easy",
@@ -91,11 +96,13 @@ Deno.test({
       updated_at: now,
     });
     // 先插提交再插尝试（尝试对提交有外键），最后回填有效成绩指针
+    await publishBaselineVersionForTest(problemId);
     await db.insert(submissions).values([
       {
         id: "stats-accepted-s1",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(1)",
         version_origin: "legacy_unknown",
@@ -108,6 +115,7 @@ Deno.test({
         id: "stats-accepted-s2",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(2)",
         version_origin: "legacy_unknown",

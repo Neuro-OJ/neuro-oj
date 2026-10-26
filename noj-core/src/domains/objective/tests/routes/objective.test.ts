@@ -10,7 +10,7 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { createProblem } from "../../../catalog/index.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
@@ -124,12 +124,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createUserToken("user");
+    const token = await createDefaultCatalogToken("editor");
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
       body: {
-        type: "U",
         is_objective: true,
         title: `客观题套卷 ${Date.now()}`,
         description: "套卷描述",
@@ -137,27 +136,27 @@ Deno.test({
     });
     assertEquals(res.status, 201);
     const body = await res.json();
-    assertEquals(body.data.type, "U");
+    assertEquals(body.data.type, undefined);
     assertEquals(body.data.is_objective, true);
     assertEquals(body.data.runtime_config, null);
-    // 新建 U 型默认 private（I1）
-    assertEquals(body.data.visibility, "private");
+    // 默认社区域新建资源使用公开展示，未发布内容仍不可公开读取。
+    assertEquals(body.data.visibility, "public");
   },
 });
 
 Deno.test({
-  name: "objective route: 普通用户创建 P 型仍被拒（type 权限不受影响）",
+  name: "objective route: 默认域创建明确拒绝旧题库分类",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createUserToken("user");
+    const token = await createDefaultCatalogToken("editor");
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
       body: {
         type: "P",
-        title: `P 型题 ${Date.now()}`,
+        title: `旧分类题 ${Date.now()}`,
         description: "desc",
         runtime_config: {
           evaluator: {
@@ -174,31 +173,31 @@ Deno.test({
         },
       },
     });
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 400);
   },
 });
 
 Deno.test({
-  name: "objective route: 套卷 display_id 查找（U/P 前缀）",
+  name: "objective route: 套卷数字题号与默认域 P 兼容入口",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createUserToken("user");
-    // 创建一个客观题套卷（U 型）
+    const token = await createDefaultCatalogToken("editor");
+    // 创建一个客观题套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
       body: {
-        type: "U",
         is_objective: true,
         title: `display 套卷 ${Date.now()}`,
         description: "d",
       },
     });
     const paper = (await created.json()).data;
-    const displayId = `${paper.type}${paper.number}`;
+    const displayId = String(paper.number);
     await makePaperPublic(app, paper.id, token);
+    await publishBaselineVersionForTest(paper.id);
 
     const res = await jsonRequest(app, `/api/v1/problems/${displayId}`);
     assertEquals(res.status, 200);
@@ -213,20 +212,19 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
     // 创建套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `display 小题 ${Date.now()}`,
         description: "d",
       },
     });
     const paper = (await created.json()).data;
-    const displayId = `${paper.type}${paper.number}`;
+    const displayId = String(paper.number);
     await makePaperPublic(app, paper.id, owner);
 
     // 用 display_id 创建小题（不再只支持 UUID；写入走共享草稿 + 乐观锁）
@@ -293,7 +291,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
     const res = await jsonRequest(
       app,
       "/api/v1/problems/submissions?paper_id=00000000-0000-0000-0000-000000000000",
@@ -311,15 +309,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
-    const other = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
+    const other = await createDefaultCatalogToken("editor");
 
     // 创建套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `CRUD 套卷 ${Date.now()}`,
         description: "d",
@@ -454,14 +451,13 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
-    const solver = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
+    const solver = await createDefaultCatalogToken("editor");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `提交套卷 ${Date.now()}`,
         description: "d",
@@ -544,18 +540,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective route: 删除套卷级联清理小题与提交",
+  name: "objective route: 编辑者不能物理删除，已发布套卷保留版本及身份",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `删除套卷 ${Date.now()}`,
         description: "d",
@@ -583,13 +578,21 @@ Deno.test({
       method: "DELETE",
       token: owner,
     });
-    assertEquals(del.status, 204);
+    assertEquals(del.status, 403);
+    await publishPaper(app, paperId, owner);
+    const admin = await createDefaultCatalogToken("admin");
+    const governedDelete = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}`,
+      { method: "DELETE", token: admin },
+    );
+    assertEquals(governedDelete.status, 409);
 
-    // 级联清理验证
+    // 已发布历史不能被物理删除
     const rows = await db.select().from(problems).where(
       eq(problems.id, paperId),
     );
-    assertEquals(rows.length, 0);
+    assertEquals(rows.length, 1);
   },
 });
 
@@ -599,11 +602,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await createUserToken("user");
-    // 服务层直接创建 U 型编程题（内部 root 路径，不受普通用户敏感字段限制）
+    const token = await createDefaultCatalogToken("editor");
+    // 服务层直接创建 编程题（内部 root 路径，不受普通用户敏感字段限制）
     const created = await createProblem({
-      type: "U",
-      title: `U 型题 ${Date.now()}`,
+      title: `编程题 ${Date.now()}`,
       description: "d",
       runtime_config: {
         evaluator: {
@@ -636,12 +638,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `排序冲突卷 ${Date.now()}`,
         description: "d",
@@ -695,12 +696,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `排序校验卷 ${Date.now()}`,
         description: "d",
@@ -731,29 +731,28 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective route: P 型套卷仅 admin 可管理（权限随题目类型）",
+  name: "objective route: 默认域管理员套卷不能由其他编辑者管理",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const admin = await createUserToken("admin");
-    const normal = await createUserToken("user");
+    const normal = await createDefaultCatalogToken("editor");
 
-    // admin 创建 P 型客观题套卷
+    // admin 创建 客观题套卷
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: admin,
       body: {
-        type: "P",
         is_objective: true,
-        title: `P 型套卷 ${Date.now()}`,
+        title: `管理员套卷 ${Date.now()}`,
         description: "d",
       },
     });
     assertEquals(created.status, 201);
     const paperId = (await created.json()).data.id;
 
-    // 普通用户创建小题被拒（P 型仅 admin）
+    // 普通用户创建小题被拒（未获该源题编辑能力）
     const qRes = await jsonRequest(
       app,
       `/api/v1/problems/${paperId}/questions`,
@@ -818,12 +817,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `改题型卷 ${Date.now()}`,
         description: "d",
@@ -907,14 +905,13 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const owner = await createUserToken("user");
-    const solver = await createUserToken("user");
+    const owner = await createDefaultCatalogToken("editor");
+    const solver = await createDefaultCatalogToken("editor");
 
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
       body: {
-        type: "U",
         is_objective: true,
         title: `快照隔离卷 ${Date.now()}`,
         description: "d",
@@ -1002,3 +999,9 @@ Deno.test({
     assertEquals(solverQuestions2[0].prompt, "V2 题目");
   },
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+import { createDefaultCatalogToken } from "../../../catalog/tests/default-fixture.ts";
+
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";

@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 个人主页统一聚合回归（Handbook §3.4/§6.6，缺陷 #51）。
  *
@@ -5,6 +10,7 @@
  * （代码提交 + 客观题提交），并按题目 ID 去重；修复前只读 `submissions`，
  * 仅通过客观题的用户 solved_count = 0，与其全局排行/题解门槛口径不一致。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -43,6 +49,7 @@ async function seedProblem(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title,
     description: "d",
@@ -50,11 +57,11 @@ async function seedProblem(
     runtime_config: null,
     number,
     owner_id: "0",
-    type: objective ? "U" : "P",
     is_objective: objective,
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -78,6 +85,7 @@ Deno.test({
         await db.insert(objectiveSubmissions).values({
           id: submissionId,
           paper_id: paperId,
+          ...await problemExecutionForTest(paperId),
           user_id: userId,
           submission_type: "practice",
           answers: {},
@@ -115,6 +123,7 @@ Deno.test({
         id: codeSubmissionId,
         user_id: userId,
         problem_id: codeProblemId,
+        ...await problemExecutionForTest(codeProblemId),
         language: "python3",
         code: "print(1)",
         status: "finished",
@@ -182,7 +191,7 @@ Deno.test({
       await db.delete(submissions).where(
         eq(submissions.problem_id, codeProblemId),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [paperId, codeProblemId]),
       );
       await db.delete(users).where(eq(users.id, userId));

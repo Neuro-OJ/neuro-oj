@@ -148,7 +148,7 @@ async function cleanupCheckinUsers(ids: string[]): Promise<void> {
   const db = getDb();
   for (const id of ids) {
     await db.delete(checkIns).where(eq(checkIns.user_id, id));
-    await db.delete(users).where(eq(users.id, id));
+    // preload 会回滚账号及默认域引导关系，不物理删除域负责人。
   }
 }
 

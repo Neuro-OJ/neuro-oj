@@ -36,11 +36,12 @@ export interface ProblemArgs {
   /** init 选项。 */
   slug?: string;
   title?: string;
-  type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
   /** push: 平台地址（缺省读 NOJ_SERVER）。 */
   server?: string;
+  /** push: 明确的使用域（默认 main）。 */
+  domain: string;
   /** push: 导入后立即发布。 */
   publish: boolean;
 }
@@ -53,6 +54,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     json: false,
     noInteractive: false,
     publish: false,
+    domain: "main",
   };
   const positional: string[] = [];
   const takeValue = (name: string, i: number): string => {
@@ -79,9 +81,9 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       case "--type":
-        out.type = takeValue("--type", i);
-        i++;
-        break;
+        throw new UsageError(
+          "格式 2 已取消 --type；导入时使用 --domain 指定目标工作空间",
+        );
       case "--difficulty":
         out.difficulty = takeValue("--difficulty", i);
         i++;
@@ -97,6 +99,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       }
       case "--server":
         out.server = takeValue("--server", i);
+        i++;
+        break;
+      case "--domain":
+        out.domain = takeValue("--domain", i);
         i++;
         break;
       case "--publish":
@@ -350,7 +356,7 @@ export async function runProblemPush(args: ProblemArgs): Promise<number> {
   const interactive = !args.noInteractive && Deno.stdin.isTerminal();
   try {
     const result = await pushBundle(
-      { server, bundle, publish: args.publish },
+      { server, domain: args.domain, bundle, publish: args.publish },
       {
         fetch,
         io: interactive ? realIO() : null,
@@ -413,13 +419,11 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   let answers: {
     slug?: string;
     title?: string;
-    type?: string;
     difficulty?: string;
     judgeType?: "dual" | "oi";
   } = {
     slug: args.slug,
     title: args.title,
-    type: args.type,
     difficulty: args.difficulty,
     judgeType: args.judgeType,
   };
@@ -443,7 +447,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const slug = answers.slug;
   if (!slug) {
     console.error(
-      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b --type P）",
+      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b）",
     );
     return EXIT_USAGE;
   }
@@ -451,11 +455,6 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   // 参数/取值非法属**用法错误**（退出码 2），而非运行失败
   try {
     validateSlug(slug);
-    if (
-      answers.type !== undefined && answers.type !== "U" && answers.type !== "P"
-    ) {
-      throw new UsageError(`--type 仅支持 U/P，收到 "${answers.type}"`);
-    }
     if (
       answers.difficulty !== undefined &&
       !["easy", "medium", "hard"].includes(answers.difficulty)
@@ -480,7 +479,6 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const result = await initProblemScaffold({
     slug,
     title: answers.title,
-    type: answers.type,
     difficulty: answers.difficulty,
     judgeType: answers.judgeType,
     root: args.dir,

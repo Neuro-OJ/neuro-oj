@@ -14,6 +14,7 @@ useRequireLogin()
 
 interface LlmProvider {
   id: string
+  revision: number
   name: string
   base_url: string
   cost_per_1k_tokens: number
@@ -250,7 +251,7 @@ async function handleSave() {
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
       await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload, {
-        headers: { "If-Match": `"${editingItem.value.updated_at}"` },
+        headers: { "If-Match": String(editingItem.value.revision) },
       })
     } else {
       if (!formApiKey.value.trim()) {
@@ -266,7 +267,7 @@ async function handleSave() {
         enabled: formEnabled.value,
         rpm_limit: rpmLimit,
         tpm_limit: tpmLimit,
-      })
+      }, { headers: { "If-Match": "0" } })
     }
     showForm.value = false
     await loadItems()

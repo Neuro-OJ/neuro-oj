@@ -6,7 +6,6 @@ import { useToast } from "~/composables/useToast"
 import { useProblemStats } from "~/composables/useProblemStats"
 import type { ProblemStatsDetail } from "~/utils/problemStats"
 import type { SubmissionMode } from "~/utils/problemView"
-import { effectiveVisibility } from "~/utils/bundleImport"
 import { readAiDraftPassthrough } from "~/utils/aiDraftContent"
 
 interface RuntimeConfigPayload {
@@ -30,11 +29,11 @@ interface RuntimeConfigPayload {
 interface Props {
   mode: "create" | "edit"
   problemId?: string
-  initialType?: "U" | "P"
+  initialType?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialType: "U",
+  initialType: "ai",
 })
 
 const emit = defineEmits<{
@@ -42,12 +41,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const route = useRoute()
 const { user, fetchUser } = useAuth()
-/** 「从题目包导入」入口：管理后台与前台各有一页（跳转后的编辑页路径不同）。 */
-const bundleImportPath = computed(() =>
-  route.path.startsWith("/admin") ? "/admin/problem-import" : "/problems/new/bundle",
-)
 const { api } = useApi()
 const { toast } = useToast()
 const versions = useProblemVersions()
@@ -69,12 +63,6 @@ const publishing = ref(false)
 
 // ── 表单数据 ──
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
-const problemType = ref(props.initialType)
-// 主题库（P）题目必须公开；可见性选择只在 U 型下展示，切到 P 时同步为公开，
-// 避免隐藏字段残留「私有」导致建题被拒（「P 型题目必须公开」）。
-watch(problemType, (type) => {
-  visibility.value = effectiveVisibility(type, visibility.value)
-}, { immediate: true })
 const submissionMode = ref<SubmissionMode>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
 /**
@@ -114,10 +102,16 @@ async function loadStats() {
 // 支持包上传
 const hasSupportPackage = ref(false)
 
+/** 用于 SupportPackageUpload 组件的实际 problemId（创建模式下保存后才赋值） */
+const uploadProblemId = computed(() =>
+  isEditMode.value ? (props.problemId ?? null) : savedProblemId.value,
+)
+const savedProblemId = ref<string | null>(null)
+
 async function onPackageChanged(hasPackage: boolean) {
   hasSupportPackage.value = hasPackage
-  if (!props.problemId) return
-  const draft = await versions.getDraft(props.problemId)
+  if (!uploadProblemId.value) return
+  const draft = await versions.getDraft(uploadProblemId.value)
   draftRevision.value = draft.revision
   applyDraftContent(draft.content)
 }
@@ -163,14 +157,14 @@ const solutionImage = ref("")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
 
-// ── LLM 配置（仅 P 型/官方题可启用） ──
+// ── LLM 配置（单次预算与模型能力） ──
 const llmEnabled = ref(false)
 const llmMaxCalls = ref("")
 const llmMaxTokens = ref("")
-// 允许评测代码调用的模型别名（缺省仅 default = 平台默认模型）；选项来自平台别名表
+// 允许评测代码调用的模型别名（缺省仅 default = 默认域模型）；选项来自默认域别名表
 const llmModels = ref<string[]>(["default"])
 const llmModelOptions = ref<{ alias: string; description: string }[]>([
-  { alias: "default", description: "平台默认模型" },
+  { alias: "default", description: "默认域模型" },
 ])
 let llmModelOptionsLoaded = false
 async function loadLlmModelOptions() {
@@ -178,7 +172,7 @@ async function loadLlmModelOptions() {
   llmModelOptionsLoaded = true
   try {
     const res = await api.get<{ data: { alias: string; description: string }[] }>(
-      "/api/v1/problems/llm-model-aliases",
+      "/api/v1/domains/main/problems/llm-model-aliases",
       { silent: true },
     )
     llmModelOptions.value = res.data
@@ -191,7 +185,7 @@ const llmModelChoices = computed(() => {
   const known = new Set(llmModelOptions.value.map((o) => o.alias))
   return [
     ...llmModelOptions.value,
-    ...llmModels.value.filter((a) => !known.has(a)).map((alias) => ({ alias, description: "平台未配置此别名" })),
+    ...llmModels.value.filter((a) => !known.has(a)).map((alias) => ({ alias, description: "默认域未配置此别名" })),
   ]
 })
 
@@ -292,7 +286,7 @@ async function loadProblem() {
       samples?: import("~/utils/oiWorkspace").ProblemSample[]; visibility: "public" | "private";
       title: string; description: string; difficulty: string
       time_limit_ms: number; memory_limit_mb: number
-      display_id: string; type: string; number: number
+      display_id: string; number: number
       tags: { id: string }[]
       submission_mode?: SubmissionMode
       artifact_max_size_mb?: number | null
@@ -301,7 +295,6 @@ async function loadProblem() {
     } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
     displayId.value = p.display_id
-    problemType.value = p.type === 'U' ? 'U' : 'P'
     title.value = p.title; description.value = p.description
     samples.value = p.samples ?? []
     visibility.value = p.visibility
@@ -498,7 +491,7 @@ function buildContent(): Record<string, unknown> {
 async function saveManagement(): Promise<void> {
   await api.put(`/api/v1/problems/${props.problemId}`, {
     difficulty: difficulty.value,
-    visibility: effectiveVisibility(problemType.value, visibility.value),
+    visibility: visibility.value,
     tag_ids: tagIds.value,
   })
 }
@@ -560,17 +553,16 @@ async function handleSubmit() {
   saveError.value = ""
   try {
     const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
-      title: title.value.trim(), description: description.value.trim(), samples: samples.value,
-      visibility: effectiveVisibility(problemType.value, visibility.value),
+      title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
       difficulty: difficulty.value,
       tag_ids: tagIds.value,
-      type: problemType.value,
       runtime_config: buildRuntimeConfig(),
       submission_mode: submissionMode.value,
       artifact_max_size_mb: artifactMaxSizeMb.value,
       llm: buildLlmPayload(),
     })
-    toast.success("题目已创建：请在编辑页上传支持包，核对后发布")
+    savedProblemId.value = res.data.id
+    toast.success("题目已创建（尚未发布：发布后才可作答）")
     emit("saved", res.data.id)
   } catch (err: unknown) {
     saveError.value = extractApiError(err).message
@@ -604,32 +596,10 @@ async function handleSubmit() {
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <h2 class="text-sm font-semibold text-text mb-0">基本信息</h2>
       <div class="grid grid-cols-2 gap-3.5 mt-3">
-        <!-- 编辑模式：只读题号和类型 -->
-        <template v-if="isEditMode">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-text">题号</label>
-            <span class="px-3 py-2 text-sm border border-border rounded-md bg-gray-50 text-text-secondary cursor-default">{{ displayId }}</span>
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-text">类型</label>
-            <span class="px-3 py-2 text-sm border border-border rounded-md bg-gray-50 text-text-secondary cursor-default">{{ problemType === 'U' ? '用户题库（U）' : '主题库（P）' }}</span>
-          </div>
-        </template>
-
-        <!-- 创建模式：类型选择 -->
-        <template v-else>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-text">题目类型</label>
-          <USelect
-            v-model="problemType"
-            :items="[
-              ...(isAdmin ? [{ label: '主题库（P）', value: 'P' }] : []),
-              { label: '用户题库（U）', value: 'U' },
-            ]"
-            class="w-full"
-          />
-          </div>
-        </template>
+        <div v-if="isEditMode" class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">题号</label>
+          <span class="font-mono">{{ displayId }}</span>
+        </div>
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">标题 <span class="text-red-600">*</span></label>
@@ -764,8 +734,8 @@ async function handleSubmit() {
               <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
                 <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
                 <span>
-                  启用 LLM 调用（仅 P 型/官方题）
-                  <span class="block text-xs text-text-muted">启用后必须开启 Evaluator 联网；模型与供应商由平台统一配置</span>
+                  启用 LLM 调用
+                  <span class="block text-xs text-text-muted">启用后必须开启 Evaluator 联网；模型与供应商由使用域配置</span>
                 </span>
               </label>
               <div v-if="llmEnabled" class="flex flex-col gap-2">
@@ -851,17 +821,9 @@ async function handleSubmit() {
 
     <!-- 支持包上传 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
-      <UFormField v-if="problemType === 'U'" label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
+      <UFormField label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
       <ProblemSampleEditor v-model="samples" v-model:statement="description" />
-      <SupportPackageUpload v-if="isEditMode" :problem-id="problemId ?? null" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="draftRevision === null" @package-changed="onPackageChanged" />
-      <div v-else class="flex flex-col gap-1 px-3.5 py-3 bg-gray-50 border border-border rounded-lg text-xs text-text-secondary">
-        <p class="font-semibold text-text">题目支持包</p>
-        <p>创建题目后会进入编辑页，在那里上传支持包（evaluate.py 与测试数据）。</p>
-        <p>
-          已有完整题目包（含 problem.json）？
-          <NuxtLink :to="bundleImportPath" class="text-primary font-semibold">直接从题目包导入</NuxtLink>，无需手填本表单。
-        </p>
-      </div>
+      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="!uploadProblemId || draftRevision === null" @package-changed="onPackageChanged" />
     </section>
 
     <!-- 题目数据（仅编辑模式）：出题人视角的评测洞察 -->

@@ -20,7 +20,25 @@ import { contestRouter } from "./domains/contest/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
+import { internalLlmPolicyRouter } from "./domains/system/routes/internal-llm-policy.ts";
 import { legalRouter } from "./domains/legal/routes/index.ts";
+import { workspaceRouter } from "./domains/workspace/routes/index.ts";
+import { domainProblemsRouter } from "./domains/catalog/routes/domain-problems.ts";
+import { domainTrainingsRouter } from "./domains/catalog/routes/domain-trainings.ts";
+import { domainResourceManagementRouter } from "./domains/catalog/routes/domain-resource-management.ts";
+import { domainSubmissionsRouter } from "./domains/submission/routes/domain-submissions.ts";
+import { domainSubmissionJobsRouter } from "./domains/submission/routes/domain-submission-jobs.ts";
+import { ownSubmissionHistoryRouter } from "./domains/submission/routes/own-submission-history.ts";
+import { domainSubmissionSse } from "./domains/submission/routes/sse.ts";
+import { domainObjectiveRouter } from "./domains/objective/routes/domain-objective.ts";
+import { domainContestRouter } from "./domains/contest/routes/domain-contests.ts";
+import { domainCommunityRouter } from "./domains/community/routes/domain-community.ts";
+import { domainQueryRouter } from "./domains/query/routes/domain-query.ts";
+import { domainStatsSse } from "./domains/query/routes/sse.ts";
+import { domainSearchRouter } from "./domains/search/routes/search.ts";
+import { domainLlmRouter } from "./domains/gateway/routes/domain-llm.ts";
+import { educationRouter } from "./domains/education/routes/index.ts";
+import { instanceAccessMiddleware } from "./domains/workspace/index.ts";
 import submissionSse from "./domains/submission/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
@@ -116,7 +134,12 @@ export function createApp(): Hono {
         : developmentOrigins,
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "If-Match"],
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "If-Match",
+        "Idempotency-Key",
+      ],
       exposeHeaders: [
         "Retry-After",
         "X-RateLimit-Limit",
@@ -180,6 +203,8 @@ export function createApp(): Hono {
   // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
   app.use("/api/v1/*", banlistMiddleware);
   app.use("/api/v1/*", maintenanceMode);
+  app.route("/api/v1", internalLlmPolicyRouter);
+  app.use("/api/v1/*", instanceAccessMiddleware);
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）
   app.route("/", createHealthRouter(observabilityRegistry));
@@ -197,6 +222,22 @@ export function createApp(): Hono {
   app.route("/api/v1", messagingRouter);
   app.route("/api/v1", systemRouter);
   app.route("/api/v1", legalRouter);
+  app.route("/api/v1", workspaceRouter);
+  app.route("/api/v1", domainProblemsRouter);
+  app.route("/api/v1", domainTrainingsRouter);
+  app.route("/api/v1", domainResourceManagementRouter);
+  app.route("/api/v1", domainSubmissionsRouter);
+  app.route("/api/v1", domainSubmissionJobsRouter);
+  app.route("/api/v1", ownSubmissionHistoryRouter);
+  app.route("/api/v1", domainSubmissionSse);
+  app.route("/api/v1", domainObjectiveRouter);
+  app.route("/api/v1", domainContestRouter);
+  app.route("/api/v1", domainCommunityRouter);
+  app.route("/api/v1", domainQueryRouter);
+  app.route("/api/v1", domainStatsSse);
+  app.route("/api/v1", domainSearchRouter);
+  app.route("/api/v1", domainLlmRouter);
+  app.route("/api/v1", educationRouter);
   app.route("/api/v1/admin", admin);
   // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {
@@ -204,8 +245,7 @@ export function createApp(): Hono {
     return c.json({ data: items });
   });
 
-  // 带 authMiddleware 通配的 SSE 路由必须放在所有公开路由之后，
-  // 否则其 use("*") 会拦截后续 /api/v1/* 公开端点。
+  // SSE 的认证限定在事件路径，避免影响其他公开入口。
   app.route("/api/v1", submissionSse);
   app.route("/api/v1", communitySse);
 

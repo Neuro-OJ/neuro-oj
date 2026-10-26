@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 有效成绩投影写入服务测试（Handbook §3.1、§3.2、§1.3）。
  *
@@ -5,12 +7,14 @@
  * 跨版本保留、未知版本桶、平台错误不参与、通过指针与分数指针分离、
  * 题库与竞赛两个作用域独立，以及策略切换后的整题重算与 revision 递增。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -33,6 +37,8 @@ import {
 } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
+await resetDbForTest();
+
 const now = new Date().toISOString();
 
 /** 建题 + 两个版本，返回版本 ID。 */
@@ -42,10 +48,10 @@ async function seedProblem(
 ): Promise<{ v1: string; v2: string }> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -84,6 +90,7 @@ async function seedSubmission(input: {
   contestId?: string | null;
 }): Promise<ProjectionSource> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(input.problemId),
     id: input.id,
     user_id: "0",
     problem_id: input.problemId,
@@ -173,11 +180,16 @@ Deno.test("projection: any 采用全部版本，exact(X) 只用 X", async () => 
   assertEquals(plan.global.effective_attempt_id, "proj-s1-a1");
 
   // exact(V2)：只有 V2 候选，不通过
-  await db.update(problems).set({
+  await db.update(domainProblemBindings).set({
     effective_version_mode: "exact",
     required_version_id: v2,
-    effective_policy_revision: 1,
-  }).where(eq(problems.id, "proj-p1"));
+    revision: 1,
+  }).where(
+    eq(
+      domainProblemBindings.id,
+      (await problemExecutionForTest("proj-p1")).domain_problem_binding_id,
+    ),
+  );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_valid, true);
   assertEquals(plan.global.is_accepted, false);
@@ -195,11 +207,16 @@ Deno.test("projection: any 采用全部版本，exact(X) 只用 X", async () => 
     sequence: 2,
     source_kind: "rejudge",
   });
-  await db.update(problems).set({
+  await db.update(domainProblemBindings).set({
     effective_version_mode: "any",
     required_version_id: null,
-    effective_policy_revision: 2,
-  }).where(eq(problems.id, "proj-p1"));
+    revision: 2,
+  }).where(
+    eq(
+      domainProblemBindings.id,
+      (await problemExecutionForTest("proj-p1")).domain_problem_binding_id,
+    ),
+  );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_accepted, false);
   // 最高分是 V2 的 1000（V1 已被 WA 替换）
@@ -243,11 +260,16 @@ Deno.test("projection: 未知版本桶只在 any 下有效", async () => {
   assertEquals(plan.global.is_valid, true);
   assertEquals(plan.global.is_accepted, true);
 
-  await db.update(problems).set({
+  await db.update(domainProblemBindings).set({
     effective_version_mode: "exact",
     required_version_id: "proj-p2-v1",
-    effective_policy_revision: 1,
-  }).where(eq(problems.id, "proj-p2"));
+    revision: 1,
+  }).where(
+    eq(
+      domainProblemBindings.id,
+      (await problemExecutionForTest("proj-p2")).domain_problem_binding_id,
+    ),
+  );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_valid, false);
   assertEquals(plan.global.is_accepted, false);
@@ -313,6 +335,7 @@ Deno.test("projection: 题库与竞赛两个作用域独立计算", async () => 
   const db = getDb();
   const { v1, v2 } = await seedProblem("proj-p5", 930005);
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "proj-c5",
     public_id: "ct-proj5",
     title: "c",
@@ -405,6 +428,7 @@ Deno.test("projection: 写入投影并递增题目/竞赛 revision", async () =>
   const db = getDb();
   const { v1 } = await seedProblem("proj-p6", 930006);
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "proj-c6",
     public_id: "ct-proj6",
     title: "c",
@@ -487,6 +511,7 @@ Deno.test("projection: 整题重算覆盖两类提交", async () => {
     eq(problems.id, "proj-p7"),
   );
   await db.insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("proj-p7"),
     id: "proj-o7",
     paper_id: "proj-p7",
     user_id: "0",
@@ -574,6 +599,7 @@ Deno.test("projection: 当前判定指针可替换（未知版本桶唯一）", 
     sequence: 2,
     source_kind: "legacy_import",
   });
+
   const all = await db.select().from(submissionVersionResults).where(
     eq(submissionVersionResults.submission_id, "proj-s8"),
   );

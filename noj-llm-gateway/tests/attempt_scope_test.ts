@@ -30,6 +30,9 @@ function payload(
 ): EvalTokenPayload {
   return {
     jti: "jti-1",
+    domain_id: "00000000-0000-4000-8000-000000000001",
+    protocol_version: 3,
+    attempt_id: "att-default",
     submission_id: "sub-1",
     problem_id: "prob-1",
     user_id: "user-1",
@@ -47,18 +50,21 @@ Deno.test("llm scope: 有 attempt_id 时按尝试隔离计数与吊销键", () =
   const scoped = payload({
     attempt_id: "att-1",
     problem_version_id: "ver-1",
-    protocol_version: 2,
+    protocol_version: 3,
   });
   assertEquals(evalTokenScope(scoped), { kind: "attempt", id: "att-1" });
   assertEquals(
     evalTokenCounterKey(scoped, "calls"),
-    "llm:attempt:att-1:calls",
+    "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-1:calls",
   );
   assertEquals(
     evalTokenCounterKey(scoped, "tokens"),
-    "llm:attempt:att-1:tokens",
+    "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-1:tokens",
   );
-  assertEquals(evalTokenCounterKey(scoped, "cost"), "llm:attempt:att-1:cost");
+  assertEquals(
+    evalTokenCounterKey(scoped, "cost"),
+    "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-1:cost",
+  );
   assertEquals(evalTokenRevokedKey(scoped), "llm:attempt:revoked:att-1");
   assertEquals(evalTokenIpSetKey(scoped), "llm:attempt-ips:att-1");
 
@@ -66,7 +72,7 @@ Deno.test("llm scope: 有 attempt_id 时按尝试隔离计数与吊销键", () =
   const second = payload({ attempt_id: "att-2" });
   assertEquals(
     evalTokenCounterKey(second, "calls"),
-    "llm:attempt:att-2:calls",
+    "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-2:calls",
   );
   assertEquals(
     evalTokenRevokedKey(second) !== evalTokenRevokedKey(scoped),
@@ -74,12 +80,13 @@ Deno.test("llm scope: 有 attempt_id 时按尝试隔离计数与吊销键", () =
   );
 });
 
-Deno.test("llm scope: 旧 token（无 attempt_id）沿用提交维度键", () => {
-  const legacy = payload({});
-  assertEquals(evalTokenScope(legacy), { kind: "submission", id: "sub-1" });
-  assertEquals(evalTokenCounterKey(legacy, "calls"), "llm:sub:sub-1:calls");
-  assertEquals(evalTokenRevokedKey(legacy), "llm:token:revoked:sub-1");
-  assertEquals(evalTokenIpSetKey(legacy), "llm:token-ips:sub-1");
+Deno.test("llm scope: 同尝试在不同使用域具有独立计数键", () => {
+  const scoped = payload({ domain_id: "school-b", attempt_id: "att-1" });
+  assertEquals(evalTokenScope(scoped), { kind: "attempt", id: "att-1" });
+  assertEquals(
+    evalTokenCounterKey(scoped, "calls"),
+    "llm:domain:school-b:attempt:att-1:calls",
+  );
 });
 
 Deno.test("llm scope: 新尝试的调用使用尝试维度计数键与审计字段", async () => {
@@ -121,10 +128,24 @@ Deno.test("llm scope: 新尝试的调用使用尝试维度计数键与审计字�
 
   // 计数键必须落在 attempt 维度
   const keys = redis.evalKeys.flat();
-  assertEquals(keys.includes("llm:attempt:att-42:calls"), true);
-  assertEquals(keys.includes("llm:attempt:att-42:tokens"), true);
   assertEquals(
-    keys.some((key) => key.startsWith("llm:sub:sub-1:")),
+    keys.includes(
+      "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-42:calls",
+    ),
+    true,
+  );
+  assertEquals(
+    keys.includes(
+      "llm:domain:00000000-0000-4000-8000-000000000001:attempt:att-42:tokens",
+    ),
+    true,
+  );
+  assertEquals(
+    keys.some((key) =>
+      key.startsWith(
+        "llm:domain:00000000-0000-4000-8000-000000000001:sub:sub-1:",
+      )
+    ),
     false,
     "attempt token 不得再走提交维度计数键",
   );
@@ -187,11 +208,11 @@ Deno.test("llm scope: 已吊销的尝试被拒绝，且不影响同提交的新�
   }
 });
 
-Deno.test("llm scope: 旧 token 的吊销仍读提交维度键", async () => {
+Deno.test("llm scope: 默认尝试的吊销读取可信尝试键", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db } = createFakeDb(provider);
   const redis = new FakeRedis();
-  redis.revoked.add("llm:token:revoked:sub-1");
+  redis.revoked.add("llm:attempt:revoked:att-default");
   const app = createLlmRouter({
     config: testConfig,
     db,

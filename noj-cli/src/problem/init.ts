@@ -25,7 +25,6 @@ export function validateSlug(slug: string): void {
 export interface ProblemInitOptions {
   slug: string;
   title?: string;
-  type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
   root?: string;
@@ -41,7 +40,6 @@ export interface ProblemInitResult {
 function problemJson(options: {
   slug: string;
   title: string;
-  type: string;
   difficulty: string;
   judgeType: "dual" | "oi";
 }): string {
@@ -73,10 +71,9 @@ function problemJson(options: {
     };
   return JSON.stringify(
     {
-      format_version: 1,
+      format_version: 2,
       title: options.title,
       difficulty: options.difficulty,
-      type: options.type,
       judge_type: options.judgeType,
       runtime_config: runtimeConfig,
     },
@@ -169,10 +166,6 @@ export async function initProblemScaffold(
 ): Promise<ProblemInitResult> {
   validateSlug(opts.slug);
 
-  const type = opts.type ?? "P";
-  if (type !== "U" && type !== "P") {
-    throw new Error(`题型非法：${type}（仅允许 U / P）`);
-  }
   const difficulty = opts.difficulty ?? "medium";
   if (!["easy", "medium", "hard"].includes(difficulty)) {
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
@@ -223,7 +216,7 @@ export async function initProblemScaffold(
     ? [
       [
         "problem.json",
-        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
       ],
       ["statement.md", STATEMENT(title)],
       ["testdata/1.in", "1\n"],
@@ -233,7 +226,7 @@ export async function initProblemScaffold(
     : [
       [
         "problem.json",
-        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
       ],
       ["statement.md", STATEMENT(title)],
       ["template.py", TEMPLATE_PY],

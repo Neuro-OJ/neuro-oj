@@ -1,3 +1,7 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批量任务条目派发测试（Handbook §5.7、边界表）。
  *
@@ -20,7 +24,7 @@ import {
   submissionVersionResults,
   users,
 } from "../../../../shared/db/schema.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import {
@@ -73,6 +77,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -87,11 +92,11 @@ async function seedProblemWithVersions(
   const v1 = `tst-dispatch-v1-${tag}-${ts}`;
   const v2 = `tst-dispatch-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `派发测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 97000 + Math.floor(Math.random() * 2000),
     owner_id: "0",
     judge_type: "dual",
@@ -121,6 +126,7 @@ async function seedProblemWithVersions(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -134,6 +140,7 @@ async function seedSubmission(
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -422,6 +429,7 @@ Deno.test({
     // 存量提交：无提交时版本（legacy_unknown）
     const submissionId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: actor,
       problem_id: problemId,
@@ -542,11 +550,11 @@ Deno.test({
       explanation,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "客观题派发题",
       description: "d",
       difficulty: "easy",
-      type: "P",
       number: 99000 + Math.floor(Math.random() * 500),
       owner_id: "0",
       is_objective: true,
@@ -586,10 +594,12 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     const submissionId = crypto.randomUUID();
     const initialAttemptId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       paper_id: problemId,
       user_id: actor,
@@ -874,11 +884,11 @@ Deno.test({
       explanation: "",
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "客观题升级题",
       description: "d",
       difficulty: "easy",
-      type: "P",
       number: 99500 + Math.floor(Math.random() * 400),
       owner_id: "0",
       is_objective: true,
@@ -918,7 +928,9 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `客观题升级竞赛 ${ts}`,
       description: "",
@@ -932,6 +944,7 @@ Deno.test({
 
     const sourceId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...await problemExecutionForTest(problemId),
       id: sourceId,
       paper_id: problemId,
       user_id: actor,

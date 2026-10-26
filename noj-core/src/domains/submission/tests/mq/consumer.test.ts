@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   saveV2ResultForTest,
   seedActiveAttemptForTest,
@@ -45,6 +47,7 @@ async function setupTestData() {
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: `C-Test ${TS}`,
     description: "desc",
@@ -65,11 +68,11 @@ async function setupTestData() {
     },
     number: 90000 + (TS & 0x7fff),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   });
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: SUBMISSION_ID,
     user_id: USER_ID,
     problem_id: PROBLEM_ID,

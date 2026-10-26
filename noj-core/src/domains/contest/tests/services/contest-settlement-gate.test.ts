@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛结算门禁回归（Handbook §3.3/§6.6）。
  *
@@ -10,6 +12,7 @@
  *   （`pending` / `preparing` / `dispatched`），否则带在途重测的竞赛可以被发布为
  *   正式成绩，快照与最终成绩不一致。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -61,6 +64,7 @@ async function insertProblem(
   objective = false,
 ): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `结算门禁-${number}`,
     description: "d",
@@ -68,7 +72,6 @@ async function insertProblem(
     runtime_config: null,
     number,
     owner_id: "0",
-    type: objective ? "U" : "P",
     is_objective: objective,
     created_at: now,
     updated_at: now,
@@ -90,6 +93,7 @@ Deno.test({
     await insertProblem(problemId, 921100);
     await insertProblem(paperId, 921101, true);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "结算分类测试",
       start_time: atMinutes(-120),
@@ -129,6 +133,7 @@ Deno.test({
         id: tleId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",
@@ -140,6 +145,7 @@ Deno.test({
         id: ceId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(2)",
@@ -151,6 +157,7 @@ Deno.test({
         id: timeoutId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(3)",
@@ -162,6 +169,7 @@ Deno.test({
         id: runningId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(4)",
@@ -173,6 +181,7 @@ Deno.test({
         id: orphanStateId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(5)",
@@ -268,6 +277,7 @@ Deno.test({
     await db.insert(objectiveSubmissions).values({
       id: objectiveId,
       paper_id: paperId,
+      ...await problemExecutionForTest(paperId),
       user_id: userId,
       contest_id: contestId,
       submission_type: "contest",
@@ -353,7 +363,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         inArray(problemVersions.problem_id, [problemId, paperId]),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [problemId, paperId]),
       );
       await db.delete(users).where(eq(users.id, userId));
@@ -379,6 +389,7 @@ Deno.test({
 
     await insertProblem(problemId, 921110);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "批任务门禁测试",
       start_time: atMinutes(-120),
@@ -405,6 +416,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -434,6 +446,7 @@ Deno.test({
     }).where(eq(submissions.id, submissionId));
 
     await db.insert(submissionJobs).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: jobId,
       kind: "rejudge",
       actor_id: adminId,
@@ -451,6 +464,7 @@ Deno.test({
       source_kind: "submission",
       source_id: submissionId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       status: "pending",
       created_at: now,
     });
@@ -528,7 +542,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [adminId, userId]));
     }
   },

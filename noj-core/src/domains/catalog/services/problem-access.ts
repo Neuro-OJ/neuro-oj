@@ -50,6 +50,8 @@ export type ProblemAccessContext = {
   viewerId: string | null;
   /** 是否管理员（admin:full_access） */
   isAdmin: boolean;
+  /** 当前域角色已经确认允许作者读取其受限资源。 */
+  canReadOwn?: boolean;
   /** 竞赛上下文判定结果；无竞赛场景传 null/缺省 */
   contestAccess?: ContestAccessInfo | null;
   /** 公开赛保密事实；无关联场景传 null/缺省 */
@@ -72,7 +74,10 @@ export function resolveProblemAccess(
   ctx: ProblemAccessContext,
 ): ProblemAccessResult {
   if (ctx.isAdmin) return { allowed: true, mode: "admin" };
-  if (ctx.viewerId !== null && ctx.viewerId === problem.owner_id) {
+  if (
+    ctx.canReadOwn === true && ctx.viewerId !== null &&
+    ctx.viewerId === problem.owner_id
+  ) {
     return { allowed: true, mode: "owner" };
   }
   if (ctx.contestAccess) {

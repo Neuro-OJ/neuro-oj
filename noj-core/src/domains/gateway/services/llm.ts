@@ -5,7 +5,22 @@
  * 统一通过 gateway 内部管理 API 完成。
  */
 
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getSetting } from "../../system/index.ts";
+import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
+
+/** 配置管理读取调用方资源 revision；创建传 0，禁止客户端无条件覆盖。 */
+export function parseLlmRevision(header: string | undefined): number {
+  if (header === undefined) {
+    throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+  }
+  const raw = header.replace(/^"|"$/g, "");
+  const revision = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(revision)) {
+    throw new BadRequestError("revision 非法");
+  }
+  return revision;
+}
 
 /**
  * 创建或更新 LLM Provider 的输入参数。
@@ -46,6 +61,10 @@ export class LlmGatewayError extends Error {
 export interface LlmProviderView {
   /** Provider ID */
   id: string;
+  /** Gateway 当前配置版本。 */
+  revision: number;
+  /** 使用域 */
+  domain_id: string;
   /** Provider 名称 */
   name: string;
   /** Provider Base URL */
@@ -91,23 +110,23 @@ export interface LlmUsageQuery {
 }
 
 /**
- * LLM 配额的新增或更新输入（按 id upsert）。
+ * LLM 配额的新增或更新输入（带 id 只更新既有资源）。
  */
 export interface LlmQuotaInput {
   /** 配额 ID（更新时提供；缺省为新增） */
   id?: string;
   /** 配额作用域类型 */
-  scope_type: "user" | "problem" | "global" | "user_problem";
+  scope_type: "domain" | "user" | "problem" | "global" | "user_problem";
   /** 作用域对象 ID（user/problem 时必填；user_problem 时形如 `<userId>:<problemId>`） */
   scope_id?: string;
   /** 配额窗口类型 */
   window_type?: "day" | "month";
   /** 最大调用次数 */
-  max_calls?: number;
+  max_calls?: number | null;
   /** 最大 token 数 */
-  max_tokens?: number;
+  max_tokens?: number | null;
   /** 最大成本 */
-  max_cost?: number;
+  max_cost?: number | null;
 }
 
 /**
@@ -127,6 +146,7 @@ export interface LlmQuotaInput {
 async function request<T>(
   path: string,
   init?: RequestInit,
+  domainId = DEFAULT_DOMAIN_ID,
 ): Promise<T> {
   const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
@@ -141,6 +161,7 @@ async function request<T>(
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SERVICE_TOKEN}`,
+        "X-Noj-Domain-Id": domainId,
         ...(init?.headers ?? {}),
       },
     });
@@ -196,9 +217,13 @@ export function describeLlmPlatformDefaultGap(): string[] {
 }
 
 /** 获取 LLM Provider 列表（Key 已由 gateway 脱敏）。 */
-export async function listLlmProviders(): Promise<LlmProviderView[]> {
+export async function listLlmProviders(
+  domainId = DEFAULT_DOMAIN_ID,
+): Promise<LlmProviderView[]> {
   const body = await request<{ data: LlmProviderView[] }>(
     "/internal/providers",
+    undefined,
+    domainId,
   );
   return body.data;
 }
@@ -206,9 +231,12 @@ export async function listLlmProviders(): Promise<LlmProviderView[]> {
 /** 按 ID 获取 LLM Provider 精简信息（供题目 CRUD 校验使用）。 */
 export async function getLlmProviderById(
   id: string,
+  domainId = DEFAULT_DOMAIN_ID,
 ): Promise<LlmProviderView> {
   const body = await request<{ data: LlmProviderView }>(
     `/internal/providers/${id}`,
+    undefined,
+    domainId,
   );
   return body.data;
 }
@@ -216,13 +244,19 @@ export async function getLlmProviderById(
 /** 创建 LLM Provider（API Key 由 gateway 加密存储）。 */
 export async function createLlmProvider(
   input: LlmProviderInput,
+  domainId = DEFAULT_DOMAIN_ID,
+  revision?: number,
 ): Promise<LlmProviderView> {
   const body = await request<{ data: LlmProviderView }>(
     "/internal/providers",
     {
       method: "POST",
       body: JSON.stringify(input),
+      headers: revision === undefined
+        ? undefined
+        : { "If-Match": String(revision) },
     },
+    domainId,
   );
   return body.data;
 }
@@ -231,13 +265,19 @@ export async function createLlmProvider(
 export async function updateLlmProvider(
   id: string,
   input: Partial<LlmProviderInput>,
+  domainId = DEFAULT_DOMAIN_ID,
+  revision?: number,
 ): Promise<LlmProviderView> {
   const body = await request<{ data: LlmProviderView }>(
     `/internal/providers/${id}`,
     {
       method: "PUT",
       body: JSON.stringify(input),
+      headers: revision === undefined
+        ? undefined
+        : { "If-Match": String(revision) },
     },
+    domainId,
   );
   return body.data;
 }
@@ -245,6 +285,7 @@ export async function updateLlmProvider(
 /** 按条件查询 LLM 用量记录（透传 gateway 分页/筛选参数）。 */
 export async function queryLlmUsage(
   query: LlmUsageQuery,
+  domainId = DEFAULT_DOMAIN_ID,
 ): Promise<unknown[]> {
   const params = new URLSearchParams();
   if (query.submission_id) params.set("submission_id", query.submission_id);
@@ -259,20 +300,52 @@ export async function queryLlmUsage(
   const qs = params.toString();
   const body = await request<{ data: unknown[] }>(
     `/internal/usage${qs ? `?${qs}` : ""}`,
+    undefined,
+    domainId,
   );
   return body.data;
 }
 
-/** 新增或更新 LLM 配额（按 id upsert）。 */
+/** 新增或按 id 更新既有配额，资源版本由 Gateway 原子比较。 */
 export async function upsertLlmQuota(
   input: LlmQuotaInput,
-): Promise<{ id: string }> {
-  const body = await request<{ data: { id: string } }>(
+  domainId = DEFAULT_DOMAIN_ID,
+  revision?: number,
+): Promise<{ id: string; revision: number }> {
+  const body = await request<{ data: { id: string; revision: number } }>(
     "/internal/quotas",
     {
       method: "POST",
       body: JSON.stringify(input),
+      headers: {
+        ...(input.scope_type === "global"
+          ? { "X-Noj-Instance-Quota": "1" }
+          : {}),
+        ...(revision === undefined ? {} : { "If-Match": String(revision) }),
+      },
     },
+    domainId,
+  );
+  return body.data;
+}
+
+/** 当前使用域的持久配额配置。 */
+export async function listLlmQuotas(
+  domainId = DEFAULT_DOMAIN_ID,
+): Promise<unknown[]> {
+  const body = await request<{ data: unknown[] }>(
+    "/internal/quotas",
+    undefined,
+    domainId,
+  );
+  return body.data;
+}
+
+/** 实例治理专用配额列表；域管理门面不暴露此入口。 */
+export async function listInstanceLlmQuotas(): Promise<unknown[]> {
+  const body = await request<{ data: unknown[] }>(
+    "/internal/quotas",
+    { headers: { "X-Noj-Instance-Quota": "1" } },
   );
   return body.data;
 }
@@ -288,6 +361,7 @@ export async function upsertLlmQuota(
 export async function testLlmProvider(
   id: string,
   model: string,
+  domainId = DEFAULT_DOMAIN_ID,
 ): Promise<void> {
   await request<{ data: { status: string } }>(
     `/internal/providers/${encodeURIComponent(id)}/test`,
@@ -295,5 +369,6 @@ export async function testLlmProvider(
       method: "POST",
       body: JSON.stringify({ model }),
     },
+    domainId,
   );
 }

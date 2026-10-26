@@ -6,15 +6,18 @@ import {
   optionalAuthMiddleware,
 } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { problems, problemVersions } from "./../../../shared/db/schema.ts";
+import {
+  domainProblemBindings,
+  problems,
+  problemVersions,
+} from "./../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
-  ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
 import {
   MAX_SAFE_PAGE,
@@ -32,7 +35,6 @@ import {
   assertProblemEditPermission,
   createProblem,
   deleteProblem,
-  getProblem,
   listProblems,
   updateProblem,
 } from "../services/problems/problems.ts";
@@ -69,7 +71,6 @@ import {
 } from "./../services/problem-access-check.ts";
 import {
   ADMIN_FULL_ACCESS,
-  assertPermission,
   checkPermission,
   resolvePermissions,
 } from "./../../identity/index.ts";
@@ -89,7 +90,6 @@ import {
 } from "../services/problems/problem-bundle.ts";
 import {
   assertObjectivePaper,
-  assertPaperManageable,
   createDraftQuestion,
   deleteDraftQuestion,
   getObjectiveSubmission,
@@ -111,7 +111,7 @@ const router = new Hono<AuthEnv>();
 
 /**
  * 获取题目列表。
- * 支持分页与筛选：?page=1&limit=20&difficulty=easy&tag=xxx&keyword=xxx&type=U&number=1001
+ * 支持分页与筛选：?page=1&limit=20&difficulty=easy&tag=xxx&keyword=xxx&number=1001
  */
 router.get("/", optionalAuthMiddleware, async (c) => {
   const page = parseInt(c.req.query("page") || "1", 10);
@@ -144,8 +144,9 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const keyword = c.req.query("keyword");
   if (keyword) query.keyword = keyword;
 
-  const type = c.req.query("type");
-  if (type) query.type = type;
+  if (c.req.query("type") !== undefined) {
+    throw new BadRequestError("题库筛选已取消 P/U 分类");
+  }
 
   const numberStr = c.req.query("number");
   if (numberStr) {
@@ -160,22 +161,6 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const isAdmin = viewerId
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
-
-  // NOJ-103：禁止匿名/普通用户批量枚举他人 U 型题。
-  // U 型列表只能查本人（或由 problem:read_all/admin 查全部）。
-  const requestedType = (query.type || "P").toUpperCase();
-  if (requestedType === "U") {
-    if (!viewerId) {
-      throw new UnauthorizedError("请先登录");
-    }
-    if (ownerId && ownerId !== viewerId && !isAdmin) {
-      throw new ForbiddenError("无权查看其他用户的 U 型题列表");
-    }
-    if (!ownerId && !isAdmin) {
-      // 非管理员未指定 owner 时收窄为本人，避免匿名枚举全量 U 型题。
-      query.owner_id = viewerId;
-    }
-  }
 
   const result = await listProblems(query, {
     userId: viewerId,
@@ -290,8 +275,18 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     effective_policy_revision: problems.effective_policy_revision,
   }).from(problems).where(eq(problems.id, problem.id)).limit(1);
 
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    and(
+      eq(domainProblemBindings.problem_id, problem.id),
+      eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
+    ),
+  );
+  const policyIdentity = binding ?? identity;
   const requestedVersionId = c.req.query("version_id")?.trim() || null;
   const canEdit = await canEditProblem(c, problem);
+  if (!identity?.latest_version_id && !canEdit) {
+    throw new NotFoundError("题目不存在");
+  }
   let answerVersion: {
     version_id: string;
     version: number;
@@ -333,12 +328,16 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     version: answerVersion?.version ?? null,
     latest_version_id: identity?.latest_version_id ?? null,
     latest_version: latestVersion,
-    effective_version_policy: identity?.effective_version_mode === "exact"
-      ? { mode: "exact" as const, version_id: identity.required_version_id }
+    effective_version_policy: policyIdentity?.effective_version_mode === "exact"
+      ? {
+        mode: "exact" as const,
+        version_id: policyIdentity.required_version_id,
+      }
       : { mode: "any" as const },
     // 策略乐观锁版本（管理端切换策略时必须回传 `expected_revision`）。
     // 只是单调计数器，不含内容，对普通读者无敏感信息。
-    effective_version_policy_revision: identity?.effective_policy_revision ?? 0,
+    effective_version_policy_revision: binding?.revision ??
+      identity?.effective_policy_revision ?? 0,
     is_latest: answerVersion
       ? answerVersion.version_id === identity?.latest_version_id
       : false,
@@ -404,7 +403,7 @@ function parseExpectedRevision(
 /** 读取题目是否允许当前查看者编辑（用于内容裁剪，不在此处抛错）。 */
 async function canEditProblem(
   c: Context<AuthEnv>,
-  problem: { type: string; owner_id: string },
+  problem: { id: string; domain_id?: string | null; owner_id: string },
 ): Promise<boolean> {
   const userId = c.get("userId") as string | undefined;
   if (!userId) return false;
@@ -471,7 +470,7 @@ function trimVersionContent(
 
 /**
  * 创建题目。
- * admin 可创建任意 type，普通用户仅限 U 型。
+ * 仅默认域获授权编辑者可创建；旧分类输入被拒绝。
  * POST /api/v1/problems
  */
 router.post("/", authMiddleware, async (c) => {
@@ -655,7 +654,7 @@ router.get("/:id/versions/:versionId", optionalAuthMiddleware, async (c) => {
 
 /**
  * 全量更新题目（双索引：UUID 或 display_id）。
- * 权限在服务层按 type+owner 判断。
+ * 权限在服务层按默认域角色和源题归属判断。
  */
 router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
@@ -704,39 +703,18 @@ router.put("/:id/visibility", authMiddleware, async (c) => {
 
   const problem = await resolveProblem(id);
   const userId = c.get("userId");
-  const isAdmin = await checkPermission(c, "problem:write_any");
-  const isOwner = problem.owner_id === userId;
+  await assertProblemEditPermission(c, problem, userId);
 
-  if (!isOwner && !isAdmin) {
-    throw new ForbiddenError("无权修改题目可见性");
-  }
-  // P 型主题库恒 public（I1），不允许转为 private
-  if (problem.type === "P" && visibility !== "public") {
-    throw new BadRequestError("P 型主题库题目必须保持 public");
-  }
-  // owner 仅可转公开；改私有属于管理员操作
-  if (visibility !== "public" && !isAdmin) {
-    throw new ForbiddenError("仅管理员可将题目设为私有");
-  }
-
-  await assertPermission(
+  const updated = await withActorContext(
     c,
-    isOwner ? "problem:write_own" : "problem:write_any",
+    () => updateProblem(problem.id, { visibility }, userId, undefined, c),
   );
-
-  const db = getDb();
-  await db.update(problems).set({
-    visibility,
-    updated_at: new Date().toISOString(),
-  }).where(eq(problems.id, problem.id));
-
-  const updated = await getProblem(problem.id);
   return c.json({ data: updated });
 });
 
 /**
  * 删除题目（双索引：UUID 或 display_id）。
- * 权限在服务层按 type+owner 判断。
+ * 权限在服务层按默认域角色和源题归属判断。
  */
 router.delete("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
@@ -756,7 +734,7 @@ router.delete("/:id", authMiddleware, async (c) => {
  * 统一题目包导入。
  * POST /api/v1/problems/import-bundle
  *
- * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按 (type, number)
+ * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按默认域 number
  * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；非 admin 提供 number
  * 被拒（400），普通用户导入仅创建（number 自动分配）。
  *
@@ -1010,10 +988,7 @@ router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
 router.get("/:id/stats", authMiddleware, async (c) => {
   const problem = await resolveProblem(c.req.param("id") as string);
   const userId = c.get("userId") as string;
-  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
-  if (!isAdmin && problem.owner_id !== userId) {
-    throw new ForbiddenError("无权查看该题目的统计数据");
-  }
+  await assertProblemEditPermission(c, problem, userId);
   // 窗口天数：非法值（非整数 / 越界）回退默认 90，避免异常入参放大查询范围
   const rawWindow = Number(c.req.query("window_days") ?? 90);
   const windowDays = Number.isInteger(rawWindow) && rawWindow > 0 &&
@@ -1036,7 +1011,6 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
   const problem = await resolveProblem(id);
 
   await deleteSupportPackage(problem.id, userId, userRole, {
-    type: problem.type,
     owner_id: problem.owner_id,
   }, c);
 
@@ -1056,7 +1030,7 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
  * `409 CONTEST_PROBLEM_VERSION_CHANGED`）。未发布套卷对非编辑者 404。
  */
 router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
-  const paperId = c.req.param("id") as string;
+  const paperId = (await resolveProblem(c.req.param("id") as string)).id;
   const userId = c.get("userId") as string | undefined;
   const userRole = c.get("userRole") as string | undefined;
 
@@ -1094,9 +1068,10 @@ async function requireManageablePaper(
   c: Context<AuthEnv>,
   paperId: string,
 ): Promise<string> {
-  const paper = await getPaperOrThrow(paperId);
+  const resolved = await resolveProblem(paperId);
+  const paper = await getPaperOrThrow(resolved.id);
   assertObjectivePaper(paper);
-  await assertPaperManageable(paper, c.get("userId"), c.get("userRole"), c);
+  await assertProblemEditPermission(c, paper, c.get("userId"));
   return paper.id;
 }
 

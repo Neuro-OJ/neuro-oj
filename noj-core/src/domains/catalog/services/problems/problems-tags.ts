@@ -9,13 +9,13 @@
  * - 全部 tag 必须已存在（否则 400）
  * - 客观题（is_objective=true）禁止关联算法标签（客观题系统无「通过」概念）
  *
- * 半写入防护：create/update 路径在写题目行**之前**调用 validateProblemTagIds，
- * 使校验失败（400）不产生孤儿题目或已提交字段（syncProblemTags 内部仍重复校验兜底）。
+ * 创建在题目写入事务内同步标签，任何失败整笔回滚；更新入口仍先校验标签集合。
  */
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { problemTags, tags } from "./../../../../shared/db/schema.ts";
 import { BadRequestError } from "./../../../../shared/base/errors.ts";
+import type { Executor } from "../../../../shared/db/executor.ts";
 
 /**
  * 写库前校验标签集合（去重后）：
@@ -27,11 +27,12 @@ import { BadRequestError } from "./../../../../shared/base/errors.ts";
 export async function validateProblemTagIds(
   tagIds: string[],
   isObjective: boolean,
+  executor?: Executor,
 ): Promise<string[]> {
   const unique = [...new Set(tagIds)];
   if (unique.length === 0) return [];
 
-  const db = getDb();
+  const db = executor ?? getDb();
   const existingTagRows = await db
     .select({ id: tags.id, kind: tags.kind })
     .from(tags)
@@ -51,8 +52,7 @@ export async function validateProblemTagIds(
 
 /**
  * 同步题目的标签关联（先删后插，全量替换语义）。
- * 调用方应先经 validateProblemTagIds 预校验；本函数内部再次校验兜底
- * （校验失败时可能已产生题目行写入——预校验是主要的 400 拦截点）。
+ * 在写入事务内校验一次；传入 executor 时与题目和草稿一起提交或回滚。
  *
  * @param isObjective 客观题套卷标记：true 时拒绝算法标签
  * @throws {BadRequestError} 部分标签 id 不存在，或客观题关联了算法标签
@@ -61,14 +61,11 @@ export async function syncProblemTags(
   problemId: string,
   tagIds: string[],
   isObjective = false,
+  executor?: Executor,
 ): Promise<void> {
   const db = getDb();
-
-  // 去重 + 校验（失败时抛 400）
-  const unique = await validateProblemTagIds(tagIds, isObjective);
-
-  // 先删后插（单事务：插入失败时原有关联不会被丢失）
-  await db.transaction(async (tx) => {
+  const write = async (tx: Executor) => {
+    const unique = await validateProblemTagIds(tagIds, isObjective, tx);
     await tx.delete(problemTags)
       .where(eq(problemTags.problem_id, problemId));
 
@@ -80,5 +77,7 @@ export async function syncProblemTags(
         })),
       );
     }
-  });
+  };
+  if (executor) await write(executor);
+  else await db.transaction(write);
 }

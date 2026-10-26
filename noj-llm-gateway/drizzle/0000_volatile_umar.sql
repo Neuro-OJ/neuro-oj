@@ -1,0 +1,3 @@
+-- 首次 Drizzle 元数据基线登记。历史 0000_baseline–0004 由自定义 runner 管理。
+-- 生成 snapshot 对应 0005 完成后的 schema；本文件不执行重复 CREATE。
+-- 此次手写增量为首次元数据初始化例外，后续 generate 使用 timestamp 前缀追加。

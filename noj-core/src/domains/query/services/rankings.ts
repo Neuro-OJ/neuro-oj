@@ -7,12 +7,12 @@ import {
 import { submissions } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
 import { users } from "./../../../shared/db/schema.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
-import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import {
-  CONTEST_TIME_ISO_REGEX_SQL,
-  endedWindowCondition,
-} from "./../../contest/index.ts";
+  getDomainRankingRows,
+  PUBLIC_DEFAULT_QUERY_SCOPE,
+} from "./domain-query.ts";
+import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
+import { CONTEST_TIME_ISO_REGEX_SQL } from "./../../contest/index.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "query"]);
@@ -42,9 +42,6 @@ export interface RankingsPage {
   data: RankingRow[];
   total: number;
 }
-
-const RANKING_DEFAULT_LIMIT = 50;
-const RANKING_MAX_LIMIT = 100;
 
 /** 视图存在性每次查询数据库，多副本不保存进程内业务缓存。 */
 async function hasMaterializedView(): Promise<boolean> {
@@ -171,19 +168,6 @@ export async function inspectRankingView(): Promise<RankingViewFreshness> {
 }
 
 /**
- * 视图落后时从读取路径调度一次异步刷新（fire-and-forget）。
- *
- * 赛期边界是**时间**驱动而非写入驱动的：竞赛自然结束后没有任何业务写入来触发
- * 刷新，若只依赖结果写入后的刷新，榜单会长期停在过期视图上（复审问题 8）。
- * 刷新本身用 `pg_try_advisory_xact_lock` 串行，多副本并发读只会有一个真正刷新；
- * 刷新成功后 `materialized_at` 前移，判定转为可信，调度自然停止。
- */
-function scheduleRankingsRefresh(freshness: RankingViewFreshness): void {
-  if (!freshness.exists || freshness.trusted) return;
-  void refreshRankingsView();
-}
-
-/**
  * 从同一事务快照刷新榜单，并登记其覆盖的 revision 与刷新时刻。
  * 数据库锁跨副本串行化刷新；只要 revision 或赛期边界落后，读取仍使用内联查询。
  *
@@ -254,307 +238,18 @@ export async function refreshRankingsView(): Promise<void> {
 /** 保留测试调用入口；榜单读取和刷新已不保存进程内缓存。 */
 export function _resetHasViewCacheForTest(): void {}
 
-/** 两类提交共享有效成绩口径，运行状态不覆盖已有正式判定。 */
-const rankingSources = sql`(
-  SELECT user_id, problem_id, contest_id, status, is_valid, is_accepted FROM submissions
-  UNION ALL
-  SELECT user_id, paper_id AS problem_id, contest_id, status, is_valid, is_accepted FROM objective_submissions
-)`;
-
-/**
- * 全站用户榜单。
- *
- * 排序键（确保稳定）：
- * 1. solved_count DESC（独立通过的题目数）
- * 2. acceptance_rate DESC（同题数下高效者靠前）
- * 3. total_submissions ASC（同分下提交少者靠前，避免"刷提交"）
- * 4. users.created_at ASC（最终 tiebreaker）
- *
- * 排除 root 系统用户（id='0'），仅展示至少有 1 道题通过的用户。
- *
- * PR-4：生产环境（postgres.js）下优先读 user_rankings 物化视图（PR-4 性能优化）。
- * PGlite 测试环境物化视图不可用，自动回退到原内联聚合。
- *
- * @throws {BadRequestError} page < 1 或 limit < 1 时
- */
-export async function getGlobalRankings(params: {
-  page: number;
-  limit?: number;
-}): Promise<RankingsPage> {
-  if (!Number.isInteger(params.page) || params.page < 1) {
-    throw new BadRequestError("page 必须为正整数");
-  }
-  const limit = params.limit ?? RANKING_DEFAULT_LIMIT;
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new BadRequestError("limit 必须为正整数");
-  }
-  const cappedLimit = Math.min(limit, RANKING_MAX_LIMIT);
-  const offset = (params.page - 1) * cappedLimit;
-
-  const db = getDb();
-  const freshness = await inspectRankingView();
-  // 落后（revision 或赛期边界）时调度一次异步刷新；读取立即用内联路径保证正确
-  scheduleRankingsRefresh(freshness);
-
-  if (freshness.trusted) {
-    return readRankingsFromView(db, cappedLimit, offset);
-  }
-  return readRankingsInline(db, cappedLimit, offset);
-}
-
-/**
- * 从 user_rankings 物化视图读取（PR-4 主路径，postgres.js）。
- *
- * 视图已包含排好序的 rank 列，仅需分页 LIMIT/OFFSET。
- * 比内联聚合快 ~10x（10k 用户 / 100k 提交场景）。
- */
-function readRankingsFromView(
-  // deno-lint-ignore no-explicit-any -- postgres.js | PGlite 共享类型
-  db: any,
-  limit: number,
-  offset: number,
+/** 默认域兼容榜单始终采用当前授权事实，旧全域物化视图不用于对外读取。 */
+export async function getGlobalRankings(
+  params: { page: number; limit?: number },
 ): Promise<RankingsPage> {
-  // db.execute<{ ... }> 需要具体类型；此处用 unknown 在 .map 时断言字段
-  return Promise.all([
-    db.execute(sql`
-      SELECT vr.user_id, vr.username, u.avatar_url,
-             vr.total_submissions, vr.valid_submissions, vr.solved_count,
-             vr.acceptance_rate, vr.rank
-      FROM user_rankings vr
-      LEFT JOIN users u ON u.id = vr.user_id
-      ORDER BY vr.rank
-      LIMIT ${limit} OFFSET ${offset}
-    `),
-    db.execute(
-      sql`SELECT COUNT(*)::int AS total FROM user_rankings`,
-    ),
-  ]).then(([dataRes, totalRes]) => {
-    const dataRows = unwrapRows<Record<string, unknown>>(dataRes as never);
-    const totalRows = unwrapRows<{ total: number }>(totalRes as never);
-
-    return {
-      data: dataRows.map((row) => ({
-        rank: Number(row.rank),
-        user_id: row.user_id as string,
-        username: row.username as string,
-        avatar_url: (row.avatar_url as string | null) ?? null,
-        solved_count: Number(row.solved_count),
-        total_submissions: Number(row.total_submissions),
-        valid_submissions: Number(row.valid_submissions),
-        acceptance_rate: Number(row.acceptance_rate),
-      })),
-      total: Number(totalRows[0]?.total ?? 0),
-    };
-  });
+  return await getDomainRankingRows(PUBLIC_DEFAULT_QUERY_SCOPE, params);
 }
 
-/**
- * 内联聚合查询（PGlite 测试回退路径，与原逻辑一致）。
- */
-function readRankingsInline(
-  // deno-lint-ignore no-explicit-any -- postgres.js | PGlite 共享类型
-  db: any,
-  limit: number,
-  offset: number,
-): Promise<RankingsPage> {
-  return Promise.all([
-    db.execute(sql`
-      SELECT
-        u.id AS user_id,
-        u.username,
-        u.avatar_url,
-        COUNT(*)::int AS total_submissions,
-        COUNT(*) FILTER (WHERE s.is_valid)::int AS valid_submissions,
-        COUNT(DISTINCT s.problem_id) FILTER (
-          WHERE ${sql`s.is_accepted = TRUE`}
-            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-        )::int AS solved_count,
-        CASE WHEN COUNT(*) FILTER (WHERE s.is_valid) = 0 THEN 0
-             ELSE ROUND(
-               (COUNT(*) FILTER (
-                 WHERE ${sql`s.is_accepted = TRUE`}
-                   AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-               )::float / COUNT(*) FILTER (WHERE s.is_valid))::numeric,
-               3
-             )::float
-        END AS acceptance_rate,
-        ROW_NUMBER() OVER (
-          ORDER BY
-            COUNT(DISTINCT s.problem_id) FILTER (
-              WHERE ${sql`s.is_accepted = TRUE`}
-                AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-            ) DESC,
-            CASE WHEN COUNT(*) FILTER (WHERE s.is_valid) = 0 THEN 0
-                 ELSE COUNT(*) FILTER (
-                   WHERE ${sql`s.is_accepted = TRUE`}
-                     AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-                 )::float / COUNT(*) FILTER (WHERE s.is_valid)
-            END DESC,
-            COUNT(*) ASC,
-            u.created_at ASC
-        )::int AS rank
-      FROM users u
-      INNER JOIN ${rankingSources} s ON s.user_id = u.id
-      LEFT JOIN contests c ON c.id = s.contest_id
-      WHERE u.id <> '0' AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-      GROUP BY u.id, u.username, u.avatar_url, u.created_at
-      HAVING COUNT(*) FILTER (
-        WHERE ${sql`s.is_accepted = TRUE`}
-          AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-      ) > 0
-      ORDER BY rank
-      LIMIT ${limit} OFFSET ${offset}
-    `),
-    db.execute(sql`
-      SELECT COUNT(*)::int AS total
-      FROM (
-        SELECT u.id
-        FROM users u
-        INNER JOIN ${rankingSources} s ON s.user_id = u.id
-          LEFT JOIN contests c ON c.id = s.contest_id
-        WHERE u.id <> '0' AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-        GROUP BY u.id
-        HAVING COUNT(*) FILTER (
-          WHERE ${sql`s.is_accepted = TRUE`}
-            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-        ) > 0
-      ) AS ranked_users
-    `),
-  ]).then(([dataRes, totalRes]) => {
-    const dataRows = unwrapRows<Record<string, unknown>>(dataRes as never);
-    const totalRows = unwrapRows<{ total: number }>(totalRes as never);
-
-    return {
-      data: dataRows.map((row: Record<string, unknown>) => ({
-        rank: Number(row.rank),
-        user_id: row.user_id as string,
-        username: row.username as string,
-        avatar_url: (row.avatar_url as string | null) ?? null,
-        solved_count: Number(row.solved_count),
-        total_submissions: Number(row.total_submissions),
-        valid_submissions: Number(row.valid_submissions),
-        acceptance_rate: Number(row.acceptance_rate),
-      })),
-      total: Number(totalRows[0]?.total ?? 0),
-    };
-  });
-}
-
-/**
- * 获取指定用户在榜单中的位置。
- *
- * 返回该用户的完整榜单条目（含 rank），若用户未上榜（无通过记录）则返回 null。
- *
- * @param userId 用户 UUID
- */
-export async function getMyRanking(
-  userId: string,
-): Promise<RankingRow | null> {
-  const db = getDb();
-  const freshness = await inspectRankingView();
-  scheduleRankingsRefresh(freshness);
-
-  const rows = freshness.trusted
-    // 物化视图路径：直接 WHERE user_id=? 查询（LEFT JOIN users 取头像）
-    ? await db.execute(sql`
-      SELECT vr.user_id, vr.username, u.avatar_url,
-             vr.total_submissions, vr.valid_submissions, vr.solved_count,
-             vr.acceptance_rate, vr.rank
-      FROM user_rankings vr
-      LEFT JOIN users u ON u.id = vr.user_id
-      WHERE vr.user_id = ${userId}
-      LIMIT 1
-    `)
-    // 内联聚合回退路径：复用 getGlobalRankings 排序逻辑的子查询
-    : await db.execute(sql`
-      WITH ranked AS (
-        SELECT
-          u.id AS user_id,
-          u.username,
-          u.avatar_url,
-          COUNT(*)::int AS total_submissions,
-        COUNT(*) FILTER (WHERE s.is_valid)::int AS valid_submissions,
-          COUNT(DISTINCT s.problem_id) FILTER (
-            WHERE ${sql`s.is_accepted = TRUE`}
-              AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-          )::int AS solved_count,
-          CASE WHEN COUNT(*) FILTER (WHERE s.is_valid) = 0 THEN 0
-               ELSE ROUND(
-                 (COUNT(*) FILTER (
-                   WHERE ${sql`s.is_accepted = TRUE`}
-                     AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-                 )::float / COUNT(*) FILTER (WHERE s.is_valid))::numeric,
-                 3
-               )::float
-          END AS acceptance_rate,
-          ROW_NUMBER() OVER (
-            ORDER BY
-              COUNT(DISTINCT s.problem_id) FILTER (
-                WHERE ${sql`s.is_accepted = TRUE`}
-                  AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-              ) DESC,
-              CASE WHEN COUNT(*) FILTER (WHERE s.is_valid) = 0 THEN 0
-                   ELSE COUNT(*) FILTER (
-                     WHERE ${sql`s.is_accepted = TRUE`}
-                       AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-                   )::float / COUNT(*) FILTER (WHERE s.is_valid)
-              END DESC,
-              COUNT(*) ASC,
-              u.created_at ASC
-          )::int AS rank
-        FROM users u
-        INNER JOIN ${rankingSources} s ON s.user_id = u.id
-          LEFT JOIN contests c ON c.id = s.contest_id
-        WHERE u.id <> '0' AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-        GROUP BY u.id, u.username, u.avatar_url, u.created_at
-        HAVING COUNT(*) FILTER (
-          WHERE ${sql`s.is_accepted = TRUE`}
-            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
-      endedWindowCondition(sql`c.end_time`)
-    }))
-        ) > 0
-      )
-      SELECT * FROM ranked WHERE user_id = ${userId} LIMIT 1
-    `);
-
-  const resultRows = unwrapRows<Record<string, unknown>>(rows as never);
-  const row = resultRows[0];
-  if (!row) return null;
-
-  return {
-    rank: Number(row.rank),
-    user_id: row.user_id as string,
-    username: row.username as string,
-    avatar_url: (row.avatar_url as string | null) ?? null,
-    solved_count: Number(row.solved_count),
-    total_submissions: Number(row.total_submissions),
-    valid_submissions: Number(row.valid_submissions),
-    acceptance_rate: Number(row.acceptance_rate),
-  };
+/** 当前用户在默认域公开榜的位置，私有域记录不会提升这个名次。 */
+export async function getMyRanking(userId: string): Promise<RankingRow | null> {
+  return (await getDomainRankingRows(PUBLIC_DEFAULT_QUERY_SCOPE, {
+    page: 1,
+    limit: 1,
+    userId,
+  })).data[0] ?? null;
 }

@@ -18,7 +18,8 @@
  * {@link runningWindowCondition}（`::timestamptz` 比较 + 形态守卫），四处调用点
  * 共用同一份实现。
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { contestProblems, contests } from "./../../../shared/db/schema.ts";
 import { runningWindowCondition } from "./contest-window.ts";
@@ -31,6 +32,7 @@ import { runningWindowCondition } from "./contest-window.ts";
  */
 export async function filterProblemsInRunningContest(
   problemIds: string[],
+  domainId: string = DEFAULT_DOMAIN_ID,
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
   const rows = await getDb()
@@ -39,6 +41,7 @@ export async function filterProblemsInRunningContest(
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       inArray(contestProblems.problem_id, problemIds),
+      sql`COALESCE(${contests.domain_id}, ${DEFAULT_DOMAIN_ID}) = ${domainId}`,
       runningWindowCondition(contests.start_time, contests.end_time),
     ));
   return new Set(rows.map((row) => row.problem_id));
@@ -52,7 +55,8 @@ export async function filterProblemsInRunningContest(
  */
 export async function isProblemInRunningContest(
   problemId: string,
+  domainId: string = DEFAULT_DOMAIN_ID,
 ): Promise<boolean> {
-  const result = await filterProblemsInRunningContest([problemId]);
+  const result = await filterProblemsInRunningContest([problemId], domainId);
   return result.has(problemId);
 }

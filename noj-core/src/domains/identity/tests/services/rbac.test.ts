@@ -146,7 +146,7 @@ Deno.test({
     assert(perms.has("submission:create"), "应有 submission:create");
     assert(perms.has("user:read_profile"), "应有 user:read_profile");
     // 普通用户不应有 admin 级权限
-    assertEquals(perms.has("problem:create_p"), false);
+    assertEquals(perms.has("problem:write_any"), false);
     assertEquals(perms.has("problem:write_any"), false);
     assertEquals(perms.has("submission:rejudge"), false);
   },
@@ -836,14 +836,14 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 普通用户尝试 assertPermission(c, "problem:create_p")
+    // 普通用户不能获得任意题目编辑权限。
     // 直接测试 assertPermission 需要 Context 对象
     // 通过 getUserPermissions 验证权限集正确性
     const perms = await getUserPermissions(REGULAR_USER_ID);
     assertEquals(
-      perms.has("problem:create_p"),
+      perms.has("problem:write_any"),
       false,
-      "普通用户无 problem:create_p",
+      "普通用户无 problem:write_any",
     );
     assertEquals(
       perms.has("problem:write_any"),

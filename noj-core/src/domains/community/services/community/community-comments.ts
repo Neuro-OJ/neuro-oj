@@ -1,5 +1,4 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityComments,
@@ -27,6 +26,12 @@ import {
 import { authorProjection } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
+import {
+  communityDb,
+  communityDomainId,
+  communityDomainWhere,
+  type CommunityScope,
+} from "./community-scope.ts";
 
 /** 审核/处置评论状态：批准待审评论时补发回复通知（原 pending 创建时不发）。 */
 export async function changeCommentStatus(
@@ -34,15 +39,21 @@ export async function changeCommentStatus(
   actorId: string,
   status: "published" | "hidden" | "deleted",
   reason = "",
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const existing = await db.select({
     id: communityComments.id,
     post_id: communityComments.post_id,
     author_id: communityComments.author_id,
     parent_id: communityComments.parent_id,
     status: communityComments.status,
-  }).from(communityComments).where(eq(communityComments.id, commentId))
+  }).from(communityComments).where(
+    and(
+      eq(communityComments.id, commentId),
+      communityDomainWhere(communityComments.domain_id, scope),
+    ),
+  )
     .limit(1);
   if (!existing[0]) throw new NotFoundError("评论不存在");
   const rows = await db.update(communityComments).set({
@@ -52,6 +63,7 @@ export async function changeCommentStatus(
   }).where(eq(communityComments.id, commentId)).returning();
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
+    domain_id: communityDomainId(scope),
     moderator_id: actorId,
     action: status,
     target_type: "comment",
@@ -74,6 +86,7 @@ export async function changeCommentStatus(
       existing[0].post_id,
       commentId,
       { status: "published" },
+      scope,
     );
     // 补发回复通知：pending 创建时未发，批准后通知被回复者
     const recipient = existing[0].parent_id
@@ -93,6 +106,7 @@ export async function changeCommentStatus(
         existing[0].post_id,
         commentId,
         {},
+        scope,
       );
     }
   }
@@ -127,6 +141,7 @@ export async function createComment(
   contentInput: string,
   parentId?: string,
   moderator = false,
+  scope?: CommunityScope,
 ) {
   assertCommunityEnabled("comments_enabled");
   const content = contentInput.trim();
@@ -134,10 +149,10 @@ export async function createComment(
     throw new ValidationError("评论内容无效或过长");
   }
   // 赛时静默覆盖评论：评论挂在任意可见帖下即可向全场广播（N-01 残余）
-  await assertNotContestSilenced(moderator);
-  const post = await getPost(postId, authorId);
+  await assertNotContestSilenced(moderator, scope);
+  const post = await getPost(postId, authorId, moderator, scope);
   if (post.post.is_locked) throw new ForbiddenError("该内容已锁定");
-  const db = getDb();
+  const db = communityDb(scope);
   if (parentId) {
     const parent = await db.select().from(communityComments).where(
       eq(communityComments.id, parentId),
@@ -155,6 +170,7 @@ export async function createComment(
   const status = await publicationStatus(authorId);
   const comment = {
     id: crypto.randomUUID(),
+    domain_id: communityDomainId(scope),
     post_id: postId,
     author_id: authorId,
     parent_id: parentId ?? null,
@@ -166,6 +182,7 @@ export async function createComment(
   };
   // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "comment",
     target_id: comment.id,
     content,
@@ -187,6 +204,7 @@ export async function createComment(
       postId,
       comment.id,
       {},
+      scope,
     );
   }
 
@@ -208,10 +226,14 @@ export async function listComments(
   postId: string,
   viewerId?: string,
   moderator = false,
+  scope?: CommunityScope,
 ) {
-  await getPost(postId, viewerId, moderator);
-  const db = getDb();
-  const conditions = [eq(communityComments.post_id, postId)];
+  await getPost(postId, viewerId, moderator, scope);
+  const db = communityDb(scope);
+  const conditions = [
+    eq(communityComments.post_id, postId),
+    communityDomainWhere(communityComments.domain_id, scope),
+  ];
   if (!moderator) {
     // 非审核员仅可见 published 评论；作者本人可见自己的非 deleted 评论（含 pending/hidden）
     conditions.push(
@@ -239,8 +261,8 @@ export async function listComments(
 }
 
 /** 待审核评论列表（供管理后台审核队列），含所属帖子标题用于上下文。 */
-export async function listPendingComments(limit = 50) {
-  const db = getDb();
+export async function listPendingComments(limit = 50, scope?: CommunityScope) {
+  const db = communityDb(scope);
   const rows = await db.select({
     comment: communityComments,
     author: authorProjection,
@@ -251,7 +273,12 @@ export async function listPendingComments(limit = 50) {
   ).innerJoin(
     communityPosts,
     eq(communityPosts.id, communityComments.post_id),
-  ).where(eq(communityComments.status, "pending")).orderBy(
+  ).where(
+    and(
+      eq(communityComments.status, "pending"),
+      communityDomainWhere(communityComments.domain_id, scope),
+    ),
+  ).orderBy(
     communityComments.created_at,
   ).limit(Math.min(Math.max(limit, 1), 100));
   return rows;
@@ -263,13 +290,18 @@ export async function updateComment(
   actorId: string,
   moderator: boolean,
   contentInput: string,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const existing = await db.select().from(communityComments).where(
-    eq(communityComments.id, commentId),
+    and(
+      eq(communityComments.id, commentId),
+      communityDomainWhere(communityComments.domain_id, scope),
+    ),
   ).limit(1);
   if (!existing[0]) throw new NotFoundError("评论不存在");
   const current = existing[0];
+  await getPost(current.post_id, actorId, moderator, scope);
   if (current.author_id !== actorId && !moderator) {
     throw new ForbiddenError("无权编辑该评论");
   }
@@ -277,13 +309,14 @@ export async function updateComment(
     throw new ValidationError("已删除评论不能编辑");
   }
   // 赛时静默同样覆盖编辑：否则可把赛前评论改写为解法
-  await assertNotContestSilenced(moderator);
+  await assertNotContestSilenced(moderator, scope);
   const content = contentInput.trim();
   if (!content || content.length > getCommunityConfig().comment_max_length) {
     throw new ValidationError("评论内容无效或过长");
   }
   // 内容合规同步审核（issue #413）：编辑后仍公开的评论高置信违规时拒绝保存
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "comment",
     target_id: commentId,
     content,
@@ -306,13 +339,18 @@ export async function deleteComment(
   commentId: string,
   actorId: string,
   moderator: boolean,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const existing = await db.select().from(communityComments).where(
-    eq(communityComments.id, commentId),
+    and(
+      eq(communityComments.id, commentId),
+      communityDomainWhere(communityComments.domain_id, scope),
+    ),
   ).limit(1);
   if (!existing[0]) throw new NotFoundError("评论不存在");
   const current = existing[0];
+  await getPost(current.post_id, actorId, moderator, scope);
   if (current.author_id !== actorId && !moderator) {
     throw new ForbiddenError("无权删除该评论");
   }

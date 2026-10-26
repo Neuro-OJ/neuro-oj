@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
   seedActiveAttemptForTest,
@@ -69,6 +72,7 @@ await db.insert(users).values({
 });
 await db.insert(problems).values([
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: "消费者自测题",
     description: "test",
@@ -76,11 +80,11 @@ await db.insert(problems).values([
     runtime_config: runtimeConfig,
     number: 95000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: BAD_PROBLEM_ID,
     title: "缺少 runtime_config 的题",
     description: "test",
@@ -88,13 +92,13 @@ await db.insert(problems).values([
     runtime_config: null,
     number: 96000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
 ]);
 await db.insert(selfTests).values([
   {
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: SELF_TEST_ID,
     judge_run_id: "self-test-run",
     problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
@@ -106,6 +110,7 @@ await db.insert(selfTests).values([
     created_at: now,
   },
   {
+    ...await problemExecutionForTest(BAD_PROBLEM_ID),
     id: PENDING_SELF_TEST_ID,
     user_id: USER_ID,
     problem_id: BAD_PROBLEM_ID,
@@ -115,6 +120,7 @@ await db.insert(selfTests).values([
     created_at: oldNow,
   },
   {
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: RECOVERABLE_SELF_TEST_ID,
     judge_run_id: "recovery-run",
     problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
@@ -128,6 +134,7 @@ await db.insert(selfTests).values([
   },
 ]);
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(PROBLEM_ID),
   id: SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: PROBLEM_ID,
@@ -147,6 +154,7 @@ await seedActiveAttemptForTest({
   created_at: now,
 });
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(PROBLEM_ID),
   id: RECOVERABLE_SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: PROBLEM_ID,
@@ -156,6 +164,7 @@ await db.insert(submissions).values({
   created_at: oldNow,
 });
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(BAD_PROBLEM_ID),
   id: INVALID_SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: BAD_PROBLEM_ID,
@@ -414,8 +423,8 @@ Deno.test({
     await db.delete(selfTests).where(
       eq(selfTests.id, RECOVERABLE_SELF_TEST_ID),
     );
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
-    await db.delete(problems).where(eq(problems.id, BAD_PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, BAD_PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   },
 });

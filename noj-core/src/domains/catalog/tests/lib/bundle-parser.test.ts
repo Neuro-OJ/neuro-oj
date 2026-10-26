@@ -27,10 +27,9 @@ function makeZip(files: Record<string, Uint8Array | string>): Uint8Array {
 }
 
 const MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: "测试题",
   difficulty: "easy",
-  type: "P",
   runtime_config: {
     evaluator: {
       image: "noj-evaluator-python",
@@ -157,10 +156,9 @@ Deno.test("stripMetadataEntries: 剥离元数据后不含 problem.json/statement
 });
 
 const OBJECTIVE_MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: "客观题套卷",
   is_objective: true,
-  type: "U",
 });
 
 function objectiveBundle(): Uint8Array {
@@ -207,7 +205,7 @@ Deno.test("parseBundleZip: 客观题包 questions.json 非法 JSON 被拒", () =
 });
 
 const OI_MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: "A+B",
   judge_type: "oi",
   runtime_config: {
@@ -389,5 +387,26 @@ Deno.test("parseBundleZip: 剥离外层目录之前拒绝原路径穿越", () =>
         }),
       ),
     BadRequestError,
+  );
+});
+
+Deno.test("parseBundleZip: v1 P 转换并提示，v1 U 拒绝", () => {
+  const legacy = { ...JSON.parse(MANIFEST), format_version: 1, type: "P" };
+  const parsed = parseBundleZip(
+    makeZip({ "problem.json": JSON.stringify(legacy), "evaluate.py": "pass" }),
+  );
+  assertEquals(parsed.manifest.format_version, 2);
+  assertEquals("type" in parsed.manifest, false);
+  assertEquals(parsed.warnings.length, 1);
+  assertThrows(
+    () =>
+      parseBundleZip(
+        makeZip({
+          "problem.json": JSON.stringify({ ...legacy, type: "U" }),
+          "evaluate.py": "pass",
+        }),
+      ),
+    BadRequestError,
+    "请先转换",
   );
 });

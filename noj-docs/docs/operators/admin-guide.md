@@ -102,9 +102,9 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 
 > LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
 > **noj-llm-gateway** 消费，不在本面板中；见
-> `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。平台默认
-> Provider/模型（`llm_default_provider_id` / `llm_default_model`）则属于本面板的
-> runtime 设置。
+> `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。日常 Provider／模型在
+> 使用域的 LLM 页面管理；旧 `llm_default_provider_id` / `llm_default_model`
+> 只用于默认域初始化时映射已有配置，不为新域提供回退。
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 
@@ -182,30 +182,30 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 
 - 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k
   tokens）与启停状态。
-- Provider 不再自带默认模型；具体调用哪个模型由本页顶部「平台默认 Provider /
-  模型」 卡片决定（对应系统设置 `llm_default_provider_id` /
-  `llm_default_model`，两项须同时 配置）。列表中当前默认的 Provider
-  会带「默认」标记。
-- 操作列「测试连接」可用指定模型向上游发起一次 1 token 的真实请求，验证 Base URL
-  / API Key / 模型是否可用，并显示耗时或失败原因。
-- 「模型别名」卡片维护 `别名 → Provider + 真实模型`，供出题人逐题选择允许调用的模型；`default` 即平台默认。详见 [LLM 调用能力](./llm-call-capability.md#模型别名逐题选择模型)。
-- 可为每个 Provider 设置 RPM / TPM 上限（`0` 表示不限）：超过上限的请求在网关排队等待，
-  超过 `NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS` 才返回 429，详见
-  [LLM 调用能力](./llm-call-capability.md#provider-速率上限与排队)。
+- Provider、模型和用量属于使用域。域负责人／管理员在 `/d/:slug/llm`
+  选择本域启用的 Provider
+  与模型，新域须独立配置。平台管理员治理时也须明确目标域。
+- 操作列「测试连接」向本域上游发起一次 1 token
+  的真实请求，验证地址、密钥和模型，并显示耗时或失败原因。
+- 「模型别名」卡片维护本域的「别名 → Provider + 真实模型」映射；`default`
+  对应使用域默认。题目声明能力别名，实际执行由使用域解析。详见
+  [LLM 调用能力](./llm-call-capability.md#模型别名逐题选择模型)。
+- Provider 的 RPM / TPM 上限以 `0` 表示不限；超过上限时网关排队，超时返回
+  429。详见 [LLM 调用能力](./llm-call-capability.md#provider-速率上限与排队)。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如
   `sk-****abcd`）；需要更新时重新填写 Key。
-- 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token
-  仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
+- 只有本域 `enabled=true` 的 Provider 可用于新调用；停用后，持有旧评测 token
+  的新上游调用也会被拒绝。已经开始的调用按实际用量结算。
 
 ### LLM 用量
 
-- 管理后台「LLM 用量」支持按
+- 域内「LLM 用量」支持按
   `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
 - 每条记录包含请求消息哈希、prompt/completion/total
   token、估算费用、延迟与状态（`ok / error / rejected`）。
-- 管理后台「LLM 配额」（`/admin/llm/quotas`）维护 `llm_quotas`，支持全局 / 用户
-  / 题目 / 用户×题目维度的 day/month 的 calls/tokens/cost 上限；`-1`
-  表示不限，`0` 表示禁止调用。详见
+- 域内配额支持域 / 用户 / 源题 / 用户×源题维度的 day/month calls/tokens/cost
+  上限，API 用 `null` 表示不限、`0` 表示禁止调用。
+  实例总量与上限由平台管理员治理，域管理员只能在允许范围内降低本域额度。详见
   [LLM 调用能力](./llm-call-capability.md)「配额」一节。
 
 ## 提交管理

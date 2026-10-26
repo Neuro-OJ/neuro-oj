@@ -111,6 +111,7 @@ export async function rebuildPendingTask(
       content.runtime_config,
       {
         attemptId: runId,
+        domainId: row.domain_id,
         problemVersionId: versionId,
         frozen: snapshot.llm_execution as FrozenLlmExecution,
       },

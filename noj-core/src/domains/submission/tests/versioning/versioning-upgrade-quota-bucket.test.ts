@@ -1,3 +1,7 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
  * 升级额度**桶选择**的回归（第三轮复审问题 6，P2）。
  *
@@ -40,7 +44,12 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 const db = getDb();
@@ -132,6 +141,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -143,11 +153,11 @@ async function seedProblem(
   const v1 = `qb-v1-${tag}-${ts}`;
   const v2 = `qb-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `桶测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 92500 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",
@@ -197,6 +207,7 @@ async function seedProblem(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -208,6 +219,7 @@ async function seedSubmission(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: userId,
     problem_id: problemId,
@@ -230,6 +242,8 @@ async function seedContestFixture(
   const contestId = `qb-contest-${ts}`;
   await db.insert(contests).values({
     id: contestId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: userId,
     public_id: `qb-ct-${ts}`,
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",
@@ -378,6 +392,7 @@ Deno.test({
     const { problemId, v1 } = await seedProblem("objective", true);
     const objectiveSubmissionId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...(await problemExecutionForTest(problemId)),
       id: objectiveSubmissionId,
       paper_id: problemId,
       user_id: actor,

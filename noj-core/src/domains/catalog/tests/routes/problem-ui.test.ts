@@ -3,9 +3,21 @@ import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems } from "../../../../shared/db/schema.ts";
-import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-import { getStorageProvider } from "../../../system/index.ts";
+import {
+  problems,
+  problemVersionObjects,
+} from "../../../../shared/db/schema.ts";
+import {
+  createUserToken,
+  deleteProblemFixtures,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import {
+  getStorageProvider,
+  uploadStorageObjectWithReservation,
+} from "../../../system/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 
 /**
  * 界面题 `GET /api/v1/problems/:id/ui` 与 `/template` 的路由测试。
@@ -40,7 +52,7 @@ async function insertProblem(
     title: `界面路由题 ${mode} ${ts}`,
     description: "测试",
     difficulty: "easy",
-    type: "P",
+    domain_id: DEFAULT_DOMAIN_ID,
     number: 64000 + Math.floor(Math.random() * 900),
     owner_id: "0",
     submission_mode: mode,
@@ -50,6 +62,7 @@ async function insertProblem(
     updated_at: now,
     ...extra,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -65,7 +78,7 @@ Deno.test({
       );
       assertEquals(res.status, 401);
     } finally {
-      await getDb().delete(problems).where(eq(problems.id, id));
+      await deleteProblemFixtures(eq(problems.id, id));
     }
   },
 });
@@ -81,7 +94,7 @@ Deno.test({
       });
       assertEquals(res.status, 404);
     } finally {
-      await getDb().delete(problems).where(eq(problems.id, id));
+      await deleteProblemFixtures(eq(problems.id, id));
     }
   },
 });
@@ -109,18 +122,26 @@ Deno.test({
         "evaluate.py": new TextEncoder().encode("print(1)"),
         "ui.html": new TextEncoder().encode("<h1>界面</h1>"),
       });
-      packageUrl = await storage.put(key, zip, "application/zip");
-      await getDb().update(problems).set({
-        support_package_storage_url: packageUrl,
-      })
-        .where(eq(problems.id, id));
+      packageUrl = (await uploadStorageObjectWithReservation({
+        key,
+        bytes: zip,
+        contentType: "application/zip",
+        domainId: DEFAULT_DOMAIN_ID,
+      })).storageUrl;
+      const versionId = await publishBaselineVersionForTest(id);
+      await getDb().insert(problemVersionObjects).values({
+        version_id: versionId,
+        role: "support_package",
+        path: "package.zip",
+        storage_url: packageUrl,
+      });
       const ok = await jsonRequest(app, `/api/v1/problems/${id}/ui`, {
         token,
       });
       assertEquals(ok.status, 200);
       assertEquals((await ok.json()).data.html, "<h1>界面</h1>");
     } finally {
-      await getDb().delete(problems).where(eq(problems.id, id));
+      await deleteProblemFixtures(eq(problems.id, id));
       if (packageUrl) await storage.delete(packageUrl).catch(() => {});
     }
   },
@@ -145,8 +166,8 @@ Deno.test({
       );
       assertEquals(code.status, 200);
     } finally {
-      await getDb().delete(problems).where(eq(problems.id, uiId));
-      await getDb().delete(problems).where(eq(problems.id, codeId));
+      await deleteProblemFixtures(eq(problems.id, uiId));
+      await deleteProblemFixtures(eq(problems.id, codeId));
     }
   },
 });

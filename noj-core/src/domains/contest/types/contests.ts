@@ -1,4 +1,10 @@
-export const CONTEST_TYPES = ["kaggle"] as const;
+export const CONTEST_TYPES = [
+  "kaggle",
+  "oi",
+  "ioi",
+  "ioi_strict",
+  "acm",
+] as const;
 export type ContestType = typeof CONTEST_TYPES[number];
 
 export const CONTEST_KINDS = ["public", "invite"] as const;
@@ -21,6 +27,9 @@ export type RankingVisibility = typeof RANKING_VISIBILITIES[number];
  */
 export interface KaggleContestConfig {
   submission_limits?: Record<string, number>;
+  penalty_minutes?: number;
+  /** Kaggle 默认本人榜，赛前可选择完整榜。 */
+  scoreboard_scope?: "self" | "full";
 }
 
 export type ContestConfig = KaggleContestConfig;
@@ -48,6 +57,18 @@ export function isValidContestConfig(
   }
 
   const values = config as Record<string, unknown>;
+  if (
+    values.penalty_minutes !== undefined && (
+      _type !== "acm" || !Number.isInteger(values.penalty_minutes) ||
+      (values.penalty_minutes as number) < 0 ||
+      (values.penalty_minutes as number) > 1440
+    )
+  ) return false;
+  if (
+    values.scoreboard_scope !== undefined &&
+    (_type !== "kaggle" ||
+      !["self", "full"].includes(values.scoreboard_scope as string))
+  ) return false;
   if (values.submission_limits !== undefined) {
     if (
       typeof values.submission_limits !== "object" ||
@@ -116,6 +137,8 @@ export interface UpdateContestInput {
 
 export interface ContestResponse {
   id: string;
+  domain_id: string | null;
+  revision: number;
   public_id: string;
   title: string;
   description: string;
@@ -186,7 +209,7 @@ export interface ContestProblemResponse extends ContestProblemInput {
 
 export interface KaggleProblemScore {
   label: string;
-  best_score: number;
+  best_score: number | null;
   attempts: number;
   last_best_at: string | null;
   submission_id?: string | null;
@@ -217,6 +240,10 @@ export interface KaggleProblemScore {
   };
   /** 该「竞赛 × 题目」策略的乐观锁版本（快照归因用）。 */
   policy_revision?: number | null;
+  /** OI 系列最后提交未完成时等待处理，不以早期成绩回退。 */
+  pending?: boolean;
+  accepted?: boolean;
+  penalty_ms?: number;
 }
 
 export interface KaggleRankingRow {
@@ -227,4 +254,7 @@ export interface KaggleRankingRow {
   total_score: number;
   last_submission_at: string | null;
   problem_scores: KaggleProblemScore[];
+  solved?: number;
+  penalty_ms?: number;
+  pending?: boolean;
 }

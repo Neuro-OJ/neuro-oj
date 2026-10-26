@@ -1,17 +1,14 @@
-import { and, eq, type SQL, sql } from "drizzle-orm";
-import { unifiedSubmissionSources } from "./../../../../shared/versioning/submission-sources.ts";
+import { eq, type SQL, sql } from "drizzle-orm";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import {
-  communityPosts,
-  submissions,
-  users,
-} from "./../../../../shared/db/schema.ts";
+import { communityPosts, users } from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
 import {
+  endedWindowCondition,
   hasUnendedPublicContest,
   unendedPublicContestForProblem,
 } from "./../../../contest/index.ts";
@@ -21,6 +18,11 @@ import type {
   CommunityPostType,
 } from "./../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
+import {
+  communityDb,
+  communityDomainId,
+  type CommunityScope,
+} from "./community-scope.ts";
 
 /**
  * 赛时社区全局静默（决策 1 · 方案 A · N-01）的单一入口。
@@ -34,11 +36,14 @@ import { getCommunityConfig } from "./community-config.ts";
  */
 export async function assertNotContestSilenced(
   moderator: boolean,
+  scope?: CommunityScope,
 ): Promise<void> {
   if (moderator) return;
-  if (await hasUnendedPublicContest()) {
+  if (
+    await hasUnendedPublicContest(communityDomainId(scope), communityDb(scope))
+  ) {
     throw new ForbiddenError(
-      "比赛期间全站暂停公开发布讨论、动态、题解与评论，参赛提问请使用赛中答疑",
+      "比赛期间当前域暂停公开发布讨论、动态、题解与评论，参赛提问请使用赛中答疑",
       "CONTEST_SILENCE",
     );
   }
@@ -102,18 +107,29 @@ export function resolveProblemId(
 export async function hasAcceptedSolution(
   authorId: string,
   problemId: string,
+  scope?: CommunityScope,
 ): Promise<boolean> {
-  const db = getDb();
-  // 选列必须写成 SQL 片段：FROM 是统一子查询（含客观题），drizzle 会拒绝把
-  // 模式表列直接当投影（"not part of the query"），与其它统一读取路径一致。
-  const rows = await db.select({ id: sql<string>`${submissions.id}` })
-    .from(unifiedSubmissionSources)
-    .where(and(
-      eq(submissions.user_id, authorId),
-      eq(submissions.problem_id, problemId),
-      eq(submissions.is_accepted, true),
-    )).limit(1);
-  return !!rows[0];
+  const db = communityDb(scope);
+  const rows = await db.execute(sql`SELECT 1 FROM (
+      SELECT id FROM submissions WHERE user_id = ${authorId} AND problem_id = ${problemId}
+        AND coalesce(domain_id, ${communityDomainId()}) = ${
+    communityDomainId(scope)
+  } AND is_accepted = true
+        AND (contest_id IS NULL OR EXISTS (SELECT 1 FROM contests visible_contest
+          WHERE visible_contest.id = submissions.contest_id AND ${
+    endedWindowCondition(sql`visible_contest.end_time`)
+  }))
+      UNION ALL
+      SELECT id FROM objective_submissions WHERE user_id = ${authorId} AND paper_id = ${problemId}
+        AND coalesce(domain_id, ${communityDomainId()}) = ${
+    communityDomainId(scope)
+  } AND is_accepted = true
+        AND (contest_id IS NULL OR EXISTS (SELECT 1 FROM contests visible_contest
+          WHERE visible_contest.id = objective_submissions.contest_id AND ${
+    endedWindowCondition(sql`visible_contest.end_time`)
+  }))
+    ) accepted LIMIT 1`);
+  return unwrapRows(rows as never).length > 0;
 }
 
 /**
@@ -133,10 +149,15 @@ export async function hasAcceptedSolution(
  *
  * @returns 可直接 push 进 drizzle conditions 数组的 SQL 片段。
  */
-export function notGatedContestContent(): SQL {
+export function notGatedContestContent(scope?: CommunityScope): SQL {
   return sql`NOT (
     ${communityPosts.type} IN ('solution', 'discussion')
     AND ${communityPosts.problem_id} IS NOT NULL
-    AND ${unendedPublicContestForProblem(communityPosts.problem_id)}
+    AND ${
+    unendedPublicContestForProblem(
+      communityPosts.problem_id,
+      sql`${communityDomainId(scope)}`,
+    )
+  }
   )`;
 }

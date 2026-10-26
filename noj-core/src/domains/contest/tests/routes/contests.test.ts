@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertEquals,
   assertExists,
@@ -72,6 +75,7 @@ Deno.test({
     }).onConflictDoNothing();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemId,
         title: "路由竞赛题 A",
         description: "测试题面 A",
@@ -79,11 +83,11 @@ Deno.test({
         runtime_config: {},
         number: 930001,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: otherProblemId,
         title: "非竞赛题",
         description: "测试题面 B",
@@ -91,7 +95,6 @@ Deno.test({
         runtime_config: {},
         number: 930002,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
@@ -293,6 +296,7 @@ Deno.test({
         public_id: "sub-test0001",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",
@@ -403,14 +407,15 @@ Deno.test({
         await db.delete(contests).where(inArray(contests.id, ids));
       }
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-      await db.delete(problems).where(inArray(
+      await deleteProblemFixtures(inArray(
         problems.id,
         [problemId, otherProblemId],
       ));
-      await db.delete(users).where(inArray(
-        users.id,
-        [adminId, userId, invitedId],
-      ));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(inArray(
+          users.id,
+          [adminId, userId, invitedId],
+        ));
     }
   },
 });
@@ -468,6 +473,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "A+B",
       description: "测试题面",
@@ -487,7 +493,6 @@ Deno.test({
       },
       number: 880001,
       owner_id: adminId,
-      type: "P",
       created_at: now,
       updated_at: now,
     });

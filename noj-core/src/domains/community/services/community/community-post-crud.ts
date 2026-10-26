@@ -1,9 +1,10 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
   communityPosts,
+  domains,
   problems,
   userRoles,
   users,
@@ -40,6 +41,21 @@ import {
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
 import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
+import { domainProblemReference } from "../../../catalog/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../../workspace/index.ts";
+import {
+  communityDb,
+  communityDomainId,
+  communityDomainWhere,
+  communityResourceVisible,
+  type CommunityScope,
+  loadCommunityScope,
+  resolveCommunityProblem,
+} from "./community-scope.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -51,11 +67,19 @@ import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 async function isProblemOwner(
   userId: string,
   problemId: string | undefined,
+  scope?: CommunityScope,
 ): Promise<boolean> {
   if (!problemId) return false;
-  const [problem] = await getDb().select({ owner_id: problems.owner_id })
+  const [problem] = await communityDb(scope).select({
+    owner_id: problems.owner_id,
+  })
     .from(problems)
-    .where(eq(problems.id, problemId))
+    .where(
+      and(
+        eq(problems.id, problemId),
+        communityDomainWhere(problems.domain_id, scope),
+      ),
+    )
     .limit(1);
   return problem?.owner_id === userId;
 }
@@ -69,9 +93,10 @@ async function isProblemOwner(
 async function ensureSolutionAccepted(
   authorId: string,
   problemId: string,
+  scope?: CommunityScope,
 ): Promise<void> {
   if (!getCommunityConfig().solution_requires_accepted) return;
-  if (!(await hasAcceptedSolution(authorId, problemId))) {
+  if (!(await hasAcceptedSolution(authorId, problemId, scope))) {
     throw new ForbiddenError(
       "通过对应题目后才能发布题解",
       "SOLUTION_NOT_ACCEPTED",
@@ -114,11 +139,13 @@ export async function createPost(
   authorId: string,
   input: CommunityPostInput,
   moderator = false,
+  scope?: CommunityScope,
 ): Promise<typeof communityPosts.$inferSelect> {
   assertCommunityEnabled(featureForType(input.type));
   const config = getCommunityConfig();
   const title = input.title?.trim() || undefined;
   const content = input.content.trim();
+  let bindingId: string | null = null;
   if (!content) throw new ValidationError("内容不能为空");
   if (
     content.length >
@@ -134,24 +161,44 @@ export async function createPost(
   }
   if (input.type === "solution") {
     if (!input.problem_id) throw new ValidationError("题解必须关联题目");
-    const resolvedProblemId = await resolveProblemId(input.problem_id);
+    const bound = await resolveCommunityProblem(
+      input.problem_id,
+      scope ??
+        await loadCommunityScope(DEFAULT_DOMAIN_SLUG, authorId),
+    );
+    const resolvedProblemId = bound.problem.id;
+    bindingId = bound.binding.id;
     if (!resolvedProblemId) throw new ValidationError("题目不存在");
     // 通过门槛仅约束普通用户：管理员/审核员不受限（community-content spec）
-    if (!moderator) await ensureSolutionAccepted(authorId, resolvedProblemId);
+    if (!moderator) {
+      await ensureSolutionAccepted(authorId, resolvedProblemId, scope);
+    }
     input.problem_id = resolvedProblemId;
   }
   if (input.type === "discussion") {
     if (!input.board_id) throw new ValidationError("讨论必须选择板块");
-    const db = getDb();
+    const db = communityDb(scope);
     const board = await db.select({
       id: communityBoards.id,
       is_archived: communityBoards.is_archived,
-    }).from(communityBoards).where(eq(communityBoards.id, input.board_id))
+    }).from(communityBoards).where(
+      and(
+        eq(communityBoards.id, input.board_id),
+        communityDomainWhere(communityBoards.domain_id, scope),
+      ),
+    )
       .limit(1);
     if (!board[0] || board[0].is_archived) {
+      if (scope) {
+        if (!board[0]) throw new NotFoundError("板块不存在");
+        throw new ForbiddenError("板块已归档");
+      }
       throw new ValidationError("板块不存在或已归档");
     }
-    if (!moderator && !await canPostToBoard(authorId, input.board_id)) {
+    if (
+      (!scope || scope.slug === DEFAULT_DOMAIN_SLUG) && !moderator &&
+      !await canPostToBoard(authorId, input.board_id)
+    ) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
     if (input.problem_id) {
@@ -171,7 +218,13 @@ export async function createPost(
   // `isProblemInUnendedPublicContest`，与列表/详情读取门控同口径。
   // moderator（审核员）免门控，用于赛后归档与官方说明。
   if (!moderator && input.type !== "moment" && input.problem_id) {
-    if (await isProblemInUnendedPublicContest(input.problem_id)) {
+    if (
+      await isProblemInUnendedPublicContest(
+        input.problem_id,
+        communityDomainId(scope),
+        communityDb(scope),
+      )
+    ) {
       throw new ForbiddenError(
         "该题目当前归属于公开赛，赛前及赛中禁止发布题解或讨论",
         "CONTEST_SECRECY",
@@ -183,14 +236,19 @@ export async function createPost(
   // （讨论、动态与题解）；仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
   // 题解同样纳入：挂在非赛题下的题解正文可夹带赛题解法，按挂靠题目判定的
   // 保密门控（上方）无法识别。放在保密门控之后，使赛题题解仍得到更具体的 CONTEST_SECRECY。
-  await assertNotContestSilenced(moderator);
+  await assertNotContestSilenced(moderator, scope);
   // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
   const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
   if (postIntervalSeconds > 0) {
-    const lastRows = await getDb().select({
+    const lastRows = await communityDb(scope).select({
       created_at: communityPosts.created_at,
     })
-      .from(communityPosts).where(eq(communityPosts.author_id, authorId))
+      .from(communityPosts).where(
+        and(
+          eq(communityPosts.author_id, authorId),
+          communityDomainWhere(communityPosts.domain_id, scope),
+        ),
+      )
       .orderBy(desc(communityPosts.created_at)).limit(1);
     const lastCreatedAt = lastRows[0]?.created_at;
     if (
@@ -207,6 +265,8 @@ export async function createPost(
   const status = await publicationStatus(authorId);
   const post = {
     id: crypto.randomUUID(),
+    domain_id: communityDomainId(scope),
+    domain_problem_binding_id: bindingId,
     public_id: generatePublicId("post"),
     type: input.type,
     author_id: authorId,
@@ -222,7 +282,7 @@ export async function createPost(
     // 即可让 isProblemOwner 为真；又因 listPosts 无条件按 is_official 置顶排序，
     // 这类帖子会**置顶社区列表**，绕过 setPostOfficial 的"仅题解可标记"规则。
     is_official: input.is_official === true && input.type === "solution" &&
-      (moderator || await isProblemOwner(authorId, input.problem_id)),
+      (moderator || await isProblemOwner(authorId, input.problem_id, scope)),
     status,
     is_locked: false,
     is_pinned: false,
@@ -233,6 +293,7 @@ export async function createPost(
   };
   // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "post",
     target_id: post.id,
     title: title ?? undefined,
@@ -241,7 +302,7 @@ export async function createPost(
     moderator,
     finalStatus: status === "pending" ? "pending" : "published",
   });
-  const db = getDb();
+  const db = communityDb(scope);
   await db.insert(communityPosts).values(post);
   // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
   // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
@@ -276,12 +337,27 @@ export async function getPost(
   postId: string,
   viewerId?: string,
   moderator = false,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
+  const sourceIdentity = db.select({
+    id: problems.id,
+    domain_id: problems.domain_id,
+    number: problems.number,
+    slug: domains.slug,
+    title: problems.title,
+  }).from(problems).innerJoin(domains, eq(domains.id, problems.domain_id))
+    .as("community_source_identity");
   const rows = await db.select({
     post: communityPosts,
     author: authorProjection,
-    problem_title: problems.title,
+    problem_title: sourceIdentity.title,
+    problem_identity: {
+      id: sourceIdentity.id,
+      domain_id: sourceIdentity.domain_id,
+      number: sourceIdentity.number,
+      slug: sourceIdentity.slug,
+    },
     ...postStatsProjection,
     bookmarked: viewerId
       ? sql<
@@ -296,11 +372,19 @@ export async function getPost(
   }).from(communityPosts).innerJoin(
     users,
     eq(users.id, communityPosts.author_id),
-  ).leftJoin(problems, eq(problems.id, communityPosts.problem_id)).where(
-    eq(communityPosts.id, postId),
-  ).limit(1);
+  ).leftJoin(sourceIdentity, eq(sourceIdentity.id, communityPosts.problem_id))
+    .where(
+      and(
+        eq(communityPosts.id, postId),
+        communityDomainWhere(communityPosts.domain_id, scope),
+        communityResourceVisible(scope),
+      ),
+    ).limit(1);
   const row = rows[0];
   if (!row) throw new NotFoundError("社区内容不存在");
+  if (!scope && row.post.domain_id === DEFAULT_DOMAIN_ID) {
+    await loadWorkspace(DEFAULT_DOMAIN_SLUG, viewerId ?? null);
+  }
   // 模块关闭时详情同样返回 FEATURE_DISABLED（configuration spec：既有数据不删除）
   assertCommunityEnabled(featureForType(row.post.type as CommunityPostType));
   if (
@@ -316,11 +400,27 @@ export async function getPost(
     !moderator && row.post.problem_id &&
     (row.post.type === "solution" || row.post.type === "discussion")
   ) {
-    if (await isProblemInUnendedPublicContest(row.post.problem_id)) {
+    if (
+      await isProblemInUnendedPublicContest(
+        row.post.problem_id,
+        communityDomainId(scope),
+        db,
+      )
+    ) {
       throw new NotFoundError("社区内容不存在");
     }
   }
-  return row;
+  const { problem_identity: identity, ...result } = row;
+  return {
+    ...result,
+    problem_reference: identity
+      ? domainProblemReference(
+        identity,
+        identity.slug,
+        communityDomainId(scope),
+      )
+      : null,
+  };
 }
 
 /**
@@ -338,8 +438,9 @@ export async function updatePost(
   actorId: string,
   moderator: boolean,
   input: Partial<Pick<CommunityPostInput, "title" | "content">>,
+  scope?: CommunityScope,
 ) {
-  const current = await getPost(postId, actorId, moderator);
+  const current = await getPost(postId, actorId, moderator, scope);
   if (current.post.author_id !== actorId && !moderator) {
     throw new ForbiddenError("无权编辑该内容");
   }
@@ -347,7 +448,7 @@ export async function updatePost(
     throw new ValidationError("已删除内容不能编辑");
   }
   // 赛时静默同样覆盖编辑（含题解）：否则可把赛前发布的帖子改写为完整解法向全场广播（N-01 残余）。
-  await assertNotContestSilenced(moderator);
+  await assertNotContestSilenced(moderator, scope);
   const content = input.content === undefined
     ? current.post.content
     : input.content.trim();
@@ -364,6 +465,7 @@ export async function updatePost(
   if (title && title.length > 200) throw new ValidationError("标题过长");
   // 内容合规同步审核（issue #413）：编辑后仍公开的内容高置信违规时拒绝保存
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "post",
     target_id: postId,
     title: title ?? undefined,
@@ -372,7 +474,7 @@ export async function updatePost(
     moderator,
     finalStatus: current.post.status === "pending" ? "pending" : "published",
   });
-  const db = getDb();
+  const db = communityDb(scope);
   const rows = await db.update(communityPosts).set({
     content,
     title: title || null,
@@ -402,18 +504,19 @@ export async function setPostOfficial(
   actorId: string,
   moderator: boolean,
   value: boolean,
+  scope?: CommunityScope,
 ): Promise<void> {
-  const post = await getPost(postId, actorId, moderator);
+  const post = await getPost(postId, actorId, moderator, scope);
   if (post.post.type !== "solution") {
     throw new ValidationError("仅题解可标记为官方题解");
   }
   if (
     !moderator &&
-    !await isProblemOwner(actorId, post.post.problem_id ?? undefined)
+    !await isProblemOwner(actorId, post.post.problem_id ?? undefined, scope)
   ) {
     throw new ForbiddenError("仅题目所有者可设置官方题解");
   }
-  await getDb().update(communityPosts)
+  await communityDb(scope).update(communityPosts)
     .set({ is_official: value, updated_at: nowIso() })
     .where(eq(communityPosts.id, postId));
 }

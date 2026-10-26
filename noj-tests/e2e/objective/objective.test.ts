@@ -117,6 +117,18 @@ e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => 
     `objective_owner_${testSuffix}@test.com`,
   );
   ownerToken = owner.token;
+  const identity = await apiGet("/api/v1/auth/me", ownerToken);
+  const ownerId = (identity.body as { data: { id: string } }).data.id;
+  const granted = await apiPut(
+    `/api/v1/domains/main/members/${ownerId}/roles`,
+    {
+      roles: ["editor"],
+    },
+    adminToken,
+  );
+  if (granted.status !== 200) {
+    throw new Error(`授予域资源编辑角色失败: ${JSON.stringify(granted.body)}`);
+  }
   const solver = await getOrCreateUser(
     "objective_solver",
     `objective_solver_${testSuffix}`,
@@ -127,9 +139,8 @@ e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => 
 
 e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落库", async () => {
   if (!isE2E) return;
-  // 1.1 创建客观题套卷（U 型 + is_objective，无需 runtime_config）
+  // 1.1 在默认域创建客观题套卷，无需 runtime_config。
   const paperRes = await apiPost("/api/v1/problems", {
-    type: "U",
     is_objective: true,
     title: `E2E 客观题套卷 ${testSuffix}`,
     description: "LMCC 成人组模拟卷",
@@ -145,7 +156,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   // 小题写入走共享草稿：先取当前 revision（创建即建草稿）
   await refreshDraftRevision();
 
-  // U 型新建默认 private；练习提交需要公开可见
+  // 练习提交使用公开的已发布版本。
   const pubRes = await apiPut(
     `/api/v1/problems/${paperId}/visibility`,
     { visibility: "public" },
@@ -482,26 +493,16 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
   ) {
     throw new Error(`公开 ID 查询竞赛历史失败: ${JSON.stringify(history)}`);
   }
-  // 审计 VULN-03：竞赛未结束前只回执"已提交"——不返回分数、正确题数与逐题对错。
-  // 否则协同作弊者可用小号提交当答案预言机，逐题试探即可拼出满分答案。
-  if (submitted.score !== null || submitted.correct_count !== null) {
+  // Kaggle 本人可见百分制原始总分，仍禁止逐题正确性和答案。
+  if (submitted.score !== 100 || submitted.correct_count !== null) {
     throw new Error(
-      `竞赛模式赛期不得返回分数/正确题数: ${JSON.stringify(submitted)}`,
+      `Kaggle应仅返回原始总分: ${JSON.stringify(submitted)}`,
     );
   }
   if (Object.keys(submitted.details).length !== 0) {
     throw new Error(
       `竞赛模式赛期不得返回逐题判定: ${JSON.stringify(submitted.details)}`,
     );
-  }
-  // 防御性：即便未来放开字段，也不得包含期望答案/解析/对错
-  for (const d of Object.values(submitted.details)) {
-    if (
-      d.expected !== undefined || d.explanation !== undefined ||
-      d.correct !== undefined
-    ) {
-      throw new Error("竞赛模式提交响应不应包含期望答案、解析或对错");
-    }
   }
 
   // 3.4 竞赛内重复提交被拒（一次性）
@@ -537,10 +538,10 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
       >;
     };
   }).data;
-  // 审计 VULN-03：竞赛未结束前详情同样屏蔽分数与逐题对错（仅保留"我的作答"）
-  if (detailData.score !== null) {
+  // 历史详情分数采用 ×100 整数，Kaggle 本人可见总分。
+  if (detailData.score !== 10000) {
     throw new Error(
-      `竞赛进行中详情不得返回分数: ${JSON.stringify(detailData.score)}`,
+      `Kaggle详情应返回原始总分: ${JSON.stringify(detailData.score)}`,
     );
   }
   for (const d of Object.values(detailData.details)) {

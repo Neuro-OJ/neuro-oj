@@ -15,6 +15,7 @@ import {
 } from "~/utils/bundleImport"
 
 const emit = defineEmits<{ imported: [result: BundleImportResult] }>()
+const props = defineProps<{ domainSlug: string }>()
 
 const { api } = useApi()
 const { toast } = useToast()
@@ -24,16 +25,25 @@ const importing = ref(false)
 const importError = ref("")
 
 async function handleFile(file: File) {
+  const slug = props.domainSlug
   importing.value = true
   importError.value = ""
   try {
     const formData = new FormData()
     formData.append("file", file)
-    if (publish.value) formData.append("publish", "true")
+    const problemPath = `/api/v1/domains/${encodeURIComponent(slug)}/problems`
     const res = await api.post<{ data: BundleImportResult }>(
-      "/api/v1/problems/import-bundle",
+      `${problemPath}/import-bundle`,
       formData,
     )
+    if (publish.value) {
+      res.data.published = await api.post<NonNullable<BundleImportResult['published']>>(
+        `${problemPath}/${res.data.number}/publish`,
+        { change_note: '题目包导入' },
+        { headers: { 'If-Match': String(res.data.draft_revision) } },
+      )
+    }
+    if (slug !== props.domainSlug) return
     toast.success(bundleImportSuccessMessage(res.data))
     emit("imported", res.data)
   } catch (err: unknown) {
@@ -45,7 +55,7 @@ async function handleFile(file: File) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 bg-white border border-border rounded-xl px-6 py-5">
+  <div class="flex flex-col gap-4 bg-white border border-border rounded px-6 py-5">
     <div>
       <h2 class="text-sm font-semibold text-text">上传题目包</h2>
       <p class="mt-1 text-xs text-text-secondary leading-relaxed">

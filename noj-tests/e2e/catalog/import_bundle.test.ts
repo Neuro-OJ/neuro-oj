@@ -10,6 +10,7 @@
 import {
   apiDelete,
   apiGet,
+  apiPut,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -50,11 +51,10 @@ print(json.dumps(result))
 `;
 
 const MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: `E2E 导入测试 ${testSuffix}`,
   difficulty: "easy",
-  type: "U",
-  // number 作为幂等键：admin 导入时按 (type, number) 匹配更新
+  // 数字题号在默认域匹配已有题；更新时仍必须提供草稿 revision。
   number: 90000 + (Date.now() % 9000),
   runtime_config: {
     evaluator: {
@@ -152,21 +152,20 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
   const body = (await res.json()) as {
     data: {
       id: string;
-      type: string;
       title: string;
-      support_package_storage_url: string | null;
-      runtime_config: { evaluator: { command: string } };
     };
   };
   problemId = body.data.id;
 
-  if (body.data.type !== "U") throw new Error("type 应为 U");
-  if (!body.data.support_package_storage_url) {
-    throw new Error("评测包未注册");
-  }
-  // command 默认值注入验证
+  if ("type" in body.data) throw new Error("格式 2 不应返回 P/U 分类");
+  // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
+  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  if (draft.status !== 200) throw new Error("导入草稿不可读");
+  const content = (draft.body as {
+    data: { content: { runtime_config: { evaluator: { command: string } } } };
+  }).data.content;
   if (
-    body.data.runtime_config.evaluator.command !==
+    content.runtime_config.evaluator.command !==
       "python3 /workspace/evaluate.py"
   ) {
     throw new Error("evaluator.command 默认值未注入");
@@ -226,13 +225,21 @@ e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () 
   }
 });
 
-e2eTest("[e2e/import-bundle] 删除导入的题目", async () => {
-  if (!isE2E || !problemId) return;
-  const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
-  if (res.status !== 204 && res.status !== 200) {
-    throw new Error(`删除失败: ${res.status}`);
-  }
-  // 清理后查询应 404
-  const check = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
-  if (check.status !== 404) throw new Error("题目删除后仍可访问");
-});
+e2eTest(
+  "[e2e/import-bundle] 历史引用阻止物理删除，源题可停止公开",
+  async () => {
+    if (!isE2E || !problemId) return;
+    const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+    if (res.status !== 409) {
+      throw new Error(
+        `已发布且有历史提交的题目必须禁止物理删除: ${res.status}`,
+      );
+    }
+    const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
+      visibility: "private",
+    }, adminToken);
+    if (withdrawn.status !== 200) throw new Error("停止公开失败");
+    const check = await apiGet(`/api/v1/problems/${problemId}`);
+    if (check.status !== 404) throw new Error("停止公开后匿名仍能访问");
+  },
+);

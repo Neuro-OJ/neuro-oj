@@ -438,23 +438,25 @@ export function createProdPayloadOps(opts: ProdPayloadOptions): ProdPayloadOps {
     async minioMirror(destDir) {
       await Deno.mkdir(destDir, { recursive: true });
       const bucket = env["S3_BUCKET"] || "noj-support-packages";
-      const res = await runner.run("docker", [
-        "compose",
-        "--env-file",
-        compose.envFile,
-        "--file",
-        compose.composeFile,
-        "run",
-        "--rm",
-        "--no-deps",
-        "--entrypoint",
-        "/bin/sh",
-        "-v",
-        `${destDir}:/backup:rw`,
-        "minio-init",
-        "-c",
-        `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/${bucket}" /backup`,
-      ]);
+      const res = await runner.run(
+        compose.dockerBin,
+        prodComposeArgs(compose, [
+          "run",
+          "--rm",
+          "--no-deps",
+          "--user",
+          `${Deno.uid()}:${Deno.gid()}`,
+          "--env",
+          "MC_CONFIG_DIR=/tmp/noj-backup-mc",
+          "--entrypoint",
+          "/bin/sh",
+          "-v",
+          `${destDir}:/backup:rw`,
+          "minio-init",
+          "-c",
+          `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/${bucket}" /backup`,
+        ]),
+      );
       if (res.code !== 0) {
         throw new CaptureError("mc mirror", res.code, res.stderr.trim());
       }

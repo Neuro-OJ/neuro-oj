@@ -17,6 +17,10 @@ import {
 } from "./../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
+import {
+  assertInstanceRegistration,
+  enrollRegisteredAccount,
+} from "../../../workspace/index.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -138,6 +142,7 @@ export async function registerUser(
   clientIp?: string,
   userAgent?: string | null,
 ): Promise<UserResponse> {
+  assertInstanceRegistration(input.invitation_token);
   // 密码强度校验（issue 64 评论 §6.5）
   validatePasswordStrength(input.password, input.username, input.email);
 
@@ -220,6 +225,7 @@ export async function registerUser(
       clientIp ?? null,
       userAgent ?? null,
     );
+    await enrollRegisteredAccount(tx, id, input.invitation_token);
   }).catch((err) => {
     const conflict = conflictFromUniqueViolation(err);
     if (conflict) throw conflict;

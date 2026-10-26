@@ -252,6 +252,10 @@ export interface SubmissionListItem {
 
 /** 列表查询参数 */
 export interface ListSubmissionsParams {
+  /** 已授权调用方解析的使用域；不能来自客户端任意覆盖值。 */
+  domainId?: string;
+  /** 由认证调用方传入，不能来自查询参数。 */
+  platformAdmin?: boolean;
   userId?: string;
   contestId?: string;
   problemId?: string;

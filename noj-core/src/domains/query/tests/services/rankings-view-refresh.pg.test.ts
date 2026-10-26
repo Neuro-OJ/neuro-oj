@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 榜单物化视图刷新回归（Handbook §3.5，缺陷 #49）——**仅真实 PostgreSQL 运行**。
  *
@@ -16,6 +21,7 @@
  *    过滤），即 0108 重建后的定义可以安全标为可信；
  * 4. 刷新后再次发生数据变化仍视为落后（不把旧视图当最新）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import {
@@ -24,6 +30,7 @@ import {
 } from "../../../../shared/db/connection.ts";
 import {
   contests,
+  educationOutbox,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -128,6 +135,7 @@ Deno.test({
       ] as const
     ) {
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id,
         title: `PG 视图口径-${number}`,
         description: "d",
@@ -135,17 +143,18 @@ Deno.test({
         runtime_config: null,
         number,
         owner_id: userId,
-        type: objective ? "U" : "P",
         is_objective: objective,
         visibility: "public",
         created_at: now,
         updated_at: now,
       });
+      await publishBaselineVersionForTest(id);
     }
     await db.insert(submissions).values({
       id: codeSubmissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print(1)",
       status: "finished",
@@ -174,6 +183,7 @@ Deno.test({
     await db.insert(objectiveSubmissions).values({
       id: objectiveSubmissionId,
       paper_id: paperId,
+      ...await problemExecutionForTest(paperId),
       user_id: userId,
       submission_type: "practice",
       answers: {},
@@ -261,7 +271,7 @@ Deno.test({
       eq(objectiveSubmissions.id, objectiveSubmissionId),
     );
     await db.delete(submissions).where(eq(submissions.id, codeSubmissionId));
-    await db.delete(problems).where(inArray(problems.id, [problemId, paperId]));
+    await deleteProblemFixtures(inArray(problems.id, [problemId, paperId]));
     await db.delete(users).where(eq(users.id, userId));
     await refreshRankingsView();
     const cleaned = await readRevisions();
@@ -288,6 +298,7 @@ async function seedBoundaryContest(
 ): Promise<string> {
   const contestId = `pg-b-c-${tag}-${runId}`;
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     title: `PG 赛期边界-${tag}`,
     start_time: new Date(Date.now() - 3_600_000).toISOString(),
@@ -316,6 +327,7 @@ async function seedBoundaryAcceptance(
   const submissionId = `pg-b-s-${tag}-${runId}`;
   const attemptId = `pg-b-a-${tag}-${runId}`;
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `PG 赛期边界题-${tag}`,
     description: "d",
@@ -323,15 +335,16 @@ async function seedBoundaryAcceptance(
     runtime_config: null,
     number,
     owner_id: fixture.userId,
-    type: "P",
     visibility: "public",
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(problemId);
   await getDb().insert(submissions).values({
     id: submissionId,
     user_id: fixture.userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -377,7 +390,10 @@ async function cleanupBoundaryFixture(fixture: BoundaryFixture): Promise<void> {
     );
   }
   if (fixture.problemIds.length > 0) {
-    await getDb().delete(problems).where(
+    await getDb().delete(educationOutbox).where(
+      inArray(educationOutbox.problem_id, fixture.problemIds),
+    );
+    await deleteProblemFixtures(
       inArray(problems.id, fixture.problemIds),
     );
   }

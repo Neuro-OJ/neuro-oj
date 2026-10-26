@@ -774,3 +774,17 @@ Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
 });
 
 // ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
+
+Deno.test("problem import: --domain 与包目录原样透传 core 容器", () => {
+  assertEquals(
+    stripCliOwnedFlags([
+      "problem",
+      "import",
+      "--domain",
+      "school",
+      "--dir",
+      "/packages",
+    ]),
+    ["problem", "import", "--domain", "school", "--dir", "/packages"],
+  );
+});

@@ -1,8 +1,15 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { v2ResultForTest } from "../_versioning-fixtures.ts";
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
   contests,
@@ -99,6 +106,7 @@ const runtimeConfig = {
 
 // 模块级 setup：事务外初始化共享测试数据
 await resetDbForTest();
+await ensureDefaultWorkspace();
 const db = getDb();
 await db.insert(users).values({
   id: USER_ID,
@@ -110,6 +118,7 @@ await db.insert(users).values({
 });
 await db.insert(problems).values([
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: "自测测试题",
     description: "测试描述",
@@ -117,11 +126,11 @@ await db.insert(problems).values([
     runtime_config: runtimeConfig,
     number: 70000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: OBJECTIVE_PROBLEM_ID,
     title: "客观题套卷",
     description: "客观题",
@@ -130,7 +139,6 @@ await db.insert(problems).values([
     is_objective: true,
     number: 80000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
@@ -143,8 +151,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await assertRejects(
-      () =>
+      async () =>
         createSelfTest(USER_ID, PROBLEM_ID, {
+          version_id: await publishBaselineVersionForTest(PROBLEM_ID),
           language: "ruby",
           code: "puts 1",
         }),
@@ -230,6 +239,7 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.insert(selfTests).values({
+      ...await problemExecutionForTest(PROBLEM_ID),
       judge_run_id: "result-self-test-run",
       problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
       id: SELF_TEST_ID,
@@ -294,6 +304,7 @@ Deno.test({
     const secretProblemId = `tst-st-secret-${ts}`;
     const secretNow = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: secretProblemId,
       title: "保密题（不得暴露存在性）",
       description: "题面",
@@ -302,7 +313,6 @@ Deno.test({
       number: 90000 + (ts % 10000),
       // owner 不是 USER_ID：确保以普通用户身份访问会被拒
       owner_id: "0",
-      type: "P",
       visibility: "public",
       created_at: secretNow,
       updated_at: secretNow,
@@ -324,7 +334,7 @@ Deno.test({
     );
 
     await db.delete(contests).where(eq(contests.id, contestId));
-    await db.delete(problems).where(eq(problems.id, secretProblemId));
+    await deleteProblemFixtures(eq(problems.id, secretProblemId));
   },
 });
 
@@ -350,6 +360,7 @@ Deno.test({
       },
     };
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "版本化自测题",
       description: "题面",
@@ -357,7 +368,6 @@ Deno.test({
       runtime_config: runtimeConfig,
       number: 91000 + (ts % 5000),
       owner_id: USER_ID,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -381,6 +391,7 @@ Deno.test({
     });
     await db.update(problems).set({ latest_version_id: versionId })
       .where(eq(problems.id, problemId));
+    await bindPublishedProblemForTest(problemId);
 
     // 不属于该题的版本：逐字生效（404），不静默换版本
     let code: string | undefined;
@@ -420,7 +431,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null })
       .where(eq(problems.id, problemId));
     await db.delete(problemVersions).where(eq(problemVersions.id, versionId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -448,6 +459,7 @@ Deno.test({
       memory_limit_mb: 999,
     };
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "OI 版本化自测题",
       description: "题面",
@@ -457,7 +469,6 @@ Deno.test({
       runtime_config: v2Config,
       number: 92000 + (ts % 1000),
       owner_id: USER_ID,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -494,6 +505,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     // 显式选择 V1 + 自定义用例（评测队列不可用时记录仍已落库）
     await createSelfTest(USER_ID, problemId, {
@@ -551,7 +563,7 @@ Deno.test({
     await db.delete(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -576,6 +588,7 @@ Deno.test({
     await db.insert(selfTests).values([
       {
         id: older,
+        ...await problemExecutionForTest(PROBLEM_ID),
         user_id: USER_ID,
         problem_id: PROBLEM_ID,
         language: "ui",
@@ -584,6 +597,7 @@ Deno.test({
       },
       {
         id: newer,
+        ...await problemExecutionForTest(PROBLEM_ID),
         user_id: USER_ID,
         problem_id: PROBLEM_ID,
         language: "ui",
@@ -592,6 +606,7 @@ Deno.test({
       },
       {
         id: others,
+        ...await problemExecutionForTest(PROBLEM_ID),
         user_id: otherUserId,
         problem_id: PROBLEM_ID,
         language: "ui",
@@ -632,8 +647,8 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.delete(selfTests).where(eq(selfTests.user_id, USER_ID));
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
-    await db.delete(problems).where(eq(problems.id, OBJECTIVE_PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, OBJECTIVE_PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   },
 });

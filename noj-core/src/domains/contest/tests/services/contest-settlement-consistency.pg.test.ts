@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发验证：结算快照的一致性（tracking #46）——需**串行**执行。
  *
@@ -11,6 +14,7 @@
  * - 因此快照只能是"结算提交那一刻"的一致性视图：并发写入要么整体在快照之前
  *   （被计入），要么整体在快照之后（只影响实时榜）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -103,13 +107,13 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `结算一致性-${runId}`,
       description: "d",
       difficulty: "easy",
       number: 992001,
       owner_id: adminId,
-      type: "P",
       judge_type: "dual",
       created_at: now,
       updated_at: now,
@@ -138,6 +142,7 @@ Deno.test({
       eq(problems.id, problemId),
     );
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `结算一致性-${runId}`,
       start_time: atMinutes(-120),
@@ -149,6 +154,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, problemId),
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -168,6 +174,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -273,7 +280,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [userId, adminId]));
     }
   },

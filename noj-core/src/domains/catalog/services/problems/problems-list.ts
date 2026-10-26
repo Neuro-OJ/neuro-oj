@@ -3,7 +3,7 @@
  *
  * 提供：
  * - listProblems / listAllProblems：分页 + 多维筛选（?tag= 替代 ?category_id=）
- * - getProblem / getProblemByTypeAndNumber：单条查询（含全部标签）
+ * - getProblem / getDefaultDomainProblemByNumber：单条查询（含全部标签）
  * - attachTags：注入关联标签（可指定 kind 过滤；被题目导入/列表复用）
  * - applyAlgorithmTagVisibility：算法标签可视性门控（spoiler 模型）
  * - toProblemResponse：DB 行 → 响应 DTO（仅本模块使用）
@@ -20,11 +20,24 @@ import {
   ilike,
   inArray,
   isNotNull,
+  isNull,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+} from "../../../../shared/workspace/types.ts";
+import { loadWorkspace } from "../../../workspace/index.ts";
+import {
+  problemAuthoringRestrictedByContest,
+  problemAuthoringRestrictionSql,
+} from "../workspace/problem-contest-authoring.ts";
+import { submissionQueryVisibility } from "../../../query/index.ts";
+import {
+  domains,
   problems,
   problemTags,
   submissions,
@@ -42,7 +55,6 @@ import {
   getJudgeBackend,
   getSubmissionLanguages,
   isValidDifficulty,
-  isValidProblemType,
   type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
@@ -80,7 +92,6 @@ function toProblemResponse(
     has_support_package: row.support_package_storage_url !== null,
     number: row.number,
     owner_id: row.owner_id,
-    type: row.type,
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
     judge_type: persistedJudgeType(row.judge_type),
@@ -95,7 +106,8 @@ function toProblemResponse(
     ),
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
-    display_id: `${row.type}${row.number}`,
+    display_id: String(row.number),
+    domain_id: row.domain_id ?? DEFAULT_DOMAIN_ID,
     // 特权用户（admin/owner）看到"该题已被公开赛收编"的标记；对普通用户这些行
     // 根本不会出现，故恒为 false（审计 VULN-07）
     is_contest_hidden: viewer.isOwnerOrAdmin ? isContestHidden : false,
@@ -171,7 +183,9 @@ export async function listProblems(
   const offset = (page - 1) * limit;
 
   // 构建筛选条件
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [
+    or(eq(problems.domain_id, DEFAULT_DOMAIN_ID), isNull(problems.domain_id))!,
+  ];
   if (query.judge_type) {
     if (!["oi", "dual", "objective"].includes(query.judge_type)) {
       throw new BadRequestError("judge_type 仅允许 oi/dual/objective");
@@ -218,14 +232,11 @@ export async function listProblems(
         ilike(problems.description, kw)
       } OR ${ilike(problems.id, kw)} OR ${
         ilike(sql`CAST(${problems.number} AS TEXT)`, kw)
-      } OR ${
-        ilike(sql`${problems.type} || CAST(${problems.number} AS TEXT)`, kw)
       })`,
     );
   }
 
-  // 未指定 type 时默认只显示 P 型题目（U 型仅通过 URL 或用户主页访问）
-  conditions.push(eq(problems.type, (query.type || "P").toUpperCase()));
+  if ("type" in query) throw new BadRequestError("题库筛选已取消 P/U 分类");
 
   if (query.number !== undefined) {
     conditions.push(eq(problems.number, query.number));
@@ -235,34 +246,41 @@ export async function listProblems(
     conditions.push(eq(problems.owner_id, query.owner_id));
   }
 
-  // 可见性：普通列表只允许 public；admin 可查看全部，owner 查看自己的 U 型列表时可包含 private。
-  const canSeeOwnPrivate = viewer.isAdmin === true ||
-    (query.owner_id !== undefined && viewer.userId === query.owner_id);
-  if (!canSeeOwnPrivate) {
+  const workspace = await loadWorkspace(
+    DEFAULT_DOMAIN_SLUG,
+    viewer.userId ?? null,
+  );
+  const canManageAny = workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("problem:write_any");
+  const canManageOwn = workspace.context.domainPermissions.has(
+    "problem:write_own",
+  );
+  if (!workspace.membership && !canManageAny) {
     conditions.push(eq(problems.visibility, "public"));
-    // 未发布题目（无已发布版本）不进公共列表（Handbook §4.1/§6.2）：
-    // 普通访问者对未发布题目一律 404，列表里出现行等于泄露草稿题目的存在性。
-    conditions.push(isNotNull(problems.latest_version_id));
   }
-
-  // ── 公开赛题目全域隐藏（审计 VULN-07）──
-  //
-  // 此前保密只作用于"详情返回 404"，而**聚合列表照常返回题目行与完整 description**：
-  // 场外人员据此即可获知赛题的存在性、标题、难度、标签甚至题面大字段。
-  //
-  // 现按审计规范在 SQL 层直接排除：非特权用户（非 admin 且非该题 owner）一律
-  // 拿不到这些行；特权用户保留（便于备赛确认与管理），并额外下发
-  // `is_contest_hidden` 供前端做视觉标注。
-  //
-  // 谓词来自 contest 域单一真相源，口径 = `kind='public' AND now < end_time`
-  // （含赛前筹备期 pending），竞赛结束自动放行。
-  if (viewer.isAdmin !== true) {
-    const ownerId = viewer.userId ?? null;
+  if (!canManageAny) {
+    conditions.push(
+      or(
+        isNotNull(problems.latest_version_id),
+        canManageOwn && viewer.userId
+          ? eq(problems.owner_id, viewer.userId)
+          : sql`FALSE`,
+      )!,
+    );
     conditions.push(sql`(
-      NOT (${unendedPublicContestForProblem(problems.id)})
-      OR ${problems.owner_id} = ${ownerId}
+      NOT (${
+      unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
+    })
+      OR (${canManageOwn} AND ${problems.owner_id} = ${viewer.userId ?? null})
     )`);
   }
+  conditions.push(sql`NOT EXISTS (
+    SELECT 1 FROM domain_problem_bindings b
+    WHERE b.domain_id = ${DEFAULT_DOMAIN_ID} AND b.problem_id = ${problems.id}
+      AND (b.disabled_at IS NOT NULL OR (${
+    !workspace.membership && !canManageAny
+  } AND b.visibility <> 'public'))
+  )`);
 
   // 按标签筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
   if (query.tag) {
@@ -289,8 +307,12 @@ export async function listProblems(
       owner_username: users.username,
       owner_avatar_url: users.avatar_url,
       // 是否被尚未结束的公开赛收编：与过滤条件同一谓词，语言层面不会漂移
+      authoring_restricted: problemAuthoringRestrictionSql(
+        workspace,
+        problems.id,
+      ).as("authoring_restricted"),
       is_contest_hidden: sql<boolean>`${
-        unendedPublicContestForProblem(problems.id)
+        unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
       }`
         .as("is_contest_hidden"),
     })
@@ -316,8 +338,8 @@ export async function listProblems(
   return {
     items: rows.map((r) => ({
       ...toProblemResponse(r.problem, {
-        isOwnerOrAdmin: viewer.isAdmin === true ||
-          (viewer.userId !== undefined && viewer.userId === r.problem.owner_id),
+        isOwnerOrAdmin: !r.authoring_restricted && (canManageAny ||
+          (canManageOwn && viewer.userId === r.problem.owner_id)),
       }, r.is_contest_hidden === true),
       owner_username: r.owner_username ?? "未知",
       owner_avatar_url: r.owner_avatar_url ?? null,
@@ -330,7 +352,7 @@ export async function listProblems(
 }
 
 /**
- * 管理员获取全量题目列表（含 U 型和 P 型）。
+ * 管理员获取全量题目列表（默认域完整题库）。
  *
  * 与 listProblems 的区别：
  * - 不默认添加 type='P' 筛选条件，返回所有类型题目
@@ -346,7 +368,6 @@ export async function listAllProblems(
     difficulty?: string;
     tag?: string;
     keyword?: string;
-    type?: string;
     visibility?: "public" | "private";
   } = {},
 ): Promise<AdminProblemListResponse> {
@@ -356,7 +377,9 @@ export async function listAllProblems(
   const offset = (page - 1) * limit;
 
   // 构建筛选条件（不默认添加 type='P'）
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [
+    or(eq(problems.domain_id, DEFAULT_DOMAIN_ID), isNull(problems.domain_id))!,
+  ];
 
   if (query.difficulty) {
     if (!isValidDifficulty(query.difficulty)) {
@@ -374,13 +397,7 @@ export async function listAllProblems(
     );
   }
 
-  if (query.type !== undefined) {
-    const type = query.type.toUpperCase();
-    if (!isValidProblemType(type)) {
-      throw new BadRequestError(`非法题目类型：${query.type}，仅允许 U/P`);
-    }
-    conditions.push(eq(problems.type, type));
-  }
+  if ("type" in query) throw new BadRequestError("题库筛选已取消 P/U 分类");
 
   if (query.visibility !== undefined) {
     if (query.visibility !== "public" && query.visibility !== "private") {
@@ -422,14 +439,13 @@ export async function listAllProblems(
       number: problems.number,
       owner_id: problems.owner_id,
       owner_username: users.username,
-      type: problems.type,
       visibility: problems.visibility,
       is_objective: problems.is_objective,
       submission_mode: problems.submission_mode,
       artifact_max_size_mb: problems.artifact_max_size_mb,
       // 管理端为特权视图：不过滤，但要能看出"该题正被公开赛保密"
       is_contest_hidden: sql<boolean>`${
-        unendedPublicContestForProblem(problems.id)
+        unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
       }`
         .as("is_contest_hidden"),
     })
@@ -465,12 +481,12 @@ export async function listAllProblems(
       number: r.number,
       owner_id: r.owner_id,
       owner_username: r.owner_username ?? "未知",
-      type: r.type,
       visibility: r.visibility as "public" | "private",
       is_objective: r.is_objective,
       submission_mode: r.submission_mode as ProblemResponse["submission_mode"],
       artifact_max_size_mb: r.artifact_max_size_mb,
-      display_id: `${r.type}${r.number}`,
+      display_id: String(r.number),
+      domain_id: DEFAULT_DOMAIN_ID,
       is_contest_hidden: r.is_contest_hidden === true,
     })),
     total,
@@ -511,8 +527,7 @@ export async function getProblem(
   const tagMap = await attachTags([id]);
   return {
     ...toProblemResponse(row.problem, {
-      isOwnerOrAdmin: viewer === undefined ? true : viewer.isAdmin === true ||
-        (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
+      isOwnerOrAdmin: await canManageProblemProjection(row.problem, viewer),
     }),
     owner_username: row.owner_username ?? "未知",
     owner_avatar_url: row.owner_avatar_url ?? null,
@@ -522,13 +537,11 @@ export async function getProblem(
 }
 
 /**
- * 根据 type+number 组合唯一索引查找题目。
- * 用于双索引路由解析 display_id（如 P1001 → type=P, number=1001）。
+ * 按默认域数字题号查找源题；P 前缀仅在兼容入口解析。
  *
  * @throws {NotFoundError} 题目不存在
  */
-export async function getProblemByTypeAndNumber(
-  type: string,
+export async function getDefaultDomainProblemByNumber(
   number: number,
   viewer?: ProblemViewer,
 ): Promise<ProblemResponseWithTags> {
@@ -544,8 +557,11 @@ export async function getProblemByTypeAndNumber(
     .leftJoin(users, eq(problems.owner_id, users.id))
     .where(
       and(
-        eq(problems.type, type.toUpperCase()),
         eq(problems.number, number),
+        or(
+          eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+          isNull(problems.domain_id),
+        ),
       ),
     )
     .limit(1);
@@ -558,8 +574,7 @@ export async function getProblemByTypeAndNumber(
   const tagMap = await attachTags([row.problem.id]);
   return {
     ...toProblemResponse(row.problem, {
-      isOwnerOrAdmin: viewer === undefined ? true : viewer.isAdmin === true ||
-        (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
+      isOwnerOrAdmin: await canManageProblemProjection(row.problem, viewer),
     }),
     owner_username: row.owner_username ?? "未知",
     owner_avatar_url: row.owner_avatar_url ?? null,
@@ -574,6 +589,22 @@ export async function getProblemByTypeAndNumber(
 export interface ProblemViewer {
   userId?: string;
   isAdmin?: boolean;
+}
+
+async function canManageProblemProjection(
+  row: typeof problems.$inferSelect,
+  viewer?: ProblemViewer,
+) {
+  if (viewer === undefined) return true; // 内部稳定主键读取，外部入口仍执行资源授权。
+  const [domain] = await getDb().select({ slug: domains.slug }).from(domains)
+    .where(eq(domains.id, row.domain_id ?? DEFAULT_DOMAIN_ID));
+  if (!domain) return false;
+  const workspace = await loadWorkspace(domain.slug, viewer.userId ?? null);
+  return (workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("problem:write_any") ||
+    (viewer.userId === row.owner_id &&
+      workspace.context.domainPermissions.has("problem:write_own"))) &&
+    !await problemAuthoringRestrictedByContest(workspace, row.id, getDb());
 }
 
 /**
@@ -646,6 +677,14 @@ async function hasAcceptedSubmission(
         eq(submissions.problem_id, problemId),
         eq(submissions.user_id, userId),
         eq(submissions.is_accepted, true),
+        submissionQueryVisibility(
+          { domainId: DEFAULT_DOMAIN_ID, member: true },
+          {
+            domainId: submissions.domain_id,
+            bindingId: submissions.domain_problem_binding_id,
+            contestId: submissions.contest_id,
+          },
+        ),
       ),
     )
     .limit(1);

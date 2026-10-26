@@ -35,7 +35,9 @@ test("pollSubmission 等待到终态并报告每次状态", async () => {
       intervalMs: 1,
       timeoutMs: 1000,
       sleep: async () => undefined,
-      onUpdate: (current) => updates.push(current.status),
+      onUpdate: (current) => {
+        if (current.status) updates.push(current.status);
+      },
     },
   );
 
@@ -54,6 +56,26 @@ test("pollSubmission 支持取消", async () => {
       }),
     /已取消/,
   );
+});
+
+test("pollSubmission 隐藏结果回执立即结束，不等待不存在的终态字段", async () => {
+  const receipt = {
+    ...detail("pending"),
+    status: undefined,
+    result_visibility: "hidden" as const,
+  };
+  let sleeps = 0;
+  assert.equal(
+    await pollSubmission(async () => receipt, {
+      intervalMs: 1,
+      timeoutMs: 10,
+      sleep: async () => {
+        sleeps++;
+      },
+    }),
+    receipt,
+  );
+  assert.equal(sleeps, 0);
 });
 
 test("pollSubmission 超时后抛出明确错误", async () => {

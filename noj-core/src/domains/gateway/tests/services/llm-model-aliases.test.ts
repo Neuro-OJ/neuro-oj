@@ -6,7 +6,14 @@ import { decodeBase64 } from "@std/encoding/base64";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { llmModelAliases } from "../../../../shared/db/schema.ts";
+import {
+  domainLlmSettings,
+  llmModelAliases,
+} from "../../../../shared/db/schema.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { isValidLlmConfig } from "../../../catalog/index.ts";
 import type { RuntimeConfig } from "../../../catalog/index.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
@@ -70,6 +77,8 @@ function stubGateway(disabledIds: string[] = []): () => void {
       new Response(
         JSON.stringify({
           data: {
+            domain_id: DEFAULT_DOMAIN_ID,
+            revision: 1,
             id,
             name: "stub",
             base_url: "http://stub",
@@ -96,6 +105,18 @@ async function withEnv(fn: () => Promise<void>): Promise<void> {
   Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-a");
   Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
   await getDb().delete(llmModelAliases);
+  await ensureDefaultWorkspace();
+  await getDb().insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: "prov-a",
+    model: "qwen-plus",
+    revision: 1,
+    updated_at: new Date().toISOString(),
+  })
+    .onConflictDoUpdate({
+      target: domainLlmSettings.domain_id,
+      set: { provider_id: "prov-a", model: "qwen-plus" },
+    });
   try {
     await fn();
   } finally {
@@ -177,11 +198,19 @@ Deno.test("llm-alias: upsert 校验保留名与格式，并可更新、列出、
         "fast",
         { provider_id: "prov-a", model: "Qwen/Qwen3-14B" },
         ACTOR,
+        DEFAULT_DOMAIN_ID,
+        1,
       );
       assertEquals(updated.model, "Qwen/Qwen3-14B");
       assertEquals((await listLlmModelAliases()).length, 1);
-      assertEquals(await deleteLlmModelAlias("fast"), true);
-      assertEquals(await deleteLlmModelAlias("fast"), false);
+      assertEquals(
+        await deleteLlmModelAlias("fast", DEFAULT_DOMAIN_ID, updated.revision),
+        true,
+      );
+      assertEquals(
+        await deleteLlmModelAlias("fast", DEFAULT_DOMAIN_ID, updated.revision),
+        false,
+      );
     } finally {
       restore();
     }
@@ -235,7 +264,7 @@ Deno.test("llm-alias: resolve 多别名同 Provider；未配置 / 跨 Provider �
   });
 });
 
-Deno.test("llm-alias: assertLlmModelsValid 严格模式 vs 题包导入宽松模式", async () => {
+Deno.test("llm-alias: 发布只声明模型能力，导入提示缺配置，受理才验证 Provider 组合", async () => {
   await withEnv(async () => {
     const restore = stubGateway();
     try {
@@ -249,10 +278,7 @@ Deno.test("llm-alias: assertLlmModelsValid 严格模式 vs 题包导入宽松模
       }, ACTOR);
 
       assertEquals(await assertLlmModelsValid({}), []);
-      await assertRejects(
-        () => assertLlmModelsValid({ models: ["ghost"] }),
-        BadRequestError,
-      );
+      assertEquals(await assertLlmModelsValid({ models: ["ghost"] }), []);
       // 宽松：未定义别名只警告
       const warnings = await assertLlmModelsValid(
         { models: ["ghost", "fast"] },
@@ -260,12 +286,15 @@ Deno.test("llm-alias: assertLlmModelsValid 严格模式 vs 题包导入宽松模
       );
       assertEquals(warnings.length, 1);
       assert(warnings[0].includes("ghost"));
-      // 宽松模式下已存在的别名跨 Provider 仍拒绝
+      // 题目声明不绑定部署 Provider；新受理仍拒绝跨 Provider 的模型集合。
+      assertEquals(
+        await assertLlmModelsValid({ models: ["fast", "other"] }, {
+          allowUnknown: true,
+        }),
+        [],
+      );
       await assertRejects(
-        () =>
-          assertLlmModelsValid({ models: ["fast", "other"] }, {
-            allowUnknown: true,
-          }),
+        () => resolveLlmModels(["fast", "other"]),
         BadRequestError,
         "不同 Provider",
       );
@@ -321,10 +350,16 @@ Deno.test("llm-alias: 冻结快照——别名事后改映射不影响重派；�
         model: "m-fast",
       }, ACTOR);
       // 管理员事后把 fast 改指向另一个模型
-      await upsertLlmModelAlias("fast", {
-        provider_id: "prov-a",
-        model: "m-NEW",
-      }, ACTOR);
+      await upsertLlmModelAlias(
+        "fast",
+        {
+          provider_id: "prov-a",
+          model: "m-NEW",
+        },
+        ACTOR,
+        DEFAULT_DOMAIN_ID,
+        1,
+      );
       const frozen = await buildJudgeTaskLlm(
         { models: ["fast"] },
         "s",
@@ -334,6 +369,7 @@ Deno.test("llm-alias: 冻结快照——别名事后改映射不影响重派；�
         {
           attemptId: "att-2",
           frozen: {
+            domain_id: DEFAULT_DOMAIN_ID,
             provider_id: "prov-a",
             model: "m-fast",
             max_calls: 5,
@@ -348,6 +384,7 @@ Deno.test("llm-alias: 冻结快照——别名事后改映射不影响重派；�
       const legacy = await buildJudgeTaskLlm({}, "s", "p", "u", RUNTIME, {
         attemptId: "att-3",
         frozen: {
+          domain_id: DEFAULT_DOMAIN_ID,
           provider_id: "prov-a",
           model: "old-model",
           max_calls: 5,

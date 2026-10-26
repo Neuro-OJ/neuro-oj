@@ -18,6 +18,9 @@ Deno.test("crypto: eval_token mint/verify", async () => {
   const serviceToken = "test-service-token-0123456789abcdef";
   const payload = {
     jti: crypto.randomUUID(),
+    domain_id: "00000000-0000-4000-8000-000000000001",
+    protocol_version: 3,
+    attempt_id: "att-1",
     submission_id: "sub-1",
     problem_id: "prob-1",
     user_id: "user-1",
@@ -38,6 +41,9 @@ Deno.test("crypto: expired token rejected", async () => {
   const serviceToken = "test-service-token-0123456789abcdef";
   const payload = {
     jti: crypto.randomUUID(),
+    domain_id: "00000000-0000-4000-8000-000000000001",
+    protocol_version: 3,
+    attempt_id: "att-1",
     submission_id: "sub-1",
     problem_id: "prob-1",
     user_id: "user-1",

@@ -24,6 +24,12 @@ import { isUserAdmin } from "./security/permissions.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
 import { recordConsentsForRegistration } from "../../legal/index.ts";
+import {
+  enrollRegisteredAccount,
+  getInstanceAccessPolicy,
+} from "../../workspace/index.ts";
+import { getSetting } from "../../system/index.ts";
+import { ForbiddenError } from "../../../shared/base/errors.ts";
 import type { UserResponse } from "./../types/auth.ts";
 
 /** 支持的 OAuth 身份提供商。 */
@@ -527,6 +533,15 @@ async function createOAuthUser(
   provider: OAuthProviderId,
   identity: OAuthIdentity,
 ): Promise<string> {
+  if (
+    getSetting("allow_register")?.value === false ||
+    getInstanceAccessPolicy().registration_mode !== "open"
+  ) {
+    throw new ForbiddenError(
+      "此实例不允许第三方登录自动创建账号",
+      "OAUTH_REGISTRATION_DISABLED",
+    );
+  }
   const db = getDb();
   const userId = crypto.randomUUID();
   const username = await uniqueUsername(usernameBase(provider, identity));
@@ -560,6 +575,7 @@ async function createOAuthUser(
     }
     // PIPL：与用户插入同事务写入隐私政策/服务条款同意记录（原子）。
     await recordConsentsForRegistration(tx, userId, null, null);
+    await enrollRegisteredAccount(tx, userId);
   });
   await publishSearchIndexEvent("user", userId, "upsert");
   return userId;

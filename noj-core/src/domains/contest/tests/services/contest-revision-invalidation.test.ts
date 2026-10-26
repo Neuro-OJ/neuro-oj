@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛变更使全站榜口径立即失效（2026-10-11 复审问题 8）。
  *
@@ -7,6 +9,7 @@
  * `query_projection_revisions.global.data_revision`，否则缓存与物化视图会继续按
  * 旧口径命中（08 的边界新鲜度只覆盖"时钟自然跨越 end_time"，覆盖不了"改时间"）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -62,6 +65,7 @@ Deno.test({
     const versionId = `${problemId}-v1`;
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "口径失效题",
       description: "d",
@@ -69,7 +73,6 @@ Deno.test({
       runtime_config: null,
       number: 921201,
       owner_id: adminId,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -97,6 +100,7 @@ Deno.test({
       eq(problems.id, problemId),
     );
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "口径失效赛",
       start_time: atMinutes(-120),
@@ -111,6 +115,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contestProblems).values({
+      ...await contestProblemExecutionForTest(contestId, problemId),
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -178,7 +183,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [adminId]));
     }
   },

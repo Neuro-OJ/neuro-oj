@@ -114,24 +114,20 @@ export interface SubmitObjectiveResult {
 }
 
 /**
- * 竞赛模式提交回执（审计 VULN-03）。
+ * 比赛正式交卷回执。
  *
- * 赛期**只回执"已提交"事实**，不返回分数、不返回逐题对错：
- * ```json
- * { "submission_id": "...", "status": "finished", "contest_mode": true }
- * ```
- * 竞赛结束后，参赛者可通过提交详情/历史接口看到完整分数与逐题判定
- * （赛后复盘与申诉不受影响）。
+ * Kaggle 赛期返回本人原始总分，OI 赛期隐藏成绩。所有比赛赛期隐藏逐题对错、
+ * 标准答案和解析；一次交卷由数据库唯一约束保证。
  */
 export interface SubmitObjectiveContestReceipt {
   submission_id: string;
   paper_id: string;
   status: "finished";
   contest_mode: true;
-  /** 赛期恒为 null；赛后由详情接口给出 */
-  score: null;
-  /** 赛期恒为 null；赛后由详情接口给出 */
-  score_db: null;
+  /** Kaggle 返回本人原始总分，OI 赛期为 null。 */
+  score: number | null;
+  /** 同一总分的 ×100 整数口径。 */
+  score_db: number | null;
   /** 赛期恒为 null；赛后由详情接口给出 */
   correct_count: null;
   /** 题量不敏感（套卷题面本就对参赛者可见），保留以便前端展示进度 */
@@ -155,8 +151,7 @@ export interface ObjectiveSubmissionResponse {
   answers: Record<string, ObjectiveAnswerValue[]>;
   status: string;
   /**
-   * ×100 整数分。**竞赛未结束前为 null**（审计 VULN-03：赛期不得即时返回精确分数，
-   * 否则"提交一次看分数变化"即可二分探测答案）。赛后结算恢复为数值。
+   * ×100 整数分。Kaggle 赛期返回原始总分，OI 赛期为 null。
    */
   score: number | null;
   details: Record<string, QuestionJudgement>;
@@ -172,7 +167,7 @@ export interface ObjectiveSubmissionResponse {
   /** 提交时版本是否仍是该套卷最新已发布版本。 */
   is_latest: boolean;
   /** 当前口径是否存在有效判定（投影结果，前端不得自行推断）。 */
-  is_valid: boolean;
+  is_valid: boolean | null;
   /**
    * 当前口径是否通过（客观题通过标准 = 满分）。
    *

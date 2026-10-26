@@ -1,11 +1,17 @@
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
-import { Channels } from "../../../shared/sse/event-bus.ts";
-import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
-  replayToStream,
-  subscribeToChannel,
-} from "../../../shared/sse/server-helpers.ts";
+  assertActiveInstanceAccount,
+  type AuthEnv,
+  authMiddleware,
+} from "../../identity/index.ts";
+import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
+import { createSseStream } from "../../../shared/sse/sse-stream.ts";
+import { lastEventId } from "../../../shared/sse/server-helpers.ts";
+import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { getNotification } from "../services/community/community-feed.ts";
+import { loadCommunityScope } from "../services/community/community-scope.ts";
+import { DEFAULT_DOMAIN_SLUG, loadWorkspace } from "../../workspace/index.ts";
 
 /**
  * community 域社区通知 SSE 路由。
@@ -14,56 +20,81 @@ import {
  */
 const communitySse = new Hono<AuthEnv>();
 
-communitySse.use("*", authMiddleware);
-/**
- * GET /api/v1/community/notifications/events
- * 社区通知 SSE 端点。
- *
- * 收到 notification:new 事件后前端应刷新通知列表和未读计数。
- * SSE 事件仅作触发器，不包含通知内容。
- */
-communitySse.get("/community/notifications/events", (c) => {
-  const userId = c.get("userId") as string;
-  // 通知端点不启用兜底超时：订阅为常驻连接（与原实现一致）
-  return createSseStream(
-    c,
-    async ({ stream, closed, close, onUnsubscribe }) => {
-      subscribeToChannel(
-        onUnsubscribe,
-        Channels.user(userId),
-        "notification:new",
-        stream,
-        () => closed,
-        close,
-        (message) => {
-          // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
-          try {
-            const payload = JSON.parse(message) as { type?: string };
-            return payload.type === "notification:new" ? message : null;
-          } catch {
-            return null;
-          }
-        },
-      );
-
-      // 重放缺失的通知事件
-      await replayToStream(
-        c,
-        stream,
-        () => closed,
-        [Channels.user(userId)],
-        "notification:new",
-        (payload, seq) => {
-          const p = payload as { type?: string };
-          return p.type === "notification:new" ? { ...p, seq } : null;
-        },
-      );
-
-      // 发送初始化事件，触发代理 flush 响应头
-      await stream.writeSSE({ event: "connected", data: "" });
-    },
-    { safetyTimeoutMs: 0 },
-  );
-});
+/** 域社区通知每次推送及持久重放重新授权，不广播原始事件载荷。 */
+export const domainCommunitySse = new Hono<AuthEnv>();
+for (
+  const [router, path] of [[communitySse, "/community/notifications/events"], [
+    domainCommunitySse,
+    "/domains/:slug/community/notifications/events",
+  ]] as const
+) {
+  router.get(path, authMiddleware, async (c) => {
+    const actorId = c.var.userId, slug = c.req.param("slug");
+    if (slug) await loadCommunityScope(slug, actorId);
+    else await assertActiveInstanceAccount(actorId);
+    return createSseStream(c, async (ctx) => {
+      async function push(payload: unknown, sequence?: number) {
+        if (ctx.closed) return;
+        const scope = slug
+          ? await loadCommunityScope(slug, actorId)
+          : undefined;
+        if (!slug) await assertActiveInstanceAccount(actorId);
+        const event = payload as { type?: string; notification_id?: string };
+        if (
+          event.type !== "notification:new" ||
+          typeof event.notification_id !== "string"
+        ) return;
+        let notification;
+        try {
+          notification = await getNotification(
+            actorId,
+            event.notification_id,
+            scope,
+          );
+        } catch (error) {
+          if (error instanceof NotFoundError) return;
+          throw error;
+        }
+        if (!slug && notification.notification.domain_id) {
+          await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId);
+        }
+        await ctx.stream.writeSSE({
+          event: "notification:new",
+          data: JSON.stringify({
+            type: "notification:new",
+            notification_id: event.notification_id,
+            ...(sequence === undefined ? {} : { seq: sequence }),
+          }),
+          ...(sequence === undefined ? {} : { id: String(sequence) }),
+        });
+      }
+      ctx.onUnsubscribe(onEvent(Channels.user(actorId), (_channel, message) => {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(message);
+        } catch {
+          return;
+        }
+        void push(payload).catch(ctx.close);
+      }));
+      for (
+        const event of await replaySseEvents(
+          [Channels.user(actorId)],
+          lastEventId(c),
+          200,
+        )
+      ) {
+        try {
+          await push(event.payload, event.id);
+        } catch {
+          ctx.close();
+          return;
+        }
+        if (ctx.closed) return;
+      }
+      await ctx.stream.writeSSE({ event: "connected", data: "" });
+    });
+  });
+}
 
 export default communitySse;

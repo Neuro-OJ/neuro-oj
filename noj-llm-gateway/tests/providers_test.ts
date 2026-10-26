@@ -44,11 +44,14 @@ Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字�
         const value = params[Number(index) - 1];
         if (field === "id") {
           assertEquals(value, provider.id);
+        } else if (field === "revision") {
+          assertEquals(value, provider.revision);
         } else {
           Object.assign(provider, { [field]: value });
         }
       }
-      return Promise.resolve([]);
+      provider.revision++;
+      return Promise.resolve([provider]);
     };
     db.unsafe = unsafe as typeof db.unsafe;
     const result = await updateProvider(
@@ -56,6 +59,8 @@ Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字�
       provider.id,
       input,
       testConfig.storeKey,
+      provider.domain_id,
+      1,
     );
     assertEquals(calls, 1);
     assertEquals(result.name, input.name ?? "test");
@@ -81,9 +86,12 @@ Deno.test("providers: 管理员 Provider 可更新 enabled 与 cost", async () =
     const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
     for (const [, field, index] of fields) {
       const value = (params as unknown[])[Number(index) - 1];
-      if (field !== "id") Object.assign(provider, { [field]: value });
+      if (field !== "id" && field !== "revision") {
+        Object.assign(provider, { [field]: value });
+      }
     }
-    return Promise.resolve([]);
+    provider.revision++;
+    return Promise.resolve([provider]);
   };
   db.unsafe = unsafe as unknown as typeof db.unsafe;
   const result = await updateProvider(
@@ -91,6 +99,8 @@ Deno.test("providers: 管理员 Provider 可更新 enabled 与 cost", async () =
     provider.id,
     { enabled: false, cost_per_1k_tokens: 3 },
     testConfig.storeKey,
+    provider.domain_id,
+    1,
   );
   assertEquals(result.enabled, false);
   assertEquals(result.cost_per_1k_tokens, 3);

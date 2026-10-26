@@ -49,6 +49,7 @@ Deno.test({
     const now = Date.now();
     await db.insert(contests).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: runningId,
         public_id: `run-${TS}`,
         title: "running",
@@ -61,6 +62,7 @@ Deno.test({
         updated_at: new Date(now).toISOString(),
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: endedId,
         public_id: `end-${TS}`,
         title: "ended",
@@ -84,3 +86,4 @@ Deno.test({
     );
   },
 });
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

@@ -5,13 +5,13 @@
  */
 
 export const SCHEMA_INDEXES: string[] = [
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_domain_type_updated ON search_entries (domain_id, entity_type, updated_at)",
   "CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user_id ON oauth_accounts (user_id)",
   // issue #100：search_vector GIN 索引（schema-ddl 用于 PGlite 模式测试）
   "CREATE INDEX IF NOT EXISTS idx_users_search_vector ON users USING GIN (search_vector)",
   "CREATE INDEX IF NOT EXISTS idx_problems_search_vector ON problems USING GIN (search_vector)",
   // NOJ-083：社区搜索 FTS 表达式索引（与 drizzle/0039_community_search_index.sql 同步）
   "CREATE INDEX IF NOT EXISTS idx_community_posts_search_fts ON community_posts USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || content))",
-  "CREATE UNIQUE INDEX IF NOT EXISTS problems_type_number_unique ON problems (type, number)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_problem_accepted_user ON submissions (problem_id, is_accepted, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_problem_valid_user ON submissions (problem_id, is_valid, user_id)",

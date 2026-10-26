@@ -73,7 +73,7 @@ export type ApplyAttemptOutcome =
   | { applied: "ignored"; reason: "not_found" | "already_terminal" | "stale" };
 
 /**
- * 读取提交行并在事务内加锁（§5.1 锁顺序：先题目、再提交）。
+ * 读取提交行并在事务内加锁（锁顺序：提交所属域、题目、竞赛、提交、尝试）。
  *
  * 同时取出 `contest_id`：竞赛口径的投影必须知道提交的竞赛上下文，
  * 否则结果写入后 `is_contest_*` 永远为空（竞赛固定版本策略形同失效）。

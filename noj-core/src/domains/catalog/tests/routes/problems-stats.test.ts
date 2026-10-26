@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, userRoles, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
@@ -39,16 +39,17 @@ async function createUserWithToken(): Promise<{ id: string; token: string }> {
 }
 
 async function seedProblem(ownerId: string, number: number): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `统计路由测试题 ${number}`,
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number,
-    type: "U",
     visibility: "public",
     owner_id: ownerId,
     created_at: now,
@@ -78,6 +79,7 @@ Deno.test({
       assertEquals(body.data.suppressed_reason, null);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -96,6 +98,7 @@ Deno.test({
       assertEquals(res.status === 401 || res.status === 403, true);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -119,6 +122,7 @@ Deno.test({
       assertEquals(res.status, 403);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
       await getDb().delete(users).where(eq(users.id, otherId));
     }
@@ -133,6 +137,7 @@ Deno.test({
   fn: async () => {
     _resetProblemStatsCacheForTest();
     const { id: ownerId, token: ownerToken } = await createUserWithToken();
+    await grantDefaultCatalogRole(ownerId, "editor");
     const problemId = await seedProblem(ownerId, 950004);
     try {
       const res = await jsonRequest(
@@ -147,6 +152,7 @@ Deno.test({
       assertEquals(Array.isArray(body.data.case_failure_distribution), true);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -172,6 +178,7 @@ Deno.test({
       assertEquals(body.data.window_days, 90);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -197,13 +204,13 @@ Deno.test({
     const now = new Date().toISOString();
     // U 型私有题：与题目详情路由同样应当对匿名不可见
     await getDb().insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: "私有题 C3",
       description: "题面",
       difficulty: "easy",
       runtime_config: {},
       number: 950006,
-      type: "U",
       visibility: "private",
       owner_id: ownerId,
       created_at: now,
@@ -217,6 +224,7 @@ Deno.test({
       assertEquals(res.status, 404);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -234,13 +242,13 @@ Deno.test({
     const privateId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: privateId,
       title: "私有题 C3-预言机",
       description: "题面",
       difficulty: "easy",
       runtime_config: {},
       number: 950007,
-      type: "U",
       visibility: "private",
       owner_id: ownerId,
       created_at: now,
@@ -260,6 +268,7 @@ Deno.test({
       assertEquals(existing.status, 404);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, privateId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
@@ -276,18 +285,19 @@ Deno.test({
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: "私有题 C3-owner",
       description: "题面",
       difficulty: "easy",
       runtime_config: {},
       number: 950008,
-      type: "U",
       visibility: "private",
       owner_id: ownerId,
       created_at: now,
       updated_at: now,
     });
+    await grantDefaultCatalogRole(ownerId, "editor");
     try {
       const res = await jsonRequest(
         app,
@@ -297,7 +307,15 @@ Deno.test({
       assertEquals(res.status, 200);
     } finally {
       await getDb().delete(problems).where(eq(problems.id, problemId));
+      await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import {
+  grantDefaultCatalogRole,
+  removeDefaultCatalogMembership,
+} from "../default-fixture.ts";

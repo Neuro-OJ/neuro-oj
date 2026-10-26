@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   doublePrecision,
   index,
   integer,
@@ -7,6 +8,7 @@ import {
   pgTable,
   text,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * LLM Provider 表。
@@ -16,6 +18,7 @@ export const llmProviders = pgTable(
   "llm_providers",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull(),
     name: text("name").notNull(),
     base_url: text("base_url").notNull(),
     /** 每 1K token 费用（用于用量估算；0 表示不计费） */
@@ -26,6 +29,7 @@ export const llmProviders = pgTable(
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */
     enabled: boolean("enabled").notNull().default(true),
+    revision: integer("revision").notNull().default(1),
     /** 上游每分钟请求数上限（0 = 不限）；超过时排队等待 */
     rpm_limit: integer("rpm_limit").notNull().default(0),
     /** 上游每分钟 token 数上限（0 = 不限）；超过时排队等待 */
@@ -35,6 +39,11 @@ export const llmProviders = pgTable(
   },
   (table) => ({
     nameIdx: index("idx_llm_providers_name").on(table.name),
+    domainIdx: index("idx_llm_providers_domain").on(table.domain_id),
+    revisionCheck: check(
+      "llm_providers_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
   }),
 );
 
@@ -46,6 +55,7 @@ export const llmUsage = pgTable(
   "llm_usage",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull(),
     submission_id: text("submission_id").notNull(),
     /** 评测尝试 ID（版本化后写入；旧记录为 NULL） */
     attempt_id: text("attempt_id"),
@@ -77,6 +87,10 @@ export const llmUsage = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    domainCreatedIdx: index("idx_llm_usage_domain_created").on(
+      table.domain_id,
+      table.created_at,
+    ),
     submissionIdx: index("idx_llm_usage_submission_id").on(table.submission_id),
     attemptIdx: index("idx_llm_usage_attempt_id").on(table.attempt_id),
     problemIdx: index("idx_llm_usage_problem_id").on(table.problem_id),
@@ -94,23 +108,53 @@ export const llmQuotas = pgTable(
   "llm_quotas",
   {
     id: text("id").primaryKey(),
-    /** 配额作用域：user / problem / global */
+    /** 实例 global 的 domain_id 为空，其他配额属于使用域。 */
+    domain_id: text("domain_id").notNull().default(""),
+    /** 配额作用域：domain / user / problem / global / user_problem */
     scope_type: text("scope_type").notNull(),
     /** 对应作用域 ID；global 时为空字符串 */
     scope_id: text("scope_id").notNull().default(""),
     /** 窗口类型：day / month */
     window_type: text("window_type").notNull().default("day"),
-    max_calls: integer("max_calls").notNull().default(0),
-    max_tokens: integer("max_tokens").notNull().default(0),
-    max_cost: integer("max_cost").notNull().default(0),
+    max_calls: integer("max_calls"),
+    max_tokens: integer("max_tokens"),
+    max_cost: integer("max_cost"),
+    revision: integer("revision").notNull().default(1),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
     scopeIdx: index("idx_llm_quotas_scope").on(
+      table.domain_id,
       table.scope_type,
       table.scope_id,
       table.window_type,
     ),
+    revisionCheck: check(
+      "llm_quotas_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
   }),
 );
+
+/** 调用预占与结算账本；Redis 计数是可对账的投影。 */
+export const llmCallLedger = pgTable("llm_call_ledger", {
+  id: text("id").primaryKey(),
+  domain_id: text("domain_id").notNull(),
+  attempt_id: text("attempt_id").notNull(),
+  state: text("state").notNull(),
+  reservation: jsonb("reservation").notNull(),
+  settlement: jsonb("settlement"),
+  settlement_result: text("settlement_result"),
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+}, (table) => ({
+  pendingIdx: index("idx_llm_call_ledger_state_created").on(
+    table.state,
+    table.created_at,
+  ),
+  domainIdx: index("idx_llm_call_ledger_domain_created").on(
+    table.domain_id,
+    table.created_at,
+  ),
+}));

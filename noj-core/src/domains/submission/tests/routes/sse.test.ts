@@ -1,3 +1,6 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../../src/app.ts";
@@ -89,6 +92,7 @@ Deno.test({
     await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
     await db.insert(userRoles).values({ user_id: ownerId, role_id: "user" });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "SSE 权限测试题",
       description: "SSE 权限测试",
@@ -96,11 +100,11 @@ Deno.test({
       runtime_config: {},
       number: 990000 + (Date.now() & 0x7fff),
       owner_id: adminId,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: ownerId,
       problem_id: problemId,
@@ -126,9 +130,8 @@ Deno.test({
       assertStringIncludes(await res.text(), "submission:updated");
     } finally {
       await db.delete(submissions).where(eq(submissions.id, submissionId));
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
-      await db.delete(users).where(eq(users.id, ownerId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      // preload 事务回滚账号和默认域引导关系，避免物理删账号破坏负责人外键。
     }
   },
 });

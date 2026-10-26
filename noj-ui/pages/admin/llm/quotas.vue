@@ -4,6 +4,7 @@ import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import { extractApiError } from "~/utils/apiError"
 import {
   buildQuotaPayload,
+  editableQuotaLimit,
   findDuplicateQuota,
   formatQuotaLimit,
   isPlaceholderQuota,
@@ -38,7 +39,7 @@ let requestVersion = 0
 const filterScope = ref<QuotaScopeType | "all">("all")
 const filterItems = [
   { label: "全部", value: "all" },
-  ...QUOTA_SCOPE_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+  { label: "实例总量", value: "global" },
 ]
 const filteredItems = computed(() =>
   filterScope.value === "all" ? items.value : items.value.filter((r) => r.scope_type === filterScope.value)
@@ -64,7 +65,7 @@ async function loadItems() {
   try {
     const res = await api.get<{ data: LlmQuotaRow[] }>("/api/v1/admin/gateway/llm/quotas", { silent: true })
     if (currentRequest !== requestVersion) return
-    items.value = res.data
+    items.value = res.data.filter((row) => row.scope_type === "global")
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
     tableError.value = extractApiError(err).message
@@ -78,12 +79,12 @@ watch(isLoggedIn, (val) => { if (val) loadItems() }, { immediate: true })
 const showForm = ref(false)
 const editingItem = ref<LlmQuotaRow | null>(null)
 const form = reactive<QuotaForm>({
-  scope_type: "user",
+  scope_type: "global",
   scope_id: "",
   window_type: "day",
-  max_calls: "",
-  max_tokens: "",
-  max_cost: "",
+  max_calls: null,
+  max_tokens: null,
+  max_cost: null,
 })
 const saving = ref(false)
 const formError = ref("")
@@ -98,16 +99,16 @@ const duplicate = computed(() =>
   editingItem.value ? undefined : findDuplicateQuota(items.value, form.scope_type, form.scope_id, form.window_type)
 )
 
-// 打开新增表单；限额留空表示使用 gateway 环境变量默认值
+// 打开新增表单；不限明确使用 null，数值输入不接受空字符串。
 function openCreate() {
   editingItem.value = null
   Object.assign(form, {
-    scope_type: "user",
+    scope_type: "global",
     scope_id: "",
     window_type: "day",
-    max_calls: "",
-    max_tokens: "",
-    max_cost: "",
+    max_calls: null,
+    max_tokens: null,
+    max_cost: null,
   })
   formError.value = ""
   showForm.value = true
@@ -120,9 +121,9 @@ function openEdit(item: LlmQuotaRow) {
     scope_type: item.scope_type,
     scope_id: item.scope_id,
     window_type: item.window_type,
-    max_calls: item.max_calls,
-    max_tokens: item.max_tokens,
-    max_cost: item.max_cost,
+    max_calls: editableQuotaLimit(item.max_calls),
+    max_tokens: editableQuotaLimit(item.max_tokens),
+    max_cost: editableQuotaLimit(item.max_cost),
   })
   formError.value = ""
   showForm.value = true
@@ -135,7 +136,7 @@ function onLimitInput(key: "max_calls" | "max_tokens" | "max_cost", event: Event
 }
 
 async function handleSave() {
-  const error = validateQuotaForm(form, !editingItem.value && !duplicate.value)
+  const error = validateQuotaForm(form)
   if (error) {
     formError.value = error
     return
@@ -144,7 +145,10 @@ async function handleSave() {
   formError.value = ""
   try {
     const targetId = editingItem.value?.id ?? duplicate.value?.id
-    await api.post("/api/v1/admin/gateway/llm/quotas", buildQuotaPayload(form, targetId))
+    const targetRevision = editingItem.value?.revision ?? duplicate.value?.revision ?? 0
+    await api.post("/api/v1/admin/gateway/llm/quotas", buildQuotaPayload(form, targetId), {
+      headers: { "If-Match": String(targetRevision) },
+    })
     showForm.value = false
     await loadItems()
     toast.success(targetId ? "配额已更新" : "配额已新增")
@@ -163,12 +167,13 @@ function formatTime(value: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <AdminPageHeader title="LLM 配额" description="按全局 / 用户 / 题目 / 用户×题目维度配置每日、每月的调用次数、Token 与成本上限">
+    <AdminPageHeader title="实例 LLM 总额度" description="配置全实例每日／每月的调用、Token和费用总量；用户与题目额度由各空间独立管理。">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新增配额
         </UButton>
+        <UButton to="/d/main/llm" variant="outline">默认域 LLM 管理</UButton>
       </template>
     </AdminPageHeader>
 
@@ -179,7 +184,7 @@ function formatTime(value: string) {
       </p>
       <ul class="m-0 list-disc pl-5 leading-relaxed">
         <li>按「作用域 + 作用域 ID + 窗口」精确匹配；没有对应行时使用网关环境变量 <code class="font-mono">NOJ_LLM_DEFAULT_*</code> 的默认值。</li>
-        <li>上限取值：<code class="font-mono">-1</code> 不限，<code class="font-mono">0</code> 禁止调用，正数为上限。成本单位与 Provider 的「费用 / 1K token」一致。</li>
+        <li>选择不额外限制时保存为 null；<code class="font-mono">0</code> 禁止调用，其他上限为不超过 2147483647 的非负整数。成本单位与 Provider 的「费用 / 1K token」一致。</li>
         <li>窗口按 UTC 自然日 / 自然月重置。修改后对下一次调用立即生效。</li>
       </ul>
     </div>
@@ -224,8 +229,8 @@ function formatTime(value: string) {
         <template v-else-if="column.key === 'max_calls' || column.key === 'max_tokens' || column.key === 'max_cost'">
           <span
             class="tabular-nums"
-            :class="Number(row[column.key]) === 0 ? 'text-error-text font-semibold' : ''"
-          >{{ formatQuotaLimit(Number(row[column.key])) }}</span>
+            :class="row[column.key] === 0 ? 'text-error-text font-semibold' : ''"
+          >{{ formatQuotaLimit(row[column.key] as number | null) }}</span>
         </template>
         <template v-else-if="column.key === 'updated_at'">
           {{ formatTime((row as unknown as LlmQuotaRow).updated_at) }}
@@ -255,7 +260,7 @@ function formatTime(value: string) {
         <label class="text-xs font-semibold text-text">作用域 <span class="text-error-text">*</span></label>
         <USelect
           v-model="form.scope_type"
-          :items="QUOTA_SCOPE_OPTIONS.map((o) => ({ label: o.label, value: o.value }))"
+          :items="[{ label: '实例总量', value: 'global' }]"
           :disabled="!!editingItem"
         />
       </div>
@@ -287,17 +292,20 @@ function formatTime(value: string) {
 
       <div v-for="field in ([['max_calls', '调用次数上限'], ['max_tokens', 'Token 上限'], ['max_cost', '成本上限']] as const)" :key="field[0]" class="flex flex-col gap-1">
         <label class="text-xs font-semibold text-text">{{ field[1] }}</label>
+        <UCheckbox :model-value="form[field[0]] === null" :label="`${field[1]}：不额外限制`" @update:model-value="form[field[0]] = $event ? null : 0" />
         <input
           :value="form[field[0]]"
+          :disabled="form[field[0]] === null"
           type="number"
-          min="-1"
+          min="0"
+          max="2147483647"
           step="1"
           class="px-3 py-2 text-sm tabular-nums border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
-          :placeholder="editingItem || duplicate ? '' : '留空使用网关默认值'"
+          placeholder="填写非负整数或选择不额外限制"
           @input="onLimitInput(field[0], $event)"
         />
       </div>
-      <p class="m-0 text-xs text-text-muted">-1 不限，0 禁止调用。</p>
+      <p class="m-0 text-xs text-text-muted">不额外限制保存为空额度；0 禁止调用。</p>
       <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
     </div>
   </AdminEditPanel>

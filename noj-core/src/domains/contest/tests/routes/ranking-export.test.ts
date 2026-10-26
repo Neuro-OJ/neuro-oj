@@ -51,6 +51,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "导出测试赛",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -268,7 +269,9 @@ Deno.test({
         eq(contestRankingSnapshots.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(users).where(eq(users.id, adminId));
+      // 默认域负责人及导出历史使用软注销身份；测试事务结束后整体回滚。
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
@@ -297,6 +300,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "注入用例赛",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -368,7 +372,9 @@ Deno.test({
         eq(contestRankingSnapshots.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
-      await db.delete(users).where(eq(users.id, adminId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

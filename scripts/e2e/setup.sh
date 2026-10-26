@@ -25,10 +25,12 @@ E2E_REDIS_URL="${E2E_REDIS_URL:-redis://localhost:6380/1}"
 E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
 E2E_CORE_URL="http://localhost:$E2E_CORE_PORT"
 E2E_JWT_SECRET="${E2E_JWT_SECRET:-e2e-test-secret}"
+E2E_JUDGE_RESOURCE_POOLS="${E2E_JUDGE_RESOURCE_POOLS:-ai}"
 SDK_IMAGE_BUILDER="${NOJ_E2E_SDK_IMAGE_BUILDER:-$ROOT_DIR/noj-judge/scripts/build-sdk-images.sh}"
 
 # 导出供子脚本使用
 export E2E_DB_URL E2E_REDIS_URL E2E_CORE_PORT E2E_CORE_URL
+export E2E_JUDGE_RESOURCE_POOLS
 export JWT_SECRET="$E2E_JWT_SECRET"
 
 echo ""
@@ -54,6 +56,14 @@ if [ -z "${CI:-}" ]; then
     exit 1
   fi
   ok "SDK 镜像已从当前工作树构建"
+
+  if [[ ",$E2E_JUDGE_RESOURCE_POOLS," == *,oi-native,* ]]; then
+    if ! docker image inspect noj-oi-cpp:latest > /dev/null 2>&1; then
+      fail "OI Native 已启用但 noj-oi-cpp 镜像未构建，停止 E2E 启动"
+      exit 1
+    fi
+    ok "OI Native C++ 运行时就绪"
+  fi
 
   info "构建并启动服务..."
   docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d --build
@@ -104,6 +114,7 @@ echo ""
 echo "  ${CYAN}PostgreSQL${NC}    $E2E_DB_URL"
 echo "  ${CYAN}Redis${NC}         $E2E_REDIS_URL"
 echo "  ${CYAN}noj-core${NC}      $E2E_CORE_URL"
+echo "  ${CYAN}Judge 池${NC}     $E2E_JUDGE_RESOURCE_POOLS"
 echo "  ${CYAN}MinIO${NC}         http://localhost:9002"
 echo ""
 echo "  stop:    bash scripts/e2e/teardown.sh"
@@ -118,4 +129,5 @@ E2E_CORE_URL="$E2E_CORE_URL"
 E2E_CORE_PORT="$E2E_CORE_PORT"
 E2E_JWT_SECRET="$E2E_JWT_SECRET"
 JWT_SECRET="$E2E_JWT_SECRET"
+export E2E_JUDGE_RESOURCE_POOLS="$E2E_JUDGE_RESOURCE_POOLS"
 EOF

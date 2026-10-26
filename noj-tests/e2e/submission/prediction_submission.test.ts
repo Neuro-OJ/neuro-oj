@@ -94,11 +94,13 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
       title: `[E2E] Prediction ${ts}`,
       description: "prediction submission e2e",
       difficulty: "easy",
-      type: "P",
+      visibility: "public",
       submission_mode: "prediction",
       runtime_config: {
         evaluator: {
-          image: "noj-evaluator-python",
+          image: `noj-evaluator-python:${
+            Deno.env.get("E2E_INPUT_MODES_IMAGE_TAG") || "latest"
+          }`,
           command: buildEvaluatorCommand(),
           time_limit_ms: 15000,
           memory_limit_mb: 256,

@@ -1,3 +1,4 @@
+import { publishQueueChange } from "../services/queue.ts";
 import {
   projectMeteringDetails,
   projectOiDetails,
@@ -11,11 +12,7 @@ import {
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { getLogger } from "@logtape/logtape";
-import {
-  Channels,
-  publishSseEvent,
-  publishSseEventAfterTx,
-} from "../../../shared/sse/event-bus.ts";
+import { publishSseEventAfterTx } from "../../../shared/sse/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { observability as metrics } from "../../../domains/observability/write.ts";
@@ -232,10 +229,7 @@ export async function handleResultMessage(data: unknown): Promise<void> {
         self_test_id: judgeResult.submission_id,
       });
       // 自测：保持原有轻量事件（自测不参与榜单/竞赛，队列事件允许轮询兜底）。
-      await publishSseEvent(
-        Channels.queue,
-        { type: "queue:changed" },
-      );
+      await publishQueueChange(judgeResult.submission_id);
       return;
     }
 
@@ -292,10 +286,7 @@ export async function handleResultMessage(data: unknown): Promise<void> {
     }
 
     // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
-    await publishSseEvent(
-      Channels.queue,
-      { type: "queue:changed" },
-    );
+    await publishQueueChange(judgeResult.submission_id);
   } catch (err) {
     metrics.inc("noj_evaluation_consumer_errors_total");
     throw err;

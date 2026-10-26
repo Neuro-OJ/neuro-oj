@@ -5,6 +5,15 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { llmModelAliases, problems } from "../../../../shared/db/schema.ts";
 import { upsertLlmModelAlias } from "../../../gateway/index.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import {
+  deleteProblemFixtures,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { eq } from "drizzle-orm";
 
 /** 桩 gateway（Provider 恒存在）+ 管理员上下文；用毕清理别名表。 */
 async function withStub(fn: (app: Hono) => Promise<void>): Promise<void> {
@@ -20,6 +29,8 @@ async function withStub(fn: (app: Hono) => Promise<void>): Promise<void> {
       new Response(
         JSON.stringify({
           data: {
+            domain_id: DEFAULT_DOMAIN_ID,
+            revision: 1,
             id: "prov-a",
             name: "stub",
             base_url: "http://stub",
@@ -46,6 +57,7 @@ async function withStub(fn: (app: Hono) => Promise<void>): Promise<void> {
   );
   app.route("/", router);
   await getDb().delete(llmModelAliases);
+  await ensureDefaultWorkspace();
   try {
     await fn(app);
   } finally {
@@ -60,7 +72,7 @@ async function withStub(fn: (app: Hono) => Promise<void>): Promise<void> {
 
 const json = (body: unknown): RequestInit => ({
   method: "PUT",
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", "If-Match": "0" },
   body: JSON.stringify(body),
 });
 
@@ -81,10 +93,12 @@ Deno.test("admin gateway: 别名 PUT/GET/DELETE 往返", async () => {
     assertEquals(list.data[0].problem_count, 0);
     const del = await app.request("/llm/model-aliases/fast", {
       method: "DELETE",
+      headers: { "If-Match": String(list.data[0].revision) },
     });
     assertEquals(del.status, 204);
     const missing = await app.request("/llm/model-aliases/fast", {
       method: "DELETE",
+      headers: { "If-Match": String(list.data[0].revision) },
     });
     assertEquals(missing.status, 404);
   });
@@ -115,7 +129,7 @@ Deno.test("admin gateway: 删除被题目引用的别名返回 409，force 可�
       id,
       title: id,
       description: "d",
-      type: "P",
+      domain_id: DEFAULT_DOMAIN_ID,
       number: 900000 + Math.floor(Math.random() * 90000),
       owner_id: "0",
       difficulty: "easy",
@@ -124,21 +138,23 @@ Deno.test("admin gateway: 删除被题目引用的别名返回 409，force 可�
       created_at: now,
       updated_at: now,
     });
+    await publishBaselineVersionForTest(id);
     try {
       const list = await (await app.request("/llm/model-aliases")).json();
       assertEquals(list.data[0].problem_count, 1);
       const res = await app.request("/llm/model-aliases/fast", {
         method: "DELETE",
+        headers: { "If-Match": String(list.data[0].revision) },
       });
       assertEquals(res.status, 409);
       assertEquals((await res.json()).problem_ids, [id]);
       const forced = await app.request("/llm/model-aliases/fast?force=true", {
         method: "DELETE",
+        headers: { "If-Match": String(list.data[0].revision) },
       });
       assertEquals(forced.status, 204);
     } finally {
-      const { eq } = await import("drizzle-orm");
-      await getDb().delete(problems).where(eq(problems.id, id));
+      await deleteProblemFixtures(eq(problems.id, id));
     }
   });
 });

@@ -1,0 +1,36 @@
+/** 教学组织 DDL，顺序与生成迁移一致，比赛扩展列在基础 CREATE TABLE 声明。 */
+export const EDUCATION_DDL = [
+  'CREATE TABLE IF NOT EXISTS "classroom_assistant_grants" (\n\t"membership_id" text NOT NULL,\n\t"capability" text NOT NULL,\n\t"granted_by" text NOT NULL,\n\t"granted_at" text NOT NULL,\n\tCONSTRAINT "classroom_assistant_grants_membership_id_capability_pk" PRIMARY KEY("membership_id","capability"),\n\tCONSTRAINT "classroom_assistant_grants_capability_check" CHECK ("classroom_assistant_grants"."capability" IN (\'progress:read\',\'submissions:read\',\'assignments:manage\',\'feedback:write\',\'help:manage\',\'students:manage\'))\n);',
+  'CREATE TABLE IF NOT EXISTS "classroom_contest_links" (\n\t"domain_id" text NOT NULL,\n\t"classroom_id" text NOT NULL,\n\t"contest_id" text NOT NULL,\n\t"linked_by" text NOT NULL,\n\t"linked_at" text NOT NULL,\n\tCONSTRAINT "classroom_contest_links_classroom_id_contest_id_pk" PRIMARY KEY("classroom_id","contest_id")\n);',
+  'CREATE TABLE IF NOT EXISTS "classroom_join_requests" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"classroom_id" text NOT NULL,\n\t"user_id" text NOT NULL,\n\t"reason" text DEFAULT \'\' NOT NULL,\n\t"status" text DEFAULT \'pending\' NOT NULL,\n\t"reviewed_by" text,\n\t"created_at" text NOT NULL,\n\t"reviewed_at" text,\n\tCONSTRAINT "classroom_join_requests_status_check" CHECK ("classroom_join_requests"."status" IN (\'pending\', \'approved\', \'rejected\'))\n);',
+  'CREATE TABLE IF NOT EXISTS "classroom_memberships" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"classroom_id" text NOT NULL,\n\t"user_id" text NOT NULL,\n\t"role" text NOT NULL,\n\t"status" text DEFAULT \'active\' NOT NULL,\n\t"joined_at" text NOT NULL,\n\t"appointed_at" text NOT NULL,\n\t"left_at" text,\n\tCONSTRAINT "classroom_memberships_identity_unique" UNIQUE("classroom_id","user_id"),\n\tCONSTRAINT "classroom_memberships_domain_id_unique" UNIQUE("domain_id","id"),\n\tCONSTRAINT "classroom_memberships_recipient_unique" UNIQUE("domain_id","classroom_id","user_id"),\n\tCONSTRAINT "classroom_memberships_role_check" CHECK ("classroom_memberships"."role" IN (\'coach\', \'assistant\', \'student\')),\n\tCONSTRAINT "classroom_memberships_status_check" CHECK ("classroom_memberships"."status" IN (\'active\', \'removed\'))\n);',
+  'CREATE TABLE IF NOT EXISTS "classrooms" (\n\t"id" text PRIMARY KEY NOT NULL,\n\t"domain_id" text NOT NULL,\n\t"name" text NOT NULL,\n\t"description" text DEFAULT \'\' NOT NULL,\n\t"stage_tag" text DEFAULT \'\' NOT NULL,\n\t"status" text DEFAULT \'active\' NOT NULL,\n\t"archived_at" text,\n\t"primary_coach_id" text NOT NULL,\n\t"revision" integer DEFAULT 0 NOT NULL,\n\t"created_at" text NOT NULL,\n\t"updated_at" text NOT NULL,\n\tCONSTRAINT "classrooms_domain_id_unique" UNIQUE("domain_id","id"),\n\tCONSTRAINT "classrooms_status_check" CHECK ("classrooms"."status" IN (\'active\', \'archived\')),\n\tCONSTRAINT "classrooms_revision_check" CHECK ("classrooms"."revision" >= 0)\n);',
+  'ALTER TABLE "contests" ADD CONSTRAINT "contests_domain_id_unique" UNIQUE("domain_id","id");',
+  'ALTER TABLE "classroom_assistant_grants" ADD CONSTRAINT "classroom_assistant_grants_membership_id_classroom_memberships_id_fk" FOREIGN KEY ("membership_id") REFERENCES "classroom_memberships"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_assistant_grants" ADD CONSTRAINT "classroom_assistant_grants_granted_by_users_id_fk" FOREIGN KEY ("granted_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_contest_links" ADD CONSTRAINT "classroom_contest_links_linked_by_users_id_fk" FOREIGN KEY ("linked_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_contest_links" ADD CONSTRAINT "classroom_contest_links_classroom_domain_fk" FOREIGN KEY ("domain_id","classroom_id") REFERENCES "classrooms"("domain_id","id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_contest_links" ADD CONSTRAINT "classroom_contest_links_contest_domain_fk" FOREIGN KEY ("domain_id","contest_id") REFERENCES "contests"("domain_id","id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_join_requests" ADD CONSTRAINT "classroom_join_requests_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_join_requests" ADD CONSTRAINT "classroom_join_requests_reviewed_by_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_join_requests" ADD CONSTRAINT "classroom_join_requests_classroom_domain_fk" FOREIGN KEY ("domain_id","classroom_id") REFERENCES "classrooms"("domain_id","id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_memberships" ADD CONSTRAINT "classroom_memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_memberships" ADD CONSTRAINT "classroom_memberships_classroom_domain_fk" FOREIGN KEY ("domain_id","classroom_id") REFERENCES "classrooms"("domain_id","id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classroom_memberships" ADD CONSTRAINT "classroom_memberships_member_domain_fk" FOREIGN KEY ("domain_id","user_id") REFERENCES "domain_memberships"("domain_id","user_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_primary_coach_id_users_id_fk" FOREIGN KEY ("primary_coach_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_coach_domain_fk" FOREIGN KEY ("domain_id","primary_coach_id") REFERENCES "domain_memberships"("domain_id","user_id") ON DELETE no action ON UPDATE no action;',
+  'CREATE UNIQUE INDEX "classroom_join_requests_pending_unique" ON "classroom_join_requests" USING btree ("classroom_id","user_id") WHERE "classroom_join_requests"."status" = \'pending\';',
+  'CREATE INDEX "idx_classroom_memberships_domain_user" ON "classroom_memberships" USING btree ("domain_id","user_id","status");',
+  'CREATE INDEX "idx_classrooms_domain_status" ON "classrooms" USING btree ("domain_id","status","created_at");',
+  'ALTER TABLE "contests" ADD CONSTRAINT "contests_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "domain_invitations" ADD CONSTRAINT "domain_invitations_classroom_domain_fk" FOREIGN KEY ("domain_id","classroom_id") REFERENCES "classrooms"("domain_id","id");',
+];
+/** 测试重置保留完整的班级模型。 */
+export const EDUCATION_TABLES = [
+  "classrooms",
+  "classroom_memberships",
+  "classroom_assistant_grants",
+  "classroom_contest_links",
+  "classroom_join_requests",
+] as const;

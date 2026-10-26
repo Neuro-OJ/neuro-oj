@@ -1,4 +1,5 @@
 import { assert } from "jsr:@std/assert@^1";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
@@ -21,6 +22,7 @@ Deno.test({
     const BATCH = 1000;
     for (let i = 0; i < 100; i++) {
       const batch = Array.from({ length: BATCH }, (_, j) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: `perf-p-${i}-${j}`,
         title: `题目 ${i * BATCH + j}：测试数据`,
         description: "",
@@ -35,7 +37,6 @@ Deno.test({
           solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
         },
         number: i * BATCH + j + 1,
-        type: "P" as const,
         visibility: "public",
         created_at: now,
         updated_at: now,
@@ -49,6 +50,12 @@ Deno.test({
       SELECT 'v-' || id, id, 1, '{}'::jsonb, ${now} FROM problems
     `);
     await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
+    await db.execute(sql`
+      INSERT INTO domain_problem_bindings
+        (id, domain_id, problem_id, kind, visibility, created_by, created_at, updated_at)
+      SELECT 'binding-' || id, domain_id, id, 'owned', 'public', '0', ${now}, ${now}
+      FROM problems
+    `);
     await reindexAll();
     const start = performance.now();
     const result = await searchFlat({

@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
@@ -14,6 +15,9 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import { problems, problemVersions } from "./catalog.ts";
 import { contests } from "./contest.ts";
+import { domains } from "./workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
+import { assignmentItems, assignments } from "./assignment.ts";
 import type { SubmissionVersionOrigin } from "../../versioning/types.ts";
 
 /**
@@ -25,6 +29,12 @@ export const objectiveSubmissions = pgTable(
   "objective_submissions",
   {
     id: text("id").primaryKey(),
+    receipt_sequence: bigint("receipt_sequence", { mode: "number" }).notNull()
+      .default(sql`nextval('submission_receipt_sequence')`),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     /** 所属套卷 ID（problems.id，is_objective=true） */
     paper_id: text("paper_id")
       .notNull()
@@ -92,6 +102,11 @@ export const objectiveSubmissions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspaceContestFk: foreignKey({
+      name: "objective_submissions_workspace_contest_fk",
+      columns: [table.domain_id, table.contest_id],
+      foreignColumns: [contests.domain_id, contests.id],
+    }),
     /** 竞赛一次性提交兜底：同一竞赛内同一用户对同一套卷仅一条 */
     contestUnique: unique("objective_submissions_contest_unique").on(
       table.paper_id,
@@ -102,6 +117,35 @@ export const objectiveSubmissions = pgTable(
       "objective_submissions_type_check",
       sql`${table.submission_type} IN ('practice', 'contest')`,
     ),
+    assignmentOriginCheck: check(
+      "objective_submissions_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "objective_submissions_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "objective_submissions_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.paper_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "objective_submissions_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     paperIdx: index("idx_objective_submissions_paper_id").on(table.paper_id),
     userIdx: index("idx_objective_submissions_user_id").on(table.user_id),
     /** 提交历史按用户+套卷+时间倒序分页 */
@@ -140,5 +184,23 @@ export const objectiveSubmissions = pgTable(
       columns: [table.paper_id, table.submitted_version_id],
       foreignColumns: [problemVersions.problem_id, problemVersions.id],
     }),
+    workspaceBindingFk: foreignKey({
+      name: "objective_submissions_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "objective_submissions_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.paper_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
+    workspaceUserPaperIdx: index("idx_objective_submissions_domain_user_paper")
+      .on(table.domain_id, table.user_id, table.paper_id, table.created_at),
   }),
 );

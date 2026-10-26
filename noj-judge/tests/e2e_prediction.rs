@@ -155,6 +155,10 @@ async fn prediction_end_to_end_scores_and_creates_no_solution_container() {
         "测试开始前存在 Solution 容器残留: {:?}",
         baseline
     );
+    // 已退出的历史 Evaluator 不能满足本次评测的正向观测。
+    let evaluator_baseline = list_ids_by_label(&docker, EVALUATOR_LABEL)
+        .await
+        .expect("列出 Evaluator 容器失败（基线）");
 
     let temp_dir = tempfile::tempdir().unwrap();
     let support_zip_path = temp_dir.path().join("support.zip");
@@ -207,7 +211,7 @@ async fn prediction_end_to_end_scores_and_creates_no_solution_container() {
                     }
                 }
                 if let Some(ids) = list_ids_by_label(&poll_docker, EVALUATOR_LABEL).await {
-                    if !ids.is_empty() {
+                    if ids.iter().any(|id| !evaluator_baseline.contains(id)) {
                         evaluator_seen = true;
                     }
                 }

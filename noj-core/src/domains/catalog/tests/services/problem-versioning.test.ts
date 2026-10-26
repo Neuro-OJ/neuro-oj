@@ -51,10 +51,10 @@ function useTempStorage(): LocalStorageProvider {
 /** 插入一道 AI（dual/code）题目身份行。 */
 async function seedAiProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: "初始标题",
     description: "初始题面",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -411,3 +411,6 @@ Deno.test("publish: exact 策略下默认作答版本取要求版本", async () 
     "exact 版",
   );
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+await resetDbForTest();

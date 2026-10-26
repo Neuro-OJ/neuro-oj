@@ -15,6 +15,15 @@
  * （不为 owner/admin 走捷径，换取"调用点无法漏判"）。结果不做缓存，因此不引入
  * 进程内可变状态，符合多副本约束。
  */
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import { domainProblemBindings, problems } from "../../../shared/db/schema.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../workspace/index.ts";
 import {
   type ProblemAccessContext,
   type ProblemAccessInput,
@@ -44,11 +53,51 @@ export type ProblemAccessEvaluation = {
 export async function evaluateProblemAccess(
   problem: ProblemAccessInput,
   ctx: Omit<ProblemAccessContext, "secrecy">,
+  executor: Executor = getDb(),
 ): Promise<ProblemAccessEvaluation> {
-  const secrecy = await loadPublicContestSecrecy(problem.id);
+  const db = executor;
+  const [source] = await db.select({
+    domain_id: problems.domain_id,
+    owner_id: problems.owner_id,
+  }).from(problems).where(eq(problems.id, problem.id)).limit(1);
+  if (
+    !source ||
+    source.domain_id !== null && source.domain_id !== DEFAULT_DOMAIN_ID
+  ) return { result: { allowed: false, mode: "denied" }, secrecy: [] };
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, ctx.viewerId, {
+    executor,
+  });
+  const [binding] = await db.select().from(domainProblemBindings).where(
+    and(
+      eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
+      eq(domainProblemBindings.problem_id, problem.id),
+    ),
+  ).limit(1);
+  if (binding?.disabled_at) {
+    return { result: { allowed: false, mode: "denied" }, secrecy: [] };
+  }
+  const canReadOwn =
+    workspace.context.domainPermissions.has("problem:write_own") &&
+    source.owner_id === ctx.viewerId;
+  const privileged = workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("problem:write_any");
+  const visible = binding
+    ? binding.visibility === "public" || Boolean(workspace.membership) ||
+      workspace.platformAdmin
+    : problem.visibility === "public";
+  const secrecy = await loadPublicContestSecrecy(
+    problem.id,
+    executor,
+    DEFAULT_DOMAIN_ID,
+  );
   return {
-    result: resolveProblemAccess(problem, {
+    result: resolveProblemAccess({
+      ...problem,
+      visibility: visible ? "public" : "private",
+    }, {
       ...ctx,
+      isAdmin: privileged,
+      canReadOwn,
       secrecy: { contestIds: secrecy.map((ref) => ref.contestId) },
     }),
     secrecy,

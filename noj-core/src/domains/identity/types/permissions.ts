@@ -1,5 +1,5 @@
 /**
- * RBAC 权限名称类型（格式：`resource:action`，如 `"problem:create_p"`）。
+ * RBAC 权限名称类型（格式：`resource:action`，如 `"problem:create"`）。
  */
 export type PermissionName = string;
 
@@ -20,11 +20,6 @@ export const PERMISSION_DEFS: Array<{
   },
   // 题目
   { resource: "problem", action: "create", description: "创建题目" },
-  {
-    resource: "problem",
-    action: "create_p",
-    description: "创建管理题（P 型）",
-  },
   { resource: "problem", action: "read", description: "查看题目" },
   { resource: "problem", action: "write_own", description: "编辑自己的题目" },
   { resource: "problem", action: "write_any", description: "编辑任意题目" },

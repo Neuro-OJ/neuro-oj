@@ -241,8 +241,8 @@ export function toContestProblemView(
 }
 
 /** 题型展示文案。 */
-export function problemTypeLabel(type: string | undefined): string {
-  return type === 'U' ? '用户题库' : '主题库';
+export function problemTypeLabel(_type: string | undefined): string {
+  return '题库';
 }
 
 /** 提交模式展示文案（用于提交入口的标题/说明）。 */

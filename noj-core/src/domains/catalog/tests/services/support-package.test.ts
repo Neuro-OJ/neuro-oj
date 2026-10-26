@@ -5,7 +5,7 @@
  * 测试前自动运行迁移并 seed root 用户（见 00_migrate_test.ts）。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { deleteSupportPackage, getSupportPackageBytes } from "../../index.ts";
@@ -51,7 +51,6 @@ async function createTestUser(id: string): Promise<void> {
  */
 async function createTestProblem(
   ownerId: string = OWNER_ID,
-  type: string = "U",
 ): Promise<string> {
   const db = getDb();
   currentProblemId = `test-sp-problem-${ts}-${++problemSeq}`;
@@ -62,8 +61,10 @@ async function createTestProblem(
   if (existingOwner.length === 0) {
     await createTestUser(ownerId);
   }
+  await grantDefaultCatalogRole(ownerId, "editor");
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id: currentProblemId,
     title: `支持包测试题目 ${ts}`,
     description: "测试描述",
@@ -84,7 +85,6 @@ async function createTestProblem(
     },
     number: TEST_NUMBER + problemSeq,
     owner_id: ownerId,
-    type,
     created_at: now,
     updated_at: now,
   });
@@ -153,6 +153,7 @@ Deno.test({
     resetStorageProvider();
     await createTestProblem();
 
+    await createTestUser("other-user");
     await assertRejects(
       () => deleteSupportPackage(currentProblemId, "other-user", "user"),
       ForbiddenError,
@@ -239,6 +240,7 @@ Deno.test({
     resetStorageProvider();
     await createTestProblem();
 
+    await createTestUser("other-user");
     await assertRejects(
       () => getSupportPackageBytes(currentProblemId, "other-user", "user"),
       ForbiddenError,
@@ -262,3 +264,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

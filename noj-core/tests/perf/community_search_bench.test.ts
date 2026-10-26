@@ -2,6 +2,7 @@ import { assert } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import {
   communityBoards,
   communityPosts,
@@ -42,6 +43,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityBoards).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "community-search-bench-board",
       slug: "community-search-bench",
       name: "社区搜索基准",
@@ -59,6 +61,7 @@ Deno.test({
           const number = batch * batchSize + offset;
           const isHit = offset === 0;
           return {
+            domain_id: DEFAULT_DOMAIN_ID,
             id: `community-search-bench-${number}`,
             public_id: `post-community-bench-${number}`,
             type: "discussion" as const,

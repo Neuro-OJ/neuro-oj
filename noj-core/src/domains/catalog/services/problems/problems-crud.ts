@@ -2,8 +2,8 @@
  * Problems CRUD：createProblem / updateProblem / deleteProblem（PR 拆分 PR-3）。
  *
  * 设计要点：
- * - createProblem 中 MAX+1 重试循环保留原行为不动（已有并发场景验证）
- * - updateProblem 防御性忽略 type / number 字段（spec 承诺不可变）
+ * - 创建题目、初始草稿、标签、本域绑定及编号同事务
+ * - updateProblem 拒绝已撤除的分类，题号保持不可变
  * - deleteProblem 手动清理 submissions / evaluation_results（FK 无 CASCADE）
  *
  * 依赖：
@@ -14,9 +14,14 @@
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { recordProblemEducationChange } from "../workspace/education-events.ts";
 import {
   contestProblems,
+  domainProblemBindings,
+  domainResourceCounters,
+  domains,
   objectiveSubmissions,
+  problemBindingHistory,
   problemDraftObjects,
   problemDrafts,
   problems,
@@ -30,7 +35,6 @@ import {
   AppError,
   BadRequestError,
   ConflictError,
-  ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import {
@@ -42,17 +46,13 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import {
-  assertLlmLimitsWithinDefault,
-  assertLlmModelsValid,
-} from "../../../gateway/index.ts";
+import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
   isOiRuntimeConfig,
   isValidDifficulty,
   isValidLlmConfig,
-  isValidProblemType,
   isValidSubmissionMode,
   judgeTypeForRuntimeConfig,
   type LlmConfig,
@@ -64,11 +64,10 @@ import {
 import { validateProblemRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
+import { mergeProblemContentPatch } from "./problem-content-patch.ts";
+export { mergeProblemContentPatch } from "./problem-content-patch.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
-import {
-  assertPermission,
-  checkPermission,
-} from "./../../../identity/index.ts";
+
 import {
   assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
@@ -79,11 +78,13 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
 import {
   deriveDraftContentFromProblem,
+  type DraftObjectRef,
   draftRevisionRequired,
   getProblemDraft,
   PROBLEM_DRAFT_VIRTUAL_REVISION,
   type ProblemDraftView,
   saveProblemDraft,
+  saveProblemDraftWithObjects,
   setDraftObject,
 } from "../versioning/draft.ts";
 import {
@@ -99,53 +100,71 @@ import {
   problemScopeKey,
 } from "../../../submission/index.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
+import { assertProblemHasNoRetainedReferences } from "../workspace/problem-retention.ts";
+import { assertProblemAuthoringOutsideParticipation } from "../workspace/problem-contest-authoring.ts";
+import {
+  bindCreatedDomainProblem,
+  prepareDomainProblemCreation,
+} from "../workspace/problem-create.ts";
+import {
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+  loadWorkspace,
+  workspaceAudit,
+} from "../../../workspace/index.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。
  *
  * 草稿读写、发布版本与既有 PUT 内容更新共用同一口径，避免"草稿接口是旁路"：
- * - P 型：`problem:write_any`（原则上仅管理员）；
- * - U 型 owner：`problem:write_own`；
- * - U 型非 owner：`problem:write_any`。
+ * - 本域编辑者编辑本人资源需 `problem:write_own`；
+ * - 编辑其他资源需源域 `problem:write_any`，平台治理使用真实实例权限。
  *
- * `admin:full_access` 通配由 `assertPermission` 内部放行。
+ * 平台治理例外取自实时实例权限。
  *
  * @throws {ForbiddenError} 权限不足
  */
 export async function assertProblemEditPermission(
   c: Context | undefined,
-  problem: { type: string; owner_id: string },
+  problem: { id: string; domain_id?: string | null; owner_id: string },
   userId?: string,
-  userRole?: string,
+  _userRole?: string,
 ): Promise<void> {
-  if (problem.type === "P") {
-    if (c) {
-      await assertPermission(c, "problem:write_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可编辑管理题");
-    }
-    return;
-  }
-  if (problem.owner_id === (c?.var.userId ?? userId)) {
-    // NOJ-102：U 型 owner 也必须持有 problem:write_own。
-    if (c) await assertPermission(c, "problem:write_own");
-    return;
-  }
-  if (c) {
-    await assertPermission(c, "problem:write_any");
-  } else if (userRole !== "admin") {
-    throw new ForbiddenError("无权编辑此题目");
-  }
+  const actorId = c?.var.userId ?? userId ?? ROOT_USER_ID;
+  const db = getDb();
+  const [source] = await db.select().from(problems).where(
+    eq(problems.id, problem.id),
+  );
+  if (!source) throw new NotFoundError("题目不存在");
+  const [domain] = source.domain_id
+    ? await db.select({ slug: domains.slug }).from(domains).where(
+      eq(domains.id, source.domain_id),
+    )
+    : [{ slug: DEFAULT_DOMAIN_SLUG }];
+  if (!domain) throw new NotFoundError("源题工作空间不存在");
+  const workspace = await loadWorkspace(domain.slug, actorId, {
+    write: c !== undefined && !["GET", "HEAD"].includes(c.req.method),
+  });
+  assertWorkspacePermission(
+    workspace.context,
+    workspace.context.domainPermissions.has("problem:write_any") ||
+      source.owner_id !== actorId
+      ? "problem:write_any"
+      : "problem:write_own",
+  );
+  await assertProblemAuthoringOutsideParticipation(workspace, source.id, db);
 }
 
 /**
  * 创建题目。
  *
- * admin 可创建任意 type，普通用户仅限 U 型。
- * 自动设 owner_id 为当前用户，自动分配 U 型 number。
+ * 源域角色决定创建权限，旧无域入口只创建默认域资源。
+ * 自动设 owner_id 为当前用户，域行锁原子分配数字题号。
  *
  * @throws {BadRequestError} 难度值非法
- * @throws {ForbiddenError} 普通用户尝试创建 P 型题目
+ * @throws {ForbiddenError} 当前域角色无创建权限
  */
 export async function createProblem(
   input: CreateProblemInput,
@@ -153,6 +172,8 @@ export async function createProblem(
   userRole?: string,
   c?: Context,
   allowServerDerivedFields = false,
+  workspaceSlug?: string,
+  initialDraft?: { content: ProblemDraftContent; objects: DraftObjectRef[] },
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
   if (input.samples !== undefined) validateProblemSamples(input.samples);
@@ -193,24 +214,18 @@ export async function createProblem(
     throw new BadRequestError("artifact_max_size_mb 必须为正整数或 null");
   }
 
-  // 确定题目类型（默认 U）
-  const rawType = input.type?.toUpperCase() ?? "U";
-  if (!isValidProblemType(rawType)) {
-    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
+  if ("type" in input) {
+    throw new BadRequestError("题目已取消 P/U 分类，请通过目标 Domain 创建");
   }
-  const type = rawType;
   if (
     input.visibility !== undefined &&
     !["public", "private"].includes(input.visibility)
   ) throw new BadRequestError("visibility 必须为 public/private");
-  if (type === "P" && input.visibility === "private") {
-    throw new BadRequestError("P 型题目必须公开");
-  }
 
-  // 客观题标记（并入 U/P 题库；无评测容器，服务端即时判定）
+  // 客观题标记（统一题库；无评测容器，服务端即时判定）
   const isObjective = input.is_objective === true;
 
-  // 校验 runtime_config（U/P 型必填，双容器评测；客观题套卷无评测容器）
+  // 校验 runtime_config（编程题必填，双容器评测；客观题套卷无评测容器）
   if (isObjective) {
     if (input.runtime_config !== undefined && input.runtime_config !== null) {
       logger.warn("createProblem: 客观题套卷忽略 runtime_config 字段");
@@ -255,8 +270,6 @@ export async function createProblem(
       }
     }
 
-    // evaluator 联网权限与题目创建权限一致：U 型任意登录用户可开启，
-    // P 型仅 admin（由下方类型权限检查保证）。
     // 安全提醒：联网 + 可控 evaluator.command = 联网容器任意命令执行，
     // 开启联网的题目等于把外部网络能力交给出题人（出题人可信边界）。
     // 复用平台默认值基线；OI 不含双容器敏感字段。
@@ -274,7 +287,7 @@ export async function createProblem(
     throw new BadRequestError("runtime_config 是必填字段");
   }
 
-  // U 型可保持私有，但仅管理员可配置 LLM；网络、模型与预算校验照常执行。
+  // LLM 能力与旧题库分类无关，预算和 evaluator 网络仍受实例安全政策约束。
   let llmConfig: LlmConfig | null = null;
   if (input.llm !== undefined && input.llm !== null) {
     if (isObjective) {
@@ -289,9 +302,7 @@ export async function createProblem(
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
     }
-    await assertLlmProblemPermission(type, c, userId);
     assertLlmLimitsWithinDefault(input.llm);
-    await assertLlmModelsValid(input.llm);
     const runtime = input.runtime_config;
     if (
       !runtime || isOiRuntimeConfig(runtime) ||
@@ -306,121 +317,71 @@ export async function createProblem(
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
 
-  // NOJ-102：创建权限按题目类型细粒度强制执行。
-  // admin:full_access 通配放行；普通用户需 problem:create（U 型）/
-  // problem:create_p（P 型）。无 Context 的 CLI 场景保持旧回退。
-  if (type === "P") {
-    if (c) {
-      await assertPermission(c, "problem:create_p");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可创建管理题");
-    }
-  } else {
-    if (c) {
-      await assertPermission(c, "problem:create");
-    } else if (
-      userRole !== undefined && userRole !== "admin" && userRole !== "user"
-    ) {
-      throw new ForbiddenError("无权创建题目");
-    }
-  }
-
-  // 确定所有者
   const ownerId = userId ?? ROOT_USER_ID;
-
-  // 确定题号（同一 type 内自增，并发冲突时重试）
-  // 仅 admin 可指定 number；普通用户强制 MAX+1
-  const adminProvidedNumber = input.number !== undefined;
-  if (adminProvidedNumber) {
-    if (c) {
-      await assertPermission(c, "problem:write_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可指定题号");
-    }
+  if (!workspaceSlug) {
+    const [defaultDomain] = await db.select({ id: domains.id }).from(domains)
+      .where(eq(domains.slug, DEFAULT_DOMAIN_SLUG));
+    if (!defaultDomain) await ensureDefaultWorkspace();
   }
-  let number = input.number;
-  // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在题目行写入之前完成，
-  // 校验失败（400）不产生孤儿题目（syncProblemTags 内部仍重复校验兜底）。
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    await validateProblemTagIds(input.tag_ids, isObjective);
-  }
-
-  // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
-  const MAX_RETRIES = 3;
   const now = new Date().toISOString();
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (number === undefined) {
-      const result = await db
-        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-        .from(problems)
-        .where(eq(problems.type, type));
-      number = (result[0]?.max ?? 0) + 1;
-    }
-
-    try {
-      await db.insert(problems).values({
-        id,
-        title: input.title,
-        description: input.description,
-        samples: input.samples ?? [],
-        difficulty: input.difficulty ?? "medium",
-        support_package_storage_url: input.support_package_storage_url ?? null,
-        runtime_config: isObjective ? null : (input.runtime_config ?? null),
-        judge_type: isObjective
-          ? "dual"
-          : judgeTypeForRuntimeConfig(input.runtime_config),
-        is_objective: isObjective,
-        visibility: type === "P" ? "public" : (input.visibility ?? "private"),
-        submission_mode: submissionMode,
-        artifact_max_size_mb: input.artifact_max_size_mb ?? null,
-        llm_config: llmConfig,
-        number,
-        owner_id: ownerId,
-        type,
-        created_at: now,
-        updated_at: now,
-      });
-      break; // 插入成功，退出重试循环
-    } catch (err) {
-      if (attempt === MAX_RETRIES - 1) throw err;
-      // PostgreSQL UNIQUE 约束冲突错误码 23505
-      // postgres.js 在 err.code，PGlite 在 err.cause.code
-      const pgCode = err && typeof err === "object"
-        ? (err as Record<string, unknown>).code ||
-          ((err as Record<string, unknown>).cause as Record<string, unknown>)
-            ?.code
-        : undefined;
-      if (pgCode === "23505") {
-        // 管理员指定 number 冲突 → 直接报错，不自动重试
-        if (adminProvidedNumber) throw err;
-        number = undefined; // 重置 number，下一轮重新 MAX+1
-        continue;
-      }
-      throw err; // 非唯一冲突，直接抛出
-    }
-  }
-
-  // 每题一个共享草稿（Handbook §2.4/§6.2）：创建即建草稿，初值取自刚写入的
-  // 题目投影。此后**所有内容修改走草稿 + 显式发布**，投影只由发布服务更新。
-  try {
-    const draftContent = await deriveDraftContentFromProblem({
-      ...(await db.select().from(problems).where(eq(problems.id, id)).limit(1))[
-        0
-      ],
-    });
-    await saveProblemDraft(id, {
-      content: draftContent,
+  await db.transaction(async (tx) => {
+    const reservation = await prepareDomainProblemCreation(
+      workspaceSlug ?? DEFAULT_DOMAIN_SLUG,
+      ownerId,
+      input.number,
+      tx,
+    );
+    const [created] = await tx.insert(problems).values({
+      id,
+      title: input.title,
+      description: input.description,
+      samples: input.samples ?? [],
+      difficulty: input.difficulty ?? "medium",
+      support_package_storage_url: input.support_package_storage_url ??
+        null,
+      runtime_config: isObjective ? null : (input.runtime_config ?? null),
+      judge_type: isObjective
+        ? "dual"
+        : judgeTypeForRuntimeConfig(input.runtime_config),
+      is_objective: isObjective,
+      visibility: input.visibility ??
+        (workspaceSlug && workspaceSlug !== DEFAULT_DOMAIN_SLUG
+          ? "private"
+          : "public"),
+      submission_mode: submissionMode,
+      artifact_max_size_mb: input.artifact_max_size_mb ?? null,
+      llm_config: llmConfig,
+      number: reservation.number,
+      domain_id: reservation.domain.id,
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    }).returning();
+    const draftInput = {
+      content: initialDraft?.content ?? deriveDraftContentFromProblem(created),
       expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
       actorId: ownerId,
       context: c,
-    });
-  } catch (err) {
-    // 草稿建立失败不能留下"有题目没草稿"的半成品（发布入口依赖草稿 revision）
-    await db.delete(problems).where(eq(problems.id, id));
-    logger.error("createProblem: 草稿建立失败，已回滚题目行", { id, err });
-    throw err;
-  }
+    };
+    if (initialDraft) {
+      await saveProblemDraftWithObjects(id, {
+        ...draftInput,
+        objects: initialDraft.objects,
+      }, tx);
+    } else {
+      await saveProblemDraft(id, draftInput, tx);
+    }
+    if (input.tag_ids?.length) {
+      await syncProblemTags(id, input.tag_ids, isObjective, tx);
+    }
+    await bindCreatedDomainProblem(
+      created,
+      reservation.domain.id,
+      ownerId,
+      reservation.used,
+      tx,
+    );
+  });
 
   // 服务端派生支持包（题包导入）：登记对象并写入**草稿**文件引用，发布时随版本固定
   if (input.support_package_storage_url) {
@@ -440,76 +401,28 @@ export async function createProblem(
     }
   }
 
-  // 处理标签关联（客观题禁止算法标签，校验在 syncProblemTags 内）
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    await syncProblemTags(id, input.tag_ids, isObjective);
-  }
-
   await publishSearchIndexEvent("problem", id, "upsert");
 
   return getProblem(id);
 }
 
-/**
- * 把内容补丁合并进草稿内容（Handbook §2.3「内容字段只由发布服务写入投影」）。
- *
- * - `kind` 由目标题型决定（objective / oi / ai），补丁里没有的字段沿用草稿现值，
- *   草稿缺失时回退题目投影；
- * - 客观题小题不接受客户端任意注入：转为客观题时保留草稿内既有小题（旧
- *   `objective_questions` 表已删除，小题由客观题编辑接口写入草稿）；
- * - 题型专属字段按目标 kind 归一，避免 AI 字段残留在 OI 内容里。
- *
- * @throws {BadRequestError} 缺少目标类别必需的配置
- */
-export async function mergeProblemContentPatch(
-  problem: typeof problems.$inferSelect,
-  current: ProblemDraftContent,
-  kind: ProblemContentKind,
-  patch: Record<string, unknown>,
-): Promise<ProblemDraftContent> {
-  const base = {
-    kind,
-    title: (patch.title ??
-      current.title ?? problem.title) as string,
-    description: (patch.description ??
-      current.description ?? problem.description) as string,
-    samples: (patch.samples ??
-      current.samples ?? []) as ProblemDraftContent["samples"],
-  };
-
-  if (kind === "objective") {
-    const existing = (current as { questions?: unknown }).questions;
-    const questions = Array.isArray(existing) && current.kind === "objective"
-      ? existing
-      : ((await deriveDraftContentFromProblem({
-        ...problem,
-        is_objective: true,
-        judge_type: "dual",
-      })) as { questions?: unknown }).questions ?? [];
-    return { ...base, questions };
-  }
-
-  const read = (key: string, fallback: unknown) =>
-    patch[key] ?? (current as Record<string, unknown>)[key] ?? fallback;
-  const runtimeConfig = read("runtime_config", problem.runtime_config);
-
-  // 草稿允许暂时不完整（Handbook §2.4）：缺失运行配置不在这里报错，
-  // 由发布预检（preflightProblemDraft）判定是否可发布。
-  if (kind === "oi") {
-    return { ...base, runtime_config: runtimeConfig };
-  }
-
-  return {
-    ...base,
-    submission_mode: read("submission_mode", problem.submission_mode),
-    runtime_config: runtimeConfig,
-    template_content: read("template_content", problem.template_content ?? ""),
-    artifact_max_size_mb: read(
-      "artifact_max_size_mb",
-      problem.artifact_max_size_mb,
-    ),
-    llm_config: read("llm_config", problem.llm_config),
-  };
+/** 显式使用域创建源题；复用运行配置校验、共享草稿和不可变版本流程。 */
+export function createDomainProblem(
+  slug: string,
+  input: CreateProblemInput,
+  actorId: string,
+  context?: Context,
+  initialDraft?: { content: ProblemDraftContent; objects: DraftObjectRef[] },
+) {
+  return createProblem(
+    input,
+    actorId,
+    undefined,
+    context,
+    false,
+    slug,
+    initialDraft,
+  );
 }
 
 /**
@@ -517,9 +430,8 @@ export async function mergeProblemContentPatch(
  *
  * 权限规则：
  * - admin 可更新任意题目
- * - U 型：owner 可更新
- * - P 型：仅 admin 可更新
- * - 禁止修改 type 和 number 字段
+ * - 编辑本人资源与全域资源使用源域角色能力
+ * - 拒绝旧分类字段，题号创建后固定
  *
  * 内容与管理的分工（Handbook §2.3/§6.2）：
  * - **内容**（题面、评测配置、模板、LLM、客观题小题）写入共享草稿；已发布题目的
@@ -581,18 +493,16 @@ export async function updateProblem(
     if (!["public", "private"].includes(input.visibility)) {
       throw new BadRequestError("visibility 必须为 public/private");
     }
-    if (problem.type === "P" && input.visibility !== "public") {
-      throw new BadRequestError("P 型题目必须公开");
-    }
-    if (
-      problem.visibility === "public" && input.visibility === "private" &&
-      !(c
-        ? await checkPermission(c, "problem:write_any")
-        : userRole === "admin")
-    ) throw new ForbiddenError("仅管理员可将题目设为私有");
   }
 
   await assertProblemEditPermission(c, problem, userId, userRole);
+  const [sourceDomain] = await db.select({ slug: domains.slug }).from(domains)
+    .where(eq(domains.id, problem.domain_id ?? DEFAULT_DOMAIN_ID));
+  await loadWorkspace(
+    sourceDomain.slug,
+    c?.var.userId ?? userId ?? ROOT_USER_ID,
+    { write: true },
+  );
 
   // 内容事实源：已发布题目的草稿（可能领先投影），未发布题目回退投影。
   // 校验基线统一取草稿，避免用"最新版投影"判断"敏感字段是否被改动"而误拒/误放。
@@ -702,8 +612,6 @@ export async function updateProblem(
       );
     }
 
-    // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
-    // （上方权限检查已保证）。
     // 更新以库中已有配置为基线，未修改的敏感字段不重复要求权限。
     await assertSensitiveFieldPermissions(
       c,
@@ -726,7 +634,7 @@ export async function updateProblem(
     throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
   }
 
-  // 配置 LLM 时校验类型对应权限，并保持 evaluator 网络开启。
+  // LLM 配置变更仍校验预算和 evaluator 网络，不按旧 P/U 分类授权。
   let llmConfig: LlmConfig | null | undefined;
   if (input.llm !== undefined) {
     if (input.llm === null) {
@@ -741,13 +649,10 @@ export async function updateProblem(
       if (!isValidLlmConfig(input.llm)) {
         throw new BadRequestError("llm 配置格式非法");
       }
-      await assertLlmProblemPermission(problem.type, c, userId);
       if (isObjective) {
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
       assertLlmLimitsWithinDefault(input.llm);
-      await assertLlmModelsValid(input.llm);
-      await assertLlmModelsValid(input.llm);
       const effectiveRuntime = input.runtime_config ?? baselineRuntime;
       if (
         !effectiveRuntime || isOiRuntimeConfig(effectiveRuntime) ||
@@ -782,8 +687,8 @@ export async function updateProblem(
     }
   }
 
-  // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
-  delete (input as Record<string, unknown>)["type"];
+  if ("type" in input) throw new BadRequestError("题目已取消 P/U 分类");
+  // 数字题号创建后固定，不影响不可变版本。
   delete (input as Record<string, unknown>)["number"];
 
   // ── 首次发布后固定题型与提交模式（Handbook §2.3）─────────────────────────
@@ -945,6 +850,57 @@ export async function updateProblem(
       if (applied.length === 0) {
         throw new ConflictError("题目已被修改，请重新加载后保存");
       }
+      if (
+        input.visibility !== undefined &&
+        input.visibility !== problem.visibility
+      ) {
+        const changedBindings = await tx.update(domainProblemBindings).set({
+          visibility: input.visibility === "public" ? "public" : "members",
+          revision: sql`${domainProblemBindings.revision} + 1`,
+          updated_at: new Date().toISOString(),
+        }).where(and(
+          eq(domainProblemBindings.problem_id, id),
+          eq(
+            domainProblemBindings.domain_id,
+            problem.domain_id ?? DEFAULT_DOMAIN_ID,
+          ),
+          eq(domainProblemBindings.kind, "owned"),
+        )).returning();
+        const actorId = c?.var.userId ?? userId ?? ROOT_USER_ID;
+        for (const binding of changedBindings) {
+          const reason = `修改本域源题展示范围：${binding.visibility}`;
+          await tx.insert(problemBindingHistory).values({
+            id: crypto.randomUUID(),
+            binding_id: binding.id,
+            problem_id: id,
+            revision: binding.revision,
+            effective_version_mode: binding.effective_version_mode,
+            required_version_id: binding.required_version_id,
+            answer_version_id: binding.required_version_id ??
+              problem.latest_version_id,
+            disabled_at: binding.disabled_at,
+            actor_id: actorId,
+            reason,
+            created_at: binding.updated_at,
+          });
+          await workspaceAudit(
+            tx,
+            actorId,
+            binding.domain_id,
+            "domain.update",
+            {
+              operation: "problem.binding",
+              binding_id: binding.id,
+              problem_id: id,
+              revision: binding.revision,
+              reason,
+              visibility: binding.visibility,
+              disabled_at: binding.disabled_at,
+            },
+          );
+        }
+        await recordProblemEducationChange(tx, id);
+      }
       if (validatedTagIds !== undefined) {
         await tx.delete(problemTags).where(eq(problemTags.problem_id, id));
         if (validatedTagIds.length > 0) {
@@ -990,7 +946,7 @@ export async function updateProblem(
         {
           action: "problems.runtime_config_changed",
           title: problem.title,
-          display_id: `${problem.type}${problem.number}`,
+          display_id: String(problem.number),
           old_has_runtime_config: oldHas,
           new_has_runtime_config: newHas,
         },
@@ -1009,8 +965,7 @@ export async function updateProblem(
  *
  * 权限规则：
  * - admin 可删除任意题目
- * - U 型：owner 可删除
- * - P 型：仅 admin 可删除
+ * - 物理删除只允许源域治理角色，保留历史资源由引用守卫保护
  *
  * @throws {NotFoundError} 题目不存在
  * @throws {ForbiddenError} 权限不足
@@ -1018,7 +973,7 @@ export async function updateProblem(
 export async function deleteProblem(
   id: string,
   userId?: string,
-  userRole?: string,
+  _userRole?: string,
   c?: Context,
 ): Promise<void> {
   const db = getDb();
@@ -1035,26 +990,18 @@ export async function deleteProblem(
 
   const problem = existing[0];
 
-  // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
-  if (problem.type === "P") {
-    if (c) {
-      await assertPermission(c, "problem:delete_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可删除管理题");
-    }
-  } else if (problem.owner_id === (c?.var.userId ?? userId)) {
-    // NOJ-102：U 型 owner 也必须持有 problem:delete_own。
-    if (c) {
-      await assertPermission(c, "problem:delete_own");
-    }
-  } else {
-    // U 型：非 owner 需 delete_any（管理员）
-    if (c) {
-      await assertPermission(c, "problem:delete_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("无权删除此题目");
-    }
-  }
+  const [sourceDomain] = problem.domain_id
+    ? await db.select({ slug: domains.slug }).from(domains).where(
+      eq(domains.id, problem.domain_id),
+    )
+    : [{ slug: DEFAULT_DOMAIN_SLUG }];
+  if (!sourceDomain) throw new NotFoundError("源题工作空间不存在");
+  const workspace = await loadWorkspace(
+    sourceDomain.slug,
+    c?.var.userId ?? userId ?? ROOT_USER_ID,
+    { write: true },
+  );
+  assertWorkspacePermission(workspace.context, "problem:delete_any");
 
   // 被竞赛引用禁删（应用层保护，竞赛题关联 future-proof）
   const [contestRef] = await db
@@ -1089,6 +1036,11 @@ export async function deleteProblem(
 
   await db.transaction(async (tx) => {
     // 排他题目锁与尝试创建互斥；检查与全部关联清理必须原子提交。
+    if (problem.domain_id) {
+      await tx.select({ id: domains.id }).from(domains).where(
+        eq(domains.id, problem.domain_id),
+      ).for("update");
+    }
     await tx.select({ id: problems.id }).from(problems).where(
       eq(problems.id, id),
     ).for("update");
@@ -1119,20 +1071,28 @@ export async function deleteProblem(
         "SOURCE_JUDGING",
       );
     }
+    await assertProblemHasNoRetainedReferences(id, tx);
+    // 终态自测不保留题库引用；先释放其绑定，再清理源题。
+    await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
+    await tx.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.problem_id, id),
+    );
+    const bindings = await tx.delete(domainProblemBindings).where(
+      eq(domainProblemBindings.problem_id, id),
+    ).returning();
+    if (problem.domain_id && bindings.length) {
+      await tx.update(domainResourceCounters).set({
+        used: sql`${domainResourceCounters.used} - ${bindings.length}`,
+      }).where(
+        and(
+          eq(domainResourceCounters.domain_id, problem.domain_id),
+          eq(domainResourceCounters.resource, "problems"),
+        ),
+      );
+    }
     // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
     // 评测尝试/分版本判定随提交级联删除）
     await tx.delete(submissions).where(eq(submissions.problem_id, id));
-
-    // 清理自测记录。
-    //
-    // 2026-09-21 修复：`self_tests.problem_id → problems.id` 是 `ON DELETE no action`
-    // （drizzle/0042 + schema-ddl.ts），但本函数从未清理 self_tests。只要该题
-    // 被任何人自测过一次，`DELETE FROM problems` 就会触发
-    //   `update or delete on table "problems" violates foreign key constraint
-    //    "self_tests_problem_id_fkey" on table "self_tests"`
-    // → 全局 onError 转成 500，题目永久无法删除（运维死锁），且报错信息对
-    // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
-    await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
 
     // 客观题提交：`paper_id` 有 CASCADE，但其 `submitted_version_id` 复合外键
     // （NO ACTION）会阻止随后删除版本行 → 必须先删提交。
@@ -1181,13 +1141,13 @@ export async function deleteProblem(
     }
   }
 
-  // 审计日志：删除成功后才记录（display_id 由 type+number 派生）
+  // 审计日志：删除成功后才记录（display_id 为域内数字题号）
   await logAudit(
     "problems.delete",
     {
       action: "problems.delete",
       title: problem.title,
-      display_id: `${problem.type}${problem.number}`,
+      display_id: String(problem.number),
     },
     { type: "problem", id },
   );

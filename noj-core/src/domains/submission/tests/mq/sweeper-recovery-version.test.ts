@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * pending 恢复的版本来源测试（Handbook §5.4、§6.5）。
  *
@@ -8,6 +10,7 @@
  * 同时覆盖产物提交：产物对象保留到提交显式删除，pending 产物提交必须被**恢复**
  * （重新签发下载地址后入队），而不是"超时即删除对象并标记 error"。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -32,6 +35,8 @@ import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });
 setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
+
+await resetDbForTest();
 
 const db = getDb();
 const ts = Date.now();
@@ -86,11 +91,11 @@ async function seedProblem(
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `恢复测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number,
     owner_id: userId,
     runtime_config: projectionConfig,
@@ -168,6 +173,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-ver-${ts}`;
     const attemptId = `tst-sweep-att-ver-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -243,6 +249,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-art-${ts}`;
     const attemptId = `tst-sweep-att-art-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -308,6 +315,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-llm-miss-${ts}`;
     const attemptId = `tst-sweep-att-llm-miss-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -378,6 +386,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-llm-frozen-${ts}`;
     const attemptId = `tst-sweep-att-llm-frozen-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -401,6 +410,7 @@ Deno.test({
         problem_version_id: versionId,
         runtime_config: versionConfig,
         llm_execution: {
+          domain_id: DEFAULT_DOMAIN_ID,
           provider_id: "snap-prov",
           model: "snap-model",
           max_calls: 7,
@@ -429,6 +439,7 @@ Deno.test({
                 cost_per_1k_tokens: 0,
                 api_key_masked: "sk-****",
                 enabled: true,
+                domain_id: "00000000-0000-4000-8000-000000000001",
                 created_at: now,
                 updated_at: now,
               },
@@ -481,6 +492,7 @@ Deno.test({
     );
     const submissionId = `tst-sweep-sub-legacy-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,

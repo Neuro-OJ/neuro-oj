@@ -139,8 +139,10 @@ router.get("/", authMiddleware, async (c) => {
  * 一旦 `problem_id` 与文件流都就绪就立即 resolve（不等 busboy `close`），
  * 由服务层马上消费文件流，从而避免 busboy 因文件缓冲满而暂停输入导致死锁。
  */
-function parseArtifactMultipart(
+export function parseArtifactMultipart(
   c: Context,
+  problemField: "problem_id" | "problem_ref" = "problem_id",
+  pathProblemReference?: string,
 ): Promise<{
   problem_id: string;
   file_name: string;
@@ -154,7 +156,7 @@ function parseArtifactMultipart(
       return;
     }
     const bb = busboy({ headers: { "content-type": contentType } });
-    let problemId = "";
+    let problemId = pathProblemReference ?? "";
     let fileName = "";
     let versionId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
@@ -180,7 +182,7 @@ function parseArtifactMultipart(
     }
 
     bb.on("field", (name: string, val: string) => {
-      if (name === "problem_id") problemId = val;
+      if (name === problemField && !pathProblemReference) problemId = val;
       if (name === "version_id") versionId = val;
       maybeResolve();
     });
@@ -362,7 +364,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   let data = result;
   if (result.contest_id) {
     const isAdmin = viewerId
-      ? await checkPermission(c, "submission:read_all")
+      ? await checkPermission(c, "admin:full_access")
       : false;
     const contestAccess = await verifyContestAccess(
       viewerId,
@@ -378,6 +380,8 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
         contest: {
           running: contestAccess.running,
           participant: contestAccess.allowed,
+          type: contestAccess.type,
+          organizer: contestAccess.organizer,
         },
       },
     ) as unknown as typeof result;

@@ -45,6 +45,7 @@ import {
 } from "../../submission/index.ts";
 import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
+import { resolveDefaultContestAccess } from "../services/default-access.ts";
 import {
   enforceContestRegisterRateLimit,
   enforceContestSubmissionRateLimit,
@@ -52,6 +53,12 @@ import {
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
+for (const path of ["/:id", "/:id/*"]) {
+  contests.use(path, optionalAuthMiddleware, async (c, next) => {
+    await resolveDefaultContestAccess(c.req.param("id")!, c.var.userId ?? null);
+    await next();
+  });
+}
 
 /**
  * 解析竞赛 artifact 提交的 multipart/form-data 请求。
@@ -166,7 +173,12 @@ contests.get("/", async (c) => {
   const type = typeQuery && isValidContestType(typeQuery)
     ? typeQuery
     : undefined;
-  const result = await listContests({ page, perPage, type });
+  const result = await listContests({
+    page,
+    perPage,
+    type,
+    defaultDomainOnly: true,
+  });
   return c.json({
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
@@ -181,7 +193,7 @@ contests.get("/", async (c) => {
 contests.post("/", authMiddleware, async (c) => {
   await assertPermission(c, "contest:create");
   const body = await parseJsonBody<CreateContestInput>(c);
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = await checkPermission(c, "contest:manage");
   const data = await createContest(body, c.var.userId as string, isAdmin);
   return c.json({ data }, 201);
 });
@@ -223,7 +235,7 @@ contests.get("/:id/problems", authMiddleware, async (c) => {
   await requireContestAccess(
     contestId,
     userId,
-    await checkPermission(c, "submission:read_all"),
+    await checkPermission(c, "contest:manage"),
   );
   const data = await getContestProblems(contestId, userId);
   return c.json({ data });
@@ -239,7 +251,7 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
   await requireContestAccess(
     contestId,
     userId,
-    await checkPermission(c, "submission:read_all"),
+    await checkPermission(c, "contest:manage"),
   );
   const problem = (await getContestProblems(contestId, userId)).find(
     (item) => item.label === c.req.param("label"),
@@ -258,7 +270,7 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = await checkPermission(c, "contest:manage");
   if (
     !contest.is_public && !isAdmin &&
     !contest.is_registered
@@ -302,7 +314,7 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
 contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = await checkPermission(c, "contest:manage");
   if (
     !contest.is_public && !isAdmin &&
     !contest.is_registered
@@ -347,7 +359,7 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   ) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = await checkPermission(c, "contest:manage");
   if (
     !await isParticipant(contestId, userId) && !isAdmin
   ) {
@@ -454,7 +466,7 @@ contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
   // 私有竞赛门禁：与 GET /:id 一致，仅 admin/参赛者可见（创建者通常为 admin）
   const contest = await getContest(contestId, userId);
   if (
-    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_public && !await checkPermission(c, "contest:manage") &&
     !contest.is_registered
   ) {
     throw new NotFoundError("竞赛不存在");
@@ -513,7 +525,7 @@ contests.get("/:id", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const data = await getContest(contestId, c.var.userId);
   if (
-    !data.is_public && !await checkPermission(c, "submission:read_all") &&
+    !data.is_public && !await checkPermission(c, "contest:manage") &&
     !data.is_registered
   ) {
     throw new NotFoundError("竞赛不存在");

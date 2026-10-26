@@ -7,6 +7,15 @@ import IORedis from "ioredis";
  * 本地 Redis 客户端接口（避免 ioredis 在 Deno 下类型解析问题）。
  */
 export interface RedisClient {
+  /** Redis 进程身份用于发现重启后恢复的旧快照。 */
+  serverId?(): Promise<string>;
+  /** 治理基线所需扫描/TTL；运行时适配器提供，普通单测可省略。 */
+  scan?(
+    cursor: string,
+    pattern: string,
+    count: number,
+  ): Promise<[string, string[]]>;
+  pttl?(key: string): Promise<number>;
   ping(): Promise<string>;
   incr(key: string): Promise<number>;
   incrby(key: string, amount: number): Promise<number>;
@@ -35,6 +44,16 @@ export function createRedis(redisUrl: string): RedisClient {
     lazyConnect: false,
   });
   return {
+    serverId: async () => {
+      const info: string = await redis.info("server");
+      const id = info.split("\n").find((line) => line.startsWith("run_id:"))
+        ?.slice(7).trim();
+      if (!id) throw new Error("redis_server_identity_unavailable");
+      return id;
+    },
+    scan: (cursor, pattern, count) =>
+      redis.scan(cursor, "MATCH", pattern, "COUNT", count),
+    pttl: (key) => redis.pttl(key),
     ping: () => redis.ping(),
     incr: (key) => redis.incr(key),
     incrby: (key, amount) => redis.incrby(key, amount),

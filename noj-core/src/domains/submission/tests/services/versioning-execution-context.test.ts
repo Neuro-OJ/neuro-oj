@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 提交/评测执行链回归（tracking #1/#6/#10/#26/#29/#48）。
  *
@@ -9,9 +10,12 @@
  * - 非法评分不得被改写成正式 0/满分（平台错误保留已有正式判定）；
  * - 新增/删除提交递增题目、竞赛与 **global** 作用域 revision。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   evaluationAttempts,
   llmTokenRevocations,
@@ -115,6 +119,7 @@ function stubLlmGatewayProvider(enabled: boolean): () => void {
         JSON.stringify({
           data: {
             id: "prov-default",
+            domain_id: "00000000-0000-4000-8000-000000000001",
             name: "test",
             base_url: "http://provider.test",
             cost_per_1k_tokens: 0,
@@ -199,12 +204,13 @@ async function seedTwoVersions(
   v2: VersionSpec,
 ): Promise<void> {
   const db = getDb();
+  await ensureDefaultWorkspace();
   const v2Content = aiContent(v2);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -239,6 +245,7 @@ async function seedTwoVersions(
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
 }
 
 async function attemptsOf(submissionId: string) {
@@ -908,10 +915,10 @@ Deno.test("attempt sequence: 迁移前较大的源 rejudge_seq 不回退（#27�
   const problemId = "ec-p9";
   const versionId = "ec-p9-v1";
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number: 985009,
     owner_id: "0",
     difficulty: "easy",
@@ -955,6 +962,7 @@ Deno.test("attempt sequence: 迁移前较大的源 rejudge_seq 不回退（#27�
 
   // 旧协议迁移行：rejudge_seq=5 且没有任何尝试记录
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id: "ec-s9",
     user_id: "0",
     problem_id: problemId,
@@ -1038,6 +1046,7 @@ Deno.test("attempt lifecycle: superseded 后吊销旧尝试 token；传 executor
     },
   );
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ec-p10"),
     id: "ec-s10",
     user_id: "0",
     problem_id: "ec-p10",
@@ -1394,6 +1403,7 @@ Deno.test("projection revision: 新增与删除提交递增题目与 global revi
 
   // 删除路径：直接插入一条无尝试的终态提交再删除
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ec-p6"),
     id: "ec-s6",
     user_id: "0",
     problem_id: "ec-p6",

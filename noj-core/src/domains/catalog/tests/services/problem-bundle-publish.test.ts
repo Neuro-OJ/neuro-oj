@@ -9,7 +9,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import {
@@ -93,7 +93,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),
     );
-    await db.delete(problems).where(eq(problems.id, created.id));
+    // 已发布资源保留至测试事务回滚，使用生产删除接口不能清除版本历史。
   },
 });
 
@@ -108,11 +108,10 @@ Deno.test({
     const explicitKey = crypto.randomUUID();
     const bundle = zipSync({
       "problem.json": encoder.encode(JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: `导入客观题 ${ts}`,
         description: "套卷",
         is_objective: true,
-        type: "U",
         difficulty: "easy",
         tags: [],
       })),
@@ -152,6 +151,8 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),
     );
-    await db.delete(problems).where(eq(problems.id, created.id));
+    // 已发布资源保留至测试事务回滚。
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

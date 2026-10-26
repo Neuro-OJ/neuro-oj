@@ -1,8 +1,87 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertFalse } from "jsr:@std/assert@^1";
 import {
   applySubmissionProjection,
   type ProjectionCtx,
 } from "../../services/submissions/submission-projection.ts";
+
+Deno.test("赛制裁剪：OI 中性回执，IOI 允许元数据，严格和 ACM 仅汇总", () => {
+  const input = {
+    id: "s",
+    problem_id: "p",
+    user_id: "student",
+    code: "own code",
+    status: "finished",
+    score: 8000,
+    verdict: "WA",
+    time_ms: 20,
+    progress: { score: 8000 },
+    attempts: [{ score: 8000 }],
+    arbitrary: "secret",
+    output: "secret",
+    result: {
+      score: 8000,
+      verdict: "WA",
+      status: "finished",
+      time_ms: 20,
+      memory_kb: 30,
+      output: "secret",
+      details: {
+        unknown: "secret",
+        oi: {
+          verdict: "WA",
+          score: 8000,
+          compile_error: "compiler diagnosis",
+          input: "secret",
+          answer: "secret",
+          data_path: "secret",
+          subtasks: [{ id: "group-1", score: 8000, raw: "secret" }],
+          cases: [{
+            id: "case-1",
+            verdict: "WA",
+            score: 0,
+            time_ms: 20,
+            input: "secret",
+            expected: "secret",
+            output: "secret",
+          }],
+        },
+      },
+    },
+  };
+  for (const type of ["oi", "ioi", "ioi_strict", "acm"] as const) {
+    const projected = applySubmissionProjection(
+      input as Record<string, unknown>,
+      {
+        viewerId: "student",
+        isAdmin: false,
+        isOwner: true,
+        contest: { running: true, participant: true, type },
+      },
+    );
+    assertFalse(JSON.stringify(projected).includes("secret"));
+    assertEquals(projected.attempts, undefined);
+    assertEquals(projected.progress, undefined);
+    assertEquals(projected.code, "own code");
+    if (type === "oi") {
+      assertEquals(projected.status, "submitted");
+      assertEquals(projected.score, undefined);
+      assertEquals(projected.verdict, undefined);
+      assertEquals(projected.result, undefined);
+      assertEquals(projected.time_ms, undefined);
+    } else {
+      const result = projected.result as Record<string, unknown>;
+      const oi = (result.details as { oi: Record<string, unknown> }).oi;
+      assertEquals(result.score, 8000);
+      assertEquals(Array.isArray(oi.cases), type === "ioi");
+      assertEquals(Array.isArray(oi.subtasks), type === "ioi");
+      assertEquals(
+        oi.compile_error,
+        type === "acm" || type === "ioi" ? "compiler diagnosis" : undefined,
+      );
+    }
+  }
+  assertEquals(input.result.output, "secret");
+});
 
 function baseSubmission(): Record<string, unknown> {
   return {

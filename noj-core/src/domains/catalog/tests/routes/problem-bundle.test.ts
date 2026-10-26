@@ -7,7 +7,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
@@ -39,10 +39,9 @@ export function makeBundleZip(
   extraEntries: Record<string, string> = {},
 ): Uint8Array {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `导入测试题 ${ts}`,
     difficulty: "easy",
-    type: "U",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -100,10 +99,9 @@ function makeObjectiveZipBlob(
   ],
 ): Blob {
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     title: `客观题导入测试 ${ts}`,
     difficulty: "easy",
-    type: "U",
     is_objective: true,
     ...manifestOverrides,
   };
@@ -156,7 +154,7 @@ async function ensureUser(id: string): Promise<void> {
 }
 
 Deno.test({
-  name: "import-bundle: admin 导入 P 型新题成功（含评测包注册）",
+  name: "import-bundle: admin 导入 v2 新题成功（含评测包注册）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -166,7 +164,7 @@ Deno.test({
     const token = await createUserToken("admin");
 
     const formData = new FormData();
-    formData.append("file", makeZipBlob({ type: "P" }), "p1.zip");
+    formData.append("file", makeZipBlob({}), "p1.zip");
 
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
@@ -175,9 +173,13 @@ Deno.test({
     });
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.data.type, "P");
     assertEquals(body.data.title, `导入测试题 ${ts}`);
-    assertEquals(typeof body.data.support_package_storage_url, "string");
+    const draftObjects = await listDraftObjects(body.data.id);
+    assertEquals(
+      draftObjects.some((object) => object.role === "support_package"),
+      true,
+    );
+    assertEquals(body.data.support_package_storage_url, null);
 
     // 落库校验：command 默认值已注入
     const db = getDb();
@@ -230,7 +232,10 @@ Deno.test({
     const [row] = await db.select().from(problems).where(
       eq(problems.id, problemId),
     ).limit(1);
-    assertEquals(row.template_content, TEMPLATE_SKELETON);
+    assertEquals(row.template_content, null);
+    const importedDraft = await getProblemDraft(problemId);
+    assertEquals(importedDraft.content.template_content, TEMPLATE_SKELETON);
+    await publishImportedProblem(problemId, decodeJwt(token).sub!);
 
     // ③ 端点校验：编辑器实际拿到的内容
     const tplRes = await app.request(
@@ -288,7 +293,14 @@ Deno.test({
       `/api/v1/problems/${problemId}/template`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    assertEquals(goneRes.status, 404);
+    assertEquals(goneRes.status, 200);
+    assertEquals((await goneRes.json()).data.content, TEMPLATE_SKELETON);
+    await publishImportedProblem(problemId, decodeJwt(token).sub!);
+    const publishedGone = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(publishedGone.status, 404);
   },
 });
 
@@ -319,18 +331,19 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: admin 按 (type, number) 匹配更新既有题目（幂等 upsert）",
+  name: "import-bundle: admin 按默认域 number 匹配更新既有题目（幂等 upsert）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const db = getDb();
     const pid = `bundle-upsert-${ts}`;
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: pid,
       title: "旧标题",
       description: "旧题面",
@@ -350,10 +363,11 @@ Deno.test({
       },
       number: 70000 + (ts & 0x7fff),
       owner_id: OWNER_ID,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
+
+    await bindDefaultCatalogFixture(pid);
 
     const app = createApp();
     const token = await createUserToken("admin");
@@ -397,13 +411,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入含 number 的包被拒（400）",
+  name: "import-bundle: 默认域编辑者可指定域内 number",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -424,30 +439,24 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 400);
-    const body = (await res.json()) as { error?: string };
-    assertEquals(
-      body.error?.includes("仅管理员可指定 number"),
-      true,
-      "错误信息应说明 number 仅限管理员",
-    );
-
-    // 拒绝不得创建任何题目
+    assertEquals(res.status, 200);
+    // 指定题号只在默认域创建一题
     const after = await db.select({ count: sql<number>`COUNT(*)` }).from(
       problems,
     );
-    assertEquals(after[0].count, before[0].count);
+    assertEquals(Number(after[0].count), Number(before[0].count) + 1);
   },
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入默认 command 的 U 型题目放行",
+  name: "import-bundle: 默认域编辑者导入默认 command 题目放行",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -470,6 +479,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -504,13 +514,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入 P 型返回 403",
+  name: "import-bundle: 格式 2 携带旧 P 分类返回 400",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -522,7 +533,7 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 400);
   },
 });
 
@@ -570,7 +581,7 @@ Deno.test({
     const enc = new TextEncoder();
     const badZip = zipSync({
       "problem.json": enc.encode(
-        JSON.stringify({ format_version: 1, title: "x", runtime_config: {} }),
+        JSON.stringify({ format_version: 2, title: "x", runtime_config: {} }),
       ),
       "statement.md": enc.encode("# x"),
       "sub/evaluate.py": enc.encode("print('x')"),
@@ -884,7 +895,7 @@ Deno.test({
     const enc = new TextEncoder();
     const noQuestionsZip = zipSync({
       "problem.json": enc.encode(JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: "缺小题",
         is_objective: true,
       })),
@@ -935,14 +946,14 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: 普通用户可创建 U 型客观题套卷，但提供 number 被拒（400）",
+  name: "import-bundle: 默认域编辑者可创建客观题套卷并指定域内 number",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -968,7 +979,7 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData2,
     });
-    assertEquals(res2.status, 400);
+    assertEquals(res2.status, 200);
   },
 });
 
@@ -994,7 +1005,6 @@ Deno.test({
         title: "待上传题包",
         description: "占位题面",
         difficulty: "easy",
-        type: "P",
         visibility: "public",
         runtime_config: {
           evaluator: {
@@ -1020,7 +1030,7 @@ Deno.test({
 
     // ……缺少编辑基线仍是 428（乐观锁语义不变）
     const missing = new FormData();
-    missing.append("file", makeZipBlob({ type: "P" }), "target.zip");
+    missing.append("file", makeZipBlob(), "target.zip");
     missing.append("problem_id", problemId);
     const missingRes = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
@@ -1031,7 +1041,7 @@ Deno.test({
 
     // ……携带当前基线 → 写入该题草稿，不新建题目
     const formData = new FormData();
-    formData.append("file", makeZipBlob({ type: "P" }), "target.zip");
+    formData.append("file", makeZipBlob(), "target.zip");
     formData.append("problem_id", problemId);
     formData.append("expected_revision", String(revision));
     const res = await app.request("/api/v1/problems/import-bundle", {
@@ -1090,6 +1100,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -1138,7 +1149,6 @@ Deno.test({
     formData.append(
       "file",
       makeZipBlob({
-        type: "P",
         runtime_config: {
           evaluator: {
             image: "noj-evaluator-python",
@@ -1168,3 +1178,17 @@ Deno.test({
     assertEquals(res.status, 400);
   },
 });
+
+import {
+  bindDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";
+
+import {
+  getProblemDraft,
+  listDraftObjects,
+} from "../../services/versioning/draft.ts";
+import { publishImportedProblem } from "../../services/problems/problem-bundle.ts";
+import { decodeJwt } from "jose";

@@ -18,12 +18,18 @@ import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./domains/content-review/index.ts";
 import { startSearchIndexConsumer } from "./domains/search/index.ts";
+import { startEducationWorker } from "./domains/education/index.ts";
 import {
   ensureRootUser,
   sealExistingSiteAdminInitialization,
 } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
-import { getStorageProvider } from "./domains/system/index.ts";
+import { ensureDefaultWorkspace } from "./domains/workspace/index.ts";
+import { seedDomainLlmDefaults } from "./domains/gateway/index.ts";
+import {
+  getStorageProvider,
+  startDomainStorageReconciliation,
+} from "./domains/system/index.ts";
 import {
   getEmailConfigStatus,
   getSetting,
@@ -180,6 +186,7 @@ async function main() {
 
   // 初始化 RBAC 种子数据（幂等）
   await fatalStep("RBAC 种子数据初始化", () => ensureRbacSeeds());
+  await fatalStep("默认工作空间初始化", () => ensureDefaultWorkspace());
 
   await fatalStep("管理员初始化状态检查", sealExistingSiteAdminInitialization);
 
@@ -190,6 +197,7 @@ async function main() {
   // 初始化系统设置缓存（issue #99）
   // 从 system_settings 全量加载到内存 Map，失败时终止启动。
   await fatalStep("系统设置缓存初始化", () => initSystemSettings());
+  await fatalStep("默认域 LLM 配置初始化", () => seedDomainLlmDefaults());
 
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
@@ -316,6 +324,8 @@ async function main() {
 
   // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
   startSubmissionJobWorker();
+  const educationWorker = startEducationWorker();
+  const storageReconciliation = startDomainStorageReconciliation();
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();
@@ -340,6 +350,8 @@ async function main() {
 
     try {
       requestResultConsumerShutdown();
+      educationWorker.stop();
+      storageReconciliation.stop();
       // SSE 等长连接可能让 shutdown() 一直等待；加一个兜底超时，
       // 超时后继续关闭资源并退出，避免被 K8s SIGKILL 前卡死。
       await Promise.race([

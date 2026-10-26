@@ -4,6 +4,7 @@
  * 覆盖：管理员受理重测任务（幂等键必填）、任务详情与条目列表、重试生成关联新任务、
  * 用户升级任务受理、本人可读 / 他人 403 / 管理员可读任意。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -16,6 +17,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  bindPublishedProblemForTest,
   createUserToken,
   initRedisForTest,
   jsonRequest,
@@ -65,11 +67,11 @@ async function seedProblemAndSubmission(tag: string): Promise<{
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `任务路由题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 98000 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",
@@ -98,7 +100,10 @@ async function seedProblemAndSubmission(tag: string): Promise<{
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  const bindingId = await bindPublishedProblemForTest(problemId);
   await db.insert(submissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: bindingId,
     id: submissionId,
     user_id: userId,
     problem_id: problemId,

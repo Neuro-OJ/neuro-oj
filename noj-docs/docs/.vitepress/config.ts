@@ -130,6 +130,8 @@ export default withMermaid(defineConfig({
         {
           text: "平台功能",
           items: [
+            { text: "工作空间与域题库", link: "/features/workspaces" },
+            { text: "班级与作业", link: "/features/classroom-assignments" },
             { text: "竞赛模式", link: "/features/contests" },
             { text: "题单训练", link: "/features/trainings" },
             { text: "客观题套卷", link: "/features/objective" },
@@ -167,6 +169,8 @@ export default withMermaid(defineConfig({
         {
           text: "平台功能",
           items: [
+            { text: "工作空间与域题库", link: "/features/workspaces" },
+            { text: "班级与作业", link: "/features/classroom-assignments" },
             { text: "竞赛模式", link: "/features/contests" },
             { text: "题单训练", link: "/features/trainings" },
             { text: "客观题套卷", link: "/features/objective" },
@@ -280,6 +284,10 @@ export default withMermaid(defineConfig({
             {
               text: "生产部署 (noj-cli)",
               link: "/operators/production-deploy",
+            },
+            {
+              text: "工作空间部署与治理",
+              link: "/operators/workspace-deployment",
             },
             { text: "CLI 运维工具与命令", link: "/operators/cli" },
             {

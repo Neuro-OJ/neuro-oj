@@ -1,19 +1,17 @@
 <script setup lang="ts">
+import { defaultProblemLabel } from '~/utils/default-workspace';
 interface Props {
-  displayId: string
-  type: string
+  displayId: string;
+  type: string;
 }
 
-defineProps<Props>()
+defineProps<Props>();
 </script>
 
 <template>
   <span
-    class="font-mono text-xs font-semibold px-1.5 py-0.5 rounded"
-    :class="type === 'U'
-      ? 'bg-blue-100 text-blue-700'
-      : 'bg-purple-100 text-purple-700'"
+    class="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary"
   >
-    {{ displayId }}
+    {{ defaultProblemLabel(displayId) }}
   </span>
 </template>

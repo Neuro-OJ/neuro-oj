@@ -40,7 +40,7 @@
                         :label="t('auth.email')"
                         :placeholder="t('auth.emailPlaceholder')"
                         autocomplete="email"
-                        :disabled="loading"
+                        :disabled="loading || !!invitation"
                         :error="fieldErrors.email"
                         @focus="fieldErrors.email = ''"
                     >
@@ -127,32 +127,51 @@
 import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
 import { extractApiError } from "~/utils/apiError"
 import { submitRegistration } from "~/utils/registerFlow"
+import { workspaceInvitationToken, workspacePath } from "~/utils/workspace"
+import type { WorkspaceInvitationPreview } from "~/utils/workspace"
 
 definePageMeta({ layout: "auth" })
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuth()
+const { api } = useApi()
+const invitationToken = ref("")
+const invitation = ref<WorkspaceInvitationPreview | null>(null)
 const { t, locale } = useI18n()
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
 
 // issue #426：注册受限原因（空串表示可正常注册）
-const registerRestricted = ref("")
+const registerRestricted = ref("正在检查注册政策…")
 
 onMounted(async () => {
     try {
+        invitationToken.value = workspaceInvitationToken(route.hash) ?? ""
+        if (new URLSearchParams(route.hash.replace(/^#/, "")).has("invitation") && !invitationToken.value) throw new Error("邀请链接无效")
+        if (invitationToken.value) {
+            invitation.value = (await api.post<{ data: WorkspaceInvitationPreview }>("/api/v1/auth/domain-invitation", { token: invitationToken.value }, { silent: true })).data
+            form.email = invitation.value.email
+        }
         const [providers, status] = await Promise.all([
             auth.getOAuthProviders(),
             auth.getRegisterStatus(),
         ])
-        oauthProviders.value = providers
+        oauthProviders.value = invitationToken.value ? [] : providers
         registerRestricted.value = status.reason === "register_disabled"
             ? t('auth.registerDisabled')
             : status.reason === "email_unconfigured"
             ? t('auth.emailUnconfigured')
+            : status.reason === "admin_only"
+            ? "此实例由平台管理员开设账号"
+            : status.reason === "invitation_required" && !invitation.value?.can_register
+            ? "注册需要有效邀请"
+            : invitation.value && !invitation.value.can_register
+            ? "此邀请不能用于创建账号，请使用已有账号登录"
             : ""
-    } catch {
+    } catch (cause) {
         oauthProviders.value = []
+        registerRestricted.value = extractApiError(cause).message
     }
 })
 
@@ -252,7 +271,7 @@ async function handleRegister() {
         const result = await submitRegistration(
             {
                 register: (username, email, password, accepted) =>
-                    auth.register(username, email, password, accepted),
+                    auth.register(username, email, password, accepted, invitationToken.value || undefined),
                 login: (username, password) => auth.login(username, password),
             },
             form.username.trim(),
@@ -260,7 +279,11 @@ async function handleRegister() {
             form.password,
             acceptedLegal.value,
         )
-        if (result) router.replace(result.destination)
+        if (result) {
+            const destination = new URL(result.destination, window.location.origin)
+            if (invitation.value) destination.searchParams.set("redirect", workspacePath(invitation.value.domain_slug))
+            router.replace(destination.pathname + destination.search)
+        }
     } catch (e: unknown) {
         setError(extractApiError(e, locale.value).message)
     } finally {

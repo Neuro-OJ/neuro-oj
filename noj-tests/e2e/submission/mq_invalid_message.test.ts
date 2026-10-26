@@ -12,28 +12,38 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
   pollSubmission,
   registerUser,
   submitCode,
   TEST_PASSWORD,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
-const REDIS_CONTAINER = "noj-e2e-redis";
+const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis";
+const REDIS_DB = Deno.env.get("E2E_REDIS_DB") ?? "1";
 const QUEUE = "noj:judge:queue:medium";
 
 /**
  * 在 E2E Redis 容器内执行 redis-cli，失败时抛错（不静默跳过）。
  *
- * 固定 `-n 1`：E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
+ * 默认 `-n 1`：标准 E2E 栈的 REDIS_URL 指向 DB 1；隔离验收明确指定容器与 DB。
  * 不指定 DB 会把毒消息推入 DB 0，judge 永远消费不到，用例退化为空断言。
  */
 async function redisCli(
   ...args: string[]
 ): Promise<string> {
+  const password = Deno.env.get("E2E_REDIS_PASSWORD");
   const cmd = new Deno.Command("docker", {
-    args: ["exec", REDIS_CONTAINER, "redis-cli", "-n", "1", ...args],
+    args: [
+      "exec",
+      REDIS_CONTAINER,
+      "redis-cli",
+      ...(password ? ["-a", password] : []),
+      "-n",
+      REDIS_DB,
+      ...args,
+    ],
   });
   const { stdout, stderr, success } = await cmd.output();
   if (!success) {
@@ -58,9 +68,9 @@ e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", a
     `mq_${ts}@test.com`,
     TEST_PASSWORD,
   );
-  const problemId = await getProblemIdByNumber(1001);
-  // 必须提交能通过 1001 题 evaluator 的代码：`print(1)` 未定义 solve，
-  // 只得 0 分（finished），无法区分“正常评测”与“消费者未卡死”。
+  const problemId = await createCodingProblemFixture();
+  // 必须提交能通过加法 evaluator 的代码：`print(1)` 未定义 solve，
+  // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
   const submissionId = await submitCode(
     token,
     problemId,

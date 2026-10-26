@@ -16,7 +16,7 @@ import {
   parseJsonBody,
 } from "./../../../shared/http/request.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { assertPermission, checkPermission } from "./../../identity/index.ts";
+
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   addTrainingProblem,
@@ -50,10 +50,7 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const createdBy = c.req.query("created_by");
   if (createdBy) {
     const viewerId = c.get("userId") as string | undefined;
-    const isAdmin = viewerId
-      ? await checkPermission(c, "training:read_any")
-      : false;
-    const result = await listUserTrainings(createdBy, viewerId, isAdmin, {
+    const result = await listUserTrainings(createdBy, viewerId, false, {
       page,
       perPage,
     });
@@ -64,7 +61,10 @@ router.get("/", optionalAuthMiddleware, async (c) => {
       per_page: perPage,
     });
   }
-  const result = await listPublicTrainings({ page, perPage });
+  const result = await listPublicTrainings(
+    { page, perPage },
+    c.get("userId") ?? null,
+  );
   return c.json({
     data: result.data,
     total: result.total,
@@ -112,7 +112,6 @@ router.get("/containing", authMiddleware, async (c) => {
  * 响应 201 返回新建题单。
  */
 router.post("/", authMiddleware, async (c) => {
-  await assertPermission(c, "training:create");
   const body = await parseJsonBody<CreateTrainingInput>(c);
   assertObjectBody(body as unknown);
   const training = await createTraining(body, c.get("userId"));
@@ -127,13 +126,9 @@ router.post("/", authMiddleware, async (c) => {
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const viewerId = c.get("userId") as string | undefined;
-  const isAdmin = viewerId
-    ? await checkPermission(c, "training:read_any")
-    : false;
   const training = await getTraining(
     id,
     viewerId,
-    isAdmin,
   );
   return c.json({ data: training });
 });
@@ -148,29 +143,9 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
 router.put("/:id", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
-  const isAdmin = await checkPermission(c, "training:write_any");
-  const training = await getTraining(id, actorId, isAdmin);
-  const isOwner = training.created_by === actorId;
-  await assertPermission(
-    c,
-    isOwner ? "training:write_own" : "training:write_any",
-  );
-
   const body = await parseJsonBody<UpdateTrainingInput>(c);
   assertObjectBody(body as unknown);
-  const canPublish = await checkPermission(c, "training:publish");
-  const canPin = await checkPermission(c, "training:pin");
-  if (body.visibility === "public") {
-    await assertPermission(c, "training:publish");
-  }
-  if (body.is_pinned !== undefined) {
-    await assertPermission(c, "training:pin");
-  }
-  const updated = await updateTraining(id, body, actorId, {
-    isAdmin,
-    canPublish,
-    canPin,
-  });
+  const updated = await updateTraining(id, body, actorId);
   return c.json({ data: updated });
 });
 
@@ -183,53 +158,20 @@ router.put("/:id", authMiddleware, async (c) => {
 router.delete("/:id", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
-  const isAdmin = await checkPermission(c, "training:delete_any");
-  const training = await getTraining(id, actorId, isAdmin);
-  const isOwner = training.created_by === actorId;
-  await assertPermission(
-    c,
-    isOwner ? "training:delete_own" : "training:delete_any",
-  );
-  await deleteTraining(id, actorId, isAdmin);
+  await deleteTraining(id, actorId);
   return c.body(null, 204);
 });
 
-/**
- * 题单内题目列表（含 AC 状态）。
- * GET /api/v1/trainings/:id/problems
- * 可选认证；private 题单仅 owner/admin 可见。
- */
+/** 题单中的题目只读取 main 的当前授权作答版本。 */
 router.get("/:id/problems", optionalAuthMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
-  const viewerId = c.get("userId") as string | undefined;
-  const isAdmin = viewerId
-    ? await checkPermission(c, "training:read_any")
-    : false;
-  const data = await listTrainingProblems(
-    id,
-    viewerId,
-    isAdmin,
-  );
-  return c.json({ data });
+  return c.json({ data: await listTrainingProblems(id, c.get("userId")) });
 });
 
-/**
- * 向题单添加题目。
- * POST /api/v1/trainings/:id/problems
- * 需登录；owner 需 training:write_own，他人需 training:write_any。
- * body: { problem_id, position? }；响应 201 返回新增题目。
- */
+/** 将当前可访问的默认域题目加入题单。 */
 router.post("/:id/problems", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
-  const isAdmin = await checkPermission(c, "training:write_any");
-  const training = await getTraining(id, actorId, isAdmin);
-  await assertPermission(
-    c,
-    training.created_by === actorId
-      ? "training:write_own"
-      : "training:write_any",
-  );
   const body = await parseJsonBody<{ problem_id: string; position?: number }>(
     c,
   );
@@ -240,7 +182,6 @@ router.post("/:id/problems", authMiddleware, async (c) => {
     body.problem_id,
     body.position,
     actorId,
-    isAdmin,
   );
   return c.json({ data }, 201);
 });
@@ -254,14 +195,6 @@ router.post("/:id/problems", authMiddleware, async (c) => {
 router.put("/:id/problems", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
-  const isAdmin = await checkPermission(c, "training:write_any");
-  const training = await getTraining(id, actorId, isAdmin);
-  await assertPermission(
-    c,
-    training.created_by === actorId
-      ? "training:write_own"
-      : "training:write_any",
-  );
   const body = await parseJsonBody<{
     problems: { problem_id: string; position: number }[];
   }>(c);
@@ -273,7 +206,6 @@ router.put("/:id/problems", authMiddleware, async (c) => {
     id,
     body.problems,
     actorId,
-    isAdmin,
   );
   return c.json({ data });
 });
@@ -288,15 +220,7 @@ router.delete("/:id/problems/:problemId", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const problemId = c.req.param("problemId") as string;
   const actorId = c.get("userId");
-  const isAdmin = await checkPermission(c, "training:write_any");
-  const training = await getTraining(id, actorId, isAdmin);
-  await assertPermission(
-    c,
-    training.created_by === actorId
-      ? "training:write_own"
-      : "training:write_any",
-  );
-  await removeTrainingProblem(id, problemId, actorId, isAdmin);
+  await removeTrainingProblem(id, problemId, actorId);
   return c.body(null, 204);
 });
 

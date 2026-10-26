@@ -47,7 +47,6 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
       title: `[E2E] Artifact ${ts}`,
       description: "artifact submission e2e",
       difficulty: "easy",
-      type: "P",
       submission_mode: "artifact",
       runtime_config: {
         evaluator: {

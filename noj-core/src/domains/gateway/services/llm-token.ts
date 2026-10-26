@@ -6,12 +6,10 @@ import type { JudgeTaskLlm } from "../../submission/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import {
-  getLlmPlatformDefault,
-  getLlmProviderById,
-  LlmGatewayError,
-} from "./llm.ts";
+import { getLlmProviderById, LlmGatewayError } from "./llm.ts";
 import { resolveLlmLimits } from "./llm-limits.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
+import { getDomainLlmDefault } from "./domain-default.ts";
 import {
   isDefaultOnly,
   normalizeLlmModels,
@@ -24,6 +22,7 @@ const IV_LENGTH = 12;
 
 /** 一次尝试已解析的 LLM 执行配置；重新派发只续签凭据，不改 Provider/模型/单次预算。 */
 export interface FrozenLlmExecution {
+  domain_id: string;
   provider_id: string;
   /** 旧字段：等于 models[0].model，兼容无 models 的旧快照 */
   model: string;
@@ -48,19 +47,20 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
 }
 
 interface EvalTokenPayload {
+  domain_id: string;
   jti: string;
   /**
    * 本次评测的尝试 ID（Handbook §6.7）。
    *
    * 存在时 gateway 的单次额度键与吊销键按 attempt 维度隔离：
-   * `llm:attempt:<attempt_id>:calls|tokens|cost` 与
+   * `llm:domain:<domain_id>:attempt:<attempt_id>:calls|tokens|cost` 与
    * `llm:attempt:revoked:<attempt_id>`。同一提交的重测因此拿到独立预算，
    * 且旧尝试的吊销不会误杀新尝试。
    */
   attempt_id: string;
   /** 本次评测使用的题目版本（审计与排查用，不参与限额计算）。 */
   problem_version_id: string | null;
-  /** token 协议版本：`2` = 携带 attempt/version 维度。 */
+  /** token 协议版本：`3` 强制使用域及评测尝试。 */
   protocol_version: number;
   submission_id: string;
   problem_id: string;
@@ -75,8 +75,8 @@ interface EvalTokenPayload {
   max_tokens: number;
 }
 
-/** 当前 LLM eval_token 协议版本（`2` = attempt 维度额度与吊销）。 */
-export const LLM_TOKEN_PROTOCOL_VERSION = 2;
+/** 当前 LLM eval_token 协议版本（`3` = 使用域与 attempt 维度）。 */
+export const LLM_TOKEN_PROTOCOL_VERSION = 3;
 
 /** 使用 NOJ_LLM_SERVICE_TOKEN 签发 AEAD eval_token（base64url）。 */
 export async function mintEvalToken(
@@ -103,7 +103,7 @@ export async function mintEvalToken(
 /**
  * 为一次提交构造 JudgeTask.llm 字段。
  *
- * @param llmConfig 题目声明的 LLM 能力与预算（Provider / 模型由平台默认决定）
+ * @param llmConfig 题目声明的 LLM 能力与预算（Provider / 模型由使用域决定）
  * @param submissionId 提交 ID
  * @param problemId 题目 ID
  * @param userId 提交用户 ID
@@ -117,12 +117,19 @@ export async function buildJudgeTaskLlm(
   userId: string,
   runtimeConfig: RuntimeConfig,
   scope: {
+    domainId?: string;
     attemptId: string;
     problemVersionId?: string | null;
     frozen?: FrozenLlmExecution;
   },
 ): Promise<JudgeTaskLlm> {
-  // 解析本次评测的 Provider 与模型：重派使用冻结快照，首次解析别名
+  const domainId = scope.domainId ?? DEFAULT_DOMAIN_ID;
+  if (scope.frozen && scope.frozen.domain_id !== domainId) {
+    throw new BadRequestError(
+      "冻结的 LLM 配置不属于使用域",
+      "LLM_DOMAIN_MISMATCH",
+    );
+  }
   const aliases = normalizeLlmModels(llmConfig);
   let resolved: ResolvedLlmModels;
   if (scope.frozen) {
@@ -132,28 +139,29 @@ export async function buildJudgeTaskLlm(
         [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: scope.frozen.model }],
     };
   } else if (aliases.length === 1 && aliases[0] === LLM_DEFAULT_MODEL_ALIAS) {
-    const platform = getLlmPlatformDefault();
-    if (!platform) {
+    const selected = await getDomainLlmDefault(domainId);
+    if (!selected) {
       throw new BadRequestError(
-        "平台未配置默认 LLM Provider / 模型，无法评测 LLM 题",
+        "当前工作空间未配置 LLM Provider / 模型，无法评测 LLM 题",
+        "DOMAIN_LLM_NOT_CONFIGURED",
       );
     }
     resolved = {
-      provider_id: platform.provider_id,
-      models: [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: platform.model }],
+      provider_id: selected.provider_id,
+      models: [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: selected.model }],
     };
   } else {
-    resolved = await resolveLlmModels(aliases);
+    resolved = await resolveLlmModels(aliases, domainId);
   }
   const defaultOnly = isDefaultOnly(resolved.models);
   const providerMissing = defaultOnly
-    ? "平台默认 LLM Provider 不存在或已停用"
+    ? "当前工作空间默认 LLM Provider 不存在或已停用"
     : "题目所用模型别名对应的 LLM Provider 不存在或已停用";
   let provider;
   try {
-    provider = await getLlmProviderById(resolved.provider_id);
+    provider = await getLlmProviderById(resolved.provider_id, domainId);
   } catch (e) {
-    // provider_not_found → 400（平台配置指向了不存在的 Provider）；
+    // provider_not_found → 400（使用域配置指向了不存在的 Provider）；
     // 其余（gateway 不可达 / service token 缺失）原样上抛，按 5xx 处理，
     // 避免把服务端故障伪装成客户端错误。
     if (e instanceof LlmGatewayError && e.code === "provider_not_found") {
@@ -161,7 +169,7 @@ export async function buildJudgeTaskLlm(
     }
     throw e;
   }
-  if (!provider.enabled) {
+  if (!provider.enabled || provider.domain_id !== domainId) {
     throw new BadRequestError(providerMissing);
   }
   // 仅 default 时保持旧形态：allowed_models 为真实模型名且无 model_map
@@ -179,6 +187,7 @@ export async function buildJudgeTaskLlm(
   const now = Math.floor(Date.now() / 1000);
   const limits = scope.frozen ?? resolveLlmLimits(llmConfig);
   const token = await mintEvalToken({
+    domain_id: domainId,
     jti: crypto.randomUUID(),
     attempt_id: scope.attemptId,
     problem_version_id: scope.problemVersionId ?? null,

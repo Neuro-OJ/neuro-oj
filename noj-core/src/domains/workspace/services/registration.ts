@@ -1,0 +1,53 @@
+import { eq } from "drizzle-orm";
+import type { Executor } from "../../../shared/db/executor.ts";
+import { domains } from "../../../shared/db/schema.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
+import { ForbiddenError } from "../../../shared/base/errors.ts";
+import { getInstanceAccessPolicy } from "./instance.ts";
+import {
+  assertInvitationAccountRegistration,
+  assertInvitationRegistrationAllowed,
+  consumeDomainInvitation,
+} from "./invitations.ts";
+import { addDomainMember } from "./members.ts";
+import { ensureDefaultWorkspace } from "./domains.ts";
+
+/** 在创建账号前检查实例注册政策；域邀请不能越过管理员开户政策。 */
+export function assertInstanceRegistration(invitationToken?: string) {
+  const policy = getInstanceAccessPolicy();
+  if (
+    invitationToken !== undefined &&
+    (typeof invitationToken !== "string" ||
+      !/^[0-9a-f-]{72}$/.test(invitationToken))
+  ) throw new ForbiddenError("注册邀请无效", "REGISTER_INVITATION_INVALID");
+  assertInvitationRegistrationAllowed(
+    policy.registration_mode,
+    true, // 签发者是否获准邀请新账号，在注册事务内检查。
+    !!invitationToken,
+  );
+}
+
+/** 新账号的成员关系与账号在同一事务保存，邀请失败回滚账号创建。 */
+export async function enrollRegisteredAccount(
+  executor: Executor,
+  userId: string,
+  invitationToken?: string,
+) {
+  const policy = getInstanceAccessPolicy();
+  if (
+    invitationToken && policy.registration_mode === "invite"
+  ) {
+    await assertInvitationAccountRegistration(invitationToken, executor);
+  }
+  if (invitationToken) {
+    await consumeDomainInvitation(invitationToken, userId, executor);
+    return;
+  }
+  await ensureDefaultWorkspace(executor);
+  const [main] = await executor.select().from(domains).where(
+    eq(domains.slug, DEFAULT_DOMAIN_SLUG),
+  ).for("update");
+  if (main?.status === "active" && main.configuration.join_policy === "open") {
+    await addDomainMember(executor, main.id, userId);
+  }
+}

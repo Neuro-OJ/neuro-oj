@@ -9,10 +9,7 @@ import {
   problemVersionObjects,
   problemVersions,
 } from "./../../../shared/db/schema.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "./../../../shared/base/errors.ts";
+import { NotFoundError } from "./../../../shared/base/errors.ts";
 import {
   deleteStorageObject,
   getStorageProvider,
@@ -22,7 +19,7 @@ import {
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
-import { assertPermission } from "./../../identity/index.ts";
+import { assertProblemEditPermission } from "./problems/problems-crud.ts";
 import {
   DEFAULT_TEMPLATE_FILE,
   isValidTemplateFileName,
@@ -227,51 +224,21 @@ async function checkSupportPackagePermission(
   problemId: string,
   userId?: string,
   userRole?: string,
-  problem?: { type: string; owner_id: string },
+  problem?: { id?: string; domain_id?: string | null; owner_id: string },
   c?: Context,
 ): Promise<void> {
-  const db = getDb();
-
-  // 若已在外层获取了题目信息，跳过重复查询
-  if (!problem) {
-    const existing = await db
-      .select({ type: problems.type, owner_id: problems.owner_id })
-      .from(problems)
-      .where(eq(problems.id, problemId))
+  const [source] = problem
+    ? []
+    : await getDb().select().from(problems).where(eq(problems.id, problemId))
       .limit(1);
-
-    if (existing.length === 0) {
-      throw new NotFoundError("题目不存在");
-    }
-    problem = existing[0];
-  }
-
-  // 管理员可管理任意题目（当有 Context 时走 RBAC 权限检查）
-  if (c) {
-    // P 型题仅管理员（package_manage_any）
-    if (problem.type === "P") {
-      await assertPermission(c, "problem:package_manage_any");
-      return;
-    }
-    // NOJ-102：U 型 owner 需 package_manage_own；非 owner 需管理员权限。
-    if (problem.owner_id === (c.var.userId as string)) {
-      await assertPermission(c, "problem:package_manage_own");
-      return;
-    }
-    await assertPermission(c, "problem:package_manage_any");
-    return;
-  }
-
-  // 向后兼容：无 Context 时使用旧的 userRole 检查
-  if (userRole === "admin") return;
-
-  // 普通用户仅可管理自己的 U 型题目
-  if (problem.type === "P") {
-    throw new ForbiddenError("仅管理员可管理管理题的支持包");
-  }
-  if (problem.owner_id !== userId) {
-    throw new ForbiddenError("无权管理此题目的支持包");
-  }
+  const identity = problem ?? source;
+  if (!identity) throw new NotFoundError("题目不存在");
+  await assertProblemEditPermission(
+    c,
+    { ...identity, id: problemId },
+    userId,
+    userRole,
+  );
 }
 
 /**
@@ -289,7 +256,7 @@ export async function deleteSupportPackage(
   problemId: string,
   userId?: string,
   userRole?: string,
-  problem?: { type: string; owner_id: string },
+  problem?: { id?: string; domain_id?: string | null; owner_id: string },
   c?: Context,
 ): Promise<void> {
   await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
@@ -365,7 +332,8 @@ export async function getSupportPackageBytes(
 
   const [problem] = await db
     .select({
-      type: problems.type,
+      id: problems.id,
+      domain_id: problems.domain_id,
       owner_id: problems.owner_id,
       latestVersionId: problems.latest_version_id,
     })
@@ -377,16 +345,7 @@ export async function getSupportPackageBytes(
     throw new NotFoundError("题目不存在");
   }
 
-  // 权限校验：owner 需 package_manage_own；非 owner 仅管理员（package_manage_any）
-  if (c) {
-    if (problem.owner_id === (c.var.userId as string)) {
-      await assertPermission(c, "problem:package_manage_own");
-    } else {
-      await assertPermission(c, "problem:package_manage_any");
-    }
-  } else if (userRole !== "admin" && problem.owner_id !== userId) {
-    throw new ForbiddenError("无权下载此题目的支持包");
-  }
+  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
 
   const ref = await resolveSupportPackageRef(problemId, {
     versionId: options.versionId,

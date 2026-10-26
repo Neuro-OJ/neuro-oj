@@ -8,10 +8,15 @@
  *
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+} from "../../workspace/index.ts";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
+  contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -24,12 +29,19 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "./../../catalog/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   applyAttemptResult,
   createAttempt,
+  type DomainExecutionRequest,
   loadPublishedVersionContent,
+  lockDomainExecution,
+  resolveDomainExecution,
   resolveSubmissionVersion,
 } from "./../../submission/index.ts";
 import type { ObjectiveQuestionSnapshot } from "./../../catalog/index.ts";
@@ -40,6 +52,7 @@ import {
   resolvePaperId,
 } from "./objective-questions.ts";
 import {
+  type ContestResponse,
   filterUnendedContestIds,
   getContest,
   getContestProblems,
@@ -116,7 +129,7 @@ async function validateContestSubmission(
   contestId: string,
   paperId: string,
   userId: string,
-): Promise<void> {
+): Promise<ContestResponse> {
   const contest = await getContest(contestId, userId);
   if (contest.status !== "running") {
     throw new ForbiddenError("竞赛未在进行中，无法提交");
@@ -143,6 +156,7 @@ async function validateContestSubmission(
   if (existing.length > 0) {
     throw new BadRequestError("该竞赛中已提交过此套卷，只允许提交一次");
   }
+  return contest;
 }
 
 /**
@@ -211,9 +225,20 @@ export async function submitObjectivePaper(
   input: SubmitObjectiveInput,
   userId: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmitObjectiveResponse> {
   const db = getDb();
-  const paper = await getPaperOrThrow(paperId);
+  if (domainRequest && input.contest_id && !domainRequest.contestId) {
+    throw new BadRequestError("域内练习不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  const paper = domainExecution?.problem ?? await getPaperOrThrow(paperId);
+  if (domainExecution && paper.id !== paperId) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
+  if (!domainExecution) assertDefaultProblemSource(paper);
   assertObjectivePaper(paper);
   const paperUuid = paper.id;
 
@@ -221,10 +246,15 @@ export async function submitObjectivePaper(
   // 上下文一律拒绝；被公开赛保密的套卷同此口径（无法从独立路径提交）；
   // 竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
   // 对外竞赛 URL 使用 public_id；落库、版本绑定与一次提交约束统一使用 UUID。
-  const contestId = input.contest_id
+  const requestedContestId = input.contest_id
     ? await resolveContestId(input.contest_id)
     : null;
-  if (!contestId) {
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与交卷上下文不一致");
+  const contestId = domainExecution?.contestId ?? requestedContestId;
+  if (!contestId && !domainExecution) {
     const { result: access } = await evaluateProblemAccess(paper, {
       viewerId: userId,
       isAdmin,
@@ -242,9 +272,9 @@ export async function submitObjectivePaper(
   }
 
   const contestMode = contestId !== null;
-  if (contestMode) {
-    await validateContestSubmission(contestId, paperUuid, userId);
-  }
+  const contest = contestId
+    ? await validateContestSubmission(contestId, paperUuid, userId)
+    : null;
 
   // 提交时版本（Handbook §4.2/§6.4）：**必须显式携带** `version_id`——竞赛只接受该
   // 竞赛的固定版本（不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`），题库显式版本
@@ -320,7 +350,22 @@ export async function submitObjectivePaper(
 
   try {
     await db.transaction(async (tx) => {
-      await tx.insert(objectiveSubmissions).values(row);
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(paperUuid, userId, tx);
+      await consumeDomainSubmissionQuota(
+        workspace.domain_id,
+        userId,
+        submissionId,
+        tx,
+      );
+      await tx.insert(objectiveSubmissions).values({ ...row, ...workspace });
       const attempt = await createAttempt({
         source,
         problemVersionId: submittedVersionId,
@@ -359,21 +404,17 @@ export async function submitObjectivePaper(
     throw err;
   }
 
-  // ── 竞赛模式：只回执"已提交"事实（审计 VULN-03）──
-  //
-  // 此前这里返回 `stripExpected(details)`——虽剥离了标准答案，却**保留每题
-  // correct: true/false**，并即时返回精确分数。协同作弊者据此把小号提交当作答案
-  // 预言机，逐题试探即可拼出全套满分答案。
-  // 现赛期不返回任何判定与分数；竞赛结束后由详情/历史接口给出（见
-  // getObjectiveSubmission / listObjectiveSubmissions 的赛后放行逻辑）。
+  // 比赛一次正式交卷：Kaggle 只给本人原始总分，OI 隐藏成绩；均不返回逐题对错。
   if (contestMode) {
     return {
       submission_id: submissionId,
       paper_id: paperId,
       status: "finished",
       contest_mode: true,
-      score: null,
-      score_db: null,
+      score: contest?.type === "kaggle"
+        ? judgement.score / SCORE_SCALE_FACTOR
+        : null,
+      score_db: contest?.type === "kaggle" ? judgement.score : null,
       correct_count: null,
       total_count: judgement.total_count,
       details: {},
@@ -661,6 +702,9 @@ export async function getObjectiveSubmission(
     throw new NotFoundError("提交记录不存在");
   }
   const row = rows[0];
+  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("默认域不存在此提交");
+  }
   // 实时权限查询（submission:read_all，admin:full_access 通配），与编程题 getSubmission 一致
   const isAdmin = c
     ? await checkPermission(c, "submission:read_all")
@@ -669,8 +713,7 @@ export async function getObjectiveSubmission(
     throw new NotFoundError("提交记录不存在");
   }
 
-  // 竞赛未结束：屏蔽通过与否（防答案预言机，审计 VULN-03）。版本/尝试元信息不泄题，
-  // 但逐条尝试的相对分差同样可用于试探，因此一并屏蔽 is_effective/is_accepted。
+  // 赛期按赛制裁剪：Kaggle 可读总分，OI 不返回执行历史，均隐藏逐题正确性。
   const contestUnended = row.submission_type === "contest" && row.contest_id
     ? (await filterUnendedContestIds([row.contest_id])).has(row.contest_id)
     : false;
@@ -685,12 +728,13 @@ export async function getObjectiveSubmission(
   });
 
   if (row.submission_type === "contest") {
-    // 竞赛模式：隐藏解析与期望答案（防泄题）；竞赛**尚未结束**时进一步屏蔽逐题
-    // 对错与分数（审计 VULN-03）——否则参赛者提交后调用详情接口即可拿到答案预言机。
+    // 比赛题的答案与解析按窗口裁剪，赛制决定本人总分是否可见。
     if (contestUnended) {
+      const contest = await getContest(row.contest_id!, viewerId);
+      if (contest.type === "oi") return hiddenObjectiveResult(response);
       return {
         ...response,
-        score: null,
+        score: contest.type === "kaggle" ? response.score : null,
         details: stripContestJudgement(response.details),
       };
     }
@@ -773,7 +817,9 @@ export async function listObjectiveSubmissions(params: {
   }
   const paperUuid = paper?.id;
 
-  const conditions = [eq(objectiveSubmissions.user_id, userId)];
+  const defaultDomain =
+    sql`(${objectiveSubmissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${objectiveSubmissions.domain_id} IS NULL)`;
+  const conditions = [eq(objectiveSubmissions.user_id, userId), defaultDomain];
   if (paperUuid) conditions.push(eq(objectiveSubmissions.paper_id, paperUuid));
   if (contestId) {
     conditions.push(eq(objectiveSubmissions.contest_id, contestId));
@@ -808,6 +854,7 @@ export async function listObjectiveSubmissions(params: {
       .where(
         and(
           eq(objectiveSubmissions.user_id, userId),
+          defaultDomain,
           eq(objectiveSubmissions.paper_id, paperUuid),
           eq(objectiveSubmissions.submission_type, "practice"),
           eq(objectiveSubmissions.is_valid, true),
@@ -819,8 +866,7 @@ export async function listObjectiveSubmissions(params: {
     }
   }
 
-  // 竞赛模式的赛期屏蔽（审计 VULN-03）：一次查询算出本页涉及的"未结束竞赛"集合，
-  // 再对命中行剥离逐题对错、分数与通过标记。与详情接口同一口径，避免"列表是旁路"。
+  // 批量加载本页比赛政策，列表和详情采用相同的总分及逐题正确性口径。
   const unendedContests = await filterUnendedContestIds(
     rows
       .filter((row) => row.submission_type === "contest" && row.contest_id)
@@ -838,6 +884,12 @@ export async function listObjectiveSubmissions(params: {
     true,
   );
   const plainAttempts = await loadAttempts(plainRows.map((row) => row.id));
+  const contestTypes = new Map(
+    (unendedContests.size
+      ? await db.select({ id: contests.id, type: contests.type }).from(contests)
+        .where(inArray(contests.id, [...unendedContests]))
+      : []).map((row) => [row.id, row.type]),
+  );
   const data = rows.map((row) => {
     const contestUnended = maskedRows.includes(row);
     const attempts = contestUnended
@@ -849,9 +901,14 @@ export async function listObjectiveSubmissions(params: {
       maskCorrectness: contestUnended,
     });
     if (!contestUnended) return response;
+    if (contestTypes.get(row.contest_id!) === "oi") {
+      return hiddenObjectiveResult(response);
+    }
     return {
       ...response,
-      score: null,
+      score: contestTypes.get(row.contest_id!) === "kaggle"
+        ? response.score
+        : null,
       details: stripContestJudgement(response.details),
     };
   });
@@ -860,5 +917,37 @@ export async function listObjectiveSubmissions(params: {
     data,
     total,
     best_score: bestScore,
+  };
+}
+
+/** OI 赛期只保留本人原答案与不可变提交身份，执行历史不能成为成绩旁路。 */
+function hiddenObjectiveResult(
+  row: ObjectiveSubmissionResponse,
+): ObjectiveSubmissionResponse {
+  return {
+    id: row.id,
+    paper_id: row.paper_id,
+    user_id: row.user_id,
+    contest_id: row.contest_id,
+    submission_type: row.submission_type,
+    answers: row.answers,
+    created_at: row.created_at,
+    submitted_version_id: row.submitted_version_id,
+    submitted_version: row.submitted_version,
+    version_origin: row.version_origin,
+    is_latest: row.is_latest,
+    upgraded_from_id: row.upgraded_from_id,
+    status: "submitted",
+    score: null,
+    details: {},
+    is_valid: null,
+    is_accepted: null,
+    active_attempt_id: null,
+    latest_attempt_id: null,
+    effective_attempt_id: null,
+    accepted_attempt_id: null,
+    attempts: [],
+    latest_attempt: null,
+    effective_attempt: null,
   };
 }

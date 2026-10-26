@@ -14,6 +14,9 @@
  */
 
 import { join } from "jsr:@std/path@^1";
+import { eq } from "drizzle-orm";
+import { getDb } from "../src/shared/db/connection.ts";
+import { domains } from "../src/shared/db/schema.ts";
 import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
@@ -34,11 +37,12 @@ import {
   seedTags,
 } from "../src/domains/system/index.ts";
 import {
-  importProblemBundle,
-  publishImportedProblem,
+  backfillDefaultCatalog,
+  importDomainProblemBundle,
+  publishDomainProblemVersion,
 } from "../src/domains/catalog/index.ts";
+import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
-import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
@@ -114,30 +118,43 @@ async function buildAllPackages(): Promise<void> {
 
 /**
  * 批量导入目录下的统一题目包（默认 data/packages）。
- * 以 root/admin 身份执行（CLI 为运维工具），幂等 upsert。
+ * 可信运维入口显式使用目标域当前负责人，幂等 upsert。
  *
  * `--publish`：导入后把内容显式发布为版本（Handbook §6.8）。不发布时题目只有
  * 草稿，普通访问者读不到、也无法按版本提交——生产演练与开发初始化必须发布。
  */
 async function importProblemPackages(
   dir: string,
-  options: { publish?: boolean } = {},
+  options: { publish?: boolean; domain?: string } = {},
 ): Promise<void> {
   let imported = 0;
+  const slug = options.domain ?? "main";
+  const [workspace] = await getDb().select({ actorId: domains.owner_id })
+    .from(domains).where(eq(domains.slug, slug));
+  if (!workspace) throw new Error(`目标工作空间不存在：${slug}`);
   try {
     for await (const entry of Deno.readDir(dir)) {
       if (!entry.isFile || !entry.name.toLowerCase().endsWith(".zip")) {
         continue;
       }
       const data = await Deno.readFile(join(dir, entry.name));
-      const problem = await importProblemBundle(
-        { name: entry.name, data },
-        { userId: ROOT_USER_ID, userRole: "admin" },
+      // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
+      const problem = await importDomainProblemBundle(
+        slug,
+        workspace.actorId,
+        data,
+        "current",
       );
+      for (const warning of problem.warnings) {
+        console.warn(`  ${entry.name}: ${warning}`);
+      }
       if (options.publish) {
-        const published = await publishImportedProblem(
-          problem.id,
-          ROOT_USER_ID,
+        const published = await publishDomainProblemVersion(
+          slug,
+          String(problem.number),
+          workspace.actorId,
+          problem.draft_revision,
+          "题目包导入",
         );
         console.log(
           `  已导入并发布: ${entry.name} → V${published.version}` +
@@ -184,6 +201,7 @@ async function runBootstrapAdmin(
   console.log("检查管理员...");
   await ensureAdminFromEnv();
   await ensureBootstrapAdmin();
+  await ensureDefaultWorkspace();
 }
 
 /** 开发环境一键初始化（含 dev 专用数据：E2E 守卫用户）。 */
@@ -219,6 +237,26 @@ const dbCmd = new Command()
   .command("migrate", "执行数据库迁移")
   .action(() => {
     return runMigrations();
+  })
+  .command(
+    "catalog-backfill",
+    "默认域资源归属和题库绑定回填（需先完成迁移与旧 U 数据处理）",
+  )
+  .action(async () => {
+    await ensureRootUser();
+    await ensureRbacSeeds();
+    await ensureDefaultWorkspace();
+    console.log(JSON.stringify(await backfillDefaultCatalog()));
+  })
+  .command(
+    "execution-backfill",
+    "历史执行记录的使用域和绑定回填（先完成题库回填）",
+  )
+  .action(async () => {
+    const { backfillExecutionWorkspaces } = await import(
+      "../src/domains/submission/index.ts"
+    );
+    console.log(JSON.stringify(await backfillExecutionWorkspaces()));
   });
 
 const initCmd = new Command()
@@ -259,15 +297,6 @@ const problemsCmd = new Command()
   .command("init", "生成新题目的最小可评测骨架（脚手架）")
   .arguments("<slug:string>")
   .option("--title <title:string>", "题目标题（缺省用 slug）")
-  .option(
-    "--type <type:string>",
-    // 注意：这里的 U/P 是**题目归属**（U=用户题 / P=主题题），不是「客观题/编程题」。
-    // 客观题由 problem.json 的 is_objective + questions.json 表达，本脚手架只产
-    // 编程题（P）。此前把 U 标为「客观题」会误导出题人生成出 visibility=private
-    // 且默认列表不可见的题目。
-    "题型：U（用户题，visibility=private）/ P（主题题，默认）",
-    { default: "P" },
-  )
   .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
     default: "medium",
   })
@@ -276,7 +305,6 @@ const problemsCmd = new Command()
     async (
       opts: {
         title?: string;
-        type?: string;
         difficulty?: string;
         dir?: string;
       },
@@ -285,7 +313,6 @@ const problemsCmd = new Command()
       const result = await initProblem({
         slug,
         title: opts.title,
-        type: opts.type as "U" | "P" | undefined,
         difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
         root: opts.dir,
       });
@@ -315,12 +342,16 @@ const problemsCmd = new Command()
   })
   .command("import", "批量导入统一题目包（幂等 upsert）")
   .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
+  .option("--domain <slug:string>", "导入目标工作空间", { default: "main" })
   .option(
     "--publish",
     "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
   )
-  .action((opts: { dir: string; publish?: boolean }) => {
-    return importProblemPackages(opts.dir, { publish: opts.publish === true });
+  .action((opts: { dir: string; domain: string; publish?: boolean }) => {
+    return importProblemPackages(opts.dir, {
+      domain: opts.domain,
+      publish: opts.publish === true,
+    });
   });
 
 const searchCmd = new Command()

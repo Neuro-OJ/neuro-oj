@@ -1,3 +1,5 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理的缺陷回归（tracking #31、#32、#40、#41）。
  *
@@ -9,12 +11,14 @@
  * - #41 大任务分批插入：受理路径按批落库、重试路径同样分批，
  *   成员集合仍在受理事务内固定。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   judgeImages,
   problems,
   problemVersions,
@@ -31,6 +35,9 @@ import {
   retryRejudgeJob,
 } from "../../services/versioning/rejudge-jobs.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -81,10 +88,10 @@ await getDb().insert(users).values({
 async function seedProblem(problemId: string, number: number): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     judge_type: "dual",
@@ -104,6 +111,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` }).where(
     eq(problems.id, problemId),
   );
+  await bindMainProblemForTest(problemId, "ja-admin");
 }
 
 async function seedSubmission(
@@ -112,6 +120,7 @@ async function seedSubmission(
   contestId: string | null = null,
 ): Promise<void> {
   await getDb().insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: "ja-admin",
     problem_id: problemId,
@@ -126,6 +135,7 @@ async function seedSubmission(
 
 async function seedContest(contestId: string, publicId: string): Promise<void> {
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     public_id: publicId,
     title: contestId,
@@ -155,8 +165,8 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
   await seedSubmission("ja-s1", "ja-p1");
   await seedSubmission("ja-s2", "ja-p2");
   // ja-p2 的 revision 已被其他管理员推进到 3
-  await db.update(problems).set({ effective_policy_revision: 3 }).where(
-    eq(problems.id, "ja-p2"),
+  await db.update(domainProblemBindings).set({ revision: 3 }).where(
+    eq(domainProblemBindings.problem_id, "ja-p2"),
   );
 
   await assertRejects(
@@ -189,7 +199,7 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
         "ja-key-atomic",
       ),
     Error,
-    "有效版本策略已被修改",
+    "题库配置已变化",
   );
 
   // 第一项策略必须一起回滚（不是"先提交策略再建任务"）
@@ -197,8 +207,15 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
   assertEquals(p1.effective_version_mode, "any");
   assertEquals(p1.required_version_id, null);
   assertEquals(p1.effective_policy_revision, 0);
-  const [p2] = await db.select().from(problems).where(eq(problems.id, "ja-p2"));
-  assertEquals(p2.effective_policy_revision, 3);
+  const [p2] = await db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "ja-p2"),
+  );
+  assertEquals(p2.revision, 3);
+  const [binding1] = await db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "ja-p1"),
+  );
+  assertEquals(binding1.revision, 0);
+  assertEquals(binding1.effective_version_mode, "any");
   // 未产生任务与条目
   assertEquals(
     (await db.select().from(submissionJobs).where(
@@ -325,6 +342,7 @@ Deno.test("jobs#40: 重试幂等身份含父任务与条目，父任务 kind 必
 
   // 升级任务不能被解释成重测
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "ja-upgrade-job",
     kind: "upgrade",
     actor_id: "ja-admin",
@@ -417,9 +435,11 @@ Deno.test("jobs#41: 受理与重试路径分批插入条目（超出单条 INSER
   await seedProblem("ja-p5", 996005);
   // 受理路径：题目范围含 250 条提交 → 3 个批次
   const total = JOB_ITEM_INSERT_BATCH * 2 + 50;
+  const execution = await problemExecutionForTest("ja-p5");
   const rows: Array<typeof submissions.$inferInsert> = [];
   for (let index = 0; index < total; index++) {
     rows.push({
+      ...execution,
       id: `ja-bulk-${index}`,
       user_id: "ja-admin",
       problem_id: "ja-p5",
@@ -498,7 +518,10 @@ Deno.test("jobs#41: insertJobItemsBatched 按批次拆分单语句（真实 PG �
 
 Deno.test("jobs#41: 大批量条目真实落库（5200 行按批插入）", async () => {
   const db = getDb();
+  await seedProblem("ja-p6", 996006);
+  const execution = await problemExecutionForTest("ja-p6");
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "ja-batch-job",
     kind: "rejudge",
     actor_id: "ja-admin",
@@ -511,9 +534,11 @@ Deno.test("jobs#41: 大批量条目真实落库（5200 行按批插入）", asyn
   const { insertJobItemsBatched } = await import(
     "../../services/versioning/rejudge-jobs.ts"
   );
+
   const rows: Array<typeof submissionJobItems.$inferInsert> = [];
   for (let index = 0; index < 5200; index++) {
     rows.push({
+      ...execution,
       id: `ja-batch-item-${index}`,
       job_id: "ja-batch-job",
       ordinal: index,

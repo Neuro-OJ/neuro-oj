@@ -12,7 +12,7 @@ const router = useRouter()
 useRequireLogin()
 
 function onImported(result: BundleImportResult) {
-  router.replace(`/admin/problem-edit/${result.id}`)
+  router.replace(`/d/main/editor/${result.number}`)
 }
 </script>
 
@@ -27,6 +27,6 @@ function onImported(result: BundleImportResult) {
       </template>
     </AdminPageHeader>
 
-    <BundleImportPanel @imported="onImported" />
+    <BundleImportPanel domain-slug="main" @imported="onImported" />
   </div>
 </template>

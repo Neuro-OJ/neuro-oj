@@ -31,7 +31,11 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../../catalog/index.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -53,8 +57,10 @@ async function makeUser(tag: string): Promise<string> {
 
 /** 创建客观题套卷。 */
 async function makePaper(ownerId: string): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `版本化客观题卷 ${ts} ${id.slice(0, 6)}`,
     description: "测试套卷",
@@ -62,12 +68,12 @@ async function makePaper(ownerId: string): Promise<string> {
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "U",
     visibility: "public",
     is_objective: true,
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 
@@ -329,6 +335,7 @@ Deno.test({
       id: contestId,
       public_id: contestPublicId,
       title: `版本化客观题竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -683,6 +690,8 @@ Deno.test({
     const derivedId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
     await db.insert(objectiveSubmissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: await bindPublishedProblemForTest(paper),
       id: derivedId,
       paper_id: paper,
       user_id: user,
@@ -728,6 +737,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `防预言机竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -760,7 +770,7 @@ Deno.test({
     const { getObjectiveSubmission } = await import("../../index.ts");
     const detail = await getObjectiveSubmission(result.submission_id, user);
     // 分数、逐题对错与"是否通过"在赛期一律不可见
-    assertEquals(detail.score, null);
+    assertEquals(detail.score, 10000);
     assertEquals(detail.is_accepted, null);
     assertEquals(detail.accepted_attempt_id, null);
     assertEquals(detail.effective_attempt, null);
@@ -774,3 +784,9 @@ Deno.test({
     assertEquals(detail.is_latest, true);
   },
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+await resetDbForTest();
+
+import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";

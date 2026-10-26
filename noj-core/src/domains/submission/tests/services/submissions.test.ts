@@ -1,5 +1,12 @@
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
+  bindPublishedProblemForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import {
+  authorizeLegacyJobActorForTest,
   saveV2ResultForTest,
   seedActiveAttemptForTest,
 } from "../_versioning-fixtures.ts";
@@ -13,11 +20,13 @@ import {
   updateSubmissionStatus,
 } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
   auditLogs,
   contestParticipants,
   contests,
+  educationOutbox,
   evaluationAttempts,
   problems,
   sseEvents,
@@ -45,189 +54,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
-/**
- * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，
- * 让 pushJudgeTask 的队列操作不会触发真实 Redis 依赖。
- *
- * PGlite 测试模式下没有 Redis，但 Deno ESM 模块导出是 non-configurable，
- * 无法直接 monkey-patch pushJudgeTask。因此这里选择启动一个本地 mock Redis，
- * 把 REDIS_URL 指向它，让 pushJudgeTask 走完整 LPUSH 路径而无需外部依赖。
- */
-// deno-lint-ignore require-await
-async function startFakeRedis(): Promise<
-  { url: string; stop: () => Promise<void> }
-> {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-  const addr = listener.addr as Deno.NetAddr;
-  const url = `redis://${addr.hostname}:${addr.port}/`;
-
-  const connections = new Set<Deno.Conn>();
-  const queueLengths = new Map<string, number>();
-  const acceptTask = (async () => {
-    for await (const conn of listener) {
-      connections.add(conn);
-      handleConnection(conn, queueLengths).catch(() => {/* ignore */});
-    }
-  })();
-
-  const stop = async () => {
-    for (const c of connections) {
-      try {
-        c.close();
-      } catch { /* ignore */ }
-    }
-    connections.clear();
-    try {
-      listener.close();
-    } catch { /* ignore */ }
-    await acceptTask.catch(() => {/* ignore */});
-  };
-
-  return { url, stop };
-}
-
-async function handleConnection(
-  conn: Deno.Conn,
-  queueLengths: Map<string, number>,
-): Promise<void> {
-  const buf = new Uint8Array(4096);
-  let pending: Uint8Array = new Uint8Array(0);
-
-  while (true) {
-    let n: number | null;
-    try {
-      n = await conn.read(buf);
-    } catch {
-      return;
-    }
-    if (n === null) return;
-    const slice = buf.subarray(0, n);
-    pending = concat(pending, new Uint8Array(slice));
-
-    // 解析并响应所有完整 RESP 命令
-    while (true) {
-      const parsed = tryParseRespCommand(pending);
-      if (!parsed) break;
-      pending = parsed.rest;
-
-      let reply: Uint8Array;
-      switch (parsed.cmd) {
-        case "PING":
-          reply = renderRespString("PONG");
-          break;
-        case "LPUSH": {
-          const queue = parsed.args[0] ?? "";
-          const length = (queueLengths.get(queue) ?? 0) + 1;
-          queueLengths.set(queue, length);
-          reply = renderRespInteger(length);
-          break;
-        }
-        case "LLEN": {
-          const queue = parsed.args[0] ?? "";
-          reply = renderRespInteger(queueLengths.get(queue) ?? 0);
-          break;
-        }
-        case "INCR": {
-          const key = parsed.args[0] ?? "";
-          const value = (queueLengths.get(key) ?? 0) + 1;
-          queueLengths.set(key, value);
-          reply = renderRespInteger(value);
-          break;
-        }
-        case "EXPIRE":
-          reply = renderRespInteger(1);
-          break;
-        case "DEL":
-          reply = renderRespInteger(parsed.args.length);
-          break;
-        case "EVAL": {
-          // ioredis 参数顺序：script、numkeys、key、max、message。
-          const queue = parsed.args[2] ?? "";
-          const maxLength = Number(parsed.args[3]);
-          const current = queueLengths.get(queue) ?? 0;
-          if (current >= maxLength) {
-            reply = renderRespInteger(-1);
-          } else {
-            const length = current + 1;
-            queueLengths.set(queue, length);
-            reply = renderRespInteger(length);
-          }
-          break;
-        }
-        case "CLIENT":
-        case "SELECT":
-        case "AUTH":
-        case "HELLO":
-        case "SETINFO":
-          reply = renderRespString("OK");
-          break;
-        default:
-          reply = renderRespString("OK");
-      }
-      await conn.write(reply);
-    }
-  }
-}
-
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
-
-interface ParsedCommand {
-  cmd: string;
-  args: string[];
-  rest: Uint8Array;
-}
-
-function tryParseRespCommand(buf: Uint8Array): ParsedCommand | null {
-  // RESP 数组：*<n>\r\n$<len>\r\n<bytes>\r\n...
-  if (buf.length === 0 || buf[0] !== 0x2a /* * */) return null;
-  const headerEnd = findCrlf(buf, 0);
-  if (headerEnd < 0) return null;
-  const n = parseInt(new TextDecoder().decode(buf.subarray(1, headerEnd)), 10);
-  if (!Number.isFinite(n)) return null;
-
-  let pos = headerEnd + 2;
-  const parts: string[] = [];
-  for (let i = 0; i < n; i++) {
-    if (pos >= buf.length || buf[pos] !== 0x24 /* $ */) return null;
-    const lenEnd = findCrlf(buf, pos);
-    if (lenEnd < 0) return null;
-    const len = parseInt(
-      new TextDecoder().decode(buf.subarray(pos + 1, lenEnd)),
-      10,
-    );
-    if (!Number.isFinite(len)) return null;
-    pos = lenEnd + 2;
-    if (pos + len + 2 > buf.length) return null;
-    parts.push(new TextDecoder().decode(buf.subarray(pos, pos + len)));
-    pos += len + 2;
-  }
-
-  return {
-    cmd: (parts[0] ?? "").toUpperCase(),
-    args: parts.slice(1),
-    rest: buf.slice(pos),
-  };
-}
-
-function findCrlf(buf: Uint8Array, from: number): number {
-  for (let i = from; i < buf.length - 1; i++) {
-    if (buf[i] === 0x0d && buf[i + 1] === 0x0a) return i;
-  }
-  return -1;
-}
-
-function renderRespString(s: string): Uint8Array {
-  return new TextEncoder().encode(`+${s}\r\n`);
-}
-
-function renderRespInteger(n: number): Uint8Array {
-  return new TextEncoder().encode(`:${n}\r\n`);
-}
+import { startFakeRedis } from "../_fake-redis.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
@@ -239,6 +66,7 @@ const TEST_NUMBER = 50000 + (ts & 0x7fff);
 
 // 模块级 setup：事务外初始化共享测试题目和用户
 await resetDbForTest();
+await ensureDefaultWorkspace();
 const db = getDb();
 const now = new Date().toISOString();
 await db.insert(users).values({
@@ -249,7 +77,9 @@ await db.insert(users).values({
   created_at: now,
   updated_at: now,
 });
+await authorizeLegacyJobActorForTest(TEST_USER_ID);
 await db.insert(problems).values({
+  domain_id: DEFAULT_DOMAIN_ID,
   id: TEST_PROBLEM_ID,
   title: `测试题目 ${ts}`,
   description: "测试描述",
@@ -270,7 +100,6 @@ await db.insert(problems).values({
   },
   number: TEST_NUMBER,
   owner_id: TEST_USER_ID,
-  type: "P",
   created_at: now,
   updated_at: now,
 });
@@ -307,6 +136,7 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values({
       id: predictionProblemId,
+      domain_id: DEFAULT_DOMAIN_ID,
       title: `预测题 ${Date.now()}`,
       description: "预测题测试",
       difficulty: "easy",
@@ -325,7 +155,6 @@ Deno.test({
       },
       number: predictionNumber,
       owner_id: TEST_USER_ID,
-      type: "P",
       submission_mode: "prediction",
       created_at: now,
       updated_at: now,
@@ -358,10 +187,10 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values({
       id: uiProblemId,
+      domain_id: DEFAULT_DOMAIN_ID,
       title: `界面题 ${Date.now()}`,
       description: "界面提交模式测试",
       difficulty: "easy",
-      type: "P",
       number: 63000 + (Date.now() & 0x7fff),
       owner_id: TEST_USER_ID,
       submission_mode: "ui",
@@ -443,7 +272,7 @@ Deno.test({
       if (submissionId) {
         await db.delete(submissions).where(eq(submissions.id, submissionId));
       }
-      await db.delete(problems).where(eq(problems.id, uiProblemId));
+      await deleteProblemFixtures(eq(problems.id, uiProblemId));
       resetRedisForTest();
       await fakeRedis.stop();
       if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
@@ -492,6 +321,7 @@ Deno.test({
     });
     const privateProblemId = `tst-private-problem-${Date.now()}`;
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: privateProblemId,
       title: `私有题 ${Date.now()}`,
       description: "私有题面",
@@ -512,7 +342,6 @@ Deno.test({
       },
       number: 60000 + (Date.now() & 0x7fff),
       owner_id: privateOwnerId,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
@@ -528,7 +357,7 @@ Deno.test({
         "无权对该题目提交",
       );
     } finally {
-      await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await deleteProblemFixtures(eq(problems.id, privateProblemId));
       await db.delete(users).where(eq(users.id, privateOwnerId));
     }
   },
@@ -558,6 +387,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "提交关联竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -638,6 +468,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "excludeContest 竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -679,6 +510,9 @@ Deno.test({
         contest_id: contestId,
       }, contestId);
       ids.push(contestSub.id);
+      await db.update(contests).set({
+        end_time: new Date(Date.now() - 30_000).toISOString(),
+      }).where(eq(contests.id, contestId));
 
       const normalSub = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,
@@ -723,6 +557,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "限额竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -802,6 +637,7 @@ Deno.test({
     // 先插入一条 pending 状态的提交 + 在途尝试（协议 v2 下结果按 attempt_id 落库）
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: submissionId,
       user_id: TEST_USER_ID,
       problem_id: TEST_PROBLEM_ID,
@@ -879,6 +715,7 @@ Deno.test({
     // 插入提交 + 在途尝试
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: submissionId,
       user_id: TEST_USER_ID,
       problem_id: TEST_PROBLEM_ID,
@@ -997,6 +834,7 @@ Deno.test({
     // 准备 submission（status=judging 让 UPDATE 通行）+ 在途尝试
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -1050,6 +888,9 @@ Deno.test({
     } finally {
       // 清理
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1078,6 +919,7 @@ Deno.test({
 
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -1139,6 +981,9 @@ Deno.test({
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1167,6 +1012,7 @@ Deno.test({
     const firstAttemptId = crypto.randomUUID();
     const rejudgeAttemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -1256,6 +1102,9 @@ Deno.test({
       assertEquals(submissionRow.active_attempt_id, null);
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1315,6 +1164,7 @@ Deno.test({
         },
       ]);
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `重测审计题 ${Date.now()}`,
         description: "rejudgeSubmission 审计测试用题目",
@@ -1335,7 +1185,6 @@ Deno.test({
         },
         number: 60000 + (Date.now() & 0x7fff),
         owner_id: adminId,
-        type: "U",
         created_at: now,
         updated_at: now,
       });
@@ -1350,6 +1199,7 @@ Deno.test({
       // 准备：一条 finished 状态的提交（重测只接受已存在的 submission）
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        ...await problemExecutionForTest(localProblemId),
         id: subId,
         user_id: localUserId,
         problem_id: localProblemId,
@@ -1366,6 +1216,7 @@ Deno.test({
 
       try {
         // 执行：单条重测
+        await bindPublishedProblemForTest(localProblemId);
         await rejudgeSubmission(subId, adminId);
 
         // 验证：审计日志写入
@@ -1394,9 +1245,8 @@ Deno.test({
         );
         await db.delete(submissions).where(eq(submissions.id, subId));
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-        await db.delete(problems).where(eq(problems.id, localProblemId));
-        await db.delete(users).where(eq(users.id, adminId));
-        await db.delete(users).where(eq(users.id, localUserId));
+        await deleteProblemFixtures(eq(problems.id, localProblemId));
+        // 域成员与负责人历史由测试事务回滚，账号不再物理删除。
       }
     } finally {
       await fakeRedis.stop();
@@ -1455,11 +1305,11 @@ Deno.test({
       ]);
       // P 型题 + llm_config：走 buildJudgeTaskLlm 分支
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `LLM 重测题 ${Date.now()}`,
         description: "rejudge 前置校验回归测试",
         difficulty: "easy",
-        type: "P",
         number: 61000 + (Date.now() & 0x7fff),
         owner_id: adminId,
         llm_config: { provider_id: "p-x", model: "m-x" },
@@ -1487,6 +1337,7 @@ Deno.test({
       });
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        ...await problemExecutionForTest(localProblemId),
         id: subId,
         user_id: localUserId,
         problem_id: localProblemId,
@@ -1501,6 +1352,7 @@ Deno.test({
       // 执行：平台默认缺失。统一任务受理**不在受理阶段**解析 LLM Provider
       // （解析发生在派发阶段并记入条目原因码），因此受理本身必须成功——
       // 关键在于提交状态与 rejudge_seq 都不被改写（不会卡在 pending）。
+      await bindPublishedProblemForTest(localProblemId);
       const accepted = await rejudgeSubmission(subId, adminId);
       assertEquals(typeof accepted.job_id, "string");
 
@@ -1521,9 +1373,8 @@ Deno.test({
       await db.delete(submissions).where(eq(submissions.id, subId));
       // 受理会写 submissions.rejudge 审计（admin_id 外键），先清审计再删用户
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-      await db.delete(problems).where(eq(problems.id, localProblemId));
-      await db.delete(users).where(eq(users.id, adminId));
-      await db.delete(users).where(eq(users.id, localUserId));
+      await deleteProblemFixtures(eq(problems.id, localProblemId));
+      // 域成员与负责人历史由测试事务回滚。
     } finally {
       if (oldP === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
       else Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldP);
@@ -1581,6 +1432,7 @@ Deno.test({
         },
       ]);
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `批量重测审计题 ${Date.now()}`,
         description: "rejudgeProblemSubmissions 审计测试用题目",
@@ -1601,7 +1453,6 @@ Deno.test({
         },
         number: 61000 + (Date.now() & 0x7fff),
         owner_id: adminId,
-        type: "U",
         created_at: now,
         updated_at: now,
       });
@@ -1619,6 +1470,7 @@ Deno.test({
         const sid = crypto.randomUUID();
         subIds.push(sid);
         await db.insert(submissions).values({
+          ...await problemExecutionForTest(localProblemId),
           id: sid,
           user_id: localUserId,
           problem_id: localProblemId,
@@ -1636,6 +1488,7 @@ Deno.test({
 
       try {
         // 执行：批量重测
+        await bindPublishedProblemForTest(localProblemId);
         const result = await rejudgeProblemSubmissions(localProblemId, adminId);
         // 统一任务契约：受理返回任务 ID 与条目数（`submitted` 目标下 3 条均为
         // legacy_unknown → 受理成功但条目在受理阶段即被标记无法按提交时版本重测）
@@ -1670,9 +1523,8 @@ Deno.test({
           await db.delete(submissions).where(eq(submissions.id, sid));
         }
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-        await db.delete(problems).where(eq(problems.id, localProblemId));
-        await db.delete(users).where(eq(users.id, adminId));
-        await db.delete(users).where(eq(users.id, localUserId));
+        await deleteProblemFixtures(eq(problems.id, localProblemId));
+        // 域成员与负责人历史由测试事务回滚。
       }
     } finally {
       await fakeRedis.stop();
@@ -1714,8 +1566,8 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
-      type: "U",
       number: 99999,
       title: "T",
       description: "test",
@@ -1739,6 +1591,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,
@@ -1776,8 +1629,8 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
-      type: "U",
       number: 99998,
       title: "T",
       description: "test",
@@ -1801,6 +1654,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,
@@ -1836,8 +1690,8 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
-      type: "U",
       number: 99997,
       title: "T",
       description: "test",
@@ -1861,6 +1715,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,

@@ -1,10 +1,11 @@
-import { Hono } from "hono";
 import {
-  assertPermission,
-  type AuthEnv,
-  authMiddleware,
-  checkPermission,
-} from "../../identity/index.ts";
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../workspace/index.ts";
+import { Hono } from "hono";
+import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { parseOiArchive } from "../services/oi-archive.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
@@ -61,7 +62,11 @@ router.post("/preview", async (c) => {
   const form = await c.req.parseBody();
   if (typeof form.problem_id === "string") {
     await authorizeOiData(c, form.problem_id);
-  } else await assertPermission(c, "problem:create");
+  } else {assertWorkspacePermission(
+      (await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId, { write: true }))
+        .context,
+      "problem:create",
+    );}
   const parsed = await archive(form.file);
   if (parsed.manifest.judge_type !== "oi") {
     throw new BadRequestError("需要 OI 题目包");
@@ -124,7 +129,13 @@ router.get("/:id/file", async (c) => {
 router.post("/:id/save", async (c) => {
   const reference = c.req.param("id") === "new" ? null : c.req.param("id");
   const previous = reference ? await authorizeOiData(c, reference) : undefined;
-  if (!reference) await assertPermission(c, "problem:create");
+  if (!reference) {
+    assertWorkspacePermission(
+      (await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId, { write: true }))
+        .context,
+      "problem:create",
+    );
+  }
   await enforceProblemImportRateLimit(c, c.get("userId"));
   const form = await c.req.parseBody({ all: true });
   if (
@@ -163,10 +174,9 @@ router.post("/:id/save", async (c) => {
   ) {
     throw new BadRequestError("文件变更配置非法");
   }
-  if (
-    metadata.problem.type === "P" &&
-    !await checkPermission(c, "problem:create_p")
-  ) await assertPermission(c, "problem:create_p");
+  if ("type" in metadata.problem) {
+    throw new BadRequestError("题目已取消 P/U 分类");
+  }
   // 客户端不能向数据服务注入已有对象引用。
   delete metadata.problem.oi_data_files;
   delete metadata.problem.support_package_storage_url;
@@ -273,6 +283,7 @@ router.post("/:id/save", async (c) => {
   }
 
   const saved = await saveOiDraft(problemId, {
+    domainId: DEFAULT_DOMAIN_ID,
     runtime_config: metadata.problem.runtime_config,
     title: metadata.problem.title.trim(),
     description: metadata.problem.description,

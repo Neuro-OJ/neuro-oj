@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -31,13 +33,13 @@ async function createProblem(number: number): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `暴露判定测试题 ${number}`,
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number,
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -79,7 +81,7 @@ async function cleanup(
 ): Promise<void> {
   for (const id of contestIds) await deleteContest(id).catch(() => {});
   for (const id of problemIds) {
-    await getDb().delete(problems).where(eq(problems.id, id)).catch(() => {});
+    await deleteProblemFixtures(eq(problems.id, id)).catch(() => {});
   }
   for (const id of userIds) {
     await getDb().delete(users).where(eq(users.id, id)).catch(() => {});
