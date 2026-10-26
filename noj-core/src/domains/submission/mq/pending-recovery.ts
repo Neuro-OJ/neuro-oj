@@ -22,6 +22,7 @@ import {
   versionSupportPackageUrl,
 } from "../services/versioning/version-execution.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
+import { readAutoRetryMarker } from "../services/versioning/auto-retry.ts";
 import type { PendingRecoveryRow } from "./sweeper.ts";
 import { type JudgeTask, toJudgeSubmissionMode } from "../types/index.ts";
 
@@ -116,9 +117,13 @@ export async function rebuildPendingTask(
       },
     );
   }
+  // 初次提交的平台错误自动重试沿用初次提交优先级（竞赛提交不降为 low），
+  // 其余 sequence > 0 的尝试（重测/升级及其重试）按低优先级派发。
+  const retryOfInitial =
+    readAutoRetryMarker(snapshot)?.origin_source === "initial";
   const priority = source === "self_test"
     ? "medium"
-    : sequence > 0
+    : sequence > 0 && !retryOfInitial
     ? "low"
     : await resolveJudgeTaskPriority(row.contest_id ?? null, "submission");
   const task = prepareJudgeTask({

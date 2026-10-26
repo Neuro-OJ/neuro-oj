@@ -11,6 +11,7 @@ import type {
 } from "../../types/runtime-config.ts";
 import type { ProblemIdentityRow } from "./draft.ts";
 import {
+  assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "../problems/problem-field-guard.ts";

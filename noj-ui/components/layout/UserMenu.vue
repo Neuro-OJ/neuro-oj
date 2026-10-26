@@ -34,10 +34,10 @@ const domainSettingsEntry = computed(() => {
 });
 const unreadCount = ref(0);
 async function refreshMessages() {
-  const response = await api.get<{ data: { unread_count: number } }>('/api/v1/conversations/unread-count', {
+  const response = await api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', {
     silent: true,
   });
-  unreadCount.value = response.data.unread_count;
+  unreadCount.value = response.unread_count;
 }
 usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: refreshMessages });
 watch(isLoggedIn, (loggedIn) => {

@@ -41,13 +41,81 @@ from .serialization import (
 )
 
 
+# ── 选手缺函数 → 0 分 ────────────────────────────────────
+#
+# 选手没有定义题面要求的函数（host 回 NotFound）是确定的选手侧结果，应判 0 分；
+# 但大量既有 evaluate.py 不捕获 NotFoundError（或捕获后原样 raise），进程以未捕获
+# 异常退出、不输出 `---RESULT---`，judge 只能归为平台错误（platform_error）。
+# 这里通过 sys.excepthook 在**未捕获**时兜底写出 0 分结果：evaluate.py 自行捕获
+# NotFoundError 的逻辑完全不受影响，且无需修改任何题目脚本。
+#
+# 只认 host 明确标注 `reason=not_registered` 的 NotFound：entry 加载失败（语法
+# 错误/导入失败）时注册表为空，同样回 NotFound，但那不是"缺函数"，保持平台错误；
+# 旧版 solution 镜像不带 reason，同样回退旧行为（混跑安全）。
+
+MISSING_FUNCTION_REASON = "not_registered"
+
+_HOOK_INSTALLED = False
+
+
+def _install_missing_function_hook() -> None:
+    """幂等安装 excepthook（链式调用原 hook，traceback 仍写 stderr）。"""
+    global _HOOK_INSTALLED
+    if _HOOK_INSTALLED:
+        return
+    _HOOK_INSTALLED = True
+    previous = sys.excepthook
+
+    def _hook(exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        try:
+            if (
+                isinstance(exc, NotFoundError)
+                and exc.fn
+                and exc.reason == MISSING_FUNCTION_REASON
+            ):
+                _write_missing_function_result(exc.fn)
+        except Exception as e:  # 兜底逻辑自身失败不得吞掉原异常
+            sys.stderr.write(f"[noj_evaluator_sdk] 写出缺函数结果失败: {e}\n")
+        previous(exc_type, exc, tb)
+
+    sys.excepthook = _hook
+
+
+def _write_missing_function_result(fn: str) -> bool:
+    """写出 0 分 `---RESULT---`；result 已写过时不重复写，返回是否写出。"""
+    from .result import Result
+
+    pkg = sys.modules.get(__package__ or "")
+    shared = getattr(pkg, "result", None)
+    writer = shared if isinstance(shared, Result) else Result()
+    if writer._written:
+        return False
+    message = f"未定义函数 {fn}"
+    writer.wrong_answer(
+        score=0,
+        message=message,
+        details={"error_code": "function_not_found", "function": fn},
+    )
+    sys.stderr.write(
+        f"[noj_evaluator_sdk] 选手未定义函数 {fn!r}，已按 0 分输出结果\n"
+    )
+    sys.stderr.flush()
+    return True
+
+
 class SolutionRunner:
     """阻塞式 Solution host 调用器。
 
     生命周期与 evaluate.py 进程一致。单实例即可复用。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, missing_function_as_zero: bool = True) -> None:
+        """`missing_function_as_zero`：选手未定义被调用函数（`NotFoundError`）且
+        evaluate.py 未捕获时，是否由 SDK 写出 0 分结果（默认开启）。关闭后恢复旧
+        行为：进程异常退出、无 `---RESULT---`，judge 判为平台错误。
+        """
+        if missing_function_as_zero:
+            _install_missing_function_hook()
         self._rpc = RpcClient()
         self._closed = False
         self._reader_thread = threading.Thread(
@@ -97,15 +165,17 @@ class SolutionRunner:
         if timeout_ms is not None:
             frame["timeout_ms"] = timeout_ms
 
-        # 3. 注册 pending
+        # 3. 注册 pending。若通道已断开，register_pending 直接返回预置哨兵帧的队列。
         q = self._rpc.register_pending(call_id)
 
-        # 4. 写帧到 stdout
-        try:
-            self._write_out(frame)
-        except RejectedError:
-            self._rpc.pop_pending(call_id)
-            raise
+        # 4. 写帧到 stdout。已关闭时跳过写（避免往断开的通道写帧），交由下方
+        #    q.get() 取到哨兵帧、按约定抛 ConnectionError。
+        if not self._closed:
+            try:
+                self._write_out(frame)
+            except RejectedError:
+                self._rpc.pop_pending(call_id)
+                raise
 
         # 5. 阻塞等响应（超时由 judge 端 call_timeout_ms 控制，
         #    SDK 这里不设超时——避免与 judge 双重超时逻辑混淆）
@@ -117,7 +187,7 @@ class SolutionRunner:
 
         # 6. 处理响应
         self._rpc.pop_pending(call_id)
-        return self._handle_response(response)
+        return self._handle_response(response, fn)
 
     def close(self) -> None:
         """主动关闭 runner（通常不需要，进程结束自动清理）。"""
@@ -127,50 +197,60 @@ class SolutionRunner:
     # ── 内部 ────────────────────────────────────────────
 
     def _reader_loop(self) -> None:
-        """后台线程：从 stdin 持续读 NDJSON 帧，分发到对应 pending queue。"""
+        """后台线程：从 stdin 持续读 NDJSON 帧，分发到对应 pending queue。
+
+        无论**正常 EOF**（host 退出 / stdin 被关闭时，`for line in sys.stdin`
+        迭代静默结束、并不抛 EOFError）、reader 异常，还是收到 `shutdown` 帧，
+        退出时都统一标记关闭并唤醒所有 pending——否则 `call()` 会永久阻塞在
+        `q.get()`（见 issue #680）。
+        """
         try:
-            for line in sys.stdin:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    frame = json.loads(line)
-                except json.JSONDecodeError as e:
-                    # 非 JSON 行被静默忽略（可能是 host 误输出，但协议约束应保证不发生）
-                    sys.stderr.write(
-                        f"[noj_evaluator_sdk] stdin 非 JSON 帧: {e}: {line!r}\n"
-                    )
-                    sys.stderr.flush()
-                    continue
+            try:
+                for line in sys.stdin:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        frame = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        # 非 JSON 行被静默忽略（可能是 host 误输出，但协议约束应保证不发生）
+                        sys.stderr.write(
+                            f"[noj_evaluator_sdk] stdin 非 JSON 帧: {e}: {line!r}\n"
+                        )
+                        sys.stderr.flush()
+                        continue
 
-                frame_type = frame.get("type")
+                    frame_type = frame.get("type")
 
-                if frame_type == "capability":
-                    # solution 请求调用 capability：查注册表并同步执行（写响应帧）
-                    self._handle_capability(frame)
-                elif frame_type in ("result", "error"):
-                    self._rpc.deliver_response(frame)
-                elif frame_type == "log":
-                    # log 帧直接打到 stderr（judge 也会收集并截断）
-                    stream = frame.get("stream", "stdout")
-                    data = frame.get("data", "")
-                    # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
-                    sys.stderr.write(data)
-                    if not data.endswith("\n"):
-                        sys.stderr.write("\n")
-                    sys.stderr.flush()
-                elif frame_type == "shutdown":
-                    self._closed = True
-                    self._rpc.shutdown_pending()
-                # 其它 type 忽略
-        except (EOFError, BrokenPipeError):
-            # stdin 关闭 → 整体失败
+                    if frame_type == "capability":
+                        # solution 请求调用 capability：查注册表并同步执行（写响应帧）
+                        self._handle_capability(frame)
+                    elif frame_type in ("result", "error"):
+                        self._rpc.deliver_response(frame)
+                    elif frame_type == "log":
+                        # log 帧直接打到 stderr（judge 也会收集并截断）
+                        stream = frame.get("stream", "stdout")
+                        data = frame.get("data", "")
+                        # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
+                        sys.stderr.write(data)
+                        if not data.endswith("\n"):
+                            sys.stderr.write("\n")
+                        sys.stderr.flush()
+                    elif frame_type == "shutdown":
+                        # host 主动关闭：停止读取，finally 统一唤醒 pending
+                        break
+                    # 其它 type 忽略
+            except (EOFError, BrokenPipeError):
+                # stdin 断开（个别 iterator 可能在 EOF 前才抛）：finally 统一收尾
+                pass
+            except Exception as e:
+                sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
+                sys.stderr.flush()
+        finally:
+            # 覆盖正常 EOF、reader 异常与 shutdown 帧：置位关闭标志并唤醒所有
+            # pending，确保 call() 立即抛 ConnectionError 而非永久阻塞（#680）。
             self._closed = True
             self._rpc.shutdown_pending()
-        except Exception as e:
-            sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
-            sys.stderr.flush()
-            self._closed = True
 
     def _write_out(self, frame: dict) -> None:
         """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
@@ -241,7 +321,7 @@ class SolutionRunner:
 
         self._write_out(result_frame)
 
-    def _handle_response(self, frame: dict) -> Any:
+    def _handle_response(self, frame: dict, fn: Optional[str] = None) -> Any:
         """处理 result/error 帧，抛出对应异常或返回值。"""
         if frame.get("type") == "_shutdown":
             raise ConnectionError("Solution host 已关闭 / IPC 通道断开")
@@ -252,7 +332,7 @@ class SolutionRunner:
             if code == "CallTimeout":
                 raise SolutionTimeoutError(message)
             if code == "NotFound":
-                raise NotFoundError(message)
+                raise NotFoundError(message, fn=fn, reason=frame.get("reason"))
             if code == "Rejected":
                 raise RejectedError(message)
             # Exception / SystemError 等

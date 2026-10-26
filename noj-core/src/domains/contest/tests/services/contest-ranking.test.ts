@@ -17,12 +17,12 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
-  getContestRanking,
   getContestRankingView,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   publishContestRankingSnapshot,
 } from "../../index.ts";
+import { getContestRanking } from "../../services/contest-ranking.ts";
 import {
   ConflictError,
   ForbiddenError,
@@ -340,7 +340,8 @@ Deno.test({
       await insertSubmission(contestId, userB, problemA, 10, 10000);
       await insertSubmission(contestId, userB, problemB, 30, 9000);
 
-      const ranking = await getContestRanking(contestId, "kaggle");
+      // 竞赛已结束且未结算：匿名非管理员按门禁拒绝，计分口径用管理员视角验证
+      const ranking = await getContestRanking(contestId, "kaggle", true);
       assertEquals(ranking.length, 2);
       assertEquals(ranking[0].user_id, userB);
       assertEquals(ranking[0].total_score, 19000);
@@ -435,7 +436,7 @@ Deno.test({
       await insertSubmission(contestId, userLate, problemA, 5, 5000);
       await insertSubmission(contestId, userLate, problemB, 30, 10000);
 
-      const ranking = await getContestRanking(contestId, "kaggle");
+      const ranking = await getContestRanking(contestId, "kaggle", true);
       assertEquals(ranking.map((row) => row.user_id), [userEarly, userLate]);
       assertEquals(ranking.map((row) => row.total_score), [15000, 15000]);
       assertEquals(ranking.map((row) => row.rank), [1, 2]);
@@ -569,7 +570,7 @@ Deno.test({
     }
 
     try {
-      const ranking = await getContestRanking(contestId, "kaggle");
+      const ranking = await getContestRanking(contestId, "kaggle", true);
       const full = ranking.find((r) => r.user_id === userFull);
       const partial = ranking.find((r) => r.user_id === userPartial);
       assertExists(full);
@@ -651,6 +652,157 @@ Deno.test({
 
       const admin = await getContestRanking(contestId, "kaggle", true);
       assertEquals(admin.length, 2);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 已结束未结算时非管理员仅返回本人排名（#656）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "ended-unsettled-a");
+    await insertUser(userB, "ended-unsettled-b");
+    await insertProblem(problemA, 920107, "已结束未结算题");
+
+    // 已结束（end_time 在过去）且未发布快照；配置封榜窗口，
+    // 两条提交都发生在封榜起点之前，因此 frozen 视图有完整数据。
+    await db.insert(contests).values({
+      id: contestId,
+      title: "已结束未结算隐私守卫测试",
+      domain_id: DEFAULT_DOMAIN_ID,
+      start_time: atMinutes(-180),
+      end_time: atMinutes(-10),
+      freeze_duration_seconds: 300,
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(-170) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(-170) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, -60, 8000);
+    await insertSubmission(contestId, userB, problemA, -50, 7000);
+
+    try {
+      // 前置状态确认：已结束、无快照、走 frozen 视图且待结算
+      assertEquals(await getLatestContestRankingSnapshot(contestId), null);
+      const view = await getContestRankingView(
+        contestId,
+        "kaggle",
+        false,
+        userA,
+      );
+      assertEquals(view.view, "frozen");
+      assertEquals(view.settlement_pending, true);
+
+      // 回归点：旧实现在此分支直接 return 全量榜，绕过隐私守卫
+      const own = await getContestRanking(contestId, "kaggle", false, userA);
+      assertEquals(own.length, 1);
+      assertEquals(own[0].user_id, userA);
+      assertEquals(own[0].total_score, 8000);
+
+      // 匿名同样不得拿到他人成绩
+      const anonymous = await getContestRanking(contestId, "kaggle", false);
+      assertEquals(anonymous.length, 0);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 已结束未结算时管理员仍可读取全量榜单（#656 对照）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "ended-unsettled-admin-a");
+    await insertUser(userB, "ended-unsettled-admin-b");
+    await insertProblem(problemA, 920108, "已结束未结算管理员题");
+
+    await db.insert(contests).values({
+      id: contestId,
+      title: "已结束未结算管理员对照测试",
+      domain_id: DEFAULT_DOMAIN_ID,
+      start_time: atMinutes(-180),
+      end_time: atMinutes(-10),
+      freeze_duration_seconds: 300,
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(-170) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(-170) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, -60, 8000);
+    await insertSubmission(contestId, userB, problemA, -50, 7000);
+
+    try {
+      assertEquals(await getLatestContestRankingSnapshot(contestId), null);
+
+      // 对照：隐私修复不能把管理员一并收紧
+      const admin = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(admin.length, 2);
+      assertEquals(
+        admin.map((row) => row.user_id).sort(),
+        [userA, userB].sort(),
+      );
+      assertEquals(
+        admin.find((row) => row.user_id === userA)?.total_score,
+        8000,
+      );
+      assertEquals(
+        admin.find((row) => row.user_id === userB)?.total_score,
+        7000,
+      );
     } finally {
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
@@ -1128,7 +1280,9 @@ Deno.test({
     // 投影未标记竞赛有效 → 即使尝试已有 9000 分也不得计入竞赛成绩
 
     try {
-      const ignored = await getContestRanking(contestId, "kaggle");
+      // 已结束且未结算：非管理员视角只返回本人/匿名被门禁拦截，这里验证计分
+      // 投影口径，因此显式以管理员视角读取全量榜。
+      const ignored = await getContestRanking(contestId, "kaggle", true);
       assertEquals(ignored.length, 1);
       assertEquals(ignored[0].total_score, 0);
       assertEquals(ignored[0].problem_scores[0].best_score, 0);
@@ -1143,7 +1297,7 @@ Deno.test({
         effective_attempt_id: attemptId,
         contest_effective_attempt_id: attemptId,
       }).where(eq(submissions.id, submissionId));
-      const counted = await getContestRanking(contestId, "kaggle");
+      const counted = await getContestRanking(contestId, "kaggle", true);
       assertEquals(counted[0].total_score, 9000);
       assertEquals(counted[0].problem_scores[0].best_score, 9000);
       assertEquals(counted[0].problem_scores[0].attempts, 1);

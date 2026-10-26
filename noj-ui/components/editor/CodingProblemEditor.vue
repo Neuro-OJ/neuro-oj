@@ -6,6 +6,7 @@ import { useToast } from "~/composables/useToast"
 import { useProblemStats } from "~/composables/useProblemStats"
 import type { ProblemStatsDetail } from "~/utils/problemStats"
 import type { SubmissionMode } from "~/utils/problemView"
+import { readAiDraftPassthrough } from "~/utils/aiDraftContent"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -64,6 +65,11 @@ const publishing = ref(false)
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const submissionMode = ref<SubmissionMode>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
+/**
+ * 题包导入写入的脚本模板（编辑器不提供编辑入口）。草稿 PUT 是整体替换，
+ * 保存时必须原样带回，否则界面题模板被清空，评测时找不到模板里的函数。
+ */
+const templateContent = ref("")
 
 /** prediction 模式无 Solution 容器：隐藏 Solution 配置并省略 runtime_config.solution。 */
 const isPredictionMode = computed(() => submissionMode.value === 'prediction')
@@ -355,9 +361,9 @@ function applyDraftContent(content: Record<string, unknown>) {
   if (Array.isArray(content.samples)) {
     samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
   }
-  if (content.submission_mode === "code" || content.submission_mode === "artifact" || content.submission_mode === "prediction" || content.submission_mode === "ui") {
-    submissionMode.value = content.submission_mode
-  }
+  const passthrough = readAiDraftPassthrough(content)
+  if (passthrough.submission_mode) submissionMode.value = passthrough.submission_mode
+  if (passthrough.template_content !== undefined) templateContent.value = passthrough.template_content
   if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
     artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null
   }
@@ -475,7 +481,7 @@ function buildContent(): Record<string, unknown> {
     samples: samples.value,
     submission_mode: submissionMode.value,
     runtime_config: buildRuntimeConfig(),
-    template_content: "",
+    template_content: templateContent.value,
     artifact_max_size_mb: artifactMaxSizeMb.value,
     llm_config: buildLlmPayload() ?? null,
   }
