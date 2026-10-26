@@ -3,6 +3,12 @@
 这是基于 `architecture/remediation-p3-p8`（PR
 #690）的栈顶修复层，所有变更都追加在现有历史之上，没有改写 P3–P8 提交。
 
+2026-10-26：#643、#646、#687–#691 全部 ready for review，均无合并冲突。
+签名合并提交 `b5411b58` 将最新 main `ad0e564b` 同步到整条栈，PR #690 新基线为
+`2bbd1fea`；栈顶运行时代码与上一轮已通过 CI 的 `813ab790` 一致，新增内容仅为
+main 的 README 和整合 Agent Note。PR #691 的 CLA 已通过，新提交的 CI 正在复验。
+以下测试数字为先前已完成的验收证据。
+
 本层运行时代码验收 head 为
 `51cbfebe43689d43011a27183c5eefe4d3823112`；文档站死链修复并完成对应验证的提交为
 `c058f99e688c55c83b859f707b5d19b368ee4f09`，其后只追加验收证据同步提交，未改变运行时
@@ -68,8 +74,8 @@
   Sandbox、UI Build 与镜像 job 全部通过。
 - GitHub Security `40260198097` 与 Lint Workflows `40260198088`：通过。
 - GitHub 性能 workflow_dispatch `40260061354`：41/41 jobs 通过；Core Perf 搜索
-  和教学矩阵性能均执行。记录高选择性搜索 291ms、全命中搜索 263ms、社区搜索
-  P95 148.3ms、教学矩阵 P95 55.96ms、正式重测进度更新 1653ms，均低于门槛。
+  和教学矩阵性能均执行。记录高选择性搜索 291ms、全命中搜索 263ms、社区搜索 P95
+  148.3ms、教学矩阵 P95 55.96ms、正式重测进度更新 1653ms，均低于门槛。
 - Cloudflare Pages：文档站死链修复提交 `c058f99e` 部署成功，preview 为
   `https://ff5d7074.noj-docs.pages.dev`；其后只追加验收证据同步提交。
 - 本轮修复隔离 E2E：system 为 38 passed / 0 failed（含 `problems.delete`
@@ -79,11 +85,12 @@
 ## 验收边界
 
 - 未合并、未发布 Release、未切换生产；请先等待 CI 和人工 review。
-- 本机 GPG pinentry 不可用；用户明确接受本层新增提交不签名，既有签名提交不变。
-- 真实 Provider 请求、完整 rootless Judge 恢复演练、生产 release artifact 与数据库
-  切换仍需外部环境补证；WASI SDK/image 与四种 WASI Acceptance 已在 CI 通过。
-- `license/cla` 仍 pending，需要仓库维护者完成签署；这不是代码测试失败，但仍是
-  合并前的仓库门禁。
+- 上一轮用户明确接受新增修复提交不签名；本次冲突整合的 7 个合并提交均已有 有效
+  GPG 签名，既有历史不变。
+- 真实 Provider 请求、完整 rootless Judge 恢复演练、生产 release artifact
+  与数据库 切换仍需外部环境补证；WASI SDK/image 与四种 WASI Acceptance 已在 CI
+  通过。
+- PR #691 的 `license/cla` 已通过。
 - 本轮本地 E2E 使用唯一 `noj-e2e-local` 容器/端口/卷并已清理；其它验收栈未触碰。
 
 详细证据与明早 review
