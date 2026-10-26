@@ -5,8 +5,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
-/* 在使用位置解析语义颜色，才能继承编辑器局部的 --c-* 明暗变量。 */
+/* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ----
+ * inline 让工具类在使用处读取 --c-*，跟随 .editor-dark 的局部主题。
+ * 普通 @theme 会在 :root 提前解析别名，造成编辑器白底与 Markdown 浅字混用。
+ */
 @theme inline {
   /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);

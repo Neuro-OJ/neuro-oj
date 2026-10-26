@@ -121,7 +121,7 @@ Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async ()
 
   assertEquals(res.status, 429);
   const body = await res.json();
-  assertEquals(body.error.code, "out_of_usage");
+  assertEquals(body.error.code, "rate_limit_exceeded");
   assertEquals(usageInserts[0].error_code, "rate_limit_exceeded");
 });
 
@@ -621,4 +621,99 @@ Deno.test("llm route: model_map 缺少别名映射时拒绝（403）", async () 
     messages: [{ role: "user", content: "ping" }],
   });
   assertEquals(res.status, 403);
+});
+
+Deno.test("llm route: 配额拒绝审计保留维度和预占数值，响应不暴露计数键", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = [
+    JSON.stringify({
+      code: "limit_exceeded",
+      counter: 2,
+      current: 990,
+      requested: 15,
+      limit: 1000,
+    }),
+  ];
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  let res: Response;
+  try {
+    res = await requestChat(app, await makeToken(testConfig), {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+  } finally {
+    restore();
+  }
+  const rejectedBody = await res.json();
+  assertEquals(
+    rejectedBody.error.code,
+    "out_of_usage",
+    JSON.stringify(rejectedBody),
+  );
+  assertEquals(JSON.parse(String(usageInserts[0].request_params)).quota_limit, {
+    scope: "evaluation",
+    window: "evaluation",
+    metric: "tokens",
+    current: 990,
+    requested: 15,
+    limit: 1000,
+  });
+});
+
+Deno.test("llm route: 客户端断开取消上游，未知用量保留预占等待对账", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const controller = new AbortController();
+  let upstreamAborted = false;
+  const restore = stubFetch((_url, init) =>
+    new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => {
+        upstreamAborted = true;
+        reject(new DOMException("cancelled", "AbortError"));
+      }, { once: true });
+      controller.abort();
+    })
+  );
+  try {
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${await makeToken(testConfig)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 768,
+      }),
+    });
+    assertEquals(res.status, 499);
+    assertEquals(upstreamAborted, true);
+    assertEquals(usageInserts[0].error_code, "client_closed_request");
+    // 请求已交给上游，断连不能证明零计费；保留预占及 unknown 账本，禁止盲目退款。
+    const reservation = redis.evalArgs[0] as unknown[];
+    const plan = JSON.parse(String(reservation[3]));
+    assertEquals(plan.incs.every((value: number) => value >= 0), true);
+    assertEquals(redis.evalArgs.length, 1);
+  } finally {
+    restore();
+  }
 });

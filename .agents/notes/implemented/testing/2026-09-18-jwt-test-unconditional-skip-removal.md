@@ -5,15 +5,17 @@ Status: implemented
 ## Problem
 
 `noj-core/src/domains/identity/tests/lib/jwt.test.ts` 的 7 个用例原先全部带
-`ignore: !hasJwtSecret` 守卫（顶层 `const hasJwtSecret = !!Deno.env.get("JWT_SECRET")`）。
-在 CI（工作流注入 `JWT_SECRET`）下这些用例会真正执行，但任何未注入密钥的环境
-（本地直接跑、或仅以 PGlite 运行该文件）下整个文件会被静默跳过：报告显示 ok，实际零验证。
+`ignore: !hasJwtSecret` 守卫（顶层
+`const hasJwtSecret = !!Deno.env.get("JWT_SECRET")`）。 在 CI（工作流注入
+`JWT_SECRET`）下这些用例会真正执行，但任何未注入密钥的环境 （本地直接跑、或仅以
+PGlite 运行该文件）下整个文件会被静默跳过：报告显示 ok，实际零验证。
 
 上游提交 `b8699802e`（凭据变更原子撤销全部旧会话）在文件顶部新增了
-「会话版本往返且拒绝畸形版本」用例，使该文件的 ignore 数由 6 增至 7，全仓静默跳过
-总数由基线 515 增至 516。仓库级门禁 `scripts/silent-skip-report.ts --check`
-（2026-09-12 架构评审 §5.1 引入的基线棘轮）按「总数 / 原因 / 文件」三个维度判定
-增长即失败，因此 `main` 最新提交的 Root Gates 持续红灯。
+「会话版本往返且拒绝畸形版本」用例，使该文件的 ignore 数由 6 增至
+7，全仓静默跳过 总数由基线 515 增至 516。仓库级门禁
+`scripts/silent-skip-report.ts --check` （2026-09-12 架构评审 §5.1
+引入的基线棘轮）按「总数 / 原因 / 文件」三个维度判定 增长即失败，因此 `main`
+最新提交的 Root Gates 持续红灯。
 
 ## Decision
 

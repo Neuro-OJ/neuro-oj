@@ -865,6 +865,22 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "judge",
   },
   {
+    // 正式提交评测以偶发平台错误（Evaluator 总超时、judge 内部错误、LLM 网关
+    // 连接失败/5xx）结束时，core 自动重新派发的次数上限；选手缺函数、LLM 额度/
+    // 计费/鉴权与未知错误不重试。次数持久化在尝试快照中（多副本安全）。
+    key: "judge_platform_error_max_retries",
+    type: "integer",
+    default: 3,
+    description:
+      "正式提交评测出现偶发平台错误（超时、内部错误、LLM 网关断连/5xx）时的自动重试次数上限（初次评测之外），0 = 不自动重试",
+    is_secret: false,
+    envFallback: "JUDGE_PLATFORM_ERROR_MAX_RETRIES",
+    category: "judge",
+    min: 0,
+    max: 10,
+    scope: "runtime",
+  },
+  {
     key: "judge_max_evaluator_time_limit_ms",
     type: "integer",
     default: 0,

@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **359** 处（early-return=248 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
+> 当前命中 **360** 处（early-return=248 rust-ignore=46 ignore=33 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -13,6 +13,7 @@
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 224 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 319 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 354 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 905 | ignore |
 | noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
 | noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
 | noj-core/src/domains/identity/tests/routes/tfa.test.ts | 21 | env-guard |

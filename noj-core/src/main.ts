@@ -92,6 +92,7 @@ function buildProductionConfig(): ProductionConfig {
     s3AccessKey: configuredSetting("s3_access_key"),
     s3SecretKey: configuredSetting("s3_secret_key"),
     s3Bucket: configuredSetting("s3_bucket"),
+    bypassJwtRevoke: Deno.env.get("NOJ_BYPASS_JWT_REVOKE"),
   };
 }
 

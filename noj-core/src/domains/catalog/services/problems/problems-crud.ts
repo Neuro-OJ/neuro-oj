@@ -69,6 +69,7 @@ export { mergeProblemContentPatch } from "./problem-content-patch.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 
 import {
+  assertLlmProblemPermission,
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";

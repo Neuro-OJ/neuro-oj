@@ -313,6 +313,47 @@ function scopeCounters(
   return out;
 }
 
+/** 配额拒绝的内部诊断；只保留维度与数值，不暴露 Redis 键或用户 ID。 */
+export class QuotaLimitError extends Error {
+  constructor(
+    public readonly diagnostics: {
+      scope: string;
+      window: string;
+      metric: string;
+      current: number;
+      requested: number;
+      limit: number;
+    },
+  ) {
+    super("limit_exceeded");
+  }
+}
+
+function checkLimitResult(result: string, counters: CounterSpec[]): void {
+  if (result === "ok") return;
+  if (result.startsWith("{")) {
+    const detail = JSON.parse(result);
+    const counter = counters[detail.counter - 1];
+    if (counter && detail.code === "limit_exceeded") {
+      const parts = counter.key.split(":");
+      const scope = parts[1] === "domain" ? parts[3] : parts[1];
+      throw new QuotaLimitError({
+        scope: ["attempt", "sub"].includes(scope) ? "evaluation" : scope,
+        window: parts.includes("day")
+          ? "day"
+          : parts.includes("month")
+          ? "month"
+          : "evaluation",
+        metric: parts.at(-1)!,
+        current: detail.current,
+        requested: detail.requested,
+        limit: detail.limit,
+      });
+    }
+  }
+  throw new Error(result);
+}
+
 const LIMIT_SCRIPT = `
 local user_rate_limit = tonumber(ARGV[1])
 local ip_rate_limit = tonumber(ARGV[2])
@@ -348,13 +389,9 @@ for i = 3, count do
   local j = i - 2
   local limit = tonumber(limits[j])
   local inc = tonumber(incs[j])
-  if limit == 0 then
-    return 'limit_exceeded'
-  elseif limit > 0 then
-    local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
-    if cur + inc > limit then
-      return 'limit_exceeded'
-    end
+  local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
+  if limit == 0 or (limit > 0 and cur + inc > limit) then
+    return cjson.encode({code='limit_exceeded', counter=j, current=cur, requested=inc, limit=limit})
   end
 end
 
@@ -384,13 +421,9 @@ end
 
 for i = 1, #KEYS do
   local limit = tonumber(limits[i])
-  if limit == 0 then
-    return 'limit_exceeded'
-  elseif limit > 0 then
-    local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
-    if cur > limit then
-      return 'limit_exceeded'
-    end
+  local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
+  if limit == 0 or (limit > 0 and cur > limit) then
+    return cjson.encode({code='limit_exceeded', counter=i, current=cur, requested=tonumber(incs[i]), limit=limit})
   end
 end
 
@@ -701,9 +734,7 @@ export async function enforceAndCount(
       return value;
     });
   } else result = await reserve();
-  if (result !== "ok") {
-    throw new Error(result);
-  }
+  checkLimitResult(result, counters);
 }
 
 /**
@@ -728,7 +759,7 @@ export async function settleUsage(
 ): Promise<void> {
   const counters = await prepareSettlementCounters(db, payload, opts);
   const result = await runSettleScript(redis, counters);
-  if (result !== "ok") throw new Error(result);
+  checkLimitResult(result, counters);
 }
 
 /** 固定窗口、额度及 delta，后台重试不重新解析已变化的配置。 */

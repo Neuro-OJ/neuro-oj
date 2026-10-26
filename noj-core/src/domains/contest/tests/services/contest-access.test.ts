@@ -237,6 +237,32 @@ Deno.test({
       assertEquals(info.allowed, true);
       assertEquals(info.running, true);
       assertEquals(info.contestId, contestId);
+      // 页面 URL 使用公开编号，附件接口同样必须解析成内部 UUID 后校验。
+      const [row] = await getDb().select({ public_id: contests.public_id })
+        .from(contests).where(eq(contests.id, contestId));
+      const publicInfo = await verifyContestAccess(
+        participantId,
+        row.public_id,
+        problemId,
+      );
+      assertEquals(publicInfo, info);
+      assertEquals(
+        (await verifyContestAccess(creatorId, row.public_id, problemId))
+          .allowed,
+        false,
+      );
+      assertEquals(
+        (await verifyContestAccess(null, row.public_id, problemId)).allowed,
+        false,
+      );
+      assertEquals(
+        (await verifyContestAccess(
+          participantId,
+          row.public_id,
+          crypto.randomUUID(),
+        )).allowed,
+        false,
+      );
     } finally {
       await deleteContest(contestId).catch(() => {});
       const db = getDb();

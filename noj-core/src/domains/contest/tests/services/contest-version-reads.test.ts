@@ -31,10 +31,10 @@ import {
 import {
   createContest,
   getContestProblems,
-  getContestRanking,
   getContestRankingView,
   updateContest,
 } from "../../index.ts";
+import { getContestRanking } from "../../services/contest-ranking.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 await resetDbForTest({ refreshRankings: true });
@@ -594,7 +594,9 @@ Deno.test({
         effective_attempt_id: attemptV1,
       }).where(eq(submissions.id, submissionId));
 
-      const anyRanking = await getContestRanking(contestId, "kaggle");
+      // 已结束且未结算：非管理员只能看本人/匿名被门禁拦截，这里验证计分口径，
+      // 因此显式以管理员视角读取全量榜。
+      const anyRanking = await getContestRanking(contestId, "kaggle", true);
       assertEquals(anyRanking[0].total_score, 10000);
       // 定性归因：有效尝试 = V1，且提交时间用原始 created_at（不是重测时间）
       const anyDetails = await getContestRankingView(contestId, "kaggle", true);
@@ -619,7 +621,7 @@ Deno.test({
         contest_effective_attempt_id: attemptV2,
       }).where(eq(submissions.id, submissionId));
 
-      const exactRanking = await getContestRanking(contestId, "kaggle");
+      const exactRanking = await getContestRanking(contestId, "kaggle", true);
       // exact(V2) 下 V1 满分不再有效 → 只认 V2 的零分判定
       assertEquals(exactRanking[0].total_score, 0);
       const exactDetails = await getContestRankingView(
