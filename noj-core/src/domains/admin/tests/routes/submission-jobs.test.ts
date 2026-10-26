@@ -8,7 +8,8 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   problems,
   problemVersions,
@@ -22,9 +23,6 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
 
 const now = new Date().toISOString();
 const ts = Date.now();
@@ -119,7 +117,6 @@ async function seedProblemAndSubmission(tag: string): Promise<{
 
 Deno.test({
   name: "submission jobs route: 受理重测任务并读取详情与条目",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -211,7 +208,6 @@ Deno.test({
 
 Deno.test({
   name: "submission jobs route: 重试生成关联新任务且不报错",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -289,7 +285,6 @@ Deno.test({
 
 Deno.test({
   name: "upgrade jobs route: 用户受理升级任务，本人可读/他人 403/管理员可读",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

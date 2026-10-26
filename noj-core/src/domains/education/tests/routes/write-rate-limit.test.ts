@@ -10,7 +10,6 @@ import { assignmentFixture } from "../_assignment-fixture.ts";
 Deno.test({
   name:
     "教学写限流 HTTP：作业与互动共用窗口，读取不扣、拒绝副作用、学生求助与跨域独立",
-  ignore: !Deno.env.get("REDIS_URL"),
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {

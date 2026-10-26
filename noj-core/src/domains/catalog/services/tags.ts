@@ -63,7 +63,7 @@ export function isValidTagKind(value: string): value is TagKind {
 }
 
 /**
- * 判断数据库错误是否为唯一约束冲突（PG 23505；PGlite 在 cause.code）。
+ * 判断数据库错误是否为 PostgreSQL 唯一约束冲突（23505）。
  * 与 problems-crud.ts 的 MAX_RETRIES 处理同款解析。
  */
 function isUniqueViolation(err: unknown): boolean {

@@ -1,7 +1,8 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { domainLimits, domains, users } from "../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";

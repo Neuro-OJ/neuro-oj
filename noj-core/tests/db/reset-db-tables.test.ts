@@ -6,24 +6,16 @@
  * 导致 `resetDbForTest()` 的 TRUNCATE 漏表、同进程用例相互污染；而
  * schema parity / 迁移门禁都看不到该名单遗漏。
  *
- * 本文件必须 `disableTestTransactionForFile()`——preload 的事务包装下
- * `resetDbForTest()` 退化为「清内存缓存」，无法验证 TRUNCATE 表清单。
- * 静态守护（`ALL_TABLES` ↔ DDL/Drizzle 交叉核对）在
- * `tests/db/schema.test.ts`，此处补功能性验证（真正插入 → reset → 断言清空）。
+ * 这里直接验证真实 PostgreSQL 中「插入 → reset → 断言清空」的行为，避免仅依赖
+ * 静态表名清单。
  *
  * 选取的表均为**无外键依赖**的叶子表，避免构造 problems/users 前置数据，
  * 同时足以覆盖「该表确实在 TRUNCATE 清单里」这一断言。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../src/shared/db/connection.ts";
+import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { carouselSlides, sseEvents } from "../../src/shared/db/schema.ts";
-
-disableTestTransactionForFile();
-
 Deno.test({
   name: "resetDbForTest: carousel_slides 会被清空（2026-09-24 评审回归）",
   sanitizeResources: false,

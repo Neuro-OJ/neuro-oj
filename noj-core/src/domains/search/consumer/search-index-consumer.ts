@@ -3,6 +3,7 @@ import {
   createConsumer,
 } from "../../../shared/mq/base-consumer.ts";
 import { getLogger } from "@logtape/logtape";
+import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 
 const logger = getLogger(["noj", "search"]);
 import {
@@ -65,14 +66,31 @@ export async function handleSearchIndexEvent(data: unknown): Promise<void> {
 /** 当前消费者实例句柄（用于只停本消费者）。 */
 let consumer: ConsumerHandle | null = null;
 
-export function startSearchIndexConsumer(): ConsumerHandle {
-  consumer = createConsumer({
+/**
+ * 启动搜索索引消费者并返回统一后台任务句柄（P2a）。
+ *
+ * 消费者循环只在 `requestShutdown()` 后 resolve，因此 `done` 同时代表
+ * "已停止领取"与"在途消息处理完毕"。
+ *
+ * @returns 可停止、可等待的消费者句柄
+ */
+export function startSearchIndexConsumer(): ManagedTask {
+  const handle = createConsumer({
     queueName: SEARCH_INDEX_QUEUE,
     logLabel: "搜索索引",
     aliveRef,
     handleMessage: handleSearchIndexEvent,
   });
-  return consumer;
+  consumer = handle;
+  const started = handle();
+  // done 保留真实拒绝供任务组汇总；先挂一个 no-op handler 避免无人及时 await
+  // 时产生 unhandledRejection。
+  started.catch(() => {});
+  return {
+    name: "search-index-consumer",
+    stop: () => handle.requestShutdown(),
+    done: started,
+  };
 }
 
 /**

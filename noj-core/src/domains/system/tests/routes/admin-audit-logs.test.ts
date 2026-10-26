@@ -1,15 +1,12 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, userRoles, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasDb || !hasEnv;
-
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 await initRedisForTest();
 
@@ -69,7 +66,6 @@ async function getWithToken(
 
 Deno.test({
   name: "admin route: GET /admin/audit-logs 未登录返 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -82,7 +78,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /admin/audit-logs 非 admin 返 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -103,7 +98,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /admin/audit-logs admin 返 200 + 分页",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -177,7 +171,6 @@ Deno.test({
 
 Deno.test({
   name: "admin route: GET /admin/audit-logs 按 action 筛选",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

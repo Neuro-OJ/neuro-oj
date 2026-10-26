@@ -9,7 +9,8 @@
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   permissions,
@@ -23,10 +24,6 @@ import { createApp } from "../../../../app.ts";
 import { signToken } from "../../services/security/jwt.ts";
 
 // ── 测试辅助 ─────────────────────────────────────
-
-const dbAvailable = true;
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !dbAvailable;
 
 const ts = Date.now();
 const ADMIN_USER_ID = `rbac-admin-${ts}`;
@@ -110,7 +107,6 @@ if (userRole) {
 
 Deno.test({
   name: "rbac: getUserPermissions 空用户返回空 Set",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -122,7 +118,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: admin 用户权限集包含 admin:full_access",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -136,7 +131,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 普通用户有默认权限",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -154,7 +148,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: ensureRbacSeeds 幂等",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -203,7 +196,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: GET /admin/roles 返回角色列表",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -226,7 +218,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: GET /admin/permissions 返回按 resource 分组的权限列表",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -258,7 +249,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: GET /admin/roles 非管理员返回 403",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -272,7 +262,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: POST /admin/roles 创建自定义角色",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -315,7 +304,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: POST /admin/roles 重复名称返回 409",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -331,7 +319,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: DELETE /admin/roles 系统角色返回 403",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -361,7 +348,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: PATCH /admin/users/:id/role 分配角色",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -390,7 +376,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: PATCH /admin/users/:id/role 不允许修改自己的角色",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -415,7 +400,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 角色继承——子角色用户通过 getUserPermissions 获得父角色权限",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -482,7 +466,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 多角色——用户拥有多个角色时权限取并集",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -578,7 +561,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: PUT /admin/roles/:id 更新角色名称和权限",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -638,7 +620,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: DELETE /admin/roles/:id 删除自定义角色成功",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -674,7 +655,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 角色 CRUD 路由审计各写一条且不重复",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -749,7 +729,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 禁止移除最后一个 admin 角色",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -785,7 +764,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 角色继承循环引用被拒绝",
-  ignore: skip || !hasJwt,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -832,7 +810,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 服务层 assertPermission 拒绝无权限操作",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -875,7 +852,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 默认角色具备 contest:create 权限",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -908,7 +884,6 @@ Deno.test({
 
 Deno.test({
   name: "rbac: 管理员角色具备 legal:manage 权限",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

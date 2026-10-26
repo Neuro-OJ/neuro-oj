@@ -4,7 +4,8 @@
  * 覆盖：未登录 401；提交后可查看；非法枚举 400。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "./../../../identity/services/security/jwt.ts";

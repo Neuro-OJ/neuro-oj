@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
@@ -48,8 +48,8 @@ await resetDbForTest();
 
 const now = new Date().toISOString();
 
-// 真实 PG（独立 schema）由迁移创建，不含 PGlite 的 root 种子；
-// 用例把 `owner_id` 指向 "0"，因此这里幂等补一行（PGlite 下已存在，无副作用）。
+// 真实 PG（独立 schema）由迁移创建，不含 测试数据库 的 root 种子；
+// 用例把 `owner_id` 指向 "0"，因此这里幂等补一行（测试数据库 下已存在，无副作用）。
 await getDb().insert(users).values({
   id: "0",
   username: "root",
@@ -59,8 +59,8 @@ await getDb().insert(users).values({
   updated_at: now,
 }).onConflictDoNothing();
 
-// 真实 PG（独立 schema）不含 PGlite 的评测镜像种子：白名单为空会让所有派发被
-// 预检拒绝（JUDGE_IMAGE_NOT_ALLOWED），因此这里幂等补上两条（PGlite 下已存在）。
+// 真实 PG（独立 schema）不含 测试数据库 的评测镜像种子：白名单为空会让所有派发被
+// 预检拒绝（JUDGE_IMAGE_NOT_ALLOWED），因此这里幂等补上两条（测试数据库 下已存在）。
 await getDb().insert(judgeImages).values([
   {
     id: "e0000000-0000-0000-0000-000000000002",

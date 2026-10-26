@@ -46,16 +46,18 @@ export interface ProdService {
 /**
  * 生产 `docker-compose.prod.yml` 的**权威服务集**（顺序即文件中的声明顺序）。
  *
- * 与文件逐服务核对，不得遗漏：`migrate`、`core`、`ui`、`judge`（profile
+ * 与文件逐服务核对，不得遗漏：`migrate`、`gateway-migrate`、`core`、`ui`、`judge`（profile
  * judge）、`llm-gateway`、`nginx`、`prometheus`（profile monitoring）、
  * `alertmanager`（profile monitoring）、`postgres`、`redis`、`minio`、
  * `minio-init`。
  *
  * `compose_test.ts` 会读取真实文件、按缩进层级解析 `services:` 段并与此清单
- * 双向比对，因此此处不是"第二份手抄清单"。
+ * 双向比对，并用 Docker Compose 的 `config --format json` 校验依赖图，因此此处
+ * 不是"第二份手抄清单"。
  */
 export const PROD_SERVICES: readonly ProdService[] = [
   { name: "migrate" },
+  { name: "gateway-migrate" },
   { name: "core" },
   { name: "ui" },
   { name: "judge", profile: "judge" },

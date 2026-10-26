@@ -1,9 +1,6 @@
 import { assert } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { educationNotifications } from "../../../../shared/db/schema.ts";
 import {
   createAssignment,
@@ -14,14 +11,10 @@ import {
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
-const url = Deno.env.get("DATABASE_URL");
 // 独立事务才能复现池耗尽；外层测试事务会把错误的全局读取也绑定到同一连接。
-if (url) disableTestTransactionForFile();
-
 Deno.test({
   name:
     "教学通知 PG：单连接池内发布、反馈及求助校验复用投递事务，不等待第二条连接",
-  ignore: !url,
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {

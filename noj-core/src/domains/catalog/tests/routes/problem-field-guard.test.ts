@@ -31,10 +31,6 @@ import { signToken } from "../../../identity/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { resetSetting, updateSetting } from "../../../system/index.ts";
 
-const dbAvailable = true;
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !dbAvailable || !hasJwt;
-
 const ts = Date.now();
 const now = new Date().toISOString();
 
@@ -206,7 +202,6 @@ function makeToken(userId: string): Promise<string> {
 
 Deno.test({
   name: "POST /problems: 默认用户不再拥有敏感字段权限 → 403（NOJ-062）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -255,7 +250,6 @@ Deno.test({
 
 Deno.test({
   name: "POST /problems: 默认用户设置自定义 command → 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -283,7 +277,6 @@ Deno.test({
 
 Deno.test({
   name: "POST /problems: 默认用户设置 network:null 不触发检查 → 201",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -311,7 +304,6 @@ Deno.test({
 
 Deno.test({
   name: "POST /problems: 默认用户设置 network.enabled=true → 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -339,7 +331,6 @@ Deno.test({
 
 Deno.test({
   name: "PUT /problems/:id: 收紧用户未触及敏感字段 → 200 放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -425,7 +416,6 @@ Deno.test({
 
 Deno.test({
   name: "PUT /problems/:id: 收紧用户开启联网 → 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -446,7 +436,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 收紧用户导入 → 403，admin 导入 → 200",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -478,7 +467,6 @@ Deno.test({
 
 Deno.test({
   name: "POST /problems: 资源超限 → 400 RESOURCE_LIMIT_EXCEEDED",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

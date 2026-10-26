@@ -75,7 +75,7 @@ export const objectiveSubmissions = pgTable(
      *
      * **故意不在 Drizzle 中声明外键**：`objective.ts` 与 `submission.ts`
      * 互相引用（attempts 需要两个提交外键），而 `foreignKey()` 的列数组在定义处
-     * 立即求值，模块求值顺序不同就会 TDZ 崩溃。外键由迁移与 PGlite DDL 以
+     * 立即求值，模块求值顺序不同就会 TDZ 崩溃。外键由 PostgreSQL 迁移以
      * `ALTER TABLE ... ADD CONSTRAINT` 形式建立（与 Handbook §6.1「循环外键使用
      * 延迟类型引用；迁移先建表，再添加关联外键」一致）。
      */

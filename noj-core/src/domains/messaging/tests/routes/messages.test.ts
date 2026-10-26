@@ -12,7 +12,8 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { eq, or } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { conversations, users } from "../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../identity/index.ts";
 import { signToken } from "../../../identity/index.ts";
@@ -23,13 +24,9 @@ import {
 } from "../../../system/index.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 await initRedisForTest();
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(hasDb && hasJwt);
 
 const BASE = "/api/v1/conversations";
 
@@ -68,7 +65,6 @@ async function cleanup(...userIds: string[]): Promise<void> {
 
 Deno.test({
   name: "messages route: 无 token 返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -80,7 +76,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 无效 token 返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -94,7 +89,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 匿名路由 /:id/messages 仍要求认证",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -108,7 +102,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations 创建新会话返回 201",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -137,7 +130,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations 已有会话返回 200",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -173,7 +165,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations 缺少 other_user_id 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -200,7 +191,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations 自聊返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -225,7 +215,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations 对方不存在返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -250,7 +239,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations 空列表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -272,7 +260,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations 非空列表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -309,7 +296,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations/unread-count 无未读返回 0",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -331,7 +317,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations/unread-count 有未读 > 0",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -377,7 +362,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations/:id/messages 发送成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -415,7 +399,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations/:id/messages 空内容返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -450,7 +433,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations/:id/messages 非参与者返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -487,7 +469,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations/:id/messages 不存在会话返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -512,7 +493,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations/:id/messages 消息列表",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -563,7 +543,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: GET /conversations/:id/messages 不存在会话返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -585,7 +564,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: POST /conversations/:id/read 标记已读返回 204",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -633,7 +611,6 @@ Deno.test({
 Deno.test({
   name:
     "messages route: POST /conversations/:id/read 缺少 last_read_message_id 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -668,7 +645,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 已读后未读计数归零",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -721,7 +697,6 @@ Deno.test({
 Deno.test({
   name:
     "messages route: DELETE /conversations/:id/messages/:mid 删除成功返回 204",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -762,7 +737,6 @@ Deno.test({
 Deno.test({
   name:
     "messages route: DELETE /conversations/:id/messages/:mid 不存在返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -798,7 +772,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: A 删除消息后 A 不可见但 B 仍可见",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -853,7 +826,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 私信关闭时 SSE 返回 feature:disabled 事件",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -902,7 +874,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 发送图片消息成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -944,7 +915,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 图片消息缺少 image_url 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -979,7 +949,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 引用回复成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1031,7 +1000,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 转发消息成功并标记来源",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1087,7 +1055,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 转发不可信消息返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1141,7 +1108,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 添加/替换/取消 Reaction",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1226,7 +1192,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 非法 emoji 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1276,7 +1241,6 @@ Deno.test({
 
 Deno.test({
   name: "messages route: 转发图片消息成功（路由层不拦截）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

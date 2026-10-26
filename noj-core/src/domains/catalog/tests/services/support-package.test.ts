@@ -18,9 +18,6 @@ import {
   resetStorageProvider,
 } from "../../../system/index.ts";
 
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
-
 const ts = Date.now();
 const OWNER_ID = `test-owner-${ts}`;
 const ADMIN_ID = "0";
@@ -93,7 +90,6 @@ async function createTestProblem(
 
 Deno.test({
   name: "support-package service: deleteSupportPackage 删除成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -128,7 +124,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: deleteSupportPackage 幂等：无文件时也成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -145,7 +140,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: deleteSupportPackage 非 owner 返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -163,7 +157,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: deleteSupportPackage 不存在的题目返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -178,7 +171,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: getSupportPackageBytes 返回存储的数据",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -213,7 +205,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: getSupportPackageBytes 无支持包返回 null",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -232,7 +223,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package service: getSupportPackageBytes 非 owner 返回 403",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -251,7 +241,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "support-package service: cleanup",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

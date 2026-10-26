@@ -12,7 +12,8 @@ import type { ObservabilityRegistry } from "../observability/contracts.ts";
  */
 export interface RedisClient {
   connect(): Promise<void>;
-  disconnect(): Promise<void>;
+  /** ioredis 的 disconnect 是同步 void；测试 fake 也允许返回 Promise。 */
+  disconnect(): void | Promise<void>;
   ping(): Promise<string>;
   quit(): Promise<string>;
   status: string;
@@ -367,25 +368,93 @@ export function resetRedisForTest() {
   _error = null;
 }
 
+/** Redis 关闭阶段的最小客户端；只要求实际使用的方法。 */
+export interface RedisShutdownClient {
+  quit(): Promise<unknown> | unknown;
+  /** ioredis 为同步 void；测试 fake 可返回 Promise。 */
+  disconnect(): void | Promise<void>;
+  off?(
+    event: string,
+    handler: (...args: unknown[]) => void,
+  ): void;
+}
+
+/** 关闭路径的告警日志：日志设施异常不得阻断 quit/disconnect。 */
+function warnRedisShutdown(message: string, error: unknown): void {
+  try {
+    logger.warn(message, { err: error });
+  } catch {
+    // 日志失败时继续关闭流程。
+  }
+}
+
+/**
+ * 关闭一个 Redis 客户端。
+ *
+ * 语义：
+ * - 先移除 `ready` 监听器，避免关闭过程中再修改 `_error`；
+ * - `quit()` 成功即视为完成；
+ * - `quit()` 失败时用 `disconnect()` 兜底；`disconnect()` 成功（含 ioredis 的
+ *   同步 void）即视为已断开；
+ * - 两者都失败时抛出 `AggregateError`，`errors` 保留两个原始错误。
+ *
+ * 不读取模块单例，便于用最小 fake 在无网络条件下测试。
+ *
+ * @param redis 待关闭客户端
+ * @param readyHandler 可选的 ready 监听器引用
+ */
+export async function closeRedisClientForShutdown(
+  redis: RedisShutdownClient,
+  readyHandler: (() => void) | null = null,
+): Promise<void> {
+  if (readyHandler !== null && typeof redis.off === "function") {
+    try {
+      redis.off("ready", readyHandler);
+    } catch (error) {
+      // 监听器移除失败不改变连接是否已关闭的事实，但必须可诊断。
+      warnRedisShutdown("Redis ready 监听器移除失败", error);
+    }
+  }
+
+  let quitError: unknown;
+  try {
+    await redis.quit();
+    return;
+  } catch (error) {
+    quitError = error;
+  }
+
+  try {
+    await Promise.resolve(redis.disconnect());
+  } catch (disconnectError) {
+    throw new AggregateError(
+      [quitError, disconnectError],
+      `Redis 关闭失败：quit: ${describeRedisError(quitError)}；` +
+        `disconnect: ${describeRedisError(disconnectError)}`,
+    );
+  }
+
+  // quit 失败但 disconnect 成功：按明确的兜底语义视为已完成关闭。
+  warnRedisShutdown("Redis quit 失败，已通过 disconnect 兜底关闭", quitError);
+}
+
+function describeRedisError(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  return String(error);
+}
+
 /**
  * 优雅关闭：主动结束共享 Redis 连接。
  *
- * ioredis 的 disconnect 不等待连接关闭完成（no ready check），
- * 这里采用 quit + disconnect 双保险，并捕获所有错误——关闭路径不得阻断退出。
+ * 先释放单例引用与 ready 监听器引用，再执行 quit/disconnect；关闭失败会抛出
+ * `AggregateError`，由 `performShutdown()` 记为资源关闭问题。
  */
 export async function closeRedisForShutdown(): Promise<void> {
   const redis = _redis;
+  const readyHandler = _clearErrorOnReady;
   _redis = null;
   _error = null;
+  _clearErrorOnReady = null;
   if (!redis) return;
-  try {
-    await redis.quit();
-  } catch {
-    // ignore
-  }
-  try {
-    await redis.disconnect();
-  } catch {
-    // ignore
-  }
+  await closeRedisClientForShutdown(redis, readyHandler);
 }

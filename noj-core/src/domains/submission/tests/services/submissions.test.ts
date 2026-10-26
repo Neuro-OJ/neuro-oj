@@ -19,7 +19,8 @@ import {
   rejudgeSubmission,
   updateSubmissionStatus,
 } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
@@ -55,9 +56,6 @@ import {
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 import { startFakeRedis } from "../_fake-redis.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 
 const ts = Date.now();
 const TEST_PROBLEM_ID = `tst-pr-${ts}`;
@@ -106,7 +104,6 @@ await db.insert(problems).values({
 
 Deno.test({
   name: "submissions service: 不支持的语言抛出 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -126,7 +123,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: prediction 题目拒绝 JSON 代码提交",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -275,15 +271,14 @@ Deno.test({
       await deleteProblemFixtures(eq(problems.id, uiProblemId));
       resetRedisForTest();
       await fakeRedis.stop();
-      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
     }
   },
 });
 
 Deno.test({
   name: "submissions service: 不存在的题目抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -302,7 +297,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: 普通入口提交他人 private 题 → Forbidden",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -365,7 +359,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: getSubmission 不存在的提交抛出 NotFoundError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -379,7 +372,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: 竞赛提交写入并按 contest_id 查询",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -452,15 +444,14 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       resetRedisForTest();
       await fakeRedis.stop();
-      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
     }
   },
 });
 
 Deno.test({
   name: "submissions service: excludeContest 排除竞赛提交",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -541,15 +532,14 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       resetRedisForTest();
       await fakeRedis.stop();
-      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
     }
   },
 });
 
 Deno.test({
   name: "submissions service: 竞赛提交次数超限 → RateLimited",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -618,15 +608,14 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       resetRedisForTest();
       await fakeRedis.stop();
-      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
     }
   },
 });
 
 Deno.test({
   name: "submissions service: saveEvaluationResult 保存评测结果",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -704,7 +693,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: saveEvaluationResult 重复消费幂等",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -812,7 +800,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions service: saveEvaluationResult 重复写同一 submission 应 UPDATE 而非 silently 跳过（issue #86）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -899,7 +886,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions service: saveEvaluationResult rejudge_seq 防护：旧结果不应覆盖新结果",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1113,7 +1099,7 @@ Deno.test({
 // ── 审计日志埋点测试 ──
 //
 // rejudgeSubmission / rejudgeProblemSubmissions 都会调用 pushJudgeTask，
-// PGlite 模式下没有 Redis，因此启动 fake Redis（极简 RESP 服务器）让
+// 测试数据库 模式下没有 Redis，因此启动 fake Redis（极简 RESP 服务器）让
 // pushJudgeTask 的 LPUSH 调用不会失败。
 // 同时 resetDbForTest() 会清空模块级 setup 测试创建的 TEST_USER_ID/
 // TEST_PROBLEM_ID，因此这里为每个测试独立创建本地 fixture。
@@ -1121,7 +1107,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions service: rejudgeSubmission 写一条 submissions.rejudge 审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1250,10 +1235,10 @@ Deno.test({
       }
     } finally {
       await fakeRedis.stop();
-      if (previousRedisUrl) {
-        Deno.env.set("REDIS_URL", previousRedisUrl);
-      } else {
+      if (previousRedisUrl === undefined) {
         Deno.env.delete("REDIS_URL");
+      } else {
+        Deno.env.set("REDIS_URL", previousRedisUrl);
       }
     }
   },
@@ -1261,7 +1246,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions service: 重测受理不改写提交状态（LLM 缺配不再卡 pending）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1381,8 +1365,8 @@ Deno.test({
       if (oldM === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
       else Deno.env.set("NOJ_LLM_DEFAULT_MODEL", oldM);
       await fakeRedis.stop();
-      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
     }
   },
 });
@@ -1390,7 +1374,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions service: rejudgeProblemSubmissions 写一条 submissions.rejudge 审计",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1528,10 +1511,10 @@ Deno.test({
       }
     } finally {
       await fakeRedis.stop();
-      if (previousRedisUrl) {
-        Deno.env.set("REDIS_URL", previousRedisUrl);
-      } else {
+      if (previousRedisUrl === undefined) {
         Deno.env.delete("REDIS_URL");
+      } else {
+        Deno.env.set("REDIS_URL", previousRedisUrl);
       }
     }
   },

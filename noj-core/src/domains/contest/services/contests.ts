@@ -305,7 +305,7 @@ async function assertContestProblemAddable(
   problemInputs: ContestProblemInput[],
   creatorId: string,
   isAdmin: boolean,
-  // deno-lint-ignore no-explicit-any -- postgres.js 与 PGlite 事务共享接口
+  // deno-lint-ignore no-explicit-any -- postgres.js 事务共享接口
   db: any,
   type: ContestType,
 ): Promise<Map<string, string>> {

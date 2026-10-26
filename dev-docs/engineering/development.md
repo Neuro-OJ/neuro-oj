@@ -11,12 +11,13 @@
 基础设施（两段式开发的第一步，见下节）：
 
 ```bash
-docker compose up -d
+docker compose up -d postgres redis minio
 ```
 
-除 PostgreSQL / Redis / MinIO 外，根目录 `docker-compose.yml` 还会构建并启动
-`llm-gateway` 容器（端口 8001）。若要从源码运行网关，先执行
-`docker compose stop llm-gateway`。
+根目录 `docker-compose.yml` 还提供两个不监听 HTTP 的一次性服务：`migrate` 执行
+Core 迁移与系统基础数据初始化，`llm-gateway-migrate` 在它成功后执行 Gateway
+迁移与默认配额 seed。两者都保留 Compose 的完成状态；`llm-gateway` 只读检查
+schema 兼容性，不在启动时隐式建表或写入默认数据。
 
 本地 Git hooks（可选，推荐）：
 
@@ -28,11 +29,20 @@ node scripts/install-git-hooks.mjs
 
 NOJ 源码开发**不使用** `noj-cli`（它面向生产部署与运维）。基础设施已由上一节
 启动后，首次先初始化开发数据（幂等：迁移 → 系统数据 → 管理员引导 → 构建并导入
-题目包 → E2E 用户）：
+题目包 → E2E 用户）。先完成 Core 的 `dev-setup`，再启动 Gateway，让同库旧 LLM
+表的迁移顺序与生产一致：
 
 ```bash
 cd noj-core && deno task dev-setup
 ```
+
+```bash
+docker compose up -d --wait llm-gateway
+```
+
+该命令会按 `migrate → llm-gateway-migrate → llm-gateway` 的完成依赖启动网关链。
+若要从源码运行网关，先执行 `docker compose stop llm-gateway`；数据库已经迁移过时，
+一次性服务会复用已完成状态，不会因启动 HTTP 进程重复执行 DDL。
 
 再按需在独立终端启动模块：
 

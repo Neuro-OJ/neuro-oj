@@ -25,7 +25,8 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { contestProblems, contests } from "../../../../shared/db/schema.ts";
 import {
   CONTEST_TIME_ISO_REGEX_SQL,
@@ -61,13 +62,29 @@ async function reset(): Promise<void> {
  * NOT VALID 的语义），但**新写入**一律受约束。故要构造"库里已存在非规范时间"
  * 这一真实场景，必须临时移除约束以模拟迁移前的库状态——直接插入已被约束拒绝。
  *
- * 测试运行在 preload 的事务中，`ALTER TABLE` 会随事务回滚复原，无需手动恢复。
+ * 测试运行在专用数据库中；`ALTER TABLE` 后由该场景显式恢复约束，避免依赖全局
+ * 测试事务的回滚行为。
  */
 async function withLegacyDirtyRowsAllowed<T>(fn: () => Promise<T>): Promise<T> {
   await getDb().execute(
     sql`ALTER TABLE contests DROP CONSTRAINT IF EXISTS contests_time_format_check`,
   );
-  return await fn();
+  try {
+    return await fn();
+  } finally {
+    // 该 helper 模拟迁移前的存量脏行；约束必须在场景结束时恢复，避免后续
+    // 用例把“约束缺失”误判成业务逻辑行为。
+    await getDb().execute(sql.raw(`
+      ALTER TABLE contests ADD CONSTRAINT contests_time_format_check CHECK (
+        "contests"."start_time" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        AND "contests"."end_time" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        AND ("contests"."freeze_start_time" IS NULL OR "contests"."freeze_start_time" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')
+        AND pg_input_is_valid("contests"."start_time", 'timestamptz')
+        AND pg_input_is_valid("contests"."end_time", 'timestamptz')
+        AND ("contests"."freeze_start_time" IS NULL OR pg_input_is_valid("contests"."freeze_start_time", 'timestamptz'))
+      ) NOT VALID;
+    `));
+  }
 }
 
 Deno.test({
@@ -341,7 +358,7 @@ Deno.test({
     // 可解析行：被正确规范化（证明不是"整段跳过"）。
     //
     // 期望值**不能写死**：无偏移的 '2026-09-14 10:00:00' 会按**数据库会话时区**
-    // 解释，而 PGlite/PostgreSQL 的默认 TimeZone 来自宿主 TZ（本地 +08 得到
+    // 解释，而 测试数据库/PostgreSQL 的默认 TimeZone 来自宿主 TZ（本地 +08 得到
     // 02:00Z，CI 的 UTC 得到 10:00Z）。写死会在 CI 上假失败。这里用与迁移
     // 相同的语义现算期望，既保持 TZ 无关，又仍然证明"确实做了规范化转换"。
     const expected = unwrapRows<{ v: string }>(
@@ -453,7 +470,7 @@ Deno.test({
 });
 
 /**
- * 第三道防线（迁移 0084 / schema-ddl）的回归测试。
+ * 第三道防线（迁移 0084）的回归测试。
  *
  * 前两道（写侧规范化、读侧按时刻比较）都在应用层。若有人绕过服务层直接写库
  * （管理脚本、人工修数据、未来新增的写入路径），DB 形态约束是最后的兜底。

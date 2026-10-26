@@ -6,25 +6,16 @@
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { changePassword, loginUser, registerUser } from "../../index.ts";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 
 // 本文件用例依赖“改密结果在后续用例中持续生效”，关闭事务回滚隔离
-disableTestTransactionForFile();
-
 import { users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   BadRequestError,
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(hasDb && hasJwt);
 
 const ts = Date.now();
 const TEST_USER = {
@@ -40,7 +31,6 @@ assertEquals(registeredUser.must_change_password, false);
 
 Deno.test({
   name: "auth service changePassword: 正常改密返回 must_change_password=false",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -63,7 +53,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service changePassword: 旧密码错误抛 UnauthorizedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -77,7 +66,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service changePassword: 弱密码抛 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -91,7 +79,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service changePassword: 新密码与旧密码相同抛 BadRequestError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -110,7 +97,6 @@ Deno.test({
 
 Deno.test({
   name: "auth service changePassword: 不存在的用户抛 UnauthorizedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -130,7 +116,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "auth service changePassword: 清理测试用户",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -11,7 +11,8 @@
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
   _resetSystemSettingsForTest,
@@ -36,6 +37,29 @@ import {
 } from "../../../../shared/config/settings-registry.ts";
 
 const ts = Date.now();
+
+async function withEnvironment(
+  name: string,
+  value: string | undefined,
+  run: () => Promise<void>,
+): Promise<void> {
+  const previous = Deno.env.get(name);
+  if (value === undefined) {
+    Deno.env.delete(name);
+  } else {
+    Deno.env.set(name, value);
+  }
+
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      Deno.env.delete(name);
+    } else {
+      Deno.env.set(name, previous);
+    }
+  }
+}
 
 async function freshSetup() {
   await resetDbForTest();
@@ -75,7 +99,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    // allow_register 未在 DB、未在 .env（PGlite 模式快照为空），应回退 default=true
+    // allow_register 未在 DB、未在 .env（测试数据库 模式快照为空），应回退 default=true
     const got = getSetting("allow_register");
     assertEquals(got?.source, "default");
     assertEquals(got?.value, true);
@@ -392,23 +416,30 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 模拟运行时 .env 中有该 key：先 setenv 再重置并快照
-    Deno.env.set("REDIS_URL", "redis://127.0.0.1:6379/");
-    await resetDbForTest();
-    _resetSystemSettingsForTest();
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
-    await initSystemSettings();
+    const redisUrl = Deno.env.get("REDIS_URL");
+    if (!redisUrl) {
+      throw new Error(
+        "REDIS_URL 未设置：env-only system-settings 回归必须使用测试启动器提供的专用 Redis",
+      );
+    }
 
-    const items = await listSettings();
-    const redis = items.find((i) => i.key === "REDIS_URL");
-    assertEquals(redis !== undefined, true);
-    // spec 要求 raw_value 是 "原始 JSON 编码"
-    assertEquals(redis?.raw_value, JSON.stringify("redis://127.0.0.1:6379/"));
-    // raw_value 可被 JSON.parse 反序列化
-    assertEquals(JSON.parse(redis!.raw_value), "redis://127.0.0.1:6379/");
+    await withEnvironment("REDIS_URL", redisUrl, async () => {
+      // 模拟运行时 .env 中有该 key：先 setenv 再重置并快照。
+      // 使用启动器提供的本 run Redis，禁止回退到开发 Redis。
+      await resetDbForTest();
+      _resetSystemSettingsForTest();
+      _resetEnvSnapshotForTest();
+      snapshotEnv();
+      await initSystemSettings();
 
-    Deno.env.delete("REDIS_URL");
+      const items = await listSettings();
+      const redis = items.find((i) => i.key === "REDIS_URL");
+      assertEquals(redis !== undefined, true);
+      // spec 要求 raw_value 是 "原始 JSON 编码"
+      assertEquals(redis?.raw_value, JSON.stringify(redisUrl));
+      // raw_value 可被 JSON.parse 反序列化
+      assertEquals(JSON.parse(redis!.raw_value), redisUrl);
+    });
   },
 });
 
@@ -419,26 +450,25 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    Deno.env.set("ALLOW_REGISTER", "false");
-    await freshSetup();
-    await updateSetting("allow_register", false, "0");
+    await withEnvironment("ALLOW_REGISTER", "false", async () => {
+      await freshSetup();
+      await updateSetting("allow_register", false, "0");
 
-    const conflicts = listRuntimeEnvConflicts();
-    assertEquals(
-      conflicts.some((c) =>
-        c.key === "allow_register" && c.envKey === "ALLOW_REGISTER"
-      ),
-      true,
-    );
+      const conflicts = listRuntimeEnvConflicts();
+      assertEquals(
+        conflicts.some((c) =>
+          c.key === "allow_register" && c.envKey === "ALLOW_REGISTER"
+        ),
+        true,
+      );
 
-    const items = await listSettings();
-    const item = items.find((i) => i.key === "allow_register");
-    assertEquals(item?.db_present, true);
-    assertEquals(item?.env_present, true);
-    assertEquals(item?.conflict, true);
-    assertEquals(item?.env_key, "ALLOW_REGISTER");
-
-    Deno.env.delete("ALLOW_REGISTER");
+      const items = await listSettings();
+      const item = items.find((i) => i.key === "allow_register");
+      assertEquals(item?.db_present, true);
+      assertEquals(item?.env_present, true);
+      assertEquals(item?.conflict, true);
+      assertEquals(item?.env_key, "ALLOW_REGISTER");
+    });
   },
 });
 
@@ -447,19 +477,22 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    Deno.env.delete("ALLOW_REGISTER");
-    await freshSetup();
-    await updateSetting("allow_register", false, "0");
+    await withEnvironment("ALLOW_REGISTER", undefined, async () => {
+      await freshSetup();
+      await updateSetting("allow_register", false, "0");
 
-    assertEquals(
-      listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
-      false,
-    );
+      assertEquals(
+        listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+        false,
+      );
 
-    const item = (await listSettings()).find((i) => i.key === "allow_register");
-    assertEquals(item?.db_present, true);
-    assertEquals(item?.env_present, false);
-    assertEquals(item?.conflict, false);
+      const item = (await listSettings()).find((i) =>
+        i.key === "allow_register"
+      );
+      assertEquals(item?.db_present, true);
+      assertEquals(item?.env_present, false);
+      assertEquals(item?.conflict, false);
+    });
   },
 });
 
@@ -468,21 +501,22 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    Deno.env.set("ALLOW_REGISTER", "false");
-    await freshSetup();
+    await withEnvironment("ALLOW_REGISTER", "false", async () => {
+      await freshSetup();
 
-    assertEquals(
-      listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
-      false,
-    );
+      assertEquals(
+        listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+        false,
+      );
 
-    const item = (await listSettings()).find((i) => i.key === "allow_register");
-    assertEquals(item?.source, "env");
-    assertEquals(item?.db_present, false);
-    assertEquals(item?.env_present, true);
-    assertEquals(item?.conflict, false);
-
-    Deno.env.delete("ALLOW_REGISTER");
+      const item = (await listSettings()).find((i) =>
+        i.key === "allow_register"
+      );
+      assertEquals(item?.source, "env");
+      assertEquals(item?.db_present, false);
+      assertEquals(item?.env_present, true);
+      assertEquals(item?.conflict, false);
+    });
   },
 });
 

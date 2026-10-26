@@ -222,16 +222,36 @@ services:
       # 出站校验白名单（G-03）：E2E mock 为内网 http 服务，需显式放行
       NOJ_LLM_UPSTREAM_ALLOWED_HOSTS: noj-e2e-llm-mock
     depends_on:
-      # 必须等 noj-migrate（core 迁移）成功后再启动，避免 core 与 gateway
-      # 的迁移在同一批 LLM 表上并发执行 DDL。两侧迁移均为幂等，但串行化
-      # 能避免冷启动时的建表/建索引竞争，并确保 gateway 启动前基础 schema
-      # 已完成。
+      # Gateway 只读检查必须在独立的一次性迁移/seed 服务成功后运行；该服务
+      # 又等待 core 的基础迁移完成，避免两侧在同一批历史 LLM 表上并发 DDL。
+      noj-gateway-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Gateway 的一次性 DDL + 默认配额 seed。HTTP 服务禁止隐式迁移/种子，E2E
+  # 也必须覆盖与生产/开发相同的显式装配边界。
+  noj-gateway-migrate:
+    build:
+      context: ./noj-llm-gateway
+    image: noj-e2e-llm-gateway
+    container_name: noj-e2e-llm-gateway-migrate
+    entrypoint: ["deno", "run", "-A", "src/db/migrate-cli.ts"]
+    environment:
+      NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
+      NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/${E2E_DATABASE_NAME:-e2e}
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
       noj-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: "no"
 
 volumes:
   noj-judge-work:

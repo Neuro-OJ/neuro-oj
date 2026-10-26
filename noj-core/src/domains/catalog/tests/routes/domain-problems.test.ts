@@ -5,7 +5,8 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { problemTags, tags } from "../../../../shared/db/schema.ts";
 import { verifyToken } from "../../../identity/index.ts";
 import {

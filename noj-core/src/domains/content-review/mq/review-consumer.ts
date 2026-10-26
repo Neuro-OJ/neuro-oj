@@ -6,6 +6,7 @@ import {
 import { getDb } from "../../../shared/db/connection.ts";
 import { messages } from "../../../shared/db/schema.ts";
 import { getLogger } from "@logtape/logtape";
+import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 
 const logger = getLogger(["noj", "content-review"]);
 import { type DmReviewTask, REVIEW_DM_QUEUE } from "../services/dm-review.ts";
@@ -115,4 +116,26 @@ export function createReviewConsumer(): ConsumerHandle {
     },
     requeueOnError: true,
   });
+}
+
+/**
+ * 启动私信审核消费者并返回统一后台任务句柄（P2a）。
+ *
+ * 与 {@link createReviewConsumer} 的区别：这里负责启动循环，并把
+ * `requestShutdown()` 与"循环结束"包装成 {@link ManagedTask}，供关闭流程
+ * 统一停止并等待在途消息处理完成。
+ *
+ * @returns 可停止、可等待的消费者句柄
+ */
+export function startReviewConsumer(): ManagedTask {
+  const handle = createReviewConsumer();
+  const started = handle();
+  // done 保留真实拒绝供任务组汇总；先挂一个 no-op handler 避免无人及时 await
+  // 时产生 unhandledRejection。
+  started.catch(() => {});
+  return {
+    name: "review-consumer",
+    stop: () => handle.requestShutdown(),
+    done: started,
+  };
 }

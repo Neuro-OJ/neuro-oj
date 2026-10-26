@@ -29,9 +29,6 @@ import {
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
 import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-oi-author-" });
 
 await resetDbForTest();
@@ -87,7 +84,6 @@ async function save(
 Deno.test({
   name:
     "oi author route: 新建 OI 题写草稿（配置 + 逐文件引用），题目保持未发布",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -183,7 +179,6 @@ Deno.test({
 Deno.test({
   name:
     "oi author route: metadata-only 保存复用草稿引用、不访问对象存储，缺 revision 428",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

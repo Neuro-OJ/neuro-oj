@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 /**
  * 批任务受理测试（Handbook §4.3、§2.10、§5.7）。
  *

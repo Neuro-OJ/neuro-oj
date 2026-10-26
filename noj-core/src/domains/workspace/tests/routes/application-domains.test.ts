@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { contests, submissions } from "../../../../shared/db/schema.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { signToken } from "../../../identity/index.ts";

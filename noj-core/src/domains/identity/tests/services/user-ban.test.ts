@@ -5,14 +5,11 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, userBans, users } from "../../../../shared/db/schema.ts";
 import { banUser, unbanUser } from "../../index.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasDb || !hasEnv;
 
 const ADMIN_ID = crypto.randomUUID();
 const ADMIN2_ID = crypto.randomUUID();
@@ -61,7 +58,6 @@ async function freshSetup() {
 
 Deno.test({
   name: "user-ban audit: banUser 写入审计日志 users.ban",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -97,7 +93,6 @@ Deno.test({
 
 Deno.test({
   name: "user-ban audit: banUser 带过期时间的审计日志",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -126,7 +121,6 @@ Deno.test({
 
 Deno.test({
   name: "user-ban audit: unbanUser 写入审计日志 users.unban",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

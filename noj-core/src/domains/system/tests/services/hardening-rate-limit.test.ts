@@ -26,7 +26,6 @@ import {
 import { RateLimitedError } from "../../../../shared/base/errors.ts";
 
 const hasRedis = !!Deno.env.get("REDIS_URL");
-const skip = !hasRedis;
 
 if (hasRedis) {
   resetRedisForTest();
@@ -60,7 +59,6 @@ Deno.test({
 
 Deno.test({
   name: "hardening rate limit: enforceRateLimit 超过阈值抛 RateLimitedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

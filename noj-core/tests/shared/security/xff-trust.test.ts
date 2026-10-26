@@ -10,7 +10,7 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
-import { resetDbForTest } from "../../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../../helpers/db.ts";
 import { getClientIp } from "../../../src/domains/system/index.ts";
 
 import { updateSetting } from "../../../src/domains/system/index.ts";
@@ -23,7 +23,7 @@ import {
   snapshotEnv,
 } from "../../../src/domains/system/services/env-snapshot.ts";
 
-// 模块级 bootstrap：创建 PGlite schema（含 system_settings）
+// 模块级 bootstrap：创建 测试数据库 schema（含 system_settings）
 await resetDbForTest();
 snapshotEnv();
 

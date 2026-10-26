@@ -4,10 +4,11 @@
  * 覆盖：内容哈希稳定性与规范化、版本发布递增、`getRequiredConsentVersion`
  * 只认重大版本、版本历史、空内容校验。
  *
- * 依赖 PGlite 内存数据库（无 DATABASE_URL 也可运行）。
+ * 依赖测试启动器提供的独立 PostgreSQL 数据库。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { ValidationError } from "../../../../shared/base/errors.ts";
 import {

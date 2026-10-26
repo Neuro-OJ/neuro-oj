@@ -13,17 +13,14 @@ import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
  * 再启动派发；派发通过预检后阻塞在行锁上，此时在持锁事务内改写/删除源并提交，
  * 让锁内复查稳定地观察到变化（无 sleep 竞态假设——提交顺序由行锁决定）。
  *
- * 隔离：本文件关闭 preload 的逐用例事务（屏障需要两条真实连接），因此显式使用
- * 唯一 ID 并在用例结束时清理；在**独立 schema**（TEST_SCHEMA）下由 Lead 串行执行。
+ * 隔离：屏障需要两条真实连接，因此显式使用唯一 ID 并在用例结束时清理；由测试
+ * 启动器提供独立数据库并串行执行。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
@@ -63,12 +60,9 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 
-/** 需要真实 PostgreSQL 的双连接屏障（PGlite 单连接无法并行）。 */
-const hasRealPg = !!Deno.env.get("DATABASE_URL");
+/** 双连接屏障使用真实 PostgreSQL。 */
 
 // 屏障依赖"原生连接能看到已提交夹具"，因此本文件不再包逐用例事务。
-disableTestTransactionForFile();
-
 const db = getDb();
 const ts = Date.now();
 const now = new Date().toISOString();
@@ -145,7 +139,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
     description: "d",
     difficulty: "easy",
     number: 94000 + Math.floor(Math.random() * 900),
-    // 独立 schema 由迁移创建，不含 PGlite 的 root 种子 → 用夹具用户做题主
+    // 测试库由迁移创建，不含 root 种子，因此用夹具用户做题主
     owner_id: userId,
     judge_type: "dual",
     runtime_config: dualConfig,
@@ -279,7 +273,6 @@ async function dispatchWithConcurrentSourceChange(
 
 Deno.test({
   name: "skipped#10[真实 PG]: 预检期间源被换上别的活动尝试 → 锁内 skipped",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -328,7 +321,6 @@ Deno.test({
 
 Deno.test({
   name: "skipped#10[真实 PG]: 预检期间源被删除 → 锁内 skipped + SOURCE_DELETED",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -364,7 +356,6 @@ Deno.test({
 Deno.test({
   name:
     "sequence#1[真实 PG]: 预检期间另一轮评测完成 → 任务封套仍取落库 sequence",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -747,7 +738,6 @@ async function dispatchDuringObjectivePolicyChange(
 Deno.test({
   name:
     "objective#8[真实 PG]: 客观题重判期间源被删除 → skipped + SOURCE_DELETED",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -785,7 +775,6 @@ Deno.test({
 Deno.test({
   name:
     "objective#8[真实 PG]: 客观题重判期间源被换上活动尝试 → skipped + SOURCE_JUDGING",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -828,7 +817,6 @@ Deno.test({
 
 Deno.test({
   name: "objective#8[真实 PG]: 客观题升级期间源被删除 → skipped 且不留副本",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -865,7 +853,6 @@ Deno.test({
 
 Deno.test({
   name: "objective lock order[真实 PG]: 题库策略修改与客观题重判按宿主先行串行",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -888,7 +875,6 @@ Deno.test({
 
 Deno.test({
   name: "objective lock order[真实 PG]: 竞赛策略修改与客观题重判按宿主先行串行",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

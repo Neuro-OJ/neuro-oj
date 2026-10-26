@@ -20,26 +20,29 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     // CI 使用真实 Redis 验证 Lua；离线模式执行相同搬运契约，绝不静默跳过。
     const fake = testRedis ? undefined : startFakeRedis();
-    resetRedisForTest();
-    Deno.env.set("REDIS_URL", testRedis ?? fake!.url);
-    const redis = getRedis();
-    await redis.connect();
-    const prefix = `noj:test:pool-migration:${crypto.randomUUID()}`;
-    const keys = [
-      prefix,
-      `${prefix}:processing`,
-      `${prefix}:high`,
-      `${prefix}:medium`,
-      `${prefix}:low`,
-      `${prefix}:dead`,
-      `${prefix}:layout`,
-      `${prefix}:pool-migration-lock`,
-      `${prefix}:ai:high`,
-      `${prefix}:oi-wasm:medium`,
-    ];
+    let redis: ReturnType<typeof getRedis> | undefined;
+    let keys: string[] = [];
     try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", testRedis ?? fake!.url);
+      redis = getRedis();
+      await redis.connect();
+      const prefix = `noj:test:pool-migration:${crypto.randomUUID()}`;
+      keys = [
+        prefix,
+        `${prefix}:processing`,
+        `${prefix}:high`,
+        `${prefix}:medium`,
+        `${prefix}:low`,
+        `${prefix}:dead`,
+        `${prefix}:layout`,
+        `${prefix}:pool-migration-lock`,
+        `${prefix}:ai:high`,
+        `${prefix}:oi-wasm:medium`,
+      ];
       await redis.lpush(`${prefix}:processing`, "claimed");
       await assertRejects(
         () => migratePoolJudgeQueues(prefix),
@@ -72,9 +75,22 @@ Deno.test({
       assertEquals(await redis.llen(`${prefix}:ai:high`), 1);
       assertEquals(await redis.llen(prefix), 0);
     } finally {
-      for (const key of keys) await redis.del(key);
-      resetRedisForTest();
-      await fake?.stop();
+      try {
+        if (redis) {
+          for (const key of keys) await redis.del(key);
+        }
+      } finally {
+        try {
+          resetRedisForTest();
+        } finally {
+          try {
+            if (previousRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+            else Deno.env.set("REDIS_URL", previousRedisUrl);
+          } finally {
+            await fake?.stop();
+          }
+        }
+      }
     }
   },
 });

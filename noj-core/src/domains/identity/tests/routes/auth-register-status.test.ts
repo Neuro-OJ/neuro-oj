@@ -10,10 +10,7 @@
 import { initializeFirstAdmin } from "../../services/auth/admin-initialization.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import {
-  disableTestTransactionForFile,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { ne } from "drizzle-orm";
@@ -27,11 +24,9 @@ import {
   snapshotEnv,
 } from "../../../system/services/env-snapshot.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import { jsonRequest } from "../../../../../tests/helper.ts";
 
-// 并发请求必须使用独立事务，不能由 preload 包在同一外层事务中。
-disableTestTransactionForFile();
-await initRedisForTest();
+// 并发请求使用独立事务，测试启动器不提供全局事务包装。
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();

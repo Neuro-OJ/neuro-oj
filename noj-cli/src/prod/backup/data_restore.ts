@@ -126,8 +126,20 @@ export async function restoreDataServices(
   ) {
     throw new Error("数据服务启动失败");
   }
-  // MinIO 桶初始化：**必须检查退出码**（曾因丢弃它把根因埋成"数据核对失败"）
-  if (await compose(ctx, ["run", "--rm", "minio-init"]) !== 0) {
+  // MinIO 桶初始化：保留一次性 service 容器，供后续 core 的
+  // `depends_on: service_completed_successfully` 复用。不能用 `run --rm`：
+  // 那会删除完成状态，后续 `up core` 只能再次执行初始化，恢复与演练的
+  // 生命周期因此不再是可观察的单一 one-shot 链。
+  if (
+    await compose(ctx, [
+      "up",
+      "-d",
+      "--wait",
+      "--wait-timeout",
+      String(ctx.waitTimeout),
+      "minio-init",
+    ]) !== 0
+  ) {
     throw new Error("MinIO 初始化失败（minio-init）");
   }
 

@@ -5,13 +5,13 @@ import {
 /**
  * 公开站点统计端点路由层测试。
  *
- * 依赖 PGlite 内存数据库（DATABASE_URL 未设置时自动启用，始终可用），
- * 测试前自动运行迁移并 seed（见 00_migrate_test.ts）。
+ * 依赖测试启动器提供的独立 PostgreSQL 数据库，测试前自动运行迁移并 seed
+ * （见 00_migrate_test.ts）。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   evaluationAttempts,
   problems,
@@ -21,11 +21,8 @@ import {
 import { count, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 
-const skipDb = false; // PGlite 内存数据库始终可用
-
 Deno.test({
   name: "stats route: GET /api/v1/stats 公开返回统计数字",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -48,7 +45,6 @@ Deno.test({
 
 Deno.test({
   name: "stats route: 统计与数据库实际行数一致（种子数据）",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -67,7 +63,6 @@ Deno.test({
 
 Deno.test({
   name: "stats route: accepted 读有效成绩投影（不读 evaluation_results）",
-  ignore: skipDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

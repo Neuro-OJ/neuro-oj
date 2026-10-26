@@ -8,9 +8,7 @@ import { users } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { getDefaultLlmLimits } from "../../../gateway/index.ts";
 
-// 与 problems.test.ts 一致：PGlite 内存库始终可用
-const dbAvailable = true;
-const skip = !dbAvailable;
+// 与 problems.test.ts 一致：独立测试数据库始终可用
 const ts = Date.now();
 
 const NETWORKED_RUNTIME_CONFIG = {
@@ -46,7 +44,6 @@ async function createAdminUser(): Promise<string> {
 
 Deno.test({
   name: "problems-llm-limits: createProblem 拒绝 max_calls 超过平台默认",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -73,7 +70,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-llm-limits: updateProblem 拒绝 max_tokens 超过平台默认",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -105,7 +101,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-llm-limits: 启用 LLM 不再校验 provider 存在性",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

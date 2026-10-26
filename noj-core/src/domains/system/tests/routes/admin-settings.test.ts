@@ -12,7 +12,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
   _resetSystemSettingsForTest,
@@ -23,14 +24,6 @@ import {
   snapshotEnv,
 } from "../../services/env-snapshot.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-
-// 测试需要 JWT_SECRET 签发 token
-if (!Deno.env.get("JWT_SECRET")) {
-  Deno.env.set(
-    "JWT_SECRET",
-    "test-secret-must-be-at-least-32-characters-long-xxx",
-  );
-}
 
 async function freshSetup() {
   await resetDbForTest();

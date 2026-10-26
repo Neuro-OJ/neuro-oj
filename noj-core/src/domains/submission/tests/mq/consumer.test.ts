@@ -16,7 +16,8 @@ import {
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sanitizeJudgeDetails } from "../../mq/consumer.ts";
 import { createRedisClientForUrl } from "../../../../shared/mq/connection.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   evaluationAttempts,
   problems,
@@ -26,7 +27,6 @@ import {
 import { eq } from "drizzle-orm";
 import { startFakeRedis } from "./_setup.ts";
 
-const hasDb = true;
 const TS = Date.now();
 const SUBMISSION_ID = `consumer-test-sub-${TS}`;
 const ATTEMPT_ID = `consumer-test-att-${TS}`;
@@ -138,7 +138,6 @@ async function _withFakeRedis<T>(
 
 Deno.test({
   name: "mq/consumer: fake Redis BRPOP 空队列返回 null",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -161,7 +160,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer: fake Redis LPUSH 后 BRPOP 可取到数据",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -188,7 +186,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer: JudgeResult 合法时可通过 saveEvaluationResult 持久化",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -215,7 +212,6 @@ Deno.test({
 
 Deno.test({
   name: "mq/consumer: 多条消息 BRPOP 按 LPUSH 逆序取出（后入先出）",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

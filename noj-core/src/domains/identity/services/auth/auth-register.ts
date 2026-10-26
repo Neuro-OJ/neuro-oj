@@ -102,8 +102,8 @@ export function toUserResponse(
 /**
  * 将数据库唯一约束冲突转换为用户可理解的业务错误。
  *
- * PostgreSQL 通常把 code/constraint 直接放在错误对象上，PGlite
- * 可能把它们放在 cause 中；两种结构都需要兼容。无法识别具体约束时
+ * PostgreSQL 通常把 code/constraint 直接放在错误对象上，也可能把它们放在
+ * cause 中；两种结构都需要兼容。无法识别具体约束时
  * 仍返回 409，但不向客户端暴露数据库错误详情。
  */
 function conflictFromUniqueViolation(err: unknown): ConflictError | null {

@@ -171,6 +171,16 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "NOJ_LLM_SERVICE_TOKEN",
     category: "other",
   },
+  {
+    key: "NOJ_INTERNAL_SERVICE_TOKEN",
+    type: "string",
+    description:
+      "内部维护/排空 API 服务凭据；未设置时 drain 端点返回 503 drain_unavailable",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "NOJ_INTERNAL_SERVICE_TOKEN",
+    category: "other",
+  },
   // ── 应用 URL / 网络 ────────────────────────────────────────
   {
     key: "APP_URL",
@@ -466,16 +476,6 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     scope: "bootstrap",
     envKey: "NOJ_RUN_E2E",
-    category: "other",
-    visible: false,
-  },
-  {
-    key: "TEST_SCHEMA",
-    type: "string",
-    description: "测试隔离 schema（search_path 分片）",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "TEST_SCHEMA",
     category: "other",
     visible: false,
   },

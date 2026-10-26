@@ -1,5 +1,5 @@
 /**
- * LLM 模型别名：别名管理、解析与 eval_token 签发（PGlite 内存库）。
+ * LLM 模型别名：别名管理、解析与 eval_token 签发（独立测试数据库）。
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { decodeBase64 } from "@std/encoding/base64";

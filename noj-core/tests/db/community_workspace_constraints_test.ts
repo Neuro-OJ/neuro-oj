@@ -1,6 +1,7 @@
 import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
+import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import {
   communityBoards,
   communityComments,

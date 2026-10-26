@@ -21,7 +21,7 @@ export const MAX_LINES = 1200;
  * 拆分后请把数值改成新的实际行数（或直接删除条目）。
  */
 export const SIZE_BASELINE: Record<string, number> = {
-  // 源题／题单 DDL 已抽为独立模块，schema-ddl.ts 低于规模阈值，不保留旧基线。
+  // 已拆分的历史大文件不再登记；棘轮只保留当前仍超过阈值的源文件。
   // 2026-09-28：按审计 VULN-16/17 的改动把管道写入原语拆到 dual/pipe.rs、
   // 单元测试拆到 dual/tests.rs（子模块，`use super::*` 语义不变），
   // dual/mod.rs 1839 → 1153 行，**已低于阈值，条目移除**（棘轮只允许下调/删除）。

@@ -2,7 +2,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import { internalLlmPolicyRouter } from "../../routes/internal-llm-policy.ts";
 import {

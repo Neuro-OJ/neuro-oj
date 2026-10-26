@@ -1,10 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { count, eq } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainInvitations,
   domainLimits,
@@ -26,8 +23,7 @@ import {
   ensureDefaultWorkspace,
 } from "../../index.ts";
 
-// 验证真实事务，不让 preload 的外层事务掩盖跨连接读取死锁。
-disableTestTransactionForFile();
+// 验证真实事务，直接使用启动器提供的隔离测试数据库。
 await resetDbForTest();
 
 Deno.test({

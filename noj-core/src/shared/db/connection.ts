@@ -1,677 +1,37 @@
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
-import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
-import { AsyncLocalStorage } from "node:async_hooks";
-import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
-import {
-  ALL_TABLES,
-  OPTIONAL_EXTENSION_INDEXES,
-  SCHEMA_DDL,
-  SCHEMA_INDEXES,
-} from "./schema-ddl.ts";
-import { dirname, resolve } from "jsr:@std/path@^1";
 import { getLogger } from "@logtape/logtape";
-
-const logger = getLogger(["noj", "db"]);
 import { observability as metrics } from "../observability/registry.ts";
 import type { ObservabilityRegistry } from "../observability/contracts.ts";
+import { buildConnectionOptions } from "./options.ts";
+
+const logger = getLogger(["noj", "db"]);
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
 
-/** PGlite 全局单例——测试模式下使用，生产环境/CI 保持 null */
-let _pgliteInstance: PGlite | null = null;
-/** PGlite Schema 引导 Promise——首次 resetDbForTest() 时执行 */
-let _bootstrapPromise: Promise<void> | null = null;
-/** 当前 PGlite 实例是否从预构建模板加载（避免重复 DDL） */
-let _pgliteTemplateLoaded = false;
-
-/** 模板缓存格式版本；PGlite 依赖大版本升级时 +1 */
-const PGLITE_TEMPLATE_FORMAT = 1;
-
 /**
- * PGlite 模板缓存的输入文件清单（相对本文件所在的 shared/db 目录）。
+ * 获取 Drizzle ORM 数据库实例（进程级单例）。
  *
- * **单一事实源**：异步 hash（`computePGliteTemplateHash`）与同步指纹
- * （`computeSchemaFingerprintSync`）都只从本清单取输入，因此两者永远覆盖同一集合。
- * 此前两处各自维护文件列表：指纹只覆盖 `schema-ddl.ts`，hash 还覆盖两个种子源码；
- * 只改种子文件时 hash 变了、指纹没变，`createPGliteInstanceFromTemplate()` 据此
- * 判定"未过期"→ 模板 fast path **静默加载旧种子数据**（2026-09-17 实测：仅改
- * `community-seed.ts` 时 hash 变化、指纹保持不变）。
+ * 生产与测试均只使用真实 PostgreSQL：缺少 `DATABASE_URL` 时明确失败，不再降级
+ * 到 测试数据库 或任何内存数据库。测试数据库的创建、迁移与种子由测试启动器负责。
  *
- * 新增任何进入模板内容的输入（DDL / 索引 / 种子）都必须加到这里，两个指纹函数
- * 无需改动；不兼容的内容变更用 `PGLITE_TEMPLATE_FORMAT` 整体失效。
- */
-const PGLITE_TEMPLATE_INPUT_FILES = [
-  "schema-ddl.ts",
-  "schema-ddl-tables.ts",
-  "schema-ddl-workspace.ts",
-  "schema-ddl-catalog-base.ts",
-  "schema-ddl-catalog-workspace.ts",
-  "schema-ddl-execution-workspace.ts",
-  "schema-ddl-domain-execution.ts",
-  "schema-ddl-community-workspace.ts",
-  "schema-ddl-education.ts",
-  "schema-ddl-assignment.ts",
-  "schema-ddl-education-interactions.ts",
-  "schema-ddl-submission-annotations.ts",
-  "../workspace/audit.ts",
-  "../../domains/system/services/seed/seed-rbac.ts",
-  "../../domains/community/services/community/community-seed.ts",
-] as const;
-
-/** 把相对清单解析为绝对路径（每次调用重新解析，不固化模块级常量） */
-function resolveTemplateInputFiles(): string[] {
-  const here = dirname(new URL(import.meta.url).pathname);
-  return PGLITE_TEMPLATE_INPUT_FILES.map((rel) => resolve(here, rel));
-}
-
-/**
- * 模板缓存目录的测试注入开关（仅供测试与复现脚本使用，不属于产品配置面）。
- *
- * 默认 `<noj-core>/src/.test-cache`；置为其他目录后模板 / hash / 指纹三个产物
- * 一起落到该目录，使回归测试与 `prepare-pglite-template.ts` 复现步骤都在临时目录
- * 运行，**绝不触碰开发者真实缓存**。三个产物始终由同一函数派生，因此不可能出现
- * "模板在 A、指纹在 B"的错配。
- */
-const PGLITE_TEMPLATE_CACHE_DIR_ENV = "PGLITE_TEMPLATE_CACHE_DIR";
-
-/** 模板缓存三个产物的绝对路径（每次调用解析，以支持运行时注入缓存目录） */
-export function pgliteTemplatePaths(): {
-  /** 缓存目录 */
-  dir: string;
-  /** 模板数据目录压缩包 */
-  template: string;
-  /** 异步内容 hash 文件 */
-  hash: string;
-  /** 同步过期指纹文件 */
-  fingerprint: string;
-} {
-  const override = Deno.env.get(PGLITE_TEMPLATE_CACHE_DIR_ENV)?.trim();
-  const dir = override
-    ? resolve(override)
-    : resolve(dirname(new URL(import.meta.url).pathname), "../../.test-cache");
-  return {
-    dir,
-    template: resolve(dir, "pglite-template.tgz"),
-    hash: resolve(dir, "pglite-template.hash"),
-    fingerprint: resolve(dir, "pglite-template.schema"),
-  };
-}
-
-/** reset 默认清空全部表（含 RBAC 种子表），随后重新播种，保证无 preload 时也干净 */
-const RESET_TABLES = [...ALL_TABLES] as string[];
-
-// ── 测试事务回滚隔离 ────────────────────────────────────────
-
-type DbClient = ReturnType<typeof drizzlePg>;
-
-type TestTransactionState =
-  | { status: "idle" }
-  | { status: "pending" }
-  | {
-    status: "active";
-    db: DbClient;
-    rawDb: DbClient;
-    rollback: () => Promise<void>;
-  };
-
-let _testTransactionState: TestTransactionState = { status: "idle" };
-let _testTransactionDisabled = false;
-let _savepointSeq = 0;
-/** 独立兄弟事务的全局串行队列：测试连接只有一条，兄弟事务不能交错。 */
-const _siblingQueue = new Map<symbol, Promise<unknown>>();
-/** 每个事务节点的**子事务**队列：同父兄弟按序；跨父（真正嵌套）可立即执行。 */
-const _childQueues = new Map<symbol, Promise<unknown>>();
-/** 节点仍接收子事务；父回调结束后关闭，阻止迟到的异步分支越过 savepoint。 */
-const _openSavepointNodes = new Set<symbol>();
-/** 全局队列的键（单一队列）。 */
-const SIBLING_KEY: symbol = Symbol("noj-savepoint-siblings");
-/** 异步上下文：把"当前事务节点"传播给其后代调用（含 await 之后）。 */
-const _savepointContext = new AsyncLocalStorage<{ node: symbol }>();
-/** 回滚失败后置位：连接上的事务已不可继续使用，后续 savepoint 事务立即报错。 */
-let _savepointBroken = false;
-let _testTransactionProxy: DbClient | null = null;
-
-/**
- * DB 重置回调（避免循环依赖：其他模块注册清理回调，resetDbForTest 调用）。
- * 解决 system_settings 等模块的内存缓存与 DB TRUNCATE 不同步导致的测试污染。
- */
-const _onDbResetCallbacks: Array<() => void> = [];
-const _onDbResetSeeders: Array<() => Promise<void>> = [];
-
-/** 注册测试重置回调（供 system-settings 等模块注册缓存清理函数） */
-export function registerDbResetCallback(fn: () => void): void {
-  _onDbResetCallbacks.push(fn);
-}
-
-/** 注册测试重置后的异步 seed 回调（供 system RBAC 等注册重新播种函数） */
-export function registerDbResetSeeder(fn: () => Promise<void>): void {
-  _onDbResetSeeders.push(fn);
-}
-
-/** 执行所有已注册的 seed 回调 */
-export async function runDbResetSeeders(): Promise<void> {
-  for (const fn of _onDbResetSeeders) {
-    await fn();
-  }
-}
-
-// ── PGlite 模板缓存 ──────────────────────────────────────────
-/**
- * 计算 PGlite 模板内容 hash。
- *
- * 参与 hash 的输入 = `PGLITE_TEMPLATE_INPUT_FILES`（schema DDL、RBAC/社区种子
- * 源码）+ 模板格式版本，确保 DDL 或种子逻辑变化后模板自动失效。输入清单与
- * `computeSchemaFingerprintSync()` 共用同一常量，两者不可能漂移。
- */
-export async function computePGliteTemplateHash(): Promise<string> {
-  const parts = [String(PGLITE_TEMPLATE_FORMAT)];
-  for (const file of resolveTemplateInputFiles()) {
-    parts.push(await Deno.readTextFile(file));
-  }
-  const data = new TextEncoder().encode(parts.join("\n---\n"));
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/** 同步读取当前模板文件；不存在时返回 null */
-export function loadPGliteTemplateBytesSync(): Uint8Array | null {
-  try {
-    return Deno.readFileSync(pgliteTemplatePaths().template);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 构建 PGlite 模板数据。
- *
- * 通过临时替换全局单例复用现有 schema 引导与种子逻辑，保证模板内容与
- * `ensurePGliteSchemaForTest()` 完全一致。
- */
-export async function buildPGliteTemplateData(): Promise<Uint8Array> {
-  const pg = new PGlite();
-  const prevInstance = _pgliteInstance;
-  const prevDb = _db;
-  const prevBootstrap = _bootstrapPromise;
-  const prevTemplateLoaded = _pgliteTemplateLoaded;
-
-  _pgliteInstance = pg;
-  _db = null;
-  _bootstrapPromise = null;
-  _pgliteTemplateLoaded = false;
-
-  try {
-    await ensurePGliteSchemaForTest();
-    const blob = await pg.dumpDataDir();
-    return new Uint8Array(await blob.arrayBuffer());
-  } finally {
-    _pgliteInstance = prevInstance;
-    _db = prevDb;
-    _bootstrapPromise = prevBootstrap;
-    _pgliteTemplateLoaded = prevTemplateLoaded;
-    await pg.close().catch(() => {});
-  }
-}
-
-/**
- * 确保模板缓存存在且与当前 schema/种子一致；返回模板文件路径。
- * 若模板缺失或 hash 不匹配则自动重建。
- *
- * **命中缓存也必须补齐三个产物**：`.tgz` 模板、`.hash` 内容 hash、`.schema`
- * 同步指纹是同一套缓存的三部分，缺任何一份都会让 fast path 静默失效——
- * `createPGliteInstanceFromTemplate()` 缺指纹即返回 null，每个测试文件都退化为
- * 慢速 DDL 路径（正确但极慢），而调用方只看到"模板就绪"，问题不可见。
- * 因此这里不使用"hash 命中就提前 return"的写法：命中时先校验另两个产物，
- * 缺失/过期就地补齐，再返回。
- */
-export async function ensurePGliteTemplateCached(): Promise<string> {
-  const paths = pgliteTemplatePaths();
-  const hash = await computePGliteTemplateHash();
-  const expectedHashFile = hash;
-  let currentHash = "";
-  try {
-    currentHash = await Deno.readTextFile(paths.hash);
-  } catch {
-    // 无 hash 文件，视为过期
-  }
-
-  if (currentHash === expectedHashFile) {
-    let templateExists = true;
-    try {
-      await Deno.stat(paths.template);
-    } catch {
-      templateExists = false; // 模板文件缺失，继续重建
-    }
-    if (templateExists) {
-      // hash 与模板都在：仍须确认同步指纹存在且与当前输入一致。
-      // （指纹缺失或过期同样意味着 fast path 会静默回退慢路径 / 复用旧种子，
-      //   必须在这里补写，不能因为"hash 命中"就跳过。）
-      await writeSchemaFingerprint();
-      return paths.template;
-    }
-  }
-
-  const bytes = await buildPGliteTemplateData();
-  await Deno.mkdir(paths.dir, { recursive: true });
-  await Deno.writeFile(paths.template, bytes);
-  await Deno.writeTextFile(paths.hash, expectedHashFile);
-  // 同步指纹：供 createPGliteInstanceFromTemplate() 在无 await 的路径上判断过期。
-  // 不写这一行，模板会被判定为过期并永远走慢路径（或反之静默复用旧模板）。
-  await writeSchemaFingerprint();
-  return paths.template;
-}
-
-/** 写入（或刷新）同步指纹 sidecar 文件 */
-async function writeSchemaFingerprint(): Promise<void> {
-  const paths = pgliteTemplatePaths();
-  await Deno.mkdir(paths.dir, { recursive: true });
-  await Deno.writeTextFile(paths.fingerprint, computeSchemaFingerprintSync());
-}
-
-/**
- * 计算模板输入内容的**同步**指纹（用于模板加载时判断是否过期）。
- *
- * 为什么需要它：模板加载路径 `createPGliteInstanceFromTemplate()` 是同步的，
- * 无法 await `computePGliteTemplateHash()`。而"模板是否过期"的校验此前只存在于
- * `ensurePGliteTemplateCached()`，后者仅在 `deno task test` 中被调用 ——
- * 于是**只跑 `deno task test:domain <domain>`（PGlite 模式）时会静默复用过期模板**：
- * schema-ddl.ts 新增了列但模板仍是旧的，所有写入该表的用例以
- * "column ... does not exist" 失败，表现为产品缺陷而非缓存问题（2026-09-14 实测）。
- *
- * 输入集合与异步 hash 完全一致（同一份 `PGLITE_TEMPLATE_INPUT_FILES` + 格式版本）。
- * 早期版本只看 `schema-ddl.ts`，于是"只改种子文件"时指纹不变、模板被判为未过期，
- * 模板 fast path 会**静默读取旧种子数据**（2026-09-17 实测）；统一清单后此类
- * 漂移不可能再出现。
- */
-export function computeSchemaFingerprintSync(): string {
-  let hash = 2166136261;
-  const parts = [String(PGLITE_TEMPLATE_FORMAT)];
-  for (const file of resolveTemplateInputFiles()) {
-    parts.push(Deno.readTextFileSync(file));
-  }
-  const text = parts.join("\n---\n");
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `${PGLITE_TEMPLATE_FORMAT}:${
-    (hash >>> 0).toString(16)
-  }:${text.length}`;
-}
-
-/** 模板输入文件的绝对路径清单（供测试断言两个指纹覆盖同一集合） */
-export function pgliteTemplateInputFiles(): string[] {
-  return resolveTemplateInputFiles();
-}
-
-/**
- * 尝试从模板创建 PGlite 实例；模板缺失或**已过期**时返回 null。
- *
- * 过期判定：模板旁的同步指纹与当前输入指纹不一致 → 视为过期，
- * 回退到 `new PGlite()` + 执行 DDL 的慢路径（正确性优先于速度）。
- */
-function createPGliteInstanceFromTemplate(): PGlite | null {
-  const bytes = loadPGliteTemplateBytesSync();
-  if (!bytes) return null;
-
-  // 指纹校验：缺失或不匹配都按"过期"处理，避免旧模板静默生效
-  let cachedFingerprint = "";
-  try {
-    cachedFingerprint = Deno.readTextFileSync(
-      pgliteTemplatePaths().fingerprint,
-    );
-  } catch {
-    cachedFingerprint = "";
-  }
-  if (cachedFingerprint !== computeSchemaFingerprintSync()) {
-    return null;
-  }
-
-  _pgliteTemplateLoaded = true;
-  return new PGlite({ loadDataDir: new Blob([bytes as unknown as BlobPart]) });
-}
-
-/**
- * 判断当前是否为 PGlite 模式（无 DATABASE_URL 时自动启用）。
- *
- * 安全修复 NOJ-032：仅测试/未显式声明环境的进程允许 PGlite 兜底。
- * 显式声明了非 test 环境（如 production/staging）时，缺少 DATABASE_URL
- * 直接失败，避免生产静默降级到内存数据库导致数据丢失。
- */
-function isPGliteMode(): boolean {
-  if (Deno.env.get("DATABASE_URL")) return false;
-
-  const nojEnv = Deno.env.get("NOJ_ENV");
-  if (nojEnv && nojEnv !== "test") {
-    throw new Error(
-      `NOJ_ENV=${nojEnv} 且未配置 DATABASE_URL。` +
-        "非测试环境必须显式配置外部 PostgreSQL，拒绝静默降级到 PGlite 内存数据库。",
-    );
-  }
-  return true;
-}
-
-// ── 测试事务回滚隔离：Savepoint 代理 ─────────────────────────
-
-/**
- * 创建测试事务 db 代理。
- *
- * 只拦截 `transaction`，将其转成 SAVEPOINT；其余方法全部委托给真实事务 db。
- */
-function createTestTransactionDb(realDb: DbClient): DbClient {
-  const proxy = new Proxy(realDb, {
-    get(target, prop, _receiver) {
-      if (prop === "transaction") {
-        return savepointTransaction;
-      }
-      const value = Reflect.get(target, prop, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-  _testTransactionProxy = proxy as unknown as DbClient;
-  return proxy as unknown as DbClient;
-}
-
-/**
- * 在测试事务内模拟嵌套事务：SAVEPOINT / RELEASE / ROLLBACK TO。
- *
- * 四条不变量（2026-10-11 复审修正 3）：
- *
- * 1. **按异步上下文归属父节点**：测试事务只用一条连接（测试模式 `max: 1`），
- *    `SAVEPOINT`/`RELEASE` 是连接级状态，兄弟事务交错必然互相破坏。子事务由
- *    AsyncLocalStorage 中的父节点决定队列归属；不能再要求父节点恰好是当前运行节点，
- *    因为父回调可在子 A 暂停期间启动同级子 B。
- * 2. **内层也要按序**：同一根内的并发内层调用（如回调里 `Promise.all` 两个
- *    `db.transaction()`）同样必须串行，否则再次交错；外层在 `RELEASE` 前会把
- *    该根的嵌套队列**排空**，避免 fire-and-forget 的内层在 savepoint 释放后落地。
- * 3. **父节点结束时关闭并排空子队列**：不再接收迟到子事务，先等待已经开始或排队
- *    的子事务完成，再释放/回滚父 savepoint，避免子事务 SQL 越过父边界。
- * 4. **记账错误不吞**：成功路径的 `RELEASE` 失败必须抛出；回滚路径保留回调的
- *    原始异常，但 `ROLLBACK TO SAVEPOINT` 自身失败意味着连接事务不可继续使用，
- *    必须标记损坏并让后续调用立即失败。
- */
-async function savepointTransaction(
-  callback: (tx: DbClient) => unknown,
-  _config?: unknown,
-): Promise<unknown> {
-  assertSavepointUsable();
-  const parentNode = _savepointContext.getStore()?.node ?? null;
-  const node = Symbol("noj-savepoint-node");
-  if (parentNode !== null) {
-    if (!_openSavepointNodes.has(parentNode)) {
-      throw new Error("父 savepoint 已结束，拒绝执行迟到的子事务");
-    }
-    // **直接子事务**（真正的嵌套）：与"同父兄弟"按序执行。
-    // 不能进全局队列——父正在 await 它，进全局会与父互等（死锁）。
-    return await enqueue(
-      _childQueues,
-      parentNode,
-      () => runSavepointTransaction(callback, node),
-    );
-  }
-  // 从任何 savepoint 回调之外发起的独立兄弟：进入全局串行队列。
-  return await enqueue(
-    _siblingQueue,
-    SIBLING_KEY,
-    () => runSavepointTransaction(callback, node),
-  );
-}
-
-/** 串行队列：把任务接到队尾，前一个无论成败都继续排队。 */
-function enqueue<T>(
-  queues: Map<symbol, Promise<unknown>>,
-  key: symbol,
-  task: () => Promise<T>,
-): Promise<T> {
-  const prev = queues.get(key) ?? Promise.resolve();
-  const next = prev.then(task, task);
-  queues.set(key, next.then(() => undefined, () => undefined));
-  return next;
-}
-
-/** savepoint 事务前置校验（active + 未损坏）；返回收窄后的 active 状态。 */
-function assertSavepointUsable(): Extract<
-  TestTransactionState,
-  { status: "active" }
-> {
-  const state = _testTransactionState;
-  if (state.status !== "active") {
-    throw new Error("savepointTransaction 只能在 active 测试事务内调用");
-  }
-  if (_savepointBroken) {
-    throw new Error(
-      "测试事务已损坏（savepoint 回滚失败，连接事务不可继续使用）：请让该用例使用独立连接",
-    );
-  }
-  return state;
-}
-
-/** 单次 savepoint 事务的实际执行（由队列串行调度）。 */
-async function runSavepointTransaction(
-  callback: (tx: DbClient) => unknown,
-  node: symbol,
-): Promise<unknown> {
-  const state = assertSavepointUsable();
-  const db = state.rawDb;
-  // savepoint 名在同一连接上单调递增（不随用例重置），避免与迟到语句重名。
-  const name = `noj_sp_${_savepointSeq++}`;
-  _openSavepointNodes.add(node);
-
-  /** 关闭节点后排空已提交到该节点的队列；其失败不覆盖父回调异常。 */
-  const closeAndDrainChildren = async (): Promise<void> => {
-    _openSavepointNodes.delete(node);
-    await (_childQueues.get(node) ?? Promise.resolve());
-  };
-
-  /** 保存原始异常；回滚错误只标记连接损坏。 */
-  const rollbackAndRelease = async (): Promise<void> => {
-    try {
-      await db.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
-      await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
-    } catch (rollbackErr) {
-      _savepointBroken = true;
-      logger.error("测试事务 savepoint 回滚失败，标记连接事务损坏", {
-        rollbackErr,
-      });
-    }
-  };
-
-  try {
-    await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
-    let result: unknown;
-    try {
-      result = await _savepointContext.run(
-        { node },
-        () => callback(_testTransactionProxy!),
-      );
-    } catch (err) {
-      // 父回调失败时先禁止迟到子事务，再等待已开始/排队的子事务结束；
-      // 否则 ROLLBACK TO 会移除仍在使用的子 savepoint。
-      await closeAndDrainChildren();
-      await rollbackAndRelease();
-      throw err;
-    }
-
-    await closeAndDrainChildren();
-    try {
-      // 成功路径：RELEASE 失败必须传播，不能声明成功。
-      await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
-      return result;
-    } catch (err) {
-      await rollbackAndRelease();
-      throw err;
-    }
-  } finally {
-    _openSavepointNodes.delete(node);
-    _childQueues.delete(node);
-  }
-}
-
-/**
- * 真正开启测试事务（由 beginTestTransaction 在 DB 已初始化时调用）。
- *
- * PGlite：在现有实例上 BEGIN。
- * PG：创建 max:1 专用连接并 BEGIN。
- */
-async function startRealTransaction(): Promise<void> {
-  if (_testTransactionState.status !== "pending") return;
-
-  if (isPGliteMode()) {
-    if (!_pgliteInstance) return; // DB 尚未初始化，保持 pending
-    await _pgliteInstance.query("BEGIN");
-    // 新事务开始：上一次回滚失败导致的"损坏"状态随 ROLLBACK 失效。
-    _savepointBroken = false;
-    const realDb = getDb();
-    const proxy = createTestTransactionDb(realDb);
-    _testTransactionState = {
-      status: "active",
-      db: proxy,
-      rawDb: realDb,
-      rollback: async () => {
-        await _pgliteInstance!.query("ROLLBACK");
-      },
-    };
-    return;
-  }
-
-  // PG 模式：测试模式连接池为 max:1，直接在同一连接上 BEGIN。
-  //
-  // 连接池（`_client`/`_db`）是**首次 `getDb()` 时才懒创建**的，因此不能在这里
-  // 只看 `_client`：某个测试进程的「第一个触库用例」此时 `_client` 仍为 null，
-  // 若直接 `return` 就会让该用例**不进入事务**——它的写入自动提交、不被 preload
-  // 回滚（PGlite 模式不受影响，因为模板实例在启动期已同步就绪）。
-  //
-  // 后果是真实 PG 下出现与测试顺序无关的假失败：固定 fixture id 的重复主键
-  // （如 problems_pkey）以及随后用例的「current transaction is aborted」级联。
-  // 这里先显式初始化连接池，保证每个用例（含第一个）都在真实事务内执行。
-  if (!_client) {
-    if (!Deno.env.get("DATABASE_URL")) return; // 无外部库：保持 pending
-    getDb(); // 同步创建 _client/_db（幂等；pending 状态下不会返回事务代理）
-    if (!_client) return;
-  }
-  const realDb = getDb();
-  await realDb.execute(sql`BEGIN`);
-  _savepointBroken = false;
-  const proxy = createTestTransactionDb(realDb);
-  _testTransactionState = {
-    status: "active",
-    db: proxy,
-    rawDb: realDb,
-    rollback: async () => {
-      await realDb.execute(sql`ROLLBACK`);
-    },
-  };
-}
-
-/**
- * 测试用例开始：进入 pending；若 DB 已初始化则立即开启真实事务。
- */
-export async function beginTestTransaction(): Promise<void> {
-  if (_testTransactionDisabled) return;
-  if (_testTransactionState.status !== "idle") return;
-  _testTransactionState = { status: "pending" };
-  await startRealTransaction();
-}
-
-/**
- * 测试用例结束：回滚 active 事务并清理，或直接回到 idle。
- */
-export async function rollbackTestTransaction(): Promise<void> {
-  const state = _testTransactionState;
-  _testTransactionProxy = null;
-  if (state.status === "active") {
-    try {
-      await state.rollback();
-    } finally {
-      _testTransactionState = { status: "idle" };
-    }
-    return;
-  }
-  _testTransactionState = { status: "idle" };
-}
-
-/** 当前是否处于 active 测试事务中 */
-export function isInsideTestTransaction(): boolean {
-  return _testTransactionState.status === "active";
-}
-
-/** 当前文件是否通过 disableTestTransactionForFile() 关闭了事务包装 */
-export function isTestTransactionDisabled(): boolean {
-  return _testTransactionDisabled;
-}
-
-/**
- * 文件级 opt-out：存在跨用例数据依赖的测试文件调用此函数后，
- * 该文件所有用例跳过事务包装。
- */
-export function disableTestTransactionForFile(): void {
-  _testTransactionDisabled = true;
-}
-
-/**
- * 构造 postgres.js 的 `connection` 选项（libpq startup 参数）。
- *
- * - `TEST_SCHEMA` 非空时附带 `public`，使系统/扩展对象（如 pg_trgm 运算符）可解析；
- * - `jitDisabled` 为真时发送 `-cjit=off`。
- *
- * 返回 `undefined` 表示无启动参数（保持 postgres.js 默认行为）。
- *
- * @param testSchema 测试分片 schema 名（空串表示不分片）。
- * @param jitDisabled 是否关闭 PostgreSQL JIT。
- */
-export function buildConnectionOptions(
-  testSchema: string,
-  jitDisabled: boolean,
-): { options: string } | undefined {
-  const opts: string[] = [];
-  if (testSchema) opts.push(`-csearch_path=${testSchema},public`);
-  if (jitDisabled) opts.push("-cjit=off");
-  return opts.length > 0 ? { options: opts.join(" ") } : undefined;
-}
-
-/**
- * 获取 Drizzle ORM 数据库实例（单例模式）。
- *
- * 双模式驱动：
- * - `DATABASE_URL` 已设置 → postgres.js 连接外部 PostgreSQL（生产/CI）
- * - `DATABASE_URL` 未设置 → PGlite 内存 PostgreSQL（测试，零外部依赖）
+ * @returns Drizzle postgres-js 数据库
  */
 export function getDb() {
-  if (_testTransactionState.status === "active") {
-    return _testTransactionState.db;
-  }
-
   if (_db) return _db;
-
-  if (isPGliteMode()) {
-    // PGlite 模式：全局单例，首次调用时优先从模板加载
-    if (!_pgliteInstance) {
-      _pgliteInstance = createPGliteInstanceFromTemplate() ?? new PGlite();
-    }
-    _db = drizzlePglite(
-      _pgliteInstance,
-      { schema },
-    ) as unknown as ReturnType<typeof drizzlePg>;
-    return _db;
-  }
 
   const databaseUrl = Deno.env.get("DATABASE_URL");
   if (!databaseUrl) {
-    throw new Error("环境变量 DATABASE_URL 未设置");
+    throw new Error(
+      "DATABASE_URL 未设置：数据库仅支持真实 PostgreSQL；测试请使用独立测试数据库启动器",
+    );
   }
 
   try {
     const poolMax = parseInt(Deno.env.get("DATABASE_POOL_MAX") || "10", 10);
-    // 测试模式使用单连接，确保模块级捕获的 db 与测试事务在同一连接上，
-    // 避免 HTTP 请求（事务内）与测试直接 db 操作（全局池）跨连接不可见。
-    const isTestMode = Deno.env.get("NOJ_ENV") === "test" ||
-      !!Deno.env.get("TEST_SCHEMA");
     const connectTimeout = parseInt(
       Deno.env.get("DATABASE_CONNECT_TIMEOUT") || "10",
       10,
@@ -684,35 +44,14 @@ export function getDb() {
       Deno.env.get("DATABASE_MAX_LIFETIME") || "3600",
       10,
     );
-    // JIT 默认关闭（OLTP）：退化查询（如中文 2 字短词触发全表扫描）会被 PG 判为
-    // 高代价而触发 JIT 编译，实测编译耗时 238ms 纯属开销。DATABASE_JIT=on 可恢复。
     const jitDisabled = Deno.env.get("DATABASE_JIT")?.trim().toLowerCase() !==
       "on";
-    // TEST_SCHEMA：测试并行分片时每个 worker 进程指向独立的 PG schema，
-    // 使 resetDbForTest() 的 TRUNCATE 只影响本分片（进程间互不干扰）。
-    // 通过 libpq 的 startup 参数 `-csearch_path=...` 在每个物理连接建立时
-    // 生效（postgres.js 的 connection.options 传入 PG startup packet，
-    // 服务端作为 GUC 命令处理），保证连接池内所有连接（含 Drizzle migrator
-    // 使用的连接）都落在目标 schema；未限定表名按 search_path 解析，
-    // CREATE TABLE / TRUNCATE / SELECT 均自动隔离。
-    const testSchema = Deno.env.get("TEST_SCHEMA") || "";
-    if (testSchema && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(testSchema)) {
-      throw new Error(
-        `TEST_SCHEMA 非法: ${testSchema}（仅允许 SQL 标识符，防止 search_path 注入）`,
-      );
-    }
     _client = postgres(databaseUrl, {
-      max: isTestMode ? 1 : poolMax,
+      max: poolMax,
       connect_timeout: connectTimeout,
       idle_timeout: idleTimeout,
       max_lifetime: maxLifetime,
-      // 启动参数（libpq startup packet）：
-      // - TEST_SCHEMA：附带 public 兜底，使系统/扩展对象（如 pg_trgm 运算符）仍可解析；
-      // - JIT：默认关闭。NOJ 是 OLTP 负载（多为短查询），而中文 2 字等退化查询会
-      //   命中全表扫描并被 PG 判定为高代价，触发 JIT 编译——实测 10 万行搜索中
-      //   JIT 编译占 238ms/309ms（纯开销，不改善结果）。关闭后同一查询降至 57ms。
-      //   长分析型查询确有需要时可设 DATABASE_JIT=on 恢复。
-      connection: buildConnectionOptions(testSchema, jitDisabled),
+      connection: buildConnectionOptions(jitDisabled),
     });
     _db = drizzlePg(_client, { schema });
     return _db;
@@ -723,8 +62,9 @@ export function getDb() {
 }
 
 /**
- * 检查数据库连接状态。
- * PGlite 模式检查实例是否已初始化；postgres.js 模式执行 SELECT 1 验证。
+ * 检查数据库连接状态：执行 `SELECT 1` 验证连接可用。
+ *
+ * @returns 健康状态与可选错误文本
  */
 export async function checkDbHealth(): Promise<
   { ok: boolean; error?: string }
@@ -734,25 +74,7 @@ export async function checkDbHealth(): Promise<
     if (!ok) metrics.inc("noj_database_health_check_errors_total");
     return error ? { ok, error } : { ok };
   };
-  if (isPGliteMode()) {
-    if (!_db) {
-      return result(false, "未初始化");
-    }
-    try {
-      await _db.execute(sql`SELECT 1`);
-      return result(true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return result(false, message);
-    }
-  }
-
-  if (!_client) {
-    return result(false, "未初始化");
-  }
-  if (!_db) {
-    return result(false, "未初始化");
-  }
+  if (!_client || !_db) return result(false, "未初始化");
 
   try {
     await _db.execute(sql`SELECT 1`);
@@ -767,6 +89,8 @@ export async function checkDbHealth(): Promise<
  * 注册数据库健康探针。
  *
  * 由 app.ts 组合根调用；shared/db 不依赖 domains/observability。
+ *
+ * @param registry 可观测性注册表
  */
 export function registerDbHealthProbe(registry: ObservabilityRegistry): void {
   registry.registerHealthProbe({
@@ -785,247 +109,58 @@ export function registerDbHealthProbe(registry: ObservabilityRegistry): void {
   });
 }
 
+/** 数据库关闭阶段的最小可关闭句柄；null 表示连接未创建。 */
+export interface DbShutdownHandles {
+  /** 结束 postgres.js 连接池。 */
+  endClient: (() => Promise<void> | void) | null;
+}
+
 /**
- * 重置数据库连接状态（测试用）。
+ * 关闭数据库资源：所有关闭步骤都独立 settle，最后以 `AggregateError` 汇总。
  *
- * PGlite 模式：TRUNCATE 所有表 + re-seed root 用户和 judge image。
- * 保留 PGlite 实例（不清除），避免冷启动开销。
+ * 该函数不读取模块单例，便于用最小 fake 在无网络条件下验证异常传播。
  *
- * postgres.js 模式：关闭连接池后清空单例（现有行为不变）。
+ * @param handles 待关闭资源
  */
+export async function closeDbResources(
+  handles: DbShutdownHandles,
+): Promise<void> {
+  const failures: Array<{ step: string; error: unknown }> = [];
+  if (handles.endClient) {
+    try {
+      await handles.endClient();
+    } catch (error) {
+      failures.push({ step: "postgres-client", error });
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((failure) => failure.error),
+      `数据库关闭失败：${
+        failures
+          .map((failure) =>
+            `${failure.step}: ${
+              failure.error instanceof Error
+                ? failure.error.message
+                : String(failure.error)
+            }`
+          )
+          .join("；")
+      }`,
+    );
+  }
+}
+
 /**
- * PGlite 模式：确保实例已初始化并完成 Schema 引导 + 基础种子（幂等）。
+ * 优雅关闭：结束 postgres.js 连接池并释放单例引用。
  *
- * deno test 每个测试文件独立模块图，PGlite 单例与 bootstrap 不跨文件共享；
- * 依赖 DB 的 helper（如 createUserToken）必须先调用本函数，否则表不存在。
- */
-export async function ensurePGliteSchemaForTest(): Promise<void> {
-  if (!isPGliteMode()) return;
-  if (!_pgliteInstance) {
-    _pgliteInstance = createPGliteInstanceFromTemplate() ?? new PGlite();
-  }
-  await _pgliteInstance.waitReady;
-  // 从模板加载时 schema 已存在，无需重复执行 DDL
-  if (!_pgliteTemplateLoaded) {
-    // 自动引导 Schema（首次调用时），await 确保引导完成
-    if (!_bootstrapPromise) {
-      _bootstrapPromise = (async () => {
-        for (const ddl of SCHEMA_DDL) {
-          await _pgliteInstance!.query(ddl);
-        }
-        for (const idx of SCHEMA_INDEXES) {
-          await _pgliteInstance!.query(idx);
-        }
-        // PGlite 不包含 pg_trgm；生产 PostgreSQL 由 0070 迁移创建这些索引。
-        // 尝试执行可选索引可让支持扩展的测试数据库也保持与生产一致。
-        for (const idx of OPTIONAL_EXTENSION_INDEXES) {
-          try {
-            await _pgliteInstance!.query(idx);
-          } catch (err) {
-            // 测试运行时缺少 pg_trgm 时保留 ILIKE 语义，接受顺序扫描。
-            logger.debug(
-              "可选扩展索引未创建（测试环境可忽略）: {idx} - {reason}",
-              {
-                idx,
-                reason: err instanceof Error ? err.message : String(err),
-              },
-            );
-          }
-        }
-      })();
-    }
-    await _bootstrapPromise;
-  }
-  _db = null; // 清空 drizzle 包装，下次 getDb() 重新包装
-
-  // Re-seed 必需数据（幂等）
-  const now = new Date().toISOString();
-  try {
-    await _pgliteInstance!.query(
-      `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
-       VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-  } catch {
-    // 表可能还没建
-  }
-  try {
-    await _pgliteInstance!.query(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-    await _pgliteInstance!.query(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-    await _pgliteInstance!.query(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-  } catch {
-    // 表可能还没建
-  }
-  // 种子 RBAC 角色和权限
-  try {
-    await runDbResetSeeders();
-  } catch {
-    // 表可能还没建
-  }
-}
-
-export interface ResetDbForTestOptions {
-  /** 深度重置：连种子参考表（roles/permissions/role_permissions）一起清空并重建 */
-  deep?: boolean;
-  /** 是否在重置后刷新 user_rankings 物化视图（排名相关测试使用） */
-  refreshRankings?: boolean;
-}
-
-export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
-  // 测试事务内：回滚已保证隔离，reset 只需清理内存缓存
-  if (isInsideTestTransaction()) {
-    for (const fn of _onDbResetCallbacks) fn();
-    return;
-  }
-
-  // pending 状态：先执行真正的 reset 建立初始状态，再开启事务
-  const shouldStartTx = _testTransactionState.status === "pending";
-
-  const tables = RESET_TABLES;
-  const truncateSql = `TRUNCATE TABLE ${tables.join(", ")} CASCADE`;
-  const now = new Date().toISOString();
-
-  if (isPGliteMode()) {
-    // PGlite 模式 — 确保实例已初始化（模板加载或 DDL 引导）
-    await ensurePGliteSchemaForTest();
-    _db = null; // 清空 drizzle 包装，下次 getDb() 重新包装
-
-    // TRUNCATE 保留 schema + 可选保留 RBAC 种子参考表
-    try {
-      await _pgliteInstance!.query(truncateSql);
-    } catch {
-      // 某些测试可能只建了部分表，忽略
-    }
-    // Re-seed 必需数据
-    try {
-      await _pgliteInstance!.query(
-        `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
-         VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
-         ON CONFLICT (id) DO NOTHING`,
-      );
-    } catch {
-      // 表可能还没建
-    }
-    try {
-      await _pgliteInstance!.query(
-        `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-         VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
-         ON CONFLICT (id) DO NOTHING`,
-      );
-      await _pgliteInstance!.query(
-        `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-         VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
-         ON CONFLICT (id) DO NOTHING`,
-      );
-      await _pgliteInstance!.query(
-        `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-         VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
-         ON CONFLICT (id) DO NOTHING`,
-      );
-    } catch {
-      // 表可能还没建
-    }
-    // TRUNCATE 清空了 RBAC 种子表，必须重新播种
-    try {
-      await runDbResetSeeders();
-    } catch {
-      // 表可能还没建
-    }
-    // 物化视图按需刷新（PGlite 不支持则忽略）
-    if (options.refreshRankings) {
-      try {
-        await _pgliteInstance!.query(
-          `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
-        );
-      } catch { /* PGlite 无物化视图支持 */ }
-    }
-    _db = null;
-    // 通知已注册模块重置缓存（如 system_settings 内存缓存）
-    for (const fn of _onDbResetCallbacks) fn();
-    if (shouldStartTx) await startRealTransaction();
-    return;
-  }
-
-  // postgres.js 模式：复用现有连接池，不再关闭/重建
-  const db = getDb();
-  try {
-    await db.execute(truncateSql);
-  } catch {
-    // 某些表可能不存在，忽略
-  }
-  try {
-    // re-seed root 用户（users.role 列已废弃删除）
-    await db.execute(
-      `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
-       VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-  } catch { /* 忽略 */ }
-  // TRUNCATE 清空了 RBAC 种子表，必须重新播种
-  try {
-    await runDbResetSeeders();
-  } catch { /* 忽略 */ }
-  try {
-    await db.execute(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-    await db.execute(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-    await db.execute(
-      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-       VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
-       ON CONFLICT (id) DO NOTHING`,
-    );
-  } catch { /* 忽略 */ }
-  // 物化视图按需刷新
-  if (options.refreshRankings) {
-    try {
-      await db.execute(
-        `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
-      );
-    } catch { /* 可能没有物化视图 */ }
-  }
-  // 通知已注册模块重置缓存（如 system_settings 内存缓存）
-  for (const fn of _onDbResetCallbacks) fn();
-  if (shouldStartTx) await startRealTransaction();
-}
-
-/**
- * 优雅关闭：结束 PGlite / postgres.js 连接。
- * 关闭失败只记录，不阻断进程退出。
+ * 关闭失败以 `AggregateError` 抛出，供 `performShutdown()` 记为资源关闭问题。
  */
 export async function closeDbForShutdown(): Promise<void> {
-  try {
-    if (_testTransactionState.status === "active") {
-      await rollbackTestTransaction();
-    }
-    if (_client) {
-      await _client.end();
-      _client = null;
-    }
-    if (_pgliteInstance) {
-      await _pgliteInstance.close();
-      _pgliteInstance = null;
-    }
-    _db = null;
-  } catch (err) {
-    logger.error("数据库连接关闭失败", { err });
-  }
+  const client = _client;
+  _client = null;
+  _db = null;
+  await closeDbResources({
+    endClient: client ? () => client.end() : null,
+  });
 }

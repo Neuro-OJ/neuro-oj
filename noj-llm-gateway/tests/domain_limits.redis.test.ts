@@ -4,20 +4,21 @@ import type { Db } from "../src/db.ts";
 import type { EvalTokenPayload } from "../src/crypto.ts";
 import { enforceAndCount, settleUsage } from "../src/limits.ts";
 import type { RedisClient } from "../src/redis.ts";
-
-const redisUrl = Deno.env.get("NOJ_GATEWAY_TEST_REDIS_URL");
+import {
+  gatewayTestRedisUrl as redisUrl,
+  runRedisPrefix,
+} from "./integration-env.ts";
 
 Deno.test({
   name:
     "域额度 Redis：最后一次额度并发只受理一次、跨域独立、实际结算与实例总额",
-  ignore: !redisUrl,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
     // 每轮测试所有 Lua 键加独立前缀，不读取、删除或累计开发服务的真实额度。
     // @ts-ignore - ioredis 构造函数在 Deno 中的类型解析限制
     const connection = new IORedis(redisUrl!, { maxRetriesPerRequest: 1 });
-    const prefix = "gateway-test:" + crypto.randomUUID() + ":";
+    const prefix = runRedisPrefix("domain-limits");
     const keys = new Set<string>();
     const redis = {
       eval(script: string, rawKeys: string[], args: (string | number)[]) {

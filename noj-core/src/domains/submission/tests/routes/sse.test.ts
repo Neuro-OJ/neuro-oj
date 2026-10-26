@@ -4,7 +4,8 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../../src/app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   problems,
   sseEvents,
@@ -22,7 +23,6 @@ import {
 } from "../../services/queue.ts";
 
 const app = createApp();
-const JWT_SECRET = Deno.env.get("JWT_SECRET");
 
 await resetDbForTest();
 await initRedisForTest();
@@ -32,7 +32,6 @@ await ensureRbacSeeds();
 
 Deno.test({
   name: "sse: GET /submissions/:id/events 未认证 401",
-  ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request("/api/v1/submissions/invalid-id/events", {
       signal: AbortSignal.timeout(200),
@@ -44,7 +43,6 @@ Deno.test({
 
 Deno.test({
   name: "sse: GET /submissions/:id/events 无效 id 非 401",
-  ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request(
       "/api/v1/submissions/nonexistent/events",
@@ -66,7 +64,6 @@ Deno.test({
 
 Deno.test({
   name: "sse: 管理员权限通过请求上下文传递后可订阅他人提交",
-  ignore: !JWT_SECRET,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -137,7 +134,7 @@ Deno.test({
     } finally {
       await db.delete(submissions).where(eq(submissions.id, submissionId));
       await deleteProblemFixtures(eq(problems.id, problemId));
-      // preload 事务回滚账号和默认域引导关系，避免物理删账号破坏负责人外键。
+      // 显式清理测试夹具，避免物理删账号破坏负责人外键。
     }
   },
 });
@@ -146,7 +143,6 @@ Deno.test({
 
 Deno.test({
   name: "sse: GET /queue/events 未认证 401",
-  ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request("/api/v1/queue/events", {
       signal: AbortSignal.timeout(200),

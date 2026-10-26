@@ -20,7 +20,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
@@ -37,14 +37,6 @@ import {
 } from "../../../../../tests/helper.ts";
 
 await initRedisForTest();
-
-// 测试需要 JWT_SECRET 签发 token（与 admin-settings.test.ts 一致）
-if (!Deno.env.get("JWT_SECRET")) {
-  Deno.env.set(
-    "JWT_SECRET",
-    "test-secret-must-be-at-least-32-characters-long-xxx",
-  );
-}
 
 /** 本文件触碰 EMAIL_PROVIDER 之前的原始值（未设置时为 undefined）。 */
 const originalEmailProvider = Deno.env.get("EMAIL_PROVIDER");

@@ -26,10 +26,23 @@
   签发/校验，≥16 字符）。
 - 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key，≥16 字符）。
 - `llm-gateway` 容器加入 `noj-net`，core 通过 `http://llm-gateway:8001` 访问。
+- Compose 会先运行一次性 `gateway-migrate` 服务，显式执行 Gateway DDL 与默认配额
+  seed；HTTP 网关启动只读核对打包 journal/SQL 与数据库 ledger。若发现 schema
+  缺失、额外记录或 hash/timestamp 漂移，网关会拒绝启动并提示执行显式迁移。
 
 ::: warning 即使不做 LLM 题也必须填这两个密钥 `docker-compose.prod.yml`
 默认**始终启动** `llm-gateway` 且对这两个密钥使用 `${...:?}`
 必填校验，缺失会导致 `docker compose config` 直接报错。 :::
+
+升级或恢复演练由编排依赖保证 `gateway-migrate` 成功后才启动
+`llm-gateway`；手工运行网关镜像时先执行：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml \
+  up -d --wait gateway-migrate
+```
+
+该命令是唯一的 Gateway 初始化入口，幂等执行迁移和默认配额种子。
 
 网关分钟限流可通过环境变量调整：
 

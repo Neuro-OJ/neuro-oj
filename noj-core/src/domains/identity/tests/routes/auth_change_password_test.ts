@@ -13,18 +13,17 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { registerUser } from "../../index.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasJwt = !!Deno.env.get("JWT_SECRET");
 const hasRedis = !!Deno.env.get("REDIS_URL");
 
 // 没有 Redis 时禁用限流，避免 change-password 路由因 Redis 不可用返回 503
@@ -32,7 +31,6 @@ const hasRedis = !!Deno.env.get("REDIS_URL");
 if (!hasRedis) {
   Deno.env.set("RATE_LIMIT_ENABLED", "false");
 }
-const skip = !(hasDb && hasJwt);
 
 // 确保 Redis 在路由测试前连接，避免 rate limiter 抛 503
 if (hasRedis) {
@@ -76,7 +74,6 @@ async function freshToken(): Promise<string> {
 
 Deno.test({
   name: "route change-password: 注册用户并获取 token",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -88,7 +85,6 @@ Deno.test({
 Deno.test({
   name:
     "route change-password: 正常改密返回 200 + must_change_password=false + 新 token",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -113,7 +109,6 @@ Deno.test({
 
 Deno.test({
   name: "route change-password: 缺少 old_password 返回 400（不消耗 token）",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -134,7 +129,6 @@ Deno.test({
 
 Deno.test({
   name: "route change-password: 缺少 new_password 返回 400（不消耗 token）",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -152,7 +146,6 @@ Deno.test({
 
 Deno.test({
   name: "route change-password: 旧密码错误返回 401（不消耗 token）",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -173,7 +166,6 @@ Deno.test({
 
 Deno.test({
   name: "route change-password: 无 token 返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -190,7 +182,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "route change-password: 清理测试用户",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

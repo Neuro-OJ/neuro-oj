@@ -5,6 +5,7 @@ import type { EvalTokenPayload } from "./crypto.ts";
 import { logger } from "./logger.ts";
 import { recordUsage, type UsageEntry } from "./usage.ts";
 import { accountingBaselineId } from "./accounting-baseline.ts";
+import type { ManagedTask } from "./runtime.ts";
 
 export interface AccountingCounter {
   key: string;
@@ -332,17 +333,152 @@ export async function ensureAccountingReady(
   ]);
 }
 
-/** 每 5 秒继续持久结算，重启不依赖进程游标。 */
-export function startAccountingWorker(db: Db, redis: RedisClient): () => void {
-  const run = () =>
-    ensureAccountingReady(db, redis).then(() => retrySettlements(db, redis))
-      .catch((error) =>
-        logger.warn("LLM结算重试失败: {error}", {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
-  void run();
-  const timer = setInterval(() => void run(), 5000);
+/** 记账 worker 每轮间隔：5 秒。持久结算依据不依赖进程游标，重启后自动继续。 */
+export const ACCOUNTING_TICK_INTERVAL_MS = 5000;
+
+/**
+ * 连续失败轮数阈值：连续 3 轮（约 15 秒）失败即视为"持续失败"。
+ *
+ * 设计依据：worker 每 5 秒一轮。单轮抖动（连接池瞬时超时、Redis 短暂断连）不应把
+ * 副本摘出流量；连续 3 轮失败意味着约 15 秒内无法完成真实的 DB/Redis 结算，多副本
+ * 部署应转移流量。成功一轮后计数清零。
+ */
+export const ACCOUNTING_MAX_CONSECUTIVE_FAILURES = 3;
+
+/**
+ * 启动宽限期：worker 启动后 30 秒内尚无成功轮次也按健康处理（warming up）。
+ *
+ * 设计依据：首轮对账（ensureAccountingReady）可能因迁移/预热耗时较长；宽限期内允许
+ * 首轮失败 1-2 次并重试。注意连续失败阈值优先于宽限期：首轮失败后每 5 秒重试，连续
+ * 3 次即判不健康，不必等满 30 秒；宽限期只容纳"尚未跑完首轮"而非"反复失败"。
+ */
+export const ACCOUNTING_STARTUP_GRACE_MS = 30_000;
+
+/** 记账 worker 的运行状态快照（只读，供 /health/ready 与运维观测使用）。 */
+export interface AccountingWorkerStatus {
+  /** 定时器是否仍在运行；stop() 之后为 false。 */
+  running: boolean;
+  /** worker 启动时刻（epoch 毫秒），用于首轮启动宽限期判定。 */
+  startedAt: number;
+  /** 最近一次整轮成功的时刻（epoch 毫秒）；从未成功过为 null。 */
+  lastSuccessAt: number | null;
+  /** 最近一次失败的错误信息（仅供日志/内部观测，不进入 /health/ready 响应体）。 */
+  lastError: string | null;
+  /** 自上次成功以来连续失败的轮数；成功一轮后清零。 */
+  consecutiveFailures: number;
+}
+
+/** 记账 worker 健康判定结果；不健康时 reason 为稳定的非敏感类别代码。 */
+export interface AccountingWorkerHealth {
+  /** 该轮是否可视为健康（可继续接收流量）。 */
+  healthy: boolean;
+  /** 不健康类别（worker_stopped / worker_persistent_failures / worker_never_succeeded）；健康时为 null。 */
+  reason: string | null;
+}
+
+/**
+ * 判定记账 worker 是否健康（纯函数，便于按固定时钟测试阈值）。
+ *
+ * @param status 运行状态快照（startAccountingWorker 提供）
+ * @param now 当前时刻（epoch 毫秒，测试注入）
+ * @returns 健康判定；不健康时给出稳定的非敏感原因代码
+ */
+export function evaluateAccountingWorkerHealth(
+  status: AccountingWorkerStatus,
+  now: number = Date.now(),
+): AccountingWorkerHealth {
+  if (!status.running) {
+    return { healthy: false, reason: "worker_stopped" };
+  }
+  // 连续失败优先于启动宽限期：反复失败已经证明依赖不可用，不能靠宽限期继续接流量。
+  if (status.consecutiveFailures >= ACCOUNTING_MAX_CONSECUTIVE_FAILURES) {
+    return { healthy: false, reason: "worker_persistent_failures" };
+  }
+  if (status.lastSuccessAt === null) {
+    // 首轮尚未完成（或首轮失败 1-2 次、仍在重试）且仍在宽限期内：视为预热中。
+    if (now - status.startedAt < ACCOUNTING_STARTUP_GRACE_MS) {
+      return { healthy: true, reason: null };
+    }
+    // 超过宽限期仍无任何成功轮次（例如首轮对账卡死）：不能继续接流量。
+    return { healthy: false, reason: "worker_never_succeeded" };
+  }
+  return { healthy: true, reason: null };
+}
+
+/** 记账 worker 句柄：停止后续轮次并读取状态（优雅关闭由 P5 接入）。 */
+export interface AccountingWorkerHandle {
+  /** 停止定时器（幂等）；已在执行的轮次允许完成，不中断在途 DB/Redis 操作。 */
+  stop(): void;
+  /** 停止后等待最后一轮 DB/Redis 操作完成。 */
+  done: Promise<void>;
+  /** 读取当前运行状态快照（副本，调用方修改不影响 worker 内部状态）。 */
+  getStatus(): AccountingWorkerStatus;
+}
+
+/**
+ * 启动持久结算后台 worker：启动即执行一轮，之后每 5 秒一轮。
+ *
+ * 状态记录（running / lastSuccessAt / lastError / consecutiveFailures）供
+ * /health/ready 判定；本轮同时覆盖"记账就绪检查（ensureAccountingReady）"与
+ * "结算重试（retrySettlements）"，任一失败都计入失败轮次。
+ *
+ * @returns 可停止、可查询状态的 worker 句柄
+ */
+export function startAccountingWorker(
+  db: Db,
+  redis: RedisClient,
+): AccountingWorkerHandle {
+  const status: AccountingWorkerStatus = {
+    running: true,
+    startedAt: Date.now(),
+    lastSuccessAt: null,
+    lastError: null,
+    consecutiveFailures: 0,
+  };
+  let inFlight: Promise<void> | null = null;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
+  const settleDone = (): void => {
+    if (!status.running && inFlight === null) resolveDone();
+  };
+  const run = async (): Promise<void> => {
+    if (!status.running) return;
+    try {
+      await ensureAccountingReady(db, redis);
+      await retrySettlements(db, redis);
+      status.lastSuccessAt = Date.now();
+      status.lastError = null;
+      status.consecutiveFailures = 0;
+    } catch (error) {
+      status.consecutiveFailures += 1;
+      status.lastError = error instanceof Error ? error.message : String(error);
+      logger.warn("LLM结算重试失败: {error}", { error: status.lastError });
+    }
+  };
+  const startRound = (): void => {
+    if (!status.running || inFlight !== null) return;
+    const current = run();
+    inFlight = current;
+    current.finally(() => {
+      if (inFlight === current) inFlight = null;
+      settleDone();
+    }).catch(() => {});
+  };
+  startRound();
+  const timer = setInterval(startRound, ACCOUNTING_TICK_INTERVAL_MS);
   Deno.unrefTimer(timer);
-  return () => clearInterval(timer);
+  const handle: AccountingWorkerHandle & ManagedTask = {
+    name: "gateway-accounting",
+    stop() {
+      status.running = false;
+      clearInterval(timer);
+      settleDone();
+    },
+    getStatus: () => ({ ...status }),
+    done,
+  };
+  done.catch(() => {});
+  return handle;
 }

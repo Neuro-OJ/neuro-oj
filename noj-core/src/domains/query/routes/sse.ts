@@ -60,6 +60,7 @@ async function handler(c: Context<OptionalAuthEnv>) {
           return null;
         }
       },
+      (operation) => streamContext.run(operation),
     );
     const missed = await replaySseEvents([channel], lastEventId(c), 200);
     for (const event of missed) {

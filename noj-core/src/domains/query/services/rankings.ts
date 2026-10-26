@@ -1,8 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  getDb,
-  isInsideTestTransaction,
-} from "./../../../shared/db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
 import { submissions } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
@@ -53,7 +50,7 @@ async function hasMaterializedView(): Promise<boolean> {
 
 /** 榜单视图新鲜度检查结果。 */
 export interface RankingViewFreshness {
-  /** 物化视图是否存在（PGlite / 未重建时为 false）。 */
+  /** 物化视图是否存在（尚未迁移时为 false）。 */
   exists: boolean;
   /** 是否可信（可安全走视图读取路径）。 */
   trusted: boolean;
@@ -105,7 +102,7 @@ const VIEW_UNKNOWN: RankingViewFreshness = Object.freeze({
  *    `materialized_at IS NULL`（0110 之前的存量行 / 尚未成功刷新）**按落后处理**：
  *    无法证明视图覆盖了赛期边界。
  *
- * 视图不存在（PGlite / 未重建）、revision 行缺失或读取异常时一律不可信，
+ * 视图不存在、revision 行缺失或读取异常时一律不可信，
  * 读取回退内联查询；本判定不保存进程内缓存（多副本一致）。
  *
  * @returns 视图存在性、可信度与落后原因（不抛错：任何异常都按不可信处理）
@@ -181,16 +178,17 @@ export async function inspectRankingView(): Promise<RankingViewFreshness> {
  * 该说法**不成立**——PG 16.15 实测 `BEGIN; REFRESH ... CONCURRENTLY; ROLLBACK;`
  * 成功，本函数正是在同一事务内完成「取锁 → 刷新 → 记账」。
  *
- * 真正会出问题的是**异步刷新与测试事务的 savepoint 交错**：本函数是结果写入后的
- * fire-and-forget 调用（`refreshRankingsView().catch(...)`），测试用例的长事务只有
- * 一条连接，异步刷新在其中创建/释放 savepoint 会与用例自身的 savepoint 记账交错
- * （表现为 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted`
- * 的假失败）。修法是 `connection.ts` 把 savepoint 事务串行化并让记账错误正常抛出；
- * 本函数额外保留 `isInsideTestTransaction()` 短路，作为**测试适配**（测试期读取
- * 一律走内联路径，跳过刷新不改变被测语义，也避免真跑昂贵的物化视图重建）。
+ * 调用方应等待本函数完成，以便结果写入路径能够观测刷新是否已结束；刷新失败
+ * 在本函数内部记录并降级到内联榜单，不影响主写入结果。
  */
-export async function refreshRankingsView(): Promise<void> {
-  if (isInsideTestTransaction()) return;
+export interface RefreshRankingsOptions {
+  /** 测试 reset 必须观测刷新失败；生产默认记录并回退内联查询。 */
+  throwOnError?: boolean;
+}
+
+export async function refreshRankingsView(
+  options: RefreshRankingsOptions = {},
+): Promise<void> {
   try {
     if (!await hasMaterializedView()) return;
     await getDb().transaction(async (tx) => {
@@ -232,6 +230,7 @@ export async function refreshRankingsView(): Promise<void> {
     });
   } catch (err) {
     logger.error("物化视图刷新失败，读取继续使用内联成绩", { err });
+    if (options.throwOnError) throw err;
   }
 }
 

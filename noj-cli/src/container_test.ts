@@ -72,6 +72,45 @@ Deno.test("buildComposeArgs: 构造 docker compose run 且 stdin 可继承", () 
   assertEquals(args[serviceIdx + 2], "migrate");
 });
 
+Deno.test("P1d: maintain 被识别为 Tier 3 且以 --no-deps 运行", () => {
+  for (const sub of ["enter", "status", "wait", "exit"]) {
+    const match = parseContainerCommand(["maintain", sub]);
+    assertEquals(match.matched, true, `maintain ${sub} 必须命中 Tier 3`);
+    assertEquals(match.service, "core");
+    assertEquals(match.noDeps, true);
+  }
+  // 裸 maintain 也要命中（help/用法路径不能依赖子命令）
+  assertEquals(parseContainerCommand(["maintain"]).matched, true);
+  // 既有 Tier 3 命令保持默认行为（会启动 depends_on）
+  assertEquals(parseContainerCommand(["db", "migrate"]).noDeps, false);
+});
+
+Deno.test("buildComposeArgs: noDeps 在 --rm 之后插入 --no-deps", () => {
+  const args = buildComposeArgs({
+    composeFile: "/opt/docker-compose.prod.yml",
+    envFile: "/opt/.env.prod",
+    service: "core",
+    command: ["maintain", "enter", "--json"],
+    noDeps: true,
+  });
+  const rm = args.indexOf("--rm");
+  assertEquals(args[rm + 1], "--no-deps");
+  const entry = args.indexOf("--entrypoint");
+  assertEquals(args[entry + 1], "/app/bin/noj");
+  const service = args.indexOf("core");
+  assertEquals(args.slice(service + 1), ["maintain", "enter", "--json"]);
+  // 不传 noDeps 时不出现该旗标（既有 Tier 3 命令行为不变）
+  assertEquals(
+    buildComposeArgs({
+      composeFile: "/opt/docker-compose.prod.yml",
+      envFile: "/opt/.env.prod",
+      service: "core",
+      command: ["db", "migrate"],
+    }).includes("--no-deps"),
+    false,
+  );
+});
+
 Deno.test("renderDryRun: 可读且可直接复制执行", () => {
   const args = buildComposeArgs({
     composeFile: "/opt/docker-compose.prod.yml",

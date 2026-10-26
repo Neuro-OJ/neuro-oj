@@ -38,6 +38,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# noj-core 集成测试入口只接受显式隔离资源；每个 GitHub job 使用自己的 service
+# 网络/daemon，TEST_REDIS_URL 供模板迁移/seed 使用，启动器再为本 run/shard 创建
+# 临时 Redis 容器和存储目录。
+env:
+  TEST_PG_ADMIN_URL: postgres://noj:noj@localhost:5432/postgres
+  TEST_REDIS_URL: redis://localhost:6379/0
+  TEST_STORAGE_ROOT: /tmp/noj-core-test-runs
+
 jobs:
   production-cli:
     name: Production CLI
@@ -385,6 +393,10 @@ jobs:
         working-directory: noj-core
         run: deno task check:jsdoc
 
+      - name: 纯逻辑与测试入口契约
+        working-directory: noj-core
+        run: deno task test:logic
+
       # 配置读取点静态校验（issue #500）在独立的 config-usage-check 作业中运行：
       # 它同时扫描 noj-core / noj-ui / noj-llm-gateway 三个模块，路径过滤与
       # core-check 不同（见 changes 作业的 config 输出）。
@@ -488,10 +500,9 @@ jobs:
       - name: 单元测试 (deno test)
         working-directory: noj-llm-gateway
         env:
-          NOJ_LLM_TEST_REDIS_URL: redis://localhost:6379/15
-          NOJ_GATEWAY_TEST_DATABASE_URL: postgres://noj:noj@localhost:5432/noj_gateway_test
-          NOJ_GATEWAY_TEST_REDIS_URL: redis://localhost:6379/15
-        run: deno task test --frozen
+          TEST_PG_ADMIN_URL: postgres://noj:noj@localhost:5432/postgres
+          TEST_REDIS_URL: redis://localhost:6379/15
+        run: deno task test
 
       - name: 导出 JSDoc 覆盖率检查
         working-directory: noj-llm-gateway
@@ -1991,7 +2002,7 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         run: bash scripts/test-shared.sh
       # 执行摘要写入 job summary：区分密钥来源，并明确记录数据库集成测试
-      # 是"实际执行"而非跳过（issue #430 验收项）。
+      # 已实际执行；必需依赖缺失会失败，可选测试的 ignored 结果按测试输出保留。
       - name: 记录执行摘要
         if: always()
         run: |
@@ -2003,7 +2014,7 @@ jobs:
             else
               echo "- JWT_SECRET 来源：仓库 Secret"
             fi
-            echo "- 数据库集成测试：已实际执行（PostgreSQL / Redis 服务容器），无跳过"
+            echo "- 数据库集成测试：已实际执行（PostgreSQL 服务 + 启动器隔离 Redis 容器）；必需依赖缺失会失败，可选 S3/perf 等测试可能按测试输出为 ignored"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -2018,22 +2029,18 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
-  # noj-core — 分片并行测试（TEST_SCHEMA 路径）
+  # noj-core — 分片并行测试（真实 PostgreSQL 模板路径）
   #
-  # 背景（2026-09-11 评审补充）：D0 修复的是「分片模式下迁移的跨 schema 硬编码
-  # 前缀」导致的一类失败，而**这条路径此前没有任何 CI 覆盖**——CI 各域作业走
-  # `test-domain.sh <domain>`（单 schema、无 TEST_SCHEMA），因此该缺陷在 CI
-  # 中完全不可见，回归也不会被发现。本作业补上这条路径。
+  # 分片入口必须和本地统一：每个分片从正式迁移/seed 模板克隆独立数据库，
+  # 不共享 schema、truncate 或 Redis DB。
   #
-  # 只跑 `--shards 1`（unit 分片）：它足以覆盖迁移 + TEST_SCHEMA + 跨 schema FK
-  # 解析这条链路，代价远低于跑满两个分片。db 分片由各 Core <domain> 作业覆盖
+  # 只跑 `--shards 1`（core 分片）：db 分片由各 Core <domain> 作业覆盖
   # 同等业务面的单 schema 版本。
   #
-  # 注意：test-parallel.ts 会先校验分片 schema 的迁移状态，陈旧 schema 会以
-  # 明确指引失败（而不是让测试报出难归因的 FK 错误）。
+  # 注意：test-parallel.ts 现在只是统一启动器的兼容入口，不读取 .env。
   # ===========================================================================
   core-test-sharded:
-    name: Core Sharded (TEST_SCHEMA)
+    name: Core Sharded (isolated PostgreSQL)
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
@@ -2065,7 +2072,6 @@ jobs:
       REDIS_URL: redis://localhost:6379/
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
       NOJ_ENV: test
-      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
@@ -2074,6 +2080,20 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
+
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+          fi
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -2084,7 +2104,7 @@ jobs:
             deno-sharded-
 
       # 不传 --env-file：CI 通过 job env 提供全部变量，避免依赖仓库内不存在的 .env
-      - name: 分片测试（TEST_SCHEMA=test_unit）
+      - name: 分片测试（独立数据库）
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: "4"
@@ -2175,12 +2195,12 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         run: deno task test:perf
 
-      - name: 教学矩阵性能（标准教育测试入口）
+      - name: 教学矩阵性能（真实 PostgreSQL 入口）
         working-directory: noj-core
         env:
-          TEST_SCHEMA: test_education_perf
-          STORAGE_PROVIDER: local
-        run: deno task test:domain education
+          BCRYPT_SALT_ROUNDS: 4
+        run: deno task test:domain education --perf
+
 
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）

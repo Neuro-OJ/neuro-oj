@@ -195,7 +195,7 @@ export async function initRedisForTest(): Promise<void> {
 export async function createUserToken(
   role: "admin" | "user" = "user",
 ): Promise<string> {
-  const { getDb, ensurePGliteSchemaForTest } = await import(
+  const { getDb } = await import(
     "../src/shared/db/connection.ts"
   );
   const { users, userRoles } = await import("../src/shared/db/schema.ts");
@@ -205,9 +205,6 @@ export async function createUserToken(
   const { ensureRbacSeeds } = await import(
     "../src/domains/system/index.ts"
   );
-  // deno test 每个文件独立模块图：PGlite 模式下必须先引导 Schema，
-  // 否则 users/roles 等表不存在（PG 模式无操作）。
-  await ensurePGliteSchemaForTest();
   const db = getDb();
   // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）。
   // deno test 并行执行文件时，其他文件的 resetDbForTest 可能在本函数执行

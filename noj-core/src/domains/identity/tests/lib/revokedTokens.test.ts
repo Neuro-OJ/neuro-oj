@@ -56,7 +56,6 @@ Deno.test({
 
 Deno.test({
   name: "revokedTokens: revokeJti + isJtiRevoked 往返",
-  ignore: !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -93,7 +92,6 @@ Deno.test({
 
 Deno.test({
   name: "revokedTokens: revokeJti 接受空 jti（no-op）",
-  ignore: !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -105,7 +103,6 @@ Deno.test({
 
 Deno.test({
   name: "revokedTokens: isJtiRevoked 空 jti 直接返 false",
-  ignore: !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -115,7 +112,6 @@ Deno.test({
 
 Deno.test({
   name: "revokedTokens: TTL 过期后自动失效",
-  ignore: !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

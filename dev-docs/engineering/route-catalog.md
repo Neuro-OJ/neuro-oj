@@ -152,6 +152,7 @@
 | GET | `/history` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/instance/queue` | noj-core/src/domains/submission/routes/queue.ts |
 | GET | `/instance/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
+| GET | `/internal/drain/status` | noj-core/src/domains/system/routes/internal-drain.ts |
 | GET | `/internal/llm/quota-caps` | noj-core/src/domains/system/routes/internal-llm-policy.ts |
 | GET | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
 | GET | `/llm-model-aliases` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -298,6 +299,8 @@
 | POST | `/forgot-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/images` | noj-core/src/domains/admin/routes/carousel.ts |
 | POST | `/import-bundle` | noj-core/src/domains/catalog/routes/problems.ts |
+| POST | `/internal/drain/enter` | noj-core/src/domains/system/routes/internal-drain.ts |
+| POST | `/internal/drain/exit` | noj-core/src/domains/system/routes/internal-drain.ts |
 | POST | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
 | POST | `/llm/providers` | noj-core/src/domains/admin/routes/gateway.ts |
 | POST | `/llm/providers/:id/test` | noj-core/src/domains/admin/routes/gateway.ts |

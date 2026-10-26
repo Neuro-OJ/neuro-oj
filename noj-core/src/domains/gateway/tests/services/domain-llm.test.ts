@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainLlmSettings,
   roles,
@@ -218,6 +219,43 @@ Deno.test({
       if (originalSecret === undefined) {
         Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
       } else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", originalSecret);
+      _resetSystemSettingsForTest();
+    }
+  },
+});
+
+Deno.test({
+  name: "域 LLM：读取主域默认只读，不因平台 env 兜底隐式写入配置",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    await resetDbForTest();
+    const oldProvider = Deno.env.get("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    const oldModel = Deno.env.get("NOJ_LLM_DEFAULT_MODEL");
+    Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "explicit-provider");
+    Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "explicit-model");
+    _resetSystemSettingsForTest();
+    try {
+      await ensureDefaultWorkspace();
+      const before = await getDb().select({
+        domain_id: domainLlmSettings.domain_id,
+      })
+        .from(domainLlmSettings)
+        .where(eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID));
+      assertEquals(before, []);
+      assertEquals(await getDomainLlmDefault(DEFAULT_DOMAIN_ID), null);
+      const after = await getDb().select({
+        domain_id: domainLlmSettings.domain_id,
+      })
+        .from(domainLlmSettings)
+        .where(eq(domainLlmSettings.domain_id, DEFAULT_DOMAIN_ID));
+      assertEquals(after, []);
+    } finally {
+      if (oldProvider === undefined) {
+        Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+      } else Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldProvider);
+      if (oldModel === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+      else Deno.env.set("NOJ_LLM_DEFAULT_MODEL", oldModel);
       _resetSystemSettingsForTest();
     }
   },

@@ -1,7 +1,8 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
 import {
@@ -66,12 +67,6 @@ Deno.test({
   },
 });
 
-if (!Deno.env.get("JWT_SECRET")) {
-  Deno.env.set(
-    "JWT_SECRET",
-    "community-route-test-secret-at-least-32-characters",
-  );
-}
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 const authorId = "community-route-author";

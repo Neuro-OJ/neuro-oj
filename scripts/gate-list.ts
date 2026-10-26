@@ -146,16 +146,6 @@ export const REPO_GATES: Gate[] = [
   // 生产 env 注入一致性（2026-10-04）：compose 无 env_file，.env.prod.example 声明却未插值的
   // 变量静默无效——实测邮件凭据未注入导致启用邮件即 core 启动失败、G-03 白名单无法放行。
   { args: ["deno", "run", "-A", "scripts/check-prod-env-injection.ts"] },
-  // schema-ddl.ts（PGlite 测试用手工 SQL 镜像）与 Drizzle schema 的表/列一致性
-  //（2026-09-12 评审 §3.3）。脚本置于 noj-core 下以便解析其导入映射。
-  {
-    args: ["deno", "run", "-A", "scripts/check-schema-parity.ts"],
-    cwd: "noj-core",
-  },
-  {
-    args: ["deno", "test", "-A", "scripts/check-schema-parity_test.ts"],
-    cwd: "noj-core",
-  },
   // T24：被删脚本的测试（test-deploy/test-backup/test-restore-drill/
   // test-monitoring 等）随之移除——它们测的是已删除的 bash 实现，
   // 其行为覆盖已由 noj-cli 的 TS 测试承接（prod/*_test.ts）。

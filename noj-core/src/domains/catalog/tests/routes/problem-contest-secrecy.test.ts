@@ -21,9 +21,6 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipEnv = !hasEnv;
-
 await resetDbForTest();
 await initRedisForTest();
 
@@ -137,7 +134,6 @@ async function cleanup(contestId: string, problemId: string): Promise<void> {
 
 Deno.test({
   name: "保密规则: 关联未结束公开赛的题目对匿名 404（不泄露存在性）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -155,7 +151,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 关联未结束公开赛的题目对非 owner 登录用户 404",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -175,7 +170,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 题目所有者可见，并收到 contest_secrecy 保密提示",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -203,7 +197,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 管理员可见，并收到 contest_secrecy 保密提示",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -225,7 +218,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 竞赛结束后题目自动恢复公开（赛后复盘/补题）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -250,7 +242,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 邀请赛不触发保密（题目保持公开）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -274,7 +265,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 赛前（pending）公开赛同样保密",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -306,7 +296,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 公开统计接口对匿名 404（不留统计侧预言机）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -326,7 +315,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: starter code 模板对非 owner 404（此前无访问校验）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -348,7 +336,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 支持包路由对非 owner 404，且不改变既有包权限口径",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -386,7 +373,6 @@ Deno.test({
 
 Deno.test({
   name: "保密规则: 独立提交路径被拦（403），同形非保密题不被拦（对照）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

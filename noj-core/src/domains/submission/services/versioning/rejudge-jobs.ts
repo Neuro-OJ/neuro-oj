@@ -478,9 +478,8 @@ export async function planItems(
  *
  * @param actorId 操作者（幂等键与 actor 绑定）
  * @param idempotencyKey 客户端幂等键（必填）
- * @param testRootDb **测试专用注入点，生产调用一律省略**。仅当测试模式连接池被固定为
- *   `max: 1`（`TEST_SCHEMA` / `NOJ_ENV=test`）时，`getDb()` 无法让两次受理真正并发，
- *   真实 PostgreSQL 屏障用例需要注入一条独立原生根连接才能驱动本受理路径。
+ * @param testRootDb **测试专用注入点，生产调用一律省略**。真实 PostgreSQL 屏障用例
+ *   需要注入一条独立原生根连接才能驱动本受理路径。
  *   **省略时行为完全不变**（走 `getDb()` 单例，事务与锁序语义一致）；无论是否注入，
  *   本函数都在自己的事务里执行全部读写，宿主锁持有到整批提交。
  */

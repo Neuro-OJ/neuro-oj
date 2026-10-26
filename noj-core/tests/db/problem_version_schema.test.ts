@@ -6,12 +6,13 @@ import { problemExecutionForTest } from "../../tests/helper.ts";
  * 版本）、已发布版本不可修改守卫、`known`/`legacy_unknown` 与版本列的一致性、
  * 分版本当前判定的 partial unique index、尝试的「恰好一个来源」约束。
  *
- * preload 会把每个用例包在事务里回滚；预期失败的写入放在 `db.transaction()`
- * 中执行（测试内事务被转换成 SAVEPOINT），避免错误中断外层事务。
+ * 每个用例使用启动器提供的隔离数据库；预期失败的写入放在 `db.transaction()`
+ * 中执行，避免错误中断后续夹具操作。
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
+import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import {
   evaluationAttempts,

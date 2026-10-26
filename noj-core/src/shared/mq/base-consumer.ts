@@ -8,6 +8,24 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "mq"]);
 
+/**
+ * 断开 Redis 连接；同步 `void` 与异步 Promise 都兼容。
+ *
+ * 失败必须上抛：关闭后若连接仍可能存活，调用方（消费者池 / 任务组）需要
+ * 以失败结束 done，不能谎报成功。
+ */
+async function disconnectOrThrow(
+  redis: RedisClient,
+  label: string,
+): Promise<void> {
+  try {
+    await Promise.resolve(redis.disconnect());
+  } catch (err) {
+    logger.error("{label} Redis 断开失败", { label, err });
+    throw new Error(`${label} Redis 断开失败`, { cause: err });
+  }
+}
+
 export interface ConsumerOptions {
   queueName: string;
   logLabel: string; // e.g. "结果", "评测开始事件"
@@ -26,6 +44,11 @@ export interface ConsumerOptions {
    * 默认 15 分钟——足够长，避免正常长任务被误重投（重投是 at-least-once 语义）。
    */
   processingTimeoutMs?: number;
+  /**
+   * 测试注入：创建消费者专用 Redis 连接（默认 {@link createConsumerRedis}）。
+   * 生产代码不得传入；仅用于在无 Redis 环境下验证生命周期语义。
+   */
+  createRedis?: () => RedisClient;
 }
 
 const DEFAULT_BLPOP_TIMEOUT = 10;
@@ -47,16 +70,97 @@ export interface ConsumerHandle {
 }
 
 /**
- * 每个消费者实例独立的关闭标记。
+ * 每个消费者实例独立的关闭状态。
  *
  * 修复记录（2026-09-12 架构评审 §2.5）：此前是**单个模块级布尔量**，被三个消费者
  * （评测结果 / 搜索索引 / 私信审核）共享——任一消费者请求关闭会同时停掉其余两个；
  * `shutdownSearchIndexConsumer()` 这种"只关自己"的语义实际会停掉全部消费者。
  * 现改为每实例独立标记；`requestConsumerShutdown()` 保留原语义（关停**全部**，
  * 用于进程优雅退出）。
+ *
+ * P2a（2026-10-20）：连接建立、重连退避与阻塞领取都注册**可移除**的等待者
+ * （shutdownWaiters / sleepers）。每轮操作结束即注销，避免对整个生命周期长期
+ * pending 的 Promise 反复 `.then` 造成 reaction 累积。
  */
 interface ConsumerShutdownState {
   requested: boolean;
+  /** 当前处于可中断睡眠中的唤醒函数集合。 */
+  sleepers: Set<() => void>;
+  /** 当前正在等待关闭信号的连接/领取操作唤醒函数集合。 */
+  shutdownWaiters: Set<() => void>;
+}
+
+function createConsumerShutdownState(): ConsumerShutdownState {
+  return {
+    requested: false,
+    sleepers: new Set(),
+    shutdownWaiters: new Set(),
+  };
+}
+
+/** 请求关闭一个消费者实例：置标记并唤醒所有等待者（幂等且清空注册）。 */
+function requestStateShutdown(state: ConsumerShutdownState): void {
+  state.requested = true;
+  for (const wake of [...state.shutdownWaiters]) wake();
+  state.shutdownWaiters.clear();
+  for (const wake of [...state.sleepers]) wake();
+  state.sleepers.clear();
+}
+
+/** 可移除的关闭等待：每轮连接/领取结束必须 {@link ShutdownWaiter.cancel}。 */
+interface ShutdownWaiter {
+  promise: Promise<void>;
+  cancel(): void;
+}
+
+function waitForShutdown(state: ConsumerShutdownState): ShutdownWaiter {
+  if (state.requested) {
+    return { promise: Promise.resolve(), cancel: () => {} };
+  }
+  let settled = false;
+  let resolveWait: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    resolveWait = resolve;
+  });
+  const wake = (): void => {
+    if (settled) return;
+    settled = true;
+    state.shutdownWaiters.delete(wake);
+    resolveWait();
+  };
+  state.shutdownWaiters.add(wake);
+  return {
+    promise,
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      state.shutdownWaiters.delete(wake);
+      // 唤醒并释放本轮 race 的 reaction；调用方已不再关心该分支。
+      resolveWait();
+    },
+  };
+}
+
+/**
+ * 可中断睡眠：正常等待到时返回 true；被 `requestShutdown()` 打断返回 false。
+ */
+function sleepUnlessShutdown(
+  state: ConsumerShutdownState,
+  ms: number,
+): Promise<boolean> {
+  if (state.requested) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    const wake = (): void => {
+      clearTimeout(timer);
+      state.sleepers.delete(wake);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      state.sleepers.delete(wake);
+      resolve(true);
+    }, ms);
+    state.sleepers.add(wake);
+  });
 }
 
 const activeConsumers = new Set<ConsumerShutdownState>();
@@ -71,15 +175,32 @@ const processingRequeuedQueues = new Set<string>();
 
 /** 优雅关闭：请求**所有**消费者退出（BRPOPLPUSH 使未确认消息仍在 processing 列表）。 */
 export function requestConsumerShutdown(): void {
-  for (const state of activeConsumers) state.requested = true;
+  for (const state of activeConsumers) requestStateShutdown(state);
 }
 
 /** 测试用：复位关闭标记与 processing 兜底记录。 */
 export function _resetConsumerShutdownForTest(): void {
-  for (const state of activeConsumers) state.requested = false;
+  // 先真正请求关闭，唤醒并清理已注册的 sleeper / shutdown waiter（含计时器）；
+  // 再清空注册表。不得把 requested 复位为 false，避免复活已停止的 state。
+  for (const state of [...activeConsumers]) requestStateShutdown(state);
   activeConsumers.clear();
   processingRequeuedQueues.clear();
   _resetSweepTargetsForTest();
+}
+
+/** 测试专用：当前活跃消费者注册的等待者计数（验证每轮已注销，不随消息增长）。 */
+export function _getConsumerShutdownWaiterCountForTest(): {
+  states: number;
+  shutdownWaiters: number;
+  sleepers: number;
+} {
+  let shutdownWaiters = 0;
+  let sleepers = 0;
+  for (const state of activeConsumers) {
+    shutdownWaiters += state.shutdownWaiters.size;
+    sleepers += state.sleepers.size;
+  }
+  return { states: activeConsumers.size, shutdownWaiters, sleepers };
 }
 
 /**
@@ -167,7 +288,8 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
   const label = opts.logLabel;
   const processingQueue = `${opts.queueName}:processing`;
   const requeueOnError = opts.requeueOnError ?? true;
-  const state: ConsumerShutdownState = { requested: false };
+  const createRedis = opts.createRedis ?? createConsumerRedis;
+  const state = createConsumerShutdownState();
   activeConsumers.add(state);
 
   // 自动登记 sweeper 兜底目标：新增消费者无需再手工维护 sweeper 的队列清单。
@@ -179,6 +301,8 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
 
   const startConsumerWithRetry = async function (): Promise<void> {
     let retryCount = 0;
+    let fatalError: unknown = null;
+    let hasFatalError = false;
 
     try {
       while (!state.requested) {
@@ -190,6 +314,11 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
           await runConsumer();
         } catch (err) {
           logger.error("{label}消费者异常退出", { label, err });
+          // 连接清理失败等真正的退出错误必须上抛给 pool/group，不能吞掉后
+          // 让 done 假装成功。
+          fatalError = err;
+          hasFatalError = true;
+          break;
         }
 
         opts.aliveRef.value = false;
@@ -206,44 +335,131 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
           delay_ms: delay,
           retry: retryCount,
         });
-        await new Promise((r) => setTimeout(r, delay));
+        // 退避等待可被 requestShutdown() 立即打断（此前最长需等满 30s）。
+        if (!(await sleepUnlessShutdown(state, delay))) break;
       }
     } finally {
       // 退出后从注册表移除：之后的全局关闭请求不再作用于已停止的实例。
       activeConsumers.delete(state);
     }
+    if (hasFatalError) throw fatalError;
   };
 
   return Object.assign(startConsumerWithRetry, {
     requestShutdown: () => {
-      state.requested = true;
+      requestStateShutdown(state);
     },
   });
 
-  async function runConsumer(): Promise<void> {
-    const redis = createConsumerRedis();
+  /**
+   * 建立消费者连接。
+   *
+   * 连接可能因网络不可达而长时间重试；这里注册一个**本轮可移除**的关闭等待，
+   * stop 时立即断开并返回 false。等待在 finally 中注销，避免长生命周期 Promise
+   * 累积 reaction。
+   *
+   * @returns 连接是否可用且未被停止
+   */
+  async function connectRedisOrAbort(redis: RedisClient): Promise<boolean> {
+    if (state.requested) return false;
+    // 用 then 包裹以同时承接同步 throw 与异步 reject。
+    const connectPromise = Promise.resolve().then(() => redis.connect());
+    // stop 后 Promise.race 会放弃等待该 Promise；先挂 handler 避免未处理拒绝。
+    connectPromise.catch(() => {});
+    const stopWait = waitForShutdown(state);
     try {
-      await redis.connect();
-    } catch (err) {
-      logger.error("{label}消费者 Redis 连接失败", { label, err });
-      await redis.disconnect();
-      return;
+      const outcome = await Promise.race([
+        connectPromise.then(
+          () => "connected" as const,
+          (error: unknown) => ({ error }),
+        ),
+        stopWait.promise.then(() => "stopped" as const),
+      ]);
+      if (outcome === "stopped") {
+        await disconnectOrThrow(redis, label);
+        return false;
+      }
+      if (typeof outcome === "object" && "error" in outcome) {
+        logger.error("{label}消费者 Redis 连接失败", {
+          label,
+          err: outcome.error,
+        });
+        await disconnectOrThrow(redis, label);
+        return false;
+      }
+      return true;
+    } finally {
+      stopWait.cancel();
     }
+  }
 
-    await requeueStaleProcessing(redis, opts.queueName, processingQueue, label);
+  async function runConsumer(): Promise<void> {
+    const redis = createRedis();
+    let primaryError: unknown = null;
+    let hasPrimaryError = false;
+    let closeError: unknown = null;
+    let hasCloseError = false;
+    try {
+      await runConsumerLoop(redis);
+    } catch (err) {
+      primaryError = err;
+      hasPrimaryError = true;
+    } finally {
+      // 统一 finalizer：连接/重连/领取/处理任一阶段异常退出都先标记失活并断开。
+      opts.aliveRef.value = false;
+      try {
+        await disconnectOrThrow(redis, label);
+      } catch (err) {
+        closeError = err;
+        hasCloseError = true;
+      }
+    }
+    if (hasPrimaryError && hasCloseError) {
+      throw new AggregateError(
+        [primaryError, closeError],
+        `${label}消费者退出且连接清理失败`,
+      );
+    }
+    if (hasPrimaryError) throw primaryError;
+    if (hasCloseError) throw closeError;
+  }
+
+  async function runConsumerLoop(redis: RedisClient): Promise<void> {
+    if (!(await connectRedisOrAbort(redis))) return;
+
+    await requeueStaleProcessing(
+      redis,
+      opts.queueName,
+      processingQueue,
+      label,
+    );
+    if (state.requested) return;
 
     opts.aliveRef.value = true;
     logger.info("{label}消费者启动，等待事件...", { label });
 
     while (!state.requested) {
-      let rawJson: string | null = null;
       try {
-        rawJson = await redis.brpoplpush(
+        // 阻塞领取与 stop 竞速：BRPOPLPUSH 在服务端原子移入 processing，
+        // 若 stop 抢先返回而消息随后才到达，消息仍在 processing，由 sweeper
+        // 超时重投（at-least-once），绝不在这里误确认或丢弃。
+        const popPromise = redis.brpoplpush(
           opts.queueName,
           processingQueue,
           blpopTimeout,
-        ) as string | null;
+        );
+        popPromise.catch(() => {});
+        const stopWait = waitForShutdown(state);
+        const outcome = await Promise.race([
+          popPromise.then((value) => ({ kind: "message" as const, value })),
+          stopWait.promise.then(() => ({ kind: "stopped" as const })),
+        ]).finally(() => stopWait.cancel());
+        if (outcome.kind === "stopped") break;
+        const rawJson = outcome.value;
         if (!rawJson) continue;
+        // 消息虽已返回，但 stop 已置位：不得再为新消息开启 handler，
+        // 保留在 processing 由 sweeper 恢复。
+        if (state.requested) break;
 
         let message: Record<string, unknown>;
         try {
@@ -265,6 +481,7 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
         }
 
         try {
+          // 已领取消息必须处理完：stop 只阻止领取下一条，不打断本条写库。
           await opts.handleMessage(message);
           const removed = await redis.lrem(processingQueue, 1, rawJson);
           if (removed === 0) {
@@ -277,7 +494,10 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
             );
           }
         } catch (err) {
-          logger.error("{label}消息处理失败，重新投递回主队列", { label, err });
+          logger.error("{label}消息处理失败，重新投递回主队列", {
+            label,
+            err,
+          });
           if (requeueOnError) {
             // 先回主队列再清理 processing；若清理失败，sweeper 会再次重投（at-least-once）。
             try {
@@ -292,17 +512,14 @@ export function createConsumer(opts: ConsumerOptions): ConsumerHandle {
           } else {
             await redis.lrem(processingQueue, 1, rawJson).catch(() => {});
           }
-          // 避免 DB/Redis 持续故障时 hot loop
-          await new Promise((r) => setTimeout(r, 1000));
+          // 避免 DB/Redis 持续故障时 hot loop；退避可被关闭请求打断。
+          if (!(await sleepUnlessShutdown(state, 1000))) break;
         }
       } catch (err) {
         if (state.requested) break;
         logger.error("{label}消费者错误", { label, err });
-        await new Promise((r) => setTimeout(r, 1000));
+        if (!(await sleepUnlessShutdown(state, 1000))) break;
       }
     }
-
-    opts.aliveRef.value = false;
-    await redis.disconnect().catch(() => {});
   }
 }

@@ -4,6 +4,7 @@
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import { logger } from "./logger.ts";
+import type { ManagedTask } from "./runtime.ts";
 
 export interface UsageEntry {
   id: string;
@@ -208,13 +209,43 @@ export function startUsageRetention(
   db: Db,
   redis: RedisClient,
   retentionDays: number,
-): () => void {
-  if (retentionDays <= 0) return () => {};
-  void runUsageRetention(db, redis, retentionDays);
-  const timer = setInterval(
-    () => void runUsageRetention(db, redis, retentionDays),
-    PRUNE_INTERVAL_MS,
-  );
+): ManagedTask {
+  if (retentionDays <= 0) {
+    return {
+      name: "gateway-usage-retention",
+      stop() {},
+      done: Promise.resolve(),
+    };
+  }
+  let stopped = false;
+  let inFlight: Promise<unknown> | null = null;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((resolve) => resolveDone = resolve);
+  const settleDone = (): void => {
+    if (stopped && inFlight === null) resolveDone();
+  };
+  const run = (): void => {
+    if (stopped || inFlight !== null) return;
+    const current = runUsageRetention(db, redis, retentionDays);
+    inFlight = current;
+    current.finally(() => {
+      if (inFlight === current) inFlight = null;
+      settleDone();
+    }).catch(() => {});
+  };
+  run();
+  const timer = setInterval(run, PRUNE_INTERVAL_MS);
   Deno.unrefTimer(timer);
-  return () => clearInterval(timer);
+  const task: ManagedTask = {
+    name: "gateway-usage-retention",
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      settleDone();
+    },
+    done,
+  };
+  done.catch(() => {});
+  return task;
 }

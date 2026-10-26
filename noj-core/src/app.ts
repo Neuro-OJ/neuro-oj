@@ -1,12 +1,18 @@
 import { Hono } from "hono";
-import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import { createHealthRouter } from "./domains/observability/routes/health.ts";
 import { observability } from "./domains/observability/write.ts";
 import { registerPlatformMetrics } from "./domains/observability/metrics/platform.ts";
-import { registerJudgeHeartbeatProvider } from "./domains/observability/services/judge-heartbeat.ts";
+import {
+  emptyJudgeSnapshot,
+  readJudgeNodeReports,
+  registerJudgeHeartbeatProvider,
+} from "./domains/observability/services/judge-heartbeat.ts";
 import { renderPrometheusMetrics } from "./domains/observability/services/snapshot.ts";
-import { registerSubmissionObservability } from "./domains/submission/index.ts";
+import {
+  getQueueHealth,
+  registerSubmissionObservability,
+} from "./domains/submission/index.ts";
 import { registerDbHealthProbe } from "./shared/db/connection.ts";
 import { registerRedisHealthProbe } from "./shared/mq/connection.ts";
 import { normalizeMetricRoute } from "./shared/observability/registry.ts";
@@ -21,6 +27,7 @@ import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
 import { internalLlmPolicyRouter } from "./domains/system/routes/internal-llm-policy.ts";
+import { createInternalDrainRouter } from "./domains/system/routes/internal-drain.ts";
 import { legalRouter } from "./domains/legal/routes/index.ts";
 import { workspaceRouter } from "./domains/workspace/routes/index.ts";
 import { domainProblemsRouter } from "./domains/catalog/routes/domain-problems.ts";
@@ -55,47 +62,18 @@ import {
 } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 import { securityHeaders } from "./shared/http/security-headers.ts";
+import { createMaintenanceMode } from "./shared/http/maintenance.ts";
+import { getRedis } from "./shared/mq/connection.ts";
+import type { SseStreamScope } from "./shared/sse/sse-stream.ts";
 
-/**
- * 维护模式中间件（PR-2 死开关）。
- *
- * 当 `maintenance_mode=true` 时：
- * - GET/HEAD/OPTIONS 请求放行（用户仍可浏览、查状态）
- * - POST/PUT/PATCH/DELETE 请求返 503 + `MAINTENANCE` code
- *
- * 设计取舍：
- * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
- * - 不阻塞 /health：负载均衡器仍能正常探活
- */
-function maintenanceMode(
-  c: Context,
-  next: Next,
-): Promise<Response | void> {
-  const setting = getSetting("maintenance_mode");
-  if (setting?.value !== true) {
-    return next();
-  }
-
-  const method = c.req.method.toUpperCase();
-  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
-    return next();
-  }
-
-  return Promise.resolve(
-    c.json(
-      {
-        error: "系统维护中，请稍后再试",
-        code: "MAINTENANCE",
-      },
-      503,
-    ),
-  );
+/** 应用装配选项；外部运行资源由入口创建并传入。 */
+export interface CreateAppOptions {
+  /** 本次 Core 装配拥有的 SSE 流 scope；生产入口显式注入。 */
+  sseStreamScope?: SseStreamScope;
 }
 
-/**
- * 创建并配置 Hono 应用实例。
- */
-export function createApp(): Hono {
+/** 创建并配置 Hono 应用实例。 */
+export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
   const observabilityRegistry = observability;
   registerPlatformMetrics(observabilityRegistry);
@@ -107,6 +85,19 @@ export function createApp(): Hono {
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);
+
+  // 显式 app 级注入 SSE scope：避免生产关闭流程依赖模块级全局默认值。
+  // 旧测试与未注入的调用仍可由 createSseStream 的默认 scope 兜底。
+  if (options.sseStreamScope) {
+    const scope = options.sseStreamScope;
+    app.use("*", async (c, next) => {
+      (c as unknown as { set(key: string, value: unknown): void }).set(
+        "sseStreamScope",
+        scope,
+      );
+      await next();
+    });
+  }
 
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。
@@ -202,8 +193,26 @@ export function createApp(): Hono {
   // 注意：app.use() 的注册顺序决定执行顺序，必须在所有路由之前注册
   // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
   app.use("/api/v1/*", banlistMiddleware);
-  app.use("/api/v1/*", maintenanceMode);
+  app.use(
+    "/api/v1/*",
+    // shared 层不依赖业务域：维护开关读取器由组合根注入（实时读取，不缓存）。
+    createMaintenanceMode(() => getSetting("maintenance_mode")?.value === true),
+  );
   app.route("/api/v1", internalLlmPolicyRouter);
+  // 内部排空端点：必须位于维护中间件之后（中间件放行 /api/v1/internal/*）。
+  // system 域不得跨域 import submission/observability，读取实现由组合根注入。
+  app.route(
+    "/api/v1",
+    createInternalDrainRouter({
+      getQueueHealth,
+      readJudgeNodeReports: async () => {
+        const redis = getRedis();
+        if (redis.status !== "ready") return [];
+        return await readJudgeNodeReports(redis);
+      },
+      judgeRequired: () => emptyJudgeSnapshot().required,
+    }),
+  );
   app.use("/api/v1/*", instanceAccessMiddleware);
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）

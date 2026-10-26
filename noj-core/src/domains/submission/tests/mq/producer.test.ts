@@ -21,8 +21,6 @@ import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../index.ts";
 import type { RuntimeConfig } from "../../../catalog/types/runtime-config.ts";
 
-const hasDb = true; // PGlite 内存数据库始终可用
-
 // ── 测试用 JudgeTask ────────────────────────────────
 
 function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
@@ -57,12 +55,19 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
   };
 }
 
+/** 在使用 fake Redis 的用例结束后恢复启动器提供的真实分片 URL。 */
+function restoreRedisUrl(previous: string | undefined): void {
+  if (previous === undefined) Deno.env.delete("REDIS_URL");
+  else Deno.env.set("REDIS_URL", previous);
+}
+
 Deno.test({
   name: "mq/producer: 同优先级容量跨资源池共享，不因拆池放大",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -80,6 +85,7 @@ Deno.test({
       assertEquals(fake.getMessages("noj:judge:queue:ai:high").length, 0);
     } finally {
       resetRedisForTest();
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -87,11 +93,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: pushJudgeTask 成功 LPUSH",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -119,7 +125,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -127,11 +133,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: 按优先级入对应队列",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -152,7 +158,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -160,11 +166,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: Redis 连接不可用时抛错",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -181,7 +187,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -189,11 +195,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: 每级独立容量上限",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -222,7 +228,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -230,11 +236,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: 消息超过 16MB 时抛错",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -256,7 +262,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },
@@ -264,11 +270,11 @@ Deno.test({
 
 Deno.test({
   name: "mq/producer: 消息格式正确（JSON 包含所有关键字段）",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     try {
       resetRedisForTest();
       Deno.env.set("REDIS_URL", fake.url);
@@ -296,7 +302,7 @@ Deno.test({
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      restoreRedisUrl(previousRedisUrl);
       await fake.stop();
     }
   },

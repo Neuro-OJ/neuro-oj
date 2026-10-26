@@ -6,7 +6,8 @@ import {
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contests,
   problems,
@@ -20,11 +21,8 @@ import {
 } from "../../index.ts";
 import { hashPassword } from "../../../identity/index.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest({ refreshRankings: true });
-
-const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
-  !!Deno.env.get("JWT_SECRET");
 
 /**
  * 创建测试用户，返回 user_id。
@@ -135,7 +133,6 @@ async function cleanupProblem(problemId: string): Promise<void> {
 
 Deno.test({
   name: "rankings: getGlobalRankings 仅展示有通过记录的用户",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -188,7 +185,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: 排序稳定——solved 相同按 acceptance_rate 降序",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -229,7 +225,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: 排除 root 用户（id='0'）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -243,7 +238,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: getMyRanking——已上榜用户返回正确 rank",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -269,7 +263,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: getMyRanking——未上榜用户返回 null",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -291,7 +284,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: 分页——page=2 返回正确切片",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -324,7 +316,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: limit 上限——超过 100 被截断为 100",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -337,7 +328,6 @@ Deno.test({
 
 Deno.test({
   name: "rankings: 排除 affect_global_ranking=false 的竞赛通过",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

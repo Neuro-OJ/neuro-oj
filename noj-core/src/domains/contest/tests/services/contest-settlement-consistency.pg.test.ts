@@ -4,8 +4,7 @@ import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发验证：结算快照的一致性（tracking #46）——需**串行**执行。
  *
- * PGlite 是单连接内存库，无法验证行锁排队，因此本文件只在设置 `DATABASE_URL`
- * 时运行（`ignore: !HAS_PG`），并关闭 preload 事务包装（并发用例各自持锁）。
+ * 本文件使用真实 PostgreSQL 验证行锁排队（并发用例各自持锁）。
  *
  * 验证的协议（Handbook §5.1/§6.6）：
  * - 结算发布对题目取共享锁、对竞赛取更新锁，并在**同一事务**内读取结算条件、
@@ -17,10 +16,7 @@ import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -33,9 +29,6 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { publishContestRankingSnapshot } from "../../index.ts";
-
-const HAS_PG = !!Deno.env.get("DATABASE_URL");
-if (HAS_PG) disableTestTransactionForFile();
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -84,7 +77,6 @@ async function seedUser(prefix: string): Promise<string> {
 
 Deno.test({
   name: "contest settlement(#46): 结算快照与并发结果写入互斥（真实 PG 屏障）",
-  ignore: !HAS_PG,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

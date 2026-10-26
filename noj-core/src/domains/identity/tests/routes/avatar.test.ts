@@ -15,7 +15,7 @@ import {
 } from "npm:@aws-sdk/client-s3@^3";
 import type { S3Client } from "npm:@aws-sdk/client-s3@^3";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 import { sameStorageObject } from "../../index.ts";
 import { S3StorageProvider } from "../../../system/index.ts";
@@ -25,13 +25,7 @@ import {
   setStorageProviderForTest,
 } from "../../../system/index.ts";
 
-if (!Deno.env.get("JWT_SECRET")) {
-  Deno.env.set(
-    "JWT_SECRET",
-    "avatar-route-test-secret-at-least-32-characters",
-  );
-}
-// 绕过 JWT 撤销检查（Redis），保持 PGlite-only 测试自包含
+// 绕过 JWT 撤销检查（Redis），保持 测试数据库-only 测试自包含
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 const BASE = "/api/v1/users";

@@ -17,9 +17,6 @@ import { ensureRbacSeeds } from "../../../system/index.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipEnv = !hasEnv;
-
 const ts = Date.now();
 const OWNER_ID = `route-sp-owner-${ts}`;
 const TEST_NUMBER = 60000 + (ts & 0x7fff);
@@ -100,7 +97,6 @@ async function createTestProblem(
 
 Deno.test({
   name: "support-package route: POST 上传端点已移除返回 404",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -127,7 +123,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package route: DELETE 删除成功",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -163,7 +158,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package route: DELETE 不存在的支持包幂等返回 200",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -185,7 +179,6 @@ Deno.test({
 
 Deno.test({
   name: "support-package route: DELETE 非 owner 返回 403",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -208,7 +201,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "support-package route: cleanup",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

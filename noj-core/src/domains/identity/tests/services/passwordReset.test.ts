@@ -1,7 +1,8 @@
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { requestReset, resetPassword } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { passwordResetTokens, users } from "../../../../shared/db/schema.ts";
 import {
   generateResetToken,
@@ -14,9 +15,6 @@ import {
   resetLogSink,
   setLogSink,
 } from "../../../../shared/base/logging.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !hasDb;
 
 const ts = Date.now();
 const TEST_USER = {
@@ -71,7 +69,6 @@ async function seedUser() {
 
 Deno.test({
   name: "passwordReset: requestReset 已注册邮箱插入 token 行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -97,7 +94,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: requestReset 未注册邮箱不创建 token",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -120,7 +116,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: APP_URL 优先于请求头回退并去除尾斜杠",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -155,7 +150,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: 非生产环境缺少 APP_URL 时使用请求回退值",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -188,7 +182,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: 生产环境缺少 APP_URL 时不创建 token 或发送邮件",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -232,7 +225,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 合法 token 改密成功",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -276,7 +268,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 重复提交 token 第二次 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -308,7 +299,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 过期 token 返 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -340,7 +330,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 弱密码 400 且不消耗 token",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -377,7 +366,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 密码等于用户名 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -407,7 +395,6 @@ Deno.test({
 
 Deno.test({
   name: "passwordReset: resetPassword 不存在的 token 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

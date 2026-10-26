@@ -22,9 +22,6 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 
-const hasRedis = !!Deno.env.get("REDIS_URL");
-const skip = !hasRedis;
-
 /** 确保 Redis 已连接（幂等：已连接则跳过） */
 async function ensureConnected() {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -58,7 +55,6 @@ async function withRateLimitEnabled<T>(fn: () => Promise<T>): Promise<T> {
 
 Deno.test({
   name: "rateLimit: 窗口内超限后 429",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -79,7 +75,6 @@ Deno.test({
 
 Deno.test({
   name: "rateLimit: 独立 key 互不影响",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -100,7 +95,6 @@ Deno.test({
 
 Deno.test({
   name: "loginThrottle: 失败累加，10 次后锁定",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -129,7 +123,6 @@ Deno.test({
 
 Deno.test({
   name: "loginThrottle: clearLoginFailure 清零失败计数",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -152,7 +145,6 @@ Deno.test({
 
 Deno.test({
   name: "loginThrottle: applyLoginBackoff 无 deadline 立即返回",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -166,7 +158,6 @@ Deno.test({
 
 Deno.test({
   name: "rateLimit: 响应头格式正确",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -1,6 +1,7 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { createSubmission } from "../../services/submissions/submissions-crud.ts";
@@ -73,8 +74,8 @@ Deno.test({
       await assertSearchEventPublished("submission", submission.id, "upsert");
     } finally {
       resetRedisForTest();
-      if (originalRedisUrl) Deno.env.set("REDIS_URL", originalRedisUrl);
-      else Deno.env.delete("REDIS_URL");
+      if (originalRedisUrl === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", originalRedisUrl);
       await fake.stop();
     }
   },

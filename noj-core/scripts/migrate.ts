@@ -5,31 +5,37 @@
  *
  * 用法：deno run -A scripts/migrate.ts
  */
+import { closeDbForShutdown } from "./../src/shared/db/connection.ts";
 import { runMigrations } from "./../src/shared/db/migrate.ts";
 
 const databaseUrl = Deno.env.get("DATABASE_URL");
-const hasDb = !!databaseUrl;
-console.log(
-  `[migrate] DATABASE_URL ${hasDb ? "已设置" : "未设置（跳过迁移）"}`,
-);
-
-if (hasDb) {
-  console.log("[migrate] 开始执行数据库迁移...");
-  console.log(
-    `[migrate] 数据库连接: ${(databaseUrl ?? "").replace(/\/\/.*@/, "//***@")}`,
-  );
-  const start = performance.now();
-  try {
-    await runMigrations();
-    const elapsed = (performance.now() - start).toFixed(0);
-    console.log(`[migrate] 迁移完成 (${elapsed}ms)`);
-
-    // 强制退出，避免 postgres.js 连接阻止 Deno 进程终止
-    Deno.exit(0);
-  } catch (err) {
-    console.error("[migrate] 迁移失败:", err);
-    Deno.exit(1);
-  }
-} else {
-  console.log("[migrate] 跳过迁移（无数据库配置）");
+if (!databaseUrl) {
+  console.error("[migrate] DATABASE_URL 未设置，拒绝跳过迁移");
+  Deno.exit(1);
 }
+
+console.log("[migrate] DATABASE_URL 已设置");
+console.log("[migrate] 开始执行数据库迁移...");
+const start = performance.now();
+let exitCode = 0;
+try {
+  await runMigrations();
+  const elapsed = (performance.now() - start).toFixed(0);
+  console.log(`[migrate] 迁移完成 (${elapsed}ms)`);
+} catch (err) {
+  exitCode = 1;
+  console.error("[migrate] 迁移失败:", err);
+} finally {
+  try {
+    await closeDbForShutdown();
+  } catch (error) {
+    exitCode = 1;
+    console.error(
+      `[migrate] 数据库连接清理失败：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+Deno.exit(exitCode);

@@ -104,6 +104,14 @@ export const ALLOWLIST: Record<
     status: "pending",
     reason: "邮件投递回执写路由无限流，需确认是否外部可达",
   },
+  // ── 内部服务端点（P1d）：凭据保护、仅容器内 CLI 调用，不面向浏览器 ──
+  "noj-core/src/domains/system/routes/internal-drain.ts": {
+    status: "exempt",
+    reason:
+      "内部维护/排空端点：Authorization Bearer NOJ_INTERNAL_SERVICE_TOKEN（timingSafeEqual）保护，" +
+      "仅由容器内 maintain CLI / noj-cli 自动排空调用，不对浏览器或匿名开放；" +
+      "对内部 wait 轮询做用户向限流会破坏排空语义",
+  },
 };
 
 /** 限流证据模式（文件级启发式：宁可宽松，避免"已限流却报错"的噪声）。 */

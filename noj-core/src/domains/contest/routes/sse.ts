@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 import type { OptionalAuthEnv } from "../../identity/index.ts";
 import {
   getUserPermissions,
@@ -7,6 +6,7 @@ import {
 } from "../../identity/index.ts";
 import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
 import { lastEventId } from "../../../shared/sse/server-helpers.ts";
+import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { getContest } from "../services/contests.ts";
@@ -73,14 +73,10 @@ for (
       // 非成员（含公开赛未报名用户）不得接收竞赛提交事件；榜单仍按既有规则。
       const canReceiveSubmissions = isAdmin || contest.is_registered === true;
 
-      return streamSSE(c, async (stream) => {
-        let streamClosed = false;
-        let resolveAbort: (() => void) | null = null;
+      return createSseStream(c, async (ctx) => {
         let rankingTimer: ReturnType<typeof setTimeout> | undefined;
         let rankingInFlight = false;
         let lastRankingPushAt = 0;
-        let unsubscribeRanking = () => {};
-        let unsubscribeSubmission = () => {};
         let currentView: "live" | "frozen" | "official" = "live";
         // 非 live 视图（frozen / official）或已到达封榜时刻/已完赛，都不应再向普通用户推送实时提交事件。
         const isCurrentlyFrozen = () => {
@@ -90,31 +86,14 @@ for (
         const isNonLiveView = () =>
           currentView !== "live" || isCurrentlyFrozen();
 
-        const keepAlive = setInterval(() => {
-          if (streamClosed) return;
-          stream.writeSSE({ event: "keepalive", data: "" }).catch(closeStream);
-        }, 30_000);
-        const safetyTimer = setTimeout(closeStream, 300_000);
-
-        /**
-         * 关闭当前竞赛 SSE 流。
-         *
-         * 幂等：若流已关闭则直接返回。负责清理心跳定时器、安全兜底定时器、
-         * 待执行的榜单推送定时器，并取消榜单与提交事件的订阅，最后触发
-         * abort 解析以结束常驻连接。
-         *
-         * @returns 无返回值。
-         */
-        function closeStream() {
-          if (streamClosed) return;
-          streamClosed = true;
-          clearTimeout(safetyTimer);
-          clearInterval(keepAlive);
-          if (rankingTimer !== undefined) clearTimeout(rankingTimer);
-          unsubscribeRanking();
-          unsubscribeSubmission();
-          resolveAbort?.();
-        }
+        // 定时器清理与每个事件订阅都独立登记；即使流在某个订阅创建前已关闭，
+        // onUnsubscribe 也会立即执行该退订，不会留下悬挂监听器。
+        ctx.onUnsubscribe(() => {
+          if (rankingTimer !== undefined) {
+            clearTimeout(rankingTimer);
+            rankingTimer = undefined;
+          }
+        });
 
         /**
          * 向当前竞赛 SSE 流推送最新榜单数据。
@@ -122,20 +101,16 @@ for (
          * 带节流与去重：若流已关闭或已有推送在进行中则直接返回；距上次推送
          * 不足 5 秒时安排定时器延迟推送，否则立即拉取最新榜单并写入 SSE 事件。
          * 拉取或写入失败时关闭流。
-         *
-         * @param event - 推送的 SSE 事件名（如 `contest:ranking:snapshot` /
-         *   `contest:ranking:updated`）。
-         * @returns 无返回值；推送完成后 Promise 解析。
-         * @throws 不向外抛出——内部捕获异常并调用 `closeStream()` 关闭流。
          */
         async function pushRanking(event: string): Promise<void> {
-          if (streamClosed || rankingInFlight) return;
+          if (ctx.closed || rankingInFlight) return;
           const waitMs = 5_000 - (Date.now() - lastRankingPushAt);
           if (waitMs > 0) {
             if (rankingTimer === undefined) {
               rankingTimer = setTimeout(() => {
                 rankingTimer = undefined;
-                void pushRanking("contest:ranking:updated");
+                // 延迟推送同样纳入流作用域：关闭后不会开始，关闭时会被等待。
+                void ctx.run(() => pushRanking("contest:ranking:updated"));
               }, waitMs);
             }
             return;
@@ -153,7 +128,7 @@ for (
               viewerId,
             );
             currentView = result.view;
-            await stream.writeSSE({
+            await ctx.stream.writeSSE({
               event,
               data: JSON.stringify({
                 type: event,
@@ -169,21 +144,25 @@ for (
             });
             lastRankingPushAt = Date.now();
           } catch {
-            closeStream();
+            ctx.close();
           } finally {
             rankingInFlight = false;
           }
         }
 
-        await pushRanking("contest:ranking:snapshot");
-        if (streamClosed) return;
+        await ctx.run(() => pushRanking("contest:ranking:snapshot"));
+        if (ctx.closed) return;
 
-        unsubscribeRanking = onEvent(
-          Channels.contestRanking(contestId),
-          () => void pushRanking("contest:ranking:updated"),
+        ctx.onUnsubscribe(
+          onEvent(
+            Channels.contestRanking(contestId),
+            () => {
+              void ctx.run(() => pushRanking("contest:ranking:updated"));
+            },
+          ),
         );
         async function pushSubmission(message: string, sequence?: number) {
-          if (streamClosed) return;
+          if (ctx.closed) return;
           const access = await loadAccess();
           contest = access.contest;
           isAdmin = access.admin;
@@ -199,18 +178,21 @@ for (
               ? { user_id: event.user_id, submission_id: event.submission_id }
               : {}),
           };
-          await stream.writeSSE({
+          await ctx.stream.writeSSE({
             event: "contest:submission:created",
             data: JSON.stringify(locator),
             ...(sequence === undefined ? {} : { id: String(sequence) }),
           });
         }
         if (canReceiveSubmissions) {
-          unsubscribeSubmission = onEvent(
-            Channels.contestSubmission(contestId),
-            (_channel, message) => {
-              void pushSubmission(message).catch(closeStream);
-            },
+          ctx.onUnsubscribe(
+            onEvent(
+              Channels.contestSubmission(contestId),
+              (_channel, message) => {
+                // 权限重查与写入整体交给 run；失败由 run 关闭并观察。
+                void ctx.run(() => pushSubmission(message));
+              },
+            ),
           );
         }
 
@@ -228,26 +210,23 @@ for (
           200,
         );
         for (const ev of missed) {
-          if (streamClosed) return;
+          if (ctx.closed) return;
           const payload = ev.payload as { type?: string };
           if (payload.type === "contest:submission:created") {
             if (!canReceiveSubmissions) continue;
             try {
-              await pushSubmission(JSON.stringify(payload), ev.id);
+              await ctx.run(() =>
+                pushSubmission(JSON.stringify(payload), ev.id)
+              );
             } catch {
-              closeStream();
+              ctx.close();
               return;
             }
           } else {
             // ranking 变更事件：走 pushRanking 拉取最新榜单
-            void pushRanking("contest:ranking:updated");
+            void ctx.run(() => pushRanking("contest:ranking:updated"));
           }
         }
-
-        await new Promise<void>((resolve) => {
-          resolveAbort = resolve;
-          stream.onAbort(closeStream);
-        });
       });
     },
   );

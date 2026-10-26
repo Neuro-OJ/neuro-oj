@@ -8,6 +8,7 @@
 - [防御模式](defensive-patterns.md)
 - [系统架构评审（2026-09-01）](architecture-review-2026-09-01.md)
 - [系统架构评审（2026-09-12）](architecture-review-2026-09-12.md)
+- [架构整治 P0 基线（2026-10-20）](architecture-baseline-2026-10-20.md)
 - [noj-core 域边界与所有权（含多副本约束）](domain-boundaries.md)
 - [Capability Seam](capability-seams.md)
 - [事件域分离](event-domains.md)

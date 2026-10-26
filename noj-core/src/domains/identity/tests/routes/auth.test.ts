@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   passwordResetTokens,
   userConsents,
@@ -24,10 +25,8 @@ import {
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { publishVersion } from "../../../legal/index.ts";
 
-// PGlite 内存数据库始终可用，无需检测
-const hasJwt = !!Deno.env.get("JWT_SECRET");
+// 独立测试数据库始终可用，无需检测
 const hasRedis = !!Deno.env.get("REDIS_URL");
-const skip = !hasJwt;
 
 // 模块加载时建立一次 Redis 连接（后续测试复用）
 // 路由层的登录限流依赖 Redis，必须在第一个测试运行前完成
@@ -81,7 +80,7 @@ async function cleanupUser(username: string) {
 // 的旧 token 撤销断言会被短路跳过）。
 Deno.env.delete("NOJ_BYPASS_JWT_REVOKE");
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 
 // 没有 Redis 时禁用限流，避免登录/改密路由因 Redis 不可用返回 503
@@ -92,7 +91,6 @@ if (!hasRedis) {
 
 Deno.test({
   name: "routes: POST /register 成功返回 201",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -118,7 +116,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 缺少字段返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -140,7 +137,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 用户名格式无效返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -163,7 +159,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 密码过短返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -186,7 +181,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 邮箱格式无效返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -209,7 +203,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 重复注册返回 409",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -246,7 +239,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /login 成功返回 200 + JWT",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -284,7 +276,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /login 错误密码返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -318,7 +309,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: GET /me 成功返回用户信息",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -358,7 +348,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /login 成功通过邮箱登录",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -396,7 +385,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 用户名最短 3 字符边界",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -417,7 +405,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 用户名最长 30 字符边界",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -439,7 +426,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 密码恰好 8 字符边界",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -461,7 +447,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: GET /me 无 token 返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -476,7 +461,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: GET /me 无效 token 返回 401",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -493,7 +477,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /login 缺少字段返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -529,7 +512,6 @@ function enableRateLimitForTest() {
 
 Deno.test({
   name: "routes: POST /login IP 维度 30s/10次 后 429",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -585,7 +567,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /login 10 次失败后账号被锁定（route 层）",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -676,7 +657,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "routes: cleanup test users",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -697,7 +677,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /logout 撤销 jti 后旧 token 立即失效",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -744,7 +723,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /logout 无 token 返 401（不再是无脑 200）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -760,7 +738,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /change-password 返回新 token，旧 token 立即失效",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -828,7 +805,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /change-password 旧密码错误仍 401，不发新 token",
-  ignore: skip || !hasRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -875,7 +851,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /forgot-password 已注册邮箱返 200",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -909,7 +884,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /forgot-password 未注册邮箱返 200（防枚举）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -931,7 +905,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: APP_URL 配置优先于 Host 和 X-Forwarded-Proto",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -990,7 +963,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: 生产环境缺少 APP_URL 仍返统一 200 且跳过邮件",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1058,7 +1030,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /forgot-password 缺少 email 返 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1074,7 +1045,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /reset-password 缺字段返 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1093,7 +1063,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /reset-password 无效 token 返 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1114,7 +1083,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /reset-password 弱密码返 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1175,7 +1143,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 未同意法律条款返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1196,7 +1163,6 @@ Deno.test({
 
 Deno.test({
   name: "routes: POST /register 同意后写入隐私政策与服务条款同意记录",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

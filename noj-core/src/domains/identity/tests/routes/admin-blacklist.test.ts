@@ -4,7 +4,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   ipBans,
@@ -67,12 +68,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    if (!Deno.env.get("JWT_SECRET")) {
-      Deno.env.set(
-        "JWT_SECRET",
-        "test-secret-must-be-at-least-32-characters-long-xxx",
-      );
-    }
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
@@ -107,12 +102,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    if (!Deno.env.get("JWT_SECRET")) {
-      Deno.env.set(
-        "JWT_SECRET",
-        "test-secret-must-be-at-least-32-characters-long-xxx",
-      );
-    }
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
@@ -131,12 +120,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    if (!Deno.env.get("JWT_SECRET")) {
-      Deno.env.set(
-        "JWT_SECRET",
-        "test-secret-must-be-at-least-32-characters-long-xxx",
-      );
-    }
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const now = new Date().toISOString();
@@ -164,12 +147,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    if (!Deno.env.get("JWT_SECRET")) {
-      Deno.env.set(
-        "JWT_SECRET",
-        "test-secret-must-be-at-least-32-characters-long-xxx",
-      );
-    }
     const { createApp } = await import("../../../../app.ts");
     const { addIpBan } = await import("../../index.ts");
     const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);

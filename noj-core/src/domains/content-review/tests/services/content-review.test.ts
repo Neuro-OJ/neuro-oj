@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contentReviewQueue,
   conversations,
@@ -31,10 +32,8 @@ import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { reviewUgcContent } from "../../../community/services/community/community-review.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 async function createTestUser(usernamePrefix: string): Promise<string> {
   const db = getDb();
@@ -83,7 +82,6 @@ function providerReturning(
 
 Deno.test({
   name: "content-review: Mock provider 命中词判定",
-  ignore: !hasEnv,
   fn: async () => {
     const provider = new MockReviewProvider({
       blockWords: ["违禁词A"],
@@ -109,7 +107,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: decideReview 阈值归一化",
-  ignore: !hasEnv,
   fn: () => {
     const cfg = reviewConfig();
     // 明确 block 且分数达标 → block
@@ -157,7 +154,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: withReviewTimeout 超时返回 null",
-  ignore: !hasEnv,
   fn: async () => {
     const slow = new Promise<string>((resolve) =>
       setTimeout(resolve, 200, "x")
@@ -171,7 +167,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: enqueueReview 落库 + 同目标去重 + 审计",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -247,7 +242,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: runContentReview block → rejected + block outcome",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -285,7 +279,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: runContentReview 疑似 → 放行 + pending_review",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -320,7 +313,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: runContentReview Provider 异常 → fail-open 转人工",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -358,7 +350,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: 总开关关闭时 runContentReview 直通不入库",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -390,7 +381,6 @@ Deno.test({
 Deno.test({
   name:
     "content-review: reviewUgcContent block 抛 CONTENT_REVIEW_REJECTED；review 放行",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -463,7 +453,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: enqueueDmMessageReview 开关关闭/Redis 不可用均不抛错",
-  ignore: !hasEnv,
   fn: async () => {
     await resetDbForTest();
     await ensureRbacSeeds();
@@ -493,7 +482,6 @@ Deno.test({
 
 Deno.test({
   name: "content-review: 私信异步消息文本处理（直接 handler 层，不依赖 Redis）",
-  ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

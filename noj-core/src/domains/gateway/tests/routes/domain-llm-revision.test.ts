@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 import { updateSetting } from "../../../system/index.ts";
 

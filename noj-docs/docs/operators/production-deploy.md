@@ -311,8 +311,10 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
    WHERE created_by <> '0';
    ```
 
-3. 使用同一目标 Release 协调升级 core、Gateway、Judge、UI 和客户端，执行
-   该版本的迁移与初始化。旧平台 Provider 和用量归默认域；新学校不继承其密钥。
+3. 使用同一目标 Release 协调升级 core、Gateway、Judge、UI 和客户端。Compose 会先
+   完成 `migrate` 与 `gateway-migrate` 两个一次性步骤：前者执行 Core 迁移/系统初始化，
+   后者执行 Gateway 迁移/默认配额 seed；HTTP 服务只做只读 schema 兼容检查。旧平台
+   Provider 和用量归默认域；新学校不继承其密钥。
 4. 登录各使用域“LLM”页，核对或配置启用的 Provider、默认模型及日/月额度。
    原用户自建服务如仍需使用，经授权在目标域重新配置有效凭据；源题字段不会
    自动重建它们。已有域设置不会在重启时被旧平台默认值覆盖。
@@ -347,8 +349,10 @@ noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
 项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷）， 随后通过真实 API
 验收：管理员登录、题目读取、附件（支持包）下载与一次真实双容器评测 （需要 judge
 沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
-与生产 judge 使用同一个独立 rootless daemon）。可用 `--skip-judge`
-跳过评测环节。
+与生产 judge 使用同一个独立 rootless daemon）。恢复数据后演练按生产依赖顺序保留
+并执行 `migrate → gateway-migrate → core` 三个完成态服务；Core 迁移/系统初始化
+完成后才运行 Gateway 迁移与默认配额初始化，HTTP 进程只读检查 schema。可用
+`--skip-judge` 跳过评测环节。
 
 演练报告（默认写入快照同级的 `restore-drill-report.txt`，权限
 600）记录：快照时间、恢复耗时、 数据核对结果（迁移版本/用户数/Redis

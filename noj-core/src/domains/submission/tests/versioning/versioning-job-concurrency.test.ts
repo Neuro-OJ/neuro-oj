@@ -17,16 +17,12 @@ import {
  * - #36 升级派发重试只新增 1 条提交：连续队列满与再次派发后，
  *   实际新增提交数必须仍为 1（复用 `result_submission_id` 与尝试）。
  *
- * 本文件的租约/双 worker 用例在 PGlite 下以「同一连接的顺序竞争」模拟两个 worker
- * （写条件全部是数据库条件更新）；真实 PostgreSQL 用例另外使用独立原生连接持锁，
- * 检查领取跳过被锁条目、释放后再次领取。无 DATABASE_URL 时显式跳过该检查。
+ * 本文件的租约/双 worker 用例使用数据库条件更新；并发屏障使用独立原生连接持锁，
+ * 检查领取跳过被锁条目、释放后再次领取。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
-import {
-  disableTestTransactionForFile,
-  getDb,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domains,
   evaluationAttempts,
@@ -60,8 +56,7 @@ import { startFakeRedis } from "../mq/_setup.ts";
 
 const now = new Date().toISOString();
 
-// 真实 PG（独立 schema）由迁移创建，不含 PGlite 的 root 种子；
-// 用例把 `owner_id` 指向 "0"，因此这里幂等补一行（PGlite 下已存在，无副作用）。
+// 迁移创建的测试库不含 root 种子；用例把 `owner_id` 指向 "0"，因此这里幂等补一行。
 await getDb().insert(users).values({
   id: "0",
   username: "root",
@@ -71,8 +66,7 @@ await getDb().insert(users).values({
   updated_at: now,
 }).onConflictDoNothing();
 
-// 真实 PG（独立 schema）不含 PGlite 的评测镜像种子：白名单为空会让所有派发被
-// 预检拒绝（JUDGE_IMAGE_NOT_ALLOWED），因此这里幂等补上两条（PGlite 下已存在）。
+// 测试库不含评测镜像种子：白名单为空会让所有派发被预检拒绝，因而这里幂等补上两条。
 await getDb().insert(judgeImages).values([
   {
     id: "e0000000-0000-0000-0000-000000000002",
@@ -97,12 +91,11 @@ await getDb().insert(judgeImages).values([
 const db = getDb();
 const ts = Date.now();
 
-/** 需要真实 PostgreSQL 的并发语义（PGlite 单连接无法并行）。 */
-const hasRealPg = !!Deno.env.get("DATABASE_URL");
+/** 并发屏障使用真实 PostgreSQL 的独立连接。 */
 
 /**
- * 本文件在真实 PG 下关闭 preload 事务（并发用例需要真实事务），因此必须**显式清理**
- * 自己创建的夹具：否则残留行会污染同一 schema 上的其它用例与后续运行。
+ * 并发用例需要真实事务，因此必须**显式清理**自己创建的夹具：否则残留行会污染
+ * 同一 schema 上的其它用例与后续运行。
  * 各 seed 辅助函数把 id 登记到这里，文件末尾的统一清理用例负责删除。
  */
 const createdFixtures = {
@@ -112,11 +105,9 @@ const createdFixtures = {
   jobIds: new Set<string>(),
 };
 
-// 真实 PG 下的两个并发用例必须各自持有真实事务（preload 的单连接 savepoint
-// 代理无法承载 `Promise.all` 的并发事务，会报 "savepoint ... does not exist"）。
+// 两个并发用例必须各自持有真实事务；单连接事务代理无法承载 `Promise.all` 的
+// 并发事务，会报 "savepoint ... does not exist"。
 // 本文件所有夹具使用 `ts` 唯一 ID，关闭事务包装不会与其他用例互相污染。
-if (hasRealPg) disableTestTransactionForFile();
-
 const dualConfig = (timeLimitMs: number) => ({
   evaluator: {
     image: "noj-evaluator-python",
@@ -733,7 +724,6 @@ Deno.test({
 
 Deno.test({
   name: "worker#37[真实 PG]: 双 worker 同批领取条目互不重复",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -805,7 +795,6 @@ Deno.test({
 Deno.test({
   name:
     "worker#37[真实 PG]: 独立连接持锁时领取跳过，释放后可领取首条（SKIP LOCKED）",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -835,7 +824,7 @@ Deno.test({
         sql`SELECT pg_backend_pid() AS pid, current_schema() AS schema`,
       ) as never,
     );
-    const expectedSchema = Deno.env.get("TEST_SCHEMA") ?? "public";
+    const expectedSchema = "public";
     assertEquals(main.schema, expectedSchema);
 
     await withRawTransaction(async (tx) => {
@@ -896,7 +885,6 @@ Deno.test({
 
 Deno.test({
   name: "jobs#39[真实 PG]: 并发聚合后任务终态不因过时统计回退为 running",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -943,13 +931,12 @@ Deno.test({
 });
 
 /**
- * 文件末尾统一清理（真实 PG 下本文件关闭了 preload 事务，必须显式删除夹具）。
+ * 文件末尾统一清理（真实 PG 下夹具已提交，必须显式删除）。
  *
  * 依赖 Deno 在单文件内按声明顺序执行测试；清理用例声明在最后。
  */
 Deno.test({
   name: "cleanup: 删除本文件在真实 PG 下创建的夹具",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

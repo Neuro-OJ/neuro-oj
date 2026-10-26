@@ -1,5 +1,5 @@
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 /**
  * 评测尝试生命周期与结果落库事务测试（Handbook §5.4、§5.6、§1.3）。
  *

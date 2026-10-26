@@ -4,8 +4,8 @@
  * 全部注入（runner / fetch / 时间 / 睡眠），**不起容器、不触网**。
  *
  * 本套测试的三条最高价值断言：
- * 1. **隔离性**：compose 覆盖 YAML **不含 `ports:`**（不映射宿主机端口）；
- *    参数含 `--project-name <演练名>`；只改 `noj-net` 的 ipam 子网。
+ * 1. **隔离性**：真实 Compose 合并配置不含宿主机端口；参数含
+ *    `--project-name <演练名>`；网络子网和卷名均与生产隔离。
  * 2. **退出码语义（#516 验收）**：RPO/RTO 超限 = 1；资源/参数错误 = **2 且零
  *    compose 调用**——后者是"必须在开始前决出"的可断言形式。
  * 3. **失败也清理**：注入失败 → 断言仍执行 `down -v --remove-orphans`；
@@ -18,7 +18,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "@std/assert";
-import { join } from "@std/path";
+import { fromFileUrl, join } from "@std/path";
 import type {
   CmdResult,
   CommandRunner,
@@ -57,6 +57,31 @@ interface Call {
   cmd: string;
   args: string[];
 }
+
+const PROD_COMPOSE_FILE = fromFileUrl(
+  new URL("../../../../docker-compose.prod.yml", import.meta.url),
+);
+const REAL_COMPOSE_ENV = {
+  NOJ_VERSION: "compose-drill-test",
+  POSTGRES_PASSWORD: "compose-drill-postgres-password",
+  REDIS_PASSWORD: "compose-drill-redis-password",
+  JWT_SECRET: "compose-drill-jwt-secret-012345678901234567890123456789",
+  TFA_ENCRYPTION_KEY: "compose-drill-tfa-key-012345678901234567890123456789",
+  APP_URL: "http://compose-drill.invalid",
+  CORS_ALLOWED_ORIGINS: "http://compose-drill.invalid",
+  TRUSTED_PROXIES: "172.29.0.0/16",
+  STORAGE_PROVIDER: "s3",
+  S3_ACCESS_KEY: "compose-drill-storage-user",
+  S3_SECRET_KEY: "compose-drill-storage-password",
+  S3_BUCKET: "compose-drill-bucket",
+  EMAIL_PROVIDER: "disabled",
+  MINIO_ROOT_USER: "compose-drill-minio-root",
+  MINIO_ROOT_PASSWORD: "compose-drill-minio-password",
+  NOJ_LLM_SERVICE_TOKEN: "compose-drill-llm-service-token",
+  NOJ_LLM_STORE_KEY: "compose-drill-llm-store-key",
+  NOJ_EVAL_NETWORK_NAME: "noj-drill-config-test_noj-eval-net",
+  JUDGE_EVALUATOR_NETWORK: "noj-drill-config-test_noj-eval-net",
+};
 
 /**
  * 记录调用的 fake runner。
@@ -372,15 +397,91 @@ async function baseOptions(
 
 // ---------------- 隔离性（#516 核心） ----------------
 
-Deno.test("T19 隔离性：覆盖 YAML 不含 ports（不映射宿主机端口），且只改 noj-net ipam", () => {
+Deno.test("T19 隔离性：覆盖 YAML 清除 ports 映射并只改演练网络参数", () => {
   const yaml = renderDrillOverride("172.29.0.0/16");
-  assertEquals(yaml.includes("ports:"), false, "覆盖文件不得映射任何端口");
+  assertStringIncludes(yaml, "ports: !reset []");
   assertStringIncludes(yaml, `networks:\n  ${DRILL_NETWORK_NAME}:\n    ipam:`);
   assertStringIncludes(yaml, "subnet: 172.29.0.0/16");
   // `verifier` 服务已删除（评审发现：TS 重写后业务验收由 CLI 直接发 HTTP，
   // 该服务无任何使用点，只会多拉一个镜像并出现在 compose 解析面）。
-  assertEquals(yaml.includes("services:"), false, "覆盖文件不得声明任何服务");
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
+});
+
+Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
+  const root = await Deno.makeTempDir();
+  const envFile = join(root, ".env.drill");
+  const overrideFile = join(root, "compose.drill-override.yml");
+  try {
+    await Deno.writeTextFile(
+      envFile,
+      Object.entries(REAL_COMPOSE_ENV).map(([key, value]) => `${key}=${value}`)
+        .join(
+          "\n",
+        ) + "\n",
+    );
+    await Deno.writeTextFile(
+      overrideFile,
+      renderDrillOverride("172.29.0.0/16"),
+    );
+    const result = await new Deno.Command("docker", {
+      args: [
+        "compose",
+        "--project-name",
+        "noj-drill-config-test",
+        "--env-file",
+        envFile,
+        "--file",
+        PROD_COMPOSE_FILE,
+        "--file",
+        overrideFile,
+        "--profile",
+        "judge",
+        "config",
+        "--format",
+        "json",
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(
+      result.code,
+      0,
+      `隔离覆盖必须能被真实 Compose 解析：${
+        new TextDecoder().decode(result.stderr)
+      }`,
+    );
+    const config = JSON.parse(new TextDecoder().decode(result.stdout)) as {
+      services?: Record<string, { ports?: unknown[] }>;
+      networks?: Record<
+        string,
+        { name?: string; ipam?: { config?: Array<{ subnet?: string }> } }
+      >;
+      volumes?: Record<string, { name?: string }>;
+    };
+    for (const [name, service] of Object.entries(config.services ?? {})) {
+      assertEquals(
+        service.ports ?? [],
+        [],
+        `演练合并配置不得把 ${name} 的端口映射到宿主机`,
+      );
+    }
+    assertEquals(
+      config.networks?.[DRILL_NETWORK_NAME]?.ipam?.config?.[0]?.subnet,
+      "172.29.0.0/16",
+    );
+    assertEquals(
+      config.networks?.["noj-eval-net"]?.name,
+      "noj-drill-config-test_noj-eval-net",
+      "演练评测网络必须使用本项目专属的显式网络名",
+    );
+    assertEquals(
+      config.volumes?.pgdata?.name,
+      "noj-drill-config-test_pgdata",
+      "演练卷必须使用独立 Compose 项目前缀",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
 });
 
 Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {
@@ -1125,35 +1226,153 @@ Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
 
 // ── 评审发现（Important）：恢复路径上两处 compose 退出码被丢弃 ────────
 //
-// bash 对 drill 的每一步都是 `|| die`；而 `run --rm minio-init`
-// 与 `run --rm migrate` 此前**丢弃返回值**，于是失败会表现为后续某个更难懂的
-// 错误（"隔离 core 启动失败"、"数据核对失败"），把根因埋掉。
+// bash 对 drill 的每一步都是 `|| die`。一次性服务必须经 Compose `up` 保留
+// 完成状态，不能用 `run --rm` 后再 `up core`，否则依赖会被重新执行。
 
 Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
-  // 行为断言而非源码文本匹配：注入 runner 让 `run --rm minio-init` 失败，
-  // 断言最终错误**点名 minio-init**。修复前该退出码被丢弃，错误会变成
-  // 后面某个更难懂的现象，运维者无法定位。
+  // 行为断言而非源码文本匹配：注入 runner 让一次性 `up minio-init` 失败，
+  // 断言最终错误**点名 minio-init**。
   const root = await Deno.makeTempDir();
   try {
     const calls: Call[] = [];
     const runner = makeRunner(calls, {
-      // **只命中 `run --rm minio-init`**（初始化），不要误伤后面那条
+      // **只命中一次性 `up minio-init`**（初始化），不要误伤后面那条
       // `mc mirror`（它的 args 里也含 "minio-init"，但它自己已检查退出码）。
       // 我第一版就是这样写的：`includes("minio-init")` 命中了 `mc mirror`，
       // 于是演练在更早处失败、本用例**恒真**——移除修复也照样通过。
       failOn: (args) =>
-        args.includes("run") && args.includes("--rm") &&
-        args.includes("minio-init") && !args.includes("-c"),
+        args.includes("up") && args.includes("minio-init") &&
+        args.includes("--wait") && !args.includes("-c"),
     });
     const result = await runDrill(await baseOptions(root, runner));
-    console.log(
-      "DBG minio:",
-      JSON.stringify({ code: result.exitCode, msg: result.message }),
-    );
     assertEquals(result.exitCode, 1, "minio-init 失败应使演练失败");
     assert(
       result.message.includes("MinIO") || result.message.includes("minio-init"),
       `失败信息应点名 minio-init，实得：${result.message}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("P2b: gateway-migrate 失败必须阻止业务服务启动并点名根因", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const successful = successfulRunner(calls);
+    const runner: CommandRunner = {
+      run(cmd, args) {
+        if (
+          args.includes("up") && args.includes("--wait") &&
+          args.includes("gateway-migrate")
+        ) {
+          return Promise.resolve({
+            code: 1,
+            stdout: "",
+            stderr: "injected gateway migration failure",
+          });
+        }
+        return successful.run(cmd, args);
+      },
+      spawn: successful.spawn,
+    };
+    const result = await runDrill(await baseOptions(root, runner));
+    assertEquals(result.exitCode, 1, "gateway-migrate 失败应使演练失败");
+    assertStringIncludes(result.message, "Gateway");
+    assert(
+      calls.every((call) =>
+        !(call.args.includes("up") && call.args.includes("core"))
+      ),
+      "Gateway 迁移失败后不得启动 Core",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("P2b: Core migrate/init 失败必须阻止 Gateway 与业务服务启动", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const successful = successfulRunner(calls);
+    const runner: CommandRunner = {
+      run(cmd, args) {
+        if (
+          args.includes("up") && args.includes("--wait") &&
+          args.includes("migrate") && !args.includes("gateway-migrate")
+        ) {
+          return Promise.resolve({
+            code: 1,
+            stdout: "",
+            stderr: "injected core migration failure",
+          });
+        }
+        return successful.run(cmd, args);
+      },
+      spawn: successful.spawn,
+    };
+    const result = await runDrill(await baseOptions(root, runner));
+    assertEquals(result.exitCode, 1, "Core migrate 失败应使演练失败");
+    assertStringIncludes(result.message, "数据库迁移");
+    assert(
+      calls.every((call) =>
+        !(call.args.includes("up") &&
+          (call.args.includes("gateway-migrate") || call.args.includes("core")))
+      ),
+      "Core 迁移失败后不得启动 Gateway migrate 或 Core HTTP",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("P2b: 演练按 Core → Gateway → Core HTTP 顺序执行且不重复 one-shot", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const { fetch } = makeFetch();
+    const result = await runDrill(
+      await baseOptions(root, successfulRunner(calls), fetch),
+    );
+    assertEquals(result.exitCode, 0, result.message);
+
+    const composeCommands = calls
+      .filter((call) => call.args.includes("compose"))
+      .map((call) => call.args);
+    const migrationUp = composeCommands.filter((args) =>
+      args.includes("up") && args.includes("--wait") &&
+      (args.includes("migrate") || args.includes("gateway-migrate"))
+    );
+    const coreUp = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("core")
+    );
+    assertEquals(
+      migrationUp.length >= 2,
+      true,
+      "应分别启动 Core/Gateway one-shot",
+    );
+    const coreMigrationAt = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("migrate") &&
+      !args.includes("gateway-migrate")
+    );
+    const gatewayMigrationAt = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("gateway-migrate")
+    );
+    assert(
+      coreMigrationAt >= 0 && gatewayMigrationAt > coreMigrationAt &&
+        coreUp > gatewayMigrationAt,
+      `必须按 Core → Gateway → Core HTTP 顺序，实得：${
+        composeCommands.map((a) => a.join(" ")).join("\n")
+      }`,
+    );
+    assertEquals(
+      composeCommands.some((args) =>
+        args.includes("run") && args.includes("--rm") &&
+        (args.includes("migrate") || args.includes("gateway-migrate") ||
+          args.includes("core"))
+      ),
+      false,
+      "迁移与 Core 启动不得使用会丢失完成状态的 run --rm",
     );
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});

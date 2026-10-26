@@ -2,11 +2,8 @@ import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import {
-  disableTestTransactionForFile,
-  getDb,
-  resetDbForTest,
-} from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import type { RootDb } from "../../../../shared/db/executor.ts";
 import { domainLimits } from "../../../../shared/db/schema.ts";
 import * as schema from "../../../../shared/db/schema.ts";
@@ -21,25 +18,15 @@ import {
   reserveDomainStorageUpload,
 } from "../../index.ts";
 
-const url = Deno.env.get("DATABASE_URL");
-if (url) disableTestTransactionForFile();
 function connection() {
-  const namespace = Deno.env.get("TEST_SCHEMA");
-  if (namespace && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(namespace)) {
-    throw new Error("非法测试 schema");
-  }
-  return postgres(url!, {
+  return postgres(Deno.env.get("DATABASE_URL")!, {
     max: 1,
-    connection: namespace
-      ? { options: `-csearch_path=${namespace},public` }
-      : undefined,
     onnotice: () => {},
   });
 }
 
 Deno.test({
   name: "存储容量 PG: 两个物理连接竞争最后容量只有一个预约成功",
-  ignore: !url,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

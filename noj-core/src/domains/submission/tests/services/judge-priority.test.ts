@@ -1,14 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { resolveJudgeTaskPriority } from "../../services/submissions/judge-priority.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { contests } from "../../../../shared/db/schema.ts";
 
-const hasDb = true;
 const TS = Date.now();
 
 Deno.test({
   name: "judge-priority: rejudge 恒为 low",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -18,7 +17,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-priority: self_test 恒为 medium",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -28,7 +26,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-priority: 无竞赛提交为 medium",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -38,7 +35,6 @@ Deno.test({
 
 Deno.test({
   name: "judge-priority: 进行中竞赛为 high，已结束为 medium",
-  ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

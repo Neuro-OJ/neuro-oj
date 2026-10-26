@@ -4,7 +4,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
@@ -15,17 +15,12 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 
-// 模块级 bootstrap：确保 PGlite schema 已创建
+// 模块级 bootstrap：确保 测试数据库 schema 已创建
 await resetDbForTest();
 await initRedisForTest();
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const hasDb = true; // PGlite 内存数据库始终可用
-const skip = !(hasEnv && hasDb);
-
 Deno.test({
   name: "submissions route: POST /api/v1/submissions 无 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions", {
@@ -44,7 +39,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: POST /api/v1/submissions 无效 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions", {
@@ -64,7 +58,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: POST /api/v1/submissions 缺少字段返回 400",
-  ignore: skip,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
@@ -81,7 +74,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: GET /api/v1/submissions/:id 无 token 返回 404",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     // GET /:id 路由使用 optionalAuthMiddleware：无 token 时不抛 401，
@@ -94,7 +86,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -113,7 +104,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: GET /api/v1/submissions 无 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions");
@@ -123,7 +113,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: GET /api/v1/submissions 无效 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions", {
@@ -136,7 +125,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -159,7 +147,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
@@ -172,7 +159,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: GET /api/v1/submissions per_page 超过上限自动限制",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -192,7 +178,6 @@ Deno.test({
 Deno.test({
   name:
     "admin submissions: GET /api/v1/admin/submission/submissions 无 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/admin/submission/submissions");
@@ -203,7 +188,6 @@ Deno.test({
 Deno.test({
   name:
     "admin submissions: GET /api/v1/admin/submission/submissions 普通用户返回 403",
-  ignore: skip,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
@@ -219,7 +203,6 @@ Deno.test({
 Deno.test({
   name:
     "admin submissions: GET /api/v1/admin/submission/submissions 管理员查看所有提交",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -238,7 +221,6 @@ Deno.test({
 Deno.test({
   name:
     "admin submissions: GET /api/v1/admin/submission/submissions 按 user_id 筛选",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -259,7 +241,6 @@ Deno.test({
 Deno.test({
   name:
     "submissions route: GET /api/v1/submissions/:id/status 提交不存在时返回 404 + code + request_id",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -280,7 +261,6 @@ Deno.test({
 
 Deno.test({
   name: "submissions route: 版本/有效性/可升级筛选与非法参数校验",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

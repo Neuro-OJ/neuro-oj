@@ -20,6 +20,10 @@ import {
   JUDGE_QUEUE_CAPACITY,
 } from "./producer.ts";
 import { getLogger } from "@logtape/logtape";
+import {
+  type ManagedTask,
+  startPeriodicTask,
+} from "../../../shared/runtime/managed-task.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskPriority } from "../types/index.ts";
@@ -651,19 +655,37 @@ export async function runQueueSweeperOnce(): Promise<void> {
   }
 }
 
-/** 启动后台 sweeper（幂等）。 */
-export function startQueueSweeper(): void {
-  if (_sweeperStarted) return;
+/** 当前 sweeper 句柄（幂等启动；关闭流程统一停止并等待在途轮次）。 */
+let _sweeperTask: ManagedTask | null = null;
+
+/**
+ * 启动后台 sweeper（幂等）。
+ *
+ * 返回统一后台任务句柄：`stop()` 清定时器、`done` 等待正在执行的那一轮结束，
+ * 使关闭流程可以先停新工作、再等写完数据库（P2a）。
+ *
+ * @returns 可停止、可等待的 sweeper 句柄
+ */
+export function startQueueSweeper(): ManagedTask {
+  if (_sweeperTask !== null) return _sweeperTask;
   _sweeperStarted = true;
-  setInterval(() => {
-    void runQueueSweeperOnce().catch((err) => {
-      logger.error("队列 sweeper 执行失败", { err });
-    });
-  }, SWEEP_INTERVAL_MS);
+  const task = startPeriodicTask({
+    name: "queue-sweeper",
+    intervalMs: SWEEP_INTERVAL_MS,
+    run: () => runQueueSweeperOnce().then(() => undefined),
+    onError: (err) => logger.error("队列 sweeper 执行失败", { err }),
+  });
+  _sweeperTask = task;
+  // stop 后到 done 完成期间保留单例，禁止重叠启动；done 后才允许真正重启。
+  void task.done.then(() => {
+    if (_sweeperTask === task) _sweeperTask = null;
+  });
+  return task;
 }
 
-/** 测试用。 */
+/** 测试用：清除去重状态并停止定时器（不等待在途轮次）。 */
 export function _resetSweeperStateForTest(): void {
   _firstSeen.clear();
   _lastRequeue.clear();
+  _sweeperTask?.stop();
 }

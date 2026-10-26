@@ -265,6 +265,34 @@ Deno.test("接线: update 未接线备份时明确失败（T16 的注入点已�
   }
 });
 
+Deno.test("P1d: update --drain-timeout 非法值 → 用法错误（零 docker 调用）", async () => {
+  const dir = await makeInstallDir();
+  try {
+    const { runProdUpdate } = await import("./cli.ts");
+    const calls: string[] = [];
+    await assertRejects(
+      () =>
+        runProdUpdate(dir, ["--drain-timeout", "abc"], {
+          runner: {
+            run(cmd: string, args: string[]) {
+              calls.push([cmd, ...args].join(" "));
+              return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+            },
+            spawn() {
+              throw new Error("不应 spawn");
+            },
+          },
+          processEnv: {},
+        } as never),
+      UsageError,
+      "--drain-timeout",
+    );
+    assertEquals(calls, [], "参数错误必须发生在任何 docker 调用之前");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("接线: backup list 走原生实现且不创建备份", async () => {
   const dir = await makeInstallDir();
   try {

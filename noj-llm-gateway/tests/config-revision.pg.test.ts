@@ -3,13 +3,11 @@ import { createDb } from "../src/db.ts";
 import { runMigrations } from "../src/db/migrate.ts";
 import { createInternalRouter } from "../src/routes/internal.ts";
 import { testConfig } from "./helpers.ts";
-
-const databaseUrl = Deno.env.get("NOJ_GATEWAY_TEST_DATABASE_URL");
+import { gatewayTestDatabaseUrl as databaseUrl } from "./integration-env.ts";
 
 Deno.test({
   name:
     "配置版本 PG：Provider 与配额并发同版本只有一次写入，旧版本及缺失版本拒绝",
-  ignore: !databaseUrl,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {

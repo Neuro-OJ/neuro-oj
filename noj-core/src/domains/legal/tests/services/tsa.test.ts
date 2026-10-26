@@ -14,7 +14,7 @@
  * 而非伪造字节，以真正覆盖解析与验签路径。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { updateSetting } from "./../../../system/services/system-settings.ts";
 import { timestampHash, tsaEnabled, verifyTimestamp } from "../../index.ts";
 import {

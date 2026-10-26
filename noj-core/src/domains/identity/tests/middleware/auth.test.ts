@@ -11,15 +11,14 @@ import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 
 // PR-1：authMiddleware 校验 JWT 撤销需 Redis
 await initRedisForTest();
 // NOJ-007：authMiddleware 现在对所有请求实时查询封禁状态，需先引导 Schema。
 await resetDbForTest();
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 async function createActiveUser(role: "user" | "admin" = "user") {
   const id = crypto.randomUUID();
@@ -86,7 +85,6 @@ function createTestApp() {
 
 Deno.test({
   name: "middleware: 缺少 Authorization 头返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const res = await jsonRequest(app, "/protected");
@@ -99,7 +97,6 @@ Deno.test({
 
 Deno.test({
   name: "middleware: 空的 Authorization 头返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     // 显式覆盖 Authorization，跳过 helper 的 Bearer 前缀
@@ -112,7 +109,6 @@ Deno.test({
 
 Deno.test({
   name: "middleware: 非 Bearer 格式的 Authorization 头返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const res = await jsonRequest(app, "/protected", {
@@ -124,7 +120,6 @@ Deno.test({
 
 Deno.test({
   name: "middleware: 无效的 Bearer token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const res = await jsonRequest(app, "/protected", {
@@ -138,7 +133,6 @@ Deno.test({
 
 Deno.test({
   name: "middleware: 有效的 Bearer token 通过认证并设置 userId/userRole",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { id, token } = await createActiveUser("admin");
@@ -154,7 +148,6 @@ Deno.test({
 
 Deno.test({
   name: "middleware: 'Bearer ' 前缀后无 token 返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const res = await jsonRequest(app, "/protected", {
@@ -188,7 +181,6 @@ function createAdminTestApp() {
 
 Deno.test({
   name: "adminMiddleware: 非管理员用户返回 403",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createAdminTestApp();
     const token = await createUserToken();
@@ -203,7 +195,6 @@ Deno.test({
 
 Deno.test({
   name: "adminMiddleware: 管理员用户通过",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createAdminTestApp();
     const token = await createUserToken("admin");
@@ -218,7 +209,6 @@ Deno.test({
 
 Deno.test({
   name: "adminMiddleware: 未登录用户先被 authMiddleware 拦截返回 401",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createAdminTestApp();
 

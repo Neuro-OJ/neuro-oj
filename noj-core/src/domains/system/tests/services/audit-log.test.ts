@@ -1,12 +1,9 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { enterTestContext, leaveTestContext } from "../../index.ts";
 import { cleanupOldAuditLogs, listAuditLogs, logAudit } from "../../index.ts";
-
-const hasDb = true; // PGlite 内存数据库始终可用
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasDb || !hasEnv;
 
 const TEST_CTX = {
   actorId: "test-admin-uuid",
@@ -33,7 +30,6 @@ async function cleanAuditLogs() {
 
 Deno.test({
   name: "audit-log: logAudit 写入字段映射",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -66,7 +62,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: logAudit 失败仅 console.error，不抛业务错误",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -81,7 +76,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: logAudit ALS 缺失不抛错（仅 console.error）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -102,7 +96,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: cleanupOldAuditLogs 删除过期记录",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -141,7 +134,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: listAuditLogs 默认排除 root (admin_id=0)",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -175,7 +167,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: listAuditLogs 按 action 筛选",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -200,7 +191,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: listAuditLogs 按时间范围筛选",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -223,7 +213,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: logAudit ip_ban.create 写入字段映射",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -261,7 +250,6 @@ Deno.test({
 
 Deno.test({
   name: "audit-log: logAudit ip_ban.delete 写入字段映射",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

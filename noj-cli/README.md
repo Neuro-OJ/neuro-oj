@@ -8,6 +8,10 @@ amd64）。
 > `deploy`/`maintain`/`stack`/`run-server`/`doctor`
 > 命令，已实测从未被使用且已损坏， 现已全部移除。若目录里仍有那两个 JSON
 > 文件，可直接删除。
+>
+> 注意：P1d（2026-10-20）重新引入的 `maintain` 是**全新的 Tier 3 容器命令**
+> （维护模式/排空，见下文「维护模式与自动排空」），与已删除的 JSON 编排
+> `maintain` 无关。
 
 ## 首次安装
 
@@ -62,8 +66,10 @@ noj-cli config check           # 只做本地配置校验
 noj-cli status                 # 状态（含 compose ps 表）
 noj-cli logs core --follow     # 日志（着色契约 + 实时跟随）
 noj-cli start | stop | restart # 启停（stop 不删数据卷）
-noj-cli update                 # 按 .env.prod 的版本升级（升级前自动备份）
+noj-cli update                 # 按 .env.prod 的版本升级（升级前自动备份 + 自动排空）
 noj-cli update --latest        # 升级到最新的资产就绪正式 Release（已是最新则 no-op）
+noj-cli maintain status        # 维护模式/排空状态（blockers、队列与在途任务）
+noj-cli maintain enter | wait | exit   # 人工进入 / 等待排空 / 退出维护模式
 noj-cli backup create          # 创建 .nojbackup 单文件快照（整包加密）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
@@ -76,7 +82,36 @@ noj-cli uninstall --all --yes  # 连数据卷与安装目录一起删除（需�
 ```
 
 `upgrade` 是 `update` 的别名。升级序列为：同步部署文件 → **备份** → 拉取镜像 →
-等待健康检查 → 记录元数据；任一阶段失败即中止且不宣称成功。
+**验签** → **进入维护并等待排空** → 启动并等待健康检查 → **退出维护** →
+记录元数据； 任一阶段失败即中止且不宣称成功。
+
+### 维护模式与自动排空（P1d）
+
+`update` 默认在**验签通过之后、启动目标栈之前**调用 core 的内部排空 API：
+
+1. `maintain enter`：进入维护模式（此后写请求返回 503 `MAINTENANCE`）；
+2. `maintain wait`：轮询直到在途评测、judge/result 队列全部清空 （默认间隔 5
+   秒、超时 1800 秒，可用 `--drain-timeout <秒>` 调整）；
+3. 启动目标栈并通过健康检查后 `maintain exit`，恢复写请求。
+
+进入/等待失败会**中止升级**（不启动目标栈、不提交暂存配置）并尽力退出维护模式，
+同时给出可操作提示；退出失败则显式报告半完成（服务已启动但仍在维护模式），
+此时请执行 `noj-cli maintain exit` 恢复写请求。
+
+内部 API 需要 `.env.prod` 中的服务凭据（可选 bootstrap 配置）：
+
+```bash
+# 生成并写入 .env.prod（随后重启/重建 core 容器使其生效）
+openssl rand -hex 32    # → NOJ_INTERNAL_SERVICE_TOKEN=<上一步输出>
+```
+
+- **未设置该变量**：drain 端点返回 503，自动排空不可用，`update` 会中止并提示；
+  过渡期可用 `--skip-drain` 显式跳过自动排空（跳过前请自行确认没有在途任务）。
+- **首次从尚无该 API 的旧版本升级**：旧 Core 返回 `endpoint_unavailable`，
+  `update` 会打印告警并**继续升级**（一次性切换）；升级完成后设置该变量即可
+  让后续升级启用自动排空。若仍希望显式跳过，用 `--skip-drain`。
+- 人工干预：`noj-cli maintain enter|status|wait|exit`（Tier 3，容器内执行； 支持
+  `--json`、`--timeout`、`--interval` 透传）。
 
 **备份是 `.nojbackup` 单文件**（tar.zst + 整包 GPG AES-256，manifest 标
 `payload_layout=prod-raw`），同级 `.sha256` 为校验文件。包内含 `postgres.dump`
@@ -173,6 +208,8 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
   - `drill/`：隔离恢复演练（原生）
   - `schedule.ts`：crontab 标记区块
   - `judge/`：独立 Judge 部署
+  - `maintain.ts`：维护模式/排空的 Tier 3 容器包装（`noj-cli maintain …`）
+  - `lifecycle/drain.ts`：`update` 自动排空（enter/wait/exit 的默认实现与解析）
   - `cli.ts`：上述实现到 CLI 的接线层
 - `src/core/`：配置 schema、`.env.prod` 原子读写、状态机
 - `src/output/`：`--json` 通道与表格/状态符号渲染

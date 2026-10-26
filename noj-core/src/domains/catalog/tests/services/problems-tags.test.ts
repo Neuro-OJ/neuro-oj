@@ -37,9 +37,6 @@ import {
 } from "../../index.ts";
 import { createTag } from "../../index.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skip = !hasEnv;
-
 await resetDbForTest();
 await initRedisForTest();
 
@@ -85,7 +82,6 @@ async function createTestUser(): Promise<string> {
 
 Deno.test({
   name: "problems-tags: 关联不存在的标签返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -101,7 +97,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 客观题关联算法标签返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -142,7 +137,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 全量替换语义与重复 id 去重",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -169,7 +163,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 门控——匿名用户不可见算法标签",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -197,7 +190,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 门控——无通过提交的登录用户不可见",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -225,7 +217,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 门控——有通过提交的用户可见",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -273,7 +264,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 门控——admin 与题主始终可见",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -330,7 +320,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: 门控——无算法标签时标志为 false",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -71,7 +71,7 @@ const NON_CONSUMER_PATTERNS: RegExp[] = [
   /shared\/config\/production-config\.ts$/,
   /scripts\/check-env\.ts$/,
   /scripts\/check-config-usage\.ts$/,
-  /scripts\/test-parallel\.ts$/,
+  /scripts\/test-launcher(?:-[^/]+)?\.ts$/,
   /domains\/system\/services\/env-snapshot\.ts$/,
   // 设置 KV 存储自身的实现与其**校验分支**（如 `key === "smtp_from"` 只做 email
   // 格式校验，不代表该键被消费）。审计口径明确把这类「能存/能校验」排除在消费之外，
@@ -351,11 +351,7 @@ export const REVERSE_EXEMPT = new Set([
   "E2E_ADMIN_PASS",
   "DEEPSEEK_API_KEY",
   "DEEPSEEK_BASE_URL",
-  "TEST_SCHEMA",
   "BCRYPT_SALT_ROUNDS",
-  // PGlite 模板缓存的测试注入开关（shared/db/connection.ts 经常量间接读取，
-  // 不属于产品配置面；登记在此避免日后内联字面量时被误判为"未登记"）
-  "PGLITE_TEMPLATE_CACHE_DIR",
   // 网关自身的非配额配置（由 loadConfig 读取，见网关 .env.example）
   "NOJ_LLM_PORT",
   "NOJ_LLM_LOG_LEVEL",

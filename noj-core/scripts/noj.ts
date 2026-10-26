@@ -15,7 +15,8 @@
 
 import { join } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
-import { getDb } from "../src/shared/db/connection.ts";
+import { closeDbForShutdown, getDb } from "../src/shared/db/connection.ts";
+import { closeRedisForShutdown } from "../src/shared/mq/connection.ts";
 import { domains } from "../src/shared/db/schema.ts";
 import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
@@ -29,6 +30,7 @@ import {
 } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import { initProblem } from "./problems-init.ts";
+import { runMaintain } from "./maintain.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -36,6 +38,7 @@ import {
   seedJudgeImages,
   seedTags,
 } from "../src/domains/system/index.ts";
+import { seedDomainLlmDefaults } from "../src/domains/gateway/index.ts";
 import {
   backfillDefaultCatalog,
   importDomainProblemBundle,
@@ -49,6 +52,9 @@ const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");
 const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
 const OUT_DIR = join(PROJECT_ROOT, "data", "packages");
+
+/** Cliffy action 不能直接 Deno.exit，否则数据库/Redis 连接没有机会统一关闭。 */
+let requestedExitCode = 0;
 
 /**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
@@ -177,12 +183,14 @@ async function importProblemPackages(
   }
 }
 
-/** 系统基础数据：root + RBAC + 镜像白名单 + 标签（幂等）。 */
+/** 系统基础数据：root + RBAC + 默认工作空间 + LLM 默认项 + 镜像白名单 + 标签（幂等）。 */
 async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
   await ensureRbacSeeds();
   await sealExistingSiteAdminInitialization();
+  await ensureDefaultWorkspace();
+  await seedDomainLlmDefaults();
   console.log("初始化评测镜像白名单...");
   await seedJudgeImages();
   console.log("初始化种子标签...");
@@ -363,6 +371,70 @@ const searchCmd = new Command()
     console.log("重建完成", counts);
   });
 
+// maintain 子命令：--url/--json 由 noj-cli 透传；Cliffy 中 .command() 之后的
+// option/action 注册到该子命令，因此每个子命令都要显式声明自己的选项。
+const maintainCmd = new Command()
+  .description("维护/排空操作（容器内通过 Core 内部 API 执行）")
+  .command("status", "查询维护与排空状态")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("status", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("enter", "进入维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("enter", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("exit", "退出维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("exit", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("wait", "等待排空完成（轮询 status）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .option("--timeout <seconds:number>", "等待排空超时秒数", { default: 1800 })
+  .option("--interval <seconds:number>", "轮询间隔秒数", { default: 5 })
+  .action(
+    async (opts: {
+      url?: string;
+      json?: boolean;
+      timeout: number;
+      interval: number;
+    }) => {
+      requestedExitCode = await runMaintain("wait", {
+        url: opts.url,
+        json: opts.json,
+        timeoutSeconds: opts.timeout,
+        intervalSeconds: opts.interval,
+      });
+    },
+  );
+
 try {
   await new Command()
     .name("noj")
@@ -375,6 +447,7 @@ try {
     // 避免破坏既有脚本（deno task problems:build 等仍可用）。
     .command("problem", problemsCmd)
     .command("search", searchCmd)
+    .command("maintain", maintainCmd)
     .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
     .action(() => {
       return runDevSetup();
@@ -383,11 +456,36 @@ try {
     .command("completions", new CompletionsCommand())
     .parse(Deno.args);
 } catch (err) {
-  // 错误不得被吞：打印错误信息并以非零码退出（此前 finally exit(0)
-  // 会让 problems build / dev-setup 等失败时静默"成功"，误导 CI）。
+  // 错误不得被吞：先打印并记录非零退出码，待数据库/Redis 关闭后再退出。
+  requestedExitCode = 1;
   const msg = err instanceof Error ? err.message : String(err);
   if (msg) console.error(`noj: ${msg}`);
-  Deno.exit(1);
 }
-// 强制退出：postgres.js 连接会阻止进程自然终止（同 migrate.ts 处理）
-Deno.exit(0);
+
+// 所有命令都经过同一清理边界。显式 init/migrate 中途失败时，已创建的连接不能
+// 留给 Deno 事件循环，也不能靠 Deno.exit 直接绕过 close。清理失败会提升退出码，
+// 但不覆盖命令本身的错误。
+const cleanupErrors: unknown[] = [];
+try {
+  await closeRedisForShutdown();
+} catch (error) {
+  cleanupErrors.push(error);
+}
+try {
+  await closeDbForShutdown();
+} catch (error) {
+  cleanupErrors.push(error);
+}
+if (cleanupErrors.length > 0) {
+  requestedExitCode = 1;
+  for (const error of cleanupErrors) {
+    console.error(
+      `noj: 命令结束时资源清理失败：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+// 强制退出：postgres.js/Redis 连接会阻止进程自然终止，但此时已完成显式清理。
+Deno.exit(requestedExitCode);

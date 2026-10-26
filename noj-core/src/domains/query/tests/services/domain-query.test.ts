@@ -5,7 +5,8 @@ import { domainStatsSse } from "../../routes/sse.ts";
 import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 import { _dispatchToLocalListenersForTest } from "../../../../shared/sse/event-bus.ts";
 import { eq, sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contests,
   domainMemberships,

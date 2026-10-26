@@ -1,4 +1,5 @@
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { createBoard } from "../../services/community/community-boards.ts";
 import { createPost } from "../../services/community/community-post-crud.ts";

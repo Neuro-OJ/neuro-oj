@@ -1,7 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { hashPassword } from "../../services/security/password.ts";
 import {
@@ -12,9 +13,7 @@ import { loginUser } from "../../index.ts";
 import { confirmTfa, setupTfa, verifyTfaCodeForUser } from "../../index.ts";
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
-Deno.env.set("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters");
 
-const skip = false;
 const ts = Date.now();
 
 async function seedUser() {
@@ -38,7 +37,6 @@ function currentCode(secret: string): string {
 
 Deno.test({
   name: "auth tfa: 已启用 TFA 用户缺少 code 抛出 TFA_REQUIRED",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -65,7 +63,6 @@ Deno.test({
 
 Deno.test({
   name: "auth tfa: 已启用 TFA 用户错误验证码抛出 UnauthorizedError",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -94,7 +91,6 @@ Deno.test({
 
 Deno.test({
   name: "auth tfa: 已启用 TFA 用户正确 TOTP 登录成功且返回 tfa_enabled",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -117,7 +113,6 @@ Deno.test({
 
 Deno.test({
   name: "auth tfa: 恢复码登录成功且一次性消费",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -140,7 +135,6 @@ Deno.test({
 
 Deno.test({
   name: "auth tfa: 未启用 TFA 用户不带 code 登录行为不变",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

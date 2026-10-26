@@ -1,7 +1,7 @@
 /**
  * 统一题目包导入端点（POST /api/v1/problems/import-bundle）路由层测试。
  *
- * 依赖 DATABASE_URL + JWT_SECRET 环境变量（PGlite 内存数据库）。
+ * 依赖 DATABASE_URL + JWT_SECRET 环境变量（独立测试数据库）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
@@ -12,9 +12,6 @@ import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
 import { getDefaultLlmLimits } from "../../../gateway/index.ts";
-
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipEnv = !hasEnv;
 
 const ts = Date.now();
 const OWNER_ID = `bundle-owner-${ts}`;
@@ -155,7 +152,6 @@ async function ensureUser(id: string): Promise<void> {
 
 Deno.test({
   name: "import-bundle: admin 导入 v2 新题成功（含评测包注册）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -200,7 +196,6 @@ const TEMPLATE_SKELETON = "# 作答骨架\nprint('TODO')\n";
 Deno.test({
   name:
     "import-bundle: 模板随包落库、/template 可读、存量题目回退读包、重导入清空",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -306,7 +301,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: manifest.template 含路径分隔符/.. 被拒（400）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -332,7 +326,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: admin 按默认域 number 匹配更新既有题目（幂等 upsert）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -412,7 +405,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 默认域编辑者可指定域内 number",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -450,7 +442,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 默认域编辑者导入默认 command 题目放行",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -515,7 +506,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 格式 2 携带旧 P 分类返回 400",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -539,7 +529,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 缺 manifest 的松散 zip 返回 400",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -570,7 +559,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 根级缺 evaluate.py 返回 400",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -604,7 +592,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: admin 带 number 重复导入幂等（按 (type, number)）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -663,21 +650,18 @@ Deno.test({
     // 注入数据库写入失败，验证失败请求的**零副作用**：不新增行、题目投影不变、
     // 草稿 revision 不变、已存在且被复用的支持包对象不被回收。
     //
-    // 注入点必须是 db.update（而不是 db.transaction）：测试事务代理
-    // （connection.ts createTestTransactionDb）的 get trap 对 `transaction`
-    // 恒返回内部的 savepointTransaction，直接赋值会被静默忽略；而 insert/update/
-    // select 等属性经 Reflect.get 转发，赋值可生效且同样会进入业务事务内部
-    // （`tx` 就是同一个代理），因此能真实模拟"事务内写入失败"。
+    // 业务事务使用独立的 transaction executor；对 root db.update 做 monkeypatch
+    // 不会影响事务内写入。这里在专用测试库的目标草稿表上临时加入 NOT VALID 的
+    // CHECK(FALSE)，只拒绝该请求后续的 UPDATE，借此验证真实 PostgreSQL 回滚路径。
     const revisionBefore = await draftRevisionOf(body.data.id);
     const [rowBefore] = await db.select({ title: problems.title }).from(
       problems,
     )
       .where(eq(problems.id, body.data.id)).limit(1);
-    const originalUpdate = db.update;
-    // deno-lint-ignore no-explicit-any
-    (db as any).update = () => {
-      throw new Error("测试注入：题目更新失败");
-    };
+    await db.execute(sql`
+      ALTER TABLE problem_drafts
+      ADD CONSTRAINT problem_bundle_test_failure_check CHECK (FALSE) NOT VALID
+    `);
     try {
       const failed = await app.request("/api/v1/problems/import-bundle", {
         method: "POST",
@@ -689,8 +673,10 @@ Deno.test({
       });
       assertEquals(failed.status, 500);
     } finally {
-      // deno-lint-ignore no-explicit-any
-      (db as any).update = originalUpdate;
+      await db.execute(sql`
+        ALTER TABLE problem_drafts
+        DROP CONSTRAINT IF EXISTS problem_bundle_test_failure_check
+      `);
     }
 
     // 零副作用：题目行与草稿 revision 都不变
@@ -714,7 +700,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 非 zip 文件返回 400",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -740,7 +725,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 未登录返回 401",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -760,7 +744,6 @@ Deno.test({
 Deno.test({
   name:
     "import-bundle: admin 导入客观题套卷成功（无 evaluate.py/runtime_config，不产生评测包）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -804,7 +787,6 @@ Deno.test({
 Deno.test({
   name:
     "import-bundle: admin 按 (type, number) 幂等更新客观题套卷并全量替换小题",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -883,7 +865,6 @@ Deno.test({
 Deno.test({
   name:
     "import-bundle: 客观题包缺 questions.json / 空数组 / 非法字段被拒（400）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -947,7 +928,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: 默认域编辑者可创建客观题套卷并指定域内 number",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1075,7 +1055,6 @@ Deno.test({
 // 清理
 Deno.test({
   name: "import-bundle: cleanup",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1094,7 +1073,6 @@ Deno.test({
 Deno.test({
   name:
     "import-bundle: 普通用户导入开启 evaluator 联网/自定义命令被拒（NOJ-062/190 前置）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -1137,7 +1115,6 @@ Deno.test({
 
 Deno.test({
   name: "import-bundle: LLM max_calls 超过平台默认被拒（400）",
-  ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

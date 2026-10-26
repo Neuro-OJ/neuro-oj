@@ -4,12 +4,12 @@
  * 覆盖：公开端过滤 disabled 且按 sort_order；CRUD 往返；reorder 生效；
  * kind 校验（image 缺图 / text 缺标题）；权限（非管理员 403）；重排列表不完整 400。
  *
- * 依赖 PGlite 内存数据库 + JWT_SECRET。
+ * 依赖 独立测试数据库 + JWT_SECRET。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { createUserToken } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ValidationError } from "../../../../shared/base/errors.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";

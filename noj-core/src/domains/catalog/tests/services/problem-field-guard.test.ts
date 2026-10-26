@@ -33,9 +33,7 @@ import { createProblem, updateProblem } from "../../index.ts";
 import { importProblemBundle } from "../../index.ts";
 import { resetSetting, updateSetting } from "../../../system/index.ts";
 
-// PGlite 内存数据库始终可用
-const dbAvailable = true;
-const skip = !dbAvailable;
+// 独立测试数据库始终可用
 
 const ts = Date.now();
 
@@ -117,7 +115,6 @@ const db = getDb();
 
 Deno.test({
   name: "seed: 敏感字段权限项存在",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -138,7 +135,6 @@ Deno.test({
 
 Deno.test({
   name: "seed: user 角色默认不拥有敏感字段权限（NOJ-062 安全默认）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -166,7 +162,6 @@ Deno.test({
 
 Deno.test({
   name: "seed: 管理员收紧后重复 ensureRbacSeeds 不恢复（一次性授权持久化）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -182,30 +177,63 @@ Deno.test({
         ),
       )
       .limit(1);
-    if (!userRole || !cmdPerm) return; // 前置数据缺失则跳过
-
-    // 模拟管理员收紧：移除 user 角色的 command 授权
-    await db.delete(rolePermissions).where(
-      and(
-        eq(rolePermissions.role_id, userRole.id),
-        eq(rolePermissions.permission_id, cmdPerm.id),
-      ),
+    assert(userRole, "测试前置数据缺失：user 角色应由 RBAC seed 创建");
+    assert(
+      cmdPerm,
+      "测试前置数据缺失：problem:field_evaluator_command 权限应由 RBAC seed 创建",
     );
-    // 重启（再次 seed）不得恢复
-    await ensureRbacSeeds();
-    const [after] = await db.select().from(rolePermissions).where(
-      and(
-        eq(rolePermissions.role_id, userRole.id),
-        eq(rolePermissions.permission_id, cmdPerm.id),
-      ),
-    ).limit(1);
-    assertEquals(after, undefined, "收紧的授权不应被 seed 恢复");
 
-    // 恢复现场（手动补回关联，避免影响其他用例）
-    await db.insert(rolePermissions).values({
-      role_id: userRole.id,
-      permission_id: cmdPerm.id,
-    }).onConflictDoNothing();
+    // 先模拟一次管理员曾显式授予 command，再收紧。这样该测试不依赖
+    // 当前 seed 是否已经带有这条授权，同时最终恢复进入测试前的状态。
+    const [permissionBefore] = await db.select({
+      permission_id: rolePermissions.permission_id,
+    })
+      .from(rolePermissions)
+      .where(
+        and(
+          eq(rolePermissions.role_id, userRole.id),
+          eq(rolePermissions.permission_id, cmdPerm.id),
+        ),
+      )
+      .limit(1);
+    try {
+      await db.insert(rolePermissions).values({
+        role_id: userRole.id,
+        permission_id: cmdPerm.id,
+      }).onConflictDoNothing();
+
+      // 模拟管理员收紧：移除 user 角色的 command 授权
+      await db.delete(rolePermissions).where(
+        and(
+          eq(rolePermissions.role_id, userRole.id),
+          eq(rolePermissions.permission_id, cmdPerm.id),
+        ),
+      );
+      // 重启（再次 seed）不得恢复
+      await ensureRbacSeeds();
+      const [after] = await db.select().from(rolePermissions).where(
+        and(
+          eq(rolePermissions.role_id, userRole.id),
+          eq(rolePermissions.permission_id, cmdPerm.id),
+        ),
+      ).limit(1);
+      assertEquals(after, undefined, "收紧的授权不应被 seed 恢复");
+    } finally {
+      // 恢复进入测试前的状态，即使断言或 seed 在中途失败也不污染后续用例。
+      if (permissionBefore) {
+        await db.insert(rolePermissions).values({
+          role_id: userRole.id,
+          permission_id: cmdPerm.id,
+        }).onConflictDoNothing();
+      } else {
+        await db.delete(rolePermissions).where(
+          and(
+            eq(rolePermissions.role_id, userRole.id),
+            eq(rolePermissions.permission_id, cmdPerm.id),
+          ),
+        );
+      }
+    }
   },
 });
 
@@ -226,7 +254,6 @@ async function ensureCliUser(id: string): Promise<void> {
 
 Deno.test({
   name: "createProblem: 内部调用（无 c、无 userRole）默认放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -242,7 +269,6 @@ Deno.test({
 
 Deno.test({
   name: "createProblem: CLI admin 放行（显式 userRole=admin）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -262,7 +288,6 @@ Deno.test({
 
 Deno.test({
   name: "createProblem: CLI 显式非 admin 设置敏感字段被拒（403）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -288,7 +313,6 @@ Deno.test({
 
 Deno.test({
   name: "updateProblem: 内部调用（无 c、无 userRole）默认放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -313,7 +337,6 @@ Deno.test({
 
 Deno.test({
   name: "updateProblem: CLI 显式非 admin 更新敏感字段被拒（403）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -398,7 +421,6 @@ Deno.test({
 
 Deno.test({
   name: "资源上限: 创建超限被拒（400 RESOURCE_LIMIT_EXCEEDED）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -431,7 +453,6 @@ Deno.test({
 
 Deno.test({
   name: "资源上限: 未超限放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -462,7 +483,6 @@ Deno.test({
 
 Deno.test({
   name: "资源上限: 更新超限被拒（400）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -509,7 +529,6 @@ Deno.test({
 
 Deno.test({
   name: "importProblemBundle: CLI admin 导入含敏感字段的包放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -532,7 +551,6 @@ Deno.test({
 
 Deno.test({
   name: "importProblemBundle: CLI 显式非 admin 导入自定义 command 被拒（403）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -561,7 +579,6 @@ Deno.test({
 
 Deno.test({
   name: "importProblemBundle: 导入超限包被拒（400）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -596,7 +613,6 @@ Deno.test({
 Deno.test({
   name:
     "importProblemBundle: admin 按 number 更新超限包被拒且旧数据不变（I4 前置校验）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -664,7 +680,6 @@ Deno.test({
 // RESOURCE_LIMIT_SETTINGS（管理员无法设全局上限），judge 侧也不收敛题目级覆盖值。
 Deno.test({
   name: "资源上限: prediction workspace_size_mb 超管理员上限被拒（400）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -704,7 +719,6 @@ Deno.test({
 
 Deno.test({
   name: "资源上限: prediction workspace_size_mb 未超限放行",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -744,7 +758,6 @@ Deno.test({
   // 2026-09-25 评审：软废弃后 samples 不再做形状校验，历史坏值必须能导入
   // （服务层只记 warning，不再 400）——此前非法形状会被拒绝，测试也从未覆盖。
   name: "importProblemBundle: 独立样例保留且非法形状拒绝",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

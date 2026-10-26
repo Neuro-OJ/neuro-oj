@@ -18,12 +18,11 @@ import {
 import { AppError } from "../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
 
-const hasEnv = !!Deno.env.get("JWT_SECRET");
-
-// 初始化 PGlite schema（含 user_bans 表），供 authMiddleware 封禁检查使用
+// 初始化 测试数据库 schema（含 user_bans 表），供 authMiddleware 封禁检查使用
 await resetDbForTest();
 await initRedisForTest();
 
@@ -108,7 +107,6 @@ function createTestApp() {
 
 Deno.test({
   name: "must_change: 非白名单路径返回 403 PASSWORD_CHANGE_REQUIRED",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { token } = await createToken(true);
@@ -124,7 +122,6 @@ Deno.test({
 
 Deno.test({
   name: "must_change: 白名单路径 /api/v1/auth/change-password 放行",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { token } = await createToken(true);
@@ -139,7 +136,6 @@ Deno.test({
 
 Deno.test({
   name: "must_change: 白名单路径 /api/v1/auth/me 放行",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { token } = await createToken(true);
@@ -154,7 +150,6 @@ Deno.test({
 
 Deno.test({
   name: "must_change: 正常 token（无 flag）放行非白名单路径",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { id, token } = await createToken();
@@ -170,7 +165,6 @@ Deno.test({
 
 Deno.test({
   name: "must_change: must_change_password=false 的 token 放行非白名单路径",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
     const { token } = await createToken(false);
@@ -182,7 +176,6 @@ Deno.test({
 
 Deno.test({
   name: "must_change: 缺少 Authorization 头仍返回 401（非 403）",
-  ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
 
@@ -197,7 +190,6 @@ Deno.test({
 Deno.test({
   name:
     "must_change: PASSWORD_CHANGE_WHITELIST 包含 /api/v1/auth/change-password、/me、/logout",
-  ignore: !hasEnv,
   fn: () => {
     assertEquals(
       PASSWORD_CHANGE_WHITELIST.includes("/api/v1/auth/change-password"),

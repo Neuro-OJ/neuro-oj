@@ -12,21 +12,18 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { TOTP } from "otpauth";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { registerUser } from "../../index.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
-Deno.env.set("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters");
 if (!Deno.env.get("REDIS_URL")) {
   Deno.env.set("RATE_LIMIT_ENABLED", "false");
 }
 
 await resetDbForTest();
 
-const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !hasJwt;
 const BASE = "/api/v1/auth";
 const ts = Date.now();
 
@@ -46,7 +43,6 @@ async function freshUserAndToken() {
 
 Deno.test({
   name: "route tfa: setup 返回 secret/otpauth_url，confirm 后 /me 显示已启用",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -79,7 +75,6 @@ Deno.test({
 
 Deno.test({
   name: "route tfa: 已启用后再次 setup 返回 400",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -105,7 +100,6 @@ Deno.test({
 
 Deno.test({
   name: "route tfa: disable 使用 TOTP 成功后 /me 显示未启用",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -135,7 +129,6 @@ Deno.test({
 
 Deno.test({
   name: "route tfa: regenerate 返回新恢复码",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -168,7 +161,6 @@ Deno.test({
 
 Deno.test({
   name: "route login: 已启用 TFA 用户缺少 code 返回 TFA_REQUIRED",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

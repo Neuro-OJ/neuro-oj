@@ -386,32 +386,32 @@ router.get("/events", (c) => {
   // 私信端点不启用兜底超时：消息订阅为常驻连接（与原实现一致）
   return createSseStream(
     c,
-    async ({ stream, closed, close, onUnsubscribe }) => {
-      onUnsubscribe(
+    async (ctx) => {
+      ctx.onUnsubscribe(
         onEvent(
           Channels.user(userId),
           (_channel, message) => {
-            if (closed) return;
-            // 透传 payload 的 type 作为 SSE event 名（message:new / message:edited / message:recalled）
-            let eventName = "message:new";
-            try {
-              const parsed = JSON.parse(message);
-              if (typeof parsed?.type === "string") eventName = parsed.type;
-            } catch {
-              // 非 JSON 仍按默认事件名
-            }
-            stream.writeSSE({
-              event: eventName,
-              data: message,
-            }).catch(() => {
-              close();
+            void ctx.run(async () => {
+              if (ctx.closed) return;
+              // 透传 payload 的 type 作为 SSE event 名（message:new / message:edited / message:recalled）
+              let eventName = "message:new";
+              try {
+                const parsed = JSON.parse(message);
+                if (typeof parsed?.type === "string") eventName = parsed.type;
+              } catch {
+                // 非 JSON 仍按默认事件名
+              }
+              await ctx.stream.writeSSE({
+                event: eventName,
+                data: message,
+              });
             });
           },
         ),
       );
 
       // 发送初始化事件，触发代理 flush 响应头
-      await stream.writeSSE({
+      await ctx.stream.writeSSE({
         event: "connected",
         data: JSON.stringify({ status: "connected" }),
       });

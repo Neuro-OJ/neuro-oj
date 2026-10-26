@@ -62,9 +62,9 @@ export interface SendMessageOptions {
   forwarded_from_message_id?: string;
 }
 
-/** 统一 postgres.js（array-like）与 PGlite（{rows}）的 execute 返回形态。 */
-function executeRows<T>(result: T[] | { rows: T[] }): T[] {
-  return Array.isArray(result) ? result : result.rows;
+/** 读取 postgres.js RowList 的行数组。 */
+function executeRows<T>(result: T[]): T[] {
+  return result;
 }
 
 /**
