@@ -84,6 +84,40 @@ Deno.test("task lease[真实 PG]: 过期未回收 token 不能续租、完成或
   );
 });
 
+Deno.test("task lease[真实 PG]: 长事务不能用冻结的 now 完成已过期任务", async () => {
+  await resetDbForTest();
+  const db = getDb();
+  await db.transaction((tx) =>
+    enqueueTaskTx(tx, {
+      taskType: "search.index",
+      targetKind: "problem",
+      targetId: "long-transaction",
+      dedupeKey: "event",
+    })
+  );
+  const [task] = await claimTasks("long-transaction-worker", 1, 60_000, db);
+  await db.transaction(async (tx) => {
+    // now() 固定在事务开始；让到期时刻处于该事务内部，再用数据库自身等待越过它。
+    await tx.execute(
+      sql`UPDATE background_tasks SET lease_expiry=to_char(clock_timestamp() AT TIME ZONE 'UTC' + interval '100 milliseconds', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id=${task.id}`,
+    );
+    await tx.execute(sql`SELECT pg_sleep(0.2)`);
+    assertEquals(await completeTaskTx(tx, task.id, task.leaseToken), false);
+    assertEquals(
+      await rescheduleTaskTx(tx, task.id, task.leaseToken, {
+        __task_control: "reschedule",
+        availableAt: new Date().toISOString(),
+        payload: {},
+      }),
+      false,
+    );
+    assertEquals(
+      await failTaskTx(tx, task.id, task.leaseToken, "expired-in-transaction"),
+      { recorded: false, terminal: false },
+    );
+  });
+});
+
 Deno.test("task lease[真实 PG]: 长 handler 持续续租且批次尾部不预领", async () => {
   await resetDbForTest();
   const db = getDb();
