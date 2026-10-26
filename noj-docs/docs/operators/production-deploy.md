@@ -312,9 +312,9 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
    ```
 
 3. 使用同一目标 Release 协调升级 core、Gateway、Judge、UI 和客户端。Compose 会先
-   完成 `migrate` 与 `gateway-migrate` 两个一次性步骤：前者执行 Core 迁移/系统初始化，
-   后者执行 Gateway 迁移/默认配额 seed；HTTP 服务只做只读 schema 兼容检查。旧平台
-   Provider 和用量归默认域；新学校不继承其密钥。
+   完成 `migrate` 与 `gateway-migrate` 两个一次性步骤：前者执行 Core
+   迁移/系统初始化， 后者执行 Gateway 迁移/默认配额 seed；HTTP 服务只做只读
+   schema 兼容检查。旧平台 Provider 和用量归默认域；新学校不继承其密钥。
 4. 登录各使用域“LLM”页，核对或配置启用的 Provider、默认模型及日/月额度。
    原用户自建服务如仍需使用，经授权在目标域重新配置有效凭据；源题字段不会
    自动重建它们。已有域设置不会在重启时被旧平台默认值覆盖。
@@ -350,7 +350,7 @@ noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
 `NOJ_DRILL_DOCKER_HOST` 设置），不能省略，也不能指向承载生产服务的默认
 `/var/run/docker.sock`。演练 daemon 应使用独立的 data root、containerd root、
 Compose 项目名和网络；创建与清理它需要由维护者在维护窗口按
-[P8 演练说明](../../../dev-docs/engineering/architecture-remediation-p8.md)执行。
+[P8 演练说明](https://github.com/Neuro-OJ/neuro-oj/blob/7871d31ad22b659deb03eb92c66cb692d787a273/dev-docs/engineering/architecture-remediation-p8.md)执行。
 
 演练会把快照恢复到独立 Compose
 项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷）， 随后通过真实 API
