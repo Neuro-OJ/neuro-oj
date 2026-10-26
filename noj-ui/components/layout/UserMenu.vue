@@ -41,7 +41,7 @@
         @click="closeMenu"><UIcon name="i-lucide-file-code-2" class="size-4" />我的跨域提交</NuxtLink>
       <NuxtLink to="/messages" role="menuitem"
         class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover relative"
-        @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? '99+' : unreadCount }}</span></NuxtLink>
+        @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" data-test="unread-badge" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? '99+' : unreadCount }}</span></NuxtLink>
       <NuxtLink to="/settings" role="menuitem"
         class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover"
         @click="closeMenu"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
@@ -63,11 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { userUrl } from '~/utils/publicIdentifiers';
-const router = useRouter();
-const { user, isLoggedIn, logout, fetchUser } = useAuth();
-const { dialog } = useDialog();
-const { api } = useApi();
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue"
+import { userUrl } from "~/utils/publicIdentifiers";
+const router = useRouter()
+const { user, isLoggedIn, logout, fetchUser } = useAuth()
+const { dialog } = useDialog()
+const { api } = useApi()
 
 // ── 下拉菜单：点击切换 + 键盘可达（WCAG 2.1.1） ──
 const menuButtonRef = ref<HTMLButtonElement | null>(null);
@@ -119,15 +120,16 @@ const unreadCount = ref(0);
 let unreadPollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchUnreadCount() {
-  try {
-    const res = await api.get<{ data: { unread_count: number } }>(
-      '/api/v1/conversations/unread-count',
-      { silent: true },
-    );
-    unreadCount.value = res.data?.unread_count ?? 0;
-  } catch {
-    // 静默失败
-  }
+    try {
+        // 后端返回顶层 { unread_count }，Nitro 代理透传、useApi 不解包（#657）
+        const res = await api.get<{ unread_count: number }>(
+            "/api/v1/conversations/unread-count",
+            { silent: true },
+        )
+        unreadCount.value = res?.unread_count ?? 0
+    } catch {
+        // 静默失败
+    }
 }
 
 watch(isLoggedIn, (val) => {

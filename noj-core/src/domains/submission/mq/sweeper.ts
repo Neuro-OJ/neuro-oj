@@ -311,41 +311,36 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   }
 }
 
-/**
- * 恢复因“写 DB → 入队”窗口失败而遗留的正式提交。
- * 导出给 MQ 回归测试复用，生产入口仍由 runQueueSweeperOnce 调用。
- */
-export async function recoverPendingSubmissions(now: number): Promise<void> {
-  const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
+/** 正式提交 pending 恢复查询的列集合（sweeper 与自动重试即时派发共用）。 */
+function submissionRecoveryColumns(): PendingRecoveryTableColumns {
+  return {
+    id: submissions.id,
+    language: submissions.language,
+    code: submissions.code,
+    file_name: submissions.file_name,
+    problemId: submissions.problem_id,
+    createdAt: submissions.created_at,
+    runtimeConfig: problems.runtime_config,
+    supportPackageStorageUrl: problems.support_package_storage_url,
+    rejudgeSeq: submissions.rejudge_seq,
+    userId: submissions.user_id,
+    domainId: submissions.domain_id,
+    contestId: submissions.contest_id,
+    activeAttemptId: submissions.active_attempt_id,
+    artifactStorageUrl: submissions.artifact_storage_url,
+  };
+}
+
+/** 批任务由自己的持久化租约与退避负责派发，不能被 sweeper / 即时派发抢先执行。 */
+const NO_OPEN_JOB_ITEM_FOR_ACTIVE_ATTEMPT =
+  sql`NOT EXISTS (SELECT 1 FROM submission_job_items ji WHERE ji.attempt_id = ${submissions.active_attempt_id} AND ji.status IN ('pending', 'preparing', 'dispatched'))`;
+
+/** 正式提交 pending 恢复的入队/失败收尾动作。 */
+function submissionRecoveryActions(): PendingRecoveryActions<
+  PendingRecoveryRow
+> {
   const db = getDb();
-
-  const rows = await selectPendingRecoveryRows(
-    submissions,
-    {
-      id: submissions.id,
-      language: submissions.language,
-      code: submissions.code,
-      file_name: submissions.file_name,
-      problemId: submissions.problem_id,
-      createdAt: submissions.created_at,
-      runtimeConfig: problems.runtime_config,
-      supportPackageStorageUrl: problems.support_package_storage_url,
-      rejudgeSeq: submissions.rejudge_seq,
-      userId: submissions.user_id,
-      domainId: submissions.domain_id,
-      contestId: submissions.contest_id,
-      activeAttemptId: submissions.active_attempt_id,
-      artifactStorageUrl: submissions.artifact_storage_url,
-    },
-    and(
-      eq(submissions.status, "pending"),
-      lte(submissions.created_at, cutoff),
-      // 批任务由自己的持久化租约与退避负责派发，不能被 sweeper 抢先执行。
-      sql`NOT EXISTS (SELECT 1 FROM submission_job_items ji WHERE ji.attempt_id = ${submissions.active_attempt_id} AND ji.status IN ('pending', 'preparing', 'dispatched'))`,
-    ),
-  );
-
-  await recoverPendingRows(rows, {
+  return {
     idKey: "submission_id",
     label: "提交",
     onMissingRuntimeConfig: async (row) => {
@@ -371,6 +366,7 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
     onPermanentError: async (row, err) => {
       if (row.active_attempt_id) {
         // applyAttemptResult 在同一事务内登记吊销 outbox，提交后立即尝试执行。
+        // 不传 autoRetry：派发/恢复阶段的永久失败重试不可能成功，直接终结。
         await db.transaction(async (tx) => {
           await applyAttemptResult({
             attemptId: row.active_attempt_id!,
@@ -391,7 +387,55 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
         );
       }
     },
-  }, "submission");
+  };
+}
+
+/**
+ * 恢复因“写 DB → 入队”窗口失败而遗留的正式提交。
+ * 导出给 MQ 回归测试复用，生产入口仍由 runQueueSweeperOnce 调用。
+ *
+ * 超时以**活动尝试的创建时间**为准（无尝试的存量行回退提交创建时间）：
+ * 平台错误自动重试会为老提交创建新尝试并立即派发，若按提交创建时间判断，
+ * sweeper 可能在"新尝试已提交、即时派发尚未完成"的窗口内重复入队。
+ */
+export async function recoverPendingSubmissions(now: number): Promise<void> {
+  const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
+  const rows = await selectPendingRecoveryRows(
+    submissions,
+    submissionRecoveryColumns(),
+    and(
+      eq(submissions.status, "pending"),
+      lte(submissions.created_at, cutoff),
+      sql`NOT EXISTS (SELECT 1 FROM evaluation_attempts ea WHERE ea.id = ${submissions.active_attempt_id} AND ea.created_at > ${cutoff})`,
+      NO_OPEN_JOB_ITEM_FOR_ACTIVE_ATTEMPT,
+    ),
+  );
+  await recoverPendingRows(rows, submissionRecoveryActions(), "submission");
+}
+
+/**
+ * 平台错误自动重试的即时派发（结果事务提交后由结果消费者调用）。
+ *
+ * 与 sweeper 恢复共用同一套任务重建（按尝试绑定版本与冻结快照）、入队与失败收尾：
+ * 瞬时失败保留 pending，由 sweeper 在尝试创建 2 分钟后兜底；永久失败直接终结该尝试。
+ * 条件限定为"该尝试仍是提交的活动尝试且提交仍 pending"，重复调用不会重复入队到
+ * 已派发的提交。
+ */
+export async function dispatchAutoRetryAttempt(
+  submissionId: string,
+  attemptId: string,
+): Promise<void> {
+  const rows = await selectPendingRecoveryRows(
+    submissions,
+    submissionRecoveryColumns(),
+    and(
+      eq(submissions.id, submissionId),
+      eq(submissions.status, "pending"),
+      eq(submissions.active_attempt_id, attemptId),
+      NO_OPEN_JOB_ITEM_FOR_ACTIVE_ATTEMPT,
+    ),
+  );
+  await recoverPendingRows(rows, submissionRecoveryActions(), "submission");
 }
 
 /**

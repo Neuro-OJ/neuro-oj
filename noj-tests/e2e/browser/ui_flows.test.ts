@@ -263,7 +263,7 @@ async function logoutViaUI(): Promise<void> {
  * 改用当前账号、使用域、源题、版本和语言对应的编辑器草稿预置代码，
  * 恢复路径与真实用户「刷新后继续上次代码」完全一致。
  */
-async function submitCodeViaUI(code: string): Promise<void> {
+async function submitCodeViaUI(code: string): Promise<string> {
   const p = page!;
   const identity = await apiGet("/api/v1/auth/me", submitToken);
   const detail = await apiGet(
@@ -312,27 +312,27 @@ async function currentScoreText(): Promise<string | null> {
     hasText: /^\d+(?:\.\d+)?\s*分$/,
   }).first();
   if ((await span.count()) === 0) return null;
-  const text = (await span.textContent()) ?? "";
+  const text = (await span.first().textContent()) ?? "";
   return /\d+\s*分/.test(text) ? text.trim() : null;
 }
 
 /**
- * 等待一条"新的"评测结论：与 prevScore 不同的得分文本出现。
- * 侧栏一次只显示一张最近提交卡片；提交后卡片会先变为 等待评测/评测中（无得分），
- * 终态后显示「N 分」。轮询由前端完成，这里按 1s 间隔轮询 UI。
+ * 等待指定提交的评测结论出现在「最近」卡片。
+ * 提交后卡片先显示 等待评测/评测中（无得分），终态后显示「N 分」。
+ * 轮询由前端完成，这里按 1s 间隔轮询 UI。
  */
-async function waitForNewVerdict(
-  prevScore: string | null,
+async function waitForVerdict(
+  submissionId: string,
   timeoutMs = 180_000,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const text = await currentScoreText();
-    if (text !== null && text !== prevScore) return text;
+    const text = await verdictText(submissionId);
+    if (text !== null) return text;
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(
-    `等待评测结论超时（${timeoutMs}ms），prevScore=${prevScore ?? "无"}`,
+    `等待评测结论超时（${timeoutMs}ms），submission=${submissionId}`,
   );
 }
 

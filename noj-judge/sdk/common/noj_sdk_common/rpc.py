@@ -39,10 +39,18 @@ class RpcClient:
             self._out.flush()
 
     def register_pending(self, call_id: str) -> Queue:
-        """注册一个 pending 调用，返回用于接收响应的队列。"""
+        """注册一个 pending 调用，返回用于接收响应的队列。
+
+        若客户端已关闭，返回已预置 `_SHUTDOWN_FRAME` 的队列：调用方 `q.get()`
+        立即得到哨兵帧并按约定抛 ConnectionError。与 shutdown_pending/close 共用
+        同一把锁，判定无 race——从根上消除「注册晚于关闭唤醒」的竞态（见 #680）。
+        """
         q: Queue = Queue(maxsize=1)
         with self._lock:
-            self._pending[call_id] = q
+            if self._closed:
+                q.put_nowait(_SHUTDOWN_FRAME)
+            else:
+                self._pending[call_id] = q
         return q
 
     def pop_pending(self, call_id: str) -> Queue | None:
@@ -60,8 +68,13 @@ class RpcClient:
             q.put(frame)
 
     def shutdown_pending(self) -> None:
-        """唤醒所有 pending 调用（连接断开/关闭时）。"""
+        """标记关闭并唤醒所有 pending（连接断开/关闭时）。幂等。
+
+        `_closed` 置位与 pending 清空在同一把锁内原子完成；迟于本次唤醒注册的调用
+        会在 register_pending 处即拿到哨兵帧，彻底消除「注册晚于唤醒」竞态（#680）。
+        """
         with self._lock:
+            self._closed = True
             pending = list(self._pending.values())
             self._pending.clear()
         for q in pending:
@@ -76,6 +89,5 @@ class RpcClient:
             self._pending.clear()
 
     def close(self) -> None:
-        """标记关闭并唤醒所有 pending。"""
-        self._closed = True
+        """标记关闭并唤醒所有 pending（等价于 shutdown_pending）。"""
         self.shutdown_pending()

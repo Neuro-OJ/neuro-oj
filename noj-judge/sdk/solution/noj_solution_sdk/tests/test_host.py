@@ -117,6 +117,23 @@ class TestHostProcess(unittest.TestCase):
             resp = self._read_frame(proc)
             self.assertEqual(resp["type"], "error")
             self.assertEqual(resp["code"], "NotFound")
+            # entry 正常加载 → 选手缺函数（evaluator SDK 据此判 0 分）
+            self.assertEqual(resp["reason"], "not_registered")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_notfound_after_entry_load_failure_marks_reason(self):
+        """entry 语法错误 → 注册表为空，NotFound 帧标注 entry_load_failed（不应判缺函数）。"""
+        proc, path = self._start_host("def solve(:\n")
+        try:
+            self._read_frame(proc)  # ready
+            load_err = self._read_frame(proc)
+            self.assertEqual(load_err["code"], "SystemError")
+            self.assertIn("failed to load entry", load_err["message"])
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["code"], "NotFound")
+            self.assertEqual(resp["reason"], "entry_load_failed")
         finally:
             self._cleanup(proc, path)
 

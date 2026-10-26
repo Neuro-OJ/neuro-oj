@@ -4,14 +4,16 @@ Status: implemented
 
 ## Problem
 
-真实 LLM API 测试需要 key，但没有 key 时 CI 不应失败；同时需要确保有 key 时能跑真实调用。
+真实 LLM API 测试需要 key，但没有 key 时 CI 不应失败；同时需要确保有 key
+时能跑真实调用。
 
 ## Decision
 
 新增 `noj-llm-gateway/tests/real_api_test.ts`：
 
 - 无 `DEEPSEEK_API_KEY` 时测试 `ignore`，CI 保持绿。
-- 有 key 时对 `DEEPSEEK_BASE_URL`（默认 `https://api.deepseek.com`）发起一次最小 `chat/completions`，校验 HTTP 200 与 `choices` 非空。
+- 有 key 时对 `DEEPSEEK_BASE_URL`（默认 `https://api.deepseek.com`）发起一次最小
+  `chat/completions`，校验 HTTP 200 与 `choices` 非空。
 
 ## Alternatives considered
 

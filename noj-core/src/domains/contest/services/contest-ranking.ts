@@ -755,7 +755,12 @@ export async function getContestRankingView(
 }
 
 /**
- * 获取竞赛排名（类 Kaggle），保留旧数组返回接口供现有调用方使用。
+ * 获取竞赛排名（类 Kaggle），保留旧数组返回接口供内部计算/测试使用。
+ *
+ * **禁止用于 REST/SSE 路由**：路由必须走 `getContestRankingView` 以取得视图
+ * 元数据与统一守卫。隐私策略完全委托给 `getContestRankingView`——非管理员在
+ * 封榜期与「已结束未结算」时都只能拿到本人一行，本函数不再另开全量榜单捷径
+ * （#656）；未配置封榜的「已结束未结算」则按结算门禁抛 `ConflictError`。
  */
 export async function getContestRanking(
   contestId: string,
@@ -763,16 +768,8 @@ export async function getContestRanking(
   isAdmin = false,
   viewerId?: string,
 ): Promise<KaggleRankingRow[]> {
-  // 兼容仅供内部计算/历史调用方使用的数组接口：正式榜单的 REST/SSE
-  // 路由统一走 getContestRankingView，不能借此绕过结束后的结算门禁。
-  const contest = await getContest(contestId, viewerId);
-  if (contest.type !== type) {
-    throw new BadRequestError("排名类型与竞赛赛制不一致");
-  }
-  if (contest.status === "ended" && !isAdmin) {
-    const snapshot = await getLatestContestRankingSnapshot(contestId);
-    if (!snapshot) return getKaggleRanking(contestId);
-  }
+  // 不得为「已结束但无快照」提前 return 全量榜：那会绕过
+  // getContestRankingView 的封榜/待结算隐私守卫（#656）。
   const result = await getContestRankingView(
     contestId,
     type,
