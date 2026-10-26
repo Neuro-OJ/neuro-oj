@@ -657,6 +657,21 @@ Deno.test({
             teacher.page,
             `/d/${slug}/assignments/${assignmentId}`,
           );
+          // 发布补题会触发成绩投影异步刷新；先用桌面矩阵显式拉取并等待
+          // 当前作业的成绩，再切换到窄屏卡片，避免刷新重渲染把展开状态折叠。
+          await teacher.page.getByRole("button", {
+            name: "刷新成绩",
+            exact: true,
+          }).click();
+          await expect(
+            teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
+          ).toContainText(studentName);
+          await expect(
+            teacher.page.getByRole("button", {
+              name: `${studentName} ${number} 0 · 未达标`,
+              exact: true,
+            }),
+          ).toBeVisible({ timeout: 15000 });
           await teacher.page.setViewportSize({ width: 390, height: 844 });
           await expect(
             teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
