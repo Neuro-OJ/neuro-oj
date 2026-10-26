@@ -5,14 +5,16 @@ import AssignmentPage from '~/pages/d/[slug]/assignments/[assignmentId]/index.vu
 import TeachingPage from '~/pages/d/[slug]/teaching.vue';
 import LearningPage from '~/pages/d/[slug]/my-learning.vue';
 const api = { assignment: vi.fn(), classroom: vi.fn(), matrix: vi.fn(), progress: vi.fn(), dashboard: vi.fn() };
+const route = { params: { assignmentId: 'task' }, query: {} as Record<string, string> };
 let events: Array<() => Promise<void>>;
 beforeEach(() => {
   vi.clearAllMocks();
+  route.query = {};
   events = [];
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
-  vi.stubGlobal('useRoute', () => ({ params: { assignmentId: 'task' }, query: {} }));
+  vi.stubGlobal('useRoute', () => route);
   vi.stubGlobal('useState', () => ref({ id: 'teacher' }));
   vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'teacher' }) }));
   vi.stubGlobal(
@@ -54,7 +56,9 @@ beforeEach(() => {
   api.classroom.mockResolvedValue({
     data: { id: 'class', status: 'active', manages_domain: true, membership: { role: 'coach' } },
   });
-  api.matrix.mockResolvedValue({ data: { items: [], rows: [], total: 0, updating: false } });
+  api.matrix.mockResolvedValue({
+    data: { items: [], rows: [{ user_id: 'student', username: '学生', cells: [] }], total: 1, updating: false },
+  });
   api.progress.mockResolvedValue({ data: { items: [], cells: [], updating: false } });
   api.dashboard.mockResolvedValue({ data: { assignments: [], help_requests: [], total: 0, per_page: 50 } });
 });
@@ -102,6 +106,23 @@ describe('教学页面的持久事件刷新', () => {
     await flushPromises();
     expect(api.matrix).not.toHaveBeenCalled();
     expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
+    view.unmount();
+  });
+  it('仅有学情权限的助教不挂载反馈栏，历史深链仍显示版本依据', async () => {
+    route.query = { history: '1' };
+    api.classroom.mockResolvedValue({
+      data: {
+        id: 'class',
+        status: 'active',
+        manages_domain: false,
+        membership: { role: 'assistant', status: 'active' },
+        capabilities: ['progress:read'],
+      },
+    });
+    const view = await page(AssignmentPage);
+    expect(view.find('assignment-conversation-stub').exists()).toBe(false);
+    expect(view.find('assignment-history-stub').exists()).toBe(true);
+    expect(view.text()).toContain('版本与策略变化依据');
     view.unmount();
   });
   it('教师工作台和我的学习都在新事件后重读本域任务', async () => {

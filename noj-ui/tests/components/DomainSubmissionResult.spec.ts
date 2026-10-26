@@ -19,6 +19,46 @@ const stubs = {
 };
 beforeEach(() => vi.stubGlobal('computed', computed));
 describe('域提交结果呈现', () => {
+  it('非OI完成结果不显示进行状态，平台失败不冒充答案错误', () => {
+    const render = (value: Partial<DomainSubmission>) =>
+      mount(DomainSubmissionResult, { props: { submission: { ...submission, ...value } }, global: { stubs } });
+    for (const mode of ['artifact', 'prediction', 'ui', 'code']) {
+      const view = render({ submission_mode: mode });
+      expect(view.text()).toContain('评测完成');
+      expect(view.text()).not.toContain('排队');
+      expect(view.find('.animate-pulse').exists()).toBe(false);
+    }
+    const objective = render({ kind: 'objective' });
+    expect(objective.text()).toContain('客观题已完成评分');
+    const failed = render({ status: 'error', result: { status: 'error', score: 0 } });
+    expect(failed.text()).toContain('平台评测失败');
+    expect(failed.text()).toContain('不代表答案错误');
+    for (const [state, label] of [['pending', '等待评测'], ['judging', '正在评测']]) {
+      const view = render({ status: state, result: null, attempts: [] });
+      expect(view.text()).toContain(label);
+      expect(view.find('.animate-pulse').exists()).toBe(true);
+    }
+  });
+  it('历史平台失败不覆盖当前正式完成结果', () => {
+    const view = mount(DomainSubmissionResult, {
+      props: {
+        submission: {
+          ...submission,
+          attempts: [{
+            attempt_id: 'old',
+            sequence: 1,
+            version: 1,
+            state: 'finished',
+            result_kind: 'platform_error',
+            score: 0,
+          }],
+        },
+      },
+      global: { stubs },
+    });
+    expect(view.text()).toContain('评测完成');
+    expect(view.text()).not.toContain('平台评测失败');
+  });
   it('正式 OI 判定使用 AC/WA/CE，不将已评测当作通过', () => {
     for (const verdict of ['AC', 'WA', 'CE']) {
       const view = mount(DomainSubmissionResult, {

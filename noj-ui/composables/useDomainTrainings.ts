@@ -1,31 +1,5 @@
-import type { DomainProblemReference } from '~/utils/domain-problems';
-export interface DomainTrainingInput {
-  title: string;
-  description: string;
-  visibility: 'private' | 'unlisted' | 'public';
-  problems: string[];
-}
-export interface DomainTrainingDetail {
-  id: string;
-  domain_id: string;
-  source_domain_id: string;
-  source_domain_slug: string;
-  title: string;
-  description: string;
-  revision: number;
-  visibility: DomainTrainingInput['visibility'];
-  is_shared: boolean;
-  can_edit: boolean;
-  can_share: boolean;
-  items: Array<
-    DomainProblemReference & {
-      binding_id: string | null;
-      position: number;
-      resource_available: boolean;
-      can_import: boolean;
-    }
-  >;
-}
+import type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain-trainings';
+export type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain-trainings';
 const path = (slug: string, id?: string) =>
   `/api/v1/domains/${encodeURIComponent(slug)}/trainings${id ? `/${encodeURIComponent(id)}` : ''}`;
 /** 题单的创建、排序和题目链接保留当前使用域。 */

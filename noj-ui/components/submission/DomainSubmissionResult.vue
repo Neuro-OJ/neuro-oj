@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainSubmission } from '~/composables/useDomainSubmissions';
-import { formatMemory, formatScore, formatTime, getResultDef, getStatusLabel } from '~/utils/submissionFormat';
+import { formatMemory, formatScore, formatTime, getResultDef } from '~/utils/submissionFormat';
 interface OiSummary {
   verdict?: string;
   compile_error?: string;
@@ -10,6 +10,16 @@ const props = defineProps<{ submission: DomainSubmission }>();
 const visible = computed(() => props.submission.result_visibility !== 'hidden');
 const oi = computed(() => (props.submission.result?.details as { oi?: OiSummary } | null)?.oi);
 const verdict = computed(() => props.submission.result?.verdict ?? oi.value?.verdict);
+const summary = computed(() => {
+  const submission = props.submission, state = submission.status ?? submission.result?.status;
+  const platformFailure = state === 'error' || submission.result?.status === 'error';
+  if (platformFailure) return { label: '平台评测失败', description: '评测服务未能完成本次评测，不代表答案错误。请查看诊断，必要时联系管理员。', tone: 'error', icon: 'i-lucide-triangle-alert', pending: false };
+  if (state === 'pending' || state === 'queued') return { label: '等待评测', description: '提交已受理，正在等待评测资源。', tone: 'neutral', icon: 'i-lucide-clock', pending: true };
+  if (state === 'judging' || state === 'running') return { label: '正在评测', description: '评测正在进行，完成后将显示正式结果。', tone: 'neutral', icon: 'i-lucide-loader-2', pending: true };
+  if (verdict.value) return { label: getResultDef(verdict.value).label, description: verdict.value === 'AC' ? '所有测试点顺利通过' : verdict.value === 'CE' ? '编译未通过，请查看下方编译诊断并修改代码。' : '本次正式判定未通过，可结合评测详情继续修改。', tone: verdict.value === 'AC' ? 'success' : 'error', icon: verdict.value === 'AC' ? 'i-lucide-check-circle-2' : 'i-lucide-alert-circle', pending: false };
+  if (state === 'finished' || submission.result) return { label: '评测完成', description: submission.kind === 'objective' ? '本次客观题已完成评分。得分与是否满足作业要求分别计算。' : '本次评测已完成。请结合得分和评测详情查看结果。', tone: 'neutral', icon: 'i-lucide-check-circle-2', pending: false };
+  return { label: '等待正式结果', description: '当前尚无可展示的正式评测结果。', tone: 'neutral', icon: 'i-lucide-clock', pending: false };
+});
 const subtasks = computed(() =>
   visible.value && props.submission.resource_available && props.submission.result_visibility === 'cases'
     ? oi.value?.subtasks ?? []
@@ -22,40 +32,25 @@ const subtasks = computed(() =>
     <div
       v-else
       class="rounded-lg border p-5 shadow-card transition-colors"
-      :class="verdict === 'AC'
-        ? 'border-signal/30 bg-signal/5'
-        : verdict
-        ? 'border-error-text/30 bg-error-text/5'
-        : 'border-border bg-bg-panel'"
+      :class="summary.tone === 'success' ? 'border-signal/30 bg-signal/5' : summary.tone === 'error' ? 'border-error-text/30 bg-error-text/5' : 'border-border bg-bg-panel'"
     >
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <div
             class="flex size-11 shrink-0 items-center justify-center rounded-full text-xl"
-            :class="verdict === 'AC'
-              ? 'bg-signal/20 text-signal'
-              : verdict
-              ? 'bg-error-text/20 text-error-text'
-              : 'bg-primary-bg text-primary animate-pulse'"
+            :class="summary.tone === 'success' ? 'bg-signal/20 text-signal-deep' : summary.tone === 'error' ? 'bg-error-text/10 text-error-text' : 'bg-primary-bg text-primary'"
           >
-            <UIcon
-              :name="verdict === 'AC'
-                ? 'i-lucide-check-circle-2'
-                : verdict
-                ? 'i-lucide-alert-circle'
-                : 'i-lucide-clock'"
-              class="size-6"
-            />
+            <UIcon :name="summary.icon" class="size-6" :class="{ 'animate-pulse': summary.pending }" />
           </div>
           <div>
             <h3
               class="text-xl font-bold tracking-tight"
-              :class="verdict === 'AC' ? 'text-signal' : verdict ? 'text-error-text' : 'text-text'"
+              :class="summary.tone === 'success' ? 'text-signal-deep' : summary.tone === 'error' ? 'text-error-text' : 'text-text'"
             >
-              {{ verdict ? getResultDef(verdict).label : submission.result ? getStatusLabel(submission.status ?? '', submission.result.status) : '等待正式结果' }}
+              {{ summary.label }}
             </h3>
             <p class="text-xs text-text-muted mt-0.5">
-              {{ verdict === 'AC' ? '所有测试点顺利通过' : verdict ? '部分测试用例未达成预期判定' : '评测排队中或正在沙箱执行' }}
+              {{ summary.description }}
             </p>
           </div>
         </div>

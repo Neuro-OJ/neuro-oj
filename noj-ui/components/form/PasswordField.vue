@@ -23,7 +23,7 @@ const visible = ref(false)
 </script>
 
 <template>
-  <UFormField :label="label" :error="error" :required="required">
+  <UFormField :label="label" :error="error || undefined" :required="required">
     <UInput
       v-model="model"
       :type="visible ? 'text' : 'password'"

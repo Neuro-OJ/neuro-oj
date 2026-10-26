@@ -162,7 +162,7 @@ cd dist
 
 ## API 交互约定
 
-空间首页、班级概览和作业详情使用 Nitro 视图 BFF，初始数据通过
+空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据通过
 `useViewAsyncData` 消费，交互仍走原有细粒度 API。接口、缓存与故障边界见
 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 

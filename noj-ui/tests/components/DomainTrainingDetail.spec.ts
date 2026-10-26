@@ -17,10 +17,45 @@ beforeEach(() => {
   vi.stubGlobal('ref', ref);
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
-  vi.stubGlobal('useRoute', () => ({ params: { trainingId: 't1' } }));
+  vi.stubGlobal(
+    'useRoute',
+    () => ({
+      params: { trainingId: 't1' },
+      query: {},
+      path: '/d/school/trainings/t1',
+      fullPath: '/d/school/trainings/t1',
+    }),
+  );
   vi.stubGlobal('useWorkspace', () => ({ slug: ref('school'), domain: ref({ status: 'active' }) }));
   vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'student' }) }));
-  vi.stubGlobal('useDomainTrainings', () => ({ detail }));
+  vi.stubGlobal('useApi', () => ({
+    api: {
+      get: async () => {
+        const response = await detail('school', 't1');
+        const { items, ...training } = response.data;
+        return {
+          sections: {
+            training: {
+              data: {
+                data: {
+                  training,
+                  page: 1,
+                  per_page: 20,
+                  total: items.length,
+                  items: items.map((item: Record<string, unknown>) => ({
+                    ...item,
+                    title: '训练题目',
+                    progress: 'unseen',
+                    summary_error: false,
+                  })),
+                },
+              },
+            },
+          },
+        };
+      },
+    },
+  }));
   vi.stubGlobal('useDomainResources', () => resources);
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal(
@@ -73,7 +108,7 @@ describe('引用题单的使用域作答', () => {
       },
     });
     const view = await page();
-    const answers = view.findAll('button').filter((button) => button.text() === '在当前域作答');
+    const answers = view.findAll('button').filter((button) => button.text() === '继续作答');
     expect(answers).toHaveLength(1);
     expect(answers[0]!.attributes('data-to')).toBe('/d/school/problems/main:1001');
     expect(view.findAll('button').some((button) => button.text() === '引用题目到当前域')).toBe(false);

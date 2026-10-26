@@ -5,6 +5,7 @@ import { domainIdentityLabel } from '~/utils/domain-navigation';
 import { userUrl } from '~/utils/publicIdentifiers';
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import type { WorkspaceSummary } from '~/utils/workspace';
+import { readUnreadCount } from '~/utils/unread-count';
 const route = useRoute(), slug = useNavigationDomain();
 const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();
@@ -38,7 +39,18 @@ const messages = useViewAsyncData(
   () => `user-menu-messages:${user.value?.id ?? 'guest'}`,
   () => user.value ? api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', { silent: true }) : Promise.resolve({ unread_count: 0 }),
 );
-const unreadCount = computed(() => isLoggedIn.value ? messages.data.value?.unread_count ?? 0 : 0);
+const lastMessages = ref({ actor: user.value?.id ?? null, count: 0 });
+const unreadCount = computed(() => {
+  const actor = user.value?.id ?? null;
+  if (!actor) return 0;
+  return lastMessages.value.actor === actor ? lastMessages.value.count : 0;
+});
+watch([() => user.value?.id, messages.data], ([actor, response], previous) => {
+  if (lastMessages.value.actor !== (actor ?? null)) lastMessages.value = { actor: actor ?? null, count: 0 };
+  if (previous.length && actor !== previous[0] && response === previous[1]) return;
+  const count = readUnreadCount(response, 'messages');
+  if (actor && count !== null) lastMessages.value = { actor, count };
+}, { immediate: true });
 usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => messages.refresh(), immediate: false });
 async function selectDomain(space: WorkspaceSummary) {
   await workspaces.remember(space.slug);

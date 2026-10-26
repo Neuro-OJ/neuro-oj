@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import UserMenu from '~/components/layout/UserMenu.vue';
 const slug = ref('school'), user = ref<{ id: string; username: string; is_admin: boolean } | null>(null);
 const remember = vi.fn(), navigate = vi.fn();
+const messageResponse = ref<unknown>({ unread_count: 3 });
 const permissions = ref<string[]>([]);
 const spaces = [{ id: 's', slug: 'school', name: '学校' }, { id: 't', slug: 'team', name: '团队' }];
 const stubs = {
@@ -35,9 +36,33 @@ beforeEach(() => {
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm: vi.fn() } }));
   vi.stubGlobal('usePolling', vi.fn());
   vi.stubGlobal('useAsyncData', () => ({ data: ref({ data: spaces }) }));
+  messageResponse.value = { unread_count: 3 };
+  vi.stubGlobal(
+    'useViewAsyncData',
+    (section: string) =>
+      section === 'messageUnread' ? { data: messageResponse, refresh: vi.fn() } : { data: ref({ data: spaces }) },
+  );
   vi.stubGlobal('navigateTo', navigate);
 });
 describe('头像菜单中的域导航', () => {
+  it('真实未读契约正确显示，刷新失败不崩溃且换账号不沿用旧角标', async () => {
+    const view = mount(UserMenu, { global: { stubs } });
+    const badge = () =>
+      view.getComponent({ name: 'UDropdownMenu' }).props('items').flat().find((item: { label: string }) =>
+        item.label === '消息'
+      ).badge;
+    expect(badge()).toBe(3);
+    messageResponse.value = undefined;
+    await view.vm.$nextTick();
+    expect(badge()).toBe(3);
+    user.value = { id: 'other', username: 'other', is_admin: false };
+    await view.vm.$nextTick();
+    expect(badge()).toBeUndefined();
+    messageResponse.value = { unread_count: 1 };
+    await view.vm.$nextTick();
+    expect(badge()).toBe(1);
+    view.unmount();
+  });
   it('当前域写入用户名和业务链接，不提供跨域汇总入口', async () => {
     const view = mount(UserMenu, { global: { stubs } });
     expect(view.text()).toContain('student@school');

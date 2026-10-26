@@ -15,7 +15,8 @@
     "test:theme": "deno test -A tests/browser/editorTheme.browser.test.ts",
     "test:components": "deno run -A npm:vitest run",
     "test:bff:ssr": "deno run -A scripts/verify-bff-ssr.mjs",
-    "test:bff:cache": "deno run -A scripts/verify-bff-cache.mjs"
+    "test:bff:cache": "deno run -A scripts/verify-bff-cache.mjs",
+    "test:learning:browser": "deno run -A scripts/verify-learning-browser.mjs"
   },
   "lint": {
     "include": [

@@ -57,7 +57,7 @@ describe('域社区作用域与异步交互', () => {
     finish({ data: { unread_count: 9 } });
     await loading;
     expect(domain.unreadCount.value).toBe(0);
-    api.get.mockResolvedValue({ data: { unread_count: 2 } });
+    api.get.mockResolvedValue({ data: { count: 2 } });
     await domain.loadUnreadCount();
     expect(domain.unreadCount.value).toBe(2);
     const account = lifetime.run(() => useCommunityNotifications(true))!;

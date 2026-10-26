@@ -15,6 +15,19 @@ const { user, isLoggedIn, loading, fetchUser } = auth
 const router = useRouter()
 const { api } = useApi()
 
+const route = useRoute();
+const settingsGroups = [
+  { label: '个人资料', value: 'settings-profile' },
+  { label: '密码与安全', value: 'settings-security' },
+  { label: '第三方账号', value: 'settings-connections' },
+  { label: '数据与隐私', value: 'settings-privacy' },
+  { label: '账号注销', value: 'settings-delete' },
+];
+const currentGroup = computed({
+  get: () => settingsGroups.some(group => `#${group.value}` === route.hash) ? route.hash!.slice(1) : 'settings-profile',
+  set: (value: string) => { void navigateTo({ path: route.path, query: route.query, hash: `#${value}` }); },
+});
+
 // 认证守卫：loading 就绪后检查登录状态
 watch(
   loading,
@@ -507,7 +520,16 @@ async function handleDeleteAccount() {
 </script>
 
 <template>
-  <div class="max-w-[800px] mx-auto px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
+  <div class="mx-auto max-w-[1120px] px-4 py-6 sm:px-6 sm:py-8">
+    <header class="mb-6"><h1 class="text-2xl font-bold text-text">账号设置</h1><p class="mt-2 text-sm text-text-secondary">管理个人资料、登录安全与关联账号。各项修改分别保存。</p></header>
+    <div class="grid items-start gap-6 lg:grid-cols-[180px_minmax(0,1fr)]">
+      <aside class="hidden lg:sticky lg:top-24 lg:block">
+        <nav aria-label="账号设置分组" class="space-y-1">
+          <NuxtLink v-for="group in settingsGroups" :key="group.value" :to="{ path: route.path, query: route.query, hash: `#${group.value}` }" :aria-current="currentGroup === group.value ? 'location' : undefined" class="block rounded px-3 py-3 text-sm font-medium" :class="currentGroup === group.value ? 'bg-primary-bg text-primary' : 'text-text-secondary hover:bg-primary-hover-bg hover:text-text'">{{ group.label }}</NuxtLink>
+        </nav>
+      </aside>
+      <div class="min-w-0 space-y-6">
+        <div class="sticky top-[var(--header-h)] z-20 border-b border-border bg-bg-page py-3 lg:hidden"><USelect v-model="currentGroup" :items="settingsGroups" aria-label="账号设置分组" class="w-full" /></div>
     <!--
       返回个人主页（评审修正）：/settings 在面包屑注册表中是**单层**，
       而 BreadcrumbNav 对单层不渲染（避免占用首屏）。因此本页若删掉该链接，
@@ -523,12 +545,12 @@ async function handleDeleteAccount() {
     </NuxtLink>
 
     <!-- 标题 -->
-    <div class="bg-white border border-border rounded-xl overflow-hidden">
+    <section id="settings-profile" aria-labelledby="profile-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
       <div class="px-6 py-5 border-b border-border">
-        <h1 class="text-xl font-bold flex items-center gap-2">
+        <h2 id="profile-title" class="text-lg font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-edit-3" class="size-5" />
           个人资料编辑
-        </h1>
+        </h2>
       </div>
 
       <div class="px-6 py-6 flex flex-col gap-6">
@@ -617,76 +639,20 @@ async function handleDeleteAccount() {
           <span>{{ saving ? "保存中..." : "保存" }}</span>
         </UButton>
       </div>
-    </div>
+    </section>
 
     <!-- 第三方账号（issue #227） -->
-    <div class="bg-white border border-border rounded-xl overflow-hidden">
+    <section id="settings-security" aria-labelledby="security-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
       <div class="px-6 py-5 border-b border-border">
-        <h1 class="text-xl font-bold flex items-center gap-2">
-          <UIcon name="i-lucide-link" class="size-5" />
-          第三方账号
-        </h1>
-      </div>
-      <div class="px-6 py-6 flex flex-col gap-4">
-        <p class="text-sm text-text-secondary">
-          绑定后可以使用第三方账号登录。绑定和解绑需要确认当前密码；没有本地密码的账号不能解绑唯一登录方式。
-        </p>
-        <UInput
-          v-if="user?.has_local_password"
-          v-model="oauthPassword"
-          type="password"
-          autocomplete="current-password"
-          placeholder="确认当前密码"
-          class="max-w-sm"
-        />
-        <div v-if="linkedOAuthAccounts.length" class="flex flex-col gap-2">
-          <div
-            v-for="account in linkedOAuthAccounts"
-            :key="account.id"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-          >
-            <div>
-              <p class="font-semibold">{{ account.provider }}</p>
-              <p class="text-xs text-text-muted">
-                {{ account.provider_username || account.provider_user_id }}
-              </p>
-            </div>
-            <UButton
-              size="sm"
-              color="error"
-              variant="outline"
-              :loading="oauthLoading"
-              @click="handleOAuthUnlink(account.id)"
-            >解绑</UButton>
-          </div>
-        </div>
-        <div v-if="oauthProviders.length" class="flex flex-wrap gap-2">
-          <UButton
-            v-for="provider in oauthProviders.filter((item) => !linkedOAuthAccounts.some((account) => account.provider === item.id))"
-            :key="provider.id"
-            color="primary"
-            variant="outline"
-            :loading="oauthLoading"
-            @click="beginOAuthLink(provider.id)"
-          >绑定 {{ provider.name }}</UButton>
-        </div>
-        <p v-if="oauthError" class="text-sm text-error-text">{{ oauthError }}</p>
-        <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
-          管理员尚未配置第三方登录。
-        </p>
-      </div>
-    </div>
-
-    <!-- 两步验证（TFA，issue #228） -->
-    <div class="bg-white border border-border rounded-xl overflow-hidden">
-      <div class="px-6 py-5 border-b border-border">
-        <h1 class="text-xl font-bold flex items-center gap-2">
+        <h2 id="security-title" class="text-lg font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-shield-check" class="size-5" />
-          两步验证（TFA）
-        </h1>
+          密码与安全
+        </h2>
       </div>
 
       <div class="px-6 py-6 flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4"><div><h3 class="font-medium">登录密码</h3><p class="mt-1 text-sm text-text-secondary">{{ user?.has_local_password ? '使用当前密码验证后更改登录密码。' : '为账号设置本地登录密码。' }}</p></div><UButton :to="user?.has_local_password ? '/change-password' : '/set-password'" variant="outline">{{ user?.has_local_password ? '修改密码' : '设置密码' }}</UButton></div>
+        <h3 class="font-medium">两步验证</h3>
         <p class="text-sm text-text-secondary">
           启用后登录时需要输入验证器 App 生成的 6 位验证码或恢复码。
         </p>
@@ -782,9 +748,66 @@ async function handleDeleteAccount() {
 
         <p v-if="tfaError" class="text-sm text-error-text">{{ tfaError }}</p>
       </div>
-    </div>
+    </section>
 
-    <div class="overflow-hidden rounded-xl border border-border bg-white">
+    <section id="settings-connections" aria-labelledby="connections-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
+      <div class="px-6 py-5 border-b border-border">
+        <h2 id="connections-title" class="text-lg font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-link" class="size-5" />
+          第三方账号
+        </h2>
+      </div>
+      <div class="px-6 py-6 flex flex-col gap-4">
+        <p class="text-sm text-text-secondary">
+          绑定后可以使用第三方账号登录。绑定和解绑需要确认当前密码；没有本地密码的账号不能解绑唯一登录方式。
+        </p>
+        <UInput
+          v-if="user?.has_local_password"
+          v-model="oauthPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="确认当前密码"
+          class="max-w-sm"
+        />
+        <div v-if="linkedOAuthAccounts.length" class="flex flex-col gap-2">
+          <div
+            v-for="account in linkedOAuthAccounts"
+            :key="account.id"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+          >
+            <div>
+              <p class="font-semibold">{{ account.provider }}</p>
+              <p class="text-xs text-text-muted">
+                {{ account.provider_username || account.provider_user_id }}
+              </p>
+            </div>
+            <UButton
+              size="sm"
+              color="error"
+              variant="outline"
+              :loading="oauthLoading"
+              @click="handleOAuthUnlink(account.id)"
+            >解绑</UButton>
+          </div>
+        </div>
+        <div v-if="oauthProviders.length" class="flex flex-wrap gap-2">
+          <UButton
+            v-for="provider in oauthProviders.filter((item) => !linkedOAuthAccounts.some((account) => account.provider === item.id))"
+            :key="provider.id"
+            color="primary"
+            variant="outline"
+            :loading="oauthLoading"
+            @click="beginOAuthLink(provider.id)"
+          >绑定 {{ provider.name }}</UButton>
+        </div>
+        <p v-if="oauthError" class="text-sm text-error-text">{{ oauthError }}</p>
+        <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
+          管理员尚未配置第三方登录。
+        </p>
+      </div>
+    </section>
+
+    <section id="settings-privacy" aria-label="个人信息与隐私" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
       <div class="border-b border-border px-6 py-5">
         <h2 class="flex items-center gap-2 text-xl font-bold text-text">
           <UIcon name="i-lucide-shield-check" class="size-5" />
@@ -846,9 +869,9 @@ async function handleDeleteAccount() {
         <p v-else-if="requestsLoadError" class="text-xs text-error-text">{{ requestsLoadError }}</p>
         <p v-else-if="requestsLoaded" class="text-xs text-text-muted">暂无请求。</p>
       </div>
-    </div>
+    </section>
 
-    <div class="overflow-hidden rounded-xl border border-error-border bg-white">
+    <section id="settings-delete" aria-label="账号注销" class="scroll-mt-32 overflow-hidden rounded border border-error-border bg-bg-panel">
       <div class="border-b border-error-border px-6 py-5">
         <h2 class="flex items-center gap-2 text-xl font-bold text-error-text">
           <UIcon name="i-lucide-triangle-alert" class="size-5" />
@@ -861,6 +884,8 @@ async function handleDeleteAccount() {
         <NuxtLink to="/data-policy" target="_blank" class="text-sm text-primary underline">阅读完整的数据使用、注销保留与反馈说明</NuxtLink>
         <p v-if="deleteAccountError" class="text-sm text-error-text">{{ deleteAccountError }}</p>
         <UButton color="error" class="self-start" :loading="deletingAccount" @click="handleDeleteAccount">注销账户</UButton>
+      </div>
+    </section>
       </div>
     </div>
   </div>

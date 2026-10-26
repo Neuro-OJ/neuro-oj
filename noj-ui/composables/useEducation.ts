@@ -303,8 +303,8 @@ export function useEducationApi() {
         query: { page },
         silent: true,
       }),
-    ask: (slug: string, id: string, body: string, key: string) =>
-      api.post(`${task(slug, id)}/help-requests`, { body }, idempotent(key)),
+    ask: (slug: string, id: string, body: string, key: string, itemId?: string | null) =>
+      api.post(`${task(slug, id)}/help-requests`, { body, item_id: itemId ?? null }, idempotent(key)),
     reply: (slug: string, id: string, helpId: string, body: string, key: string) =>
       api.post(`${task(slug, id)}/help-requests/${encodeURIComponent(helpId)}/replies`, { body }, idempotent(key)),
     resolve: (slug: string, id: string, helpId: string, current: number) =>

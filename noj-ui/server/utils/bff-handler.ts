@@ -32,9 +32,18 @@ export async function handleBffView(event: H3Event, kind: BffViewKind) {
   try {
     const query = getQuery(event);
     const slug = getRouterParam(event, 'slug');
-    const id = getRouterParam(event, kind === 'classroom' ? 'classroomId' : 'assignmentId');
+    const id = getRouterParam(
+      event,
+      kind === 'classroom' ? 'classroomId' : kind === 'training' ? 'trainingId' : 'assignmentId',
+    );
     if (!slug || /[/.\\]/.test(slug) || (id && /[/.\\]/.test(id))) {
       throw new BffError(400, { error: '无效的资源标识', code: 'BFF_INVALID_PATH' });
+    }
+    if (
+      kind === 'training' && query.page !== undefined &&
+      (typeof query.page !== 'string' || !/^[1-9]\d*$/.test(query.page) || !Number.isSafeInteger(Number(query.page)))
+    ) {
+      throw new BffError(400, { error: '无效的页码', code: 'BFF_INVALID_PAGE' });
     }
     const store = event.context.bffCacheStore as BffCacheStore | undefined;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(config.apiBase)));
@@ -47,6 +56,7 @@ export async function handleBffView(event: H3Event, kind: BffViewKind) {
         slug,
         id,
         authenticated: !!token,
+        page: Number(query.page ?? 1),
         help: typeof query.help === 'string' ? query.help : undefined,
         feedback: typeof query.feedback === 'string' ? query.feedback : undefined,
         history: query.history === '1',

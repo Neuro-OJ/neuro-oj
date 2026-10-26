@@ -57,7 +57,9 @@ watch(() => [props.slug, props.assignmentId, props.userId], () => {
 </script>
 <template>
   <section class="flex flex-col gap-4">
-    <UButton variant="outline" @click="shown = !shown">{{ shown ? '收起训练比较' : '比较训练前后记录' }}</UButton>
+    <UButton variant="ghost" color="neutral" size="sm" class="self-start" icon="i-lucide-git-compare"
+      :aria-expanded="shown" :trailing-icon="shown ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" @click="shown = !shown">
+      {{ shown ? '收起训练前后比较' : '比较训练前后记录' }}</UButton>
     <template v-if="shown">
       <form class="space-y-3" @submit.prevent="compare">
         <p
