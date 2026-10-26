@@ -7,7 +7,8 @@ const emit = defineEmits<{ select: [userId: string, cell: TeachingCell] }>();
 const expanded = ref<string | null>(null);
 const focused = ref<{ row: number; col: number }>({ row: 0, col: 0 });
 
-watch(() => [props.matrix.page, props.matrix.scope, props.matrix.rows.map(row => row.user_id).join(','), props.matrix.items.map(item => item.id).join(',')], () => {
+// 分别比较结构键，成绩轮询返回新对象时保留展开和键盘位置。
+watch([() => props.matrix.page, () => props.matrix.scope, () => props.matrix.rows.map(row => row.user_id).join(','), () => props.matrix.items.map(item => item.id).join(',')], () => {
   expanded.value = null;
   focused.value = { row: 0, col: 0 };
 });

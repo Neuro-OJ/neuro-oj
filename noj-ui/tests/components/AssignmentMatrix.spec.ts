@@ -75,6 +75,40 @@ describe('成绩矩阵', () => {
 });
 
 describe('手机成绩摘要', () => {
+  it('同一矩阵刷新成绩保留展开和键盘焦点，结构变化才重置', async () => {
+    const rows = [
+      matrix.rows[0]!,
+      { ...matrix.rows[0]!, user_id: 'second', username: '学生乙', cells: [{ ...cell, user_id: 'second' }] },
+    ];
+    const view = mount(AssignmentMatrix, { props: { matrix: { ...matrix, rows } }, global: { stubs } });
+    const toggle = view.get('ul[aria-label="学生成绩摘要"] button[aria-expanded]');
+    await toggle.trigger('click');
+    await view.get('button[data-row="1"]').trigger('focus');
+    const refreshed = {
+      ...matrix,
+      rows: rows.map((row) => ({ ...row, cells: row.cells.map((value) => ({ ...value, score: 9000 })) })),
+    };
+    await view.setProps({ matrix: refreshed });
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    expect(view.get('#student-results-student').isVisible()).toBe(true);
+    expect(view.get('button[data-row="1"]').attributes('tabindex')).toBe('0');
+    await view.get('#student-results-student button').trigger('click');
+    expect(view.emitted('select')?.[0]).toEqual(['student', refreshed.rows[0]!.cells[0]]);
+    for (
+      const changed of [
+        { ...refreshed, page: 2 },
+        { ...refreshed, scope: 'current' as const },
+        { ...refreshed, rows: refreshed.rows.slice(0, 1) },
+        { ...refreshed, items: [...matrix.items, { ...matrix.items[0]!, id: 'replacement' }] },
+      ]
+    ) {
+      await view.setProps({ matrix: refreshed });
+      if (toggle.attributes('aria-expanded') !== 'true') await toggle.trigger('click');
+      await view.setProps({ matrix: changed });
+      expect(toggle.attributes('aria-expanded')).toBe('false');
+      expect(view.get('button[data-row="0"]').attributes('tabindex')).toBe('0');
+    }
+  });
   it('40人默认折叠，每次只展开一人，翻页关闭旧展开且保持原提交入口', async () => {
     const rows = Array.from(
       { length: 40 },
