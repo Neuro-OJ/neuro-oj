@@ -55,6 +55,18 @@ const now = new Date().toISOString();
 const db = getDb();
 const ts = Date.now();
 
+/**
+ * 为本文件的题目夹具生成跨测试稳定且互不冲突的域内题号。
+ *
+ * 旧实现从 92500～93399 随机取号；Domain 测试并行运行时会与其它
+ * 版本夹具发生唯一键碰撞，导致与额度桶逻辑无关的验收失败。
+ */
+function fixtureProblemNumber(tag: string): number {
+  let hash = 0;
+  for (const char of tag) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return 5_000_000 + (hash % 100_000);
+}
+
 // 真实 PG（独立 schema）不含 测试数据库 的 root / 镜像种子
 await db.insert(users).values({
   id: "0",
@@ -158,7 +170,7 @@ async function seedProblem(
     title: `桶测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 92500 + Math.floor(Math.random() * 900),
+    number: fixtureProblemNumber(tag),
     owner_id: "0",
     judge_type: "dual",
     is_objective: objective,
