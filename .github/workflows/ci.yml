@@ -2053,7 +2053,8 @@ jobs:
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 已观察到大分片测试本身耗时 19m22s；为迁移、容器启动和所有权清理保留预算。
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
