@@ -35,4 +35,4 @@ wasm-encoder = { version = "=0.258.3", features = ["wasmparser"] }
 [dev-dependencies]
 serial_test = "3"
 bytes = "1.12.1"
-wat = "=1.261.0"
+wat = "=1.262.0"
