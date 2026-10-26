@@ -29,6 +29,8 @@ export interface ProductionConfig {
   s3AccessKey?: string;
   s3SecretKey?: string;
   s3Bucket?: string;
+  /** 原始 NOJ_BYPASS_JWT_REVOKE 值；仅测试环境允许为 "1"（issue #655）。 */
+  bypassJwtRevoke?: string;
 }
 
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
@@ -173,6 +175,15 @@ export function findProductionConfigErrors(
   if (config.environment !== "production") return [];
 
   const findings: string[] = [];
+
+  // issue #655：NOJ_BYPASS_JWT_REVOKE 仅供测试短路撤销检查。生产环境一旦设置，
+  // logout / 改密 / 封禁 / 角色降级签发的撤销会全部失效，必须在启动期 fail-fast。
+  if (config.bypassJwtRevoke?.trim() === "1") {
+    findings.push(
+      "NOJ_BYPASS_JWT_REVOKE 在生产环境必须关闭（该开关仅供测试，开启会绕过 JWT 撤销检查）",
+    );
+  }
+
   requireValue(findings, "DATABASE_URL", config.databaseUrl);
   requireValue(findings, "REDIS_URL", config.redisUrl);
   requireValue(findings, "JWT_SECRET", config.jwtSecret, {

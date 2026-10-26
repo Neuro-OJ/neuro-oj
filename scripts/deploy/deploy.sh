@@ -941,7 +941,7 @@ ensure_backup_passphrase() {
     fail "无法自动创建 GPG 备份口令文件，请安装 openssl 或使用 --passphrase-file 指定已有文件"
   parent="$(dirname -- "$target_file")"
   mkdir -p -m 700 -- "$parent" ||
-    fail "无法创建 GPG 备份口令目录：$parent；请使用 --passphrase-file 指定可写路径"
+    fail "无法创建 GPG 备份口令目录：${parent}；请使用 --passphrase-file 指定可写路径"
   temp="$(mktemp "$target_file.tmp.XXXXXX")" ||
     fail "无法创建 GPG 备份口令文件：$target_file"
   chmod 600 "$temp"
@@ -1094,7 +1094,7 @@ check_uninstall_dependencies() {
   "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
   "$DOCKER_BIN" compose version >/dev/null 2>&1 ||
     fail "Docker Compose v2 不可用"
-  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：$ENV_FILE；无法安全定位生产 Compose 栈"
+  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：${ENV_FILE}；无法安全定位生产 Compose 栈"
   [[ -f "$COMPOSE_FILE" ]] || fail "找不到生产 Compose 文件：$COMPOSE_FILE"
   ok "Docker daemon、Compose 和卸载配置可用"
 }

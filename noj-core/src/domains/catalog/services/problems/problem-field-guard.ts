@@ -41,6 +41,25 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { isOiRuntimeConfig, type ProblemRuntimeConfig } from "../../index.ts";
 import { DEFAULT_EVALUATOR_COMMAND } from "../../types/problem-bundle.ts";
 
+/**
+ * U 型 LLM 题由管理员配置，因而可在保持私有可见性的同时使用平台模型。
+ * P 型沿用既有准入；无 HTTP Context 时仍查询真实权限，不依赖角色展示字符串。
+ */
+export async function assertLlmProblemPermission(
+  type: string,
+  c?: Context,
+  userId?: string | null,
+): Promise<void> {
+  if (type === "P") return;
+  const allowed = c
+    ? await checkPermission(c, "admin:full_access")
+    : (userId ?? ROOT_USER_ID) === ROOT_USER_ID ||
+      (await getUserPermissions(userId!)).has("admin:full_access");
+  if (!allowed) {
+    throw new ForbiddenError("仅管理员可为 U 型题配置 LLM", "FORBIDDEN");
+  }
+}
+
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
   "evaluator.command": "problem:field_evaluator_command",

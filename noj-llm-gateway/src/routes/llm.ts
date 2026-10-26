@@ -11,6 +11,7 @@ import {
   enforceAndCount,
   evalTokenIpSetKey,
   evalTokenRevokedKey,
+  QuotaLimitError,
 } from "../limits.ts";
 import {
   persistCallUsage,
@@ -106,18 +107,26 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 /** 构造 OpenAI 兼容的超限错误响应，供客户端按 code=out_of_usage 识别。 */
-function openAiLimitError(_message: string): Response {
+function openAiLimitError(reason: string): Response {
+  const rateLimited = reason === "rate_limit_exceeded";
   return new Response(
     JSON.stringify({
       error: {
-        message: "Out of usage for this evaluation",
+        message: rateLimited
+          ? "Too many requests; retry later"
+          : "Out of usage for this evaluation",
         type: "invalid_request_error",
-        code: "out_of_usage",
+        code: rateLimited ? "rate_limit_exceeded" : "out_of_usage",
       },
     }),
     {
       status: 429,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(rateLimited
+          ? { "retry-after": String(61 - Math.floor(Date.now() / 1000) % 60) }
+          : {}),
+      },
     },
   );
 }
@@ -380,6 +389,13 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       if (message !== "limit_exceeded" && message !== "rate_limit_exceeded") {
         return c.json({ error: "quota_unavailable" }, 503);
       }
+      if (err instanceof QuotaLimitError) {
+        logger.warn("LLM 配额拒绝", {
+          submission_id: payload.submission_id,
+          attempt_id: payload.attempt_id ?? null,
+          ...err.diagnostics,
+        });
+      }
       inc("noj_llm_rate_limited_total");
       // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
       await recordRejectedUsage(deps.db, deps.redis, {
@@ -393,7 +409,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         provider_id: payload.provider_id,
         model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body, aliasForAudit),
+        request_params: {
+          ...pickParams(body, aliasForAudit),
+          ...(err instanceof QuotaLimitError
+            ? { quota_limit: err.diagnostics }
+            : {}),
+        },
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -408,6 +429,11 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
 
     const upstreamUrl = buildChatUrl(providerSecret.provider.base_url);
+    // 客户端取消必须一路终止到上游，避免评测结束后继续占用请求。
+    const upstreamSignal = AbortSignal.any([
+      c.req.raw.signal,
+      AbortSignal.timeout(120_000),
+    ]);
     let upstreamRes: Response;
     try {
       upstreamRes = await fetch(upstreamUrl, {
@@ -419,10 +445,22 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         body: JSON.stringify(
           upstreamModel === model ? body : { ...body, model: upstreamModel },
         ),
-        signal: AbortSignal.timeout(120_000),
+        signal: upstreamSignal,
         redirect: "error",
       });
     } catch {
+      const errorCode = c.req.raw.signal.aborted
+        ? "client_closed_request"
+        : upstreamSignal.aborted
+        ? "upstream_timeout"
+        : "upstream_error";
+      await providerSlot.release().catch(() => undefined);
+      logger.warn("LLM 上游请求失败", {
+        submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        error_code: errorCode,
+        latency_ms: Date.now() - startedAt,
+      });
       inc("noj_llm_provider_errors_total");
       await recordUnknownCall(deps.db, callId);
       await recordUsage(deps.db, {
@@ -443,11 +481,18 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         estimated_cost: 0,
         latency_ms: Date.now() - startedAt,
         status: "error",
-        error_code: "upstream_error",
+        error_code: errorCode,
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
       });
-      return c.json({ error: "upstream_error" }, 502);
+      return new Response(JSON.stringify({ error: errorCode }), {
+        status: errorCode === "client_closed_request"
+          ? 499
+          : errorCode === "upstream_timeout"
+          ? 504
+          : 502,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     let upstreamText = "";
@@ -457,6 +502,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         MAX_UPSTREAM_BODY_BYTES,
       );
     } catch (readErr) {
+      await providerSlot.release().catch(() => undefined);
       inc("noj_llm_provider_errors_total");
       await recordUnknownCall(deps.db, callId);
       const errCode = readErr instanceof Error &&
