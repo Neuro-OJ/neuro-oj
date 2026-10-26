@@ -8,7 +8,7 @@ review 与发布决策；未合并、未发布、未切换生产。
 ## 1. 验收范围
 
 本轮变更全部追加在 P3–P8 stack 顶端，没有编辑历史。当前 PR #691 的 base 是
-`architecture/remediation-p3-p8`（PR #690，现头 `2bbd1fea`，原头
+`architecture/remediation-p3-p8`（PR #690，首个整合提交 `2bbd1fea`，原头
 `7871d31a`）。本轮运行时代码修复头为
 `51cbfebe43689d43011a27183c5eefe4d3823112`，文档站死链修复并完成对应验证的提交为
 `c058f99e688c55c83b859f707b5d19b368ee4f09`；其后只追加验收证据同步提交，未改变运行时代码。
