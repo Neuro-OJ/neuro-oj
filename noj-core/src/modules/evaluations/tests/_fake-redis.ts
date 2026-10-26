@@ -65,6 +65,9 @@ async function handleConnection(
 
       let reply: Uint8Array;
       switch (parsed.cmd) {
+        case "INFO":
+          reply = new TextEncoder().encode("$20\r\nrun_id:test-server\r\n\r\n");
+          break;
         case "PING":
           reply = renderRespString("PONG");
           break;

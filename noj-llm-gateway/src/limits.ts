@@ -11,6 +11,13 @@ import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
 import {
+  assertEvalTokenActive,
+  EvalTokenAdmissionError,
+  evalTokenRevokedKey,
+  TOKEN_REVOCATIONS_READY_KEY,
+} from "./revocation.ts";
+export { evalTokenRevokedKey } from "./revocation.ts";
+import {
   capDomainQuota,
   type DomainQuotaCaps,
   loadCurrentQuotaCaps,
@@ -42,11 +49,6 @@ export function evalTokenCounterKey(
   field: "calls" | "tokens" | "cost",
 ): string {
   return `llm:domain:${payload.domain_id}:attempt:${payload.attempt_id}:${field}`;
-}
-
-/** eval_token 吊销键与 core 的尝试吊销记录一致。 */
-export function evalTokenRevokedKey(payload: EvalTokenPayload): string {
-  return `llm:attempt:revoked:${payload.attempt_id}`;
 }
 
 /** 每次评测尝试的多来源 IP 监控键。 */
@@ -336,6 +338,12 @@ export class QuotaLimitError extends Error {
 
 function checkLimitResult(result: string, counters: CounterSpec[]): void {
   if (result === "ok") return;
+  if (
+    result === "token_revoked" || result === "invalid_token" ||
+    result === "revocations_unavailable"
+  ) {
+    throw new EvalTokenAdmissionError(result);
+  }
   if (result.startsWith("{")) {
     const detail = JSON.parse(result);
     const counter = counters[detail.counter - 1];
@@ -366,7 +374,13 @@ local meta = cjson.decode(ARGV[4])
 local limits = meta.limits
 local incs = meta.incs
 local ttls = meta.ttls
-local count = meta.marker and #KEYS - 1 or #KEYS
+local count = #KEYS - (meta.marker and 1 or 0) - (meta.auth and 2 or 0)
+if meta.auth then
+  local epoch = string.match(redis.call('INFO', 'server'), 'run_id:([%w]+)')
+  if not epoch or redis.call('GET', KEYS[count + 2]) ~= epoch then return 'revocations_unavailable' end
+  if redis.call('EXISTS', KEYS[count + 1]) == 1 then return 'token_revoked' end
+  if tonumber(redis.call('TIME')[1]) >= meta.auth.exp then return 'invalid_token' end
+end
 if meta.marker then
   local cached = redis.call('GET', KEYS[#KEYS])
   if cached then return cached end
@@ -442,11 +456,15 @@ async function runLimitScript(
   ipRateLimit: number,
   rateTtl: number,
   marker?: string,
+  payload?: EvalTokenPayload,
 ): Promise<string> {
   const keys = [
     rateKeys[0],
     rateKeys[1],
     ...counters.map((c) => c.key),
+    ...(payload
+      ? [evalTokenRevokedKey(payload), TOKEN_REVOCATIONS_READY_KEY]
+      : []),
     ...(marker ? [marker] : []),
   ];
   const meta = {
@@ -454,6 +472,7 @@ async function runLimitScript(
     incs: counters.map((c) => c.inc),
     ttls: counters.map((c) => c.ttl),
     marker: !!marker,
+    ...(payload ? { auth: { exp: payload.exp } } : {}),
     marker_ttl: Math.max(60, ...counters.map((c) => c.ttl)) + 60,
   };
   const result = await redis.eval(LIMIT_SCRIPT, keys, [
@@ -725,6 +744,7 @@ export async function enforceAndCount(
       opts.callId
         ? reservationMarker(payload.domain_id, opts.callId)
         : undefined,
+      opts.callId ? payload : undefined,
     );
 
   let result: string;
@@ -736,6 +756,7 @@ export async function enforceAndCount(
     // 政策写入使用同一行的排他锁，因此「降额提交之后开始的新预占」必然读到新政策；
     // 已完成预占的调用按 ledger 中冻结的计数结算。
     result = await withReservationLock(db, async (tx) => {
+      await assertEvalTokenActive(redis, payload);
       const domainCaps = await readPolicyForReservation(tx);
       const counters = buildCounters(domainCaps);
       reservedCounters = counters;

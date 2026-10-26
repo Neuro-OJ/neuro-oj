@@ -5,6 +5,7 @@ import { runMigrations } from "../src/db/migrate.ts";
 import type { EvalTokenPayload } from "../src/crypto.ts";
 import type { RedisClient } from "../src/redis.ts";
 import { enforceAndCount } from "../src/limits.ts";
+import { TOKEN_REVOCATIONS_READY_KEY } from "../src/revocation.ts";
 import {
   persistCallUsage,
   reconcileAccounting,
@@ -40,7 +41,16 @@ Deno.test({
     const prefix = runRedisPrefix("accounting");
     const keys = new Set<string>();
     let loseSettlementReply = false;
-    let serverGeneration = "server-1";
+    const serverGeneration = (await connection.info("server")).match(
+      /^run_id:(.+)\r?$/m,
+    )![1].trim();
+    const restoreRevocations = async () => {
+      keys.add(prefix + TOKEN_REVOCATIONS_READY_KEY);
+      await connection.set(
+        prefix + TOKEN_REVOCATIONS_READY_KEY,
+        serverGeneration,
+      );
+    };
     const redis = {
       serverId: () => Promise.resolve(serverGeneration),
       get(key: string) {
@@ -113,6 +123,7 @@ Deno.test({
       "llm:domain:school-a:domain::day:" + day + ":" + field;
     try {
       await runMigrations(url.toString());
+      await restoreRevocations();
       await enforceAndCount(db, redis, payload, {
         ...reserve,
         callId: "call-a",
@@ -154,6 +165,7 @@ Deno.test({
       });
       await persistCallUsage(db, "call-b", usage("call-b"), 3, 2);
       await connection.del(...keys);
+      await restoreRevocations();
       const reconciled = await reconcileAccounting(db, redis);
       assertEquals(reconciled.calls, 2);
       assertEquals(await connection.get(prefix + domainKey("calls")), "2");
@@ -226,7 +238,8 @@ Deno.test({
           await connection.del(key);
         }
       }
-      serverGeneration = "server-2";
+      await connection.set(prefix + "llm:accounting:ready:v1", "old-server");
+      await restoreRevocations();
       await enforceAndCount(db, redis, {
         ...payload,
         domain_id: "school-recovery",

@@ -167,6 +167,7 @@ export async function resolveDomainProblemInWorkspace(
       row.problem.id,
       {
         domainId: workspace.domain.id,
+        ...(isDbTx(executor) ? { executor } : {}),
       },
     )
     : null;

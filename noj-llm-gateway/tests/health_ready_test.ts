@@ -6,12 +6,33 @@ import type { Db } from "../src/db.ts";
 import type { RedisClient } from "../src/redis.ts";
 import {
   ACCOUNTING_MAX_CONSECUTIVE_FAILURES,
+  ACCOUNTING_MAX_STALENESS_MS,
   ACCOUNTING_STARTUP_GRACE_MS,
   type AccountingWorkerHandle,
   type AccountingWorkerStatus,
   evaluateAccountingWorkerHealth,
 } from "../src/accounting.ts";
 import { testConfig } from "./helpers.ts";
+
+Deno.test("accounting health: 成功后卡住会失去 ready，恢复成功轮次后重新 ready", () => {
+  const status: AccountingWorkerStatus = {
+    running: true,
+    startedAt: 0,
+    lastSuccessAt: 1000,
+    lastError: null,
+    consecutiveFailures: 0,
+  };
+  assertEquals(
+    evaluateAccountingWorkerHealth(status, 1000 + ACCOUNTING_MAX_STALENESS_MS)
+      .reason,
+    "worker_stalled",
+  );
+  status.lastSuccessAt = 1000 + ACCOUNTING_MAX_STALENESS_MS;
+  assertEquals(
+    evaluateAccountingWorkerHealth(status, status.lastSuccessAt).healthy,
+    true,
+  );
+});
 
 /** /health/ready 响应体（只声明断言需要的字段）。 */
 interface ReadyBody {

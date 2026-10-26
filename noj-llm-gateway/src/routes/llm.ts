@@ -6,11 +6,14 @@ import type { Db } from "../db.ts";
 import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
+import {
+  assertEvalTokenActive,
+  EvalTokenAdmissionError,
+} from "../revocation.ts";
 import { getProviderSecret } from "../providers.ts";
 import {
   enforceAndCount,
   evalTokenIpSetKey,
-  evalTokenRevokedKey,
   QuotaLimitError,
 } from "../limits.ts";
 import {
@@ -460,9 +463,14 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     // 校验 eval_token 是否已被吊销（决策 7 · AR-08 · 单次生命周期绑定）。
     // 版本化后按**评测尝试**吊销：同一提交的重测不受旧尝试吊销影响；
     // 旧 core（token 无 attempt_id）继续读提交维度的旧键。
-    const isRevoked = await deps.redis.get(evalTokenRevokedKey(payload));
-    if (isRevoked !== null) {
-      return c.json({ error: "token_revoked" }, 401);
+    try {
+      await assertEvalTokenActive(deps.redis, payload);
+    } catch (error) {
+      if (!(error instanceof EvalTokenAdmissionError)) throw error;
+      return c.json(
+        { error: error.code },
+        error.code === "revocations_unavailable" ? 503 : 401,
+      );
     }
 
     // 监控：同一 submission 的 token 若从多个来源 IP 调用，记录告警（不阻断）。
@@ -653,6 +661,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       const message = err instanceof Error ? err.message : "limit_exceeded";
       // 请求未发往上游：包括配额服务失败也归还 Provider 窗口额度。
       await providerSlot.release().catch(() => undefined);
+      if (err instanceof EvalTokenAdmissionError) {
+        return c.json(
+          { error: err.code },
+          err.code === "revocations_unavailable" ? 503 : 401,
+        );
+      }
       if (message !== "limit_exceeded" && message !== "rate_limit_exceeded") {
         return c.json({ error: "quota_unavailable" }, 503);
       }

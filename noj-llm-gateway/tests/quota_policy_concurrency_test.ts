@@ -18,6 +18,7 @@ import {
   withReservationLock,
 } from "../src/accounting.ts";
 import { enforceAndCount } from "../src/limits.ts";
+import { TOKEN_REVOCATIONS_READY_KEY } from "../src/revocation.ts";
 import {
   applyPolicyOperationTx,
   emptyPolicyCaps,
@@ -31,6 +32,9 @@ import {
 
 /** 该用例只需 ioredis 的三项操作，避免 Deno 下默认导出类型解析漂移。 */
 type RedisConnection = {
+  info(section: string): Promise<string>;
+  set(key: string, value: string): Promise<unknown>;
+  del(key: string): Promise<unknown>;
   get(key: string): Promise<string | null>;
   eval(
     script: string,
@@ -78,8 +82,11 @@ async function createResources(): Promise<Resources> {
     maxRetriesPerRequest: 1,
   }) as unknown as RedisConnection;
   const prefix = runRedisPrefix("policy-concurrency");
+  const epoch = (await connection.info("server")).match(/^run_id:(.+)\r?$/m)![1]
+    .trim();
+  await connection.set(prefix + TOKEN_REVOCATIONS_READY_KEY, epoch);
   const redis = {
-    serverId: () => Promise.resolve("policy-concurrency-server"),
+    serverId: () => Promise.resolve(epoch),
     get: (key: string) => connection.get(prefix + key),
     eval: (script: string, keys: string[], args: (string | number)[]) =>
       connection.eval(
@@ -145,6 +152,78 @@ const reserveOptions = {
   userRateLimitPerMinute: 100,
   ipRateLimitPerMinute: 100,
 };
+
+Deno.test({
+  name:
+    "Token PG/Redis：预占 Lua 在最终边界拒绝新吊销、过期和旧世代，不增加额度",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const r = await createResources();
+    try {
+      for (
+        const mode of [
+          "token_revoked",
+          "invalid_token",
+          "revocations_unavailable",
+        ] as const
+      ) {
+        const attempt = {
+          ...payload,
+          attempt_id: mode,
+          exp: mode === "invalid_token"
+            ? Math.floor(Date.now() / 1000) + 2
+            : payload.exp,
+        };
+        const redis: RedisClient = {
+          ...r.redis,
+          async eval(script, keys, args) {
+            // 只在身份预检查通过、SQL 预占已经登记后，实际 Lua 执行前注入竞态。
+            if (JSON.parse(String(args[3] ?? "{}")).auth) {
+              if (mode === "token_revoked") {
+                await r.connection.set(
+                  r.prefix + "llm:attempt:revoked:" + attempt.attempt_id,
+                  "1",
+                );
+              }
+              if (mode === "invalid_token") {
+                await sleep(Math.max(0, attempt.exp * 1000 - Date.now() + 20));
+              }
+              if (mode === "revocations_unavailable") {
+                await r.connection.set(
+                  r.prefix + TOKEN_REVOCATIONS_READY_KEY,
+                  "old-server",
+                );
+              }
+            }
+            return await r.redis.eval(script, keys, args);
+          },
+        };
+        await assertRejects(
+          () =>
+            enforceAndCount(r.db, redis, attempt, {
+              ...reserveOptions,
+              callId: mode,
+            }),
+          Error,
+          mode,
+        );
+        const [ledger] = await r
+          .db`SELECT state FROM llm_call_ledger WHERE id = ${mode}`;
+        assertEquals(ledger.state, "denied");
+        const day = new Date().toISOString().slice(0, 10);
+        assertEquals(
+          await r.redis.get(
+            "llm:domain:policy-school:domain::day:" + day + ":calls",
+          ),
+          null,
+        );
+      }
+    } finally {
+      await cleanup(r);
+    }
+  },
+});
 
 function usage(id: string) {
   return {

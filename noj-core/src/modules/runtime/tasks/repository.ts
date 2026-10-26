@@ -10,7 +10,7 @@
  *   业务事实一起提交；
  * - 领取与续租是运行时操作，使用根连接（`claimTasks` / `renewTaskLease`）。
  */
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
 import {
@@ -203,6 +203,7 @@ export async function renewTaskLease(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    gt(backgroundTasks.lease_expiry, now),
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0 ? leaseExpiry : null;
 }
@@ -232,6 +233,7 @@ export async function completeTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    gt(backgroundTasks.lease_expiry, now),
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0;
 }
@@ -268,6 +270,7 @@ export async function rescheduleTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    gt(backgroundTasks.lease_expiry, now),
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0;
 }
@@ -291,6 +294,7 @@ export async function failTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    gt(backgroundTasks.lease_expiry, now),
   )).for("update");
   if (!current) return { recorded: false, terminal: false };
 
@@ -310,6 +314,7 @@ export async function failTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    gt(backgroundTasks.lease_expiry, now),
   )).returning({ id: backgroundTasks.id });
   return { recorded: rows.length > 0, terminal: decision.terminal };
 }
