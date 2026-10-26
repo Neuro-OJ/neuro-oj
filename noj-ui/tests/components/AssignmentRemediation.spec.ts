@@ -68,6 +68,19 @@ function view(canReadProgress = true) {
   });
 }
 describe('全班未达标补题预览', () => {
+  it('同一作业的后台刷新保留打开的预览和输入，真正换任务才重置', async () => {
+    const result = view();
+    await result.get('button').trigger('click');
+    await flushPromises();
+    await result.get('input[aria-label="补题任务标题"]').setValue('保留中的补题草稿');
+    const original = result.get('form').element;
+    await result.setProps({ task: { ...result.props('task'), revision: 8 } });
+    expect(result.get('form').element).toBe(original);
+    expect((result.get('input[aria-label="补题任务标题"]').element as HTMLInputElement).value).toBe('保留中的补题草稿');
+    await result.setProps({ task: { ...result.props('task'), id: 'task-two' } });
+    expect(result.find('form').exists()).toBe(false);
+    result.unmount();
+  });
   it('读取全班接口，末页学生也可选择，创建保留事实token和来源revision', async () => {
     const result = view();
     await result.get('button').trigger('click');

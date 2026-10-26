@@ -73,6 +73,77 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
   { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
   {
+    pattern: '/d/:slug/solve/:reference',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { param: 'reference' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId/solve/:label',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { param: 'contestId' }, {
+      param: 'label',
+    }],
+  },
+  { pattern: '/d/:slug/announcements', trail: [{ param: 'slug' }, { key: 'announcement.title' }] },
+  {
+    pattern: '/d/:slug/announcements/:id',
+    trail: [{ param: 'slug' }, { key: 'announcement.title', to: '/d/:slug/announcements' }, { param: 'id' }],
+  },
+  {
+    pattern: '/d/:slug/settings/carousel',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.carousel' }],
+  },
+  {
+    pattern: '/d/:slug/settings/announcements',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'announcement.title' }],
+  },
+  {
+    pattern: '/d/:slug/settings/access',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.access' }],
+  },
+  {
+    pattern: '/d/:slug/settings/members',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.members' }],
+  },
+  {
+    pattern: '/d/:slug/settings/invitations',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, {
+      key: 'breadcrumb.invitations',
+    }],
+  },
+  {
+    pattern: '/d/:slug/settings/limits',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.limits' }],
+  },
+  {
+    pattern: '/d/:slug/settings/llm/quotas',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, {
+      key: 'breadcrumb.llm',
+      to: '/d/:slug/settings/llm',
+    }, { key: 'breadcrumb.llmQuotas' }],
+  },
+  {
+    pattern: '/d/:slug/settings/llm/usage',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, {
+      key: 'breadcrumb.llm',
+      to: '/d/:slug/settings/llm',
+    }, { key: 'breadcrumb.llmUsage' }],
+  },
+  {
+    pattern: '/d/:slug/settings/llm',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.llm' }],
+  },
+  {
+    pattern: '/d/:slug/settings/community',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, {
+      key: 'breadcrumb.communityManage',
+    }],
+  },
+  {
+    pattern: '/d/:slug/settings/management',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, {
+      key: 'breadcrumb.management',
+    }],
+  },
+  {
     pattern: '/d/:slug/submission-jobs/:jobId',
     trail: [{ param: 'slug' }, { key: 'nav.submissions', to: '/d/:slug/submissions' }, {
       key: 'breadcrumb.submissionJob',
@@ -142,6 +213,7 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.edit' }],
   },
   { pattern: '/d/:slug/rankings', trail: [{ param: 'slug' }, { key: 'nav.ranking' }] },
+  { pattern: '/d/:slug/queue', trail: [{ param: 'slug' }, { key: 'nav.queue' }] },
   {
     pattern: '/d/:slug/problem-drafts',
     trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.problemDrafts' }],

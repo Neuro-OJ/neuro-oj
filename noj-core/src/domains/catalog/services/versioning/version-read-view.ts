@@ -59,6 +59,17 @@ export function projectProblemContent(
     description: content.description,
     samples: content.samples ?? [],
   };
+  const runtime = content.kind === "oi"
+    ? content.runtime_config
+    : content.kind === "ai"
+    ? content.runtime_config?.evaluator
+    : null;
+  overrides.limits = runtime
+    ? {
+      time_limit_ms: runtime.time_limit_ms,
+      memory_limit_mb: runtime.memory_limit_mb,
+    }
+    : null;
 
   if (content.kind === "ai") {
     const ai = content as AiProblemContent;

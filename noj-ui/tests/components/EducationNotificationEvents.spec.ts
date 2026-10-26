@@ -33,6 +33,24 @@ beforeEach(() => {
   vi.stubGlobal('useAuth', () => ({ user }));
 });
 describe('教学通知只以SSE触发授权重读', () => {
+  it('非教学首页不建立教学连接，启用视角后连接并在关闭时清理', async () => {
+    const enabled = ref(false), refresh = vi.fn().mockResolvedValue(undefined);
+    const view = mount(defineComponent({
+      setup() {
+        useEducationNotifications(refresh, enabled);
+        return () => null;
+      },
+    }));
+    expect(Source.instances).toHaveLength(0);
+    enabled.value = true;
+    await nextTick();
+    expect(Source.instances).toHaveLength(1);
+    enabled.value = false;
+    await nextTick();
+    expect(Source.instances[0]!.closed).toBe(true);
+    view.unmount();
+    vi.useRealTimers();
+  });
   it('同步和通知都重新读REST，切换账号和域关闭旧连接且不沿用序号', async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     const component = defineComponent({

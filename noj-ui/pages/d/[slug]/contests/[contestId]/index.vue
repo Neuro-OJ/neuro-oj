@@ -11,6 +11,7 @@ const scope = useWorkspaceActionScope();
 const id = computed(() => String(route.params.contestId));
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'contest', id.value));
 const { data, error, status, refresh } = await useAsyncData(key, () => api.detail(slug.value!, id.value));
+usePolling({ intervalMs: computed(() => data.value?.data.status !== 'ended' ? 2000 : null), immediate: false, fetcher: () => refresh() });
 const password = ref('');
 const registering = ref(false);
 const failure = ref('');

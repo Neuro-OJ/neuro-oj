@@ -1,9 +1,9 @@
 {
-  "total": 1098,
+  "total": 1104,
   "by_reason": {
     "early-return": 248,
     "env-guard": 15,
-    "ignore": 762,
+    "ignore": 768,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
@@ -34,6 +34,7 @@
     "noj-core/src/domains/education/tests/perf/matrix-bench.test.ts": 2,
     "noj-core/src/domains/education/tests/routes/write-rate-limit.test.ts": 1,
     "noj-core/src/domains/education/tests/services/enrollment-concurrency.pg.test.ts": 1,
+    "noj-core/src/domains/education/tests/services/notification-transaction.pg.test.ts": 1,
     "noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts": 6,
     "noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts": 4,
     "noj-core/src/domains/identity/tests/middleware/auth.test.ts": 9,
@@ -123,8 +124,11 @@
     "noj-llm-gateway/tests/provider_throttle_test.ts": 1,
     "noj-llm-gateway/tests/real_api_test.ts": 1,
     "noj-tests/e2e/admin/admin_endpoints.test.ts": 11,
+    "noj-tests/e2e/browser/19_search_unified.test.ts": 3,
+    "noj-tests/e2e/browser/settings-experience.test.ts": 1,
     "noj-tests/e2e/browser/workspace-bundle-import.test.ts": 1,
     "noj-tests/e2e/browser/workspace-classroom-matrix.test.ts": 1,
+    "noj-tests/e2e/browser/workspace-domain-content.test.ts": 1,
     "noj-tests/e2e/browser/workspace-governance.test.ts": 1,
     "noj-tests/e2e/browser/workspace-input-modes.test.ts": 1,
     "noj-tests/e2e/browser/workspace-llm-model-governance.test.ts": 1,

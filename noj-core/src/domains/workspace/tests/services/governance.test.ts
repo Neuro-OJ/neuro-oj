@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
-  domainFeatureIntervals,
   domainInvitations,
   domainLimits,
   domainMemberships,
@@ -13,6 +12,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -27,7 +27,6 @@ import {
   joinDomain,
   listDomains,
   loadWorkspace,
-  presetConfiguration,
   removeDomainMember,
   requestDomainCreation,
   reviewDomainCreation,
@@ -170,9 +169,9 @@ Deno.test({
       eq(domainLimits.domain_id, domain.id),
     );
     await consumeDomainInvitation(invite.token, invited);
-    await assertRejects(
-      () => consumeDomainInvitation(invite.token, invited),
-      NotFoundError,
+    assertEquals(
+      (await consumeDomainInvitation(invite.token, invited)).domain_id,
+      domain.id,
     );
     const revoked = await createDomainInvitation(
       domain.slug,
@@ -188,7 +187,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "工作空间治理：配置 revision 防覆盖、模板变更留功能沿革、默认域幂等",
+  name: "工作空间治理：配置 revision 防覆盖、类型能力固定、默认域幂等",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -199,21 +198,26 @@ Deno.test({
       name: "学校",
       preset: "education",
     }, owner);
-    const disabled = await updateDomain(domain.slug, owner, 0, {
-      configuration: presetConfiguration("custom"),
+    await assertRejects(() =>
+      updateDomain(domain.slug, owner, 0, {
+        configuration: {
+          features: { ...domain.configuration.features, assignment: false },
+        },
+      }), BadRequestError);
+    const changed = await updateDomain(domain.slug, owner, 0, {
+      configuration: { access: "public" },
     });
     await assertRejects(
       () => updateDomain(domain.slug, owner, 0, { name: "错误覆盖" }),
       ConflictError,
     );
-    await updateDomain(domain.slug, owner, disabled.revision, {
-      configuration: presetConfiguration("education"),
+    await updateDomain(domain.slug, owner, changed.revision, {
+      configuration: { access: "members" },
     });
-    const intervals = await getDb().select().from(domainFeatureIntervals).where(
-      eq(domainFeatureIntervals.domain_id, domain.id),
+    assertEquals(
+      (await loadWorkspace(domain.slug, owner)).domain.preset,
+      "education",
     );
-    assertEquals(intervals.length, 3);
-    assert(intervals.every((item) => item.enabled_at !== null));
     assertEquals(
       (await getDb().select().from(domainMemberships).where(
         eq(domainMemberships.domain_id, domain.id),

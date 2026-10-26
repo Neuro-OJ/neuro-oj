@@ -12,7 +12,10 @@ import {
 import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { userWorkspacePreferences } from "../../../shared/db/schema.ts";
-import { parsePagination } from "../../../shared/http/pagination.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
 import type {
   DomainConfiguration,
   DomainLimits,
@@ -44,7 +47,7 @@ import {
 import {
   joinDomain,
   listDomainJoinRequests,
-  listDomainMembers,
+  listDomainMembersPage,
   removeDomainMember,
   reviewJoinRequest,
   setMemberRoles,
@@ -54,12 +57,18 @@ import {
   requestDomainCreation,
   reviewDomainCreation,
 } from "../services/creation-requests.ts";
-import { configurationDiff, presetConfiguration } from "../types.ts";
+import { DOMAIN_PRESETS } from "../../../shared/workspace/types.ts";
+import { constrainDomainConfiguration } from "../../../shared/workspace/resource-policy.ts";
+import { getInstanceResourcePolicy } from "../services/instance.ts";
 import {
   listAdminDomains,
   listDomainCreationRequests,
 } from "../services/governance.ts";
 import { getDomainResourceUsage } from "../services/resource-usage.ts";
+import {
+  readInstanceSettings,
+  saveInstanceSettings,
+} from "../../system/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 // 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
@@ -92,8 +101,8 @@ function revisionHeader(value: string | undefined) {
 function presetValue(value: unknown): DomainPreset {
   if (
     typeof value !== "string" ||
-    !["community", "education", "team", "custom"].includes(value)
-  ) throw new BadRequestError("模板非法");
+    !DOMAIN_PRESETS.includes(value as DomainPreset)
+  ) throw new BadRequestError("域类型须为社区、教学或团队");
   return value as DomainPreset;
 }
 async function body(c: Parameters<typeof parseJsonBody>[0]) {
@@ -103,6 +112,33 @@ async function body(c: Parameters<typeof parseJsonBody>[0]) {
 }
 
 router.get("/instance", (c) => c.json({ data: getInstancePolicy() }));
+router.get(
+  "/admin/instance/settings/:section",
+  authMiddleware,
+  requireAdmin(),
+  async (c) => {
+    return c.json({
+      data: await readInstanceSettings(c.req.param("section")!),
+    });
+  },
+);
+router.patch(
+  "/admin/instance/settings/:section",
+  authMiddleware,
+  requireAdmin(),
+  async (c) => {
+    const input = await body(c);
+    assertObjectBody(input.values);
+    return c.json({
+      data: await saveInstanceSettings(
+        c.req.param("section")!,
+        input.values,
+        c.req.header("If-Match"),
+        c.var.userId!,
+      ),
+    });
+  },
+);
 router.get(
   "/domains",
   optionalAuthMiddleware,
@@ -183,12 +219,17 @@ router.post(
 router.post("/domain-invitations/accept", authMiddleware, async (c) => {
   const input = await body(c);
   return c.json({
-    data: await consumeDomainInvitation(input.token as string, c.var.userId!),
+    data: await consumeDomainInvitation(
+      (input.token ?? input.code) as string,
+      c.var.userId!,
+    ),
   });
 });
 router.post("/auth/domain-invitation", async (c) => {
   const input = await body(c);
-  return c.json({ data: await previewDomainInvitation(input.token as string) });
+  return c.json({
+    data: await previewDomainInvitation((input.token ?? input.code) as string),
+  });
 });
 router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   const { domain, context, membership, platformAdmin } = await loadWorkspace(
@@ -198,6 +239,10 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   return c.json({
     data: {
       ...domain,
+      configuration: constrainDomainConfiguration(
+        domain.configuration,
+        (await getInstanceResourcePolicy()).modules,
+      ),
       permissions: [...context.domainPermissions],
       is_member: !!membership,
       platform_admin: platformAdmin,
@@ -232,6 +277,9 @@ router.patch("/domains/:slug/limits", authMiddleware, async (c) => {
 });
 router.patch("/domains/:slug", authMiddleware, async (c) => {
   const input = await body(c);
+  if (input.preset !== undefined) {
+    throw new BadRequestError("域类型创建后固定", "DOMAIN_TYPE_FIXED");
+  }
   return c.json({
     data: await updateDomain(
       c.req.param("slug")!,
@@ -253,33 +301,6 @@ router.post("/domains/:slug/status", authMiddleware, async (c) => {
       c.var.userId!,
       input.status as "active",
       revisionHeader(c.req.header("If-Match")),
-    ),
-  });
-});
-router.post("/domains/:slug/preset-preview", authMiddleware, async (c) => {
-  const input = await body(c);
-  const { domain, context } = await loadWorkspace(
-    c.req.param("slug")!,
-    c.var.userId!,
-  );
-  assertWorkspacePermission(context, "domain:settings");
-  const configuration = presetConfiguration(presetValue(input.preset));
-  return c.json({
-    data: {
-      revision: domain.revision,
-      configuration,
-      changes: configurationDiff(domain.configuration, configuration),
-    },
-  });
-});
-router.post("/domains/:slug/preset-apply", authMiddleware, async (c) => {
-  const input = await body(c);
-  return c.json({
-    data: await updateDomain(
-      c.req.param("slug")!,
-      c.var.userId!,
-      revisionHeader(c.req.header("If-Match")),
-      { configuration: presetConfiguration(presetValue(input.preset)) },
     ),
   });
 });
@@ -322,20 +343,23 @@ router.get(
   "/domains/:slug/members",
   authMiddleware,
   async (c) => {
-    const raw = c.req.query("page") ?? "1";
-    const page = Number(raw);
-    if (
-      !/^\d+$/.test(raw) || !Number.isSafeInteger(page) || page < 1 ||
-      page > 10000
-    ) throw new BadRequestError("成员页码非法");
+    const { page, perPage, offset } = parsePagination(c, {
+      defaultPerPage: 25,
+    });
+    const result = await listDomainMembersPage(
+      c.req.param("slug")!,
+      c.var.userId!,
+      {
+        offset,
+        perPage,
+        keyword: c.req.query("keyword"),
+      },
+    );
     return c.json({
-      data: await listDomainMembers(
-        c.req.param("slug")!,
-        c.var.userId!,
-        (page - 1) * 100,
-      ),
+      data: result.data,
       page,
-      per_page: 100,
+      per_page: perPage,
+      pagination: buildPaginationMeta(page, perPage, result.total),
     });
   },
 );
@@ -385,13 +409,24 @@ router.post("/domains/:slug/invitations", authMiddleware, async (c) => {
     data: await createDomainInvitation(
       c.req.param("slug")!,
       c.var.userId!,
-      input.email as string,
+      input,
     ),
   }, 201);
 });
 router.get("/domains/:slug/invitations", authMiddleware, async (c) => {
+  const pagination = parsePagination(c, { defaultPerPage: 25 });
+  const result = await listDomainInvitations(
+    c.req.param("slug")!,
+    c.var.userId!,
+    pagination,
+  );
   return c.json({
-    data: await listDomainInvitations(c.req.param("slug")!, c.var.userId!),
+    data: result.data,
+    pagination: buildPaginationMeta(
+      pagination.page,
+      pagination.perPage,
+      result.total,
+    ),
   });
 });
 router.delete(

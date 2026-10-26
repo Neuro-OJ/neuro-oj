@@ -68,11 +68,11 @@ Deno.test("班级邀请：原子加入域基础成员和学生，令牌仅存哈
     ))[0].role,
     "student",
   );
-  await assertRejects(
-    () => consumeDomainInvitation(invite.token, student),
-    NotFoundError,
+  assertEquals(
+    (await consumeDomainInvitation(invite.token, student)).domain_id,
+    f.school.id,
   );
-  const directory = await listClassroomInvitations(
+  const { data: directory } = await listClassroomInvitations(
     f.school.slug,
     f.classroom.id,
     f.teacher,

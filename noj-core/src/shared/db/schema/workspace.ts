@@ -15,12 +15,12 @@ import { users } from "./identity.ts";
 import { classrooms } from "./education.ts";
 import type {
   DomainConfiguration,
-  DomainPreset,
   DomainRole,
   DomainStatus,
+  StoredDomainPreset,
 } from "../../workspace/types.ts";
 
-/** 产品工作空间；模板名称不决定权限或功能。 */
+/** 产品工作空间；固定类型决定能力，成员角色决定操作权限。 */
 export const domains = pgTable("domains", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull().unique(),
@@ -28,7 +28,7 @@ export const domains = pgTable("domains", {
   description: text("description").notNull().default(""),
   status: text("status").$type<DomainStatus>().notNull().default("active"),
   owner_id: text("owner_id").notNull().references(() => users.id),
-  preset: text("preset").$type<DomainPreset>().notNull(),
+  preset: text("preset").$type<StoredDomainPreset>().notNull(),
   configuration: jsonb("configuration").$type<DomainConfiguration>().notNull(),
   revision: integer("revision").notNull().default(0),
   next_problem_number: integer("next_problem_number").notNull().default(1001),
@@ -146,7 +146,7 @@ export const domainResourceCounters = pgTable("domain_resource_counters", {
     sql`${t.used} >= 0 AND ${t.reserved} >= 0`,
   ),
 }));
-/** 邀请仅保存令牌哈希，绑定邮箱，不修改已有账号。 */
+/** 三种邀请仅保存凭据哈希，不修改已有账号或授予管理身份。 */
 export const domainInvitations = pgTable(
   "domain_invitations",
   {
@@ -154,7 +154,13 @@ export const domainInvitations = pgTable(
     domain_id: text("domain_id").notNull().references(() => domains.id),
     classroom_id: text("classroom_id"),
     token_hash: text("token_hash").notNull().unique(),
-    email: text("email").notNull(),
+    code_hash: text("code_hash").unique(),
+    mode: text("mode").$type<"email" | "general" | "once">().notNull().default(
+      "email",
+    ),
+    email: text("email"),
+    max_uses: integer("max_uses").default(1),
+    used_count: integer("used_count").notNull().default(0),
     expires_at: text("expires_at").notNull(),
     used_at: text("used_at"),
     revoked_at: text("revoked_at"),
@@ -163,12 +169,36 @@ export const domainInvitations = pgTable(
   },
   (t) => ({
     domainIdx: index("idx_domain_invitations_domain").on(t.domain_id),
+    modeCheck: check(
+      "domain_invitations_mode_check",
+      sql`${t.mode} IN ('email','general','once')`,
+    ),
+    usesCheck: check(
+      "domain_invitations_uses_check",
+      sql`${t.used_count} >= 0 AND (${t.max_uses} IS NULL OR ${t.max_uses} > 0)`,
+    ),
+    targetCheck: check(
+      "domain_invitations_target_check",
+      sql`(${t.mode} = 'email' AND ${t.email} IS NOT NULL AND ${t.max_uses} = 1) OR (${t.mode} = 'once' AND ${t.email} IS NULL AND ${t.max_uses} = 1) OR (${t.mode} = 'general' AND ${t.email} IS NULL)`,
+    ),
     classroomFk: foreignKey({
       name: "domain_invitations_classroom_domain_fk",
       columns: [t.domain_id, t.classroom_id],
       foreignColumns: [classrooms.domain_id, classrooms.id],
     }),
   }),
+);
+/** 每个账号对同一邀请只计一次成功兑换，支持失败重试和使用人数核对。 */
+export const domainInvitationRedemptions = pgTable(
+  "domain_invitation_redemptions",
+  {
+    invitation_id: text("invitation_id").notNull().references(() =>
+      domainInvitations.id
+    ),
+    user_id: text("user_id").notNull().references(() => users.id),
+    redeemed_at: text("redeemed_at").notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.invitation_id, t.user_id] }) }),
 );
 /** 工作空间加入申请。 */
 export const domainJoinRequests = pgTable("domain_join_requests", {
@@ -197,7 +227,7 @@ export const domainCreationRequests = pgTable("domain_creation_requests", {
   applicant_id: text("applicant_id").notNull().references(() => users.id),
   slug: text("slug").notNull(),
   name: text("name").notNull(),
-  preset: text("preset").$type<DomainPreset>().notNull(),
+  preset: text("preset").$type<StoredDomainPreset>().notNull(),
   reason: text("reason").notNull(),
   status: text("status").$type<"pending" | "approved" | "rejected">().notNull()
     .default("pending"),

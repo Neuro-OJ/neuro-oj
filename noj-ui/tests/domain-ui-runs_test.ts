@@ -24,6 +24,10 @@ Deno.test('界面结果：summary只推送汇总和统一换算分数，不传�
 });
 Deno.test('界面结果：排队阶段不显示已有分数，自测撤销资源后不推送output', () => {
   assertEquals(domainUiSubmissionResult({ status: 'pending', result: { status: 'pending', score: 9900 } }).score, null);
+  assertEquals(
+    domainUiSubmissionResult({ status: 'finished', result: { status: 'accepted', score: null } }).score,
+    null,
+  );
   const record = {
     status: 'finished',
     score: 5000,

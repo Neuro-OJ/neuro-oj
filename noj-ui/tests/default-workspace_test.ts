@@ -4,10 +4,15 @@ import { defaultProblemReference, defaultWorkspaceDestination } from '../utils/d
 Deno.test('旧Public入口固定main，不从偏好或题库类型决定空间', () => {
   assertEquals(defaultWorkspaceDestination('/problems/'), { path: '/d/main/problems' });
   assertEquals(defaultWorkspaceDestination('/trainings'), { path: '/d/main/trainings' });
+  assertEquals(defaultWorkspaceDestination('/my/submissions'), { path: '/d/main/submissions' });
+  assertEquals(defaultWorkspaceDestination('/search'), { path: '/d/main/search' });
+  assertEquals(defaultWorkspaceDestination('/admin/problems'), { path: '/d/main/problem-bindings' });
+  assertEquals(defaultWorkspaceDestination('/admin/contests'), { path: '/d/main/contests' });
+  assertEquals(defaultWorkspaceDestination('/admin/submissions'), { path: '/d/main/submissions' });
   assertEquals(defaultWorkspaceDestination('/contests/ct-one/ranking'), { path: '/d/main/contests/ct-one/ranking' });
   assertEquals(defaultWorkspaceDestination('/admin/llm/providers'), { path: '/d/main/llm' });
   assertEquals(defaultWorkspaceDestination('/admin/llm/quotas'), null);
-  assertEquals(defaultWorkspaceDestination('/editor/P1001'), { problemRef: 'P1001', editor: false });
+  assertEquals(defaultWorkspaceDestination('/editor/P1001'), { problemRef: 'P1001', editor: false, solve: true });
   assertEquals(defaultWorkspaceDestination('/problems/P1001/edit'), { problemRef: 'P1001', editor: true });
   assertEquals(defaultWorkspaceDestination('/problems/new/objective'), {
     path: '/d/main/problems/new',

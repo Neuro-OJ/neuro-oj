@@ -1,5 +1,7 @@
 import { and, count, eq, isNull, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentFeedback, users } from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
@@ -98,12 +100,18 @@ export async function listAssignmentFeedback(
     );
   const [total] = await db.select({ count: count() }).from(assignmentFeedback)
     .where(where);
+  const target = alias(users, "feedback_target");
   const rows = await db.select({
     feedback: assignmentFeedback,
     username: users.username,
     deleted_at: users.deleted_at,
+    target_name: target.username,
+    target_deleted_at: target.deleted_at,
   }).from(assignmentFeedback)
-    .innerJoin(users, eq(users.id, assignmentFeedback.author_id)).where(where)
+    .innerJoin(users, eq(users.id, assignmentFeedback.author_id))
+    .leftJoin(target, eq(target.id, assignmentFeedback.target_user_id)).where(
+      where,
+    )
     .orderBy(assignmentFeedback.created_at, assignmentFeedback.id).limit(50)
     .offset((page - 1) * 50);
   return {
@@ -113,6 +121,7 @@ export async function listAssignmentFeedback(
     data: rows.map((row) => ({
       ...row.feedback,
       author_name: row.deleted_at ? "已注销账号" : row.username,
+      target_name: row.target_deleted_at ? "已注销账号" : row.target_name,
     })),
   };
 }
@@ -123,16 +132,21 @@ export async function getAssignmentFeedback(
   id: string,
   feedbackId: string,
   actorId: string,
+  executor: Executor = getDb(),
 ) {
-  const access = await loadInteractionAccess(slug, id, actorId),
+  const access = await loadInteractionAccess(slug, id, actorId, executor),
     all = interactionStaff(access, "feedback:write");
-  if (!all) await assertInteractionRecipient(access, actorId);
-  const [row] = await getDb().select({
+  if (!all) await assertInteractionRecipient(access, actorId, executor);
+  const target = alias(users, "feedback_target");
+  const [row] = await executor.select({
     feedback: assignmentFeedback,
     username: users.username,
     deleted_at: users.deleted_at,
+    target_name: target.username,
+    target_deleted_at: target.deleted_at,
   }).from(assignmentFeedback)
-    .innerJoin(users, eq(users.id, assignmentFeedback.author_id)).where(
+    .innerJoin(users, eq(users.id, assignmentFeedback.author_id))
+    .leftJoin(target, eq(target.id, assignmentFeedback.target_user_id)).where(
       and(
         eq(assignmentFeedback.assignment_id, id),
         eq(assignmentFeedback.id, feedbackId),
@@ -147,6 +161,7 @@ export async function getAssignmentFeedback(
   return {
     ...row.feedback,
     author_name: row.deleted_at ? "已注销账号" : row.username,
+    target_name: row.target_deleted_at ? "已注销账号" : row.target_name,
   };
 }
 

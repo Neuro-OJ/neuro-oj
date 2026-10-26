@@ -18,6 +18,11 @@ import {
 } from "../../workspace/index.ts";
 import { getDomainSubmission } from "../services/domain-submission-read.ts";
 import { getDomainSelfTest } from "../services/domain-self-test-read.ts";
+import { assertActiveInstanceAccount } from "../../identity/index.ts";
+import {
+  INSTANCE_QUEUE_CHANNEL,
+  queueEventChannel,
+} from "../services/queue.ts";
 import {
   getSubmission,
   resolveSubmissionId,
@@ -32,6 +37,8 @@ for (
   const path of [
     "/domains/:slug/submissions/:id/events",
     "/domains/:slug/self-tests/:id/events",
+    "/domains/:slug/queue/events",
+    "/instance/queue/events",
   ]
 ) {
   domainSubmissionSse.use(path, authMiddleware);
@@ -155,11 +162,18 @@ domainSubmissionSse.get(
   (c) => submissionEvents(c, true),
 );
 
-/** 旧队列订阅固定 main，每次推送和重放重新验证域访问，只返回定位信号。 */
-sse.get("/queue/events", async (c) => {
-  await ensureDefaultWorkspace();
-  const authorize = () => loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
+/** 队列连接时校准当前状态，后续推送重新验证域访问，只返回定位信号。 */
+async function queueEvents(c: Context<AuthEnv>, instance = false) {
+  const slug = c.req.param("slug") ?? DEFAULT_DOMAIN_SLUG;
+  if (!instance && !c.req.param("slug")) await ensureDefaultWorkspace();
+  const authorize = () =>
+    instance
+      ? assertActiveInstanceAccount(c.var.userId)
+      : loadWorkspace(slug, c.var.userId);
   await authorize();
+  const channel = instance
+    ? INSTANCE_QUEUE_CHANNEL
+    : queueEventChannel((await loadWorkspace(slug, c.var.userId)).domain.id);
   c.header("Cache-Control", "no-store");
   return createSseStream(c, async (streamContext) => {
     const locator = async () => {
@@ -172,7 +186,7 @@ sse.get("/queue/events", async (c) => {
     });
     subscribeToChannel(
       streamContext.onUnsubscribe,
-      Channels.queue,
+      channel,
       "queue:changed",
       streamContext.stream,
       () => streamContext.closed,
@@ -186,25 +200,11 @@ sse.get("/queue/events", async (c) => {
         }
       },
     );
-    for (
-      const missed of await replaySseEvents(
-        [Channels.queue],
-        lastEventId(c),
-        200,
-      )
-    ) {
-      if (streamContext.closed) return;
-      try {
-        await streamContext.stream.writeSSE({
-          event: "queue:changed",
-          id: String(missed.id),
-          data: await locator(),
-        });
-      } catch {
-        streamContext.close();
-        return;
-      }
-    }
+    // 每次连接已通知客户端读取完整当前队列，无需逐条重放历史失效信号。
+    // 重放会让页面为同一当前状态连续发起最多 200 次 REST 请求。
   });
-});
+}
+sse.get("/queue/events", (c) => queueEvents(c));
+domainSubmissionSse.get("/domains/:slug/queue/events", (c) => queueEvents(c));
+domainSubmissionSse.get("/instance/queue/events", (c) => queueEvents(c, true));
 export default sse;

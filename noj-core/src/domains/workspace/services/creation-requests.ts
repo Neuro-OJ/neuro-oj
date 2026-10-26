@@ -11,7 +11,10 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import type { DomainPreset } from "../../../shared/workspace/types.ts";
+import {
+  DOMAIN_PRESETS,
+  type DomainPreset,
+} from "../../../shared/workspace/types.ts";
 import { getUserPermissions } from "../../identity/index.ts";
 import { validateDomainSlug } from "../types.ts";
 import { createDomain, workspaceAudit } from "./domains.ts";
@@ -30,7 +33,7 @@ export async function requestDomainCreation(
     typeof input.name !== "string" || !input.name.trim() ||
     input.name.length > 100 || typeof input.reason !== "string" ||
     !input.reason.trim() || input.reason.length > 2000 ||
-    !["community", "education", "team", "custom"].includes(input.preset)
+    !DOMAIN_PRESETS.includes(input.preset)
   ) throw new BadRequestError("申请内容非法");
   return await getDb().transaction(async (tx) => {
     const [actor] = await tx.select().from(users).where(
@@ -77,9 +80,19 @@ export async function reviewDomainCreation(
     ).for("update");
     if (!request) throw new NotFoundError("申请不存在");
     if (request.status !== "pending") throw new ConflictError("申请已经处理");
+    if (approved && request.preset === "custom") {
+      throw new BadRequestError(
+        "旧自定义域申请须先重新选择域类型",
+        "DOMAIN_TYPE_REQUIRED",
+      );
+    }
     const domain = approved
       ? await createDomain(
-        { slug: request.slug, name: request.name, preset: request.preset },
+        {
+          slug: request.slug,
+          name: request.name,
+          preset: request.preset as DomainPreset,
+        },
         request.applicant_id,
         { executor: tx, approved: true },
       )

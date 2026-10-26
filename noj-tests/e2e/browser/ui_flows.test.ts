@@ -251,7 +251,7 @@ async function logoutViaUI(): Promise<void> {
   // 统一 useDialog 确认弹窗
   await p.getByRole("button", { name: "确认登出" }).click();
   // 登出后回到未登录态（导航栏出现「登录」链接）
-  await p.locator('a[href="/login"]').first().waitFor({ timeout: 15_000 });
+  await p.locator('a[href^="/login"]').first().waitFor({ timeout: 15_000 });
 }
 
 /**
@@ -296,9 +296,13 @@ async function submitCodeViaUI(code: string): Promise<string> {
     { key: `noj:draft:${key}`, content: code },
   );
   await goto(`/d/main/problems/${problemNumber}`);
+  await p.getByRole("link", { name: "开始编码", exact: true }).click();
   // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
-  await p.getByRole("button", { name: "提交评测", exact: true }).click();
+  await p.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
+    name: "提交评测",
+    exact: true,
+  }).click();
   await p.getByRole("link", { name: "查看评测", exact: true }).click();
   await p.waitForURL(/\/d\/main\/submissions\//);
 }

@@ -8,6 +8,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  contests,
   domainLimits,
   domainProblemBindings,
   domainResourceCounters,
@@ -16,9 +17,11 @@ import {
   objectiveSubmissions,
   problemBindingHistory,
   problems,
+  problemTags,
   problemVersions,
   roles,
   submissions,
+  tags,
   trainings,
   userRoles,
   users,
@@ -367,6 +370,141 @@ Deno.test("域题库读取：源题撤销同时移除列表、命中数和题面
     () => readDomainProblem(f.school.slug, "public-source:1001", f.platform),
     NotFoundError,
   );
+});
+
+Deno.test("域题库筛选：题号、难度、本人状态、隐藏算法标签及比赛结果均按使用域计数", async () => {
+  const f = await fixture(), db = getDb(), now = new Date().toISOString();
+  const first = await importDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+  );
+  await importDomainProblem(f.school.slug, "public-source:1002", f.teacher);
+  const other = await importDomainProblem(
+    f.other.slug,
+    "public-source:1001",
+    f.platform,
+  );
+  const topic = crypto.randomUUID(), algorithm = crypto.randomUUID();
+  await db.insert(tags).values([{
+    id: topic,
+    name: "题型标签",
+    kind: "problem",
+    created_at: now,
+    updated_at: now,
+  }, {
+    id: algorithm,
+    name: "隐藏算法",
+    kind: "algorithm",
+    created_at: now,
+    updated_at: now,
+  }]);
+  await db.insert(problemTags).values([
+    { problem_id: f.problem, tag_id: topic },
+    { problem_id: f.problem, tag_id: algorithm },
+  ]);
+  await db.insert(submissions).values({
+    id: crypto.randomUUID(),
+    domain_id: f.other.id,
+    domain_problem_binding_id: other.binding.id,
+    user_id: f.student,
+    problem_id: f.problem,
+    language: "python3",
+    code: "other domain AC",
+    is_valid: true,
+    is_accepted: true,
+    created_at: now,
+  });
+  const read = (
+    query: {
+      keyword?: string;
+      difficulty?: string;
+      progress?: string;
+      tag_id?: string;
+      judge_backend?: string;
+    } = {},
+  ) =>
+    listDomainProblems(f.school.slug, f.student, {
+      page: 1,
+      limit: 1,
+      ...query,
+    });
+  for (const keyword of ["1001", "public-source:1001", "V1"]) {
+    const page = await read({ keyword });
+    assertEquals(page.total, 1);
+    assertEquals(page.items[0].reference.display_ref, "public-source:1001");
+  }
+  const initialPage = await read();
+  const initial = initialPage.items[0];
+  assertEquals(initialPage.tags.map((tag) => tag.id), [topic]);
+  assertEquals(initial.judge_backend, "dual");
+  assertEquals(Object.keys(initial.limits!).sort(), [
+    "memory_limit_mb",
+    "time_limit_ms",
+  ]);
+  assertEquals((await read({ judge_backend: "dual" })).total, 2);
+  assertEquals((await read({ judge_backend: "oi-native" })).total, 0);
+  assertEquals(initial.progress, "unseen");
+  assertEquals(initial.submit_count, 0);
+  assertEquals(initial.tags.map((t) => t.id), [topic]);
+  assertEquals(initial.has_hidden_algorithm_tags, true);
+  assertEquals((await read({ tag_id: algorithm })).total, 0);
+  assertEquals((await read({ tag_id: topic })).total, 1);
+  assertEquals((await read({ progress: "solved" })).total, 0);
+  assertEquals((await read({ progress: "unseen" })).total, 2);
+  assertEquals((await read({ difficulty: "hard" })).total, 0);
+  await db.insert(contests).values({
+    id: "list-hidden-contest",
+    domain_id: f.school.id,
+    title: "隐藏成绩",
+    created_by: f.teacher,
+    type: "oi",
+    kind: "invite",
+    description: "",
+    start_time: new Date(Date.now() - 60000).toISOString(),
+    end_time: new Date(Date.now() + 60000).toISOString(),
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(submissions).values({
+    id: crypto.randomUUID(),
+    domain_id: f.school.id,
+    domain_problem_binding_id: first.binding.id,
+    user_id: f.student,
+    problem_id: f.problem,
+    contest_id: "list-hidden-contest",
+    language: "python3",
+    code: "hidden AC",
+    is_valid: true,
+    is_accepted: true,
+    created_at: now,
+  });
+  assertEquals((await read({ progress: "solved" })).total, 0);
+  assertEquals((await read()).items[0].submit_count, 0);
+  const hiddenDetail = await readDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.student,
+  );
+  assertEquals(hiddenDetail.statistics.submit_count, 0);
+  assertEquals(hiddenDetail.statistics.progress, "unseen");
+  await db.update(contests).set({
+    end_time: new Date(Date.now() - 1000).toISOString(),
+  }).where(eq(contests.id, "list-hidden-contest"));
+  const solved = await read({ progress: "solved", tag_id: algorithm });
+  assertEquals(solved.total, 1);
+  assertEquals(solved.items[0].progress, "solved");
+  assertEquals(solved.items[0].accepted_submissions, 1);
+  const endedDetail = await readDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.student,
+  );
+  assertEquals(endedDetail.statistics.accepted_submissions, 1);
+  assertEquals(endedDetail.statistics.progress, "solved");
+  assertEquals(solved.items[0].tags.length, 2);
+  assertEquals(solved.tags.length, 2);
+  assertEquals((await read({ progress: "unseen" })).total, 1);
 });
 
 Deno.test("默认域绑定补齐：两道合法来源题独立建绑定，重复执行不重复绑定", async () => {

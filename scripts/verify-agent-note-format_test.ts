@@ -73,6 +73,31 @@ Deno.test("implemented 目录下 Status 必须是 implemented", () => {
   });
 });
 
+Deno.test("人工待决提案使用 proposed，不能伪装为已实现", () => {
+  const rel = "proposed/process/2026-10-14-unattended-decisions.md";
+  withTempNote(
+    rel,
+    VALID_NOTE.replace("Status: implemented", "Status: proposed"),
+    (filePath) => {
+      assert(verifyAgentNotePath(rel).length === 0, "提案路径应通过");
+      assert(
+        verifyAgentNote(filePath, "proposed").length === 0,
+        "提案内容应通过",
+      );
+      assert(
+        verifyAgentNote(filePath).length > 0,
+        "提案不能通过 implemented 校验",
+      );
+    },
+  );
+  withTempNote(rel, VALID_NOTE, (filePath) => {
+    assert(
+      verifyAgentNote(filePath, "proposed").length > 0,
+      "提案目录不能声明 implemented",
+    );
+  });
+});
+
 Deno.test("缺少 Decision 章节报错", () => {
   const rel = "implemented/process/2026-08-28-missing-decision.md";
   const bad = VALID_NOTE.replace(

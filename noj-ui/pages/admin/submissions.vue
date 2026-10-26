@@ -316,7 +316,9 @@ async function removeFromQueue(submissionId: string) {
     >
       <template #cell="{ row, column }">
         <template v-if="column.key === 'id'">
-          {{ rowSub(row as unknown as SubmissionListItem).public_id || (row.id as string).slice(0, 8) + "..." }}
+          <span :title="rowSub(row as unknown as SubmissionListItem).public_id || String(row.id)">
+            #{{ ((rowSub(row as unknown as SubmissionListItem).public_id || String(row.id)).length > 12 ? (rowSub(row as unknown as SubmissionListItem).public_id || String(row.id)).slice(0, 8) + '…' : (rowSub(row as unknown as SubmissionListItem).public_id || String(row.id))) }}
+          </span>
         </template>
         <template v-else-if="column.key === 'user_id'">
           {{ row.user_id }}

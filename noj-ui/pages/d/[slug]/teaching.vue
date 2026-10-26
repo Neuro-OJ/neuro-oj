@@ -17,6 +17,7 @@ usePolling({
   immediate: false,
   fetcher: () => refresh(),
 });
+useEducationNotifications(() => refresh());
 useSeoMeta({ title: '教学工作台' });
 </script>
 <template>
@@ -29,7 +30,7 @@ useSeoMeta({ title: '教学工作台' });
         <UButton icon="i-lucide-refresh-cw" variant="ghost" aria-label="刷新工作台" @click="refresh()" />
       </template>
     </AdminPageHeader>
-    <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
+    <AsyncContent :status="error ? 'error' : data ? 'data' : status === 'pending' ? 'loading' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
       <TeachingDashboard v-if="data" :slug="slug!" :data="data.data" mode="teaching" />
     </AsyncContent>

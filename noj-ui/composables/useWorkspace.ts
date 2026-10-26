@@ -1,4 +1,4 @@
-import { computed, inject, onScopeDispose, provide } from 'vue';
+import { computed, inject, onScopeDispose, provide, ref, watch } from 'vue';
 import type { InjectionKey } from 'vue';
 import { useApi } from '~/composables/useApi';
 import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
@@ -11,6 +11,8 @@ import type {
   WorkspaceRecord,
   WorkspaceSummary,
 } from '~/utils/workspace';
+
+import { extractApiError } from '~/utils/apiError';
 
 /** 当前空间始终由 URL 解析；异步数据按查看者分隔，切换期间不使用旧权限。 */
 export function provideWorkspaceContext() {
@@ -28,21 +30,61 @@ export function provideWorkspaceContext() {
       if (response.data.actor_id !== viewer) throw new Error('登录身份已变化，请刷新页面');
       return response;
     },
-    { watch: [() => route.path] },
+    { watch: [slug, () => actor.value?.id] },
   );
+
+  const isAuthOrNotFound = computed(() => {
+    if (!state.error.value) return false;
+    const errStatus = extractApiError(state.error.value).status;
+    return errStatus === 401 || errStatus === 403 || errStatus === 404;
+  });
+
+  const lastSuccessfulData = ref<WorkspaceDetail | null>(null);
+
+  watch(key, () => {
+    lastSuccessfulData.value = null;
+  });
+
+  watch(
+    () => state.data.value?.data,
+    (newData) => {
+      if (newData && state.status.value === 'success') {
+        lastSuccessfulData.value = newData;
+      }
+    },
+    { immediate: true },
+  );
+
   const domain = computed(() => {
-    const result = state.data.value?.data;
+    if (isAuthOrNotFound.value) {
+      lastSuccessfulData.value = null;
+      return null;
+    }
+    const result = state.data.value?.data ?? lastSuccessfulData.value;
     return result?.slug === slug.value && result.actor_id === (actor.value?.id ?? null) ? result : null;
   });
+
   const can = (permission: string) =>
-    state.status.value === 'success' && !!domain.value &&
+    !isAuthOrNotFound.value &&
+    !!domain.value &&
     (domain.value.platform_admin || domain.value.permissions.includes(permission));
-  const context = { ...state, domain, slug, can };
+
+  const writable = computed(() =>
+    !state.error.value &&
+    state.status.value === 'success' &&
+    domain.value?.status === 'active'
+  );
+
+  const context = { ...state, domain, slug, can, writable };
   provide(workspaceContextKey, context);
   return context;
 }
 
 const workspaceContextKey: InjectionKey<ReturnType<typeof provideWorkspaceContext>> = Symbol('workspace-context');
+/** 共享导航在账号页没有域布局；域页面直接复用布局已解析的上下文。 */
+export function useOptionalWorkspace() {
+  return inject(workspaceContextKey, null);
+}
 /** 子页面复用所属布局的解析，不重复触发上下文读取或依赖全局当前域。 */
 export function useWorkspace() {
   const context = inject(workspaceContextKey);
@@ -85,6 +127,7 @@ export function useWorkspaceApi() {
         {
           data: {
             access: 'public' | 'authenticated';
+            default_domain_slug: string;
             domain_creation_policy: 'admin' | 'approval' | 'open';
             modules: WorkspaceDetail['configuration']['features'];
           };
@@ -94,16 +137,29 @@ export function useWorkspaceApi() {
       api.post<{ data: WorkspaceRecord }>('/api/v1/domains', input),
     requestCreation: (input: { slug: string; name: string; preset: WorkspacePreset; reason: string }) =>
       api.post('/api/v1/domain-creation-requests', input),
-    members: (slug: string, page: number) =>
-      api.get<{ data: WorkspaceMember[]; page: number; per_page: number }>(`${path(slug)}/members`, {
-        query: { page },
+    members: (slug: string, options?: number | { page?: number; per_page?: number; keyword?: string }) => {
+      const query = typeof options === 'number' ? { page: options } : {
+        page: options?.page ?? 1,
+        per_page: options?.per_page ?? 25,
+        keyword: options?.keyword || undefined,
+      };
+      return api.get<
+        {
+          data: WorkspaceMember[];
+          page: number;
+          per_page: number;
+          pagination?: { page: number; per_page: number; total: number; total_pages: number };
+        }
+      >(`${path(slug)}/members`, {
+        query,
         silent: true,
-      }),
+      });
+    },
     join: (slug: string, reason: string) =>
       api.post<{ data: { membership?: unknown; request?: unknown } }>(`${path(slug)}/join`, { reason }),
     update: (
       slug: string,
-      input: Partial<Pick<WorkspaceDetail, 'name' | 'description' | 'configuration'>>,
+      input: { name?: string; description?: string; configuration?: Partial<WorkspaceDetail['configuration']> },
       current: number,
     ) => api.patch(`${path(slug)}`, input, revision(current)),
     limits: (slug: string) =>
@@ -122,13 +178,6 @@ export function useWorkspaceApi() {
       api.patch(`${path(slug)}/limits`, input, revision(current)),
     status: (slug: string, status: WorkspaceDetail['status'], current: number) =>
       api.post(`${path(slug)}/status`, { status }, revision(current)),
-    previewPreset: (slug: string, preset: WorkspacePreset) =>
-      api.post<{ data: { revision: number; changes: Array<{ key: string; before: unknown; after: unknown }> } }>(
-        `${path(slug)}/preset-preview`,
-        { preset },
-      ),
-    applyPreset: (slug: string, preset: WorkspacePreset, current: number) =>
-      api.post(`${path(slug)}/preset-apply`, { preset }, revision(current)),
     remember: (slug: string) => api.put('/api/v1/me/workspace-preference', { slug }, { silent: true }),
   };
 }

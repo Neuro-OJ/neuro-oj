@@ -364,12 +364,19 @@ e2eTest(
       mixed.token,
       404,
     );
-    await request(
+    const peerSummary = await request<{ data: Record<string, unknown> }>(
       "GET",
       `/domains/${slugA}/objective-submissions/${ownSubmission.id}`,
       peer.token,
-      404,
+      200,
     );
+    assertEquals(peerSummary.data.user_id, mixed.id);
+    assertEquals(peerSummary.data.can_view_answers, false);
+    assertEquals(peerSummary.data.can_view_source, false);
+    assertEquals(peerSummary.data.answers, undefined);
+    assertEquals(peerSummary.data.code, undefined);
+    assertEquals(peerSummary.data.questions, undefined);
+    assertEquals(peerSummary.data.assignment_origin, null);
 
     const feedback = await request<{ data: { id: string; body: string } }>(
       "POST",

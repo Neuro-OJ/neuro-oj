@@ -7,6 +7,7 @@ import {
   text,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { domains } from "./workspace.ts";
 
 /**
  * 首页轮播（与公告解耦）。
@@ -19,6 +20,8 @@ export const carouselSlides = pgTable(
   "carousel_slides",
   {
     id: text("id").primaryKey(),
+    /** NULL 为实例内容，其他值为所属域。 */
+    domain_id: text("domain_id").references(() => domains.id),
     /** 幻灯片类型：image=图片，text=渐变文案 */
     kind: text("kind").notNull(),
     /** 图片存储地址（kind=image 时必填，复用 StorageProvider） */
@@ -44,6 +47,7 @@ export const carouselSlides = pgTable(
       sql`${table.kind} IN ('image', 'text')`,
     ),
     enabledSortIdx: index("idx_carousel_slides_enabled_sort").on(
+      table.domain_id,
       table.is_enabled,
       table.sort_order,
     ),

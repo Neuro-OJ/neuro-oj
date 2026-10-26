@@ -9,6 +9,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
   ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
@@ -58,10 +59,7 @@ Deno.test("授权配置：导航及无关模块异常不阻断读取，访问与
   const loaded = await loadWorkspace(domain.slug, actor);
   assertEquals(loaded.domain.id, domain.id);
   await assertDomainFeatureEnabled(loaded.domain, "assignment");
-  await assertRejects(
-    () => assertDomainFeatureEnabled(loaded.domain, "analytics"),
-    ServiceUnavailableError,
-  );
+  await assertDomainFeatureEnabled(loaded.domain, "analytics");
   await assertRejects(() => loadWorkspace(domain.slug, null), NotFoundError);
   await assertRejects(
     () => updateDomain(domain.slug, actor, 0, { configuration }),
@@ -127,6 +125,6 @@ Deno.test("加入及角色写入：只检查相应输入边界，不因首页错
   await assertDomainFeatureEnabled(loaded.domain, "community");
   await assertRejects(
     () => assertDomainFeatureEnabled(loaded.domain, "assignment"),
-    ServiceUnavailableError,
+    ForbiddenError,
   );
 });

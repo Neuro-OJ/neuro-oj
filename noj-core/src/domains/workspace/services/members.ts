@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -391,8 +391,35 @@ export async function listDomainMembers(
   actorId: string,
   offset = 0,
 ) {
+  return (await listDomainMembersPage(slug, actorId, { offset, perPage: 100 }))
+    .data;
+}
+
+/** 搜索、总数和分页使用同一权限及过滤条件。 */
+export async function listDomainMembersPage(
+  slug: string,
+  actorId: string,
+  options: { offset: number; perPage: number; keyword?: string },
+) {
   const { domain, context } = await loadWorkspace(slug, actorId);
   assertWorkspacePermission(context, "domain:members");
+  const keyword = options.keyword?.trim();
+  const where = and(
+    eq(domainMemberships.domain_id, domain.id),
+    keyword
+      ? and(
+        isNull(users.deleted_at),
+        or(
+          ilike(users.username, `%${keyword}%`),
+          ilike(users.email, `%${keyword}%`),
+        ),
+      )
+      : undefined,
+  );
+  const [total] = await getDb().select({ count: count() }).from(
+    domainMemberships,
+  )
+    .innerJoin(users, eq(users.id, domainMemberships.user_id)).where(where);
   const members = await getDb().select({
     id: domainMemberships.id,
     user_id: users.id,
@@ -403,11 +430,11 @@ export async function listDomainMembers(
   }).from(domainMemberships).innerJoin(
     users,
     eq(users.id, domainMemberships.user_id),
-  ).where(eq(domainMemberships.domain_id, domain.id)).orderBy(
+  ).where(where).orderBy(
     users.username,
     users.id,
   )
-    .limit(100).offset(Math.max(0, offset));
+    .limit(options.perPage).offset(options.offset);
   const assignments = members.length
     ? await getDb().select().from(domainMemberRoles).where(
       inArray(
@@ -416,15 +443,20 @@ export async function listDomainMembers(
       ),
     )
     : [];
-  return members.map((member) => ({
-    id: member.id,
-    user_id: member.user_id,
-    username: member.deleted_at ? "已注销用户" : member.username,
-    email: member.deleted_at ? "" : member.email,
-    status: member.status,
-    roles: assignments.filter((role) => role.membership_id === member.id).map((
-      role,
-    ) => role.role),
-    is_owner: member.user_id === domain.owner_id,
-  }));
+  return {
+    total: total.count,
+    data: members.map((member) => ({
+      id: member.id,
+      user_id: member.user_id,
+      username: member.deleted_at ? "已注销用户" : member.username,
+      email: member.deleted_at ? "" : member.email,
+      status: member.status,
+      roles: assignments.filter((role) => role.membership_id === member.id).map(
+        (
+          role,
+        ) => role.role,
+      ),
+      is_owner: member.user_id === domain.owner_id,
+    })),
+  };
 }

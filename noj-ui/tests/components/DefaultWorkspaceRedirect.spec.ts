@@ -28,7 +28,7 @@ describe('旧业务入口的默认域兼容', () => {
     get.mockResolvedValue({ data: { number: 1001 } });
     await enter('/editor/legacy-uuid');
     expect(get).toHaveBeenCalledWith('/api/v1/problems/legacy-uuid', { silent: true });
-    expect(navigate.mock.calls[0]![0].path).toBe('/d/main/problems/1001');
+    expect(navigate.mock.calls[0]![0].path).toBe('/d/main/solve/1001');
     get.mockRejectedValue({ statusCode: 404 });
     navigate.mockClear();
     await expect(enter('/problems/foreign-uuid')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });

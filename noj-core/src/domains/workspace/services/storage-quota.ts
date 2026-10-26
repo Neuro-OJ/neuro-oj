@@ -16,7 +16,8 @@ const TTL_MS = 15 * 60 * 1000;
 function ownedReferences(domainId: string) {
   return sql`SELECT o.storage_url FROM problem_draft_objects o JOIN problems p ON p.id=o.problem_id WHERE p.domain_id=${domainId}
     UNION SELECT o.storage_url FROM problem_version_objects o JOIN problem_versions v ON v.id=o.version_id JOIN problems p ON p.id=v.problem_id WHERE p.domain_id=${domainId}
-    UNION SELECT artifact_storage_url FROM submissions WHERE domain_id=${domainId} AND artifact_storage_url IS NOT NULL`;
+    UNION SELECT artifact_storage_url FROM submissions WHERE domain_id=${domainId} AND artifact_storage_url IS NOT NULL
+    UNION SELECT image_storage_url FROM carousel_slides WHERE domain_id=${domainId} AND image_storage_url IS NOT NULL`;
 }
 
 /** 已登记大小的存量源对象纳入所属域；目标域共享绑定没有字节复制或额外计量。 */

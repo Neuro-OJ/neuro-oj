@@ -258,20 +258,26 @@ Deno.test({
       await f.db.update(classroomMemberships).set({ status: "removed" }).where(
         eq(classroomMemberships.id, "submission-teacher"),
       );
-      await assertRejects(
-        () => getDomainSubmission(f.a.slug, created.id, f.outsider),
-        NotFoundError,
+      const formerTeacher = await getDomainSubmission(
+        f.a.slug,
+        created.id,
+        f.outsider,
       );
+      assertEquals(formerTeacher.code, undefined);
+      assertEquals(formerTeacher.can_view_source, false);
       await f.db.update(classroomMemberships).set({ status: "active" }).where(
         eq(classroomMemberships.id, "submission-teacher"),
       );
       await f.db.update(classroomMemberships).set({ status: "removed" }).where(
         eq(classroomMemberships.id, "submission-student"),
       );
-      await assertRejects(
-        () => getDomainSubmission(f.a.slug, created.id, f.outsider),
-        NotFoundError,
+      const formerStudent = await getDomainSubmission(
+        f.a.slug,
+        created.id,
+        f.outsider,
       );
+      assertEquals(formerStudent.code, undefined);
+      assertEquals(formerStudent.can_view_source, false);
     });
   },
 });

@@ -9,6 +9,9 @@ export function domainSearchReference(item: SearchItem) {
 export function domainSearchHref(slug: string, item: SearchItem): string | undefined {
   if (item.entity_type === 'contest') return workspacePath(slug, `contests/${item.entity_id}`);
   if (item.entity_type === 'submission') return workspacePath(slug, `submissions/${item.entity_id}`);
+  if (item.entity_type === 'announcement') {
+    return workspacePath(slug, `announcements/${item.metadata.public_id || item.entity_id}`);
+  }
   const reference = domainSearchReference(item);
   if (reference) return workspaceProblemPath(slug, reference.display_ref);
 }

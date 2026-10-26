@@ -205,6 +205,10 @@ Deno.test({
         "iframe填写参数触发自测与正式提交，NOJ.onResult展示真实Judge汇总",
         async () => {
           await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
+          await session.page.getByRole("link", {
+            name: "打开作答界面",
+            exact: true,
+          }).click();
           await frame(session.page).getByLabel("参数提示").fill("first");
           const selfTest = await write(
             session.page,
@@ -259,7 +263,7 @@ Deno.test({
             "40 分",
             { timeout: 15000 },
           );
-          await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
+          await goto(session.page, `/d/${a}/solve/${ui!.reference}`);
           await expect(frame(session.page).getByLabel("参数提示")).toHaveValue(
             "different",
           );
@@ -284,10 +288,10 @@ Deno.test({
           await frame(session.page).getByLabel("参数提示").fill(
             "school-a-draft",
           );
-          await goto(second, `/d/${b}/problems/${ui!.reference}`);
+          await goto(second, `/d/${b}/solve/${ui!.reference}`);
           await frame(second).getByLabel("参数提示").fill("school-b-draft");
-          await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
-          await goto(second, `/d/${b}/problems/${ui!.reference}`);
+          await goto(session.page, `/d/${a}/solve/${ui!.reference}`);
+          await goto(second, `/d/${b}/solve/${ui!.reference}`);
           await expect(frame(session.page).getByLabel("参数提示")).toHaveValue(
             "school-a-draft",
           );
@@ -338,6 +342,10 @@ Deno.test({
             session.page,
             `/d/${a}/contests/${contest.data.id}/problems/A`,
           );
+          await session.page.getByRole("link", {
+            name: "打开作答界面",
+            exact: true,
+          }).click();
           await expect(
             frame(session.page).getByRole("heading", { name: "界面版本 V1" }),
           ).toBeVisible();

@@ -33,9 +33,9 @@ import {
   consumeDomainInvitation,
   createDomainInvitation,
   removeDomainMember,
-  updateDomain,
 } from "../../../workspace/index.ts";
 import { educationFixture } from "../_fixtures.ts";
+import { updateSetting } from "../../../system/index.ts";
 
 Deno.test("班级：同账号两域身份、错误域路径和学生只读自身成员记录", async () => {
   const f = await educationFixture();
@@ -276,18 +276,16 @@ Deno.test("班级：revision、只读归档、关闭教学后仍能读取授权�
     (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).name,
     "修改",
   );
-  await updateDomain(f.school.slug, f.owner, f.school.revision, {
-    configuration: {
-      ...f.school.configuration,
-      features: {
-        ...f.school.configuration.features,
-        classroom: false,
-        assignment: false,
-        analytics: false,
-      },
-      homepage: "overview",
-    },
-  });
+  await updateSetting(
+    "instance_allowed_modules",
+    JSON.stringify({
+      community: true,
+      classroom: false,
+      assignment: false,
+      analytics: true,
+    }),
+    "0",
+  );
   assertEquals(
     (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).status,
     "archived",

@@ -25,6 +25,7 @@ import {
 } from "../../index.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { domainFixture } from "../services/domain-fixture.ts";
+import { updateSetting } from "../../../system/index.ts";
 
 const base = "/api/v1/admin/community";
 
@@ -341,17 +342,21 @@ Deno.test({
 });
 
 Deno.test({
-  name: "旧治理 HTTP：main 关闭社区只阻断内容治理，私信治理保持可用",
+  name: "旧治理 HTTP：实例关闭社区只阻断内容治理，私信治理保持可用",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
     const f = await fixture();
-    await f.db.update(domains).set({
-      configuration: {
-        ...f.main.configuration,
-        features: { ...f.main.configuration.features, community: false },
-      },
-    }).where(eq(domains.id, f.main.id));
+    await updateSetting(
+      "instance_allowed_modules",
+      JSON.stringify({
+        community: false,
+        classroom: true,
+        assignment: true,
+        analytics: true,
+      }),
+      "0",
+    );
     for (
       const path of [
         "/reports",

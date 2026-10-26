@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import submissions from "./submissions.ts";
-import queue from "./queue.ts";
+import queue, { domainQueueRouter } from "./queue.ts";
 import selfTests from "./self-tests.ts";
 import upgradeJobs from "./upgrade-jobs.ts";
 
@@ -8,5 +8,6 @@ import upgradeJobs from "./upgrade-jobs.ts";
 export const submissionRouter = new Hono();
 submissionRouter.route("/submissions", submissions);
 submissionRouter.route("/queue", queue);
+submissionRouter.route("/", domainQueueRouter);
 submissionRouter.route("/", selfTests);
 submissionRouter.route("/", upgradeJobs);

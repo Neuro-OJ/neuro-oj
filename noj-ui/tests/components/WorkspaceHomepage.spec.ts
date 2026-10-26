@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal('navigateTo', navigate);
   vi.stubGlobal('useWorkspace', () => ({ domain, refresh: vi.fn() }));
   vi.stubGlobal('useWorkspaceApi', () => ({}));
-  vi.stubGlobal('useAuth', () => ({ isLoggedIn: ref(true) }));
+  vi.stubGlobal('useAuth', () => ({ isLoggedIn: ref(true), user: ref({ id: 'student' }) }));
 });
 const mountHome = () =>
   mount(defineComponent({ components: { WorkspaceHome }, template: '<Suspense><WorkspaceHome /></Suspense>' }), {
@@ -50,15 +50,24 @@ const mountHome = () =>
         UCard: { template: '<div><slot /></div>' },
         UButton: { template: '<button><slot /></button>' },
         UTextarea: true,
+        DomainHomeContent: true,
+        Carousel: { props: ['domainSlug', 'title'], template: '<section data-testid="carousel">{{ title }}</section>' },
+        HomepageCheckIn: true,
+        AnnouncementSection: true,
+        RandomProblems: true,
+        LatestSubmissions: true,
+        FollowingFeed: true,
       },
     },
   });
-describe('配置的域首页实际导航', () => {
-  it('已有成员初次进入域根页便使用当前配置，无额外域读取', async () => {
+describe('明确的域首页不跳走', () => {
+  it('已有成员进入域根页保持域首页，不自动跳到社区', async () => {
     domain.value = { ...school(), is_member: true };
     const view = mountHome();
     await flushPromises();
-    expect(navigate).toHaveBeenCalledWith('/d/school/community', { replace: true });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(view.find('[data-testid="carousel"]').text()).toBe('学校');
+    expect(view.find('random-problems-stub').attributes('domain-slug')).toBe('school');
     view.unmount();
   });
   it('迟到的当前域上下文或加入后可引导，其他资源页导航不会被旧概览抢走', async () => {
@@ -67,10 +76,10 @@ describe('配置的域首页实际导航', () => {
     domain.value = school();
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();
-    expect(view.text()).toContain('加入空间');
+    expect(view.text()).toContain('加入此域');
     domain.value = { ...school(), is_member: true };
     await flushPromises();
-    expect(navigate).toHaveBeenCalledWith('/d/school/community', { replace: true });
+    expect(navigate).not.toHaveBeenCalled();
     navigate.mockClear();
     route.path = '/d/other/problems';
     domain.value = { ...school(), slug: 'other', is_member: true };

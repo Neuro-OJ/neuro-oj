@@ -33,6 +33,12 @@ const items = ref(
 );
 const keyword = ref(''), searchDraft = ref(''), problemPage = ref(1), reference = ref('');
 const saving = ref(false), adding = ref(false), checking = ref(false), error = ref('');
+const snapshot = () => JSON.stringify({ title: title.value, description: description.value, deadline: deadline.value,
+  previous: previous.value, students: selectedStudents.value, target: target.value, mode: mode.value,
+  training: trainingLink.value, requirement: trainingRequirement.value, score: trainingScore.value, items: items.value,
+});
+const savedSnapshot = ref(snapshot());
+useUnsavedChanges(() => snapshot() !== savedSnapshot.value);
 const base = computed(() =>
   educationCacheKey(props.slug, actor.value?.id ?? null, props.classroomId, 'assignment-editor')
 );
@@ -143,7 +149,10 @@ async function save() {
     const result = id
       ? await education.saveAssignment(scope.slug, id, input, originalRevision)
       : await education.createAssignment(scope.slug, classId, input);
-    if (scope.isCurrent() && props.classroomId === classId) emit('saved', result.data.id);
+    if (scope.isCurrent() && props.classroomId === classId) {
+      savedSnapshot.value = snapshot();
+      emit('saved', result.data.id);
+    }
   } catch (e) {
     error.value = extractApiError(e).message;
   } finally {

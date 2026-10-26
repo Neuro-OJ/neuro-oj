@@ -16,6 +16,15 @@ export interface DomainProblemSummary {
   version: number;
   binding_id: string;
   policy_revision: number;
+  difficulty?: string;
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  limits?: { time_limit_ms: number | null; memory_limit_mb: number | null } | null;
+  tags?: Array<{ id: string; name: string; kind: string }>;
+  has_hidden_algorithm_tags?: boolean;
+  progress?: 'solved' | 'attempted' | 'unseen' | null;
+  submit_count?: number;
+  valid_submissions?: number;
+  accepted_submissions?: number;
 }
 export interface DomainProblemContent {
   kind: DomainProblemSummary['kind'];
@@ -41,8 +50,21 @@ export interface DomainProblemDetail {
   version: number;
   can_edit: boolean;
   supported_languages?: string[];
+  difficulty?: string;
+  statistics?: {
+    submit_count: number;
+    valid_submissions: number;
+    accepted_submissions: number;
+    progress: 'solved' | 'attempted' | 'unseen' | null;
+  };
+  limits?: { time_limit_ms: number; memory_limit_mb: number } | null;
   content: DomainProblemContent;
 }
+/** 独立代码工作区只消费公开题面、版本与执行语言，不接收作者配置。 */
+export type DomainCodeProblem = Pick<
+  DomainProblemDetail,
+  'reference' | 'version_id' | 'version' | 'supported_languages' | 'difficulty' | 'limits' | 'content'
+>;
 /** 草稿与账号、域、题目、版本及语言一起定位，两个标签页不会改写提交归属。 */
 export function domainAnswerKey(actor: string, slug: string, problem: string, version: string, language: string) {
   return JSON.stringify(['domain-answer', actor, slug, problem, version, language]);

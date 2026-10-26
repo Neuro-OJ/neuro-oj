@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { classroomCan, educationCacheKey, TEACHING_CAPABILITY_LABELS } from '~/utils/education';
 import type { ClassroomMember, TeachingCapability } from '~/utils/education';
-import { workspaceInvitationLink, workspacePath } from '~/utils/workspace';
+import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+import InvitationManager from '~/components/workspace/InvitationManager.vue';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
@@ -18,15 +19,11 @@ const writable = computed(() =>
   manage.value && room.data.value?.data.status === 'active' && domain.value?.status === 'active' &&
   domain.value.configuration.features.classroom
 );
-const invitations = await useAsyncData(
-  () => `${base.value}:invites:${manage.value}`,
-  () => manage.value ? education.invitations(slug.value!, id.value) : Promise.resolve(null),
-);
-const email = ref(''), link = ref(''), error = ref(''), saving = ref(false), open = ref(false);
+const error = ref(''), saving = ref(false), open = ref(false);
 const selected = ref<ClassroomMember | null>(null), role = ref<ClassroomMember['role']>('student');
 const grants = ref<TeachingCapability[]>([]), originalRevision = ref(0), capture = useWorkspaceActionScope();
 async function refresh() {
-  await Promise.all([room.refresh(), roster.refresh(), invitations.refresh()]);
+  await Promise.all([room.refresh(), roster.refresh()]);
 }
 function edit(member: ClassroomMember) {
   selected.value = member;
@@ -60,24 +57,6 @@ async function save() {
     saving.value = false;
   }
 }
-async function invite() {
-  if (saving.value || !writable.value) return;
-  const scope = capture(), classId = id.value;
-  saving.value = true;
-  error.value = '';
-  link.value = '';
-  try {
-    const result = await education.invite(scope.slug, classId, email.value.trim());
-    if (!scope.isCurrent() || id.value !== classId) return;
-    link.value = workspaceInvitationLink(window.location.origin, result.data.token);
-    email.value = '';
-    await invitations.refresh();
-  } catch (e) {
-    error.value = extractApiError(e).message;
-  } finally {
-    saving.value = false;
-  }
-}
 async function remove(member: ClassroomMember) {
   const scope = capture(), classId = id.value, revision = room.data.value!.data.revision;
   if (!await dialog.confirm(`移除 ${member.username} 的当前班级身份？已有作业和反馈会保留。`)) return;
@@ -93,22 +72,7 @@ async function remove(member: ClassroomMember) {
     saving.value = false;
   }
 }
-async function revoke(inviteId: string) {
-  const scope = capture(), classId = id.value;
-  saving.value = true;
-  error.value = '';
-  try {
-    await education.revokeInvitation(scope.slug, classId, inviteId);
-    if (scope.isCurrent() && id.value === classId) await invitations.refresh();
-  } catch (e) {
-    error.value = extractApiError(e).message;
-  } finally {
-    saving.value = false;
-  }
-}
-watch(() => [slug.value, id.value, actor.value?.id], () => {
-  link.value = '';
-  email.value = '';
+watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   error.value = '';
   open.value = false;
 });
@@ -152,30 +116,12 @@ useSeoMeta({ title: '班级成员' });
       @changed="refresh()" />
     <ClassroomJoinRequests v-if="manage && room.data.value" :key="`${base}:requests`" :slug="slug!" :classroom-id="id"
       :revision="room.data.value.data.revision" :writable="!!writable" @changed="refresh()" />
-    <UCard v-if="writable">
-      <h2 class="mb-3 font-semibold">邀请学生</h2>
-      <p
-        class="mb-3 text-sm text-text-muted">学生接受邀请后加入本域和本班。有账号的学生先登录，新账号按实例注册政策处理。</p>
-      <form class="flex flex-wrap gap-2" @submit.prevent="invite">
-        <UInput v-model="email" type="email" class="grow" required placeholder="学生邮箱" aria-label="学生邀请邮箱" />
-        <UButton type="submit" :loading="saving">生成邀请链接</UButton>
-      </form>
-      <UInput v-if="link" class="mt-3 w-full" :model-value="link" readonly aria-label="学生邀请链接" />
-    </UCard>
-    <UCard v-if="manage">
-      <h2 class="mb-3 font-semibold">已有邀请</h2>
-      <UAlert v-if="invitations.error.value" color="error" :title="extractApiError(invitations.error.value).message" />
-      <div v-for="invitation in invitations.data.value?.data" :key="invitation.id"
-        class="flex flex-wrap items-center justify-between gap-2 border-b border-border py-3">
-        <div>
-          <p class="text-sm">{{ invitation.email }}</p>
-          <p
-            class="text-xs text-text-muted">{{ invitation.used_at ? '已使用' : invitation.revoked_at ? '已撤销' : new Date(invitation.expires_at).getTime() <= Date.now() ? '已过期' : '待接受' }}</p>
-        </div>
-        <UButton v-if="writable && !invitation.used_at && !invitation.revoked_at" variant="ghost" color="error"
-          :disabled="saving" @click="revoke(invitation.id)">撤销</UButton>
-      </div>
-    </UCard>
+    <InvitationManager
+      v-if="manage"
+      :domain-slug="slug!"
+      :classroom-id="id"
+      :writable="!!writable"
+    />
     <UModal v-model:open="open" title="调整班级身份">
       <template #body>
         <form class="space-y-4" @submit.prevent="save">

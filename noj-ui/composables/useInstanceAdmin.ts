@@ -30,5 +30,23 @@ export function useInstanceAdmin() {
         { approved },
         { silent: true },
       ),
+    getSection: (section: 'access' | 'creation' | 'modules' | 'limits' | 'llm-limits') =>
+      api.get<{ data: { values: Record<string, unknown>; revision: string } }>(
+        `/api/v1/admin/instance/settings/${section}`,
+        { silent: true },
+      ),
+    updateSection: (
+      section: 'access' | 'creation' | 'modules' | 'limits' | 'llm-limits',
+      values: Record<string, unknown>,
+      revision: string,
+    ) =>
+      api.patch<{ data: { values: Record<string, unknown>; revision: string } }>(
+        `/api/v1/admin/instance/settings/${section}`,
+        { values },
+        {
+          silent: true,
+          headers: { 'If-Match': revision },
+        },
+      ),
   };
 }

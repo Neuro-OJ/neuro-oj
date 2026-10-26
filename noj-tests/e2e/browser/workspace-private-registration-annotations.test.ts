@@ -110,12 +110,17 @@ async function submit(
     localStorage.setItem(key, JSON.stringify({ code, answers: {} }));
   }, { key, code });
   await gotoPage(page, `/d/${slug}/problems/${reference}`);
+  await page.getByRole("link", { name: "开始编码", exact: true }).click();
   await page.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   const created = await write(
     page,
     "POST",
     `/api/v1/domains/${slug}/submissions`,
-    () => page.getByRole("button", { name: "提交评测", exact: true }).click(),
+    () =>
+      page.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
+        name: "提交评测",
+        exact: true,
+      }).click(),
   );
   const id = created.data.id as string;
   await page.getByRole("link", { name: "查看评测", exact: true }).click();
@@ -149,7 +154,7 @@ async function openStudentReview(
   }, { timeout: 20_000 }).toBe(id);
   await gotoPage(page, `/d/${slug}/assignments/${assignmentId}`);
   await page.getByRole("button", { name: "查看原提交", exact: true }).click();
-  const panel = page.getByRole("dialog", { name: "学生提交与反馈" });
+  const panel = page.getByRole("dialog", { name: / · / });
   await expect(
     panel.getByText(`原提交 ${id} · 批注保留在这份代码上`, { exact: true }),
   )
@@ -364,8 +369,8 @@ Deno.test({
             ),
             [slug],
           );
-          await expect(student.page.getByTestId("single-workspace")).toHaveText(
-            school,
+          await expect(student.page.getByTestId("domain-identity")).toHaveText(
+            `${studentName}@${slug}`,
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
@@ -387,12 +392,12 @@ Deno.test({
             name: "确认登出",
             exact: true,
           }).click();
-          await expect(student.page.locator('a[href="/login"]').first())
+          await expect(student.page.locator('a[href^="/login"]').first())
             .toBeVisible();
           await login(student.page, studentName);
           await student.page.waitForURL((url) => url.pathname === `/d/${slug}`);
-          await expect(student.page.getByTestId("single-workspace")).toHaveText(
-            school,
+          await expect(student.page.getByTestId("domain-identity")).toHaveText(
+            `${studentName}@${slug}`,
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
@@ -458,8 +463,25 @@ Deno.test({
             exact: true,
           }).click();
         const panel = teacher.page.getByRole("dialog", {
-          name: "学生提交与反馈",
+          name: / · /,
         });
+        // 模拟其他页面请求完成后发布同一账号的新资料，不能被误判为切换账号。
+        const identity = await teacher.page.request.get(
+          `${UI_URL}/api/v1/auth/me`,
+        );
+        assertEquals(identity.status(), 200);
+        const refreshedUserId = await teacher.page.evaluate((current) => {
+          const root = document.querySelector("#__nuxt") as Element & {
+            __vue_app__: {
+              $nuxt: { payload: { state: Record<string, unknown> } };
+            };
+          };
+          const state = root.__vue_app__.$nuxt.payload.state;
+          const previous = state["$sauth:user"] as { id: string };
+          state["$sauth:user"] = current;
+          return previous.id;
+        }, (await identity.json()).data);
+        assertEquals(refreshedUserId, teacherId);
         await panel.locator("div.divide-y > button").filter({
           hasText: /^0 分/,
         }).click();
@@ -496,7 +518,7 @@ Deno.test({
       });
       await step("教师修改并撤回批注，学生重读可见范围同步更新", async () => {
         const panel = teacher.page.getByRole("dialog", {
-          name: "学生提交与反馈",
+          name: / · /,
         });
         await panel.getByRole("button", { name: "修改", exact: true }).click();
         await panel.getByRole("textbox", { name: "修改行批注正文" }).fill(
@@ -621,7 +643,7 @@ Deno.test({
               exact: true,
             }).click();
           let panel = teacher.page.getByRole("dialog", {
-            name: "学生提交与反馈",
+            name: / · /,
           });
           await panel.locator("div.divide-y > button").filter({
             hasText: /10 分/,
@@ -680,7 +702,7 @@ Deno.test({
               name: `${studentName} ${reference} 10 · 已达标`,
               exact: true,
             }).click();
-          panel = teacher.page.getByRole("dialog", { name: "学生提交与反馈" });
+          panel = teacher.page.getByRole("dialog", { name: / · / });
           await panel.locator("div.divide-y > button").filter({
             hasText: /10 分/,
           }).click();

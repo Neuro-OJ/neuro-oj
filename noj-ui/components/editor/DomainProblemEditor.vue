@@ -11,7 +11,7 @@ const api = useDomainProblemEditor(), capture = useWorkspaceActionScope(), { dia
 const form = ref(normalizeDomainEditorContent(props.draft.content));
 const revision = ref(props.draft.revision), busy = ref(''), failure = ref(''), savedMessage = ref('');
 const publishedVersion = ref<number | null>(null), report = ref<PublishPreflightReport | null>(null);
-const saved = ref(JSON.stringify(props.draft.content));
+const saved = ref(JSON.stringify(domainEditorPayload(form.value)));
 const dirty = computed(() => JSON.stringify(domainEditorPayload(form.value)) !== saved.value);
 const fileDirty = ref(false),
   fileBusy = ref(false),

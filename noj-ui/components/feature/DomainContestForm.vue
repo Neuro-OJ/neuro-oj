@@ -61,6 +61,13 @@ const available = computed(() =>
 const locked = computed(() => !!props.existing && props.existing.status !== 'pending');
 const saving = ref(false);
 const error = ref('');
+const snapshot = () => JSON.stringify({ title: title.value, description: description.value, type: type.value,
+  start: start.value, end: end.value, visibility: visibility.value, freeze: freezeMinutes.value,
+  penalty: penalty.value, scoreboard: scoreboard.value, public: isPublic.value, password: password.value,
+  problems: selected.value.map(item => ({ id: item.problem.binding_id, label: item.label, score: item.score })),
+});
+const savedSnapshot = ref(snapshot());
+useUnsavedChanges(() => snapshot() !== savedSnapshot.value);
 watch(type, (value) => {
   if (locked.value) return;
   const config = domainContestDefaults(value);
@@ -111,7 +118,10 @@ async function save() {
         props.existing.revision,
       )
       : await api.create(operation.slug, body);
-    if (operation.isCurrent()) await navigateTo(`/d/${operation.slug}/contests/${response.data.id}`);
+    if (operation.isCurrent()) {
+      savedSnapshot.value = snapshot();
+      await navigateTo(`/d/${operation.slug}/contests/${response.data.id}`);
+    }
   } catch (e) {
     if (operation.isCurrent()) error.value = extractApiError(e).message;
   } finally {

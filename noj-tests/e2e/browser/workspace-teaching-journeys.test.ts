@@ -250,7 +250,7 @@ Deno.test({
             name: "空间网址标识",
             exact: true,
           }).fill(slug);
-          await select(administrator.page, "初始模板", "教学");
+          await select(administrator.page, "域类型", "教学");
           await write(
             administrator.page,
             "POST",
@@ -317,19 +317,20 @@ Deno.test({
             name: "班级成员",
             exact: true,
           }).click();
+          await teacher.page.getByRole("button", { name: /指定邮箱/ }).click();
           await teacher.page.getByRole("textbox", {
-            name: "学生邀请邮箱",
+            name: "受邀人邮箱",
             exact: true,
           }).fill(studentEmail);
           await teacher.page.getByRole("button", {
-            name: "生成邀请链接",
+            name: "生成邀请",
             exact: true,
           }).click();
           const invitation = teacher.page.getByRole("textbox", {
-            name: "学生邀请链接",
+            name: "生成的邀请链接",
             exact: true,
           });
-          await expect(invitation).toHaveValue(/\/join#invitation=/);
+          await expect(invitation).toHaveValue(/\/join#token=/);
           await student.page.goto(await invitation.inputValue());
           await ready(student.page);
           await student.page.getByRole("textbox", {
@@ -344,7 +345,9 @@ Deno.test({
             name: "接受邀请",
             exact: true,
           }).click();
-          await student.page.waitForURL(`${UI_URL}/d/${slug}`);
+          await student.page.waitForURL(
+            `${UI_URL}/d/${slug}/classrooms/${classroomId}`,
+          );
           await teacher.page.reload();
           await ready(teacher.page);
           await expect(
@@ -597,10 +600,10 @@ Deno.test({
           await card.getByRole("button", { name: "0 · 未达标", exact: true })
             .click();
           await expect(
-            teacher.page.getByRole("dialog", { name: "学生提交与反馈" }),
+            teacher.page.getByRole("dialog", { name: / · / }),
           ).toBeVisible();
           const panel = teacher.page.getByRole("dialog", {
-            name: "学生提交与反馈",
+            name: / · /,
           });
           const path =
             `/api/v1/domains/${slug}/classrooms/${classroomId}/submissions/objective/${objectiveSubmissionId}/attempts`;
@@ -676,22 +679,18 @@ Deno.test({
           ).toBeVisible();
           await expect(second.getByText("本次成绩：0 分", { exact: true }))
             .toBeVisible();
-          await student.page.getByRole("link", {
-            name: "所有空间",
+          await student.page.getByRole("button", {
+            name: "用户菜单",
             exact: true,
           }).click();
-          const otherCard = student.page.locator("div").filter({
-            has: student.page.getByRole("heading", {
-              name: `另一个私有域 ${suffix}`,
-              exact: true,
-            }),
-          }).filter({
-            has: student.page.getByRole("button", {
-              name: "进入空间",
-              exact: true,
-            }),
-          }).last();
-          await otherCard.getByRole("button", { name: "进入空间", exact: true })
+          await student.page.getByRole("menuitem", {
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await student.page.getByRole("menuitem", {
+            name: `另一个私有域 ${suffix} · ${otherSlug}`,
+            exact: true,
+          })
             .click();
           await student.page.waitForURL(`${UI_URL}/d/${otherSlug}`);
           await second.reload();

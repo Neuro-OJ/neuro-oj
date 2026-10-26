@@ -8,6 +8,7 @@ import {
   assertInvitationAccountRegistration,
   assertInvitationRegistrationAllowed,
   consumeDomainInvitation,
+  isInvitationCredential,
 } from "./invitations.ts";
 import { addDomainMember } from "./members.ts";
 import { ensureDefaultWorkspace } from "./domains.ts";
@@ -17,8 +18,7 @@ export function assertInstanceRegistration(invitationToken?: string) {
   const policy = getInstanceAccessPolicy();
   if (
     invitationToken !== undefined &&
-    (typeof invitationToken !== "string" ||
-      !/^[0-9a-f-]{72}$/.test(invitationToken))
+    !isInvitationCredential(invitationToken)
   ) throw new ForbiddenError("注册邀请无效", "REGISTER_INVITATION_INVALID");
   assertInvitationRegistrationAllowed(
     policy.registration_mode,

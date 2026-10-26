@@ -184,6 +184,7 @@ export interface LineAnnotation {
 export interface AssignmentFeedback {
   id: string;
   target_user_id: string | null;
+  target_name?: string | null;
   author_id: string;
   author_name: string;
   body: string;

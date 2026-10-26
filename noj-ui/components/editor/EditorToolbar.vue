@@ -6,7 +6,7 @@ interface Problem {
   id: string;
   display_id: string;
   title: string;
-  type: 'U' | 'P';
+  type?: 'U' | 'P';
 }
 
 interface LanguageOption {
@@ -88,7 +88,8 @@ const draftDotClass = computed(() => {
 </script>
 
 <template>
-  <div class="h-12 flex-shrink-0 bg-white border-b border-border flex items-center px-3 gap-3">
+  <div role="toolbar" aria-label="代码工具栏"
+    class="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-panel px-3 py-2 sm:h-12 sm:flex-nowrap sm:py-0">
     <!-- 左：返回 + 题目标题 -->
     <button
       class="inline-flex items-center gap-1 text-text-secondary hover:text-text transition-colors text-sm"
@@ -116,23 +117,23 @@ const draftDotClass = computed(() => {
     </div>
 
     <!-- 中部 spacer -->
-    <div class="flex-1" />
+    <div class="hidden flex-1 sm:block" />
 
     <!-- 保存状态（右侧） -->
-    <div class="flex items-center gap-1.5 text-xs text-text-secondary" :title="draftLabel">
+    <div class="ml-auto flex items-center gap-1.5 text-xs text-text-secondary" :title="draftLabel">
       <span class="size-1.5 rounded-full" :class="draftDotClass" />
       <span class="hidden sm:inline">{{ draftLabel }}</span>
     </div>
 
     <!-- 右：语言 + 主题 + 侧栏 + 设置 + 提交 -->
-    <div class="flex items-center gap-1.5">
+    <div class="flex w-full min-w-0 items-center gap-1.5 overflow-x-auto sm:w-auto sm:overflow-visible">
       <slot name="actions" />
 
       <USelect
         :model-value="language"
         :items="languages"
         size="xs"
-        class="min-w-[110px]"
+        class="min-w-24" aria-label="提交语言"
         @update:model-value="(v) => emit('update:language', v as string)"
       />
 
@@ -157,7 +158,7 @@ const draftDotClass = computed(() => {
       </button>
 
       <button
-        class="size-8 inline-flex items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors"
+        class="hidden size-8 items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors sm:inline-flex"
         aria-label="设置"
         title="设置"
         @click="emit('open-settings')"
@@ -170,13 +171,13 @@ const draftDotClass = computed(() => {
         color="neutral"
         variant="outline"
         size="md"
-        class="ml-1 font-medium"
-        :disabled="templateLoading"
+        class="ml-1 shrink-0 whitespace-nowrap font-medium"
+        :disabled="templateLoading" aria-label="重置为模板" title="重置为模板"
         @click="emit('reset-template')"
       >
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="templateLoading" />
         <UIcon name="i-lucide-rotate-ccw" class="size-3.5" v-else />
-        <span>重置</span>
+        <span class="hidden sm:inline">重置</span>
       </UButton>
 
       <UButton
@@ -184,20 +185,21 @@ const draftDotClass = computed(() => {
         color="neutral"
         variant="outline"
         size="md"
-        class="ml-1 font-medium"
-        :disabled="!canSelfTest || selfTesting"
+        class="ml-1 shrink-0 whitespace-nowrap font-medium"
+        :disabled="!canSelfTest || selfTesting" aria-label="运行自测" title="运行自测"
         @click="emit('self-test')"
       >
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="selfTesting" />
         <UIcon name="i-lucide-flask-conical" class="size-3.5" v-else />
-        <span>{{ selfTesting ? '自测中...' : '自测' }}</span>
+        <span class="hidden sm:inline">{{ selfTesting ? '自测中...' : '自测' }}</span>
       </UButton>
 
-      <UButton color="primary" size="md" class="ml-1 font-medium" :disabled="!canSubmit || submitting"
+      <UButton color="primary" size="md" class="ml-1 shrink-0 whitespace-nowrap font-medium"
+        :disabled="!canSubmit || submitting" aria-label="提交评测"
         @click="emit('submit')">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting" />
         <UIcon name="i-lucide-send" class="size-3.5" v-else />
-        <span>{{ submitting ? '提交中...' : '提交评测' }}</span>
+        <span class="hidden sm:inline">{{ submitting ? '提交中...' : '提交评测' }}</span><span class="sm:hidden">{{ submitting ? '提交中' : '提交' }}</span>
       </UButton>
     </div>
   </div>

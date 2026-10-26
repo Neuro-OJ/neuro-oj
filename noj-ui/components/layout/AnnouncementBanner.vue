@@ -1,55 +1,27 @@
 <script setup lang="ts">
-/**
- * 导航栏下方可关闭公告横幅。
- *
- * - 数据源：`GET /api/v1/announcements/banner`（最新一条带 `banner_text` 的 active 公告）。
- * - 关闭：纯前端 localStorage，绑公告 id（已关闭则不渲染）；发新公告会再出现。
- * - 末尾固定「点击查看详情」超链接到公告详情。
- */
-
-import { publicUrl } from '~/utils/publicIdentifiers';
-
+import { workspaceCacheKey } from '~/utils/workspace';
+const slug = useNavigationDomain(), { user } = useAuth(), { api } = useApi();
+const { isDismissed, dismiss } = useAnnouncementDismiss();
 interface BannerPayload {
   id: string;
   public_id: string;
   banner_text: string;
+  domain_id: string | null;
 }
-
-const { api } = useApi();
-const { isDismissed, dismiss } = useAnnouncementDismiss();
-
-const banner = ref<BannerPayload | null>(null);
-
-async function load(silent = true) {
-  try {
-    const res = await api.get<{ data: BannerPayload | null }>(
-      '/api/v1/announcements/banner',
-      { silent },
-    );
-    banner.value = res.data;
-  } catch {
-    // silent：不显示横幅
-  }
-}
-
-useEventSource({
-  url: '/api/v1/announcements/events',
-  onEvent: { 'announcement:updated': () => load() },
-  fetchFn: () => load(),
-  fallbackIntervalMs: 60000,
-  enabled: useAuth().isLoggedIn,
-});
-
-onMounted(() => load());
-
-/** 当前公告是否应展示（存在且未被关闭）。 */
-const visible = computed(() =>
-  banner.value !== null && !isDismissed(banner.value.id)
+const { data, error, refresh } = await useAsyncData(
+  () => workspaceCacheKey(slug.value, user.value?.id ?? null, 'announcement-banner'),
+  () =>
+    api.get<{ data: BannerPayload | null }>(`/api/v1/domains/${slug.value}/announcements/banner`, {
+      silent: true,
+      redirectOnUnauthorized: false,
+    }),
 );
-
+const banner = computed(() => error.value ? null : data.value?.data ?? null);
+const visible = computed(() => !!banner.value && !isDismissed(banner.value.id));
 function handleDismiss() {
   if (banner.value) dismiss(banner.value.id);
 }
+usePolling({ intervalMs: 60000, immediate: false, fetcher: () => refresh() });
 </script>
 
 <template>
@@ -59,9 +31,11 @@ function handleDismiss() {
     role="status"
   >
     <UIcon name="i-lucide-megaphone" class="size-4 shrink-0 text-primary" />
+    <UBadge color="neutral" variant="subtle" size="sm"
+      class="shrink-0">{{ banner.domain_id ? '本域' : '实例' }}</UBadge>
     <span class="min-w-0 flex-1 truncate">{{ banner.banner_text }}</span>
     <NuxtLink
-      :to="publicUrl('announcement', banner.public_id || banner.id)"
+      :to="`/d/${slug}/announcements/${banner.public_id || banner.id}`"
       class="shrink-0 text-primary no-underline hover:underline"
     >点击查看详情</NuxtLink>
     <button

@@ -16,6 +16,7 @@ import { isJobTerminal, newIdempotencyKey, useProblemVersions } from '~/composab
  */
 describe('useProblemVersions', () => {
   beforeEach(() => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ public: { authCookiePrefix: 'noj' } }));
     toastError.mockClear();
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'zh-CN' } }));
     vi.stubGlobal('useRoute', () => ({ path: '/problems', fullPath: '/problems' }));

@@ -1,6 +1,7 @@
 import type { ApiErrorInfo } from '~/utils/apiError';
 import { extractApiError } from '~/utils/apiError';
 import { useToast } from '~/composables/useToast';
+import { authCookieNames } from '~/utils/auth-cookies';
 
 /**
  * 统一 API 调用层。
@@ -37,6 +38,7 @@ export interface ApiCallOptions extends Omit<FetchOptions, 'method' | 'timeout'>
 type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export function useApi() {
+  const cookieNames = authCookieNames(useRuntimeConfig().public.authCookiePrefix);
   const { toast } = useToast();
   const { locale } = useI18n();
   // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
@@ -100,7 +102,7 @@ export function useApi() {
         const authUser = useState<unknown>('auth:user', () => null);
         authUser.value = null;
         try {
-          const session = useCookie('noj:session');
+          const session = useCookie(cookieNames.session);
           session.value = null;
         } catch {
           // ignore

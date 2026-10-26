@@ -119,6 +119,7 @@ export default defineNuxtConfig({
     // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
     // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
     public: {
+      authCookiePrefix: 'noj',
       buildInfo: resolveBuildInfo(),
     },
   },
@@ -169,6 +170,7 @@ export default defineNuxtConfig({
   // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
     '/workspaces': { headers: { 'cache-control': 'no-store' } },
+    '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
     '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
     '/d/**': { headers: { 'cache-control': 'no-store' } },
     '/d/*/members': { ssr: false },

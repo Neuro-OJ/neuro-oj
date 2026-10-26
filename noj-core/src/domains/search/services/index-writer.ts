@@ -66,6 +66,8 @@ async function resolveSearchEntryDomain(
     ? sql`SELECT domain_id FROM community_comments WHERE id=${id}`
     : type === "submission"
     ? sql`SELECT domain_id FROM submissions WHERE id=${id}`
+    : type === "announcement"
+    ? sql`SELECT domain_id FROM announcements WHERE id=${id}`
     : null;
   if (!query) return null;
   const rows = await db.execute(query);
@@ -547,19 +549,21 @@ export async function buildAnnouncementEntry(
   const rows = await db.execute<{
     id: string;
     public_id: string;
+    domain_id: string | null;
     title: string;
     content: string;
     is_active: boolean;
     created_at: string;
     updated_at: string;
   }>(sql`
-    SELECT id, public_id, title, content, is_active, created_at, updated_at
+    SELECT id, domain_id, public_id, title, content, is_active, created_at, updated_at
     FROM announcements
     WHERE id = ${id}
   `);
   const row = unwrapFirstRow<{
     id: string;
     public_id: string;
+    domain_id: string | null;
     title: string;
     content: string;
     is_active: boolean;
@@ -570,6 +574,7 @@ export async function buildAnnouncementEntry(
   return {
     entityType: "announcement",
     entityId: row.id,
+    domainId: row.domain_id,
     title: row.title,
     body: row.content,
     metadata: { public_id: row.public_id },

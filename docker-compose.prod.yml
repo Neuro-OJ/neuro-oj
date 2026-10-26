@@ -165,6 +165,7 @@ services:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NUXT_API_BASE: http://core:8000
+      NUXT_PUBLIC_AUTH_COOKIE_PREFIX: ${NUXT_PUBLIC_AUTH_COOKIE_PREFIX:-noj}
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
       NUXT_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
       NODE_ENV: ${NODE_ENV:-production}

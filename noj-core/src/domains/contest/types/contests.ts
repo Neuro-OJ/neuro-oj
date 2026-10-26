@@ -166,6 +166,8 @@ export interface ContestResponse {
 export type ContestProblemUserStatus = "solved" | "attempted" | "untouched";
 
 export interface ContestProblemResponse extends ContestProblemInput {
+  samples: import("../../catalog/index.ts").ProblemSample[];
+  limits: { time_limit_ms: number; memory_limit_mb: number } | null;
   judge_type?: "dual" | "oi";
   is_objective?: boolean;
   judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;

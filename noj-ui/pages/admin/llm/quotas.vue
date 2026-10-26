@@ -173,7 +173,7 @@ function formatTime(value: string) {
           <UIcon name="i-lucide-plus" class="size-4" />
           新增配额
         </UButton>
-        <UButton to="/d/main/llm" variant="outline">默认域 LLM 管理</UButton>
+        <UButton to="/d/main/settings/llm" variant="outline">默认域 LLM 管理</UButton>
       </template>
     </AdminPageHeader>
 

@@ -695,7 +695,7 @@ Deno.test({
 
     assert(
       await t.step(
-        "学生仅本人进度，不能读取矩阵、同学提交或域Provider",
+        "学生仅本人进度，可读授权提交摘要但不能读取矩阵、同学源码或域Provider",
         async () => {
           await request(
             "GET",
@@ -711,12 +711,18 @@ Deno.test({
             students[1].token,
             403,
           );
-          await request(
+          const peerSummary = await request<{ data: Record<string, unknown> }>(
             "GET",
             `${root}/submissions/${completed.get("ai")!.id}`,
             students[1].token,
-            404,
+            200,
           );
+          assertEquals(peerSummary.data.user_id, students[0].id);
+          assertEquals(peerSummary.data.can_view_source, false);
+          assertEquals(peerSummary.data.can_view_answers, false);
+          assertEquals(peerSummary.data.code, undefined);
+          assertEquals(peerSummary.data.answers, undefined);
+          assertEquals(peerSummary.data.assignment_origin, null);
           await request("GET", `${root}/llm/providers`, students[0].token, 403);
           const peer = await request<{ data: Progress }>(
             "GET",

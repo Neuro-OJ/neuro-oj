@@ -50,7 +50,7 @@ const tasks = await useAsyncData(
 watch(kind, () => {
   page.value = 1;
 });
-watch(() => [props.slug, props.classroom.id, props.studentId, user.value?.id], () => {
+watch([() => props.slug, () => props.classroom.id, () => props.studentId, () => user.value?.id], () => {
   selected.value = null;
   open.value = false;
   page.value = taskPage.value = 1;

@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1098** 处（ignore=762 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
+> 当前命中 **1104** 处（ignore=768 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -204,6 +204,7 @@
 | noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
 | noj-core/src/domains/education/tests/routes/write-rate-limit.test.ts | 13 | ignore |
 | noj-core/src/domains/education/tests/services/enrollment-concurrency.pg.test.ts | 31 | ignore |
+| noj-core/src/domains/education/tests/services/notification-transaction.pg.test.ts | 24 | ignore |
 | noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts | 61 | ignore |
 | noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts | 82 | ignore |
 | noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts | 103 | ignore |
@@ -577,10 +578,10 @@
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 249 | ignore |
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 261 | ignore |
 | noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 291 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 29 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 41 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 63 | ignore |
-| noj-core/src/domains/submission/tests/routes/sse.test.ts | 143 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 35 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 47 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 69 | ignore |
+| noj-core/src/domains/submission/tests/routes/sse.test.ts | 149 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 28 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 47 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 67 | ignore |
@@ -858,12 +859,17 @@
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 222 | early-return |
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 236 | early-return |
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 252 | early-return |
+| noj-tests/e2e/browser/19_search_unified.test.ts | 129 | ignore |
+| noj-tests/e2e/browser/19_search_unified.test.ts | 171 | ignore |
+| noj-tests/e2e/browser/19_search_unified.test.ts | 197 | ignore |
+| noj-tests/e2e/browser/settings-experience.test.ts | 17 | ignore |
 | noj-tests/e2e/browser/workspace-bundle-import.test.ts | 24 | ignore |
 | noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 186 | ignore |
-| noj-tests/e2e/browser/workspace-governance.test.ts | 204 | ignore |
+| noj-tests/e2e/browser/workspace-domain-content.test.ts | 16 | ignore |
+| noj-tests/e2e/browser/workspace-governance.test.ts | 206 | ignore |
 | noj-tests/e2e/browser/workspace-input-modes.test.ts | 122 | ignore |
 | noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 187 | ignore |
-| noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 164 | ignore |
+| noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 169 | ignore |
 | noj-tests/e2e/browser/workspace-public-mixed-journeys.test.ts | 197 | ignore |
 | noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 184 | ignore |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 112 | early-return |

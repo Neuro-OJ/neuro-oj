@@ -51,34 +51,26 @@ const stubs = {
     template: '<label>{{ label }}<input type="checkbox" :checked="modelValue" /></label>',
   },
   UButton: { template: '<button><slot /></button>' },
+  NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+  UIcon: { props: ['name'], template: '<i />' },
 };
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('reactive', reactive);
   vi.stubGlobal('ref', ref);
   vi.stubGlobal('useWorkspaceApi', () => api);
+  vi.stubGlobal('useUnsavedChanges', vi.fn());
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm } }));
 });
 describe('空间设置与并发编辑', () => {
-  it('确认期间页面身份或域变化时不应用旧模板', async () => {
+  it('默认域没有状态操作时不显示空的空间状态面板', () => {
     const domain = detail();
-    const view = mount(WorkspaceSettingsForm, { props: { domain, modules, canArchive: false }, global: { stubs } });
-    api.previewPreset.mockResolvedValue({
-      data: { revision: 7, changes: [{ key: 'access', before: 'members', after: 'public' }] },
+    domain.slug = 'main';
+    const view = mount(WorkspaceSettingsForm, {
+      props: { domain, modules, canArchive: true },
+      global: { stubs },
     });
-    await view.findAll('button').find((button) => button.text() === '预览差异')!.trigger('click');
-    await flushPromises();
-    let resolve!: (confirmed: boolean) => void;
-    confirm.mockReturnValue(
-      new Promise<boolean>((done) => {
-        resolve = done;
-      }),
-    );
-    await view.findAll('button').find((button) => button.text() === '应用这些修改')!.trigger('click');
-    domain.slug = 'school-two';
-    resolve(true);
-    await flushPromises();
-    expect(api.applyPreset).not.toHaveBeenCalled();
+    expect(view.text()).not.toContain('空间状态');
     view.unmount();
   });
   it('响应式域对象可打开表单；外部 revision 变化后的冲突保留修改和原编辑依据', async () => {
@@ -91,35 +83,38 @@ describe('空间设置与并发编辑', () => {
     api.update.mockRejectedValue({ statusCode: 409, data: { error: '配置已变化', code: 'CONFLICT' } });
     await view.get('form').trigger('submit');
     await flushPromises();
-    expect(api.update).toHaveBeenCalledWith('school-one', expect.objectContaining({ name: '尚未保存的修改' }), 7);
+    expect(api.update).toHaveBeenCalledWith('school-one', { name: '尚未保存的修改', description: '' }, 7);
     expect((name.element as HTMLInputElement).value).toBe('尚未保存的修改');
     expect(view.get('[role="alert"]').text()).toContain('配置已变化');
     expect(view.emitted('saved')).toBeUndefined();
     view.unmount();
   });
-  it('模板先预览差异，确认后才按预览 revision 写入', async () => {
+  it('固定类型只展示说明，表单不提供能力开关或模板重应用', () => {
     const view = mount(WorkspaceSettingsForm, {
       props: { domain: detail(), modules, canArchive: false },
       global: { stubs },
     });
-    api.previewPreset.mockResolvedValue({
-      data: { revision: 9, changes: [{ key: 'access', before: 'members', after: 'public' }] },
+    expect(view.text()).toContain('域类型：教学 · 创建后固定');
+    expect(view.text()).not.toContain('重新应用模板');
+    expect(view.text()).toContain('访问与加入政策');
+    expect(view.find('a[href="/d/school-one/settings/access"]').exists()).toBe(true);
+    expect(view.findAll('input[type="checkbox"]')).toHaveLength(0);
+    view.unmount();
+  });
+  it('disabled 为 true 或域非活跃时禁用保存按钮且拦截提交，但草稿可继续编辑', async () => {
+    const domain = detail();
+    const view = mount(WorkspaceSettingsForm, {
+      props: { domain, modules, canArchive: false, disabled: true },
+      global: { stubs },
     });
-    await view.findAll('button').find((button) => button.text() === '预览差异')!.trigger('click');
+    const submitBtn = view.get('button[type="submit"]');
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true);
+    const name = view.get('input[aria-label="空间名称"]');
+    await name.setValue('草稿编辑测试');
+    expect((name.element as HTMLInputElement).value).toBe('草稿编辑测试');
+    await view.get('form').trigger('submit');
     await flushPromises();
-    expect(view.text()).toContain('访问方式：仅成员 → 公开');
-    expect(api.applyPreset).not.toHaveBeenCalled();
-    confirm.mockResolvedValueOnce(false);
-    const apply = view.findAll('button').find((button) => button.text() === '应用这些修改')!;
-    await apply.trigger('click');
-    await flushPromises();
-    expect(api.applyPreset).not.toHaveBeenCalled();
-    confirm.mockResolvedValueOnce(true);
-    api.applyPreset.mockResolvedValue({});
-    await apply.trigger('click');
-    await flushPromises();
-    expect(api.applyPreset).toHaveBeenCalledWith('school-one', 'education', 9);
-    expect(view.emitted('saved')).toHaveLength(1);
+    expect(api.update).not.toHaveBeenCalled();
     view.unmount();
   });
 });

@@ -23,14 +23,15 @@
       <div v-else-if="error" class="flex items-center justify-center flex-1 px-4 text-center text-sm text-text-muted">
         {{ error }}
       </div>
-      <div v-else-if="items.length === 0" class="flex items-center justify-center flex-1 px-4 text-center text-sm leading-relaxed text-text-muted">
+      <div v-else-if="items.length === 0"
+        class="flex items-center justify-center flex-1 px-4 text-center text-sm leading-relaxed text-text-muted">
         还没有关注动态<br>去用户主页关注感兴趣的人吧
       </div>
       <div v-else class="flex flex-col gap-[10px] p-[10px] flex-1">
         <NuxtLink
           v-for="(item, i) in items"
           :key="item.post.id"
-          :to="publicUrl('post', item.post.public_id || item.post.id)"
+          :to="scope.href(`posts/${item.post.public_id || item.post.id}`)"
           :style="{ animationDelay: `${0.1 + i * 0.05}s` }"
           class="flex flex-col gap-1 rounded-lg border border-border p-3 no-underline animate-[fadeInUp_0.5s_ease_both] transition-colors duration-150 hover:bg-primary-bg"
         >
@@ -50,7 +51,7 @@
       </div>
     </div>
     <NuxtLink
-      to="/community"
+      :to="scope.href()"
       class="flex items-center justify-center gap-1 px-5 py-2.5 text-xs font-semibold text-primary no-underline border-t border-border transition-colors duration-150 hover:bg-primary-bg group"
     >
       进入社区
@@ -60,20 +61,20 @@
 </template>
 
 <script setup lang="ts">
-import type { FeedItem } from "~/composables/useCommunity"
-import { stripMarkdown } from "~/utils/markdown"
-import { extractApiError } from "~/utils/apiError"
-import { publicUrl } from "~/utils/publicIdentifiers"
+import type { FeedItem } from '~/composables/useCommunity';
+import { stripMarkdown } from '~/utils/markdown';
+import { extractApiError } from '~/utils/apiError';
 
-const { api } = useApi()
+const { api } = useApi();
+const scope = useCommunityScope().capture();
 
-const { isLoggedIn } = useAuth()
-const { config, loadConfig } = useCommunity()
+const { isLoggedIn } = useAuth();
+const { config, loadConfig } = useCommunity();
 
-const items = ref<FeedItem[]>([])
-const loading = ref(true)
-const refreshing = ref(false)
-const error = ref("")
+const items = ref<FeedItem[]>([]);
+const loading = ref(true);
+const refreshing = ref(false);
+const error = ref('');
 
 /**
  * 卡片可用：已登录 + 关注功能开启 + 短动态模块开启。
@@ -82,39 +83,39 @@ const error = ref("")
  * 因此不再把 `activities_enabled` 作为可用性条件。
  */
 const available = computed(
-  () => isLoggedIn.value && config.value?.follows_enabled === true &&
+  () =>
+    isLoggedIn.value && config.value?.follows_enabled === true &&
     config.value?.moments_enabled === true,
-)
+);
 
 async function fetchFeed() {
   if (!available.value) {
-    loading.value = false
-    return
+    loading.value = false;
+    return;
   }
-  loading.value = true
+  loading.value = true;
   try {
-    const res = await api.get<{ data: FeedItem[] }>("/api/v1/community/feed", {
-      query: { view: "following", limit: 5 },
+    const res = await api.get<{ data: FeedItem[] }>(scope.apiPath('feed'), {
+      query: { view: 'following', limit: 5 },
       silent: true,
-    })
-    // 后端只返回帖子；仍按 kind 过滤一次，避免旧缓存/旧后端混入非帖子条目
-    items.value = (res.data ?? []).filter((item) => item.kind === "moment" && !!item.post)
+    });
+    items.value = res.data;
   } catch (err: unknown) {
-    error.value = extractApiError(err).message
+    error.value = extractApiError(err).message;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function refresh() {
-  if (refreshing.value) return
-  refreshing.value = true
-  await fetchFeed()
-  refreshing.value = false
+  if (refreshing.value) return;
+  refreshing.value = true;
+  await fetchFeed();
+  refreshing.value = false;
 }
 
 onMounted(async () => {
-  await loadConfig()
-  await fetchFeed()
-})
+  await loadConfig();
+  await fetchFeed();
+});
 </script>

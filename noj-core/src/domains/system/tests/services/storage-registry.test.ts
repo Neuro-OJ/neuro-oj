@@ -5,6 +5,7 @@
  * 同一 URL，因此删除必须经过引用守卫，而不能直接 `storage.delete()`。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -99,6 +100,7 @@ function useTempStorage(): LocalStorageProvider {
 }
 
 async function seedProblem(id: string, number: number): Promise<void> {
+  await ensureDefaultWorkspace();
   await getDb().insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id,

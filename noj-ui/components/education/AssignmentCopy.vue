@@ -62,7 +62,7 @@ async function copy() {
     saving.value = false;
   }
 }
-watch(() => [props.slug, props.task.id, actor.value?.id], () => {
+watch([() => props.slug, () => props.task.id, () => actor.value?.id], () => {
   open.value = false;
 });
 </script>

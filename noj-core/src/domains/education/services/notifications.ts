@@ -1,5 +1,6 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import {
   AppError,
@@ -34,6 +35,7 @@ async function canReceive(
   userId: string,
   type: EducationNoticeType,
   payload: Record<string, unknown>,
+  executor: Executor = getDb(),
 ) {
   try {
     if (type === "feedback") {
@@ -42,6 +44,7 @@ async function canReceive(
         assignmentId,
         payload.feedback_id as string,
         userId,
+        executor,
       );
     } else if (type === "help" || type === "help_reply") {
       await getAssignmentHelp(
@@ -49,8 +52,10 @@ async function canReceive(
         assignmentId,
         payload.help_id as string,
         userId,
+        1,
+        executor,
       );
-    } else await loadInteractionAccess(slug, assignmentId, userId);
+    } else await loadInteractionAccess(slug, assignmentId, userId, executor);
     return true;
   } catch (error) {
     if (
@@ -151,6 +156,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
           user_id,
           type,
           current.payload,
+          tx,
         ))
       ) continue;
       const [inserted] = await tx.insert(educationNotifications).values({

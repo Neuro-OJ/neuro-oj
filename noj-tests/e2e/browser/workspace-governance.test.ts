@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-/** 实例治理与Preset真实页面操作；API只准备夹具和核对持久事实。 */
+/** 实例治理与固定域类型真实页面操作；API只准备夹具和核对持久事实。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
 import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
@@ -121,12 +121,14 @@ async function write(
   action: () => Promise<unknown>,
   status = 200,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending, body = await response.json();
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === `/api/v1${path}` &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
+  const body = await response.json();
   assertEquals(
     response.status(),
     status,
@@ -223,6 +225,9 @@ Deno.test({
     const manager = await launchBrowser(),
       applicant = await launchBrowser(),
       learner = await launchBrowser();
+    for (const session of [manager, applicant, learner]) {
+      session.page.setDefaultTimeout(20_000);
+    }
     let failed = true, problem: Problem, submissionId = "", published: Problem;
     async function restoreSetting(key: string) {
       const current = (await fixture<{ data: Setting[] }>(
@@ -254,14 +259,19 @@ Deno.test({
       await step(
         "平台Web改为申请审核，普通用户Web提交两份创建申请",
         async () => {
-          await select(manager.page, "工作空间创建", "申请审核");
+          await gotoPage(manager.page, "/admin/instance/creation");
+          await select(
+            manager.page,
+            "空间创建审批政策",
+            "用户申请审核",
+          );
           await write(
             manager.page,
-            "PUT",
-            "/admin/system/settings/domain_creation_policy",
+            "PATCH",
+            "/admin/instance/settings/creation",
             () =>
               manager.page.getByRole("button", {
-                name: "保存工作空间创建",
+                name: "保存政策",
                 exact: true,
               }).click(),
           );
@@ -284,7 +294,7 @@ Deno.test({
               name: "空间网址标识",
               exact: true,
             }).fill(target);
-            await select(applicant.page, "初始模板", "教学");
+            await select(applicant.page, "域类型", "教学");
             await applicant.page.getByRole("textbox", {
               name: "创建申请理由",
               exact: true,
@@ -307,13 +317,8 @@ Deno.test({
         },
       );
       await step("平台Web批准与拒绝明确申请，负责人是普通申请人", async () => {
-        await gotoPage(manager.page, "/admin/instance");
-        const section = manager.page.locator("section").filter({
-          has: manager.page.getByRole("heading", {
-            name: "工作空间创建申请",
-            exact: true,
-          }),
-        });
+        await gotoPage(manager.page, "/admin/instance/requests");
+        const section = manager.page.locator("main");
         const rows =
           (await fixture<{ data: Array<{ id: string; slug: string }> }>(
             "GET",
@@ -328,7 +333,7 @@ Deno.test({
           ]] as const
         ) {
           const row = section.getByRole("heading", { name: new RegExp(title) })
-            .locator("..");
+            .locator("..").locator("..");
           await expect(row).toContainText(owner.username);
           await confirmed(
             manager.page,
@@ -396,23 +401,26 @@ Deno.test({
       await step(
         "平台Web暂停与恢复同一域，普通用户即时失去并重新获得进入权",
         async () => {
+          await gotoPage(manager.page, "/admin/instance/domains");
           await manager.page.getByRole("textbox", {
             name: "搜索治理空间",
             exact: true,
           }).fill(slug);
           await manager.page.getByRole("button", {
-            name: "搜索空间",
+            name: "搜索",
             exact: true,
           }).click();
-          const row = manager.page.getByRole("heading", {
-            name: new RegExp(name),
-          }).locator("..").locator("..");
+          const row = manager.page.getByRole("row").filter({ hasText: name });
+          await row.getByRole("button", { name: "更多操作" }).click();
           await confirmed(
             manager.page,
             "POST",
             `/domains/${slug}/status`,
             () =>
-              row.getByRole("button", { name: "暂停访问", exact: true })
+              manager.page.getByRole("menuitem", {
+                name: "暂停访问",
+                exact: true,
+              })
                 .click(),
           );
           const blocked = await learner.page.request.get(
@@ -421,14 +429,18 @@ Deno.test({
           assertEquals(blocked.status(), 404);
           await gotoPage(learner.page, `/d/${slug}/problems/${problem.number}`);
           await expect(
-            learner.page.getByText("工作空间不可用", { exact: true }),
+            learner.page.getByText("空间不存在", { exact: true }),
           ).toBeVisible();
+          await row.getByRole("button", { name: "更多操作" }).click();
           await confirmed(
             manager.page,
             "POST",
             `/domains/${slug}/status`,
             () =>
-              row.getByRole("button", { name: "恢复使用", exact: true })
+              manager.page.getByRole("menuitem", {
+                name: "恢复使用",
+                exact: true,
+              })
                 .click(),
           );
           assertEquals(
@@ -444,11 +456,8 @@ Deno.test({
           const other = await manager.context.newPage();
           try {
             for (const page of [manager.page, other]) {
-              await gotoPage(page, `/d/${slug}/settings`);
-              await page.getByRole("checkbox", {
-                name: "成员：不额外限制",
-                exact: true,
-              }).uncheck();
+              await gotoPage(page, `/d/${slug}/settings/limits`);
+              await select(page, "成员额度模式", "设置本域上限");
             }
             await manager.page.getByRole("spinbutton", {
               name: "成员上限",
@@ -458,6 +467,17 @@ Deno.test({
               name: "成员上限",
               exact: true,
             }).fill("30");
+            await expect(
+              manager.page.getByRole("button", {
+                name: "保存配额",
+                exact: true,
+              }),
+            )
+              .toBeEnabled();
+            await expect(
+              other.getByRole("button", { name: "保存配额", exact: true }),
+            )
+              .toBeEnabled();
             const first = await write(
               manager.page,
               "PATCH",
@@ -499,7 +519,7 @@ Deno.test({
         },
       );
       await step(
-        "Preset预览不修改数据，显式应用保留成员、原题、答案与成绩",
+        "域类型和能力固定，设置修改保留成员、原题、答案与成绩",
         async () => {
           const members = await fixture(
             "GET",
@@ -517,39 +537,31 @@ Deno.test({
             student.token,
           );
           await gotoPage(applicant.page, `/d/${slug}/settings`);
-          await select(applicant.page, "重新应用模板", "社区");
-          const preview = await write(
-            applicant.page,
-            "POST",
-            `/domains/${slug}/preset-preview`,
-            () =>
-              applicant.page.getByRole("button", {
-                name: "预览差异",
-                exact: true,
-              }).click(),
-          );
-          assertEquals(preview.body.data.changes.length > 0, true);
+          await expect(applicant.page.getByText("创建后固定", { exact: false }))
+            .toBeVisible();
+          await expect(
+            applicant.page.getByRole("button", {
+              name: "预览差异",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          const fixed = await api("PATCH", `/api/v1/domains/${slug}`, {
+            token: owner.token,
+            headers: {
+              "If-Match": String(
+                (await fixture<{ data: Domain }>(
+                  "GET",
+                  `/domains/${slug}`,
+                  owner.token,
+                )).data.revision,
+              ),
+            },
+            body: { preset: "community" },
+          });
+          assertEquals(fixed.status, 400);
           assertEquals(
-            (await fixture<{ data: Domain }>(
-              "GET",
-              `/domains/${slug}`,
-              owner.token,
-            )).data.configuration.homepage,
-            "teaching",
-          );
-          const applied = await confirmed(
-            applicant.page,
-            "POST",
-            `/domains/${slug}/preset-apply`,
-            () =>
-              applicant.page.getByRole("button", {
-                name: "应用这些修改",
-                exact: true,
-              }).click(),
-          );
-          assertEquals(
-            applied.request.headers()["if-match"],
-            String(preview.body.data.revision),
+            (fixed.body as { code: string }).code,
+            "DOMAIN_TYPE_FIXED",
           );
           assertEquals(
             await fixture("GET", `/domains/${slug}/members`, owner.token),
@@ -571,21 +583,33 @@ Deno.test({
             ),
             history,
           );
-          await select(applicant.page, "空间首页", "题单");
+          await expect(
+            applicant.page.getByRole("combobox", {
+              name: "空间首页",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          await applicant.page.getByRole("textbox", {
+            name: "空间简介",
+            exact: true,
+          }).fill("修改简介保留固定教学域能力。");
           await write(
             applicant.page,
             "PATCH",
             `/domains/${slug}`,
             () =>
               applicant.page.getByRole("button", {
-                name: "保存设置",
+                name: "保存基本设置",
                 exact: true,
               }).click(),
           );
           await gotoPage(applicant.page, `/d/${slug}`);
           await applicant.page.waitForURL((url) =>
-            url.pathname === `/d/${slug}/trainings`
+            url.pathname === `/d/${slug}`
           );
+          await expect(
+            applicant.page.getByRole("heading", { name, exact: true }),
+          ).toBeVisible();
         },
       );
       await step(
@@ -640,15 +664,19 @@ Deno.test({
               ),
               false,
             );
-            await gotoPage(manager.page, "/admin/instance");
-            await select(manager.page, "实例访问", "仅已登录账号");
+            await gotoPage(manager.page, "/admin/instance/access");
+            await select(
+              manager.page,
+              "实例访问范围",
+              "仅已登录账号",
+            );
             await write(
               manager.page,
-              "PUT",
-              "/admin/system/settings/instance_access",
+              "PATCH",
+              "/admin/instance/settings/access",
               () =>
                 manager.page.getByRole("button", {
-                  name: "保存实例访问",
+                  name: "保存政策",
                   exact: true,
                 }).click(),
             );

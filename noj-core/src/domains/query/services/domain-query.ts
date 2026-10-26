@@ -12,6 +12,8 @@ import type { RankingRow, RankingsPage } from "./rankings.ts";
 export interface DomainQueryScope {
   domainId: string;
   member: boolean;
+  /** 题库状态纳入本域已结束比赛；全站排行开关不改变本人通过记录。 */
+  includeAllEndedContests?: boolean;
 }
 /** 公共默认域口径，管理员或主页本人也不会聚合私有学校数据。 */
 export const PUBLIC_DEFAULT_QUERY_SCOPE: Readonly<DomainQueryScope> = Object
@@ -55,7 +57,7 @@ export function submissionQueryVisibility(
       WHERE visible_contest.id=${columns.contestId}
       AND ${endedWindowCondition(sql`visible_contest.end_time`)}
       AND (${
-    scope.domainId !== DEFAULT_DOMAIN_ID
+    scope.domainId !== DEFAULT_DOMAIN_ID || !!scope.includeAllEndedContests
   } OR visible_contest.affect_global_ranking=true)))`;
 }
 
@@ -68,6 +70,103 @@ function visibleSources(scope: DomainQueryScope) {
       contestId: sql`s.contest_id`,
     })
   }`;
+}
+
+/** 首页最新评测只返回可展示的基本字段；登录者看本人，游客看当前域公开练习。 */
+export async function getDomainRecentSubmissions(
+  scope: DomainQueryScope,
+  actorId: string | null,
+) {
+  const rows = await getDb().execute(sql`
+    SELECT s.id, s.public_id, s.problem_id, s.status, s.created_at,
+      json_build_object('title',p.title) AS problem,
+      CASE WHEN a.result_kind='graded' THEN json_build_object(
+        'status',a.result_status,'score',a.score,'time_ms',a.time_ms,'memory_kb',a.memory_kb
+      ) ELSE NULL END AS result
+    FROM submissions s JOIN problems p ON p.id=s.problem_id
+    LEFT JOIN evaluation_attempts a ON a.id=coalesce(s.effective_attempt_id,s.latest_attempt_id)
+    WHERE s.contest_id IS NULL AND ${
+    submissionQueryVisibility(scope, {
+      domainId: sql`s.domain_id`,
+      bindingId: sql`s.domain_problem_binding_id`,
+      contestId: sql`s.contest_id`,
+    })
+  }
+      ${actorId ? sql`AND s.user_id=${actorId}` : sql``}
+    ORDER BY s.created_at DESC,s.id DESC LIMIT 5
+  `);
+  return unwrapRows<{
+    id: string;
+    public_id: string | null;
+    problem_id: string;
+    status: string;
+    created_at: string;
+    problem: { title: string };
+    result: {
+      status: string;
+      score: number;
+      time_ms: number | null;
+      memory_kb: number | null;
+    } | null;
+  }>(rows as never);
+}
+
+/** 题库本人状态过滤在分页前执行，赛中隐藏及其他域记录不能影响命中数。 */
+export function domainProblemProgressWhere(
+  scope: DomainQueryScope,
+  problemId: AnyColumn | SQL,
+  actorId: string,
+  state: "solved" | "attempted" | "unseen",
+) {
+  scope = { ...scope, includeAllEndedContests: true };
+  const source =
+    sql`SELECT s.* FROM (SELECT * FROM ${unifiedSubmissionSources}) s
+    WHERE s.problem_id=${problemId} AND s.user_id=${actorId} AND ${
+      submissionQueryVisibility(scope, {
+        domainId: sql`s.domain_id`,
+        bindingId: sql`s.domain_problem_binding_id`,
+        contestId: sql`s.contest_id`,
+      })
+    }`;
+  const attempted = sql`EXISTS (${source})`;
+  const solved = sql`EXISTS (${source} AND s.is_valid AND s.is_accepted)`;
+  return state === "solved"
+    ? solved
+    : state === "unseen"
+    ? sql`NOT ${attempted}`
+    : sql`${attempted} AND NOT ${solved}`;
+}
+
+/** 一页题目的域内统计与本人状态一起聚合，不按单元格逐项查询。 */
+export async function getDomainProblemSummaries(
+  scope: DomainQueryScope,
+  problemIds: string[],
+  actorId: string | null,
+) {
+  if (!problemIds.length) return [];
+  scope = { ...scope, includeAllEndedContests: true };
+  const result = await getDb().execute(
+    sql`WITH visible_sources AS (${visibleSources(scope)})
+    SELECT problem_id, count(*)::int AS submit_count,
+      count(*) FILTER (WHERE is_valid)::int AS valid_submissions,
+      count(*) FILTER (WHERE is_valid AND is_accepted)::int AS accepted_submissions,
+      bool_or(user_id=${actorId}) AS attempted,
+      bool_or(user_id=${actorId} AND is_valid AND is_accepted) AS solved
+    FROM visible_sources WHERE problem_id IN (${
+      sql.join(problemIds.map((id) => sql`${id}`), sql`,`)
+    })
+    GROUP BY problem_id`,
+  );
+  return unwrapRows<
+    {
+      problem_id: string;
+      submit_count: number;
+      valid_submissions: number;
+      accepted_submissions: number;
+      attempted: boolean;
+      solved: boolean;
+    }
+  >(result as never);
 }
 
 /** 域榜的候选提交不跨域混用，并在分页前去除失效引用及赛中隐藏结果。 */

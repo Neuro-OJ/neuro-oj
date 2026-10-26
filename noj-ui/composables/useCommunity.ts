@@ -185,7 +185,7 @@ export interface NotificationRow {
 export function useCommunity() {
   const scope = useCommunityScope();
   const { api } = useApi();
-  const { data, status, refresh } = useAsyncData(
+  const { data, status, refresh, error } = useAsyncData(
     computed(() => `${scope.key.value}:config`),
     async () => {
       const request = scope.capture();
@@ -206,5 +206,5 @@ export function useCommunity() {
     return status.value === 'error' ? null : config.value;
   }
 
-  return { config, loading, loadConfig };
+  return { config, loading, loadConfig, error };
 }

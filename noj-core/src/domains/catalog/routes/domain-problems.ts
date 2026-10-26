@@ -220,6 +220,11 @@ domainProblemsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
       page: pagination.page,
       limit: pagination.perPage,
       keyword: c.req.query("keyword"),
+      difficulty: c.req.query("difficulty"),
+      kind: c.req.query("kind"),
+      progress: c.req.query("progress"),
+      tag_id: c.req.query("tag_id"),
+      judge_backend: c.req.query("judge_backend"),
     }),
   );
 });

@@ -108,6 +108,7 @@
 | GET | `/documents/:kind` | noj-core/src/domains/legal/routes/admin.ts |
 | GET | `/documents/:kind/versions` | noj-core/src/domains/legal/routes/documents.ts |
 | GET | `/domains/:slug/${path}` | noj-core/src/domains/education/routes/workbench.ts |
+| GET | `/domains/:slug/activity` | noj-core/src/domains/query/routes/domain-query.ts |
 | GET | `/domains/:slug/assignments/:id` | noj-core/src/domains/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/feedback` | noj-core/src/domains/education/routes/interactions.ts |
 | GET | `/domains/:slug/assignments/:id/feedback/:feedbackId` | noj-core/src/domains/education/routes/interactions.ts |
@@ -129,6 +130,8 @@
 | GET | `/domains/:slug/objective-submissions/:id` | noj-core/src/domains/objective/routes/domain-objective.ts |
 | GET | `/domains/:slug/problem-drafts` | noj-core/src/domains/catalog/routes/domain-problems.ts |
 | GET | `/domains/:slug/problems/:reference/self-tests` | noj-core/src/domains/submission/routes/domain-submissions.ts |
+| GET | `/domains/:slug/queue` | noj-core/src/domains/submission/routes/queue.ts |
+| GET | `/domains/:slug/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `/domains/:slug/rankings` | noj-core/src/domains/query/routes/domain-query.ts |
 | GET | `/domains/:slug/rankings/me` | noj-core/src/domains/query/routes/domain-query.ts |
 | GET | `/domains/:slug/search` | noj-core/src/domains/search/routes/search.ts |
@@ -147,6 +150,8 @@
 | GET | `/health/live` | noj-core/src/domains/observability/routes/health.ts |
 | GET | `/health/ready` | noj-core/src/domains/observability/routes/health.ts |
 | GET | `/history` | noj-core/src/domains/identity/routes/checkin.ts |
+| GET | `/instance/queue` | noj-core/src/domains/submission/routes/queue.ts |
+| GET | `/instance/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `/internal/llm/quota-caps` | noj-core/src/domains/system/routes/internal-llm-policy.ts |
 | GET | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
 | GET | `/llm-model-aliases` | noj-core/src/domains/catalog/routes/problems.ts |

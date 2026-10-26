@@ -112,7 +112,7 @@ function oiContent(
     kind: "oi",
     title,
     description: `${title} 描述`,
-    samples: [],
+    samples: [{ id: "sample", input: backend, output: title }],
     runtime_config: {
       backend,
       languages,
@@ -199,6 +199,12 @@ Deno.test({
       assertEquals(row.judge_type, "oi");
       assertEquals(row.judge_backend, "oi-native");
       assertEquals(row.supported_languages, ["cc"]);
+      assertEquals(row.samples, [{
+        id: "sample",
+        input: "native",
+        output: "V1 题面",
+      }]);
+      assertEquals(row.limits, { time_limit_ms: 1000, memory_limit_mb: 256 });
       // 管理信息（难度）仍取题目身份
       assertEquals(row.difficulty, "easy");
       // 版本与策略元数据
@@ -227,6 +233,11 @@ Deno.test({
       assertEquals(upgraded.title, "V2 题面");
       assertEquals(upgraded.judge_backend, "oi-wasm");
       assertEquals(upgraded.supported_languages, ["c"]);
+      assertEquals(upgraded.samples, [{
+        id: "sample",
+        input: "wasm",
+        output: "V2 题面",
+      }]);
       assertEquals(upgraded.version, 2);
     } finally {
       await db.delete(contestProblems).where(

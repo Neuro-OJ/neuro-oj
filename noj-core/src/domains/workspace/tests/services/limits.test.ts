@@ -2,6 +2,7 @@ import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
   AppError,
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   ServiceUnavailableError,
@@ -214,7 +215,7 @@ Deno.test("模块政策：受限 Preset、禁止重新启用及历史教学读�
           features: { ...domain.configuration.features, classroom: true },
         },
       }),
-    ForbiddenError,
+    BadRequestError,
   );
 });
 

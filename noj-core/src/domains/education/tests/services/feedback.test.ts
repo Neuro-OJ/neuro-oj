@@ -10,7 +10,7 @@ import {
   queryProjectionRevisions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { updateDomain } from "../../../workspace/index.ts";
+import { updateSetting } from "../../../system/index.ts";
 import {
   createAssignment,
   createAssignmentFeedback,
@@ -46,6 +46,9 @@ async function fixture() {
 
 Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，学生不能看同学反馈", async () => {
   const f = await fixture();
+  await f.db.update(users).set({ username: "target_student" }).where(
+    eq(users.id, f.student),
+  );
   const common = await createAssignmentFeedback(
     f.school.slug,
     f.task.id,
@@ -78,6 +81,18 @@ Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，
   assertEquals(
     (await listAssignmentFeedback(f.school.slug, f.task.id, f.teacher)).total,
     3,
+  );
+  const named = await getAssignmentFeedback(
+    f.school.slug,
+    f.task.id,
+    first.id,
+    f.teacher,
+  );
+  assertEquals(named.target_name, "target_student");
+  assertEquals(
+    (await listAssignmentFeedback(f.school.slug, f.task.id, f.teacher)).data
+      .find((row) => row.id === first.id)?.target_name,
+    "target_student",
   );
   assertEquals(
     (await getAssignmentFeedback(
@@ -274,16 +289,16 @@ Deno.test("作业反馈：离班及停用保持历史，作者注销有标识，
     )).body,
     "保留反馈",
   );
-  await updateDomain(f.school.slug, f.owner, 0, {
-    configuration: {
-      ...f.school.configuration,
-      features: {
-        ...f.school.configuration.features,
-        assignment: false,
-        analytics: false,
-      },
-    },
-  });
+  await updateSetting(
+    "instance_allowed_modules",
+    JSON.stringify({
+      community: true,
+      classroom: true,
+      assignment: false,
+      analytics: true,
+    }),
+    "0",
+  );
   await assertRejects(
     () =>
       createAssignmentFeedback(f.school.slug, f.task.id, f.teacher, "paused", {

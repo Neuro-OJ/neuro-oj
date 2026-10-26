@@ -71,7 +71,19 @@ Deno.test({
             samples: [],
             submission_mode: "code",
             template_content: `# template-v${version}`,
-            runtime_config: null,
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 evaluate.py",
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+              },
+              solution: {
+                image: "noj-solution-python",
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+              },
+            },
             artifact_max_size_mb: null,
             llm_config: null,
           }

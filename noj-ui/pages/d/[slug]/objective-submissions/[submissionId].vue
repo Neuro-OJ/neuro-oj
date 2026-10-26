@@ -2,7 +2,9 @@
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
-const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth(), api = useDomainObjectiveHistory();
+const route = useRoute(), workspace = useWorkspace(), { user } = useAuth(), api = useDomainObjectiveHistory();
+const slug = workspace.slug;
+const can = workspace.can ?? (() => false);
 const id = computed(() => String(route.params.submissionId));
 const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'objective-record', id.value),
@@ -10,20 +12,20 @@ const { data, status, error, refresh } = await useAsyncData(
 );
 usePolling({
   intervalMs: computed(() =>
-    data.value?.data.result_visibility !== 'hidden' && ['pending', 'judging'].includes(data.value?.data.status ?? '')
+    data.value?.data.result_visibility === 'hidden' || ['pending', 'judging'].includes(data.value?.data.status ?? '')
       ? 2000
       : null
   ),
   immediate: false,
   fetcher: () => refresh(),
 });
-useSeoMeta({ title: '本人客观题提交详情' });
+useSeoMeta({ title: '客观题提交详情' });
 </script>
 <template>
   <div class="space-y-5">
     <div class="flex items-center justify-between gap-3">
-      <UButton :to="workspacePath(slug!, 'objective-submissions')" variant="ghost"
-        icon="i-lucide-arrow-left">本域客观题历史</UButton>
+      <UButton :to="{ path: workspacePath(slug!, 'submissions'), query: { kind: 'objective' } }" variant="ghost"
+        icon="i-lucide-arrow-left">返回客观题提交</UButton>
       <UButton variant="outline" @click="refresh()">刷新结果</UButton>
     </div>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
@@ -33,10 +35,10 @@ useSeoMeta({ title: '本人客观题提交详情' });
         <div class="flex flex-wrap gap-3">
           <DomainUpgradeAction :slug="slug!" :source="{ kind: 'objective', id: data.data.id }"
             :source-version="data.data.submitted_version_id"
-            :eligible="data.data.resource_available && !data.data.contest_id && data.data.result_visibility !== 'hidden' && !['pending', 'judging'].includes(data.data.status)" />
+            :eligible="data.data.user_id === user?.id && data.data.resource_available && !data.data.contest_id && data.data.result_visibility !== 'hidden' && !['pending', 'judging'].includes(data.data.status)" />
           <DomainRejudgeAction :slug="slug!"
             :scope="{ type: 'selected', submissions: [{ kind: 'objective', id: data.data.id }] }"
-            label="重测此回答" :eligible="data.data.resource_available && !data.data.contest_id" />
+            label="重测此回答" :eligible="data.data.resource_available && !data.data.contest_id && can('submission:rejudge')" />
         </div>
       </ClientOnly>
     </AsyncContent>

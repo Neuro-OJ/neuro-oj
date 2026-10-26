@@ -8,9 +8,11 @@ import UiFrame from '~/components/uiproblem/UiFrame.vue';
 import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
 import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/problemView';
+import { languageLabels } from '~/utils/submissionFormat';
 const props = defineProps<{ slug: string; problem: DomainProblemDetail; assignmentOrigin?: AssignmentSubmissionOrigin }>();
 const emit = defineEmits<{ refresh: [] }>();
 const { user, isLoggedIn } = useAuth();
+const route = useRoute();
 const { domain } = useWorkspace();
 const scope = useWorkspaceActionScope();
 const api = useDomainProblems();
@@ -43,8 +45,13 @@ const key = computed(() =>
     language.value,
   )
 );
-const enabled = computed(() => isLoggedIn.value);
-const draft = useDomainAnswerDraft(key, code, answers, enabled);
+const guestKey = computed(() => domainAnswerKey('anonymous', props.slug, props.problem.reference.problem_id, answerVersion.value, language.value));
+const draft = useDomainAnswerDraft(key, code, answers, ref(true), guestKey);
+async function restoreGuestDraft() {
+  if ((code.value.trim() || Object.keys(answers.value).length) &&
+    !await dialog.confirm('用登录前的草稿替换当前输入？', { title: '恢复登录前草稿' })) return;
+  draft.restoreGuest();
+}
 const uiSelfTest = ref<{ run: () => Promise<void> } | null>(null);
 const uiResult = ref<UiFrameResult | null>(null), uiSelfTestRecord = ref<DomainSelfTest | null>(null);
 async function runUiSelfTest() {
@@ -58,7 +65,7 @@ const ui = useAsyncData(
 );
 
 async function loadTemplate() {
-  if (loadingTemplate.value || changed.value) return;
+  if (!isLoggedIn.value || loadingTemplate.value || changed.value) return;
   if (code.value.trim() && !await dialog.confirm('用本版本模板替换当前代码？', { title: '载入模板' })) return;
   const operation = scope();
   const version = answerVersion.value;
@@ -67,7 +74,7 @@ async function loadTemplate() {
   try {
     const response = await api.template(operation.slug, props.problem.reference.display_ref, version);
     if (operation.isCurrent() && answerVersion.value === version) {
-      if (response.data.template_content == null) failure.value = '此版本没有代码模板';
+      if (!response.data.template_content?.trim()) failure.value = '此版本没有代码模板，当前代码已保留';
       else code.value = response.data.template_content;
     }
   } catch (error) {
@@ -152,7 +159,13 @@ async function submit() {
         <UButton @click="changeVersion">切换到 V{{ problem.version }}</UButton>
       </template>
     </UAlert>
-    <UAlert v-if="!isLoggedIn" title="登录后提交作答" color="info" class="mb-4" />
+    <UAlert v-if="!isLoggedIn" title="登录后提交作答，当前代码会保留在此设备" color="info" class="mb-4">
+      <template #actions><UButton :to="{ path: '/login', query: { redirect: route.fullPath } }">登录并继续作答</UButton></template>
+    </UAlert>
+    <UAlert v-if="draft.guestAvailable.value" title="发现登录前的本题草稿，你的账号草稿仍保留" color="info" class="mb-4">
+      <template #actions><UButton variant="outline" @click="restoreGuestDraft">恢复登录前草稿</UButton></template>
+    </UAlert>
+    <UAlert v-if="draft.state.value === 'error'" title="无法保存本地草稿，请先复制代码或答案" color="warning" class="mb-4" />
     <template v-if="problem.content.kind === 'objective'">
       <div v-for="(question, index) in problem.content.questions" :key="question.key"
         class="mb-5 border-b border-border pb-5">
@@ -175,6 +188,7 @@ async function submit() {
         class="mb-3 text-sm text-text-secondary">{{ isPrediction ? '上传单个预测结果文件' : '上传产物 ZIP' }}{{ problem.content.artifact_max_size_mb ? `，最大 ${problem.content.artifact_max_size_mb} MiB` : '' }}。</p>
       <UFileUpload :model-value="file" :accept="isPrediction ? PREDICTION_FILE_ACCEPT : '.zip'" :label="isPrediction ? '选择预测结果文件' : '选择产物文件'" :disabled="!writable || submitting"
         @update:model-value="pickedFile" />
+      <p v-if="file" class="mt-2 break-all text-sm text-text-secondary">已选择：{{ file.name }}</p>
     </template>
     <template v-else-if="isUi">
       <UAlert v-if="ui.error.value" color="error" :title="extractApiError(ui.error.value).message" />
@@ -193,9 +207,9 @@ async function submit() {
     </template>
     <template v-else>
       <div class="mb-3 flex flex-wrap gap-3">
-        <USelect v-model="language" :items="languages" aria-label="提交语言" class="min-w-40"
+        <USelect v-model="language" :items="languages.map(value => ({ value, label: languageLabels[value] ?? value }))" aria-label="提交语言" class="min-w-40"
           :disabled="submitting || changed" />
-        <UButton variant="outline" :loading="loadingTemplate" :disabled="submitting || changed"
+        <UButton variant="outline" :loading="loadingTemplate" :disabled="!isLoggedIn || submitting || changed"
           @click="loadTemplate">载入版本模板</UButton>
       </div>
       <UAlert v-if="languages.length === 0" color="warning" title="题目尚未提供可提交语言，请联系管理员" class="mb-3" />

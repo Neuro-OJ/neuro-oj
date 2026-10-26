@@ -1,6 +1,4 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
   communityPosts,
@@ -54,6 +52,7 @@ import {
   communityResourceVisible,
   type CommunityScope,
   loadCommunityScope,
+  publishCommunitySearchEvent,
   resolveCommunityProblem,
 } from "./community-scope.ts";
 
@@ -113,9 +112,10 @@ async function ensureSolutionAccepted(
 async function canPostToBoard(
   userId: string,
   boardId: string,
+  scope?: CommunityScope,
 ): Promise<boolean> {
-  const db = getDb();
-  const grants = await listBoardRoleGrants(boardId);
+  const db = communityDb(scope);
+  const grants = await listBoardRoleGrants(boardId, scope);
   if (grants.length === 0) return true;
   const roleRows = await db.select({ role_id: userRoles.role_id }).from(
     userRoles,
@@ -197,7 +197,7 @@ export async function createPost(
     }
     if (
       (!scope || scope.slug === DEFAULT_DOMAIN_SLUG) && !moderator &&
-      !await canPostToBoard(authorId, input.board_id)
+      !await canPostToBoard(authorId, input.board_id, scope)
     ) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
@@ -262,7 +262,7 @@ export async function createPost(
     }
   }
   const createdAt = nowIso();
-  const status = await publicationStatus(authorId);
+  const status = await publicationStatus(authorId, scope);
   const post = {
     id: crypto.randomUUID(),
     domain_id: communityDomainId(scope),
@@ -307,7 +307,7 @@ export async function createPost(
   // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
   // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
 
-  await publishSearchIndexEvent("community_post", post.id, "upsert");
+  publishCommunitySearchEvent("community_post", post.id, "upsert", scope);
 
   return post;
 }
@@ -481,7 +481,7 @@ export async function updatePost(
     updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
 
-  await publishSearchIndexEvent("community_post", postId, "upsert");
+  publishCommunitySearchEvent("community_post", postId, "upsert", scope);
 
   return rows[0]!;
 }

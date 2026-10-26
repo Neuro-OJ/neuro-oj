@@ -1,4 +1,5 @@
 import { extractApiError } from '~/utils/apiError';
+import { authCookieNames } from '~/utils/auth-cookies';
 
 interface UserResponse {
   id: string;
@@ -54,7 +55,7 @@ export function useAuth() {
 
   // 可读 cookie：SSR 时服务端注入、水合后客户端读取（与 HTTP-only token cookie 配合）
   // 不含敏感凭证，仅含基础用户信息
-  const session = useCookie<SessionData | null>('noj:session', {
+  const session = useCookie<SessionData | null>(authCookieNames(useRuntimeConfig().public.authCookiePrefix).session, {
     default: () => null,
     sameSite: 'lax',
     path: '/',

@@ -4,28 +4,11 @@ import type {
   DomainPreset,
   DomainRole,
 } from "../../shared/workspace/types.ts";
+import { domainTypeConfiguration } from "../../shared/workspace/capabilities.ts";
 
-/** 工作空间模板只在创建或显式应用时返回独立配置。 */
+/** 初始化域政策；类型能力由共享契约定义。 */
 export function presetConfiguration(preset: DomainPreset): DomainConfiguration {
-  const education = preset === "education";
-  return {
-    access: preset === "community" ? "public" : "members",
-    discoverable: preset === "community",
-    join_policy: preset === "community" ? "open" : "invite",
-    features: {
-      community: preset === "community",
-      classroom: education,
-      assignment: education,
-      analytics: education,
-    },
-    homepage: preset === "community"
-      ? "community"
-      : education
-      ? "teaching"
-      : preset === "team"
-      ? "training"
-      : "overview",
-  };
+  return domainTypeConfiguration(preset);
 }
 
 const MEMBER = [
@@ -134,35 +117,6 @@ export function validateDomainConfiguration(
     )
   ) throw new BadRequestError("工作空间功能配置非法");
   if (
-    features.assignment && !features.classroom ||
-    features.analytics && !features.assignment
-  ) throw new BadRequestError("作业依赖班级，学情依赖作业");
-}
-/** 可展示的模板配置差异，不执行数据删除。 */
-export function configurationDiff(
-  before: DomainConfiguration,
-  after: DomainConfiguration,
-): Array<{ key: string; before: unknown; after: unknown }> {
-  validateDomainConfiguration(before);
-  validateDomainConfiguration(after);
-  const result: Array<{ key: string; before: unknown; after: unknown }> = [];
-  for (
-    const key of ["access", "discoverable", "join_policy", "homepage"] as const
-  ) {
-    if (before[key] !== after[key]) {
-      result.push({ key, before: before[key], after: after[key] });
-    }
-  }
-  for (
-    const key of ["community", "classroom", "assignment", "analytics"] as const
-  ) {
-    if (before.features[key] !== after.features[key]) {
-      result.push({
-        key: `features.${key}`,
-        before: before.features[key],
-        after: after.features[key],
-      });
-    }
-  }
-  return result;
+    features.assignment && !features.classroom
+  ) throw new BadRequestError("作业依赖班级");
 }

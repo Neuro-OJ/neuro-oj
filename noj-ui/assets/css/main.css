@@ -194,7 +194,8 @@
 }
 
 /* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
-:root {
+:root,
+.editor-dark {
   /* Nuxt UI primary 使用品牌天青蓝（Sky 600）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
   --ui-color-primary-50: #f0f9ff;
@@ -231,6 +232,10 @@
   --ui-text-dimmed: var(--c-text-muted);
   --ui-text-toned: var(--c-text-secondary);
   --ui-text-highlighted: var(--c-text);
+}
+
+.editor-dark {
+  --ui-text-inverted: var(--c-bg-page);
 }
 
 /* ---- @tailwindcss/typography 插件（Tailwind v4 通过 @plugin 加载） ---- */

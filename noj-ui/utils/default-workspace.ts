@@ -2,6 +2,7 @@
 export type DefaultWorkspaceDestination = { path: string; kind?: 'oi' | 'ai' | 'objective' } | {
   problemRef: string;
   editor: boolean;
+  solve?: boolean;
 } | { trainingRef: string };
 export function defaultProblemReference(value: string) {
   const number = /^(?:P)?([1-9]\d*)$/.exec(value)?.[1];
@@ -19,10 +20,17 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/trainings/mine': 'trainings',
     '/contests': 'contests',
     '/submissions': 'submissions',
+    '/my/submissions': 'submissions',
     '/ranking': 'rankings',
+    '/search': 'search',
     '/community': 'community',
     '/community/bookmarks': 'community/bookmarks',
     '/my/problems': 'problem-drafts',
+    '/admin/problems': 'problem-bindings',
+    '/admin/contests': 'contests',
+    '/admin/trainings': 'trainings',
+    '/admin/submissions': 'submissions',
+    '/admin/problem-import': 'problems/new',
     '/admin/problem-versions': 'problem-bindings',
     '/admin/submission-jobs': 'submissions',
     '/admin/llm/providers': 'llm',
@@ -48,6 +56,7 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     return {
       problemRef: reference,
       editor: path.startsWith('/admin/problem-edit/') || !!problem[2],
+      ...(path.startsWith('/editor/') ? { solve: true } : {}),
     };
   }
   const resource = /^\/(trainings|contests|submissions)\/(.+)$/.exec(path);

@@ -7,6 +7,7 @@ import { createApp } from "../../../../../src/app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   problems,
+  sseEvents,
   submissions,
   userRoles,
   users,
@@ -14,6 +15,11 @@ import {
 import { signToken } from "../../../../domains/identity/services/security/jwt.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { ensureRbacSeeds } from "../../../../domains/system/index.ts";
+import { _dispatchToLocalListenersForTest } from "../../../../shared/sse/event-bus.ts";
+import {
+  INSTANCE_QUEUE_CHANNEL,
+  queueEventChannel,
+} from "../../services/queue.ts";
 
 const app = createApp();
 const JWT_SECRET = Deno.env.get("JWT_SECRET");
@@ -146,5 +152,85 @@ Deno.test({
       signal: AbortSignal.timeout(200),
     });
     assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "sse: 队列首次连接和重连只校准一次并继续实时通知",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: adminId,
+      username: `queue-sse-${adminId}`,
+      email: `${adminId}@test.local`,
+      password_hash: "test",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
+    const domainChannel = queueEventChannel(DEFAULT_DOMAIN_ID);
+    // 重现打开页面时积累的历史通知；它们全部指向同一份当前队列。
+    await db.insert(sseEvents).values(
+      [domainChannel, INSTANCE_QUEUE_CHANNEL].flatMap((channel) =>
+        Array.from({ length: 200 }, () => ({
+          channel,
+          payload: { type: "queue:changed" },
+          created_at: now,
+        }))
+      ),
+    );
+    const token = await signToken({ sub: adminId, role: "admin" });
+    for (
+      const [path, channel] of [
+        ["/queue/events", domainChannel],
+        ["/domains/main/queue/events", domainChannel],
+        ["/instance/queue/events", INSTANCE_QUEUE_CHANNEL],
+      ]
+    ) {
+      for (const cursor of ["initial", "header", "query"]) {
+        const res = await app.request(
+          `/api/v1${path}${cursor === "query" ? "?afterSeq=1" : ""}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...(cursor === "header" ? { "Last-Event-ID": "1" } : {}),
+            },
+            signal: AbortSignal.timeout(500),
+          },
+        );
+        assertEquals(res.status, 200);
+        const liveEvent = setTimeout(() => {
+          _dispatchToLocalListenersForTest(
+            channel,
+            JSON.stringify({ type: "queue:changed" }),
+          );
+        }, 50);
+        const reader = res.body!.getReader();
+        const stop = setTimeout(() => void reader.cancel(), 250);
+        try {
+          const decoder = new TextDecoder();
+          let body = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            body += decoder.decode(value, { stream: true });
+          }
+          assertEquals(
+            (body.match(/event: queue:changed/g) ?? []).length,
+            2,
+            `${path} ${cursor}: 应只有一次初始通知和一次实时通知`,
+          );
+        } finally {
+          clearTimeout(liveEvent);
+          clearTimeout(stop);
+          await reader.cancel();
+          reader.releaseLock();
+        }
+      }
+    }
   },
 });

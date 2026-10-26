@@ -108,6 +108,8 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
+    /** NULL 为实例公告；域公告不经实例公开入口返回。 */
+    domain_id: text("domain_id").references(() => domains.id),
     public_id: publicIdColumn("ann"),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
@@ -135,6 +137,7 @@ export const announcements = pgTable(
     ),
     /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
     activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
+      table.domain_id,
       table.is_active,
       table.is_pinned,
       table.created_at,

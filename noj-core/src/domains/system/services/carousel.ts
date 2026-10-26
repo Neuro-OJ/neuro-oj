@@ -10,7 +10,7 @@
  * - 全部写操作记录审计日志（carousel.create / update / delete / reorder）。
  */
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { carouselSlides } from "./../../../shared/db/schema.ts";
 import {
@@ -19,16 +19,20 @@ import {
   ValidationError,
 } from "./../../../shared/base/errors.ts";
 import {
+  deleteStorageObject,
   getStorageProvider,
   isStorageUrl,
   parseStorageUrl,
+  uploadStorageObjectWithReservation,
 } from "./../index.ts";
+import { getDomainOwnedStorageBytes } from "../../workspace/index.ts";
 import {
   IMAGE_MAGIC_MIME,
   type ImageFile,
   validateImageFile,
 } from "./../../../shared/security/image-validation.ts";
 import { logAudit } from "./audit-log.ts";
+import { type ContentScope, contentScopeWhere } from "./content-scope.ts";
 
 /** 轮播图片大小上限（5MB） */
 export const MAX_CAROUSEL_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -39,6 +43,7 @@ export type CarouselKind = "image" | "text";
 /** 幻灯片（对外结构） */
 export interface CarouselSlide {
   id: string;
+  domain_id: string | null;
   kind: CarouselKind;
   image_storage_url: string | null;
   title: string | null;
@@ -134,22 +139,36 @@ function validateCreateInput(input: CarouselSlideInput) {
 }
 
 /** 公开端：仅启用项，按 sort_order 升序（同序按 created_at）。 */
-export async function listEnabledSlides(): Promise<CarouselSlide[]> {
+export async function listEnabledSlides(
+  scope?: ContentScope,
+): Promise<CarouselSlide[]> {
   const db = getDb();
   const rows = await db
     .select()
     .from(carouselSlides)
-    .where(eq(carouselSlides.is_enabled, true))
-    .orderBy(asc(carouselSlides.sort_order), asc(carouselSlides.created_at));
+    .where(
+      and(
+        eq(carouselSlides.is_enabled, true),
+        contentScopeWhere(carouselSlides.domain_id, scope, true),
+      ),
+    )
+    .orderBy(
+      asc(isNotNull(carouselSlides.domain_id)),
+      asc(carouselSlides.sort_order),
+      asc(carouselSlides.created_at),
+    );
   return rows.map((r) => ({ ...r, kind: r.kind as CarouselKind }));
 }
 
 /** 管理端：全部幻灯片，按 sort_order 升序。 */
-export async function listAllSlides(): Promise<CarouselSlide[]> {
+export async function listAllSlides(
+  scope?: ContentScope,
+): Promise<CarouselSlide[]> {
   const db = getDb();
   const rows = await db
     .select()
     .from(carouselSlides)
+    .where(contentScopeWhere(carouselSlides.domain_id, scope))
     .orderBy(asc(carouselSlides.sort_order), asc(carouselSlides.created_at));
   return rows.map((r) => ({ ...r, kind: r.kind as CarouselKind }));
 }
@@ -159,8 +178,12 @@ export async function listAllSlides(): Promise<CarouselSlide[]> {
  *
  * @returns 新幻灯片 id
  */
-export async function createSlide(input: CarouselSlideInput): Promise<string> {
+export async function createSlide(
+  input: CarouselSlideInput,
+  scope?: ContentScope,
+): Promise<string> {
   const fields = validateCreateInput(input);
+  await assertOwnedImage(fields.image_storage_url, scope);
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -169,6 +192,7 @@ export async function createSlide(input: CarouselSlideInput): Promise<string> {
   const existing = await db
     .select({ sort_order: carouselSlides.sort_order })
     .from(carouselSlides)
+    .where(contentScopeWhere(carouselSlides.domain_id, scope))
     .orderBy(asc(carouselSlides.sort_order));
   const nextOrder = existing.length === 0
     ? 0
@@ -176,6 +200,7 @@ export async function createSlide(input: CarouselSlideInput): Promise<string> {
 
   await db.insert(carouselSlides).values({
     id,
+    domain_id: scope?.domainId ?? null,
     kind: input.kind,
     ...fields,
     sort_order: nextOrder,
@@ -200,12 +225,18 @@ export async function createSlide(input: CarouselSlideInput): Promise<string> {
 export async function updateSlide(
   id: string,
   input: Partial<CarouselSlideInput>,
+  scope?: ContentScope,
 ): Promise<void> {
   const db = getDb();
   const [existing] = await db
     .select()
     .from(carouselSlides)
-    .where(eq(carouselSlides.id, id))
+    .where(
+      and(
+        eq(carouselSlides.id, id),
+        contentScopeWhere(carouselSlides.domain_id, scope),
+      ),
+    )
     .limit(1);
   if (!existing) throw new NotFoundError("幻灯片不存在");
 
@@ -231,6 +262,7 @@ export async function updateSlide(
       : pick(input.gradient_key, existing.gradient_key),
     link_url: pick(input.link_url, existing.link_url),
   });
+  await assertOwnedImage(fields.image_storage_url, scope);
 
   await db
     .update(carouselSlides)
@@ -242,7 +274,12 @@ export async function updateSlide(
         : {}),
       updated_at: new Date().toISOString(),
     })
-    .where(eq(carouselSlides.id, id));
+    .where(
+      and(
+        eq(carouselSlides.id, id),
+        contentScopeWhere(carouselSlides.domain_id, scope),
+      ),
+    );
 
   await logAudit(
     "carousel.update",
@@ -263,6 +300,7 @@ export async function updateSlide(
  */
 export async function getCarouselImageBytes(
   id: string,
+  scope?: ContentScope,
 ): Promise<{ bytes: Uint8Array; contentType: string; etag: string }> {
   const db = getDb();
   const [row] = await db
@@ -273,6 +311,7 @@ export async function getCarouselImageBytes(
         eq(carouselSlides.id, id),
         eq(carouselSlides.is_enabled, true),
         eq(carouselSlides.kind, "image"),
+        contentScopeWhere(carouselSlides.domain_id, scope, true),
       ),
     )
     .limit(1);
@@ -302,7 +341,10 @@ export async function getCarouselImageBytes(
  * @returns 存储 URL（`noj-storage://...`）
  * @throws {BadRequestError} 文件非法（类型/大小/magic 不符）
  */
-export async function uploadCarouselImage(file: File): Promise<string> {
+export async function uploadCarouselImage(
+  file: File,
+  scope?: ContentScope,
+): Promise<string> {
   let validated: ImageFile;
   try {
     validated = await validateImageFile(
@@ -318,12 +360,32 @@ export async function uploadCarouselImage(file: File): Promise<string> {
   }
   const { bytes, type } = validated;
   const ext = type === "png" ? "png" : type === "webp" ? "webp" : "jpg";
+  const key = `carousel/${crypto.randomUUID()}.${ext}`;
+  if (scope) {
+    const uploaded = await uploadStorageObjectWithReservation({
+      key,
+      bytes,
+      contentType: IMAGE_MAGIC_MIME[type],
+      domainId: scope.domainId,
+    });
+    return uploaded.storageUrl;
+  }
   const provider = await getStorageProvider();
   return await provider.put(
-    `carousel/${crypto.randomUUID()}.${ext}`,
+    key,
     bytes,
     IMAGE_MAGIC_MIME[type],
   );
+}
+
+/** 域轮播只能绑定本域已上传、已计量的图片。 */
+async function assertOwnedImage(url: string | null, scope?: ContentScope) {
+  if (
+    scope && url &&
+    await getDomainOwnedStorageBytes(scope.domainId, url) === null
+  ) {
+    throw new ValidationError("请选择本域上传的轮播图片");
+  }
 }
 
 /**
@@ -331,33 +393,52 @@ export async function uploadCarouselImage(file: File): Promise<string> {
  *
  * @throws {NotFoundError} 幻灯片不存在
  */
-export async function deleteSlide(id: string): Promise<void> {
+export async function deleteSlide(
+  id: string,
+  scope?: ContentScope,
+): Promise<void> {
   const db = getDb();
   const [existing] = await db
     .select()
     .from(carouselSlides)
-    .where(eq(carouselSlides.id, id))
+    .where(
+      and(
+        eq(carouselSlides.id, id),
+        contentScopeWhere(carouselSlides.domain_id, scope),
+      ),
+    )
     .limit(1);
   if (!existing) throw new NotFoundError("幻灯片不存在");
 
-  await db.delete(carouselSlides).where(eq(carouselSlides.id, id));
+  await db.delete(carouselSlides).where(
+    and(
+      eq(carouselSlides.id, id),
+      contentScopeWhere(carouselSlides.domain_id, scope),
+    ),
+  );
 
   // 清理图片文件（尽力而为；失败不影响删除结果）。
   // local provider 内容寻址：字节相同的图片共享同一文件名/URL，直接删会破坏
   // 仍引用它的其他 slide。必须先确认无其他 slide 引用（对齐头像的引用计数）。
   if (existing.image_storage_url && isStorageUrl(existing.image_storage_url)) {
-    try {
-      const refs = await db
-        .select({ id: carouselSlides.id })
-        .from(carouselSlides)
-        .where(eq(carouselSlides.image_storage_url, existing.image_storage_url))
-        .limit(1);
-      if (refs.length === 0) {
-        const provider = await getStorageProvider();
-        await provider.delete(existing.image_storage_url);
+    if (scope) {
+      await deleteStorageObject(existing.image_storage_url);
+    } else {
+      try {
+        const refs = await db
+          .select({ id: carouselSlides.id })
+          .from(carouselSlides)
+          .where(
+            eq(carouselSlides.image_storage_url, existing.image_storage_url),
+          )
+          .limit(1);
+        if (refs.length === 0) {
+          const provider = await getStorageProvider();
+          await provider.delete(existing.image_storage_url);
+        }
+      } catch {
+        // 文件不存在或清理失败时静默
       }
-    } catch {
-      // 文件不存在或清理失败时静默
     }
   }
 
@@ -373,11 +454,16 @@ export async function deleteSlide(id: string): Promise<void> {
  *
  * @throws {ValidationError} ids 与实际集合不一致（缺漏/多余/重复）
  */
-export async function reorderSlides(ids: string[]): Promise<void> {
+export async function reorderSlides(
+  ids: string[],
+  scope?: ContentScope,
+): Promise<void> {
   const db = getDb();
   const rows = await db
     .select({ id: carouselSlides.id })
-    .from(carouselSlides);
+    .from(carouselSlides).where(
+      contentScopeWhere(carouselSlides.domain_id, scope),
+    );
   const actual = new Set(rows.map((r) => r.id));
   const given = new Set(ids);
   if (
@@ -393,7 +479,12 @@ export async function reorderSlides(ids: string[]): Promise<void> {
       await tx
         .update(carouselSlides)
         .set({ sort_order: i, updated_at: now })
-        .where(eq(carouselSlides.id, ids[i]!));
+        .where(
+          and(
+            eq(carouselSlides.id, ids[i]!),
+            contentScopeWhere(carouselSlides.domain_id, scope),
+          ),
+        );
     }
   });
 

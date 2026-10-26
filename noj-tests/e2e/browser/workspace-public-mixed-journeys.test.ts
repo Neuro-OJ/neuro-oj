@@ -596,11 +596,15 @@ Deno.test({
         "Mixed同一账号切换为A班学生和B班教练，导航能力随域变化",
         async () => {
           await learner.page.getByRole("button", {
-            name: "切换空间",
+            name: "用户菜单",
             exact: true,
           }).click();
           await learner.page.getByRole("menuitem", {
-            name: `学校A ${suffix}`,
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await learner.page.getByRole("menuitem", {
+            name: `学校A ${suffix} · ${schoolA}`,
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
@@ -613,15 +617,19 @@ Deno.test({
           await expect(
             learner.page.getByRole("link", { name: "创建作业", exact: true }),
           ).toHaveCount(0);
-          await expect(
-            learner.page.getByRole("link", { name: "教学工作台", exact: true }),
-          ).toHaveCount(0);
+          await expect(learner.page.getByTestId("domain-identity")).toHaveText(
+            `${actor.username}@${schoolA}`,
+          );
           await learner.page.getByRole("button", {
-            name: "切换空间",
+            name: "用户菜单",
             exact: true,
           }).click();
           await learner.page.getByRole("menuitem", {
-            name: `学校B ${suffix}`,
+            name: "切换域",
+            exact: true,
+          }).hover();
+          await learner.page.getByRole("menuitem", {
+            name: `学校B ${suffix} · ${schoolB}`,
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
@@ -634,9 +642,15 @@ Deno.test({
           await expect(
             learner.page.getByRole("link", { name: "创建作业", exact: true }),
           ).toBeVisible();
-          await expect(
-            learner.page.getByRole("link", { name: "教学工作台", exact: true }),
-          ).toBeVisible();
+          await learner.page.getByRole("button", { name: "更多", exact: true })
+            .click();
+          await learner.page.getByRole("menuitem", {
+            name: "教学工作台",
+            exact: true,
+          }).click();
+          await learner.page.waitForURL((url) =>
+            url.pathname === `/d/${schoolB}/teaching`
+          );
         },
       );
       await step(
@@ -648,9 +662,15 @@ Deno.test({
           for (const page of [learner.page, second]) {
             await expect(
               page.getByRole("heading", {
-                name: `${reference} 共同源题 ${suffix}`,
+                name: `共同源题 ${suffix}`,
                 exact: true,
               }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole("heading", {
+                name: `共同源题 ${suffix}`,
+                exact: true,
+              }).locator("..").getByText(reference, { exact: true }),
             ).toBeVisible();
           }
           const first = await handIn(
@@ -692,7 +712,13 @@ Deno.test({
           const otherStudent = await friend.page.request.get(
             `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateB}`,
           );
-          assertEquals(otherStudent.status(), 404);
+          assertEquals(otherStudent.status(), 200);
+          const peerSummary = (await otherStudent.json()).data;
+          assertEquals(peerSummary.can_view_answers, false);
+          assertEquals(peerSummary.can_view_source, false);
+          assertEquals(peerSummary.answers, undefined);
+          assertEquals(peerSummary.code, undefined);
+          assertEquals(peerSummary.assignment_origin, null);
           await gotoPage(learner.page, "/d/main/objective-submissions");
           await expect(learner.page.locator(`a[href$="/${privateA}"]`))
             .toHaveCount(0);
@@ -764,9 +790,10 @@ Deno.test({
               exact: true,
             }),
           ).toHaveValue(`model-${schoolA}`);
+          await gotoPage(organizer.page, `/d/${schoolA}/settings/llm/usage`);
           await expect(
             organizer.page.getByRole("heading", {
-              name: "本域用量",
+              name: "LLM 用量统计",
               exact: true,
             }),
           ).toBeVisible();
@@ -790,6 +817,7 @@ Deno.test({
           await expect(
             learner.page.getByText(`独立Provider ${schoolA}`, { exact: true }),
           ).toHaveCount(0);
+          await gotoPage(learner.page, `/d/${schoolB}/settings/llm/usage`);
           await write(
             learner.page,
             "GET",

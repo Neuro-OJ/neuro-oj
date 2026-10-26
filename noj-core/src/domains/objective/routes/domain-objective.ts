@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { enforceSubmissionRateLimit } from "../../system/index.ts";
-import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import { loadWorkspace } from "../../workspace/index.ts";
 import {
-  getOwnSubmissionHistory,
+  getDomainObjectiveSubmissionHistory,
   listOwnSubmissionHistory,
 } from "../../submission/index.ts";
 import {
@@ -45,15 +45,11 @@ domainObjectiveRouter.get(
   "/domains/:slug/objective-submissions/:id",
   authMiddleware,
   async (c) => {
-    const { domain } = await loadWorkspace(c.req.param("slug")!, c.var.userId);
-    const submission = await getOwnSubmissionHistory(
+    const submission = await getDomainObjectiveSubmissionHistory(
+      c.req.param("slug")!,
       c.var.userId,
-      "objective",
       c.req.param("id")!,
     );
-    if (submission.domain.id !== domain.id) {
-      throw new NotFoundError("提交不存在");
-    }
     c.header("Cache-Control", "no-store");
     return c.json({ data: submission });
   },

@@ -1,12 +1,15 @@
 import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
-import { workspaceProblemPath } from '~/utils/workspace';
+import { workspaceProblemPath, workspaceSolvePath } from '~/utils/workspace';
 import { isNotFoundError } from '~/utils/apiError';
 /** 旧入口在页面 setup 前转到 main，旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
   if (!destination) return;
   const query = { ...to.query };
-  if (!to.path.startsWith('/community')) delete query.type;
+  if (!to.path.startsWith('/community') && to.path !== '/search') delete query.type;
+  if (
+    to.path === '/search' && query.type && !['problem', 'contest', 'submission', 'all'].includes(String(query.type))
+  ) delete query.type;
   if ('path' in destination) {
     if (destination.kind) query.kind = destination.kind;
     return navigateTo({ path: destination.path, query, hash: to.hash }, { redirectCode: 301, replace: true });
@@ -40,6 +43,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!reference) throw createError({ statusCode: 404, statusMessage: '旧题目入口不存在' });
   const path = destination.editor
     ? `/d/main/editor/${encodeURIComponent(reference)}`
+    : destination.solve
+    ? workspaceSolvePath('main', reference)
     : workspaceProblemPath('main', reference);
   return navigateTo({ path, query, hash: to.hash }, { redirectCode: 301, replace: true });
 });

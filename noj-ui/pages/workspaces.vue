@@ -69,6 +69,7 @@ useSeoMeta({ title: '空间' });
     <AdminPageHeader title="空间" description="在不同社区、学校或团队中使用各自的资源与身份。"
       icon="i-lucide-building-2">
       <template #actions>
+        <UButton to="/join" variant="outline" icon="i-lucide-key-round">输入邀请码</UButton>
         <UButton v-if="canCreate || canRequest" icon="i-lucide-plus"
           @click="showCreate = true">{{ canRequest ? '申请创建' : '创建空间' }}</UButton>
       </template>
@@ -108,9 +109,9 @@ useSeoMeta({ title: '空间' });
             <UInput v-model="form.slug" class="w-full" required pattern="[a-z][a-z0-9-]{1,30}[a-z0-9]"
               aria-label="空间网址标识" />
           </AdminFormField>
-          <AdminFormField label="初始模板">
+          <AdminFormField label="域类型（创建后固定）">
             <USelect v-model="form.preset" :items="WORKSPACE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
-              class="w-full" aria-label="初始模板" />
+              class="w-full" aria-label="域类型" />
           </AdminFormField>
           <AdminFormField :label="canRequest ? '申请理由' : '简介'">
             <UTextarea v-if="canRequest" v-model="form.reason" class="w-full" required aria-label="创建申请理由" />

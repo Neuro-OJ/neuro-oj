@@ -1,5 +1,6 @@
 import { cookieMaxAgeFromJwt, parseAuthSession } from '../utils/auth-session.ts';
 import { withSecurityHeaders } from '../utils/security-headers.ts';
+import { authCookieNames } from '../../utils/auth-cookies.ts';
 
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',
@@ -196,6 +197,7 @@ function getClientNetworkHeaders(event: {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+  const names = authCookieNames(config.public.authCookiePrefix);
 
   // 路径白名单：仅允许转发到 noj-core v1 API。
   //
@@ -233,7 +235,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const cookies = parseCookies(event);
-  const token = cookies['noj:token'];
+  const token = cookies[names.token];
   const clientNetworkHeaders = getClientNetworkHeaders(event);
 
   // ── 拦截登录/改密成功响应，设置 Cookie ──
@@ -283,14 +285,14 @@ export default defineEventHandler(async (event) => {
         };
 
         // HTTP-only cookie：令牌对 JS 不可见，防 XSS 窃取
-        setCookie(event, 'noj:token', jwt, cookieOptions);
+        setCookie(event, names.token, jwt, cookieOptions);
 
         // 可读 cookie：客户端用于快速判断登录状态
         // 包含 must_change_password（issue #75），前端路由守卫据此强制改密。
         // 包含 is_admin（RBAC），供前端 admin 路由守卫判断。
         setCookie(
           event,
-          'noj:session',
+          names.session,
           JSON.stringify({
             userId: user.id,
             username: user.username,

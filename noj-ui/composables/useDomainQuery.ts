@@ -7,7 +7,7 @@ export function useDomainQuery() {
     rankings: (slug: string, page: number) =>
       api.get<RankingsResponse>(`${root(slug)}/rankings`, { query: { page, limit: 50 }, silent: true }),
     mine: (slug: string) => api.get<{ data: RankingRow | null }>(`${root(slug)}/rankings/me`, { silent: true }),
-    search: (slug: string, q: string, type: 'problem' | 'contest' | 'submission', page: number) =>
+    search: (slug: string, q: string, type: 'problem' | 'contest' | 'submission' | 'announcement', page: number) =>
       api.get<{ data: { items: SearchItem[]; has_more: boolean; page: number; per_page: number; took_ms: number } }>(
         `${root(slug)}/search`,
         { query: { q, type, page, per_page: 20 }, silent: true },

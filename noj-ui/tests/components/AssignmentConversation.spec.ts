@@ -10,6 +10,7 @@ const stubs = {
   UTextarea: { template: '<textarea />' },
 };
 beforeEach(() => {
+  vi.stubGlobal('useUnsavedChanges', vi.fn());
   vi.clearAllMocks();
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('useState', () => ref({ id: 'student' }));
@@ -50,6 +51,18 @@ describe('通知点击后的互动读取', () => {
     const view = await conversation();
     expect(view.text()).toContain('暂无反馈');
     expect(api.feedbackDetail).not.toHaveBeenCalled();
+    view.unmount();
+  });
+  it('个人反馈明确显示服务端授权返回的目标姓名', async () => {
+    api.feedback.mockResolvedValueOnce({
+      data: {
+        data: [{ id: 'note', author_name: '老师', target_user_id: 'student', target_name: '小明', body: '检查边界' }],
+        total: 1,
+      },
+    });
+    const view = await conversation();
+    expect(view.text()).toContain('给 小明');
+    expect(view.text()).not.toContain('学生个人反馈');
     view.unmount();
   });
   it('反馈不在第一页时仍通过域内单条接口读取，拒绝后只显示授权错误', async () => {
