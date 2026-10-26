@@ -28,6 +28,7 @@ import {
   enforceProblemImportRateLimit,
 } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
+import { withActorContext } from "../../platform/contracts/cross-module/system_services_request-context.ts";
 import {
   createObjectiveQuestionCommand,
   createProblemCommand,
@@ -723,8 +724,10 @@ router.delete("/:id", authMiddleware, async (c) => {
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
   const actor = userActorFromAuthenticatedId(userId);
-  await deleteProblemCommand(actor, problem.id);
-  return c.body(null, 204);
+  return withActorContext(c, async () => {
+    await deleteProblemCommand(actor, problem.id);
+    return c.body(null, 204);
+  });
 });
 
 /**

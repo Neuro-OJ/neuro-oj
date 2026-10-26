@@ -127,8 +127,8 @@ export function redisPrefixPattern(prefix: string): string {
 /**
  * 只转发安全的 Deno test 选项。
  *
- * 测试根目录、权限、检查模式和并发由启动器固定；filter、fail-fast、reporter
- * 等诊断选项可透传。路径参数会被拒绝，避免绕过统一的 tests 入口。
+ * 测试根目录、权限、检查模式和并发由启动器固定；filter、coverage、fail-fast、
+ * reporter 等诊断选项可透传。路径参数会被拒绝，避免绕过统一的 tests 入口。
  */
 export function parseTestArgs(args: readonly string[]): string[] {
   const forwarded: string[] = [];
@@ -157,6 +157,19 @@ export function parseTestArgs(args: readonly string[]): string[] {
       forwarded.push(
         `--reporter=${assertReporter(arg.slice("--reporter=".length))}`,
       );
+      continue;
+    }
+    if (arg === "--coverage") {
+      const { value, nextIndex } = parseOptionValue(args, index, arg);
+      forwarded.push(arg, value);
+      index = nextIndex;
+      continue;
+    }
+    if (arg.startsWith("--coverage=")) {
+      if (arg.length === "--coverage=".length) {
+        throw new Error("Gateway 测试启动器的 --coverage 缺少目录");
+      }
+      forwarded.push(arg);
       continue;
     }
     if (

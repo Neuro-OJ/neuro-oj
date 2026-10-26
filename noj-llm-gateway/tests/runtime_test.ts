@@ -102,7 +102,9 @@ Deno.test("Gateway HTTP: shutdown 停止新连接并排空真实流式 response 
     assertEquals(new TextDecoder().decode(first.value), "prefix");
 
     let shutdownFinished = false;
-    shutdown = server.shutdown().then(() => shutdownFinished = true);
+    shutdown = server.shutdown().then(() => {
+      shutdownFinished = true;
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     assertFalse(shutdownFinished);
 
@@ -156,12 +158,12 @@ async function createIsolatedRuntimeResources(): Promise<
   const baseRedis = createRedis(integrationRedisUrl!);
   const prefix = runRedisPrefix("runtime");
   const readyKey = prefix + "llm:accounting:ready:v1";
-  const redis: RedisClient = {
+  const redis = {
     serverId: () => baseRedis.serverId!(),
-    get: (key) => baseRedis.get!(prefix + key),
-    eval: (script, keys, args) =>
-      baseRedis.eval!(script, keys.map((key) => prefix + key), args),
-  };
+    get: (key: string) => baseRedis.get!(prefix + key),
+    eval: (script: string, keys: string[], args: (string | number)[]) =>
+      baseRedis.eval!(script, keys.map((key: string) => prefix + key), args),
+  } as unknown as RedisClient;
   try {
     await runMigrations(databaseUrl.toString());
   } catch (error) {
@@ -196,7 +198,9 @@ Deno.test({
     const resources = await createIsolatedRuntimeResources();
     const entered = deferred<void>();
     const release = deferred<void>();
-    const realBegin = resources.db.begin.bind(resources.db);
+    const realBegin = resources.db.begin.bind(resources.db) as unknown as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
     const slowDb = ((...args: unknown[]) =>
       (resources.db as unknown as (...args: unknown[]) => unknown)(
         ...args,
@@ -236,10 +240,14 @@ Deno.test({
     const entered = deferred<void>();
     const release = deferred<void>();
     let firstEval = true;
-    const slowRedis: RedisClient = {
+    const slowRedis = {
       serverId: () => resources.redis.serverId!(),
-      get: (key) => resources.redis.get!(key),
-      eval: async (script, keys, args) => {
+      get: (key: string) => resources.redis.get!(key),
+      eval: async (
+        script: string,
+        keys: string[],
+        args: (string | number)[],
+      ) => {
         if (firstEval) {
           firstEval = false;
           entered.resolve();
@@ -247,7 +255,7 @@ Deno.test({
         }
         return await resources.redis.eval!(script, keys, args);
       },
-    };
+    } as unknown as RedisClient;
     const worker = startAccountingWorker(resources.db, slowRedis);
     try {
       await entered.promise;

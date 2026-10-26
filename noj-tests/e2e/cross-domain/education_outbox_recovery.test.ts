@@ -263,6 +263,27 @@ Deno.test({
             VALUES(${id},${event.domain_id},${event.event_type},${event.user_id},${event.problem_id},${event.classroom_id},${event.assignment_id},${
             sql.json(payload)
           },${event.created_at},${new Date().toISOString()})`;
+          // P4 已切换为 background_tasks 是唯一生产消费者；手工重放也必须登记
+          // 同一稳定 outbox 身份的通用任务，否则真实 core 不会扫描裸 outbox 行。
+          const taskPayload = {
+            outbox_id: id,
+            domain_id: event.domain_id,
+            event_type: event.event_type,
+            user_id: event.user_id,
+            problem_id: event.problem_id,
+            classroom_id: event.classroom_id,
+            assignment_id: event.assignment_id,
+            education_cursor: null,
+          };
+          const now = new Date().toISOString();
+          await sql`INSERT INTO background_tasks(
+            id,task_type,target_kind,target_id,dedupe_key,payload_version,payload,status,available_at,created_at,updated_at
+          ) VALUES(
+            ${crypto.randomUUID()},'education.recompute',
+            ${event.assignment_id ? "assignment" : "domain"},
+            ${event.assignment_id ?? event.domain_id},${`outbox:${id}`},1,
+            ${sql.json(taskPayload)},'pending',${now},${now},${now}
+          )`;
           ids.push(id);
         }
         return ids;

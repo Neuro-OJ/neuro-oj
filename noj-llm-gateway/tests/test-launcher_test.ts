@@ -73,6 +73,7 @@ Deno.test("Gateway 测试启动器：filter 可透传但不能开启同库并发
     parseTestArgs([
       "--filter",
       "Redis",
+      "--coverage=coverage",
       "--fail-fast",
       "--reporter=dot",
       "--shuffle=42",
@@ -81,6 +82,7 @@ Deno.test("Gateway 测试启动器：filter 可透传但不能开启同库并发
     [
       "--filter",
       "Redis",
+      "--coverage=coverage",
       "--fail-fast",
       "--reporter=dot",
       "--shuffle=42",
@@ -88,6 +90,20 @@ Deno.test("Gateway 测试启动器：filter 可透传但不能开启同库并发
     ],
   );
   assertEquals(parseTestArgs(["--filter=Redis"]), ["--filter=Redis"]);
+  assertEquals(parseTestArgs(["--coverage", "coverage"]), [
+    "--coverage",
+    "coverage",
+  ]);
+  assertThrows(
+    () => parseTestArgs(["--coverage"]),
+    Error,
+    "--coverage 缺少值",
+  );
+  assertThrows(
+    () => parseTestArgs(["--coverage="]),
+    Error,
+    "--coverage 缺少目录",
+  );
   assertThrows(
     () => parseTestArgs(["--parallel"]),
     Error,

@@ -76,12 +76,14 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const result = await pending, body = await result.json();
+  const [result] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === `/api/v1${path}` &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
+  const body = await result.json();
   assertEquals(
     result.ok(),
     true,
@@ -94,8 +96,11 @@ async function choose(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 function memberRow(page: Page, username: string) {
-  return page.getByText(username, { exact: true }).first().locator("..")
-    .locator("..");
+  // 成员名位于左侧信息列，操作按钮位于同一行的右侧列；按行的稳定
+  // transition-colors 标记收敛两列，而不是依赖内部 div 层级。
+  return page.locator("div.transition-colors").filter({
+    has: page.getByText(username, { exact: true }),
+  }).first();
 }
 async function setRole(
   page: Page,
@@ -120,7 +125,7 @@ async function setRole(
     page,
     "PUT",
     `/domains/${slug}/classrooms/${classId}/members/${actor.id}`,
-    () => modal.getByRole("button", { name: "保存身份与授权" }).click(),
+    () => modal.getByRole("button", { name: "保存身份配置" }).click(),
   );
 }
 async function remove(
@@ -255,6 +260,13 @@ Deno.test({
             `${actor.email},${actor.username}`
           ).join("\n") +
             `\n${pupils[0].email},${pupils[0].username}\ninvalid-email,\n`;
+          await coach.page.getByRole("tab", {
+            name: "批量导入与邀请",
+            exact: true,
+          }).click();
+          await expect(
+            coach.page.getByRole("textbox", { name: "学生导入 CSV" }),
+          ).toBeVisible();
           await coach.page.getByLabel("学生 CSV 文件", { exact: true })
             .setInputFiles({
               name: "classroom.csv",
@@ -386,6 +398,14 @@ Deno.test({
           await expect(
             assistant.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toContainText(pupils[0].username);
+          await assistant.page.getByRole("tab", {
+            name: "反馈与求助",
+            exact: true,
+          }).click();
+          await assistant.page.getByRole("button", {
+            name: "写反馈",
+            exact: true,
+          }).click();
           await assistant.page.getByRole("textbox", { name: "作业反馈正文" })
             .fill(`助教反馈 ${suffix}`);
           await write(assistant.page, "POST", `${assignment()}/feedback`, () =>
@@ -412,48 +432,66 @@ Deno.test({
         "实际筛选未达标学生并下载CSV，移除学生后切换历史名单与窄屏读取",
         async () => {
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
+          await coach.page.getByRole("button", { name: "筛选", exact: true })
+            .click();
           await choose(coach.page, "完成状态筛选", "未达标");
           await coach.page.getByRole("textbox", {
-            name: "学生搜索",
+            name: "搜索学生用户名",
             exact: true,
           }).fill(pupils[0].username);
-          await coach.page.getByRole("button", { name: "搜索", exact: true })
-            .click();
+          await coach.page.getByRole("textbox", {
+            name: "搜索学生用户名",
+            exact: true,
+          }).press("Enter");
           await expect(
             coach.page.getByRole("button", {
               name: `${pupils[0].username} ${number} 0 · 未达标`,
               exact: true,
             }),
           ).toBeVisible({ timeout: 15000 });
-          const exported = await download(coach.page, "导出 CSV");
+          const exported = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(exported.name, `assignment-${taskId}-on_time.csv`);
           assertEquals(exported.text.trim().split(/\r?\n/).length, 2);
           assertStringIncludes(exported.text, pupils[0].username);
           assertStringIncludes(exported.text, '"未达标","0"');
-          await choose(coach.page, "成绩统计范围", "当前补做进度");
-          const currentCsv = await download(coach.page, "导出 CSV");
+          await coach.page.getByRole("group", { name: "统计范围", exact: true })
+            .getByRole("button", { name: "当前补做", exact: true }).click();
+          const currentCsv = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(currentCsv.name, `assignment-${taskId}-current.csv`);
           await goto(coach.page, `/d/${slug}/classrooms/${classId}/members`);
           await remove(coach.page, slug, classId, pupils[1]);
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
+          await coach.page.getByRole("button", { name: "筛选", exact: true })
+            .click();
           await choose(coach.page, "学生范围", "历史学生");
           await expect(coach.page.getByRole("table", { name: "学生成绩矩阵" }))
             .toContainText(pupils[1].username);
-          const historicalCsv = await download(coach.page, "导出 CSV");
+          const historicalCsv = await download(
+            coach.page,
+            "导出当前筛选结果为 CSV",
+          );
           assertEquals(historicalCsv.text.trim().split(/\r?\n/).length, 2);
           assertStringIncludes(historicalCsv.text, pupils[1].username);
           assertStringIncludes(historicalCsv.text, "历史学生");
           await coach.page.setViewportSize({ width: 390, height: 844 });
           await expect(coach.page.getByRole("table", { name: "学生成绩矩阵" }))
             .toBeHidden();
-          const card = coach.page.locator("div.sm\\:hidden").filter({
-            has: coach.page.getByRole("heading", {
-              name: pupils[1].username,
-              exact: true,
-            }),
-          });
-          await card.getByRole("button", { name: "未开始", exact: true })
-            .click();
+          const card = coach.page.locator(
+            'ul[aria-label="学生成绩摘要"] > li',
+          ).filter({ hasText: pupils[1].username }).first();
+          // 窄屏矩阵先展开学生行，再从题目单元格打开提交详情；该组件不再
+          // 使用旧的 heading/div.sm:hidden 卡片结构。
+          await card.locator(":scope > button").click();
+          await card.getByRole("button", {
+            name: `${pupils[1].username} ${number} 未开始`,
+            exact: true,
+          }).click();
           await expect(
             coach.page.getByRole("dialog", {
               name: `${pupils[1].username} · ${number}`,
@@ -468,6 +506,15 @@ Deno.test({
         async () => {
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
           await coach.page.getByRole("button", {
+            name: "管理作业",
+            exact: true,
+          }).click();
+          const manager = coach.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(manager).toBeVisible();
+          await manager.getByRole("button", {
             name: "为全班未达标学生布置补题",
             exact: true,
           }).click();
@@ -494,7 +541,18 @@ Deno.test({
           remediationId = created.data.id;
           await expect(coach.page.getByText("指定学生：1 人", { exact: true }))
             .toBeVisible();
+          // 创建补题草稿后会导航到新的草稿详情页；发布入口仍收在该页的
+          // “发布与设置”抽屉中，不能复用创建前页面的隐藏控件。
           await coach.page.getByRole("button", {
+            name: "发布与设置",
+            exact: true,
+          }).click();
+          const publishManager = coach.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(publishManager).toBeVisible();
+          await publishManager.getByRole("button", {
             name: "发布作业",
             exact: true,
           }).click();
@@ -545,8 +603,10 @@ Deno.test({
         async () => {
           await goto(coach.page, `/d/${slug}/classrooms/${classId}/settings`);
           await choose(coach.page, "接任主教练", pupils[39].username);
-          await coach.page.getByRole("button", { name: "交接", exact: true })
-            .click();
+          await coach.page.getByRole("button", {
+            name: "确认交接",
+            exact: true,
+          }).click();
           await write(
             coach.page,
             "POST",
@@ -593,6 +653,11 @@ Deno.test({
             }),
           ).toBeVisible();
           await goto(successor.page, `/d/${slug}/assignments/${taskId}`);
+          const feedbackTab = successor.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first();
+          await expect(feedbackTab).toBeVisible({ timeout: 15000 });
+          await feedbackTab.click();
           await expect(
             successor.page.getByText(`助教反馈 ${suffix}`, { exact: true }),
           ).toBeVisible();

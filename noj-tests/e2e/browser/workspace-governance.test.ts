@@ -469,13 +469,13 @@ Deno.test({
             }).fill("30");
             await expect(
               manager.page.getByRole("button", {
-                name: "保存配额",
+                name: "保存配额配置",
                 exact: true,
               }),
             )
               .toBeEnabled();
             await expect(
-              other.getByRole("button", { name: "保存配额", exact: true }),
+              other.getByRole("button", { name: "保存配额配置", exact: true }),
             )
               .toBeEnabled();
             const first = await write(
@@ -484,7 +484,7 @@ Deno.test({
               `/domains/${slug}/limits`,
               () =>
                 manager.page.getByRole("button", {
-                  name: "保存配额",
+                  name: "保存配额配置",
                   exact: true,
                 }).click(),
             );
@@ -493,7 +493,7 @@ Deno.test({
               "PATCH",
               `/domains/${slug}/limits`,
               () =>
-                other.getByRole("button", { name: "保存配额", exact: true })
+                other.getByRole("button", { name: "保存配额配置", exact: true })
                   .click(),
               409,
             );
@@ -537,7 +537,11 @@ Deno.test({
             student.token,
           );
           await gotoPage(applicant.page, `/d/${slug}/settings`);
-          await expect(applicant.page.getByText("创建后固定", { exact: false }))
+          await expect(
+            applicant.page.getByText(/创建后(?:固定|不可更改)/, {
+              exact: false,
+            }),
+          )
             .toBeVisible();
           await expect(
             applicant.page.getByRole("button", {

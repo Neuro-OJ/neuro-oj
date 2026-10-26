@@ -62,6 +62,17 @@ async function select(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
+/** 求助卡片的状态文本与正文由不同节点渲染，按用户可见卡片定位。 */
+function helpButton(page: Page, body: string, state: "待处理" | "已处理") {
+  const bodyButton = page.locator(
+    'section[aria-label="反馈与求助"] button',
+  ).filter({ hasText: body }).first();
+  // 正文在卡片内的 button 中，状态在其后的元信息 div 中；不能把状态
+  // 当作 button 的后代文本筛选。
+  return bodyButton.locator("xpath=..").filter({ hasText: state })
+    .getByRole("button").first();
+}
+
 /** 页面写操作的响应同时作为稳定资源定位依据。 */
 async function write(
   page: Page,
@@ -69,12 +80,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const response = page.waitForResponse((result) =>
-    new URL(result.url()).pathname === path &&
-    result.request().method() === method
-  );
-  await action();
-  const result = await response;
+  const [result] = await Promise.all([
+    page.waitForResponse((response) =>
+      new URL(response.url()).pathname === path &&
+      response.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await result.json();
   if (!result.ok()) {
     throw new Error(
@@ -168,6 +180,9 @@ async function objectiveFixture(slug: string, admin: string, title: string) {
 }
 
 async function publish(page: Page, slug: string, assignmentId: string) {
+  // 作业详情页把生命周期操作收进“发布与设置”抽屉；先打开当前可见的
+  // 管理入口，再在抽屉内执行真实发布确认。
+  await page.getByRole("button", { name: "发布与设置", exact: true }).click();
   await page.getByRole("button", { name: "发布作业", exact: true }).click();
   await write(
     page,
@@ -308,13 +323,20 @@ Deno.test({
             `/api/v1/domains/${slug}/classrooms`,
             () =>
               teacher.page.getByRole("button", {
-                name: "创建并进入",
+                name: "创建并进入班级",
                 exact: true,
               }).click(),
           );
           classroomId = created.data.id;
-          await teacher.page.getByRole("link", {
+          await teacher.page.getByRole("navigation", {
+            name: "班级导航",
+            exact: true,
+          }).getByRole("link", {
             name: "班级成员",
+            exact: true,
+          }).click();
+          await teacher.page.getByRole("tab", {
+            name: "批量导入与邀请",
             exact: true,
           }).click();
           await teacher.page.getByRole("button", { name: /指定邮箱/ }).click();
@@ -463,6 +485,12 @@ Deno.test({
           );
           await expect(student.page.getByText("0 · 未达标", { exact: true }))
             .toBeVisible({ timeout: 15000 });
+          // 发布抽屉在发布后保持打开；重新进入作业详情，确保教师从真实矩阵页
+          // 读取异步回写的成绩，而不是定位抽屉背后的隐藏控件。
+          await gotoPage(
+            teacher.page,
+            `/d/${slug}/assignments/${assignmentId}`,
+          );
           await teacher.page.getByRole("button", {
             name: "刷新成绩",
             exact: true,
@@ -481,22 +509,38 @@ Deno.test({
       await step(
         "学生求助，教师反馈、回复并处理，学生 Web 读取反馈与回复",
         async () => {
+          await student.page.getByRole("tab", {
+            name: "反馈与求助",
+            exact: true,
+          }).click();
+          await student.page.getByRole("button", {
+            name: "向老师求助",
+            exact: true,
+          }).click();
           await student.page.getByRole("textbox", {
             name: "求助正文",
             exact: true,
           }).fill(question);
           await student.page.getByRole("button", {
-            name: "向老师求助",
+            name: "发送求助",
             exact: true,
           }).click();
-          await expect(
-            student.page.getByRole("button", {
-              name: `${question} 待处理`,
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(helpButton(student.page, question, "待处理"))
+            .toBeVisible();
           await teacher.page.reload();
           await ready(teacher.page);
+          // reload 后作业详情的任务、班级与矩阵数据分开恢复；只等待 Vue
+          // 挂载会早于权限标签渲染，先等教师矩阵稳定再切换反馈标签。
+          await expect(
+            teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
+          ).toBeVisible({ timeout: 15000 });
+          await teacher.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first().click();
+          await teacher.page.getByRole("button", {
+            name: "写反馈",
+            exact: true,
+          }).click();
           await teacher.page.getByRole("textbox", {
             name: "作业反馈正文",
             exact: true,
@@ -507,10 +551,7 @@ Deno.test({
           }).click();
           await expect(teacher.page.getByText(feedback, { exact: true }))
             .toBeVisible();
-          await teacher.page.getByRole("button", {
-            name: `${question} 待处理`,
-            exact: true,
-          }).click();
+          await helpButton(teacher.page, question, "待处理").click();
           await teacher.page.getByRole("textbox", {
             name: "求助回复",
             exact: true,
@@ -523,19 +564,21 @@ Deno.test({
             name: "标记已处理",
             exact: true,
           }).click();
-          await expect(
-            teacher.page.getByRole("button", {
-              name: `${question} 已处理`,
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(helpButton(teacher.page, question, "已处理"))
+            .toBeVisible();
           await student.page.reload();
+          await ready(student.page);
+          await expect(
+            student.page.locator('[role="tab"]').filter({
+              hasText: "反馈与求助",
+            }).first(),
+          ).toBeVisible({ timeout: 15000 });
+          await student.page.locator('[role="tab"]').filter({
+            hasText: "反馈与求助",
+          }).first().click();
           await expect(student.page.getByText(feedback, { exact: true }))
             .toBeVisible();
-          await student.page.getByRole("button", {
-            name: `${question} 已处理`,
-            exact: true,
-          }).click();
+          await helpButton(student.page, question, "已处理").click();
           await expect(student.page.getByText(reply, { exact: true }))
             .toBeVisible();
         },
@@ -544,6 +587,15 @@ Deno.test({
         "教师从未达标名单生成补题、预览并发布，390px矩阵保持操作可用",
         async () => {
           await teacher.page.getByRole("button", {
+            name: "管理作业",
+            exact: true,
+          }).click();
+          const manager = teacher.page.getByRole("dialog", {
+            name: "管理作业",
+            exact: true,
+          });
+          await expect(manager).toBeVisible();
+          await manager.getByRole("button", {
             name: "为全班未达标学生布置补题",
             exact: true,
           }).click();
@@ -565,6 +617,14 @@ Deno.test({
               modal.getByRole("button", { name: "创建补题草稿", exact: true })
                 .click(),
           );
+          // 创建响应先返回，组件随后才导航到新草稿详情；先绑定目标 URL，
+          // 再读取标题和指定人数，避免在旧作业页上抢跑断言。
+          await teacher.page.waitForURL(
+            (url) =>
+              url.pathname === `/d/${slug}/assignments/${created.data.id}`,
+            { timeout: 15000 },
+          );
+          await ready(teacher.page);
           await expect(
             teacher.page.getByRole("heading", {
               name: `${title} 补题`,
@@ -576,9 +636,20 @@ Deno.test({
           ).toBeVisible();
           await publish(teacher.page, slug, created.data.id);
           await gotoPage(student.page, `/d/${slug}/classrooms/${classroomId}`);
+          const remediationTitle = `${title} 补题`;
+          await student.page.getByRole("link", {
+            name: remediationTitle,
+            exact: true,
+          }).click();
+          await student.page.waitForURL(
+            (url) =>
+              url.pathname === `/d/${slug}/assignments/${created.data.id}`,
+            { timeout: 15000 },
+          );
+          await ready(student.page);
           await expect(
             student.page.getByRole("heading", {
-              name: `${title} 补题`,
+              name: remediationTitle,
               exact: true,
             }),
           ).toBeVisible();
@@ -586,19 +657,34 @@ Deno.test({
             teacher.page,
             `/d/${slug}/assignments/${assignmentId}`,
           );
+          // 发布补题会触发成绩投影异步刷新；先用桌面矩阵显式拉取并等待
+          // 当前作业的成绩，再切换到窄屏卡片，避免刷新重渲染把展开状态折叠。
+          await teacher.page.getByRole("button", {
+            name: "刷新成绩",
+            exact: true,
+          }).click();
+          await expect(
+            teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
+          ).toContainText(studentName);
+          await expect(
+            teacher.page.getByRole("button", {
+              name: `${studentName} ${number} 0 · 未达标`,
+              exact: true,
+            }),
+          ).toBeVisible({ timeout: 15000 });
           await teacher.page.setViewportSize({ width: 390, height: 844 });
           await expect(
             teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toBeHidden();
-          const card = teacher.page.locator("div.sm\\:hidden").filter({
-            has: teacher.page.getByRole("heading", {
-              name: studentName,
-              exact: true,
-            }),
-          });
+          const card = teacher.page.locator(
+            'ul[aria-label="学生成绩摘要"] > li',
+          ).filter({ hasText: studentName }).first();
           await expect(card).toBeVisible();
-          await card.getByRole("button", { name: "0 · 未达标", exact: true })
-            .click();
+          await card.locator(":scope > button").click();
+          await card.getByRole("button", {
+            name: `${studentName} ${number} 0 · 未达标`,
+            exact: true,
+          }).click();
           await expect(
             teacher.page.getByRole("dialog", { name: / · / }),
           ).toBeVisible();
@@ -607,14 +693,17 @@ Deno.test({
           });
           const path =
             `/api/v1/domains/${slug}/classrooms/${classroomId}/submissions/objective/${objectiveSubmissionId}/attempts`;
-          const attempts = teacher.page.waitForResponse((response) =>
-            response.request().method() === "GET" &&
-            new URL(response.url()).pathname === path
-          );
-          await panel.locator("div.divide-y > button").filter({
-            hasText: "客观题",
-          }).click();
-          const response = await attempts;
+          // 将监听与点击绑定在同一个 Promise.all 中，失败时也会被当前
+          // step 捕获，避免先创建未被消费的 waitForResponse 悬空拒绝。
+          const [response] = await Promise.all([
+            teacher.page.waitForResponse((result) =>
+              result.request().method() === "GET" &&
+              new URL(result.url()).pathname === path
+            ),
+            panel.locator("div.divide-y > button").filter({
+              hasText: "客观题",
+            }).click(),
+          ]);
           assertEquals(response.status(), 200);
           const evidence = await response.json();
           assertEquals(evidence.data.data.length, 1);

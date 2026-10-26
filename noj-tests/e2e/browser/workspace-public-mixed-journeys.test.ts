@@ -101,12 +101,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    decodeURIComponent(new URL(response.url()).pathname) === `/api/v1${path}` &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending;
+  const [response] = await Promise.all([
+    page.waitForResponse((result) =>
+      decodeURIComponent(new URL(result.url()).pathname) === `/api/v1${path}` &&
+      result.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await response.json();
   assertEquals(
     response.ok(),
@@ -408,18 +409,21 @@ Deno.test({
         await learner.page.getByPlaceholder("搜索题单名称").fill(trainingTitle);
         await learner.page.getByRole("button", { name: "搜索", exact: true })
           .click();
-        await learner.page.getByRole("heading", {
-          name: trainingTitle,
-          exact: true,
-        }).locator("..").getByRole("link", { name: "查看题单", exact: true })
-          .click();
+        // 当前 Domain 题单列表由整张 NuxtLink 卡片承载，不再渲染旧的
+        // “查看题单”子链接；以卡片内标题定位仍保持题单唯一性。
+        await learner.page.getByRole("link").filter({
+          has: learner.page.getByRole("heading", {
+            name: trainingTitle,
+            exact: true,
+          }),
+        }).click();
         await learner.page.waitForURL((url) =>
           url.pathname === `/d/main/trainings/${training.data.id}`
         );
-        await learner.page.getByRole("link", {
-          name: "在当前域作答",
-          exact: true,
-        }).click();
+        // 题单条目当前直接使用“继续作答/再次练习”进入题目页；旧的
+        // “在当前域作答”按钮已随 Domain 题单重构移除。
+        await learner.page.getByRole("link", { name: /(?:继续|再次)作答/ })
+          .click();
         await learner.page.waitForURL((url) =>
           url.pathname === `/d/main/problems/${problem.number}`
         );
@@ -645,11 +649,11 @@ Deno.test({
           await learner.page.getByRole("button", { name: "更多", exact: true })
             .click();
           await learner.page.getByRole("menuitem", {
-            name: "教学工作台",
+            name: "班级研练",
             exact: true,
           }).click();
           await learner.page.waitForURL((url) =>
-            url.pathname === `/d/${schoolB}/teaching`
+            url.pathname === `/d/${schoolB}/classrooms`
           );
         },
       );
@@ -666,12 +670,16 @@ Deno.test({
                 exact: true,
               }),
             ).toBeVisible();
-            await expect(
-              page.getByRole("heading", {
+            // 题号同时出现在面包屑、ProblemHeader 徽章和右侧元信息中；
+            // 这里锁定包含当前题目标题的 ProblemHeader，避免全局严格定位歧义。
+            const problemHeader = page.locator("main header").filter({
+              has: page.getByRole("heading", {
                 name: `共同源题 ${suffix}`,
                 exact: true,
-              }).locator("..").getByText(reference, { exact: true }),
-            ).toBeVisible();
+              }),
+            });
+            await expect(problemHeader.getByText(reference, { exact: true }))
+              .toBeVisible();
           }
           const first = await handIn(
             learner.page,

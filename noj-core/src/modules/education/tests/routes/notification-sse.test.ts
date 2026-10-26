@@ -95,13 +95,14 @@ Deno.test({
       assert(replay.includes(notice.id));
       assert(!replay.includes("private body"));
       const pending = reader.read();
+      const forbiddenScore = Number.MAX_SAFE_INTEGER;
       _dispatchToLocalListenersForTest(
         channel,
         JSON.stringify({
           type: "education:notification",
           domain_id: f.other.id,
           notification_id: notice.id,
-          score: 9999,
+          score: forbiddenScore,
           body: "never forward",
         }),
       );
@@ -112,14 +113,14 @@ Deno.test({
           domain_id: f.school.id,
           notification_id: notice.id,
           seq: logged.id,
-          score: 9999,
+          score: forbiddenScore,
           body: "never forward",
         }),
       );
       const live = decode.decode((await pending).value);
       assert(live.includes(`id: ${logged.id}`));
       assert(live.includes(notice.id));
-      assert(!live.includes("9999"));
+      assert(!live.includes(String(forbiddenScore)));
       assert(!live.includes("never forward"));
       await removeDomainMember(f.school.slug, f.owner, f.student);
       const closed = reader.read();
@@ -202,13 +203,14 @@ Deno.test({
       assert(replay.includes(task.id));
       assert(!replay.includes("score"));
       const pending = reader.read();
+      const forbiddenScore = Number.MAX_SAFE_INTEGER;
       _dispatchToLocalListenersForTest(
         channel,
         JSON.stringify({
           type: "education:sync",
           domain_id: f.school.id,
           assignment_id: crypto.randomUUID(),
-          score: 12345,
+          score: forbiddenScore,
         }),
       );
       _dispatchToLocalListenersForTest(
@@ -217,7 +219,7 @@ Deno.test({
           type: "education:sync",
           domain_id: f.other.id,
           assignment_id: task.id,
-          score: 12345,
+          score: forbiddenScore,
         }),
       );
       _dispatchToLocalListenersForTest(
@@ -226,12 +228,12 @@ Deno.test({
           type: "education:sync",
           domain_id: f.school.id,
           assignment_id: task.id,
-          score: 12345,
+          score: forbiddenScore,
         }),
       );
       const live = decode.decode((await pending).value);
       assert(live.includes(task.id));
-      assert(!live.includes("12345"));
+      assert(!live.includes(String(forbiddenScore)));
       await removeDomainMember(f.school.slug, f.owner, f.teacher);
       const closed = reader.read();
       _dispatchToLocalListenersForTest(

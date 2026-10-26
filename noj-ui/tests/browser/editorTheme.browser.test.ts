@@ -3,7 +3,7 @@
 /**
  * 编辑器主题回归：真实 Chromium 计算 Tailwind、局部主题和 Markdown 的层叠结果。
  * 先启动 UI，再运行 E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme。
- * API 全部使用本地夹具，无需启动 core / 数据库，也不提交代码或自测。
+ * 通过实际 Domain solve 入口验收；API 全部使用本地夹具，无需启动 core / 数据库。
  */
 // deno-lint-ignore no-import-prefix -- 沿用 deno.lock 已固定的浏览器工具版本
 import { chromium, expect, type Locator } from 'npm:playwright@1.62.0/test';
@@ -71,21 +71,46 @@ for (const width of [1440, 390]) {
         await page.route('**/api/**', async (route) => {
           const path = new URL(route.request().url()).pathname;
           let body: unknown;
-          if (path === '/api/v1/problems/P22') {
+          if (path === '/api/v1/domains/main') {
             body = {
               data: {
-                id: 'P22',
-                display_id: 'P22',
+                slug: 'main',
+                name: 'Main',
+                description: '',
+                preset: 'public',
+                status: 'active',
+                visibility: 'public',
+                actor_id: null,
+                platform_admin: false,
+                permissions: [],
+                configuration: { features: {} },
+              },
+            };
+          } else if (path === '/api/v1/domains/main/problems/22') {
+            body = {
+              reference: {
+                problem_id: 'uuid-p22',
+                source_domain_id: 'main',
+                source_domain_slug: 'main',
+                number: 22,
+                qualified_ref: 'main:22',
+                display_ref: 'P22',
+                is_shared: false,
+              },
+              binding_id: 'binding-p22',
+              policy_revision: 1,
+              effective_version_mode: 'any',
+              version_id: 'theme-fixture-v1',
+              version: 1,
+              can_edit: false,
+              supported_languages: ['python3'],
+              difficulty: 'hard',
+              content: {
+                kind: 'ai',
                 title: '作业安排 Pro（Python 版）',
                 description,
-                difficulty: 'hard',
-                type: 'P',
+                samples: [],
                 submission_mode: 'code',
-                judge_type: 'custom',
-                supported_languages: ['python3'],
-                tags: [],
-                version: 1,
-                version_id: 'theme-fixture-v1',
               },
             };
           } else if (path.endsWith('/template')) {
@@ -97,7 +122,11 @@ for (const width of [1440, 390]) {
           }
           await route.fulfill({ json: body });
         });
-        await page.goto(`${uiUrl}/editor/P22`);
+        await page.goto(`${uiUrl}/d/main/solve/22`);
+        if (width < 640) {
+          // Domain 编辑器在窄屏默认收起题面；先走真实工具栏交互打开侧栏，再验收其排版。
+          await page.getByRole('button', { name: '切换侧栏' }).click();
+        }
         const prose = page.locator('.prose-neuro').filter({ has: page.locator('h1') }).last();
         await expect(prose.locator('p').first()).toContainText('普通正文', { timeout: 30_000 });
 

@@ -145,10 +145,10 @@ noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS.nojbackup \
   --docker-host unix:///run/user/1000/docker-noj-restore-drill.sock
 ```
 
-恢复演练必须使用专门的隔离 Docker daemon；通过
-`--docker-host` 或 `NOJ_DRILL_DOCKER_HOST` 显式指定 socket。不要把生产宿主机的
-默认 Docker socket 传给演练命令。daemon 的独立 data root、网络和 Compose 项目
-准备方式见 [P8 演练说明](../../../dev-docs/engineering/architecture-remediation-p8.md)。
+恢复演练必须使用专门的隔离 Docker daemon；通过 `--docker-host` 或
+`NOJ_DRILL_DOCKER_HOST` 显式指定 socket。不要把生产宿主机的 默认 Docker socket
+传给演练命令。daemon 的独立 data root、网络和 Compose 项目 准备方式见
+[P8 演练说明](https://github.com/Neuro-OJ/neuro-oj/blob/7871d31ad22b659deb03eb92c66cb692d787a273/dev-docs/engineering/architecture-remediation-p8.md)。
 
 创建快照、文件校验与业务恢复是三项不同证据。`verify` 校验文件，`drill` 在
 独立环境恢复并检验业务；查看实际演练报告中的数据量、成功项、失败项和

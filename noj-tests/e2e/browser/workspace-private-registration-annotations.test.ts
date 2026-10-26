@@ -53,12 +53,13 @@ async function write(
   path: string,
   action: () => Promise<unknown>,
 ) {
-  const pending = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === path &&
-    response.request().method() === method
-  );
-  await action();
-  const response = await pending;
+  const [response] = await Promise.all([
+    page.waitForResponse((result) =>
+      new URL(result.url()).pathname === path &&
+      result.request().method() === method
+    ),
+    action(),
+  ]);
   const body = await response.json();
   assertEquals(response.ok(), true, JSON.stringify(body));
   return body;
@@ -110,7 +111,9 @@ async function submit(
     localStorage.setItem(key, JSON.stringify({ code, answers: {} }));
   }, { key, code });
   await gotoPage(page, `/d/${slug}/problems/${reference}`);
-  await page.getByRole("link", { name: "开始编码", exact: true }).click();
+  // 题目页同时有页头 CTA 和正文 CTA；两者指向同一真实作答入口。
+  await page.getByRole("link", { name: "开始编码", exact: true }).first()
+    .click();
   await page.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   const created = await write(
     page,
@@ -127,9 +130,10 @@ async function submit(
   await page.waitForURL((url) =>
     url.pathname === `/d/${slug}/submissions/${id}`
   );
-  const result = page.getByRole("heading", { name: "评测结果", exact: true })
-    .locator("..");
-  await expect(result.getByText(new RegExp(`^${score}(?:\\.0+)?\\s*分$`)))
+  // DomainSubmissionResult 使用结果状态标题（如“通过”/“评测完成”），
+  // 分数是独立指标胶囊，不再挂在旧的“评测结果”标题下。
+  // 分数数值与单位是相邻的独立节点；定位格式化后的数值节点。
+  await expect(page.getByText(score.toFixed(1), { exact: true }).first())
     .toBeVisible({
       timeout: 60_000,
     });
@@ -668,7 +672,7 @@ Deno.test({
             `/d/${slug}/classrooms/${classroomId}/settings`,
           );
           await teacher.page.getByRole("button", {
-            name: "归档并保留历史",
+            name: "归档此班级并保留历史",
             exact: true,
           }).click();
           const archived = await write(
@@ -681,7 +685,10 @@ Deno.test({
           );
           assertEquals(archived.data.status, "archived");
           await expect(
-            teacher.page.getByText("当前只能读取班级设置", { exact: true }),
+            teacher.page.getByText(
+              "当前只能读取班级设置，无权修改配置或交接负责人",
+              { exact: true },
+            ),
           ).toBeVisible();
           const ownPanel = await openStudentReview(
             student.page,

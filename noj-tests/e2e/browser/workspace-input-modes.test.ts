@@ -62,12 +62,15 @@ async function login(page: Page, email: string) {
   }
 }
 async function write(page: Page, path: string, action: () => Promise<unknown>) {
-  const response = page.waitForResponse((result) =>
-    decodeURIComponent(new URL(result.url()).pathname) === `/api/v1${path}` &&
-    result.request().method() === "POST"
-  );
-  await action();
-  const result = await response, body = await result.json();
+  const [result] = await Promise.all([
+    page.waitForResponse((response) =>
+      decodeURIComponent(new URL(response.url()).pathname) ===
+        `/api/v1${path}` &&
+      response.request().method() === "POST"
+    ),
+    action(),
+  ]);
+  const body = await result.json();
   assertEquals(result.status(), 201, JSON.stringify(body));
   return body as { data: { id: string } };
 }
@@ -186,7 +189,7 @@ Deno.test({
             name: "查看评测",
             exact: true,
           }).click();
-          await expect(session.page.getByText("50.0 分", { exact: true }))
+          await expect(session.page.getByText("50.0", { exact: true }))
             .toBeVisible();
           const secondId = await upload(second, b, prediction!);
           const next = await finished(b, secondId, student.token);
@@ -197,7 +200,7 @@ Deno.test({
           ], [bId, prediction!.v2, 10000]);
           await second.getByRole("link", { name: "查看评测", exact: true })
             .click();
-          await expect(second.getByText("100.0 分", { exact: true }))
+          await expect(second.getByText("100.0", { exact: true }))
             .toBeVisible();
         },
       );
@@ -205,10 +208,11 @@ Deno.test({
         "iframe填写参数触发自测与正式提交，NOJ.onResult展示真实Judge汇总",
         async () => {
           await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
+          // 题目页同时有主 CTA 和题干内入口；两者指向同一真实界面题。
           await session.page.getByRole("link", {
-            name: "打开作答界面",
+            name: "打开界面",
             exact: true,
-          }).click();
+          }).first().click();
           await frame(session.page).getByLabel("参数提示").fill("first");
           const selfTest = await write(
             session.page,
