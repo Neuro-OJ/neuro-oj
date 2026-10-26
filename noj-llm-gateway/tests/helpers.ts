@@ -34,7 +34,9 @@ export class FakeRedis implements RedisClient {
   revoked = new Set<string>();
 
   get(key?: string): Promise<string | null> {
-    if (key === "llm:accounting:ready:v1") {
+    if (
+      key === "llm:accounting:ready:v1" || key === "llm:revocations:ready:v1"
+    ) {
       return Promise.resolve("test-server");
     }
     if (key) this.getKeys.push(key);

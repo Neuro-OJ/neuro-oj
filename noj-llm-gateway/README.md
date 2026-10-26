@@ -156,6 +156,19 @@ ready 标记；整库丢失或重启恢复旧快照后先按账本
 网络失败无法证明上游未计费，保留预估占用及 `unknown` 状态；进程退出留下的预占
 三分钟后也会列为未知，供治理核对，不自动重发上游。
 
+评测 token 的吊销事实由 Core 的 PostgreSQL outbox 持有。Core 启动及周期补偿会
+恢复所有尚可能有效的吊销行（包括 done），再把当前 Redis `run_id` 写入
+`llm:revocations:ready:v1`。Gateway 在等待 Provider 槽位、政策锁后以及 Lua
+原子预占边界重新检查吊销和有效期；过期或吊销返回 401，恢复屏障缺失或属于旧 Redis
+世代返回 503 `revocations_unavailable`，不会转发上游或增加预占额度。 这要求 Core
+与 Gateway 协调升级并共用 Redis，服务账号须允许 `INFO server`。 Redis
+重启后应先等 Core 完成吊销恢复，再恢复 LLM 流量；单独启动 Gateway
+不能自动证明吊销投影完整。该屏障不进入容器健康检查，以避免 Compose
+启动依赖互等。
+
+记账 worker 连续 30 秒没有成功完成整轮处理时，`/health/ready` 返回
+`worker_stalled`，覆盖底层调用卡住而尚未抛错的情况。恢复一个完整成功轮次后才重新就绪。
+
 实例治理（服务凭据及 `X-Noj-Instance-Quota: 1`）可使用：
 
 - `GET /internal/accounting`：当前头指定域的待结算/未知定位；只返回

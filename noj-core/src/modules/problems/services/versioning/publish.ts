@@ -636,7 +636,13 @@ export async function publishProblemVersion(
       input.actor.kind === "user" ? input.actor.userId : null,
       now,
     );
-    await enqueueSearchIndexTaskTx(tx, "problem", problemId, "upsert");
+    await enqueueSearchIndexTaskTx(
+      tx,
+      "problem",
+      problemId,
+      "upsert",
+      versionId,
+    );
 
     return {
       problem_id: problemId,

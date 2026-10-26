@@ -29,9 +29,10 @@ export function createBackgroundHandlers(): TaskHandlerMap {
       handleSearchIndexTask(
         task as Parameters<typeof handleSearchIndexTask>[0],
       ),
-    "evaluation.dispatch": (task) =>
+    "evaluation.dispatch": (task, signal) =>
       handleEvaluationDispatchTask(
         task as Parameters<typeof handleEvaluationDispatchTask>[0],
+        signal,
       ),
     // 教学任务只调度旧 outbox 的单页适配器；旧 progress worker 不再启动。
     "education.recompute": handleEducationTask,

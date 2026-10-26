@@ -15,6 +15,8 @@ export interface RedisClient {
   /** ioredis 的 disconnect 是同步 void；测试 fake 也允许返回 Promise。 */
   disconnect(): void | Promise<void>;
   ping(): Promise<string>;
+  /** Redis 进程身份用于恢复后拒绝旧快照中的 ready 标记。 */
+  info?(section: string): Promise<string>;
   quit(): Promise<string>;
   status: string;
   lpush(...args: (string | number)[]): Promise<number>;

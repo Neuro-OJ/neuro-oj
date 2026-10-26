@@ -27,6 +27,7 @@ import type { PromptIO } from "../tui/io.ts";
 import type { RenderIO } from "../output/render.ts";
 import { sha256Hex } from "../util/hash.ts";
 import { RELEASE_SET_FILE } from "./bootstrap.ts";
+import { SDK_STANDARD } from "./release-set.ts";
 import type { Fetcher } from "./bootstrap.ts";
 import { PATH_LINE } from "./lifecycle/path.ts";
 import {
@@ -116,7 +117,7 @@ function releaseSetBody(version: string): Uint8Array<ArrayBuffer> {
       },
       cli_version: version,
       ide_version: version,
-      sdk_standard: "noj-wasm-v1",
+      sdk_standard: SDK_STANDARD,
     }) + "\n",
   );
 }

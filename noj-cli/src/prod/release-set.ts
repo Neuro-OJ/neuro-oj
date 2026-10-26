@@ -8,13 +8,17 @@
 
 import { validateReleaseTag } from "./release.ts";
 import type { VerifiedDigest } from "./config.ts";
+import wasmStandard from "../../../noj-core/src/modules/problems/types/noj-wasm-v3.json" with {
+  type: "json",
+};
 
 export const RELEASE_SET_ASSET = "release-set.json";
 export const RELEASE_SET_SHA_ASSET = `${RELEASE_SET_ASSET}.sha256`;
 export const RELEASE_SET_SCHEMA_VERSION = 1 as const;
 export const EVALUATION_PROTOCOL_VERSION = 3 as const;
 export const GATEWAY_PROTOCOL_VERSION = 3 as const;
-export const SDK_STANDARD = "noj-wasm-v1" as const;
+// 与 Core 实际内置标准共用构建输入，避免生成器与校验器一起接受旧常量。
+export const SDK_STANDARD = wasmStandard.id;
 
 export const RELEASE_SET_COMPONENTS = [
   "core",

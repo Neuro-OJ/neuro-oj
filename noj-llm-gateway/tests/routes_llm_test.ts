@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { createLlmRouter } from "../src/routes/llm.ts";
+import { TOKEN_REVOCATIONS_READY_KEY } from "../src/revocation.ts";
 import {
   createFakeDb,
   FakeRedis,
@@ -10,6 +11,67 @@ import {
   stubFetch,
   testConfig,
 } from "./helpers.ts";
+
+Deno.test("llm route: Provider 排队后已吊销的 attempt 不预占、不调用上游", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    rpm_limit: 1,
+  };
+  const { db, ledger } = createFakeDb(provider);
+  const redis = new FakeRedis(), baseEval = redis.eval.bind(redis);
+  redis.eval = (script, keys, args) => {
+    if (String(script).includes("local rank = redis.call('ZRANK'")) {
+      redis.revoked.add("llm:attempt:revoked:att-default");
+      return Promise.resolve([1, 0, 0]);
+    }
+    return baseEval(script, keys, args);
+  };
+  let fetches = 0;
+  const restore = stubFetch(() => {
+    fetches++;
+    return Promise.reject(new Error("吊销后不得访问上游"));
+  });
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const response = await requestChat(app, await makeToken(testConfig), {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+    assertEquals(response.status, 401);
+    assertEquals((await response.json()).error, "token_revoked");
+    assertEquals(fetches, 0);
+    assertEquals(ledger.size, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: Redis 世代与吊销 ready 不一致时拒绝旧快照", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis(), baseGet = redis.get.bind(redis);
+  redis.get = (key) =>
+    key === TOKEN_REVOCATIONS_READY_KEY
+      ? Promise.resolve("old-server")
+      : baseGet(key);
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const response = await requestChat(app, await makeToken(testConfig), {
+    model: "deepseek-chat",
+    messages: [],
+  });
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).error, "revocations_unavailable");
+});
 
 Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   const provider = await makeProvider(testConfig.storeKey);

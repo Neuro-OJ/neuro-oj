@@ -203,12 +203,14 @@ export async function renewTaskLease(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0 ? leaseExpiry : null;
 }
 
 /**
  * 完成任务：仅当前持有人可完成；影响 0 行视为租约已失效。
+ * 持有权使用 clock_timestamp()，不能使用冻结在事务开始时的 now()。
  *
  * @returns 是否成功标记（false 表示租约已失效，调用方不得删除/提交依赖）
  */
@@ -232,6 +234,7 @@ export async function completeTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0;
 }
@@ -268,6 +271,7 @@ export async function rescheduleTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
   )).returning({ id: backgroundTasks.id });
   return rows.length > 0;
 }
@@ -291,6 +295,7 @@ export async function failTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
   )).for("update");
   if (!current) return { recorded: false, terminal: false };
 
@@ -310,6 +315,7 @@ export async function failTaskTx(
     eq(backgroundTasks.id, taskId),
     eq(backgroundTasks.status, "leased"),
     eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
   )).returning({ id: backgroundTasks.id });
   return { recorded: rows.length > 0, terminal: decision.terminal };
 }

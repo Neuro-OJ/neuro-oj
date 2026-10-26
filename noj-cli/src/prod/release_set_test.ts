@@ -1,4 +1,10 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
+import coreStandard from "../../../noj-core/src/modules/problems/types/noj-wasm-v3.json" with {
+  type: "json",
+};
+import judgeStandard from "../../../noj-judge/src/oi/noj-wasm-v3.json" with {
+  type: "json",
+};
 import {
   EVALUATION_PROTOCOL_VERSION,
   GATEWAY_PROTOCOL_VERSION,
@@ -10,6 +16,17 @@ import {
 } from "./release-set.ts";
 
 const digest = (hex: string) => `sha256:${hex.repeat(64).slice(0, 64)}`;
+
+Deno.test("release-set 标准与 Core/Judge 实际构建输入一致，拒绝旧标准", () => {
+  assertEquals(SDK_STANDARD, coreStandard.id);
+  assertEquals(SDK_STANDARD, judgeStandard.id);
+  assertThrows(
+    () =>
+      validateReleaseSet({ ...validReleaseSet(), sdk_standard: "noj-wasm-v1" }),
+    Error,
+    "sdk_standard",
+  );
+});
 
 function validReleaseSet() {
   return {

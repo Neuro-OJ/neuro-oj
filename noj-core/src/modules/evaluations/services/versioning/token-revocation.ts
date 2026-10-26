@@ -5,7 +5,7 @@
  * 结果写入与 worker 彼此形成运行时循环。
  */
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -16,6 +16,56 @@ import { getRedis } from "../../../../shared/mq/connection.ts";
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** 与 Gateway 共享的 Redis 世代恢复屏障，不是业务事实源。 */
+export const TOKEN_REVOCATIONS_READY_KEY = "llm:revocations:ready:v1";
+
+/** 从持久 outbox 重建尚可能有效的吊销，覆盖 done 行和旧 Redis 快照。 */
+export async function restoreAttemptTokenRevocations(
+  batchSize = 100,
+): Promise<void> {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+    throw new RangeError("吊销恢复批量必须为正整数");
+  }
+  const redis = getRedis();
+  const serverId = async () => {
+    if (!redis.info) throw new Error("Redis 不支持进程身份读取");
+    const info = await redis.info("server");
+    const id = info.split("\n").find((line) => line.startsWith("run_id:"))
+      ?.slice(7).trim();
+    if (!id) throw new Error("Redis 进程身份不可用");
+    return id;
+  };
+  const epoch = await serverId();
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await getDb().select().from(llmTokenRevocations).where(and(
+      sql`${llmTokenRevocations.created_at}::timestamptz + ${llmTokenRevocations.ttl_seconds} * interval '1 second' > now()`,
+      cursor ? gt(llmTokenRevocations.id, cursor) : undefined,
+    )).orderBy(asc(llmTokenRevocations.id)).limit(batchSize);
+    for (const row of rows) {
+      // 不刷新原始有效期：恢复不能把已过期 token 的吊销无限延长。
+      const remaining = Math.ceil(
+        (Date.parse(row.created_at) + row.ttl_seconds * 1000 - Date.now()) /
+          1000,
+      );
+      if (remaining <= 0) continue;
+      if (
+        !await writeRevocationMarkers({
+          attemptId: row.attempt_id,
+          submissionId: row.submission_id,
+          ttlSeconds: remaining,
+        })
+      ) {
+        throw new Error("吊销投影恢复失败");
+      }
+    }
+    if (rows.length < batchSize) break;
+    cursor = rows.at(-1)!.id;
+  }
+  if (await serverId() !== epoch) throw new Error("Redis 在吊销恢复期间重启");
+  await redis.set(TOKEN_REVOCATIONS_READY_KEY, epoch);
 }
 
 /**
@@ -281,5 +331,7 @@ export async function runPendingTokenRevocations(
       attempts: sql`${llmTokenRevocations.attempts} + 1`,
     }).where(eq(llmTokenRevocations.id, row.id));
   }
+  // 周期重建也修复单个标记丢失；业务终态始终由 PostgreSQL outbox 证明。
+  await restoreAttemptTokenRevocations(limit);
   return { processed: rows.length, completed };
 }

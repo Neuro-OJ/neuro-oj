@@ -302,7 +302,7 @@ Deno.test("publish hardening #23: 审计与搜索索引随发布事务持久化"
       eq(backgroundTasks.task_type, "search.index"),
       eq(backgroundTasks.target_kind, "problem"),
       eq(backgroundTasks.target_id, "ph-outbox"),
-      eq(backgroundTasks.dedupe_key, "problem:upsert"),
+      eq(backgroundTasks.dedupe_key, `problem:upsert:${published.version_id}`),
     ),
   );
   assertEquals(tasks.length, 1);

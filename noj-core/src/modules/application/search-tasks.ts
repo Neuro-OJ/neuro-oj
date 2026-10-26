@@ -30,26 +30,28 @@ const TARGET_KIND_BY_ENTITY: Record<SearchEntityType, TaskTargetKind> = {
   announcement: "domain",
 };
 
-/** 索引动作；同一实体的 upsert 与 delete 共享去重键，后者覆盖前者。 */
+/** 索引动作；同一业务事件的重复登记合并，不同事件分别持久化。 */
 export type SearchIndexTaskAction = "upsert" | "delete";
 
 /**
  * 在业务事务内登记搜索索引任务。
  *
- * 去重键包含动作：同一实体的 `upsert` 与 `delete` 是不同事实，不能互相吞掉。
- * 同一动作的重复登记返回既有任务（`created: false`）。
+ * 去重键绑定不可变事件/版本 ID：重试同一事实可合并，后续版本不能被旧的
+ * succeeded 或 leased 任务吞掉。handler 仍从最新事实构建索引。
  */
 export async function enqueueSearchIndexTaskTx(
   tx: DbTx,
   entityType: SearchEntityType,
   entityId: string,
   action: SearchIndexTaskAction,
+  eventId: string,
 ): Promise<EnqueueTaskResult> {
+  if (!eventId.trim()) throw new TypeError("搜索任务需要不可变事件标识");
   const input: EnqueueTaskInput = {
     taskType: "search.index",
     targetKind: TARGET_KIND_BY_ENTITY[entityType],
     targetId: entityId,
-    dedupeKey: `${entityType}:${action}`,
+    dedupeKey: `${entityType}:${action}:${eventId}`,
     payload: { entity_type: entityType, entity_id: entityId, action },
   };
   return await enqueueTaskTx(tx, input);

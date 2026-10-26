@@ -14,7 +14,7 @@ import { getLogger } from "@logtape/logtape";
 import type { ClaimedTask } from "../runtime/tasks/contracts.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import { AppError } from "../../shared/base/errors.ts";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { submissions } from "../../shared/db/schema.ts";
 import {
   loadSubmissionRecoveryRow,
@@ -25,6 +25,8 @@ import {
   pushJudgeTask,
 } from "../evaluations/mq/producer.ts";
 import { publishQueueChange } from "../evaluations/services/queue.ts";
+import { applyAttemptResultTx } from "../evaluations/services/versioning/result-write.ts";
+import { runAttemptTerminalRevocationAfterCommit } from "../evaluations/services/versioning/attempts.ts";
 
 const logger = getLogger(["noj", "application", "dispatch-tasks"]);
 
@@ -37,12 +39,19 @@ const logger = getLogger(["noj", "application", "dispatch-tasks"]);
  */
 export async function handleEvaluationDispatchTask(
   task: ClaimedTask,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  signal?.throwIfAborted();
   const submissionId = task.targetId;
+  const attemptId = task.payload.attempt_id;
+  if (typeof attemptId !== "string" || !attemptId) {
+    throw new TypeError("评测派发任务缺少 attempt_id");
+  }
   const db = getDb();
   const [row] = await db.select({
     id: submissions.id,
     status: submissions.status,
+    activeAttemptId: submissions.active_attempt_id,
   }).from(submissions).where(eq(submissions.id, submissionId)).limit(1);
   if (!row) {
     // 提交已被删除：任务幂等结束，不重试。
@@ -52,29 +61,51 @@ export async function handleEvaluationDispatchTask(
     // 已被其他路径派发或已出结果：任务幂等结束。
     return { skipped: `status_${row.status}` };
   }
+  if (row.activeAttemptId !== attemptId) {
+    return { skipped: "attempt_changed" };
+  }
+
+  const permanentFailure = async () => {
+    signal?.throwIfAborted();
+    // 统一终态入口同时处理 attempt、提交投影、任务条目与吊销 outbox。
+    const outcome = await db.transaction((tx) =>
+      applyAttemptResultTx(tx, { kind: "system", purpose: "background_task" }, {
+        attemptId,
+        resultKind: "platform_error",
+        resultStatus: "DISPATCH_FAILED",
+        score: null,
+        accepted: false,
+        output: "评测派发失败，请联系管理员检查评测配置",
+      })
+    );
+    if (outcome.applied !== "ignored") {
+      await runAttemptTerminalRevocationAfterCommit(attemptId);
+      await publishQueueChange(submissionId);
+    }
+    return { permanent_error: "dispatch_failed" };
+  };
 
   let judgeTask;
   try {
     const recoveryRow = await loadSubmissionRecoveryRow(submissionId);
     if (!recoveryRow) return { skipped: "submission_deleted" };
+    if (recoveryRow.active_attempt_id !== attemptId) {
+      return { skipped: "attempt_changed" };
+    }
     judgeTask = await rebuildPendingTask(recoveryRow, "submission");
   } catch (error) {
     // 缺少活动尝试/版本属于永久错误：标记平台错误，避免无限重试。
-    const message = error instanceof Error ? error.message : String(error);
     logger.error("评测派发任务无法重建 JudgeTask", {
       submission_id: submissionId,
       err: error,
     });
-    await db.update(submissions).set({
-      status: "error",
-      judge_finished_at: new Date().toISOString(),
-    }).where(eq(submissions.id, submissionId));
     if (error instanceof AppError && error.statusCode < 500) {
-      return { permanent_error: message };
+      return await permanentFailure();
     }
     throw error;
   }
 
+  signal?.throwIfAborted();
   try {
     await pushJudgeTask(judgeTask);
   } catch (error) {
@@ -83,18 +114,18 @@ export async function handleEvaluationDispatchTask(
         submission_id: submissionId,
         err: error,
       });
-      await db.update(submissions).set({
-        status: "error",
-        judge_finished_at: new Date().toISOString(),
-      }).where(eq(submissions.id, submissionId));
-      return { permanent_error: String(error) };
+      return await permanentFailure();
     }
     throw error;
   }
 
   // 条件更新：极端竞态下结果可能已先落库，不能把 finished 覆盖回 judging。
   await db.update(submissions).set({ status: "judging" }).where(
-    eq(submissions.id, submissionId),
+    and(
+      eq(submissions.id, submissionId),
+      eq(submissions.status, "pending"),
+      eq(submissions.active_attempt_id, attemptId),
+    ),
   );
   await publishQueueChange(submissionId);
   return { dispatched: true };

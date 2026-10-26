@@ -11,7 +11,7 @@ import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
  * SOURCE_JUDGING、客观题条目按快照重判并写入尝试与投影。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
@@ -39,6 +39,14 @@ const ts = Date.now();
 
 await resetDbForTest();
 const db = getDb();
+
+/** 单写入者隔离夹具从当前域的真实题号后分配，避免小随机区间碰撞。 */
+async function nextProblemNumber(): Promise<number> {
+  const [row] = await db.select({
+    value: sql<number>`coalesce(max(${problems.number}), 0) + 1`,
+  }).from(problems).where(eq(problems.domain_id, DEFAULT_DOMAIN_ID));
+  return row.value;
+}
 
 const dualConfig = (timeLimitMs: number) => ({
   evaluator: {
@@ -98,7 +106,7 @@ async function seedProblemWithVersions(
     title: `派发测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 97000 + Math.floor(Math.random() * 2000),
+    number: await nextProblemNumber(),
     owner_id: "0",
     judge_type: "dual",
     runtime_config: projectionConfig,
@@ -556,7 +564,7 @@ Deno.test({
       title: "客观题派发题",
       description: "d",
       difficulty: "easy",
-      number: 99000 + Math.floor(Math.random() * 500),
+      number: await nextProblemNumber(),
       owner_id: "0",
       is_objective: true,
       created_at: now,
@@ -890,7 +898,7 @@ Deno.test({
       title: "客观题升级题",
       description: "d",
       difficulty: "easy",
-      number: 99500 + Math.floor(Math.random() * 400),
+      number: await nextProblemNumber(),
       owner_id: "0",
       is_objective: true,
       created_at: now,

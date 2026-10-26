@@ -374,6 +374,9 @@ export const ACCOUNTING_MAX_CONSECUTIVE_FAILURES = 3;
  */
 export const ACCOUNTING_STARTUP_GRACE_MS = 30_000;
 
+/** 运行期连续 30 秒没有完整成功轮次时摘出流量，包括卡住而尚未抛错的轮次。 */
+export const ACCOUNTING_MAX_STALENESS_MS = 30_000;
+
 /** 记账 worker 的运行状态快照（只读，供 /health/ready 与运维观测使用）。 */
 export interface AccountingWorkerStatus {
   /** 定时器是否仍在运行；stop() 之后为 false。 */
@@ -392,7 +395,7 @@ export interface AccountingWorkerStatus {
 export interface AccountingWorkerHealth {
   /** 该轮是否可视为健康（可继续接收流量）。 */
   healthy: boolean;
-  /** 不健康类别（worker_stopped / worker_persistent_failures / worker_never_succeeded）；健康时为 null。 */
+  /** 不健康类别；包含停止、持续失败、首次未成功与运行期停滞，健康时为 null。 */
   reason: string | null;
 }
 
@@ -421,6 +424,9 @@ export function evaluateAccountingWorkerHealth(
     }
     // 超过宽限期仍无任何成功轮次（例如首轮对账卡死）：不能继续接流量。
     return { healthy: false, reason: "worker_never_succeeded" };
+  }
+  if (now - status.lastSuccessAt >= ACCOUNTING_MAX_STALENESS_MS) {
+    return { healthy: false, reason: "worker_stalled" };
   }
   return { healthy: true, reason: null };
 }

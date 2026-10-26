@@ -17,7 +17,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { getDb } from "../../shared/db/connection.ts";
-import type { DbRoot } from "../../shared/db/executor.ts";
+import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -26,7 +26,7 @@ import {
 } from "../../shared/db/schema.ts";
 import { resolvePublicId } from "../../shared/security/public-id.ts";
 import { DEFAULT_DOMAIN_ID } from "./types.ts";
-import { type AccessActor, loadWorkspace } from "./policy.ts";
+import { type AccessActor, loadWorkspace, loadWorkspaceTx } from "./policy.ts";
 
 /** 访问政策只需要稳定的比赛类型标签，不依赖 contests 类型模块。 */
 export type ContestType = "kaggle" | "oi" | "ioi" | "ioi_strict" | "acm";
@@ -230,9 +230,9 @@ export async function verifyContestAccess(
   actor: AccessActor,
   contestId: string,
   problemId: string,
-  options: { domainId?: string } = {},
+  options: { domainId?: string; executor?: DbTx } = {},
 ): Promise<ContestAccessInfo> {
-  const db = getDb();
+  const db = options.executor ?? getDb();
   const [contest] = await db.select({
     id: contests.id,
     domainId: contests.domain_id,
@@ -255,7 +255,10 @@ export async function verifyContestAccess(
   if (!domain) {
     return { contestId: resolvedContestId, allowed: false, running: false };
   }
-  const workspace = await loadWorkspace(domain.slug, actor);
+  // 受理事务内的授权不得另取根连接，否则池耗尽时持有连接再等连接。
+  const workspace = options.executor
+    ? await loadWorkspaceTx(options.executor, domain.slug, actor)
+    : await loadWorkspace(domain.slug, actor);
   if (!workspace.membership && !workspace.platformAdmin) {
     return { contestId: resolvedContestId, allowed: false, running: false };
   }

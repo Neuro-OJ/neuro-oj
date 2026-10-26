@@ -57,6 +57,7 @@ import {
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
 } from "../../shared/base/constants.ts";
 import { assertSchemaCompatible } from "../../shared/db/schema-compat.ts";
+import { restoreAttemptTokenRevocations } from "../evaluations/services/versioning/token-revocation.ts";
 
 // 每次 Core 装配拥有独立的 SSE 流 scope：通过 createApp 显式注入，关闭时据此
 // 同步结束所有已建立长连接，让 server.shutdown() 能完成排空。连接只存在于当前
@@ -341,6 +342,7 @@ export async function startCore() {
       // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
       await migratePoolJudgeQueues();
       await migrateLegacyJudgeQueue();
+      await restoreAttemptTokenRevocations();
     } catch (err) {
       if (err instanceof Error && /迁移|processing/.test(err.message)) {
         throw err;

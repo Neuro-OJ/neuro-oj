@@ -63,6 +63,12 @@ export function startTaskWorker(
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const claimLimit = options.claimLimit ?? TASK_DEFAULT_CLAIM_LIMIT;
   const leaseDurationMs = options.leaseDurationMs ?? TASK_DEFAULT_LEASE_MS;
+  if (
+    !Number.isInteger(claimLimit) || claimLimit < 1 ||
+    !Number.isInteger(leaseDurationMs) || leaseDurationMs < 1
+  ) {
+    throw new RangeError("任务领取数量与租约时长必须为正整数");
+  }
 
   // 启动前校验 handler 覆盖：缺类型必须显式失败，不能静默跳过任务。
   for (const taskType of TASK_TYPES) {
@@ -115,8 +121,37 @@ export function startTaskWorker(
     }
     const controller = new AbortController();
     abortControllers.add(controller);
+    let leaseLost = false;
+    let heartbeatDone = Promise.resolve();
+    let leaseDeadline: ReturnType<typeof setTimeout> | undefined;
+    const loseLease = () => {
+      leaseLost = true;
+      controller.abort(new Error("任务租约已失效"));
+    };
+    const armDeadline = (renewalStarted: number) => {
+      if (leaseDeadline !== undefined) clearTimeout(leaseDeadline);
+      // 从续租请求开始计时，保守扣除查询耗时；DB 卡住也必须及时取消副作用。
+      const remaining = leaseDurationMs - (performance.now() - renewalStarted);
+      if (remaining <= 0) loseLease();
+      else leaseDeadline = setTimeout(loseLease, remaining);
+    };
+    const heartbeatSleep = () =>
+      new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timeout);
+          controller.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timeout = setTimeout(
+          finish,
+          Math.max(1, Math.floor(leaseDurationMs / 3)),
+        );
+        controller.signal.addEventListener("abort", finish, { once: true });
+        if (controller.signal.aborted) finish();
+      });
     try {
       // 长任务在开始前续租一次，避免刚领取就接近过期。
+      const renewalStarted = performance.now();
       const renewed = await renewTaskLease(
         task.id,
         task.leaseToken,
@@ -127,7 +162,39 @@ export function startTaskWorker(
         logger.warn("任务租约已失效，跳过执行", { task_id: task.id });
         return;
       }
+      if (controller.signal.aborted) return;
+      armDeadline(renewalStarted);
+      if (controller.signal.aborted) return;
+      heartbeatDone = (async () => {
+        while (!controller.signal.aborted) {
+          await heartbeatSleep();
+          if (controller.signal.aborted) break;
+          const started = performance.now();
+          try {
+            const next = await renewTaskLease(
+              task.id,
+              task.leaseToken,
+              leaseDurationMs,
+              db,
+            );
+            if (next === null) {
+              loseLease();
+              break;
+            }
+            if (!controller.signal.aborted) armDeadline(started);
+          } catch (error) {
+            logger.warn("任务续租失败，取消在途处理", {
+              task_id: task.id,
+              err: error,
+            });
+            loseLease();
+          }
+        }
+      })();
       const result = await handler(task, controller.signal);
+      controller.abort();
+      await heartbeatDone;
+      if (leaseLost) return;
       if (isTaskRescheduleResult(result)) {
         const rescheduled = await db.transaction((tx) =>
           rescheduleTaskTx(tx, task.id, task.leaseToken, result)
@@ -166,20 +233,20 @@ export function startTaskWorker(
         });
       }
     } finally {
+      if (leaseDeadline !== undefined) clearTimeout(leaseDeadline);
+      controller.abort();
+      await heartbeatDone;
       abortControllers.delete(controller);
     }
   };
 
   /** 单轮：领取 → 串行执行。 */
   const pollOnce = async (): Promise<void> => {
-    const tasks = await claimTasks(
-      options.workerId,
-      claimLimit,
-      leaseDurationMs,
-      db,
-    );
-    for (const task of tasks) {
+    // 串行执行时只领取即将执行的任务，避免批次尾部在本地等待中耗尽租约。
+    for (let index = 0; index < claimLimit; index++) {
       if (stopped) break;
+      const [task] = await claimTasks(options.workerId, 1, leaseDurationMs, db);
+      if (!task) break;
       const promise = runTask(task);
       inflight.add(promise);
       try {

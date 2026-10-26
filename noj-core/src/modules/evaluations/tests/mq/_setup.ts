@@ -197,6 +197,8 @@ function handleCommand(
       return queues.has(args[0])
         ? renderRespBulkString(queues.get(args[0])![0])
         : renderRespNull();
+    case "INFO":
+      return renderRespBulkString("run_id:test-server\r\n");
     case "SET":
       queues.set(args[0], [args[1]]);
       return renderRespString("OK");
