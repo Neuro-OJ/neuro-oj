@@ -34,6 +34,8 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import {
+  authorizeLegacyJobActorForTest,
+  bindMainProblemForTest,
   saveV2ResultForTest,
   v2ResultForTest,
 } from "../_versioning-fixtures.ts";
@@ -57,6 +59,7 @@ const runtimeConfig = {
 };
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
+  await authorizeLegacyJobActorForTest();
   const db = getDb();
   await db.insert(problems).values({
     id: problemId,
@@ -92,6 +95,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   });
   await db.update(problems).set({ latest_version_id: `${problemId}-v1` })
     .where(eq(problems.id, problemId));
+  await bindMainProblemForTest(problemId);
 }
 
 /** 建一次提交（评测队列不可用会抛错，但提交与初次尝试已落库）。 */
