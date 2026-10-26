@@ -12,7 +12,7 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import type { AuthEnv } from "../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -29,30 +29,31 @@ import {
   listParticipants,
   removeParticipant,
   updateContest,
-} from "../../contest/services/contests.ts";
-import { resolveDefaultContestAccess } from "../../contest/index.ts";
+} from "../../../modules/contests/services/contests.ts";
+import { resolveDefaultContestAccess } from "../../../modules/contests/services/default-access.ts";
 import type {
   CreateContestInput,
   KaggleRankingRow,
   UpdateContestInput,
-} from "../../contest/types/contests.ts";
-import { isValidContestKind } from "../../contest/types/contests.ts";
-import { isValidContestType } from "../../contest/types/contests.ts";
-import { listSubmissions, scoreFromDb } from "../../submission/index.ts";
-import { resolveUserId } from "../../identity/index.ts";
+} from "../../../modules/contests/types/contests.ts";
+import { isValidContestKind } from "../../../modules/contests/types/contests.ts";
+import { isValidContestType } from "../../../modules/contests/types/contests.ts";
+import { listSubmissions } from "../../../modules/evaluations/services/submissions/submissions-crud.ts";
+import { scoreFromDb } from "../../../modules/evaluations/types/index.ts";
+import { resolveUserId } from "../../../modules/access/identity/services/users/users-id.ts";
 import {
   getContestRankingSnapshotByVersion,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   listContestRankingSnapshots,
   publishContestRankingSnapshot,
-} from "../../contest/services/contest-ranking.ts";
+} from "../../../modules/contests/services/contest-ranking.ts";
 import {
   findSimilarSubmissions,
   MAX_SIMILAR_PAIR_LIMIT,
-} from "../../contest/services/contest-similarity.ts";
-import { resolveProblemIdOrThrow } from "../../catalog/index.ts";
-import { assertPermission } from "../../identity/index.ts";
+} from "../../../modules/contests/services/contest-similarity.ts";
+import { resolveProblemIdOrThrow } from "../../../modules/problems/services/problem-resolve.ts";
+import { assertPermission } from "../../../modules/access/identity/services/security/permissions.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";

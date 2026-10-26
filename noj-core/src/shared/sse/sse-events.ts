@@ -6,7 +6,7 @@
  */
 import { and, asc, gt, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import type { Executor } from "../db/executor.ts";
+import type { DbTx, Executor } from "../db/executor.ts";
 import { sseEvents } from "../db/schema.ts";
 import { getLogger } from "@logtape/logtape";
 import {
@@ -25,6 +25,27 @@ export interface SseEventRow {
   channel: string;
   payload: unknown;
   created_at: string;
+}
+
+/**
+ * 在调用方持有的业务事务内登记 SSE 事件。
+ *
+ * `sse_events` 属于 runtime 事件基础设施；业务模块只通过这个窄能力写入，
+ * 不能直接依赖其 schema。事件日志与事实变更必须使用同一个 DbTx，提交后再由
+ * `publishSseEventAfterTx` 做 Redis 扇出。
+ */
+export async function recordSseEventTx(
+  tx: DbTx,
+  channel: string,
+  payload: unknown,
+  createdAt = new Date().toISOString(),
+): Promise<number> {
+  const rows = await tx.insert(sseEvents).values({
+    channel,
+    payload,
+    created_at: createdAt,
+  }).returning({ id: sseEvents.id });
+  return rows[0].id;
 }
 
 /**

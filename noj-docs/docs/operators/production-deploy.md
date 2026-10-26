@@ -342,8 +342,15 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 ```bash
 # 快照是 .nojbackup 单文件，命名形如 snapshot-YYYYMMDD-HHMMSS.nojbackup
 noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
-  --passphrase-file /secure/noj-backup-passphrase
+  --passphrase-file /secure/noj-backup-passphrase \
+  --docker-host unix:///run/user/1000/docker-noj-restore-drill.sock
 ```
+
+`--docker-host` 必须指向专门为恢复演练创建的 Docker daemon socket（也可以用
+`NOJ_DRILL_DOCKER_HOST` 设置），不能省略，也不能指向承载生产服务的默认
+`/var/run/docker.sock`。演练 daemon 应使用独立的 data root、containerd root、
+Compose 项目名和网络；创建与清理它需要由维护者在维护窗口按
+[P8 演练说明](../../../dev-docs/engineering/architecture-remediation-p8.md)执行。
 
 演练会把快照恢复到独立 Compose
 项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷）， 随后通过真实 API

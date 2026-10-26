@@ -2,27 +2,30 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../../../shared/db/connection.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
-import { listBoards } from "../../community/services/community/community-boards.ts";
+import { listBoards } from "../../../modules/communication/community/services/community/community-boards.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "./../../../shared/base/errors.ts";
+} from "../../../shared/base/errors.ts";
 import {
   assertPermission,
   checkPermission,
   getUserPermissions,
-} from "./../../identity/index.ts";
+} from "../../../modules/access/identity/services/security/permissions.ts";
 import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
-} from "./../../community/types/community.ts";
-import { MAX_SAFE_PAGE } from "./../../../shared/http/pagination.ts";
-import { authMiddleware, getUserBanState } from "./../../identity/index.ts";
-import type { OptionalAuthEnv } from "./../../identity/index.ts";
+} from "../../../modules/communication/community/types/community.ts";
+import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
+import {
+  authMiddleware,
+  getUserBanState,
+} from "../../../modules/access/identity/middleware/auth.ts";
+import type { OptionalAuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
 import {
   applyCommunityPreset,
   banUser,
@@ -47,20 +50,18 @@ import {
   togglePostFlag,
   updateBoard,
   updateBoardRoleGrant,
-} from "../../community/services/community/community.ts";
-import { resolveUserId } from "../../identity/index.ts";
-import { parseQueryLimit } from "../../community/services/community/query-limit.ts";
+} from "../../../modules/communication/community/services/community/community.ts";
+import { resolveUserId } from "../../../modules/access/identity/services/users/users-id.ts";
+import { parseQueryLimit } from "../../../modules/communication/community/services/community/query-limit.ts";
+import { type CommunityScope } from "../../../modules/communication/community/services/community/community-scope.ts";
+import { withDefaultCommunity } from "../../../modules/communication/community/services/community/domain-community.ts";
+import { getReviewQueueDetail } from "../../../modules/communication/review/services/review-detail.ts";
 import {
-  type CommunityScope,
-  withDefaultCommunity,
-} from "../../community/index.ts";
-import {
-  getReviewQueueDetail,
   getReviewQueueItem,
   listReviewQueue,
   resolveReviewQueue,
   type ReviewQueueAccess,
-} from "../../content-review/index.ts";
+} from "../../../modules/communication/review/services/review-queue.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/admin/community，见 app.ts）。

@@ -235,13 +235,29 @@ Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", a
   const originalNow = Date.now;
   let now = Date.UTC(2026, 8, 10, 12);
   Date.now = () => now;
-  const db =
-    ((_strings: TemplateStringsArray, ...values: unknown[]) =>
-      Promise.resolve([{
-        max_calls: values[3] === "day" ? 2 : 3,
-        max_tokens: 10000,
-        max_cost: 100,
-      }])) as unknown as Db;
+  const db = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = strings.join("?");
+    // P5：预占边界内读取实例政策（无额外上限），其余查询返回域配额行。
+    if (sql.includes("llm_policy")) {
+      return Promise.resolve(
+        sql.includes("INSERT") ? [] : [{
+          revision: 0,
+          day_max_calls: null,
+          day_max_tokens: null,
+          day_max_cost: null,
+          month_max_calls: null,
+          month_max_tokens: null,
+          month_max_cost: null,
+          updated_at: new Date(0).toISOString(),
+        }],
+      );
+    }
+    return Promise.resolve([{
+      max_calls: values[3] === "day" ? 2 : 3,
+      max_tokens: 10000,
+      max_cost: 100,
+    }]);
+  }) as unknown as Db;
   const redis = new FakeRedis();
   try {
     await enforceAndCount(db, redis, payload, reserveOptions);

@@ -12,11 +12,11 @@
     "check:types:nuxt": "deno run -A npm:nuxt typecheck && node --stack-size=4000 node_modules/vue-tsc/bin/vue-tsc.js --noEmit",
     "test": "deno test -A --ignore=tests/browser tests/",
     "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A --ignore=tests/browser tests/ --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=60 coverage",
-    "test:theme": "deno test -A tests/browser/editorTheme.browser.test.ts",
     "test:components": "deno run -A npm:vitest run",
     "test:bff:ssr": "deno run -A scripts/verify-bff-ssr.mjs",
     "test:bff:cache": "deno run -A scripts/verify-bff-cache.mjs",
-    "test:learning:browser": "deno run -A scripts/verify-learning-browser.mjs"
+    "test:learning:browser": "deno run -A scripts/verify-learning-browser.mjs",
+    "test:theme": "deno test -A tests/browser/editorTheme.browser.test.ts"
   },
   "lint": {
     "include": [

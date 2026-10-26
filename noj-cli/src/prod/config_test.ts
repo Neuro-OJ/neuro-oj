@@ -147,7 +147,7 @@ function okEnv(overrides: EnvValues = {}): EnvValues {
 const DIGEST = (n: number): string =>
   `sha256:${n.toString(16).padStart(64, "0")}`;
 
-/** 六个生产镜像的 digest 表。 */
+/** 七个生产镜像的 digest 表。 */
 function imageDigests(registry: string): Record<string, string> {
   return {
     [`${registry}/noj-server`]: DIGEST(1),
@@ -156,6 +156,7 @@ function imageDigests(registry: string): Record<string, string> {
     [`${registry}/noj-judge`]: DIGEST(4),
     [`${registry}/noj-evaluator-python`]: DIGEST(5),
     [`${registry}/noj-solution-python`]: DIGEST(6),
+    [`${registry}/noj-solution-ai`]: DIGEST(7),
   };
 }
 
@@ -949,7 +950,7 @@ Deno.test("verifyImageSignatures: 校验形状（imagetools + cosign 参数）",
   assertEquals(calls.length, 6);
 });
 
-Deno.test("verifyImageSignatures: judge 启用时追加三个 judge 镜像", async () => {
+Deno.test("verifyImageSignatures: judge 启用时追加四个 judge 镜像", async () => {
   const calls: string[][] = [];
   const result = await verifyImageSignatures(
     okEnv({ NOJ_ENFORCE_IMAGE_SIGNATURES: "true", JUDGE_ENABLED: "true" }),
@@ -960,9 +961,9 @@ Deno.test("verifyImageSignatures: judge 启用时追加三个 judge 镜像", asy
       cosignAvailable: () => Promise.resolve(true),
     },
   );
-  assertEquals(result.digests.length, 6);
-  assertEquals(calls.length, 12);
-  assertEquals(result.digests[5]?.name, "noj-solution-python");
+  assertEquals(result.digests.length, 7);
+  assertEquals(calls.length, 14);
+  assertEquals(result.digests[6]?.name, "noj-solution-ai");
 });
 
 Deno.test("verifyImageSignatures: cosign 缺失时报错且不执行任何命令", async () => {

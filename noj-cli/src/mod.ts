@@ -112,7 +112,9 @@ export type { CommandSpec, Tier } from "./commands.ts";
 // 吸收 install.sh 原先"从源码归档 cp"的职责（spec §3.3 洞 2）。
 export {
   downloadReleaseFiles,
+  downloadReleaseSet,
   RELEASE_FILES,
+  RELEASE_SET_FILE,
   releaseAssetUrl,
   validateRef,
   validateRepository,
@@ -294,6 +296,7 @@ export type {
 // 业务验收由 CLI 直接发 HTTP（经容器 IP），不再依赖额外的 deno 容器镜像。
 export {
   allocateDrillDir,
+  assertDedicatedDockerHost,
   assertDrillProjectName,
   assertSubnetCidr,
   checkDrillPreflight,
@@ -320,6 +323,8 @@ export {
   readEnvValues,
   renderDrillOverride,
   resolveReportPath,
+  uniqueDrillProjectName,
+  uniqueDrillSubnet,
   valueOr,
 } from "./prod/drill/plan.ts";
 export {
@@ -414,6 +419,23 @@ export {
   versionMissingHint,
   writeConfigVersion,
 } from "./prod/release.ts";
+export {
+  EVALUATION_PROTOCOL_VERSION,
+  GATEWAY_PROTOCOL_VERSION,
+  readReleaseSet,
+  RELEASE_SET_ASSET,
+  RELEASE_SET_COMPONENTS,
+  RELEASE_SET_SCHEMA_VERSION,
+  RELEASE_SET_SHA_ASSET,
+  releaseSetDigestMismatches,
+  SDK_STANDARD,
+  validateReleaseSet,
+} from "./prod/release-set.ts";
+export type {
+  ReleaseSet,
+  ReleaseSetComponent,
+  ReleaseSetComponentName,
+} from "./prod/release-set.ts";
 // compose（T10）：prod 侧服务集与 compose 调用封装。生产编排只认仓库内固定的
 // docker-compose.prod.yml（T9 下载并校验），**不引入运行时渲染**（spec §3.4）。
 export {
@@ -423,6 +445,7 @@ export {
   composeLogs,
   composePs,
   composePull,
+  composeRun,
   composeUp,
   PROD_COMPOSE_FILE,
   PROD_ENV_FILE,
@@ -589,10 +612,23 @@ export type {
   UninstallResult,
   UpdateBackupContext,
   UpdateBackupResult,
+  UpdateMigrationContext,
   UpdateOptions,
   UpdateResult,
   UpdateSyncContext,
 } from "./prod/lifecycle.ts";
+export {
+  advanceUpgradeState,
+  createUpgradeState,
+  readUpgradeState,
+  UPGRADE_PHASES,
+  UPGRADE_STATE_FILE,
+  UPGRADE_STATE_SCHEMA_VERSION,
+  upgradeStatePath,
+  validateUpgradeState,
+  writeUpgradeState,
+} from "./prod/upgrade-state.ts";
+export type { UpgradePhase, UpgradeState } from "./prod/upgrade-state.ts";
 // lifecycle/path（T13 拆分，T15 补反向逻辑）：production.sh 的 register_command /
 // unregister_command 迁移 + PATH 字面量。正反两向共享「软链指向何处」判定。
 export {

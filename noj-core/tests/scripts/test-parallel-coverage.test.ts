@@ -7,9 +7,9 @@
  * defensive-patterns / smoke / scripts 等文件。它们**从不在并行路径执行**，
  * 却没有任何信号——是「三条测试路径行为不一致」里最隐蔽的一类。
  *
- * 本测试直接对照文件系统，断言 `tests/` 与 `src/domains/<domain>/tests` 下的每个
- * 测试文件都至少被一个分片覆盖（性能基准单独登记豁免）。新增 domain 或顶层
- * 测试文件而忘了登记分片时，这里会失败。
+ * 本测试直接对照文件系统，断言 `tests/`、`src/domains/<domain>/tests` 与迁移期
+ * `src/modules/<module>/tests` 下的每个测试文件都至少被一个分片覆盖（性能基准
+ * 单独登记豁免）。新增 domain/module 或顶层测试文件而忘了登记分片时，这里会失败。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
@@ -17,6 +17,11 @@ import {
   isPerfExcluded,
   SHARDS,
 } from "../../scripts/test-parallel-shards.ts";
+import {
+  allTargetModuleTestRoots,
+  TARGET_MODULE_NAMES,
+  testRootsForTarget,
+} from "../../../scripts/module-test-metadata.ts";
 
 const CORE_ROOT = new URL("../../", import.meta.url).pathname.replace(
   /\/$/,
@@ -51,7 +56,8 @@ async function collectTestFiles(): Promise<string[]> {
       const abs = `${dir}/${entry.name}`;
       const rel = abs.slice(CORE_ROOT.length + 1);
       if (
-        rel.startsWith("tests/") || /^src\/domains\/[^/]+\/tests\//.test(rel)
+        rel.startsWith("tests/") ||
+        /^src\/(?:domains|modules)\/[^/]+\/tests\//.test(rel)
       ) {
         out.push(rel);
       }
@@ -65,13 +71,49 @@ async function collectTestFiles(): Promise<string[]> {
 }
 
 Deno.test("shards: 每个 domain 的 tests 目录都被某个分片覆盖", () => {
-  // 显式断言 observability / admin 在列（防止回归到 2026-09-21 前的遗漏）。
-  for (const domain of ["observability", "admin", "workspace", "education"]) {
-    const covered = SHARDS.some((s) =>
-      s.dirs.some((d) => d.startsWith(`src/domains/${domain}/tests`))
-    );
-    assert(covered, `domain ${domain} 的测试未被任何分片覆盖`);
+  // 显式断言关键迁移期测试根在列，避免旧 domain 名称掩盖模块迁移后的遗漏。
+  for (
+    const root of [
+      "src/modules/platform/observability/tests",
+      "src/domains/admin/tests",
+      "src/modules/access/workspace/tests",
+      "src/modules/education/tests",
+    ]
+  ) {
+    const covered = SHARDS.some((s) => s.dirs.some((d) => d.startsWith(root)));
+    assert(covered, `测试根 ${root} 未被任何分片覆盖`);
   }
+});
+
+Deno.test("shards: target modules 的全部 tests 根都登记到分片", () => {
+  const roots = allTargetModuleTestRoots();
+  assert(
+    roots.length >= TARGET_MODULE_NAMES.length,
+    "target module 至少应各有一个测试根",
+  );
+  for (const moduleName of TARGET_MODULE_NAMES) {
+    for (const root of testRootsForTarget(moduleName)) {
+      assert(
+        isCoveredByShards(`${root}/future.test.ts`),
+        `target module 测试根未进入并行分片：${root}`,
+      );
+    }
+  }
+});
+
+Deno.test("shards: 删除模块分片登记的负例会被发现", () => {
+  const withoutModuleRoots = SHARDS.map((shard) => ({
+    ...shard,
+    dirs: shard.dirs.filter((dir) => !dir.startsWith("src/modules/")),
+  }));
+  assertEquals(
+    isCoveredByShards(
+      "src/modules/application/tests/new.test.ts",
+      withoutModuleRoots,
+    ),
+    false,
+    "没有登记模块根时，新增 module 测试必须成为未覆盖负例",
+  );
 });
 
 Deno.test("shards: 目录级不重叠（同一目录不得被两分片执行）", () => {
@@ -112,7 +154,7 @@ Deno.test("shards: 直接文件路径的重复仅限于迁移入口", () => {
 });
 
 Deno.test(
-  "shards: tests/ 与 domains/*/tests 下每个测试文件都被覆盖（非 perf）",
+  "shards: tests/domains/modules 下每个测试文件都被覆盖（非 perf）",
   async () => {
     const files = await collectTestFiles();
     assert(
@@ -135,9 +177,13 @@ Deno.test(
 Deno.test("shards: 性能基准按登记豁免（而非被静默遗漏）", () => {
   // 反向证据：perf 文件确实存在于文件系统，但被显式排除。
   assert(isPerfExcluded("tests/perf/search_bench.test.ts"));
-  assert(isPerfExcluded("src/domains/search/tests/perf/search_bench.test.ts"));
   assert(
-    isPerfExcluded("src/domains/education/tests/perf/matrix-bench.test.ts"),
+    isPerfExcluded(
+      "src/modules/read-models/search/tests/perf/search_bench.test.ts",
+    ),
+  );
+  assert(
+    isPerfExcluded("src/modules/education/tests/perf/matrix-bench.test.ts"),
   );
   assert(!isPerfExcluded("tests/security-headers.test.ts"));
 });

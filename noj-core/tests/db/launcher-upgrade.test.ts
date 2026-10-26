@@ -324,8 +324,21 @@ Deno.test({
       const journal = JSON.parse(
         await Deno.readTextFile(`${MIGRATIONS_DIR}/meta/_journal.json`),
       ) as { entries: Array<{ tag: string }> };
-      assertEquals(journal.entries.at(-2)?.tag, "0118_polite_fat_cobra");
-      assertEquals(journal.entries.at(-1)?.tag, "0119_nasty_thena");
+      // 0118/0119 是本次「存量升级」场景的历史锚点；后续批次会继续追加迁移，
+      // 所以这里断言两者相邻且都在正式迁移集中，而不是断言它们是最后两条。
+      const index0119 = journal.entries.findIndex((entry) =>
+        entry.tag === "0119_nasty_thena"
+      );
+      assert(index0119 > 0, "正式迁移集必须包含 0119_nasty_thena");
+      assertEquals(
+        journal.entries[index0119 - 1]?.tag,
+        "0118_polite_fat_cobra",
+        "0119 必须紧接在 0118 之后",
+      );
+      assert(
+        index0119 < journal.entries.length - 1,
+        "0119 之后必须还有已生成的后续迁移",
+      );
 
       // 空库：完整正式迁移必须真实执行成功，并产生完整 ledger。
       await createDatabase(admin, emptyDatabase, createdDatabases);
@@ -347,7 +360,8 @@ Deno.test({
         databaseUrlFor(adminUrlForCurrentDatabase(), legacyDatabase),
       );
       try {
-        const beforeUpgrade = migrations.slice(0, -1);
+        // 只迁移到 0118（含），插入历史数据后再由正式 0119 做回填、0120 及之后继续升级。
+        const beforeUpgrade = migrations.slice(0, index0119);
         await new PgDialect().migrate(
           beforeUpgrade,
           migrationSession(legacyClient),

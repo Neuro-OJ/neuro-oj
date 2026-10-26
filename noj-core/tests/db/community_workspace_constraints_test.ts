@@ -10,7 +10,7 @@ import {
   communityReports,
   problems,
 } from "../../src/shared/db/schema.ts";
-import { createDomain } from "../../src/domains/workspace/index.ts";
+import { createDomain } from "../../src/modules/access/workspace/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import { problemExecutionForTest } from "../helper.ts";
 

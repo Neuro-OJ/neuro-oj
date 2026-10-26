@@ -1,39 +1,28 @@
-import type { GatewayConfig } from "./config.ts";
+import type { Db } from "./db.ts";
 import type { QuotaRow } from "./limits.ts";
+import { readCurrentPolicy } from "./policy-operations.ts";
 
 export interface DomainQuotaCaps {
   day: QuotaRow;
   month: QuotaRow;
 }
 
-/** 每次调用读取持久实例政策，降低上限不等待 token 到期或缓存失效。 */
-export async function loadCurrentQuotaCaps(
-  config: GatewayConfig,
-): Promise<DomainQuotaCaps> {
-  try {
-    const response = await fetch(
-      config.coreInternalUrl.replace(/\/+$/, "") +
-        "/api/v1/internal/llm/quota-caps",
-      {
-        headers: { Authorization: "Bearer " + config.serviceToken },
-        signal: AbortSignal.timeout(5000),
-        redirect: "error",
-      },
-    );
-    if (!response.ok) throw new Error("policy_unavailable");
-    const { data } = await response.json();
-    for (const window of ["day", "month"]) {
-      for (const field of ["max_calls", "max_tokens", "max_cost"]) {
-        const value = data?.[window]?.[field];
-        if (value !== null && (!Number.isSafeInteger(value) || value < 0)) {
-          throw new Error("invalid_policy");
-        }
-      }
-    }
-    return data;
-  } catch {
-    throw new Error("quota_policy_unavailable");
-  }
+/**
+ * 读取实例政策上限（P5：Gateway 本地持久权威）。
+ *
+ * 旧实现每次调用都 fetch Core 的 `/api/v1/internal/llm/quota-caps`：
+ * - Core 不可达时整条 LLM 链路 503；
+ * - 排队前后可能读到两份不同政策（降额生效时序不确定）；
+ * - Core 侧保留第二份可写权威。
+ *
+ * 现在政策只存在于 Gateway 的 `llm_policy` 单行：
+ * - 不发起任何 Core 请求；
+ * - 预占步骤在事务内锁定该行，政策写入与预占由同一行锁定序决定先后；
+ * - 行不存在时返回空政策（不隐式创建），空政策表示"不额外限制"。
+ */
+export async function loadCurrentQuotaCaps(db: Db): Promise<DomainQuotaCaps> {
+  const policy = await readCurrentPolicy(db);
+  return { day: policy.day, month: policy.month };
 }
 
 /** null 不能解除另一层数值限制。 */

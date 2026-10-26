@@ -12,7 +12,13 @@ import { extractApiError } from '~/utils/apiError';
 import { DEFAULT_GRADIENT, gradientClass } from '~/utils/carouselGradient';
 
 const props = withDefaults(
-  defineProps<{ autoIntervalMs?: number; domainSlug?: string; title?: string; description?: string }>(),
+  defineProps<{
+    autoIntervalMs?: number;
+    domainSlug?: string;
+    title?: string;
+    description?: string;
+    initialSlides?: CarouselSlide[];
+  }>(),
   {
     autoIntervalMs: 5000,
   },
@@ -24,8 +30,9 @@ const initial = await useViewAsyncData(
   'carousel',
   () => `carousel:${props.domainSlug ?? 'instance'}:${user.value?.id ?? 'guest'}`,
   async (): Promise<{ data: CarouselSlide[] }> => ({ data: await loadEnabled(true) }),
+  { immediate: !props.initialSlides },
 );
-const slides = computed(() => initial.data.value?.data ?? []);
+const slides = computed(() => props.initialSlides ?? initial.data.value?.data ?? []);
 const currentSlide = ref(0);
 const paused = ref(false);
 const error = computed(() => initial.error.value ? extractApiError(initial.error.value).message : '');

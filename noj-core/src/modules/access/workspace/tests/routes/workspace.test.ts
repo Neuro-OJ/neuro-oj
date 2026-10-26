@@ -1,0 +1,268 @@
+import { assertEquals } from "jsr:@std/assert@^1";
+import { createApp } from "../../../../../app.ts";
+import { getDb } from "../../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
+import { systemSettings } from "../../../../../shared/db/schema.ts";
+import {
+  createUserToken,
+  initRedisForTest,
+  jsonRequest,
+} from "../../../../../../tests/helper.ts";
+import {
+  refreshSettingsCache,
+  updateSetting,
+} from "../../../../platform/system/index.ts";
+import { unlimitedDomainLimits } from "../../../../../shared/workspace/resource-policy.ts";
+import { createDomainInvitation } from "../../index.ts";
+
+await resetDbForTest();
+await initRedisForTest();
+
+Deno.test("域类型 HTTP：拒绝自定义创建、类型变更和模块组合，三个类型均有社区", async () => {
+  await resetDbForTest();
+  const app = createApp(), admin = await createUserToken("admin");
+  assertEquals(
+    (await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "invalid-custom", name: "自定义", preset: "custom" },
+    })).status,
+    400,
+  );
+  for (const preset of ["community", "education", "team"]) {
+    const path = `/api/v1/domains/fixed-${preset}`;
+    const created = await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: `fixed-${preset}`, name: preset, preset },
+    });
+    assertEquals(created.status, 201);
+    const { data } = await (await jsonRequest(app, path, { token: admin }))
+      .json();
+    assertEquals(data.configuration.features.community, true);
+    assertEquals(data.configuration.features.analytics, true);
+    assertEquals(
+      data.configuration.features.assignment,
+      preset === "education",
+    );
+    for (
+      const body of [{ preset: "education" }, {
+        configuration: {
+          features: { ...data.configuration.features, community: false },
+        },
+      }]
+    ) {
+      const response = await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body,
+      });
+      assertEquals(response.status, 400);
+      assertEquals((await response.json()).code, "DOMAIN_TYPE_FIXED");
+    }
+    assertEquals(
+      (await jsonRequest(app, `${path}/preset-apply`, {
+        method: "POST",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: { preset: "team" },
+      })).status,
+      404,
+    );
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: { configuration: { access: "public" } },
+      })).status,
+      200,
+    );
+  }
+});
+
+Deno.test("工作空间 HTTP：挂载中间件不覆盖其他模块的响应缓存契约", async () => {
+  await resetDbForTest();
+  const app = createApp();
+  const token = await createUserToken("user");
+  app.get(
+    "/api/v1/fixture-export",
+    () =>
+      new Response("export", {
+        headers: { "Cache-Control": "private, no-store" },
+      }),
+  );
+  const unrelated = await jsonRequest(app, "/api/v1/fixture-export", { token });
+  assertEquals(unrelated.status, 200);
+  assertEquals(unrelated.headers.get("Cache-Control"), "private, no-store");
+  const instance = await jsonRequest(app, "/api/v1/instance");
+  assertEquals(instance.headers.get("Cache-Control"), "no-store");
+});
+
+Deno.test({
+  name: "工作空间 HTTP：跨域拒绝、缺失 revision、私有实例旧入口统一门控",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const admin = await createUserToken("admin");
+    const user = await createUserToken("user");
+    const app = createApp();
+    const created = await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "http-school", name: "学校", preset: "education" },
+    });
+    assertEquals(created.status, 201);
+    const denied = await jsonRequest(app, "/api/v1/domains/http-school", {
+      token: user,
+    });
+    assertEquals(denied.status, 404);
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/domains/http-school", {
+        method: "PATCH",
+        token: admin,
+        body: { name: "变更" },
+      })).status,
+      428,
+    );
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/domains/http-school", {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: { name: "变更" },
+      })).status,
+      200,
+    );
+    await updateSetting("instance_access", "authenticated", "0");
+    assertEquals((await jsonRequest(app, "/api/v1/problems")).status, 401);
+    assertEquals((await jsonRequest(app, "/api/v1/instance")).status, 200);
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/auth/register-status")).status,
+      200,
+    );
+  },
+});
+
+Deno.test({
+  name: "邀请 HTTP：私有实例允许持有效链接预览，响应禁止缓存且不返回账号存在性",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const admin = await createUserToken("admin");
+    const app = createApp();
+    const created = await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "preview-school", name: "学校", preset: "education" },
+    });
+    const { data: domain } = await created.json();
+    const invitation = await createDomainInvitation(
+      domain.slug,
+      domain.owner_id,
+      "new-student@example.com",
+    );
+    await updateSetting("instance_access", "authenticated", "0");
+    const preview = await jsonRequest(app, "/api/v1/auth/domain-invitation", {
+      method: "POST",
+      body: { token: invitation.token },
+    });
+    assertEquals(preview.status, 200);
+    assertEquals(preview.headers.get("Cache-Control"), "no-store");
+    const { data } = await preview.json();
+    assertEquals(data.domain_slug, domain.slug);
+    assertEquals(data.email, "new-student@example.com");
+    assertEquals("account_exists" in data, false);
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/domains/preview-school")).status,
+      401,
+    );
+  },
+});
+
+Deno.test({
+  name: "域配额 HTTP：错误域拒绝、If-Match 前置条件及配置 revision 冲突",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const admin = await createUserToken("admin");
+    const user = await createUserToken("user");
+    const app = createApp();
+    await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "http-limits", name: "学校", preset: "education" },
+    });
+    const path = "/api/v1/domains/http-limits/limits";
+    assertEquals((await jsonRequest(app, path, { token: user })).status, 404);
+    assertEquals((await jsonRequest(app, path)).status, 401);
+    const limits = { ...unlimitedDomainLimits(), members: 10 };
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        body: limits,
+      })).status,
+      428,
+    );
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: limits,
+      })).status,
+      200,
+    );
+    const current = await jsonRequest(app, path, { token: admin });
+    assertEquals(current.status, 200);
+    const { data } = await current.json();
+    assertEquals(data.revision, 1);
+    assertEquals(data.effective.members, 10);
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "0" },
+        body: limits,
+      })).status,
+      409,
+    );
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PATCH",
+        token: admin,
+        headers: { "If-Match": "1" },
+        body: { ...limits, members: -1 },
+      })).status,
+      400,
+    );
+    await getDb().insert(systemSettings).values({
+      key: "domain_limit_caps",
+      value: JSON.stringify(
+        JSON.stringify({ ...unlimitedDomainLimits(), members: -1 }),
+      ),
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    await refreshSettingsCache("domain_limit_caps");
+    assertEquals((await jsonRequest(app, path, { token: admin })).status, 503);
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/admin/system/settings", {
+        token: admin,
+      }))
+        .status,
+      200,
+    );
+    await updateSetting(
+      "domain_limit_caps",
+      JSON.stringify(unlimitedDomainLimits()),
+      "0",
+    );
+    assertEquals((await jsonRequest(app, path, { token: admin })).status, 200);
+  },
+});

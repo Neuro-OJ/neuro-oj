@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 pub struct ProgressReporter {
     client: Option<redis::Client>,
     submission_id: String,
+    task_kind: String,
     run_id: Option<String>,
     rejudge_seq: i64,
     state: Arc<Mutex<Value>>,
@@ -45,7 +46,7 @@ impl Drop for CancelWatcher {
 impl ProgressReporter {
     pub fn new(task: &JudgeTask, client: Option<&redis::Client>, config: &OiRuntimeConfig) -> Self {
         let cancelled = Arc::new(AtomicBool::new(false));
-        let watcher = if task.submission_id.starts_with("st_") {
+        let watcher = if task.task_kind.as_deref() == Some("self_test") {
             match (client, task.run_id.as_ref()) {
                 (Some(client), Some(run_id)) => {
                     let client = client.clone();
@@ -90,6 +91,7 @@ impl ProgressReporter {
             _watcher: watcher,
             client: client.cloned(),
             submission_id: task.submission_id.clone(),
+            task_kind: task.task_kind.clone().unwrap_or_default(),
             run_id: task.run_id.clone(),
             rejudge_seq: task.rejudge_seq.unwrap_or(0),
             state: Arc::new(Mutex::new(
@@ -209,7 +211,7 @@ impl ProgressReporter {
         let (Some(client), Some(run_id)) = (&self.client, &self.run_id) else {
             return;
         };
-        let message=json!({"kind":"oi_progress","submission_id":self.submission_id,"run_id":run_id,"rejudge_seq":self.rejudge_seq,"progress":state}).to_string();
+        let message=json!({"kind":"oi_progress","task_kind":self.task_kind,"submission_id":self.submission_id,"run_id":run_id,"rejudge_seq":self.rejudge_seq,"progress":state}).to_string();
         let sent = async {
             let mut connection = client.get_multiplexed_async_connection().await?;
             connection
@@ -258,7 +260,7 @@ impl ProgressReporter {
                 0.0
             });
         let mut entry = json!({"subtask_id":subtask,"case_id":case_id,"status":result.status,"score":score,"max_score":maximum,"time_ms":result.time_ms,"memory_kb":result.memory_kb});
-        if self.submission_id.starts_with("st_") {
+        if self.task_kind == "self_test" {
             entry["stdout"] = json!(result.stdout);
             entry["stderr"] = json!(result.stderr);
             entry["stdout_truncated"] = json!(result.stdout_truncated);

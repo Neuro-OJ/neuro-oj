@@ -3,8 +3,8 @@
 > **校验方式（2026-09-12 起真实生效）**：`scripts/check-metrics.ts` 解析本文件中
 > 全部 `noj_*` 指标名并与代码注册表比对——**平台指标未登记 → 失败；文档登记了
 > 未注册的指标 → 失败**。
-> 平台指标定义在 `noj-core/src/domains/observability/metrics/platform.ts`，
-> 业务指标由各域通过 `domains/observability/write.ts` 注册。
+> 平台指标定义在 `noj-core/src/modules/platform/observability/metrics/platform.ts`，
+> 业务指标由各模块通过 `modules/platform/observability/write.ts` 注册。
 >
 > 此前这里声称"由 check-metrics.ts 校验"，但该脚本**从不读取本文件**
 > （全仓搜 `metric-catalog` 零命中），文档因此静默漂移：35 个平台指标只登记了 23 个。
@@ -59,6 +59,14 @@
 | `noj_judge_completed_tasks_total`      | gauge     | Judge 累计完成任务数          |
 | `noj_judge_failed_tasks_total`         | gauge     | Judge 累计失败任务数          |
 | `noj_judge_result_push_failures_total` | gauge     | Judge 累计结果回传失败数      |
+| `noj_background_tasks_ready`           | gauge     | 可领取的后台任务数            |
+| `noj_background_tasks_leased`          | gauge     | 已租约后台任务数              |
+| `noj_background_tasks_failed`          | gauge     | 终态失败后台任务数            |
+| `noj_background_tasks_oldest_ready_age_seconds` | gauge | 最早待处理后台任务年龄（秒） |
+| `noj_background_tasks_oldest_leased_age_seconds` | gauge | 最早租约任务年龄（秒）       |
+| `noj_background_tasks_next_lease_expiry_seconds` | gauge | 最近租约到期剩余时间（秒）   |
+| `noj_education_projection_pending`     | gauge     | 待投影教学事实数              |
+| `noj_education_projection_oldest_age_seconds` | gauge | 最早待投影教学事实年龄（秒） |
 
 ## 业务指标（示例）
 

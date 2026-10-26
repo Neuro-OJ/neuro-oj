@@ -18,16 +18,16 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
-import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
 import { resetDbForTest } from "./helpers/db.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../src/domains/system/index.ts";
+} from "../src/modules/platform/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "./../src/domains/system/services/env-snapshot.ts";
+} from "../src/modules/platform/system/services/env-snapshot.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）

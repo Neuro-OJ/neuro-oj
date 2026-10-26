@@ -80,6 +80,7 @@ export class FakeRedis implements RedisClient {
 export function createFakeDb(provider: ProviderRow | null): {
   db: Db;
   usageInserts: Record<string, unknown>[];
+  ledger: Map<string, Record<string, unknown>>;
 } {
   const usageInserts: Record<string, unknown>[] = [];
   const ledger = new Map<string, Record<string, unknown>>();
@@ -141,6 +142,22 @@ export function createFakeDb(provider: ProviderRow | null): {
     if (sql.includes("FROM llm_quotas")) {
       return Promise.resolve([]);
     }
+    // P5：预占在受控边界内读取实例政策行（共享锁）。测试默认"无额外上限"。
+    if (sql.includes("INSERT INTO llm_policy")) {
+      return Promise.resolve([]);
+    }
+    if (sql.includes("FROM llm_policy")) {
+      return Promise.resolve([{
+        revision: 0,
+        day_max_calls: null,
+        day_max_tokens: null,
+        day_max_cost: null,
+        month_max_calls: null,
+        month_max_tokens: null,
+        month_max_cost: null,
+        updated_at: new Date(0).toISOString(),
+      }]);
+    }
     if (sql.includes("INSERT INTO llm_usage")) {
       const cols = [
         "id",
@@ -182,7 +199,7 @@ export function createFakeDb(provider: ProviderRow | null): {
   ) => operation(db);
   (db as unknown as { reserve: unknown }).reserve = () => Promise.resolve(db);
   (db as unknown as { release: unknown }).release = () => {};
-  return { db, usageInserts };
+  return { db, usageInserts, ledger };
 }
 
 export async function makeProvider(storeKey: string): Promise<ProviderRow> {

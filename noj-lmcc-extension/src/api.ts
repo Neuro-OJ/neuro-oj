@@ -304,22 +304,22 @@ export class NeuroOjApi {
   }
 
   async submitCode(
-    problemId: string,
+    slug: string,
+    reference: string,
     code: string,
     fileName: string,
-    versionId?: string | null,
+    versionId: string,
   ): Promise<CreatedSubmission> {
     const response = await this.request<{ data: CreatedSubmission }>(
-      "/api/v1/submissions",
+      `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
       {
         method: "POST",
         body: {
-          problem_id: problemId,
+          problem_ref: reference,
           language: "python3",
           code,
           file_name: fileName,
-          // 新客户端必须携带作答版本；缺失会被服务端 409 拒绝（明确升级提示）
-          ...(versionId ? { version_id: versionId } : {}),
+          version_id: versionId,
         },
       },
     );

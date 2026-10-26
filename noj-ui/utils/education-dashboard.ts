@@ -1,4 +1,4 @@
-import type { Assignment } from './education';
+import type { Assignment } from './education.ts';
 
 export interface EducationDashboardTask
   extends Pick<Assignment, 'id' | 'title' | 'classroom_id' | 'state' | 'published_at' | 'deadline_at' | 'ended_at'> {

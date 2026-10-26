@@ -1,19 +1,18 @@
 {
-  "total": 360,
+  "total": 359,
   "by_reason": {
     "early-return": 248,
     "env-guard": 6,
-    "ignore": 33,
+    "ignore": 32,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
   "by_file": {
     "noj-cli/src/prod/e2e/roundtrip_test.ts": 4,
-    "noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts": 1,
-    "noj-core/src/domains/education/tests/perf/matrix-bench.test.ts": 2,
-    "noj-core/src/domains/identity/tests/routes/tfa.test.ts": 1,
-    "noj-core/src/domains/search/tests/perf/search_bench.test.ts": 1,
-    "noj-core/src/domains/system/tests/services/system-settings-invalidation.test.ts": 1,
+    "noj-core/src/modules/access/identity/tests/routes/tfa.test.ts": 1,
+    "noj-core/src/modules/education/tests/perf/matrix-bench.test.ts": 2,
+    "noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts": 1,
+    "noj-core/src/modules/read-models/search/tests/perf/search_bench.test.ts": 1,
     "noj-core/tests/helper.ts": 1,
     "noj-core/tests/perf/community_search_bench.test.ts": 1,
     "noj-core/tests/perf/search_bench.test.ts": 2,

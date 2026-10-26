@@ -4,7 +4,7 @@ import {
   classifyStorageObjectKey,
   renderStorageAuditPrometheus,
   type StorageReference,
-} from "../../../src/domains/system/services/storage/audit.ts";
+} from "../../../src/modules/assets/services/audit.ts";
 
 Deno.test("storage audit: 按引用识别 orphan、缺失引用并汇总容量", () => {
   const references: StorageReference[] = [

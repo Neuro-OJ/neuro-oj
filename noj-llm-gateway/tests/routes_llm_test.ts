@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { createLlmRouter } from "../src/routes/llm.ts";
 import {
   createFakeDb,
@@ -342,9 +342,9 @@ Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async (
   assertEquals(body.error, "token_revoked");
 });
 
-Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
+Deno.test("llm route: stream: true 转发并保留响应", async () => {
   const provider = await makeProvider(testConfig.storeKey);
-  const { db } = createFakeDb(provider);
+  const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
   const app = createLlmRouter({
     config: testConfig,
@@ -353,16 +353,28 @@ Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
     resolveDns: publicDns,
   });
   const token = await makeToken(testConfig);
+  const restore = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        'data: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}\n\n' +
+          "data: [DONE]\n\n",
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    )
+  );
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-    stream: true,
-  });
-
-  assertEquals(res.status, 400);
-  const body = await res.json();
-  assertEquals(body.error, "stream_not_supported");
+  try {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      stream: true,
+    });
+    assertEquals(res.status, 200);
+    assert((await res.text()).includes("[DONE]"));
+    assertEquals(usageInserts[0]?.status, "ok");
+  } finally {
+    restore();
+  }
 });
 
 Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返回 502", async () => {
@@ -642,24 +654,11 @@ Deno.test("llm route: 配额拒绝审计保留维度和预占数值，响应不�
     redis,
     resolveDns: publicDns,
   });
-  const restore = stubFetch(() =>
-    Promise.reject(new Error("额度不足不得调用上游"))
-  );
-  let res: Response;
-  try {
-    res = await requestChat(app, await makeToken(testConfig), {
-      model: "deepseek-chat",
-      messages: [{ role: "user", content: "ping" }],
-    });
-  } finally {
-    restore();
-  }
-  const rejectedBody = await res.json();
-  assertEquals(
-    rejectedBody.error.code,
-    "out_of_usage",
-    JSON.stringify(rejectedBody),
-  );
+  const res = await requestChat(app, await makeToken(testConfig), {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "ping" }],
+  });
+  assertEquals((await res.json()).error.code, "out_of_usage");
   assertEquals(JSON.parse(String(usageInserts[0].request_params)).quota_limit, {
     scope: "evaluation",
     window: "evaluation",

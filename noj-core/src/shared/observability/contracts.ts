@@ -2,7 +2,7 @@
  * 可观测性低层 kernel 契约。
  *
  * 零业务依赖，供 shared/** 与所有 domain 使用。
- * 写侧实现见 registry.ts；读侧聚合见 domains/observability。
+ * 写侧实现见 registry.ts；读侧聚合见 modules/platform/observability。
  */
 
 export type MetricType = "counter" | "gauge" | "histogram";

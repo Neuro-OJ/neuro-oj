@@ -45,14 +45,14 @@ Deno.test("capability-seam: 真实仓库通过且规则确实命中（非恒真�
 
 Deno.test("capability-seam: 业务代码直接 import 具体 Provider 会被拦截", async () => {
   const root = await makeFixtureRoot({
-    "domains/catalog/services/bad.ts":
-      `import { S3StorageProvider } from "../../system/services/storage/s3.ts";\n`,
+    "modules/catalog/services/bad.ts":
+      `import { S3StorageProvider } from "../../assets/storage/s3.ts";\n`,
   });
   try {
     const { errors } = verifyCapabilitySeams(root);
     assert(errors.length > 0, "应报告违规");
     assert(
-      errors.some((e) => e.includes("domains/catalog/services/bad.ts")),
+      errors.some((e) => e.includes("modules/catalog/services/bad.ts")),
       `错误信息应包含违规文件：${errors.join(" | ")}`,
     );
   } finally {
@@ -62,8 +62,8 @@ Deno.test("capability-seam: 业务代码直接 import 具体 Provider 会被拦�
 
 Deno.test("capability-seam: 动态 import 同样被覆盖", async () => {
   const root = await makeFixtureRoot({
-    "domains/catalog/services/bad-dynamic.ts":
-      `const m = await import("../../system/services/email-providers/aliyun.ts");\n`,
+    "modules/catalog/services/bad-dynamic.ts":
+      `const m = await import("../../platform/system/services/email-providers/aliyun.ts");\n`,
   });
   try {
     const { errors } = verifyCapabilitySeams(root);
@@ -78,7 +78,7 @@ Deno.test("capability-seam: 动态 import 同样被覆盖", async () => {
 
 Deno.test("capability-seam: 装配点引用不报错", async () => {
   const root = await makeFixtureRoot({
-    "domains/system/services/storage/factory.ts":
+    "modules/assets/storage/factory.ts":
       `const { S3StorageProvider } = await import("./s3.ts");\n`,
   });
   try {
@@ -93,10 +93,10 @@ Deno.test("capability-seam: 装配点引用不报错", async () => {
 Deno.test("capability-seam: 测试文件豁免", async () => {
   const root = await makeFixtureRoot({
     // 合法装配点引用，保证门禁的"非恒真"自检通过
-    "domains/system/services/storage/factory.ts":
+    "modules/assets/storage/factory.ts":
       `const { S3StorageProvider } = await import("./s3.ts");\n`,
     // 测试文件直接 import mock provider 属正常用法，不应报错
-    "domains/system/tests/services/x.test.ts":
+    "modules/platform/system/tests/services/x.test.ts":
       `import { MockEmailProvider } from "../../services/email-providers/mock.ts";\n`,
   });
   try {
@@ -138,17 +138,17 @@ Deno.test("capability-seam: 无任何 Provider 引用时判定门禁失效（恒
 Deno.test("capability-seam: 相对说明符按导入文件目录解析", () => {
   assertEquals(
     resolveSpecifierToRootRelative(
-      "domains/system/services/email.ts",
+      "modules/platform/system/services/email.ts",
       "./email-providers/mock.ts",
     ),
-    "domains/system/services/email-providers/mock.ts",
+    "modules/platform/system/services/email-providers/mock.ts",
   );
   assertEquals(
     resolveSpecifierToRootRelative(
-      "domains/catalog/services/x.ts",
-      "../../system/services/storage/s3.ts",
+      "modules/catalog/services/x.ts",
+      "../../assets/storage/s3.ts",
     ),
-    "domains/system/services/storage/s3.ts",
+    "modules/assets/storage/s3.ts",
   );
   // 非相对说明符（npm:/jsr:/node:）不参与本规则
   assertEquals(

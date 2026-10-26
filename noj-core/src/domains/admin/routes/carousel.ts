@@ -12,15 +12,13 @@
  */
 
 import { Hono } from "hono";
-import {
-  assertPermission,
-  type AuthEnv,
-  authMiddleware,
-} from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
-import { enforceRateLimit } from "./../../system/index.ts";
-import { withActorContext } from "./../../system/index.ts";
+import { assertPermission } from "../../../modules/access/identity/services/security/permissions.ts";
+import { type AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import { enforceRateLimit } from "../../../modules/platform/system/services/hardening-rate-limit.ts";
+import { getClientIp } from "../../../modules/platform/system/services/rate-limit-env.ts";
+import { requireUserActor } from "../../../modules/access/contracts/actor.ts";
 import {
   type CarouselSlideInput,
   createSlide,
@@ -29,16 +27,9 @@ import {
   reorderSlides,
   updateSlide,
   uploadCarouselImage,
-} from "./../../system/services/carousel.ts";
+} from "../../../modules/platform/services/carousel.ts";
 
 const router = new Hono<AuthEnv>();
-
-// 组级注入 Actor RequestContext：审计日志（logAudit）依赖 getRequestContext()，
-// 而管理员路径经 FINE_GRAINED_ADMIN_PREFIXES 跳过了注入上下文的 adminMiddleware。
-// 与 admin/routes/catalog.ts 同模式。
-router.use("*", authMiddleware, (c, next) => {
-  return withActorContext(c, () => next());
-});
 
 /** 解析幻灯片请求体（校验在 service 层）。 */
 function parseSlideInput(body: Record<string, unknown>): CarouselSlideInput {
@@ -68,7 +59,12 @@ router.post("/slides", async (c) => {
     { windowSec: 60, max: 30 },
   );
   const body = await parseJsonBody<Record<string, unknown>>(c);
-  const id = await createSlide(parseSlideInput(body));
+  const id = await createSlide(
+    parseSlideInput(body),
+    requireUserActor(c.get("actor")),
+    undefined,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: { id } }, 201);
 });
 
@@ -80,7 +76,12 @@ router.post("/slides/reorder", async (c) => {
     { windowSec: 60, max: 30 },
   );
   const body = await parseJsonBody<{ ids?: string[] }>(c);
-  await reorderSlides(Array.isArray(body.ids) ? body.ids : []);
+  await reorderSlides(
+    Array.isArray(body.ids) ? body.ids : [],
+    requireUserActor(c.get("actor")),
+    undefined,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: { reordered: true } });
 });
 
@@ -96,7 +97,10 @@ router.post("/images", async (c) => {
   if (!file || !(file instanceof File)) {
     throw new BadRequestError("请上传有效的图片文件");
   }
-  const url = await uploadCarouselImage(file);
+  const url = await uploadCarouselImage(
+    file,
+    requireUserActor(c.get("actor")),
+  );
   return c.json({ data: { image_storage_url: url } }, 201);
 });
 
@@ -108,7 +112,13 @@ router.patch("/slides/:id", async (c) => {
     { windowSec: 60, max: 30 },
   );
   const body = await parseJsonBody<Record<string, unknown>>(c);
-  await updateSlide(c.req.param("id") ?? "", parseSlideInput(body));
+  await updateSlide(
+    c.req.param("id") ?? "",
+    parseSlideInput(body),
+    requireUserActor(c.get("actor")),
+    undefined,
+    { ipAddress: getClientIp(c) },
+  );
   return c.json({ data: { updated: true } });
 });
 
@@ -119,7 +129,12 @@ router.delete("/slides/:id", async (c) => {
     `carousel-write:user:${c.get("userId") as string}`,
     { windowSec: 60, max: 30 },
   );
-  await deleteSlide(c.req.param("id") ?? "");
+  await deleteSlide(
+    c.req.param("id") ?? "",
+    requireUserActor(c.get("actor")),
+    undefined,
+    { ipAddress: getClientIp(c) },
+  );
   return c.body(null, 204);
 });
 

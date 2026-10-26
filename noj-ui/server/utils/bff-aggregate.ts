@@ -1,9 +1,9 @@
-import type { BffEnvelope, BffSectionName, BffViewKind } from '../../utils/bff-view.ts';
+import type { BffEnvelope, BffJsonValue, BffSectionName, BffViewKind } from '../../utils/bff-view.ts';
 import type { AuthUser } from '../../utils/auth-user.ts';
 import type { WorkspaceDetail } from '../../utils/workspace.ts';
 import type { AssignmentDetail, ClassroomDetail } from '../../utils/education.ts';
 import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain-trainings.ts';
-import type { DomainProblemDetail, DomainProblemSummary } from '../../utils/domain-problems.ts';
+import type { DomainProblemSummary } from '../../utils/domain-problems.ts';
 import { readProblemSummaries } from './bff-problem-summaries.ts';
 import { classroomCan } from '../../utils/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
@@ -34,10 +34,10 @@ export async function aggregateView(reader: CoreReader, input: {
     kind: input.kind,
     viewer,
     workspace,
-    sections: { workspace: { data: workspaceResponse } },
+    sections: { workspace: { data: workspaceResponse as unknown as BffJsonValue } },
   };
   const put = (name: BffSectionName, data: unknown) => {
-    result.sections[name] = { data };
+    result.sections[name] = { data: data as BffJsonValue };
   };
   const optional = async (name: BffSectionName, load: () => Promise<unknown>) => {
     try {
@@ -117,27 +117,25 @@ export async function aggregateView(reader: CoreReader, input: {
       );
       const { items: all, ...training } = data;
       const page = input.page ?? 1;
-      const items = await Promise.all(
-        all.slice((page - 1) * 20, page * 20).map(async (item): Promise<TrainingViewItem> => {
-          const row: TrainingViewItem = { ...item, title: null, kind: null, progress: null, summary_error: false };
-          if (!item.resource_available || !item.binding_id) return row;
-          try {
-            const problem = await reader.get<DomainProblemDetail>(
-              `${root}/problems/${encodeURIComponent(item.display_ref)}`,
-              { timeout: 2000 },
-            );
-            return {
-              ...row,
-              title: problem.content.title,
-              kind: problem.content.kind,
-              progress: viewer ? problem.statistics?.progress ?? null : null,
-            };
-          } catch (error) {
-            if (!(error instanceof BffError) || error.statusCode === 401) throw error;
-            return { ...row, summary_error: true };
-          }
-        }),
+      const pageItems = all.slice((page - 1) * 20, page * 20);
+      const summaries = await readProblemSummaries(
+        reader,
+        input.slug,
+        pageItems.filter((item) => item.resource_available && item.binding_id).map((item) => item.display_ref),
       );
+      const summariesByReference = new Map(summaries.items.map((item) => [item.reference, item]));
+      const items = pageItems.map((item): TrainingViewItem => {
+        const summary = summariesByReference.get(item.display_ref);
+        const row: TrainingViewItem = { ...item, title: null, kind: null, progress: null, summary_error: false };
+        if (!item.resource_available || !item.binding_id) return row;
+        if (!summary || summary.availability !== 'available') return { ...row, summary_error: true };
+        return {
+          ...row,
+          title: summary.title,
+          kind: summary.kind,
+          progress: summary.progress,
+        };
+      });
       put('training', { data: { training, items, page, per_page: 20, total: all.length } });
     } else if (input.kind === 'classroom') {
       // 班级是主资源；鉴权通过后再读取作业。

@@ -49,7 +49,7 @@ test("login 使用公开登录端点且不携带 Authorization", async () => {
   });
 });
 
-test("submitCode 携带 Bearer 令牌并使用公开提交 DTO", async () => {
+test("submitCode 使用显式工作空间提交 DTO", async () => {
   let captured: HttpRequest | undefined;
   const api = new NeuroOjApi(
     "https://noj.example.com",
@@ -61,13 +61,21 @@ test("submitCode 携带 Bearer 令牌并使用公开提交 DTO", async () => {
   );
   api.setToken("jwt-token");
 
-  await api.submitCode("p1", "print('ok')", "submission.py");
+  await api.submitCode(
+    "school",
+    "1001",
+    "print('ok')",
+    "submission.py",
+    "version-1",
+  );
   assert.equal(captured?.headers.Authorization, "Bearer jwt-token");
+  assert.equal(captured?.url.pathname, "/api/v1/domains/school/submissions");
   assert.deepEqual(JSON.parse(captured?.body ?? "{}"), {
-    problem_id: "p1",
+    problem_ref: "1001",
     language: "python3",
     code: "print('ok')",
     file_name: "submission.py",
+    version_id: "version-1",
   });
 });
 

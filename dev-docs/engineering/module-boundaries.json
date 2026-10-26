@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "description": "P3 Core modules, legacy ownership, table ownership and test/CI mapping. This file is the machine-readable source used by check-module-boundaries.ts.",
+  "coreSourceRoot": "noj-core/src",
+  "targetModules": [
+    {
+      "name": "access",
+      "root": "noj-core/src/modules/access",
+      "kind": "business",
+      "legacyDomains": [
+        "identity",
+        "workspace"
+      ]
+    },
+    {
+      "name": "problems",
+      "root": "noj-core/src/modules/problems",
+      "kind": "business",
+      "legacyDomains": [
+        "catalog",
+        "objective"
+      ]
+    },
+    {
+      "name": "evaluations",
+      "root": "noj-core/src/modules/evaluations",
+      "kind": "business",
+      "legacyDomains": [
+        "submission"
+      ]
+    },
+    {
+      "name": "contests",
+      "root": "noj-core/src/modules/contests",
+      "kind": "business",
+      "legacyDomains": [
+        "contest"
+      ]
+    },
+    {
+      "name": "education",
+      "root": "noj-core/src/modules/education",
+      "kind": "business",
+      "legacyDomains": [
+        "education"
+      ]
+    },
+    {
+      "name": "communication",
+      "root": "noj-core/src/modules/communication",
+      "kind": "business",
+      "legacyDomains": [
+        "community",
+        "messaging",
+        "content-review"
+      ]
+    },
+    {
+      "name": "assets",
+      "root": "noj-core/src/modules/assets",
+      "kind": "business",
+      "legacyDomains": []
+    },
+    {
+      "name": "platform",
+      "root": "noj-core/src/modules/platform",
+      "kind": "business",
+      "legacyDomains": [
+        "system",
+        "legal",
+        "gateway",
+        "observability"
+      ]
+    },
+    {
+      "name": "read-models",
+      "root": "noj-core/src/modules/read-models",
+      "kind": "read-models",
+      "legacyDomains": [
+        "query",
+        "search"
+      ]
+    },
+    {
+      "name": "application",
+      "root": "noj-core/src/modules/application",
+      "kind": "application",
+      "legacyDomains": []
+    },
+    {
+      "name": "http",
+      "root": "noj-core/src/modules/http",
+      "kind": "http",
+      "legacyDomains": [
+        "admin"
+      ]
+    },
+    {
+      "name": "runtime",
+      "root": "noj-core/src/modules/runtime",
+      "kind": "runtime",
+      "legacyDomains": []
+    }
+  ],
+  "legacyDomainToModule": {
+    "identity": "access",
+    "workspace": "access",
+    "catalog": "problems",
+    "objective": "problems",
+    "submission": "evaluations",
+    "contest": "contests",
+    "education": "education",
+    "community": "communication",
+    "messaging": "communication",
+    "content-review": "communication",
+    "system": "platform",
+    "legal": "platform",
+    "gateway": "platform",
+    "observability": "platform",
+    "query": "read-models",
+    "search": "read-models",
+    "admin": "http"
+  },
+  "legacyTestTargets": {
+    "objective": [
+      "problems",
+      "evaluations"
+    ],
+    "workspace": [
+      "access",
+      "problems",
+      "assets",
+      "application",
+      "education"
+    ],
+    "system": [
+      "platform",
+      "assets",
+      "application",
+      "runtime"
+    ]
+  },
+  "tableOwnership": {
+    "schemaOwners": {
+      "assignment-progress.ts": "education",
+      "assignment.ts": "education",
+      "carousel.ts": "platform",
+      "catalog-workspace.ts": "problems",
+      "catalog.ts": "problems",
+      "common.ts": "platform",
+      "community.ts": "communication",
+      "content-review.ts": "communication",
+      "contest.ts": "contests",
+      "education-interactions.ts": "education",
+      "education.ts": "education",
+      "email.ts": "platform",
+      "evaluation-records.ts": "evaluations",
+      "identity.ts": "access",
+      "legal.ts": "platform",
+      "messaging.ts": "communication",
+      "objective.ts": "evaluations",
+      "query.ts": "read-models",
+      "search.ts": "read-models",
+      "submission-annotations.ts": "education",
+      "submission.ts": "evaluations",
+      "system.ts": "platform",
+      "workspace-invitations.ts": "access",
+      "workspace-storage.ts": "assets",
+      "workspace.ts": "access",
+      "background-tasks.ts": "runtime"
+    },
+    "tableExceptions": {
+      "system.ts": {
+        "storage_object_reservations": "assets",
+        "storage_objects": "assets"
+      },
+      "submission.ts": {
+        "sse_events": "runtime"
+      }
+    }
+  },
+  "testCiMapping": {
+    "access": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain access"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "problems": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain problems"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "evaluations": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain evaluations"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "contests": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain contests"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "education": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain education"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "communication": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain communication"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "assets": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain assets"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "platform": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain platform"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "read-models": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain read-models"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "application": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain application"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "http": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain http"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    },
+    "runtime": {
+      "testTasks": [
+        "cd noj-core && deno task test:domain runtime"
+      ],
+      "ciJobs": [
+        "core-test-sharded"
+      ]
+    }
+  },
+  "rules": {
+    "runtimeCycles": true,
+    "noFacadeExportStar": true,
+    "httpCannotImportSystemActorFactory": true,
+    "businessCannotImportReadModels": true,
+    "runtimeCannotImportBusiness": true,
+    "crossModuleServiceImportDiagnostic": true
+  }
+}

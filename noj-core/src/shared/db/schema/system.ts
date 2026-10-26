@@ -245,7 +245,8 @@ export const auditLogs = pgTable(
         'llm_model_alias.upsert',
         'llm_model_alias.delete',
         'legal.publish_version',
-        'legal.data_request_update'
+        'legal.data_request_update',
+        'background_task.retry'
       ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

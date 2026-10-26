@@ -1,5 +1,8 @@
 import type { Context } from "hono";
-import type { AuditAction, AuditDetail } from "../../system/types/audit-log.ts";
+import type {
+  AuditAction,
+  AuditDetail,
+} from "../../../modules/platform/system/types/audit-log.ts";
 
 export interface AuditMeta {
   action: AuditAction;

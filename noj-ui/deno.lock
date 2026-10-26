@@ -21,6 +21,7 @@
     "npm:katex@0.19": "0.19.0",
     "npm:markdown-it@^14.3.0": "14.3.0",
     "npm:monaco-editor@0.57": "0.57.0",
+    "npm:nuxt@*": "4.6.0_rolldown@1.2.13_acorn@8.19.0_ioredis@5.11.1_typescript@5.9.3_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_vue-tsc@3.3.11",
     "npm:nuxt@4.6.0": "4.6.0_rolldown@1.2.13_acorn@8.19.0_ioredis@5.11.1_typescript@5.9.3_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_vue-tsc@3.3.11",
     "npm:playwright@*": "1.62.1",
     "npm:playwright@1.62.1": "1.62.1",
@@ -1041,15 +1042,6 @@
       ],
       "tarball": "https://registry.npmmirror.com/@nuxt/devtools-kit/-/devtools-kit-3.4.4.tgz"
     },
-    "@nuxt/devtools-kit@3.4.4_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_@nuxt+schema@4.6.0_magic-string@0.30.21_mlly@1.8.2_rolldown@1.2.13_unplugin@3.4.0": {
-      "integrity": "sha512-q3aRKpnriK/kITYlYUXSE3O0R7WeJwSMLvtbo1HfcKXYg/q8688iIb5VURl0fbkSaFTk7ndU5HIbW+5f0JOJPQ==",
-      "dependencies": [
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
-        "execa",
-        "vite@8.3.5_esbuild@0.28.2_jiti@2.7.0"
-      ],
-      "tarball": "https://registry.npmmirror.com/@nuxt/devtools-kit/-/devtools-kit-3.4.4.tgz"
-    },
     "@nuxt/devtools-wizard@3.4.4": {
       "integrity": "sha512-iGL6p2ZM926pfV0UUsnaseNGNEp/PWbX5f1zFqRgVxiDOEVsrBOfFA5sLgfuO2NWi3+3/84fy7ungcCP6zGYvA==",
       "dependencies": [
@@ -1068,7 +1060,7 @@
     "@nuxt/devtools@3.4.4_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_@nuxt+schema@4.6.0_ioredis@5.11.1_jiti@2.7.0_magic-string@1.4.3_rolldown@1.2.13_unplugin@3.4.0_vue@3.5.43": {
       "integrity": "sha512-cPwBW+odVCCid6pllN3f93L0hyOCYRXrEZLmCiV2IgBoQ3lskhuu304JDJjv/VvtWB+OVWfHQ38aowX28WybXQ==",
       "dependencies": [
-        "@nuxt/devtools-kit@3.4.4_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_@nuxt+schema@4.6.0_jiti@2.7.0_magic-string@1.4.3_rolldown@1.2.13_unplugin@3.4.0",
+        "@nuxt/devtools-kit",
         "@nuxt/devtools-wizard",
         "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_jiti@2.7.0_rolldown@1.2.13_magic-string@1.4.3_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
         "@vue/devtools-core",
@@ -1109,8 +1101,8 @@
     "@nuxt/fonts@0.14.0_@nuxt+schema@4.6.0_ioredis@5.11.1_magic-string@0.30.21_mlly@1.8.2_rolldown@1.2.13_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
       "integrity": "sha512-4uXQl9fa5F4ibdgU8zomoOcyMdnwgdem+Pi8JEqeDYI5yPR32Kam6HnuRr47dTb97CstaepAvXPWQUUHMtjsFQ==",
       "dependencies": [
-        "@nuxt/devtools-kit@3.4.4_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_@nuxt+schema@4.6.0_magic-string@0.30.21_mlly@1.8.2_rolldown@1.2.13_unplugin@3.4.0",
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
+        "@nuxt/devtools-kit",
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11",
         "consola",
         "defu",
         "fontless",
@@ -1134,8 +1126,8 @@
         "@iconify/types",
         "@iconify/utils",
         "@iconify/vue",
-        "@nuxt/devtools-kit@3.4.4_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_@nuxt+schema@4.6.0_magic-string@0.30.21_mlly@1.8.2_rolldown@1.2.13_unplugin@3.4.0",
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
+        "@nuxt/devtools-kit",
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11",
         "consola",
         "local-pkg",
         "mlly",
@@ -1243,38 +1235,6 @@
       ],
       "tarball": "https://registry.npmmirror.com/@nuxt/kit/-/kit-4.6.2.tgz"
     },
-    "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
-      "integrity": "sha512-Vn9DJobc30WdR1vrlRcEAFSFy7NV5CWq3o6gxsfrdGb2FmCh0fuDyvbZC30rm2enyiPaOUPafKctFE/ToBjybw==",
-      "dependencies": [
-        "@nuxt/schema",
-        "consola",
-        "defu",
-        "destr",
-        "errx",
-        "exsolve",
-        "ignore",
-        "klona",
-        "microdiff",
-        "mlly",
-        "nostics",
-        "package-manager-detector",
-        "pathe@2.0.3",
-        "rc9",
-        "rolldown",
-        "scule",
-        "std-env@4.3.0",
-        "tinyexec@1.3.1",
-        "tinyglobby",
-        "unctx@3.0.1_magic-string@0.30.21_rolldown@1.2.13_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
-        "verkit"
-      ],
-      "optionalPeers": [
-        "@nuxt/schema",
-        "mlly",
-        "rolldown"
-      ],
-      "tarball": "https://registry.npmmirror.com/@nuxt/kit/-/kit-4.6.2.tgz"
-    },
     "@nuxt/nitro-server@4.6.0_nuxt@4.6.0_@nuxt+schema@4.6.0_ioredis@5.11.1_jiti@2.7.0_magic-string@1.4.3_rolldown@1.2.13_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
       "integrity": "sha512-QuWqouECcxutCrC3Z09w3x12GZtWjqbjoKrhjkMf0eSVm586yGfkSEfGIjRuVhy/wcYMEGnMOKA2bGTbndnreQ==",
       "dependencies": [
@@ -1325,7 +1285,6 @@
     "@nuxt/telemetry@2.9.1_@nuxt+kit@4.6.0_@nuxt+schema@4.6.0_jiti@2.7.0_magic-string@1.4.3_rolldown@1.2.13_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
       "integrity": "sha512-WYQs6GvebU278YXhbGlLA8pUO3ox+juHAiKCB3SEH0lq2PDRwX465tHRtpVIqsHv+lGK/n99FC7qqyBt9+p3oQ==",
       "dependencies": [
-        "@nuxt/kit@4.6.0_@nuxt+schema@4.6.0_jiti@2.7.0_rolldown@1.2.13_magic-string@1.4.3_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
         "citty@0.2.2",
         "consola",
         "rc9",
@@ -1341,7 +1300,7 @@
         "@iconify/vue",
         "@nuxt/fonts",
         "@nuxt/icon",
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11",
         "@nuxt/schema",
         "@nuxtjs/color-mode",
         "@standard-schema/spec",
@@ -1475,7 +1434,7 @@
     "@nuxtjs/color-mode@4.0.1_@nuxt+schema@4.6.0_magic-string@0.30.21_mlly@1.8.2_rolldown@1.2.13_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
       "integrity": "sha512-eiA7hWXi5zNHaYKyJFCGF6i0wFZtuvR7KDXZ6jiSvwxjCpRFwphrw0MOSmNfArTSSsT1wpW+/2H92cejeVfUlg==",
       "dependencies": [
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11",
         "exsolve",
         "pathe@2.0.3",
         "pkg-types@2.4.0",
@@ -5767,9 +5726,9 @@
       "integrity": "sha512-FqlEuoTq/zRmA4Lg6aOqyH3lCHbUtCB0bmHCeFniX2GBdDqMJM3FwdvEhlE5Pim1dlt2FfBdVPmUNNiGhhKqpw==",
       "tarball": "https://registry.npmmirror.com/serialize-javascript/-/serialize-javascript-7.1.4.tgz"
     },
-    "seroval@1.7.2": {
-      "integrity": "sha512-NPOYrDVbvtuTo5m9InqKE7O6wBASON46OabjyqLUGPvoXNDYp0pReuFYkqOQwGsoj1OpZVj6mIdnRRgt5O1/gQ==",
-      "tarball": "https://registry.npmmirror.com/seroval/-/seroval-1.7.2.tgz"
+    "seroval@1.7.1": {
+      "integrity": "sha512-tSRMcPkD/bu1rmY0/XfFP2zLPD8jXVuzHli6Y2UFi9AiG/d0kOd8LAc/G6NolpW8MA1PtgDUhywKCmerS4E3tg==",
+      "tarball": "https://registry.npmmirror.com/seroval/-/seroval-1.7.1.tgz"
     },
     "serve-placeholder@2.0.2": {
       "integrity": "sha512-/TMG8SboeiQbZJWRlfTCqMs2DD3SZgWp0kDQePz9yUuCnDfDh/92gf7/PxGhzXTKBIPASIHxFcZndoNbp6QOLQ==",
@@ -6189,28 +6148,10 @@
     "unctx@3.0.1_magic-string@0.30.21_rolldown@1.2.13_unplugin@2.3.11": {
       "integrity": "sha512-5RAt2etv7g362RXyd33R82gm9u/kbtQlpoaOs9Bgm4E32GRMJ0xjbZyvdxUTmiuHk3V1IQb1aUNrp5IWY+JaWw==",
       "dependencies": [
-        "magic-string@0.30.21",
-        "rolldown",
-        "unplugin@2.3.11"
+        "rolldown"
       ],
       "optionalPeers": [
-        "magic-string@0.30.21",
-        "rolldown",
-        "unplugin@2.3.11"
-      ],
-      "tarball": "https://registry.npmmirror.com/unctx/-/unctx-3.0.1.tgz"
-    },
-    "unctx@3.0.1_magic-string@0.30.21_rolldown@1.2.13_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
-      "integrity": "sha512-5RAt2etv7g362RXyd33R82gm9u/kbtQlpoaOs9Bgm4E32GRMJ0xjbZyvdxUTmiuHk3V1IQb1aUNrp5IWY+JaWw==",
-      "dependencies": [
-        "magic-string@0.30.21",
-        "rolldown",
-        "unplugin@3.4.0_esbuild@0.28.2_rolldown@1.2.13_rollup@4.65.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_jiti@2.7.0"
-      ],
-      "optionalPeers": [
-        "magic-string@0.30.21",
-        "rolldown",
-        "unplugin@3.4.0_esbuild@0.28.2_rolldown@1.2.13_rollup@4.65.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0_jiti@2.7.0"
+        "rolldown"
       ],
       "tarball": "https://registry.npmmirror.com/unctx/-/unctx-3.0.1.tgz"
     },
@@ -6377,7 +6318,7 @@
     "unplugin-vue-components@32.1.0_@nuxt+kit@4.6.2__@nuxt+schema@4.6.0__mlly@1.8.2__rolldown@1.2.13__magic-string@0.30.21__unplugin@3.4.0__vite@8.3.5___esbuild@0.28.2___jiti@2.7.0_vue@3.5.43_@nuxt+schema@4.6.0_rolldown@1.2.13_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0": {
       "integrity": "sha512-YiUkSxuRjab18XFOrX5VsIxXzccrfmHVGsGeJgSgklb829DQmCy9E4vvDUE4tuvZZdxyFJZX0Oc4TPnnxiiMyg==",
       "dependencies": [
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0",
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11",
         "chokidar",
         "local-pkg",
         "magic-string@0.30.21",
@@ -6390,7 +6331,7 @@
         "vue"
       ],
       "optionalPeers": [
-        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@3.4.0_vite@8.3.5__esbuild@0.28.2__jiti@2.7.0"
+        "@nuxt/kit@4.6.2_@nuxt+schema@4.6.0_mlly@1.8.2_rolldown@1.2.13_magic-string@0.30.21_unplugin@2.3.11"
       ],
       "tarball": "https://registry.npmmirror.com/unplugin-vue-components/-/unplugin-vue-components-32.1.0.tgz"
     },
@@ -6626,7 +6567,6 @@
     "vite@8.3.5_esbuild@0.27.7_jiti@2.7.0": {
       "integrity": "sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==",
       "dependencies": [
-        "esbuild@0.27.7",
         "jiti",
         "lightningcss@1.33.0",
         "picomatch@4.0.7",
@@ -6638,7 +6578,6 @@
         "fsevents@2.3.3"
       ],
       "optionalPeers": [
-        "esbuild@0.27.7",
         "jiti"
       ],
       "bin": true,

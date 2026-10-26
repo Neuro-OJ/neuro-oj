@@ -88,7 +88,7 @@ export async function checkDbHealth(): Promise<
 /**
  * 注册数据库健康探针。
  *
- * 由 app.ts 组合根调用；shared/db 不依赖 domains/observability。
+ * 由 application 组合根调用；shared/db 不依赖 modules/platform/observability。
  *
  * @param registry 可观测性注册表
  */

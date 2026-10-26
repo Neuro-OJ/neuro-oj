@@ -8,7 +8,7 @@
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { dirname, join } from "jsr:@std/path@^1";
-import { LocalStorageProvider } from "./../../../src/domains/system/services/storage/local.ts";
+import { LocalStorageProvider } from "../../../src/modules/platform/system/services/storage/local.ts";
 
 Deno.test("LocalStorageProvider: 原产物流式读取及取消释放文件句柄", async () => {
   const directory = await Deno.makeTempDir();

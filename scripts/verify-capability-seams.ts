@@ -7,7 +7,7 @@
  * ── 修复记录（2026-09-12 架构评审 §2.3）──────────────────────────────
  * 本门禁此前是一盏**永久空转的假绿灯**，两处叠加导致它从未生效：
  *   1. 路径全部指向已不存在的旧目录（`lib/storage/local.ts` 等），代码早已迁到
- *      `domains/system/services/...`；
+ *      `modules/assets`、`modules/platform/system` 和 `modules/communication/review`；
  *   2. import 说明符是**相对于导入文件**的（`./email-providers/mock.ts`），
  *      却直接与"相对 src 根"的路径做精确字符串比较，即便路径改对也永远不相等；
  *   3. 只匹配静态 `from "..."`，而装配点实际用的是**动态** `await import("...")`；
@@ -28,25 +28,27 @@ const DEFAULT_ROOT = resolve(
 /** 具体 Provider 实现（相对 src 的路径）。 */
 export const CONCRETE_PROVIDERS: readonly string[] = [
   // 对象存储
-  "domains/system/services/storage/local.ts",
-  "domains/system/services/storage/s3.ts",
+  "modules/assets/storage/local.ts",
+  "modules/assets/storage/s3.ts",
   // 邮件
-  "domains/system/services/email-providers/disabled.ts",
-  "domains/system/services/email-providers/mock.ts",
-  "domains/system/services/email-providers/aliyun.ts",
-  "domains/system/services/email-providers/tencent.ts",
+  "modules/platform/system/services/email-providers/disabled.ts",
+  "modules/platform/system/services/email-providers/mock.ts",
+  "modules/platform/system/services/email-providers/aliyun.ts",
+  "modules/platform/system/services/email-providers/tencent.ts",
   // 内容审核（2026-09-12 评审补充：该家族同样只有装配点 index.ts 可引用）
-  "domains/content-review/providers/mock.ts",
-  "domains/content-review/providers/aliyun.ts",
-  "domains/content-review/providers/tencent.ts",
+  "modules/communication/review/providers/mock.ts",
+  "modules/communication/review/providers/aliyun.ts",
+  "modules/communication/review/providers/tencent.ts",
 ];
 
 /** 允许引用具体 Provider 的装配点（相对 src 的路径）。 */
 export const ALLOWED_IMPORTERS: readonly string[] = [
-  "domains/system/services/storage/factory.ts",
-  "domains/system/services/storage/mod.ts",
-  "domains/system/services/email.ts",
-  "domains/content-review/providers/index.ts",
+  "modules/assets/storage/factory.ts",
+  "modules/assets/storage/mod.ts",
+  "modules/platform/system/services/storage/local.ts",
+  "modules/platform/system/services/storage/mod.ts",
+  "modules/platform/system/services/email.ts",
+  "modules/communication/review/providers/index.ts",
 ];
 
 /** 测试代码不受本规则约束（需要直接构造 mock provider）。 */

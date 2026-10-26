@@ -21,15 +21,15 @@ import {
   getStorageProvider,
   getStorageProviderKind,
   initSystemSettings,
-} from "../src/domains/system/index.ts";
+} from "../src/modules/platform/system/index.ts";
 import {
   buildStorageAuditReport,
   renderStorageAuditPrometheus,
   type StorageAuditReport,
   type StorageReference,
   type StorageReferenceKind,
-} from "../src/domains/system/services/storage/audit.ts";
-import { parseStorageUrl } from "../src/domains/system/services/storage/types.ts";
+} from "../src/modules/platform/system/services/storage/audit.ts";
+import { parseStorageUrl } from "../src/modules/platform/system/services/storage/types.ts";
 
 interface Options {
   output?: string;

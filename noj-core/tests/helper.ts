@@ -200,10 +200,10 @@ export async function createUserToken(
   );
   const { users, userRoles } = await import("../src/shared/db/schema.ts");
   const { signToken } = await import(
-    "../src/domains/identity/services/security/jwt.ts"
+    "../src/modules/access/identity/services/security/jwt.ts"
   );
   const { ensureRbacSeeds } = await import(
-    "../src/domains/system/index.ts"
+    "../src/modules/platform/system/index.ts"
   );
   const db = getDb();
   // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）。
@@ -326,7 +326,7 @@ export async function publishBaselineVersionForTest(
     "../src/shared/db/schema.ts"
   );
   const { deriveDraftContentFromProblem } = await import(
-    "../src/domains/catalog/services/versioning/draft.ts"
+    "../src/modules/problems/services/versioning/draft.ts"
   );
   const { eq } = await import("drizzle-orm");
   const db = getDb();

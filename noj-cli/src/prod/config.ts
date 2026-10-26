@@ -473,12 +473,12 @@ export const PROD_IMAGES: readonly string[] = [
   "noj-ui",
   "noj-llm-gateway",
 ];
-
 /** judge 启用时追加的镜像（deploy.sh:856）。 */
 export const JUDGE_IMAGES: readonly string[] = [
   "noj-judge",
   "noj-evaluator-python",
   "noj-solution-python",
+  "noj-solution-ai",
 ];
 
 /** 已验签的镜像 digest 记录（亦为 `record_deployment_metadata` 的输入）。 */

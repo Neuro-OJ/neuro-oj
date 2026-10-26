@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
@@ -12,7 +12,9 @@ import {
 } from "../../../shared/base/errors.ts";
 import {
   createLlmProvider,
+  deleteLlmGatewayModelAlias,
   listInstanceLlmQuotas,
+  listLlmGatewayModelAliases,
   listLlmProviders,
   listLlmQuotas,
   LlmGatewayError,
@@ -24,14 +26,12 @@ import {
   testLlmProvider,
   updateLlmProvider,
   upsertLlmQuota,
-} from "../../gateway/index.ts";
+} from "../../../modules/platform/gateway/services/llm.ts";
 import {
-  deleteLlmModelAlias,
-  listLlmModelAliases,
   listProblemsUsingAlias,
   type LlmModelAliasInput,
-  upsertLlmModelAlias,
-} from "../../gateway/index.ts";
+} from "../../../modules/platform/gateway/services/llm-model-aliases.ts";
+import { upsertLlmGatewayModelAlias } from "../../../modules/platform/gateway/services/llm.ts";
 
 /**
  * 管理端 LLM Gateway 路由（挂载前缀 /api/v1/admin）。
@@ -196,7 +196,7 @@ router.post("/llm/providers/:id/test", async (c) => {
  * 响应：`{ data: (LlmModelAlias & { problem_count: number })[] }`。
  */
 router.get("/llm/model-aliases", async (c) => {
-  const rows = await listLlmModelAliases();
+  const rows = await listLlmGatewayModelAliases(DEFAULT_DOMAIN_ID);
   const data = await Promise.all(
     rows.map(async (r) => ({
       ...r,
@@ -216,12 +216,12 @@ router.get("/llm/model-aliases", async (c) => {
 router.put("/llm/model-aliases/:alias", async (c) => {
   const alias = c.req.param("alias") as string;
   const body = await parseJsonBody<LlmModelAliasInput>(c);
-  const data = await upsertLlmModelAlias(
+  const data = await upsertLlmGatewayModelAlias(
     alias,
     body,
-    c.get("userId"),
     DEFAULT_DOMAIN_ID,
     parseLlmRevision(c.req.header("If-Match")),
+    c.get("userId"),
   );
   await adminAudit(
     "llm_model_alias.upsert",
@@ -249,7 +249,7 @@ router.delete("/llm/model-aliases/:alias", async (c) => {
     }, 409);
   }
   if (
-    !(await deleteLlmModelAlias(
+    !(await deleteLlmGatewayModelAlias(
       alias,
       DEFAULT_DOMAIN_ID,
       parseLlmRevision(c.req.header("If-Match")),

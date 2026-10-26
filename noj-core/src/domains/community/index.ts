@@ -1,6 +1,0 @@
-export * from "./services/community/community.ts";
-export * from "./services/community/community-seed.ts";
-export * from "./services/notifications.ts";
-export * from "./types/community.ts";
-export * from "./services/community/domain-community.ts";
-export * from "./services/community/community-scope.ts";

@@ -273,7 +273,7 @@ deno task test:domain identity # 指定 Domain（其余 domain 同理）
 ### 测试并行分片（独立数据库）
 
 产品工作空间基础与扩展资源迁移见
-[`src/domains/workspace/README.md`](src/domains/workspace/README.md)。
+[`src/modules/access/workspace/README.md`](src/modules/access/workspace/README.md)。
 默认域资源回填使用 `deno task db:catalog-backfill`，先完成迁移并处理核实后的旧 U
 题数据；它不删除数据，不覆盖已有绑定配置。新增域资源 API 全链路隔离仍在实现中。
 
@@ -540,8 +540,8 @@ Redis 缓存键与物化视图刷新都以 revision 为准；多副本下无进�
 `submission_job_items` （worker 在 `main()`
 后台启动阶段注册，`FOR UPDATE SKIP LOCKED` + lease 续租 + 指数退避）。
 
-**评测协议 v2**：`JudgeTask`/`JudgeResult` 携带
-`evaluation_protocol_version = 2`、
+**评测协议 v3**：`JudgeTask`/`JudgeResult` 携带
+`evaluation_protocol_version = 3`、
 `attempt_id`、`problem_version_id`、`run_id`、`result_kind`；core
 校验一致性后落库。
 
@@ -763,7 +763,7 @@ noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵
   `noj-judge/src/dual/protocol.rs`）
 - 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
   `status`，judge 统一映射 `finished`/`error`）
-- **协议 v2 封套**：任务与结果都携带 `evaluation_protocol_version = 2`、
+- **协议 v3 封套**：任务与结果都携带 `evaluation_protocol_version = 3`、
   `attempt_id`、`problem_version_id`、`run_id`（正式提交
   `run_id = attempt_id`）； 结果另有 `result_kind`（`graded` /
   `platform_error`）。core 校验协议/尝试/版本/ sequence/run_id

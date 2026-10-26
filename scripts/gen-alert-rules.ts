@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 import {
   type SloDefinition,
   SLOS,
-} from "../noj-core/src/domains/observability/slo.ts";
+} from "../noj-core/src/modules/platform/observability/slo.ts";
 
 export const SLO_ALERTS_RELATIVE_PATH = "deploy/monitoring/noj-slo-alerts.yml";
 

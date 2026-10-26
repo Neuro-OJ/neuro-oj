@@ -1,5 +1,5 @@
 import { renderSloRules } from "./gen-alert-rules.ts";
-import { SLOS } from "../noj-core/src/domains/observability/slo.ts";
+import { SLOS } from "../noj-core/src/modules/platform/observability/slo.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);

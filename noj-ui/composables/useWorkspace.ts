@@ -20,6 +20,7 @@ export function provideWorkspaceContext() {
   const actor = useState<{ id: string } | null>('auth:user', () => null);
   const slug = computed(() => workspaceSlugFromPath(route.value.path));
   const { api } = useApi();
+  const event = import.meta.server ? useRequestEvent() : undefined;
   const key = computed(() => workspaceCacheKey(slug.value ?? '', actor.value?.id ?? null));
   const state = useViewAsyncData<{ data: WorkspaceDetail | null }>(
     'workspace',
@@ -27,9 +28,15 @@ export function provideWorkspaceContext() {
     async () => {
       if (!slug.value) return { data: null };
       const viewer = actor.value?.id ?? null;
-      const response = await api.get<{ data: WorkspaceDetail }>(`/api/v1/domains/${slug.value}`, { silent: true });
-      if (response.data.actor_id !== viewer) throw new Error('登录身份已变化，请刷新页面');
-      return response;
+      try {
+        const response = await api.get<{ data: WorkspaceDetail }>(`/api/v1/domains/${slug.value}`, { silent: true });
+        if (response.data.actor_id !== viewer) throw new Error('登录身份已变化，请刷新页面');
+        return response;
+      } catch (error) {
+        const status = extractApiError(error).status;
+        if (event && status && status >= 400 && status <= 599) setResponseStatus(event, status);
+        throw error;
+      }
     },
   );
 

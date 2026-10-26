@@ -16,7 +16,7 @@ import {
   createConsumer,
 } from "../../../src/shared/mq/base-consumer.ts";
 import type { RedisClient } from "../../../src/shared/mq/connection.ts";
-import { startResultConsumerPool } from "../../../src/domains/submission/mq/consumer.ts";
+import { startResultConsumerPool } from "../../../src/modules/evaluations/mq/consumer.ts";
 
 type Handler = (...args: unknown[]) => void;
 

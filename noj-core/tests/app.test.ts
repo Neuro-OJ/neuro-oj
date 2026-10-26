@@ -116,3 +116,12 @@ Deno.test("app: 开发环境 CORS 允许本地 UI 并暴露公共响应头", asy
     }
   }
 });
+
+Deno.test("app: 显式启用生产退役门禁时旧默认域写入返回 410", async () => {
+  const app = createApp({ retireLegacyEndpoints: true });
+  const response = await app.request("/api/v1/problems", { method: "POST" });
+  assertEquals(response.status, 410);
+  const body = await response.json();
+  assertEquals(body.code, "ENDPOINT_RETIRED");
+  assertEquals(body.replacement, "POST /api/v1/domains/:slug/problems");
+});

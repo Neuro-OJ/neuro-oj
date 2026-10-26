@@ -11,17 +11,17 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { resetDbForTest } from "../../helpers/db.ts";
-import { getClientIp } from "../../../src/domains/system/index.ts";
+import { getClientIp } from "../../../src/modules/platform/system/index.ts";
 
-import { updateSetting } from "../../../src/domains/system/index.ts";
+import { updateSetting } from "../../../src/modules/platform/system/index.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../../../src/domains/system/index.ts";
+} from "../../../src/modules/platform/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../../src/domains/system/services/env-snapshot.ts";
+} from "../../../src/modules/platform/system/services/env-snapshot.ts";
 
 // 模块级 bootstrap：创建 测试数据库 schema（含 system_settings）
 await resetDbForTest();
@@ -93,7 +93,7 @@ Deno.test({
     await initSystemSettings();
     await updateSetting("trusted_proxies", "10.0.0.1", "0");
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../../src/domains/system/index.ts"
+      "../../../src/modules/platform/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 
@@ -119,7 +119,7 @@ Deno.test({
     await updateSetting("trusted_proxies", "10.0.0.0/8", "0");
     // 必须清缓存，因为 getTrustedProxyEntries 内部缓存
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../../src/domains/system/index.ts"
+      "../../../src/modules/platform/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 

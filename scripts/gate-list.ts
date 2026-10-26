@@ -30,6 +30,9 @@ export interface Gate {
 /** 门禁自测文件（`deno test` 一次跑完，避免启动多次 Deno）。 */
 export const GATE_SELF_TESTS: string[] = [
   "scripts/check-domains_test.ts",
+  // P3 结构门禁自测：解析器负例与生产严格结构门禁共同执行。
+  "scripts/check-module-boundaries_test.ts",
+  "scripts/select-core-ci_test.ts",
   "scripts/check-metrics_test.ts",
   "scripts/check-runtime-contract_test.ts",
   "scripts/check-runbooks_test.ts",
@@ -111,6 +114,16 @@ export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"] },
   { args: ["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"] },
   { args: ["deno", "run", "-A", "scripts/check-domains.ts"] },
+  {
+    label: "P3 模块边界严格门禁",
+    args: [
+      "deno",
+      "run",
+      "-A",
+      "scripts/check-module-boundaries.ts",
+      "--strict",
+    ],
+  },
   // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
   // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   { args: ["deno", "run", "-A", "scripts/check-migration-safety.ts"] },

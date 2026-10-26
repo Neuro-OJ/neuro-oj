@@ -1,0 +1,487 @@
+/**
+ * 公告服务层（issue #231）。
+ *
+ * 提供：
+ * - listPublicAnnouncements()：公开列表（仅 active，置顶优先 + 分页）
+ * - getPublicAnnouncement()：公开详情（非 active / 不存在 → 404）
+ * - getLatestBannerAnnouncement()：最新带 `banner_text` 的公开公告（导航栏横幅）
+ * - listAdminAnnouncements()：管理列表（含未发布/已下架，可选 is_active 筛选）
+ * - createAnnouncement() / updateAnnouncement() / deleteAnnouncement()：管理 CRUD
+ *
+ * 约定：
+ * - 细粒度权限（assertPermission("announcement:manage")）在路由层 handler 内执行，
+ *   服务层由调用方显式传入 UserActor 与请求元数据。
+ * - 全部写操作记录审计日志（announcement.create / update / delete）。
+ * - 写成功后 publishEvent 广播变更（fire-and-forget，Redis 不可用时跳过，
+ *   由前端页面加载 / 轮询 fallback 兜底，与既有事件机制一致）。
+ */
+
+import { and, asc, count, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
+import { announcements } from "../../../shared/db/schema.ts";
+import { NotFoundError, ValidationError } from "../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import {
+  generatePublicId,
+  resolvePublicId,
+} from "../../../shared/security/public-id.ts";
+import {
+  buildPaginationMeta,
+  type PaginationMeta,
+} from "../../../shared/http/pagination.ts";
+import type { UserActor } from "../../access/contracts/actor.ts";
+import { type AuditMeta, recordAudit } from "./audit-log.ts";
+import { type ContentScope, contentScopeWhere } from "./content-scope.ts";
+
+/** 列表摘要截断长度（Markdown 源码字符数） */
+const EXCERPT_LENGTH = 120;
+/** 标题长度上限 */
+const TITLE_MAX = 100;
+/** 内容长度上限 */
+const CONTENT_MAX = 50000;
+
+/** 公开列表项（不含 content 全文） */
+export interface AnnouncementSummary {
+  id: string;
+  domain_id: string | null;
+  public_id: string;
+  title: string;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+  /** content Markdown 源码截断 120 字符 */
+  excerpt: string;
+}
+
+/** 公开详情（含 content 全文） */
+export interface AnnouncementDetail {
+  id: string;
+  domain_id: string | null;
+  public_id: string;
+  title: string;
+  content: string;
+  banner_text: string | null;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+/** 管理列表项（含 content 全文与发布状态） */
+export interface AdminAnnouncementItem {
+  id: string;
+  domain_id: string | null;
+  public_id: string;
+  title: string;
+  content: string;
+  banner_text: string | null;
+  is_pinned: boolean;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 导航栏横幅载荷（无用户态） */
+export interface AnnouncementBanner {
+  id: string;
+  domain_id: string | null;
+  public_id: string;
+  banner_text: string;
+}
+
+/** 创建公告入参（is_pinned / is_active 缺省 false / true） */
+export interface CreateAnnouncementInput {
+  title: string;
+  content: string;
+  banner_text?: string | null;
+  is_pinned?: boolean;
+  is_active?: boolean;
+}
+
+/** 更新公告入参（部分更新语义；发布/下架 = 更新 is_active） */
+export interface UpdateAnnouncementInput {
+  title?: string;
+  content?: string;
+  banner_text?: string | null;
+  is_pinned?: boolean;
+  is_active?: boolean;
+}
+
+/** 公开列表响应 */
+export interface PublicAnnouncementListResponse {
+  data: AnnouncementSummary[];
+  meta: PaginationMeta;
+}
+
+/** 管理列表响应 */
+export interface AdminAnnouncementListResponse {
+  data: AdminAnnouncementItem[];
+  meta: PaginationMeta;
+}
+
+/** 广播公告变更（写 SSE 事件日志 + Redis 通知） */
+async function broadcastAnnouncementUpdate(
+  scope?: ContentScope,
+): Promise<void> {
+  await publishSseEvent(
+    scope
+      ? `noj:events:domain:${scope.domainId}:announcements`
+      : Channels.announcements,
+    { type: "announcement:updated" },
+  );
+}
+
+/**
+ * 规范化横幅文字：去首尾空白；空串视为「不出横幅」→ null。
+ *
+ * @param value 原始输入（可为 undefined/null）
+ * @returns 规范化后的字符串或 null
+ */
+function normalizeBannerText(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+/** 标题 / 内容长度校验（title 1–100、content 1–50000），非法抛 400 */
+function validateFields(title?: string, content?: string): void {
+  if (title !== undefined) {
+    const t = title.trim();
+    if (t.length < 1 || t.length > TITLE_MAX) {
+      throw new ValidationError(`title 长度必须在 1–${TITLE_MAX} 字符之间`);
+    }
+  }
+  if (content !== undefined) {
+    const c = content.trim();
+    if (c.length < 1 || c.length > CONTENT_MAX) {
+      throw new ValidationError(`content 长度必须在 1–${CONTENT_MAX} 字符之间`);
+    }
+  }
+}
+
+/**
+ * 公开列表：仅 active，置顶优先（is_pinned DESC）+ 最新在前（created_at DESC）。
+ */
+export async function listPublicAnnouncements(
+  page: number,
+  perPage: number,
+  scope?: ContentScope,
+): Promise<PublicAnnouncementListResponse> {
+  const db = getDb();
+  const offset = (page - 1) * perPage;
+  const where = and(
+    eq(announcements.is_active, true),
+    contentScopeWhere(announcements.domain_id, scope, true),
+  );
+
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(announcements)
+      .where(where)
+      .orderBy(
+        asc(isNotNull(announcements.domain_id)),
+        desc(announcements.is_pinned),
+        desc(announcements.created_at),
+      )
+      .limit(perPage)
+      .offset(offset),
+    db.select({ value: count() }).from(announcements).where(where),
+  ]);
+
+  const data = rows.map((row) => ({
+    id: row.id,
+    domain_id: row.domain_id,
+    public_id: row.public_id,
+    title: row.title,
+    is_pinned: row.is_pinned,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    excerpt: row.content.slice(0, EXCERPT_LENGTH),
+  }));
+
+  return { data, meta: buildPaginationMeta(page, perPage, totalRow[0].value) };
+}
+
+/**
+ * 公开详情：仅 active 可见；非 active 或不存在 → NotFoundError（404）。
+ */
+export async function getPublicAnnouncement(
+  id: string,
+  scope?: ContentScope,
+): Promise<AnnouncementDetail> {
+  const db = getDb();
+  const [row] = await db.select().from(announcements)
+    .where(
+      and(
+        eq(announcements.id, id),
+        eq(announcements.is_active, true),
+        contentScopeWhere(announcements.domain_id, scope, true),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new NotFoundError("公告不存在或已下架");
+  }
+
+  return {
+    id: row.id,
+    domain_id: row.domain_id,
+    public_id: row.public_id,
+    title: row.title,
+    content: row.content,
+    banner_text: row.banner_text,
+    is_pinned: row.is_pinned,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    created_by: row.created_by,
+  };
+}
+
+/**
+ * 取最新一条带横幅文字的公开公告（导航栏横幅用）。
+ *
+ * 无用户态、无分页：`banner_text IS NOT NULL`（且非空串）且 `is_active`，
+ * 按 `is_pinned DESC, created_at DESC` 取 1 条。
+ *
+ * @returns 横幅载荷；无符合条件的公告时返回 null
+ */
+export async function getLatestBannerAnnouncement(
+  scope?: ContentScope,
+): Promise<
+  AnnouncementBanner | null
+> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(announcements)
+    .where(
+      and(
+        eq(announcements.is_active, true),
+        isNotNull(announcements.banner_text),
+        ne(announcements.banner_text, ""),
+        contentScopeWhere(announcements.domain_id, scope, true),
+      ),
+    )
+    .orderBy(
+      asc(isNotNull(announcements.domain_id)),
+      desc(announcements.is_pinned),
+      desc(announcements.created_at),
+    )
+    .limit(1);
+  if (!row || !row.banner_text) return null;
+  return {
+    id: row.id,
+    domain_id: row.domain_id,
+    public_id: row.public_id,
+    banner_text: row.banner_text,
+  };
+}
+
+/**
+ * 管理列表：全量（含未发布/已下架），最新在前，分页 + 可选 is_active 筛选。
+ */
+export async function listAdminAnnouncements(
+  page: number,
+  perPage: number,
+  isActive?: boolean,
+  scope?: ContentScope,
+): Promise<AdminAnnouncementListResponse> {
+  const db = getDb();
+  const offset = (page - 1) * perPage;
+  const conditions = isActive === undefined
+    ? []
+    : [eq(announcements.is_active, isActive)];
+  conditions.push(contentScopeWhere(announcements.domain_id, scope));
+
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(announcements)
+      .where(and(...conditions))
+      .orderBy(desc(announcements.created_at))
+      .limit(perPage)
+      .offset(offset),
+    db.select({ value: count() }).from(announcements).where(and(...conditions)),
+  ]);
+
+  return {
+    data: rows.map((row) => ({ ...row })),
+    meta: buildPaginationMeta(page, perPage, totalRow[0].value),
+  };
+}
+
+/**
+ * 将 UUID 或 public_id 解析为内部公告 UUID。
+ */
+export function resolveAnnouncementId(value: string): Promise<string> {
+  return resolvePublicId(
+    announcements,
+    announcements.id,
+    announcements.public_id,
+    "ann",
+    value,
+    "公告不存在",
+  );
+}
+
+/**
+ * 创建公告。created_by 写入显式传入的 UserActor。
+ *
+ * @throws {ValidationError} title / content 缺失或长度非法（HTTP 400）
+ */
+export async function createAnnouncement(
+  input: CreateAnnouncementInput,
+  actor: UserActor,
+  scope?: ContentScope,
+  auditMeta: AuditMeta = { ipAddress: "unknown" },
+): Promise<AdminAnnouncementItem> {
+  // 必填校验：title / content 必须存在（否则会绕过 validateFields，
+  // 落到 DB NOT NULL 约束抛 500，而非 spec 要求的 400）
+  if (
+    typeof input.title !== "string" ||
+    typeof input.content !== "string"
+  ) {
+    throw new ValidationError("缺少必填字段：title、content");
+  }
+  validateFields(input.title, input.content);
+
+  const db = getDb();
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const publicId = generatePublicId("ann");
+  const actorId = actor.userId;
+
+  await db.insert(announcements).values({
+    id,
+    domain_id: scope?.domainId ?? null,
+    public_id: publicId,
+    title: input.title.trim(),
+    content: input.content.trim(),
+    banner_text: normalizeBannerText(input.banner_text),
+    is_pinned: input.is_pinned ?? false,
+    is_active: input.is_active ?? true,
+    created_by: actorId,
+    created_at: now,
+    updated_at: now,
+  });
+
+  const [row] = await db.select().from(announcements)
+    .where(eq(announcements.id, id))
+    .limit(1);
+
+  await recordAudit(
+    actor,
+    auditMeta,
+    "announcement.create",
+    { action: "announcement.create", title: row!.title },
+    { type: "announcement", id },
+  );
+  await broadcastAnnouncementUpdate(scope);
+  await publishSearchIndexEvent("announcement", id, "upsert");
+
+  return { ...row! };
+}
+
+/**
+ * 更新公告（部分更新语义）；发布/下架 = 更新 is_active。
+ *
+ * @throws {NotFoundError} 公告不存在
+ */
+export async function updateAnnouncement(
+  id: string,
+  input: UpdateAnnouncementInput,
+  actor: UserActor,
+  scope?: ContentScope,
+  auditMeta: AuditMeta = { ipAddress: "unknown" },
+): Promise<AdminAnnouncementItem> {
+  validateFields(input.title, input.content);
+
+  const db = getDb();
+  const existing = await db.select().from(announcements)
+    .where(
+      and(
+        eq(announcements.id, id),
+        contentScopeWhere(announcements.domain_id, scope),
+      ),
+    )
+    .limit(1);
+  if (existing.length === 0) {
+    throw new NotFoundError("公告不存在");
+  }
+
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (input.title !== undefined) updates.title = input.title.trim();
+  if (input.content !== undefined) updates.content = input.content.trim();
+  if (input.banner_text !== undefined) {
+    updates.banner_text = normalizeBannerText(input.banner_text);
+  }
+  if (input.is_pinned !== undefined) updates.is_pinned = input.is_pinned;
+  if (input.is_active !== undefined) updates.is_active = input.is_active;
+
+  await db.update(announcements).set(updates).where(
+    and(
+      eq(announcements.id, id),
+      contentScopeWhere(announcements.domain_id, scope),
+    ),
+  );
+
+  const [row] = await db.select().from(announcements)
+    .where(eq(announcements.id, id))
+    .limit(1);
+
+  await recordAudit(
+    actor,
+    auditMeta,
+    "announcement.update",
+    { action: "announcement.update", title: row!.title },
+    { type: "announcement", id },
+  );
+  await broadcastAnnouncementUpdate(scope);
+  await publishSearchIndexEvent("announcement", id, "upsert");
+
+  return { ...row! };
+}
+
+/**
+ * 物理删除公告。
+ *
+ * @throws {NotFoundError} 公告不存在
+ */
+export async function deleteAnnouncement(
+  id: string,
+  actor: UserActor,
+  scope?: ContentScope,
+  auditMeta: AuditMeta = { ipAddress: "unknown" },
+): Promise<void> {
+  const db = getDb();
+  const existing = await db.select().from(announcements)
+    .where(
+      and(
+        eq(announcements.id, id),
+        contentScopeWhere(announcements.domain_id, scope),
+      ),
+    )
+    .limit(1);
+  if (existing.length === 0) {
+    throw new NotFoundError("公告不存在");
+  }
+
+  await db.delete(announcements).where(
+    and(
+      eq(announcements.id, id),
+      contentScopeWhere(announcements.domain_id, scope),
+    ),
+  );
+
+  await recordAudit(
+    actor,
+    auditMeta,
+    "announcement.delete",
+    { action: "announcement.delete", title: existing[0].title },
+    { type: "announcement", id },
+  );
+  await broadcastAnnouncementUpdate(scope);
+  await publishSearchIndexEvent("announcement", id, "delete");
+}

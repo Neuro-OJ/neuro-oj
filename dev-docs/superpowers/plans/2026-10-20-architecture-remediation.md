@@ -375,13 +375,20 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
         PostgreSQL/Redis 验收）
   - [x] P2b 显式启动/迁移边界与隔离 PostgreSQL 测试底座（`xmvtvlzt`， 2026-10-21
         完成真实进程、正式完整回归、结构门禁与资源清理验收）
-- [ ] P3 业务所有权（2026-10-21：在独立 jj 工作区 `architecture-p3` / `wlusvxwn`
-      开始身份与事务合同；P2b 在原工作区继续验收，P3 尚未整合或验收）
-- [ ] P4 可靠执行
-- [ ] P5 Gateway 收敛
-- [ ] P6 Judge 整理
-- [ ] P7 读取与前端
-- [ ] P8 协调发布与删除旧路
+- [x] P3 业务所有权（独立 jj 工作区 `architecture-p3`，2026-10-23 验收）
+  - [x] access：Actor / DbRoot / DbTx、账户与成员/邀请、显式审计、必要跨模块编排
+  - [x] problems / contests：用例迁移、统一只读政策与版本快照、删除用户 root 回退
+  - [x] evaluations：受理、尝试/结果、有效成绩、重测与客观题判分的事务边界
+  - [x] 其余目标模块、HTTP 与 Runtime：职责迁移、窄公共门面与完整生产调用方切换
+  - [x] 结构门禁与工程元数据：真实运行时依赖图无环、测试/CI 统一发现、故意破坏负例
+  - [x] 真实 PostgreSQL 权限/撤销/锁序/回滚/并发验收及正式完整回归
+- [x] P4 可靠执行（`background_tasks` 原语、派发/搜索事务内登记、教学 outbox 迁移、
+      通用 worker 切换、任务/投影指标与 runbook 已完成并经真实 PG 故障/排空验收）
+- [x] P5 Gateway 收敛（本地政策权威、快照迁移、预占边界 advisory 锁、并发屏障、
+      流式 unknown、ready 故障与 drain 验收完成；Gateway 182 passed / 0 failed / 1 ignored）
+- [x] P6 Judge 整理（协议 v3、Worker/Run 上下文、租约/取消/fallback 验收）
+- [x] P7 读取与前端（批量摘要、页面 BFF、会话/刷新收敛、IDE 显式域提交；自动化验收通过）
+- [x] P8 协调发布与删除旧路（发布集、升级 checkpoint、410 退役、隔离恢复演练）
 
 ### 验证记录
 
@@ -472,3 +479,141 @@ CI 模块映射使用同一份工程元数据；删除 PGlite 后同时删除对
 
 验证记录按批次追加到本清单下方；远程 CI 结果以对应 PR
 的当前检查为准，不提前记绿。
+
+### P3 实施进展（2026-10-21，尚未验收）
+
+P2b 签名检查点为 `e6f391b5`。P3 使用独立工作区，先并行实施 access 合同与用例、
+problems/contests 用例、结构门禁和测试元数据；其余目标模块随后按明确 ownership
+接续。
+
+结构组首稿已登记 12 个目标模块与 109 张表的所有权，并扫描到文件级运行时 SCC，
+因此现有门禁通过不能作为 P3 完成证据。主审要求修复轻量词法分析器对名为 `type` 的
+运行时导入、尾逗号纯类型导入和模板表达式内动态导入的误判，采用真实 AST
+解析及负例。 正式测试入口必须消费同一份工程元数据，保留旧 domain 别名并发现新
+`modules` 测试， 避免目录迁移后只执行启动检查的假通过。
+
+access 草稿已引入真实推导的 DbRoot/DbTx 与显式
+Actor。主审要求生产门面使用显式导出、
+类型负例引用真实生产函数、跨模块必要副作用不得因可选回调缺省而遗漏，并补充最后管理员
+并发注销的真实 PostgreSQL 验证。上述要求尚在实施，不能据此声称相关不变量已验收。
+
+P3 阶段验证：主代理补齐路由目录/写限流的模块发现、真实 CI 选择器和完整分片覆盖，
+正式 `cd noj-core && deno task test:gates` 为 231 passed / 0 failed；
+`verify-domain-ci.ts` 通过，workflow YAML
+解析通过。该结果仅证明门禁与任务发现阶段， 不表示模块迁移、运行时 SCC 清零或 P3
+完整行为验收已通过。
+
+P3 access 首批独立验证：正式 `check:contracts` 通过；账户注销定向回归 3 项通过，
+含真实双连接管理员互删时保留最后登录管理员；课堂邀请定向回归 2 项通过，含第二步
+真实 PostgreSQL 约束失败后回滚域成员/邀请使用次数并可重试。主代理的三个日志位于
+`/tmp/noj-p3-access-*-review.log`。旧身份/工作空间入口与 Executor 兼容仍待清理，
+因此 access/P3 跟踪项继续保持未完成。
+
+### P3/P4/P5 续作进展（2026-10-21 晚，尚未整体验收）
+
+本轮从 P2b 签名检查点 `e6f391b5` 继续，按「每个逻辑单元一个签名 change」推进。
+以下只记录**已实际执行并观察到的证据**；未跑完整回归前不勾选批次完成。
+
+新增签名 change（均位于 `wip/architecture-remediation-p3` 祖先链）：
+
+| change | 内容 |
+|---|---|
+| `wlusvxwn` | P3 阶段一：身份与事务合同收紧、业务所有权迁移（接手时已有） |
+| `vqrwploy` | 修复邀请注册开户授权检查（接手时已有） |
+| `umkvrqmt` | P3 二之一：审计写入收口 + 系统身份装配 |
+| `muqprktz` | P3 二之二：发布改用显式 Actor + 事务内搜索索引 |
+| `nrrymxnw` | P3 三之一：题目删除分三段 + 各 owner 事务写合同 |
+| `tmrqwkmn` | P3 三之二：评测策略经 owner 合同写入 + runtime SSE 事实入口 |
+| `kuvrztqo` | P3 三之三：教学事实登记改经 education 合同 |
+| `qzwlsuln` | P3 三之四：竞赛别名报名语义 + 存储容量应用用例 |
+| `qvooxnyl` | P3.4：`revalidateEvaluationAdmissionTx` + 评测类型负例 |
+| `xpysvkok` | P4.1：`background_tasks` 表（迁移 0120）+ 任务原语 |
+| `okrvorot` | P4.2：搜索索引事务内登记 + 应用 handler |
+| `yzxvrlly` | P4.3：评测派发任务同事务登记 + 恢复 handler + 共享测试陈旧路径修复 |
+| `ukqnxnxk` | P4.4：任务管理路由 + `background_task.retry` 审计（迁移 0121） |
+| `ztzypzxk` | P4.5：教学 outbox 幂等迁移合同 |
+| `qrlolyxs` | P5.1：Gateway 实例政策本地持久权威（迁移 20261021105927） |
+| `qmlzsqks` | P5.2：政策快照导出/导入 + Core 旧端点降级为只读归档 |
+| `wloqosxo` | P5.2：预占边界内读取本地政策（降额与预占同一政策行锁序）+ 网关回归收敛 |
+
+本轮已实际执行的验证（均为 `deno task` / 规定脚本，使用自建隔离资源）：
+
+- `test:domain access`：400 passed / 0 failed
+- `test:domain assets`：37 passed / 0 failed
+- `test:domain problems`：468 passed / 4 failed（4 项经基线 workspace 复现，属 P3 起点既有失败）
+- `test:domain evaluations`：457 passed / 2 failed（同上，基线既有）
+- `test:domain contests`：126 passed / 0 failed
+- `test:domain education`：136 passed / 0 failed / 1 ignored
+- `test:domain read-models`：86 passed / 0 failed / 1 ignored
+- `test:domain runtime`：20 passed / 0 failed（含新增任务原语与真实 PG 仓库测试）
+- `test:domain application`：13 passed / 0 failed（含新增派发恢复测试）
+- `test:domain platform`：265 passed / 0 failed
+- `test:domain admin`：37 passed / 0 failed
+- `test:domain gateway`：269 passed / 0 failed
+- `test:domain system`（internal 过滤）：3 passed / 0 failed
+- `bash scripts/test-shared.sh`：415 passed / 0 failed / 6 ignored
+- Gateway 正式完整套件（`deno task test`，启动器自建 run 数据库 + Redis namespace）：
+  171 passed / 0 failed / 1 ignored
+- Gateway `deno task check`（fmt / lint / check）：通过（`drizzle/meta` 生成物纳入
+  fmt exclude，与 `noj-core` 一致）
+- Gateway `tests/policy_operations.pg.test.ts`（真实 PG，独立 schema）：5 passed / 0 failed
+- `deno check src/main.ts tests/types/*.ts`：通过
+- `deno run -A scripts/check-module-boundaries.ts`：679 生产文件 / 110 表 / owner 缺口 0 /
+  type SCC 0；**runtime SCC 仍 3**、缺 `communication`/`http` 两个目标根、
+  facade `export *` 136 项、跨模块服务导入 7 项、runtime→业务 12 项、业务→读模型 5 项
+
+已明确记录的缺口（不勾选完成）：
+
+- P3.4 只建立并类型验证了锁内复核合同，提交/自测命令尚未调用它；
+- P3.5–P3.8 未开始：education/communication/read-models 模块迁移、HTTP/runtime 装配、
+  删除旧实现、`--strict` 接入根门禁、P3 完整回归；
+- P4 教学 worker 尚未切到新任务表（迁移合同已就绪但未接线），任务指标 runbook 未写；
+- P5 已实现本地政策权威、快照迁移合同与 P5.2 预占边界读政策（网关正式完整套件
+  171 passed 通过）；仍缺：
+  - `quota_policy_concurrency_test.ts` 真实并发屏障（降额提交与新预占的先后、
+    在途预占按冻结账本结算）；
+  - 流式连接中断结算、`unknown` 调用的显式用例、ready 故障与 drain 验收；
+  - **锁语义已核对**：`readPolicyForReservation` 的 `FOR SHARE` 是语句级（预占边界
+    连接不是事务），它只保证政策读语句与未提交的 `FOR UPDATE` 写入互斥；
+    「降额提交之后开始的新预占使用新政策」由 READ COMMITTED 的读取时序成立。
+    若要「整个预占边界内政策冻结」，需增加 advisory 锁（待评估，不作为已完成）；
+- P6/P7/P8 未开始；
+- 生产环境未做任何操作；所有测试只用自建 `noj-arch-p3test-*` 隔离容器与临时库。
+
+### P3/P4/P5 收尾验证（2026-10-21）
+
+- P3 结构收口：`check-module-boundaries.ts --strict` 通过（runtime/type SCC 均为 0、
+  动态导入解析 0、表 owner 缺口 0），HTTP/runtime 组合根已接线，Core `deno task check`
+  通过；P3 全量行为回归待本轮最终统一入口完成后再勾选。
+- P4：`deno task test:domain runtime` 23 passed / 0 failed；`application` 13 passed /
+  0 failed；`education` 143 passed / 0 failed / 1 ignored；新增真实子进程在完成标记前
+  退出后的租约回收、分页重新调度和 worker drain 用例均通过。平台 snapshot gauge、
+  `deploy/monitoring/runbooks/background-tasks.md`、三条告警及四项相关门禁均通过。
+- P5：Gateway `deno task check` 通过；在隔离 PostgreSQL/Redis 启动器中
+  `deno task test` 182 passed / 0 failed / 1 ignored。P5.3 advisory 锁屏障、降额后新
+  预占、冻结账本结算、流式 unknown、ready 的 PG/Redis 故障、记账 drain 均有显式通过证据。
+
+### P3–P8 最终验收收口（2026-10-23；2026-10-24 复验）
+
+- P3：Core `deno task test` 在隔离 PostgreSQL/Redis/临时存储中通过，`2509 passed / 0
+  failed / 11 ignored`；其中此前 admin upgrade-job 夹具的域内题号冲突已改为测试库内
+  单调唯一题号。`deno task check`、严格模块边界扫描及真实 PostgreSQL 并发/回滚用例通过。
+- P6：`cargo fmt --check`、`cargo check --all-targets` 与 `cargo test --all-targets` 通过；
+  评测协议 v3、运行身份、租约丢失、取消、容器清理和 fallback 路径均有测试覆盖。
+- P7：UI `deno task test` 为 `304 passed / 0 failed / 0 ignored`，UI 检查通过；Core 批量
+  摘要、页面持有首屏数据、细粒度刷新、无全局 BFF 扇出及 IDE 显式域提交已切换。
+  本环境的浏览器控制运行时缺少对应服务模块，未将 SSR/水合/SPA/1440/768/390px/键盘
+  观察冒充为浏览器通过；该证据边界记录在最终 Agent Note。
+- P8：CLI `deno task test` 为 `824 passed / 0 failed / 4 ignored`；发布集生成
+  2/2、供应链检查、旧接口 410、升级 checkpoint/recovery 及隔离参数门禁通过。临时专用
+  rootless Docker daemon 上真实 `backup drill --skip-judge --keep` 完成 PostgreSQL、
+  Redis、MinIO 恢复、迁移/数据核对、Core/Gateway 初始化及登录/题目读取/摘要业务验收；
+  完整 Judge 业务链因 rootless 宿主到容器 IP 不可路由，未宣称通过。
+- 总门禁：`check-module-boundaries.ts --strict` 报告 691 个生产文件、runtime/type SCC
+  均为 0、动态导入未解析数 0、110 张表且 owner 缺口 0；Agent Note 格式、Markdown 链接、
+  migration safety、runtime contract 和 release supply-chain 门禁均通过。所有验证均未
+   操作生产环境或默认 Docker/数据库/Redis/MinIO 资源。
+- 2026-10-24 对 Core 全量套件做了独立复验：在精确隔离 PostgreSQL/Redis 容器和临时
+  存储中，`deno task test` 仍为 `2509 passed / 0 failed / 11 ignored`（20m29s）；
+  复验只重启本轮指定的隔离容器，未操作默认或生产资源。原始日志保留在本机
+  `/tmp/noj-core-final-current-20261024.log`，不纳入版本库。

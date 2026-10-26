@@ -755,8 +755,9 @@ export function renderDrillHelp(): string {
     [
       "在**隔离环境**中真实恢复快照并做业务验收（登录/题目读取/可选评测）。",
       "",
-      "注意: 会起独立 Compose 项目（默认 noj-drill）、占用独立子网与数据卷，",
+      "注意: 会起独立 Compose 项目（默认每次唯一生成）、占用独立子网与数据卷，",
       "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
+      "      必须连接专用隔离 Docker daemon；默认宿主机 socket 会被拒绝。",
       "      只校验文件完整请用 `backup verify`（结构可解析加 `--deep`）。",
       "",
       "快照形态: `.nojbackup` 单文件（`backup create` 的唯一产物形态）。",
@@ -765,8 +766,9 @@ export function renderDrillHelp(): string {
       "",
       "选项:",
       "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
-      "  --subnet CIDR           演练网络子网（默认 172.29.0.0/16）",
-      "  --project-name NAME     演练 Compose 项目名（默认 noj-drill；禁止含 prod）",
+      "  --docker-host SOCKET    专用 daemon socket（或 NOJ_DRILL_DOCKER_HOST）",
+      "  --subnet CIDR           演练网络子网（默认每次唯一 172.29.x.0/24）",
+      "  --project-name NAME     演练 Compose 项目名（默认每次唯一；禁止含 prod）",
       "  --report FILE           报告路径（默认快照同级 restore-drill-report.txt）",
       "  --rpo-max-hours N       快照年龄上限（默认 24）；超限视为演练失败",
       "  --rto-max-minutes N     恢复耗时上限（默认 60）；超限视为演练失败",
@@ -791,21 +793,17 @@ export function renderDrillHelp(): string {
  * 退出码（#516 验收，T19 已实现并测试）：0 通过 / 1 演练失败（含 RPO/RTO 超标）/
  * 2 参数或资源错误。`runDrill` 内部已按此分层，这里只做输出与透传。
  */
-async function executeDrill(
-  a: BackupArgs,
-  dir: string,
-): Promise<number> {
-  if (a.snapshot === undefined) {
-    console.error(
-      "backup drill: 需要 <snapshot> 路径\n" +
-        "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
-        "只校验文件完整请用 backup verify。",
-    );
-    return EXIT_USAGE;
-  }
+async function executeDrill(a: BackupArgs, dir: string): Promise<number> {
   try {
+    const dockerHost = a.dockerHost ?? Deno.env.get("NOJ_DRILL_DOCKER_HOST");
+    if (dockerHost === undefined || dockerHost.trim() === "") {
+      console.error(
+        "backup drill: 必须提供 --docker-host 或 NOJ_DRILL_DOCKER_HOST（专用隔离 Docker daemon）",
+      );
+      return EXIT_USAGE;
+    }
     const result = await runDrill({
-      snapshotPath: a.snapshot,
+      snapshotPath: a.snapshot!,
       dir,
       runner: realRunner(),
       // **`--passphrase-file` > `NOJ_BACKUP_PASSPHRASE_FILE` > `.env.prod`**
@@ -818,6 +816,7 @@ async function executeDrill(
       skipJudge: a.skipJudge,
       subnet: a.subnet,
       projectName: a.projectName,
+      dockerHost,
       report: a.report,
       rpoMaxHours: a.rpoMaxHours,
       rtoMaxMinutes: a.rtoMaxMinutes,
@@ -1451,7 +1450,7 @@ function renderProductionCommandHelp(command: string): string {
     restart: "重启生产服务",
     status: "查看生产服务状态",
     logs: "查看生产服务日志",
-    update: "同步部署文件、备份并升级生产服务",
+    update: "同步部署文件、备份并升级生产服务（中断后用 --recover）",
     upgrade: "update 的别名",
     backup: "生产备份；子命令 create/verify/restore/drill",
     verify: "校验生产配置与镜像签名",

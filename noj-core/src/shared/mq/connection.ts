@@ -322,7 +322,7 @@ export async function checkRedisHealth(): Promise<
 /**
  * 注册 Redis 健康探针。
  *
- * 由 app.ts 组合根调用；shared/mq 不依赖 domains/observability。
+ * 由 application 组合根调用；shared/mq 不依赖 modules/platform/observability。
  */
 export function registerRedisHealthProbe(
   registry: ObservabilityRegistry,

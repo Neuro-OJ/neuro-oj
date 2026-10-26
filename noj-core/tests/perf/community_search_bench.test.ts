@@ -1,6 +1,9 @@
 import { assert } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
+import {
+  reindexAll,
+  searchFlat,
+} from "../../src/modules/read-models/search/index.ts";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";

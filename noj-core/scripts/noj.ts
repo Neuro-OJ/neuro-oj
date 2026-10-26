@@ -27,8 +27,10 @@ import {
   ensureRootUser,
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
-} from "../src/domains/identity/index.ts";
-import { ensureRbacSeeds } from "../src/domains/system/index.ts";
+} from "../src/modules/access/identity/index.ts";
+import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
+import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
+import { ensureRbacSeeds } from "../src/modules/platform/system/index.ts";
 import { initProblem } from "./problems-init.ts";
 import { runMaintain } from "./maintain.ts";
 import {
@@ -37,15 +39,15 @@ import {
   ensureE2EPwChangeUser,
   seedJudgeImages,
   seedTags,
-} from "../src/domains/system/index.ts";
-import { seedDomainLlmDefaults } from "../src/domains/gateway/index.ts";
+} from "../src/modules/platform/system/index.ts";
+import { seedDomainLlmDefaults } from "../src/modules/platform/gateway/index.ts";
 import {
   backfillDefaultCatalog,
   importDomainProblemBundle,
   publishDomainProblemVersion,
-} from "../src/domains/catalog/index.ts";
-import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
-import { reindexAll } from "../src/domains/search/index.ts";
+} from "../src/modules/problems/index.ts";
+import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
+import { reindexAll } from "../src/modules/read-models/search/index.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
@@ -147,7 +149,7 @@ async function importProblemPackages(
       // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
       const problem = await importDomainProblemBundle(
         slug,
-        workspace.actorId,
+        userActorFromAuthenticatedId(workspace.actorId),
         data,
         "current",
       );
@@ -158,7 +160,7 @@ async function importProblemPackages(
         const published = await publishDomainProblemVersion(
           slug,
           String(problem.number),
-          workspace.actorId,
+          userActorFromAuthenticatedId(workspace.actorId),
           problem.draft_revision,
           "题目包导入",
         );
@@ -262,7 +264,7 @@ const dbCmd = new Command()
   )
   .action(async () => {
     const { backfillExecutionWorkspaces } = await import(
-      "../src/domains/submission/index.ts"
+      "../src/modules/evaluations/index.ts"
     );
     console.log(JSON.stringify(await backfillExecutionWorkspaces()));
   });
@@ -288,7 +290,10 @@ const bootstrapCmd = new Command()
     );
     const confirmation = await Secret.prompt("再次输入密码");
     if (password !== confirmation) throw new Error("两次密码不一致");
-    await initializeFirstAdmin({ ...opts, password });
+    await initializeFirstAdmin(
+      { ...opts, password },
+      createSystemActor("bootstrap"),
+    );
     console.log("首个管理员已创建，初始化入口已永久关闭；首次登录须修改密码。");
   })
   .command("admin", "维护/开发用管理员引导（可提升已有用户，不用于首次初始化）")

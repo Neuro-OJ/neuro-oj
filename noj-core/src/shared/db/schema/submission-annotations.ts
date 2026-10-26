@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { classrooms } from "./education.ts";
-import { submissions } from "./submission.ts";
+import { submissions } from "./evaluation-records.ts";
 import { users } from "./identity.ts";
 
 /** 批注固定在原提交的文本哈希及行范围，保留作者和撤回依据。 */

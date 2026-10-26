@@ -3,8 +3,8 @@
  *
  * 覆盖：
  * 1. noj-core / noj-tests 的每个 domain 都有对应 job 与路径过滤；
- * 2. workflow 内的 domain 列表与文件系统实际 domain 一致（防手工列表漂移）；
- * 3. `noj-tests/e2e/` 下没有未归域的文件，`noj-core/src/domains/*` 都有 tests 目录；
+ * 2. Core 任务由统一模块元数据选择，迁移前后均有真实完整分片覆盖；
+ * 3. `noj-tests/e2e/` 下没有未归域的文件，每个 Core 别名至少发现一个新/旧测试根；
  * 4. **每个受跟踪文件都至少被一个「会触发测试的」路径过滤命中**——这是本脚本的
  *    核心：避免只改共享 helper / deno.json / 脚本时 changes job 输出空数组，
  *    所有 job 被跳过而 workflow 仍报成功。
@@ -12,6 +12,11 @@
  * 用法：`deno run -A scripts/verify-domain-ci.ts`
  */
 import { fromFileUrl } from "jsr:@std/path@^1";
+import {
+  LEGACY_DOMAIN_NAMES,
+  MODULE_TEST_METADATA,
+  testRootsForTarget,
+} from "./module-test-metadata.ts";
 
 const root = new URL("../", import.meta.url);
 const rootPath = fromFileUrl(root);
@@ -207,13 +212,35 @@ const e2eText = await Deno.readTextFile(
 const ci = parseWorkflow(ciText);
 const e2e = parseWorkflow(e2eText);
 
-const coreDomainDirs: string[] = [];
+const coreDomainDirs = [...LEGACY_DOMAIN_NAMES].sort();
+// legacy 域允许按计划搬迁；身份来自统一元数据而不是当前物理目录名称。
 for await (
   const entry of Deno.readDir(new URL("noj-core/src/domains/", root))
 ) {
-  if (entry.isDirectory) coreDomainDirs.push(entry.name);
+  if (entry.isDirectory && !coreDomainDirs.includes(entry.name)) {
+    fail(`遗留域 ${entry.name} 未登记到模块元数据`);
+  }
 }
-coreDomainDirs.sort();
+if (
+  !ci.jobs.has("core-test-sharded") ||
+  !ciText.includes("run: deno task test:parallel")
+) {
+  fail(
+    "新模块必须由 core-test-sharded 的正式完整分片任务覆盖，不能只执行共享分片",
+  );
+}
+if (!ciText.includes("python3 scripts/select-core-ci.py")) {
+  fail("Core CI 必须由统一元数据选择任务，不得维护独立 all_core 列表");
+}
+for (const module of MODULE_TEST_METADATA.targetModules) {
+  if (
+    !MODULE_TEST_METADATA.testCiMapping[module.name]?.ciJobs.includes(
+      "core-test-sharded",
+    )
+  ) {
+    fail(`模块 ${module.name} 缺少完整分片测试 CI 映射`);
+  }
+}
 
 const e2eDomainDirs: string[] = [];
 const rootLevelE2eTests: string[] = [];
@@ -259,15 +286,6 @@ function pythonList(text: string, varName: string, file: string): string[] {
     .filter(Boolean).sort();
 }
 
-const coreInWorkflow = pythonList(ciText, "all_core", "ci.yml");
-if (coreInWorkflow.join(",") !== coreDomainDirs.join(",")) {
-  fail(
-    `ci.yml all_core 列表与 noj-core/src/domains 不一致：\n  workflow: ${
-      coreInWorkflow.join(", ")
-    }\n  磁盘:     ${coreDomainDirs.join(", ")}`,
-  );
-}
-
 const e2eInWorkflow = pythonList(e2eText, "all_e2e", "e2e.yml");
 const e2eOnDisk = e2eDomainDirs.filter((d) =>
   !SKIP_E2E_DIRS.has(d) && d !== "cross-domain"
@@ -288,19 +306,28 @@ if (rootLevelE2eTests.length > 0) {
   );
 }
 for (const domain of coreDomainDirs) {
-  try {
-    await Deno.stat(
-      new URL(`${domain}/tests/`, new URL("noj-core/src/domains/", root)),
-    );
-  } catch {
-    fail(`src/domains/${domain} 缺少 tests 目录`);
+  const roots = testRootsForTarget(domain);
+  let found = false;
+  for (const candidate of roots) {
+    try {
+      found ||=
+        (await Deno.stat(new URL(`${candidate}/`, new URL("noj-core/", root))))
+          .isDirectory;
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+  }
+  if (!found) {
+    fail(`域 ${domain} 的旧/新模块测试根全部缺失，不能以搬迁为由漏测`);
   }
 }
 
 // ── 4. 每个受跟踪文件都必须有测试触发路径（核心检查） ──────────────
 
 const coreTestFilters = [...ci.filters.entries()]
-  .filter(([name]) => name === "core-shared" || name.startsWith("core-"))
+  .filter(([name]) =>
+    name === "core" || name === "core-shared" || name.startsWith("core-")
+  )
   .flatMap(([, patterns]) => patterns);
 const e2eTestFilters = [...e2e.filters.entries()]
   .filter(([name]) => name.startsWith("e2e-"))

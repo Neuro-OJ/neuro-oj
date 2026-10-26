@@ -12,16 +12,15 @@ const actor = useState<{ id: string } | null>('auth:user', () => null);
 const page = ref(1);
 const id = computed(() => String(route.params.classroomId));
 
-const room = await useViewAsyncData(
-  'classroom',
+const room = await useAsyncData(
   () => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value),
   () => education.classroom(slug.value!, id.value),
 );
 
-const tasks = await useViewAsyncData(
-  'assignments',
+const tasks = await useAsyncData(
   () => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value, 'tasks', page.value),
   () => education.assignments(slug.value!, id.value, page.value),
+  { watch: [page] },
 );
 
 const isCoach = computed(() => {

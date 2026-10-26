@@ -7,12 +7,13 @@
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import UserMenu from '~/components/layout/UserMenu.vue';
 
 const isLoggedIn = ref(true);
-const user = ref<{ username: string; is_admin: boolean; avatar_url?: string | null }>({
+const user = ref<{ id: string; username: string; is_admin: boolean; avatar_url?: string | null }>({
+  id: 'u-user-menu',
   username: 'alice',
   is_admin: false,
   avatar_url: null,
@@ -20,6 +21,7 @@ const user = ref<{ username: string; is_admin: boolean; avatar_url?: string | nu
 const apiGet = vi.fn();
 
 beforeAll(() => {
+  for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('useAuth', () => ({
     user,
     isLoggedIn,
@@ -29,9 +31,21 @@ beforeAll(() => {
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm: vi.fn() } }));
   vi.stubGlobal('useApi', () => ({ api: { get: apiGet, post: vi.fn() } }));
   vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
+  vi.stubGlobal('useRoute', () => ({ fullPath: '/problems' }));
+  vi.stubGlobal('useNavigationDomain', () => ref('main'));
+  vi.stubGlobal('useWorkspaceApi', () => ({ list: vi.fn().mockResolvedValue({ data: [] }), remember: vi.fn() }));
+  vi.stubGlobal('useOptionalWorkspace', () => null);
+  vi.stubGlobal('usePolling', vi.fn());
+  vi.stubGlobal('navigateTo', vi.fn());
+  vi.stubGlobal('useAsyncData', (_key: unknown, handler: () => Promise<unknown>) => {
+    const data = ref<unknown>(undefined);
+    void Promise.resolve(handler()).then((value) => data.value = value);
+    return { data, refresh: vi.fn(async () => data.value = await handler()) };
+  });
 });
 
 const stubs = {
+  UDropdownMenu: { name: 'UDropdownMenu', props: ['items'], template: '<div><slot /></div>' },
   UIcon: true,
   UButton: { template: '<button><slot /></button>' },
   NuxtLink: { template: '<a><slot /></a>' },
@@ -53,7 +67,10 @@ describe('UserMenu 未读消息角标', () => {
     await flushPromises();
 
     expect(apiGet).toHaveBeenCalledWith('/api/v1/conversations/unread-count', { silent: true });
-    expect(wrapper.get('[data-test="unread-badge"]').text()).toBe('3');
+    const items = wrapper.getComponent({ name: 'UDropdownMenu' }).props('items').flat() as Array<
+      { label: string; badge?: number }
+    >;
+    expect(items.find((item) => item.label === '消息')?.badge).toBe(3);
     wrapper.unmount();
   });
 
@@ -62,7 +79,10 @@ describe('UserMenu 未读消息角标', () => {
     const wrapper = mountMenu();
     await flushPromises();
 
-    expect(wrapper.find('[data-test="unread-badge"]').exists()).toBe(false);
+    const items = wrapper.getComponent({ name: 'UDropdownMenu' }).props('items').flat() as Array<
+      { label: string; badge?: number }
+    >;
+    expect(items.find((item) => item.label === '消息')?.badge).toBeUndefined();
     wrapper.unmount();
   });
 });

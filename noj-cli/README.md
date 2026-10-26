@@ -75,7 +75,7 @@ noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
 noj-cli backup restore <快照> --dry-run   # 只规划并校验（等价于省略 --confirm）
 noj-cli backup restore <快照> --confirm   # 真实恢复（不可逆）
-noj-cli backup drill <快照>    # 隔离环境真实恢复演练（分钟级、需 Docker）
+noj-cli backup drill <快照>    # 隔离环境真实恢复演练（分钟级、需专用 Docker daemon）
 noj-cli backup schedule install --schedule '15 2 * * *'
 noj-cli uninstall              # 保留数据卷、配置与备份
 noj-cli uninstall --all --yes  # 连数据卷与安装目录一起删除（需确认）
@@ -118,7 +118,11 @@ openssl rand -hex 32    # → NOJ_INTERNAL_SERVICE_TOKEN=<上一步输出>
 （原始二进制）、`redis.rdb`、`minio/` 与加密后的 `.env.prod`。
 
 `backup drill` 会起**独立 Compose 项目**（默认 `noj-drill`）、独立子网，且
-**不映射宿主机端口**；RPO/RTO 超限视为演练失败（退出码 1），资源不足为 2。
+**不映射宿主机端口**；必须用 `--docker-host` 或 `NOJ_DRILL_DOCKER_HOST`
+指定专门的 Docker daemon socket，禁止把生产默认 `/var/run/docker.sock` 交给演练
+命令。daemon 应使用独立 data root 和网络，准备方式见
+`dev-docs/engineering/architecture-remediation-p8.md`；RPO/RTO 超限视为演练失败
+（退出码 1），资源不足为 2。
 
 ## 目录定位
 

@@ -381,6 +381,20 @@ if (import.meta.main) {
   // 零输入守卫：一个生产文件都没扫到说明路径推导已失效（目录改名/移动），
   // 此时「无违规」是假绿，必须失败而不是打印通过。
   if (scannedFiles === 0) {
+    // P3 模块迁移已经删除 legacy domain 生产目录；实际结构由
+    // check-module-boundaries.ts --strict 负责验收。保留旧检查器的自检能力，
+    // 但不能把“目录已按计划迁移”误报成门禁失效。
+    try {
+      const modules = await Deno.stat(resolve(".", "noj-core/src/modules"));
+      if (modules.isDirectory) {
+        console.log(
+          "legacy domain 边界检查跳过：生产代码已迁入 src/modules，使用 P3 模块严格门禁验收",
+        );
+        Deno.exit(0);
+      }
+    } catch {
+      // 下面的零输入错误保留给路径失效或错误工作区。
+    }
     console.error(
       "未扫描到任何业务域生产文件，域边界检查已失去意义（目录是否被移动/改名？）",
     );

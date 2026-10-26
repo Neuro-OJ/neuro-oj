@@ -13,8 +13,11 @@ import type { Context } from "hono";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "admin"]);
-import { logAudit } from "../../system/services/audit-log.ts";
-import type { AuditAction, AuditDetail } from "../../system/types/audit-log.ts";
+import { logAudit } from "../../../modules/platform/system/services/audit-log.ts";
+import type {
+  AuditAction,
+  AuditDetail,
+} from "../../../modules/platform/system/types/audit-log.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 
 const registry = new Map<string, AuditMeta>();

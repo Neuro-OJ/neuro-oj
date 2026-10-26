@@ -2,7 +2,6 @@ import { extractApiError } from '~/utils/apiError';
 import { authCookieNames } from '~/utils/auth-cookies';
 
 import type { AuthUser as UserResponse } from '~/utils/auth-user';
-import type { BffSnapshot } from '~/utils/bff-view';
 
 interface SessionData {
   userId: string;
@@ -35,7 +34,6 @@ function sessionToUser(session: SessionData): UserResponse {
 }
 
 export function useAuth(targetRoute?: { path: string; fullPath: string }) {
-  const bff = useState<BffSnapshot | null>('bff:view', () => null);
   const user = useState<UserResponse | null>('auth:user', () => null);
   const loading = useState<boolean>('auth:loading', () => true);
 
@@ -72,7 +70,7 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
   // 回填必须等到数据真正 settle：SSR 挂载时 data/error 都还是 undefined，
   // 若此刻就把 user 置空、loading 置 false，会在渲染前误判为「未登录」
   // （路由守卫抢在 /auth/me 之前读到空用户，刷新 /admin/* 被踢回登录页）。
-  if (import.meta.server && !bff.value) {
+  if (import.meta.server) {
     if (session.value) {
       const { data: meData, error: meError } = meAsyncData();
       watch([meData, meError], ([val, err]) => {
@@ -88,7 +86,7 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
 
   // ── 客户端初始化 ──
   if (import.meta.client) {
-    if (!bff.value && session.value && !user.value) {
+    if (session.value && !user.value) {
       // SSR 未执行（SPA 导航或水合延迟），从 cookie 恢复
       user.value = sessionToUser(session.value);
     }
@@ -107,7 +105,6 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
       { silent: true, timeout: 5000 },
     );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
-    bff.value = null;
     const userData = res.data.user;
     user.value = userData;
     return { user: userData };
@@ -337,7 +334,6 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
   }
 
   async function logout() {
-    bff.value = null;
     try {
       // 本地注销端点（Nitro 删除 Cookie），非 /api/v1/ 前缀；失败静默
       await api.post('/api/auth/logout', undefined, { silent: true });

@@ -247,6 +247,31 @@ export function composePull(
   );
 }
 
+/**
+ * `docker compose ... run --rm --no-deps <service> ...args`。
+ *
+ * 迁移/初始化是升级协议的一部分，必须由 CLI 明确执行一次性服务，不能依赖
+ * `up` 的隐式 depends_on 副作用。`--no-deps` 防止迁移命令再次启动旧应用栈。
+ */
+export function composeRun(
+  runner: CommandRunner,
+  options: ComposeOptions,
+  service: string,
+  args: string[] = [],
+): Promise<ComposeResult> {
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(service)) {
+    throw new Error(`Compose 服务名非法：${service}`);
+  }
+  return invoke(
+    runner,
+    composeArgs({
+      ...options,
+      command: ["run", "--rm", "--no-deps", service, ...args],
+    }),
+    options.dryRun,
+  );
+}
+
 /** `composeConfig` 的选项：在公共选项上追加 `--quiet`。 */
 export interface ComposeConfigOptions extends ComposeOptions {
   /**

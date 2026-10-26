@@ -1,14 +1,14 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
-import type { EffectiveVersionPolicy } from "./../../../shared/versioning/types.ts";
-import { resolveProblemIdOrThrow } from "../../catalog/index.ts";
-import { resolveContestId } from "../../contest/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import type { EffectiveVersionPolicy } from "../../../shared/versioning/types.ts";
+import { resolveProblemIdOrThrow } from "../../../modules/problems/services/problem-resolve.ts";
+import { resolveContestId } from "../../../modules/contests/services/contests.ts";
 import {
-  setContestProblemEffectiveVersionPolicy,
-  setProblemEffectiveVersionPolicy,
-  upgradeContestProblemPinnedVersion,
-} from "../../submission/index.ts";
+  setContestProblemEffectiveVersionPolicyCommand,
+  setProblemEffectiveVersionPolicyCommand,
+  upgradeContestProblemPinnedVersionCommand,
+} from "../../../modules/application/evaluations.ts";
 
 /**
  * 有效版本策略与竞赛固定版本路由（Handbook §4.5）。
@@ -61,11 +61,12 @@ router.put("/problems/:id/effective-version-policy", async (c) => {
   if (!body || typeof body !== "object") {
     throw new BadRequestError("请求体必须是 JSON 对象");
   }
-  const result = await setProblemEffectiveVersionPolicy(problemId, {
-    policy: parsePolicy(body.policy),
-    expectedRevision: parseExpectedRevision(body.expected_revision),
-    actorId: (c.get("userId") as string | undefined) ?? null,
-  });
+  const result = await setProblemEffectiveVersionPolicyCommand(
+    c.var.actor,
+    problemId,
+    parsePolicy(body.policy),
+    parseExpectedRevision(body.expected_revision),
+  );
   return c.json({ data: result });
 });
 
@@ -83,14 +84,12 @@ router.put(
     if (!body || typeof body !== "object") {
       throw new BadRequestError("请求体必须是 JSON 对象");
     }
-    const result = await setContestProblemEffectiveVersionPolicy(
+    const result = await setContestProblemEffectiveVersionPolicyCommand(
+      c.var.actor,
       contestId,
       problemId,
-      {
-        policy: parsePolicy(body.policy),
-        expectedRevision: parseExpectedRevision(body.expected_revision),
-        actorId: (c.get("userId") as string | undefined) ?? null,
-      },
+      parsePolicy(body.policy),
+      parseExpectedRevision(body.expected_revision),
     );
     return c.json({ data: result });
   },
@@ -115,7 +114,8 @@ router.put("/contests/:contestId/problems/:problemId/version", async (c) => {
     ? body.version_id.trim()
     : "";
   if (!versionId) throw new BadRequestError("缺少必填字段：version_id");
-  const result = await upgradeContestProblemPinnedVersion(
+  const result = await upgradeContestProblemPinnedVersionCommand(
+    c.var.actor,
     contestId,
     problemId,
     {
@@ -126,7 +126,6 @@ router.put("/contests/:contestId/problems/:problemId/version", async (c) => {
       expectedRevision: body.expected_revision === undefined
         ? undefined
         : parseExpectedRevision(body.expected_revision),
-      actorId: (c.get("userId") as string | undefined) ?? null,
     },
   );
   return c.json({ data: result });

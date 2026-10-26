@@ -269,6 +269,7 @@ export function positionals(args: string[]): string[] {
     "--tail",
     "--schedule",
     "--project-name",
+    "--docker-host",
     "--subnet",
     "--report",
     "--rpo-max-hours",
@@ -577,6 +578,7 @@ export async function runProdUpdate(
   const passphraseFile = flagValue(args, "--passphrase-file");
   // P1d：自动排空（--skip-drain 显式关闭；--drain-timeout 调 wait 超时）
   const skipDrain = hasFlag(args, "--skip-drain");
+  const recover = hasFlag(args, "--recover");
   const drainTimeoutSecs = optionalCount(args, "--drain-timeout");
   return await update({
     dir,
@@ -601,6 +603,7 @@ export async function runProdUpdate(
       dockerBin: d.processEnv["NOJ_DEPLOY_DOCKER_BIN"],
     }),
     skipDrain,
+    recover,
     drainTimeoutSecs,
   });
 }

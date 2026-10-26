@@ -1,5 +1,4 @@
 import {
-  bigint,
   boolean,
   check,
   foreignKey,
@@ -22,7 +21,6 @@ import {
   problemBindingHistory,
 } from "./catalog-workspace.ts";
 import { contests } from "./contest.ts";
-import { evaluationAttempts } from "./submission.ts";
 import type { AssignmentState } from "../../education-types.ts";
 
 /** 发布固定题目集合与要求，截止和当前完成状态由时间及判定事实计算。 */
@@ -297,78 +295,6 @@ export const assignmentItemHistory = pgTable("assignment_item_history", {
     columns: [t.problem_id, t.required_version_id],
     foreignColumns: [problemVersions.problem_id, problemVersions.id],
   }),
-}));
-
-/** 每个学生、条目及统计范围只有一份当前进度，保留来源尝试和策略依据。 */
-export const assignmentProgress = pgTable("assignment_progress", {
-  id: text("id").primaryKey(),
-  domain_id: text("domain_id").notNull(),
-  assignment_id: text("assignment_id").notNull(),
-  item_id: text("item_id").notNull(),
-  user_id: text("user_id").notNull().references(() => users.id),
-  scope: text("scope").$type<"on_time" | "current">().notNull(),
-  status: text("status").$type<
-    "not_started" | "judging" | "below_target" | "achieved" | "unavailable"
-  >().notNull(),
-  score: integer("score"),
-  accepted: boolean("accepted").notNull().default(false),
-  source_submission_id: text("source_submission_id"),
-  source_kind: text("source_kind").$type<"submission" | "objective">(),
-  source_attempt_id: text("source_attempt_id").references(() =>
-    evaluationAttempts.id
-  ),
-  evaluated_version_id: text("evaluated_version_id").references(() =>
-    problemVersions.id
-  ),
-  accepted_attempt_id: text("accepted_attempt_id").references(() =>
-    evaluationAttempts.id
-  ),
-  policy_revision: integer("policy_revision").notNull().default(0),
-  projection_revision: bigint("projection_revision", { mode: "number" })
-    .notNull().default(0),
-  late: boolean("late").notNull().default(false),
-  updated_at: text("updated_at").notNull(),
-}, (t) => ({
-  cellUnique: unique("assignment_progress_cell_unique").on(
-    t.item_id,
-    t.user_id,
-    t.scope,
-  ),
-  itemFk: foreignKey({
-    name: "assignment_progress_item_assignment_fk",
-    columns: [t.domain_id, t.assignment_id, t.item_id],
-    foreignColumns: [
-      assignmentItems.domain_id,
-      assignmentItems.assignment_id,
-      assignmentItems.id,
-    ],
-  }),
-  recipientFk: foreignKey({
-    name: "assignment_progress_recipient_fk",
-    columns: [t.assignment_id, t.user_id],
-    foreignColumns: [
-      assignmentRecipients.assignment_id,
-      assignmentRecipients.user_id,
-    ],
-  }),
-  scopeCheck: check(
-    "assignment_progress_scope_check",
-    sql`${t.scope} IN ('on_time', 'current')`,
-  ),
-  statusCheck: check(
-    "assignment_progress_status_check",
-    sql`${t.status} IN ('not_started', 'judging', 'below_target', 'achieved', 'unavailable')`,
-  ),
-  scoreCheck: check(
-    "assignment_progress_score_check",
-    sql`${t.score} IS NULL OR ${t.score} BETWEEN 0 AND 10000`,
-  ),
-  matrixIdx: index("idx_assignment_progress_matrix").on(
-    t.domain_id,
-    t.assignment_id,
-    t.user_id,
-    t.scope,
-  ),
 }));
 
 /** 持久教学事件通过数据库租约消费，不依赖 Redis 通知可靠送达。 */

@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { mapLlmError } from "../../routes/gateway.ts";
-import { LlmGatewayError } from "../../../gateway/services/llm.ts";
+import { LlmGatewayError } from "../../../../modules/platform/gateway/services/llm.ts";
 import {
   AppError,
   BadRequestError,

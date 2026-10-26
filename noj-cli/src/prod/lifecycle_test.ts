@@ -26,6 +26,7 @@ import type {
 import type { PromptIO } from "../tui/io.ts";
 import type { RenderIO } from "../output/render.ts";
 import { sha256Hex } from "../util/hash.ts";
+import { RELEASE_SET_FILE } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
 import { PATH_LINE } from "./lifecycle/path.ts";
 import {
@@ -95,6 +96,30 @@ const EXAMPLE_BODY = [
   "JUDGE_ENABLED=true",
   "",
 ].join("\n");
+
+function releaseSetBody(version: string): Uint8Array<ArrayBuffer> {
+  const digest = "sha256:" + "a".repeat(64);
+  return encoder.encode(
+    JSON.stringify({
+      schema_version: 1,
+      release: version,
+      migration_level: "0139",
+      protocol_versions: { evaluation: 3, gateway: 3 },
+      components: {
+        core: { image: "ghcr.io/neuro-oj/noj-server", digest },
+        ui: { image: "ghcr.io/neuro-oj/noj-ui", digest },
+        judge: { image: "ghcr.io/neuro-oj/noj-judge", digest },
+        gateway: { image: "ghcr.io/neuro-oj/noj-llm-gateway", digest },
+        evaluator: { image: "ghcr.io/neuro-oj/noj-evaluator-python", digest },
+        solution: { image: "ghcr.io/neuro-oj/noj-solution-python", digest },
+        solution_ai: { image: "ghcr.io/neuro-oj/noj-solution-ai", digest },
+      },
+      cli_version: version,
+      ide_version: version,
+      sdk_standard: "noj-wasm-v1",
+    }) + "\n",
+  );
+}
 
 const ASSETS: Record<string, Uint8Array<ArrayBuffer>> = {
   [COMPOSE]: encoder.encode(COMPOSE_BODY),
@@ -166,19 +191,26 @@ function makeFetcher(
     calls.push(url);
     events.push("fetch:" + (url.split("/").pop() ?? ""));
     const name = url.split("/").pop() ?? "";
+    const releaseMatch =
+      /\/releases\/download\/([^/]+)\/release-set\.json(?:\.sha256)?$/.exec(
+        url,
+      );
+    const releaseBody = releaseMatch === null
+      ? undefined
+      : releaseSetBody(decodeURIComponent(releaseMatch[1]!));
     if (name.endsWith(".sha256")) {
       const base = name.slice(0, -".sha256".length);
       const override = checksumOverrides[base];
       if (override !== undefined) {
         return new Response(override, { status: 200 });
       }
-      const body = ASSETS[base];
+      const body = base === RELEASE_SET_FILE.asset ? releaseBody : ASSETS[base];
       if (body === undefined) return new Response("missing", { status: 404 });
       return new Response((await sha256Hex(body)) + "  " + base + "\n", {
         status: 200,
       });
     }
-    const body = ASSETS[name];
+    const body = name === RELEASE_SET_FILE.asset ? releaseBody : ASSETS[name];
     return body === undefined
       ? new Response("missing", { status: 404 })
       : new Response(body, { status: 200 });
@@ -3674,6 +3706,8 @@ const UPDATE_ASSETS = [
   // Release 资产名非点号开头（GitHub 会改写点号名为 default.<name>）。
   "env.prod.example",
   "env.prod.example.sha256",
+  "release-set.json",
+  "release-set.json.sha256",
 ];
 
 /** 造一个 Release 列表 fetcher，并记录请求 URL。 */
@@ -4280,7 +4314,9 @@ Deno.test("upgrade：是 update 的别名，行为逐字一致", async () => {
       runner: makeUpdateRunner([]),
       color: NO_COLOR,
       socketExists: SOCKET_PRESENT,
-      processEnv: {},
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
       warn: () => {},
       syncFiles: () => Promise.resolve(),
       backup: () =>
@@ -4345,7 +4381,7 @@ Deno.test("update：默认 syncFiles 用 T9 downloadReleaseFiles（overwrite:tru
     });
 
     assertEquals(result.exitCode, 0, result.error ?? "");
-    assertEquals(calls.length, 4, "必须下载 2 个资产 + 2 个 .sha256");
+    assertEquals(calls.length, 6, "必须下载 3 个资产 + 3 个 .sha256");
     // 资产以 overwrite:true 重新拉取（既有 compose 存在也不被拒绝）
     assertEquals(
       await Deno.readTextFile(join(dir, COMPOSE)),
@@ -4877,6 +4913,8 @@ Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标
                     { name: "docker-compose.prod.yml.sha256" },
                     { name: "env.prod.example" },
                     { name: "env.prod.example.sha256" },
+                    { name: "release-set.json" },
+                    { name: "release-set.json.sha256" },
                   ],
                 },
               ]),
@@ -4889,7 +4927,7 @@ Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标
       processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: join(root, "pass") },
       backup: () => Promise.resolve({ ok: true, path: null, error: null }),
       warn: () => {},
-      now: () => new Date("2026-09-19T00:00:00Z"),
+      now: new Date("2026-09-19T00:00:00Z"),
     } as never);
 
     const staged = envFilesUsed.filter((p) => p !== envFile);

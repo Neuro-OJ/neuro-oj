@@ -3,7 +3,7 @@ import {
   assertNever,
   isTerminalSubmissionStatus,
   type SubmissionStatus,
-} from "../src/domains/submission/index.ts";
+} from "../src/modules/evaluations/index.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);

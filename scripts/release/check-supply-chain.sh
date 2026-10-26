@@ -123,6 +123,8 @@ check_release_workflow() {
   grep -q 'needs: verify-release' "$file" || fail "CLI 发布必须等待生产镜像验证"
   grep -q 'deno task test:production' "$file" || fail "CLI 发布缺少生产安装测试"
   grep -q 'sha256sum noj-cli-linux-amd64' "$file" || fail "CLI 发布缺少 SHA-256 校验文件"
+  grep -q 'generate-release-set.ts' "$file" || fail "Release workflow 未从已验证 digest 生成发布集"
+  grep -q 'release-set.json' "$file" || fail "Release workflow 未上传发布集及校验文件"
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"

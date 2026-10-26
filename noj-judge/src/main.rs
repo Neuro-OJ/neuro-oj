@@ -451,7 +451,7 @@ fn main() -> Result<()> {
                         Err(error) => Some(error),
                     };
                     let task_claim_prefix = format!("{}:{}:{}", user_claim_prefix, pool.name(),
-                        if pulled.task.submission_id.starts_with("st_") { "self-test" } else { "submission" });
+                        if pulled.task.task_kind.as_deref() == Some("self_test") { "self-test" } else { "submission" });
                     // F-07 公平调度（跨 worker）：同一用户已有**未过期**评测 claim 时，
                     // 释放槽位并把任务放回队尾轮给他人。
                     // 判定走 Redis 全局状态，因此 N 个 worker 也严格保持「每用户 1 个」。
@@ -510,10 +510,7 @@ fn main() -> Result<()> {
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
                     let task_queue = pulled.queue.clone();
-                    let cache_dir = cache_dir.clone();
                     let fallback_dir = fallback_dir.clone();
-                    let task_work_dir = work_dir.clone();
-                    let image_prefix = image_prefix.clone();
                     let oi_image = oi_image.clone();
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
@@ -522,7 +519,12 @@ fn main() -> Result<()> {
                     let guard_prefix = task_claim_prefix;
                     let guard_user_id = pulled.task.user_id.clone();
                     let guard_member = claim_member;
-                    let task_instance_id = instance_id.clone();
+                    let worker_context = judge::context::WorkerContext::new(
+                        instance_id.clone(),
+                        work_dir.clone(),
+                        cache_dir.clone(),
+                        image_prefix.clone(),
+                    );
                     let task_metrics = Arc::clone(&judge_metrics);
                     task_metrics.task_started();
 
@@ -530,6 +532,31 @@ fn main() -> Result<()> {
                     let handle = tokio::spawn(async move {
                         let raw = pulled.raw;
                         let task = pulled.task;
+                        let run_context = match judge::context::RunContext::new(
+                            &task,
+                            &worker_context,
+                        ) {
+                            Ok(context) => context,
+                            Err(error) => {
+                                error!(
+                                    submission_id = %task.submission_id,
+                                    error = %error,
+                                    "拒绝没有完整协议封套的评测任务"
+                                );
+                                let _permit = permit;
+                                let _active_guard = ActiveUserGuard::new(
+                                    guard_conn,
+                                    guard_prefix,
+                                    guard_user_id,
+                                    guard_member,
+                                );
+                                return;
+                            }
+                        };
+                        let task_cache_dir = worker_context.cache_dir.clone();
+                        let task_work_dir = worker_context.work_dir.clone();
+                        let task_image_prefix = worker_context.image_prefix.clone();
+                        let task_instance_id = run_context.worker_instance_id.clone();
                         // RAII guard：任务结束（含 panic/异常路径）时自动释放用户 claim。
                         let _active_guard = ActiveUserGuard::new(
                             guard_conn,
@@ -546,15 +573,15 @@ fn main() -> Result<()> {
                             redis_client.clone(),
                             &task,
                             download_timeout,
-                            cache_dir.clone(),
+                            task_cache_dir.to_string_lossy().into_owned(),
                             cache_max_items,
                             cache_max_mb,
-                            task_work_dir,
+                            task_work_dir.to_string_lossy().into_owned(),
                             cpu_limit_millicores,
                             allow_evaluator_network,
                             &evaluator_network_mode,
                             allow_http_s3,
-                            &image_prefix,
+                            &task_image_prefix,
                             &oi_image,
                             &command_whitelist,
                             max_evaluator_time_ms,
@@ -567,7 +594,18 @@ fn main() -> Result<()> {
                         let outcome = if let Some(error) = admission_error { Err(error) } else {
                             tokio::select! {
                                 result = execution => result,
-                                _ = _permit.wait_lost() => Err(anyhow::anyhow!("资源租约续租失败，评测中止")),
+                                _ = _permit.wait_lost() => {
+                                    run_context.cancel();
+                                    warn!(
+                                        submission_id = %run_context.submission_id,
+                                        run_id = %run_context.run_id,
+                                        task_kind = %run_context.task_kind,
+                                        worker_instance_id = %run_context.worker_instance_id,
+                                        cancelled = run_context.is_cancelled(),
+                                        "评测资源租约丢失，已标记本次运行取消"
+                                    );
+                                    Err(anyhow::anyhow!("资源租约续租失败，评测中止"))
+                                },
                             }
                         };
                         let mut result = match outcome {
@@ -587,8 +625,8 @@ fn main() -> Result<()> {
                             }
                         };
 
-                        if task.submission_id.starts_with("st_") {
-                            if let Some(run_id)=&task.run_id {
+                        if task.task_kind.as_deref() == Some("self_test") {
+                            if let Some(run_id)=&task.self_test_run_id {
                                 use redis::AsyncCommands;
                                 if let Ok(mut connection)=redis_client.get_multiplexed_async_connection().await {
                                     let cancelled:redis::RedisResult<bool>=connection.exists(format!("noj:judge:cancel:{}:{}",task.submission_id,run_id)).await;
@@ -597,8 +635,8 @@ fn main() -> Result<()> {
                             }
                         }
 
-                        // 版本化封套（协议 v2，Handbook §5.6）：回显 run_id（正式提交下
-                        // = 评测尝试 ID）、题目版本与协议号，并显式标注判定类别。必须在
+                        // 版本化封套（协议 v3，Handbook §5.6）：回显显式任务语义、运行
+                        // 标识、题目版本与协议号，并标注判定类别。必须在
                         // 上面所有状态改写（取消标记）之后调用，result_kind 才不会失真。
                         //
                         // defect #28：协议字段**只**走可信结果封套（Handbook §5.5）。
@@ -619,30 +657,7 @@ fn main() -> Result<()> {
                             );
                         }
 
-                        // 平台错误先原子重投；仅最终结果进入 core，避免提前终结尝试或吊销 token。
-                        match judge::retry::retry_platform_error(
-                            &redis_client, &task_queue, &raw, &task, &result,
-                        ).await {
-                            Ok(judge::retry::RetryOutcome::Requeued(retry)) => {
-                                warn!(submission_id = %task.submission_id, retry,
-                                    "平台评测错误，已自动重试（最多 3 次）");
-                                task_metrics.task_finished(true);
-                                return;
-                            }
-                            Ok(judge::retry::RetryOutcome::AlreadyMoved) => {
-                                task_metrics.task_finished(true);
-                                return;
-                            }
-                            Err(error) => {
-                                // 保留 processing 消息供 sweeper 恢复，不能提前回写失败终态。
-                                error!(submission_id = %task.submission_id, error = %error,
-                                    "平台错误自动重投失败，等待队列恢复");
-                                task_metrics.task_finished(true);
-                                return;
-                            }
-                            Ok(judge::retry::RetryOutcome::Final) => {}
-                        }
-
+                        // 业务平台错误直接回传 Core；新 attempt 与重试预算由 Core 持久化。
                         // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
                         let push_succeeded = mq::push_result_with_retry(
                             &redis_client,

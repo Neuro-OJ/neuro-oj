@@ -1,10 +1,10 @@
 // 生成 API 路由目录（dev-docs/engineering/route-catalog.md）。
-// 从 noj-core/src/routes/*.ts 提取 Hono 路由定义。
+// 从遗留路由及工程元数据登记的模块路由提取 Hono 路由定义。
 // 用法：deno run -A scripts/gen-route-catalog.ts [--check]
 import { relative, resolve } from "node:path";
+import { MODULE_TEST_METADATA } from "./module-test-metadata.ts";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
-const ROUTES_DIR = resolve(ROOT, "noj-core/src/routes");
 const OUTPUT_PATH = resolve(ROOT, "dev-docs/engineering/route-catalog.md");
 
 interface RouteEntry {
@@ -22,9 +22,16 @@ function isDirectory(path: string): boolean {
   }
 }
 
-function collectRouteFiles(): string[] {
-  const files: string[] = [];
-  const roots = [ROUTES_DIR, resolve(ROOT, "noj-core/src/domains")];
+/** 通过统一模块元数据发现迁移前后的路由，目录迁移不得静默减少扫描范围。 */
+export function collectRouteFiles(repositoryRoot = ROOT): string[] {
+  const files = new Set<string>();
+  const roots = [
+    resolve(repositoryRoot, "noj-core/src/routes"),
+    resolve(repositoryRoot, "noj-core/src/domains"),
+    ...MODULE_TEST_METADATA.targetModules.map((module) =>
+      resolve(repositoryRoot, module.root)
+    ),
+  ];
   for (const root of roots) {
     if (!isDirectory(root)) continue;
     const queue = [root];
@@ -39,12 +46,12 @@ function collectRouteFiles(): string[] {
           full.includes("/routes/") && !full.includes("/tests/") &&
           !full.endsWith("/index.ts")
         ) {
-          files.push(full);
+          files.add(full);
         }
       }
     }
   }
-  return files;
+  return [...files].sort();
 }
 
 /**
@@ -91,7 +98,7 @@ export function generate(entries: RouteEntry[]): string {
     "# NOJ API 路由目录",
     "",
     "> 由 `scripts/gen-route-catalog.ts` 生成，请勿手改。",
-    "> 扫描范围：`src/routes/*.ts` 与 `src/domains/*/routes/*.ts`（不含 `routes/index.ts` 组合文件）。",
+    "> 扫描范围：遗留 `src/routes`、`src/domains` 与工程元数据登记的 `src/modules` 路由（不含测试与 `routes/index.ts` 组合文件）。",
     "",
     "| 方法 | 路径 | 文件 |",
     "| --- | --- | --- |",

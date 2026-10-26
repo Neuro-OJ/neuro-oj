@@ -151,7 +151,7 @@ import {
   validateTargetDir,
 } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { composeLogs, composePs, composePull } from "./compose.ts";
+import { composeLogs, composePs } from "./compose.ts";
 import type { ComposeOptions, ComposeResult } from "./compose.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE, PROD_SERVICES } from "./compose.ts";
 import {
@@ -166,7 +166,6 @@ import {
   configuredVersion,
   DEFAULT_UPDATE_REPOSITORY,
   normalizedVersion,
-  resolveLatestReleaseTag,
   stageConfigVersion,
 } from "./release.ts";
 import type { EnvValues, VerifiedDigest } from "./config.ts";
@@ -199,8 +198,21 @@ import {
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
 import { resolveTargetConfig } from "./lifecycle/target.ts";
-import { drainAfterUpgrade, drainBeforeUpgrade } from "./lifecycle/drain.ts";
+import type { ResolvedTargetConfig } from "./lifecycle/target.ts";
 import type { DrainOptions } from "./lifecycle/drain.ts";
+import type { ReleaseSet } from "./release-set.ts";
+import {
+  advanceUpgradeState,
+  readUpgradeState,
+  upgradeStatePath,
+  writeUpgradeState,
+} from "./upgrade-state.ts";
+import type { UpgradeState } from "./upgrade-state.ts";
+import {
+  resolveLatestTarget,
+  runUpdateSync,
+  upgradeWith,
+} from "./lifecycle/upgrade.ts";
 
 /** install 的步骤名（顺序即执行顺序，也是 `InstallResult.steps` 的顺序）。 */
 export type InstallStepName =
@@ -748,7 +760,7 @@ export interface StatusResult extends LifecycleBaseResult {
 }
 
 /** 一次命令运行的上下文：目录 + 两个输出通道 + 状态行写出器。 */
-interface LifecycleContext {
+export interface LifecycleContext {
   dir: string;
   io: RenderIO;
   jsonMode: boolean;
@@ -775,7 +787,7 @@ function emitFailure(io: RenderIO, text: string): void {
 }
 
 /** 构造命令上下文：T6 的 JSON 模式与 T8 的 stream 成对判定。 */
-function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
+export function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
   const jsonMode = isJsonMode(opts.args ?? []);
   const io: RenderIO = { ...(opts.io ?? {}), jsonMode };
   const stream = jsonMode ? "stderr" : "stdout";
@@ -818,7 +830,7 @@ type PreparedLifecycle = PreparedEnvironment & {
  * **零变更命令**：步骤 1–5 不调用 docker；步骤 6 的 `compose config` 只读解析。
  * 任一失败都发生在任何 `up`/`stop`/`down` 之前。
  */
-async function prepareLifecycle(
+export async function prepareLifecycle(
   ctx: LifecycleContext,
   opts: LifecycleOptions,
 ): Promise<PreparedLifecycle | { ok: false; error: string }> {
@@ -1083,7 +1095,7 @@ function jsonPayload(result: LifecycleBaseResult): Record<string, unknown> {
 }
 
 /** 统一的运行失败结果（`error` 已写往人类通道）。 */
-function failed(dir: string, error: string): LifecycleBaseResult {
+export function failed(dir: string, error: string): LifecycleBaseResult {
   return { dir, state: "error", noOp: false, exitCode: 1, error };
 }
 
@@ -1354,6 +1366,14 @@ export interface UpdateOptions extends LifecycleOptions, DrainOptions {
    * 重新拉取 compose / example 并 SHA-256 校验，**不动 `.env.prod`**。
    */
   syncFiles?: (context: UpdateSyncContext) => Promise<void>;
+  /** 直接注入已校验的发布集（仅测试/离线调用；生产由 Release 资产下载）。 */
+  releaseSet?: ReleaseSet;
+  /** 允许从上一次未完成/失败 checkpoint 重新进入固定升级序列。 */
+  recover?: boolean;
+  /** checkpoint 路径覆盖点；生产默认为 `<dir>/backups/upgrade-state.json`。 */
+  upgradeStatePath?: string;
+  /** 显式迁移覆盖点；生产缺省按 migrate → gateway-migrate 顺序执行。 */
+  migrate?: (context: UpdateMigrationContext) => Promise<void>;
 }
 
 /** 升级前备份的上下文（供 T17–T19 实现消费）。 */
@@ -1385,6 +1405,12 @@ export interface UpdateSyncContext {
   repository: string;
 }
 
+/** 显式数据库迁移的输入；不暴露口令或环境值。 */
+export interface UpdateMigrationContext {
+  dir: string;
+  target: ResolvedTargetConfig;
+}
+
 /** {@link update} 的结果。 */
 export interface UpdateResult extends LifecycleBaseResult {
   /** 升级前的版本（`.env.prod` 的 `NOJ_VERSION`）。 */
@@ -1412,195 +1438,6 @@ export function updateSuccessHint(version: string): string {
 /** 升级前备份未接线时的失败文案（T17–T19 之前）。 */
 export const UPDATE_BACKUP_UNAVAILABLE_HINT =
   "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级";
-
-/** 本次升级的编排结果。 */
-interface UpgradeOutcome {
-  /** 失败文案；成功为 null。 */
-  error: string | null;
-  /** 备份产物路径（已走过的步骤才非 null）。 */
-  backupPath: string | null;
-  /** 退出维护失败文案（服务已启动但仍在维护模式）；成功为 null。 */
-  drainExitError?: string | null;
-}
-
-/**
- * `--latest`：解析最新稳定 Release 的目标版本。
- *
- * 归一化比较交由调用方（{@link normalizedVersion}）——比较用归一化值，写入
- * `.env.prod` 用**原文**（它直接参与镜像 tag 插值）。
- */
-async function resolveLatestTarget(opts: UpdateOptions): Promise<string> {
-  return await resolveLatestReleaseTag({
-    repository: opts.repository,
-    apiUrl: opts.apiUrl,
-    fetcher: opts.fetcher,
-  });
-}
-
-/** 升级前备份：注入点缺省即"未接线"失败（绝不静默跳过）。 */
-async function runUpdateBackup(
-  opts: UpdateOptions,
-  context: UpdateBackupContext,
-): Promise<UpdateBackupResult> {
-  if (opts.backup === undefined) {
-    return { ok: false, path: null, error: UPDATE_BACKUP_UNAVAILABLE_HINT };
-  }
-  return await opts.backup(context);
-}
-
-/**
- * `--files-only` 语义的部署文件同步。
- *
- * 对照 bash `run_files_sync`：以目标 ref 重新拉取部署文件；`overwrite:true`
- * 是刻意的（bash 用 `cp -a` 覆盖），而 **`.env.prod` 完全不在 `RELEASE_FILES`
- * 里**——T9 的资产清单只含 compose / example 及其校验文件，故无需额外保护，
- * 配置天然不被触碰（任务书 Step 1「`.env.prod` 内容不被改动」的落点）。
- */
-async function runUpdateSync(
-  opts: UpdateOptions,
-  context: UpdateSyncContext,
-): Promise<void> {
-  if (opts.syncFiles !== undefined) {
-    await opts.syncFiles(context);
-    return;
-  }
-  await downloadReleaseFiles({
-    repository: context.repository,
-    ref: context.ref,
-    targetDir: context.dir,
-    overwrite: true,
-    fetcher: opts.fetcher,
-  });
-}
-
-/**
- * 升级编排（bash `deploy.sh:upgrade()` :1034-1044；**顺序即断言**）：
- * 解析目标配置 → 备份 → pull → **验签** → **drain enter/wait** → `waitForStack` →
- * **drain exit** → 部署元数据。与 `install` 的差异：只读既有 `.env.prod`、不建
- * PATH；备份**先于** pull（bash `test-deploy.sh` 的用例要求）。
- *
- * **目标发布集只解析一次**（P1a）：{@link resolveTargetConfig} 从生效 env 文件
- * （升级时优先暂存文件）给出唯一的目标版本/env/compose 选项，验签与 pull/up 同源；
- * 验签先于 `waitForStack`，失败绝不启动目标栈、不记录元数据。
- */
-async function upgradeWith(
-  opts: UpdateOptions,
-  ctx: LifecycleContext,
-  /**
-   * 已写入**目标版本**的暂存环境文件；bash `production.sh:419` 用 `--env-file`
-   * 让升级本身跑在暂存配置上，成功后才覆盖 `.env.prod`（:427）。
-   */
-  stagedEnvFile?: string,
-): Promise<UpgradeOutcome> {
-  const prepared = await prepareLifecycle(ctx, opts);
-  if (!prepared.ok) return { error: prepared.error, backupPath: null };
-
-  // ---- 第 0 步：解析目标发布配置（唯一事实源，先于备份/pull/验签/up）----
-  const plan = await resolveTargetConfig(prepared, stagedEnvFile);
-  if (!plan.ok) {
-    ctx.error(plan.error);
-    return { error: plan.error, backupPath: null };
-  }
-  const target = plan.target;
-
-  // ---- ensure_backup_passphrase（bash deploy.sh:1036）----
-  const processEnv = opts.processEnv ?? Deno.env.toObject();
-  const passphrase = await ensureCommandPassphrase({
-    envFile: target.envFile,
-    env: target.env,
-    processEnv,
-    passphraseFile: opts.passphraseFile,
-    warn: opts.warn,
-  });
-  if (passphrase.error !== null) {
-    ctx.error(passphrase.error);
-    return { error: passphrase.error, backupPath: null };
-  }
-  // 口令回填会改写生效配置：同步回目标对象，后续步骤不再读第二次文件。
-  target.env = passphrase.env;
-
-  // ---- run_backup "upgrade"（bash :1037）：**先于** pull ----
-  const backup = await runUpdateBackup(opts, {
-    dir: ctx.dir,
-    version: target.version,
-    envFile: target.envFile,
-    passphraseFile: passphrase.path,
-  });
-  if (!backup.ok) {
-    const error = backup.error ?? "升级前备份失败";
-    ctx.error(error);
-    return { error, backupPath: null };
-  }
-
-  // ---- compose pull（bash :1039）----
-  logSection(ctx, "拉取目标版本镜像");
-  const pulled = await composePull(opts.runner, target.composeOptions);
-  const pullText = composeOutputText(pulled);
-  if (pullText !== "") emitHuman(pullText, ctx.io);
-  if (!Array.isArray(pulled) && pulled.code !== 0) {
-    const error = "拉取生产镜像失败：" +
-      (pulled.stderr.trim() || ("docker compose 退出码 " + pulled.code));
-    ctx.error(error);
-    return { error, backupPath: backup.path };
-  }
-
-  // ---- 验签（bash :874/:1041）：**先于启动目标栈**（P1a）----
-  // `check_configuration` 在 install|start|upgrade|verify 下会跑该步骤（deploy.sh:911）。
-  const verify = await verifyImageSignatures(target.env, {
-    runner: opts.runner,
-    cosignAvailable: opts.cosignAvailable ??
-      probeCosign(opts.runner, opts.cosignBin ?? "cosign"),
-    dockerBin: opts.dockerBin,
-    cosignBin: opts.cosignBin,
-    warn: opts.warn,
-  });
-  if (!verify.ok) {
-    const error = verify.error ?? "生产镜像签名校验失败";
-    ctx.error(error);
-    return { error, backupPath: backup.path };
-  }
-
-  // ---- 自动排空（P1d）：验签后、启动目标栈前进入维护并等待在途任务清空 ----
-  const drainError = await drainBeforeUpgrade(opts, target, ctx);
-  if (drainError !== null) {
-    return { error: drainError, backupPath: backup.path };
-  }
-
-  // ---- wait_for_stack（bash :1040，与 install/start 同源）----
-  const wait = await waitForStack(
-    opts.runner,
-    target.composeOptions,
-    (text) => emitHuman(text, ctx.io),
-  );
-  if (!wait.ok) {
-    let error = wait.error ?? WAIT_FAILURE_HINT;
-    ctx.error(error);
-    // 已排空但栈没起来：尽力退出维护，避免残留维护态阻塞写请求
-    const drainExitError = await drainAfterUpgrade(opts, target, ctx);
-    if (drainExitError !== null) {
-      ctx.error(drainExitError);
-      error += "\n" + drainExitError;
-    }
-    return { error, backupPath: backup.path };
-  }
-
-  // ---- 退出维护（P1d）：目标栈健康后恢复写请求；失败显式报告半完成 ----
-  const drainExitError = await drainAfterUpgrade(opts, target, ctx);
-
-  // ---- record_deployment_metadata（bash :1041）：目标版本 + 目标验签 digest ----
-  await recordDeploymentMetadata({
-    version: target.version,
-    at: opts.now ?? new Date(),
-    verified: verify.digests,
-    backupDir: join(ctx.dir, "backups"),
-  });
-  return { error: null, backupPath: backup.path, drainExitError };
-}
-
-/** 小节标题（对照 bash `section`：`\n== <标题> ==\n`）。 */
-function logSection(ctx: LifecycleContext, title: string): void {
-  emitHuman("\n== " + title + " ==\n", ctx.io);
-}
 
 /**
  * `update`（production.sh:345-436）：两种模式共用同一套升级序列。
@@ -1642,6 +1479,23 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     from = await configuredVersion(envFile);
   } catch (err) {
     return fail("", "", (err as Error).message);
+  }
+
+  const checkpointPath = opts.upgradeStatePath ?? upgradeStatePath(ctx.dir);
+  try {
+    const previous = await readUpgradeState(checkpointPath);
+    if (
+      previous !== null && previous.phase !== "completed" &&
+      opts.recover !== true
+    ) {
+      return fail(
+        from,
+        previous.to,
+        `发现未完成的升级 checkpoint（阶段 ${previous.phase}，目标 ${previous.to}）；请确认备份后使用 --recover 重新执行升级`,
+      );
+    }
+  } catch (err) {
+    return fail(from, "", (err as Error).message);
   }
 
   // ---- 2. --latest：解析目标版本；相等即 no-op（零副作用）----
@@ -1710,6 +1564,26 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     return result;
   }
 
+  const updateCheckpoint = async (
+    phase: UpgradeState["phase"],
+    error?: string,
+  ): Promise<void> => {
+    const path = upgraded.checkpointPath ?? checkpointPath;
+    try {
+      const state = await readUpgradeState(path);
+      if (state === null || state.phase === "completed") return;
+      const next = advanceUpgradeState(
+        state,
+        phase,
+        error === undefined ? {} : { error },
+        opts.now ?? new Date(),
+      );
+      await writeUpgradeState(path, next);
+    } catch (stateError) {
+      ctx.error(`升级 checkpoint 更新失败：${(stateError as Error).message}`);
+    }
+  };
+
   // ---- 6. 仅升级成功后提交暂存配置（bash :428-432）----
   if (staged !== null) {
     try {
@@ -1719,6 +1593,7 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
       const result = fail(from, to, (err as Error).message);
       result.filesSynced = true;
       result.backupPath = upgraded.backupPath;
+      await updateCheckpoint("failed", result.error ?? "提交目标配置失败");
       return result;
     }
   }
@@ -1728,8 +1603,11 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     const result = fail(from, to, upgraded.drainExitError);
     result.filesSynced = true;
     result.backupPath = upgraded.backupPath;
+    await updateCheckpoint("failed", upgraded.drainExitError);
     return result;
   }
+
+  await updateCheckpoint("completed");
 
   ctx.status("success", latest ? updateSuccessHint(to) : "生产服务已升级");
   return finish({

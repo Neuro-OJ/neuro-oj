@@ -525,8 +525,10 @@ impl OiEvaluation {
             time_ms,
             memory_kb,
             rejudge_seq,
+            task_kind: None,
             // 版本化封套由 main.rs 在状态最终确定后统一补齐（apply_protocol）。
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,

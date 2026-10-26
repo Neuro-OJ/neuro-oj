@@ -13,11 +13,11 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
-} from "../../src/domains/system/index.ts";
+} from "../../src/modules/platform/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../src/domains/system/services/env-snapshot.ts";
+} from "../../src/modules/platform/system/services/env-snapshot.ts";
 
 const INTERNAL_TOKEN = "test-maintenance-internal-token-0123456789";
 

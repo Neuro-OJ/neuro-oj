@@ -1,0 +1,1335 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
+import { eq, inArray } from "drizzle-orm";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
+import {
+  contestParticipants,
+  contestProblems,
+  contestRankingSnapshots,
+  contests,
+  evaluationAttempts,
+  objectiveSubmissions,
+  problems,
+  problemVersions,
+  submissions,
+  users,
+} from "../../../../shared/db/schema.ts";
+import {
+  getContestRankingView,
+  getContestSettlementStatus,
+  getLatestContestRankingSnapshot,
+  publishContestRankingSnapshot,
+} from "../../index.ts";
+import { getContestRanking } from "../../services/contest-ranking.ts";
+import {
+  ConflictError,
+  ForbiddenError,
+  UnauthorizedError,
+} from "../../../../shared/base/errors.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
+
+await resetDbForTest({ refreshRankings: true });
+
+const baseTime = Date.now() - 3_600_000;
+const atMinutes = (minutes: number) =>
+  new Date(baseTime + minutes * 60_000).toISOString();
+
+async function insertSubmission(
+  contestId: string,
+  userId: string,
+  problemId: string,
+  minute: number,
+  score: number,
+): Promise<void> {
+  const id = crypto.randomUUID();
+  const createdAt = atMinutes(minute);
+  await getDb().insert(submissions).values({
+    id,
+    user_id: userId,
+    problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
+    contest_id: contestId,
+    language: "python3",
+    code: "print(1)",
+    file_name: "submission.py",
+    status: "finished",
+    created_at: createdAt,
+  });
+  // 竞赛计分读「竞赛口径有效成绩」：提交 + 尝试 + 有效指针（Handbook §3.4）
+  const attemptId = crypto.randomUUID();
+  await getDb().insert(evaluationAttempts).values({
+    id: attemptId,
+    submission_id: id,
+    problem_id: problemId,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
+    score,
+    accepted: score > 0,
+    created_at: createdAt,
+    finished_at: createdAt,
+  });
+  await getDb().update(submissions).set({
+    is_contest_valid: true,
+    is_valid: true,
+    latest_attempt_id: attemptId,
+    effective_attempt_id: attemptId,
+    contest_effective_attempt_id: attemptId,
+  }).where(eq(submissions.id, id));
+}
+
+async function insertUser(id: string, prefix: string): Promise<void> {
+  const now = new Date().toISOString();
+  await getDb().insert(users).values({
+    id,
+    username: `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 6)}`,
+    email: `${prefix}-${Date.now()}-${
+      crypto.randomUUID().slice(0, 6)
+    }@example.com`,
+    password_hash: "hash",
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+async function insertProblem(
+  id: string,
+  number: number,
+  title: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    id,
+    title,
+    description: title,
+    difficulty: "easy",
+    runtime_config: {},
+    number,
+    owner_id: "0",
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+Deno.test({
+  name: "contest settlement: 未结束禁止发布，结束后允许无待处理任务发布",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-gate");
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "结算门禁测试",
+      start_time: atMinutes(-120),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await assertRejects(
+        () => publishContestRankingSnapshot(contestId, userId),
+        ConflictError,
+        "竞赛尚未结束",
+      );
+      await db.update(contests).set({
+        end_time: atMinutes(-1),
+      }).where(eq(contests.id, contestId));
+      const readiness = await getContestSettlementStatus(contestId);
+      assertEquals(readiness.ready, true);
+      const result = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "正常结算",
+      );
+      assertEquals(result.version, 1);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest settlement: 失败评测需说明并显式允许后才能发布",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-failed");
+    await insertProblem(problemId, 920099, "结算失败题");
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "失败评测结算测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "error",
+      created_at: atMinutes(-50),
+    });
+    try {
+      const readiness = await getContestSettlementStatus(contestId);
+      assertEquals(readiness.pending_count, 0);
+      assertEquals(readiness.failed_count, 1);
+      assertEquals(readiness.items[0].submission_id, submissionId);
+      await assertRejects(
+        () => publishContestRankingSnapshot(contestId, userId, ""),
+        ConflictError,
+        "失败评测",
+      );
+      const result = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "已确认失败任务不影响其余成绩",
+        { allowFailed: true },
+      );
+      assertEquals(result.version, 1);
+    } finally {
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking snapshot: 重复发布按序生成唯一版本",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "snapshot-concurrent");
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "并发快照测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(60),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+
+    try {
+      const results = [
+        await publishContestRankingSnapshot(contestId, userId, "重复发布 A"),
+        await publishContestRankingSnapshot(contestId, userId, "重复发布 B"),
+      ];
+      assertEquals(results.map((result) => result.version).sort(), [1, 2]);
+      const latest = await getLatestContestRankingSnapshot(contestId);
+      assertExists(latest);
+      assertEquals(latest.version, 2);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: Kaggle 每题取最高分、总分求和、严格刷新时间排序",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const problemB = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-a");
+    await insertUser(userB, "kaggle-b");
+    await insertProblem(problemA, 920101, "Kaggle 排名题 A");
+    await insertProblem(problemB, 920102, "Kaggle 排名题 B");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 排名测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(60),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems([
+      {
+        contest_id: contestId,
+        problem_id: problemA,
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      },
+      {
+        contest_id: contestId,
+        problem_id: problemB,
+        label: "B",
+        sort_order: 1,
+        score: 10000,
+      },
+    ]);
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(0) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(0) },
+    ]);
+
+    try {
+      await insertSubmission(contestId, userA, problemA, 5, 5000);
+      await insertSubmission(contestId, userA, problemA, 15, 8000);
+      await insertSubmission(contestId, userA, problemA, 50, 6000);
+      await insertSubmission(contestId, userA, problemB, 20, 10000);
+      await insertSubmission(contestId, userB, problemA, 10, 10000);
+      await insertSubmission(contestId, userB, problemB, 30, 9000);
+
+      // 竞赛已结束且未结算：匿名非管理员按门禁拒绝，计分口径用管理员视角验证
+      const ranking = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(ranking.length, 2);
+      assertEquals(ranking[0].user_id, userB);
+      assertEquals(ranking[0].total_score, 19000);
+      assertEquals(ranking[1].user_id, userA);
+      assertEquals(ranking[1].total_score, 18000);
+
+      const rowA = ranking.find((row) => row.user_id === userA);
+      assertExists(rowA);
+      assertEquals(rowA.problem_scores[0].label, "A");
+      assertEquals(rowA.problem_scores[0].best_score, 8000);
+      assertEquals(rowA.problem_scores[0].attempts, 3);
+      assertEquals(rowA.problem_scores[1].label, "B");
+      assertEquals(rowA.problem_scores[1].best_score, 10000);
+      assertEquals(rowA.problem_scores[1].attempts, 1);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(
+        inArray(problems.id, [problemA, problemB]),
+      );
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 同分时按最后严格刷新时间早者优先",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userEarly = crypto.randomUUID();
+    const userLate = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const problemB = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userEarly, "kaggle-early");
+    await insertUser(userLate, "kaggle-late");
+    await insertProblem(problemA, 920103, "平局排序题 A");
+    await insertProblem(problemB, 920104, "平局排序题 B");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 平局排序测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(60),
+      type: "kaggle",
+      config: {},
+      created_by: userEarly,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems([
+      {
+        contest_id: contestId,
+        problem_id: problemA,
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      },
+      {
+        contest_id: contestId,
+        problem_id: problemB,
+        label: "B",
+        sort_order: 1,
+        score: 10000,
+      },
+    ]);
+    await db.insert(contestParticipants).values([
+      {
+        contest_id: contestId,
+        user_id: userEarly,
+        registered_at: atMinutes(0),
+      },
+      {
+        contest_id: contestId,
+        user_id: userLate,
+        registered_at: atMinutes(1),
+      },
+    ]);
+
+    try {
+      // 两人总分都是 15000；early 最后一次严格刷新在 20 分钟，late 在 30 分钟
+      await insertSubmission(contestId, userEarly, problemA, 10, 10000);
+      await insertSubmission(contestId, userEarly, problemB, 20, 5000);
+      await insertSubmission(contestId, userLate, problemA, 5, 5000);
+      await insertSubmission(contestId, userLate, problemB, 30, 10000);
+
+      const ranking = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(ranking.map((row) => row.user_id), [userEarly, userLate]);
+      assertEquals(ranking.map((row) => row.total_score), [15000, 15000]);
+      assertEquals(ranking.map((row) => row.rank), [1, 2]);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(
+        inArray(problems.id, [problemA, problemB]),
+      );
+      await db.delete(users).where(inArray(users.id, [userEarly, userLate]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 客观题提交计入排名",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userFull = crypto.randomUUID();
+    const userPartial = crypto.randomUUID();
+    const paperId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userFull, "obj-full");
+    await insertUser(userPartial, "obj-partial");
+    await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: paperId,
+      title: "客观题排名卷",
+      description: "客观题",
+      difficulty: "easy",
+      runtime_config: null,
+      number: 920105,
+      owner_id: "0",
+      is_objective: true,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 客观题排名测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(60),
+      type: "kaggle",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: paperId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userFull, registered_at: atMinutes(0) },
+      {
+        contest_id: contestId,
+        user_id: userPartial,
+        registered_at: atMinutes(0),
+      },
+    ]);
+    // 竞赛计分读「竞赛口径有效成绩」（有效尝试指针 + is_contest_valid）：
+    // 只插 objective_submissions 行不足以进入榜单（缺陷 #45 的回归点）。
+    const fullSubmissionId = crypto.randomUUID();
+    const partialSubmissionId = crypto.randomUUID();
+    await db.insert(objectiveSubmissions).values([
+      {
+        id: fullSubmissionId,
+        paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
+        user_id: userFull,
+        contest_id: contestId,
+        submission_type: "contest",
+        answers: {},
+        status: "finished",
+        score: 10000,
+        details: {},
+        created_at: atMinutes(10),
+      },
+      {
+        id: partialSubmissionId,
+        paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
+        user_id: userPartial,
+        contest_id: contestId,
+        submission_type: "contest",
+        answers: {},
+        status: "finished",
+        score: 6000,
+        details: {},
+        created_at: atMinutes(10),
+      },
+    ]);
+    for (
+      const { submissionId, score } of [
+        { submissionId: fullSubmissionId, score: 10000 },
+        { submissionId: partialSubmissionId, score: 6000 },
+      ]
+    ) {
+      const attemptId = crypto.randomUUID();
+      await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        objective_submission_id: submissionId,
+        problem_id: paperId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
+        score,
+        accepted: score === 10000,
+        created_at: atMinutes(10),
+        finished_at: atMinutes(10),
+      });
+      await db.update(objectiveSubmissions).set({
+        is_contest_valid: true,
+        is_valid: true,
+        latest_attempt_id: attemptId,
+        effective_attempt_id: attemptId,
+        contest_effective_attempt_id: attemptId,
+      }).where(eq(objectiveSubmissions.id, submissionId));
+    }
+
+    try {
+      const ranking = await getContestRanking(contestId, "kaggle", true);
+      const full = ranking.find((r) => r.user_id === userFull);
+      const partial = ranking.find((r) => r.user_id === userPartial);
+      assertExists(full);
+      assertExists(partial);
+      assertEquals(full.total_score, 10000);
+      assertEquals(partial.total_score, 6000);
+      assertEquals(ranking[0].user_id, userFull);
+    } finally {
+      await db.delete(objectiveSubmissions).where(
+        eq(objectiveSubmissions.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, paperId));
+      await db.delete(users).where(
+        inArray(users.id, [userFull, userPartial]),
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 进行中非管理员仅返回自己的排名",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-access-a");
+    await insertUser(userB, "kaggle-access-b");
+    await insertProblem(problemA, 920106, "访问控制题");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 访问控制测试",
+      start_time: atMinutes(-60),
+      end_time: atMinutes(120),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(0) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(0) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, 5, 8000);
+    await insertSubmission(contestId, userB, problemA, 10, 7000);
+
+    try {
+      await assertRejects(
+        () => getContestRanking(contestId, "kaggle"),
+        UnauthorizedError,
+        "竞赛进行期间需登录查看排名",
+      );
+      await assertRejects(
+        () =>
+          getContestRanking(contestId, "kaggle", false, crypto.randomUUID()),
+        ForbiddenError,
+        "仅参赛者可查看进行中的排名",
+      );
+
+      const own = await getContestRanking(contestId, "kaggle", false, userA);
+      assertEquals(own.length, 1);
+      assertEquals(own[0].user_id, userA);
+
+      const admin = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(admin.length, 2);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 已结束未结算时非管理员仅返回本人排名（#656）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "ended-unsettled-a");
+    await insertUser(userB, "ended-unsettled-b");
+    await insertProblem(problemA, 920107, "已结束未结算题");
+
+    // 已结束（end_time 在过去）且未发布快照；配置封榜窗口，
+    // 两条提交都发生在封榜起点之前，因此 frozen 视图有完整数据。
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "已结束未结算隐私守卫测试",
+      start_time: atMinutes(-180),
+      end_time: atMinutes(-10),
+      freeze_duration_seconds: 300,
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(-170) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(-170) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, -60, 8000);
+    await insertSubmission(contestId, userB, problemA, -50, 7000);
+
+    try {
+      // 前置状态确认：已结束、无快照、走 frozen 视图且待结算
+      assertEquals(await getLatestContestRankingSnapshot(contestId), null);
+      const view = await getContestRankingView(
+        contestId,
+        "kaggle",
+        false,
+        userA,
+      );
+      assertEquals(view.view, "frozen");
+      assertEquals(view.settlement_pending, true);
+
+      // 回归点：旧实现在此分支直接 return 全量榜，绕过隐私守卫
+      const own = await getContestRanking(contestId, "kaggle", false, userA);
+      assertEquals(own.length, 1);
+      assertEquals(own[0].user_id, userA);
+      assertEquals(own[0].total_score, 8000);
+
+      // 匿名同样不得拿到他人成绩
+      const anonymous = await getContestRanking(contestId, "kaggle", false);
+      assertEquals(anonymous.length, 0);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 已结束未结算时管理员仍可读取全量榜单（#656 对照）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "ended-unsettled-admin-a");
+    await insertUser(userB, "ended-unsettled-admin-b");
+    await insertProblem(problemA, 920108, "已结束未结算管理员题");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "已结束未结算管理员对照测试",
+      start_time: atMinutes(-180),
+      end_time: atMinutes(-10),
+      freeze_duration_seconds: 300,
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(-170) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(-170) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, -60, 8000);
+    await insertSubmission(contestId, userB, problemA, -50, 7000);
+
+    try {
+      assertEquals(await getLatestContestRankingSnapshot(contestId), null);
+
+      // 对照：隐私修复不能把管理员一并收紧
+      const admin = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(admin.length, 2);
+      assertEquals(
+        admin.map((row) => row.user_id).sort(),
+        [userA, userB].sort(),
+      );
+      assertEquals(
+        admin.find((row) => row.user_id === userA)?.total_score,
+        8000,
+      );
+      assertEquals(
+        admin.find((row) => row.user_id === userB)?.total_score,
+        7000,
+      );
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking view: 进行中非管理员仅返回自己的排名且剥离内部字段",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-view-a");
+    await insertUser(userB, "kaggle-view-b");
+    await insertProblem(problemA, 920107, "视图访问控制题");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 视图访问控制测试",
+      start_time: atMinutes(-60),
+      end_time: atMinutes(120),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(0) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(0) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, 5, 8000);
+    await insertSubmission(contestId, userB, problemA, 10, 7000);
+
+    try {
+      const own = await getContestRankingView(
+        contestId,
+        "kaggle",
+        false,
+        userA,
+      );
+      assertEquals(own.view, "live");
+      assertEquals(own.rows.length, 1);
+      assertEquals(own.rows[0].user_id, userA);
+      const score = own.rows[0].problem_scores[0];
+      assertEquals(score.label, "A");
+      assertEquals(score.best_score, 8000);
+      assertEquals(score.submission_id, undefined);
+      assertEquals(score.rejudge_seq, undefined);
+      assertEquals(score.evaluation_status, undefined);
+      assertEquals(score.evaluation_created_at, undefined);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking view: 管理员实时榜保留内部字段用于结算核对",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-view-admin");
+    await insertProblem(problemA, 920108, "视图管理员题");
+
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "Kaggle 视图管理员测试",
+      start_time: atMinutes(-60),
+      end_time: atMinutes(120),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userA,
+      registered_at: atMinutes(0),
+    });
+    await insertSubmission(contestId, userA, problemA, 5, 8000);
+
+    try {
+      const admin = await getContestRankingView(contestId, "kaggle", true);
+      assertEquals(admin.view, "live");
+      assertEquals(admin.rows.length, 1);
+      const score = admin.rows[0].problem_scores[0];
+      assertEquals(score.label, "A");
+      assertEquals(score.best_score, 8000);
+      assertExists(score.submission_id);
+      assertExists(score.evaluation_status);
+    } finally {
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest settlement: 就绪状态读尝试，区分平台失败与正常未通过",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-attempts");
+    await insertProblem(problemId, 920098, "结算尝试题");
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "就绪状态尝试口径测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    // 两条提交：一条平台失败（platform_error），一条正常 WA（零分、正式判定）
+    const failedId = crypto.randomUUID();
+    const gradedId = crypto.randomUUID();
+    await db.insert(submissions).values([
+      {
+        id: failedId,
+        user_id: userId,
+        problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
+        contest_id: contestId,
+        language: "python3",
+        code: "print(1)",
+        status: "error",
+        version_origin: "legacy_unknown",
+        created_at: atMinutes(-50),
+      },
+      {
+        id: gradedId,
+        user_id: userId,
+        problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
+        contest_id: contestId,
+        language: "python3",
+        code: "print(2)",
+        status: "finished",
+        version_origin: "legacy_unknown",
+        created_at: atMinutes(-40),
+      },
+    ]);
+    await db.insert(evaluationAttempts).values([
+      {
+        id: "settle-att-empty",
+        submission_id: failedId,
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "error",
+        result_kind: "platform_error",
+        result_status: "error",
+        score: 0,
+        created_at: atMinutes(-49),
+      },
+      {
+        id: "settle-att-wa",
+        submission_id: gradedId,
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
+        score: 0,
+        accepted: false,
+        created_at: atMinutes(-39),
+      },
+    ]);
+    await db.update(submissions).set({
+      latest_attempt_id: "settle-att-empty",
+      effective_attempt_id: "settle-att-empty",
+    }).where(eq(submissions.id, failedId));
+    await db.update(submissions).set({
+      latest_attempt_id: "settle-att-wa",
+      effective_attempt_id: "settle-att-wa",
+      is_valid: true,
+    }).where(eq(submissions.id, gradedId));
+
+    try {
+      const readiness = await getContestSettlementStatus(contestId);
+      // 平台失败计入 failed；正常零分是正式判定，两者都不算待处理
+      assertEquals(readiness.failed_count, 1);
+      assertEquals(readiness.pending_count, 0);
+      assertEquals(
+        readiness.items.map((item) => item.submission_id).sort(),
+        [failedId],
+      );
+    } finally {
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.contest_id, contestId));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking snapshot: 正式快照记录每题版本策略与有效尝试归因",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const attemptId = crypto.randomUUID();
+    const versionId = `${problemId}-v2`;
+    const now = new Date().toISOString();
+
+    await insertUser(userId, "snapshot-attribution");
+    await insertProblem(problemId, 920097, "快照归因题");
+    await db.insert(problemVersions).values({
+      id: versionId,
+      problem_id: problemId,
+      version: 2,
+      origin: "published",
+      content: { kind: "ai", title: "快照归因题" },
+      published_at: now,
+    });
+    await db.update(problems).set({ latest_version_id: versionId }).where(
+      eq(problems.id, problemId),
+    );
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "快照归因测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    // 竞赛固定 V2 且策略收紧为 exact(V2)：快照必须记录这一事实
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+      pinned_version_id: versionId,
+      effective_version_mode: "exact",
+      required_version_id: versionId,
+      effective_policy_revision: 3,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "finished",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      is_contest_valid: true,
+      created_at: atMinutes(-50),
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "finished",
+      result_kind: "graded",
+      result_status: "finished",
+      score: 10000,
+      accepted: true,
+      created_at: atMinutes(-49),
+    });
+    // 循环外键：提交 → 尝试 → 回填有效尝试指针
+    await db.update(submissions).set({
+      contest_effective_attempt_id: attemptId,
+      effective_attempt_id: attemptId,
+      latest_attempt_id: attemptId,
+    }).where(eq(submissions.id, submissionId));
+
+    try {
+      const published = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "正式成绩发布",
+      );
+      assertEquals(published.version, 1);
+      const latest = await getLatestContestRankingSnapshot(contestId);
+      assertExists(latest);
+      const rows = latest.rows as Array<{
+        user_id: string;
+        problem_scores: Array<Record<string, unknown>>;
+      }>;
+      const score = rows.find((row) => row.user_id === userId)
+        ?.problem_scores.find((item) => item.label === "A");
+      assertExists(score);
+      assertEquals(score!.best_score, 10000);
+      assertEquals(score!.effective_attempt_id, attemptId);
+      assertEquals(score!.submitted_version_id, versionId);
+      assertEquals(score!.pinned_version_id, versionId);
+      assertEquals(score!.version_policy, {
+        mode: "exact",
+        version_id: versionId,
+      });
+      assertEquals(score!.policy_revision, 3);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contestProblems).where(
+        eq(contestProblems.contest_id, contestId),
+      );
+      await db.delete(contestParticipants).where(
+        eq(contestParticipants.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.update(problems).set({ latest_version_id: null }).where(
+        eq(problems.id, problemId),
+      );
+      await db.delete(problemVersions).where(
+        eq(problemVersions.problem_id, problemId),
+      );
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 计分只认竞赛有效成绩投影，旧结果表不参与",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const attemptId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userId, "kaggle-projection");
+    await insertProblem(problemId, 920096, "投影计分题");
+    await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      id: contestId,
+      title: "投影计分测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "finished",
+      version_origin: "legacy_unknown",
+      created_at: atMinutes(-50),
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      sequence: 0,
+      source: "initial",
+      state: "finished",
+      result_kind: "graded",
+      result_status: "finished",
+      score: 9000,
+      accepted: true,
+      created_at: atMinutes(-49),
+    });
+    // 投影未标记竞赛有效 → 即使尝试已有 9000 分也不得计入竞赛成绩
+
+    try {
+      // 已结束且未结算：非管理员视角只返回本人/匿名被门禁拦截，这里验证计分
+      // 投影口径，因此显式以管理员视角读取全量榜。
+      const ignored = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(ignored.length, 1);
+      assertEquals(ignored[0].total_score, 0);
+      assertEquals(ignored[0].problem_scores[0].best_score, 0);
+      assertEquals(ignored[0].problem_scores[0].attempts, 0);
+      assertEquals(ignored[0].problem_scores[0].submission_id ?? null, null);
+
+      // 投影标记为竞赛有效并指向该尝试 → 计分立即生效
+      await db.update(submissions).set({
+        is_contest_valid: true,
+        is_valid: true,
+        latest_attempt_id: attemptId,
+        effective_attempt_id: attemptId,
+        contest_effective_attempt_id: attemptId,
+      }).where(eq(submissions.id, submissionId));
+      const counted = await getContestRanking(contestId, "kaggle", true);
+      assertEquals(counted[0].total_score, 9000);
+      assertEquals(counted[0].problem_scores[0].best_score, 9000);
+      assertEquals(counted[0].problem_scores[0].attempts, 1);
+
+      // 归因（有效尝试）随正式快照记录：实时榜只回最小字段集
+      await publishContestRankingSnapshot(contestId, userId, "投影计分发版");
+      const snapshot = await getLatestContestRankingSnapshot(contestId);
+      assertExists(snapshot);
+      const snapshotRows = snapshot.rows as Array<{
+        user_id: string;
+        problem_scores: Array<Record<string, unknown>>;
+      }>;
+      const snapshotScore = snapshotRows.find((row) => row.user_id === userId)
+        ?.problem_scores.find((item) => item.label === "A");
+      assertExists(snapshotScore);
+      assertEquals(snapshotScore!.effective_attempt_id, attemptId);
+      assertEquals(snapshotScore!.evaluation_status, "finished");
+    } finally {
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contestProblems).where(
+        eq(contestProblems.contest_id, contestId),
+      );
+      await db.delete(contestParticipants).where(
+        eq(contestParticipants.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});

@@ -27,12 +27,12 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-import { createContest } from "../../../contest/index.ts";
+import { createContest } from "../../../../modules/contests/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../workspace/index.ts";
-import { bindDefaultCatalogFixture } from "../../../catalog/tests/default-fixture.ts";
+} from "../../../../modules/access/workspace/index.ts";
+import { bindDefaultCatalogFixture } from "../../../../modules/problems/tests/default-fixture.ts";
 
 const now = new Date().toISOString();
 const ts = Date.now();

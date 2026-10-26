@@ -10,7 +10,12 @@
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
-import { capDomainQuota, type DomainQuotaCaps } from "./quota-policy.ts";
+import {
+  capDomainQuota,
+  type DomainQuotaCaps,
+  loadCurrentQuotaCaps,
+} from "./quota-policy.ts";
+import { readPolicyForReservation } from "./policy-operations.ts";
 import {
   type AccountingCounter,
   ensureAccountingReady,
@@ -336,9 +341,8 @@ function checkLimitResult(result: string, counters: CounterSpec[]): void {
     const counter = counters[detail.counter - 1];
     if (counter && detail.code === "limit_exceeded") {
       const parts = counter.key.split(":");
-      const scope = parts[1] === "domain" ? parts[3] : parts[1];
       throw new QuotaLimitError({
-        scope: ["attempt", "sub"].includes(scope) ? "evaluation" : scope,
+        scope: ["attempt", "sub"].includes(parts[3]) ? "evaluation" : parts[3],
         window: parts.includes("day")
           ? "day"
           : parts.includes("month")
@@ -496,7 +500,6 @@ export async function enforceAndCount(
     userRateLimitPerMinute: number;
     ipRateLimitPerMinute: number;
     callId?: string;
-    domainQuotaCaps?: DomainQuotaCaps;
   },
 ): Promise<void> {
   const now = Date.now();
@@ -555,21 +558,24 @@ export async function enforceAndCount(
     "month",
   );
 
-  const domainDay = capDomainQuota(
-    await getQuota(db, payload.domain_id, "domain", "", "day"),
-    opts.domainQuotaCaps?.day,
+  // 域上限的读取必须与预占在同一受控边界内（见下方 withReservationLock）：
+  // 这里只取域自身配置，实例政策上限在锁内叠加，避免"排队前后读到两份政策"。
+  const domainDayLocal = await getQuota(
+    db,
+    payload.domain_id,
+    "domain",
+    "",
+    "day",
   );
-  const domainMonth = capDomainQuota(
-    await getQuota(
-      db,
-      payload.domain_id,
-      "domain",
-      "",
-      "month",
-    ),
-    opts.domainQuotaCaps?.month,
+  const domainMonthLocal = await getQuota(
+    db,
+    payload.domain_id,
+    "domain",
+    "",
+    "month",
   );
-  const counters: CounterSpec[] = [
+  /** 构建计数集合；域上限由调用方在受控边界内提供。 */
+  const buildCounters = (domainCaps: DomainQuotaCaps): CounterSpec[] => [
     {
       key: evalTokenCounterKey(payload, "calls"),
       limit: payload.max_calls,
@@ -593,7 +599,7 @@ export async function enforceAndCount(
       "domain",
       "",
       "day",
-      domainDay,
+      capDomainQuota(domainDayLocal, domainCaps.day),
       tokens,
       cost,
       now,
@@ -604,7 +610,7 @@ export async function enforceAndCount(
       "domain",
       "",
       "month",
-      domainMonth,
+      capDomainQuota(domainMonthLocal, domainCaps.month),
       tokens,
       cost,
       now,
@@ -701,7 +707,8 @@ export async function enforceAndCount(
     ),
   ];
 
-  const reserve = () =>
+  /** 执行原子预占（Redis Lua 检查 + 自增）。 */
+  const reserve = (counters: CounterSpec[]) =>
     runLimitScript(
       redis,
       [
@@ -719,22 +726,36 @@ export async function enforceAndCount(
         ? reservationMarker(payload.domain_id, opts.callId)
         : undefined,
     );
+
   let result: string;
+  let reservedCounters: CounterSpec[];
   if (opts.callId) {
     await ensureAccountingReady(db, redis);
+    // 预占提交边界：政策行共享锁 → 构建计数（叠加最新实例上限）→ 保存计划 →
+    // Redis 原子预占 → 记录受理结果，全部在同一连接内完成。
+    // 政策写入使用同一行的排他锁，因此「降额提交之后开始的新预占」必然读到新政策；
+    // 已完成预占的调用按 ledger 中冻结的计数结算。
     result = await withReservationLock(db, async (tx) => {
+      const domainCaps = await readPolicyForReservation(tx);
+      const counters = buildCounters(domainCaps);
+      reservedCounters = counters;
       await saveReservation(
         tx,
         opts.callId!,
         payload,
         freezeCounters(counters, now),
       );
-      const value = await reserve();
+      const value = await reserve(counters);
       await recordReservationResult(tx, opts.callId!, value === "ok");
       return value;
     });
-  } else result = await reserve();
-  checkLimitResult(result, counters);
+  } else {
+    // 无账本的调用（如连通性测试）也必须读同一份本地政策，但不写入 ledger。
+    const domainCaps = await loadCurrentQuotaCaps(db);
+    reservedCounters = buildCounters(domainCaps);
+    result = await reserve(reservedCounters);
+  }
+  checkLimitResult(result, reservedCounters!);
 }
 
 /**

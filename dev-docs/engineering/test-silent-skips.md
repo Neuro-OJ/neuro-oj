@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **360** 处（early-return=248 rust-ignore=46 ignore=33 rust-env-guard=27 env-guard=6）。
+> 当前命中 **359** 处（early-return=248 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -13,16 +13,15 @@
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 224 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 319 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 354 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 905 | ignore |
-| noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
-| noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
-| noj-core/src/domains/identity/tests/routes/tfa.test.ts | 21 | env-guard |
-| noj-core/src/domains/search/tests/perf/search_bench.test.ts | 16 | ignore |
-| noj-core/src/domains/system/tests/services/system-settings-invalidation.test.ts | 131 | env-guard |
+| noj-core/src/modules/access/identity/tests/routes/tfa.test.ts | 21 | env-guard |
+| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
+| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
+| noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts | 131 | env-guard |
+| noj-core/src/modules/read-models/search/tests/perf/search_bench.test.ts | 16 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
-| noj-core/tests/perf/community_search_bench.test.ts | 29 | ignore |
-| noj-core/tests/perf/search_bench.test.ts | 39 | ignore |
-| noj-core/tests/perf/search_bench.test.ts | 188 | ignore |
+| noj-core/tests/perf/community_search_bench.test.ts | 32 | ignore |
+| noj-core/tests/perf/search_bench.test.ts | 42 | ignore |
+| noj-core/tests/perf/search_bench.test.ts | 191 | ignore |
 | noj-core/tests/shared/storage/s3.test.ts | 28 | ignore |
 | noj-core/tests/shared/storage/s3.test.ts | 60 | ignore |
 | noj-core/tests/shared/storage/s3.test.ts | 93 | ignore |
@@ -46,36 +45,36 @@
 | noj-judge/tests/e2e_docker_basic.rs | 8 | rust-ignore |
 | noj-judge/tests/e2e_docker_basic.rs | 43 | rust-ignore |
 | noj-judge/tests/e2e_docker_basic.rs | 72 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 166 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 170 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 209 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 213 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 234 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 238 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 272 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 276 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 327 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 331 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 388 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 392 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 474 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 478 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 640 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 644 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 701 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 705 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 776 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 780 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 865 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 869 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 952 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 956 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 1018 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 1022 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 1085 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 1089 | rust-env-guard |
-| noj-judge/tests/e2e_dual_container.rs | 1169 | rust-ignore |
-| noj-judge/tests/e2e_dual_container.rs | 1173 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 168 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 172 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 211 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 215 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 236 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 240 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 274 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 278 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 329 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 333 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 390 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 394 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 476 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 480 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 642 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 646 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 703 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 707 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 778 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 782 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 867 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 871 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 954 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 958 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 1020 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 1024 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 1087 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 1091 | rust-env-guard |
+| noj-judge/tests/e2e_dual_container.rs | 1171 | rust-ignore |
+| noj-judge/tests/e2e_dual_container.rs | 1175 | rust-env-guard |
 | noj-judge/tests/e2e_network_capability.rs | 113 | rust-ignore |
 | noj-judge/tests/e2e_network_capability.rs | 117 | rust-env-guard |
 | noj-judge/tests/e2e_network_capability.rs | 158 | rust-ignore |

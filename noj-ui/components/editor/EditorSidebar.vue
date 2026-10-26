@@ -154,8 +154,9 @@ function formatElapsed(iso: string) {
         </span>
         </div>
 
-        <MarkdownRenderer class="prose-sm" :content="problem.description" />
-        <slot name="after-description" />
+        <div class="prose prose-sm prose-neuro max-w-none">
+          <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
+          <slot name="after-description" />
         </div>
       </div>
 
@@ -175,8 +176,6 @@ function formatElapsed(iso: string) {
             <button
               v-for="sub in recentSubmissions"
               :key="sub.id"
-              data-testid="recent-submission"
-              :data-submission-id="sub.id"
               class="w-full text-left p-3 rounded-md border-2 border-signal/40 bg-primary-bg/20 hover:border-signal hover:bg-primary-bg/40 transition-colors group relative"
               @click="emit('open-submission', sub.id)"
             >
@@ -189,7 +188,7 @@ function formatElapsed(iso: string) {
               <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="sub.status === 'pending' || sub.status === 'judging'"/>
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
-                <span class="text-sm font-mono font-semibold text-text" data-testid="recent-submission-score">
+                <span class="text-sm font-mono font-semibold text-text">
                   <template v-if="sub.result && sub.status === 'finished'">
                 {{ formatScore(sub.result.score) }} 分
               </template>
@@ -245,7 +244,7 @@ function formatElapsed(iso: string) {
                 >
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
-                <span class="text-xs font-mono text-text-secondary"><template v-if="sub.result && sub.status === 'finished'">{{ formatScore(sub.result.score) }} 分</template><template v-else>—</template></span>
+                <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.result?.score ?? 0) }} 分</span>
               </div>
               <div class="flex items-center justify-between text-xs text-text-muted">
                 <span class="font-mono">{{ sub.language }}</span>

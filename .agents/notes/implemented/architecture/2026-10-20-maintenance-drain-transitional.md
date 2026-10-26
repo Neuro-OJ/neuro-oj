@@ -19,7 +19,7 @@ P1 的目标是在协议切换前先具备排空与版本报告能力，使后�
 
 按“接口收口在 Core、协议收口在容器内 CLI、命令收口在 noj-cli”的分层实现：
 
-1. **Core 内部维护 API**（[internal-drain.ts](../../../../noj-core/src/domains/system/routes/internal-drain.ts)）：
+1. **Core 内部维护 API**（[internal-drain.ts](../../../../noj-core/src/modules/platform/system/routes/internal-drain.ts)）：
    `GET /api/v1/internal/drain/status`、`POST .../enter`、`POST .../exit`。凭据为独立的
    bootstrap 配置 `NOJ_INTERNAL_SERVICE_TOKEN`（settings registry 登记、常量时间比较）；
    未配置返回 503 `drain_unavailable`，错误返回 401；enter/exit 幂等（`changed` 标志），
@@ -28,7 +28,7 @@ P1 的目标是在协议切换前先具备排空与版本报告能力，使后�
 2. **维护中间件工厂化**（[maintenance.ts](../../../../noj-core/src/shared/http/maintenance.ts)）：
    从 `app.ts` 抽出 `createMaintenanceMode(reader)`，shared 层不依赖业务域；维护模式下放行
    `/api/v1/internal/*`（内部端点自带凭据），其余写请求仍返回 503 `MAINTENANCE`。
-3. **排空判定**（[drain-status.ts](../../../../noj-core/src/domains/system/services/drain-status.ts)）：
+3. **排空判定**（[drain-status.ts](../../../../noj-core/src/modules/platform/system/services/drain-status.ts)）：
    `computeDrainState` 纯函数 + 可注入 `readDrainStatus`。blockers 固定为 9 类：
    `maintenance_off`、`redis_unavailable`、评测/结果队列的 pending/processing、
    `attempts_in_flight`（`evaluation_attempts.state ∈ queued/judging`）、

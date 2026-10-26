@@ -139,7 +139,13 @@ fn truncate_for_log(raw: &str) -> String {
 
 fn parse_task_message(value: &str) -> Option<JudgeTask> {
     match serde_json::from_str::<JudgeTask>(value) {
-        Ok(task) => Some(task),
+        Ok(task) => match task.validate_protocol() {
+            Ok(()) => Some(task),
+            Err(gaps) => {
+                error!(gaps = ?gaps, "JudgeTask v3 封套不完整，消息进入死信队列");
+                None
+            }
+        },
         Err(e) => {
             error!(error = %e, "反序列化 JudgeTask 失败");
             None
@@ -466,7 +472,13 @@ mod tests {
                 "solution":{"image":"noj-solution-python","call_timeout_ms":2000,"memory_limit_mb":512}
             },
             "language":"python3",
-            "code":"print(1)"
+            "code":"print(1)",
+            "task_kind":"submission",
+            "run_id":"attempt-1",
+            "attempt_id":"attempt-1",
+            "problem_version_id":"version-1",
+            "evaluation_protocol_version":3,
+            "rejudge_seq":0
         }"#;
         let task = parse_task_message(json).expect("应解析成功");
         assert_eq!(task.submission_id, "sid-1");

@@ -40,6 +40,9 @@ scripts/
 ├── check-ci.ts            # CI 仓库级门禁入口
 ├── gate-list.ts           # 仓库级门禁清单（单一事实源，两入口共用）
 ├── gate-runner.ts         # 门禁执行器
+├── check-module-boundaries.ts      # P3 目标模块运行时图/SCC 诊断（迁移期默认只读）
+├── check-module-boundaries_test.ts # P3 结构诊断器的故意破坏负例
+├── module-test-metadata.ts         # module/legacy 测试根与 CI 映射的共享解析点
 ├── check-*.ts / verify-*.ts / gen-*.ts  # 各专项静态门禁
 ├── coverage-report.ts     # 覆盖率报告与阈值门禁
 ├── silent-skip-report.ts  # 静默跳过棘轮
@@ -72,6 +75,8 @@ scripts/
 | **源码运行 noj-cli**    | `cd noj-cli && deno run -A src/cli.ts --help`                                          |
 | **执行 staging 验收**   | `bash scripts/staging/acceptance.sh all --env-file .env.staging`                       |
 | **跑跨模块 E2E 测试**   | `bash scripts/e2e/run-all.sh`                                                          |
+| **查看 P3 模块依赖诊断** | `deno run -A scripts/check-module-boundaries.ts`                                       |
+| **验证 P3 诊断器负例**   | `deno run -A scripts/check-ci.ts`（其中包含正式 gate 自测）       |
 
 ## 与原 `deno task` / `cargo run` 的关系
 

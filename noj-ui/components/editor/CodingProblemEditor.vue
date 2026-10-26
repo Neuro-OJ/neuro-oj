@@ -361,8 +361,10 @@ function applyDraftContent(content: Record<string, unknown>) {
   if (Array.isArray(content.samples)) {
     samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
   }
+  if (content.submission_mode === "code" || content.submission_mode === "artifact" || content.submission_mode === "prediction" || content.submission_mode === "ui") {
+    submissionMode.value = content.submission_mode
+  }
   const passthrough = readAiDraftPassthrough(content)
-  if (passthrough.submission_mode) submissionMode.value = passthrough.submission_mode
   if (passthrough.template_content !== undefined) templateContent.value = passthrough.template_content
   if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
     artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null

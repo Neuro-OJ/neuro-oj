@@ -48,12 +48,11 @@ import {
 import { UsageError } from "../../util/args.ts";
 import {
   allocateDrillDir,
+  assertDedicatedDockerHost,
   assertDrillProjectName,
   assertSubnetCidr,
   checkDrillPreflight,
   checkPassphraseFile,
-  DEFAULT_DRILL_PROJECT_NAME,
-  DEFAULT_DRILL_SUBNET,
   DEFAULT_EVALUATOR_IMAGE,
   DEFAULT_RPO_MAX_HOURS,
   DEFAULT_RTO_MAX_MINUTES,
@@ -70,6 +69,8 @@ import {
   readEnvValues,
   renderDrillOverride,
   resolveReportPath,
+  uniqueDrillProjectName,
+  uniqueDrillSubnet,
   valueOr,
 } from "./plan.ts";
 import {
@@ -87,6 +88,7 @@ import {
   snapshotCreatedAt,
 } from "./report.ts";
 import { resolveCoreBaseUrl } from "./network.ts";
+import { START_SERVICE_ERRORS, withDockerHost } from "./runtime.ts";
 import { runBusinessVerification } from "./verify.ts";
 
 /** {@link runDrill} 的注入点：一切外部访问都可替换。 */
@@ -101,9 +103,9 @@ export interface DrillRunOptions {
   ops?: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
   /** 口令文件。 */
   passphraseFile?: string;
-  /** 演练项目名（缺省 `noj-drill`）。 */
+  /** 演练项目名（缺省每次唯一生成；测试可显式指定）。 */
   projectName?: string;
-  /** 演练子网（缺省 `172.29.0.0/16`）。 */
+  /** 演练子网（缺省每次唯一生成；测试可显式指定）。 */
   subnet?: string;
   /** 演练目录（缺省快照同级的 `drill-<ts>`）。 */
   drillDir?: string;
@@ -136,6 +138,8 @@ export interface DrillRunOptions {
   }>;
   /** docker 可执行名（`NOJ_BACKUP_DOCKER_BIN`）。 */
   dockerBin?: string;
+  /** 专用隔离 Docker daemon 的 Unix socket（生产演练必填）。 */
+  dockerHost?: string;
   /**
    * 快照是否加密（缺省 `true`，对应 `backup create` 的默认行为）。
    *
@@ -201,17 +205,17 @@ interface DrillContext {
 export async function runDrill(
   opts: DrillRunOptions,
 ): Promise<DrillRunResult> {
-  const runner = opts.runner;
   const log = opts.log ?? (() => {});
   const now = opts.now ?? (() => new Date());
   const dockerBin = opts.dockerBin ?? "docker";
-  const projectName = opts.projectName ?? DEFAULT_DRILL_PROJECT_NAME;
-  const subnet = opts.subnet ?? DEFAULT_DRILL_SUBNET;
+  const projectName = opts.projectName ?? uniqueDrillProjectName(now());
+  const subnet = opts.subnet ?? uniqueDrillSubnet();
   const rpoMaxHours = opts.rpoMaxHours ?? DEFAULT_RPO_MAX_HOURS;
   const rtoMaxMinutes = opts.rtoMaxMinutes ?? DEFAULT_RTO_MAX_MINUTES;
   const waitTimeout = opts.waitTimeout ?? DEFAULT_WAIT_TIMEOUT;
   const judge = opts.skipJudge !== true;
   const keep = opts.keep === true;
+  const dockerHost = opts.dockerHost;
 
   // ---- 参数校验：**最先**（纯参数错误不应被资源错误掩盖）----
   try {
@@ -227,9 +231,19 @@ export async function runDrill(
         "必须提供 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE",
       );
     }
+    if (dockerHost === undefined || dockerHost.trim() === "") {
+      throw new UsageError(
+        "必须提供 --docker-host 或 NOJ_DRILL_DOCKER_HOST（专用隔离 Docker daemon）",
+      );
+    }
+    assertDedicatedDockerHost(dockerHost);
   } catch (err) {
     return preflightFailure(err);
   }
+
+  // Docker CLI、Compose 以及 docker inspect 必须共享同一专用 daemon。
+  // 强制覆盖调用方遗留的 DOCKER_HOST，避免某一步意外回到宿主机 daemon。
+  const runner = withDockerHost(opts.runner, dockerHost);
 
   // ---- 解包快照（在资源检查之前：损坏的快照不该先起容器）----
   let staged: { staging: string; tempRoot: string };
@@ -589,13 +603,18 @@ async function compose(
   return res.code;
 }
 
-/** 启动并等待一个 Compose 一次性服务，保留失败阶段的业务错误。 */
-const START_SERVICE_ERRORS = {
-  migrate: "数据库迁移失败（migrate）",
-  "gateway-migrate":
-    "Gateway 数据库迁移与默认配额初始化失败（gateway-migrate）",
-  core: "隔离 core 启动失败",
-} as const;
+/** Compose 的 `up --wait` 不适用于正常退出的 one-shot service。 */
+async function startOneShotService(
+  ctx: DrillContext,
+  runner: CommandRunner,
+  dockerBin: string,
+  service: string,
+): Promise<number> {
+  if (await compose(ctx, runner, dockerBin, ["up", "-d", service]) !== 0) {
+    return 1;
+  }
+  return await compose(ctx, runner, dockerBin, ["wait", service]);
+}
 
 async function startComposeService(
   ctx: DrillContext,
@@ -604,14 +623,16 @@ async function startComposeService(
   service: string,
   waitTimeout: number,
 ): Promise<void> {
-  const code = await compose(ctx, runner, dockerBin, [
-    "up",
-    "-d",
-    "--wait",
-    "--wait-timeout",
-    String(waitTimeout),
-    service,
-  ]);
+  const code = service === "core"
+    ? await compose(ctx, runner, dockerBin, [
+      "up",
+      "-d",
+      "--wait",
+      "--wait-timeout",
+      String(waitTimeout),
+      service,
+    ])
+    : await startOneShotService(ctx, runner, dockerBin, service);
   if (code !== 0) {
     throw new Error(
       START_SERVICE_ERRORS[service as keyof typeof START_SERVICE_ERRORS] ??

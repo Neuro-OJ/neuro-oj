@@ -34,9 +34,9 @@ Domain；浏览器偏好、切换器和本地缓存键不参与授权。读写�
 | suspended   | 404                      | 拒绝                 | 平台管理员可进入治理／授权读取；普通业务写入仍受状态检查 |
 
 实现依据：[上下文契约](../../noj-core/src/shared/workspace/types.ts)、
-[域访问](../../noj-core/src/domains/workspace/services/access.ts)、
-[实例政策](../../noj-core/src/domains/workspace/services/instance.ts)、
-[账号治理](../../noj-core/src/domains/identity/index.ts)。
+[域访问](../../noj-core/src/modules/access/workspace/services/access.ts)、
+[实例政策](../../noj-core/src/modules/access/workspace/services/instance.ts)、
+[账号治理](../../noj-core/src/modules/access/identity/index.ts)。
 
 ## 2. Instance 与平台治理
 
@@ -56,9 +56,9 @@ Domain；浏览器偏好、切换器和本地缓存键不参与授权。读写�
 基础成员与班级学生，不授予其他班级或管理角色；
 邀请绑定身份、有效期及使用规则，不能用于重置已有账号。
 
-实现依据：[域治理目录](../../noj-core/src/domains/workspace/services/governance.ts)、
-[域创建及审计](../../noj-core/src/domains/workspace/services/domains.ts)、
-[班级邀请](../../noj-core/src/domains/education/services/invitations.ts)。
+实现依据：[域治理目录](../../noj-core/src/modules/access/workspace/services/governance.ts)、
+[域创建及审计](../../noj-core/src/modules/access/workspace/services/domains.ts)、
+[班级邀请](../../noj-core/src/modules/education/services/invitations.ts)。
 
 ## 3. Domain 六种内置角色
 
@@ -95,8 +95,8 @@ owner 引用与双方角色， 旧负责人保留管理员身份。平台管理�
 域管理员的源码读取仍服从比赛组织关系与结果保密裁剪。
 
 精确能力字符串与映射见
-[域内角色实现](../../noj-core/src/domains/workspace/types.ts)， 角色修改及交接见
-[成员服务](../../noj-core/src/domains/workspace/services/members.ts)。
+[域内角色实现](../../noj-core/src/modules/access/workspace/types.ts)， 角色修改及交接见
+[成员服务](../../noj-core/src/modules/access/workspace/services/members.ts)。
 
 ## 4. Classroom、助教与作业访问
 
@@ -130,12 +130,12 @@ owner 引用与双方角色， 旧负责人保留管理员身份。平台管理�
 受理事务检查来源的发布状态、学生名单、班级／域关系、题目与绑定；普通无来源练习不因此读取教学配置。
 截止和提前结束改变按时统计范围，获授权补做仍可保留来源；升级副本保留原来源，重测不改写入口。
 
-实现依据：[班级授权](../../noj-core/src/domains/education/services/access.ts)、
-[作业访问](../../noj-core/src/domains/education/services/assignment-access.ts)、
+[班级授权](../../noj-core/src/modules/education/services/access.ts)、
+[作业访问](../../noj-core/src/modules/education/services/assignment-access.ts)、
 [固定助教能力](../../noj-core/src/shared/education-types.ts)、
-[互动访问](../../noj-core/src/domains/education/services/interaction-access.ts)、
-[提交文本授权](../../noj-core/src/domains/education/services/submission-text.ts)、
-[作业入口受理](../../noj-core/src/domains/education/services/assignment-submission-origin.ts)。
+[互动访问](../../noj-core/src/modules/education/services/interaction-access.ts)、
+[提交文本授权](../../noj-core/src/modules/education/services/submission-text.ts)、
+[作业入口受理](../../noj-core/src/modules/education/services/assignment-submission-origin.ts)。
 
 ## 5. 比赛组织关系与结果字段
 
@@ -173,11 +173,11 @@ Participant
 比赛成绩在允许结果公开前不进入作业矩阵、公开统计和题单进度。
 赛后本人结果解除赛时字段限制，但资源授权仍需校验；正式榜继续使用发布快照，后续重测不自动改写。
 
-实现依据：[比赛关系](../../noj-core/src/domains/contest/services/domain-access.ts)、
-[比赛题目／窗口](../../noj-core/src/domains/contest/services/contest-access.ts)、
-[结果裁剪](../../noj-core/src/domains/submission/services/submissions/submission-projection.ts)、
-[参赛出题者限制](../../noj-core/src/domains/catalog/services/workspace/problem-contest-authoring.ts)、
-[教学成绩依据](../../noj-core/src/domains/contest/services/teaching-basis.ts)。
+实现依据：[比赛关系](../../noj-core/src/modules/contests/services/domain-access.ts)、
+[比赛题目／窗口](../../noj-core/src/modules/contests/services/contest-access.ts)、
+[结果裁剪](../../noj-core/src/modules/evaluations/services/submissions/submission-projection.ts)、
+[参赛出题者限制](../../noj-core/src/modules/problems/services/workspace/problem-contest-authoring.ts)、
+[教学成绩依据](../../noj-core/src/modules/contests/services/teaching-basis.ts)。
 
 ## 6. 撤销、离班、离域与旧治理入口
 
@@ -201,10 +201,10 @@ Participant
 统一审核快照按真实目标域或服务器保存的 `meta.domain_id`
 定位；其他域或未知归属的孤立记录不借用 main。
 
-实现依据：[当前教师关系 SQL](../../noj-core/src/domains/education/services/submission-access-sql.ts)、
-[教学历史提交](../../noj-core/src/domains/education/services/student-submissions.ts)、
-[本人历史 DTO](../../noj-core/src/domains/submission/services/own-submission-history.ts)、
-[共享实时检查](../../noj-core/src/domains/catalog/services/workspace/problem-binding-access.ts)、
+实现依据：[当前教师关系 SQL](../../noj-core/src/modules/education/services/submission-access-sql.ts)、
+[教学历史提交](../../noj-core/src/modules/education/services/student-submissions.ts)、
+[本人历史 DTO](../../noj-core/src/modules/evaluations/services/own-submission-history.ts)、
+[共享实时检查](../../noj-core/src/modules/problems/services/workspace/problem-binding-access.ts)、
 [旧治理路由](../../noj-core/src/domains/admin/routes/community.ts)。
 
 ## 7. Provider、限额与平台敏感评测字段
@@ -232,13 +232,13 @@ Gateway 与 core 使用独立数据库，不存在跨数据库 Provider 外键�
 使用空字符串， 它不是一个产品 Domain，也不是 SQL NULL。API quota 未限制使用
 null，Gateway 内部历史数值用 -1 表示未限制。
 
-实现依据：[域 LLM 管理](../../noj-core/src/domains/gateway/services/domain-management.ts)、
-[可信 LLM token](../../noj-core/src/domains/gateway/services/llm-token.ts)、
+实现依据：[域 LLM 管理](../../noj-core/src/modules/platform/gateway/services/domain-management.ts)、
+[可信 LLM token](../../noj-core/src/modules/platform/gateway/services/llm-token.ts)、
 [Gateway 原子更新](../../noj-llm-gateway/src/routes/internal.ts)、
-[基础配额](../../noj-core/src/domains/workspace/services/limits.ts)、
-[域模型别名](../../noj-core/src/domains/gateway/services/llm-model-aliases.ts)、
-[敏感评测字段](../../noj-core/src/domains/catalog/services/problems/problem-field-guard.ts)、
-[草稿／发布安全](../../noj-core/src/domains/catalog/services/versioning/content-security.ts)。
+[基础配额](../../noj-core/src/modules/access/workspace/services/limits.ts)、
+[域模型别名](../../noj-core/src/modules/platform/gateway/services/llm-model-aliases.ts)、
+[敏感评测字段](../../noj-core/src/modules/problems/services/problems/problem-field-guard.ts)、
+[草稿／发布安全](../../noj-core/src/modules/problems/services/versioning/content-security.ts)。
 
 ## 8. 数据库约束与服务不变量
 
@@ -354,8 +354,8 @@ request 目标，不能用空域表示可操作所有域。
 通知和 SSE
 只推受控定位，客户端重新读授权接口，成员撤销后不能凭旧连接继续取私有正文。
 
-实现依据：[workspace 门面](../../noj-core/src/domains/workspace/index.ts)、
-[education 门面](../../noj-core/src/domains/education/index.ts)、
-[审计目标](../../noj-core/src/domains/workspace/services/domains.ts)、
+实现依据：[workspace 门面](../../noj-core/src/modules/access/workspace/index.ts)、
+[education 门面](../../noj-core/src/modules/education/index.ts)、
+[审计目标](../../noj-core/src/modules/access/workspace/services/domains.ts)、
 [错误体系](../../noj-core/src/shared/base/errors.ts)、
 [模块边界规范](domain-boundaries.md)。

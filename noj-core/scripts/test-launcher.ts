@@ -23,6 +23,7 @@
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 import {
+  existingTestPaths,
   type LauncherOptions,
   type LaunchMode,
   parseLauncherArgs,
@@ -47,6 +48,10 @@ import {
   redisDisplay,
   type RedisLease,
 } from "./test-launcher-redis.ts";
+import {
+  allTargetModuleTestRoots,
+  testRootsForTarget,
+} from "../../scripts/module-test-metadata.ts";
 import { type Shard, SHARDS } from "./test-parallel-shards.ts";
 import { unwrapRows } from "../src/shared/base/sql-rows.ts";
 
@@ -305,7 +310,7 @@ function pathsFor(options: LauncherOptions): string[] {
       return [
         "tests/00_migrate_test.ts",
         "tests/seed_bootstrap_admin_test.ts",
-        `src/domains/${options.domain}/tests`,
+        ...testRootsForTarget(options.domain!),
       ];
     case "shared":
       return [
@@ -328,13 +333,13 @@ function pathsFor(options: LauncherOptions): string[] {
       return [
         "tests/00_migrate_test.ts",
         "tests/perf",
-        "src/domains/search/tests/perf",
-        "src/domains/education/tests/perf",
+        "src/modules/read-models/search/tests/perf",
+        "src/modules/education/tests/perf",
       ];
     case "test":
     case "pg":
     case "watch":
-      return ["tests", "src/domains"];
+      return ["tests", "src/domains", ...allTargetModuleTestRoots()];
     case "parallel":
       return [];
   }
@@ -440,7 +445,10 @@ async function cleanupResources(resources: TestRunResources): Promise<void> {
 
 async function run(options: LauncherOptions): Promise<number> {
   if (options.dryRun) {
-    const paths = pathsFor(options);
+    const requestedPaths = pathsFor(options);
+    const paths = options.mode === "parallel"
+      ? requestedPaths
+      : await existingTestPaths(requestedPaths);
     const shards = options.mode === "parallel"
       ? SHARDS.slice(0, options.shardCount).map((shard) => ({
         name: shard.name,
@@ -475,19 +483,21 @@ async function run(options: LauncherOptions): Promise<number> {
       const statuses = await Promise.all(
         children.map((child, index) => {
           const shard = selected[index]!;
-          return runDenoTests(
-            resources,
-            child.databaseName,
-            child.databaseUrl,
-            child.redis.url,
-            child.storageDir,
-            "parallel",
-            [
-              "tests/00_migrate_test.ts",
-              ...shard.dirs.filter((dir) => dir !== "tests/00_migrate_test.ts"),
-            ],
-            options.testArgs,
-            false,
+          return existingTestPaths([
+            "tests/00_migrate_test.ts",
+            ...shard.dirs.filter((dir) => dir !== "tests/00_migrate_test.ts"),
+          ]).then((paths) =>
+            runDenoTests(
+              resources,
+              child.databaseName,
+              child.databaseUrl,
+              child.redis.url,
+              child.storageDir,
+              "parallel",
+              paths,
+              options.testArgs,
+              false,
+            )
           );
         }),
       );
@@ -497,6 +507,7 @@ async function run(options: LauncherOptions): Promise<number> {
         name: "single",
         dirs: pathsFor(options),
       });
+      const paths = await existingTestPaths(pathsFor(options));
       exitCode = await runDenoTests(
         resources,
         child.databaseName,
@@ -504,7 +515,7 @@ async function run(options: LauncherOptions): Promise<number> {
         child.redis.url,
         child.storageDir,
         options.mode,
-        pathsFor(options),
+        paths,
         options.testArgs,
         options.runPerf,
       );

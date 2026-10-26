@@ -55,6 +55,64 @@ export function assertDrillProjectName(name: string): void {
 }
 
 /**
+ * 演练只能连接到显式创建的专用 Docker daemon。
+ *
+ * 这里只接受带有 `noj-restore-drill` 标识的本地 Unix socket：不接受
+ * `tcp://`/`ssh://`，也不接受 Docker 默认 socket。daemon 是否实际启动由后续
+ * `docker info` 探测确认；不存在的 socket 不在这里直接报错，以便统一返回资源
+ * 前置错误。
+ */
+export function assertDedicatedDockerHost(host: string): void {
+  const value = host.trim();
+  if (!value.startsWith("unix://")) {
+    throw new UsageError(
+      `演练 Docker 主机必须是专用 Unix socket（如 unix:///run/noj-restore-drill/<run>/docker.sock），收到 "${host}"`,
+    );
+  }
+  const socketPath = value.slice("unix://".length);
+  if (!socketPath.startsWith("/") || socketPath.includes("..")) {
+    throw new UsageError(
+      `演练 Docker socket 路径必须是绝对路径且不能包含 ..：${host}`,
+    );
+  }
+  const normalized = socketPath.replace(/\/+/g, "/").replace(/\/$/, "");
+  if (
+    normalized === "/var/run/docker.sock" ||
+    normalized === "/run/docker.sock"
+  ) {
+    throw new UsageError(
+      "演练禁止连接宿主机默认 Docker socket；请先启动专用隔离 daemon",
+    );
+  }
+  if (!normalized.endsWith("/docker.sock")) {
+    throw new UsageError(
+      `演练 Docker socket 必须以 /docker.sock 结尾，收到 "${host}"`,
+    );
+  }
+  if (!/(^|\/)noj-restore-drill(?:[-_/]|\/|$)/.test(normalized)) {
+    throw new UsageError(
+      `演练 Docker socket 路径必须位于 noj-restore-drill 专用目录，收到 "${host}"`,
+    );
+  }
+}
+
+/** 默认演练项目名的唯一生成器（CLI 每次真实运行都会调用）。 */
+export function uniqueDrillProjectName(
+  now = new Date(),
+  suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8),
+): string {
+  const stamp = now.toISOString().replace(/[^0-9]/g, "").slice(0, 14);
+  return `noj-drill-${stamp}-${suffix}`;
+}
+
+/** 默认演练子网的唯一生成器（CLI 每次真实运行都会调用）。 */
+export function uniqueDrillSubnet(
+  octet = crypto.getRandomValues(new Uint8Array(1))[0]!,
+): string {
+  return `172.29.${(octet % 254) + 1}.0/24`;
+}
+
+/**
  * 校验子网格式（CIDR）（原 `maintain/drill.ts`，T23 搬迁）。
  *
  * **必须挡住 Docker 也会拒绝的输入**（#516 评审 P2）：早先只检查「四段数字 +

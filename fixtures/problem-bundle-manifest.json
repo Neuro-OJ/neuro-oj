@@ -177,11 +177,10 @@
       }
     },
     {
-      "name": "U 型 LLM 题结构合法，管理员准入由服务端校验",
+      "name": "Domain LLM 题结构合法，使用域准入由服务端校验",
       "manifest": {
-        "format_version": 1,
+        "format_version": 2,
         "title": "x",
-        "type": "U",
         "llm": {
           "provider_id": "old-provider",
           "model": "old-model",

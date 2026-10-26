@@ -1,16 +1,15 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
+import type { AuthEnv } from "../../../modules/access/identity/middleware/auth.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
-  BadRequestError,
-  NotFoundError,
-} from "./../../../shared/base/errors.ts";
-import {
-  acceptRejudgeJob,
   getRejudgeJob,
   listRejudgeJobItems,
   type RejudgeRequest,
-  retryRejudgeJob,
-} from "../../submission/services/versioning/rejudge-jobs.ts";
+} from "../../../modules/evaluations/services/versioning/rejudge-jobs.ts";
+import {
+  acceptRejudgeJobCommand,
+  retryRejudgeJobCommand,
+} from "../../../modules/application/evaluations.ts";
 import type { SubmissionJobItemStatus } from "../../../shared/versioning/types.ts";
 
 /**
@@ -27,13 +26,16 @@ const router = new Hono<AuthEnv>();
 
 /** 受理批量重测任务。 */
 router.post("/", async (c) => {
-  const actorId = (c.get("userId") as string | undefined) ?? "0";
   const idempotencyKey = c.req.header("idempotency-key")?.trim() ?? "";
   const body = await c.req.json<RejudgeRequest>().catch(() => null);
   if (!body || typeof body !== "object") {
     throw new BadRequestError("请求体必须是 JSON 对象");
   }
-  const accepted = await acceptRejudgeJob(actorId, body, idempotencyKey);
+  const accepted = await acceptRejudgeJobCommand(
+    c.var.actor,
+    body,
+    idempotencyKey,
+  );
   return c.json({ data: accepted }, 202);
 });
 
@@ -63,10 +65,9 @@ router.get("/:id/items", async (c) => {
 
 /** 重试失败/跳过条目（生成关联新任务）。 */
 router.post("/:id/retry", async (c) => {
-  const actorId = (c.get("userId") as string | undefined) ?? "0";
   const idempotencyKey = c.req.header("idempotency-key")?.trim() ?? "";
-  const accepted = await retryRejudgeJob(
-    actorId,
+  const accepted = await retryRejudgeJobCommand(
+    c.var.actor,
     c.req.param("id") as string,
     idempotencyKey,
   );

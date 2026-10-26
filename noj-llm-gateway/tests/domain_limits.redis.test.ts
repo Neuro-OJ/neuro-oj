@@ -29,9 +29,13 @@ Deno.test({
     } as RedisClient;
     let instanceCalls: number | null = null;
     const db = ((
-      _strings: TemplateStringsArray,
+      strings: TemplateStringsArray,
       ...values: unknown[]
     ) => {
+      // 实例政策现在只从 Gateway 本地 llm_policy 读取；无政策行 = 空上限。
+      if (strings.join("").includes("llm_policy")) {
+        return Promise.resolve([]);
+      }
       const [, scope, , window] = values;
       return Promise.resolve([{
         max_calls: scope === "global" && window === "day"

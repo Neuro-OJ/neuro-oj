@@ -38,6 +38,14 @@ beforeEach(() => {
   vi.stubGlobal('ref', ref);
   vi.stubGlobal('useRoute', () => route);
   vi.stubGlobal('useSeoMeta', vi.fn());
+  vi.stubGlobal(
+    'useAsyncData',
+    () => ({ data: ref(null), error: ref(null), status: ref('success'), refresh: vi.fn() }),
+  );
+  vi.stubGlobal(
+    'useState',
+    (_key: string, init?: () => unknown) => ref(typeof init === 'function' ? init() : undefined),
+  );
   vi.stubGlobal('navigateTo', navigate);
   vi.stubGlobal('useWorkspace', () => ({ domain, refresh: vi.fn() }));
   vi.stubGlobal('useWorkspaceApi', () => ({}));
@@ -47,6 +55,7 @@ const mountHome = () =>
   mount(defineComponent({ components: { WorkspaceHome }, template: '<Suspense><WorkspaceHome /></Suspense>' }), {
     global: {
       stubs: {
+        AsyncContent: { template: '<div><slot /></div>' },
         UCard: { template: '<div><slot /></div>' },
         UButton: { template: '<button><slot /></button>' },
         UTextarea: true,

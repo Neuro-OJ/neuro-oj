@@ -121,6 +121,9 @@ pub struct JudgeTask {
     pub scheduling_version: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_pool: Option<String>,
+    /// 协议 v3 的显式任务语义；生产消费前必须通过 `validate_protocol`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
     /// 正式评测的尝试标识，必须与 run_id 一致。
@@ -132,9 +135,12 @@ pub struct JudgeTask {
     /// `evaluation_attempts.problem_version_id`，避免脏回传改写版本归属。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem_version_id: Option<String>,
-    /// 评测协议版本；`2` = 携带 attempt/version/result_kind 的版本化封套。
+    /// 评测协议版本；`3` = 显式任务语义与运行标识的版本化封套。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation_protocol_version: Option<u8>,
+    /// 自测运行标识；仅 task_kind=self_test 携带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_test_run_id: Option<String>,
     /// 提交 UUID
     pub submission_id: String,
     /// 题目 UUID（消息协议字段，与 noj-core 的 JudgeTask 对齐；judge 当前不消费）
@@ -187,13 +193,68 @@ fn default_judge_type() -> String {
     "dual".to_string()
 }
 
+impl JudgeTask {
+    /// 校验进入生产执行路径的协议封套。
+    ///
+    /// 反序列化阶段保留 `Option` 只是为了让独立类型单元测试与诊断工具能够
+    /// 读取任意 JSON；队列消费必须先调用本方法，不能把缺失字段补成历史默认值。
+    pub fn validate_protocol(&self) -> Result<(), Vec<&'static str>> {
+        let mut gaps = Vec::new();
+        if self.evaluation_protocol_version != Some(EVALUATION_PROTOCOL_VERSION) {
+            gaps.push("evaluation_protocol_version");
+        }
+        if self.run_id.as_deref().is_none_or(str::is_empty) {
+            gaps.push("run_id");
+        }
+        if self.rejudge_seq.is_none_or(|sequence| sequence < 0) {
+            gaps.push("rejudge_seq");
+        }
+        match self.task_kind.as_deref() {
+            Some("submission") => {
+                if self.attempt_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("attempt_id");
+                }
+                if self.self_test_run_id.is_some() {
+                    gaps.push("self_test_run_id_for_submission");
+                }
+                if self.attempt_id.as_deref() != self.run_id.as_deref() {
+                    gaps.push("attempt_id!=run_id");
+                }
+                if self.problem_version_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("problem_version_id");
+                }
+            }
+            Some("self_test") => {
+                if self.self_test_run_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("self_test_run_id");
+                }
+                if self.attempt_id.is_some() {
+                    gaps.push("attempt_id_for_self_test");
+                }
+                if self.self_test_run_id.as_deref() != self.run_id.as_deref() {
+                    gaps.push("self_test_run_id!=run_id");
+                }
+                if self.problem_version_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("problem_version_id");
+                }
+            }
+            _ => gaps.push("task_kind"),
+        }
+        if gaps.is_empty() {
+            Ok(())
+        } else {
+            Err(gaps)
+        }
+    }
+}
+
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
 ///
 /// 字段对齐 noj-core/src/domains/submission/types/index.ts 的 JudgeResult 接口。
 ///
-/// 版本化封套（协议 v2，Handbook §5.6）：judge 必须回显 `run_id`
-/// （= 正式提交的 `evaluation_attempts.id`）并显式给出 `result_kind`，
-/// noj-core 才能把结果精确落到对应尝试上，而不是靠"当前在途尝试"猜测。
+/// 版本化封套（协议 v3，Handbook §5.6）：judge 必须回显显式任务语义及其运行
+/// 标识，并显式给出 `result_kind`，noj-core 才能把结果精确落到对应尝试上，
+/// 而不是靠 ID 前缀或"当前在途尝试"猜测。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeResult {
     /// 提交 UUID
@@ -215,9 +276,15 @@ pub struct JudgeResult {
     /// 重测序列号（由 noj-core 设置，透传回 saveEvaluationResult 做竞态校验）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejudge_seq: Option<i64>,
+    /// 可信结果封套中的任务语义。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_kind: Option<String>,
     /// 本次执行的 run_id（= 正式提交的评测尝试 ID）；旧任务为 None
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// 自测结果的唯一运行标识；正式结果不得携带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_test_run_id: Option<String>,
     /// 正式评测的尝试标识，必须与 run_id 一致。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_id: Option<String>,
@@ -233,8 +300,8 @@ pub struct JudgeResult {
     pub result_kind: Option<String>,
 }
 
-/// 当前评测协议版本：`2` = run_id/attempt 绑定 + 显式 result_kind。
-pub const EVALUATION_PROTOCOL_VERSION: u8 = 2;
+/// 当前评测协议版本：`3` = 显式 task_kind、运行标识与序列。
+pub const EVALUATION_PROTOCOL_VERSION: u8 = 3;
 
 /// 平台侧错误状态白名单（与 noj-core `shared/versioning/verdict.ts` 保持一致）。
 ///
@@ -285,20 +352,20 @@ impl JudgeResult {
         json!({})
     }
 
-    /// 补齐版本化封套（协议 v2）：回显 run_id / 题目版本与协议号，并显式标注
+    /// 补齐版本化封套（协议 v3）：回显任务语义、运行标识、题目版本与协议号，并标注
     /// 判定类别。必须在本结果的状态最终确定之后调用（例如取消标记覆写 status 之后）。
     ///
     /// `result_kind` 已显式给出时不被覆盖，便于调用方标定特殊路径。
     ///
-    /// `attempt_id` 回退（defect #28）：Handbook §5.5 要求正式提交
-    /// `run_id = attempt_id`，且 noj-core 的 `saveEvaluationResult` **强制**校验
-    /// `attempt_id === run_id`（任一缺失即整体拒绝结果）。任务侧仅在非自测提交上
-    /// 显式携带 `attempt_id`，因此这里按 `attempt_id ?? run_id` 补齐，保证所有成功、
-    /// 失败、超时构造入口产出的封套都完整。
+    /// v3 不再用 `run_id` 回填缺失的 attempt；正式提交和自测分别回显任务中
+    /// 明确携带的 `attempt_id` / `self_test_run_id`，缺失时由 `envelope_gaps` 暴露。
     pub fn apply_protocol(&mut self, task: &JudgeTask) {
         self.run_id = task.run_id.clone();
-        self.attempt_id = task.attempt_id.clone().or_else(|| task.run_id.clone());
+        self.task_kind = task.task_kind.clone();
+        self.attempt_id = task.attempt_id.clone();
+        self.self_test_run_id = task.self_test_run_id.clone();
         self.problem_version_id = task.problem_version_id.clone();
+        self.rejudge_seq = task.rejudge_seq;
         self.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
         if self.result_kind.is_none() {
             self.result_kind = Some(result_kind_for_status(&self.status).to_string());
@@ -309,23 +376,48 @@ impl JudgeResult {
     ///
     /// 与 noj-core `saveEvaluationResult` 的准入条件逐条对齐：协议号必须为
     /// [`EVALUATION_PROTOCOL_VERSION`]，`run_id` / `problem_version_id` 必须非空，
-    /// `result_kind` 必须是 `graded` / `platform_error`，且 `attempt_id` 与
-    /// `run_id` 一致。core 对不满足者直接 `applied=false`（零写入、零事件），
+    /// `result_kind` 必须是 `graded` / `platform_error`，且运行标识必须与
+    /// task_kind 对应。core 对不满足者直接 `applied=false`（零写入、零事件），
     /// 因此 judge 侧必须在推送前把不一致显式暴露到日志（defect #28）。
     pub fn envelope_gaps(&self) -> Vec<&'static str> {
         let mut gaps = Vec::new();
         if self.evaluation_protocol_version != Some(EVALUATION_PROTOCOL_VERSION) {
             gaps.push("evaluation_protocol_version");
         }
+        match self.task_kind.as_deref() {
+            Some("submission") => {
+                if self.attempt_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("attempt_id");
+                }
+                if self.self_test_run_id.is_some() {
+                    gaps.push("self_test_run_id_for_submission");
+                }
+            }
+            Some("self_test") => {
+                if self.self_test_run_id.as_deref().is_none_or(str::is_empty) {
+                    gaps.push("self_test_run_id");
+                }
+                if self.attempt_id.is_some() {
+                    gaps.push("attempt_id_for_self_test");
+                }
+            }
+            _ => gaps.push("task_kind"),
+        }
+        if self.rejudge_seq.is_none_or(|sequence| sequence < 0) {
+            gaps.push("rejudge_seq");
+        }
         if self.run_id.as_deref().is_none_or(str::is_empty) {
             gaps.push("run_id");
         }
-        match self.attempt_id.as_deref() {
-            None | Some("") => gaps.push("attempt_id"),
-            Some(attempt) if Some(attempt) != self.run_id.as_deref() => {
-                gaps.push("attempt_id!=run_id")
-            }
-            Some(_) => {}
+        if self.task_kind.as_deref() == Some("submission")
+            && self.attempt_id.as_deref() != self.run_id.as_deref()
+        {
+            gaps.push("attempt_id!=run_id");
+        }
+        if self.task_kind.as_deref() == Some("self_test")
+            && self.self_test_run_id.as_deref() != self.run_id.as_deref()
+        {
+            gaps.push("self_test_run_id!=run_id");
         }
         if self.problem_version_id.as_deref().is_none_or(str::is_empty) {
             gaps.push("problem_version_id");
@@ -375,7 +467,9 @@ impl JudgeResult {
             time_ms: None,
             memory_kb: None,
             rejudge_seq,
+            task_kind: None,
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
@@ -395,7 +489,9 @@ impl JudgeResult {
             time_ms: None,
             memory_kb: None,
             rejudge_seq,
+            task_kind: None,
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
@@ -535,7 +631,9 @@ mod tests {
             time_ms: Some(2340),
             memory_kb: Some(18432),
             rejudge_seq: Some(1),
+            task_kind: None,
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
@@ -562,7 +660,9 @@ mod tests {
             time_ms: None,
             memory_kb: None,
             rejudge_seq: None,
+            task_kind: None,
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
@@ -575,7 +675,7 @@ mod tests {
         assert_eq!(json["output"], "");
     }
 
-    // ── JudgeResult 版本化封套（协议 v2） ──
+    // ── JudgeResult 版本化封套（协议 v3） ──
 
     /// 从 JSON 构造最小 JudgeTask（测试辅助；避免逐字段字面量）。
     fn protocol_task_value() -> Value {
@@ -597,7 +697,13 @@ mod tests {
                 }
             },
             "language": "python3",
-            "code": "print(1)"
+            "code": "print(1)",
+            "task_kind": "submission",
+            "run_id": "attempt-1",
+            "attempt_id": "attempt-1",
+            "problem_version_id": "ver-1",
+            "evaluation_protocol_version": 3,
+            "rejudge_seq": 0
         })
     }
 
@@ -607,18 +713,26 @@ mod tests {
         if let Some(run_id) = run_id {
             value["run_id"] = json!(run_id);
             value["attempt_id"] = json!(run_id);
+        } else {
+            value.as_object_mut().unwrap().remove("run_id");
+            value.as_object_mut().unwrap().remove("attempt_id");
         }
         if let Some(version) = version {
             value["problem_version_id"] = json!(version);
+        } else {
+            value.as_object_mut().unwrap().remove("problem_version_id");
         }
         serde_json::from_value(value).expect("测试任务必须可反序列化")
     }
 
-    /// 自测任务：core 只为非 `st_` 提交补 `attempt_id`，因此任务里只有 `run_id`。
+    /// 自测任务：协议 v3 使用显式 task_kind/self_test_run_id，不按 ID 前缀识别。
     fn self_test_task(run_id: &str, version: &str) -> JudgeTask {
         let mut value = protocol_task_value();
-        value["submission_id"] = json!("st_1");
+        value["submission_id"] = json!("self-test-1");
+        value["task_kind"] = json!("self_test");
         value["run_id"] = json!(run_id);
+        value["self_test_run_id"] = json!(run_id);
+        value.as_object_mut().unwrap().remove("attempt_id");
         value["problem_version_id"] = json!(version);
         serde_json::from_value(value).expect("测试任务必须可反序列化")
     }
@@ -632,8 +746,10 @@ mod tests {
             details: json!({}),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq: Some(0),
+            task_kind: None,
             run_id: None,
+            self_test_run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
@@ -655,7 +771,8 @@ mod tests {
             "封套必须同时携带 attempt_id"
         );
         assert_eq!(value["problem_version_id"], "ver-1");
-        assert_eq!(value["evaluation_protocol_version"], 2);
+        assert_eq!(value["evaluation_protocol_version"], 3);
+        assert_eq!(value["task_kind"], "submission");
         assert_eq!(value["result_kind"], "graded");
         assert!(graded.envelope_gaps().is_empty());
 
@@ -680,16 +797,15 @@ mod tests {
         assert!(value.get("run_id").is_none());
         assert!(value.get("attempt_id").is_none());
         assert!(value.get("problem_version_id").is_none());
-        assert_eq!(value["evaluation_protocol_version"], 2);
+        assert_eq!(value["evaluation_protocol_version"], 3);
         assert_eq!(value["result_kind"], "graded");
     }
 
     // ── 结果封套完整性（defect #28） ──
 
     #[test]
-    fn test_apply_protocol_backfills_attempt_id_from_run_id_for_self_test() {
-        // 自测任务没有 attempt_id；core 强制 attempt_id === run_id，
-        // 不补齐就会让整条结果被静默丢弃。
+    fn test_apply_protocol_echoes_explicit_self_test_run_id() {
+        // 自测任务没有 attempt_id；协议 v3 使用明确的 self_test_run_id。
         let task = self_test_task("run-self-1", "ver-self-1");
         assert!(task.attempt_id.is_none());
 
@@ -698,7 +814,8 @@ mod tests {
         result.apply_protocol(&task);
 
         assert_eq!(result.run_id.as_deref(), Some("run-self-1"));
-        assert_eq!(result.attempt_id.as_deref(), Some("run-self-1"));
+        assert_eq!(result.attempt_id, None);
+        assert_eq!(result.self_test_run_id.as_deref(), Some("run-self-1"));
         assert_eq!(result.problem_version_id.as_deref(), Some("ver-self-1"));
         assert!(result.envelope_gaps().is_empty(), "自测封套必须完整");
     }
@@ -710,8 +827,8 @@ mod tests {
             result.envelope_gaps(),
             vec![
                 "evaluation_protocol_version",
+                "task_kind",
                 "run_id",
-                "attempt_id",
                 "problem_version_id",
                 "result_kind",
             ]
@@ -719,6 +836,7 @@ mod tests {
 
         // 协议号/结果类别正确但 attempt_id 与 run_id 不一致 → 仍视为不完整
         result.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
+        result.task_kind = Some("submission".to_string());
         result.run_id = Some("attempt-1".to_string());
         result.attempt_id = Some("attempt-2".to_string());
         result.problem_version_id = Some("ver-1".to_string());

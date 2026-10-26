@@ -11,6 +11,7 @@ export class BffError extends Error {
 
 export interface CoreReader {
   get<T>(path: string, options?: { timeout?: number; anonymous?: boolean }): Promise<T>;
+  post<T>(path: string, body: unknown, options?: { timeout?: number; anonymous?: boolean }): Promise<T>;
 }
 
 /** 固定上游与 v1 路径，防止聚合器成为任意地址代理。 */
@@ -63,62 +64,83 @@ export function createCoreReader(options: {
     if (next) next();
     else active--;
   };
-  return {
-    get<T>(path: string, request: { timeout?: number; anonymous?: boolean } = {}): Promise<T> {
-      const url = coreUrl(options.base, path);
-      const key = `${request.anonymous ? 'anonymous' : 'viewer'}:${url}`;
-      const existing = pending.get(key);
-      if (existing) return existing as Promise<T>;
-      const promise = (async () => {
-        const timeout = AbortSignal.timeout(request.timeout ?? 5000);
-        const signal = AbortSignal.any([options.signal, timeout]);
-        let acquired = false;
-        try {
-          await acquire(signal);
-          acquired = true;
-          signal.throwIfAborted();
-          const headers = new Headers(options.headers);
-          headers.delete('authorization');
-          headers.delete('cookie');
-          if (options.token && !request.anonymous) headers.set('authorization', `Bearer ${options.token}`);
-          headers.set('accept', 'application/json');
-          options.onRequest?.();
-          const response = await fetcher(url, { headers, signal, redirect: 'manual' });
-          const body = await response.json().catch(() => null);
-          signal.throwIfAborted();
-          if (!response.ok) {
-            const forwarded: Record<string, string> = {};
-            for (
-              const name of [
-                'retry-after',
-                'x-request-id',
-                'www-authenticate',
-                'x-ratelimit-limit',
-                'x-ratelimit-remaining',
-                'x-ratelimit-reset',
-              ]
-            ) {
-              const value = response.headers.get(name);
-              if (value) forwarded[name] = value;
-            }
-            throw new BffError(response.status >= 300 && response.status < 400 ? 502 : response.status, {
-              error: typeof body?.error === 'string' ? body.error : '上游服务请求失败',
-              code: typeof body?.code === 'string' ? body.code : undefined,
-              request_id: typeof body?.request_id === 'string' ? body.request_id : undefined,
-            }, forwarded);
+  const send = <T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body: unknown,
+    request: { timeout?: number; anonymous?: boolean } = {},
+  ): Promise<T> => {
+    const url = coreUrl(options.base, path);
+    const key = `${method}:${request.anonymous ? 'anonymous' : 'viewer'}:${url}:${
+      method === 'POST' ? JSON.stringify(body) : ''
+    }`;
+    const existing = pending.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = (async () => {
+      const timeout = AbortSignal.timeout(request.timeout ?? 5000);
+      const signal = AbortSignal.any([options.signal, timeout]);
+      let acquired = false;
+      try {
+        await acquire(signal);
+        acquired = true;
+        signal.throwIfAborted();
+        const headers = new Headers(options.headers);
+        headers.delete('authorization');
+        headers.delete('cookie');
+        if (options.token && !request.anonymous) headers.set('authorization', `Bearer ${options.token}`);
+        headers.set('accept', 'application/json');
+        if (method === 'POST') headers.set('content-type', 'application/json');
+        options.onRequest?.();
+        const response = await fetcher(url, {
+          method,
+          headers,
+          body: method === 'POST' ? JSON.stringify(body) : undefined,
+          signal,
+          redirect: 'manual',
+        });
+        const responseBody = await response.json().catch(() => null);
+        signal.throwIfAborted();
+        if (!response.ok) {
+          const forwarded: Record<string, string> = {};
+          for (
+            const name of [
+              'retry-after',
+              'x-request-id',
+              'www-authenticate',
+              'x-ratelimit-limit',
+              'x-ratelimit-remaining',
+              'x-ratelimit-reset',
+            ]
+          ) {
+            const value = response.headers.get(name);
+            if (value) forwarded[name] = value;
           }
-          if (body === null) throw new BffError(502, { error: '上游响应格式无效', code: 'BFF_INVALID_RESPONSE' });
-          return body as T;
-        } catch (error) {
-          if (error instanceof BffError) throw error;
-          if (signal.aborted) throw new BffError(504, { error: '页面数据读取超时或已取消', code: 'BFF_TIMEOUT' });
-          throw new BffError(502, { error: '页面数据服务暂时不可用', code: 'BFF_UPSTREAM_UNAVAILABLE' });
-        } finally {
-          if (acquired) release();
+          throw new BffError(response.status >= 300 && response.status < 400 ? 502 : response.status, {
+            error: typeof responseBody?.error === 'string' ? responseBody.error : '上游服务请求失败',
+            code: typeof responseBody?.code === 'string' ? responseBody.code : undefined,
+            request_id: typeof responseBody?.request_id === 'string' ? responseBody.request_id : undefined,
+          }, forwarded);
         }
-      })();
-      pending.set(key, promise);
-      return promise;
+        if (responseBody === null) throw new BffError(502, { error: '上游响应格式无效', code: 'BFF_INVALID_RESPONSE' });
+        return responseBody as T;
+      } catch (error) {
+        if (error instanceof BffError) throw error;
+        if (signal.aborted) throw new BffError(504, { error: '页面数据读取超时或已取消', code: 'BFF_TIMEOUT' });
+        throw new BffError(502, { error: '页面数据服务暂时不可用', code: 'BFF_UPSTREAM_UNAVAILABLE' });
+      } finally {
+        if (acquired) release();
+        pending.delete(key);
+      }
+    })();
+    pending.set(key, promise);
+    return promise;
+  };
+  return {
+    get<T>(path: string, options: { timeout?: number; anonymous?: boolean } = {}) {
+      return send<T>('GET', path, undefined, options);
+    },
+    post<T>(path: string, body: unknown, options: { timeout?: number; anonymous?: boolean } = {}) {
+      return send<T>('POST', path, body, options);
     },
   };
 }

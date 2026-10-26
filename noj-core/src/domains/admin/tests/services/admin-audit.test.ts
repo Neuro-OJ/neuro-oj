@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { auditLogs, users } from "../../../../shared/db/schema.ts";
-import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
+import {
+  enterTestContext,
+  leaveTestContext,
+} from "../../../../modules/platform/system/index.ts";
 import {
   adminAudit,
   getAuditMeta,
