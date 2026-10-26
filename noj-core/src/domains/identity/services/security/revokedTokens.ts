@@ -57,8 +57,13 @@ export async function isJtiRevoked(jti: string): Promise<boolean> {
   if (!jti) return false;
   // 测试短路开关：测试 helper（如 initRedisForTest）设置此 env 时跳过 Redis 查询，
   // 避免跨测试状态污染导致 authMiddleware 503。
-  // 生产环境 NOJ_BYPASS_JWT_REVOKE 永不设置（fail-closed 默认行为不变）。
-  if (Deno.env.get("NOJ_BYPASS_JWT_REVOKE") === "1") {
+  // 纵深防御（issue #655）：仅非生产环境允许短路；生产环境即使误设该变量也忽略，
+  // 保证 logout / 改密 / 封禁 / 角色降级签发的撤销始终生效（fail-closed 不变）。
+  // 启动期另有 production-config 护栏直接拒绝启动。
+  if (
+    Deno.env.get("NOJ_ENV") !== "production" &&
+    Deno.env.get("NOJ_BYPASS_JWT_REVOKE") === "1"
+  ) {
     return false;
   }
   try {

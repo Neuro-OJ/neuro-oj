@@ -548,6 +548,7 @@ router.put("/:id/draft", authMiddleware, async (c) => {
         expectedRevision: revision,
         actorId: c.get("userId"),
         context: c,
+        fromClient: true,
       }),
   );
   return c.json({ data: saved });

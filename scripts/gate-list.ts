@@ -46,8 +46,12 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-write-rate-limits_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
+  "scripts/check-version-consistency_test.ts",
   "scripts/check-action-pins_test.ts",
   "scripts/check-prod-env-injection_test.ts",
+  // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）。
+  // 转换失败会让 5 个 deno.lock 变成零扫描，必须由测试守住解析行为。
+  "scripts/security/deno-lock-to-package-lock_test.ts",
   // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
   // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
   "scripts/gate-list_test.ts",
@@ -132,6 +136,10 @@ export const REPO_GATES: Gate[] = [
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
+  // 模块版本一致性（2026-10-17，Issue #658）：7 个模块各自在自己的清单里声明
+  // version，没有任何同步机制——实测 noj-tests 已漂移到 0.9.5，其余为 0.10.5，
+  // 而页脚/构建身份/文档各取一处，无人察觉。只断言彼此一致，不绑定 Release 标签。
+  { args: ["deno", "run", "-A", "scripts/check-version-consistency.ts"] },
   // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
   // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
   { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },

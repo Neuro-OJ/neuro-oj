@@ -260,7 +260,7 @@ sys.stderr.flush()
     let mut eval_parser = LineParser::new();
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
-    let mut result_payload: Option<String> = None;
+    let mut result_payload = noj_judge::dual::ResultPayload::new();
     let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
@@ -291,7 +291,7 @@ sys.stderr.flush()
                     chunk,
                 )
                 .await;
-                if result_payload.is_some() {
+                if result_payload.has_candidates() {
                     break 'outer;
                 }
             }
@@ -349,7 +349,7 @@ sys.stderr.flush()
 
     // evaluator 的 RESULT payload
     assert_eq!(
-        result_payload.as_deref(),
+        result_payload.primary(),
         Some("{\"score\":10000,\"details\":{}}")
     );
     assert!(
@@ -460,7 +460,7 @@ sys.stderr.flush()
     let mut eval_parser = LineParser::new();
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
-    let mut result_payload: Option<String> = None;
+    let mut result_payload = noj_judge::dual::ResultPayload::new();
     let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
@@ -486,7 +486,7 @@ sys.stderr.flush()
                     chunk,
                 )
                 .await;
-                if result_payload.is_some() {
+                if result_payload.has_candidates() {
                     break 'outer;
                 }
             }
@@ -649,7 +649,7 @@ sys.stderr.flush()
     let mut eval_parser = LineParser::new();
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
-    let mut result_payload: Option<String> = None;
+    let mut result_payload = noj_judge::dual::ResultPayload::new();
     let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
@@ -679,7 +679,7 @@ sys.stderr.flush()
                     chunk,
                 )
                 .await;
-                if result_payload.is_some() {
+                if result_payload.has_candidates() {
                     break 'outer;
                 }
             }

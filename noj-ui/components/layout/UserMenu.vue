@@ -36,9 +36,9 @@ const domainSettingsEntry = computed(() => {
 const messages = useViewAsyncData(
   'messageUnread',
   () => `user-menu-messages:${user.value?.id ?? 'guest'}`,
-  () => user.value ? api.get<{ data: { unread_count: number } }>('/api/v1/conversations/unread-count', { silent: true }) : Promise.resolve({ data: { unread_count: 0 } }),
+  () => user.value ? api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', { silent: true }) : Promise.resolve({ unread_count: 0 }),
 );
-const unreadCount = computed(() => isLoggedIn.value ? messages.data.value?.data.unread_count ?? 0 : 0);
+const unreadCount = computed(() => isLoggedIn.value ? messages.data.value?.unread_count ?? 0 : 0);
 usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => messages.refresh(), immediate: false });
 async function selectDomain(space: WorkspaceSummary) {
   await workspaces.remember(space.slug);

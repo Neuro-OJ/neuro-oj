@@ -15,7 +15,7 @@ import {
   UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import type { ContestAccessInfo } from "./../../catalog/index.ts";
-import { computeContestStatus } from "./contests.ts";
+import { computeContestStatus, resolveContestId } from "./contests.ts";
 import { findContestRow } from "./contest-row.ts";
 import { isParticipant } from "./contests.ts";
 import type { ContestType } from "../types/contests.ts";
@@ -42,6 +42,7 @@ export async function verifyContestAccess(
   let organizer: boolean;
   try {
     const db = options.executor ?? getDb();
+    contestId = await resolveContestId(contestId);
     const contest = await findContestRow(contestId, db);
     if (
       (contest.domain_id ?? DEFAULT_DOMAIN_ID) !==

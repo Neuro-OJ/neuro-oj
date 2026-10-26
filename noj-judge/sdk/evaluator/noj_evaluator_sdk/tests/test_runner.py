@@ -86,6 +86,39 @@ class IpcHarness:
         sys.stdin = self.runner_stdin_pipe
 
         self.runner = SolutionRunner()
+        self._call_threads: list = []
+
+    def start_call(self, fn, *args, **kwargs):
+        """后台 daemon 线程跑 runner.call，返回 (thread, result_box, err_box)。
+
+        daemon=True：即便测试失败、pending 未被唤醒，也不会阻止测试进程退出。
+        """
+        result_box = {}
+        err_box = {}
+
+        def target():
+            try:
+                result_box["v"] = self.runner.call(fn, *args, **kwargs)
+            except Exception as e:
+                err_box["e"] = e
+
+        t = threading.Thread(target=target, daemon=True)
+        self._call_threads.append(t)
+        t.start()
+        return t, result_box, err_box
+
+    def wait_for_frames(self, count: int = 1, timeout: float = 2.0) -> list:
+        """轮询 stdout，直到至少写出 `count` 个帧（替代固定 sleep，消除时序抖动）。"""
+        deadline = time.monotonic() + timeout
+        while True:
+            frames = self.all_call_frames()
+            if len(frames) >= count:
+                return frames
+            if time.monotonic() >= deadline:
+                raise AssertionError(
+                    f"等待 {count} 个帧超时（{timeout}s），实际 {len(frames)} 个"
+                )
+            time.sleep(0.005)
 
     def send_host_response(self, frame: dict):
         self.runner_stdin_pipe.write(json.dumps(frame) + "\n")
@@ -105,27 +138,24 @@ class IpcHarness:
         sys.stdout = self._orig_stdout
         self.runner_stdin_pipe.close()
         self.runner.close()
+        # 唤醒仍阻塞在 q.get() 的 call 线程：线程可能在 close() 之后才注册
+        # pending，故循环 shutdown_pending 直到线程退出（有上限，避免卡死）
+        deadline = time.monotonic() + 2.0
+        for t in self._call_threads:
+            while t.is_alive() and time.monotonic() < deadline:
+                self.runner._rpc.shutdown_pending()
+                t.join(timeout=0.01)
 
 
 class TestSolutionRunnerCall(unittest.TestCase):
     """验证 call → response 闭环。"""
 
-    def _run_call(self, harness, fn, *args, timeout=2.0):
-        """后台线程跑 runner.call，主线程 join 等结果。返回 (value, error)。"""
-        result_box = {}
-        err_box = {}
-
-        def runner():
-            try:
-                result_box["v"] = harness.runner.call(fn, *args)
-            except Exception as e:
-                err_box["e"] = e
-
-        t = threading.Thread(target=runner)
-        t.start()
-        # 等帧写出
-        time.sleep(0.05)
-        return t, result_box, err_box
+    def _run_call(self, harness, fn, *args, **kwargs):
+        """后台线程跑 runner.call，并等待 call 帧写出。返回 (thread, results, errors)。"""
+        before = len(harness.all_call_frames())  # 须在启动线程前计数，否则自身也有竞态
+        started = harness.start_call(fn, *args, **kwargs)
+        harness.wait_for_frames(before + 1)
+        return started
 
     def test_basic_call_returns_value(self):
         h = IpcHarness()
@@ -258,25 +288,9 @@ class TestSolutionRunnerCall(unittest.TestCase):
         """两个并发 call 应该独立完成。"""
         h = IpcHarness()
         try:
-            results = {}
-            errors = {}
-
-            def make_call(key, fn, arg):
-                def runner():
-                    try:
-                        results[key] = h.runner.call(fn, arg)
-                    except Exception as e:
-                        errors[key] = e
-
-                return runner
-
-            t1 = threading.Thread(target=make_call("a", "f1", 1))
-            t2 = threading.Thread(target=make_call("b", "f2", 2))
-            t1.start()
-            t2.start()
-            time.sleep(0.1)
-
-            lines = h.all_call_frames()
+            t1, results_a, _ = h.start_call("f1", 1)
+            t2, results_b, _ = h.start_call("f2", 2)
+            lines = h.wait_for_frames(2)
             self.assertEqual(len(lines), 2)
             id_a = next(l["id"] for l in lines if l["fn"] == "f1")
             id_b = next(l["id"] for l in lines if l["fn"] == "f2")
@@ -287,8 +301,8 @@ class TestSolutionRunnerCall(unittest.TestCase):
 
             t1.join(timeout=2)
             t2.join(timeout=2)
-            self.assertEqual(results.get("a"), "first")
-            self.assertEqual(results.get("b"), "second")
+            self.assertEqual(results_a.get("v"), "first")
+            self.assertEqual(results_b.get("v"), "second")
         finally:
             h.teardown()
 
@@ -296,10 +310,7 @@ class TestSolutionRunnerCall(unittest.TestCase):
         """指定 timeout_ms 时 call 帧应带该字段。"""
         harness = IpcHarness()
         try:
-            def runner():
-                harness.runner.call("solve", 1, timeout_ms=5000)
-            t = threading.Thread(target=runner)
-            t.start()
+            t, _, _ = self._run_call(harness, "solve", 1, timeout_ms=5000)
             frame = harness.last_call_frame()
             self.assertEqual(frame.get("timeout_ms"), 5000)
             harness.send_host_response(
@@ -314,16 +325,14 @@ class TestSolutionRunnerCall(unittest.TestCase):
         """缺省 timeout_ms 时 call 帧不应带该字段（向后兼容）。"""
         harness = IpcHarness()
         try:
-            def runner():
-                harness.runner.call("solve", 1)
-            t = threading.Thread(target=runner)
-            t.start()
+            t, _, _ = self._run_call(harness, "solve", 1)
             frame = harness.last_call_frame()
             self.assertNotIn("timeout_ms", frame)
             harness.send_host_response(
                 {"type": "result", "id": frame["id"], "value": 3}
             )
             t.join(timeout=2.0)
+            self.assertFalse(t.is_alive(), "call 应已返回")
         finally:
             harness.teardown()
 
@@ -345,13 +354,10 @@ class TestCapability(unittest.TestCase):
 
     def _wait_for_frames(self, harness, timeout=2.0):
         """轮询 stdout，等待 reader 线程写出帧。返回所有帧列表。"""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            frames = harness.all_call_frames()
-            if frames:
-                return frames
-            time.sleep(0.02)
-        self.fail("capability 响应帧未在超时内写出")
+        try:
+            return harness.wait_for_frames(1, timeout=timeout)
+        except AssertionError:
+            self.fail("capability 响应帧未在超时内写出")
 
     def test_capability_round_trip(self):
         from noj_evaluator_sdk.capability import (
@@ -603,6 +609,105 @@ class TestCapability(unittest.TestCase):
         with self.assertRaises(ValueError):
             register_capability("bad", lambda x: x, timeout_ms=0)
         _reset_capabilities_for_tests()
+
+
+class TestRpcClientShutdownRace(unittest.TestCase):
+    """RpcClient：关闭后注册 pending 必须即时拿到哨兵帧（消除注册/唤醒竞态，#680）。"""
+
+    def test_register_after_close_returns_shutdown_frame(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.close()
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_register_after_shutdown_pending_returns_shutdown_frame(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.shutdown_pending()
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_shutdown_pending_idempotent(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        rpc.shutdown_pending()
+        rpc.shutdown_pending()  # 幂等，不应抛
+        q = rpc.register_pending("late")
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+    def test_registered_pending_woken_by_shutdown(self):
+        from noj_sdk_common.rpc import RpcClient
+
+        rpc = RpcClient()
+        q = rpc.register_pending("x")
+        rpc.shutdown_pending()
+        self.assertEqual(q.get(timeout=1), {"type": "_shutdown"})
+
+
+class TestShutdownWakeups(unittest.TestCase):
+    """#680：IPC 断开（EOF / reader 异常 / 并发 close）必须唤醒 pending call。"""
+
+    def _run_call(self, harness, fn, *args, **kwargs):
+        before = len(harness.all_call_frames())
+        started = harness.start_call(fn, *args, **kwargs)
+        harness.wait_for_frames(before + 1)
+        return started
+
+    def test_call_raises_connection_error_on_stdin_eof(self):
+        """stdin 正常 EOF（host 退出）应唤醒 pending call → ConnectionError。"""
+        h = IpcHarness()
+        try:
+            t, _, errors = self._run_call(h, "slow")
+            # 模拟 host 退出：stdin EOF（for 迭代静默结束，不抛 EOFError）
+            h.runner_stdin_pipe.close()
+            t.join(timeout=3)
+            self.assertFalse(t.is_alive(), "stdin EOF 后 call 未返回（#680 回归）")
+            self.assertIsInstance(errors.get("e"), ConnectionError)
+            self.assertTrue(h.runner._closed, "EOF 后 runner 应标记为已关闭")
+        finally:
+            h.teardown()
+
+    def test_reader_exception_wakes_pending(self):
+        """reader 循环抛未知异常也应唤醒 pending call → ConnectionError。"""
+
+        def boom(_frame):
+            raise RuntimeError("reader boom")
+
+        h = IpcHarness()
+        orig = h.runner._handle_capability
+        h.runner._handle_capability = boom  # type: ignore[method-assign]
+        try:
+            t, _, errors = self._run_call(h, "slow")
+            # 触发 reader 处理下一帧 → 走 boom → 外层 except → finally 唤醒
+            h.send_host_response(
+                {"type": "capability", "id": "c", "name": "x", "args": []}
+            )
+            t.join(timeout=3)
+            self.assertFalse(t.is_alive(), "reader 异常后 call 未返回（#680 回归）")
+            self.assertIsInstance(errors.get("e"), ConnectionError)
+        finally:
+            h.runner._handle_capability = orig  # type: ignore[method-assign]
+            h.teardown()
+
+    def test_close_and_call_race_never_hangs(self):
+        """close 与 call 并发时 call 必须终止（不得永久阻塞，#680）。"""
+        for _ in range(15):
+            h = IpcHarness()
+            try:
+                t, _, _ = h.start_call("f", 1)
+                # 并发关闭：可能早于 call 的 _closed 检查，也可能晚于 register
+                h.runner.close()
+                t.join(timeout=2.0)
+                self.assertFalse(
+                    t.is_alive(),
+                    "close 与 call 并发时 call 未在超时内终止（#680 回归）",
+                )
+            finally:
+                h.teardown()
 
 
 if __name__ == "__main__":

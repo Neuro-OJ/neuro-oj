@@ -1,0 +1,300 @@
+# =============================================================================
+# Security — 依赖漏洞审计与静态代码扫描（issue #661）
+#
+# 与 ci.yml 的分工：ci.yml 负责格式 / 类型 / 测试，本 workflow 只做安全面：
+#   dependency-review  PR 上比对 base↔head 新增依赖，high 及以上直接拦截
+#                      （依赖 GitHub Dependency Graph，见该 job 注释）
+#   cargo-audit        noj-judge/Cargo.lock（Rust 侧；CodeQL 官方不支持 Rust）
+#   osv-scanner        5 个 deno.lock + noj-docs / noj-lmcc-extension 的
+#                      package-lock.json
+#   codeql             javascript-typescript（PR / main push / 每周定时）
+#
+# 触发成本控制：PR 与 main push 通过 dorny/paths-filter 只跑相关 job；
+# schedule 与 workflow_dispatch 全量跑——新披露的漏洞不需要改代码就会命中，
+# 定时扫描是唯一能发现这类漂移的手段。
+#
+# 存量告警策略（首次落地）：cargo-audit 与 osv-scanner 以「发现漏洞 = 告警、
+# 工具或解析失败 = 失败」运行，不让既有存量把 main / 现有 PR 变红；收紧计划
+# 见 CONTRIBUTING.md「安全门禁」。
+# =============================================================================
+
+name: Security
+
+# workflow 级最小权限：默认只读；各 job 按需收窄/追加 scope。
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # 每周一 03:23 UTC（错开整点排队）
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+# 同一分支/PR 的新推送取消旧运行；main 与定时扫描必须跑完。
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+
+  # ===========================================================================
+  # 改动检测 — 避免在每个无关 PR 上装 cargo-audit / 跑 CodeQL
+  # ===========================================================================
+  changes:
+    name: 检测依赖与代码改动
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      deps: ${{ steps.filter.outputs.deps }}
+      codeql: ${{ steps.filter.outputs.codeql }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # paths-filter 需要完整历史才能找 merge-base
+          fetch-depth: 0
+
+      - name: 按依赖清单 / 源码路径过滤
+        id: filter
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        with:
+          # push 到 main 时与上一个 commit 比较；PR 事件下该入参被忽略。
+          base: ${{ github.ref }}
+          filters: |
+            deps:
+              - 'noj-judge/Cargo.toml'
+              - 'noj-judge/Cargo.lock'
+              - 'noj-cli/deno.lock'
+              - 'noj-core/deno.lock'
+              - 'noj-llm-gateway/deno.lock'
+              - 'noj-tests/deno.lock'
+              - 'noj-ui/deno.lock'
+              - '**/deno.json'
+              - '**/deno.jsonc'
+              - 'noj-docs/package.json'
+              - 'noj-docs/package-lock.json'
+              - 'noj-lmcc-extension/package.json'
+              - 'noj-lmcc-extension/package-lock.json'
+              - '.github/workflows/security.yml'
+              - 'scripts/security/**'
+            codeql:
+              - '**/*.ts'
+              - '**/*.tsx'
+              - '**/*.js'
+              - '**/*.mjs'
+              - '**/*.cjs'
+              - '**/*.vue'
+              - '.github/workflows/security.yml'
+
+  # ===========================================================================
+  # 依赖变更审查 — 只在 PR 上比对 base↔head，新增 high/critical 漏洞直接失败
+  #
+  # 这是设计上的硬拦截项：它只看 PR 引入的增量，不会被存量漏洞影响。
+  # 但 dependency-review-action 依赖 GitHub Dependency Graph，本仓库所属组织
+  # 目前禁用了该能力（`/dependency-graph/compare` 返回 404），直接运行会让
+  # 每个 PR 变红。因此先探测，不可用时**显式跳过并写 summary 告警**（不是
+  # 扫描通过）；组织 owner 启用 Dependency Graph 后本 job 自动恢复硬拦截。
+  # ===========================================================================
+  dependency-review:
+    name: 依赖变更审查（需 Dependency Graph）
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # dependency-review 需要在 PR 上写注释/注解
+      pull-requests: write
+    steps:
+      - name: 探测 Dependency Graph 是否可用
+        id: graph
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api \
+            "repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+            > /dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### dependency-review 未执行"
+              echo ""
+              echo "Dependency Graph 不可用（compare 接口返回错误），dependency-review-action 无法比对新增依赖。"
+              echo "需要组织 owner 在 Settings → Code security 启用 Dependency Graph；启用后本 job 自动生效。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Dependency Graph 不可用，dependency-review 本次跳过（未执行，不代表扫描通过）"
+          fi
+
+      - name: 审查新增依赖的已知漏洞
+        if: steps.graph.outputs.available == 'true'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  # ===========================================================================
+  # Rust 依赖审计 — noj-judge/Cargo.lock
+  #
+  # 不用 rustsec/audit-check：它需要 issues: write + checks: write 才能建
+  # issue/check，fork PR 上还会因 token 只读而降级；直接 cargo install
+  # cargo-audit 保持 contents: read 即可，输出也更可控。
+  # ===========================================================================
+  cargo-audit:
+    name: Cargo 依赖审计
+    needs: changes
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # 版本与本地基线一致，避免 advisory-db 解析行为随工具版本漂移。
+      - name: 安装 cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+
+      - name: 审计 noj-judge/Cargo.lock
+        working-directory: noj-judge
+        run: |
+          set +e
+          cargo audit --json > "$RUNNER_TEMP/cargo-audit.json"
+          code=$?
+          set -e
+          # 退出码 1 = 发现漏洞/告警（预期存量）；其它退出码是工具或
+          # advisory-db 拉取失败，必须让 job 失败，不能当成"没漏洞"。
+          if [ "$code" -gt 1 ]; then
+            echo "::error::cargo audit 执行失败（exit $code）"
+            exit "$code"
+          fi
+          if ! jq -e . "$RUNNER_TEMP/cargo-audit.json" > /dev/null; then
+            echo "::error::cargo audit 未产出有效 JSON（exit $code），扫描结果不可信"
+            exit 1
+          fi
+          count=$(jq '.vulnerabilities.count // 0' "$RUNNER_TEMP/cargo-audit.json")
+          warnings=$(jq '[.warnings[]? | .[]?] | length' "$RUNNER_TEMP/cargo-audit.json")
+          {
+            echo "### cargo-audit（noj-judge/Cargo.lock）"
+            echo ""
+            echo "- 已知漏洞：${count}"
+            echo "- 其它告警（unmaintained / yanked 等）：${warnings}"
+            echo ""
+            echo "存量漏洞暂不阻塞合并，收紧计划见 CONTRIBUTING.md「安全门禁」。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.vulnerabilities.list[]? | "\(.advisory.id)  \(.package.name)@\(.package.version)"' \
+            "$RUNNER_TEMP/cargo-audit.json" | sort -u || true
+          if [ "$count" -gt 0 ]; then
+            echo "::warning::cargo audit 发现 ${count} 个存量漏洞（不阻塞合并，见 CONTRIBUTING.md「安全门禁」）"
+          fi
+
+  # ===========================================================================
+  # OSV 依赖扫描 — deno.lock（5 个）与 package-lock.json（2 个）
+  #
+  # osv-scanner 2.7.0 没有 deno.lock 提取器（直接传会以 127 退出、等于零
+  # 扫描），因此先用 scripts/security/deno-lock-to-package-lock.ts 把 npm
+  # 段转成 package-lock.json；jsr 包不在 npm 生态、OSV 无对应记录，转换器
+  # 会显式计数跳过。
+  # ===========================================================================
+  osv-scanner:
+    name: OSV 依赖漏洞扫描
+    needs: changes
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+
+      - name: 生成 deno.lock 对应的 package-lock.json
+        run: |
+          for module in noj-cli noj-core noj-llm-gateway noj-tests noj-ui; do
+            deno run -A scripts/security/deno-lock-to-package-lock.ts \
+              "$module/deno.lock" ".security/osv/$module/package-lock.json"
+          done
+
+      # 发现漏洞时 action 以 1 退出；交给下一步汇总，避免存量漏洞阻塞合并。
+      # 工具/镜像/解析失败时不会产出结果文件，下一步会失败。
+      - name: 扫描 7 个锁文件
+        id: scan
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          scan-args: |-
+            scan
+            source
+            --format=json
+            --output-file=.security/osv/results.json
+            --lockfile=noj-docs/package-lock.json
+            --lockfile=noj-lmcc-extension/package-lock.json
+            --lockfile=.security/osv/noj-cli/package-lock.json
+            --lockfile=.security/osv/noj-core/package-lock.json
+            --lockfile=.security/osv/noj-llm-gateway/package-lock.json
+            --lockfile=.security/osv/noj-tests/package-lock.json
+            --lockfile=.security/osv/noj-ui/package-lock.json
+
+      - name: 汇总扫描结果
+        if: steps.scan.outcome != 'skipped'
+        run: |
+          if [ ! -s .security/osv/results.json ]; then
+            echo "::error::osv-scanner 未产出结果文件（action 可能未成功执行），扫描结果不可信"
+            exit 1
+          fi
+          if ! jq -e . .security/osv/results.json > /dev/null; then
+            echo "::error::osv-scanner 结果不是有效 JSON"
+            exit 1
+          fi
+          packages=$(jq '[.results[]?.packages[]?] | length' .security/osv/results.json)
+          vulns=$(jq '[.results[]?.packages[]?.vulnerabilities[]?] | length' .security/osv/results.json)
+          {
+            echo "### osv-scanner（7 个锁文件）"
+            echo ""
+            echo "- 受影响包：${packages}"
+            echo "- 已知漏洞：${vulns}"
+            echo ""
+            echo "存量漏洞暂不阻塞合并，收紧计划见 CONTRIBUTING.md「安全门禁」。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.results[]?.packages[]? | "\(.package.name)@\(.package.version)  \([.vulnerabilities[]?.id] | join(","))"' \
+            .security/osv/results.json | sort -u || true
+          if [ "$vulns" -gt 0 ]; then
+            echo "::warning::osv-scanner 发现 ${vulns} 个存量漏洞（不阻塞合并，见 CONTRIBUTING.md「安全门禁」）"
+          fi
+
+  # ===========================================================================
+  # CodeQL — 静态代码扫描（JavaScript / TypeScript）
+  #
+  # CodeQL 官方不支持 Rust（github/codeql-action 无 rust 语言），Rust 侧由
+  # cargo-audit 承担依赖漏洞，代码级缺陷暂不在本 workflow 覆盖范围内。
+  # ===========================================================================
+  codeql:
+    name: CodeQL（JavaScript/TypeScript）
+    needs: changes
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.codeql == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # SARIF 结果上传到 code scanning
+      security-events: write
+      # 私有仓库/子模块场景下 CodeQL 查询包需要读取
+      packages: read
+      actions: read
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: 初始化 CodeQL
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: javascript-typescript
+          # 使用默认查询集；security-extended 噪声大，待基线稳定后再评估。
+
+      - name: 执行分析
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: "/language:javascript-typescript"

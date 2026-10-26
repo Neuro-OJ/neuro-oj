@@ -544,7 +544,8 @@ Deno.test({
         source: "rejudge",
         state: "queued",
         task_snapshot: { runtime_config: dualConfig(LONG_TIME_LIMIT_MS) },
-        created_at: now,
+        // 恢复超时以活动尝试创建时间为准：同样早于恢复阈值
+        created_at: new Date(Date.now() - 10 * 60_000).toISOString(),
       });
       await db.update(submissions).set({ active_attempt_id: attemptId }).where(
         eq(submissions.id, submissionId),

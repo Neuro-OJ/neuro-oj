@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1103** 处（ignore=767 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
+> 当前命中 **1104** 处（ignore=768 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -61,19 +61,20 @@
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 428 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 449 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 481 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 82 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 108 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 149 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 237 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 315 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 333 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 386 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 463 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 537 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 590 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 678 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 712 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 820 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 90 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 116 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 157 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 245 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 323 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 341 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 394 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 471 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 545 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 598 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 686 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 720 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 828 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-versions.test.ts | 921 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problems-stats.test.ts | 63 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problems-stats.test.ts | 90 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problems-stats.test.ts | 109 | ignore |
