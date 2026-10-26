@@ -87,6 +87,18 @@ await getDb().insert(judgeImages).values([
 const db = getDb();
 const ts = Date.now();
 
+/**
+ * 为本文件的题目夹具生成跨测试稳定且互不冲突的域内题号。
+ *
+ * 旧实现从 97800～98799 随机取号；Domain 测试并行运行时会与其它
+ * 版本夹具发生唯一键碰撞，导致与升级授权逻辑无关的验收失败。
+ */
+function fixtureProblemNumber(tag: string): number {
+  let hash = 0;
+  for (const char of tag) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return 8_000_000 + (hash % 100_000);
+}
+
 const dualConfig = {
   evaluator: {
     image: "noj-evaluator-python",
@@ -173,7 +185,7 @@ async function seedProblemWithVersions(
     title: `升级授权测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 97800 + Math.floor(Math.random() * 1000),
+    number: fixtureProblemNumber(tag),
     owner_id: options.ownerId ?? "0",
     visibility: options.visibility ?? "public",
     judge_type: "dual",
