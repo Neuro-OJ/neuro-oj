@@ -21,6 +21,7 @@ import { getInstanceAccessPolicy } from "./instance.ts";
 import { getEmailConfigStatus } from "../../../platform/contracts/cross-module/system_services_email-status.ts";
 import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
 import { lockActiveWorkspaceAccount } from "./account-lifecycle.ts";
+import { canRegisterWithInvitation } from "../../invitation-registration-policy.ts";
 
 /** 邀请创建输入，旧调用方传邮箱时仍表示指定邮箱邀请。 */
 export interface DomainInvitationInput {
@@ -150,12 +151,14 @@ export async function previewDomainInvitation(
     row.invite.classroom_id,
   );
   const policy = getInstanceAccessPolicy();
-  const canRegister = getSetting("allow_register")?.value !== false &&
-    getEmailConfigStatus().configured &&
-    policy.registration_mode !== "admin_only" &&
-    (policy.registration_mode === "open" ||
-      policy.allow_domain_registration_invites && authority.domain_inviter ||
-      authority.platform_admin);
+  const canRegister = canRegisterWithInvitation({
+    allowRegister: getSetting("allow_register")?.value !== false,
+    emailConfigured: getEmailConfigStatus().configured,
+    registrationMode: policy.registration_mode,
+    allowDomainRegistrationInvites: policy.allow_domain_registration_invites,
+    domainInviter: authority.domain_inviter,
+    platformAdmin: authority.platform_admin,
+  });
   return {
     domain_slug: row.domain.slug,
     domain_name: row.domain.name,

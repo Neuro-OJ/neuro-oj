@@ -7,6 +7,7 @@ import {
 } from "../../services/security/revokedTokens.ts";
 import {
   createRedisClientForUrl,
+  resetRedisForTest,
 } from "../../../../../shared/mq/connection.ts";
 
 Deno.test({
@@ -148,3 +149,75 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "revokedTokens: 生产环境忽略 NOJ_BYPASS_JWT_REVOKE（issue #655）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const prevEnv = Deno.env.get("NOJ_ENV");
+    const prevBypass = Deno.env.get("NOJ_BYPASS_JWT_REVOKE");
+    const prevUrl = Deno.env.get("REDIS_URL");
+    resetRedisForTest();
+    Deno.env.set("NOJ_ENV", "production");
+    Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+    // 指向不存在的端口，确保短路未生效时会因 Redis 不可用而 fail-closed
+    Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/");
+
+    try {
+      await assertRejects(
+        async () => await isJtiRevoked("prod-bypass-jti"),
+        Error,
+      );
+    } finally {
+      restoreEnv("NOJ_ENV", prevEnv);
+      restoreEnv("NOJ_BYPASS_JWT_REVOKE", prevBypass);
+      restoreEnv("REDIS_URL", prevUrl);
+      await restoreRedisConnection();
+    }
+  },
+});
+
+Deno.test({
+  name: "revokedTokens: 非生产环境允许 NOJ_BYPASS_JWT_REVOKE 短路",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const prevEnv = Deno.env.get("NOJ_ENV");
+    const prevBypass = Deno.env.get("NOJ_BYPASS_JWT_REVOKE");
+    const prevUrl = Deno.env.get("REDIS_URL");
+    resetRedisForTest();
+    Deno.env.set("NOJ_ENV", "test");
+    Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+    // 同样指向不存在的端口：能返回 false 说明短路生效，未触碰 Redis
+    Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/");
+
+    try {
+      assertEquals(await isJtiRevoked("test-bypass-jti"), false);
+    } finally {
+      restoreEnv("NOJ_ENV", prevEnv);
+      restoreEnv("NOJ_BYPASS_JWT_REVOKE", prevBypass);
+      restoreEnv("REDIS_URL", prevUrl);
+      await restoreRedisConnection();
+    }
+  },
+});
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value !== undefined) Deno.env.set(key, value);
+  else Deno.env.delete(key);
+}
+
+/** 恢复 REDIS_URL 后重建共享连接，避免影响同 worker 后续用例。 */
+async function restoreRedisConnection(): Promise<void> {
+  resetRedisForTest();
+
+  try {
+    const { connectRedis } = await import(
+      "../../../../../shared/mq/connection.ts"
+    );
+    await connectRedis();
+  } catch {
+    // ignore
+  }
+}

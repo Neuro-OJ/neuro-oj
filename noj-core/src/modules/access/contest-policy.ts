@@ -240,18 +240,24 @@ export async function verifyContestAccess(
     endTime: contests.end_time,
     type: contests.type,
     createdBy: contests.created_by,
-  }).from(contests).where(eq(contests.id, contestId)).limit(1);
+  }).from(contests).where(or(
+    eq(contests.id, contestId),
+    eq(contests.public_id, contestId),
+  )).limit(1);
   if (!contest) return { contestId, allowed: false, running: false };
+  const resolvedContestId = contest.id;
   const domainId = contest.domainId ?? DEFAULT_DOMAIN_ID;
   if (options.domainId && domainId !== options.domainId) {
-    return { contestId, allowed: false, running: false };
+    return { contestId: resolvedContestId, allowed: false, running: false };
   }
   const [domain] = await db.select({ slug: domains.slug }).from(domains)
     .where(eq(domains.id, domainId)).limit(1);
-  if (!domain) return { contestId, allowed: false, running: false };
+  if (!domain) {
+    return { contestId: resolvedContestId, allowed: false, running: false };
+  }
   const workspace = await loadWorkspace(domain.slug, actor);
   if (!workspace.membership && !workspace.platformAdmin) {
-    return { contestId, allowed: false, running: false };
+    return { contestId: resolvedContestId, allowed: false, running: false };
   }
   const organizer = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("contest:manage") ||
@@ -263,20 +269,22 @@ export async function verifyContestAccess(
     problemId: contestProblems.problem_id,
     pinnedVersionId: contestProblems.pinned_version_id,
   }).from(contestProblems).where(and(
-    eq(contestProblems.contest_id, contestId),
+    eq(contestProblems.contest_id, resolvedContestId),
     eq(contestProblems.problem_id, problemId),
   )).limit(1);
-  if (!problem) return { contestId, allowed: false, running: false };
+  if (!problem) {
+    return { contestId: resolvedContestId, allowed: false, running: false };
+  }
   const status = contestStatus(contest.startTime, contest.endTime);
   const [participant] = actor.kind === "user"
     ? await db.select({ userId: contestParticipants.user_id })
       .from(contestParticipants).where(and(
-        eq(contestParticipants.contest_id, contestId),
+        eq(contestParticipants.contest_id, resolvedContestId),
         eq(contestParticipants.user_id, actor.userId),
       )).limit(1)
     : [];
   return {
-    contestId,
+    contestId: resolvedContestId,
     allowed: Boolean(participant) &&
       (status === "running" || status === "ended"),
     running: status === "running",

@@ -443,6 +443,7 @@ export function saveProblemDraftCommand(
       content: input.content,
       expectedRevision: input.expectedRevision,
       actorId: actor.userId,
+      fromClient: true,
     });
   })();
 }

@@ -85,6 +85,18 @@ await getDb().insert(judgeImages).values([
 const db = getDb();
 const ts = Date.now();
 
+/**
+ * 为本文件的题目夹具生成跨测试稳定且互不冲突的域内题号。
+ *
+ * 旧实现从 96200～96899 随机取号；Domain 测试在同一测试库内运行时，
+ * 会与其它夹具发生低概率唯一键冲突，导致与吊销逻辑无关的验收失败。
+ */
+function fixtureProblemNumber(tag: string): number {
+  let hash = 0;
+  for (const char of tag) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return 7_000_000 + (hash % 100_000);
+}
+
 /** 长寿命 token：evaluator 时限 1h → 签发 TTL 14400s，远超固定的 3600s。 */
 const LONG_TIME_LIMIT_MS = 3_600_000;
 
@@ -131,7 +143,7 @@ async function seedProblem(
     title: `吊销测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 96200 + Math.floor(Math.random() * 700),
+    number: fixtureProblemNumber(tag),
     owner_id: "0",
     judge_type: "dual",
     runtime_config: dualConfig(timeLimitMs),
@@ -544,7 +556,8 @@ Deno.test({
         source: "rejudge",
         state: "queued",
         task_snapshot: { runtime_config: dualConfig(LONG_TIME_LIMIT_MS) },
-        created_at: now,
+        // 恢复超时以活动尝试创建时间为准：同样早于恢复阈值
+        created_at: new Date(Date.now() - 10 * 60_000).toISOString(),
       });
       await db.update(submissions).set({ active_attempt_id: attemptId }).where(
         eq(submissions.id, submissionId),

@@ -494,16 +494,23 @@ export function submitSelfTestCommand(
 }
 
 /** 客观题即时判分与提交/尝试/投影在同一事务内完成。 */
-export function submitObjectivePaperCommand(
+export async function submitObjectivePaperCommand(
   actor: UserActor,
   context: EvaluationAdmissionContext,
   paperId: string,
   input: SubmitObjectiveInput,
 ): Promise<SubmitObjectiveResponse> {
+  // 客户端传入的 `contest_id` 可能是公开编号（如 C1001），而受理快照里的
+  // `contest.contestId` 一律是内部 UUID；直接比较会让所有带比赛上下文的客观题
+  // 交卷稳定 409 EVALUATION_ADMISSION_MISMATCH（CI objective 回归复现）。
+  // 因此比较前先把客户端值解析为内部 id；未提供时才回落到快照值。
+  const requestedContestId = input.contest_id
+    ? await resolveContestId(input.contest_id)
+    : context.contest?.contestId ?? null;
   assertEvaluationAdmission(context, {
     problemId: paperId,
     versionId: input.version_id ?? "",
-    contestId: input.contest_id ?? context.contest?.contestId ?? null,
+    contestId: requestedContestId,
   });
   assertActorMatchesAdmission(actor, context);
   return submitObjectivePaper(
@@ -555,7 +562,7 @@ export async function saveEvaluationResultCommand(
   if (!outcome.applied) return outcome;
 
   // 统计只计算首次结果；竞赛结束前保持全站统计隔离，避免泄露判分信号。
-  if (!outcome.is_rejudge && outcome.created_at) {
+  if (!outcome.is_rejudge && !outcome.auto_retry && outcome.created_at) {
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {

@@ -68,7 +68,6 @@ import { getProblem } from "./problems-list.ts";
 import { mergeProblemContentPatch } from "./problem-content-patch.ts";
 export { mergeProblemContentPatch } from "./problem-content-patch.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
-
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,

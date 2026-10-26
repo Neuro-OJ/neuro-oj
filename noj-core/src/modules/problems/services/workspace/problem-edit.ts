@@ -122,6 +122,7 @@ export async function saveDomainProblemDraft(
       content,
       expectedRevision,
       actorId: actor.userId,
+      fromClient: true,
     }, tx);
   });
 }

@@ -46,8 +46,8 @@ print(2)
 这个提交没有实现 `solve`，因此 evaluator 调用时会收到 `NotFoundError`（协议 code 为 `NotFound`）。
 
 ::: warning 调用异常如何落地为状态
-`NotFoundError` 是**调用级错误**，不等于最终 verdict。样例 `1001` 的 `evaluate.py` 未捕获该异常、直接抛出，进程未输出 `---RESULT---`，judge 将其映射为 **`error`**。
-若你希望"函数缺失"算作一个失败用例（最终 `finished` + 0 分），应在 evaluator 中 `try/except NotFoundError` 并记录为失败用例。取舍见 [Evaluator SDK 错误处理](../mechanisms/evaluator-sdk.md)。
+`NotFoundError` 是**调用级错误**。样例 `1001` 的 `evaluate.py` 未捕获该异常、直接抛出；此时 Evaluator SDK 会兜底写出 `---RESULT---`：**`finished` + 0 分**，说明为「未定义函数 solve」（`details.error_code = "function_not_found"`）。
+若你想自定义说明或按用例计分，可在 evaluator 中 `try/except NotFoundError` 自行写结果，SDK 不会重复输出。选手代码**语法错误或导入失败**时同样会收到 `NotFoundError`，但 SDK 不兜底，仍判为 **`error`**。取舍见 [Evaluator SDK 错误处理](../mechanisms/evaluator-sdk.md)。
 :::
 
 ## 测试数据

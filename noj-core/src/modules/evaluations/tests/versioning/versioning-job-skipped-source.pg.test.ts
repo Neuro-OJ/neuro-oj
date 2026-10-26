@@ -67,6 +67,16 @@ const db = getDb();
 const ts = Date.now();
 const now = new Date().toISOString();
 
+/**
+ * 屏障夹具使用稳定题号，避免随机号在同一 Domain 测试库内碰撞。
+ * 题号只服务于夹具，不应与产品默认题库的低位编号混用。
+ */
+function fixtureProblemNumber(kind: "standard" | "objective", tag: string) {
+  let hash = kind === "objective" ? 17 : 0;
+  for (const char of tag) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return 6_000_000 + (hash % 100_000);
+}
+
 const dualConfig = {
   evaluator: {
     image: "noj-evaluator-python",
@@ -138,7 +148,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
     title: `屏障测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 94000 + Math.floor(Math.random() * 900),
+    number: fixtureProblemNumber("standard", tag),
     // 测试库由迁移创建，不含 root 种子，因此用夹具用户做题主
     owner_id: userId,
     judge_type: "dual",
@@ -460,7 +470,7 @@ async function seedObjectiveFixture(
     title: `客观题屏障测试 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 93000 + Math.floor(Math.random() * 900),
+    number: fixtureProblemNumber("objective", tag),
     owner_id: userId,
     judge_type: "dual",
     is_objective: true,

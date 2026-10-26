@@ -25,6 +25,9 @@ Neuro OJ（NOJ）是独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无任�
 > Neuro OJ
 > 还处于开发阶段，且没有经过正式的生产验证，请勿将其用于任何正式比赛的评测。
 
+> [!TIP]
+> 感谢来自中国计算机学会（CCF）和南京大学（NJU）的刘舒然老师，在 LMCC 在线培训会议中对 Neuro OJ 的推荐。[^1]
+
 ## 简介
 
 NOJ 提供从“注册 → 做题 → 提交 → 评测”的完整流程，可用于 LMCC 备考与模拟训练、AI
@@ -47,11 +50,11 @@ AI 工程能力。
 ## 快速开始
 
 生产环境使用单机 Docker Compose 部署。从 Release 下载 `noj-cli`
-二进制并校验，再由它完成安装。建议用 `--ref`
-指定与二进制一致的版本（v0.10.4-rc.1 及更早的二进制必须指定）：
+二进制并校验，再由它完成安装。建议用 `--ref` 指定与二进制一致的版本（0.10.4
+及更早的二进制必须显式指定）：
 
 ```bash
-VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签（见 Releases 页面）
+VERSION=v0.10.6   # 替换为目标 Release 标签（见 Releases 页面）
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
@@ -115,3 +118,5 @@ noj-docs             用户、运营者和出题人文档站
 ## 许可证
 
 本项目基于 [GNU Affero General Public License v3.0](./LICENSE) 开源。
+
+[^1]: 这不代表来自 CCF、NJU 或其他关联机构、个人对 Neuro OJ 的官方认可，也不代表 Neuro OJ 在开发过程中受到了其提供的资助。

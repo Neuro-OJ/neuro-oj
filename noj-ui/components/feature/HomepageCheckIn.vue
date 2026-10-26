@@ -1,4 +1,7 @@
 <script setup lang="ts">
+const props = defineProps<{
+  initialCheckIn?: { checked_in: boolean; streak: number };
+}>();
 const { user, isLoggedIn } = useAuth();
 const { api } = useApi();
 
@@ -6,13 +9,13 @@ const { api } = useApi();
 // 常驻公告区块见 components/feature/AnnouncementSection.vue。
 
 // ── Check-in ──
-const checkedIn = ref(false);
+const checkedIn = ref(props.initialCheckIn?.checked_in ?? false);
 const fadeWhite = ref(false);
 const showText = ref(false);
-const streakCount = ref(0);
+const streakCount = ref(props.initialCheckIn?.streak ?? 0);
 const showStreak = ref(false);
 const checkInLoading = ref(false);
-const checkInLoaded = ref(false);
+const checkInLoaded = ref(props.initialCheckIn !== undefined);
 
 // 签到动画时序（加载恢复 vs 手动签到，两套不同节奏）
 const RESTORE_ANIM_DELAYS = { anim: 600, white: 200, text: 400, streak: 700 };
@@ -36,7 +39,7 @@ function playCheckInAnim(delays: {
 }
 
 async function fetchTodayCheckIn() {
-  if (!isLoggedIn.value) return;
+  if (!isLoggedIn.value || props.initialCheckIn !== undefined) return;
   try {
     const res = await api.get<{ data: { checked_in: boolean; streak: number } }>(
       '/api/v1/checkin/today',

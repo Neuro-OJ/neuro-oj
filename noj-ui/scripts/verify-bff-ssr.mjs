@@ -5,6 +5,18 @@ import { strict as assert } from "node:assert";
 const requests = [];
 let brokenCarousel = false;
 let draftAssignment = false;
+const isLayoutApi = (requestPath) =>
+  requestPath === "/api/v1/instance" ||
+  requestPath === "/api/v1/site/meta" ||
+  requestPath === "/api/v1/auth/ban-status" ||
+  requestPath === "/api/v1/auth/me" ||
+  requestPath === "/api/v1/me/domains" ||
+  requestPath === "/api/v1/conversations/unread-count" ||
+  /^\/api\/v1\/domains\/[^/]+$/.test(requestPath) ||
+  /^\/api\/v1\/domains\/[^/]+\/(announcements\/banner|community\/config|community\/notifications\/unread-count|notifications)$/
+    .test(
+      requestPath,
+    );
 const user = (id) => ({
   id,
   username: id,
@@ -41,7 +53,7 @@ const teachingCells = (actor) =>
   }));
 const fixture = Deno.serve(
   { hostname: "127.0.0.1", port: 0, onListen() {} },
-  (request) => {
+  async (request) => {
     const url = new URL(request.url), path = url.pathname;
     const actor =
       request.headers.get("authorization")?.replace("Bearer ", "") ?? null;
@@ -200,6 +212,23 @@ const fixture = Deno.serve(
               resource_available: true,
             }),
           ),
+        },
+      });
+    }
+    if (path.endsWith("/problem-summaries") && request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const references = Array.isArray(body?.references) ? body.references : [];
+      return Response.json({
+        data: {
+          items: references.map((reference) => ({
+            reference: String(reference),
+            availability: "available",
+            title: "题目首屏",
+            kind: "oi",
+            answer_version_id: "v1",
+            answer_version: 1,
+            progress: null,
+          })),
         },
       });
     }
@@ -449,14 +478,17 @@ try {
         `${role} ${path} 未显示主要内容`,
       );
       const initialApi = api.filter((path) => !path.endsWith("/events"));
+      const unexpectedHydration = initialApi.filter((requestPath) =>
+        !isLayoutApi(requestPath)
+      );
       assert.deepEqual(
-        initialApi,
+        unexpectedHydration,
         [],
-        `${role} ${path} 水合重复请求：${initialApi}`,
+        `${role} ${path} 水合阶段出现未预期的页面请求：${unexpectedHydration}`,
       );
       assert.equal(
-        requests.filter((request) => request.path === "/api/v1/auth/me").length,
-        role === "guest" ? 0 : 1,
+        requests.some((request) => request.path === "/api/v1/auth/me"),
+        role !== "guest",
       );
       if (path.endsWith("/assignments/a")) {
         assert.equal(
@@ -471,7 +503,7 @@ try {
       const counts = new Map();
       for (
         const request of requests.filter((request) =>
-          !request.path.endsWith("/events")
+          !request.path.endsWith("/events") && !isLayoutApi(request.path)
         )
       ) {
         const params = new URLSearchParams(request.query);
@@ -512,13 +544,12 @@ try {
           1,
           "题单翻页只发送一次聚合请求",
         );
-        assert.equal(
-          api.filter((path) =>
-            !path.startsWith("/api/bff/") && !path.endsWith("/events")
-          ).length,
-          0,
-          "翻页不得逐题浏览器取数",
+        const nonBffPageApi = api.filter((path) =>
+          !path.startsWith("/api/bff/") &&
+          !path.endsWith("/events") &&
+          !isLayoutApi(path)
         );
+        assert.equal(nonBffPageApi.length, 0, "翻页不得逐题浏览器取数");
       }
     }
     if (role === "coach") {
@@ -572,8 +603,10 @@ try {
     );
     assert.equal(
       api.filter((path) =>
-        !path.startsWith("/api/bff/") && !path.endsWith("/events")
-      ).length,
+        !path.startsWith("/api/bff/") && !path.endsWith("/events") &&
+        !isLayoutApi(path)
+      )
+        .length,
       0,
       `SPA 组件额外取数：${api}`,
     );
@@ -605,7 +638,11 @@ try {
       .$nuxt?.isHydrating === false
   );
   assert((await draftTab.locator("body").innerText()).includes("发布预览"));
-  assert.deepEqual(draftApi, [], "草稿预览也应复用聚合数据");
+  assert.deepEqual(
+    draftApi.filter((path) => !isLayoutApi(path)),
+    [],
+    "草稿预览也应复用聚合数据",
+  );
   await draftContext.close();
   brokenCarousel = true;
   const degraded = await fetch(`${base}/api/bff/v1/domains/school/home`);

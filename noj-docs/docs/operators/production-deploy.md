@@ -50,7 +50,7 @@ API，也不会修改已有站点、证书 或其他容器。部署完成后，�
 从 Release 手动下载二进制并校验：
 
 ```bash
-VERSION=v0.10.5   # 替换为目标 Release 标签
+VERSION=v0.10.6   # 替换为目标 Release 标签
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
@@ -131,7 +131,7 @@ draft、非 prerelease（即已转正，含 `-rc.N` 等标签）且资产中 包
 
 | 配置项                                 | 说明                                                                                                                          |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `NOJ_VERSION`                          | 要使用的 Release 标签，例如 `v0.10.4-rc.1`；不要填写 `latest`                                                                 |
+| `NOJ_VERSION`                          | 要使用的 Release 标签，例如 `v0.10.6`；不要填写 `latest`                                                                      |
 | `DOMAIN`                               | 对外域名或服务器 IP，只填主机名，不要写 `http://`/`https://`（`install` 的向导会据此生成 `APP_URL`；不直接注入容器）          |
 | `APP_URL`                              | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com`                                                               |
 | `CORS_ALLOWED_ORIGINS`                 | 通常与 `APP_URL` 相同                                                                                                         |
@@ -274,11 +274,11 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 
 三个构建身份变量由 Release 流水线以 build-arg 注入，**不需要**写进 `.env.prod`：
 
-| 变量                | 含义                              |
-| ------------------- | --------------------------------- |
-| `NOJ_BUILD_VERSION` | Release 标签（如 `v0.10.4-rc.1`） |
-| `NOJ_BUILD_COMMIT`  | 完整 commit SHA（`github.sha`）   |
-| `NOJ_BUILD_TIME`    | 构建时刻（UTC，ISO 8601）         |
+| 变量                | 含义                            |
+| ------------------- | ------------------------------- |
+| `NOJ_BUILD_VERSION` | Release 标签（如 `v0.10.6`）    |
+| `NOJ_BUILD_COMMIT`  | 完整 commit SHA（`github.sha`） |
+| `NOJ_BUILD_TIME`    | 构建时刻（UTC，ISO 8601）       |
 
 本地源码运行时三者缺省回退：版本取模块清单（`deno.json` /
 `package.json`）、commit 取本地 git 短 SHA（工作区有改动则缀

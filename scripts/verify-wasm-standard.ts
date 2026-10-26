@@ -25,7 +25,7 @@ for (const [id, frozenHash] of Object.entries(published)) {
   const standard = JSON.parse(await Deno.readTextFile(`fixtures/${id}.json`));
   for (
     const file of [
-      `noj-core/src/domains/catalog/types/${id}.json`,
+      `noj-core/src/modules/problems/types/${id}.json`,
       `noj-judge/src/oi/${id}.json`,
     ]
   ) {

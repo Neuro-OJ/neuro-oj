@@ -4,9 +4,13 @@
  * 该函数返回 catalog 域定义的轻量 `ContestAccessInfo`，由提交/读题路径
  * 在调用 `resolveProblemAccess` 时作为竞赛上下文传入。
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import { contestProblems, domains } from "../../../shared/db/schema.ts";
+import {
+  contestProblems,
+  contests,
+  domains,
+} from "../../../shared/db/schema.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
@@ -17,7 +21,6 @@ import {
 } from "../../../shared/base/errors.ts";
 import type { ContestAccessInfo } from "../contracts/read.ts";
 import { computeContestStatus } from "./contests.ts";
-import { findContestRow } from "./contest-row.ts";
 import { isParticipant } from "./contests.ts";
 import type { ContestType } from "../types/contests.ts";
 
@@ -41,14 +44,20 @@ export async function verifyContestAccess(
   let endTime: string;
   let type: ContestType;
   let organizer: boolean;
+  let resolvedContestId = contestId;
   try {
     const db = options.executor ?? getDb();
-    const contest = await findContestRow(contestId, db);
+    const [contest] = await db.select().from(contests).where(or(
+      eq(contests.id, contestId),
+      eq(contests.public_id, contestId),
+    )).limit(1);
+    if (!contest) return { contestId, allowed: false, running: false };
+    resolvedContestId = contest.id;
     if (
       (contest.domain_id ?? DEFAULT_DOMAIN_ID) !==
         (options.domainId ?? DEFAULT_DOMAIN_ID)
     ) {
-      return { contestId, allowed: false, running: false };
+      return { contestId: resolvedContestId, allowed: false, running: false };
     }
     startTime = contest.start_time;
     endTime = contest.end_time;
@@ -56,7 +65,9 @@ export async function verifyContestAccess(
     {
       const [domain] = await db.select({ slug: domains.slug }).from(domains)
         .where(eq(domains.id, contest.domain_id ?? DEFAULT_DOMAIN_ID));
-      if (!domain) return { contestId, allowed: false, running: false };
+      if (!domain) {
+        return { contestId: resolvedContestId, allowed: false, running: false };
+      }
       const workspace = await loadWorkspace(domain.slug, userId, {
         executor: db,
       });
@@ -65,14 +76,14 @@ export async function verifyContestAccess(
         userId === contest.created_by &&
           workspace.context.domainPermissions.has("contest:manage_own");
       if (!workspace.membership && !workspace.platformAdmin) {
-        return { contestId, allowed: false, running: false };
+        return { contestId: resolvedContestId, allowed: false, running: false };
       }
     }
   } catch (error) {
     if (
       error instanceof NotFoundError || error instanceof ForbiddenError ||
       error instanceof UnauthorizedError
-    ) return { contestId, allowed: false, running: false };
+    ) return { contestId: resolvedContestId, allowed: false, running: false };
     throw error;
   }
 
@@ -84,20 +95,20 @@ export async function verifyContestAccess(
     })
     .from(contestProblems)
     .where(and(
-      eq(contestProblems.contest_id, contestId),
+      eq(contestProblems.contest_id, resolvedContestId),
       eq(contestProblems.problem_id, problemId),
     ))
     .limit(1);
   if (!problem) {
-    return { contestId, allowed: false, running: false };
+    return { contestId: resolvedContestId, allowed: false, running: false };
   }
 
   const status = computeContestStatus(startTime, endTime);
   const participant = userId !== null &&
-    await isParticipant(contestId, userId, db);
+    await isParticipant(resolvedContestId, userId, db);
   const allowed = participant && (status === "running" || status === "ended");
   return {
-    contestId,
+    contestId: resolvedContestId,
     allowed,
     running: status === "running",
     type,
