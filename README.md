@@ -26,7 +26,7 @@ Neuro OJ（NOJ）是独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无任�
 > 还处于开发阶段，且没有经过正式的生产验证，请勿将其用于任何正式比赛的评测。
 
 > [!TIP]
-> 感谢来自中国计算机学会（CCF）和南京大学（NJU）的刘舒然老师，在 LMCC 在线培训会议中对 Neuro OJ 的推荐。
+> 感谢来自中国计算机学会（CCF）和南京大学（NJU）的刘舒然老师，在 LMCC 在线培训会议中对 Neuro OJ 的推荐。[^1]
 
 ## 简介
 
@@ -118,3 +118,5 @@ noj-docs             用户、运营者和出题人文档站
 ## 许可证
 
 本项目基于 [GNU Affero General Public License v3.0](./LICENSE) 开源。
+
+[^1]: 这不代表来自 CCF、NJU 或其他关联机构、个人对 Neuro OJ 的官方认可，也不代表 Neuro OJ 在开发过程中受到了其提供的资助。
