@@ -661,15 +661,15 @@ Deno.test({
           await expect(
             teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toBeHidden();
-          const card = teacher.page.locator("div.sm\\:hidden").filter({
-            has: teacher.page.getByRole("heading", {
-              name: studentName,
-              exact: true,
-            }),
-          });
+          const card = teacher.page.locator(
+            'ul[aria-label="学生成绩摘要"] > li',
+          ).filter({ hasText: studentName }).first();
           await expect(card).toBeVisible();
-          await card.getByRole("button", { name: "0 · 未达标", exact: true })
-            .click();
+          await card.locator(":scope > button").click();
+          await card.getByRole("button", {
+            name: `${studentName} ${number} 0 · 未达标`,
+            exact: true,
+          }).click();
           await expect(
             teacher.page.getByRole("dialog", { name: / · / }),
           ).toBeVisible();

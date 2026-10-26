@@ -63,6 +63,8 @@ Status: implemented
   URL 并等待水合完成后再读取标题，避免把异步导航和旧页面误报为业务失败。
 - 接任教练重新读取原作业反馈前切换到“反馈与求助”标签；学生从班级作业列表进入新建补题，
   不把列表页误当成作业详情页，保持“页面入口→详情状态”的真实用户路径。
+- 教学窄屏矩阵和课堂矩阵共用 `ul[aria-label="学生成绩摘要"]` mobile contract；旧
+  `div.sm:hidden` 不存在，按学生行先展开再选 cell。
 
 ## Alternatives considered
 
