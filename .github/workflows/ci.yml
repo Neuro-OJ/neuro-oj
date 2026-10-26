@@ -1554,7 +1554,8 @@ jobs:
     needs: changes
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'workspace') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # workspace 别名覆盖五个目标模块；14m19s 测试之外还需完成隔离资源清理。
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
