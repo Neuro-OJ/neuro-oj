@@ -6,10 +6,11 @@ review、外部检查处理与发布决策；未合并、未发布、未切换�
 ## 1. 验收范围
 
 本轮变更全部追加在 P3–P8 stack 顶端，没有编辑历史。当前 PR #691 的 base 是
-`architecture/remediation-p3-p8`（PR #690，头 `7871d31a`），本轮运行时代码修复头为
-`51cbfebe43689d43011a27183c5eefe4d3823112`，验收文档与文档站死链修复后的最终头为
-`c058f99e688c55c83b859f707b5d19b368ee4f09`；这里不把 stack 头误称为最新
-`main`。本轮重点是把上一轮验收发现的阻塞收敛成可 review 的修复提交：
+`architecture/remediation-p3-p8`（PR #690，头 `7871d31a`）。本轮运行时代码修复头为
+`51cbfebe43689d43011a27183c5eefe4d3823112`，文档站死链修复并完成对应验证的提交为
+`c058f99e688c55c83b859f707b5d19b368ee4f09`；其后只追加验收证据同步提交，未改变运行时代码。
+这里不把 stack 头误称为最新 `main`。本轮重点是把上一轮验收发现的阻塞收敛成可 review
+的修复提交：
 
 - Domain 资源同时接受公开 ID 与内部 UUID 时，先解析并使用 canonical internal
   ID，避免跨域授权、比赛 admission 和排名查询混用标识；
@@ -108,17 +109,18 @@ recovery；这证明当前修复可在真实服务链路复现通过，但生产
   测试与双容器评测链路已验证。
 - 性能门禁已由 workflow_dispatch `40260061354` 完整执行并通过；生产备份恢复、真实发布
   窗口和数据库切换尚未执行。
-- Cloudflare Pages 已在最终 head `c058f99e` 成功部署，preview 为
-  `https://ff5d7074.noj-docs.pages.dev`；`license/cla` 仍 pending，需要仓库维护者完成签署。
+- Cloudflare Pages 已在文档站死链修复提交 `c058f99e` 成功部署，preview 为
+  `https://ff5d7074.noj-docs.pages.dev`；其后只追加验收证据同步提交。
+  `license/cla` 仍 pending，需要仓库维护者完成签署。
 
 ## 5. 版本与安全边界
 
 - 所有修复以新提交追加，未编辑 P3–P8 历史；未推送 `main`，未合并 PR，未发布
   Release，未操作生产服务。
-- PR #691：`https://github.com/Neuro-OJ/neuro-oj/pull/691`；运行时代码验收头为
-  `51cbfebe43689d43011a27183c5eefe4d3823112`，最终 PR head 为
-  `c058f99e688c55c83b859f707b5d19b368ee4f09`；CI run `40260198187`、E2E run
-  `40260198092`、Security `40260198097` 和 Lint `40260198088` 均成功。
+- PR #691：`https://github.com/Neuro-OJ/neuro-oj/pull/691`；运行时代码和文档站死链
+  修复验收提交为 `c058f99e688c55c83b859f707b5d19b368ee4f09`，其后仅追加验收证据同步
+  提交；对应的 CI run `40260198187`、E2E run `40260198092`、Security
+  `40260198097` 和 Lint `40260198088` 均成功。
 - 本机 GPG pinentry
   不可用；用户明确接受本轮新增修复提交不签名。既有签名提交保持不变，PR/验收记录会显式标注此例外。
 - 测试资源使用本 run 所有的隔离 PostgreSQL、Redis 和 storage；`noj-e2e-local`

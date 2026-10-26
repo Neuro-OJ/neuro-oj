@@ -4,9 +4,9 @@
 #690）的栈顶修复层，所有变更都追加在现有历史之上，没有改写 P3–P8 提交。
 
 本层运行时代码验收 head 为
-`51cbfebe43689d43011a27183c5eefe4d3823112`；随后追加了验收报告和文档站死链
-修复，当前 PR head 为 `c058f99e688c55c83b859f707b5d19b368ee4f09`。最终对应的
-CI run 为 `40260198187`，E2E run 为 `40260198092`；性能门禁另由
+`51cbfebe43689d43011a27183c5eefe4d3823112`；文档站死链修复并完成对应验证的提交为
+`c058f99e688c55c83b859f707b5d19b368ee4f09`，其后只追加验收证据同步提交，未改变运行时
+代码。对应的 CI run 为 `40260198187`，E2E run 为 `40260198092`；性能门禁另由
 `40260061354` workflow_dispatch 完整执行。
 
 本层收敛整栈验收发现的生产合同问题：
@@ -70,8 +70,8 @@ CI run 为 `40260198187`，E2E run 为 `40260198092`；性能门禁另由
 - GitHub 性能 workflow_dispatch `40260061354`：41/41 jobs 通过；Core Perf 搜索
   和教学矩阵性能均执行。记录高选择性搜索 291ms、全命中搜索 263ms、社区搜索
   P95 148.3ms、教学矩阵 P95 55.96ms、正式重测进度更新 1653ms，均低于门槛。
-- Cloudflare Pages：最终 head `c058f99e` 部署成功，preview 为
-  `https://ff5d7074.noj-docs.pages.dev`。
+- Cloudflare Pages：文档站死链修复提交 `c058f99e` 部署成功，preview 为
+  `https://ff5d7074.noj-docs.pages.dev`；其后只追加验收证据同步提交。
 - 本轮修复隔离 E2E：system 为 38 passed / 0 failed（含 `problems.delete`
   审计）；cross-domain outbox recovery 精确回归为 1 passed / 0 failed / 55
   filtered，真实 Core 停机后重启并恢复积压。
