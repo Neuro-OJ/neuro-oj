@@ -1,7 +1,7 @@
 <script setup lang="ts">
 useHead({ title: '题单管理 - Neuro OJ' })
 
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
+definePageMeta({ layout: 'admin', middleware: 'admin', })
 </script>
 
 <template>

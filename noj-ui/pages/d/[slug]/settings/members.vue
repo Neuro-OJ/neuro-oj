@@ -190,44 +190,72 @@ useSeoMeta({ title: '成员管理 - 域设置' });
         </template>
       </AdminPageHeader>
 
-      <!-- 待审核申请 -->
-      <UCard v-if="writable && pendingRequests.length" class="rounded">
-        <h2 class="mb-3 font-semibold text-text">待审核的加入申请（{{ pendingRequests.length }}）</h2>
-        <ul class="divide-y divide-border">
-          <li v-for="request in pendingRequests" :key="request.id"
-            class="flex flex-wrap items-center justify-between gap-3 py-3">
+      <!-- 待审核申请卡片 -->
+      <UCard v-if="writable && pendingRequests.length" class="border-warning/40">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-user-plus" class="size-5 text-warning" />
+              <h2 class="font-semibold text-text">待审核的加入申请</h2>
+            </div>
+            <UBadge color="warning" variant="subtle" size="sm">
+              {{ pendingRequests.length }} 条待处理
+            </UBadge>
+          </div>
+        </template>
+
+        <ul class="divide-y divide-border -my-2">
+          <li
+            v-for="request in pendingRequests"
+            :key="request.id"
+            class="flex flex-wrap items-center justify-between gap-3 py-3"
+          >
             <div>
               <p class="text-sm font-medium text-text">{{ request.username }}</p>
-              <p class="text-sm text-text-secondary">{{ request.reason || '未填写理由' }}</p>
+              <p class="text-xs text-text-muted mt-0.5">{{ request.reason || '未填写申请理由' }}</p>
             </div>
-            <div class="flex gap-2">
-              <UButton :disabled="busy || !request.can_approve" size="sm"
-                @click="reviewRequest(request, true)">批准</UButton>
-              <UButton :disabled="busy" size="sm" color="neutral" variant="outline"
-                @click="reviewRequest(request, false)">拒绝</UButton>
+            <div class="flex items-center gap-2">
+              <UButton
+                :disabled="busy || !request.can_approve"
+                size="sm"
+                color="primary"
+                @click="reviewRequest(request, true)"
+              >
+                批准加入
+              </UButton>
+              <UButton
+                :disabled="busy"
+                size="sm"
+                color="neutral"
+                variant="outline"
+                @click="reviewRequest(request, false)"
+              >
+                拒绝
+              </UButton>
             </div>
           </li>
         </ul>
       </UCard>
+
       <p v-if="requests.error.value" class="text-sm text-error-text" role="alert">
         {{ extractApiError(requests.error.value).message }}
       </p>
 
-      <!-- 搜索与条数筛选 -->
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <form class="flex flex-wrap items-center gap-2" @submit.prevent="onSearch">
+      <!-- 搜索与条数筛选卡片栏 -->
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-3.5 shadow-card">
+        <form class="flex flex-wrap items-center gap-2 grow max-w-md" @submit.prevent="onSearch">
           <UInput
             v-model="search"
             placeholder="搜索用户名或邮箱"
             icon="i-lucide-search"
-            class="w-64"
+            class="grow"
             aria-label="搜索成员"
           />
-          <UButton type="submit" variant="outline">搜索</UButton>
-          <UButton v-if="keyword" type="button" variant="ghost" @click="search = ''; onSearch()">清除</UButton>
+          <UButton type="submit" variant="outline" color="neutral">搜索</UButton>
+          <UButton v-if="keyword" type="button" variant="ghost" color="neutral" @click="search = ''; onSearch()">清除</UButton>
         </form>
 
-        <div class="flex items-center gap-2 text-sm text-text-muted">
+        <div class="flex items-center gap-2 text-xs text-text-muted">
           <span>每页显示：</span>
           <USelect
             :model-value="perPage"
@@ -243,44 +271,54 @@ useSeoMeta({ title: '成员管理 - 域设置' });
       </div>
 
       <!-- 成员表格 -->
-      <AdminTable
-        :columns="[
-          { key: 'username', label: '账号' },
-          { key: 'email', label: '邮箱' },
-          { key: 'roles', label: '角色' },
-          { key: 'status', label: '状态' },
-          { key: 'actions', label: '操作' }
-        ]"
-        :items="memberRows"
-        :loading="members.status.value === 'pending'"
-        :error="members.error.value ? extractApiError(members.error.value).message : ''"
-      >
-        <template #cell="{ row, column }">
-          <div v-if="column.key === 'roles'" class="flex flex-wrap gap-1">
-            <UBadge v-for="role in (row.roles as WorkspaceRole[])" :key="role" color="neutral" variant="subtle">
-              {{ WORKSPACE_ROLE_LABELS[role] }}
-            </UBadge>
-          </div>
-          <span v-else-if="column.key === 'status'">
-            {{ row.status === 'active' ? '当前成员' : '历史成员' }}
-          </span>
-          <span v-else-if="column.key === 'email'">
-            {{ row.email || '-' }}
-          </span>
-          <span v-else>{{ row[column.key] }}</span>
-        </template>
-        <template #actions="{ row }">
-          <template v-if="writable && !row.is_owner && row.status === 'active' && row.email">
-            <UButton color="neutral" variant="ghost" size="sm" @click="editRoles(row.raw as WorkspaceMember)">角色</UButton>
-            <UButton color="error" variant="ghost" size="sm" @click="remove(row.raw as WorkspaceMember)">移除</UButton>
+      <div class="rounded-lg border border-border bg-white dark:bg-bg-panel shadow-card overflow-hidden">
+        <AdminTable
+          :columns="[
+            { key: 'username', label: '账号' },
+            { key: 'email', label: '邮箱' },
+            { key: 'roles', label: '角色' },
+            { key: 'status', label: '状态' },
+            { key: 'actions', label: '操作' }
+          ]"
+          :items="memberRows"
+          :loading="members.status.value === 'pending'"
+          :error="members.error.value ? extractApiError(members.error.value).message : ''"
+        >
+          <template #cell="{ row, column }">
+            <div v-if="column.key === 'roles'" class="flex flex-wrap gap-1">
+              <UBadge
+                v-for="role in (row.roles as WorkspaceRole[])"
+                :key="role"
+                :color="role === 'owner' ? 'primary' : role === 'admin' ? 'info' : 'neutral'"
+                variant="subtle"
+                size="xs"
+              >
+                {{ WORKSPACE_ROLE_LABELS[role] }}
+              </UBadge>
+            </div>
+            <span v-else-if="column.key === 'status'">
+              <UBadge :color="row.status === 'active' ? 'success' : 'neutral'" variant="subtle" size="xs">
+                {{ row.status === 'active' ? '当前成员' : '历史成员' }}
+              </UBadge>
+            </span>
+            <span v-else-if="column.key === 'email'" class="text-xs text-text-secondary font-mono">
+              {{ row.email || '-' }}
+            </span>
+            <span v-else class="font-medium text-text">{{ row[column.key] }}</span>
           </template>
-        </template>
-      </AdminTable>
+          <template #actions="{ row }">
+            <div v-if="writable && !row.is_owner && row.status === 'active' && row.email" class="flex items-center gap-1">
+              <UButton color="neutral" variant="ghost" size="xs" @click="editRoles(row.raw as WorkspaceMember)">调整角色</UButton>
+              <UButton color="error" variant="ghost" size="xs" @click="remove(row.raw as WorkspaceMember)">移除</UButton>
+            </div>
+          </template>
+        </AdminTable>
+      </div>
 
       <!-- 分页栏 -->
-      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 text-sm">
-        <p class="text-text-muted tabular-nums">
-          共 {{ totalCount }} 位成员 · 第 {{ page }} / {{ totalPages }} 页
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel px-4 py-3 shadow-card text-sm">
+        <p class="text-xs text-text-muted tabular-nums">
+          共 <strong class="text-text">{{ totalCount }}</strong> 位成员 · 第 {{ page }} / {{ totalPages }} 页
         </p>
         <div class="flex items-center gap-2">
           <UButton color="neutral" variant="outline" size="sm" :disabled="page <= 1" @click="page--">

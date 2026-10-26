@@ -101,66 +101,99 @@ useSeoMeta({ title: '交接与归档 - 域设置' });
 <template>
   <DomainSettingsShell>
     <div v-if="permitted && domain" class="space-y-6 max-w-[768px]">
-      <AdminPageHeader title="交接与空间治理" description="转交空间负责人权限，或对空间进行归档、暂停与恢复。" icon="i-lucide-shield-alert" />
+      <AdminPageHeader
+        title="交接与空间治理"
+        description="转交空间最高所有权，或对空间进行归档保护、暂停与恢复访问。"
+        icon="i-lucide-shield-alert"
+      />
 
       <UAlert v-if="error" color="error" :title="error" class="mb-4" />
 
-      <!-- 转交负责人 -->
-      <UCard v-if="writable && canTransfer" class="rounded">
-        <h2 class="mb-2 font-semibold text-text">转交空间负责人</h2>
-        <p class="mb-4 text-sm text-text-secondary">
-          将空间最高管理权转移给另一位当前已激活成员。转交后新负责人拥有全部配置权限，你将保留普通管理员身份。
-        </p>
-        <div class="flex flex-wrap items-center gap-3">
-          <USelect
-            v-model="newOwnerId"
-            :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && !m.is_owner && m.email).map(m => ({ value: m.user_id, label: `${m.username} (${m.email})` }))"
-            placeholder="选择接任负责人的成员"
-            class="min-w-64 max-w-sm"
-            aria-label="新负责人"
-          />
-          <UButton :disabled="!newOwnerId || busy" :loading="busy" color="neutral" variant="outline" @click="transfer">
-            确认转交
-          </UButton>
+      <!-- 转交负责人卡片 -->
+      <UCard v-if="writable && canTransfer">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-user-check" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">转交空间所有权</h2>
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <p class="text-sm text-text-secondary leading-relaxed">
+            将本空间的最高管理权限转移给另一位当前已激活成员。转交后，新负责人将获得空间所有管理与配置能力，你将保留管理员（Admin）角色。
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3 pt-1">
+            <USelect
+              v-model="newOwnerId"
+              :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && !m.is_owner && m.email).map(m => ({ value: m.user_id, label: `${m.username} (${m.email})` }))"
+              placeholder="选择接任负责人的成员"
+              class="w-full sm:w-80"
+              aria-label="新负责人"
+            />
+            <UButton
+              :disabled="!newOwnerId || busy"
+              :loading="busy"
+              color="primary"
+              variant="outline"
+              @click="transfer"
+            >
+              确认转交所有权
+            </UButton>
+          </div>
         </div>
       </UCard>
 
-      <!-- 空间生命周期治理 -->
-      <UCard v-if="canManageStatus" class="rounded">
-        <h2 class="mb-2 font-semibold text-text">空间生命周期治理</h2>
-        <p class="mb-4 text-sm text-text-secondary">
-          当前空间状态：
-          <UBadge :color="domain.status === 'active' ? 'primary' : domain.status === 'archived' ? 'neutral' : 'error'" variant="subtle">
-            {{ domain.status === 'active' ? '正常使用' : domain.status === 'archived' ? '已归档' : '已暂停' }}
-          </UBadge>
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <UButton
-            v-if="domain.status !== 'active'"
-            variant="outline"
-            :loading="busy"
-            @click="setStatus('active')"
-          >
-            恢复正常使用
-          </UButton>
-          <UButton
-            v-if="domain.status === 'active'"
-            color="neutral"
-            variant="outline"
-            :loading="busy"
-            @click="setStatus('archived')"
-          >
-            归档此空间
-          </UButton>
-          <UButton
-            v-if="domain.platform_admin && domain.status !== 'suspended'"
-            color="error"
-            variant="outline"
-            :loading="busy"
-            @click="setStatus('suspended')"
-          >
-            暂停访问
-          </UButton>
+      <!-- 危险区域：空间生命周期治理卡片 -->
+      <UCard v-if="canManageStatus" class="border-error/40">
+        <template #header>
+          <div class="flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-alert-triangle" class="size-5" />
+            <h2 class="font-semibold text-text">空间生命周期治理（危险操作）</h2>
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-text-secondary">当前空间状态：</span>
+            <UBadge :color="domain.status === 'active' ? 'success' : domain.status === 'archived' ? 'neutral' : 'error'" variant="subtle">
+              {{ domain.status === 'active' ? '正常运行中' : domain.status === 'archived' ? '已归档（只读）' : '已暂停访问' }}
+            </UBadge>
+          </div>
+
+          <p class="text-xs text-text-muted leading-relaxed">
+            归档操作将冻结所有新提交、新作业与成员变更，但保留历史记录供查阅；暂停操作将使非平台管理员无法访问本域。
+          </p>
+
+          <div class="flex flex-wrap gap-3 pt-2">
+            <UButton
+              v-if="domain.status !== 'active'"
+              variant="outline"
+              color="primary"
+              :loading="busy"
+              @click="setStatus('active')"
+            >
+              恢复正常使用
+            </UButton>
+            <UButton
+              v-if="domain.status === 'active'"
+              color="neutral"
+              variant="outline"
+              :loading="busy"
+              @click="setStatus('archived')"
+            >
+              归档此空间
+            </UButton>
+            <UButton
+              v-if="domain.platform_admin && domain.status !== 'suspended'"
+              color="error"
+              variant="outline"
+              :loading="busy"
+              @click="setStatus('suspended')"
+            >
+              暂停全域访问
+            </UButton>
+          </div>
         </div>
       </UCard>
     </div>

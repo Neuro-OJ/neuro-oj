@@ -95,47 +95,146 @@ watch(
 );
 </script>
 <template>
-  <div class="space-y-5">
-    <UAlert color="info" title="比赛成绩用于选取补题对象"
-      description="只使用当前获授权的比赛成绩，不因教练身份解除比赛保密。新作业使用当前空间题库策略，独立计算进度；原排名、正式快照及提交保留原记录。" />
+  <div class="flex flex-col gap-6">
+    <UAlert
+      color="info"
+      title="比赛成绩用于选取补题对象"
+      description="只使用当前获授权的比赛成绩，不因教练身份解除比赛保密。新作业使用当前空间题库策略，独立计算进度；原排名、正式快照及提交保留原记录。"
+    />
     <UAlert v-if="error" color="error" :title="error" />
-    <div class="space-y-3 rounded border border-border p-4">
-      <h2 class="font-semibold">选择同域来源比赛</h2>
-      <AsyncContent
-        :status="options.error.value ? 'error' : options.status.value === 'pending' ? 'loading' : options.data.value?.data.length ? 'data' : 'empty'"
-        :error="options.error.value ? extractApiError(options.error.value).message : undefined"
-        empty-text="暂无可访问的比赛" @retry="options.refresh()">
-        <URadioGroup v-model="contestId" :disabled="saving || loading"
-          :items="options.data.value?.data.map(contest => ({ label: contest.title, value: contest.id }))"
-          aria-label="补题来源比赛" />
-      </AsyncContent>
-      <UPagination v-if="options.data.value && options.data.value.pagination.total_pages > 1" v-model:page="page"
-        :total="options.data.value.pagination.total" :items-per-page="20" />
-      <p v-if="preview" class="text-sm text-text-secondary">已选择：{{ preview.source.title }}</p>
-      <p v-else-if="contestId" class="text-sm text-text-muted">已选择：{{ selectedTitle }}。请读取候选名单。</p>
-    </div>
-    <div class="flex flex-wrap items-end gap-4">
-      <AdminFormField label="成绩来源">
-        <USelect v-model="ranking" :disabled="loading || saving" aria-label="比赛补题成绩来源"
-          :items="[{ label: '正式成绩（已发布快照）', value: 'official' }, { label: '实时榜（按当前授权）', value: 'live' }]" />
-      </AdminFormField>
-      <AdminFormField label="补题达标要求">
-        <USelect v-model="requirement" :disabled="loading || saving" aria-label="比赛补题达标要求"
-          :items="[{ label: '正式通过', value: 'accepted' }, { label: '最低原始分', value: 'min_score' }]" />
-      </AdminFormField>
-      <AdminFormField v-if="requirement === 'min_score'" label="最低分（百分制）">
-        <UInput v-model="minimum" type="number" min="0" max="100" step="0.01" :disabled="loading || saving"
-          aria-label="比赛补题最低分" />
-      </AdminFormField>
-      <UButton :loading="loading" :disabled="saving || !contestId || !writable" @click="refresh">预览全班候选</UButton>
-    </div>
-    <p
-      class="text-sm text-text-muted">最低分按正式评测原始百分制成绩判断；通过要求依据正式判定，不从比赛加权得分推断。</p>
+
+    <!-- 卡片 1：选择比赛 -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-trophy" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">选择同域来源比赛</h2>
+          </div>
+          <UBadge v-if="contestId" color="primary" variant="subtle" size="sm">
+            已选择比赛
+          </UBadge>
+        </div>
+      </template>
+
+      <div class="flex flex-col gap-4">
+        <AsyncContent
+          :status="options.error.value ? 'error' : options.status.value === 'pending' ? 'loading' : options.data.value?.data.length ? 'data' : 'empty'"
+          :error="options.error.value ? extractApiError(options.error.value).message : undefined"
+          empty-text="暂无可访问的比赛"
+          @retry="options.refresh()"
+        >
+          <div class="rounded-lg border border-border bg-bg-sunken/40 p-4 max-h-64 overflow-auto">
+            <URadioGroup
+              v-model="contestId"
+              :disabled="saving || loading"
+              :items="options.data.value?.data.map(contest => ({ label: contest.title, value: contest.id }))"
+              aria-label="补题来源比赛"
+              class="space-y-2.5"
+            />
+          </div>
+        </AsyncContent>
+
+        <UPagination
+          v-if="options.data.value && options.data.value.pagination.total_pages > 1"
+          v-model:page="page"
+          :total="options.data.value.pagination.total"
+          :items-per-page="20"
+        />
+
+        <div v-if="preview" class="rounded-md bg-primary-bg px-3.5 py-2 text-sm text-primary font-medium flex items-center gap-2">
+          <UIcon name="i-lucide-check-circle" class="size-4" />
+          <span>已选择：{{ preview.source.title }}</span>
+        </div>
+        <p v-else-if="contestId" class="text-sm text-text-muted">
+          已选择比赛：<span class="font-medium text-text">{{ selectedTitle }}</span>。请在下方配置达标要求后预览候选。
+        </p>
+      </div>
+    </UCard>
+
+    <!-- 卡片 2：达标标准与成绩来源 -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-sliders-horizontal" class="size-5 text-primary" />
+          <h2 class="font-semibold text-text">成绩口径与达标要求</h2>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
+          <AdminFormField label="成绩来源" hint="决定使用已锁定快照还是最新成绩">
+            <USelect
+              v-model="ranking"
+              :disabled="loading || saving"
+              aria-label="比赛补题成绩来源"
+              class="w-full"
+              :items="[{ label: '正式成绩（已发布快照）', value: 'official' }, { label: '实时榜（按当前授权）', value: 'live' }]"
+            />
+          </AdminFormField>
+
+          <AdminFormField label="补题达标要求" hint="未达此标准判定为需要补题">
+            <USelect
+              v-model="requirement"
+              :disabled="loading || saving"
+              aria-label="比赛补题达标要求"
+              class="w-full"
+              :items="[{ label: '正式通过 (AC)', value: 'accepted' }, { label: '最低原始分', value: 'min_score' }]"
+            />
+          </AdminFormField>
+
+          <AdminFormField v-if="requirement === 'min_score'" label="最低分（百分制）">
+            <UInput
+              v-model="minimum"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              :disabled="loading || saving"
+              aria-label="比赛补题最低分"
+              class="w-full tabular-nums"
+            />
+          </AdminFormField>
+        </div>
+
+        <p class="text-xs text-text-muted">
+          最低分按正式评测原始百分制成绩判断；通过要求依据正式判定，不从比赛加权得分推断。
+        </p>
+
+        <div class="pt-2 border-t border-border flex justify-end">
+          <UButton
+            color="primary"
+            :loading="loading"
+            :disabled="saving || !contestId || !writable"
+            icon="i-lucide-search"
+            @click="refresh"
+          >
+            预览全班候选名单
+          </UButton>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- 卡片 3：候选补题矩阵与作业生成 -->
     <UCard v-if="preview">
-      <h2
-        class="mb-3 font-semibold">{{ preview.source.title }} · {{ preview.source.ranking_source === 'official' ? preview.source.snapshot_version === null ? '正式成绩' : `正式快照 v${preview.source.snapshot_version}` : '当前获授权实时成绩' }}</h2>
-      <RemediationSelection :preview="preview" :initial-title="`${preview.source.title}（补题）`" :saving="saving"
-        @create="create" @refresh="refresh" />
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-sparkles" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">
+              {{ preview.source.title }} · {{ preview.source.ranking_source === 'official' ? preview.source.snapshot_version === null ? '正式成绩' : `正式快照 v${preview.source.snapshot_version}` : '当前获授权实时成绩' }}
+            </h2>
+          </div>
+        </div>
+      </template>
+
+      <RemediationSelection
+        :preview="preview"
+        :initial-title="`${preview.source.title}（补题）`"
+        :saving="saving"
+        @create="create"
+        @refresh="refresh"
+      />
     </UCard>
   </div>
 </template>

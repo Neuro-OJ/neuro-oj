@@ -7,11 +7,13 @@ const education = useEducationApi(), actor = useState<{ id: string } | null>('au
 const key = computed(() =>
   educationCacheKey(props.slug, actor.value?.id ?? null, props.task.id, props.task.revision, 'draft-preview')
 );
-const roster = await useAsyncData(
+const roster = await useViewAsyncData(
+  'draftRoster',
   () => `${key.value}:roster`,
   () => education.members(props.slug, props.task.classroom_id),
 );
-const training = await useAsyncData(
+const training = await useViewAsyncData(
+  'draftTraining',
   () => `${key.value}:training`,
   () =>
     props.task.source_training_id

@@ -9,7 +9,8 @@ async function sample() {
   const result = page === 1 ? first : await api.list(props.domainSlug, page);
   return result.items.slice().sort(() => Math.random() - 0.5).slice(0, 3);
 }
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh } = await useViewAsyncData(
+  'randomProblems',
   () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'random-problems'),
   sample,
 );

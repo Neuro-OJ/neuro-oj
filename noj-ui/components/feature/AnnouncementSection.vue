@@ -3,14 +3,15 @@ import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ domainSlug: string }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh } = await useViewAsyncData(
+  'announcements',
   () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-announcements'),
   () => api.list(1, 5),
 );
 usePolling({ intervalMs: 60000, immediate: false, fetcher: () => refresh() });
 </script>
 <template>
-  <section v-if="error || status === 'pending' || data?.data.length" class="border-b border-border px-4 py-5 sm:px-6"
+  <section v-if="error || status === 'pending' || data?.data.length" class="px-5 py-5 sm:px-6"
     aria-label="公告">
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold text-text">公告</h2>

@@ -185,7 +185,9 @@ export interface NotificationRow {
 export function useCommunity() {
   const scope = useCommunityScope();
   const { api } = useApi();
-  const { data, status, refresh, error } = useAsyncData(
+  const seed = useViewSection('communityConfig');
+  const { data, status, refresh, error } = useViewAsyncData(
+    'communityConfig',
     computed(() => `${scope.key.value}:config`),
     async () => {
       const request = scope.capture();
@@ -200,6 +202,7 @@ export function useCommunity() {
   const loading = computed(() => status.value === 'pending');
 
   async function loadConfig(force = false) {
+    if (!force && seed.value) return config.value;
     if (config.value && !force) return config.value;
     await refresh();
     // 配置不可用时隐藏入口，不能使用另一域或另一账号的旧权限。

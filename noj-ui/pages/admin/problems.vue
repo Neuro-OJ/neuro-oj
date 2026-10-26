@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false });
+definePageMeta({ layout: 'admin', middleware: 'admin', });
 const api = useDomainProblems(), { user } = useAuth();
 const page = ref(1), keyword = ref('');
 const { data, status, error, refresh } = await useAsyncData(

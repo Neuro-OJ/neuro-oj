@@ -10,7 +10,7 @@ const records = await useAsyncData(() => `${key.value}:${page.value}`, () => api
 watch(() => key.value, () => { page.value = 1; });
 </script>
 <template>
-  <section class="space-y-3">
+  <section class="flex flex-col gap-3">
     <h3 class="font-semibold">正式评测沿革</h3>
     <p class="text-xs text-text-muted">按尝试顺序展示。重测失败不会替代已有正式判定；当前正式结果仍需符合使用域版本策略。</p>
     <AsyncContent :status="records.error.value ? 'error' : records.status.value === 'pending' ? 'loading' : records.data.value?.data.data.length ? 'data' : 'empty'"

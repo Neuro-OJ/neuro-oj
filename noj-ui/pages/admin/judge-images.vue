@@ -6,7 +6,7 @@ import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { isLoggedIn, loading } = useAuth()
@@ -248,7 +248,7 @@ async function handleDelete() {
       <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
       <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
     </template>
-  
+
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>
       <UButton color="error" :loading="deleting" @click="handleDelete">确认删除</UButton>

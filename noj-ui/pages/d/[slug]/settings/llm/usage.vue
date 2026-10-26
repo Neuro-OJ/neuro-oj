@@ -46,26 +46,36 @@ useSeoMeta({ title: 'LLM 用量统计 - 域设置' });
         </template>
       </AdminPageHeader>
 
-      <UCard class="rounded">
-        <div class="mb-4 flex flex-wrap items-center gap-3">
-          <UInput
-            v-model="usageUser"
-            placeholder="按用户 ID 筛选"
-            aria-label="按用户筛选用量"
-            class="w-48"
-            @update:model-value="page = 1"
-          />
-          <UInput
-            v-model="usageProblem"
-            placeholder="按题目 ID 筛选"
-            aria-label="按题筛选用量"
-            class="w-48"
-            @update:model-value="page = 1"
-          />
-          <UButton variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新用量" @click="refreshUsage()">
-            刷新
-          </UButton>
-        </div>
+      <UCard>
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-activity" class="size-5 text-primary" />
+              <h2 class="font-semibold text-text">模型调用流水</h2>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UInput
+                v-model="usageUser"
+                placeholder="按用户 ID 筛选"
+                aria-label="按用户筛选用量"
+                size="sm"
+                class="w-40"
+                @update:model-value="page = 1"
+              />
+              <UInput
+                v-model="usageProblem"
+                placeholder="按题目 ID 筛选"
+                aria-label="按题筛选用量"
+                size="sm"
+                class="w-40"
+                @update:model-value="page = 1"
+              />
+              <UButton variant="outline" color="neutral" size="sm" icon="i-lucide-refresh-cw" aria-label="刷新用量" @click="refreshUsage()">
+                刷新
+              </UButton>
+            </div>
+          </div>
+        </template>
 
         <UAlert v-if="usageError" color="error" :title="extractApiError(usageError).message" class="mb-4" />
 

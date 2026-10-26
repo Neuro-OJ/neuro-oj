@@ -37,12 +37,12 @@ export interface ApiCallOptions extends Omit<FetchOptions, 'method' | 'timeout'>
 
 type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-export function useApi() {
+export function useApi(targetRoute?: { path: string; fullPath: string }) {
   const cookieNames = authCookieNames(useRuntimeConfig().public.authCookiePrefix);
   const { toast } = useToast();
   const { locale } = useI18n();
   // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
-  const route = useRoute();
+  const route = targetRoute ?? useRoute();
 
   // SSR 端 $fetch 不会自动携带浏览器 Cookie（server→server 直连）。
   // 使用 useRequestFetch 统一转发原始请求的 Cookie 与请求头，与 useFetch 行为对齐。

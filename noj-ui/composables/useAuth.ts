@@ -1,23 +1,8 @@
 import { extractApiError } from '~/utils/apiError';
 import { authCookieNames } from '~/utils/auth-cookies';
 
-interface UserResponse {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  is_admin: boolean;
-  must_change_password: boolean;
-  email_verified: boolean;
-  has_local_password: boolean;
-  tfa_enabled?: boolean;
-  avatar_url?: string | null;
-  permissions?: string[];
-  /** 法律文档同意状态（PIPL）；未发布政策时后端可能不返回 */
-  legal?: import('~/utils/legalConsent').LegalStatusMap;
-  created_at: string;
-  updated_at: string;
-}
+import type { AuthUser as UserResponse } from '~/utils/auth-user';
+import type { BffSnapshot } from '~/utils/bff-view';
 
 interface SessionData {
   userId: string;
@@ -49,7 +34,8 @@ function sessionToUser(session: SessionData): UserResponse {
   };
 }
 
-export function useAuth() {
+export function useAuth(targetRoute?: { path: string; fullPath: string }) {
+  const bff = useState<BffSnapshot | null>('bff:view', () => null);
   const user = useState<UserResponse | null>('auth:user', () => null);
   const loading = useState<boolean>('auth:loading', () => true);
 
@@ -68,7 +54,7 @@ export function useAuth() {
 
   // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
   // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
-  const { api } = useApi();
+  const { api } = useApi(targetRoute);
 
   /** /auth/me 的 SSR 异步数据（同一请求内按 key 复用，守卫与页面只拉一次） */
   function meAsyncData() {
@@ -86,7 +72,7 @@ export function useAuth() {
   // 回填必须等到数据真正 settle：SSR 挂载时 data/error 都还是 undefined，
   // 若此刻就把 user 置空、loading 置 false，会在渲染前误判为「未登录」
   // （路由守卫抢在 /auth/me 之前读到空用户，刷新 /admin/* 被踢回登录页）。
-  if (import.meta.server) {
+  if (import.meta.server && !bff.value) {
     if (session.value) {
       const { data: meData, error: meError } = meAsyncData();
       watch([meData, meError], ([val, err]) => {
@@ -102,7 +88,7 @@ export function useAuth() {
 
   // ── 客户端初始化 ──
   if (import.meta.client) {
-    if (session.value && !user.value) {
+    if (!bff.value && session.value && !user.value) {
       // SSR 未执行（SPA 导航或水合延迟），从 cookie 恢复
       user.value = sessionToUser(session.value);
     }
@@ -121,6 +107,7 @@ export function useAuth() {
       { silent: true, timeout: 5000 },
     );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
+    bff.value = null;
     const userData = res.data.user;
     user.value = userData;
     return { user: userData };
@@ -350,6 +337,7 @@ export function useAuth() {
   }
 
   async function logout() {
+    bff.value = null;
     try {
       // 本地注销端点（Nitro 删除 Cookie），非 /api/v1/ 前缀；失败静默
       await api.post('/api/auth/logout', undefined, { silent: true });

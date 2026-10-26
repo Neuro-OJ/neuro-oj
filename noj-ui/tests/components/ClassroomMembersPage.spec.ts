@@ -23,10 +23,11 @@ vi.mock('~/composables/useDialog', () => ({ useDialog: () => ({ dialog: mockDial
 import MembersPage from '~/pages/d/[slug]/classrooms/[classroomId]/members.vue';
 
 const stubs = {
-  AdminPageHeader: {
+  LibraryPageHeader: {
     props: ['title', 'description'],
     template: '<div><h1>{{ title }}</h1><p>{{ description }}</p></div>',
   },
+  ClassroomNavigation: true,
   UCard: { template: '<div><slot /></div>' },
   UButton: {
     props: ['disabled', 'to'],

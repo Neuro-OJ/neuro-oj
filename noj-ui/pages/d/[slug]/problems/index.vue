@@ -31,7 +31,7 @@ const { data, status, error, refresh } = await useAsyncData(
 const rows = computed(() => data.value?.items ?? []);
 const columns = computed(() => [
   { accessorKey: 'reference', header: '#', meta: { class: { th: 'w-20', td: 'align-top font-mono tabular-nums' } } },
-  { accessorKey: 'title', header: '题目', meta: { class: { th: 'w-full', td: 'min-w-36 whitespace-normal' } } },
+  { accessorKey: 'title', header: '题目', meta: { class: { th: 'min-w-36', td: 'min-w-36 whitespace-normal' } } },
   { accessorKey: 'difficulty', header: '难度' },
   ...['tags', 'time', 'memory', 'rate', ...(user.value ? ['progress'] : [])].map((key) => ({
     accessorKey: key,
@@ -59,27 +59,15 @@ useSeoMeta({ title: '题库' });
 </script>
 <template>
   <div class="space-y-5">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div
-          class="flex size-10 shrink-0 items-center justify-center rounded border border-primary/20 bg-primary-bg text-primary">
-          <UIcon name="i-lucide-book-open" class="size-5" />
-        </div>
-        <div>
-          <h1 class="text-2xl font-bold leading-tight text-text">题库</h1>
-          <p class="mt-1 text-xs text-text-muted">{{ domain?.name }} · 算法与 AI 在线评测</p>
-        </div>
-      </div>
-      <span
-        class="rounded border border-border bg-bg-sunken px-2.5 py-1 font-mono text-xs tabular-nums text-text-muted">共 {{ data?.total ?? '—' }} 道题</span>
-    </div>
-    <div v-if="manageItems.length" class="flex flex-wrap items-center justify-end gap-2">
-      <UButton v-if="domain?.status==='active' && (can('problem:write_own') || can('problem:write_any'))"
-        :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
-      <UDropdownMenu :items="manageItems">
-        <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>
-      </UDropdownMenu>
-    </div>
+    <LibraryPageHeader title="题库" :description="`${domain?.name ?? ''} · 算法与 AI 在线评测`" icon="i-lucide-book-open" :count="`共 ${data?.total ?? '—'} 道题`">
+      <template #actions>
+        <UButton v-if="domain?.status==='active' && (can('problem:write_own') || can('problem:write_any'))"
+          :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
+        <UDropdownMenu v-if="manageItems.length" :items="manageItems">
+          <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>
+        </UDropdownMenu>
+      </template>
+    </LibraryPageHeader>
     <ProblemFilterBar :keyword="keyword" :difficulty="difficulty" :kind="kind" :judge-backend="judgeBackend"
       :progress="progress" :signed-in="!!user"
       :tag-id="tagId" :tags="data?.tags ?? []"
@@ -91,11 +79,11 @@ useSeoMeta({ title: '题库' });
       @reset="router.push({query:{}})" />
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : rows.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无符合条件的题目" @retry="refresh()">
-      <div class="overflow-x-auto rounded border border-border bg-bg-panel shadow-card">
-        <UTable :columns="columns" :data="rows" :ui="{th:'px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
+      <div class="overflow-x-auto rounded-lg border border-border bg-bg-panel shadow-card">
+        <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="whitespace-nowrap text-xs text-primary no-underline">{{ row.original.reference.display_ref }}</NuxtLink>
+              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemId :display-id="row.original.reference.display_ref" type="T" /></NuxtLink>
           </template>
           <template #title-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
@@ -103,8 +91,7 @@ useSeoMeta({ title: '题库' });
             <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
               <span
                 class="rounded border border-primary/20 bg-primary-bg px-1.5 text-primary">{{ {oi:'OI',ai:'AI / LLM',objective:'客观题'}[row.original.kind] }}</span>
-              <span v-if="row.original.judge_backend" class="font-mono">{{ row.original.judge_backend }}</span>
-              <span>V{{ row.original.version }}</span>
+              <span v-if="row.original.judge_backend" class="rounded border border-border px-1.5 font-mono text-text-secondary">{{ row.original.judge_backend }}</span>
               <span v-if="user && row.original.progress==='solved'" class="text-success-text sm:hidden">已通过</span>
             </div>
           </template>
@@ -112,8 +99,9 @@ useSeoMeta({ title: '题库' });
             #difficulty-cell="{row}"><DifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
           <template #tags-cell="{row}">
             <div class="flex max-w-40 flex-wrap gap-1">
-              <UButton v-for="label in row.original.tags" :key="label.id" size="xs" color="neutral" variant="soft"
-                @click="controls.setFilter('tag',label.id)">{{ label.name }}</UButton>
+              <button v-for="label in row.original.tags" :key="label.id" type="button"
+                class="rounded-md border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
+                @click="controls.setFilter('tag',label.id)">{{ label.name }}</button>
               <span v-if="row.original.has_hidden_algorithm_tags"
                 class="text-xs text-text-muted">通过后显示算法标签</span>
               <span v-else-if="!row.original.tags?.length" class="text-text-muted">—</span>
@@ -126,7 +114,7 @@ useSeoMeta({ title: '题库' });
           <template
             #rate-cell="{row}"><span class="text-xs tabular-nums text-text-secondary" :title="`${row.original.accepted_submissions ?? 0} 次通过 / ${row.original.valid_submissions ?? 0} 次有效提交`">{{ row.original.valid_submissions ? `${((row.original.accepted_submissions ?? 0)*100/row.original.valid_submissions).toFixed(1)}%` : '—' }}</span></template>
           <template
-            #progress-cell="{row}"><span class="whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : 'text-text-muted'">{{ {solved:'已通过',attempted:'尝试未通过',unseen:'未尝试'}[row.original.progress ?? 'unseen'] }}</span></template>
+            #progress-cell="{row}"><span class="inline-flex items-center gap-1 whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : 'text-text-muted'"><UIcon :name="row.original.progress === 'solved' ? 'i-lucide-circle-check' : row.original.progress === 'attempted' ? 'i-lucide-circle-alert' : 'i-lucide-circle'" class="size-3.5" />{{ {solved:'已通过',attempted:'尝试未通过',unseen:'未尝试'}[row.original.progress ?? 'unseen'] }}</span></template>
         </UTable>
       </div>
       <PaginationNav v-if="data && data.total>30" class="mt-5" :current-page="page"

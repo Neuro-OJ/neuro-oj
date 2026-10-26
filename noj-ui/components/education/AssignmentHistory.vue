@@ -3,7 +3,8 @@ import { educationCacheKey } from '~/utils/education';
 import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ slug: string; assignmentId: string }>();
 const actor = useState<{ id: string } | null>('auth:user', () => null), page = ref(1), education = useEducationApi();
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh } = await useViewAsyncData(
+  'history',
   () => educationCacheKey(props.slug, actor.value?.id ?? null, props.assignmentId, 'history', page.value),
   () => education.history(props.slug, props.assignmentId, page.value),
 );

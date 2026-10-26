@@ -6,7 +6,7 @@ import { useToast } from '~/composables/useToast'
 import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
 import { extractApiError } from '~/utils/apiError'
 
-definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false })
+definePageMeta({ layout: "admin", middleware: "community-moderation", })
 
 const { toast } = useToast()
 const { dialog } = useDialog()

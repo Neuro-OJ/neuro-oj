@@ -20,6 +20,7 @@ import {
   problemTags,
   problemVersions,
   tags,
+  users,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../workspace/index.ts";
 import {
@@ -320,13 +321,29 @@ export async function readDomainProblem(
     );
   const content = resolved.version.content as ProblemContentV1;
   const fields = projectProblemContent(content, false);
-  const [summary] = await getDomainProblemSummaries(
-    {
-      domainId: resolved.domain.id,
-      member: !!resolved.membership || resolved.platformAdmin,
-    },
-    [resolved.problem.id],
-    actorId,
+  const [summaries, labels, [owner]] = await Promise.all([
+    getDomainProblemSummaries(
+      {
+        domainId: resolved.domain.id,
+        member: !!resolved.membership || resolved.platformAdmin,
+      },
+      [resolved.problem.id],
+      actorId,
+    ),
+    getDb().select({ id: tags.id, name: tags.name, kind: tags.kind })
+      .from(problemTags).innerJoin(tags, eq(tags.id, problemTags.tag_id))
+      .where(eq(problemTags.problem_id, resolved.problem.id))
+      .orderBy(asc(tags.kind), asc(tags.name)),
+    getDb().select({
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    })
+      .from(users).where(eq(users.id, resolved.problem.owner_id)),
+  ]);
+  const summary = summaries[0];
+  const visibleLabels = labels.filter((label) =>
+    label.kind === "problem" || canEdit || summary?.solved
   );
   return {
     reference: resolved.reference,
@@ -343,6 +360,10 @@ export async function readDomainProblem(
     version: resolved.version.version,
     can_edit: canEdit,
     difficulty: resolved.problem.difficulty,
+    judge_backend: fields.judge_backend,
+    owner: owner ?? null,
+    tags: visibleLabels,
+    has_hidden_algorithm_tags: visibleLabels.length !== labels.length,
     statistics: {
       submit_count: summary?.submit_count ?? 0,
       valid_submissions: summary?.valid_submissions ?? 0,

@@ -48,11 +48,17 @@ useSeoMeta({ title: '域内搜索' });
     <AsyncContent v-else
       :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.items.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-      <div class="divide-y divide-border rounded border border-border">
-        <div v-for="item in data?.data.items" :key="`${item.entity_type}:${item.entity_id}`" class="space-y-1 p-4">
+      <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel shadow-card overflow-hidden">
+        <div v-for="item in data?.data.items" :key="`${item.entity_type}:${item.entity_id}`" class="space-y-1.5 p-4 hover:bg-primary-hover-bg/30 transition-colors">
           <NuxtLink v-if="href(item)" :to="href(item)"
-            class="font-medium text-primary hover:underline"><span v-if="domainSearchReference(item)" class="mr-2 font-mono">{{ domainSearchReference(item)!.display_ref }}</span>{{ item.title }}</NuxtLink>
-          <h3 v-else class="font-medium">{{ item.title }}</h3>
+            class="font-medium text-text no-underline hover:text-primary transition-colors flex items-center justify-between">
+            <div>
+              <span v-if="domainSearchReference(item)" class="mr-2 font-mono text-primary">{{ domainSearchReference(item)!.display_ref }}</span>
+              <span>{{ item.title }}</span>
+            </div>
+            <UIcon name="i-lucide-arrow-right" class="size-4 text-text-muted" />
+          </NuxtLink>
+          <h3 v-else class="font-medium text-text">{{ item.title }}</h3>
           <p
             class="text-xs text-text-muted">{{ { problem: '题目', contest: '比赛', submission: '提交', announcement: '公告' }[item.entity_type as 'problem' | 'contest' | 'submission' | 'announcement'] }}</p>
         </div>

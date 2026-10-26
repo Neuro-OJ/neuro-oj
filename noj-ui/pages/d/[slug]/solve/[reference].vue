@@ -2,7 +2,7 @@
 import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
-definePageMeta({ layout: 'workspace-editor', middleware: 'workspace-context', ssr: false });
+definePageMeta({ layout: 'workspace-editor', middleware: 'workspace-context' });
 const route = useRoute(),
   router = useRouter(),
   { slug } = useWorkspace(),

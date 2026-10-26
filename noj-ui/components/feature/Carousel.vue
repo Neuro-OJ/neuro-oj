@@ -19,10 +19,16 @@ const props = withDefaults(
 );
 
 const { loadEnabled } = useCarousel(props.domainSlug);
-const slides = ref<CarouselSlide[]>([]);
+const { user } = useAuth();
+const initial = await useViewAsyncData(
+  'carousel',
+  () => `carousel:${props.domainSlug ?? 'instance'}:${user.value?.id ?? 'guest'}`,
+  async (): Promise<{ data: CarouselSlide[] }> => ({ data: await loadEnabled(true) }),
+);
+const slides = computed(() => initial.data.value?.data ?? []);
 const currentSlide = ref(0);
 const paused = ref(false);
-const error = ref('');
+const error = computed(() => initial.error.value ? extractApiError(initial.error.value).message : '');
 let autoTimer: ReturnType<typeof setInterval> | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -58,17 +64,12 @@ function goToSlide(i: number) {
 }
 
 async function load() {
-  error.value = '';
-  try {
-    slides.value = await loadEnabled(true);
-    if (currentSlide.value >= slides.value.length) currentSlide.value = 0;
-    startAuto();
-  } catch (cause) {
-    error.value = extractApiError(cause).message;
-  }
+  await initial.refresh();
+  if (currentSlide.value >= slides.value.length) currentSlide.value = 0;
+  startAuto();
 }
 
-onMounted(load);
+onMounted(startAuto);
 onUnmounted(() => {
   stopAuto();
   if (idleTimer) clearTimeout(idleTimer);

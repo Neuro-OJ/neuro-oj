@@ -3,7 +3,7 @@ import { isNotFoundError } from '~/utils/apiError'
 import { toProblemView, type ProblemResource } from '~/utils/problemView'
 
 definePageMeta({
-  ssr: false,
+
 })
 
 const router = useRouter()

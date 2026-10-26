@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CommunityNotifications from '~/components/feature/community/CommunityNotifications.vue';
-definePageMeta({ middleware: 'auth', ssr: false });
+definePageMeta({ middleware: 'auth', });
 const { key } = useCommunityScope(true);
 const route = useRoute();
 </script>

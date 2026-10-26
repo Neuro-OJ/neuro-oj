@@ -2192,6 +2192,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -2235,9 +2246,23 @@ jobs:
         working-directory: noj-ui
         run: deno task test
 
+      - name: 安装 BFF 浏览器验收依赖
+        working-directory: noj-ui
+        run: deno run -A npm:playwright@1.62.1 install --with-deps chromium
+
+      - name: BFF 生产 SSR 与水合验收
+        working-directory: noj-ui
+        run: deno task test:bff:ssr
+
+      - name: BFF 跨副本缓存与故障降级
+        working-directory: noj-ui
+        env:
+          BFF_TEST_REDIS_URL: redis://127.0.0.1:6379
+        run: deno task test:bff:cache
+
       - name: 安装主题回归浏览器
         working-directory: noj-ui
-        run: deno run -A npm:playwright@1.62.0 install --with-deps chromium
+        run: deno run -A npm:playwright@1.62.1 install --with-deps chromium
 
       - name: 编辑器 Markdown 明暗主题回归
         working-directory: noj-ui
@@ -2255,7 +2280,6 @@ jobs:
             sleep 1
           done
           deno task test:theme
-
       # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()

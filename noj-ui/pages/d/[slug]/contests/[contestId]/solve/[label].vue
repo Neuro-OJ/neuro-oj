@@ -2,7 +2,7 @@
 import { workspaceCacheKey } from '~/utils/workspace';
 import type { DomainCodeProblem } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
-definePageMeta({ layout: 'workspace-editor', middleware: ['auth', 'workspace-context'], ssr: false });
+definePageMeta({ layout: 'workspace-editor', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth();
 const api = useDomainContestAnswers(), contestApi = useDomainContests();
 const id = computed(() => String(route.params.contestId)), label = computed(() => String(route.params.label));
@@ -14,8 +14,7 @@ const contest = await useAsyncData(() => `${key.value}:contest`, () => contestAp
 usePolling({
   intervalMs: computed(() => contest.data.value?.data.status !== 'ended' ? 2000 : null),
   immediate: false,
-  fetcher: () => contest.refresh(),
-});
+  fetcher: () => contest.refresh() });
 watch(() => [contest.data.value?.data.revision, contest.data.value?.data.status], (next, previous) => {
   if (previous[0] != null && (next[0] !== previous[0] || next[1] !== previous[1])) void refresh();
 });
@@ -36,9 +35,7 @@ const model = computed<DomainCodeProblem | null>(() => {
       title: p.title,
       description: p.description,
       samples: p.samples ?? [],
-      submission_mode: p.submission_mode,
-    },
-  };
+      submission_mode: p.submission_mode } };
 });
 const backUrl = computed(() =>
   `/d/${slug.value}/contests/${encodeURIComponent(id.value)}/problems/${encodeURIComponent(label.value)}`

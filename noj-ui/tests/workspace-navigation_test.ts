@@ -12,14 +12,14 @@ const base = {
 } as unknown as WorkspaceDetail;
 Deno.test('空间导航：相同用户不同域角色只显示该域能力，所有入口保留目标域', () => {
   const student = workspaceNavigation(base);
-  assert(student.some((item) => item.section === 'my-learning'));
+  assert(student.some((item) => item.section === 'classrooms'));
   assert(!student.some((item) => item.section === 'llm'));
   const teacher = workspaceNavigation({
     ...base,
     slug: 'other-school',
     permissions: ['classroom:create', 'llm:manage'],
   });
-  assert(teacher.some((item) => item.section === 'teaching'));
+  assert(teacher.some((item) => item.section === 'classrooms'));
   assert(!teacher.some((item) => item.section === 'llm'));
   assertEquals(
     workspaceSettingsNavigation({ ...base, slug: 'other-school', permissions: ['llm:manage'] }).map((item) => item.to),

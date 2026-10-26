@@ -5,7 +5,7 @@ import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { isLoggedIn, loading } = useAuth()

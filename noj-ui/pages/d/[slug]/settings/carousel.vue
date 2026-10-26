@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], ssr: false });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { domain, can } = useWorkspace();
 useSeoMeta({ title: '轮播管理 · 域设置' });
 </script>

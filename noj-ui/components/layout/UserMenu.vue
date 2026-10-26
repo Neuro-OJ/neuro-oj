@@ -10,7 +10,8 @@ const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();
 const workspace = useOptionalWorkspace();
 const label = computed(() => domainIdentityLabel(user.value?.username ?? '', slug.value));
-const spaces = useAsyncData(
+const spaces = useViewAsyncData(
+  'userSpaces',
   () => workspaceCacheKey('', user.value?.id ?? null, 'user-menu-domains'),
   () => user.value ? workspaces.list(true) : Promise.resolve({ data: [] as WorkspaceSummary[] }),
 );
@@ -32,17 +33,13 @@ const domainSettingsEntry = computed(() => {
   const domain = workspace?.domain.value ?? menuDomain.data.value;
   return domain ? workspaceSettingsNavigation(domain)[0] : undefined;
 });
-const unreadCount = ref(0);
-async function refreshMessages() {
-  const response = await api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', {
-    silent: true,
-  });
-  unreadCount.value = response.unread_count;
-}
-usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: refreshMessages });
-watch(isLoggedIn, (loggedIn) => {
-  if (!loggedIn) unreadCount.value = 0;
-});
+const messages = useViewAsyncData(
+  'messageUnread',
+  () => `user-menu-messages:${user.value?.id ?? 'guest'}`,
+  () => user.value ? api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', { silent: true }) : Promise.resolve({ unread_count: 0 }),
+);
+const unreadCount = computed(() => isLoggedIn.value ? messages.data.value?.unread_count ?? 0 : 0);
+usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => messages.refresh(), immediate: false });
 async function selectDomain(space: WorkspaceSummary) {
   await workspaces.remember(space.slug);
   await navigateTo(workspacePath(space.slug));

@@ -33,7 +33,7 @@ const facts = (): ContestRemediationPreview => ({
 const stubs = {
   UButton: { props: ['disabled'], template: '<button :disabled="disabled"><slot /></button>' },
   AsyncContent: { template: '<div><slot /></div>' },
-  UCard: { template: '<div><slot /></div>' },
+  UCard: { template: '<div><slot name="header" /><slot /></div>' },
   AdminFormField: { props: ['label'], template: '<label>{{ label }}<slot /></label>' },
   UInput: {
     props: ['modelValue'],
@@ -97,7 +97,7 @@ async function view() {
 describe('授权比赛来源补题', () => {
   it('默认正式快照，展示版本及未参赛排除数，创建新草稿保留原分/通过口径', async () => {
     const result = await view();
-    await result.findAll('button').find((button) => button.text() === '预览全班候选')!.trigger('click');
+    await result.findAll('button').find((button) => button.text() === '预览全班候选名单')!.trigger('click');
     await flushPromises();
     expect(contests.list).toHaveBeenCalledWith('school', 1);
     expect(education.contestRemediationPreview).toHaveBeenCalledWith('school', 'class-one', {
@@ -123,13 +123,13 @@ describe('授权比赛来源补题', () => {
   });
   it('切换榜单或要求移除旧候选，最低原分精确转为×100而不读全榜', async () => {
     const result = await view();
-    await result.findAll('button').find((button) => button.text() === '预览全班候选')!.trigger('click');
+    await result.findAll('button').find((button) => button.text() === '预览全班候选名单')!.trigger('click');
     await flushPromises();
     await result.get('select[aria-label="比赛补题成绩来源"]').setValue('live');
     expect(result.find('form').exists()).toBe(false);
     await result.get('select[aria-label="比赛补题达标要求"]').setValue('min_score');
     await result.get('input[aria-label="比赛补题最低分"]').setValue('60.25');
-    await result.findAll('button').find((button) => button.text() === '预览全班候选')!.trigger('click');
+    await result.findAll('button').find((button) => button.text() === '预览全班候选名单')!.trigger('click');
     await flushPromises();
     expect(education.contestRemediationPreview).toHaveBeenLastCalledWith('school', 'class-one', {
       contest_id: 'contest1',
@@ -143,7 +143,7 @@ describe('授权比赛来源补题', () => {
       data: { error: '当前无权读取比赛成绩', code: 'RESULTS_HIDDEN' },
     });
     const result = await view();
-    await result.findAll('button').find((button) => button.text() === '预览全班候选')!.trigger('click');
+    await result.findAll('button').find((button) => button.text() === '预览全班候选名单')!.trigger('click');
     await flushPromises();
     expect(result.text()).toContain('当前无权读取比赛成绩');
     expect(result.find('form').exists()).toBe(false);

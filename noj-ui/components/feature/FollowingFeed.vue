@@ -71,10 +71,7 @@ const scope = useCommunityScope().capture();
 const { isLoggedIn } = useAuth();
 const { config, loadConfig } = useCommunity();
 
-const items = ref<FeedItem[]>([]);
-const loading = ref(true);
 const refreshing = ref(false);
-const error = ref('');
 
 /**
  * 卡片可用：已登录 + 关注功能开启 + 短动态模块开启。
@@ -88,34 +85,24 @@ const available = computed(
     config.value?.moments_enabled === true,
 );
 
-async function fetchFeed() {
-  if (!available.value) {
-    loading.value = false;
-    return;
-  }
-  loading.value = true;
-  try {
-    const res = await api.get<{ data: FeedItem[] }>(scope.apiPath('feed'), {
-      query: { view: 'following', limit: 5 },
-      silent: true,
+const feed = await useViewAsyncData(
+  'feed',
+  () => `${scope.key}:following-feed`,
+  async (): Promise<{ data: FeedItem[] }> => {
+    await loadConfig();
+    if (!available.value) return { data: [] };
+    return api.get<{ data: FeedItem[] }>(scope.apiPath('feed'), {
+      query: { view: 'following', limit: 5 }, silent: true,
     });
-    items.value = res.data;
-  } catch (err: unknown) {
-    error.value = extractApiError(err).message;
-  } finally {
-    loading.value = false;
-  }
-}
-
+  },
+);
+const items = computed(() => feed.data.value?.data ?? []);
+const loading = computed(() => feed.status.value === 'pending');
+const error = computed(() => feed.error.value ? extractApiError(feed.error.value).message : '');
 async function refresh() {
   if (refreshing.value) return;
   refreshing.value = true;
-  await fetchFeed();
-  refreshing.value = false;
+  try { await feed.refresh(); } finally { refreshing.value = false; }
 }
 
-onMounted(async () => {
-  await loadConfig();
-  await fetchFeed();
-});
 </script>

@@ -38,7 +38,15 @@ export function useDomainTrainings() {
           items: Array<
             Pick<
               DomainTrainingDetail,
-              'id' | 'title' | 'source_domain_slug' | 'is_shared' | 'visibility' | 'can_edit' | 'can_share' | 'revision'
+              | 'id'
+              | 'title'
+              | 'description'
+              | 'source_domain_slug'
+              | 'is_shared'
+              | 'visibility'
+              | 'can_edit'
+              | 'can_share'
+              | 'revision'
             >
           >;
           page: number;

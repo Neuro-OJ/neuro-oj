@@ -109,16 +109,16 @@ async function annotate() {
 }
 </script>
 <template>
-  <div class="space-y-4">
+  <div class="flex flex-col gap-4">
     <p class="break-all text-xs text-text-muted">原提交 {{ submissionId }} · 批注保留在这份代码上</p>
     <AsyncContent
       :status="files.error.value ? 'error' : files.status.value === 'pending' ? 'loading' : fileOptions.length ? 'data' : 'empty'"
       :error="files.error.value ? extractApiError(files.error.value).message : undefined"
       empty-text="没有可在线预览的文本文件" @retry="files.refresh()">
       <USelect v-model="file" :items="fileOptions" class="w-full" aria-label="预览文件" />
-      <UAlert v-if="text.error.value" class="mt-3" color="error" :title="extractApiError(text.error.value).message" />
+      <UAlert v-if="text.error.value" color="error" :title="extractApiError(text.error.value).message" />
       <ol v-if="currentText"
-        class="mt-3 max-h-96 overflow-auto rounded border border-border bg-bg-sunken p-3 font-mono text-xs"
+        class="max-h-96 overflow-auto rounded border border-border bg-bg-sunken p-3 font-mono text-xs"
         aria-label="原提交代码">
         <li v-for="(line, i) in currentText.text.split(/\r\n|\r|\n/)" :key="i" class="flex gap-3">
           <span class="w-8 shrink-0 select-none text-right text-text-muted tabular-nums">{{ i + 1 }}</span><span class="whitespace-pre">{{ line || ' ' }}</span>

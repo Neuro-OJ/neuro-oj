@@ -5,7 +5,8 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { problemTags, tags } from "../../../../shared/db/schema.ts";
 import { verifyToken } from "../../../identity/index.ts";
 import {
   consumeDomainInvitation,
@@ -120,6 +121,28 @@ Deno.test({
     const studentToken = await createUserToken("user");
     const student = await verifyToken(studentToken);
     const teacher = await verifyToken(token);
+    const topicId = crypto.randomUUID(), algorithmId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(tags).values([
+      {
+        id: topicId,
+        name: "基础题",
+        kind: "problem",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: algorithmId,
+        name: "隐藏算法",
+        kind: "algorithm",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await getDb().insert(problemTags).values([
+      { problem_id: identity.problem_id, tag_id: topicId },
+      { problem_id: identity.problem_id, tag_id: algorithmId },
+    ]);
     const invitation = await createDomainInvitation(
       "api-school",
       teacher.sub,
@@ -133,6 +156,18 @@ Deno.test({
     const detail = await studentView.json();
     assertEquals(detail.can_edit, false);
     assertEquals(detail.content.questions[0].answer, []);
+    assertEquals(detail.owner.id, teacher.sub);
+    assertEquals(Object.keys(detail.owner).sort(), [
+      "avatar_url",
+      "id",
+      "username",
+    ]);
+    assertEquals(detail.tags.map((tag: { id: string }) => tag.id), [topicId]);
+    assertEquals(detail.has_hidden_algorithm_tags, true);
+    const authorView = await (await jsonRequest(app, `${path}/1001`, { token }))
+      .json();
+    assertEquals(authorView.tags.length, 2);
+    assertEquals(authorView.has_hidden_algorithm_tags, false);
     assertEquals(
       (await jsonRequest(app, draftPath, { token: studentToken })).status,
       403,

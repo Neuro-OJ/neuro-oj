@@ -103,7 +103,7 @@ const year = new Date().getFullYear();
 
 // 备案信息（公开端点，失败静默降级为不展示）
 const { api } = useApi();
-const { data: metaData } = await useAsyncData("site-meta", () =>
+const { data: metaData } = await useViewAsyncData("siteMeta", "site-meta", () =>
     api.get<{ data: typeof EMPTY_SITE_META }>(
         "/api/v1/site/meta",
         { silent: true },

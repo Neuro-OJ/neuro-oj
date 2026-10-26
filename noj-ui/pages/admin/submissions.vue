@@ -17,7 +17,7 @@ import { publicUrl } from '~/utils/publicIdentifiers'
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { isLoggedIn, loading } = useAuth()

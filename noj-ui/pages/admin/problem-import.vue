@@ -4,7 +4,7 @@ import type { BundleImportResult } from "~/utils/bundleImport"
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const router = useRouter()

@@ -7,9 +7,7 @@ import type { QueueData, QueueScope } from '~/composables/useDomainQueue';
 
 definePageMeta({
   layout: 'workspace',
-  middleware: ['auth', 'workspace-context'],
-  ssr: false,
-});
+  middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute();
 const router = useRouter();
@@ -23,11 +21,8 @@ const scope = computed<QueueScope>({
     void router.push({
       query: {
         ...route.query,
-        scope: val === 'instance' ? 'instance' : undefined,
-      },
-    });
-  },
-});
+        scope: val === 'instance' ? 'instance' : undefined } });
+  } });
 
 const cacheKey = computed(() =>
   workspaceCacheKey(slug.value ?? '', user.value?.id ?? null, 'queue', scope.value)
@@ -105,13 +100,11 @@ useEventSource({
   onEvent: {
     'queue:changed': async () => {
       await fetchQueue(false);
-    },
-  },
+    } },
   fetchFn: async () => {
     await fetchQueue(false);
   },
-  fallbackIntervalMs: 2000,
-});
+  fallbackIntervalMs: 2000 });
 
 useSeoMeta({ title: '评测队列' });
 </script>

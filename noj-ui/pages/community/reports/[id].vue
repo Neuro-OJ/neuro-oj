@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CommunityReportDetail from '~/components/feature/community/CommunityReportDetail.vue';
-definePageMeta({ middleware: 'auth', ssr: false });
+definePageMeta({ middleware: 'auth' });
 const { key } = useCommunityScope(true);
 const route = useRoute();
 </script>

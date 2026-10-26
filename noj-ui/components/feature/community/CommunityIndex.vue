@@ -13,7 +13,9 @@ import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
 import { extractApiError } from "~/utils/apiError"
 import { isCommunityEdited } from "~/utils/communityEdited"
+import { onMounted } from 'vue'
 
+defineProps<{ embedded?: boolean }>()
 
 const scope = useCommunityScope().capture()
 const { isLoggedIn, user } = useAuth()
@@ -398,10 +400,14 @@ watch(initialData, (value) => {
     loading.value = false
   }
 }, { immediate: true })
+
+onMounted(() => {
+  if (route.query.compose === '1' && canCreateCurrentType.value) void prepareEditor()
+})
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-4xl px-6 py-10">
+  <div :class="embedded ? 'w-full' : 'mx-auto w-full max-w-4xl px-6 py-10'">
     <div class="mb-7 flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold text-text">社区</h1>
@@ -515,5 +521,5 @@ watch(initialData, (value) => {
         </div>
       </div>
     </template>
-  </main>
+  </div>
 </template>

@@ -15,7 +15,7 @@ import {
 } from "~/utils/submissionFormat"
 
 definePageMeta({
-  ssr: false,
+
 })
 
 const route = useRoute()

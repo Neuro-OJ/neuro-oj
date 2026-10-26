@@ -8,7 +8,7 @@ import SettingFieldInput, {
 definePageMeta({
   layout: 'admin',
   middleware: 'admin',
-  ssr: false,
+
 });
 
 const { isLoggedIn } = useAuth();

@@ -240,20 +240,28 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
         description="原输入和编辑依据仍保留；冲突时重新读取对应资源，再显式打开编辑。" />
 
       <!-- 默认 Provider 与模型 -->
-      <UCard v-if="data" class="rounded">
-        <h3 class="mb-2 font-semibold text-text">本域默认 Provider 和模型</h3>
-        <p class="mb-4 text-sm text-text-secondary">
-          共享题使用本域模型、密钥及额度。未配置时无法创建 LLM 评测。
-        </p>
+      <UCard v-if="data">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-bot" class="size-5 text-primary" />
+            <div>
+              <h3 class="font-semibold text-text">本域默认 Provider 和评测模型</h3>
+              <p class="text-xs text-text-muted mt-0.5">
+                共享题使用本域模型、密钥及额度。未配置时无法创建 LLM 评测。
+              </p>
+            </div>
+          </div>
+        </template>
+
         <div class="flex flex-wrap items-center gap-3">
           <USelect
             v-model="providerId"
             :items="[
-              { value: 'none', label: '未配置' },
+              { value: 'none', label: '未配置 Provider' },
               ...data.providers.filter((provider) => provider.enabled).map((provider) => ({ value: provider.id, label: provider.name }))
             ]"
             :disabled="!writable || busy"
-            class="min-w-48"
+            class="min-w-56"
             aria-label="默认 Provider"
           />
           <UInput
@@ -261,30 +269,36 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
             :disabled="!writable || providerId === 'none' || busy"
             placeholder="默认模型名称（如 gpt-4o）"
             aria-label="默认模型"
-            class="min-w-48"
+            class="min-w-56"
           />
           <UButton
+            color="primary"
             :loading="busy"
             :disabled="!writable || (providerId !== 'none' && !model.trim())"
             @click="saveDefaults"
           >
             保存默认配置
           </UButton>
-          <UButton variant="ghost" :disabled="busy" @click="reloadSettings">重新读取</UButton>
+          <UButton variant="outline" color="neutral" :disabled="busy" @click="reloadSettings">重新读取</UButton>
         </div>
       </UCard>
 
       <!-- Provider 列表 -->
-      <UCard v-if="data" class="rounded">
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <h3 class="font-semibold text-text">LLM Provider 列表</h3>
-            <p class="text-xs text-text-muted mt-1">
-              费用额度与 Provider 单价采用同一单位，使用整数；实际用量按上游返回结算。
-            </p>
+      <UCard v-if="data">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-cpu" class="size-5 text-primary" />
+              <div>
+                <h3 class="font-semibold text-text">LLM Provider 服务商列表</h3>
+                <p class="text-xs text-text-muted mt-0.5">
+                  费用额度与 Provider 单价采用同一单位，使用整数；实际用量按上游返回结算。
+                </p>
+              </div>
+            </div>
+            <UButton :disabled="!writable" color="primary" icon="i-lucide-plus" @click="edit()">新增 Provider</UButton>
           </div>
-          <UButton :disabled="!writable" icon="i-lucide-plus" @click="edit()">新增 Provider</UButton>
-        </div>
+        </template>
 
         <div v-if="!data.providers.length" class="py-8 text-center text-sm text-text-muted">
           暂无已配置的 Provider

@@ -232,8 +232,13 @@ useSeoMeta({ title: 'LLM 额度管理 - 域设置' });
         description="原输入仍保留在表单中；并发冲突时请重新读取列表后再次编辑。" />
 
       <!-- 额度配置表单 -->
-      <UCard v-if="data" class="rounded">
-        <h3 class="mb-3 font-semibold text-text">{{ quota.id ? '编辑配额' : '新增配额' }}</h3>
+      <UCard v-if="data">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-sliders" class="size-5 text-primary" />
+            <h3 class="font-semibold text-text">{{ quota.id ? '编辑 LLM 资源配额' : '新增 LLM 资源配额' }}</h3>
+          </div>
+        </template>
         <form class="grid gap-3 sm:grid-cols-3" @submit.prevent="saveQuota">
           <USelect
             v-model="quota.scope_type"

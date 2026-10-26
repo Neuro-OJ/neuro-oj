@@ -9,8 +9,7 @@ import {
   isPredictionView,
   PREDICTION_FILE_ACCEPT,
   predictionHint,
-  toContestProblemView,
-} from '~/utils/problemView'
+  toContestProblemView } from '~/utils/problemView'
 import { useBreadcrumbParams } from '~/composables/useBreadcrumb'
 
 /**
@@ -23,7 +22,7 @@ import { useBreadcrumbParams } from '~/composables/useBreadcrumb'
  * #511：头部与题面改用 `components/problem/*` 共用组件，
  * 消除第二份题面实现与第二套硬编码难度色（难度统一走 `DifficultyBadge`）。
  */
-definePageMeta({ middleware: 'auth', ssr: false })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const contestId = route.params.contestId as string
@@ -48,8 +47,7 @@ const problemView = computed(() => (problem.value ? toContestProblemView(problem
 // ── 面包屑（#512）：中间层用竞赛标题，末层用题目编号 ──
 useBreadcrumbParams({
   contestId: () => contest.value?.title,
-  label: () => label,
-})
+  label: () => label })
 
 /**
  * 竞赛固定作答版本（Handbook §4.1/§4.2）：提交必须原样回传。

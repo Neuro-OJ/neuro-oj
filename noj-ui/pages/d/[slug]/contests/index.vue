@@ -19,28 +19,16 @@ useSeoMeta({ title: '比赛' });
 </script>
 <template>
   <div class="space-y-5">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div
-          class="flex size-10 items-center justify-center rounded border border-primary/20 bg-primary-bg text-primary">
-          <UIcon name="i-lucide-trophy" class="size-5" />
-        </div>
-        <div>
-          <h1 class="text-2xl font-bold text-text">比赛</h1>
-          <p class="mt-1 text-xs text-text-muted">OI、IOI、ACM/ICPC 与 AI 竞赛</p>
-        </div>
-      </div>
-      <span
-        class="rounded border border-border bg-bg-sunken px-2.5 py-1 font-mono text-xs tabular-nums text-text-muted">共 {{ data?.pagination.total ?? '—' }} 场比赛</span>
-    </div>
-    <div v-if="can('contest:manage') || can('contest:manage_own')" class="flex justify-end">
-      <UButton :to="`/d/${slug}/contests/new`" size="sm" icon="i-lucide-plus">创建比赛</UButton>
-    </div>
+    <LibraryPageHeader title="比赛" icon="i-lucide-trophy" description="OI、IOI、ACM/ICPC 与 AI 竞赛" :count="`共 ${data?.pagination.total ?? '—'} 场比赛`">
+      <template #actions>
+        <UButton v-if="can('contest:manage') || can('contest:manage_own')" :to="`/d/${slug}/contests/new`" size="sm" icon="i-lucide-plus">创建比赛</UButton>
+      </template>
+    </LibraryPageHeader>
     <AsyncContent :status="error?'error':data?.data.length?'data':status==='pending'?'loading':'empty'"
       :error="error?extractApiError(error).message:undefined" empty-text="暂无比赛" @retry="refresh()">
       <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <NuxtLink v-for="contest in data?.data" :key="contest.id" :to="`/d/${slug}/contests/${contest.id}`"
-          class="group flex min-h-60 flex-col rounded border border-border bg-bg-panel p-5 text-text no-underline shadow-card transition-colors hover:border-primary/50">
+          class="group flex min-h-60 flex-col rounded-lg border border-border bg-bg-panel p-5 text-text no-underline shadow-card transition-all duration-150 hover:border-primary/50 hover:shadow-dropdown hover:-translate-y-0.5">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <UBadge color="primary"
               variant="subtle">{{ DOMAIN_CONTEST_TYPES.find((type) => type.value === contest.type)?.label }}</UBadge>

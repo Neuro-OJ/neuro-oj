@@ -156,9 +156,15 @@ cd dist
 |------|--------|------|
 | `NUXT_API_BASE` | `http://localhost:8000` | noj-core API 地址（服务端私有） |
 | `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj` | 身份 Cookie 前缀；同一主机多套 UI 分别设置，避免跨端口覆盖登录 |
+| `NUXT_BFF_REDIS_URL` | 空 | BFF 公共元信息 Redis 缓存；故障时绕过 |
+| `NUXT_BFF_CACHE_PREFIX` | `noj:ui:bff:v1` | 部署缓存命名空间 |
 | `NUXT_SITE_URL` | 空 | sitemap/canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时 sitemap 退化为按 Host 分键缓存；生产必须配置，避免缓存投毒（2026-09-12 评审 §4.2） |
 
 ## API 交互约定
+
+空间首页、班级概览和作业详情使用 Nitro 视图 BFF，初始数据通过
+`useViewAsyncData` 消费，交互仍走原有细粒度 API。接口、缓存与故障边界见
+[视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 
 产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用
 `layouts/workspace.vue` 提供的统一上下文。实现及当前限制见
@@ -166,7 +172,7 @@ cd dist
 授予权限；资源网址与缓存必须包含使用域，确认后仍须检查目标空间及账号未改变。
 新域资源入口在全链路隔离验收前不得直接接到旧全局业务 API。
 
-- 所有 API 请求通过 `server/api/[...slug].ts` **Nitro 代理**转发到 noj-core
+- 原有 `/api/v1/*` 请求通过 `server/api/[...slug].ts` **Nitro 代理**转发到 noj-core；视图 BFF 使用固定上游请求工具聚合
 - 代理负责：
   - 拦截登录响应，将 JWT 设为 **HTTP-only Cookie**（`noj:token`）—— 对 JS 不可见
   - 设置 **可读 Session Cookie**（`noj:session`）—— 存用户基本信息，仅用于 UI 快速判断登录态
@@ -346,7 +352,7 @@ cd dist
 
 ### SSR 数据获取约定
 
-- 页面初始数据 MUST 使用 `useAsyncData`/`useFetch`，不得在 `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`。
+- 页面初始数据 MUST 使用 `useAsyncData`/`useFetch`（迁移视图使用 `useViewAsyncData`），不得在 `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`。
 - `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup 上下文，异步回调内不得再次调用。
 - 非关键数据（社区配置、首页公告等）SSR 失败 MUST 降级为空态/默认值，不得导致整页 502。
 - `ssr: false` 边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、私信、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用 `ssr: false`；内容/SEO 页保持 SSR。
@@ -366,6 +372,9 @@ cd dist
 - SSR 阶段同样执行守卫
 
 ### ssr: false 页面
+
+服务端渲染开关必须使用 `nuxt.config.ts` 的 `routeRules`；既有客户端页面清单在
+`utils/ssr-routes.ts`，不得写入 `definePageMeta`。
 - 所有 `/admin/*` 页面
 - 原因：管理后台依赖客户端状态，SSR 无意义且可能暴露敏感数据
 

@@ -4,7 +4,7 @@ import { computed, ref, watch } from "vue"
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { isLoggedIn } = useAuth()

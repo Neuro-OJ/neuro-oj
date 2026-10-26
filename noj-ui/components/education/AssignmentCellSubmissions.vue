@@ -10,7 +10,7 @@ const records = await useAsyncData(() => `${key.value}:${page.value}`, () => api
 watch(() => key.value, () => { page.value = 1; selected.value = null; });
 </script>
 <template>
-  <section class="space-y-3">
+  <section class="flex flex-col gap-3">
     <h3 class="font-semibold">{{ scope === 'on_time' ? '按时成绩' : '补做进度' }}提交依据</h3>
     <AsyncContent :status="records.error.value ? 'error' : records.status.value === 'pending' ? 'loading' : records.data.value?.data.data.length ? 'data' : 'empty'"
       :error="records.error.value ? extractApiError(records.error.value).message : undefined" empty-text="此统计范围暂无获授权提交" @retry="records.refresh()">

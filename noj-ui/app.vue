@@ -15,7 +15,7 @@ const { locale, t } = useI18n()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
-  fetch()
+  fetch(false)
 }
 
 // 登录/登出状态变化时重新获取封禁状态（SPA 导航不会重载页面，需手动刷新）
@@ -67,7 +67,7 @@ useHead({
     --c-success-text: #059669; --c-info-text: #0284c7; --c-warning-text: #d97706; --c-error-text: #e11d48;
     --c-text: #0f172a; --c-text-secondary: #475569; --c-text-muted: #64748b;
     --header-h: 64px;
-    --c-border: #e1e8f2; --c-bg-page: #f5f8fc; --c-bg-panel: #ffffff; --c-bg-sunken: #edf2f9; --c-white: #ffffff; --c-text-on-color: #ffffff;
+    --c-border: #e1e8f2; --c-bg-page: #f5f8fc; --c-bg-panel: #ffffff; --c-bg-card: #ffffff; --c-bg-sunken: #edf2f9; --c-white: #ffffff; --c-text-on-color: #ffffff;
     --c-text-on-dark: #f8fafc;
     --c-signal: #059669; --c-signal-deep: #047857; --c-signal-rgb: 5,150,105;
     --c-signal-dark: #00e07a; --c-signal-deep-dark: #00d68a; --c-signal-dark-rgb: 0,224,122;
@@ -80,6 +80,7 @@ useHead({
   color-scheme: dark;
   --c-bg-page: #0b0f19;
   --c-bg-panel: #131b2e;
+  --c-bg-card: #131b2e;
   --c-bg-sunken: #070a12;
   --c-white: #131b2e;
   --c-border: #1e293b;

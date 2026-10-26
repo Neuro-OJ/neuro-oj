@@ -14,7 +14,7 @@ import { describeCoverage, isTruncated } from '~/utils/contestAntiCheat'
 import { useToast } from '~/composables/useToast'
 import { runContestMutation } from '~/utils/contestMutation'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
+definePageMeta({ layout: 'admin', middleware: 'admin', })
 
 const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatSimilarSubmissions } = useContests()
 const { toast } = useToast()

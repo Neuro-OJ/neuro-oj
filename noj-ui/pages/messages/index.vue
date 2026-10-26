@@ -10,7 +10,7 @@ import { useReportModal } from "~/composables/useReportModal"
 
 definePageMeta({
   middleware: "auth",
-  ssr: false,
+
 })
 
 const { user } = useAuth()

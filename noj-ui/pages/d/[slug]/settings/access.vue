@@ -90,57 +90,81 @@ useSeoMeta({ title: '访问控制 - 域设置' });
 <template>
   <DomainSettingsShell>
     <div v-if="permitted && context.domain.value" class="space-y-6 max-w-[768px]">
-      <AdminPageHeader title="访问与加入" description="设置空间的访问范围、加入方式与发现性。" icon="i-lucide-door-open">
+      <AdminPageHeader
+        title="访问与加入政策"
+        description="设置空间的访客可见性、新成员加入审核策略与探索发现性。"
+        icon="i-lucide-door-open"
+      >
         <template #actions>
-          <UButton color="neutral" variant="outline" @click="reload">重新读取设置</UButton>
+          <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" @click="reload">
+            重新读取
+          </UButton>
         </template>
       </AdminPageHeader>
 
-      <UCard class="rounded">
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-shield-check" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text">访问权限与加入规则</h2>
+          </div>
+        </template>
+
         <form class="space-y-5" @submit.prevent="save">
-          <AdminFormField label="访问方式" hint="决定哪些用户可以浏览此空间的内容">
+          <AdminFormField label="空间访问范围" hint="决定哪些用户可以浏览本空间内的题目、比赛与社区内容">
             <USelect
               v-model="form.access"
               :items="[
-                { label: '公开访问（游客与所有登录用户可浏览）', value: 'public' },
-                { label: '仅成员进入（只有获准加入空间的成员可访问）', value: 'members' }
+                { label: '公开访问（游客与全站登录用户均可浏览）', value: 'public' },
+                { label: '仅成员进入（仅限已加入本空间的成员访问）', value: 'members' }
               ]"
-              class="w-full max-w-[400px]"
+              class="w-full"
               aria-label="空间访问方式"
             />
           </AdminFormField>
 
-          <AdminFormField label="加入方式" hint="决定新成员如何加入本空间">
+          <AdminFormField label="新成员加入政策" hint="控制新用户加入本空间时的审批流程">
             <USelect
               v-model="form.join_policy"
               :items="[
-                { label: '直接加入（用户点击加入即可成为成员）', value: 'open' },
-                { label: '申请审核（用户需提交申请，经管理者审核批准后加入）', value: 'approval' },
-                { label: '接受邀请（仅能通过管理员签发的邀请链接加入）', value: 'invite' }
+                { label: '直接加入（用户点击即可自动加入）', value: 'open' },
+                { label: '申请审核（需管理员或助教在审核列表批准）', value: 'approval' },
+                { label: '仅凭邀请（必须持有管理员生成的邀请码或邀请链接）', value: 'invite' }
               ]"
-              class="w-full max-w-[400px]"
+              class="w-full"
               aria-label="加入方式"
             />
           </AdminFormField>
 
-          <div class="pt-2">
-            <UCheckbox v-model="form.discoverable" label="在公开目录展示此空间（未勾选时不在探索列表显示）" />
+          <div class="rounded-lg border border-border bg-bg-sunken/40 p-4">
+            <UCheckbox
+              v-model="form.discoverable"
+              label="在平台公开目录与探索推荐中展示此空间"
+              help="未勾选时，访客只能通过直接输入空间 URL 访问，不会在广场或推荐列表曝光。"
+            />
           </div>
 
-          <div class="rounded border border-border bg-bg-sunken p-3 text-sm">
+          <div class="rounded-lg border border-border bg-bg-sunken/40 p-3.5 text-xs space-y-1">
             <p class="font-medium text-text">
-              域类型：{{ WORKSPACE_PRESETS.find((p) => p.value === context.domain.value?.preset)?.label ?? context.domain.value?.preset }} · 创建后固定
+              当前域类型：{{ WORKSPACE_PRESETS.find((p) => p.value === context.domain.value?.preset)?.label ?? context.domain.value?.preset }}（创建后固定）
             </p>
-            <p class="mt-1 text-text-secondary">
-              三种域均提供题库、题单、比赛、社区与域排行。教学域额外提供班级、作业与教练工作台。
+            <p class="text-text-secondary leading-relaxed">
+              所有类型域均提供题库、题单、比赛、社区与排行；教学域额外提供班级与教练作业工作台。
             </p>
           </div>
 
           <p v-if="error" class="text-sm text-error-text" role="alert">{{ error }} 未保存的修改仍保留在表单中。</p>
 
-          <UButton type="submit" :loading="saving" :disabled="!context.writable.value">
-            保存访问控制
-          </UButton>
+          <div class="pt-2 flex justify-end">
+            <UButton
+              type="submit"
+              color="primary"
+              :loading="saving"
+              :disabled="!context.writable.value || !dirty"
+            >
+              保存访问控制政策
+            </UButton>
+          </div>
         </form>
       </UCard>
     </div>

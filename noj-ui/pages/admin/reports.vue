@@ -2,7 +2,7 @@
 import { extractApiError } from "~/utils/apiError"
 import { useToast } from "~/composables/useToast"
 
-definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false })
+definePageMeta({ layout: "admin", middleware: "community-moderation", })
 
 interface ReportUser {
   id: string

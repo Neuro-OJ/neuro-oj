@@ -23,7 +23,7 @@ import type { ContestProblem } from '~/composables/useContests'
 definePageMeta({
   layout: 'admin',
   middleware: 'admin',
-  ssr: false,
+
 })
 
 useRequireLogin()
