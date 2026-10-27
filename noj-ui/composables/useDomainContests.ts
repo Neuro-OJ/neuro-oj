@@ -21,9 +21,9 @@ export function useDomainContests() {
   const path = (slug: string, id?: string) =>
     `/api/v1/domains/${encodeURIComponent(slug)}/contests${id ? `/${encodeURIComponent(id)}` : ''}`;
   return {
-    list: (slug: string, page: number) =>
+    list: (slug: string, page: number, filters: { classroom_id?: string; my_classrooms?: boolean } = {}) =>
       api.get<{ data: DomainContest[]; pagination: Pagination }>(path(slug), {
-        query: { page, per_page: 20 },
+        query: { page, per_page: 20, ...filters },
         silent: true,
       }),
     detail: (slug: string, id: string) => api.get<{ data: DomainContest }>(path(slug, id), { silent: true }),

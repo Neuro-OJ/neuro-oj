@@ -40,7 +40,13 @@ import { resolveDomainContestProblems } from "./domain-problems.ts";
 export async function listDomainContests(
   slug: string,
   actorId: string | null,
-  query: { page: number; perPage: number; type?: ContestType },
+  query: {
+    page: number;
+    perPage: number;
+    type?: ContestType;
+    classroomId?: string;
+    myClassrooms?: boolean;
+  },
 ) {
   const db = getDb(), workspace = await loadWorkspace(slug, actorId);
   const manager = workspace.platformAdmin ||
@@ -48,6 +54,28 @@ export async function listDomainContests(
   const visible = and(
     eq(contests.domain_id, workspace.domain.id),
     query.type ? eq(contests.type, query.type) : undefined,
+    query.classroomId || query.myClassrooms
+      ? sql`EXISTS (
+        SELECT 1 FROM classroom_contest_links l
+        JOIN classrooms c ON c.id = l.classroom_id AND c.domain_id = l.domain_id
+        WHERE l.contest_id = ${contests.id} AND l.domain_id = ${workspace.domain.id}
+        AND c.status = 'active'
+        ${
+        query.classroomId ? sql`AND c.id::text = ${query.classroomId}` : sql``
+      }
+        ${
+        query.myClassrooms
+          ? sql`AND EXISTS (
+            SELECT 1 FROM classroom_memberships cm
+            JOIN domain_memberships dm ON dm.domain_id = cm.domain_id AND dm.user_id = cm.user_id
+            WHERE cm.classroom_id = c.id AND cm.domain_id = c.domain_id
+            AND cm.user_id = ${actorId} AND cm.role = 'student' AND cm.status = 'active'
+            AND dm.status = 'active'
+          )`
+          : sql``
+      }
+      )`
+      : undefined,
     manager ? undefined : or(
       eq(contests.is_public, true),
       actorId
@@ -72,6 +100,7 @@ export async function listDomainContests(
         ...await getContest(row.id, actorId ?? undefined),
         domain_id: workspace.domain.id,
         revision: row.revision,
+        classrooms: await contestClassrooms(row.id),
       })),
     ),
   };

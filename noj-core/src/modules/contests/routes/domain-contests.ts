@@ -89,6 +89,8 @@ domainContestRouter.get(path, async (c) => {
       page,
       perPage,
       type: type && isValidContestType(type) ? type : undefined,
+      classroomId: c.req.query("classroom_id"),
+      myClassrooms: c.req.query("my_classrooms") === "true",
     },
   );
   return c.json({

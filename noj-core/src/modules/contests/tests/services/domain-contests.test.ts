@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
+  classroomMemberships,
+  classrooms,
   contestProblems,
   contests,
   domainProblemBindings,
@@ -466,5 +468,86 @@ Deno.test({
     );
     assertEquals(corrected.version, 2);
     assert(corrected.rows.find((r) => r.user_id === first)!.total_score < 5000);
+  },
+});
+
+Deno.test({
+  name: "班级竞赛发现：分页前筛选、跨班去重、私有赛保密及退班即时生效",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const a = await workspace("contest-class-discovery"),
+      student = await account();
+    await join(a.domain.slug, a.owner, student);
+    const db = getDb(), now = new Date().toISOString();
+    const rooms = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.insert(classrooms).values(rooms.map((id) => ({
+      id,
+      domain_id: a.domain.id,
+      name: id,
+      created_at: now,
+      updated_at: now,
+    })));
+    await db.insert(classroomMemberships).values(rooms.map((classroom_id) => ({
+      id: crypto.randomUUID(),
+      domain_id: a.domain.id,
+      classroom_id,
+      user_id: student,
+      role: "student" as const,
+      joined_at: now,
+      appointed_at: now,
+    })));
+    const p = await item(a.domain.id, a.owner);
+    const linked = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      classroom_ids: rooms,
+    });
+    await createDomainContest(a.domain.slug, a.owner, input(p.id));
+    await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      classroom_ids: rooms,
+      kind: "invite",
+      password: "secret",
+    });
+    const query = { page: 1, perPage: 1, myClassrooms: true };
+    const result = await listDomainContests(a.domain.slug, student, query);
+    assertEquals(result.total, 1);
+    assertEquals(result.data.map((c) => c.id), [linked.id]);
+    assertEquals(result.data[0].classrooms.length, 2);
+    assertEquals(
+      (await listDomainContests(a.domain.slug, student, {
+        ...query,
+        page: 2,
+      })).data.length,
+      0,
+    );
+    assertEquals(
+      (await listDomainContests(a.domain.slug, student, {
+        page: 1,
+        perPage: 20,
+        classroomId: rooms[0],
+      })).total,
+      1,
+    );
+    assertEquals(
+      (await listDomainContests(a.domain.slug, student, {
+        page: 1,
+        perPage: 20,
+        classroomId: "foreign-classroom",
+      })).total,
+      0,
+    );
+    assertEquals(
+      (await listDomainContests(a.domain.slug, a.owner, query)).total,
+      0,
+    );
+    await db.update(classroomMemberships).set({ status: "removed" }).where(
+      eq(classroomMemberships.user_id, student),
+    );
+    assertEquals(
+      (await listDomainContests(a.domain.slug, student, query)).total,
+      0,
+    );
   },
 });

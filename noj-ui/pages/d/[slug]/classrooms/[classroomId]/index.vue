@@ -114,6 +114,8 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
       </div>
     </AsyncContent>
 
+    <ClassroomContests v-if="room.data.value" :slug="slug!" :classroom-id="id" />
+
     <!-- 班级作业列表 -->
     <section v-if="room.data.value" class="space-y-4">
       <div class="flex items-center justify-between">

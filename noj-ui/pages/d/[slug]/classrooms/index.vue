@@ -465,6 +465,7 @@ useSeoMeta({ title: '班级研练中心' });
 
     <!-- 视角 2: 我的学习大盘 (Learning View) -->
     <div v-show="currentView === 'learning'" class="space-y-6">
+      <ClassroomContests :slug="slug!" />
       <!-- 个人学习指标卡 -->
       <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
         <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
