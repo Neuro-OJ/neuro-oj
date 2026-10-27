@@ -10,6 +10,7 @@
 import { publicUrl, userUrl } from './publicIdentifiers.ts';
 import { communityPath } from './community-workspace.ts';
 import { workspacePath } from './workspace.ts';
+import { TEACHING_NOTICE_LABELS } from './education-notifications.ts';
 
 /**
  * 判断是否需要加载社区通知未读数。
@@ -39,7 +40,8 @@ export type CommunityNotificationType =
   | 'moderation'
   | 'clarification'
   | 'report'
-  | 'ban';
+  | 'ban'
+  | keyof typeof TEACHING_NOTICE_LABELS;
 
 /**
  * 解析通知目标所需的最小字段集。
@@ -51,6 +53,9 @@ export interface NotificationTargetSource {
   notification: {
     type: CommunityNotificationType | string;
     post_id: string | null;
+    assignment_id?: string | null;
+    feedback_id?: string | null;
+    help_id?: string | null;
     data: {
       report_id?: string;
       contest_id?: string;
@@ -61,6 +66,7 @@ export interface NotificationTargetSource {
 
 /** 通知类型 → 中文动作描述 */
 export const NOTIFICATION_TYPE_LABEL: Record<CommunityNotificationType, string> = {
+  ...TEACHING_NOTICE_LABELS,
   reply: '回复了你',
   like: '赞了你的内容',
   follow: '关注了你',
@@ -72,6 +78,12 @@ export const NOTIFICATION_TYPE_LABEL: Record<CommunityNotificationType, string> 
 
 /** 通知类型 → Lucide 图标名 */
 export const NOTIFICATION_TYPE_ICON: Record<CommunityNotificationType, string> = {
+  assignment: 'i-lucide-book-open',
+  assignment_changed: 'i-lucide-pencil',
+  resource_unavailable: 'i-lucide-circle-alert',
+  feedback: 'i-lucide-message-square',
+  help: 'i-lucide-message-circle-question',
+  help_reply: 'i-lucide-reply',
   reply: 'i-lucide-reply',
   like: 'i-lucide-heart',
   follow: 'i-lucide-user-plus',
@@ -99,6 +111,12 @@ export function notificationTypeIcon(type: string): string {
  */
 export function notificationTarget(item: NotificationTargetSource, slug: string | null = null): string | null {
   const { notification, actor } = item;
+  if (slug && notification.assignment_id) {
+    const query = new URLSearchParams();
+    if (notification.feedback_id) query.set('feedback', notification.feedback_id);
+    if (notification.help_id) query.set('help', notification.help_id);
+    return workspacePath(slug, `assignments/${notification.assignment_id}`) + (query.size ? `?${query}` : '');
+  }
   if (notification.type === 'report' && notification.data.report_id) {
     return communityPath(slug, `reports/${notification.data.report_id}`);
   }
@@ -114,6 +132,6 @@ export function notificationTarget(item: NotificationTargetSource, slug: string 
 }
 
 /** 通知详情页路径 */
-export function notificationDetailUrl(notificationId: string, slug: string | null = null): string {
-  return communityPath(slug, `notifications/${notificationId}`);
+export function notificationDetailUrl(notificationId: string, _slug: string | null = null): string {
+  return `/notifications/${notificationId}`;
 }

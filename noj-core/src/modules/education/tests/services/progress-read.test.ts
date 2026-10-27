@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -5,6 +6,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
+  assignmentItems,
   educationOutbox,
   evaluationAttempts,
   submissions,
@@ -16,7 +18,6 @@ import {
   getAssignmentMatrix,
   getMyAssignmentProgress,
   publishAssignment,
-  setClassroomMember,
 } from "../../index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -33,12 +34,17 @@ async function fixture() {
   return { ...f, task };
 }
 
-async function grade(f: Awaited<ReturnType<typeof fixture>>, score: number) {
+async function grade(
+  f: Awaited<ReturnType<typeof fixture>>,
+  score: number,
+  source?: { assignment_id: string; assignment_item_id: string },
+) {
   const id = crypto.randomUUID(),
     attemptId = crypto.randomUUID(),
     now = new Date().toISOString();
   await f.db.transaction(async (tx) => {
     await tx.insert(submissions).values({
+      ...source,
       id,
       domain_id: f.school.id,
       domain_problem_binding_id: f.bindingId,
@@ -82,7 +88,69 @@ async function grade(f: Awaited<ReturnType<typeof fixture>>, score: number) {
   });
 }
 
-Deno.test("矩阵：学生仅本人进度，助教学情授权独立，数据不包含源码或评测文本", async () => {
+Deno.test("作业来源：同域练习可计入多个作业，专属提交和历史开关独立生效", async () => {
+  const f = await fixture();
+  const make = async (
+    submission_source: "domain_any" | "assignment_only",
+    include_previous_submissions = false,
+  ) => {
+    const draft = await createAssignment(
+      f.school.slug,
+      f.classroom.id,
+      f.teacher,
+      {
+        ...f.input,
+        submission_source,
+        include_previous_submissions,
+      },
+    );
+    await publishAssignment(
+      f.school.slug,
+      draft.id,
+      f.teacher,
+      0,
+      `publish-${draft.id}`,
+    );
+    return draft;
+  };
+  const exclusive = await make("assignment_only");
+  const second = await make("domain_any");
+  const [exclusiveItem] = await f.db.select().from(assignmentItems).where(
+    eq(assignmentItems.assignment_id, exclusive.id),
+  );
+  await grade(f, 7000);
+  await grade(f, 6000, {
+    assignment_id: exclusive.id,
+    assignment_item_id: exclusiveItem.id,
+  });
+  for (const task of [f.task, second]) {
+    assertEquals(
+      (await getMyAssignmentProgress(f.school.slug, task.id, f.student))
+        .cells[0].score,
+      7000,
+    );
+  }
+  assertEquals(
+    (await getMyAssignmentProgress(f.school.slug, exclusive.id, f.student))
+      .cells[0].score,
+    6000,
+  );
+  const fresh = await make("domain_any"),
+    historical = await make("domain_any", true);
+  assertEquals(
+    (await getMyAssignmentProgress(f.school.slug, fresh.id, f.student)).cells[0]
+      .score,
+    null,
+  );
+  assertEquals(
+    (await getMyAssignmentProgress(f.school.slug, historical.id, f.student))
+      .cells[0].score,
+    7000,
+  );
+  await assertRejects(() => make("assignment_only", true));
+});
+
+Deno.test("矩阵：学生仅本人进度，域教练学情授权，数据不包含源码或评测文本", async () => {
   const f = await fixture();
   await grade(f, 7000);
   const own = await getMyAssignmentProgress(
@@ -101,14 +169,7 @@ Deno.test("矩阵：学生仅本人进度，助教学情授权独立，数据不
     () => getMyAssignmentProgress(f.other.slug, f.task.id, f.student),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const matrix = await getAssignmentMatrix(
     f.school.slug,
     f.task.id,
@@ -117,17 +178,10 @@ Deno.test("矩阵：学生仅本人进度，助教学情授权独立，数据不
   assertEquals(matrix.total, 1);
   assertEquals(matrix.rows[0].cells[0].score, 7000);
   assertEquals(JSON.stringify(matrix).includes("secret"), false);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   await assertRejects(
     () => getAssignmentMatrix(f.school.slug, f.task.id, f.assistant),
-    ForbiddenError,
+    NotFoundError,
   );
 });
 

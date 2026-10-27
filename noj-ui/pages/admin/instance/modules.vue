@@ -27,7 +27,7 @@ const saving = ref(false);
 
 const modulesList = [
   { key: 'community' as const, label: '社区模块', desc: '域内讨论区、帖子、评论与动态交流。' },
-  { key: 'classroom' as const, label: '班级模块', desc: '教学班级、助教分配与学员名单管理。' },
+  { key: 'classroom' as const, label: '班级模块', desc: '教学班级与学生名单管理。' },
   { key: 'assignment' as const, label: '作业模块', desc: '班级作业布置、提交与评阅（依赖班级模块，关闭班级时自动关闭）。' },
   { key: 'analytics' as const, label: '学情与排行榜', desc: '域内做题统计分析、学员学情与域内排行榜。' },
 ];

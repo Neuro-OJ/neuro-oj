@@ -189,9 +189,8 @@ export async function updateAssignmentFeedback(
     interactionRevision(row.revision, revision);
     if (!input.withdraw) assertFeedbackAuthor(row.author_id, actorId);
     else if (
-      row.author_id !== actorId && !access.managesDomain &&
-      access.classMembership?.role !== "coach"
-    ) throw new ForbiddenError("助教不能撤回其他作者的反馈");
+      row.author_id !== actorId && !access.managesDomain
+    ) throw new ForbiddenError("没有撤回其他作者反馈的权限");
     const now = new Date().toISOString();
     const [updated] = await tx.update(assignmentFeedback).set({
       ...(body !== null ? { body } : { deleted_at: now }),

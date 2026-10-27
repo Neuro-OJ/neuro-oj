@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -16,7 +17,6 @@ import {
   readClassroomJoin,
   requestClassroomJoin,
   reviewClassroomJoin,
-  setClassroomMember,
 } from "../../index.ts";
 import { educationFixture } from "../_fixtures.ts";
 
@@ -166,7 +166,7 @@ Deno.test("班级申请：错误域拒绝，域成员退出后不能批准，已
   );
 });
 
-Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐含审核权限", async () => {
+Deno.test("班级申请：成员管理域教练可审核学生，反馈能力不隐含审核权限", async () => {
   const f = await educationFixture();
   const request = await requestClassroomJoin(
     f.school.slug,
@@ -174,14 +174,7 @@ Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐
     f.student,
     "申请",
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    0,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   await assertRejects(
     () =>
       reviewClassroomJoin(
@@ -193,23 +186,16 @@ Deno.test("班级申请：成员管理助教可审核学生，反馈能力不隐
         "feedback",
         "approve",
       ),
-    ForbiddenError,
+    NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   assertEquals(
     (await reviewClassroomJoin(
       f.school.slug,
       f.classroom.id,
       request.id,
       f.assistant,
-      2,
+      0,
       "granted",
       "approve",
     )).status,

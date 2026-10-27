@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { registrationInvitationBoundary } from "../../../application/index.ts";
@@ -17,7 +18,6 @@ import {
   createClassroomInvitation,
   listClassroomInvitations,
   revokeClassroomInvitation,
-  setClassroomMember,
   updateClassroom,
 } from "../../index.ts";
 import {
@@ -42,7 +42,7 @@ Deno.test("班级邀请：原子加入域基础成员和学生，令牌仅存哈
   const invite = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `${student}@example.com`,
   );
   const preview = await previewDomainInvitation(invite.token);
@@ -93,7 +93,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
   const invite = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `${student}@example.com`,
   );
   await f.db.insert(domainLimits).values({ domain_id: f.school.id, members: 4 })
@@ -127,36 +127,32 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
     () => previewDomainInvitation(invite.token),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    0,
-    { role: "assistant", capabilities: ["students:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const ta = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
     f.assistant,
-    `${student}@example.com`,
+    `${f.student}@example.com`,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
+  await assertRejects(
+    () =>
+      createClassroomInvitation(
+        f.school.slug,
+        f.classroom.id,
+        f.assistant,
+        `${student}@example.com`,
+      ),
+    ForbiddenError,
   );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   await assertRejects(() => previewDomainInvitation(ta.token), NotFoundError);
   const archived = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
-    f.teacher,
+    f.owner,
     `${student}@example.com`,
   );
-  await updateClassroom(f.school.slug, f.classroom.id, f.teacher, 2, {
+  await updateClassroom(f.school.slug, f.classroom.id, f.teacher, 0, {
     archive: true,
   });
   await assertRejects(
@@ -167,18 +163,28 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
 
 Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政策不能绕过", async () => {
   const f = await educationFixture(), student = await account();
+  await assertRejects(
+    () =>
+      createClassroomInvitation(
+        f.school.slug,
+        f.classroom.id,
+        f.teacher,
+        `${student}@example.com`,
+      ),
+    ForbiddenError,
+  );
   const coachInvite = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
     f.teacher,
-    `${student}@example.com`,
+    `${f.student}@example.com`,
   );
   await updateSetting("instance_registration_mode", "invite", "0");
   await updateSetting("allow_domain_registration_invites", true, "0");
   await assertRejects(
     () =>
       f.db.transaction((tx) =>
-        enrollRegisteredAccountTxLegacy(tx, student, coachInvite.token, {
+        enrollRegisteredAccountTxLegacy(tx, f.student, coachInvite.token, {
           invitationBoundary: registrationInvitationBoundary(),
         })
       ),

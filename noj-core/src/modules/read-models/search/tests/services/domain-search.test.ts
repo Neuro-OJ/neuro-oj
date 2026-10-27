@@ -7,6 +7,7 @@ import {
   classroomMemberships,
   classrooms,
   contests,
+  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   domains,
@@ -278,24 +279,18 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
     user_id: coach,
     joined_at: now,
   });
+  await db.insert(domainMemberRoles).values({
+    membership_id: "coach-domain",
+    role: "educator",
+  });
   await db.insert(classrooms).values({
     id: "search-class",
     domain_id: domain,
     name: "班级",
-    primary_coach_id: coach,
     created_at: now,
     updated_at: now,
   });
   await db.insert(classroomMemberships).values([
-    {
-      id: "search-coach",
-      domain_id: domain,
-      classroom_id: "search-class",
-      user_id: coach,
-      role: "coach",
-      joined_at: now,
-      appointed_at: now,
-    },
     {
       id: "search-student",
       domain_id: domain,
@@ -318,16 +313,17 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
       .length,
     0,
   );
-  await db.update(classroomMemberships).set({ status: "removed" }).where(
-    eq(classroomMemberships.id, "search-coach"),
+  await db.delete(domainMemberRoles).where(
+    eq(domainMemberRoles.membership_id, "coach-domain"),
   );
   assertEquals(
     (await search(domain, coach, "共享题", "submission")).items.length,
     0,
   );
-  await db.update(classroomMemberships).set({ status: "active" }).where(
-    eq(classroomMemberships.id, "search-coach"),
-  );
+  await db.insert(domainMemberRoles).values({
+    membership_id: "coach-domain",
+    role: "educator",
+  });
   await db.update(classroomMemberships).set({ status: "removed" }).where(
     eq(classroomMemberships.id, "search-student"),
   );

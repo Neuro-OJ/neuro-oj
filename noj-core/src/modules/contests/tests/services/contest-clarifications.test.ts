@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
-  communityNotifications,
+  accountNotifications,
   contests,
   problems,
   userRoles,
@@ -105,10 +105,10 @@ async function makeAdmin(userId: string): Promise<void> {
 async function countClarificationNotifications(
   recipientId: string,
 ): Promise<number> {
-  const rows = await getDb().select({ id: communityNotifications.id }).from(
-    communityNotifications,
+  const rows = await getDb().select({ id: accountNotifications.id }).from(
+    accountNotifications,
   ).where(
-    eq(communityNotifications.recipient_id, recipientId),
+    eq(accountNotifications.recipient_id, recipientId),
   );
   return rows.length;
 }
@@ -238,9 +238,9 @@ Deno.test({
       { content: "512MB。", is_public: true },
     );
     assertEquals(publicReply.is_public, true);
-    const [notification] = await getDb().select().from(communityNotifications)
+    const [notification] = await getDb().select().from(accountNotifications)
       .where(
-        eq(communityNotifications.recipient_id, participantId),
+        eq(accountNotifications.recipient_id, participantId),
       );
     assertEquals(notification.domain_id, DEFAULT_DOMAIN_ID);
     assertEquals(

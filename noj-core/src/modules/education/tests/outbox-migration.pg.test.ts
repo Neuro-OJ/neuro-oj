@@ -76,7 +76,6 @@ async function seedEducation(): Promise<{
     id: classroomId,
     domain_id: domainId,
     name: "迁移班级",
-    primary_coach_id: userId,
     created_at: now,
     updated_at: now,
   });

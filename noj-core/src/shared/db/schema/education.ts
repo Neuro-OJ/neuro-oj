@@ -13,11 +13,7 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import { domainMemberships, domains } from "./workspace.ts";
 import { contests } from "./contest.ts";
-import {
-  ASSISTANT_CAPABILITIES,
-  type AssistantCapability,
-  type ClassroomRole,
-} from "../../education-types.ts";
+import { type ClassroomRole } from "../../education-types.ts";
 
 /** 班级保留稳定身份，归档不删除成员及教学历史。 */
 export const classrooms = pgTable("classrooms", {
@@ -30,19 +26,11 @@ export const classrooms = pgTable("classrooms", {
     "active",
   ),
   archived_at: text("archived_at"),
-  primary_coach_id: text("primary_coach_id").notNull().references(() =>
-    users.id
-  ),
   revision: integer("revision").notNull().default(0),
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at").notNull(),
 }, (t) => ({
   domainIdUnique: unique("classrooms_domain_id_unique").on(t.domain_id, t.id),
-  coachFk: foreignKey({
-    name: "classrooms_coach_domain_fk",
-    columns: [t.domain_id, t.primary_coach_id],
-    foreignColumns: [domainMemberships.domain_id, domainMemberships.user_id],
-  }),
   statusCheck: check(
     "classrooms_status_check",
     sql`${t.status} IN ('active', 'archived')`,
@@ -94,7 +82,7 @@ export const classroomMemberships = pgTable("classroom_memberships", {
   }),
   roleCheck: check(
     "classroom_memberships_role_check",
-    sql`${t.role} IN ('coach', 'assistant', 'student')`,
+    sql`${t.role} IN ('student')`,
   ),
   statusCheck: check(
     "classroom_memberships_status_check",
@@ -104,24 +92,6 @@ export const classroomMemberships = pgTable("classroom_memberships", {
     t.domain_id,
     t.user_id,
     t.status,
-  ),
-}));
-
-/** 授权保存在数据库，撤权后的请求不继续使用旧 JWT 或本地缓存。 */
-export const classroomAssistantGrants = pgTable("classroom_assistant_grants", {
-  membership_id: text("membership_id").notNull().references(() =>
-    classroomMemberships.id
-  ),
-  capability: text("capability").$type<AssistantCapability>().notNull(),
-  granted_by: text("granted_by").notNull().references(() => users.id),
-  granted_at: text("granted_at").notNull(),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.membership_id, t.capability] }),
-  capabilityCheck: check(
-    "classroom_assistant_grants_capability_check",
-    sql`${t.capability} IN (${
-      sql.raw(ASSISTANT_CAPABILITIES.map((v) => `'${v}'`).join(","))
-    })`,
   ),
 }));
 

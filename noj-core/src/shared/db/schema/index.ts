@@ -85,7 +85,6 @@ export {
 
 // education
 export {
-  classroomAssistantGrants,
   classroomContestLinks,
   classroomJoinRequests,
   classroomMemberships,
@@ -105,13 +104,12 @@ export {
   assignmentFeedback,
   assignmentHelpReplies,
   assignmentHelpRequests,
-  educationNotificationEmails,
-  educationNotifications,
 } from "./education-interactions.ts";
 export { submissionAnnotations } from "./submission-annotations.ts";
 
 // communication
 export {
+  accountNotifications,
   communityBoardRoleGrants,
   communityBoards,
   communityBookmarks,
@@ -119,7 +117,6 @@ export {
   communityComments,
   communityFollows,
   communityModerationActions,
-  communityNotifications,
   communityPostLikes,
   communityPosts,
   communityReports,
@@ -172,3 +169,5 @@ export {
   type BackgroundTaskStatus,
   type NewBackgroundTaskRow,
 } from "./background-tasks.ts";
+
+export { educationNotificationEmails } from "./notification-delivery.ts";

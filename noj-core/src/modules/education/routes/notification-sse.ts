@@ -7,18 +7,16 @@ import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
 import { lastEventId } from "../../../shared/sse/server-helpers.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
-import { getEducationNotification } from "../services/notifications.ts";
 import { loadAssignment } from "../services/assignment-access.ts";
 
 /** 用户通道上的教学定位提示，实时和断线重放均验证当前资源授权。 */
 export const educationNotificationSse = new Hono<AuthEnv>();
 educationNotificationSse.get(
-  "/domains/:slug/notifications/events",
+  "/domains/:slug/education/events",
   authMiddleware,
   async (c) => {
     const slug = c.req.param("slug")!, actorId = c.var.userId;
     const initial = await loadWorkspace(slug, actorId);
-    const channel = Channels.user(actorId);
     const progressChannel = Channels.education(initial.domain.id);
     c.header("Cache-Control", "no-store");
     return createSseStream(c, async (ctx) => {
@@ -57,33 +55,7 @@ educationNotificationSse.get(
             throw error;
           }
         }
-        if (
-          event.type !== "education:notification" ||
-          event.domain_id !== initial.domain.id ||
-          typeof event.notification_id !== "string"
-        ) return null;
-        try {
-          const notice = await getEducationNotification(
-            slug,
-            actorId,
-            event.notification_id,
-          );
-          return {
-            type: "education:notification",
-            notification_id: notice.id,
-            domain_id: notice.domain_id,
-            assignment_id: notice.assignment_id,
-          };
-        } catch (error) {
-          if (
-            error instanceof AppError &&
-            [401, 403, 404].includes(error.statusCode)
-          ) {
-            ctx.close();
-            return null;
-          }
-          throw error;
-        }
+        return null;
       };
       const deliver = async (message: string) => {
         if (ctx.closed) return;
@@ -97,9 +69,6 @@ educationNotificationSse.get(
           });
         }
       };
-      ctx.onUnsubscribe(onEvent(channel, (_channel, message) => {
-        void ctx.run(() => deliver(message));
-      }));
       ctx.onUnsubscribe(onEvent(progressChannel, (_channel, message) => {
         void ctx.run(() => deliver(message));
       }));
@@ -109,7 +78,7 @@ educationNotificationSse.get(
       });
       for (
         const event of await replaySseEvents(
-          [channel, progressChannel],
+          [progressChannel],
           lastEventId(c),
           200,
         )

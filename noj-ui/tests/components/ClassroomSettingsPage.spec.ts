@@ -13,9 +13,8 @@ const classroom = {
   stage_tag: '提高组',
   status: 'active',
   revision: 3,
-  primary_coach_id: 'coach',
-  manages_domain: false,
-  membership: { role: 'coach', status: 'active' },
+  manages_domain: true,
+  membership: null,
   capabilities: [],
 };
 let roomStatus = 'success';
@@ -113,11 +112,11 @@ describe('班级设置反馈', () => {
     result.unmount();
   });
 
-  it('没有接任者时禁用选择，并提供前往班级成员的处理入口', async () => {
+  it('教练管理归属域，不显示主教练交接表单', async () => {
     const result = await view();
-    expect(result.find('select').attributes('disabled')).toBeDefined();
-    expect(result.text()).toContain('暂无可接任的教练');
-    expect(result.find('a').attributes('href')).toBe('/d/school/classrooms/room-one/members');
+    expect(result.find('select').exists()).toBe(false);
+    expect(result.text()).not.toContain('接任');
+    expect(result.find('form').exists()).toBe(true);
     result.unmount();
   });
 

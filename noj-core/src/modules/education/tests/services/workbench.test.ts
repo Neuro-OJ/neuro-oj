@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { domainProblemBindings } from "../../../../shared/db/schema.ts";
@@ -7,7 +8,6 @@ import {
   createAssignmentHelp,
   getEducationWorkbench,
   publishAssignment,
-  setClassroomMember,
 } from "../../index.ts";
 import { recomputeAssignmentProgress } from "../../services/progress-materializer.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -84,37 +84,12 @@ Deno.test("教学聚合：当前授权任务及求助，学生仅本人，错误
   );
 });
 
-Deno.test("教学聚合：助教权限分别控制学情、管理与求助，撤权后不保留聚合读取", async () => {
+Deno.test("教学聚合：域教练授权管理学情、作业与求助，撤权后不保留聚合读取", async () => {
   const f = await fixture();
   await createAssignmentHelp(f.school.slug, f.task.id, f.student, "help", {
     body: "求助",
   });
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["assignments:manage"] },
-  );
-  const management = await getEducationWorkbench(
-    f.school.slug,
-    f.assistant,
-    "teaching",
-  );
-  assertEquals(management.total, 1);
-  assertEquals(management.assignments[0].summary.total_students, null);
-  assertEquals(management.assignments[0].summary.achieved_cells, null);
-  assertEquals(management.assignments[0].summary.below_target_students, null);
-  assertEquals(management.help_requests.length, 0);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["progress:read", "help:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const authorized = await getEducationWorkbench(
     f.school.slug,
     f.assistant,
@@ -122,14 +97,7 @@ Deno.test("教学聚合：助教权限分别控制学情、管理与求助，撤
   );
   assertEquals(authorized.assignments[0].summary.total_students, 1);
   assertEquals(authorized.help_requests.length, 1);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: [] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   const revoked = await getEducationWorkbench(
     f.school.slug,
     f.assistant,

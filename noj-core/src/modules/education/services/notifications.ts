@@ -1,19 +1,19 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import {
+  getAccountNotification,
+  listAccountNotifications,
+  readAccountNotifications,
+} from "../../communication/contracts/account-notifications.ts";
+import { createAccountNotificationTx } from "../../communication/contracts/account-notifications.ts";
+import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
+import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
 import {
-  AppError,
-  BadRequestError,
-  NotFoundError,
-} from "../../../shared/base/errors.ts";
-import {
-  assignmentRecipients,
+  accountNotifications,
   assignments,
-  classroomMemberships,
   domains,
   educationNotificationEmails,
-  educationNotifications,
   educationOutbox,
 } from "../../../shared/db/schema.ts";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
@@ -113,41 +113,29 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
       ["assignment", "assignment_changed", "resource_unavailable"].includes(
         type,
       ) && !event.user_id;
-    const audience = lifecycle
-      ? tx.execute(sql`SELECT user_id FROM (
-        SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
+    // 教学人员身份属于域；班级成员表只承载学生名单。
+    const teachers = sql`SELECT dm.user_id FROM domain_memberships dm
+      JOIN domain_member_roles dr ON dr.membership_id = dm.id
+      WHERE dm.domain_id = ${event.domain_id} AND dm.status = 'active'
+        AND dr.role IN ('educator', 'admin', 'owner')`;
+    const selection = lifecycle
+      ? sql`SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
         .assignment_id!}
-        UNION
-        SELECT cm.user_id FROM classroom_memberships cm WHERE cm.classroom_id = ${resource.assignment.classroom_id}
-          AND cm.status = 'active' AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS
-            (SELECT 1 FROM classroom_assistant_grants g WHERE g.membership_id = cm.id
-              AND g.capability IN ('progress:read', 'assignments:manage'))))
-      ) audience ${
-        after ? sql`WHERE user_id > ${after}` : sql``
-      } ORDER BY user_id LIMIT 50`)
+          UNION ${teachers}`
       : staff
-      ? tx.select({ user_id: classroomMemberships.user_id }).from(
-        classroomMemberships,
-      ).where(and(
-        eq(classroomMemberships.classroom_id, resource.assignment.classroom_id),
-        eq(classroomMemberships.status, "active"),
-        sql`(${classroomMemberships.role} = 'coach' OR (${classroomMemberships.role} = 'assistant' AND EXISTS
-          (SELECT 1 FROM classroom_assistant_grants g WHERE g.membership_id = ${classroomMemberships.id} AND g.capability = 'help:manage')))`,
-        after ? gt(classroomMemberships.user_id, after) : undefined,
-      )).orderBy(classroomMemberships.user_id).limit(50)
-      : tx.select({ user_id: assignmentRecipients.user_id }).from(
-        assignmentRecipients,
-      ).where(and(
-        eq(assignmentRecipients.assignment_id, event.assignment_id!),
-        event.user_id
-          ? eq(assignmentRecipients.user_id, event.user_id)
-          : undefined,
-        after ? gt(assignmentRecipients.user_id, after) : undefined,
-      )).orderBy(assignmentRecipients.user_id).limit(50);
-    const raw = await audience;
-    const targets = lifecycle
-      ? unwrapRows<{ user_id: string }>(raw as never)
-      : raw as { user_id: string }[];
+      ? teachers
+      : sql`SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
+        .assignment_id!}
+          ${event.user_id ? sql`AND r.user_id = ${event.user_id}` : sql``}`;
+    const raw = await tx.execute(
+      sql`SELECT DISTINCT user_id FROM (${selection}) audience
+      ${
+        after
+          ? sql`WHERE user_id > ${after}`
+          : sql``
+      } ORDER BY user_id LIMIT 50`,
+    );
+    const targets = unwrapRows<{ user_id: string }>(raw as never);
     for (const { user_id } of targets) {
       if (
         !(await canReceive(
@@ -159,18 +147,18 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
           tx,
         ))
       ) continue;
-      const [inserted] = await tx.insert(educationNotifications).values({
+      const inserted = await createAccountNotificationTx(tx, {
         id: crypto.randomUUID(),
         domain_id: event.domain_id,
         assignment_id: event.assignment_id!,
-        user_id,
+        recipient_id: user_id,
         event_id: event.id,
         type,
         feedback_id: (current.payload.feedback_id as string | null) ?? null,
         help_id: (current.payload.help_id as string | null) ?? null,
         reply_id: (current.payload.reply_id as string | null) ?? null,
         created_at: now,
-      }).onConflictDoNothing().returning({ id: educationNotifications.id });
+      });
       if (inserted) {
         await tx.insert(educationNotificationEmails).values({
           notification_id: inserted.id,
@@ -178,7 +166,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         });
         const channel = Channels.user(user_id);
         const payload = {
-          type: "education:notification",
+          type: "notification:new",
           notification_id: inserted.id,
           domain_id: event.domain_id,
           assignment_id: event.assignment_id!,
@@ -214,24 +202,16 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
 }
 
 function visibleNotifications(
-  workspace: Awaited<ReturnType<typeof loadWorkspace>>,
+  governs: boolean | SQL,
+  member: boolean | SQL,
   actorId: string,
 ) {
-  const governs = workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("classroom:manage_any");
-  const recipient = sql`${
-    !!workspace.membership || workspace.platformAdmin
-  } AND EXISTS (
+  const recipient = sql`${member} AND EXISTS (
     SELECT 1 FROM assignment_recipients r JOIN classroom_memberships cm
       ON cm.classroom_id = r.classroom_id AND cm.user_id = r.user_id
     WHERE r.assignment_id = n.assignment_id AND r.user_id = ${actorId}
       AND (cm.status = 'active' OR cm.role = 'student'))`;
-  const staff = (capability: string) =>
-    sql`${governs} OR (${!!workspace
-      .membership} AND EXISTS (SELECT 1 FROM classroom_memberships cm
-    WHERE cm.classroom_id = a.classroom_id AND cm.user_id = ${actorId} AND cm.status = 'active'
-      AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS (SELECT 1 FROM classroom_assistant_grants g
-        WHERE g.membership_id = cm.id AND g.capability = ${capability})))))`;
+  const staff = (_capability: string) => sql`${governs}`;
   return sql`a.published_at IS NOT NULL AND (
     (n.type IN ('assignment','assignment_changed','resource_unavailable') AND ((${recipient}) OR (${
     staff("progress:read")
@@ -247,41 +227,49 @@ function visibleNotifications(
   )`;
 }
 
-type NotificationRow = {
-  id: string;
-  type: EducationNoticeType;
-  assignment_id: string;
-  feedback_id: string | null;
-  help_id: string | null;
-  reply_id: string | null;
-  created_at: string;
-  read_at: string | null;
-};
+/** 统一收件箱组合根调用；域、角色及资源关系在每次 SQL 读取时验证。 */
+export function educationNotificationVisibleWhere(
+  actorId: string,
+  platformAdmin: boolean,
+) {
+  const member =
+    sql`EXISTS (SELECT 1 FROM domain_memberships dm WHERE dm.domain_id = n.domain_id AND dm.user_id = ${actorId} AND dm.status = 'active')`;
+  const governs =
+    sql`${platformAdmin} OR EXISTS (SELECT 1 FROM domain_memberships dm
+    JOIN domain_member_roles dr ON dr.membership_id = dm.id
+    WHERE dm.domain_id = n.domain_id AND dm.user_id = ${actorId} AND dm.status = 'active'
+      AND dr.role IN ('educator','admin','owner'))`;
+  return sql`EXISTS (SELECT 1 FROM notifications n JOIN assignments a ON a.id = n.assignment_id AND a.domain_id = n.domain_id
+    JOIN domains d ON d.id = n.domain_id WHERE n.id = ${accountNotifications.id}
+      AND d.status <> 'suspended' AND (${platformAdmin} OR ${member})
+      AND ${
+    visibleNotifications(governs, sql`${platformAdmin} OR ${member}`, actorId)
+  })`;
+}
 
-/** 单条通知读取用于实时推送和邮件投递，重新检查当前域与具体资源关系。 */
+/** 单条通知供邮件等内部调用复用统一查询，并在发送前重验授权。 */
 export async function getEducationNotification(
   slug: string,
   actorId: string,
   id: string,
 ) {
   const workspace = await loadWorkspace(slug, actorId);
-  const result = await getDb().execute(
-    sql`SELECT n.id, n.type, n.assignment_id, n.feedback_id, n.help_id, n.reply_id, n.created_at, n.read_at
-    FROM education_notifications n JOIN assignments a ON a.id = n.assignment_id
-    WHERE n.id = ${id} AND n.domain_id = ${workspace.domain.id} AND n.user_id = ${actorId} AND ${
-      visibleNotifications(workspace, actorId)
-    }`,
+  const row = await getAccountNotification(
+    and(
+      eq(accountNotifications.domain_id, workspace.domain.id),
+      eq(accountNotifications.recipient_id, actorId),
+      educationNotificationVisibleWhere(actorId, workspace.platformAdmin),
+    )!,
+    id,
   );
-  const [notification] = unwrapRows<NotificationRow>(result as never);
-  if (!notification) throw new NotFoundError("通知不存在或不可访问");
   return {
-    ...notification,
+    ...row.notification,
     domain_id: workspace.domain.id,
     domain_slug: workspace.domain.slug,
   };
 }
 
-/** 通知目录在计数及分页前检查当前教学关系；摘要只说明类型，不返回私有正文。 */
+/** 教学内部目录复用账号收件箱查询；对外只有统一通知接口。 */
 export async function listEducationNotifications(
   slug: string,
   actorId: string,
@@ -290,49 +278,40 @@ export async function listEducationNotifications(
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
     throw new BadRequestError("通知分页格式错误");
   }
-  const workspace = await loadWorkspace(slug, actorId), db = getDb();
-  const condition =
-    sql`n.domain_id = ${workspace.domain.id} AND n.user_id = ${actorId} AND ${
-      visibleNotifications(workspace, actorId)
-    }`;
-  const countResult = await db.execute(
-    sql`SELECT count(*)::int AS total, count(*) FILTER (WHERE n.read_at IS NULL)::int AS unread
-    FROM education_notifications n JOIN assignments a ON a.id = n.assignment_id WHERE ${condition}`,
-  );
-  const [counts] = unwrapRows<{ total: number; unread: number }>(
-    countResult as never,
-  );
-  const result = await db.execute(
-    sql`SELECT n.id, n.type, n.assignment_id, n.feedback_id, n.help_id, n.reply_id, n.created_at, n.read_at
-    FROM education_notifications n JOIN assignments a ON a.id = n.assignment_id WHERE ${condition}
-    ORDER BY n.created_at DESC, n.id DESC LIMIT 50 OFFSET ${(page - 1) * 50}`,
+  const workspace = await loadWorkspace(slug, actorId);
+  const result = await listAccountNotifications(
+    and(
+      eq(accountNotifications.domain_id, workspace.domain.id),
+      eq(accountNotifications.recipient_id, actorId),
+      educationNotificationVisibleWhere(actorId, workspace.platformAdmin),
+    )!,
+    page,
+    50,
   );
   return {
-    page,
-    per_page: 50,
-    ...counts,
-    data: unwrapRows<NotificationRow>(result as never),
+    ...result,
+    unread: result.unread_count,
+    data: result.data.map((row) => ({
+      ...row.notification,
+      domain_slug: workspace.domain.slug,
+    })),
   };
 }
 
-/** 已读操作也重新验证范围，不用裸 ID 修改其他域或他人的通知。 */
+/** 教学内部调用复用统一已读写入。 */
 export async function markEducationNotificationRead(
   slug: string,
   id: string,
   actorId: string,
 ) {
-  const workspace = await loadWorkspace(slug, actorId), db = getDb();
-  const result = await db.execute(
-    sql`SELECT n.id FROM education_notifications n JOIN assignments a ON a.id = n.assignment_id
-    WHERE n.id = ${id} AND n.domain_id = ${workspace.domain.id} AND n.user_id = ${actorId} AND ${
-      visibleNotifications(workspace, actorId)
-    }`,
+  const workspace = await loadWorkspace(slug, actorId);
+  await readAccountNotifications(
+    and(
+      eq(accountNotifications.domain_id, workspace.domain.id),
+      eq(accountNotifications.recipient_id, actorId),
+      educationNotificationVisibleWhere(actorId, workspace.platformAdmin),
+    )!,
+    id,
   );
-  if (!unwrapRows<{ id: string }>(result as never).length) {
-    throw new NotFoundError("通知不存在或不可访问");
-  }
-  await db.update(educationNotifications).set({
-    read_at: new Date().toISOString(),
-  }).where(eq(educationNotifications.id, id));
   return { read: true };
 }

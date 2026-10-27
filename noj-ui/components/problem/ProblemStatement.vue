@@ -54,6 +54,7 @@ function copyStatement() {
     <div class="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3 lg:px-7">
       <h2 class="text-sm font-semibold text-text">{{ title }}</h2>
       <div class="ml-auto flex flex-wrap items-center gap-2">
+        <slot name="toolbar" />
         <button
           v-if="copyable"
           type="button"

@@ -8,18 +8,13 @@ export function currentTeacherSubmissionAccessWhere(
 ): SQL {
   return sql`EXISTS (
     SELECT 1 FROM classroom_memberships student_membership
-    JOIN classroom_memberships teacher_membership
-      ON teacher_membership.classroom_id = student_membership.classroom_id
-      AND teacher_membership.domain_id = student_membership.domain_id
     JOIN domain_memberships student_domain ON student_domain.domain_id = student_membership.domain_id
       AND student_domain.user_id = student_membership.user_id AND student_domain.status = 'active'
-    JOIN domain_memberships teacher_domain ON teacher_domain.domain_id = teacher_membership.domain_id
-      AND teacher_domain.user_id = teacher_membership.user_id AND teacher_domain.status = 'active'
+    JOIN domain_memberships teacher_domain ON teacher_domain.domain_id = student_membership.domain_id
+      AND teacher_domain.user_id = ${actorId} AND teacher_domain.status = 'active'
+    JOIN domain_member_roles teacher_role ON teacher_role.membership_id = teacher_domain.id
     WHERE student_membership.domain_id = ${domainId} AND student_membership.user_id = ${studentId}
       AND student_membership.role = 'student' AND student_membership.status = 'active'
-      AND teacher_membership.user_id = ${actorId} AND teacher_membership.status = 'active'
-      AND (teacher_membership.role = 'coach' OR (teacher_membership.role = 'assistant' AND EXISTS (
-        SELECT 1 FROM classroom_assistant_grants grant_row WHERE grant_row.membership_id = teacher_membership.id
-          AND grant_row.capability = 'submissions:read')))
+      AND teacher_role.role IN ('educator', 'admin', 'owner')
   )`;
 }

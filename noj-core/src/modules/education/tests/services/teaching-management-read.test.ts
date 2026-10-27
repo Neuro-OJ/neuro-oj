@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   createAssignment,
@@ -6,56 +7,30 @@ import {
   listClassroomMembers,
   publishAssignment,
   removeClassroomMember,
-  setClassroomMember,
-  transferClassroom,
 } from "../../index.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
-Deno.test("教学管理读取：作业助教可选择学生，只有成员管理者读取他人助教授权", async () => {
+Deno.test("教学管理读取：域教练读取全部学生，学生仅能读取自身成员记录", async () => {
   const f = await assignmentFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["assignments:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const roster = await listClassroomMembers(
     f.school.slug,
     f.classroom.id,
     f.assistant,
   );
-  assertEquals(roster.some((m) => m.user_id === f.student), true);
+  assertEquals(roster.map((m) => m.user_id), [f.student]);
   assertEquals(roster.every((m) => !("capabilities" in m)), true);
-  const managerRoster = await listClassroomMembers(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-  );
   assertEquals(
-    managerRoster.find((m) => m.user_id === f.assistant)?.capabilities,
-    ["assignments:manage"],
-  );
-  assertEquals(
-    (await listClassroomMembers(f.school.slug, f.classroom.id, f.student)).map(
-      (m) => m.user_id,
-    ),
+    (await listClassroomMembers(f.school.slug, f.classroom.id, f.student)).map((
+      m,
+    ) => m.user_id),
     [f.student],
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
-  assertEquals(
-    (await listClassroomMembers(f.school.slug, f.classroom.id, f.assistant))
-      .map((m) => m.user_id),
-    [f.assistant],
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await assertRejects(
+    () => listClassroomMembers(f.school.slug, f.classroom.id, f.assistant),
+    NotFoundError,
   );
 });
 
@@ -73,17 +48,7 @@ Deno.test("教学管理读取：离班学生可读取历史班级但没有当前
   assertEquals(room.historical_student, true);
   assertEquals(room.capabilities, []);
   assertEquals(room.manages_domain, false);
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 2, {
-    role: "coach",
-  });
-  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 3);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.owner,
-    f.teacher,
-    4,
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
   await assertRejects(
     () => getClassroom(f.school.slug, f.classroom.id, f.teacher),
     NotFoundError,
@@ -94,28 +59,14 @@ Deno.test("教学管理读取：离班学生可读取历史班级但没有当前
   );
 });
 
-Deno.test("教学管理读取：仅提交读取的助教可选择学生但不能取得其他助教授权", async () => {
+Deno.test("教学管理读取：域教练无需班级任职即可取得完整教学能力", async () => {
   const f = await assignmentFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    {
-      role: "assistant",
-      capabilities: ["submissions:read"],
-    },
-  );
-  const roster = await listClassroomMembers(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-  );
-  assertEquals(roster.some((member) => member.user_id === f.student), true);
-  assertEquals(roster.every((member) => !("capabilities" in member)), true);
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const room = await getClassroom(f.school.slug, f.classroom.id, f.assistant);
-  assertEquals(room.capabilities, ["submissions:read"]);
+  assertEquals(room.membership, null);
+  assertEquals(room.manages_domain, true);
+  assertEquals(room.capabilities.includes("submissions:read"), true);
+  assertEquals(room.capabilities.includes("students:manage"), true);
 });
 
 Deno.test("作业管理读取：来源题号及发布依据可读，学生 DTO 不附带其他目标学生或源题内容", async () => {

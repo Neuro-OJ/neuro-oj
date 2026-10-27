@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
+  accountNotifications,
   educationNotificationEmails,
-  educationNotifications,
 } from "../../../../shared/db/schema.ts";
 import { removeDomainMember } from "../../../access/workspace/index.ts";
 import {
@@ -31,7 +31,7 @@ async function fixture() {
     if (!(await processEducationBatch()).length) break;
   }
   await f.db.delete(educationNotificationEmails);
-  await f.db.delete(educationNotifications);
+  await f.db.delete(accountNotifications);
   await createAssignmentFeedback(
     f.school.slug,
     task.id,

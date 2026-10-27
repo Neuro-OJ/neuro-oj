@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -26,7 +27,6 @@ import {
   setDomainProblemSharing,
 } from "../../../problems/index.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
-import { setClassroomMember } from "../../index.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken, verifyToken } from "../../../access/identity/index.ts";
 import {
@@ -280,14 +280,7 @@ Deno.test("训练比较：明确半开窗、同域候选和权威通过，缺失
     )).after.accepted_items,
     1,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   assertEquals(
     (await getTrainingComparison(
       f.school.slug,

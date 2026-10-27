@@ -14,6 +14,7 @@ import {
   consumeDomainInvitation,
   createDomainInvitation,
   removeDomainMember,
+  setMemberRoles,
 } from "../../../access/workspace/index.ts";
 import {
   createDomainSubmission,
@@ -175,20 +176,10 @@ Deno.test({
       id: "submission-teacher-class",
       domain_id: f.a.id,
       name: "班级",
-      primary_coach_id: f.outsider,
       created_at: now,
       updated_at: now,
     });
     await f.db.insert(classroomMemberships).values([
-      {
-        id: "submission-teacher",
-        domain_id: f.a.id,
-        classroom_id: "submission-teacher-class",
-        user_id: f.outsider,
-        role: "coach",
-        joined_at: now,
-        appointed_at: now,
-      },
       {
         id: "submission-student",
         domain_id: f.a.id,
@@ -199,6 +190,7 @@ Deno.test({
         appointed_at: now,
       },
     ]);
+    await setMemberRoles(f.a.slug, f.owner, f.outsider, ["educator"]);
     await withQueue(async () => {
       const created = await createDomainSubmission(f.a.slug, f.ref, f.student, {
         language: "python3",
@@ -245,7 +237,7 @@ Deno.test({
       );
       assertEquals(
         (await getDomainSubmission(f.a.slug, created.id, f.outsider)).code,
-        undefined,
+        "print('student')",
       );
       await f.db.update(contests).set({
         start_time: new Date(Date.now() - 10000).toISOString(),
@@ -255,9 +247,7 @@ Deno.test({
         (await getDomainSubmission(f.a.slug, created.id, f.outsider)).code,
         "print('student')",
       );
-      await f.db.update(classroomMemberships).set({ status: "removed" }).where(
-        eq(classroomMemberships.id, "submission-teacher"),
-      );
+      await setMemberRoles(f.a.slug, f.owner, f.outsider, ["member"]);
       const formerTeacher = await getDomainSubmission(
         f.a.slug,
         created.id,
@@ -265,9 +255,7 @@ Deno.test({
       );
       assertEquals(formerTeacher.code, undefined);
       assertEquals(formerTeacher.can_view_source, false);
-      await f.db.update(classroomMemberships).set({ status: "active" }).where(
-        eq(classroomMemberships.id, "submission-teacher"),
-      );
+      await setMemberRoles(f.a.slug, f.owner, f.outsider, ["educator"]);
       await f.db.update(classroomMemberships).set({ status: "removed" }).where(
         eq(classroomMemberships.id, "submission-student"),
       );

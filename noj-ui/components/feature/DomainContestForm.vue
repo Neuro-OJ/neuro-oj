@@ -7,6 +7,12 @@ import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ slug: string; existing?: DomainContest }>();
 const api = useDomainContests();
 const problemApi = useDomainProblems();
+const { domain } = useWorkspace();
+const education = useEducationApi();
+const classrooms = ref(props.existing?.classrooms?.map(room => room.id) ?? []);
+const rooms = await useAsyncData(`contest-classrooms:${props.slug}`, () =>
+  domain.value?.configuration.features.classroom ? education.classrooms(props.slug, 1) : Promise.resolve({ data: [] }),
+);
 const scope = useWorkspaceActionScope();
 const { user } = useAuth();
 const title = ref(props.existing?.title ?? '');
@@ -61,7 +67,7 @@ const available = computed(() =>
 const locked = computed(() => !!props.existing && props.existing.status !== 'pending');
 const saving = ref(false);
 const error = ref('');
-const snapshot = () => JSON.stringify({ title: title.value, description: description.value, type: type.value,
+const snapshot = () => JSON.stringify({ title: title.value, description: description.value, type: type.value, classrooms: classrooms.value,
   start: start.value, end: end.value, visibility: visibility.value, freeze: freezeMinutes.value,
   penalty: penalty.value, scoreboard: scoreboard.value, public: isPublic.value, password: password.value,
   problems: selected.value.map(item => ({ id: item.problem.binding_id, label: item.label, score: item.score })),
@@ -84,6 +90,7 @@ async function save() {
   if (saving.value) return;
   const operation = scope();
   const body: ContestPayload = {
+    classroom_ids: [...classrooms.value],
     title: title.value,
     description: description.value,
     start_time: new Date(start.value).toISOString(),
@@ -148,6 +155,10 @@ async function save() {
       </div>
       <p
         class="my-3 text-sm text-text-secondary">{{ DOMAIN_CONTEST_TYPES.find((entry) => entry.value === type)?.description }}</p>
+      <AdminFormField v-if="domain?.configuration.features.classroom" label="关联班级（可多选）" class="my-4">
+        <USelect v-model="classrooms" multiple :disabled="locked" :items="(rooms.data.value?.data ?? []).filter(room => room.status === 'active').map(room => ({ label: room.name, value: room.id }))" placeholder="不关联班级" class="w-full" />
+        <p class="mt-2 text-xs text-text-muted">关联班级学生合并排名，其他选手另列一榜；报名和比赛可见范围保持原设置。</p>
+      </AdminFormField>
       <AdminFormField label="比赛说明">
         <MarkdownEditor v-model="description" />
       </AdminFormField>

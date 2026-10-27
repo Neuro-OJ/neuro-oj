@@ -100,15 +100,12 @@ export async function enrollRegisteredAccountTx(
       ...(options.invitationBoundary ?? {}),
       meta: options.meta,
     });
-    return;
-  }
-  if (invitationToken) {
+  } else if (invitationToken) {
     // 非 invite 模式下的邀请仍需在事务内兑换，否则账号会静默丢掉邀请语义。
     await consumeDomainInvitationTx(tx, user, invitationToken, {
       ...(options.invitationBoundary ?? {}),
       meta: options.meta,
     });
-    return;
   }
   if (options.systemActor) {
     await ensureDefaultWorkspaceTx(tx, options.systemActor, options.meta);
@@ -120,8 +117,7 @@ export async function enrollRegisteredAccountTx(
     throw new NotFoundError("注册默认工作空间尚未初始化");
   }
   if (
-    main?.status === "active" &&
-    main.configuration.join_policy === "open"
+    main.status === "active"
   ) {
     await addDomainMemberTx(
       tx,

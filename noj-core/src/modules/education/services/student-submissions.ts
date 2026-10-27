@@ -56,6 +56,8 @@ export function teachingSubmissionRelation(
         JOIN assignment_items i ON i.assignment_id = a.id
         WHERE r.classroom_id = ${classroom} AND r.user_id = s.user_id
           AND i.problem_id = s.problem_id AND a.published_at IS NOT NULL
+          AND (a.submission_source = 'domain_any' OR
+            (s.assignment_id = a.id AND s.assignment_item_id = i.id AND s.created_at >= a.published_at))
           AND (a.include_previous_submissions OR s.created_at >= a.published_at)
           AND (a.archived_at IS NULL OR s.created_at <= a.archived_at)
           AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.credit_intervals) interval
@@ -69,13 +71,13 @@ export function teachingSubmissionRelation(
 export const teachingSubmissionSources = sql`(
   SELECT id, 'submission'::text AS kind, domain_id, user_id, problem_id,
     domain_problem_binding_id AS binding_id, contest_id, created_at, submitted_version_id,
-    language, status, is_valid, is_accepted, effective_attempt_id,
+    language, status, is_valid, is_accepted, effective_attempt_id, assignment_id, assignment_item_id,
     code, NULL::jsonb AS answers, file_name, artifact_storage_url IS NOT NULL AS has_artifact
   FROM submissions
   UNION ALL
   SELECT id, 'objective'::text, domain_id, user_id, paper_id,
     domain_problem_binding_id, contest_id, created_at, submitted_version_id,
-    NULL::text, status, is_valid, is_accepted, effective_attempt_id,
+    NULL::text, status, is_valid, is_accepted, effective_attempt_id, assignment_id, assignment_item_id,
     NULL::text, answers, NULL::text, false
   FROM objective_submissions
 ) s`;

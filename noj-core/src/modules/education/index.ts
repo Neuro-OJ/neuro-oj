@@ -16,7 +16,6 @@ export {
   listClassroomMembers,
   removeClassroomMember,
   setClassroomMember,
-  transferClassroom,
 } from "./services/members.ts";
 export { retireDomainEducationMemberships } from "./services/account-lifecycle.ts";
 export {
@@ -136,15 +135,15 @@ export {
 } from "./services/submission-text.ts";
 export {
   ASSIGNMENT_PROGRESS_STATES,
-  ASSISTANT_CAPABILITIES,
+  TEACHING_CAPABILITIES,
 } from "../../shared/education-types.ts";
 export type {
   AssignmentProgressStatus,
   AssignmentState,
   AssignmentSubmissionOrigin,
-  AssistantCapability,
   ClassroomRole,
   EducationNoticeType,
+  TeachingCapability,
 } from "../../shared/education-types.ts";
 export {
   createAssignmentRemediation,

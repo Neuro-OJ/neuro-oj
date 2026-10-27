@@ -27,7 +27,7 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
             id: 'c',
             membership: { role },
             capabilities: role === 'coach' ? ['progress:read', 'feedback:write', 'help:manage'] : [],
-            manages_domain: false,
+            manages_domain: role === 'coach',
           },
         };
       } else if (pathname.endsWith('/assignments/a')) {

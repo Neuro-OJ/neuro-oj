@@ -218,7 +218,7 @@ export function toDomainProblemView(resource: import('./domain-problems.ts').Dom
     version_id: resource.version_id,
     version: resource.version,
     effective_version_policy: resource.effective_version_mode === 'exact'
-      ? { mode: 'exact', version_id: resource.version_id }
+      ? { mode: 'exact', version_id: resource.required_version_id ?? resource.answer_version_id }
       : { mode: 'any' },
   });
 }

@@ -110,6 +110,6 @@ describe('通知类型文案与图标', () => {
 
 describe('notificationDetailUrl', () => {
   it('拼出通知详情页路径', () => {
-    expect(notificationDetailUrl('n1')).toBe('/community/notifications/n1');
+    expect(notificationDetailUrl('n1')).toBe('/notifications/n1');
   });
 });

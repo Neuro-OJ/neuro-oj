@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
@@ -25,7 +26,6 @@ import {
   listTeachingTextFiles,
   removeClassroomMember,
   setClassroomMember,
-  transferClassroom,
   updateSubmissionAnnotation,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -213,7 +213,7 @@ Deno.test("行批注：固定提交与哈希、行号验证、幂等、作者编
   );
 });
 
-Deno.test("行批注：错误域、同学、独立助教能力、离班历史及教师撤职即时生效", async () => {
+Deno.test("行批注：错误域、同学、域教练授权、离班历史及教师撤职即时生效", async () => {
   const f = await fixture();
   await setClassroomMember(
     f.school.slug,
@@ -250,54 +250,7 @@ Deno.test("行批注：错误域、同学、独立助教能力、离班历史及
       ),
     ForbiddenError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.assistant,
-        "feedback-only",
-        f.input,
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["submissions:read"] },
-  );
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        f.id,
-        f.assistant,
-        "code-only",
-        f.input,
-      ),
-    ForbiddenError,
-  );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    4,
-    { role: "assistant", capabilities: ["feedback:write", "submissions:read"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   await createSubmissionAnnotation(
     f.school.slug,
     f.classroom.id,
@@ -311,7 +264,7 @@ Deno.test("行批注：错误域、同学、独立助教能力、离班历史及
     f.classroom.id,
     f.teacher,
     f.student,
-    5,
+    2,
   );
   assertEquals(
     (await listSubmissionAnnotations(
@@ -344,17 +297,7 @@ Deno.test("行批注：错误域、同学、独立助教能力、离班历史及
       ),
     NotFoundError,
   );
-  await setClassroomMember(f.school.slug, f.classroom.id, f.owner, f.owner, 6, {
-    role: "coach",
-  });
-  await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 7);
-  await removeClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.owner,
-    f.teacher,
-    8,
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
   await assertRejects(
     () =>
       listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.teacher),
@@ -362,7 +305,7 @@ Deno.test("行批注：错误域、同学、独立助教能力、离班历史及
   );
 });
 
-Deno.test("行批注：进行中比赛禁止教练旁路，数据库拒绝错学生引用及删除保留依据", async () => {
+Deno.test("行批注：域教练可管理进行中比赛，学生仍受保密约束且数据库保留依据", async () => {
   const f = await fixture(),
     contest = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -378,17 +321,13 @@ Deno.test("行批注：进行中比赛禁止教练旁路，数据库拒绝错学
     updated_at: now,
   });
   const hidden = await submission(f, { contest });
-  await assertRejects(
-    () =>
-      createSubmissionAnnotation(
-        f.school.slug,
-        f.classroom.id,
-        hidden,
-        f.teacher,
-        "hidden",
-        f.input,
-      ),
-    NotFoundError,
+  await createSubmissionAnnotation(
+    f.school.slug,
+    f.classroom.id,
+    hidden,
+    f.teacher,
+    "hidden",
+    f.input,
   );
   await assertRejects(
     () =>

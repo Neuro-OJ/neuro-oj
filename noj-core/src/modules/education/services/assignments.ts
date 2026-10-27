@@ -34,6 +34,7 @@ export interface AssignmentDraftInput {
   description?: string;
   deadline_at?: string | null;
   include_previous_submissions?: boolean;
+  submission_source?: "assignment_only" | "domain_any";
   target_student_ids?: string[] | null;
   training?: {
     id: string;
@@ -62,6 +63,13 @@ export function assignmentDate(
 }
 
 function draftInput(input: AssignmentDraftInput) {
+  const source = input.submission_source ?? "domain_any";
+  if (
+    !["assignment_only", "domain_any"].includes(source) ||
+    source === "assignment_only" && input.include_previous_submissions
+  ) {
+    throw new BadRequestError("提交来源非法；仅本作业入口不能接受发布前提交");
+  }
   if (
     typeof input.title !== "string" || !input.title.trim() ||
     input.title.length > 200 ||
@@ -123,6 +131,7 @@ function draftInput(input: AssignmentDraftInput) {
     description: input.description?.trim() ?? "",
     deadline_at: assignmentDate(input.deadline_at, "截止时间"),
     include_previous_submissions: input.include_previous_submissions ?? false,
+    submission_source: source,
     target_student_ids: target,
     source_training_id: input.training?.id ?? null,
     source_training_rule: input.training
@@ -335,12 +344,8 @@ export async function listAssignments(
   const access = await loadClassroom(slug, classroomId, actorId, {
     historicalStudent: true,
   });
-  const staff = access.managesDomain ||
-    access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.size > 0;
+  const staff = access.managesDomain;
   const draftAccess = access.managesDomain ||
-    access.classMembership?.role === "coach" ||
     access.capabilities.has("assignments:manage");
   const rows = await getDb().select().from(assignments).where(
     and(

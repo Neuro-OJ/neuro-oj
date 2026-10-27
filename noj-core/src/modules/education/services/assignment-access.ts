@@ -30,10 +30,7 @@ export async function loadAssignment(
     historicalStudent: !options.write,
   });
   // 班级与作业同域由复合外键保证，班级访问已校验路径域。
-  const staff = access.managesDomain ||
-    access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.size > 0;
+  const staff = access.managesDomain;
   if (staff && !row.published_at) {
     assertClassroomCapability(access, "assignments:manage");
   }

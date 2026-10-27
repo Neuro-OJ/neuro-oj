@@ -12,15 +12,15 @@
 
 ## 技术栈
 
-| 组件         | 选择                                             |
-| ------------ | ------------------------------------------------ |
-| 框架         | Nuxt 4 (Vue 3)                                   |
-| 语言         | TypeScript                                       |
-| 样式         | Nuxt UI v4 + Tailwind CSS v4                    |
-| 代码编辑器   | Monaco Editor                                    |
-| 运行时       | Deno 2（开发/构建） / 单二进制 `deno compile`（部署） |
-| 图标         | Nuxt UI `UIcon`（`i-lucide-*`，离线打包）        |
-| Markdown     | markdown-it + highlight.js + KaTeX + DOMPurify    |
+| 组件       | 选择                                                  |
+| ---------- | ----------------------------------------------------- |
+| 框架       | Nuxt 4 (Vue 3)                                        |
+| 语言       | TypeScript                                            |
+| 样式       | Nuxt UI v4 + Tailwind CSS v4                          |
+| 代码编辑器 | Monaco Editor                                         |
+| 运行时     | Deno 2（开发/构建） / 单二进制 `deno compile`（部署） |
+| 图标       | Nuxt UI `UIcon`（`i-lucide-*`，离线打包）             |
+| Markdown   | markdown-it + highlight.js + KaTeX + DOMPurify        |
 
 ## 目录结构
 
@@ -64,7 +64,7 @@ noj-ui/
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
 │   ├── useSubmissionPolling.ts # 提交状态轮询（终态自动停止）
-│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplitter.ts / useCommunityNotifications.ts  # 业务与工具 composables
+│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplitter.ts / useAccountNotifications.ts  # 业务与工具 composables
 ├── layouts/               # 页面布局
 │   ├── default.vue        # 默认布局（导航栏 + 页脚）
 │   ├── auth.vue           # 认证页面布局（登录/注册）
@@ -138,38 +138,40 @@ deno compile -A --no-check \
 ```
 
 **运行编译产物**：
+
 ```bash
 cd dist
 ./noj-ui
 # 默认监听 http://localhost:3000
 ```
 
-> **为什么需要 `--unstable-byonm`**：Nuxt Nitro 输出依赖大量 CJS npm 包（Vue 编译器、highlight.js 等）。Deno 默认的 npm 解析方式无法正确处理这些包的 `require()` 调用。`--unstable-byonm`（Bring Your Own Node Modules）让 Deno 使用原生 `node_modules` 目录结构解析 CJS 包。
+> **为什么需要 `--unstable-byonm`**：Nuxt Nitro 输出依赖大量 CJS npm 包（Vue 编译器、highlight.js 等）。Deno 默认的 npm
+> 解析方式无法正确处理这些包的 `require()` 调用。`--unstable-byonm`（Bring Your Own Node Modules）让 Deno 使用原生
+> `node_modules` 目录结构解析 CJS 包。
 >
-> **为什么需要 `--include .output/public`**：`deno compile` 默认只打包入口模块及其依赖，不包含客户端静态资源（JS/CSS/字体等）。没有此标志启动后所有 `/_nuxt/*` 请求返回 404。
+> **为什么需要 `--include .output/public`**：`deno compile`
+> 默认只打包入口模块及其依赖，不包含客户端静态资源（JS/CSS/字体等）。没有此标志启动后所有 `/_nuxt/*` 请求返回 404。
 >
 > **`hooks.close`**：`nuxt.config.ts` 中的 `close: () => process.exit(0)` 防止 Nitro 关闭时 Deno 进程 hang 住。
 
 ## 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `NUXT_API_BASE` | `http://localhost:8000` | noj-core API 地址（服务端私有） |
-| `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj` | 身份 Cookie 前缀；同一主机多套 UI 分别设置，避免跨端口覆盖登录 |
-| `NUXT_BFF_REDIS_URL` | 空 | BFF 公共元信息 Redis 缓存；故障时绕过 |
-| `NUXT_BFF_CACHE_PREFIX` | `noj:ui:bff:v1` | 部署缓存命名空间 |
-| `NUXT_SITE_URL` | 空 | sitemap/canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时 sitemap 退化为按 Host 分键缓存；生产必须配置，避免缓存投毒（2026-09-12 评审 §4.2） |
+| 变量                             | 默认值                  | 说明                                                                                                                                                              |
+| -------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_API_BASE`                  | `http://localhost:8000` | noj-core API 地址（服务端私有）                                                                                                                                   |
+| `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj`                   | 身份 Cookie 前缀；同一主机多套 UI 分别设置，避免跨端口覆盖登录                                                                                                    |
+| `NUXT_BFF_REDIS_URL`             | 空                      | BFF 公共元信息 Redis 缓存；故障时绕过                                                                                                                             |
+| `NUXT_BFF_CACHE_PREFIX`          | `noj:ui:bff:v1`         | 部署缓存命名空间                                                                                                                                                  |
+| `NUXT_SITE_URL`                  | 空                      | sitemap/canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时 sitemap 退化为按 Host 分键缓存；生产必须配置，避免缓存投毒（2026-09-12 评审 §4.2） |
 
 ## API 交互约定
 
-空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的
-`useAsyncData` 持有（历史名称 `useViewAsyncData` 仅是兼容包装），交互仍走原有细粒度
-API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓存与故障边界见
-[视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
+空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有（历史名称
+`useViewAsyncData` 仅是兼容包装），交互仍走原有细粒度 API。全局 `00-bff.global.ts`
+不再预取或写入共享快照；接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 
-产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用
-`layouts/workspace.vue` 提供的统一上下文。实现及当前限制见
-[工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
+产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用 `layouts/workspace.vue`
+提供的统一上下文。实现及当前限制见 [工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
 授予权限；资源网址与缓存必须包含使用域，确认后仍须检查目标空间及账号未改变。
 新域资源入口在全链路隔离验收前不得直接接到旧全局业务 API。
 
@@ -178,7 +180,8 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
   - 拦截登录响应，将 JWT 设为 **HTTP-only Cookie**（`noj:token`）—— 对 JS 不可见
   - 设置 **可读 Session Cookie**（`noj:session`）—— 存用户基本信息，仅用于 UI 快速判断登录态
   - 自动从 Cookie 注入 `Authorization: Bearer` 头到转发请求
-- Cookie 名默认 `noj:token` / `noj:session`，可通过上述前缀统一调整；服务端代理、登录、改密、401 清理与注销使用相同配置。
+- Cookie 名默认 `noj:token` / `noj:session`，可通过上述前缀统一调整；服务端代理、登录、改密、401
+  清理与注销使用相同配置。
 - 注销：`server/api/auth/logout.post.ts` 通知后端撤销本套件 token，再删除本套件的两个 Cookie。
 
 ### useApi 统一 API 调用层
@@ -192,9 +195,8 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
   await api.patch<T>(url, body?, options?)
   await api.delete<T>(url, options?)
   ```
-- **错误处理（默认）**：非 2xx / 网络 / 超时错误自动提取后端 `error` 字段（具体原因），
-  通过 `useToast().toast.error()` 弹窗（5s 自动消失），然后**原样重抛**原错误对象
-  （保留 `data`/`status` 结构，`e.data?.code` 等分支代码可直接使用）
+- **错误处理（默认）**：非 2xx / 网络 / 超时错误自动提取后端 `error` 字段（具体原因）， 通过 `useToast().toast.error()`
+  弹窗（5s 自动消失），然后**原样重抛**原错误对象 （保留 `data`/`status` 结构，`e.data?.code` 等分支代码可直接使用）
 - **选项**：
   - `silent: true`：不弹 toast（轮询、后台刷新、列表加载 error ref、表单内联错误等场景），错误仍抛出
   - `onError(err, info)`：自定义处理，替换默认 toast；与 `silent` 同时给出时 `silent` 优先
@@ -208,22 +210,24 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
 ### 代理实现细节（[...slug].ts）
 
 - **仅拦截** `POST /api/v1/auth/login`：解析登录响应，提取 JWT 设置 Cookie，从响应体删除 `token` 字段
-- 若登录响应是 `TFA_REQUIRED`（已启用 TFA 但缺少 `code`），响应中没有 `token`，代理不会设置 Cookie，前端据此展示第二步验证码输入框
+- 若登录响应是 `TFA_REQUIRED`（已启用 TFA 但缺少 `code`），响应中没有 `token`，代理不会设置
+  Cookie，前端据此展示第二步验证码输入框
 - **不拦截**注册等其他认证端点
 - 非登录请求：从 Cookie 读取 `noj:token`，注入 `Authorization: Bearer` 头后直接 `proxyRequest()`
 - **路径白名单**：仅允许 `/api/v1/` 前缀的请求透传，非匹配路径返回 404
-- 错误处理：`$fetch.raw` 抛出的 `err.response` 被捕获并原样转发状态码和 body，白名单响应头（`retry-after`、`x-ratelimit-*`、`x-request-id`、`www-authenticate`）透传给客户端
+- 错误处理：`$fetch.raw` 抛出的 `err.response` 被捕获并原样转发状态码和
+  body，白名单响应头（`retry-after`、`x-ratelimit-*`、`x-request-id`、`www-authenticate`）透传给客户端
 
 ### 安全模型
 
-| 机制 | 说明 |
-|------|------|
-| JWT 存储 | HTTP-only Cookie（`noj:token`），JS 不可读，防 XSS 窃取 |
+| 机制           | 说明                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| JWT 存储       | HTTP-only Cookie（`noj:token`），JS 不可读，防 XSS 窃取                                      |
 | Session Cookie | `noj:session`，`httpOnly: false`，仅用于 UI 快速判断登录态（**不可信任**，后端执行实际鉴权） |
-| CSRF 防护 | `sameSite: "lax"` 提供基础防护 |
-| 速率限制 | **未实现**（无 IP 封禁 / CAPTCHA） |
-| 错误信息 | 后端错误信息直接显示给用户（`e.data?.error`） |
-| 管理路由 | `/admin/*` 路径在客户端 bundle 中可见，非管理员静默重定向到 `/` |
+| CSRF 防护      | `sameSite: "lax"` 提供基础防护                                                               |
+| 速率限制       | **未实现**（无 IP 封禁 / CAPTCHA）                                                           |
+| 错误信息       | 后端错误信息直接显示给用户（`e.data?.error`）                                                |
+| 管理路由       | `/admin/*` 路径在客户端 bundle 中可见，非管理员静默重定向到 `/`                              |
 
 ## 样式规范
 
@@ -237,39 +241,41 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
 
 - 复杂或复用的样式组合使用 `@apply` 封装在 `<style>` 中
 - 全局主题定制（颜色、字体、阴影）统一在 `assets/css/main.css` 的 `@theme` 与 `--ui-*` 变量中配置
-- 全站目前仅支持亮色：`nuxt.config.ts` 中 `ui.colorMode: false`，不跟随系统暗色（否则 `<html>` 加 `.dark` 后 Nuxt UI 会让原生复选框等变成暗色外观）；暗色只存在于编辑器 `.editor-dark` 区域
+- 全站目前仅支持亮色：`nuxt.config.ts` 中 `ui.colorMode: false`，不跟随系统暗色（否则 `<html>` 加 `.dark` 后 Nuxt UI
+  会让原生复选框等变成暗色外观）；暗色只存在于编辑器 `.editor-dark` 区域
 - CSS 变量（`--c-*`）仅在 `app.vue:root` 定义，`assets/css/main.css` 的 `@theme`/`--ui-*` 引用
 - Vue Transition（`<Transition name="...">`）、`::before`/`::after` 伪元素、`@keyframes` 可保留 `<style>` 块
 
 ## 可用 Tailwind 主题色
 
-| 类名前缀 | 对应 CSS 变量 |
-|----------|---------------|
-| `primary` / `primary-dark` / `primary-light` | `--c-primary*` |
-| `primary-bg` / `primary-hover-bg` / `primary-active-bg` / `primary-text` | `--c-primary-*` |
-| `signal` / `signal-deep` / `signal-dark` / `on-signal` | `--c-signal*` / `--c-on-signal` |
-| `text` / `text-secondary` / `text-muted` | `--c-text-*` |
-| `border` / `bg-page` / `bg-panel` / `bg-sunken` / `white` | `--c-border` / `--c-bg-page` / `--c-bg-panel` / `--c-bg-sunken` / `--c-white` |
-| `bg-dark` / `bg-dark-2` / `bg-dark-3` | `--c-bg-dark*` |
-| `success-text` / `info-text` / `warning-text` / `error-text` | `--c-*-text` |
-| `font-mono` | SF Mono / Fira Code / Consolas |
-| `animate-spin-slow` | spin 0.8s（0.8s 一圈） |
-| `shadow-card` / `shadow-dropdown` / `shadow-modal` | 预定义阴影 |
+| 类名前缀                                                                 | 对应 CSS 变量                                                                 |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `primary` / `primary-dark` / `primary-light`                             | `--c-primary*`                                                                |
+| `primary-bg` / `primary-hover-bg` / `primary-active-bg` / `primary-text` | `--c-primary-*`                                                               |
+| `signal` / `signal-deep` / `signal-dark` / `on-signal`                   | `--c-signal*` / `--c-on-signal`                                               |
+| `text` / `text-secondary` / `text-muted`                                 | `--c-text-*`                                                                  |
+| `border` / `bg-page` / `bg-panel` / `bg-sunken` / `white`                | `--c-border` / `--c-bg-page` / `--c-bg-panel` / `--c-bg-sunken` / `--c-white` |
+| `bg-dark` / `bg-dark-2` / `bg-dark-3`                                    | `--c-bg-dark*`                                                                |
+| `success-text` / `info-text` / `warning-text` / `error-text`             | `--c-*-text`                                                                  |
+| `font-mono`                                                              | SF Mono / Fira Code / Consolas                                                |
+| `animate-spin-slow`                                                      | spin 0.8s（0.8s 一圈）                                                        |
+| `shadow-card` / `shadow-dropdown` / `shadow-modal`                       | 预定义阴影                                                                    |
 
 ### Tailwind 扩展配置
 
-| 配置项 | 值 |
-|--------|-----|
-| 圆角 | `sm: 2px` / `DEFAULT: 4px` / `md: 6px` / `lg: 10px` / `xl: 14px` |
-| 过渡时长 | `fast: 150ms` / `DEFAULT: 200ms` / `slow: 300ms` |
-| 排版插件 | `prose-neuro` 类（自定义代码块/表格/引用样式） |
-| 字体栈 | `SF Mono → Fira Code → Consolas → monospace`（无中文字体指定） |
-| 数值排版 | 分数/耗时/排名等使用 `tabular-nums` |
+| 配置项   | 值                                                               |
+| -------- | ---------------------------------------------------------------- |
+| 圆角     | `sm: 2px` / `DEFAULT: 4px` / `md: 6px` / `lg: 10px` / `xl: 14px` |
+| 过渡时长 | `fast: 150ms` / `DEFAULT: 200ms` / `slow: 300ms`                 |
+| 排版插件 | `prose-neuro` 类（自定义代码块/表格/引用样式）                   |
+| 字体栈   | `SF Mono → Fira Code → Consolas → monospace`（无中文字体指定）   |
+| 数值排版 | 分数/耗时/排名等使用 `tabular-nums`                              |
 
 ### 品牌设计系统
 
 - 品牌天青蓝：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky 400），用于高亮链接、关键按钮、激活项与品牌交互。
-- 深邃科技海军蓝：`#0b0f19`（暗色底）/ `#131b2e`（暗色面板）/ `#0f172a`（Slate 900 正文），用于品牌身份、暗色沉浸 Hero、终端。
+- 深邃科技海军蓝：`#0b0f19`（暗色底）/ `#131b2e`（暗色面板）/ `#0f172a`（Slate 900 正文），用于品牌身份、暗色沉浸
+  Hero、终端。
 - 评测信号绿：`#059669`（亮色）/ `#00e07a`（暗色），用于评测状态、提交通过、运行就绪、动作。
 - 完整 token 见 [`dev-docs/design/noj-design-tokens.md`](../dev-docs/design/noj-design-tokens.md)。
 
@@ -286,128 +292,135 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
 ## Composables 参考
 
 ### useAuth
+
 - `useState<AuthUser | null>("auth:user")` 存储用户信息（含 `must_change_password` 字段，issue #75）
 - `fetchUser()`：调用 `/api/v1/auth/me`，401 时自动调用 `logout()` 清除状态
-- `login(login, password, code?)` / `register(data)` / `logout()`：封装对应 API 调用；`code` 为 TFA 验证码/恢复码（issue #228）
-- `changePassword(oldPassword, newPassword)`：调用 `/api/v1/auth/change-password`，成功后自动 `logout()` 清 Cookie 并跳 `/login?reason=password_changed`（避免旧 JWT flag 残留致路由守卫死循环）
+- `login(login, password, code?)` / `register(data)` / `logout()`：封装对应 API 调用；`code` 为 TFA 验证码/恢复码（issue
+  #228）
+- `changePassword(oldPassword, newPassword)`：调用 `/api/v1/auth/change-password`，成功后自动 `logout()` 清 Cookie 并跳
+  `/login?reason=password_changed`（避免旧 JWT flag 残留致路由守卫死循环）
 - `logout()` 清除 `auth:user` 状态 + 调用 `/api/auth/logout` 删除 Cookie
 - 初始化时若 Cookie 存在则自动调用 `fetchUser()`；SSR 阶段通过 `/api/v1/auth/me` 获取完整用户与权限
 
 ### useToast
+
 - 基于 Nuxt UI `useToast` 的 Toast 通知
 - `showToast(type, title)`：`success` / `error` / `info` / `warning`
 - 自动消失（timer: 3000ms），无确认按钮
 - SSR 安全（`process.client` 守卫）
 
 ### useDialog
+
 - 基于 Nuxt UI `useOverlay` + `DialogModal`（UModal）的确认/提示/输入弹窗
 - `showConfirm(title, text, danger?)`：返回 Promise<boolean>
 - `danger: true` 时显示红色确认按钮（删除操作）
 - SSR 安全
 
 ### useProblemFilters
+
 - URL 驱动的题目筛选（`useRoute().query` 同步）
 - 筛选条件变化时自动重置页码
 - 防抖处理（避免快速输入时频繁请求）
 
 ### useSubmissionPolling（提交数据与轮询）
+
 - `useSubmissionPolling`：轮询 pending 提交直至终态（基于 `setInterval`，状态终态自动停止）
 - 分值格式化：`score / 100`（数据库存储 ×100）
 - 状态/颜色映射：`finished→green`（已评测 + 分数）、`error→red`（出错）等；不再使用 AC/WA 文案
 
 ### useSearch
-全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState`
-实例：
 
-- `state` — `{ open, query, type, groups, flatItems, loading, error }`
-  （`type` 取值见 `SearchType`；`groups` 用于"全部"分组模式，
-  `flatItems` 用于按类型的结果页）
+全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState` 实例：
+
+- `state` — `{ open, query, type, groups, flatItems, loading, error }` （`type` 取值见 `SearchType`；`groups`
+  用于"全部"分组模式， `flatItems` 用于按类型的结果页）
 - `open()` / `close()` — 控制 `SearchPalette` 浮层显隐
-- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；
-  "全部"模式请求
-  `types=problem,user,community_post,community_comment,contest,submission,message,announcement`
-  并以 `groups` 分组返回
-- `Navbar.vue` 调用 `open()` 唤起命令面板；`SearchPalette` / `pages/search.vue`
-  共写共读
+- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`； "全部"模式请求
+  `types=problem,user,community_post,community_comment,contest,submission,message,announcement` 并以 `groups` 分组返回
+- `Navbar.vue` 调用 `open()` 唤起命令面板；`SearchPalette` / `pages/search.vue` 共写共读
 
 并发与生命周期要点（`bab9a74`，Task 10 reviewer fixes）：
 
-- **请求序号 `requestSeq`** 每次 `search()` 单调递增，过期回调跳过结果写入
-  避免请求竞态（如快速输入「abc → ab」时旧请求晚到不污染新结果）
-- **早退前清理**：`clearTimeout` 必须在短查询早退（`< 2` 字符）之前执行，
-  否则「ab → a」会让旧请求继续等待触发
+- **请求序号 `requestSeq`** 每次 `search()` 单调递增，过期回调跳过结果写入 避免请求竞态（如快速输入「abc →
+  ab」时旧请求晚到不污染新结果）
+- **早退前清理**：`clearTimeout` 必须在短查询早退（`< 2` 字符）之前执行， 否则「ab → a」会让旧请求继续等待触发
 - **`pendingResolve` 同步 resolve** 旧 Promise，避免 `await` 挂起泄漏
-- **`onScopeDispose` 清理挂起的 debounce + Promise**，防止组件卸载后写共享
-  state
+- **`onScopeDispose` 清理挂起的 debounce + Promise**，防止组件卸载后写共享 state
 - **同步写入 `query`/`type`** 到共享 state，让分页等下游消费方能读到最新值
 - **失败时**置 `state.error`（各分支显式处理，不做静默兜底）
 
 ## 数据获取策略
 
-| 场景 | 方法 | 说明 |
-|------|------|------|
-| 页面初始数据 | `useAsyncData` / `useFetch` | SSR 时在服务端获取，结果序列化到 payload，水合时复用 |
-| 交互 / 轮询 / 表单 | `useApi` | 统一错误处理；禁止在 setup 顶层 `await api.get` 写普通 `ref` |
-| 轮询 | `useSubmissionPolling` composable | 基于 `setInterval`，状态终态自动停止 |
-| 表单提交 | `useApi` | 显示后端返回的错误信息 |
+| 场景               | 方法                              | 说明                                                         |
+| ------------------ | --------------------------------- | ------------------------------------------------------------ |
+| 页面初始数据       | `useAsyncData` / `useFetch`       | SSR 时在服务端获取，结果序列化到 payload，水合时复用         |
+| 交互 / 轮询 / 表单 | `useApi`                          | 统一错误处理；禁止在 setup 顶层 `await api.get` 写普通 `ref` |
+| 轮询               | `useSubmissionPolling` composable | 基于 `setInterval`，状态终态自动停止                         |
+| 表单提交           | `useApi`                          | 显示后端返回的错误信息                                       |
 
 ### SSR 数据获取约定
 
-- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`（历史迁移代码可通过
-  `useViewAsyncData` 兼容包装），不得在 `<script setup>` 顶层 `await api.get(...)` 写入普通
-  `ref`；禁止依赖全局路由中间件提供共享 BFF 快照。
-- `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup 上下文，异步回调内不得再次调用。
+- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`（历史迁移代码可通过 `useViewAsyncData` 兼容包装），不得在
+  `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`；禁止依赖全局路由中间件提供共享 BFF 快照。
+- `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup
+  上下文，异步回调内不得再次调用。
 - 非关键数据（社区配置、首页公告等）SSR 失败 MUST 降级为空态/默认值，不得导致整页 502。
-- `ssr: false` 边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、私信、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用 `ssr: false`；内容/SEO 页保持 SSR。
+- `ssr: false`
+  边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、私信、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用
+  `ssr: false`；内容/SEO 页保持 SSR。
 
 ## 中间件
 
 ### auth 守卫
+
 - 检查 `noj:session` Cookie 是否存在
 - 不存在 → `navigateTo("/login")`
 - 存在但需要验证 → 调用 `fetchUser()`，5 秒超时
 - SSR 阶段同样执行守卫：服务端基于 `/auth/me` 填充的完整用户状态做重定向，客户端水合后再次校验
-- **强制改密（issue #75）**：`user.must_change_password=true` 时强制跳 `/change-password`（白名单路径 `/change-password`、`/login`、`/logout` 放行）
+- **强制改密（issue #75）**：`user.must_change_password=true` 时强制跳 `/change-password`（白名单路径
+  `/change-password`、`/login`、`/logout` 放行）
 
 ### admin 守卫
+
 - 检查 `noj:session` Cookie 中的 `is_admin` 字段（RBAC：权限集含 `admin:full_access`，登录/`/auth/me` 时实时计算）
 - 非管理员 → `navigateTo("/")`（静默重定向，无错误提示）
 - SSR 阶段同样执行守卫
 
 ### ssr: false 页面
 
-服务端渲染开关必须使用 `nuxt.config.ts` 的 `routeRules`；既有客户端页面清单在
-`utils/ssr-routes.ts`，不得写入 `definePageMeta`。
+服务端渲染开关必须使用 `nuxt.config.ts` 的 `routeRules`；既有客户端页面清单在 `utils/ssr-routes.ts`，不得写入
+`definePageMeta`。
+
 - 所有 `/admin/*` 页面
 - 原因：管理后台依赖客户端状态，SSR 无意义且可能暴露敏感数据
 
 ## 关键组件说明
 
-| 组件 | 说明 |
-|------|------|
-| `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
-| `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
-| `MarkdownEditor.vue` | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它 |
-| `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
-| `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
-| `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
-| `TableSkeleton.vue` | 表格骨架屏加载态 |
+| 组件                                     | 说明                                                                                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MonacoEditor.vue`                       | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选                                                                                                  |
+| `MarkdownRenderer.vue`                   | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS                                                                                                                         |
+| `MarkdownEditor.vue`                     | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它  |
+| `CodingProblemEditor.vue`                | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
+| `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情）                                                                                                                                               |
+| `AsyncContent.vue`                       | 异步内容容器，统一处理 loading / empty / error 状态                                                                                                                                             |
+| `TableSkeleton.vue`                      | 表格骨架屏加载态                                                                                                                                                                                |
 
 ## 认证守卫
 
-| 中间件 | 路径 | 行为 |
-|--------|------|------|
-| `auth` | 所有需登录页面 | 未登录 → `/login` |
-| `admin` | `/admin/*` | 未登录 → `/login`，非管理员 → `/`（静默拦截） |
+| 中间件  | 路径           | 行为                                          |
+| ------- | -------------- | --------------------------------------------- |
+| `auth`  | 所有需登录页面 | 未登录 → `/login`                             |
+| `admin` | `/admin/*`     | 未登录 → `/login`，非管理员 → `/`（静默拦截） |
 
 > SSR 阶段同样执行守卫，客户端水合后再次校验。所有 admin 页面使用 `ssr: false`。
 
 ## 密码重置页面（issue #49）
 
-| 页面 | 路径 | 用途 |
-|------|------|------|
-| 忘记密码 | `/forgot-password` | 步骤 1：输入注册邮箱 → 显示"邮件已发送"绿色 banner |
-| 重置密码 | `/reset-password` | 步骤 2：URL `?token=...` → 输入新密码 + 确认密码 → 跳 `/login?reset=1` |
+| 页面     | 路径               | 用途                                                                   |
+| -------- | ------------------ | ---------------------------------------------------------------------- |
+| 忘记密码 | `/forgot-password` | 步骤 1：输入注册邮箱 → 显示"邮件已发送"绿色 banner                     |
+| 重置密码 | `/reset-password`  | 步骤 2：URL `?token=...` → 输入新密码 + 确认密码 → 跳 `/login?reset=1` |
 
 **实现约定**：
 
@@ -427,23 +440,22 @@ API。全局 `00-bff.global.ts` 不再预取或写入共享快照；接口、缓
 ## 已知限制
 
 - **前端测试已接入 CI**：`deno task test`（Deno 单测，含 server/ 代理与 composable 断言）
-  + `deno task test:components`（vitest 组件测试），均已在 CI 运行；跨模块 E2E 见 noj-tests。
-  （2026-09-12 更正：此处原写"无前端单元测试"，与代码不符）
-- **编辑器主题浏览器回归**：启动 UI 后执行
-  `E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme`，首次使用需运行
+  - `deno task test:components`（vitest 组件测试），均已在 CI 运行；跨模块 E2E 见 noj-tests。 （2026-09-12
+    更正：此处原写"无前端单元测试"，与代码不符）
+- **编辑器主题浏览器回归**：启动 UI 后执行 `E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme`，首次使用需运行
   `deno run -A npm:playwright@1.62.0 install chromium`。测试用模拟 API 在真实 Chromium
   中检查桌面/手机宽度的明暗切换、Markdown 颜色与对比度；CI 对构建产物执行同一任务。
 - **SEO 基础已具备**：动态页 `useSeoMeta`、OG、sitemap、robots 已加入；结构化数据与完整关键词策略仍待补充
 - **无图片优化**：仅 `logo.jpg`，未使用 Nuxt 图片优化
 - **无字体优化**：使用系统字体栈，无 web font 加载
-- **Composable 命名统一为 camelCase**（如 `useAuth`、`useSubmissions`）；此前文档提到的
-  kebab-case 文件 `use-submissions.ts` 并不存在（2026-09-12 更正）
+- **Composable 命名统一为 camelCase**（如 `useAuth`、`useSubmissions`）；此前文档提到的 kebab-case 文件
+  `use-submissions.ts` 并不存在（2026-09-12 更正）
 
 ## 贡献要求
 
 - **所有提交必须 GPG 签名**（详见根目录 [`AGENTS.md`](../AGENTS.md) §7.5）
-- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：**禁止直接推送
-  `main`**，所有变更从 `main` 派生主题分支并通过 PR 合入；合入前必须完成本模块的检查与验收
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：**禁止直接推送 `main`**，所有变更从 `main`
+  派生主题分支并通过 PR 合入；合入前必须完成本模块的检查与验收
 - 提交信息格式：`feat(ui): 中文描述` / `fix(ui): 中文描述`
 
 ## 相关文档

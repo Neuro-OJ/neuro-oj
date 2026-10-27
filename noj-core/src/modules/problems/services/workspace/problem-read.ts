@@ -35,7 +35,6 @@ import {
   trimProblemContentForViewer,
 } from "../versioning/version-read-view.ts";
 import {
-  AppError,
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
@@ -295,6 +294,7 @@ export async function listDomainProblems(
             : "unseen"
           : null,
         submit_count: summary?.submit_count ?? 0,
+        best_score: actorId ? summary?.best_score ?? null : null,
         valid_submissions: summary?.valid_submissions ?? 0,
         accepted_submissions: summary?.accepted_submissions ?? 0,
       });
@@ -307,8 +307,11 @@ export async function readDomainProblem(
   slug: string,
   reference: string,
   actorId: string | null,
+  versionId?: string,
 ) {
-  const resolved = await resolveDomainProblem(slug, reference, actorId);
+  const resolved = await resolveDomainProblem(slug, reference, actorId, {
+    versionId,
+  });
   const canEdit = resolved.binding.kind === "owned" &&
     (resolved.platformAdmin ||
       resolved.context.domainPermissions.has("problem:write_any") ||
@@ -351,7 +354,7 @@ export async function readDomainProblem(
     policy_revision: resolved.binding.revision,
     effective_version_mode: resolved.binding.effective_version_mode,
     required_version_id: resolved.binding.required_version_id,
-    answer_version_id: resolved.version.id,
+    answer_version_id: resolved.answerVersionId,
     visibility: resolved.binding.visibility,
     can_share: resolved.binding.kind === "owned" &&
       (resolved.platformAdmin ||
@@ -393,18 +396,9 @@ export async function readDomainProblemTemplate(
   actorId: string | null,
   requestedVersionId?: string,
 ) {
-  const resource = await resolveDomainProblem(slug, reference, actorId);
-  if (requestedVersionId && resource.version.id !== requestedVersionId) {
-    throw new AppError(
-      "作答版本已变化，请重新确认",
-      409,
-      "PROBLEM_ANSWER_VERSION_CHANGED",
-      {
-        expected_version_id: resource.version.id,
-        submitted_version_id: requestedVersionId,
-      },
-    );
-  }
+  const resource = await resolveDomainProblem(slug, reference, actorId, {
+    versionId: requestedVersionId,
+  });
   const content = resource.version.content as ProblemContentV1;
   if (content.kind === "ai" && content.submission_mode === "ui") {
     throw new NotFoundError("界面题不公开评测脚本模板");

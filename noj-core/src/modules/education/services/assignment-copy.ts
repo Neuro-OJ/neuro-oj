@@ -15,6 +15,7 @@ export interface AssignmentCopyInput {
   target_student_ids?: string[] | null;
   deadline_at?: string | null;
   include_previous_submissions?: boolean;
+  submission_source?: "assignment_only" | "domain_any";
 }
 
 /** 原任务、提交与成绩不修改；复制重新校验当前题库授权和目标学生。 */
@@ -63,6 +64,8 @@ export async function copyAssignment(
             deadline_at: input.deadline_at ?? null,
             include_previous_submissions: input.include_previous_submissions ??
               false,
+            submission_source: input.submission_source ??
+              access.assignment.submission_source,
             target_student_ids: input.target_student_ids ?? null,
             ...(access.assignment.source_training_id &&
                 !access.assignment.published_at

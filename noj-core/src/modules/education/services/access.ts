@@ -1,21 +1,20 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import {
-  classroomAssistantGrants,
-  classroomMemberships,
-  classrooms,
-} from "../../../shared/db/schema.ts";
+import { classroomMemberships, classrooms } from "../../../shared/db/schema.ts";
 import {
   AppError,
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import type { AssistantCapability } from "../../../shared/education-types.ts";
+import {
+  TEACHING_CAPABILITIES,
+  type TeachingCapability,
+} from "../../../shared/education-types.ts";
 import { assertDomainFeatureEnabled } from "../../access/contracts/cross-module/workspace_services_limits.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 
-/** 班级请求只从明确域路径解析身份，每次读取当前任职及助教授权。 */
+/** 班级请求只从明确域路径解析身份，每次读取当前域角色和学生成员关系。 */
 export async function loadClassroom(
   slug: string,
   classroomId: string,
@@ -65,38 +64,34 @@ export async function loadClassroom(
       );
     }
   }
-  const rows = active && membership.role === "assistant"
-    ? await executor.select().from(classroomAssistantGrants).where(
-      eq(classroomAssistantGrants.membership_id, membership.id),
-    )
-    : [];
+
   return {
     ...workspace,
     classroom,
     classMembership: active ? membership : null,
-    capabilities: new Set(rows.map((r) => r.capability)),
+    capabilities: new Set<TeachingCapability>(
+      managesDomain ? TEACHING_CAPABILITIES : [],
+    ),
     managesDomain,
   };
 }
 
-/** 教练及域治理人员可管理本班，助教仅使用被授予的固定能力。 */
+/** 域教练及域治理人员可管理域内所有班级。 */
 export function assertClassroomCapability(
   access: Awaited<ReturnType<typeof loadClassroom>>,
-  capability: AssistantCapability,
+  _capability: TeachingCapability,
 ) {
   if (
-    access.managesDomain || access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.has(capability)
+    access.managesDomain
   ) return;
   throw new ForbiddenError("没有此项教学权限", "CLASSROOM_PERMISSION_DENIED");
 }
 
-/** 班级交接及教学人员任命不能通过助教能力提升获得。 */
+/** 教学管理权限直接来自域角色。 */
 export function assertClassroomCoach(
   access: Awaited<ReturnType<typeof loadClassroom>>,
 ) {
-  if (!access.managesDomain && access.classMembership?.role !== "coach") {
+  if (!access.managesDomain) {
     throw new ForbiddenError(
       "仅教练或域管理员可执行",
       "CLASSROOM_PERMISSION_DENIED",

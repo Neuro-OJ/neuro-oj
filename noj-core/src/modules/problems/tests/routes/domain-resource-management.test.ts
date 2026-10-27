@@ -238,7 +238,7 @@ Deno.test("资源管理 HTTP：引用分页、独立策略、下架恢复及源�
       token: teacherToken,
       body: { source_ref: f.sourceRef },
     })).status,
-    403,
+    201,
   );
   const restored = await jsonRequest(f.app, bindings, {
     method: "POST",

@@ -1,3 +1,4 @@
+import { partitionClassroomRanking } from "./classroom-contests.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { contestProblems } from "../../../shared/db/schema.ts";
@@ -60,14 +61,23 @@ export async function getDomainContestRanking(
   slug: string,
   reference: string,
   actorId: string | null,
+  classroomId?: string,
 ) {
   const access = await loadDomainContest(slug, reference, actorId);
-  return await getContestRankingView(
+  const result = await getContestRankingView(
     access.contest.id,
     access.contest.type as ContestType,
     access.organizer,
     actorId ?? undefined,
   );
+  return {
+    ...result,
+    ...await partitionClassroomRanking(
+      access.contest.id,
+      result.rows,
+      classroomId,
+    ),
+  };
 }
 
 /** 正式快照读取遵循比赛榜单可见性，后续重测不改写已发布版本。 */
@@ -75,6 +85,7 @@ export async function getDomainContestFinalRanking(
   slug: string,
   reference: string,
   actorId: string | null,
+  classroomId?: string,
 ) {
   const access = await loadDomainContest(slug, reference, actorId);
   if (!access.organizer && access.contest.ranking_visibility === "hidden") {
@@ -88,6 +99,11 @@ export async function getDomainContestFinalRanking(
   if (!snapshot) throw new NotFoundError("尚未发布正式成绩");
   return {
     data: snapshot.rows as KaggleRankingRow[],
+    ...await partitionClassroomRanking(
+      access.contest.id,
+      snapshot.rows as KaggleRankingRow[],
+      classroomId,
+    ),
     result_type: "official" as const,
     snapshot: {
       version: snapshot.version,

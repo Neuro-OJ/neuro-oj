@@ -42,7 +42,6 @@ export function teachingNoticeTarget(slug: string, notice: TeachingNotice) {
     query: {
       ...(notice.help_id ? { help: notice.help_id } : {}),
       ...(notice.feedback_id ? { feedback: notice.feedback_id } : {}),
-      ...(notice.type === 'assignment_changed' || notice.type === 'resource_unavailable' ? { history: '1' } : {}),
     },
   };
 }

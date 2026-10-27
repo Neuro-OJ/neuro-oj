@@ -1,9 +1,10 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
+  accountNotifications,
   educationNotificationEmails,
-  educationNotifications,
   educationOutbox,
 } from "../../../../shared/db/schema.ts";
 import { recordEducationNotice } from "../../contracts/facts.ts";
@@ -45,7 +46,7 @@ async function fixture() {
   // 此组只验证互动新增通知；发布通知由独立生命周期用例覆盖。
   await drain();
   await f.db.delete(educationNotificationEmails);
-  await f.db.delete(educationNotifications);
+  await f.db.delete(accountNotifications);
   return { ...f, task };
 }
 
@@ -69,7 +70,7 @@ Deno.test("教学通知：持久事件和反馈同事务，重复领取不重复
   assertEquals(JSON.stringify(event.payload).includes("secret"), false);
   assertEquals(await processEducationEvent(event), true);
   assertEquals(await processEducationEvent(event), false);
-  assertEquals((await f.db.select().from(educationNotifications)).length, 1);
+  assertEquals((await f.db.select().from(accountNotifications)).length, 1);
   const listing = await listEducationNotifications(f.school.slug, f.student);
   assertEquals(listing.total, 1);
   assertEquals(listing.unread, 1);
@@ -122,14 +123,7 @@ Deno.test("教学通知：持久事件和反馈同事务，重复领取不重复
 
 Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不能恢复求助访问", async () => {
   const f = await fixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["help:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const help = await createAssignmentHelp(
     f.school.slug,
     f.task.id,
@@ -144,14 +138,7 @@ Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不
   );
   assertEquals(assistant.total, 1);
   assertEquals(assistant.data[0].help_id, help.id);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.assistant)).total,
     0,
@@ -210,8 +197,8 @@ Deno.test("教学通知：业务事务回滚不留事件，投递前撤回反馈
   );
   await drain();
   assertEquals(
-    (await f.db.select().from(educationNotifications).where(
-      eq(educationNotifications.assignment_id, f.task.id),
+    (await f.db.select().from(accountNotifications).where(
+      eq(accountNotifications.assignment_id, f.task.id),
     )).length,
     0,
   );

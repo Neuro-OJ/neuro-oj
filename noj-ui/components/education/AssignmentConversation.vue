@@ -192,7 +192,7 @@ async function refreshThreads() {
           icon="i-lucide-pen-line" @click="feedbackOpen = true">
           写反馈
         </UButton>
-        <UButton v-if="isStudent && writable && !questionOpen" size="sm" variant="outline"
+        <UButton v-if="isStudent && writable && !questionOpen" size="sm" variant="solid"
           icon="i-lucide-message-circle-question-mark" @click="questionOpen = true">
           向老师求助
         </UButton>

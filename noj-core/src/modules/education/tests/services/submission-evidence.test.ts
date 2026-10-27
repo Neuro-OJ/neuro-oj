@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -28,7 +29,6 @@ import {
   listAssignmentItemSubmissions,
   publishAssignment,
   removeClassroomMember,
-  setClassroomMember,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
@@ -275,15 +275,8 @@ Deno.test("教学单元依据：接收者、发布时间、按时补做与离班
     NotFoundError,
   );
   await assertRejects(() => cell(f, f.student), ForbiddenError);
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["progress:read"] },
-  );
-  await assertRejects(() => cell(f, f.assistant), ForbiddenError);
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  assertEquals((await cell(f, f.assistant)).data.length > 0, true);
 });
 
 Deno.test("教学正式沿革：降分与平台错误可追溯，当前正式候选独立标记，OI白名单无原始数据", async () => {
@@ -363,7 +356,7 @@ Deno.test("教学候选依据：exact 排除其他正式版本，教学停用期
   assertEquals((await cell(f)).total, 0);
 });
 
-Deno.test("教学依据 HTTP：教练不能读取进行中比赛沿革，实际组织者可查但不计作业候选", async () => {
+Deno.test("教学依据 HTTP：域教练可查比赛沿革，进行中成绩不计作业候选", async () => {
   const f = await fixture(),
     contestId = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -380,8 +373,9 @@ Deno.test("教学依据 HTTP：教练不能读取进行中比赛沿革，实际�
   });
   const id = await submit(f, { contestId });
   await grade(f, id, 0, 10000);
-  assertEquals((await cell(f)).total, 0);
-  await assertRejects(() => history(f, id), NotFoundError);
+  assertEquals((await cell(f)).total, 1);
+  assertEquals((await cell(f)).data[0].candidate_attempt_ids, []);
+  assertEquals((await history(f, id)).data[0].score, 10000);
   const organizer = await cell(f, f.owner);
   assertEquals(organizer.total, 1);
   assertEquals(organizer.data[0].candidate_attempt_ids, []);
@@ -392,7 +386,7 @@ Deno.test("教学依据 HTTP：教练不能读取进行中比赛沿革，实际�
   const path =
     `/api/v1/domains/${f.school.slug}/classrooms/${f.classroom.id}/submissions/submission/${id}/attempts`;
   const response = await jsonRequest(app, path, { token });
-  assertEquals(response.status, 404);
+  assertEquals(response.status, 200);
   await f.db.update(contests).set({
     end_time: new Date(Date.now() - 1000).toISOString(),
   }).where(eq(contests.id, contestId));

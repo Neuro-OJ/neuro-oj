@@ -17,6 +17,7 @@ let authorToken = "";
 let responderToken = "";
 let adminToken = "";
 let boardId = "";
+let domainId = "";
 let postId = "";
 const suffix = Date.now().toString(36);
 const slug = `community-${suffix}`;
@@ -64,6 +65,7 @@ e2eTest("[e2e/community] 准备两个社区用户和默认板块", async () => {
   if (domain.status !== 201) {
     throw new Error(`建社区域失败: ${JSON.stringify(domain.body)}`);
   }
+  domainId = (domain.body as { data: { id: string } }).data.id;
   authorToken = await registerUser(
     `community_author_${suffix}`,
     `community_author_${suffix}@test.com`,
@@ -218,7 +220,7 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
   if (followed.status !== 200) throw new Error(`关注失败: ${followed.status}`);
 
   const notifications = await apiGet(
-    `${community}/notifications`,
+    `/api/v1/notifications?domain_id=${domainId}`,
     authorToken,
   );
   const entries = (notifications.body as {
@@ -232,13 +234,13 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
   }
 
   const unread = await apiGet(
-    `${community}/notifications/unread-count`,
+    `/api/v1/notifications?domain_id=${domainId}&per_page=1`,
     authorToken,
   );
-  const unreadCount = (unread.body as { data: { count: number } }).data.count;
+  const unreadCount = (unread.body as { unread_count: number }).unread_count;
   assertEquals(unread.status, 200);
   const followNotifications = await apiGet(
-    "/api/v1/community/notifications",
+    "/api/v1/notifications",
     authorToken,
   );
   assertEquals(followNotifications.status, 200);
@@ -254,11 +256,11 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
     throw new Error("作者未收到互动与关注通知");
   }
   const markedRead = await apiPost(
-    `${community}/notifications/read`,
+    `/api/v1/notifications/read?domain_id=${domainId}`,
     {},
     authorToken,
   );
-  if (markedRead.status !== 200) throw new Error("通知标记已读失败");
+  if (markedRead.status !== 204) throw new Error("通知标记已读失败");
 
   const report = await apiPost(
     `${community}/reports`,
@@ -459,7 +461,7 @@ e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", a
       throw new Error(`批准评论失败: ${approve.status}`);
     }
     const notifications = await apiGet(
-      `${community}/notifications`,
+      `/api/v1/notifications?domain_id=${domainId}`,
       admin,
     );
     const entries = (notifications.body as {

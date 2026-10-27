@@ -3,7 +3,6 @@ import { recordEducationEvent } from "../contracts/facts.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
-  classroomMemberships,
   classrooms,
   domainMemberships,
   users,
@@ -67,15 +66,13 @@ export async function assertActiveDomainStudent(
   if (!member) throw new NotFoundError("账号不是此域的有效成员");
 }
 
-/** 创建班级与初始教练任职在同一事务提交。 */
+/** 创建班级；教练权限由域角色提供，不写入班级名单。 */
 export async function createClassroom(slug: string, actorId: string, input: {
   name: string;
   description?: string;
   stage_tag?: string;
-  primary_coach_id?: string;
 }) {
-  const values = details(input, true),
-    coachId = input.primary_coach_id ?? actorId;
+  const values = details(input, true);
   return await getDb().transaction(async (tx) => {
     const workspace = await loadWorkspace(slug, actorId, {
       executor: tx,
@@ -87,10 +84,6 @@ export async function createClassroom(slug: string, actorId: string, input: {
       executor: tx,
       disabledCode: "MODULE_DISABLED",
     });
-    if (coachId !== actorId) {
-      assertWorkspacePermission(workspace.context, "classroom:manage_any");
-    }
-    await assertActiveDomainStudent(tx, workspace.domain.id, coachId);
     const now = new Date().toISOString();
     const [classroom] = await tx.insert(classrooms).values({
       id: crypto.randomUUID(),
@@ -98,29 +91,18 @@ export async function createClassroom(slug: string, actorId: string, input: {
       name: values.name!,
       description: values.description,
       stage_tag: values.stage_tag,
-      primary_coach_id: coachId,
       created_at: now,
       updated_at: now,
     }).returning();
-    await tx.insert(classroomMemberships).values({
-      id: crypto.randomUUID(),
-      domain_id: workspace.domain.id,
-      classroom_id: classroom.id,
-      user_id: coachId,
-      role: "coach",
-      joined_at: now,
-      appointed_at: now,
-    });
     await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {
       operation: "classroom.create",
       classroom_id: classroom.id,
-      primary_coach_id: coachId,
     });
     return classroom;
   });
 }
 
-/** 列表在分页前限定当前班级关系，不泄露其他教练或历史学生的班级。 */
+/** 教学人员可列出全域班级；学生在分页前按当前成员关系筛选。 */
 export async function listClassrooms(slug: string, actorId: string, page = 1) {
   const workspace = await loadWorkspace(slug, actorId), db = getDb();
   const manage = workspace.platformAdmin ||

@@ -86,6 +86,7 @@ export interface ContestProblemInput {
 }
 
 export interface ContestPayload {
+  classroom_ids?: string[];
   title: string;
   description?: string;
   start_time: string;

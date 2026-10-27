@@ -14,12 +14,13 @@ export async function loadAssignmentCandidates(
   const userCondition = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
   const rows = await executor.execute(sql`WITH sources AS (
     SELECT s.id AS submission_id, 'submission' AS source_kind, s.domain_id, s.problem_id, s.user_id,
-      s.created_at AS received_at, s.receipt_sequence, s.contest_id, s.active_attempt_id
+      s.created_at AS received_at, s.receipt_sequence, s.contest_id, s.active_attempt_id,
+      s.assignment_id, s.assignment_item_id
     FROM submissions s JOIN assignment_items i ON i.problem_id = s.problem_id AND i.domain_id = s.domain_id
     WHERE i.assignment_id = ${assignmentId} AND s.user_id IN (${userCondition})
     UNION ALL
     SELECT s.id, 'objective', s.domain_id, s.paper_id, s.user_id, s.created_at, s.receipt_sequence,
-      s.contest_id, s.active_attempt_id
+      s.contest_id, s.active_attempt_id, s.assignment_id, s.assignment_item_id
     FROM objective_submissions s JOIN assignment_items i ON i.problem_id = s.paper_id AND i.domain_id = s.domain_id
     WHERE i.assignment_id = ${assignmentId} AND s.user_id IN (${userCondition})
   ), eligible AS (
@@ -29,6 +30,8 @@ export async function loadAssignmentCandidates(
     JOIN assignment_recipients r ON r.assignment_id = a.id AND r.user_id = s.user_id
     JOIN classrooms class ON class.id = a.classroom_id
     WHERE a.published_at IS NOT NULL AND (a.include_previous_submissions OR s.received_at >= a.published_at)
+      AND (a.submission_source = 'domain_any' OR
+        (s.assignment_id = a.id AND s.assignment_item_id = i.id AND s.received_at >= a.published_at))
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.credit_intervals) w
         WHERE s.received_at >= w->>'start' AND (w->>'end' IS NULL OR s.received_at <= w->>'end'))
       AND (a.archived_at IS NULL OR s.received_at <= a.archived_at)

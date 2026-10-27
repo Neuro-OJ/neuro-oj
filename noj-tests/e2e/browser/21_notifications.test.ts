@@ -4,9 +4,9 @@
  *
  * 回归两条缺陷：
  *   1. 「没有可跳转关联内容」的通知（这里用封禁通知构造）点击后曾回退到 `/community`
- *      首页，现在必须进入通知详情页 `/community/notifications/<id>`；
- *   2. 新增的 `GET /community/notifications/:id` 不得吞掉同前缀的字面量路由
- *      ——`/notifications/events`（SSE）与 `/notifications/unread-count` 必须仍是 200。
+ *      首页，现在必须进入通知详情页 `/notifications/<id>`；
+ *   2. 新增的 `GET /notifications/:id` 不得吞掉同前缀的字面量路由
+ *      ——`/notifications/events`（SSE）与 `GET /notifications` 的未读数 必须仍是 200。
  *      该缺陷依赖 app.ts 的挂载顺序，只测端点不够，必须在页面上观察真实请求。
  *
  * 运行前置（完整栈）：noj-core + noj-ui + 种子 admin（e2e_admin@test.com）。
@@ -181,7 +181,7 @@ Deno.test("[ui/browser] 通知：封禁通知点击进入详情页，且字面�
   try {
     const { page } = session;
 
-    // 页面级 404 采集：`:id` 若吞掉 /notifications/events 或 unread-count，这里会看到 404
+    // 页面级 404 采集：`:id` 若吞掉 /notifications/events 或 通知列表，这里会看到 404
     const notFound: string[] = [];
     page.on("response", (r) => {
       if (r.status() === 404) {
@@ -190,7 +190,7 @@ Deno.test("[ui/browser] 通知：封禁通知点击进入详情页，且字面�
     });
 
     await loginViaUI(page, BANNED_USER.email, BANNED_USER.password);
-    await page.goto(`${UI_URL}/community/notifications`, {
+    await page.goto(`${UI_URL}/notifications`, {
       waitUntil: "domcontentloaded",
     });
     await waitForHydration(page);
@@ -202,9 +202,9 @@ Deno.test("[ui/browser] 通知：封禁通知点击进入详情页，且字面�
     await page.waitForTimeout(3_000);
 
     const path = new URL(page.url()).pathname;
-    if (!/^\/community\/notifications\/[0-9a-f-]{36}$/.test(path)) {
+    if (!/^\/notifications\/[0-9a-f-]{36}$/.test(path)) {
       throw new Error(
-        `封禁通知点击后应进入 /community/notifications/<id>，实际为 ${page.url()}`,
+        `封禁通知点击后应进入 /notifications/<id>，实际为 ${page.url()}`,
       );
     }
 
@@ -252,7 +252,7 @@ Deno.test("[ui/browser] 通知：详情页深链可达且未知 id 显示未找�
     page.on("response", (r) => {
       if (
         r.url().includes(
-          "/api/v1/community/notifications/00000000-0000-4000-8000-000000000000",
+          "/api/v1/notifications/00000000-0000-4000-8000-000000000000",
         )
       ) {
         detailStatus = r.status();
@@ -263,7 +263,7 @@ Deno.test("[ui/browser] 通知：详情页深链可达且未知 id 显示未找�
 
     // 直接打开详情 URL（深链）：必须是详情页而不是回退成列表页
     await page.goto(
-      `${UI_URL}/community/notifications/00000000-0000-4000-8000-000000000000`,
+      `${UI_URL}/notifications/00000000-0000-4000-8000-000000000000`,
       { waitUntil: "domcontentloaded" },
     );
     await waitForHydration(page);

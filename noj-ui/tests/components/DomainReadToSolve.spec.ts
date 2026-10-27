@@ -59,7 +59,7 @@ async function view(kind = 'oi', mode = 'code') {
 describe('阅读详情与独立作答入口', () => {
   it('代码题详情仅提供独立入口，保留使用域、来源题号和作业上下文', async () => {
     const wrapper = await view();
-    expect(read).toHaveBeenCalledWith('school', 'main:1001');
+    expect(read).toHaveBeenCalledWith('school', 'main:1001', undefined);
     expect(wrapper.text()).not.toContain('作答表单');
     const start = wrapper.findAllComponents({ name: 'UButton' }).find((button) => button.text() === '开始编码')!;
     expect(start.props('to')).toEqual({ path: '/d/school/solve/main:1001', query: origin });

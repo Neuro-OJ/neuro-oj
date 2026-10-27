@@ -4,8 +4,8 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
+  accountNotifications,
   auditLogs,
-  communityNotifications,
   communityPosts,
   communityReports,
   communitySanctions,
@@ -771,10 +771,10 @@ Deno.test({
 
     await deleteComment(comment.id, observerId, false);
     let notifications = await getDb().select({
-      post_id: communityNotifications.post_id,
-      comment_id: communityNotifications.comment_id,
-    }).from(communityNotifications).where(
-      eq(communityNotifications.recipient_id, actorId),
+      post_id: accountNotifications.post_id,
+      comment_id: accountNotifications.comment_id,
+    }).from(accountNotifications).where(
+      eq(accountNotifications.recipient_id, actorId),
     );
     assertEquals(notifications, [{ post_id: null, comment_id: null }]);
 
@@ -790,10 +790,10 @@ Deno.test({
       "审核删除",
     );
     notifications = await getDb().select({
-      post_id: communityNotifications.post_id,
-      comment_id: communityNotifications.comment_id,
-    }).from(communityNotifications).where(
-      eq(communityNotifications.recipient_id, actorId),
+      post_id: accountNotifications.post_id,
+      comment_id: accountNotifications.comment_id,
+    }).from(accountNotifications).where(
+      eq(accountNotifications.recipient_id, actorId),
     );
     assertEquals(notifications.length, 2);
     for (const notification of notifications) {
@@ -807,10 +807,10 @@ Deno.test({
     );
     await changePostStatus(post.id, observerId, "deleted", "测试删除");
     notifications = await getDb().select({
-      post_id: communityNotifications.post_id,
-      comment_id: communityNotifications.comment_id,
-    }).from(communityNotifications).where(
-      eq(communityNotifications.recipient_id, actorId),
+      post_id: accountNotifications.post_id,
+      comment_id: accountNotifications.comment_id,
+    }).from(accountNotifications).where(
+      eq(accountNotifications.recipient_id, actorId),
     );
     assertEquals(notifications.length, 4);
     for (const notification of notifications) {

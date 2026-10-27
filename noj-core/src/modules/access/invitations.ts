@@ -5,6 +5,7 @@ import { getDb } from "../../shared/db/connection.ts";
 import {
   domainInvitationRedemptions,
   domainInvitations,
+  domainMemberships,
   domains,
   users,
 } from "../../shared/db/schema.ts";
@@ -260,6 +261,23 @@ export async function createDomainInvitationTx(
       throw new ForbiddenError("班级邀请必须通过教学授权入口");
     }
     await options.assertIssuerTx(tx, slug, options.classroomId, user);
+    if (
+      !context.platformAdmin &&
+      !context.domainPermissions.has("domain:invitations")
+    ) {
+      const [member] = config.email
+        ? await tx.select({ id: domainMemberships.id }).from(domainMemberships)
+          .innerJoin(users, eq(users.id, domainMemberships.user_id))
+          .where(
+            and(
+              eq(domainMemberships.domain_id, domain.id),
+              eq(domainMemberships.status, "active"),
+              eq(users.email, config.email),
+            ),
+          )
+        : [];
+      if (!member) throw new ForbiddenError("只有域管理员可以邀请域外学生");
+    }
   } else {
     assertWorkspacePermission(context, "domain:invitations");
   }
@@ -481,7 +499,39 @@ export async function consumeDomainInvitationTx(
   } else {
     await assertInvitationIssuerActiveTx(tx, domain.slug, invite.created_by);
   }
-  await addDomainMemberTx(tx, user, domain.id, user.userId, true, options.meta);
+  // 域外账号只能由当前仍持有域邀请权限的签发者引入。
+  if (invite.classroom_id) {
+    const [membership] = await tx.select({ id: domainMemberships.id }).from(
+      domainMemberships,
+    )
+      .where(
+        and(
+          eq(domainMemberships.domain_id, domain.id),
+          eq(domainMemberships.user_id, user.userId),
+          eq(domainMemberships.status, "active"),
+        ),
+      );
+    if (!membership) {
+      await assertInvitationIssuerActiveTx(tx, domain.slug, invite.created_by);
+      await addDomainMemberTx(
+        tx,
+        user,
+        domain.id,
+        user.userId,
+        true,
+        options.meta,
+      );
+    }
+  } else {
+    await addDomainMemberTx(
+      tx,
+      user,
+      domain.id,
+      user.userId,
+      true,
+      options.meta,
+    );
+  }
   if (invite.classroom_id) {
     await options.joinTx!(tx, domain.id, invite.classroom_id, user);
   }

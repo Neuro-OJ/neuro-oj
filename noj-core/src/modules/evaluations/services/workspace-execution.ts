@@ -48,6 +48,7 @@ export async function resolveDomainExecution(
       // 作答仅重读政策；保持 admission 已持有的共享锁，避免 SHARE 升级死锁。
       domainLock: "share",
       contestId: contestTarget?.contestId,
+      versionId: contestTarget ? undefined : versionId,
     },
   );
   if (!versionId) {
@@ -101,6 +102,13 @@ export async function lockDomainExecution(
     versionId,
     executor,
   );
+  if (current.binding.revision !== initial.binding.revision) {
+    throw new AppError(
+      "作答策略已变化，请刷新并确认后重新提交",
+      409,
+      "PROBLEM_ANSWER_VERSION_CHANGED",
+    );
+  }
   return {
     domain_id: current.domain.id,
     domain_problem_binding_id: current.binding.id,

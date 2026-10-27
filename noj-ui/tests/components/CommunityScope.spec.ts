@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, onScopeDispose, reactive, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { useCommunityScope } from '~/composables/useCommunityScope';
-import { useCommunityNotifications } from '~/composables/useCommunityNotifications';
+import { useAccountNotifications } from '~/composables/useAccountNotifications';
 import CommunityBookmarks from '~/components/feature/community/CommunityBookmarks.vue';
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: { success: vi.fn(), error: vi.fn() } }) }));
 
@@ -43,30 +43,26 @@ describe('域社区作用域与异步交互', () => {
     lifetime.stop();
     expect(current.isCurrent()).toBe(false);
   });
-  it('旧域迟到的未读数不能出现在新域或账号通知角标', async () => {
-    const lifetime = effectScope();
-    const domain = lifetime.run(() => useCommunityNotifications())!;
+  it('通知角标跨域共享，旧账号迟到的未读数不能覆盖当前账号', async () => {
+    const badge = useAccountNotifications();
     let finish!: (value: unknown) => void;
     api.get.mockReturnValueOnce(
       new Promise((done) => {
         finish = done;
       }),
     );
-    const loading = domain.loadUnreadCount();
-    route.path = '/d/school-b/community';
-    finish({ data: { unread_count: 9 } });
+    const loading = badge.refresh();
+    user.value = { id: 'teacher' };
+    finish({ unread_count: 9 });
     await loading;
-    expect(domain.unreadCount.value).toBe(0);
-    api.get.mockResolvedValue({ data: { count: 2 } });
-    await domain.loadUnreadCount();
-    expect(domain.unreadCount.value).toBe(2);
-    const account = lifetime.run(() => useCommunityNotifications(true))!;
-    expect(account.unreadCount.value).toBe(0);
-    await account.loadUnreadCount();
-    expect(api.get.mock.lastCall?.[0]).toBe('/api/v1/community/notifications/unread-count');
+    expect(badge.unreadCount.value).toBe(0);
+    api.get.mockResolvedValue({ unread_count: 2 });
+    await badge.refresh();
+    route.path = '/d/school-b/community';
+    expect(badge.unreadCount.value).toBe(2);
+    expect(api.get.mock.lastCall?.[0]).toBe('/api/v1/notifications');
     user.value = null;
-    expect(account.unreadCount.value).toBe(0);
-    lifetime.stop();
+    expect(badge.unreadCount.value).toBe(0);
   });
   it('取消收藏确认期间切换空间不会发送旧操作，收藏链接保持本域', async () => {
     vi.stubGlobal('onMounted', (fn: () => void) => fn());

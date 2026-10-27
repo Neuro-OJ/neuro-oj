@@ -106,6 +106,7 @@ export async function resolveDomainProblem(
     executor?: Executor;
     write?: boolean;
     contestId?: string;
+    versionId?: string;
     domainLock?: "share";
   } = {},
 ) {
@@ -133,7 +134,12 @@ export async function resolveDomainProblem(
 export async function resolveDomainProblemInWorkspace(
   workspace: Awaited<ReturnType<typeof loadWorkspace>>,
   reference: string,
-  options: { executor: Executor; write?: boolean; contestId?: string },
+  options: {
+    executor: Executor;
+    write?: boolean;
+    contestId?: string;
+    versionId?: string;
+  },
 ) {
   const executor = options.executor;
   const actorId = workspace.context.actorId;
@@ -208,10 +214,13 @@ export async function resolveDomainProblemInWorkspace(
         .length
     ) throw new NotFoundError("此题处于比赛保密窗口");
   }
-  const versionId = contestAccess?.pinnedVersionId ??
+  const answerVersionId = contestAccess?.pinnedVersionId ??
     (row.binding.effective_version_mode === "exact"
       ? row.binding.required_version_id
       : row.problem.latest_version_id);
+  const versionId = contestAccess
+    ? answerVersionId
+    : options.versionId ?? answerVersionId;
   const [version] = versionId
     ? await executor.select().from(problemVersions).where(
       and(
@@ -225,6 +234,7 @@ export async function resolveDomainProblemInWorkspace(
     ...workspace,
     ...row,
     version,
+    answerVersionId,
     reference: domainProblemReference(
       { ...row.problem, domain_id: row.source.id },
       row.source.slug,

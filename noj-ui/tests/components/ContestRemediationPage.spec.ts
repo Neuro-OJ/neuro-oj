@@ -27,8 +27,8 @@ beforeEach(() => {
             id: 'class-one',
             status: 'active',
             name: '班级',
-            manages_domain: false,
-            membership: { role: 'assistant', status: 'active' },
+            manages_domain: capabilities.includes('progress:read'),
+            membership: null,
             capabilities,
           } as ClassroomDetail,
         }),
@@ -62,13 +62,13 @@ async function view() {
   return result;
 }
 describe('比赛补题页面能力', () => {
-  it('只有作业管理助教不能读取班级成绩候选', async () => {
+  it('普通成员不能读取班级成绩候选', async () => {
     capabilities = ['assignments:manage'];
     const result = await view();
     expect(result.text()).not.toContain('比赛候选管理');
     expect(result.text()).toContain('无权在此创建补题任务');
   });
-  it('作业管理和学情读取齐备后显示候选管理；比赛读取仍由服务端授权', async () => {
+  it('域教练显示候选管理；比赛读取仍由服务端授权', async () => {
     capabilities = ['assignments:manage', 'progress:read'];
     expect((await view()).text()).toContain('比赛候选管理');
   });

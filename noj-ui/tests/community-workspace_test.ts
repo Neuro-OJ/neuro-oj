@@ -39,7 +39,7 @@ Deno.test('域通知目标留在使用域，关注仍是账号关系，账号举
     }, 'school'),
     '/d/school/contests/contest?tab=clarifications',
   );
-  assertEquals(notificationDetailUrl('deleted-target', 'school'), '/d/school/community/notifications/deleted-target');
+  assertEquals(notificationDetailUrl('deleted-target', 'school'), '/notifications/deleted-target');
   assertEquals(communityApiPath(null, 'notifications'), '/api/v1/community/notifications');
 });
 Deno.test('旧内容链接固定main，账号通知与私信举报继续自己的授权入口', () => {

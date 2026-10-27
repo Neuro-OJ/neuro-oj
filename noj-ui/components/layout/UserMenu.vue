@@ -70,6 +70,7 @@ const items = computed(() => [
     ...(user.value?.is_admin || workspace?.can('problem:write_own') || workspace?.can('problem:write_any')
       ? [{ label: '我的题目', icon: 'i-lucide-book-open', to: workspacePath(slug.value, 'problem-drafts') }]
       : []),
+    { label: '通知', icon: 'i-lucide-bell', to: '/notifications' },
     { label: '消息', icon: 'i-lucide-mail', to: accountLink('/messages'), badge: unreadCount.value || undefined },
   ],
   [

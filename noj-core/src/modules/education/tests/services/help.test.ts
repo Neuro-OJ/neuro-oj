@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -133,26 +134,12 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
     "new",
     { body: "如何调试" },
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    2,
-    { role: "assistant", capabilities: ["feedback:write"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   await assertRejects(
     () => getAssignmentHelp(f.school.slug, f.task.id, help.id, f.assistant),
     NotFoundError,
   );
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    3,
-    { role: "assistant", capabilities: ["help:manage"] },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const reply = await replyAssignmentHelp(
     f.school.slug,
     f.task.id,

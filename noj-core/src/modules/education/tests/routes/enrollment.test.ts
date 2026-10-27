@@ -56,7 +56,9 @@ Deno.test("入班 API：申请、预览、If-Match、幂等及父路由认证和
   });
   assertEquals(executed.status, 200);
   assertEquals(executed.headers.get("Cache-Control"), "no-store");
-  assertEquals((await executed.json()).data.rows[0].token.length, 72);
+  const row = (await executed.json()).data.rows[0];
+  assertEquals(row.action, "error");
+  assertEquals(row.token, undefined);
   assertEquals(
     (await jsonRequest(app, `${base}/imports/preview`, {
       token: student,

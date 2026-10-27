@@ -20,18 +20,13 @@ import {
   createPost,
   deleteComment,
   getCommunityConfig,
-  getNotification,
-  getNotificationUnreadCount,
   getPost,
   hasAcceptedSolution,
   listBoards,
   listBookmarks,
   listComments,
   listFeed,
-  listNotifications,
   listPosts,
-  markNotificationRead,
-  markNotificationsRead,
   resolvePostId,
   setPostOfficial,
   toggleBookmark,
@@ -47,7 +42,6 @@ import type {
 } from "../types/community.ts";
 import { resolveCommunityProblem } from "../services/community/community-scope.ts";
 import { domainCommunityGovernanceRouter } from "./domain-governance.ts";
-import { domainCommunitySse } from "./sse.ts";
 import { hasUnendedPublicContest } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import {
   enforceBookmarkRateLimit,
@@ -76,7 +70,6 @@ domainCommunityRouter.use(`${prefix}/*`, async (c, next) => {
   }
   await next();
 });
-domainCommunityRouter.route("/", domainCommunitySse);
 type C = Context<OptionalAuthEnv>;
 async function input<T>(c: Parameters<typeof parseJsonBody>[0]) {
   const value = await parseJsonBody<unknown>(c);
@@ -409,62 +402,6 @@ domainCommunityRouter.patch(
         s,
       ));
     return c.json({ message: "已更新官方题解标记" });
-  },
-);
-domainCommunityRouter.get(
-  `${prefix}/notifications`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await read(c, (s) =>
-        listNotifications(
-          s.actorId!,
-          parseQueryLimit(c.req.query("limit"), { default: 30 }),
-          s,
-        )),
-    }),
-);
-domainCommunityRouter.get(
-  `${prefix}/notifications/unread-count`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: {
-        count: await read(c, (s) => getNotificationUnreadCount(s.actorId!, s)),
-      },
-    }),
-);
-domainCommunityRouter.get(
-  `${prefix}/notifications/:id`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await read(c, (s) =>
-        getNotification(s.actorId!, c.req.param("id")!, s)),
-    }),
-);
-domainCommunityRouter.post(
-  `${prefix}/notifications/read`,
-  authMiddleware,
-  async (c) => {
-    await write(
-      c,
-      "community:read",
-      (s) => markNotificationsRead(s.actorId!, s),
-    );
-    return c.json({ message: "已标记已读" });
-  },
-);
-domainCommunityRouter.post(
-  `${prefix}/notifications/:id/read`,
-  authMiddleware,
-  async (c) => {
-    await write(
-      c,
-      "community:read",
-      (s) => markNotificationRead(s.actorId!, c.req.param("id")!, s),
-    );
-    return c.json({ message: "已标记已读" });
   },
 );
 domainCommunityRouter.route("/", domainCommunityGovernanceRouter);

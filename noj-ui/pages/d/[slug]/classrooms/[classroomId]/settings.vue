@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { educationCacheKey } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
@@ -8,13 +7,11 @@ const actor = useState<{ id: string } | null>('auth:user', () => null),
   id = computed(() => String(route.params.classroomId));
 const key = computed(() => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value, 'settings'));
 const room = await useAsyncData(() => key.value, () => education.classroom(slug.value!, id.value));
-const roster = await useAsyncData(() => `${key.value}:roster`, () => education.members(slug.value!, id.value));
 const form = reactive({ name: '', description: '', stage_tag: '' });
 const originalRevision = ref(room.data.value?.data.revision ?? 0),
   saving = ref(false),
   saved = ref(false),
-  error = ref(''),
-  successor = ref('');
+  error = ref('');
 function reset() {
   const value = room.data.value?.data;
   if (value) {
@@ -36,14 +33,9 @@ watch([key, room.data], () => {
   }
 });
 const writable = computed(() =>
-  room.data.value && (room.data.value.data.manages_domain || room.data.value.data.membership?.role === 'coach') &&
+  room.data.value && room.data.value.data.manages_domain &&
   room.data.value.data.status === 'active' && domain.value?.status === 'active' &&
   domain.value.configuration.features.classroom
-);
-const successors = computed(() =>
-  roster.data.value?.data.filter((m) =>
-    m.role === 'coach' && m.effective_active && m.user_id !== room.data.value?.data.primary_coach_id
-  ).map((m) => ({ label: m.username, value: m.user_id })) ?? []
 );
 const capture = useWorkspaceActionScope();
 async function save() {
@@ -65,22 +57,19 @@ async function save() {
     saving.value = false;
   }
 }
-async function lifecycle(action: 'transfer' | 'archive') {
+async function lifecycle() {
   if (!writable.value || saving.value) return;
-  const scope = capture(), classId = id.value, revision = originalRevision.value, userId = successor.value;
+  const scope = capture(), classId = id.value, revision = originalRevision.value;
   if (
     !await dialog.confirm(
-      action === 'transfer'
-        ? '把主教练交接给所选教练？历史数据仍属于原班级。'
-        : '归档后停止新作业和成员写操作，保留获授权的历史。是否归档？',
+      '归档后停止新作业和成员写操作，保留获授权的历史。是否归档？',
     )
   ) return;
   if (!scope.isCurrent() || id.value !== classId || !writable.value) return;
   saving.value = true;
   error.value = '';
   try {
-    if (action === 'transfer') await education.transferClassroom(scope.slug, classId, userId, revision);
-    else await education.archiveClassroom(scope.slug, classId, revision);
+    await education.archiveClassroom(scope.slug, classId, revision);
     if (scope.isCurrent() && id.value === classId) {
       await room.refresh();
       reset();
@@ -103,7 +92,6 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   form.name = '';
   form.description = '';
   form.stage_tag = '';
-  successor.value = '';
   error.value = '';
   saved.value = false;
 });
@@ -115,7 +103,7 @@ useSeoMeta({ title: '班级设置' });
 
     <LibraryPageHeader
       title="班级设置"
-      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」的基本信息、交接主教练或归档班级` : '管理班级信息与教学安排'"
+      :description="room.data.value?.data.name ? `修改「${room.data.value.data.name}」的基本信息或归档班级` : '管理班级信息与教学安排'"
       icon="i-lucide-settings"
     >
       <template #actions>
@@ -163,49 +151,6 @@ useSeoMeta({ title: '班级设置' });
         </form>
       </UCard>
 
-      <!-- 主教练交接 -->
-      <UCard>
-        <template #header>
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-user-check" class="size-5 text-primary" />
-            <h2 class="font-semibold text-text">主教练交接</h2>
-          </div>
-        </template>
-
-        <div class="space-y-3">
-          <p class="text-sm text-text-secondary">
-            将主教练权限交接给班级内其他已被任命为教练身份的成员。历史作业与学情数据仍保留在当前班级。
-          </p>
-
-          <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
-
-          <div class="flex flex-wrap items-end gap-3 pt-1">
-            <AdminFormField label="接任主教练" class="w-full sm:w-72">
-            <USelect
-              v-model="successor"
-              :items="successors"
-              placeholder="选择接任的主教练"
-              class="w-full"
-              :loading="roster.status.value === 'pending'"
-              :disabled="saving || roster.status.value === 'pending' || !!roster.error.value || !successors.length"
-              aria-label="接任主教练"
-            />
-            </AdminFormField>
-            <UButton
-              :disabled="!successor || saving"
-              variant="outline"
-              color="neutral"
-              @click="lifecycle('transfer')"
-            >
-              确认交接
-            </UButton>
-          </div>
-          <p v-if="roster.status.value === 'success' && !roster.error.value && !successors.length" class="text-sm text-text-muted">
-            暂无可接任的教练。请先在<NuxtLink :to="workspacePath(slug!, `classrooms/${id}/members`)" class="text-primary hover:underline">班级成员</NuxtLink>中将接任者设为教练。
-          </p>
-        </div>
-      </UCard>
-
       <!-- 归档班级 -->
       <UCard class="border-warning/40">
         <template #header>
@@ -223,7 +168,7 @@ useSeoMeta({ title: '班级设置' });
             color="warning"
             variant="outline"
             :disabled="saving"
-            @click="lifecycle('archive')"
+            @click="lifecycle()"
           >
             归档此班级并保留历史
           </UButton>
@@ -231,7 +176,7 @@ useSeoMeta({ title: '班级设置' });
       </UCard>
     </div>
 
-    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置，无权修改配置或交接负责人" />
+    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置，无权修改配置" />
     </AsyncContent>
   </div>
 </template>

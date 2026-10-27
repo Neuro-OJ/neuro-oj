@@ -60,8 +60,8 @@ export async function aggregateView(reader: CoreReader, input: {
     tasks.push(read('userSpaces', '/api/v1/me/domains'), read('messageUnread', '/api/v1/conversations/unread-count'));
   }
   const features = workspace.configuration.features;
-  if (features.assignment && member) tasks.push(read('educationNotifications', `${root}/notifications?page=1`));
-  else put('educationNotifications', { data: { unread: 0 } });
+  if (viewer) tasks.push(read('accountNotifications', '/api/v1/notifications?per_page=1'));
+  else put('accountNotifications', { data: [], total: 0, unread_count: 0 });
   let community: Record<string, unknown> | null = null;
   const communityTask = features.community
     ? optional('communityConfig', async () => {
@@ -72,10 +72,7 @@ export async function aggregateView(reader: CoreReader, input: {
       return { key: `community:${input.slug}:${viewer?.id ?? 'guest'}`, config: community };
     })
     : Promise.resolve();
-  tasks.push(communityTask.then(async () => {
-    if (viewer && community?.enabled) await read('communityUnread', `${root}/community/notifications/unread-count`);
-    else put('communityUnread', { data: { count: 0 } });
-  }));
+  tasks.push(communityTask);
 
   const loadView = async () => {
     if (input.kind === 'home') {

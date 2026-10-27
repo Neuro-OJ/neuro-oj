@@ -10,23 +10,16 @@ import { loadWorkspace } from "../../access/contracts/cross-module/workspace_ser
 import { domainProblemBindingAvailableWhere } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
 import type {
   AssignmentState,
-  AssistantCapability,
+  TeachingCapability,
 } from "../../../shared/education-types.ts";
 
-/** 班级能力在分页前筛选，每次读取当前任职和助教授权。 */
+/** 班级能力在分页前筛选，每次读取当前域角色和学生成员关系。 */
 function teachingCapability(
-  actorId: string,
+  _actorId: string,
   managesDomain: boolean,
-  capability: AssistantCapability,
+  _capability: TeachingCapability,
 ): SQL {
-  return managesDomain ? sql`true` : sql`EXISTS (
-    SELECT 1 FROM classroom_memberships m
-    WHERE m.classroom_id = c.id AND m.domain_id = c.domain_id
-      AND m.user_id = ${actorId} AND m.status = 'active'
-      AND (m.role = 'coach' OR (m.role = 'assistant' AND EXISTS (
-        SELECT 1 FROM classroom_assistant_grants grant_row
-        WHERE grant_row.membership_id = m.id AND grant_row.capability = ${capability})))
-  )`;
+  return sql`${managesDomain}`;
 }
 
 /** 与单元读取相同的八种持久事实范围，不将陈旧投影计为当前未达标。 */

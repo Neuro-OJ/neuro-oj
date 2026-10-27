@@ -272,13 +272,13 @@ Deno.test({
 
     const unread = await jsonRequest(
       app,
-      "/api/v1/community/notifications/unread-count",
+      "/api/v1/notifications?per_page=1",
       { token: authorToken },
     );
-    assertEquals((await unread.json()).data.unread_count, 1);
+    assertEquals((await unread.json()).unread_count, 1);
     const read = await jsonRequest(
       app,
-      "/api/v1/community/notifications/read",
+      "/api/v1/notifications/read",
       {
         method: "POST",
         token: authorToken,
@@ -287,10 +287,10 @@ Deno.test({
     assertEquals(read.status, 204);
     const afterRead = await jsonRequest(
       app,
-      "/api/v1/community/notifications/unread-count",
+      "/api/v1/notifications?per_page=1",
       { token: authorToken },
     );
-    assertEquals((await afterRead.json()).data.unread_count, 0);
+    assertEquals((await afterRead.json()).unread_count, 0);
 
     const forbidden = await jsonRequest(
       app,
@@ -447,7 +447,7 @@ Deno.test({
 
     const notifications = await jsonRequest(
       app,
-      "/api/v1/community/notifications",
+      "/api/v1/notifications",
       { token: authorToken },
     );
     const notificationId = (await notifications.json()).data[0].notification
@@ -456,7 +456,7 @@ Deno.test({
     // 未登录 401
     const anonymous = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}/read`,
+      `/api/v1/notifications/${notificationId}/read`,
       { method: "POST" },
     );
     assertEquals(anonymous.status, 401);
@@ -464,7 +464,7 @@ Deno.test({
     // 他人通知 404
     const others = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}/read`,
+      `/api/v1/notifications/${notificationId}/read`,
       { method: "POST", token: responderToken },
     );
     assertEquals(others.status, 404);
@@ -472,22 +472,22 @@ Deno.test({
     // 本人已读成功 → 未读数清零，重复调用幂等
     const read = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}/read`,
+      `/api/v1/notifications/${notificationId}/read`,
       { method: "POST", token: authorToken },
     );
     assertEquals(read.status, 204);
     const again = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}/read`,
+      `/api/v1/notifications/${notificationId}/read`,
       { method: "POST", token: authorToken },
     );
     assertEquals(again.status, 204);
     const unread = await jsonRequest(
       app,
-      "/api/v1/community/notifications/unread-count",
+      "/api/v1/notifications?per_page=1",
       { token: authorToken },
     );
-    assertEquals((await unread.json()).data.unread_count, 0);
+    assertEquals((await unread.json()).unread_count, 0);
   },
 });
 
@@ -520,7 +520,7 @@ Deno.test({
 
     const notifications = await jsonRequest(
       app,
-      "/api/v1/community/notifications",
+      "/api/v1/notifications",
       { token: authorToken },
     );
     const notificationId = (await notifications.json()).data[0].notification
@@ -529,14 +529,14 @@ Deno.test({
     // 未登录 401
     const anonymous = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}`,
+      `/api/v1/notifications/${notificationId}`,
     );
     assertEquals(anonymous.status, 401);
 
     // 他人通知 404（不泄露他人通知是否存在）
     const others = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}`,
+      `/api/v1/notifications/${notificationId}`,
       { token: responderToken },
     );
     assertEquals(others.status, 404);
@@ -544,7 +544,7 @@ Deno.test({
     // 不存在的通知同样 404
     const missing = await jsonRequest(
       app,
-      "/api/v1/community/notifications/00000000-0000-0000-0000-000000000000",
+      "/api/v1/notifications/00000000-0000-0000-0000-000000000000",
       { token: authorToken },
     );
     assertEquals(missing.status, 404);
@@ -552,7 +552,7 @@ Deno.test({
     // 本人可读，且投影与列表接口一致（含 actor 与 post_id）
     const detail = await jsonRequest(
       app,
-      `/api/v1/community/notifications/${notificationId}`,
+      `/api/v1/notifications/${notificationId}`,
       { token: authorToken },
     );
     assertEquals(detail.status, 200);
@@ -568,18 +568,18 @@ Deno.test({
     // 字面量路由不被 `:id` 抢占：unread-count 仍返回计数而非 404
     const unread = await jsonRequest(
       app,
-      "/api/v1/community/notifications/unread-count",
+      "/api/v1/notifications?per_page=1",
       { token: authorToken },
     );
     assertEquals(unread.status, 200);
-    assertEquals(typeof (await unread.json()).data.unread_count, "number");
+    assertEquals(typeof (await unread.json()).unread_count, "number");
 
     // 非 UUID 段不应被 `:id` 吞掉（`:id` 已限定 UUID 形状）：
     // `/notifications/events` 是 sse.ts 的通知 SSE 端点，且挂载在本路由之后，
     // 若 `:id` 不做约束会被抢先匹配成 404（未读计数与实时通知一起失效）。
     const sse = await jsonRequest(
       app,
-      "/api/v1/community/notifications/events",
+      "/api/v1/notifications/events",
       { token: authorToken },
     );
     assertEquals(sse.status, 200);
@@ -753,7 +753,7 @@ Deno.test({
     const app = createApp();
     const anonymous = await jsonRequest(
       app,
-      "/api/v1/community/notifications/events",
+      "/api/v1/notifications/events",
     );
     assertEquals(anonymous.status, 401);
   },
@@ -899,7 +899,7 @@ Deno.test({
     assertEquals(approve.status, 200);
     const notifications = await jsonRequest(
       app,
-      "/api/v1/community/notifications",
+      "/api/v1/notifications",
       { token: authorToken },
     );
     const entries = (await notifications.json()).data as Array<{
@@ -1189,11 +1189,15 @@ Deno.test({
       const path of [
         "/api/v1/community/feed?limit=abc",
         "/api/v1/community/bookmarks?limit=abc",
-        "/api/v1/community/notifications?limit=abc",
+        "/api/v1/notifications?per_page=abc",
       ]
     ) {
       const response = await jsonRequest(app, path, { token: authorToken });
-      assertEquals(response.status, 200, `${path} 期望 200`);
+      assertEquals(
+        response.status,
+        path.startsWith("/api/v1/notifications") ? 400 : 200,
+        `${path} 应拒绝或安全回退非法分页`,
+      );
     }
   },
 });

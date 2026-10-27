@@ -108,21 +108,21 @@ describe('教学页面的持久事件刷新', () => {
     expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
     view.unmount();
   });
-  it('仅有学情权限的助教不挂载反馈栏，历史深链仍显示版本依据', async () => {
+  it('学生可查看本人反馈，旧历史参数不恢复已移除的按钮', async () => {
     route.query = { history: '1' };
     api.classroom.mockResolvedValue({
       data: {
         id: 'class',
         status: 'active',
         manages_domain: false,
-        membership: { role: 'assistant', status: 'active' },
+        membership: { role: 'student', status: 'active' },
         capabilities: ['progress:read'],
       },
     });
     const view = await page(AssignmentPage);
-    expect(view.find('assignment-conversation-stub').exists()).toBe(false);
-    expect(view.find('assignment-history-stub').exists()).toBe(true);
-    expect(view.text()).toContain('版本与策略变化依据');
+    expect(view.find('assignment-conversation-stub').exists()).toBe(true);
+    expect(view.find('assignment-history-stub').exists()).toBe(false);
+    expect(view.text()).not.toContain('版本与策略变化依据');
     view.unmount();
   });
   it('教师工作台和我的学习都在新事件后重读本域任务', async () => {

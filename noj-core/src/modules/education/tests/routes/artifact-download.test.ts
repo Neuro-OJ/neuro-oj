@@ -10,7 +10,7 @@ import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { getStorageProvider } from "../../../platform/system/index.ts";
 import { removeDomainMember } from "../../../access/workspace/index.ts";
-import { getClassroom, setClassroomMember } from "../../index.ts";
+import { setClassroomMember } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test({
@@ -40,18 +40,13 @@ Deno.test({
         version_origin: "known",
         created_at: new Date().toISOString(),
       });
-      const revision =
-        (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).revision;
       await setClassroomMember(
         f.school.slug,
         f.classroom.id,
         f.teacher,
         f.assistant,
-        revision,
-        {
-          role: "assistant",
-          capabilities: ["progress:read"],
-        },
+        1,
+        { role: "student" },
       );
       const teacher = await signToken({ sub: f.teacher, role: "user" }),
         student = await signToken({ sub: f.student, role: "user" }),
@@ -63,7 +58,7 @@ Deno.test({
       assertEquals((await jsonRequest(app, base)).status, 401);
       assertEquals(
         (await jsonRequest(app, base, { token: assistant })).status,
-        403,
+        404,
       );
       assertEquals(
         (await jsonRequest(app, own, { token: teacher })).status,

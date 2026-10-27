@@ -1,7 +1,7 @@
 import { assert } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { educationNotifications } from "../../../../shared/db/schema.ts";
+import { accountNotifications } from "../../../../shared/db/schema.ts";
 import {
   createAssignment,
   createAssignmentFeedback,
@@ -55,8 +55,8 @@ Deno.test({
         assert(events.every((event) => event.succeeded));
         if (!events.length) break;
       }
-      const notifications = await f.db.select().from(educationNotifications)
-        .where(eq(educationNotifications.assignment_id, task.id));
+      const notifications = await f.db.select().from(accountNotifications)
+        .where(eq(accountNotifications.assignment_id, task.id));
       for (const type of ["assignment", "feedback", "help"]) {
         assert(
           notifications.some((row) => row.type === type),

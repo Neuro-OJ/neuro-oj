@@ -1,8 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { ASSISTANT_CAPABILITIES } from "../../../../shared/education-types.ts";
+import { TEACHING_CAPABILITIES } from "../../../../shared/education-types.ts";
 
-Deno.test("教学能力：六项固定能力，不包含平台管理、教练任命或自行授权", () => {
-  assertEquals(ASSISTANT_CAPABILITIES, [
+Deno.test("教学能力：域教练共享六项教学能力，不包含平台管理、教练任命或自行授权", () => {
+  assertEquals(TEACHING_CAPABILITIES, [
     "progress:read",
     "submissions:read",
     "assignments:manage",

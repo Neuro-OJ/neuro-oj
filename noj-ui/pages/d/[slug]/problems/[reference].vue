@@ -16,9 +16,11 @@ const assignmentOrigin = computed<AssignmentSubmissionOrigin | undefined>(() => 
   return typeof assignment_id === 'string' && typeof assignment_item_id === 'string'
     ? { assignment_id, assignment_item_id } : undefined;
 });
-const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'problem', reference.value));
-const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value));
-const showVersions = ref(false);
+const selectedVersion = computed(() => typeof route.query.version_id === 'string' ? route.query.version_id : undefined);
+const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'problem', reference.value, selectedVersion.value ?? 'current'));
+const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value, selectedVersion.value));
+const router = useRouter();
+function selectVersion(version_id: string) { void router.push({ query: { ...route.query, version_id } }); }
 const statementExpanded = ref(true);
 const problemView = computed(() => data.value ? toDomainProblemView(data.value) : null);
 const publicStats = computed<PublicProblemStats | null>(() => {
@@ -33,12 +35,9 @@ const publicStats = computed<PublicProblemStats | null>(() => {
 });
 const inlineAnswer = computed(() => data.value?.content.kind === 'objective' || ['artifact', 'prediction'].includes(data.value?.content.submission_mode ?? ''));
 const solveTo = computed(() => data.value ? { path: workspaceSolvePath(slug.value!, data.value.reference.display_ref), query: route.query } : undefined);
-const passRequirement = computed(() => data.value?.content.kind === 'oi'
-  ? '正式判定为 AC 才算通过' : data.value?.content.kind === 'objective' ? '满分才算通过' : '按当前有效正分规则判定是否通过');
 const editorLabel = computed(() => data.value?.content.submission_mode === 'ui' ? '打开界面' : '开始编码');
 const editTo = computed(() => data.value?.can_edit && !data.value.reference.is_shared ? `/d/${slug.value}/editor/${data.value.reference.number}` : null);
 watch([() => slug.value, () => reference.value, () => user.value?.id], () => {
-  showVersions.value = false;
   statementExpanded.value = true;
 });
 useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
@@ -62,27 +61,17 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
               <UButton v-else to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
             </template>
           </ProblemHeader>
-          <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-panel px-4 py-3 text-sm">
-            <span class="text-text-secondary">作答版本</span>
-            <UBadge color="primary" variant="subtle">v{{ data.version }}</UBadge>
-            <span class="text-text-muted">{{ data.effective_version_mode === 'exact' ? '题库已固定此版本' : '跟随当前题库版本' }} · {{ passRequirement }}</span>
-          </div>
-          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-panel px-4 py-3 text-sm">
-            <div class="min-w-0">
-              <span class="text-text-secondary">版本策略</span>
-              <span class="ml-2 text-text">{{ data.effective_version_mode === 'exact' ? `仅 v${data.version} 的正式判定有效` : '任一有效版本' }}</span>
-              <span class="ml-3 text-xs text-text-muted">提交会记录当前作答版本。</span>
-            </div>
-            <UButton color="neutral" variant="outline" size="sm" :aria-expanded="showVersions" aria-controls="problem-versions" @click="showVersions = !showVersions">{{ showVersions ? '收起沿革' : '版本沿革' }}</UButton>
-          </div>
-          <DomainProblemVersions v-if="showVersions" id="problem-versions" :key="`${slug}:${reference}:${user?.id}:versions`" :slug="slug!" :reference="reference" />
           <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description"
             :editor-to="!inlineAnswer ? solveTo : null" :editor-label="editorLabel"
             :editor-icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'" :edit-to="editTo">
+            <template #toolbar>
+              <DomainProblemVersionSelect :slug="slug!" :reference="reference" :selected="data.version_id" :version="data.version"
+                :current="data.answer_version_id" :mode="data.effective_version_mode" :required="data.required_version_id" @select="selectVersion" />
+            </template>
             <template #after-content><ProblemSamples :samples="data.content.samples" /></template>
           </ProblemStatement>
           <div v-if="inlineAnswer" id="answer" class="scroll-mt-24">
-            <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}`" :slug="slug!" :problem="data" :assignment-origin="assignmentOrigin" @refresh="refresh()" />
+            <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}:${data.version_id}`" :slug="slug!" :problem="data" :assignment-origin="assignmentOrigin" @refresh="refresh()" />
           </div>
           <DomainProblemSolutions v-if="domain?.configuration.features.community && data.content.kind !== 'objective'"
             :key="`${slug}:${reference}:${user?.id}:solutions`" :slug="slug!" :problem-id="data.reference.problem_id" />

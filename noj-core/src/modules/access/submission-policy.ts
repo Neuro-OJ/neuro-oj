@@ -28,6 +28,7 @@ export interface ProblemSubmissionSummary {
   accepted_submissions: number;
   attempted: boolean;
   solved: boolean;
+  best_score: number | null;
 }
 
 function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
@@ -140,18 +141,20 @@ export async function getProblemSubmissionSummaries(
       })
     }
     )
-    SELECT problem_id, count(*)::int AS submit_count,
+    SELECT s.problem_id, count(*)::int AS submit_count,
       count(*) FILTER (WHERE is_valid)::int AS valid_submissions,
       count(*) FILTER (WHERE is_valid AND is_accepted)::int AS accepted_submissions,
       bool_or(user_id=${actorId}) AS attempted,
-      bool_or(user_id=${actorId} AND is_valid AND is_accepted) AS solved
-    FROM visible_sources WHERE problem_id IN (${
+      bool_or(user_id=${actorId} AND is_valid AND is_accepted) AS solved,
+      max(ea.score) FILTER (WHERE s.user_id=${actorId} AND s.is_valid) AS best_score
+    FROM visible_sources s LEFT JOIN evaluation_attempts ea ON ea.id = s.effective_attempt_id
+    WHERE s.problem_id IN (${
       sql.join(
         problemIds.map((id) => sql`${id}`),
         sql`,`,
       )
     })
-    GROUP BY problem_id`,
+    GROUP BY s.problem_id`,
   );
   return unwrapRows<ProblemSubmissionSummary>(result as never);
 }

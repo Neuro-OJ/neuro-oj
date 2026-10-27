@@ -54,6 +54,7 @@ async function rowsFor(
   classroomId: string,
   entries: ClassroomImportEntry[],
   replace: boolean,
+  canInviteOutside: boolean,
 ) {
   const emails = entries.map((e) => e.email).filter(Boolean),
     names = entries.map((e) => e.username).filter(Boolean);
@@ -132,9 +133,6 @@ async function rowsFor(
     const identity = account ? `user:${account.id}` : `email:${email}`;
     if (!error && seen.has(identity)) error = "本批次重复账号或邮箱";
     if (!error) seen.add(identity);
-    if (!error && account?.class_role && account.class_role !== "student") {
-      error = "教学人员身份需要单独调整";
-    }
     const pending = invitations.filter((i) => i.email === email).map((i) =>
       i.id
     ).sort();
@@ -144,7 +142,9 @@ async function rowsFor(
         account?.class_status === "active" && account.domain_status === "active"
       ) action = "already_member";
       else if (account?.domain_status === "active") action = "join";
-      else if (!email) error = "未匹配已有账号，需要提供邮箱邀请";
+      else if (!canInviteOutside) {
+        error = "只能将本域已有成员加入班级，请先通过域成员入口入域";
+      } else if (!email) error = "未匹配已有账号，需要提供邮箱邀请";
       else {action = pending.length
           ? replace ? "replace_invite" : "already_invited"
           : "invite";}
@@ -188,6 +188,8 @@ async function preview(
     access.classroom.id,
     entries,
     replace,
+    access.platformAdmin ||
+      access.context.domainPermissions.has("domain:invitations"),
   );
   return {
     revision: access.classroom.revision,
@@ -243,6 +245,8 @@ export async function executeClassroomImport(
       classroomId,
       entries,
       replace,
+      read.platformAdmin ||
+        read.context.domainPermissions.has("domain:invitations"),
     );
     // 先锁账号，再锁域；NO KEY UPDATE 同时允许其他教学写入所需的外键 KEY SHARE。
     const ids = [

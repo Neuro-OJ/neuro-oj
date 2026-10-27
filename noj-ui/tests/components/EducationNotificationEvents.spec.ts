@@ -51,7 +51,7 @@ describe('教学通知只以SSE触发授权重读', () => {
     view.unmount();
     vi.useRealTimers();
   });
-  it('同步和通知都重新读REST，切换账号和域关闭旧连接且不沿用序号', async () => {
+  it('教学同步重新读REST，账号通知不重复触发教学同步，切换账号和域关闭旧连接且不沿用序号', async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     const component = defineComponent({
       setup: () => {
@@ -60,19 +60,19 @@ describe('教学通知只以SSE触发授权重读', () => {
       },
     });
     const view = mount(component), first = Source.instances[0]!;
-    expect(first.url).toBe('/api/v1/domains/school/notifications/events');
+    expect(first.url).toBe('/api/v1/domains/school/education/events');
     first.emit('education:sync', { domain_id: 'school-id' });
     first.emit('education:notification', { notification_id: 'notice', seq: 7, score: 10000, body: '不可信载荷' });
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenLastCalledWith();
     user.value = { id: 'teacher' };
     await nextTick();
     expect(first.closed).toBe(true);
-    expect(Source.instances[1]!.url).toBe('/api/v1/domains/school/notifications/events');
+    expect(Source.instances[1]!.url).toBe('/api/v1/domains/school/education/events');
     slug.value = 'second-school';
     await nextTick();
     expect(Source.instances[1]!.closed).toBe(true);
-    expect(Source.instances[2]!.url).toBe('/api/v1/domains/second-school/notifications/events');
+    expect(Source.instances[2]!.url).toBe('/api/v1/domains/second-school/education/events');
     view.unmount();
     expect(Source.instances[2]!.closed).toBe(true);
     vi.useRealTimers();

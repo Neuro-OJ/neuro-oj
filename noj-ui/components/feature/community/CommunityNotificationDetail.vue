@@ -16,11 +16,10 @@ import {
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 
-const props = defineProps<{ account?: boolean }>()
-const scope = useCommunityScope(props.account).capture()
+defineProps<{ account?: boolean }>()
 const route = useRoute()
 const { api } = useApi()
-const { loadUnreadCount } = useCommunityNotifications(props.account)
+const { refresh: loadUnreadCount } = useAccountNotifications()
 
 const notificationId = computed(() => String(route.params.id ?? ""))
 const item = ref<NotificationRow | null>(null)
@@ -33,14 +32,14 @@ const loading = ref(true)
 const error = ref("")
 
 /** 关联内容入口（无关联内容时为 null） */
-const targetHref = computed(() => (item.value ? notificationTarget(item.value, scope.slug) : null))
+const targetHref = computed(() => (item.value ? notificationTarget(item.value, item.value.domain?.slug ?? null) : null))
 
 async function load() {
   loading.value = true
   error.value = ""
   try {
     const result = await api.get<{ data: NotificationRow }>(
-      scope.apiPath(`notifications/${notificationId.value}`),
+      `/api/v1/notifications/${notificationId.value}`,
       { silent: true },
     )
     item.value = result.data
@@ -59,7 +58,7 @@ async function markRead() {
   if (!current || current.notification.read_at) return
   try {
     await api.post(
-      scope.apiPath(`notifications/${notificationId.value}/read`),
+      `/api/v1/notifications/${notificationId.value}/read`,
       undefined,
       { silent: true },
     )

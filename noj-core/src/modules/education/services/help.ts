@@ -169,7 +169,7 @@ export async function listAssignmentHelp(
   return { page, per_page: 50, total: total.count, data };
 }
 
-/** 通知点击不能依赖旧访问结果，详情重新验证目标学生与助教能力。 */
+/** 通知点击不能依赖旧访问结果，详情重新验证目标学生与当前教学权限。 */
 export async function getAssignmentHelp(
   slug: string,
   id: string,

@@ -1,8 +1,8 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import {
+  accountNotifications,
   communityComments,
   communityModerationActions,
-  communityNotifications,
   communityPosts,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -113,10 +113,10 @@ export async function changeCommentStatus(
 
   if (status === "deleted") {
     // 评论采用软删除，数据库 ON DELETE SET NULL 不会触发；清除两级关联后进入通知详情页。
-    await db.update(communityNotifications).set({
+    await db.update(accountNotifications).set({
       post_id: null,
       comment_id: null,
-    }).where(eq(communityNotifications.comment_id, commentId));
+    }).where(eq(accountNotifications.comment_id, commentId));
   }
 
   publishCommunitySearchEvent("community_comment", commentId, "upsert", scope);
@@ -374,10 +374,10 @@ export async function deleteComment(
     );
   }
   // 评论采用软删除，数据库 ON DELETE SET NULL 不会触发；通知目标需显式清空。
-  await db.update(communityNotifications).set({
+  await db.update(accountNotifications).set({
     post_id: null,
     comment_id: null,
-  }).where(eq(communityNotifications.comment_id, commentId));
+  }).where(eq(accountNotifications.comment_id, commentId));
 
   publishCommunitySearchEvent("community_comment", commentId, "delete", scope);
 

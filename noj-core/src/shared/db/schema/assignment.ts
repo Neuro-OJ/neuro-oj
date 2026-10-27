@@ -40,6 +40,10 @@ export const assignments = pgTable("assignments", {
   archived_at: text("archived_at"),
   include_previous_submissions: boolean("include_previous_submissions")
     .notNull().default(false),
+  submission_source: text("submission_source").$type<
+    "assignment_only" | "domain_any"
+  >()
+    .notNull().default("domain_any"),
   target_student_ids: jsonb("target_student_ids").$type<string[]>(),
   source_training_id: text("source_training_id").references(() => trainings.id),
   source_training_rule: jsonb("source_training_rule").$type<{
@@ -79,6 +83,10 @@ export const assignments = pgTable("assignments", {
   stateCheck: check(
     "assignments_state_check",
     sql`${t.state} IN ('draft', 'scheduled', 'published', 'archived')`,
+  ),
+  submissionSourceCheck: check(
+    "assignments_submission_source_check",
+    sql`${t.submission_source} IN ('assignment_only', 'domain_any') AND (${t.submission_source} = 'domain_any' OR NOT ${t.include_previous_submissions})`,
   ),
   revisionCheck: check("assignments_revision_check", sql`${t.revision} >= 0`),
   scheduledCheck: check(

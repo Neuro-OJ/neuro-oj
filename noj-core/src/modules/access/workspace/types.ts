@@ -11,70 +11,8 @@ export function presetConfiguration(preset: DomainPreset): DomainConfiguration {
   return domainTypeConfiguration(preset);
 }
 
-const MEMBER = [
-  "problem:read",
-  "submission:create",
-  "submission:read_own",
-  "contest:participate",
-  "training:read",
-  "community:read",
-  "community:create",
-  "community:comment",
-] as const;
-const EDITOR = [
-  "problem:create",
-  "problem:write_own",
-  "problem:publish",
-  "training:create",
-  "training:import",
-  "problem:import",
-  "training:write_own",
-  "contest:create",
-  "contest:manage_own",
-] as const;
-const ADMIN = [
-  "domain:settings",
-  "domain:members",
-  "domain:invitations",
-  "domain:archive",
-  "problem:write_any",
-  "problem:delete_any",
-  "problem:share",
-  "problem:policy",
-  "submission:read_all",
-  "submission:rejudge",
-  "training:write_any",
-  "training:share",
-  "contest:manage",
-  "classroom:manage_any",
-  "llm:manage",
-  "domain:limits",
-  "community:moderate",
-] as const;
-
-/** 仅生成域内权限；平台 user_roles 的业务权限不在此继承。 */
-export function domainPermissions(
-  roles: readonly DomainRole[],
-): ReadonlySet<string> {
-  const permissions = new Set<string>();
-  for (const role of roles) {
-    for (const permission of MEMBER) permissions.add(permission);
-    if (role === "editor" || role === "admin" || role === "owner") {
-      for (const permission of EDITOR) permissions.add(permission);
-    }
-    if (role === "educator" || role === "admin" || role === "owner") {
-      permissions.add("classroom:create");
-      permissions.add("training:import");
-      permissions.add("problem:import");
-    }
-    if (role === "moderator") permissions.add("community:moderate");
-    if (role === "admin" || role === "owner") {
-      for (const permission of ADMIN) permissions.add(permission);
-    }
-    if (role === "owner") permissions.add("domain:transfer");
-  }
-  return permissions;
-}
+// 访问策略与工作空间门面使用同一角色事实源。
+export { domainPermissions } from "../types.ts";
 
 /** 校验内置角色，拒绝平台权限或任意自定义角色。 */
 export function isDomainRole(value: unknown): value is DomainRole {

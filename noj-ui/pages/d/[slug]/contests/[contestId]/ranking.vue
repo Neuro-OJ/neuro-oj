@@ -8,16 +8,19 @@ const { slug } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainContests();
 const id = computed(() => String(route.params.contestId));
-const official = ref(false);
+const official = ref(false), group = ref<'classroom' | 'other'>('classroom'), classroomId = ref('');
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'contest-ranking', id.value));
 const { data: contest, refresh: refreshContest } = await useAsyncData(
   computed(() => `${key.value}:contest`),
   () => api.detail(slug.value!, id.value),
 );
 const { data, error, status, refresh } = await useAsyncData(
-  computed(() => `${key.value}:${official.value}`),
-  () => api.ranking(slug.value!, id.value, official.value),
+  computed(() => `${key.value}:${official.value}:${classroomId.value}`),
+  () => api.ranking(slug.value!, id.value, official.value, classroomId.value || undefined),
 );
+const rows = computed(() => data.value?.classrooms?.length
+  ? group.value === 'classroom' ? data.value.classroom_rows ?? [] : data.value.other_rows ?? []
+  : data.value?.data ?? []);
 useSeoMeta({ title: '比赛成绩榜' });
 usePolling({ intervalMs: computed(() => contest.value?.data.status !== 'ended' ? 2000 : null), immediate: false, fetcher: () => refreshContest() });
 watch(() => contest.value?.data.status, (next, previous) => {
@@ -39,11 +42,16 @@ usePolling({
         <UButton icon="i-lucide-refresh-cw" variant="ghost" aria-label="刷新榜单" @click="refresh()" />
       </div>
     </div>
+    <div v-if="data?.classrooms?.length" class="flex flex-wrap items-center gap-3">
+      <USelect v-model="group" :items="[{ label: '关联班级学生', value: 'classroom' }, { label: '其他选手', value: 'other' }]" aria-label="榜单分组" />
+      <USelect v-model="classroomId" :items="[{ label: '全部关联班级', value: '' }, ...data.classrooms.map(room => ({ label: room.name, value: room.id }))]" aria-label="班级筛选" />
+      <p class="text-xs text-text-muted">按当前学生名单分组，赛后练习不计入比赛成绩。</p>
+    </div>
     <UAlert v-if="data?.view === 'frozen' || data?.frozen" color="warning"
       title="榜单已封榜，封榜后的提交显示待揭榜。本人结果仍按赛制显示。" />
     <UAlert v-if="data?.snapshot" color="info"
       :title="`正式成绩 V${data.snapshot.version} · ${data.snapshot.note || '首次发布'}`" />
-    <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.length ? 'data' : 'empty'"
+    <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : rows.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无可展示的成绩" @retry="refresh()">
       <div class="overflow-auto rounded border border-border bg-bg-panel">
         <table class="w-full text-sm">
@@ -57,7 +65,7 @@ usePolling({
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in data?.data" :key="row.user_id" class="border-t border-border">
+            <tr v-for="row in rows" :key="row.user_id" class="border-t border-border">
               <td class="p-3 tabular-nums">{{ row.rank }}</td>
               <td class="p-3">{{ row.username }}</td>
               <td

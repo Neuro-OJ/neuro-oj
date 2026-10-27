@@ -68,7 +68,7 @@ Deno.test("教学互动 API：反馈、求助、通知认证及跨域错误，�
     })).json()).data.state,
     "resolved",
   );
-  const notifications = `/api/v1/domains/${f.school.slug}/notifications`;
+  const notifications = `/api/v1/notifications`;
   assertEquals((await jsonRequest(app, notifications)).status, 401);
   assertEquals(
     (await jsonRequest(app, `${notifications}/missing/read`, {
@@ -81,14 +81,18 @@ Deno.test("教学互动 API：反馈、求助、通知认证及跨域错误，�
   }
   const notices = await jsonRequest(app, notifications, { token: student });
   assertEquals(notices.status, 200);
-  const listing = (await notices.json()).data;
+  const listing = await notices.json();
   assertEquals(listing.total, 3);
   assertEquals(
-    (await jsonRequest(app, `${notifications}/${listing.data[0].id}/read`, {
-      token: student,
-      method: "POST",
-    })).status,
-    200,
+    (await jsonRequest(
+      app,
+      `${notifications}/${listing.data[0].notification.id}/read`,
+      {
+        token: student,
+        method: "POST",
+      },
+    )).status,
+    204,
   );
   assertEquals(
     (await jsonRequest(

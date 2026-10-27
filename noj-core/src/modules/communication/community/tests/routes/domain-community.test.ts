@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
-import { communityNotifications } from "../../../../../shared/db/schema.ts";
+import { accountNotifications } from "../../../../../shared/db/schema.ts";
 import {
   _dispatchToLocalListenersForTest,
   Channels,
@@ -13,12 +13,14 @@ import {
   setMemberRoles,
 } from "../../../../access/workspace/index.ts";
 import { createComment, withDomainCommunity } from "../../index.ts";
+import { accountNotificationRouter } from "../../../../http/account-notifications.ts";
 import { domainCommunityRouter } from "../../routes/domain-community.ts";
 import { domainFixture } from "../services/domain-fixture.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 function app() {
   const app = new Hono();
   app.route("/api/v1", domainCommunityRouter);
+  app.route("/api/v1", accountNotificationRouter);
   app.onError((error, c) => {
     if (error instanceof AppError) {
       return c.json(
@@ -142,7 +144,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "域社区 SSE：持久重放只有定位字段，移除成员后长连接关闭",
+  name: "账号 SSE：持久重放只有定位字段，移除域成员后跳过旧通知但保留账号连接",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -172,8 +174,7 @@ Deno.test({
         true,
         s,
       ));
-    const [notice] = await f.db.select().from(communityNotifications);
-    const actual = (await f.db.select().from(communityNotifications)).find(
+    const actual = (await f.db.select().from(accountNotifications)).find(
       (n) => n.recipient_id === f.student,
     )!;
     const cursor = await recordSseEvent(Channels.user(f.student), {
@@ -184,7 +185,7 @@ Deno.test({
     });
     const controller = new AbortController();
     const response = await application.request(
-      `/api/v1/domains/${f.target.slug}/community/notifications/events`,
+      `/api/v1/notifications/events`,
       {
         headers: {
           Authorization: `Bearer ${student}`,
@@ -204,15 +205,29 @@ Deno.test({
       const connected = decoder.decode((await reader.read()).value);
       assert(connected.includes("connected"));
       await removeDomainMember(f.target.slug, f.b, f.student);
-      const closed = reader.read();
+      const follow = crypto.randomUUID();
+      await f.db.insert(accountNotifications).values({
+        id: follow,
+        recipient_id: f.student,
+        actor_id: f.b,
+        type: "follow",
+        created_at: new Date().toISOString(),
+      });
+      const next = reader.read();
       _dispatchToLocalListenersForTest(
         Channels.user(f.student),
         JSON.stringify({
           type: "notification:new",
-          notification_id: notice.id,
+          notification_id: actual.id,
         }),
       );
-      assertEquals((await closed).done, true);
+      _dispatchToLocalListenersForTest(
+        Channels.user(f.student),
+        JSON.stringify({ type: "notification:new", notification_id: follow }),
+      );
+      const live = decoder.decode((await next).value);
+      assert(!live.includes(actual.id));
+      assert(live.includes(follow));
     } finally {
       controller.abort();
       await reader.cancel();

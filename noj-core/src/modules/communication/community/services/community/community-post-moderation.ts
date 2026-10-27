@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import {
+  accountNotifications,
   communityModerationActions,
-  communityNotifications,
   communityPosts,
 } from "../../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
@@ -83,11 +83,11 @@ export async function changePostStatus(
 
   if (status === "deleted") {
     // 帖子采用软删除，数据库 ON DELETE SET NULL 不会触发；通知必须显式降级到详情页。
-    await db.update(communityNotifications).set({
+    await db.update(accountNotifications).set({
       post_id: null,
       comment_id: null,
     }).where(
-      eq(communityNotifications.post_id, postId),
+      eq(accountNotifications.post_id, postId),
     );
   }
 

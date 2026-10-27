@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { assertRejects } from "jsr:@std/assert@^1";
@@ -22,10 +23,7 @@ import {
   createAssignment,
   exportAssignmentMatrixCsv,
   publishAssignment,
-  removeClassroomMember,
-  setClassroomMember,
   startEducationWorker,
-  transferClassroom,
 } from "../../index.ts";
 import { educationRouter } from "../../routes/index.ts";
 import { recomputeAssignmentProgress } from "../../services/progress-materializer.ts";
@@ -336,22 +334,7 @@ Deno.test({
     );
     await revocable.next(); // 表头
     await revocable.next(); // 已授权的第一页
-    await setClassroomMember(
-      f.school.slug,
-      f.classroom.id,
-      f.owner,
-      f.owner,
-      1,
-      { role: "coach" },
-    );
-    await transferClassroom(f.school.slug, f.classroom.id, f.owner, f.owner, 2);
-    await removeClassroomMember(
-      f.school.slug,
-      f.classroom.id,
-      f.owner,
-      f.teacher,
-      3,
-    );
+    await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
     await assertRejects(() => revocable.next(), NotFoundError);
   },
 });

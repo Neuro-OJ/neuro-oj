@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import {
-  communityNotifications,
+  accountNotifications,
   conversations,
   messages,
 } from "../../../../../shared/db/schema.ts";
@@ -45,11 +45,11 @@ async function noticeDomains(
   f: Awaited<ReturnType<typeof fixture>>,
   reportId: string,
 ) {
-  return (await f.db.select({ domain: communityNotifications.domain_id }).from(
-    communityNotifications,
+  return (await f.db.select({ domain: accountNotifications.domain_id }).from(
+    accountNotifications,
   ).where(and(
-    eq(communityNotifications.type, "report"),
-    sql`${communityNotifications.data}->>'report_id' = ${reportId}`,
+    eq(accountNotifications.type, "report"),
+    sql`${accountNotifications.data}->>'report_id' = ${reportId}`,
   ))).map((row) => row.domain);
 }
 

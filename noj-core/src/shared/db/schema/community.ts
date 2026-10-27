@@ -17,6 +17,12 @@ import { problems } from "./catalog.ts";
 import { messages } from "./messaging.ts";
 import { domains } from "./workspace.ts";
 import { domainProblemBindings } from "./catalog-workspace.ts";
+import { assignments, educationOutbox } from "./assignment.ts";
+import {
+  assignmentFeedback,
+  assignmentHelpReplies,
+  assignmentHelpRequests,
+} from "./education-interactions.ts";
 
 /** 社区讨论板块。 */
 export const communityBoards = pgTable(
@@ -474,9 +480,9 @@ export const communitySanctions = pgTable(
   }),
 );
 
-/** 社区通知。 */
-export const communityNotifications = pgTable(
-  "community_notifications",
+/** 账号统一通知；业务模块只保存受控资源定位，不保存私有教学正文。 */
+export const accountNotifications = pgTable(
+  "notifications",
   {
     id: text("id").primaryKey(),
     domain_id: text("domain_id").references(() => domains.id),
@@ -487,6 +493,11 @@ export const communityNotifications = pgTable(
       onDelete: "set null",
     }),
     type: text("type").notNull(),
+    assignment_id: text("assignment_id"),
+    event_id: text("event_id").references(() => educationOutbox.id),
+    feedback_id: text("feedback_id"),
+    help_id: text("help_id"),
+    reply_id: text("reply_id"),
     post_id: text("post_id").references(() => communityPosts.id, {
       onDelete: "set null",
     }),
@@ -498,6 +509,52 @@ export const communityNotifications = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    deliveryUnique: unique("notifications_delivery_unique").on(
+      table.event_id,
+      table.recipient_id,
+    ),
+    assignmentFk: foreignKey({
+      name: "notifications_assignment_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [assignments.domain_id, assignments.id],
+    }),
+    feedbackFk: foreignKey({
+      name: "notifications_feedback_fk",
+      columns: [table.domain_id, table.assignment_id, table.feedback_id],
+      foreignColumns: [
+        assignmentFeedback.domain_id,
+        assignmentFeedback.assignment_id,
+        assignmentFeedback.id,
+      ],
+    }),
+    helpFk: foreignKey({
+      name: "notifications_help_fk",
+      columns: [table.domain_id, table.assignment_id, table.help_id],
+      foreignColumns: [
+        assignmentHelpRequests.domain_id,
+        assignmentHelpRequests.assignment_id,
+        assignmentHelpRequests.id,
+      ],
+    }),
+    replyFk: foreignKey({
+      name: "notifications_reply_fk",
+      columns: [table.domain_id, table.assignment_id, table.reply_id],
+      foreignColumns: [
+        assignmentHelpReplies.domain_id,
+        assignmentHelpReplies.assignment_id,
+        assignmentHelpReplies.id,
+      ],
+    }),
+    teachingSourceCheck: check(
+      "notifications_teaching_source_check",
+      sql`
+      (${table.assignment_id} IS NULL AND ${table.event_id} IS NULL AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+      OR (${table.assignment_id} IS NOT NULL AND ${table.event_id} IS NOT NULL AND (
+        (${table.type} IN ('assignment','assignment_changed','resource_unavailable') AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'feedback' AND ${table.feedback_id} IS NOT NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'help' AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NOT NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'help_reply' AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NOT NULL AND ${table.reply_id} IS NOT NULL)))`,
+    ),
     workspacePostFk: foreignKey({
       name: "community_notifications_workspace_post_fk",
       columns: [table.post_id, table.domain_id],
@@ -512,11 +569,12 @@ export const communityNotifications = pgTable(
       "community_notifications_workspace_check",
       sql`(${table.type} IN ('reply', 'like', 'moderation', 'clarification') AND ${table.domain_id} IS NOT NULL)
         OR (${table.type} IN ('follow', 'ban') AND ${table.domain_id} IS NULL)
-        OR ${table.type} = 'report'`,
+        OR ${table.type} = 'report'
+        OR (${table.type} IN ('assignment','assignment_changed','resource_unavailable','feedback','help','help_reply') AND ${table.domain_id} IS NOT NULL AND ${table.assignment_id} IS NOT NULL AND ${table.event_id} IS NOT NULL)`,
     ),
     typeCheck: check(
       "community_notifications_type_check",
-      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')`,
+      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban', 'assignment','assignment_changed','resource_unavailable','feedback','help','help_reply')`,
     ),
     recipientIdx: index("idx_community_notifications_recipient").on(
       table.recipient_id,

@@ -199,8 +199,6 @@ export function useEducationApi() {
     ) => api.patch(`${classroom(slug, id)}`, input, revision(current)),
     archiveClassroom: (slug: string, id: string, current: number) =>
       api.post(`${classroom(slug, id)}/archive`, {}, revision(current)),
-    transferClassroom: (slug: string, id: string, userId: string, current: number) =>
-      api.post(`${classroom(slug, id)}/transfer`, { user_id: userId }, revision(current)),
     matrix: (slug: string, id: string, query: Record<string, string | number | undefined>) =>
       api.get<{ data: MatrixData }>(`${task(slug, id)}/matrix`, { query, silent: true }),
     progress: (slug: string, id: string, scope: 'on_time' | 'current') =>

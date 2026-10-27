@@ -5,16 +5,13 @@ export function useEducationNotifications(refresh: () => Promise<void>, enabled:
   const { slug, domain } = useWorkspace();
   const { user } = useAuth();
   return useEventSource({
-    url: computed(() => slug.value ? `/api/v1/domains/${encodeURIComponent(slug.value)}/notifications/events` : ''),
+    url: computed(() => slug.value ? `/api/v1/domains/${encodeURIComponent(slug.value)}/education/events` : ''),
     scopeKey: computed(() => `${slug.value}:${user.value?.id ?? ''}`),
     enabled: computed(() =>
       toValue(enabled) && !!user.value && !!domain.value && (domain.value.is_member || domain.value.platform_admin)
     ),
     onEvent: {
       'education:sync': () => {
-        void refresh();
-      },
-      'education:notification': () => {
         void refresh();
       },
     },

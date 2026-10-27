@@ -1,7 +1,6 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import {
-  AppError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -111,17 +110,15 @@ Deno.test("域作答附件：模板跟随目标版本且冲突保留确认，版
     )).template_content,
     "print('template')",
   );
-  const mismatch = await assertRejects(
-    () =>
-      readDomainProblemTemplate(
-        f.school.slug,
-        reference,
-        f.student,
-        f.versions[0],
-      ),
-    AppError,
+  assertEquals(
+    (await readDomainProblemTemplate(
+      f.school.slug,
+      reference,
+      f.student,
+      f.versions[0],
+    )).version_id,
+    f.versions[0],
   );
-  assertEquals(mismatch.code, "PROBLEM_ANSWER_VERSION_CHANGED");
   const versions = await listDomainProblemVersions(
     f.school.slug,
     reference,
@@ -661,6 +658,11 @@ Deno.test("域成绩：策略切换即时重算本绑定，重测和源域批量
     }
     await recomputeSubmissionProjection(db, source);
   }
+  assertEquals(
+    (await listDomainProblems(f.school.slug, f.student, { page: 1, limit: 20 }))
+      .items[0].best_score,
+    10000,
+  );
   await setPolicy(
     f.school.slug,
     "public-source:1001",
@@ -674,6 +676,11 @@ Deno.test("域成绩：策略切换即时重算本绑定，重测和源域批量
   );
   const [objective] = await db.select().from(objectiveSubmissions).where(
     eq(objectiveSubmissions.id, ids[1]),
+  );
+  assertEquals(
+    (await listDomainProblems(f.school.slug, f.student, { page: 1, limit: 20 }))
+      .items[0].best_score,
+    2000,
   );
   assertEquals(await score(plain.effective_attempt_id), 2000);
   assertEquals(plain.is_accepted, false);

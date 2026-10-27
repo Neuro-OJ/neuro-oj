@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { workspacePath } from '~/utils/workspace';
 import { workspaceNavigation } from '~/utils/workspace-navigation';
-import { communityPath } from '~/utils/community-workspace';
 const { user } = useAuth(), { t, isEnglish, setLocale } = useI18n();
 const route = useRoute(), slug = useNavigationDomain(), workspace = useOptionalWorkspace();
 const mobileOpen = ref(false), headerRef = ref<HTMLElement | null>(null);
+const navRef = ref<HTMLElement | null>(null), measureRef = ref<HTMLElement | null>(null), navWidth = ref(Infinity);
 const entries = computed(() => workspace?.domain.value
   ? workspaceNavigation(workspace.domain.value)
   : [
@@ -13,39 +13,13 @@ const entries = computed(() => workspace?.domain.value
     { label: '比赛', section: 'contests', to: workspacePath(slug.value, 'contests'), icon: 'i-lucide-trophy' },
     { label: '题单', section: 'trainings', to: workspacePath(slug.value, 'trainings'), icon: 'i-lucide-list-ordered' },
   ]);
-const primary = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'submissions', 'queue'].includes(entry.section)).slice(0, 6));
+const candidates = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'submissions', 'queue'].includes(entry.section)));
+const visibleCount = ref(Infinity);
+const primary = computed(() => candidates.value.slice(0, visibleCount.value));
 const more = computed(() => entries.value.filter(entry => entry.section !== 'search' && !primary.value.includes(entry)));
-const communityEnabled = computed(() => !!workspace?.domain.value?.configuration.features.community);
-const teachingEnabled = computed(() => !!workspace?.domain.value?.configuration.features.assignment);
-const { loadConfig } = useCommunity();
-const scope = useCommunityScope();
-const { unreadCount, loadUnreadCount } = useCommunityNotifications();
-watch([scope.key, communityEnabled], async () => {
-  if (!import.meta.client || !communityEnabled.value) return;
-  await loadConfig();
-  if (user.value) await loadUnreadCount(false);
-}, { immediate: true });
-// 角标无需独占常驻连接，避免多标签页耗尽 HTTP/1.1 连接；成绩页面继续使用实时 SSE。
-usePolling({
-  active: computed(() => !!user.value && communityEnabled.value),
-  fetcher: () => loadUnreadCount(),
-  intervalMs: 30000,
-  immediate: false,
-});
-const educationApi = useEducationApi();
-const educationNotifications = useViewAsyncData(
-  'educationNotifications',
-  computed(() => `navbar-education:${slug.value}:${user.value?.id ?? ''}:${teachingEnabled.value}`),
-  () => user.value && teachingEnabled.value && (workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)
-    ? educationApi.notifications(slug.value)
-    : Promise.resolve({ data: { unread: 0 } }),
-);
-usePolling({
-  active: computed(() => !!user.value && teachingEnabled.value && !!(workspace?.domain.value?.is_member || workspace?.domain.value?.platform_admin)),
-  fetcher: () => educationNotifications.refresh(),
-  intervalMs: 15000,
-  immediate: false,
-});
+const { unreadCount, refresh: refreshNotifications } = useAccountNotifications();
+watch(() => user.value?.id, () => { void refreshNotifications(); }, { immediate: true });
+usePolling({ active: computed(() => !!user.value), fetcher: refreshNotifications, intervalMs: 30000, immediate: false });
 watch(() => route.path, () => { mobileOpen.value = false; });
 onMounted(() => {
   const element = headerRef.value!;
@@ -53,7 +27,20 @@ onMounted(() => {
   syncHeight();
   const observer = new ResizeObserver(syncHeight);
   observer.observe(element);
-  onUnmounted(() => observer.disconnect());
+  const fitNavigation = () => {
+    if (!navRef.value || !measureRef.value) return;
+    navWidth.value = navRef.value.clientWidth;
+    const widths = Array.from(measureRef.value.children).map(item => item.getBoundingClientRect().width + 4);
+    const hasOther = entries.value.some(entry => entry.section !== 'search' && !candidates.value.includes(entry));
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    let available = navWidth.value - (hasOther || total > navWidth.value ? 80 : 0), count = 0;
+    for (const width of widths) { if (width > available) break; available -= width; count++; }
+    visibleCount.value = count;
+  };
+  const navigationObserver = new ResizeObserver(fitNavigation);
+  if (navRef.value) navigationObserver.observe(navRef.value);
+  watch(candidates, () => { void nextTick(fitNavigation); }, { immediate: true });
+  onUnmounted(() => { observer.disconnect(); navigationObserver.disconnect(); });
 });
 </script>
 <template>
@@ -76,7 +63,10 @@ onMounted(() => {
         </template>
       </UDrawer>
       <BrandLogo :to="workspacePath(slug)" text-class="hidden sm:inline" />
-      <nav class="ml-3 hidden min-w-0 flex-1 items-center gap-1 lg:flex" aria-label="空间导航">
+      <nav ref="navRef" class="relative ml-3 hidden min-w-0 flex-1 items-center gap-1 lg:flex" aria-label="空间导航">
+        <div ref="measureRef" class="pointer-events-none invisible absolute flex w-max" aria-hidden="true">
+          <span v-for="entry in candidates" :key="entry.to" class="whitespace-nowrap px-3 py-2 text-sm font-semibold">{{ entry.label }}</span>
+        </div>
         <NuxtLink v-for="entry in primary" :key="entry.to" :to="entry.to"
           class="whitespace-nowrap rounded px-3 py-2 text-sm text-text-secondary hover:bg-primary-bg"
           :active-class="entry.section === '' ? '' : 'bg-primary-bg font-semibold text-primary'"
@@ -98,17 +88,8 @@ onMounted(() => {
           </kbd>
         </NuxtLink>
         <UButton :to="workspacePath(slug, 'search')" class="sm:hidden" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="搜索当前域" />
-        <UButton v-if="user && communityEnabled" :to="communityPath(slug, 'notifications')" color="neutral"
-          variant="ghost" icon="i-lucide-bell" aria-label="社区通知" class="relative">
-          <span v-if="unreadCount" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-text px-1 text-[10px] font-bold text-white tabular-nums">
-            {{ unreadCount > 99 ? '99+' : unreadCount }}
-          </span>
-        </UButton>
-        <UButton v-if="user && teachingEnabled" :to="workspacePath(slug, 'notifications')" color="neutral"
-          variant="ghost" icon="i-lucide-bell-ring" aria-label="教学通知" class="relative">
-          <span v-if="educationNotifications.data.value?.data.unread" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white tabular-nums">
-            {{ educationNotifications.data.value.data.unread > 99 ? '99+' : educationNotifications.data.value.data.unread }}
-          </span>
+        <UButton v-if="user" to="/notifications" color="neutral" variant="ghost" icon="i-lucide-bell" aria-label="通知" class="relative">
+          <span v-if="unreadCount" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-text px-1 text-[10px] font-bold text-white tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </UButton>
         <UButton color="neutral" variant="ghost" size="sm" :aria-label="t('common.language')"
           @click="setLocale(isEnglish ? 'zh-CN' : 'en-US')">{{ isEnglish ? '中文' : 'EN' }}</UButton>

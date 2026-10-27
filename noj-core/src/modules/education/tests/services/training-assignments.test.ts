@@ -1,3 +1,4 @@
+import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import {
@@ -27,7 +28,6 @@ import {
   createAssignment,
   getAssignment,
   publishAssignment,
-  setClassroomMember,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
@@ -187,7 +187,7 @@ Deno.test("题单作业：只保存来源引用，发布时取当前顺序并建
   );
 });
 
-Deno.test("题单作业：助教作业授权可使用已存在题库引用，不自动取得题库管理能力", async () => {
+Deno.test("题单作业：域教练可使用既有题库引用并管理题单", async () => {
   const f = await fixture();
   await importDomainTraining(f.school.slug, f.training.id, f.teacher);
   const initial = await createAssignment(
@@ -197,17 +197,7 @@ Deno.test("题单作业：助教作业授权可使用已存在题库引用，不
     f.taskInput,
   );
   await publishAssignment(f.school.slug, initial.id, f.teacher, 0, "initial");
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.assistant,
-    1,
-    {
-      role: "assistant",
-      capabilities: ["assignments:manage"],
-    },
-  );
+  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
   const task = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -222,9 +212,10 @@ Deno.test("题单作业：助教作业授权可使用已存在题库引用，不
     "assistant",
   );
   assertEquals(published.state, "published");
-  await assertRejects(
-    () => importDomainTraining(f.school.slug, f.training.id, f.assistant),
-    ForbiddenError,
+  assertEquals(
+    (await importDomainTraining(f.school.slug, f.training.id, f.assistant)).id
+      .length > 0,
+    true,
   );
 });
 

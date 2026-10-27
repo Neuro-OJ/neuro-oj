@@ -1,4 +1,4 @@
-import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
@@ -25,18 +25,9 @@ export async function readDomainProblemUi(
   actorId: string,
   requestedVersionId?: string,
 ) {
-  const resource = await resolveDomainProblem(slug, reference, actorId);
-  if (requestedVersionId && requestedVersionId !== resource.version.id) {
-    throw new AppError(
-      "作答版本已变化，请重新确认",
-      409,
-      "PROBLEM_ANSWER_VERSION_CHANGED",
-      {
-        expected_version_id: resource.version.id,
-        submitted_version_id: requestedVersionId,
-      },
-    );
-  }
+  const resource = await resolveDomainProblem(slug, reference, actorId, {
+    versionId: requestedVersionId,
+  });
   const content = resource.version.content as ProblemContentV1;
   if (content.kind !== "ai" || content.submission_mode !== "ui") {
     throw new NotFoundError("题目不存在");

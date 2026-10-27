@@ -848,6 +848,20 @@
       "when": 1792579093847,
       "tag": "0121_brainy_jocasta",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1793063509841,
+      "tag": "0122_issue_696_teaching",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1793064383162,
+      "tag": "0123_issue_696_notifications",
+      "breakpoints": true
     }
   ]
 }

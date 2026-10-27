@@ -15,7 +15,9 @@ const actor = useState<{ id: string } | null>('auth:user', () => null);
 const originalRevision = props.initial?.revision ?? 0;
 const title = ref(props.initial?.title ?? ''), description = ref(props.initial?.description ?? '');
 const deadline = ref(teachingLocalTime(props.initial?.deadline_at ?? null));
+const source = ref<'assignment_only' | 'domain_any'>(props.initial?.submission_source ?? 'domain_any');
 const previous = ref(props.initial?.include_previous_submissions ?? false);
+watch(source, value => { if (value === 'assignment_only') previous.value = false; });
 const selectedStudents = ref([...(props.initial?.target_student_ids ?? [])]);
 const target = ref(props.initial?.target_student_ids ? 'selected' : 'all');
 const mode = ref(props.initial?.source_training_id ? 'training' : 'items');
@@ -39,7 +41,7 @@ watch(() => items.value.length, length => { selectedPage.value = Math.min(select
 const keyword = ref(''), searchDraft = ref(''), problemPage = ref(1), reference = ref('');
 const saving = ref(false), adding = ref(false), checking = ref(false), error = ref('');
 const snapshot = () => JSON.stringify({ title: title.value, description: description.value, deadline: deadline.value,
-  previous: previous.value, students: selectedStudents.value, target: target.value, mode: mode.value,
+  source: source.value, previous: previous.value, students: selectedStudents.value, target: target.value, mode: mode.value,
   training: trainingLink.value, requirement: trainingRequirement.value, score: trainingScore.value, items: items.value,
 });
 const savedSnapshot = ref(snapshot());
@@ -124,7 +126,8 @@ function payload(): AssignmentDraftInput {
     title: title.value.trim(),
     description: description.value,
     deadline_at: teachingUtcTime(deadline.value),
-    include_previous_submissions: previous.value,
+    submission_source: source.value,
+    include_previous_submissions: source.value === 'domain_any' && previous.value,
     target_student_ids: target.value === 'all' ? null : [...selectedStudents.value],
   };
   if (mode.value === 'training') {
@@ -206,7 +209,14 @@ async function save() {
             <UInput v-model="deadline" type="datetime-local" aria-label="作业截止时间" class="w-full" />
           </AdminFormField>
           <div class="flex flex-col justify-end pb-2">
-            <UCheckbox v-model="previous" label="允许符合条件的发布前提交计入有效成绩" />
+            <UFormField label="计入成绩的提交来源" class="mb-4">
+              <USelect v-model="source" class="w-full" :items="[
+                { label: '同域所有入口（练习、其他作业与比赛）', value: 'domain_any' },
+                { label: '仅本作业入口', value: 'assignment_only' },
+              ]" />
+            </UFormField>
+            <UCheckbox v-model="previous" :disabled="source === 'assignment_only'" label="允许符合条件的发布前提交计入有效成绩" />
+            <p v-if="source === 'assignment_only'" class="mt-2 text-xs text-text-muted">仅计入发布后从本作业对应题目入口发起的提交。</p>
           </div>
         </div>
       </div>

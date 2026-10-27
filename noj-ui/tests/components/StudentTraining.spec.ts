@@ -78,8 +78,8 @@ async function view(capabilities: TeachingCapability[], historical = false) {
   const classroom = {
     id: 'c1',
     name: '班级',
-    membership: { role: 'assistant', status: 'active' },
-    manages_domain: false,
+    membership: null,
+    manages_domain: capabilities.length > 0,
     capabilities,
   } as ClassroomDetail;
   const Wrapper = defineComponent({
@@ -106,7 +106,7 @@ async function view(capabilities: TeachingCapability[], historical = false) {
   await flushPromises();
   return result;
 }
-describe('学生训练权限分别授权', () => {
+describe('域教练学生训练授权', () => {
   it('授权产物详情使用班级和使用域下载接口，不提供存储直链', async () => {
     const result = await view(['submissions:read']);
     await result.findAll('button').find((button) => button.text().includes('main:1001'))!.trigger('click');
@@ -119,17 +119,17 @@ describe('学生训练权限分别授权', () => {
     expect(download.attributes('data-filename')).toBe('answer.zip');
     expect(result.find('[data-submission="s1"]').attributes('data-kind')).toBe('submission');
   });
-  it('只有学情读取不请求学生提交或原代码详情', async () => {
-    const result = await view(['progress:read']);
+  it('普通成员不请求学生学情、提交或源码', async () => {
+    const result = await view([]);
     expect(api.studentSubmissions).not.toHaveBeenCalled();
     expect(api.studentSubmission).not.toHaveBeenCalled();
-    expect(api.assignments).toHaveBeenCalledWith('school', 'c1', 1);
+    expect(api.assignments).not.toHaveBeenCalled();
     expect(result.text()).toContain('未授予学生提交读取能力');
   });
-  it('只有提交读取可看同域记录，不请求学情任务，历史成员保留标记', async () => {
+  it('域教练可看同域学情和提交，历史成员保留标记', async () => {
     const result = await view(['submissions:read'], true);
     expect(api.studentSubmissions).toHaveBeenCalledWith('school', 'c1', 'student', 1, undefined);
-    expect(api.assignments).not.toHaveBeenCalled();
+    expect(api.assignments).toHaveBeenCalledWith('school', 'c1', 1);
     expect(result.text()).toContain('历史学生记录');
     expect(result.text()).toContain('main:1001');
     expect(result.text()).toContain('暂无有效成绩');

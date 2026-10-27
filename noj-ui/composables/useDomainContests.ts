@@ -3,8 +3,12 @@ export interface DomainContest extends Contest {
   domain_id: string;
   revision: number;
   can_manage?: boolean;
+  classrooms?: { id: string; name: string }[];
 }
 export interface DomainContestRanking {
+  classrooms?: { id: string; name: string }[];
+  classroom_rows?: KaggleRankingRow[];
+  other_rows?: KaggleRankingRow[];
   data: KaggleRankingRow[];
   result_type?: 'official';
   view?: 'live' | 'frozen' | 'official';
@@ -29,8 +33,11 @@ export function useDomainContests() {
     register: (slug: string, id: string, password: string) => api.post(`${path(slug, id)}/register`, { password }),
     problems: (slug: string, id: string) =>
       api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, { silent: true }),
-    ranking: (slug: string, id: string, official = false) =>
-      api.get<DomainContestRanking>(`${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`, { silent: true }),
+    ranking: (slug: string, id: string, official = false, classroomId?: string) =>
+      api.get<DomainContestRanking>(`${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`, {
+        query: { classroom_id: classroomId },
+        silent: true,
+      }),
     settlement: (slug: string, id: string) =>
       api.get<{ data: { ready: boolean; pending_count: number; failed_count: number; [key: string]: unknown } }>(
         `${path(slug, id)}/settlement`,

@@ -2,9 +2,9 @@ import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
+  accountNotifications,
   domains,
   educationNotificationEmails,
-  educationNotifications,
   users,
 } from "../../../shared/db/schema.ts";
 import { isEmailSuppressed } from "../../platform/contracts/cross-module/system_services_email-delivery_service.ts";
@@ -70,28 +70,34 @@ export async function processEducationEmail(
 ) {
   const db = getDb(), now = new Date().toISOString();
   const [row] = await db.select({
-    notice: educationNotifications,
+    notice: accountNotifications,
     slug: domains.slug,
     user: users,
   }).from(educationNotificationEmails)
     .innerJoin(
-      educationNotifications,
+      accountNotifications,
       eq(
-        educationNotifications.id,
+        accountNotifications.id,
         educationNotificationEmails.notification_id,
       ),
     )
-    .innerJoin(domains, eq(domains.id, educationNotifications.domain_id))
-    .innerJoin(users, eq(users.id, educationNotifications.user_id)).where(and(
-      eq(educationNotificationEmails.notification_id, event.notification_id),
-      eq(educationNotificationEmails.lease_token, event.lease_token!),
-      eq(educationNotificationEmails.state, "pending"),
-      sql`${educationNotificationEmails.leased_until} > ${now}`,
-    ));
-  if (!row) return false;
+    .innerJoin(domains, eq(domains.id, accountNotifications.domain_id))
+    .innerJoin(users, eq(users.id, accountNotifications.recipient_id)).where(
+      and(
+        eq(educationNotificationEmails.notification_id, event.notification_id),
+        eq(educationNotificationEmails.lease_token, event.lease_token!),
+        eq(educationNotificationEmails.state, "pending"),
+        sql`${educationNotificationEmails.leased_until} > ${now}`,
+      ),
+    );
+  if (!row || !row.notice.assignment_id) return false;
   let state: "sent" | "skipped" = "skipped", reason: string | null = null;
   try {
-    await getEducationNotification(row.slug, row.notice.user_id, row.notice.id);
+    await getEducationNotification(
+      row.slug,
+      row.notice.recipient_id,
+      row.notice.id,
+    );
   } catch (error) {
     if (
       error instanceof AppError && [401, 403, 404].includes(error.statusCode)

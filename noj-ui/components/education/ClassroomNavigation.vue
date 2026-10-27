@@ -13,7 +13,7 @@ const links = computed(() => {
     ...(room && (classroomCan(room, 'submissions:read') || classroomCan(room, 'progress:read'))
       ? [{ label: '学生训练', to: `${base}/students` }] : []),
     ...(room && classroomCan(room, 'students:manage') ? [{ label: '班级成员', to: `${base}/members` }] : []),
-    ...(room && (room.manages_domain || room.membership?.role === 'coach')
+    ...(room && room.manages_domain
       ? [{ label: '班级设置', to: `${base}/settings` }] : []),
   ];
 });

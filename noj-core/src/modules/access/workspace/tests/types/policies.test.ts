@@ -15,7 +15,8 @@ Deno.test("工作空间：管理员不能获得平台权限，角色组合只扩
   assert(!admin.has("domain:transfer"));
   assert(domainPermissions(["owner"]).has("domain:transfer"));
   assert(!domainPermissions(["editor"]).has("submission:read_all"));
-  assert(!domainPermissions(["educator"]).has("classroom:manage_any"));
+  assert(domainPermissions(["educator"]).has("classroom:manage_any"));
+  assert(!domainPermissions(["educator"]).has("domain:invitations"));
   assert(domainPermissions(["editor", "educator"]).has("classroom:create"));
   assertEquals(domainPermissions([]).size, 0);
 });

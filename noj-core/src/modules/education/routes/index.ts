@@ -20,8 +20,8 @@ import {
   parsePagination,
 } from "../../../shared/http/pagination.ts";
 import type {
-  AssistantCapability,
   ClassroomRole,
+  TeachingCapability,
 } from "../../../shared/education-types.ts";
 import {
   createClassroom,
@@ -33,7 +33,6 @@ import {
   listClassroomMembers,
   removeClassroomMember,
   setClassroomMember,
-  transferClassroom,
 } from "../services/members.ts";
 import { listClassroomInvitations } from "../services/invitations.ts";
 import {
@@ -92,7 +91,6 @@ router.post("/domains/:slug/classrooms", async (c) => {
       name: string;
       description?: string;
       stage_tag?: string;
-      primary_coach_id?: string;
     }
   >(c);
   return c.json({
@@ -154,7 +152,7 @@ router.get(
 );
 router.put("/domains/:slug/classrooms/:id/members/:userId", async (c) => {
   const input = await body<
-    { role: ClassroomRole; capabilities?: AssistantCapability[] }
+    { role: ClassroomRole; capabilities?: TeachingCapability[] }
   >(c);
   return c.json({
     data: await setClassroomMember(
@@ -180,21 +178,6 @@ router.delete(
       ),
     }),
 );
-router.post("/domains/:slug/classrooms/:id/transfer", async (c) => {
-  const input = await body<{ user_id: string }>(c);
-  if (typeof input.user_id !== "string") {
-    throw new BadRequestError("接任教练账号非法");
-  }
-  return c.json({
-    data: await transferClassroom(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      input.user_id,
-      revision(c.req.header("If-Match")),
-    ),
-  });
-});
 
 /** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
 router.post("/domains/:slug/classrooms/:id/invitations", async (c) => {

@@ -85,7 +85,7 @@ function exportResult() {
   <UCard v-if="writable">
     <h2 class="mb-3 font-semibold">批量入班与邀请</h2>
     <p
-      class="mb-3 text-sm text-text-muted">每批最多 500 条。CSV 使用 email 或 username 表头；本域已有账号可加入班级，其余通过邮箱邀请。不会创建平台账号。</p>
+      class="mb-3 text-sm text-text-muted">每批最多 500 条。CSV 使用 email 或 username 表头；教练只能导入本域已有成员；域邀请管理员可为域外学生生成邮箱邀请。不会创建平台账号。</p>
     <div class="mb-3 flex flex-wrap gap-3">
       <UInput type="file" accept=".csv,text/csv" :disabled="busy" aria-label="学生 CSV 文件" @change="readFile" />
       <UButton variant="ghost"

@@ -3,12 +3,11 @@ import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
 import type { DbTx, Executor } from "../../../shared/db/executor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  classroomAssistantGrants,
   classroomMemberships,
   classrooms,
   domainInvitations,
 } from "../../../shared/db/schema.ts";
-import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   type ClassroomInvitationBoundary,
   createDomainInvitation,
@@ -135,11 +134,8 @@ export async function joinInvitedClassroom(
     ),
   );
   if (existing?.status === "active") return;
-  if (classroom.primary_coach_id === userId) {
-    throw new ConflictError("请先处理主教练交接，再通过学生邀请加入");
-  }
   const now = new Date().toISOString();
-  const [member] = await executor.insert(classroomMemberships).values({
+  await executor.insert(classroomMemberships).values({
     id: existing?.id ?? crypto.randomUUID(),
     domain_id: domainId,
     classroom_id: classroomId,
@@ -157,9 +153,6 @@ export async function joinInvitedClassroom(
       appointed_at: now,
     },
   }).returning();
-  await executor.delete(classroomAssistantGrants).where(
-    eq(classroomAssistantGrants.membership_id, member.id),
-  );
   await syncStudentAssignmentRecipients(
     executor,
     domainId,

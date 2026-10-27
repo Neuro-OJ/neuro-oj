@@ -1,15 +1,16 @@
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import {
-  communityNotifications,
+  accountNotifications,
   communityPosts,
   users,
 } from "../../../../../shared/db/schema.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../../shared/base/errors.ts";
+import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
-import { nowIso } from "../../../../../shared/base/dates.ts";
+import {
+  getAccountNotification,
+  listAccountNotifications,
+  readAccountNotifications,
+} from "../../../account-notifications.ts";
 import { authorProjection } from "./community-post-select.ts";
 import {
   communityDb,
@@ -104,126 +105,69 @@ function parseFeedCursor(cursor: string): { at: string; id?: string } {
   return { at: cursor.slice(0, sep), id: cursor.slice(sep + 1) };
 }
 
-/**
- * 列出用户的通知列表（含触发者信息），按创建时间倒序。
- * @param userId 接收者用户 UUID。
- * @param limit 每页条数，默认 30，上限 100。
- * @returns 通知列表，每条含通知记录与触发者信息。
- */
-export function listNotifications(
+/** 社区兼容服务沿用统一通知存储与 CRUD，保持原有调用方投影。 */
+export async function listNotifications(
   userId: string,
   limit = 30,
   scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  return db.select({
-    notification: communityNotifications,
-    actor: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
-  }).from(communityNotifications).leftJoin(
-    users,
-    eq(users.id, communityNotifications.actor_id),
-  ).where(notificationVisibleWhere(userId, scope)).orderBy(
-    desc(communityNotifications.created_at),
-  ).limit(Math.min(limit, 100));
+  const result = await listAccountNotifications(
+    notificationVisibleWhere(userId, scope),
+    1,
+    Math.min(Math.max(limit, 1), 100),
+    communityDb(scope),
+  );
+  return result.data.map(({ notification, actor }) => ({
+    notification,
+    actor,
+  }));
 }
 
-/**
- * 获取单条通知详情（含触发者信息）。
- *
- * 投影与 {@link listNotifications} 保持一致，供通知详情页直接复用。
- * 仅接收者本人可读：非本人或不存在统一抛 404，不泄露他人通知是否存在。
- *
- * @param userId 接收者用户 UUID。
- * @param notificationId 通知 UUID。
- * @returns 通知记录与触发者信息。
- * @throws {NotFoundError} 通知不存在或不属于该用户时抛出。
- */
 export async function getNotification(
   userId: string,
   notificationId: string,
   scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  const rows = await db.select({
-    notification: communityNotifications,
-    actor: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
-  }).from(communityNotifications).leftJoin(
-    users,
-    eq(users.id, communityNotifications.actor_id),
-  ).where(
-    and(
-      eq(communityNotifications.id, notificationId),
-      notificationVisibleWhere(userId, scope),
-    ),
-  ).limit(1);
-  if (!rows[0]) throw new NotFoundError("通知不存在");
-  return rows[0];
+  const { notification, actor } = await getAccountNotification(
+    notificationVisibleWhere(userId, scope),
+    notificationId,
+    communityDb(scope),
+  );
+  return { notification, actor };
 }
 
-/**
- * 获取用户未读通知数量。
- * @param userId 接收者用户 UUID。
- * @returns 未读通知数量。
- */
 export async function getNotificationUnreadCount(
   userId: string,
   scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  const rows = await db.select({ count: sql<number>`count(*)` }).from(
-    communityNotifications,
-  ).where(
-    and(
-      notificationVisibleWhere(userId, scope),
-      isNull(communityNotifications.read_at),
-    ),
-  );
-  return Number(rows[0]?.count ?? 0);
+  return (await listAccountNotifications(
+    notificationVisibleWhere(userId, scope),
+    1,
+    1,
+    communityDb(scope),
+  )).unread_count;
 }
 
-/**
- * 将用户全部未读通知标记为已读。
- * @param userId 接收者用户 UUID。
- */
 export async function markNotificationsRead(
   userId: string,
   scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  await db.update(communityNotifications).set({ read_at: nowIso() }).where(
-    and(
-      notificationVisibleWhere(userId, scope),
-      isNull(communityNotifications.read_at),
-    ),
+  await readAccountNotifications(
+    notificationVisibleWhere(userId, scope),
+    undefined,
+    communityDb(scope),
   );
 }
 
-/** 标记单条通知已读：仅本人通知，已读重复调用幂等。 */
 export async function markNotificationRead(
   userId: string,
   notificationId: string,
   scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  const existing = await db.select({ id: communityNotifications.id }).from(
-    communityNotifications,
-  ).where(
-    and(
-      eq(communityNotifications.id, notificationId),
-      notificationVisibleWhere(userId, scope),
-    ),
-  ).limit(1);
-  if (!existing[0]) throw new NotFoundError("通知不存在");
-  await db.update(communityNotifications).set({ read_at: nowIso() }).where(
-    eq(communityNotifications.id, notificationId),
+  await readAccountNotifications(
+    notificationVisibleWhere(userId, scope),
+    notificationId,
+    communityDb(scope),
   );
 }
 
@@ -233,10 +177,10 @@ export function notificationVisibleWhere(
   scope?: CommunityScope,
 ) {
   return and(
-    eq(communityNotifications.recipient_id, userId),
-    communityDomainWhere(communityNotifications.domain_id, scope),
+    eq(accountNotifications.recipient_id, userId),
+    communityDomainWhere(accountNotifications.domain_id, scope),
     scope ? undefined : or(
-      isNull(communityNotifications.domain_id),
+      isNull(accountNotifications.domain_id),
       sql`EXISTS (
       SELECT 1 FROM domains notification_domain WHERE notification_domain.id = ${communityDomainId()}
         AND notification_domain.status <> 'suspended'
@@ -246,9 +190,9 @@ export function notificationVisibleWhere(
     )`,
     ),
     or(
-      isNull(communityNotifications.post_id),
+      isNull(accountNotifications.post_id),
       sql`EXISTS (
-      SELECT 1 FROM community_posts WHERE community_posts.id = ${communityNotifications.post_id}
+      SELECT 1 FROM community_posts WHERE community_posts.id = ${accountNotifications.post_id}
       AND ${communityDomainWhere(communityPosts.domain_id, scope)}
       AND ${communityResourceVisible(scope)}
       AND (${communityPosts.status} = 'published' OR ${communityPosts.author_id} = ${userId})

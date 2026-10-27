@@ -1,3 +1,7 @@
+import {
+  contestClassrooms,
+  setContestClassrooms,
+} from "./classroom-contests.ts";
 import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
@@ -85,6 +89,7 @@ export async function getDomainContest(
     domain_id: access.domain.id,
     revision: access.contest.revision,
     can_manage: access.organizer,
+    classrooms: await contestClassrooms(access.contest.id),
   };
 }
 
@@ -120,6 +125,13 @@ export async function createDomainContest(
         versions: selected.versions,
         bindings: selected.bindingIds,
       },
+    );
+    await setContestClassrooms(
+      tx,
+      workspace.domain.id,
+      created.id,
+      actorId,
+      input.classroom_ids ?? [],
     );
     await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {
       operation: "contest.create",
@@ -168,6 +180,18 @@ export async function updateDomainContest(
     const [current] = await tx.select().from(contests).where(
       eq(contests.id, access.contest.id),
     ).for("update");
+    if (input.classroom_ids !== undefined) {
+      if (Date.now() >= Date.parse(current.start_time)) {
+        throw new BadRequestError("开赛后不能改变关联班级");
+      }
+      await setContestClassrooms(
+        tx,
+        access.domain.id,
+        current.id,
+        actorId,
+        input.classroom_ids,
+      );
+    }
     if (current.revision !== revision) {
       throw new ConflictError("比赛已修改，请重新读取");
     }

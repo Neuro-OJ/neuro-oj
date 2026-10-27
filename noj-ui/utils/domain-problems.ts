@@ -23,6 +23,7 @@ export interface DomainProblemSummary {
   has_hidden_algorithm_tags?: boolean;
   progress?: 'solved' | 'attempted' | 'unseen' | null;
   submit_count?: number;
+  best_score?: number | null;
   valid_submissions?: number;
   accepted_submissions?: number;
 }
@@ -46,6 +47,8 @@ export interface DomainProblemDetail {
   binding_id: string;
   policy_revision: number;
   effective_version_mode: 'any' | 'exact';
+  answer_version_id: string;
+  required_version_id: string | null;
   version_id: string;
   version: number;
   can_edit: boolean;

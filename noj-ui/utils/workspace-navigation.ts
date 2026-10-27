@@ -7,6 +7,9 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
   const features = domain.configuration.features;
   const entries = [
     { label: '首页', section: '', icon: 'i-lucide-home' },
+    ...(signedIn && features.classroom
+      ? [{ label: '班级研练中心', section: 'classrooms', icon: 'i-lucide-graduation-cap' }]
+      : []),
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
     { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },
     { label: '比赛', section: 'contests', icon: 'i-lucide-trophy' },
@@ -19,9 +22,6 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
   if (signedIn) {
     entries.push({ label: '提交', section: 'submissions', icon: 'i-lucide-code-2' });
     entries.push({ label: '评测队列', section: 'queue', icon: 'i-lucide-activity' });
-  }
-  if (signedIn && features.classroom) {
-    entries.push({ label: '班级研练', section: 'classrooms', icon: 'i-lucide-graduation-cap' });
   }
   return entries.map((entry) => ({ ...entry, to: workspacePath(domain.slug, entry.section) }));
 }

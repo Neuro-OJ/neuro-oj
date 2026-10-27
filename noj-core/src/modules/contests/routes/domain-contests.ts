@@ -247,6 +247,7 @@ domainContestRouter.get(`${path}/:id/ranking`, async (c) => {
     c.req.param("slug")!,
     c.req.param("id")!,
     c.var.userId ?? null,
+    c.req.query("classroom_id"),
   );
   return c.json({ data: result.rows, ...result, rows: undefined });
 });

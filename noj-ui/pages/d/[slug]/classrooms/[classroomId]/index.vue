@@ -25,7 +25,7 @@ const tasks = await useAsyncData(
 
 const isCoach = computed(() => {
   const r = room.data.value?.data;
-  return !!r && (r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant');
+  return !!r && (r.manages_domain);
 });
 
 const canManageAssignments = computed(() => {

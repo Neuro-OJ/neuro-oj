@@ -6,7 +6,7 @@
  * 通知读取/已读等用户侧操作仍留在 community.ts（仅社区路由使用）。
  */
 
-import { communityNotifications } from "../../../../shared/db/schema.ts";
+import { accountNotifications } from "../../../../shared/db/schema.ts";
 import { communityPosts } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
@@ -71,7 +71,7 @@ export async function createNotification(
     read_at: null,
     created_at: nowIso(),
   };
-  await db.insert(communityNotifications).values(notification);
+  await db.insert(accountNotifications).values(notification);
   const channel = Channels.user(recipientId),
     payload = { type: "notification:new", notification_id: notification.id };
   if (scope) {

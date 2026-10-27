@@ -21,6 +21,7 @@ interface Props {
   domainSlug: string;
   classroomId?: string;
   writable: boolean;
+  existingMembersOnly?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -48,7 +49,8 @@ const basePath = computed(() =>
 );
 
 // 表单状态
-const mode = ref<'general' | 'email' | 'once'>('general');
+const mode = ref<'general' | 'email' | 'once'>(props.existingMembersOnly ? 'email' : 'general');
+watch(() => props.existingMembersOnly, (restricted) => { if (restricted) mode.value = 'email'; });
 const email = ref('');
 const maxUsesOption = ref<'unlimited' | 'limit'>('unlimited');
 const maxUsesCount = ref<number | null>(10);
@@ -343,7 +345,7 @@ onMounted(() => {
         <div>
           <h2 class="text-base font-semibold text-text">创建新邀请</h2>
           <p class="mt-1 text-xs text-text-muted">
-            生成加入此空间的邀请凭据。支持指定邮箱、通用人数或单次使用的短码与链接。
+            {{ existingMembersOnly ? '仅可为本域现有成员生成入班邀请，请填写其账号邮箱。' : '生成加入此空间的邀请凭据。支持指定邮箱、通用人数或单次使用的短码与链接。' }}
           </p>
         </div>
 
@@ -354,6 +356,7 @@ onMounted(() => {
           <AdminFormField label="邀请类型" required>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
+                v-if="!existingMembersOnly"
                 type="button"
                 :aria-pressed="mode === 'general'"
                 :class="[
@@ -382,6 +385,7 @@ onMounted(() => {
                 <div class="mt-0.5 text-text-muted text-[11px]">需匹配受邀邮箱，限 1 人</div>
               </button>
               <button
+                v-if="!existingMembersOnly"
                 type="button"
                 :aria-pressed="mode === 'once'"
                 :class="[

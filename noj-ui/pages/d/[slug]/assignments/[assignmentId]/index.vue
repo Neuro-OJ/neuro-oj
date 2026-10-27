@@ -17,7 +17,7 @@ const filtersOpen = ref(false);
 const selected = ref<{ userId: string; username: string; reference: string; cell: TeachingCell } | null>(null),
   drawer = ref(false),
   downloading = ref(false);
-const manageOpen = ref(false), showHistory = ref(false), feedbackSignal = ref(0);
+const manageOpen = ref(false), feedbackSignal = ref(0);
 const feedbackTarget = ref<{ userId: string; username: string } | null>(null);
 const askSignal = ref(0), askItemId = ref<string | null>(null);
 const pendingHelp = ref(0);
@@ -161,17 +161,8 @@ watch(tabItems, (items) => {
   }
 }, { immediate: true });
 if (canSeeFeedbackTab.value && (requestedHelp.value || requestedFeedback.value)) tab.value = 'feedback';
-if (route.query.history === '1') {
-  if (canManage.value) manageOpen.value = true;
-  else showHistory.value = true;
-}
 watch([requestedHelp, requestedFeedback], ([help, feedback]) => {
   if (canSeeFeedbackTab.value && (help || feedback)) tab.value = 'feedback';
-});
-watch(() => route.query.history, (value) => {
-  if (value !== '1') return;
-  if (canManage.value) manageOpen.value = true;
-  else showHistory.value = true;
 });
 
 watch([matrix.data, progress.data], ([matrixValue, progressValue]) => {
@@ -234,7 +225,6 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   askItemId.value = null;
   drawer.value = false;
   manageOpen.value = false;
-  showHistory.value = false;
   page.value = 1;
   tab.value = canReadProgress.value ? 'matrix' : isStudent.value ? 'progress' : 'feedback';
 });
@@ -382,7 +372,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           <UTabs v-if="tabItems.length > 1" v-model="tab" :items="tabItems" :content="false" variant="link"
             class="w-full sm:w-fit" />
 
-          <!-- 学情矩阵：教练与助教 -->
+          <!-- 学情矩阵：域教练 -->
           <section v-if="tab === 'matrix' && canReadProgress" aria-label="学生成绩"
             class="flex flex-col gap-3">
             <AsyncContent
@@ -566,8 +556,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                 </nav>
               </div>
             </AsyncContent>
-            <TrainingComparison v-if="actor" :key="`${key}:own-comparison`" :slug="slug!" :assignment-id="id"
-              :user-id="actor.id" :anchor="task.data.value.data.published_at" />
           </section>
 
           <!-- 反馈与求助：按角色决定是否挂载；挂载但切走时保留角标数据 -->
@@ -579,16 +567,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
               :items="conversationItems" :ask-item-id="askItemId" :ask-signal="askSignal"
               @pending-help="onPendingHelp" @clear-target="clearFeedbackTarget" />
           </section>
-
-          <!-- 版本依据：无管理权限的读者（学生 / 仅有学情权限的助教）也可从页面尾部打开 -->
-          <div v-if="!canManage" class="flex flex-col gap-3">
-            <UButton class="self-start" variant="ghost" color="neutral" size="sm" icon="i-lucide-history"
-              :trailing-icon="showHistory ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              @click="showHistory = !showHistory">
-              {{ showHistory ? '收起版本与策略变化依据' : '版本与策略变化依据' }}
-            </UButton>
-            <AssignmentHistory v-if="showHistory" :key="`${key}:history`" :slug="slug!" :assignment-id="id" />
-          </div>
         </template>
 
         <template v-else>
@@ -617,9 +595,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             :key="`${key}:${selected.userId}:${selected.cell.item_id}:${scope}`" :slug="slug!" :assignment-id="id"
             :classroom-id="task.data.value!.data.classroom_id" :user-id="selected.userId"
             :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
-          <TrainingComparison v-if="can('progress:read') && !isStudent && task.data.value?.data.published_at"
-            :key="`${key}:${selected.userId}:comparison`" :slug="slug!" :assignment-id="id"
-            :user-id="selected.userId" :anchor="task.data.value!.data.published_at!" />
           <SubmissionReview
             v-if="isStudent && selected.cell.source_submission_id && selected.cell.source_kind === 'submission'"
             :key="selected.cell.source_submission_id" :slug="slug!" :classroom-id="task.data.value!.data.classroom_id"
@@ -657,9 +632,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
               <AssignmentRemediation :key="`${key}:remediation`" :slug="slug!" :task="task.data.value.data"
                 :writable="!!classroomWritable" :can-read-progress="can('progress:read')" />
             </div>
-          </section>
-          <section>
-            <AssignmentHistory :key="`${key}:history-drawer`" :slug="slug!" :assignment-id="id" />
           </section>
         </div>
       </template>

@@ -36,7 +36,7 @@ const isCoachOrManager = computed(() => {
   return list.some((item) => {
     // 列表契约未保证任职字段；旧快照或扩展响应中的可选身份仅用于入口展示。
     const r: Partial<ClassroomDetail> = item;
-    return r.manages_domain || r.membership?.role === 'coach' || r.membership?.role === 'assistant';
+    return r.manages_domain;
   });
 });
 
@@ -245,7 +245,7 @@ useSeoMeta({ title: '班级研练中心' });
     <!-- 视角 1: 教练带班中枢 (Teaching View) -->
     <div v-show="currentView === 'teaching'" class="space-y-6">
       <!-- 指标大盘卡片行 -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
         <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
           <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
             <UIcon name="i-lucide-clipboard-check" class="size-5" />
@@ -359,7 +359,7 @@ useSeoMeta({ title: '班级研练中心' });
         empty-text="当前没有符合条件的教学任务"
         @retry="refreshTeaching()"
       >
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="grid gap-6 md:grid-cols-2">
           <div
             v-for="task in visibleTeachingTasks"
             :key="task.id"
@@ -466,7 +466,7 @@ useSeoMeta({ title: '班级研练中心' });
     <!-- 视角 2: 我的学习大盘 (Learning View) -->
     <div v-show="currentView === 'learning'" class="space-y-6">
       <!-- 个人学习指标卡 -->
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3.5">
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
         <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
           <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
             <UIcon name="i-lucide-book-open" class="size-5" />
@@ -512,7 +512,7 @@ useSeoMeta({ title: '班级研练中心' });
         empty-text="当前没有分配给你的作业任务"
         @retry="refreshLearning()"
       >
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="grid gap-6 md:grid-cols-2">
           <div
             v-for="task in visibleLearningTasks"
             :key="task.id"
@@ -660,7 +660,7 @@ useSeoMeta({ title: '班级研练中心' });
         :empty-text="roomSearch || roomStageFilter !== 'all' ? '未找到符合条件的班级' : '你尚未加入任何班级'"
         @retry="refreshRooms()"
       >
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="grid gap-6 md:grid-cols-2">
           <div
             v-for="room in filteredRooms"
             :key="room.id"

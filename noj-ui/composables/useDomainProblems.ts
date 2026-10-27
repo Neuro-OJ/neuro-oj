@@ -28,8 +28,8 @@ export function useDomainProblems() {
           silent: true,
         },
       ),
-    detail: (slug: string, reference: string) =>
-      api.get<DomainProblemDetail>(domainProblemApiPath(slug, reference), { silent: true }),
+    detail: (slug: string, reference: string, version_id?: string) =>
+      api.get<DomainProblemDetail>(domainProblemApiPath(slug, reference), { query: { version_id }, silent: true }),
     ui: (slug: string, reference: string, version_id: string) =>
       api.get<{ data: { html: string } }>(`${domainProblemApiPath(slug, reference)}/ui`, {
         query: { version_id },

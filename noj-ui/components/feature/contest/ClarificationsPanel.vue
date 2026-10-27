@@ -75,7 +75,7 @@ async function loadMore() {
 
 // 收到 notification:new 时静默刷新（答疑回复通知触发），替换而非追加数据
 useEventSource({
-  url: '/api/v1/community/notifications/events',
+  url: '/api/v1/notifications/events',
   enabled: computed(() => !!user.value),
   onEvent: {
     'notification:new': () => load(true, true),

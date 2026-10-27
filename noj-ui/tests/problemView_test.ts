@@ -31,6 +31,8 @@ Deno.test('problemView: 域题目保留来源题号、作答版本与已裁剪�
     policy_revision: 2,
     effective_version_mode: 'exact',
     version_id: 'published-v2',
+    answer_version_id: 'published-v2',
+    required_version_id: 'published-v2',
     version: 2,
     can_edit: false,
     difficulty: 'easy',

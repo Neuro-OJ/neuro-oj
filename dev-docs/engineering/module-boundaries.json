@@ -152,6 +152,7 @@
       "content-review.ts": "communication",
       "contest.ts": "contests",
       "education-interactions.ts": "education",
+      "notification-delivery.ts": "education",
       "education.ts": "education",
       "email.ts": "platform",
       "evaluation-records.ts": "evaluations",
@@ -170,6 +171,9 @@
       "background-tasks.ts": "runtime"
     },
     "tableExceptions": {
+      "education.ts": {
+        "classroom_contest_links": "contests"
+      },
       "system.ts": {
         "storage_object_reservations": "assets",
         "storage_objects": "assets"

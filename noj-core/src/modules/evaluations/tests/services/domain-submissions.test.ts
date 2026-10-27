@@ -1,3 +1,5 @@
+import { setDomainProblemBindingPolicyCommand } from "../../../application/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
@@ -42,6 +44,50 @@ const input = (version: string) => ({
   version_id: version,
   language: "python3",
   code: "print(1)",
+});
+
+Deno.test({
+  name: "域历史版本：可阅读并提交历史发布版本，默认版本及成绩策略保持独立",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await fixture();
+    const detail = await readDomainProblem(f.a.slug, f.ref, f.student, f.v1);
+    assertEquals(detail.version_id, f.v1);
+    assertEquals(detail.answer_version_id, f.v2);
+    await withQueue(async () => {
+      const result = await createDomainSubmission(
+        f.a.slug,
+        f.ref,
+        f.student,
+        input(f.v1),
+      );
+      const [stored] = await f.db.select().from(submissions).where(
+        eq(submissions.id, result.id),
+      );
+      assertEquals(stored.submitted_version_id, f.v1);
+      assertEquals(stored.domain_problem_binding_id, f.bindingA.id);
+      await saveV2ResultForTest({
+        submission_id: result.id,
+        status: "finished",
+        score: 7000,
+        output: "",
+        details: {},
+      });
+      await setDomainProblemBindingPolicyCommand(
+        userActorFromAuthenticatedId(f.owner),
+        f.a.slug,
+        f.ref,
+        f.bindingA.revision,
+        { mode: "exact", version_id: f.v2 },
+        "只认可第二版",
+      );
+      const [changed] = await f.db.select().from(submissions).where(
+        eq(submissions.id, result.id),
+      );
+      assertEquals(changed.is_valid, false);
+    });
+  },
 });
 
 Deno.test({
@@ -137,7 +183,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "域提交：错误域、成员撤权、归档和版本冲突在创建前拒绝",
+  name: "域提交：错误域、成员撤权、归档和不存在版本在创建前拒绝",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -150,11 +196,16 @@ Deno.test({
       () => createDomainSubmission(f.a.slug, "1001", f.student, input(f.v2)),
       NotFoundError,
     );
-    const mismatch = await assertRejects(
-      () => createDomainSubmission(f.a.slug, f.ref, f.student, input(f.v1)),
-      AppError,
+    await assertRejects(
+      () =>
+        createDomainSubmission(
+          f.a.slug,
+          f.ref,
+          f.student,
+          input("missing-version"),
+        ),
+      NotFoundError,
     );
-    assertEquals(mismatch.code, "PROBLEM_ANSWER_VERSION_CHANGED");
     await removeDomainMember(f.a.slug, f.owner, f.student);
     await assertRejects(
       () => createDomainSubmission(f.a.slug, f.ref, f.student, input(f.v2)),

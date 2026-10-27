@@ -276,6 +276,7 @@ domainProblemsRouter.get(
         c.req.param("slug")!,
         c.req.param("reference")!,
         c.var.userId ?? null,
+        c.req.query("version_id"),
       ),
     );
   },

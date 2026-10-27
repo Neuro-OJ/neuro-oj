@@ -126,8 +126,7 @@
 | GET | `/domains/:slug/classrooms/:id/students/:userId/submissions` | noj-core/src/modules/education/routes/student-submissions.ts |
 | GET | `/domains/:slug/classrooms/:id/submissions/:kind/:submissionId` | noj-core/src/modules/education/routes/student-submissions.ts |
 | GET | `/domains/:slug/classrooms/:id/submissions/:kind/:submissionId/attempts` | noj-core/src/modules/education/routes/student-submissions.ts |
-| GET | `/domains/:slug/notifications` | noj-core/src/modules/education/routes/interactions.ts |
-| GET | `/domains/:slug/notifications/events` | noj-core/src/modules/education/routes/notification-sse.ts |
+| GET | `/domains/:slug/education/events` | noj-core/src/modules/education/routes/notification-sse.ts |
 | GET | `/domains/:slug/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | GET | `/domains/:slug/objective-submissions/:id` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | GET | `/domains/:slug/problem-drafts` | noj-core/src/modules/problems/routes/domain-problems.ts |
@@ -170,9 +169,6 @@
 | GET | `/me/submissions/:kind/:id` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/me/submissions/submission/:id/artifact` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/mine` | noj-core/src/modules/problems/routes/trainings.ts |
-| GET | `/notifications` | noj-core/src/modules/communication/community/routes/community.ts |
-| GET | `/notifications/:id{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}` | noj-core/src/modules/communication/community/routes/community.ts |
-| GET | `/notifications/unread-count` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/oauth/:provider` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oauth/:provider/callback` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oauth/accounts` | noj-core/src/modules/access/identity/routes/auth.ts |
@@ -290,7 +286,6 @@
 | POST | `/domains/:slug/classrooms/:id/contest-remediation-preview` | noj-core/src/modules/education/routes/assignments.ts |
 | POST | `/domains/:slug/contests/:id/problems/:label/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | POST | `/domains/:slug/contests/:id/problems/:label/submissions` | noj-core/src/modules/evaluations/routes/domain-submissions.ts |
-| POST | `/domains/:slug/notifications/:id/read` | noj-core/src/modules/education/routes/interactions.ts |
 | POST | `/domains/:slug/problem-summaries` | noj-core/src/modules/problems/routes/domain-problems.ts |
 | POST | `/domains/:slug/problems/:reference/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | POST | `/domains/:slug/problems/:reference/self-tests` | noj-core/src/modules/evaluations/routes/domain-submissions.ts |
@@ -314,8 +309,6 @@
 | POST | `/logout` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/me/avatar` | noj-core/src/modules/access/identity/routes/users.ts |
 | POST | `/me/delete-account` | noj-core/src/modules/access/identity/routes/users.ts |
-| POST | `/notifications/:id/read` | noj-core/src/modules/communication/community/routes/community.ts |
-| POST | `/notifications/read` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/oauth/:provider/link` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/posts` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/posts/:postId/:flag` | noj-core/src/domains/admin/routes/community.ts |

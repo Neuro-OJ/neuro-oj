@@ -24,7 +24,7 @@ Deno.test({
     const fixture = await educationFixture();
     const recipient = await account();
     const invitation = await createClassroomInvitationCommand(
-      userActorFromAuthenticatedId(fixture.teacher),
+      userActorFromAuthenticatedId(fixture.owner),
       fixture.school.slug,
       fixture.classroom.id,
       `${recipient}@example.com`,
@@ -71,7 +71,7 @@ Deno.test({
     const recipient = await account();
     const actor = userActorFromAuthenticatedId(recipient);
     const invitation = await createClassroomInvitationCommand(
-      userActorFromAuthenticatedId(fixture.teacher),
+      userActorFromAuthenticatedId(fixture.owner),
       fixture.school.slug,
       fixture.classroom.id,
       `${recipient}@example.com`,

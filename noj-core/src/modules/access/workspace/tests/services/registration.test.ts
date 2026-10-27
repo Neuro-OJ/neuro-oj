@@ -87,6 +87,9 @@ Deno.test({
     );
     const [after] = await getDb().select({ count: count() }).from(users);
     assertEquals(after.count, before.count);
+    await getDb().update(domainLimits).set({ members: null }).where(
+      eq(domainLimits.domain_id, DEFAULT_DOMAIN_ID),
+    );
     const student = await registerUser({
       username: "invited_student",
       email: "student@example.com",
@@ -97,8 +100,8 @@ Deno.test({
     assertEquals(
       (await getDb().select().from(domainMemberships).where(
         eq(domainMemberships.user_id, student.id),
-      )).map((row) => row.domain_id),
-      [domain.id],
+      )).map((row) => row.domain_id).sort(),
+      [domain.id, DEFAULT_DOMAIN_ID].sort(),
     );
     assertEquals(
       (await getDb().select().from(domainInvitations).where(

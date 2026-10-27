@@ -75,6 +75,18 @@ export function domainPermissions(
       permissions.add("classroom:create");
       permissions.add("training:import");
       permissions.add("problem:import");
+      // 教练协作管理全域教学资源，不继承成员治理和敏感配置权限。
+      for (const permission of EDITOR_PERMISSIONS) permissions.add(permission);
+      for (
+        const permission of [
+          "classroom:manage_any",
+          "problem:write_any",
+          "problem:delete_any",
+          "problem:policy",
+          "training:write_any",
+          "contest:manage",
+        ]
+      ) permissions.add(permission);
     }
     if (role === "moderator") permissions.add("community:moderate");
     if (role === "admin" || role === "owner") {

@@ -69,6 +69,8 @@ export async function listAssignmentItemSubmissions(
     teachingSubmissionRelation(access)
   } AND s.user_id = ${userId} AND s.problem_id = ${item.problem_id}
     AND (${access.assignment.include_previous_submissions} OR s.created_at >= ${access.assignment.published_at})
+    AND (${access.assignment.submission_source} = 'domain_any' OR
+      (s.assignment_id = ${assignmentId} AND s.assignment_item_id = ${itemId} AND s.created_at >= ${access.assignment.published_at}))
     AND (${access.assignment.archived_at}::text IS NULL OR s.created_at <= ${access.assignment.archived_at})
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(${
     JSON.stringify(recipient.credit_intervals)

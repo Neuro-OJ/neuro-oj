@@ -175,7 +175,7 @@ export async function updateSubmissionAnnotation(
     interactionRevision(annotation.revision, revision);
     if (
       body !== undefined ||
-      !access.managesDomain && access.classMembership?.role !== "coach"
+      !access.managesDomain
     ) {
       assertFeedbackAuthor(annotation.author_id, actorId);
     }

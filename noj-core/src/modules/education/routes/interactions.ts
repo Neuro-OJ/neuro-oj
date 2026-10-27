@@ -22,10 +22,6 @@ import {
   replyAssignmentHelp,
   setAssignmentHelpState,
 } from "../services/help.ts";
-import {
-  listEducationNotifications,
-  markEducationNotificationRead,
-} from "../services/notifications.ts";
 import { educationNotificationSse } from "./notification-sse.ts";
 
 /** 教学互动准备路由，复用当前域授权、禁用缓存和统一错误处理。 */
@@ -39,17 +35,6 @@ interactionRouter.use(
     await next();
   },
 );
-for (
-  const path of [
-    "/domains/:slug/notifications",
-    "/domains/:slug/notifications/*",
-  ]
-) {
-  interactionRouter.use(path, authMiddleware, async (c, next) => {
-    c.header("Cache-Control", "no-store");
-    await next();
-  });
-}
 function revision(value: string | undefined) {
   if (value === undefined) return null;
   const match = /^"?([0-9]+)"?$/.exec(value);
@@ -214,27 +199,4 @@ interactionRouter.patch(
       ),
     });
   },
-);
-interactionRouter.get(
-  "/domains/:slug/notifications",
-  async (c) =>
-    c.json({
-      data: await listEducationNotifications(
-        c.req.param("slug"),
-        c.var.userId,
-        parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 }).page,
-      ),
-    }),
-);
-interactionRouter.post(
-  "/domains/:slug/notifications/:id/read",
-  educationWriteRateLimit,
-  async (c) =>
-    c.json({
-      data: await markEducationNotificationRead(
-        c.req.param("slug"),
-        c.req.param("id"),
-        c.var.userId,
-      ),
-    }),
 );

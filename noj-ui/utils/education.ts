@@ -1,4 +1,4 @@
-/** 教学身份来自当前班级详情，不从平台身份推断助教能力。 */
+/** 教学权限来自当前域角色，班级名单只包含学生。 */
 export type TeachingCapability =
   | 'progress:read'
   | 'submissions:read'
@@ -19,10 +19,9 @@ export interface Classroom {
   stage_tag: string;
   status: 'active' | 'archived';
   revision: number;
-  primary_coach_id: string;
 }
 export interface ClassroomDetail extends Classroom {
-  membership: { role: 'coach' | 'assistant' | 'student'; status: string } | null;
+  membership: { role: 'student'; status: string } | null;
   capabilities: TeachingCapability[];
   manages_domain: boolean;
   historical_student?: boolean;
@@ -40,13 +39,14 @@ export interface Assignment {
   ended_at: string | null;
   archived_at: string | null;
   publish_error: string | null;
+  submission_source: 'assignment_only' | 'domain_any';
   include_previous_submissions: boolean;
 }
 export interface ClassroomMember {
   id: string;
   user_id: string;
   username: string;
-  role: 'coach' | 'assistant' | 'student';
+  role: 'student';
   status: 'active' | 'removed';
   effective_active: boolean;
   capabilities?: TeachingCapability[];
@@ -55,6 +55,7 @@ export interface AssignmentDraftInput {
   title: string;
   description: string;
   deadline_at: string | null;
+  submission_source: 'assignment_only' | 'domain_any';
   include_previous_submissions: boolean;
   target_student_ids: string[] | null;
   items?: { binding_id: string; requirement: 'accepted' | 'min_score'; minimum_score: number | null }[];
@@ -209,9 +210,8 @@ export interface TeachingPage<T> {
   per_page: number;
 }
 
-export function classroomCan(detail: ClassroomDetail, capability: TeachingCapability) {
-  return detail.manages_domain || detail.membership?.role === 'coach' ||
-    detail.membership?.role === 'assistant' && detail.capabilities.includes(capability);
+export function classroomCan(detail: ClassroomDetail, _capability: TeachingCapability) {
+  return detail.manages_domain;
 }
 /** 缓存包含使用域、查看者和资源／筛选，不依赖上次使用域。 */
 export function educationCacheKey(slug: string, actor: string | null, ...resources: unknown[]) {

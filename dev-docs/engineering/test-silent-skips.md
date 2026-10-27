@@ -14,8 +14,8 @@
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 319 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 354 | ignore |
 | noj-core/src/modules/access/identity/tests/routes/tfa.test.ts | 21 | env-guard |
+| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 35 | env-guard |
 | noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
-| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
 | noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts | 131 | env-guard |
 | noj-core/src/modules/read-models/search/tests/perf/search_bench.test.ts | 16 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
@@ -162,10 +162,10 @@
 | noj-tests/e2e/catalog/tags.test.ts | 324 | early-return |
 | noj-tests/e2e/catalog/tags.test.ts | 344 | early-return |
 | noj-tests/e2e/catalog/tags.test.ts | 362 | early-return |
-| noj-tests/e2e/community/community.test.ts | 41 | early-return |
-| noj-tests/e2e/community/community.test.ts | 101 | early-return |
-| noj-tests/e2e/community/community.test.ts | 320 | early-return |
-| noj-tests/e2e/community/community.test.ts | 373 | early-return |
+| noj-tests/e2e/community/community.test.ts | 42 | early-return |
+| noj-tests/e2e/community/community.test.ts | 103 | early-return |
+| noj-tests/e2e/community/community.test.ts | 322 | early-return |
+| noj-tests/e2e/community/community.test.ts | 375 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 81 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 116 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 136 | early-return |

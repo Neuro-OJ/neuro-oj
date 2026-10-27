@@ -11,15 +11,15 @@ beforeEach(() => {
   route.path = '/d/school/classrooms/class-one';
 });
 
-function view(role: 'coach' | 'assistant' | 'student', capabilities: TeachingCapability[] = []) {
+function view(role: 'educator' | 'student', capabilities: TeachingCapability[] = []) {
   return mount(ClassroomNavigation, {
     props: {
       slug: 'school',
       classroomId: 'class-one',
       classroom: {
         id: 'class-one',
-        manages_domain: false,
-        membership: { role, status: 'active' },
+        manages_domain: role === 'educator',
+        membership: role === 'student' ? { role, status: 'active' } : null,
         capabilities,
       } as ClassroomDetail,
     },
@@ -40,9 +40,15 @@ describe('班级页面导航', () => {
     result.unmount();
   });
 
-  it('按助教实际授权展示入口，不因拥有学情权限展示成员或设置', async () => {
-    const result = view('assistant', ['progress:read']);
-    expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览', '学生训练']);
+  it('域教练无需班级成员关系即可查看全部教学入口', async () => {
+    const result = view('educator');
+    expect(result.findAll('a').map((link) => link.text())).toEqual([
+      '我的班级',
+      '班级概览',
+      '学生训练',
+      '班级成员',
+      '班级设置',
+    ]);
     route.path = '/d/school/classrooms/class-one/students/student-one';
     await result.vm.$nextTick();
     expect(result.find('[aria-current="location"]').attributes('href')).toBe('/d/school/classrooms/class-one/students');
@@ -51,7 +57,7 @@ describe('班级页面导航', () => {
   });
 
   it('教练的导航保持域上下文，所有入口均为实际页面', () => {
-    const result = view('coach');
+    const result = view('educator');
     expect(result.findAll('a').map((link) => link.text())).toEqual([
       '我的班级',
       '班级概览',
@@ -68,7 +74,7 @@ describe('班级页面导航', () => {
   });
 
   it('班级权限尚未加载时不短暂展示管理入口', async () => {
-    const result = view('coach');
+    const result = view('educator');
     await result.setProps({ classroom: undefined });
     expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览']);
     result.unmount();

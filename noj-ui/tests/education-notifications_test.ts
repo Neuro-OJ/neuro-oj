@@ -14,12 +14,12 @@ Deno.test('教学通知：链接保留使用域，反馈与求助只传定位，
     { path: '/d/school-two/assignments/task', query: { feedback: 'feedback' } },
   );
 });
-Deno.test('教学通知：变化与资源失效打开受控历史，不跳往来源域内容', () => {
+Deno.test('教学通知：变化与资源失效打开当前作业，不跳往来源域内容', () => {
   const notice = {
     assignment_id: 'task',
     type: 'resource_unavailable',
     help_id: null,
     feedback_id: null,
   } as TeachingNotice;
-  assertEquals(teachingNoticeTarget('school', notice), { path: '/d/school/assignments/task', query: { history: '1' } });
+  assertEquals(teachingNoticeTarget('school', notice), { path: '/d/school/assignments/task', query: {} });
 });

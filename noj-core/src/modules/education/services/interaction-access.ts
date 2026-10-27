@@ -11,12 +11,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import type { AssistantCapability } from "../../../shared/education-types.ts";
+import type { TeachingCapability } from "../../../shared/education-types.ts";
 import { assertDomainFeatureEnabled } from "../../access/contracts/cross-module/workspace_services_limits.ts";
 import { loadClassroom } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
 
-/** 教学互动只使用已发布任务；写操作重新锁定班级和任务，允许助教独立互动能力。 */
+/** 教学互动只使用已发布任务；写操作重新锁定班级和任务，并检查当前域教学权限。 */
 export async function loadInteractionAccess(
   slug: string,
   id: string,
@@ -49,11 +49,9 @@ export async function loadInteractionAccess(
 /** 互动读取区分固定能力，学情或源码能力不隐含私人反馈和求助读取。 */
 export function interactionStaff(
   access: Awaited<ReturnType<typeof loadInteractionAccess>>,
-  capability: AssistantCapability,
+  _capability: TeachingCapability,
 ) {
-  return access.managesDomain || access.classMembership?.role === "coach" ||
-    access.classMembership?.role === "assistant" &&
-      access.capabilities.has(capability);
+  return access.managesDomain;
 }
 
 /** 非教学管理者必须是本任务实际目标学生，不能借普通班级成员身份查看私人互动。 */

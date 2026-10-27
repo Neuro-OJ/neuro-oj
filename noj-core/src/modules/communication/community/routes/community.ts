@@ -38,8 +38,6 @@ import {
   createReport,
   deleteComment,
   getCommunityConfig,
-  getNotification,
-  getNotificationUnreadCount,
   getPost,
   getReportDetail,
   getReportMessageHistory,
@@ -48,10 +46,7 @@ import {
   listBookmarks,
   listComments,
   listFeed,
-  listNotifications,
   listPosts,
-  markNotificationRead,
-  markNotificationsRead,
   resolvePostId,
   resolveProblemId,
   setPostOfficial,
@@ -626,70 +621,6 @@ router.get("/feed", optionalAuthMiddleware, async (c) => {
     ),
   );
 });
-/**
- * GET /notifications — 获取当前用户的通知列表。
- * 认证：必填。query：limit。
- * 响应：{ data: 通知列表 }。
- */
-router.get(
-  "/notifications",
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await listNotifications(
-        userId(c),
-        parseQueryLimit(c.req.query("limit"), { default: 30 }),
-      ),
-    }),
-);
-/**
- * GET /notifications/unread-count — 获取当前用户未读通知数量。
- * 认证：必填。
- * 响应：{ data: { unread_count } }。
- */
-router.get(
-  "/notifications/unread-count",
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: { unread_count: await getNotificationUnreadCount(userId(c)) },
-    }),
-);
-/**
- * GET /notifications/:id — 获取单条通知详情（供通知详情页使用）。
- * 认证：必填。仅本人通知；非本人或不存在统一 404。
- * 响应：{ data: { notification, actor } }。
- *
- * `:id` 限定为 UUID：同前缀下还有字面量路径 `/notifications/unread-count`
- * （本文件）与 `/notifications/events`（通知 SSE，sse.ts 挂载在本路由之后）。
- * 不加约束时 `:id` 会抢先匹配这些字面量路径，导致未读计数与通知 SSE 退化为 404；
- * 靠“注册顺序”规避既脆弱又跨文件（app.ts 的挂载顺序）。
- */
-router.get(
-  "/notifications/:id{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}",
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await getNotification(userId(c), c.req.param("id") as string),
-    }),
-);
-/**
- * POST /notifications/read — 将当前用户全部未读通知标记为已读。
- * 认证：必填。响应：204。
- */
-router.post("/notifications/read", authMiddleware, async (c) => {
-  await markNotificationsRead(userId(c));
-  return c.body(null, 204);
-});
-/**
- * POST /notifications/:id/read — 将单条通知标记为已读。
- * 认证：必填。仅本人通知。响应：204。
- */
-router.post("/notifications/:id/read", authMiddleware, async (c) => {
-  await markNotificationRead(userId(c), c.req.param("id") as string);
-  return c.body(null, 204);
-});
-
 /**
  * POST /reports — 提交举报工单。
  * 认证：必填。需 community:report 权限。body：{ post_id?/comment_id?, reason, category? }。

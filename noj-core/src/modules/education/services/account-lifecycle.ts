@@ -1,11 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
-import {
-  classroomAssistantGrants,
-  classroomMemberships,
-  classrooms,
-} from "../../../shared/db/schema.ts";
+import { classroomMemberships, classrooms } from "../../../shared/db/schema.ts";
 
 /** 调用方已锁定 Domain；退出或注销结束班级任职，重新入域不恢复旧教学权限。 */
 export async function retireDomainEducationMemberships(
@@ -27,10 +23,6 @@ export async function retireDomainEducationMemberships(
     ).orderBy(classrooms.id).for("update", { of: classrooms });
   if (!affected.length) return;
   const now = new Date().toISOString();
-  await executor.delete(classroomAssistantGrants).where(
-    sql`${classroomAssistantGrants.membership_id} IN (
-    SELECT id FROM classroom_memberships WHERE domain_id = ${domainId} AND user_id = ${userId})`,
-  );
   await executor.update(classroomMemberships).set({
     status: "removed",
     left_at: now,

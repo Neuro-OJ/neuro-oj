@@ -118,10 +118,10 @@ export async function getTrainingComparison(
     windows(name, start_at, end_at) AS (VALUES ('before', ${windows.before_start}::timestamptz, ${windows.before_end}::timestamptz),
       ('after', ${windows.after_start}::timestamptz, ${windows.after_end}::timestamptz)),
     sources AS (
-      SELECT id, 'submission'::text AS kind, domain_id, user_id, problem_id, created_at, receipt_sequence, contest_id, active_attempt_id
+      SELECT id, 'submission'::text AS kind, domain_id, user_id, problem_id, created_at, receipt_sequence, contest_id, active_attempt_id, assignment_id, assignment_item_id
       FROM submissions WHERE domain_id = ${access.domain.id} AND user_id = ${userId}
         AND created_at::timestamptz >= ${windows.before_start}::timestamptz AND created_at::timestamptz < ${windows.after_end}::timestamptz
-      UNION ALL SELECT id, 'objective', domain_id, user_id, paper_id, created_at, receipt_sequence, contest_id, active_attempt_id
+      UNION ALL SELECT id, 'objective', domain_id, user_id, paper_id, created_at, receipt_sequence, contest_id, active_attempt_id, assignment_id, assignment_item_id
       FROM objective_submissions WHERE domain_id = ${access.domain.id} AND user_id = ${userId}
         AND created_at::timestamptz >= ${windows.before_start}::timestamptz AND created_at::timestamptz < ${windows.after_end}::timestamptz
     ), eligible AS (

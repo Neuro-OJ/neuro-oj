@@ -9,8 +9,9 @@ const route = useRoute(),
   { user } = useAuth(),
   api = useDomainProblems();
 const reference = computed(() => String(route.params.reference));
-const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'solve', reference.value));
-const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value));
+const selectedVersion = computed(() => typeof route.query.version_id === 'string' ? route.query.version_id : undefined);
+const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'solve', reference.value, selectedVersion.value ?? 'current'));
+const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value, selectedVersion.value));
 const backUrl = computed(() =>
   router.resolve({ path: workspaceProblemPath(slug.value!, reference.value), query: route.query }).href
 );

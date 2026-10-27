@@ -417,6 +417,11 @@ const ROUTES: BreadcrumbRoute[] = [
   // ── 用户与私信 ──
   { pattern: '/users/:id', trail: [{ param: 'id' }] },
   { pattern: '/messages', trail: [{ key: 'breadcrumb.messages' }] },
+  { pattern: '/notifications', trail: [{ key: 'breadcrumb.notifications' }] },
+  {
+    pattern: '/notifications/:id',
+    trail: [{ key: 'breadcrumb.notifications', to: '/notifications' }, { param: 'id' }],
+  },
 
   // ── 榜单与队列 ──
   { pattern: '/ranking', trail: [{ key: 'nav.ranking' }] },

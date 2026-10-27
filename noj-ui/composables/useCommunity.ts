@@ -55,6 +55,9 @@ export interface ReportRow {
     reporter_id: string;
     post_id: string | null;
     comment_id: string | null;
+    assignment_id?: string | null;
+    feedback_id?: string | null;
+    help_id?: string | null;
     message_id: string | null;
     content_type: string;
     category: string;
@@ -156,12 +159,16 @@ export interface FeedItem {
 
 /** 社区通知行 */
 export interface NotificationRow {
+  domain?: { id: string; slug: string; name: string } | null;
   notification: {
     id: string;
     // 类型定义与展示/跳转规则共用 utils/communityNotifications.ts，避免两处漂移
     type: CommunityNotificationType;
     post_id: string | null;
     comment_id: string | null;
+    assignment_id?: string | null;
+    feedback_id?: string | null;
+    help_id?: string | null;
     read_at: string | null;
     created_at: string;
     data: {

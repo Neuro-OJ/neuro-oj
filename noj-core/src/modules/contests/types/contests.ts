@@ -99,6 +99,7 @@ export interface ContestProblemInput {
 }
 
 export interface CreateContestInput {
+  classroom_ids?: string[];
   title: string;
   description?: string;
   start_time: string;
@@ -118,6 +119,7 @@ export interface CreateContestInput {
 }
 
 export interface UpdateContestInput {
+  classroom_ids?: string[];
   title?: string;
   description?: string;
   start_time?: string;

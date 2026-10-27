@@ -128,7 +128,7 @@ useSeoMeta({ title: '访问控制 - 域设置' });
               v-model="form.join_policy"
               :items="[
                 { label: '直接加入（用户点击即可自动加入）', value: 'open' },
-                { label: '申请审核（需管理员或助教在审核列表批准）', value: 'approval' },
+                { label: '申请审核（需管理员在审核列表批准）', value: 'approval' },
                 { label: '仅凭邀请（必须持有管理员生成的邀请码或邀请链接）', value: 'invite' }
               ]"
               class="w-full"

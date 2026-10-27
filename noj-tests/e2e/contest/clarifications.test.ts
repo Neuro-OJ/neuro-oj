@@ -378,7 +378,7 @@ e2eTest(
 e2eTest("[e2e/clarifications] 5. 提问者收到 clarification 通知", async () => {
   if (!isE2E) return;
   const notificationsResult = await apiGet(
-    "/api/v1/community/notifications?limit=30",
+    "/api/v1/notifications?per_page=30",
     participantToken,
   );
   if (notificationsResult.status !== 200) {

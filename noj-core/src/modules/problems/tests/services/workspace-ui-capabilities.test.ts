@@ -268,7 +268,7 @@ Deno.test({
         (await jsonRequest(app, `${path}/ui?version_id=${versions[1]}`, {
           token: studentToken,
         })).status,
-        409,
+        200,
       );
       assertEquals(
         (await jsonRequest(

@@ -106,7 +106,7 @@ useSeoMeta({ title: '申请加入班级' });
           </div>
 
           <form v-if="state.data.value.data.can_apply" class="space-y-4" @submit.prevent="apply">
-            <AdminFormField label="申请理由或备注" hint="教练或助教将在审核时查看">
+            <AdminFormField label="申请理由或备注" hint="域教练将在审核时查看">
               <UTextarea
                 v-model="reason"
                 class="w-full"
@@ -123,7 +123,7 @@ useSeoMeta({ title: '申请加入班级' });
           </form>
 
           <p v-else class="text-sm text-text-muted py-3 text-center">
-            当前暂不能提交新申请，请等待审核处理或联系班级主教练。
+            当前暂不能提交新申请，请等待审核处理或联系域教练。
           </p>
         </div>
       </UCard>
