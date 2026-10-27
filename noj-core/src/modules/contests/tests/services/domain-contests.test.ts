@@ -5,6 +5,7 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   classroomMemberships,
   classrooms,
+  contestParticipants,
   contestProblems,
   contests,
   domainProblemBindings,
@@ -36,6 +37,7 @@ import {
   getDomainContestProblems,
   getDomainContestRanking,
   getDomainContestSettlement,
+  getDomainContestSubmissionTarget,
   listDomainContests,
   loadPublicContestSecrecy,
   publishDomainContestRanking,
@@ -215,6 +217,73 @@ Deno.test({
     await assertRejects(
       () => getDomainContest(a.domain.slug, contest.id, student),
       NotFoundError,
+    );
+  },
+});
+
+Deno.test({
+  name: "域比赛：赛题在赛前仅组织者、赛中仅参赛者、赛后对域内所有人开放",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const a = await workspace("contest-visibility"),
+      student = await account();
+    await join(a.domain.slug, a.owner, student);
+    const p = await item(a.domain.id, a.owner);
+    // 赛前：组织者可读，域员可读比赛但看不到赛题。
+    const pending = await createDomainContest(
+      a.domain.slug,
+      a.owner,
+      input(p.id),
+    );
+    assertEquals(
+      (await getDomainContestProblems(a.domain.slug, pending.id, a.owner))
+        .length,
+      1,
+    );
+    await assertRejects(
+      () => getDomainContestProblems(a.domain.slug, pending.id, student),
+      ForbiddenError,
+    );
+    // 赛中未报名：仍然拒绝，避免赛题泄露给未报名者。
+    const now = new Date();
+    await getDb().update(contests).set({
+      start_time: new Date(now.getTime() - 60_000).toISOString(),
+      end_time: new Date(now.getTime() + 3_600_000).toISOString(),
+    }).where(eq(contests.id, pending.id));
+    await assertRejects(
+      () => getDomainContestProblems(a.domain.slug, pending.id, student),
+      ForbiddenError,
+    );
+    await registerForDomainContest(a.domain.slug, pending.id, student);
+    assertEquals(
+      (await getDomainContestProblems(a.domain.slug, pending.id, student))
+        .length,
+      1,
+    );
+    // 赛后：未报名（或退赛）的域员同样可以复盘赛题，但提交入口仍关闭。
+    await getDb().update(contests).set({
+      start_time: new Date(now.getTime() - 7_200_000).toISOString(),
+      end_time: new Date(now.getTime() - 3_600_000).toISOString(),
+    }).where(eq(contests.id, pending.id));
+    await getDb().delete(contestParticipants).where(
+      eq(contestParticipants.contest_id, pending.id),
+    );
+    assertEquals(
+      (await getDomainContestProblems(a.domain.slug, pending.id, student))
+        .length,
+      1,
+    );
+    await assertRejects(
+      () =>
+        getDomainContestSubmissionTarget(
+          a.domain.slug,
+          pending.id,
+          "A",
+          student,
+        ),
+      ForbiddenError,
     );
   },
 });

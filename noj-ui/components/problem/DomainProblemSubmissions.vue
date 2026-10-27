@@ -3,25 +3,35 @@ import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import { formatDateTime, getStatusLabel } from '~/utils/submissionFormat';
 
-const props = defineProps<{ slug: string; problemId: string }>();
+const props = defineProps<{ slug: string; problemId: string; contestId?: string; title?: string }>();
 const { user } = useAuth();
 const api = useDomainSubmissions();
 const historyTo = computed(() => ({
   path: workspacePath(props.slug, 'submissions'),
-  query: { problem_id: props.problemId, username: user.value?.username ?? '' },
+  query: {
+    problem_id: props.problemId,
+    username: user.value?.username ?? '',
+    ...(props.contestId ? { contest_id: props.contestId } : {}),
+  },
 }));
 const { data, status, error, refresh } = await useAsyncData(
-  () => workspaceCacheKey(props.slug, user.value?.id ?? null, 'problem-submissions', props.problemId),
+  () => workspaceCacheKey(props.slug, user.value?.id ?? null, 'problem-submissions', props.problemId, props.contestId ?? null),
   () => user.value
-    ? api.list(props.slug, 1, { problem_id: props.problemId, username: user.value.username, per_page: 5 })
+    ? api.list(props.slug, 1, {
+      problem_id: props.problemId,
+      username: user.value.username,
+      per_page: 5,
+      ...(props.contestId ? { contest_id: props.contestId } : {}),
+    })
     : Promise.resolve(null),
 );
+defineExpose({ refresh });
 </script>
 
 <template>
   <section class="rounded-xl border border-border bg-bg-panel p-5">
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h2 class="text-sm font-semibold text-text">我的提交</h2>
+      <h2 class="text-sm font-semibold text-text">{{ title ?? '我的提交' }}</h2>
       <NuxtLink v-if="user" :to="historyTo" class="text-xs text-primary no-underline hover:underline">全部提交</NuxtLink>
     </div>
     <p v-if="!user" class="text-sm text-text-secondary">登录后查看本题的提交记录。</p>

@@ -28,8 +28,13 @@ export async function getDomainContestProblems(
     access.contest.start_time,
     access.contest.end_time,
   );
-  if (!access.organizer && (status === "pending" || !access.registered)) {
-    throw new ForbiddenError("仅开赛后的参赛者可读取赛题");
+  // 赛题可见性：赛前仅组织者；赛中仅参赛者；**赛后对域内所有人开放**（复盘/补题），
+  // 但提交入口仍由 `getDomainContestSubmissionTarget` 的受理窗口与报名门控限制。
+  if (!access.organizer && status === "pending") {
+    throw new ForbiddenError("开赛后才能读取赛题");
+  }
+  if (!access.organizer && status === "running" && !access.registered) {
+    throw new ForbiddenError("仅参赛者可读取进行中的比赛赛题");
   }
   const db = getDb();
   const selected = await db.select({ problem_id: contestProblems.problem_id })

@@ -47,6 +47,15 @@ async function view(page: typeof ObjectivePage) {
         MarkdownRenderer: true,
         UButton: { template: '<button><slot /></button>' },
         NuxtLink: { template: '<a><slot /></a>' },
+        ProblemHeader: {
+          template: '<header><slot name="leading" /><slot name="titleSuffix" /><slot name="actions" /></header>',
+        },
+        ProblemStatement: {
+          props: ['content'],
+          template: '<section><slot name="toolbar" /><slot name="after-content" /></section>',
+        },
+        ProblemSamples: true,
+        DomainProblemSubmissions: true,
         DomainContestAnswer: { props: ['active'], template: '<p>可提交：{{ active }}</p>' },
         DomainCodeWorkspace: { props: ['contest'], template: '<p>可提交：{{ contest.active }}</p>' },
         OwnSubmissionRecord: {
