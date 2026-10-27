@@ -1,3 +1,4 @@
+import { assertClassroomPeer, peerSubmissionCondition } from "./peer-access.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
@@ -168,14 +169,21 @@ export async function getClassroomStudentSubmission(
   actorId: string,
 ) {
   const access = await loadClassroom(slug, classroomId, actorId);
-  assertClassroomCapability(access, "submissions:read");
+  if (!access.managesDomain) assertClassroomPeer(access);
   if (!["submission", "objective"].includes(kind)) {
     throw new BadRequestError("提交类型格式错误");
   }
   const result = await getDb().execute(sql`${selectTeachingSubmissions(true)}
     WHERE ${
     teachingSubmissionRelation(access)
-  } AND s.id = ${id} AND s.kind = ${kind} LIMIT 1`);
+  } AND s.id = ${id} AND s.kind = ${kind}
+    ${
+    access.managesDomain
+      ? sql``
+      : sql`AND (s.user_id=${actorId} OR (s.kind='submission' AND ${
+        peerSubmissionCondition(access)
+      }))`
+  } LIMIT 1`);
   const [row] = unwrapRows<StudentSubmissionRow>(result as never);
   if (!row) throw new NotFoundError("提交不存在或不可访问");
   if (access.platformAdmin) {

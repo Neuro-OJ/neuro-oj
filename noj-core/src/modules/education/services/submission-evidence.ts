@@ -1,3 +1,8 @@
+import {
+  activeClassmateCondition,
+  assertClassroomPeer,
+  assignmentHasEnded,
+} from "./peer-access.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
@@ -50,7 +55,12 @@ export async function listAssignmentItemSubmissions(
   }
   const db = getDb(),
     access = await loadAssignment(slug, assignmentId, actorId);
-  assertClassroomCapability(access, "submissions:read");
+  if (!access.staff) {
+    assertClassroomPeer(access);
+    if (!assignmentHasEnded(access.assignment)) {
+      assertClassroomCapability(access, "submissions:read");
+    }
+  }
   const [recipient] = await db.select().from(assignmentRecipients).where(and(
     eq(assignmentRecipients.assignment_id, assignmentId),
     eq(assignmentRecipients.user_id, userId),
@@ -68,6 +78,13 @@ export async function listAssignmentItemSubmissions(
   const condition = sql`${
     teachingSubmissionRelation(access)
   } AND s.user_id = ${userId} AND s.problem_id = ${item.problem_id}
+    ${
+    access.staff
+      ? sql``
+      : sql`AND ${
+        activeClassmateCondition(access)
+      } AND ${recipient.status} = 'active'`
+  }
     AND (${access.assignment.include_previous_submissions} OR s.created_at >= ${access.assignment.published_at})
     AND (${access.assignment.submission_source} = 'domain_any' OR
       (s.assignment_id = ${assignmentId} AND s.assignment_item_id = ${itemId} AND s.created_at >= ${access.assignment.published_at}))

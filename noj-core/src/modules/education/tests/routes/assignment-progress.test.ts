@@ -6,7 +6,7 @@ import { createAssignment, publishAssignment } from "../../index.ts";
 import { educationRouter } from "../../routes/index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
-Deno.test("作业学情 API：本人同步读取、教师分页、学生禁止矩阵及错误域路径", async () => {
+Deno.test("作业学情 API：本人同步读取、教师分页、学生同班只读矩阵及错误域路径", async () => {
   const f = await assignmentFixture();
   await initRedisForTest();
   const task = await createAssignment(
@@ -30,7 +30,7 @@ Deno.test("作业学情 API：本人同步读取、教师分页、学生禁止�
   assertEquals((await matrix.json()).data.per_page, 50);
   assertEquals(
     (await jsonRequest(app, `${base}/matrix`, { token: student })).status,
-    403,
+    200,
   );
   assertEquals(
     (await jsonRequest(

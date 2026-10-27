@@ -123,6 +123,7 @@ export function teachingTrainingId(value: string) {
 }
 export type ProgressStatus = 'not_started' | 'judging' | 'below_target' | 'achieved' | 'unavailable';
 export interface TeachingCell {
+  can_read_code?: boolean;
   item_id: string;
   user_id: string;
   status: ProgressStatus;

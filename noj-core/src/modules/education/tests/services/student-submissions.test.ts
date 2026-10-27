@@ -1,8 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../shared/base/errors.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   contests,
   domainProblemBindings,
@@ -111,16 +108,15 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
       ),
     NotFoundError,
   );
-  await assertRejects(
-    () =>
-      getClassroomStudentSubmission(
-        f.school.slug,
-        f.classroom.id,
-        same,
-        "submission",
-        f.student,
-      ),
-    ForbiddenError,
+  assertEquals(
+    (await getClassroomStudentSubmission(
+      f.school.slug,
+      f.classroom.id,
+      same,
+      "submission",
+      f.student,
+    )).code,
+    "student source",
   );
   await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
   await assertRejects(

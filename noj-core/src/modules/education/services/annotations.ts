@@ -107,7 +107,10 @@ export async function listSubmissionAnnotations(
   const access = await loadClassroom(slug, classroomId, actorId, {
     historicalStudent: true,
   });
-  await loadTeachingTextSource(access, id);
+  const source = await loadTeachingTextSource(access, id);
+  if (!access.managesDomain && source.user_id !== actorId) {
+    throw new NotFoundError("批注不存在或不可访问");
+  }
   const condition = and(
     eq(submissionAnnotations.domain_id, access.domain.id),
     eq(submissionAnnotations.classroom_id, classroomId),

@@ -52,12 +52,18 @@ beforeEach(() => {
   });
   api.updateAnnotation.mockResolvedValue({ data: {} });
 });
-async function review() {
+async function review(readOnlyPeer = false) {
   const Wrapper = defineComponent({
     setup: () => () =>
       h(Suspense, null, {
         default: () =>
-          h(SubmissionReview, { slug: 'school', classroomId: 'room', submissionId: 'submission', canAnnotate: true }),
+          h(SubmissionReview, {
+            slug: 'school',
+            classroomId: 'room',
+            submissionId: 'submission',
+            canAnnotate: !readOnlyPeer,
+            readOnlyPeer,
+          }),
       }),
   });
   const view = mount(Wrapper, { global: { stubs } });
@@ -65,6 +71,15 @@ async function review() {
   return view;
 }
 describe('行批注修改及撤回', () => {
+  it('同学只读代码时不请求教师批注，也不展示批注编辑入口', async () => {
+    const view = await review(true);
+    expect(api.files).toHaveBeenCalledWith('school', 'room', 'submission');
+    expect(api.annotations).not.toHaveBeenCalled();
+    expect(view.text()).not.toContain('旧反馈');
+    expect(view.find('textarea').exists()).toBe(false);
+    expect(view.text()).not.toContain('批注保留在这份代码上');
+    view.unmount();
+  });
   it('同一账号刷新不清空正在编辑的批注，换账号才重置', async () => {
     const view = await review();
     await view.findAll('button').find((button) => button.text() === '修改')!.trigger('click');

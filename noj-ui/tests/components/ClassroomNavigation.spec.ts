@@ -33,9 +33,9 @@ function view(role: 'educator' | 'student', capabilities: TeachingCapability[] =
 }
 
 describe('班级页面导航', () => {
-  it('学生仅获得班级概览和班级列表入口，不展示管理入口', () => {
+  it('学生可查看同班名单，不展示教学管理入口', () => {
     const result = view('student');
-    expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览']);
+    expect(result.findAll('a').map((link) => link.text())).toEqual(['我的班级', '班级概览', '班级成员']);
     expect(result.find('[aria-current="page"]').attributes('href')).toBe('/d/school/classrooms/class-one');
     result.unmount();
   });

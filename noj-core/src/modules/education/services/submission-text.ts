@@ -1,3 +1,4 @@
+import { peerSubmissionCondition } from "./peer-access.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -26,7 +27,7 @@ const ARCHIVE_BYTES = 64 * 1024 * 1024;
 const textExtension =
   /\.(py|cpp|cc|c|h|hpp|rs|js|ts|jsx|tsx|json|csv|tsv|txt|md|yaml|yml|toml|ini|cfg|log|html|css|xml|sql|sh)$/i;
 
-/** 预览和批注统一验证班级关系，学生只能读取本人原提交；不访问题目支持包。 */
+/** 预览和批注统一验证班级关系，学生可读取本人及已结束共同作业中的同学原提交；不访问题目支持包。 */
 export async function loadTeachingTextSource(
   access: Awaited<ReturnType<typeof loadClassroom>>,
   id: string,
@@ -37,9 +38,15 @@ export async function loadTeachingTextSource(
   if (!student) assertClassroomCapability(access, "submissions:read");
   const result = await executor.execute(
     sql`SELECT s.id, s.user_id, s.code, s.file_name, s.artifact_storage_url
-    FROM (SELECT *, 'submission'::text AS kind FROM submissions) s
+    FROM (SELECT *, domain_problem_binding_id AS binding_id, 'submission'::text AS kind FROM submissions) s
     WHERE s.id = ${id} AND ${teachingSubmissionRelation(access)}
-      ${student ? sql`AND s.user_id = ${access.context.actorId}` : sql``}
+      ${
+      student
+        ? sql`AND (s.user_id = ${access.context.actorId} OR ${
+          peerSubmissionCondition(access)
+        })`
+        : sql``
+    }
     ${lock ? sql`FOR SHARE OF s` : sql``}`,
   );
   const [source] = unwrapRows<TextSource>(result as never);

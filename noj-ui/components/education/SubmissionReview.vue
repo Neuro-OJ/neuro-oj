@@ -2,7 +2,7 @@
 import { extractApiError } from '~/utils/apiError';
 import { educationCacheKey } from '~/utils/education';
 import type { LineAnnotation } from '~/utils/education';
-const props = defineProps<{ slug: string; classroomId: string; submissionId: string; canAnnotate: boolean }>();
+const props = defineProps<{ slug: string; classroomId: string; submissionId: string; canAnnotate: boolean; readOnlyPeer?: boolean }>();
 const education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const file = ref(''), page = ref(1), body = ref(''), start = ref(1), end = ref(1), saving = ref(false);
@@ -19,7 +19,7 @@ const files = await useAsyncData(
 );
 const annotations = await useAsyncData(
   () => `${key.value}:annotations:${page.value}`,
-  () => education.annotations(props.slug, props.classroomId, props.submissionId, page.value),
+  () => props.readOnlyPeer ? Promise.resolve(null) : education.annotations(props.slug, props.classroomId, props.submissionId, page.value),
 );
 const text = await useAsyncData(
   () => `${key.value}:text:${file.value}`,
@@ -110,7 +110,7 @@ async function annotate() {
 </script>
 <template>
   <div class="flex flex-col gap-4">
-    <p class="break-all text-xs text-text-muted">原提交 {{ submissionId }} · 批注保留在这份代码上</p>
+    <p class="break-all text-xs text-text-muted">原提交 {{ submissionId }}<span v-if="!readOnlyPeer"> · 批注保留在这份代码上</span></p>
     <AsyncContent
       :status="files.error.value ? 'error' : files.status.value === 'pending' ? 'loading' : fileOptions.length ? 'data' : 'empty'"
       :error="files.error.value ? extractApiError(files.error.value).message : undefined"

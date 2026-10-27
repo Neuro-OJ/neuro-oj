@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
   classroomMemberships,
@@ -30,7 +30,7 @@ function memberInput(
   return [];
 }
 
-/** 班级人员目录按权限返回，学生只能读取自己的任职记录。 */
+/** 班级人员目录按权限返回，当前学生可读取有效同班同学。 */
 export async function listClassroomMembers(
   slug: string,
   classroomId: string,
@@ -61,7 +61,12 @@ export async function listClassroomMembers(
     .where(
       and(
         eq(classroomMemberships.classroom_id, classroomId),
-        staff ? undefined : eq(classroomMemberships.user_id, actorId),
+        staff ? undefined : and(
+          eq(classroomMemberships.status, "active"),
+          eq(domainMemberships.status, "active"),
+          eq(classroomMemberships.role, "student"),
+          sql`${users.deleted_at} IS NULL`,
+        ),
       ),
     )
     .orderBy(classroomMemberships.joined_at, classroomMemberships.id);

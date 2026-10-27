@@ -60,7 +60,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
           <template #actions>
             <div class="flex flex-wrap items-center gap-2">
               <UButton
-                v-if="isCoach"
+                v-if="isCoach || room.data.value?.data.membership?.role === 'student'"
                 :to="workspacePath(slug!, `classrooms/${id}/members`)"
                 variant="outline"
                 color="neutral"

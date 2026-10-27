@@ -8,7 +8,7 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
   const entries = [
     { label: '首页', section: '', icon: 'i-lucide-home' },
     ...(signedIn && features.classroom
-      ? [{ label: '班级研练中心', section: 'classrooms', icon: 'i-lucide-graduation-cap' }]
+      ? [{ label: '教学', section: 'classrooms', icon: 'i-lucide-graduation-cap' }]
       : []),
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
     { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },

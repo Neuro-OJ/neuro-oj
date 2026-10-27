@@ -1,10 +1,7 @@
 import { setMemberRoles } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../shared/base/errors.ts";
+import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   assignmentItems,
   educationOutbox,
@@ -150,7 +147,7 @@ Deno.test("作业来源：同域练习可计入多个作业，专属提交和历
   await assertRejects(() => make("assignment_only", true));
 });
 
-Deno.test("矩阵：学生仅本人进度，域教练学情授权，数据不包含源码或评测文本", async () => {
+Deno.test("矩阵：学生同班只读进度，域教练学情授权，数据不包含源码或评测文本", async () => {
   const f = await fixture();
   await grade(f, 7000);
   const own = await getMyAssignmentProgress(
@@ -161,10 +158,14 @@ Deno.test("矩阵：学生仅本人进度，域教练学情授权，数据不包
   assertEquals(own.cells[0].score, 7000);
   assertEquals(own.updating, false);
   assertEquals(JSON.stringify(own).includes("secret"), false);
-  await assertRejects(
-    () => getAssignmentMatrix(f.school.slug, f.task.id, f.student),
-    ForbiddenError,
+  const studentMatrix = await getAssignmentMatrix(
+    f.school.slug,
+    f.task.id,
+    f.student,
   );
+  assertEquals(studentMatrix.total, 1);
+  assertEquals(studentMatrix.rows[0].cells[0].score, 7000);
+  assertEquals(JSON.stringify(studentMatrix).includes("secret"), false);
   await assertRejects(
     () => getMyAssignmentProgress(f.other.slug, f.task.id, f.student),
     NotFoundError,

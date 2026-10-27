@@ -33,7 +33,7 @@ const isStudent = computed(() =>
   room.data.value?.data.membership?.role === 'student' ||
   room.data.value?.data.historical_student === true
 );
-const canReadProgress = computed(() => can('progress:read'));
+const canReadProgress = computed(() => can('progress:read') || room.data.value?.data.membership?.role === 'student');
 const canManage = computed(() => can('assignments:manage'));
 const query = computed(() => ({
   scope: scope.value,
@@ -46,10 +46,10 @@ const query = computed(() => ({
 }));
 const matrix = await useAsyncData(
   () =>
-    `${key.value}:matrix:${JSON.stringify(query.value)}:${can('progress:read')}:${!!task.data.value?.data
+    `${key.value}:matrix:${JSON.stringify(query.value)}:${canReadProgress.value}:${!!task.data.value?.data
       .published_at}`,
   () =>
-    can('progress:read') && task.data.value?.data.published_at
+    canReadProgress.value && task.data.value?.data.published_at
       ? education.matrix(slug.value!, id.value, query.value)
       : Promise.resolve(null),
   { watch: [query, task.data, room.data] },
@@ -141,12 +141,12 @@ const requestedHelp = computed(() => typeof route.query.help === 'string' ? rout
 const requestedFeedback = computed(() => typeof route.query.feedback === 'string' ? route.query.feedback : undefined);
 const canSeeFeedbackTab = computed(() => isStudent.value || can('feedback:write') || can('help:manage'));
 const tab = ref<'matrix' | 'progress' | 'feedback'>(
-  canReadProgress.value ? 'matrix' : isStudent.value ? 'progress' : canSeeFeedbackTab.value ? 'feedback' : 'matrix',
+  isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : canSeeFeedbackTab.value ? 'feedback' : 'matrix',
 );
 const tabItems = computed(() => {
   const items: Array<{ label: string; value: string; icon: string; badge?: { label: string; color: 'warning'; variant: 'subtle' } }> = [];
-  if (canReadProgress.value) items.push({ label: '学情矩阵', value: 'matrix', icon: 'i-lucide-table-2' });
-  else if (isStudent.value) items.push({ label: '题目与进度', value: 'progress', icon: 'i-lucide-list-checks' });
+  if (canReadProgress.value) items.push({ label: isStudent.value ? '同班完成情况' : '学情矩阵', value: 'matrix', icon: 'i-lucide-table-2' });
+  if (isStudent.value) items.push({ label: '我的进度', value: 'progress', icon: 'i-lucide-list-checks' });
   if (canSeeFeedbackTab.value) {
     const badge = can('help:manage') && pendingHelp.value > 0
       ? { label: String(pendingHelp.value), color: 'warning' as const, variant: 'subtle' as const }
@@ -186,7 +186,7 @@ usePolling({
   immediate: false,
   fetcher: async () => {
     await Promise.all([
-      can('progress:read') ? matrix.refresh() : Promise.resolve(),
+      canReadProgress.value ? matrix.refresh() : Promise.resolve(),
       isStudent.value ? progress.refresh() : Promise.resolve(),
     ]);
   },
@@ -196,7 +196,7 @@ useEducationNotifications(async () => {
   if (task.error.value) return;
   await room.refresh();
   await Promise.all([
-    can('progress:read') ? matrix.refresh() : Promise.resolve(),
+    canReadProgress.value ? matrix.refresh() : Promise.resolve(),
     isStudent.value ? progress.refresh() : Promise.resolve(),
   ]);
 });
@@ -226,7 +226,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   drawer.value = false;
   manageOpen.value = false;
   page.value = 1;
-  tab.value = canReadProgress.value ? 'matrix' : isStudent.value ? 'progress' : 'feedback';
+  tab.value = isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : 'feedback';
 });
 function resetFilters() {
   recipients.value = 'current';
@@ -415,7 +415,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                           class="ml-1 rounded-sm bg-primary-dark px-1 text-11px font-medium text-white tabular-nums">{{ activeFilterCount }}</span>
                       </UButton>
                       <UTooltip text="导出当前筛选结果为 CSV">
-                        <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-download"
+                        <UButton v-if="can('progress:read')" variant="ghost" color="neutral" size="sm" icon="i-lucide-download"
                           :loading="downloading" aria-label="导出当前筛选结果为 CSV" @click="download" />
                       </UTooltip>
                       <UTooltip text="重新读取成绩">
@@ -435,7 +435,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                   </div>
                   <div v-show="filtersOpen" id="assignment-filters"
                     class="grid gap-3 rounded bg-bg-sunken/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <AdminFormField label="学生范围">
+                    <AdminFormField v-if="!isStudent" label="学生范围">
                       <USelect v-model="recipients" size="sm" :items="recipientsOptions" aria-label="学生范围"
                         class="w-full" />
                     </AdminFormField>
@@ -596,11 +596,11 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             :classroom-id="task.data.value!.data.classroom_id" :user-id="selected.userId"
             :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
           <SubmissionReview
-            v-if="isStudent && selected.cell.source_submission_id && selected.cell.source_kind === 'submission'"
+            v-if="isStudent && selected.cell.source_submission_id && selected.cell.source_kind === 'submission' && (selected.userId === actor?.id || selected.cell.can_read_code)"
             :key="selected.cell.source_submission_id" :slug="slug!" :classroom-id="task.data.value!.data.classroom_id"
-            :submission-id="selected.cell.source_submission_id" :can-annotate="!!writable && can('feedback:write')" />
+            :submission-id="selected.cell.source_submission_id" :read-only-peer="selected.userId !== actor?.id" :can-annotate="!!writable && can('feedback:write')" />
           <p v-else-if="isStudent" class="text-sm text-text-muted">
-            {{ selected.cell.updating ? '成绩更新后可查看来源提交。' : selected.cell.source_kind === 'objective' ? '此项为客观题提交。' : '当前没有可查看的代码提交。' }}
+            {{ isStudent && selected.userId !== actor?.id && !selected.cell.can_read_code ? '作业进行中，可以查看完成情况；结束后可查看同学代码。' : selected.cell.updating ? '成绩更新后可查看来源提交。' : selected.cell.source_kind === 'objective' ? '此项为客观题提交。' : '当前没有可查看的代码提交。' }}
           </p>
           <div v-if="!isStudent && can('feedback:write') && writable"
             class="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">

@@ -1,3 +1,5 @@
+import { loadAssignment } from "./assignment-access.ts";
+import { assertClassroomCapability } from "./access.ts";
 import {
   type AssignmentMatrixOptions,
   getAssignmentMatrix,
@@ -26,6 +28,10 @@ export async function exportAssignmentMatrixCsv(
   actorId: string,
   options: Omit<AssignmentMatrixOptions, "page"> = {},
 ) {
+  assertClassroomCapability(
+    await loadAssignment(slug, id, actorId),
+    "progress:read",
+  );
   const first = await getAssignmentMatrix(slug, id, actorId, {
     ...options,
     page: 1,

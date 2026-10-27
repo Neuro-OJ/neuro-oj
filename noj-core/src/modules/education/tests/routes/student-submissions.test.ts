@@ -31,7 +31,7 @@ Deno.test("教学提交 API：父路由执行认证、禁用缓存和独立源�
   assertEquals(detail.status, 200);
   assertEquals(detail.headers.get("Cache-Control"), "no-store");
   assertEquals((await detail.json()).data.code, "student source");
-  assertEquals((await jsonRequest(app, path, { token: student })).status, 403);
+  assertEquals((await jsonRequest(app, path, { token: student })).status, 200);
   assertEquals((await jsonRequest(app, path)).status, 401);
   assertEquals(
     (await jsonRequest(app, path.replace(f.school.slug, f.other.slug), {

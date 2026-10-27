@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, like, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { AssignmentProgressStatus } from "../../../shared/education-types.ts";
 import {
@@ -13,7 +13,11 @@ import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { enqueueEducationRefresh } from "../contracts/facts.ts";
 import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
 import { loadBindingAvailability } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
-import { assertClassroomCapability } from "./access.ts";
+import {
+  activeClassmateCondition,
+  assertClassroomPeer,
+  assignmentHasEnded,
+} from "./peer-access.ts";
 import { loadAssignment } from "./assignment-access.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
 import { loadEducationCellRevisions } from "./progress-revisions.ts";
@@ -38,7 +42,7 @@ export async function getAssignmentMatrix(
   options: AssignmentMatrixOptions = {},
 ) {
   const access = await loadAssignment(slug, id, actorId);
-  assertClassroomCapability(access, "progress:read");
+  if (!access.staff) assertClassroomPeer(access);
   const scope = options.scope ?? "on_time", page = options.page ?? 1;
   const recipients = options.recipients ?? "current";
   if (
@@ -58,6 +62,10 @@ export async function getAssignmentMatrix(
       ? eq(assignmentRecipients.user_id, options.student_id)
       : undefined,
     matching,
+    access.staff ? undefined : and(
+      eq(assignmentRecipients.status, "active"),
+      activeClassmateCondition(access, sql`${assignmentRecipients.user_id}`),
+    ),
     recipients === "all" ? undefined : eq(
       assignmentRecipients.status,
       recipients === "current" ? "active" : "historical",
@@ -110,7 +118,23 @@ export async function getAssignmentMatrix(
       recipient_status: s.recipient.status,
       joined_at: s.recipient.joined_at,
       left_at: s.recipient.left_at,
-      cells: result.cells.filter((c) => c.user_id === s.recipient.user_id),
+      cells: result.cells.filter((c) => c.user_id === s.recipient.user_id).map(
+        (cell) => {
+          const canReadCode = access.staff || cell.user_id === actorId ||
+            assignmentHasEnded(access.assignment);
+          return {
+            ...cell,
+            can_read_code: canReadCode,
+            ...(!canReadCode
+              ? {
+                source_submission_id: null,
+                source_attempt_id: null,
+                accepted_attempt_id: null,
+              }
+              : {}),
+          };
+        },
+      ),
     })),
   };
 }
