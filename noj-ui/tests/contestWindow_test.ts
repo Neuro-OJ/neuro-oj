@@ -33,20 +33,20 @@ Deno.test('contestWindow: 已报名进入参赛者态，未报名进入报名态
   assertEquals(contestRegistrationState(base), {
     kind: 'register',
     needsCredential: false,
-    credentialLabel: '报名密码',
+    credentialLabel: '',
   });
 });
 
-Deno.test('contestWindow: 邀请赛要求邀请码，设密码公开赛要求报名密码', () => {
+Deno.test('contestWindow: 域比赛报名统一不要求额外凭据', () => {
   assertEquals(contestRegistrationState({ ...base, kind: 'invite' }), {
     kind: 'register',
-    needsCredential: true,
-    credentialLabel: '邀请码',
+    needsCredential: false,
+    credentialLabel: '',
   });
   assertEquals(contestRegistrationState({ ...base, hasPassword: true }), {
     kind: 'register',
-    needsCredential: true,
-    credentialLabel: '报名密码',
+    needsCredential: false,
+    credentialLabel: '',
   });
 });
 

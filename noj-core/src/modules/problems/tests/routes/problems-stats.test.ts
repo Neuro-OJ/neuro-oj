@@ -3,7 +3,12 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { problems, userRoles, users } from "../../../../shared/db/schema.ts";
+import {
+  domainProblemBindings,
+  problems,
+  userRoles,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _resetProblemStatsCacheForTest } from "../../services/problems/problems-stats.ts";
@@ -52,6 +57,7 @@ async function seedProblem(ownerId: string, number: number): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await publishDefaultCatalogFixture(id);
   return id;
 }
 
@@ -74,6 +80,9 @@ Deno.test({
       assertEquals(body.data.acceptance_rate, 0);
       assertEquals(body.data.suppressed_reason, null);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -92,6 +101,9 @@ Deno.test({
       const res = await jsonRequest(app, `/api/v1/problems/${problemId}/stats`);
       assertEquals(res.status === 401 || res.status === 403, true);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -115,6 +127,9 @@ Deno.test({
       );
       assertEquals(res.status, 403);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -144,6 +159,9 @@ Deno.test({
       assertEquals(typeof body.data.status_distribution, "object");
       assertEquals(Array.isArray(body.data.case_failure_distribution), true);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -169,6 +187,9 @@ Deno.test({
       const body = await res.json();
       assertEquals(body.data.window_days, 90);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -214,6 +235,9 @@ Deno.test({
       );
       assertEquals(res.status, 404);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -295,6 +319,9 @@ Deno.test({
       );
       assertEquals(res.status, 200);
     } finally {
+      await getDb().delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, problemId),
+      );
       await getDb().delete(problems).where(eq(problems.id, problemId));
       await removeDefaultCatalogMembership(ownerId);
       await getDb().delete(users).where(eq(users.id, ownerId));
@@ -302,7 +329,10 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  publishDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";
 
 import {
   grantDefaultCatalogRole,

@@ -37,11 +37,12 @@ async function importResource(item: SharedResourceOption) {
   importing.value = reference;
   failure.value = '';
   try {
-    if (props.kind === 'problem') await api.importProblem(scope.slug, reference);
-    else await trainings.import(scope.slug, reference);
+    let copiedTraining: string | undefined;
+    if (props.kind === 'problem') await api.importProblem(scope.slug, reference, item.version_id);
+    else copiedTraining = (await trainings.import(scope.slug, reference)).data.training_id;
     if (!scope.isCurrent()) return;
     emit('imported');
-    if (props.kind === 'training') await navigateTo(workspacePath(scope.slug, `trainings/${reference}`));
+    if (copiedTraining) await navigateTo(workspacePath(scope.slug, `trainings/${copiedTraining}`));
   } catch (error) {
     if (scope.isCurrent()) failure.value = extractApiError(error).message;
   } finally {
@@ -51,7 +52,7 @@ async function importResource(item: SharedResourceOption) {
 </script>
 <template>
   <section class="space-y-4">
-    <h3 class="font-semibold">查找允许本域引用的公开{{ kind === 'problem' ? '题目' : '题单' }}</h3>
+    <h3 class="font-semibold">查找有权复制的{{ kind === 'problem' ? '题目' : '题单' }}</h3>
     <div class="flex flex-wrap gap-3">
       <UInput v-model="enteredSource" placeholder="来源域标识，留空表示所有来源" />
       <UInput v-model="enteredKeyword" placeholder="资源名称" class="grow" @keydown.enter.prevent="search" />
@@ -59,14 +60,14 @@ async function importResource(item: SharedResourceOption) {
     </div>
     <UAlert v-if="failure" color="error" :title="failure" />
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.items.length ? 'data' : 'empty'"
-      :error="error ? extractApiError(error).message : undefined" empty-text="没有符合条件的可引用公开资源"
+      :error="error ? extractApiError(error).message : undefined" empty-text="没有符合条件且具有源编辑权限的资源"
       @retry="refresh()">
       <div class="max-h-80 divide-y divide-border overflow-auto">
         <div v-for="item in data?.items" :key="item.reference?.problem_id ?? item.id"
           class="flex items-center justify-between gap-3 py-3 text-sm">
           <div><span v-if="item.reference" class="mr-2 font-mono">{{ item.reference.qualified_ref }}</span>{{ item.title }}<p v-if="kind === 'training'" class="mt-1 text-xs text-text-muted">来源 {{ item.source_domain_slug }}</p></div>
           <UButton type="button" size="sm" :loading="importing === (item.reference?.qualified_ref ?? item.id)"
-            :disabled="!!importing" @click="importResource(item)">引用到本域</UButton>
+            :disabled="!!importing" @click="importResource(item)">复制到本域</UButton>
         </div>
       </div>
       <PaginationNav :current-page="page" :total-pages="Math.ceil((data?.total ?? 0) / 20)"

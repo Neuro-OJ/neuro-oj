@@ -8,6 +8,7 @@ import { loadWorkspace } from "../../access/contracts/cross-module/workspace_ser
 import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
 import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
 import { loadBindingAvailability } from "../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
+import { resolveDomainProblem } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
 import {
   getSubmission,
   resolveSubmissionId,
@@ -32,6 +33,7 @@ async function submissionMetadata(domainId: string, ids: string[]) {
     id: submissions.id,
     binding_id: submissions.domain_problem_binding_id,
     assignment_id: submissions.assignment_id,
+    contest_id: submissions.contest_id,
     assignment_item_id: submissions.assignment_item_id,
     user_id: submissions.user_id,
     problem_id: problems.id,
@@ -94,16 +96,28 @@ export async function getDomainSubmission(
     if (!summary) throw new NotFoundError("提交不存在");
     return { ...summary, can_view_source: false, can_view_answers: false };
   }
-  const result = await getSubmission(id, actorId, undefined, undefined, {
-    domainId: access.domain.id,
-    canReadDetails: manager || teacher,
-    platformAdmin: access.platformAdmin,
-  });
   const [fact] = await loadBindingAvailability(
     getDb(),
     access.domain.id,
     metadata.binding_id ? [metadata.binding_id] : [],
   );
+  if (fact?.available) {
+    await resolveDomainProblem(
+      slug,
+      `${metadata.source_domain_slug}:${metadata.number}`,
+      actorId,
+      {
+        contestId: metadata.user_id === actorId && !manager
+          ? metadata.contest_id ?? undefined
+          : undefined,
+      },
+    );
+  }
+  const result = await getSubmission(id, actorId, undefined, undefined, {
+    domainId: access.domain.id,
+    canReadDetails: manager || teacher,
+    platformAdmin: access.platformAdmin,
+  });
   const resourceAvailable = fact?.available === true;
   const record = structuredClone(result) as unknown as Record<string, unknown>;
   if (!resourceAvailable) {

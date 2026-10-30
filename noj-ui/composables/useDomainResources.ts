@@ -29,6 +29,7 @@ export interface DomainProblemBinding {
   can_change_state: boolean;
 }
 export interface SharedResourceOption {
+  version_id?: string;
   title: string;
   reference?: DomainProblemReference;
   kind?: 'oi' | 'ai' | 'objective';
@@ -54,10 +55,10 @@ export function useDomainResources() {
         `/api/v1/domains/${encodeURIComponent(slug)}/problem-bindings`,
         { query: { page, limit: 20, keyword }, silent: true },
       ),
-    importProblem: (slug: string, source_ref: string) =>
+    importProblem: (slug: string, source_ref: string, version_id?: string) =>
       api.post<{ data: { binding: { id: string; revision: number }; reference: DomainProblemReference } }>(
         `/api/v1/domains/${encodeURIComponent(slug)}/problem-bindings`,
-        { source_ref },
+        { source_ref, version_id },
       ),
     policy: (
       slug: string,
@@ -73,7 +74,7 @@ export function useDomainResources() {
       slug: string,
       reference: string,
       revision: number,
-      input: { disabled: boolean; visibility: 'public' | 'members'; reason: string },
+      input: { disabled: boolean; visibility?: 'public' | 'members'; reason: string },
     ) =>
       api.post<{ data: { revision: number } }>(`${domainProblemApiPath(slug, reference)}/state`, input, {
         headers: { 'If-Match': String(revision) },

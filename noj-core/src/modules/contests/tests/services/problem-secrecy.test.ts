@@ -183,7 +183,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problem-secrecy: 邀请赛（invite）不参与保密",
+  name: "problem-secrecy: 保护只取决于开关，旧邀请标签不豁免",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -197,7 +197,10 @@ Deno.test({
       creatorId,
     });
     try {
-      assertEquals(await loadPublicContestSecrecy(problemId), []);
+      assertEquals(
+        (await loadPublicContestSecrecy(problemId)).map((row) => row.contestId),
+        [contestId],
+      );
     } finally {
       await cleanup([contestId], [problemId], [creatorId]);
     }
@@ -305,7 +308,7 @@ Deno.test({
       // 赛前筹备期（pending）同样保密——VULN-02 的核心破口正是这里被放行
       assertEquals(await isProblemInUnendedPublicContest(pendingProblem), true);
       assertEquals(await isProblemInUnendedPublicContest(endedProblem), false);
-      assertEquals(await isProblemInUnendedPublicContest(inviteProblem), false);
+      assertEquals(await isProblemInUnendedPublicContest(inviteProblem), true);
 
       // SQL 谓词（列表过滤用）必须给出同一答案
       const rows = await getDb().select({
@@ -316,7 +319,7 @@ Deno.test({
       assertEquals(byId.get(runningProblem), true);
       assertEquals(byId.get(pendingProblem), true);
       assertEquals(byId.get(endedProblem), false);
-      assertEquals(byId.get(inviteProblem), false);
+      assertEquals(byId.get(inviteProblem), true);
     } finally {
       await cleanup(
         [runningId, pendingId, endedId, inviteId],

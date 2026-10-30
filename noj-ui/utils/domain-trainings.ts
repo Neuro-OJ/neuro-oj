@@ -1,11 +1,13 @@
 import type { DomainProblemReference, DomainProblemSummary } from './domain-problems.ts';
 export interface DomainTrainingInput {
+  state?: 'draft' | 'published';
   title: string;
   description: string;
-  visibility: 'private' | 'unlisted' | 'public';
+  visibility?: 'private' | 'unlisted' | 'public';
   problems: string[];
 }
 export interface DomainTrainingDetail {
+  state?: 'draft' | 'published';
   id: string;
   domain_id: string;
   source_domain_id: string;
@@ -22,6 +24,9 @@ export interface DomainTrainingDetail {
       binding_id: string | null;
       position: number;
       resource_available: boolean;
+      contest_protection?: Array<{ contestId: string; publicId: string; title: string }>;
+      can_read?: boolean;
+      can_practice?: boolean;
       can_import: boolean;
     }
   >;

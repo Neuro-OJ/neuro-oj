@@ -14,11 +14,13 @@ export function isValidTrainingVisibility(
 
 export interface CreateTrainingInput {
   title: string;
+  state?: "draft" | "published";
   description?: string;
   visibility?: TrainingVisibility;
 }
 
 export interface UpdateTrainingInput {
+  state?: "draft" | "published";
   title?: string;
   description?: string;
   visibility?: TrainingVisibility;
@@ -26,6 +28,7 @@ export interface UpdateTrainingInput {
 }
 
 export interface TrainingResponse {
+  state: "draft" | "published";
   id: string;
   domain_id: string;
   revision: number;

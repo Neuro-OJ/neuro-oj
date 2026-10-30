@@ -5,6 +5,7 @@ const props = defineProps<{
     statusCode?: number
     statusMessage?: string
     message?: string
+    data?: { slug?: string; contests?: Array<{ publicId: string; title: string }> }
   }
 }>()
 
@@ -23,6 +24,10 @@ function goHome() {
     <div class="w-full max-w-md rounded-2xl border border-border bg-white p-8 text-center shadow-card">
       <p class="text-6xl font-bold text-primary">{{ statusCode }}</p>
       <h1 class="mt-4 text-xl font-semibold text-text">{{ message }}</h1>
+      <p v-if="statusCode === 403 && error.data?.contests" class="mt-3 text-sm text-text-secondary">此题的所有版本受比赛保护。请报名，并在开赛后从比赛页面作答；比赛结束后恢复普通访问。</p>
+      <div v-if="statusCode === 403 && error.data?.slug" class="mt-4 flex flex-col gap-2">
+        <UButton v-for="contest in error.data.contests" :key="contest.publicId" variant="outline" color="neutral" @click="clearError({ redirect: `/d/${encodeURIComponent(error.data!.slug!)}/contests/${encodeURIComponent(contest.publicId)}` })">前往 {{ contest.title }}</UButton>
+      </div>
       <div class="mt-6 flex justify-center gap-3">
         <UButton color="primary" @click="goHome">返回首页</UButton>
         <UButton color="neutral" variant="outline" @click="clearError()">重试</UButton>

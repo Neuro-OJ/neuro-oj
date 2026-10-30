@@ -172,7 +172,7 @@ export async function listProblemsUsingAlias(
   const result = await executor.execute(
     sql`SELECT b.problem_id AS id FROM domain_problem_bindings b
     JOIN problems p ON p.id=b.problem_id JOIN problem_versions v ON v.id=
-      CASE WHEN b.effective_version_mode='exact' THEN b.required_version_id ELSE p.latest_version_id END
+      CASE WHEN p.effective_version_mode='exact' THEN p.required_version_id ELSE p.latest_version_id END
     WHERE b.domain_id=${domainId} AND v.content->'llm_config'->'models' @> ${
       JSON.stringify([alias])
     }::jsonb`,

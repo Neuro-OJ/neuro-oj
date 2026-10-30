@@ -49,7 +49,6 @@ import {
 import { resolveProblemIdOrThrow } from "./problem-resolve.ts";
 import {
   type CreateTrainingInput,
-  isValidTrainingVisibility,
   type TrainingProblemResponse,
   type TrainingResponse,
   type TrainingVisibility,
@@ -138,6 +137,7 @@ function toResponse(
     public_id: row.public_id,
     domain_id: row.domain_id!,
     revision: row.revision,
+    state: row.state as "draft" | "published",
     title: row.title,
     description: row.description,
     visibility: row.visibility as TrainingVisibility,
@@ -164,7 +164,7 @@ export async function listPublicTrainings(
   const { perPage, offset } = normalizePage(params);
   const where = and(
     eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
-    eq(trainings.visibility, "public"),
+    eq(trainings.state, "published"),
   );
   const [rows, totalRows] = await Promise.all([
     db.select().from(trainings).where(where)
@@ -285,7 +285,7 @@ export async function listUserTrainings(
     eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
     eq(trainings.created_by, ownerId),
   ];
-  if (!isOwner) conditions.push(eq(trainings.visibility, "public"));
+  if (!isOwner) conditions.push(eq(trainings.state, "published"));
   const where = and(...conditions);
   const [rows, totalRows] = await Promise.all([
     db.select().from(trainings).where(where)
@@ -338,14 +338,17 @@ export async function createTraining(
   if (!title || title.length > 100) {
     throw new BadRequestError("题单标题必须为 1-100 字符");
   }
-  const visibility = input.visibility ?? "private";
-  if (!isValidTrainingVisibility(visibility) || visibility === "public") {
-    throw new BadRequestError("创建题单时可见性只能为 private 或 unlisted");
+  const state = input.state ?? "draft";
+  if (!["draft", "published"].includes(state)) {
+    throw new BadRequestError("题单状态不合法");
   }
   const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId, {
     write: true,
   });
   assertWorkspacePermission(workspace.context, "training:create");
+  if (state === "published") {
+    assertWorkspacePermission(workspace.context, "training:publish");
+  }
   const db = getDb();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -356,7 +359,8 @@ export async function createTraining(
     domain_id: DEFAULT_DOMAIN_ID,
     title,
     description: input.description?.trim() ?? "",
-    visibility,
+    visibility: "private",
+    state,
     is_pinned: false,
     created_by: userId,
     created_at: now,
@@ -399,7 +403,7 @@ export async function updateTraining(
   id: string,
   input: UpdateTrainingInput,
   actorId: string,
-  options: UpdateTrainingOptions = {},
+  _options: UpdateTrainingOptions = {},
 ): Promise<TrainingResponse> {
   await assertWritable(id, actorId);
   const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
@@ -407,42 +411,17 @@ export async function updateTraining(
   });
   const canPin = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("training:write_any");
-  const canPublish = options.canPublish !== false;
   const db = getDb();
   if (input.is_pinned !== undefined && !canPin) {
     throw new ForbiddenError("无权置顶题单");
   }
-  if (input.visibility === "public" && !canPublish) {
-    throw new ForbiddenError("无权将题单设为公开");
-  }
-  if (input.visibility === "public") {
-    const resource = await resolveDomainTraining(
-      DEFAULT_DOMAIN_SLUG,
-      id,
-      actorId,
-    );
-    for (const item of resource.items) {
-      const reference = item.source.id === DEFAULT_DOMAIN_ID
-        ? String(item.problem.number)
-        : `${item.source.slug}:${item.problem.number}`;
-      const usable = await resolveDomainProblem(
-        DEFAULT_DOMAIN_SLUG,
-        reference,
-        actorId,
-      );
-      if (
-        usable.binding.visibility !== "public" ||
-        usable.problem.visibility !== "public"
-      ) {
-        throw new BadRequestError("公开题单只能包含公开题目");
-      }
-    }
-  }
   if (
-    input.visibility !== undefined &&
-    !isValidTrainingVisibility(input.visibility)
+    input.state !== undefined && !["draft", "published"].includes(input.state)
   ) {
-    throw new BadRequestError("可见性不合法");
+    throw new BadRequestError("题单状态不合法");
+  }
+  if (input.state === "published") {
+    assertWorkspacePermission(workspace.context, "training:publish");
   }
   if (input.title !== undefined) {
     const title = input.title.trim();
@@ -456,7 +435,7 @@ export async function updateTraining(
     ...(input.description !== undefined
       ? { description: input.description.trim() }
       : {}),
-    ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+    ...(input.state !== undefined ? { state: input.state } : {}),
     ...(input.is_pinned !== undefined ? { is_pinned: input.is_pinned } : {}),
     updated_at: new Date().toISOString(),
   };
@@ -599,6 +578,25 @@ export async function listTrainingProblems(
   const rows: TrainingProblemResponse[] = [];
   for (const item of resource.items) {
     if (!item.resource_available) continue;
+    if (item.contest_protection.length) {
+      const [identity] = await getDb().select().from(problems).where(
+        eq(problems.id, item.problem_id),
+      );
+      if (!identity) continue;
+      rows.push({
+        training_id: trainingId,
+        problem_id: item.problem_id,
+        position: item.position,
+        title: identity.title,
+        description: "",
+        difficulty: identity.difficulty,
+        display_id: item.display_ref,
+        is_objective: identity.is_objective,
+        accepted: false,
+        is_contest_hidden: true,
+      });
+      continue;
+    }
     const resolved = await resolveDomainProblem(
       DEFAULT_DOMAIN_SLUG,
       item.display_ref,
@@ -658,7 +656,7 @@ export async function addTrainingProblem(
   actorId: string,
   _isAdmin = false,
 ): Promise<TrainingProblemResponse> {
-  const training = await assertWritable(trainingId, actorId);
+  await assertWritable(trainingId, actorId);
   const db = getDb();
   const resolvedProblemId = await resolveProblemId(problemId);
   const [problem] = await db.select().from(problems).where(
@@ -672,13 +670,6 @@ export async function addTrainingProblem(
     String(problem.number),
     actorId,
   );
-  if (
-    training.visibility === "public" &&
-    (resource.binding.visibility !== "public" ||
-      resource.problem.visibility !== "public")
-  ) {
-    throw new BadRequestError("公开题单只能包含公开题目");
-  }
 
   const [existing] = await db
     .select()

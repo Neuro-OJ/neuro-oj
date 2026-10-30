@@ -180,6 +180,7 @@ export async function createSelfTest(
   const access = domainExecution
     ? null
     : (await evaluateProblemAccess(problem, {
+      purpose: "write",
       viewerId: userId,
       isAdmin,
     })).result;

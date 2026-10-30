@@ -515,10 +515,12 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                 </div>
                 <ol class="divide-y divide-border">
                   <li v-for="(item, index) in visibleItems" :key="item.id"
+                    :class="{ 'contest-protected': item.contest_protection?.length }"
                     class="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4 sm:flex-nowrap sm:px-5">
                     <span class="w-6 shrink-0 text-sm text-text-muted tabular-nums">{{ index + 1 }}</span>
                     <div class="min-w-0 flex-1 basis-[60%]">
                       <p class="break-words font-medium">{{ titles[item.reference.qualified_ref] ?? `题目 ${item.reference.display_ref}` }}</p>
+                      <p v-if="item.contest_protection?.length" class="mt-1 text-xs text-text-secondary">比赛赛题 · 受保护，请从比赛入口作答</p>
                       <p class="mt-0.5 text-xs text-text-secondary">
                         <span class="font-mono">{{ item.reference.display_ref }}</span>
                         · {{ requirementLabel(item) }}
@@ -540,7 +542,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                           ? { assignment_id: id, assignment_item_id: item.id }
                           : undefined,
                       }" variant="outline" color="primary" size="sm">
-                        {{ progressCell(item.id) ? '继续练习' : '开始练习' }}
+                        {{ item.can_practice === false ? '查看赛题保护' : progressCell(item.id) ? '继续练习' : '开始练习' }}
                       </UButton>
                       <UBadge v-else color="warning" variant="subtle">资源不可用</UBadge>
                     </div>

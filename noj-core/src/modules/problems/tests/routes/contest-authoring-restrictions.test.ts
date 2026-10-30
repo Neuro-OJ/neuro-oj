@@ -26,8 +26,7 @@ import {
 import type { ObjectiveProblemContent } from "../../types/problem-content.ts";
 
 Deno.test({
-  name:
-    "比赛维护权限: 参赛编辑者题面和固定版本隐藏答案、暂停草稿管理，实际组织者和赛后恢复",
+  name: "比赛维护权限: 源题编辑角色不受报名身份影响，普通比赛作答仍裁剪答案",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -124,9 +123,9 @@ Deno.test({
       registered_at: now,
     }, { contest_id: contestId, user_id: organizer, registered_at: now }]);
     const student = await read(path);
-    assertEquals(student.can_edit, false);
-    assertEquals(student.content.questions[0].answer, []);
-    assertEquals(student.content.questions[0].explanation, "");
+    assertEquals(student.can_edit, true);
+    assertEquals(student.content.questions[0].answer, [true]);
+    assertEquals(student.content.questions[0].explanation, "秘密解析");
     for (
       const url of [
         `/api/v1/problems/1001`,
@@ -134,19 +133,15 @@ Deno.test({
       ]
     ) {
       const data = (await read(url)).data;
-      assertEquals(data.questions[0].answer, []);
-      assertEquals(data.questions[0].explanation, "");
+      assertEquals(data.questions[0].answer, [true]);
+      assertEquals(data.questions[0].explanation, "秘密解析");
     }
     const version =
       (await read(`/api/v1/problems/1001/versions/${versionId}`)).data;
-    assertEquals(version.content.questions[0].answer, []);
+    assertEquals(version.content.questions[0].answer, [true]);
     for (const url of [`${path}/draft`, "/api/v1/problems/1001/draft"]) {
       const response = await jsonRequest(app, url, { token });
-      assertEquals(response.status, 403);
-      assertEquals(
-        (await response.json()).code,
-        "CONTEST_AUTHORING_RESTRICTED",
-      );
+      assertEquals(response.status, 200);
     }
     // 本人创建且当前具有 manage_own 的比赛才属于真实组织权限。
     await db.update(contests).set({ created_by: actor }).where(
@@ -161,7 +156,7 @@ Deno.test({
     await db.update(contests).set({ created_by: organizer }).where(
       eq(contests.id, contestId),
     );
-    assertEquals((await read(path)).can_edit, false);
+    assertEquals((await read(path)).can_edit, true);
     // 组织者的比赛管理能力不等于源题编辑权限；显式提升 editor 后可管理。
     const [membership] = await db.select().from(domainMemberships).where(
       eq(domainMemberships.user_id, organizer),

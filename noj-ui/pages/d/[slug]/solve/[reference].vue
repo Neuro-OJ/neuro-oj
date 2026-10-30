@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+import { contestProtectionFromError } from '~/utils/contestProtection';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 definePageMeta({ layout: 'workspace-editor', middleware: 'workspace-context' });
 const route = useRoute(),
@@ -12,6 +13,12 @@ const reference = computed(() => String(route.params.reference));
 const selectedVersion = computed(() => typeof route.query.version_id === 'string' ? route.query.version_id : undefined);
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'solve', reference.value, selectedVersion.value ?? 'current'));
 const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value, selectedVersion.value));
+const protection = contestProtectionFromError(error.value);
+if (protection) throw createError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: slug.value, contests: protection } });
+watch(error, (failure) => {
+  const contests = contestProtectionFromError(failure);
+  if (contests) showError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: slug.value, contests } });
+});
 const backUrl = computed(() =>
   router.resolve({ path: workspaceProblemPath(slug.value!, reference.value), query: route.query }).href
 );
@@ -30,7 +37,11 @@ useSeoMeta({ title: () => data.value ? `${data.value.content.title} · 做题` :
   <AsyncContent :status="error ? 'error' : data ? 'data' : status==='pending' ? 'loading':'empty'"
     :error="error ? extractApiError(error).message:undefined" @retry="refresh()">
     <template v-if="data">
-      <div v-if="inline" class="flex min-h-dvh items-center justify-center">
+      <div v-if="data.can_practice === false" class="mx-auto max-w-3xl space-y-4 p-6">
+        <UAlert title="当前为管理预览，普通练习与自测暂不可用。请从比赛入口正式参赛。" color="info" />
+        <UButton :to="backUrl">返回题目预览</UButton>
+      </div>
+      <div v-else-if="inline" class="flex min-h-dvh items-center justify-center">
         <UButton :to="backUrl">返回题目页作答</UButton>
       </div>
       <div v-else-if="data.content.submission_mode==='ui'" class="mx-auto max-w-[1440px] space-y-4 p-4">

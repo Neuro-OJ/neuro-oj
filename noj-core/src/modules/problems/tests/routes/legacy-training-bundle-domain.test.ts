@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { zipSync } from "fflate";
 import { createApp } from "../../../../app.ts";
@@ -30,13 +30,12 @@ import {
 import { saveDomainTraining } from "../../services/workspace/trainings.ts";
 import {
   importDomainProblem,
-  setDomainProblemBindingPolicy,
   setDomainProblemBindingState,
 } from "../../services/workspace/problem-bindings.ts";
 import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
 import { importProblemBundle } from "../../services/problems/problem-bundle.ts";
 
-Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生效且不聚合其他域成绩", async () => {
+Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且不聚合其他域成绩", async () => {
   await resetDbForTest();
   const token = await createDefaultCatalogToken("admin"),
     actor = decodeJwt(token).sub!;
@@ -63,7 +62,26 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
     id: version,
     problem_id: id,
     version: i + 1,
-    content: { kind: "ai", title: `版本${i + 1}`, description: `题面${i + 1}` },
+    content: {
+      kind: "ai",
+      title: `版本${i + 1}`,
+      description: `题面${i + 1}`,
+      submission_mode: "code",
+      template_content: "print(1)",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+    },
     published_at: now,
   })));
   await db.update(problems).set({ latest_version_id: versions[1] }).where(
@@ -90,21 +108,15 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
     "legacy-training-source:1001",
     actor,
   );
-  await setDomainProblemBindingState(
-    "main",
-    "legacy-training-source:1001",
-    actor,
-    imported.binding.revision,
-    { disabled: false, visibility: "public", reason: "公开题单使用" },
-  );
+  const localRef = imported.reference.display_ref;
   const training = await saveDomainTraining("main", actor, {
-    title: "main引用题单",
-    visibility: "public",
-    problems: ["legacy-training-source:1001"],
+    title: "main副本题单",
+    state: "published",
+    problems: [localRef],
   });
   const outside = await saveDomainTraining(source.slug, actor, {
     title: "其他域题单",
-    visibility: "public",
+    state: "published",
     problems: ["1001"],
   });
   await db.insert(submissions).values({
@@ -125,25 +137,10 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
   const read = await jsonRequest(app, path + "/problems", { token });
   const first = (await read.json()).data[0];
   assertEquals(first.title, "版本2");
-  assertEquals(first.display_id, "legacy-training-source:1001");
+  assertEquals(first.display_id, localRef);
   assertEquals(Object.hasOwn(first, "type"), false);
   assertEquals(first.accepted, false);
-  const [binding] = await db.select().from(domainProblemBindings).where(
-    and(
-      eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
-      eq(domainProblemBindings.problem_id, id),
-    ),
-  );
-  await setDomainProblemBindingPolicy(
-    "main",
-    "legacy-training-source:1001",
-    actor,
-    binding.revision,
-    { mode: "exact", version_id: versions[0] },
-    "验证旧入口",
-  );
-  const exact = await jsonRequest(app, path + "/problems", { token });
-  assertEquals((await exact.json()).data[0].title, "版本1");
+  assertEquals(imported.binding.problem_id === id, false);
   const list = await jsonRequest(app, "/api/v1/trainings", { token });
   assertEquals(
     (await list.json()).data.some((row: { id: string }) =>
@@ -177,11 +174,22 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
     targetDomainIds: [],
   });
   const unavailable = await jsonRequest(app, path + "/problems", { token });
-  assertEquals((await unavailable.json()).data, []);
+  assertEquals((await unavailable.json()).data[0].title, "版本2");
   assertEquals(
     (await jsonRequest(app, path, { token }).then((res) => res.json())).data
       .problem_count,
-    0,
+    1,
+  );
+  await setDomainProblemBindingState(
+    "main",
+    localRef,
+    actor,
+    imported.binding.revision,
+    { disabled: true, reason: "目标域独立下架" },
+  );
+  assertEquals(
+    (await (await jsonRequest(app, path + "/problems", { token })).json()).data,
+    [],
   );
   await db.update(domains).set({ status: "suspended" }).where(
     eq(domains.id, DEFAULT_DOMAIN_ID),

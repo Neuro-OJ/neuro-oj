@@ -5,7 +5,6 @@ import {
   normalizeResultStatus,
 } from "./submission-result-format.ts";
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
-import { prepareEducationSubmissionDeletion } from "../../../education/contracts/cross-module/services_submission-lifecycle.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
  * 提交列表、创建、详情及删除。
@@ -37,7 +36,6 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import type { UserActor } from "../../../access/contracts/actor.ts";
 import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -57,7 +55,6 @@ import {
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
 import { assertContestSubmissionLimit } from "../../../contests/contracts/cross-module/services_contests.ts";
-import { deleteStorageObject } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { enqueueTaskTx } from "../../../runtime/tasks/repository.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
@@ -194,10 +191,8 @@ export async function listSubmissions(
   if (upgradable) {
     // 作答升级跟随使用域绑定；exact(X) 的当前作答版本不随源域发布新版变化。
     const answerVersion =
-      sql`coalesce((SELECT CASE WHEN binding.effective_version_mode='exact'
-      THEN binding.required_version_id ELSE ${problems.latest_version_id} END
-      FROM domain_problem_bindings binding WHERE binding.id=${submissions.domain_problem_binding_id}
-      AND binding.domain_id=coalesce(${submissions.domain_id},${DEFAULT_DOMAIN_ID})),${problems.latest_version_id})`;
+      sql`CASE WHEN ${problems.effective_version_mode}='exact'
+      THEN ${problems.required_version_id} ELSE ${problems.latest_version_id} END`;
     conditions.push(
       sql`${answerVersion} IS NOT NULL
         AND ${submissions.submitted_version_id} IS DISTINCT FROM ${answerVersion}` as unknown as ReturnType<
@@ -438,6 +433,7 @@ export async function createSubmission(
     : null;
   if (!domainExecution) {
     const { result: access } = await evaluateProblemAccess(problem, {
+      purpose: "write",
       viewerId: userId,
       isAdmin,
       contestAccess,
@@ -819,6 +815,22 @@ export async function getSubmission(
     ? await checkPermission(c, "submission:read_all")
     : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
+  if (canSeeDetails && !domainAccess) {
+    const [problem] = await db.select().from(problems).where(
+      eq(problems.id, row.problem_id),
+    );
+    if (!problem) throw new NotFoundError("题目不存在");
+    const actorId = c?.var.userId ?? viewerId ?? null;
+    const contestAccess = row.contest_id
+      ? await verifyContestAccess(actorId, row.contest_id, row.problem_id)
+      : null;
+    const { result } = await evaluateProblemAccess(problem, {
+      viewerId: actorId,
+      isAdmin,
+      contestAccess,
+    });
+    if (!result.allowed) throw new NotFoundError("题目不存在");
+  }
 
   // 类 Kaggle 赛制不隐藏进行中的评测结果（实时榜按排名接口权限控制）
   const hideResult = false;
@@ -885,8 +897,8 @@ export async function getSubmission(
       effective_version_mode: problems.effective_version_mode,
       required_version_id: problems.required_version_id,
       latest_version_id: problems.latest_version_id,
-      binding_mode: domainProblemBindings.effective_version_mode,
-      binding_required: domainProblemBindings.required_version_id,
+      binding_mode: problems.effective_version_mode,
+      binding_required: problems.required_version_id,
     })
     .from(problems)
     .leftJoin(
@@ -1119,69 +1131,4 @@ export function resolveSubmissionId(value: string): Promise<string> {
   );
 }
 
-/**
- * 删除提交。
- *
- * 仅做级联 delete（CASCADE 已覆盖 evaluation_results），不清理 Redis 队列。
- *
- * @throws {NotFoundError} 提交不存在
- */
-export async function deleteSubmission(
-  actor: UserActor,
-  id: string,
-): Promise<void> {
-  if (actor.kind !== "user") {
-    throw new TypeError("删除提交需要显式 UserActor");
-  }
-  const db = getDb();
-
-  const deleted = await db.transaction(async (tx) => {
-    const [identity] = await tx.select().from(submissions).where(
-      eq(submissions.id, id),
-    );
-    if (!identity) throw new NotFoundError("提交不存在");
-    await lockProjectionHosts(tx, {
-      kind: "submission",
-      id,
-      problem_id: identity.problem_id,
-      contest_id: identity.contest_id,
-    });
-    const [current] = await tx.select().from(submissions).where(
-      eq(submissions.id, id),
-    ).for("update");
-    if (
-      current?.active_attempt_id ||
-      (current && ["pending", "judging"].includes(current.status))
-    ) throw new AppError("提交正在评测，不能删除", 409, "SOURCE_JUDGING");
-    await prepareEducationSubmissionDeletion(tx, {
-      id,
-      kind: "submission",
-      domain_id: identity.domain_id,
-      user_id: identity.user_id,
-      problem_id: identity.problem_id,
-    });
-    const [row] = await tx.delete(submissions).where(eq(submissions.id, id))
-      .returning();
-    if (!row) throw new NotFoundError("提交不存在");
-    // 删除同样改变实际提交计数：题目/竞赛/global 全部递增。
-    await bumpSubmissionCountRevisions(tx, {
-      problem_id: row.problem_id,
-      contest_id: row.contest_id,
-    });
-    return row;
-  });
-  // 先提交引用删除，再调用带共享引用守卫的物理清理；升级副本仍有引用时保留。
-  // 上传预约（reservation）未过期或存在共享引用时清理会返回可重试错误——
-  // 提交行已删除，这里不能把清理失败变成删除失败（对象由后续守卫清理回收）。
-  if (deleted.artifact_storage_url) {
-    try {
-      await deleteStorageObject(deleted.artifact_storage_url);
-    } catch (err) {
-      logger.warn("提交删除后的产物物理清理失败，保留对象等待回收", {
-        submission_id: id,
-        err,
-      });
-    }
-  }
-  await publishSearchIndexEvent("submission", id, "delete");
-}
+export { deleteSubmission } from "./submission-deletion.ts";

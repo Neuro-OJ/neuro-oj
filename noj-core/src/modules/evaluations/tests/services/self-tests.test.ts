@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
@@ -7,13 +8,15 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 
 import {
   contests,
+  domainMemberRoles,
+  domainMemberships,
   problems,
   problemVersions,
   selfTests,
@@ -26,6 +29,7 @@ import {
 } from "../../../../shared/testing/contest-fixtures.ts";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
@@ -142,6 +146,8 @@ await db.insert(problems).values([
     updated_at: now,
   },
 ]);
+
+await authorizeLegacyJobActorForTest(USER_ID, "editor");
 
 Deno.test({
   name: "self-tests service: 不支持的语言抛出 BadRequestError",
@@ -289,7 +295,7 @@ Deno.test({
  * 的公开赛收编。
  */
 Deno.test({
-  name: "self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03）",
+  name: "self-tests service: 赛前筹备期保密题返回 403 并阻止普通自测",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -316,14 +322,14 @@ Deno.test({
       times: pendingContestTimes(),
     });
 
-    // NotFoundError（而非 ForbiddenError）＝对外口径为"题目不存在"
+    // 已可进入域，受保护普通自测统一拒绝。
     await assertRejects(
       () =>
         createSelfTest(USER_ID, secretProblemId, {
           language: "python3",
           code: "print(1)",
         }),
-      NotFoundError,
+      ForbiddenError,
     );
 
     await db.delete(contests).where(eq(contests.id, contestId));
@@ -641,6 +647,15 @@ Deno.test({
     await db.delete(selfTests).where(eq(selfTests.user_id, USER_ID));
     await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await deleteProblemFixtures(eq(problems.id, OBJECTIVE_PROBLEM_ID));
+    await db.delete(domainMemberRoles).where(inArray(
+      domainMemberRoles.membership_id,
+      db.select({ id: domainMemberships.id }).from(domainMemberships).where(
+        eq(domainMemberships.user_id, USER_ID),
+      ),
+    ));
+    await db.delete(domainMemberships).where(
+      eq(domainMemberships.user_id, USER_ID),
+    );
     await db.delete(users).where(eq(users.id, USER_ID));
   },
 });

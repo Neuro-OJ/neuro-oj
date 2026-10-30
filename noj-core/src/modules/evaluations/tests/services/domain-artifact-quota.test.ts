@@ -70,7 +70,7 @@ Deno.test({
         await createDomainArtifactSubmission(f.b.slug, f.ref, f.student, {
           file_name: "answer.zip",
           file_stream: zip(),
-          version_id: f.v2,
+          version_id: f.v2B,
         });
         assertEquals(await getDomainStorageUsage(f.b.id), {
           used: 8,

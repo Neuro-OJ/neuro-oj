@@ -1,3 +1,10 @@
+import {
+  commitDomainProblemCopy,
+  compensateProblemCopy,
+  prepareDomainProblemCopy,
+  type PreparedProblemCopy,
+} from "./problem-copy.ts";
+import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   AppError,
@@ -9,7 +16,8 @@ import { resolveSharingTargetSlugs } from "./problem-sharing.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domains,
-  domainTrainingBindings,
+  problems,
+  trainingProblems,
   trainings,
   trainingShareSettings,
   trainingShareTargets,
@@ -138,76 +146,137 @@ export async function setDomainTrainingSharing(
   });
 }
 
-/** 引用只保存题单来源；题目绑定在作业发布事务中按当前集合建立。 */
+/** 跨域题单导入复制有序集合和独立题目，整个集合在一个事务中发布。 */
 export async function importDomainTraining(
   slug: string,
   trainingId: string,
   actorId: string,
 ) {
-  return await getDb().transaction(async (tx) => {
-    const target = await loadWorkspace(slug, actorId, {
-      executor: tx,
-      write: true,
-    });
-    assertWorkspacePermission(target.context, "training:import");
-    const [source] = await tx.select({ training: trainings, domain: domains })
-      .from(trainings)
-      .innerJoin(domains, eq(domains.id, trainings.domain_id)).where(
-        eq(trainings.id, trainingId),
-      );
-    if (!source || source.domain.id === target.domain.id) {
-      throw new NotFoundError("跨域源题单不存在");
-    }
-    await tx.select({ id: domains.id }).from(domains).where(
-      inArray(domains.id, [source.domain.id, target.domain.id]),
-    ).orderBy(asc(domains.id)).for("update");
-    const currentTarget = await loadWorkspace(slug, actorId, {
-      executor: tx,
-      write: true,
-    });
-    assertWorkspacePermission(currentTarget.context, "training:import");
-    const [training] = await tx.select().from(trainings).where(
-      eq(trainings.id, trainingId),
-    ).for("share");
-    const [currentSource] = await tx.select().from(domains).where(
-      eq(domains.id, source.domain.id),
-    );
-    const [policy] = await tx.select().from(trainingShareSettings).where(
-      eq(trainingShareSettings.training_id, trainingId),
-    );
-    if (
-      !training || training.visibility !== "public" ||
-      currentSource.status === "suspended" ||
-      currentSource.configuration.access !== "public" || !policy?.enabled
-    ) throw new NotFoundError("题单不可引用");
-    if (policy.scope === "selected") {
-      const [grant] = await tx.select().from(trainingShareTargets).where(
-        and(
-          eq(trainingShareTargets.training_id, trainingId),
-          eq(trainingShareTargets.domain_id, target.domain.id),
-        ),
-      );
-      if (!grant) throw new NotFoundError("题单未授权此工作空间");
-    }
-    const [binding] = await tx.insert(domainTrainingBindings).values({
-      id: crypto.randomUUID(),
-      domain_id: target.domain.id,
-      training_id: trainingId,
-      created_by: actorId,
-      created_at: new Date().toISOString(),
-    }).onConflictDoUpdate({
-      target: [
-        domainTrainingBindings.domain_id,
-        domainTrainingBindings.training_id,
-      ],
-      set: { disabled_at: null },
-    }).returning();
-    await workspaceAudit(tx, actorId, target.domain.id, "domain.update", {
-      operation: "training.import",
-      training_id: trainingId,
-    });
-    return binding;
+  const db = getDb();
+  const target = await loadWorkspace(slug, actorId, { write: true });
+  assertWorkspacePermission(target.context, "training:create");
+  assertWorkspacePermission(target.context, "training:publish");
+  const [source] = await db.select({ training: trainings, domain: domains })
+    .from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
+    .where(eq(trainings.id, trainingId));
+  if (!source || source.domain.id === target.domain.id) {
+    throw new NotFoundError("跨域源题单不存在");
+  }
+  if (source.training.state !== "published") {
+    throw new BadRequestError("只能复制已发布题单");
+  }
+  const sourceAccess = await loadWorkspace(source.domain.slug, actorId, {
+    write: true,
   });
+  assertWorkspacePermission(
+    sourceAccess.context,
+    sourceAccess.context.domainPermissions.has("training:write_any") ||
+      source.training.created_by !== actorId
+      ? "training:write_any"
+      : "training:write_own",
+  );
+  const items = await db.select({
+    problem: problems,
+    position: trainingProblems.position,
+  })
+    .from(trainingProblems).innerJoin(
+      problems,
+      eq(problems.id, trainingProblems.problem_id),
+    )
+    .where(eq(trainingProblems.training_id, trainingId)).orderBy(
+      asc(trainingProblems.position),
+    );
+  if (items.some((item) => item.problem.domain_id !== source.domain.id)) {
+    throw new BadRequestError("源题单必须只包含本域独立题目");
+  }
+  const copies = new Map<string, PreparedProblemCopy>();
+  try {
+    for (const item of items) {
+      if (!copies.has(item.problem.id)) {
+        copies.set(
+          item.problem.id,
+          await prepareDomainProblemCopy(
+            slug,
+            `${source.domain.slug}:${item.problem.number}`,
+            actorId,
+          ),
+        );
+      }
+    }
+    return await db.transaction(async (tx) => {
+      await tx.select({ id: domains.id }).from(domains).where(
+        inArray(domains.id, [source.domain.id, target.domain.id]),
+      ).orderBy(asc(domains.id)).for("update");
+      const currentTarget = await loadWorkspace(slug, actorId, {
+        executor: tx,
+        write: true,
+      });
+      assertWorkspacePermission(currentTarget.context, "training:create");
+      assertWorkspacePermission(currentTarget.context, "training:publish");
+      const currentSource = await loadWorkspace(source.domain.slug, actorId, {
+        executor: tx,
+        write: true,
+      });
+      const [current] = await tx.select().from(trainings).where(
+        eq(trainings.id, trainingId),
+      ).for("share");
+      if (!current || current.revision !== source.training.revision) {
+        throw new ConflictError("源题单已变化，请重新复制");
+      }
+      assertWorkspacePermission(
+        currentSource.context,
+        currentSource.context.domainPermissions.has("training:write_any") ||
+          current.created_by !== actorId
+          ? "training:write_any"
+          : "training:write_own",
+      );
+      const ids = new Map<string, string>();
+      for (const [id, prepared] of copies) {
+        ids.set(
+          id,
+          (await commitDomainProblemCopy(tx, prepared)).binding.problem_id,
+        );
+      }
+      const now = new Date().toISOString(), id = crypto.randomUUID();
+      await tx.insert(trainings).values({
+        id,
+        public_id: generatePublicId("tr"),
+        domain_id: target.domain.id,
+        title: current.title,
+        description: current.description,
+        state: "published",
+        visibility: "public",
+        created_by: actorId,
+        created_at: now,
+        updated_at: now,
+      });
+      if (items.length) {
+        await tx.insert(trainingProblems).values(
+          items.map((item, position) => ({
+            training_id: id,
+            problem_id: ids.get(item.problem.id)!,
+            position,
+          })),
+        );
+      }
+      await workspaceAudit(tx, actorId, target.domain.id, "domain.update", {
+        operation: "training.copy",
+        training_id: id,
+        source_training_id: trainingId,
+      });
+      return {
+        id,
+        training_id: id,
+        domain_id: target.domain.id,
+        created_by: actorId,
+        created_at: now,
+        disabled_at: null,
+      };
+    });
+  } catch (error) {
+    await Promise.allSettled([...copies.values()].map(compensateProblemCopy));
+    throw error;
+  }
 }
 
 /** 本域题单共享设置及稳定目标来源；未设置时返回 revision 0。 */

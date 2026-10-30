@@ -13,6 +13,7 @@ export interface ContestConfig {
 }
 
 export interface Contest {
+  secrecy_enabled: boolean;
   id: string;
   public_id?: string;
   title: string;
@@ -86,6 +87,7 @@ export interface ContestProblemInput {
 }
 
 export interface ContestPayload {
+  secrecy_enabled?: boolean;
   classroom_ids?: string[];
   title: string;
   description?: string;

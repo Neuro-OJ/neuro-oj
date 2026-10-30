@@ -5,7 +5,7 @@
  * 竞赛上下文**（是该竞赛参赛者、题目属于该竞赛、窗口 running/ended）时仍放行——
  * 这条豁免决定了 `GET /:id/questions?contest_id=` 不会在赛中失效。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
@@ -124,12 +124,13 @@ Deno.test({
     );
     const problem = { id: problemId, visibility: "public", owner_id: ownerId };
     try {
-      const { result, secrecy } = await evaluateProblemAccess(problem, {
-        viewerId: null,
-        isAdmin: false,
-      });
-      assertEquals(result, { allowed: false, mode: "contest-secret" });
-      assertEquals(secrecy.map((ref) => ref.contestId), [contestId]);
+      const error = await assertRejects(() =>
+        evaluateProblemAccess(problem, { viewerId: null, isAdmin: false })
+      );
+      assertEquals(
+        (error as { code?: string }).code,
+        "CONTEST_PROBLEM_RESTRICTED",
+      );
     } finally {
       await cleanupProblemAndContest(contestId, problemId);
     }
@@ -182,12 +183,13 @@ Deno.test({
     );
     const problem = { id: problemId, visibility: "public", owner_id: ownerId };
     try {
-      const { result } = await evaluateProblemAccessWithContestId(problem, {
-        viewerId: strangerId,
-        isAdmin: false,
-        contestId,
-      });
-      assertEquals(result.allowed, false);
+      await assertRejects(() =>
+        evaluateProblemAccessWithContestId(problem, {
+          viewerId: strangerId,
+          isAdmin: false,
+          contestId,
+        })
+      );
     } finally {
       await cleanupProblemAndContest(contestId, problemId);
     }

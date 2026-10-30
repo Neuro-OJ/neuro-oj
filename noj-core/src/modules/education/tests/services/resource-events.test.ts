@@ -90,8 +90,6 @@ Deno.test("真实发布：源版本发布自动记录 any 作答切换，exact �
     domain_id: f.other.id,
     problem_id: f.problemId,
     kind: "shared",
-    effective_version_mode: "exact",
-    required_version_id: f.versionId,
     created_by: f.owner,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

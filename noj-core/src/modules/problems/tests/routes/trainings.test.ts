@@ -80,7 +80,7 @@ Deno.test({
       const createRes = await jsonRequest(app, "/api/v1/trainings", {
         method: "POST",
         token: userToken,
-        body: { title: "我的题单", visibility: "private" },
+        body: { title: "我的题单", state: "draft" },
       });
       assertEquals(createRes.status, 201);
       trainingId = (await createRes.json()).data.id;
@@ -89,7 +89,7 @@ Deno.test({
       const publicRes = await jsonRequest(app, "/api/v1/trainings", {
         method: "POST",
         token: adminToken,
-        body: { title: "公开题单", visibility: "unlisted" },
+        body: { title: "公开题单", state: "published" },
       });
       assertEquals(publicRes.status, 201);
       publicTrainingId = (await publicRes.json()).data.id;
@@ -99,7 +99,7 @@ Deno.test({
         {
           method: "PUT",
           token: adminToken,
-          body: { visibility: "public" },
+          body: { state: "published" },
         },
       );
       assertEquals(publishRes.status, 200);
@@ -176,7 +176,7 @@ Deno.test({
         {
           method: "PUT",
           token: userToken,
-          body: { visibility: "public" },
+          body: { state: "published" },
         },
       );
       assertEquals(forbiddenPublish.status, 200);
@@ -193,7 +193,7 @@ Deno.test({
         {
           method: "PUT",
           token: userToken,
-          body: { visibility: "private" },
+          body: { state: "draft" },
         },
       );
       assertEquals(makePrivate.status, 200);

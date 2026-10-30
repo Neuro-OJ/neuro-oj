@@ -138,7 +138,7 @@ export async function getEducationWorkbench(
       currentCellRevision(domainId)
     }
       OR g.policy_revision <> b.revision OR i.answer_version_id IS DISTINCT FROM
-        CASE WHEN b.effective_version_mode = 'exact' THEN b.required_version_id ELSE p.latest_version_id END`;
+        CASE WHEN p.effective_version_mode = 'exact' THEN p.required_version_id ELSE p.latest_version_id END`;
     const result = await db.execute(sql`WITH cells AS (
       SELECT a.id, i.id AS item_id, r.user_id,
         CASE WHEN NOT (${available}) THEN 'unavailable'

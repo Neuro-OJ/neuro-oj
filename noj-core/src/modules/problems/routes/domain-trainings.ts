@@ -4,7 +4,6 @@ import {
   deleteDomainTrainingCommand,
   importDomainTrainingCommand,
   saveDomainTrainingCommand,
-  setDomainTrainingSharingCommand,
 } from "../../application/problems.ts";
 import {
   authMiddleware,
@@ -22,9 +21,6 @@ import {
   listDomainTrainings,
   readDomainTraining,
 } from "../services/workspace/training-access.ts";
-import {
-  readDomainTrainingSharing,
-} from "../services/workspace/training-sharing.ts";
 
 /** 显式域题单入口，引用与原题授权在读取和写入时检查。 */
 export const domainTrainingsRouter = new Hono<AuthEnv>();
@@ -103,33 +99,6 @@ domainTrainingsRouter.delete(`${prefix}/:id`, authMiddleware, async (c) => {
   return c.body(null, 204);
 });
 domainTrainingsRouter.post(
-  `${prefix}/:id/sharing`,
-  authMiddleware,
-  async (c) => {
-    const input = await parseJsonBody<
-      {
-        enabled: boolean;
-        scope: "all" | "selected";
-        target_domain_slugs: string[];
-      }
-    >(c);
-    assertObjectBody(input);
-    return c.json({
-      data: await setDomainTrainingSharingCommand(
-        userActorFromAuthenticatedId(c.var.userId),
-        c.req.param("slug")!,
-        c.req.param("id")!,
-        {
-          enabled: input.enabled,
-          scope: input.scope,
-          targetDomainSlugs: input.target_domain_slugs,
-          expectedRevision: revision(c.req.header("If-Match")),
-        },
-      ),
-    });
-  },
-);
-domainTrainingsRouter.post(
   "/domains/:slug/training-bindings",
   authMiddleware,
   async (c) => {
@@ -159,15 +128,3 @@ domainTrainingsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
     }),
   );
 });
-domainTrainingsRouter.get(
-  `${prefix}/:id/sharing`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await readDomainTrainingSharing(
-        c.req.param("slug")!,
-        c.req.param("id")!,
-        c.var.userId,
-      ),
-    }),
-);

@@ -58,13 +58,24 @@ export interface AssignmentDraftInput {
   submission_source: 'assignment_only' | 'domain_any';
   include_previous_submissions: boolean;
   target_student_ids: string[] | null;
-  items?: { binding_id: string; requirement: 'accepted' | 'min_score'; minimum_score: number | null }[];
-  training?: { id: string; requirement: 'accepted' | 'min_score'; minimum_score: number | null };
+  items?: {
+    binding_id: string;
+    requirement: 'accepted' | 'min_score';
+    minimum_score: number | null;
+  }[];
+  training?: {
+    id: string;
+    requirement: 'accepted' | 'min_score';
+    minimum_score: number | null;
+  };
 }
 export interface AssignmentDetail extends Assignment {
   target_student_ids?: string[] | null;
   source_training_id: string | null;
-  source_training_rule: { requirement: 'accepted' | 'min_score'; minimum_score: number | null } | null;
+  source_training_rule: {
+    requirement: 'accepted' | 'min_score';
+    minimum_score: number | null;
+  } | null;
   items: {
     id: string;
     binding_id: string;
@@ -95,7 +106,8 @@ export const TEACHING_CAPABILITY_LABELS: Record<TeachingCapability, string> = {
 export function teachingScore(value: string | number) {
   const match = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(String(value).trim());
   if (!match) throw new Error('最低分需要 0–100，最多两位小数');
-  const score = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
+  const score = Number(match[1]) * 100 +
+    Number((match[2] ?? '').padEnd(2, '0'));
   if (score > 10000) throw new Error('最低分不能超过 100');
   return score;
 }
@@ -121,7 +133,12 @@ export function teachingTrainingId(value: string) {
   if (!match) throw new Error('请使用带空间的题单链接');
   return decodeURIComponent(match[1]!);
 }
-export type ProgressStatus = 'not_started' | 'judging' | 'below_target' | 'achieved' | 'unavailable';
+export type ProgressStatus =
+  | 'not_started'
+  | 'judging'
+  | 'below_target'
+  | 'achieved'
+  | 'unavailable';
 export interface TeachingCell {
   can_read_code?: boolean;
   item_id: string;
@@ -137,6 +154,11 @@ export interface TeachingCell {
   policy_revision: number;
 }
 export interface TeachingItem {
+  contest_protection?: Array<
+    { contestId: string; publicId: string; title: string }
+  >;
+  can_read?: boolean;
+  can_practice?: boolean;
   id: string;
   reference: { display_ref: string; qualified_ref: string };
   problem_id: string;
@@ -154,7 +176,12 @@ export interface MatrixData {
   scope: 'on_time' | 'current';
   updating: boolean;
   items: TeachingItem[];
-  rows: { user_id: string; username: string; recipient_status: string; cells: TeachingCell[] }[];
+  rows: {
+    user_id: string;
+    username: string;
+    recipient_status: string;
+    cells: TeachingCell[];
+  }[];
 }
 export interface MyProgress {
   scope: 'on_time' | 'current';
@@ -200,7 +227,12 @@ export interface AssignmentHelp {
   body: string;
   state: 'open' | 'resolved';
   revision: number;
-  replies?: { id: string; author_name: string; body: string; created_at: string }[];
+  replies?: {
+    id: string;
+    author_name: string;
+    body: string;
+    created_at: string;
+  }[];
   reply_page?: number;
   reply_total?: number;
 }
@@ -211,11 +243,18 @@ export interface TeachingPage<T> {
   per_page: number;
 }
 
-export function classroomCan(detail: ClassroomDetail, _capability: TeachingCapability) {
+export function classroomCan(
+  detail: ClassroomDetail,
+  _capability: TeachingCapability,
+) {
   return detail.manages_domain;
 }
 /** 缓存包含使用域、查看者和资源／筛选，不依赖上次使用域。 */
-export function educationCacheKey(slug: string, actor: string | null, ...resources: unknown[]) {
+export function educationCacheKey(
+  slug: string,
+  actor: string | null,
+  ...resources: unknown[]
+) {
   return `education:${JSON.stringify([slug, actor, ...resources])}`;
 }
 export const PROGRESS_LABELS: Record<ProgressStatus, string> = {
@@ -231,7 +270,10 @@ export function teachingCellLabel(cell: TeachingCell) {
   return cell.score === null ? status : `${cell.score / 100} · ${status}${cell.late ? ' · 逾期' : ''}`;
 }
 /** 截止只结束按时统计，不把仍在评测的任务视为成绩永久冻结。 */
-export function assignmentPhase(task: Pick<Assignment, 'state' | 'ended_at' | 'deadline_at'>, now = Date.now()) {
+export function assignmentPhase(
+  task: Pick<Assignment, 'state' | 'ended_at' | 'deadline_at'>,
+  now = Date.now(),
+) {
   if (task.state === 'draft') return '草稿';
   if (task.state === 'scheduled') return '定时发布';
   if (task.state === 'archived') return '已归档';

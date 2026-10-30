@@ -3,15 +3,10 @@ import { computed, ref, watch } from 'vue'
 import type {
   AdminContestDetail,
   AdminProblemOption,
-  ContestKind,
   ContestPayload,
   ContestProblemInput,
   ContestType,
 } from '~/composables/useContests'
-import {
-  invitePublicProblemIds,
-  INVITE_PUBLIC_PROBLEM_WARNING,
-} from '~/utils/contestSelection'
 
 const {
   open = false,
@@ -33,20 +28,14 @@ const emit = defineEmits<{
   searchProblems: [keyword: string]
 }>()
 
-const { user } = useAuth()
-const canPublic = computed(() =>
-  user.value?.is_admin === true ||
-  user.value?.permissions?.includes('admin:full_access') === true
-)
-
 const title = ref('')
 const description = ref('')
 const announcement = ref('')
 const startTime = ref('')
 const endTime = ref('')
 const type = ref<ContestType>('kaggle')
-const kind = ref<ContestKind>('invite')
-const password = ref('')
+const secrecyEnabled = ref(true)
+const protectionLocked = computed(() => !!contest && Date.parse(contest.start_time) <= Date.now())
 const affectGlobalRanking = ref(false)
 const rankingVisibility = ref<'public' | 'participants' | 'hidden'>('public')
 const freezeMinutes = ref(0)
@@ -74,25 +63,6 @@ const filteredProblems = computed(() => {
   }).slice(0, 20)
 })
 
-/**
- * 邀请赛挂载公开题的保密风险提示（VULN-04 / VULN-05）。
- *
- * 公开题不会被全站保密遮蔽（反 DoS 设计），管理员需要显式知情。
- * 仅提示、不阻塞保存，也不改动任何权限模型。
- */
-const publicInviteProblemIds = computed(() =>
-  invitePublicProblemIds(
-    kind.value,
-    selectedProblems.value.map((item) => item.problem_id),
-    problems,
-  )
-)
-const invitePublicWarning = computed(() => publicInviteProblemIds.value.length > 0)
-/** 公开题在选题列表里的标记：帮助管理员在选中前就做出判断。 */
-function isPublicProblem(problem: AdminProblemOption): boolean {
-  return problem.visibility === 'public'
-}
-
 function toLocalDateTime(value: string | undefined) {
   if (!value) return ''
   const date = new Date(value)
@@ -107,8 +77,7 @@ function resetForm() {
   startTime.value = toLocalDateTime(contest?.start_time) || toLocalDateTime(new Date(Date.now() + HOUR_MS).toISOString())
   endTime.value = toLocalDateTime(contest?.end_time) || toLocalDateTime(new Date(Date.now() + 3 * HOUR_MS).toISOString())
   type.value = contest?.type ?? 'kaggle'
-  kind.value = contest?.kind ?? 'invite'
-  password.value = ''
+  secrecyEnabled.value = contest?.secrecy_enabled ?? true
   affectGlobalRanking.value = contest?.affect_global_ranking ?? false
   rankingVisibility.value = contest?.ranking_visibility ?? 'public'
   hasExplicitFreezeStart.value = Boolean(contest?.freeze_start_time)
@@ -244,10 +213,6 @@ function submit() {
     localError.value = '请至少选择一道题目'
     return
   }
-  if (kind.value === 'invite' && !password.value && !contest?.has_password) {
-    localError.value = '邀请赛必须设置邀请码'
-    return
-  }
 
   const config = {
     ...(Object.keys(submissionLimits.value).length > 0
@@ -261,9 +226,10 @@ function submit() {
     start_time: new Date(startTime.value).toISOString(),
     end_time: new Date(endTime.value).toISOString(),
     type: type.value,
-    kind: kind.value,
+    kind: 'public',
+    secrecy_enabled: secrecyEnabled.value,
     config,
-    is_public: kind.value === 'public',
+    is_public: true,
     affect_global_ranking: affectGlobalRanking.value,
     ranking_visibility: rankingVisibility.value,
     freeze_duration_seconds: Math.max(0, Math.floor(freezeMinutes.value * 60)),
@@ -275,7 +241,6 @@ function submit() {
       score: problem.score ?? DEFAULT_FULL_SCORE,
     })),
   }
-  if (password.value) payload.password = password.value
   emit('save', payload)
 }
 </script>
@@ -329,10 +294,6 @@ function submit() {
               <label class="mb-1 block text-xs font-semibold text-text">赛制 *</label>
               <span class="block rounded-md border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">类 Kaggle 分数赛</span>
             </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-text">{{ kind === 'invite' ? '邀请码' : '竞赛密码' }} <span v-if="kind === 'invite'" class="text-error-text">*</span></label>
-              <input v-model="password" type="password" class="w-full rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors" :placeholder="contest?.has_password ? '留空则保持原邀请码' : (kind === 'invite' ? '必填，用于邀请用户参赛' : '留空表示无密码')">
-            </div>
           </div>
           <p class="text-xs text-text-muted">类 Kaggle 赛制：每题取历史最高分，总分求和；可在题目列表中为每道题设置提交次数上限。</p>
           <div>
@@ -344,14 +305,10 @@ function submit() {
             <textarea v-model="announcement" rows="3" class="w-full resize-y rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors" placeholder="显示在竞赛详情页顶部"></textarea>
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-md border border-border p-3">
-              <p class="mb-2 text-xs font-semibold text-text">竞赛类型</p>
-              <div class="flex items-center gap-4 text-sm text-text">
-                <label class="flex items-center gap-2 cursor-pointer"><input v-model="kind" type="radio" value="invite" class="size-4 accent-primary">邀请赛</label>
-                <label class="flex items-center gap-2 cursor-pointer" :class="canPublic ? '' : 'opacity-50 cursor-not-allowed'"><input v-model="kind" type="radio" value="public" class="size-4 accent-primary" :disabled="!canPublic">公开赛</label>
-              </div>
-              <p v-if="!canPublic" class="mt-2 text-xs text-warning-text">公开赛需管理员权限，请联系管理员开通</p>
-            </div>
+            <label class="rounded-md border border-border p-3 text-sm">
+              <span class="flex items-center gap-2"><input v-model="secrecyEnabled" type="checkbox" :disabled="protectionLocked" class="size-4 accent-primary">保护赛题</span>
+              <span class="mt-2 block text-xs text-text-muted">加入比赛后立即保护所有历史版本，比赛结束自动解除。开始后不可更改。</span>
+            </label>
             <label class="flex items-center gap-2 rounded-md border border-border p-3 text-sm text-text cursor-pointer"><input v-model="affectGlobalRanking" type="checkbox" class="size-4 accent-primary">计入全局统计</label>
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
@@ -380,22 +337,6 @@ function submit() {
             </div>
           </div>
 
-          <!-- 邀请赛 + 公开题风险提示 -->
-          <div
-            v-if="invitePublicWarning"
-            role="status"
-            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-          >
-            <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-3.5 shrink-0" />
-            <p class="min-w-0">
-              {{ INVITE_PUBLIC_PROBLEM_WARNING }}
-              <span class="mt-1 block">
-                已选中的公开题目：
-                <span class="font-mono">{{ publicInviteProblemIds.map(problemName).join('、') }}</span>
-              </span>
-            </p>
-          </div>
-
           <div class="relative mb-3">
             <UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-muted size-3.5" />
             <input v-model="problemQuery" class="w-full rounded-md border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary transition-colors" placeholder="搜索题号或标题" @input="searchProblems">
@@ -403,7 +344,6 @@ function submit() {
           <div class="mb-4 max-h-48 overflow-y-auto rounded-md border border-border bg-white">
             <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg transition-colors" @click="addProblem(problem)">
               <UIcon name="i-lucide-plus" class="text-primary size-3.5" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span>
-              <span v-if="isPublicProblem(problem)" class="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">公开</span>
             </button>
             <p v-if="filteredProblems.length === 0" class="p-4 text-center text-xs text-text-muted">没有可添加的题目</p>
           </div>
@@ -455,9 +395,6 @@ function submit() {
                 {{ problemName(problem.problem_id) }}
               </span>
 
-              <span v-if="publicInviteProblemIds.includes(problem.problem_id)" class="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
-                公开
-              </span>
 
               <!-- 分值与限次参数输入组 -->
               <div class="flex items-center gap-2 shrink-0 select-text">

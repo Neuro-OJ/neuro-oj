@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
@@ -10,7 +11,6 @@ import {
 } from "../../../../shared/sse/event-bus.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { removeDomainMember } from "../../../access/workspace/index.ts";
-import { setDomainProblemSharing } from "../../../problems/index.ts";
 import {
   createDomainSelfTest,
   createDomainSubmission,
@@ -80,12 +80,7 @@ for (const kind of ["submission", "self-test"] as const) {
           assert(!replay.includes("9876"));
           assert(!replay.includes("never forward"));
           assert(!replay.includes("secret data"));
-          await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-            expectedRevision: 1,
-            enabled: false,
-            scope: "all",
-            targetDomainIds: [],
-          });
+          await setFixtureAvailability(f, false);
           const update = reader.read();
           _dispatchToLocalListenersForTest(
             Channels.submission(created.id),

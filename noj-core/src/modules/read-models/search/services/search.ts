@@ -2,20 +2,36 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import type { SearchPermissionContext } from "./permission-filter.ts";
+import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   communityVisibilityWhere,
-  contestSecrecyProblemWhere,
   currentSearchResourceWhere,
   notGatedContestContentWhere,
   permissionWhere,
 } from "./permission-filter.ts";
 
-// 旧索引的比赛body可能包含未公开赛题；匹配和输出均读取当前比赛摘要。
-const safeBody = sql`CASE WHEN entity_type='contest' THEN
-  (SELECT c.description FROM contests c WHERE c.id=search_entries.entity_id) ELSE body END`;
-const safeVector = sql`CASE WHEN entity_type='contest' THEN
-  to_tsvector('simple', title || ' ' || coalesce(${safeBody},'')) ELSE search_vector END`;
+// 保护期只允许标题匹配；正文不参与命中、排名或摘要，时间边界实时查询。
+function protectedProblem(ctx: SearchPermissionContext) {
+  return sql`entity_type='problem' AND ${
+    unendedPublicContestForProblem(
+      sql`search_entries.entity_id`,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }`;
+}
+function safeBodyFor(ctx: SearchPermissionContext) {
+  return sql`CASE WHEN ${
+    protectedProblem(ctx)
+  } THEN '' WHEN entity_type='contest' THEN
+    (SELECT c.description FROM contests c WHERE c.id=search_entries.entity_id) ELSE body END`;
+}
+function safeVectorFor(ctx: SearchPermissionContext) {
+  return sql`CASE WHEN ${protectedProblem(ctx)} OR entity_type='contest' THEN
+    to_tsvector('simple', title || ' ' || coalesce(${
+    safeBodyFor(ctx)
+  },'')) ELSE search_vector END`;
+}
 function safeMetadata(ctx: SearchPermissionContext) {
   const domainId = ctx.domainId ?? DEFAULT_DOMAIN_ID;
   const sourceId =
@@ -24,7 +40,9 @@ function safeMetadata(ctx: SearchPermissionContext) {
   const qualifiedRef = sql`${sourceSlug} || ':' || current_problem.number`;
   return sql`CASE
  WHEN entity_type='contest' THEN metadata-'problem_titles'-'problem_display_ids'
- WHEN entity_type='problem' THEN metadata || jsonb_build_object('reference',(
+ WHEN entity_type='problem' THEN metadata || jsonb_build_object('contest_protected', ${
+    protectedProblem(ctx)
+  }, 'reference',(
   SELECT jsonb_build_object(
    'problem_id',current_problem.id,'source_domain_id',${sourceId},'source_domain_slug',${sourceSlug},
    'number',current_problem.number,'qualified_ref',${qualifiedRef},
@@ -72,6 +90,7 @@ export async function searchGrouped(params: {
 }): Promise<GroupedResult> {
   const db = getDb();
   const { q, types, perType, ctx } = params;
+  const safeBody = safeBodyFor(ctx), safeVector = safeVectorFor(ctx);
   const likeQ = `%${escapeLikePattern(q)}%`;
   const start = performance.now();
   const groups: GroupedResult["groups"] = {};
@@ -104,7 +123,7 @@ export async function searchGrouped(params: {
         AND ${currentSearchResourceWhere(ctx)}
         AND ${communityVisibilityWhere(ctx)}
         AND ${notGatedContestContentWhere(ctx)}
-        AND ${contestSecrecyProblemWhere(ctx)}
+
       ORDER BY rank DESC NULLS LAST, updated_at DESC
       LIMIT ${perType + 1}
     `);
@@ -134,6 +153,7 @@ export async function searchFlat(params: {
 }): Promise<FlatResult> {
   const db = getDb();
   const { q, type, page, perPage, ctx } = params;
+  const safeBody = safeBodyFor(ctx), safeVector = safeVectorFor(ctx);
   const likeQ = `%${escapeLikePattern(q)}%`;
   const offset = (page - 1) * perPage;
   const start = performance.now();
@@ -164,7 +184,7 @@ export async function searchFlat(params: {
       AND ${currentSearchResourceWhere(ctx)}
       AND ${communityVisibilityWhere(ctx)}
       AND ${notGatedContestContentWhere(ctx)}
-      AND ${contestSecrecyProblemWhere(ctx)}
+
       ${type ? sql`AND entity_type = ${type}` : sql``}
     ORDER BY rank DESC NULLS LAST, updated_at DESC
     LIMIT ${perPage + 1} OFFSET ${offset}

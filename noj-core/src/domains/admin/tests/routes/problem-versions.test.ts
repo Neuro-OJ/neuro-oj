@@ -174,8 +174,8 @@ Deno.test({
     assertEquals(switchedBody.data.policy, { mode: "exact", version_id: v1 });
     assertEquals(switchedBody.data.revision, 1);
     const [row] = await db.select({
-      mode: domainProblemBindings.effective_version_mode,
-      required: domainProblemBindings.required_version_id,
+      mode: problems.effective_version_mode,
+      required: problems.required_version_id,
       latest: problems.latest_version_id,
       source_mode: problems.effective_version_mode,
     }).from(problems).innerJoin(
@@ -187,7 +187,7 @@ Deno.test({
     ).where(eq(problems.id, problemId));
     assertEquals(row.mode, "exact");
     assertEquals(row.required, v1);
-    assertEquals(row.source_mode, "any");
+    assertEquals(row.source_mode, "exact");
     // exact 不修改最新版指针（§1.2）
     assertEquals(row.latest, `${problemId}-v2`);
 

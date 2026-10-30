@@ -40,6 +40,8 @@ export const contests = pgTable(
     freeze_duration_seconds: integer("freeze_duration_seconds").notNull()
       .default(0),
     type: text("type").notNull(),
+    /** 从收录到结束保护本域赛题，开赛后锁定。 */
+    secrecy_enabled: boolean("secrecy_enabled").notNull().default(true),
     kind: text("kind").notNull().default("public"),
     config: jsonb("config").notNull().default({}),
     is_public: boolean("is_public").notNull().default(true),

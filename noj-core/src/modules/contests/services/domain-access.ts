@@ -42,9 +42,6 @@ export async function loadDomainContest(
   const registered = actorId !== null &&
     (workspace.membership !== null || workspace.platformAdmin) &&
     await isParticipant(contest.id, actorId, db);
-  if (!contest.is_public && !organizer && !registered && !options.joining) {
-    throw new NotFoundError("竞赛不存在");
-  }
   if (options.manage && !organizer) {
     throw new ForbiddenError("仅比赛组织者可以操作");
   }

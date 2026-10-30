@@ -37,7 +37,7 @@ beforeEach(() => {
       id: 'training',
       title: '训练题单',
       description: '说明',
-      visibility: 'private',
+      state: 'published',
       revision: 7,
       items: [{ problem_id: 'existing', display_ref: '2001' }],
     },
@@ -73,7 +73,7 @@ describe('当前域加入题单', () => {
     expect(api.save).toHaveBeenCalledWith('school', {
       title: '训练题单',
       description: '说明',
-      visibility: 'private',
+      state: 'published',
       problems: ['2001', 'main:1001'],
     }, { id: 'training', revision: 7 });
     expect(success).toHaveBeenCalledWith('已加入题单');

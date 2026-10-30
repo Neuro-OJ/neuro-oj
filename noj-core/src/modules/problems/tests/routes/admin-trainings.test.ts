@@ -20,7 +20,7 @@ await initRedisForTest();
 await ensureRbacSeeds();
 
 Deno.test({
-  name: "admin trainings routes: 列表、设 public、置顶、删除",
+  name: "admin trainings routes: 列表、发布、置顶、删除",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -102,7 +102,7 @@ Deno.test({
       const createRes = await jsonRequest(app, "/api/v1/trainings", {
         method: "POST",
         token: userToken,
-        body: { title: "待管理题单", visibility: "unlisted" },
+        body: { title: "待管理题单", state: "draft" },
       });
       assertEquals(createRes.status, 201);
       trainingId = (await createRes.json()).data.id;
@@ -113,7 +113,7 @@ Deno.test({
         {
           method: "PATCH",
           token: userToken,
-          body: { visibility: "public" },
+          body: { state: "published" },
         },
       );
       assertEquals(forbidden.status, 403);
@@ -143,12 +143,12 @@ Deno.test({
         {
           method: "PATCH",
           token: adminToken,
-          body: { visibility: "public", is_pinned: true },
+          body: { state: "published", is_pinned: true },
         },
       );
       assertEquals(patch.status, 200);
       const patched = await patch.json();
-      assertEquals(patched.data.visibility, "public");
+      assertEquals(patched.data.state, "published");
       assertEquals(patched.data.is_pinned, true);
 
       const list = await jsonRequest(app, "/api/v1/admin/catalog/trainings", {
@@ -166,6 +166,7 @@ Deno.test({
       }
       // withAudit 会为 trainings.update/delete 写入审计日志，先清理避免删除用户时外键冲突。
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
+      await db.delete(auditLogs).where(eq(auditLogs.admin_id, userId));
       await removeDefaultCatalogMembership(userId);
       await db.delete(users).where(eq(users.id, userId));
       await removeDefaultCatalogMembership(adminId);

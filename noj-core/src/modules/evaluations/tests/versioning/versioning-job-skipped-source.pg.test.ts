@@ -513,6 +513,7 @@ async function seedObjectiveFixture(
       domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `客观题策略锁序 ${tag}`,
+      secrecy_enabled: false,
       description: "",
       start_time: new Date(Date.now() - 60_000).toISOString(),
       end_time: new Date(Date.now() + 60_000).toISOString(),

@@ -28,7 +28,7 @@ import {
   getProblemSubmissionSummaries,
 } from "../../../access/submission-policy.ts";
 import { isValidDifficulty } from "../../types/problems.ts";
-import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
+import { loadDomainProblemProtection } from "../../../access/contest-policy.ts";
 import type { ProblemContentV1 } from "../../types/problem-content.ts";
 import {
   projectProblemContent,
@@ -109,38 +109,9 @@ export async function listDomainProblems(
   const authorized = and(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
-    workspace.membership || workspace.platformAdmin
-      ? undefined
-      : eq(binding.visibility, "public"),
     isNotNull(problems.latest_version_id),
-    or(
-      and(
-        eq(binding.kind, "owned"),
-        eq(problems.domain_id, workspace.domain.id),
-        canEdit ? undefined : or(
-          sql`NOT ${
-            unendedPublicContestForProblem(
-              problems.id,
-              sql`${workspace.domain.id}`,
-            )
-          }`,
-          actorId &&
-            workspace.context.domainPermissions.has("problem:write_own")
-            ? eq(problems.owner_id, actorId)
-            : undefined,
-        ),
-      ),
-      and(
-        eq(binding.kind, "shared"),
-        eq(problems.visibility, "public"),
-        sql`${source.status} <> 'suspended'`,
-        sql`${source.configuration}->>'access' = 'public'`,
-        eq(problemShareSettings.enabled, true),
-        sql`(${problemShareSettings.scope} = 'all' OR EXISTS (SELECT 1 FROM problem_share_targets grant_target WHERE grant_target.problem_id = ${problems.id} AND grant_target.domain_id = ${workspace.domain.id}))`,
-        sql`EXISTS (SELECT 1 FROM domain_problem_bindings source_binding WHERE source_binding.problem_id = ${problems.id} AND source_binding.domain_id = ${source.id} AND source_binding.kind = 'owned' AND source_binding.visibility = 'public' AND source_binding.disabled_at IS NULL)`,
-        sql`NOT ${unendedPublicContestForProblem(problems.id, source.id)}`,
-      ),
-    ),
+    eq(binding.kind, "owned"),
+    eq(problems.domain_id, workspace.domain.id),
   );
   const visible = and(
     authorized,
@@ -206,7 +177,7 @@ export async function listDomainProblems(
           eq(problemVersions.problem_id, problems.id),
           eq(
             problemVersions.id,
-            sql`CASE WHEN ${binding.effective_version_mode} = 'exact' THEN ${binding.required_version_id} ELSE ${problems.latest_version_id} END`,
+            sql`CASE WHEN ${problems.effective_version_mode} = 'exact' THEN ${problems.required_version_id} ELSE ${problems.latest_version_id} END`,
           ),
         ),
       )
@@ -237,7 +208,7 @@ export async function listDomainProblems(
       .orderBy(asc(tags.kind), asc(tags.name), asc(tags.id)),
   ]);
   const ids = rows.map((row) => row.problem_id);
-  const [statistics, labels] = await Promise.all([
+  const [statistics, labels, protection] = await Promise.all([
     getProblemSubmissionSummaries(scope, ids, actorId),
     ids.length
       ? db.select({
@@ -249,6 +220,7 @@ export async function listDomainProblems(
         .from(problemTags).innerJoin(tags, eq(tags.id, problemTags.tag_id))
         .where(inArray(problemTags.problem_id, ids)).orderBy(asc(tags.name))
       : Promise.resolve([]),
+    loadDomainProblemProtection(workspace.domain.id, ids),
   ]);
   const summaries = new Map(statistics.map((row) => [row.problem_id, row]));
   return {
@@ -275,6 +247,9 @@ export async function listDomainProblems(
           workspace.domain.id,
         ),
         title: row.title,
+        contest_protection: protection.get(row.problem_id) ?? [],
+        can_read: !protection.has(row.problem_id) || row.can_edit_tags,
+        can_practice: !protection.has(row.problem_id),
         kind: row.kind,
         version_id: row.version_id,
         version: row.version,
@@ -323,6 +298,9 @@ export async function readDomainProblem(
       getDb(),
     );
   const content = resolved.version.content as ProblemContentV1;
+  const protection = (await loadDomainProblemProtection(resolved.domain.id, [
+    resolved.problem.id,
+  ])).get(resolved.problem.id) ?? [];
   const fields = projectProblemContent(content, false);
   const [summaries, labels, [owner]] = await Promise.all([
     getProblemSubmissionSummaries(
@@ -356,12 +334,12 @@ export async function readDomainProblem(
     required_version_id: resolved.binding.required_version_id,
     answer_version_id: resolved.answerVersionId,
     visibility: resolved.binding.visibility,
-    can_share: resolved.binding.kind === "owned" &&
-      (resolved.platformAdmin ||
-        resolved.context.domainPermissions.has("problem:share")),
+    can_share: false,
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,
+    contest_protection: protection,
+    can_practice: protection.length === 0,
     difficulty: resolved.problem.difficulty,
     judge_backend: fields.judge_backend,
     owner: owner ?? null,

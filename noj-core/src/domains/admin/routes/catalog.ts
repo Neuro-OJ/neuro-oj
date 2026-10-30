@@ -326,12 +326,11 @@ router.patch(
 
       const editsTitleOrDescription = body.title !== undefined ||
         body.description !== undefined;
-      const editsNonPublicVisibility = body.visibility !== undefined &&
-        body.visibility !== "public";
+      const editsNonPublicVisibility = body.state === "draft";
       if (editsTitleOrDescription || editsNonPublicVisibility) {
         await assertPermission(c, "training:write_any");
       }
-      if (body.visibility === "public") {
+      if (body.state === "published") {
         await assertPermission(c, "training:publish");
       }
       if (body.is_pinned !== undefined) {

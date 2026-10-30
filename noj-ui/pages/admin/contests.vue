@@ -447,44 +447,6 @@ async function exportSnapshot(contest: Contest) {
   window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
 }
 
-async function makeContestPublic(contest: Contest) {
-  const confirmed = await dialog.confirm(`确定将竞赛“${contest.title}”转为公开赛吗？公开后无需邀请码即可报名。`, { title: '转公开赛', confirmText: '转公开赛' })
-  if (!confirmed) return
-  try {
-    await api.patch(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/kind`, { kind: 'public' }, {
-      silent: true,
-      headers: { "If-Match": `"${contest.updated_at}"` },
-    })
-    toast.success('竞赛已转为公开赛')
-    await loadContests(currentPage.value)
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
-}
-
-async function resetContestCode(contest: Contest) {
-  const confirmed = await dialog.confirm(`确定重置竞赛“${contest.title}”的邀请码吗？旧邀请码将立即失效。`, { title: '重置邀请码', confirmText: '重置' })
-  if (!confirmed) return
-  try {
-    const res = await api.post<{ data: { code: string } }>(
-      `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/reset-code`,
-      undefined,
-      {
-        silent: true,
-        headers: { "If-Match": `"${contest.updated_at}"` },
-      },
-    )
-    try {
-      await navigator.clipboard.writeText(res.data.code)
-    } catch {
-      // 剪贴板不可用时仍展示邀请码
-    }
-    toast.success(`新邀请码：${res.data.code}（已复制到剪贴板）`)
-    await loadContests(currentPage.value)
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
-}
 interface Participant {
   user_id: string
   username: string
@@ -612,7 +574,7 @@ async function removeParticipant(participant: Participant) {
     >
       <template #cell="{ row, column }">
         <template v-if="column.key === 'title'">
-          <div><div class="font-semibold text-text">{{ (row as unknown as Contest).title }}</div><div class="mt-1 text-xs text-text-muted">{{ (row as unknown as Contest).kind === 'invite' ? '邀请赛' : '公开赛' }}<span v-if="(row as unknown as Contest).has_password"> · {{ (row as unknown as Contest).kind === 'invite' ? '邀请码保护' : '密码保护' }}</span></div></div>
+          <div><div class="font-semibold text-text">{{ (row as unknown as Contest).title }}</div><div class="mt-1 text-xs text-text-muted">{{ (row as unknown as Contest).secrecy_enabled ? '赛题保护已开启' : '赛题保护已关闭' }}</div></div>
         </template>
         <template v-else-if="column.key === 'type'">
           {{ typeLabels[(row as unknown as Contest).type] }}
@@ -637,8 +599,6 @@ async function removeParticipant(participant: Participant) {
           <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row as unknown as Contest)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton>
           <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row as unknown as Contest)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton>
           <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === (row as unknown as Contest).id" :disabled="editingId !== null" @click="openEdit(row as unknown as Contest)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton>
-          <UButton v-if="(row as unknown as Contest).kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-green-50 hover:text-success-text" title="转公开赛" aria-label="转公开赛" @click="makeContestPublic(row as unknown as Contest)"><UIcon name="i-lucide-globe" class="size-3.5" /></UButton>
-          <UButton v-if="(row as unknown as Contest).kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="重置邀请码" aria-label="重置邀请码" @click="resetContestCode(row as unknown as Contest)"><UIcon name="i-lucide-key-round" class="size-3.5" /></UButton>
           <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row as unknown as Contest)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton>
         </div>
       </template>

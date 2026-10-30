@@ -101,6 +101,18 @@ Deno.test("主线融合 Domain：共享 UI 使用域别名与冻结凭据，自�
   await f.db.update(problems).set({ latest_version_id: version }).where(
     eq(problems.id, f.problemId),
   );
+  const [aVersion] = await f.db.select().from(problemVersions).where(
+    eq(problemVersions.id, version),
+  );
+  const versionB = crypto.randomUUID();
+  await f.db.insert(problemVersions).values({
+    ...aVersion,
+    id: versionB,
+    problem_id: f.problemB,
+  });
+  await f.db.update(problems).set({ latest_version_id: versionB }).where(
+    eq(problems.id, f.problemB),
+  );
   const oldFetch = globalThis.fetch,
     oldSecret = Deno.env.get("NOJ_LLM_SERVICE_TOKEN"),
     oldRedis = Deno.env.get("REDIS_URL");
@@ -264,7 +276,7 @@ Deno.test("主线融合 Domain：共享 UI 使用域别名与冻结凭据，自�
     const selfB = await createDomainSelfTest(f.b.slug, f.ref, f.student, {
       language: "ui",
       code: '{"prompt":"B"}',
-      version_id: version,
+      version_id: versionB,
     });
     const app = createApp();
     const token = await signToken({ sub: f.student, role: "user" });
@@ -325,7 +337,10 @@ Deno.test("主线融合 Domain：共享 UI 使用域别名与冻结凭据，自�
     );
     const duringContest = await jsonRequest(app, historyPath, { token });
     assertEquals(duringContest.status, 403);
-    assertEquals((await duringContest.json()).code, "CONTEST_PRACTICE_BLOCKED");
+    assertEquals(
+      (await duringContest.json()).code,
+      "CONTEST_PROBLEM_RESTRICTED",
+    );
     const selfPath = `/api/v1/domains/${f.a.slug}/self-tests/${self.id}`;
     assertEquals((await jsonRequest(app, selfPath, { token })).status, 403);
     assertEquals(

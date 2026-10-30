@@ -19,7 +19,6 @@ import {
   ensureDefaultWorkspace,
 } from "../../access/workspace/index.ts";
 import type { DomainRole } from "../../../shared/workspace/types.ts";
-import type { EffectiveVersionMode } from "../../../shared/versioning/types.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
 import { backfillDefaultCatalog } from "../../problems/index.ts";
 
@@ -61,9 +60,6 @@ export async function bindMainProblemForTest(problemId: string, actorId = "0") {
     problem_id: problemId,
     kind: "owned",
     visibility: "public",
-    effective_version_mode: problem
-      .effective_version_mode as EffectiveVersionMode,
-    required_version_id: problem.required_version_id,
     revision: problem.effective_policy_revision,
     created_by: actorId,
     created_at: now,

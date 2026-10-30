@@ -29,7 +29,7 @@ export function assignmentCellProjectionStaleSql(
       sql.join(keys, sql`, `)
     })),0)`;
   return sql`g.id IS NULL OR g.projection_revision<${revision} OR g.policy_revision<>b.revision
-    OR i.answer_version_id IS DISTINCT FROM CASE WHEN b.effective_version_mode='exact' THEN b.required_version_id ELSE p.latest_version_id END`;
+    OR i.answer_version_id IS DISTINCT FROM CASE WHEN p.effective_version_mode='exact' THEN p.required_version_id ELSE p.latest_version_id END`;
 }
 
 /** 当前页所有单元的事实版本批量读取，避免每个单元各发查询。 */

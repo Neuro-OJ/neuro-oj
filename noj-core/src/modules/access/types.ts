@@ -30,6 +30,7 @@ const EDITOR_PERMISSIONS = [
   "problem:write_own",
   "problem:publish",
   "training:create",
+  "training:publish",
   "training:import",
   "problem:import",
   "training:write_own",

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
 import type { loadClassroom } from "./access.ts";
+import { unendedPublicContestForProblem } from "../../access/contest-policy.ts";
 
 type ClassroomAccess = Awaited<ReturnType<typeof loadClassroom>>;
 
@@ -30,7 +31,9 @@ export function activeClassmateCondition(
 /** 代码必须来自已结束的共同作业，不能借同题或已知提交 ID 读取其他练习。 */
 export function peerSubmissionCondition(access: ClassroomAccess) {
   if (access.classMembership?.role !== "student") return sql`false`;
-  return sql`${activeClassmateCondition(access)} AND EXISTS (
+  return sql`NOT ${
+    unendedPublicContestForProblem(sql`s.problem_id`, sql`${access.domain.id}`)
+  } AND ${activeClassmateCondition(access)} AND EXISTS (
     SELECT 1 FROM assignments a
     JOIN assignment_items i ON i.assignment_id=a.id
     JOIN assignment_recipients r ON r.assignment_id=a.id AND r.user_id=s.user_id

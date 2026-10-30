@@ -1,6 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
+import {
+  AppError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
@@ -166,6 +170,9 @@ export async function resolveDomainProblemInWorkspace(
       ),
     );
   if (!row) throw new NotFoundError("域题库中不存在此题");
+  if (row.source.id !== workspace.domain.id || row.binding.kind !== "owned") {
+    throw new NotFoundError("请先将题目独立复制到当前域");
+  }
   const contestAccess = options.contestId
     ? await verifyContestAccess(
       actorId ? userActorFromAuthenticatedId(actorId) : guestActor(),
@@ -191,32 +198,31 @@ export async function resolveDomainProblemInWorkspace(
       "PROBLEM_BINDING_INCONSISTENT",
     );
   }
-  if (
-    row.binding.visibility === "members" && !workspace.membership &&
-    !workspace.platformAdmin
-  ) throw new NotFoundError("此题不可访问");
-  if (row.binding.kind === "shared") {
-    await assertCurrentProblemShare(
-      row.problem,
-      row.source,
-      workspace.domain.id,
-      executor,
-    );
-  } else {
+  {
     if (!row.problem.latest_version_id) throw new NotFoundError("此题尚未发布");
     const editable = workspace.platformAdmin ||
       workspace.context.domainPermissions.has("problem:write_any") ||
       (actorId === row.problem.owner_id &&
         workspace.context.domainPermissions.has("problem:write_own"));
+    const protection = await loadPublicContestSecrecy(
+      row.problem.id,
+      executor,
+      row.source.id,
+    );
     if (
-      !editable && !contestAccess?.allowed &&
-      (await loadPublicContestSecrecy(row.problem.id, executor, row.source.id))
-        .length
-    ) throw new NotFoundError("此题处于比赛保密窗口");
+      protection.length && !contestAccess?.allowed &&
+      (!editable || options.write)
+    ) {
+      throw new ForbiddenError(
+        "此题受比赛保护，请在开赛后报名并从比赛入口作答",
+        "CONTEST_PROBLEM_RESTRICTED",
+        { contests: protection },
+      );
+    }
   }
   const answerVersionId = contestAccess?.pinnedVersionId ??
-    (row.binding.effective_version_mode === "exact"
-      ? row.binding.required_version_id
+    (row.problem.effective_version_mode === "exact"
+      ? row.problem.required_version_id
       : row.problem.latest_version_id);
   const versionId = contestAccess
     ? answerVersionId
@@ -233,6 +239,13 @@ export async function resolveDomainProblemInWorkspace(
   return {
     ...workspace,
     ...row,
+    binding: {
+      ...row.binding,
+      effective_version_mode: row.problem.effective_version_mode as
+        | "any"
+        | "exact",
+      required_version_id: row.problem.required_version_id,
+    },
     version,
     answerVersionId,
     reference: domainProblemReference(

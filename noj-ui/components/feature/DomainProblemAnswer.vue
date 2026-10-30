@@ -37,7 +37,7 @@ const isObjective = computed(() => props.problem.content.kind === 'objective');
 const submissionMode = computed(() => props.problem.content.submission_mode ?? 'code');
 const draftKey = computed(() => `${props.slug}:${props.problem.reference.problem_id}:${props.problem.version_id}`);
 const guestKey = computed(() => `${props.slug}:guest:${props.problem.reference.problem_id}:${props.problem.version_id}`);
-const writable = computed(() => isLoggedIn.value && domain.value?.status === 'active');
+const writable = computed(() => isLoggedIn.value && domain.value?.status === 'active' && props.problem.can_practice !== false);
 
 const handlers: AnswerHandlers = {
   submitCode: async (versionId, language, code) => {

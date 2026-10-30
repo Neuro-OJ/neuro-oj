@@ -5,6 +5,16 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* 赛题保护仅标记元数据，条纹之外保留文字说明以便辨认。 */
+.contest-protected {
+  background: repeating-linear-gradient(135deg, #f3f4f6 0 8px, #e5e7eb 8px 16px);
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+.dark .contest-protected {
+  background: repeating-linear-gradient(135deg, #27272a 0 8px, #3f3f46 8px 16px);
+}
+
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
 /* 在使用位置解析语义颜色，才能继承编辑器局部的 --c-* 明暗变量。 */
 @theme inline {

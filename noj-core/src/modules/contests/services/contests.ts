@@ -20,11 +20,6 @@ import {
 } from "../../../shared/base/errors.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import {
-  comparePassword,
-  hashPassword,
-  isBcryptHash,
-} from "../../access/contracts/cross-module/identity_services_security_password.ts";
-import {
   generatePublicId,
   resolvePublicId,
 } from "../../../shared/security/public-id.ts";
@@ -47,13 +42,11 @@ import {
 export { computeContestStatus } from "./contest-window.ts";
 import {
   type ContestConfig,
-  type ContestKind,
   type ContestProblemInput,
   type ContestResponse,
   type ContestType,
   type CreateContestInput,
   isValidContestConfig,
-  isValidContestKind,
   isValidContestType,
   isValidRankingVisibility,
   type UpdateContestInput,
@@ -302,8 +295,8 @@ function normalizeProblems(
  */
 async function assertContestProblemAddable(
   problemInputs: ContestProblemInput[],
-  creatorId: string,
-  isAdmin: boolean,
+  _creatorId: string,
+  _isAdmin: boolean,
   // deno-lint-ignore no-explicit-any -- postgres.js 事务共享接口
   db: any,
   type: ContestType,
@@ -325,13 +318,6 @@ async function assertContestProblemAddable(
     throw new BadRequestError("竞赛包含不存在的题目");
   }
   for (const row of rows) assertDefaultProblemSource(row);
-  if (!isAdmin) {
-    for (const row of rows) {
-      if (row.visibility !== "public" && row.owner_id !== creatorId) {
-        throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
-      }
-    }
-  }
   const unpublished = rows.filter(
     (row: { latest_version_id: string | null }) => !row.latest_version_id,
   );
@@ -381,10 +367,11 @@ function toContestResponse(
       .ranking_visibility as ContestResponse["ranking_visibility"],
     freeze_start_time: row.freeze_start_time,
     freeze_duration_seconds: row.freeze_duration_seconds,
-    kind: row.kind as ContestKind,
+    secrecy_enabled: row.secrecy_enabled,
+    kind: "public",
     config: row.config as ContestConfig,
-    is_public: row.is_public,
-    has_password: row.password !== null,
+    is_public: true,
+    has_password: false,
     affect_global_ranking: row.affect_global_ranking,
     created_by: row.created_by,
     announcement: row.announcement,
@@ -434,15 +421,11 @@ export async function createContest(
   if (!isValidContestType(input.type)) {
     throw new BadRequestError("竞赛类型不合法");
   }
-  const kind = input.kind ?? (isAdmin ? "public" : "invite");
-  if (!isValidContestKind(kind)) {
-    throw new BadRequestError("竞赛分类不合法");
-  }
-  if (kind === "public" && !isAdmin) {
-    throw new ForbiddenError("仅管理员可创建公开赛");
-  }
-  if (kind === "invite" && !input.password) {
-    throw new BadRequestError("邀请赛必须设置邀请码");
+  if (
+    input.secrecy_enabled !== undefined &&
+    typeof input.secrecy_enabled !== "boolean"
+  ) {
+    throw new BadRequestError("赛题保护必须为布尔值");
   }
   // 校验 + 规范化：落库形态统一为 toISOString()，保证读侧按时刻比较安全（C1）
   const times = normalizeTimes(input.start_time, input.end_time);
@@ -469,9 +452,6 @@ export async function createContest(
   });
   const config = normalizeContestConfig(input.type, input.config);
   const problemInputs = normalizeProblems(input.type, input.problems);
-  const passwordHash = input.password
-    ? await hashPassword(input.password)
-    : null;
   const id = crypto.randomUUID();
   const publicId = generatePublicId("ct");
   const now = new Date().toISOString();
@@ -504,11 +484,12 @@ export async function createContest(
       end_time: times.end_time,
       ...rankingPolicy,
       type: input.type,
-      kind,
+      kind: "public",
+      secrecy_enabled: input.secrecy_enabled ?? true,
       config,
-      // kind 与 is_public 绑定：public 公开可见，invite 隐藏仅链接+邀请码（I4）
-      is_public: kind === "public",
-      password: passwordHash,
+      // 旧字段不再参与授权，统一写入中性值。
+      is_public: true,
+      password: null,
       affect_global_ranking: input.affect_global_ranking ?? false,
       created_by: userId,
       announcement: input.announcement ?? "",
@@ -558,25 +539,11 @@ export async function updateContest(
   if (!isValidContestType(type)) {
     throw new BadRequestError("竞赛类型不合法");
   }
-  const kind = input.kind ?? existing.kind as ContestKind;
-  if (!isValidContestKind(kind)) {
-    throw new BadRequestError("竞赛分类不合法");
-  }
-  if (kind === "public" && input.kind !== undefined && !isAdmin) {
-    throw new ForbiddenError("仅管理员可创建/转公开赛");
-  }
-  // 邀请赛必须有可用凭据。必须按「请求值否则现值」计算**有效密码**，不能只看
-  // 请求里是否显式传了 password：公开赛存量 password 可能为 null，仅改
-  // kind=invite 时 passwordHash 保持 undefined，最终写出
-  // kind=invite / is_public=false / password=null 的"无密码邀请赛"——注册侧对
-  // invite 恒走邀请码校验，而库中无任何可匹配凭据，赛事从此不可加入（评审 #2）。
-  // 判据与下方 passwordHash 的落库逻辑**逐字对齐**（input.password 为真才 hash，
-  // 否则 null）：空串/null 表示"清除密码"，undefined 才表示"不动"。
-  const effectiveHasPassword = input.password === undefined
-    ? existing.password !== null
-    : Boolean(input.password);
-  if (kind === "invite" && !effectiveHasPassword) {
-    throw new BadRequestError("邀请赛必须设置邀请码");
+  if (
+    input.secrecy_enabled !== undefined &&
+    typeof input.secrecy_enabled !== "boolean"
+  ) {
+    throw new BadRequestError("赛题保护必须为布尔值");
   }
   // 合并后的时间同样校验 + 规范化：既防新写入脏形态，也顺带把存量非规范行
   // （如带 +08:00 偏移的旧数据）收敛为规范形态（C1）
@@ -604,11 +571,6 @@ export async function updateContest(
   const problemInputs = input.problems === undefined
     ? undefined
     : normalizeProblems(type, input.problems);
-  const passwordHash = input.password === undefined
-    ? undefined
-    : input.password
-    ? await hashPassword(input.password)
-    : null;
   const db = options.executor ?? getDb();
   /** 本次更新涉及题目的最新已发布版本（在事务内校验题目可加入时一并取得）。 */
   let latestVersions: Map<string, string> | null = null;
@@ -643,7 +605,8 @@ export async function updateContest(
       Date.now() >= Date.parse(locked.start_time) &&
       (input.type !== undefined && input.type !== locked.type ||
         input.config !== undefined || input.freeze_start_time !== undefined ||
-        input.freeze_duration_seconds !== undefined)
+        input.freeze_duration_seconds !== undefined ||
+        input.secrecy_enabled !== undefined)
     ) {
       throw new ConflictError("开赛后不能修改赛制或计分配置");
     }
@@ -697,13 +660,16 @@ export async function updateContest(
       updates.freeze_duration_seconds = rankingPolicy.freeze_duration_seconds;
     }
     if (input.type !== undefined) updates.type = input.type;
-    if (input.kind !== undefined) updates.kind = input.kind;
-    // kind 与 is_public 绑定：任何更新都收敛为 kind 语义，忽略显式 is_public 差异（I4）
-    updates.is_public = kind === "public";
+    if (input.secrecy_enabled !== undefined) {
+      updates.secrecy_enabled = input.secrecy_enabled;
+    }
+    // 访问由 Domain 决定，历史比赛分类与密码不再控制报名。
+    updates.is_public = true;
+    updates.kind = "public";
+    updates.password = null;
     if (input.config !== undefined || input.type !== undefined) {
       updates.config = config;
     }
-    if (passwordHash !== undefined) updates.password = passwordHash;
     if (input.affect_global_ranking !== undefined) {
       updates.affect_global_ranking = input.affect_global_ranking;
     }
@@ -860,7 +826,6 @@ export async function listContests(
       )!,
     );
   }
-  if (!params.showAll) conditions.push(eq(contests.is_public, true));
   if (params.type) conditions.push(eq(contests.type, params.type));
   const where = conditions.length === 0 ? undefined : and(...conditions);
   const db = getDb();
@@ -875,7 +840,7 @@ export async function listContests(
       (SELECT COUNT(*)::int FROM contest_problems cp WHERE cp.contest_id = c.id) AS problem_count,
       (SELECT COUNT(*)::int FROM contest_participants cpa WHERE cpa.contest_id = c.id) AS participant_count
     FROM contests c
-    WHERE ${params.showAll ? sql`TRUE` : sql`c.is_public = TRUE`}
+    WHERE TRUE
       ${
     params.defaultDomainOnly
       ? sql`AND (c.domain_id = ${DEFAULT_DOMAIN_ID} OR c.domain_id IS NULL)`
@@ -896,41 +861,23 @@ export async function listContests(
 
 /**
  * 用户注册参赛：
- * - invite 赛必须提供邀请码且匹配；
- * - public 赛可无码自助注册，设置了密码时需匹配。
+ * 已具备本域访问权的用户按比赛状态自助报名。
  *
  * @param contestId 竞赛 UUID
  * @param userId 用户 ID
- * @param password 邀请码/密码（可选）
- * @throws {ForbiddenError} 竞赛已结束或邀请码/密码错误时
+ * @param _password 历史兼容参数，不参与授权
+ * @throws {ForbiddenError} 竞赛已结束或域访问被拒时
  * @throws {ConflictError} 已注册该竞赛时
  */
 export async function registerForContest(
   contestId: string,
   userId: string,
-  password?: string,
+  _password?: string,
   executor?: Executor,
 ): Promise<void> {
   const contest = await findContestRow(contestId, executor);
   if (computeContestStatus(contest.start_time, contest.end_time) === "ended") {
     throw new ForbiddenError("竞赛已结束，无法注册");
-  }
-
-  if (contest.kind === "invite") {
-    const stored = contest.password ?? "";
-    const matches = stored
-      ? isBcryptHash(stored)
-        ? await comparePassword(password ?? "", stored)
-        : stored === password
-      : false;
-    if (!password || !matches) {
-      throw new ForbiddenError("邀请码错误");
-    }
-  } else if (
-    contest.password &&
-    (!password || !await comparePassword(password, contest.password))
-  ) {
-    throw new ForbiddenError("竞赛密码错误");
   }
 
   const db = executor ?? getDb();

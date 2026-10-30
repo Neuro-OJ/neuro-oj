@@ -3,6 +3,7 @@ import type { ApiCallOptions } from '~/composables/useApi';
 export type TrainingVisibility = 'private' | 'unlisted' | 'public';
 
 export interface Training {
+  state: 'draft' | 'published';
   id: string;
   public_id?: string;
   title: string;
@@ -36,6 +37,7 @@ export interface TrainingProblem {
 }
 
 export interface TrainingPayload {
+  state?: 'draft' | 'published';
   title: string;
   description?: string;
   visibility?: TrainingVisibility;

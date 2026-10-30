@@ -65,14 +65,15 @@ describe('域资源配置', () => {
     expect(view.text()).toContain('当前共享配置保留');
     expect(view.text()).toContain('school-three');
   });
-  it('编辑题单保留展示范围、来源题号及原revision，冲突保留题单输入', async () => {
+  it('编辑题单保留发布状态、本域题号及原revision，冲突保留题单输入', async () => {
     api.save.mockRejectedValue({ statusCode: 409, data: { error: '题单已变化' } });
     const initial = {
       id: 't1',
       revision: 3,
       title: '原题单',
       description: '说明',
-      visibility: 'unlisted',
+      visibility: 'private',
+      state: 'published',
       items: [{ display_ref: 'main:1001' }],
     } as DomainTrainingDetail;
     const view = mount(DomainTrainingEditor, { props: { slug: 'school', initial }, global: { stubs } });
@@ -82,7 +83,8 @@ describe('域资源配置', () => {
     expect(api.save).toHaveBeenCalledWith('school', {
       title: '修改题单',
       description: '说明',
-      visibility: 'unlisted',
+      visibility: 'private',
+      state: 'published',
       problems: ['main:1001'],
     }, { id: 't1', revision: 3 });
     expect(view.find('input').element.value).toBe('修改题单');

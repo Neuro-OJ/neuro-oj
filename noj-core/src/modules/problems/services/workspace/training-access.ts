@@ -1,18 +1,10 @@
-import {
-  and,
-  asc,
-  count,
-  eq,
-  ilike,
-  inArray,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { loadDomainProblemProtection } from "../../../access/contest-policy.ts";
+import { and, asc, count, eq, ilike, inArray, or } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   ConflictError,
+  ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
@@ -23,15 +15,11 @@ import {
   trainingProblems,
   trainings,
   trainingShareSettings,
-  trainingShareTargets,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import {
-  assertCurrentProblemShare,
-  resolveDomainProblem,
-} from "./problem-binding-access.ts";
+import { resolveDomainProblem } from "./problem-binding-access.ts";
 
-/** 读取目标域可用题单，跨域必须同时有当前题单授权；不以作者身份绕过进入政策。 */
+/** 只读取本域题单；作者身份不能绕过域进入政策。 */
 export async function resolveDomainTraining(
   slug: string,
   trainingId: string,
@@ -44,35 +32,15 @@ export async function resolveDomainTraining(
     .where(eq(trainings.id, trainingId));
   if (!row) throw new NotFoundError("题单不存在或不可访问");
   const shared = row.source.id !== workspace.domain.id;
-  if (shared) {
-    const [policy] = await executor.select().from(trainingShareSettings)
-      .where(eq(trainingShareSettings.training_id, trainingId));
-    const [binding] = await executor.select({ id: domainTrainingBindings.id })
-      .from(domainTrainingBindings).where(and(
-        eq(domainTrainingBindings.training_id, trainingId),
-        eq(domainTrainingBindings.domain_id, workspace.domain.id),
-        isNull(domainTrainingBindings.disabled_at),
-      ));
-    if (
-      row.source.status === "suspended" ||
-      row.source.configuration.access !== "public" ||
-      row.training.visibility !== "public" || !policy?.enabled || !binding
-    ) throw new NotFoundError("题单共享已撤销或尚未引用");
-    if (policy.scope === "selected") {
-      const [grant] = await executor.select().from(trainingShareTargets).where(
-        and(
-          eq(trainingShareTargets.training_id, trainingId),
-          eq(trainingShareTargets.domain_id, workspace.domain.id),
-        ),
-      );
-      if (!grant) throw new NotFoundError("题单未授权此工作空间");
-    }
-  } else if (
-    row.training.visibility === "private" &&
-    row.training.created_by !== actorId &&
-    !workspace.platformAdmin &&
-    !workspace.context.domainPermissions.has("training:write_any")
-  ) throw new NotFoundError("题单不存在或不可访问");
+  if (shared) throw new NotFoundError("请先将题单独立复制到当前域");
+  if (
+    row.training.state !== "published" && !workspace.platformAdmin &&
+    !workspace.context.domainPermissions.has("training:write_any") &&
+    !(row.training.created_by === actorId &&
+      workspace.context.domainPermissions.has("training:write_own"))
+  ) {
+    throw new NotFoundError("题单尚未发布");
+  }
   const items = await executor.select({
     problem: problems,
     source: domains,
@@ -92,7 +60,7 @@ export async function resolveDomainTraining(
   return { ...workspace, ...row, shared, items };
 }
 
-/** 展开和预览逐题重新检查授权；题单授权不能代替其中每一道源题的授权。 */
+/** 逐题检查本域归属和当前可用性，保护期间仍返回可展示的题目元数据。 */
 export async function readDomainTraining(
   slug: string,
   trainingId: string,
@@ -105,26 +73,33 @@ export async function readDomainTraining(
     actorId,
     executor,
   );
+  const protectionByProblem = await loadDomainProblemProtection(
+    resource.domain.id,
+    resource.items.map((item) => item.problem.id),
+    executor,
+  );
   const items = [];
   for (const item of resource.items) {
     const qualified = `${item.source.slug}:${item.problem.number}`;
     let sourceAvailable = true;
+    let protection: unknown[] = protectionByProblem.get(item.problem.id) ?? [];
     try {
       if (item.source.id !== resource.domain.id) {
-        await assertCurrentProblemShare(
-          item.problem,
-          item.source,
-          resource.domain.id,
-          executor,
-        );
+        throw new NotFoundError("题目不属于当前域，请先独立复制");
       } else {
         await resolveDomainProblem(slug, String(item.problem.number), actorId, {
           executor,
         });
       }
     } catch (error) {
-      if (!(error instanceof NotFoundError)) throw error;
-      sourceAvailable = false;
+      if (
+        error instanceof ForbiddenError &&
+        error.code === "CONTEST_PROBLEM_RESTRICTED"
+      ) {
+        protection = (error.meta?.contests as unknown[]) ?? [];
+      } else if (error instanceof NotFoundError) {
+        sourceAvailable = false;
+      } else throw error;
     }
     const bindingId = item.binding?.disabled_at
       ? null
@@ -133,10 +108,10 @@ export async function readDomainTraining(
       problem_id: item.problem.id,
       binding_id: sourceAvailable ? bindingId : null,
       resource_available: sourceAvailable && bindingId !== null,
-      can_import: sourceAvailable && bindingId === null &&
-        item.source.id !== resource.domain.id &&
-        (resource.platformAdmin ||
-          resource.context.domainPermissions.has("problem:import")),
+      contest_protection: protection,
+      can_read: sourceAvailable && !protection.length,
+      can_practice: sourceAvailable && !protection.length,
+      can_import: false,
       source_domain_id: item.source.id,
       source_domain_slug: item.source.slug,
       number: item.problem.number,
@@ -157,14 +132,13 @@ export async function readDomainTraining(
     description: resource.training.description,
     revision: resource.training.revision,
     visibility: resource.training.visibility,
+    state: resource.training.state,
     can_edit: !resource.shared &&
       (resource.platformAdmin ||
         resource.context.domainPermissions.has("training:write_any") ||
         resource.training.created_by === actorId &&
           resource.context.domainPermissions.has("training:write_own")),
-    can_share: !resource.shared &&
-      (resource.platformAdmin ||
-        resource.context.domainPermissions.has("training:share")),
+    can_share: false,
     is_shared: resource.shared,
     items,
   };
@@ -209,23 +183,12 @@ export async function listDomainTrainings(
   const all = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("training:write_any");
   const condition = and(
-    or(
-      and(
-        eq(trainings.domain_id, workspace.domain.id),
-        all ? undefined : or(
-          eq(trainings.visibility, "public"),
-          actorId ? eq(trainings.created_by, actorId) : undefined,
-        ),
-      ),
-      and(
-        eq(domainTrainingBindings.domain_id, workspace.domain.id),
-        isNull(domainTrainingBindings.disabled_at),
-        eq(trainings.visibility, "public"),
-        sql`${domains.status} <> 'suspended'`,
-        sql`${domains.configuration}->>'access' = 'public'`,
-        eq(trainingShareSettings.enabled, true),
-        sql`(${trainingShareSettings.scope} = 'all' OR EXISTS (SELECT 1 FROM training_share_targets target WHERE target.training_id = ${trainings.id} AND target.domain_id = ${workspace.domain.id}))`,
-      ),
+    eq(trainings.domain_id, workspace.domain.id),
+    all ? undefined : or(
+      eq(trainings.state, "published"),
+      actorId && workspace.context.domainPermissions.has("training:write_own")
+        ? eq(trainings.created_by, actorId)
+        : undefined,
     ),
     query.keyword ? ilike(trainings.title, `%${query.keyword}%`) : undefined,
   );
@@ -268,6 +231,7 @@ export async function listDomainTrainings(
         description: training.description,
         revision: training.revision,
         visibility: training.visibility,
+        state: training.state,
         can_edit: owned &&
           (all ||
             training.created_by === actorId &&

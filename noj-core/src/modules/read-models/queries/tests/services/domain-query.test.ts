@@ -14,7 +14,6 @@ import {
   domains,
   evaluationAttempts,
   problems,
-  problemShareSettings,
   submissions,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -69,48 +68,40 @@ export async function fixture() {
       joined_at: now,
     })),
   );
-  await db.insert(problems).values({
-    id: "query-source",
-    domain_id: DEFAULT_DOMAIN_ID,
+  const domainIds = [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"];
+  const problemId = (domainId: string) =>
+    domainId === DEFAULT_DOMAIN_ID
+      ? "query-source"
+      : `query-source-${domainId}`;
+  await db.insert(problems).values(domainIds.map((domain_id) => ({
+    id: problemId(domain_id),
+    domain_id,
     number: 997001,
-    title: "共享题",
+    title: "独立题目",
     description: "题面",
     owner_id: actor,
-    visibility: "public",
+    visibility: "public" as const,
     created_at: now,
     updated_at: now,
-  });
-  await db.insert(domainProblemBindings).values(
-    [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
-      (domain_id) => ({
-        id: `binding-${domain_id}`,
-        domain_id,
-        problem_id: "query-source",
-        kind: domain_id === DEFAULT_DOMAIN_ID
-          ? "owned" as const
-          : "shared" as const,
-        visibility: "public" as const,
-        created_by: actor,
-        created_at: now,
-        updated_at: now,
-      }),
-    ),
-  );
-  await publishAllProblemsForTest();
-  await db.insert(problemShareSettings).values({
-    problem_id: "query-source",
-    enabled: true,
-    scope: "all",
-    updated_by: actor,
+  })));
+  await db.insert(domainProblemBindings).values(domainIds.map((domain_id) => ({
+    id: `binding-${domain_id}`,
+    domain_id,
+    problem_id: problemId(domain_id),
+    kind: "owned" as const,
+    visibility: "public" as const,
+    created_by: actor,
+    created_at: now,
     updated_at: now,
-  });
+  })));
+  await publishAllProblemsForTest();
   await db.insert(submissions).values(
     [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
       (domain_id) => ({
         id: `submit-${domain_id}`,
         domain_id,
         domain_problem_binding_id: `binding-${domain_id}`,
-        problem_id: "query-source",
+        problem_id: problemId(domain_id),
         user_id: actor,
         language: "python3",
         code: "print(1)",
@@ -125,12 +116,12 @@ export async function fixture() {
   return { db, actor, now };
 }
 
-Deno.test("域首页评测：只展示当前域可用练习，撤销共享立即隐藏且不返回代码", async () => {
+Deno.test("域首页评测：只展示当前域可用练习，下架副本立即隐藏且不返回代码", async () => {
   const { db, actor } = await fixture();
   await db.insert(evaluationAttempts).values({
     id: "home-graded",
     submission_id: "submit-school-query-a",
-    problem_id: "query-source",
+    problem_id: "query-source-school-query-a",
     sequence: 0,
     source: "initial",
     state: "finished",
@@ -174,7 +165,9 @@ Deno.test("域首页评测：只展示当前域可用练习，撤销共享立即
     [`submit-${DEFAULT_DOMAIN_ID}`],
   );
   assertEquals((await getDomainRecentSubmissions(a, "other-user")).length, 0);
-  await db.update(problemShareSettings).set({ enabled: false });
+  await db.update(domainProblemBindings).set({
+    disabled_at: new Date().toISOString(),
+  }).where(eq(domainProblemBindings.id, "binding-school-query-a"));
   assertEquals((await getDomainRecentSubmissions(a, actor)).length, 0);
 });
 
@@ -217,7 +210,7 @@ Deno.test("本人题库状态：不计全站排行的已结束比赛仍显示通
   assertEquals((await getGlobalRankings({ page: 1 })).total, 0);
 });
 
-Deno.test("域统计与榜单：同源题三个域独立、撤销共享即时去除候选", async () => {
+Deno.test("域统计与榜单：三个域独立副本、下架副本即时去除候选", async () => {
   const { db, actor } = await fixture();
   const a = await loadDomainQueryScope("school-query-a", actor),
     b = await loadDomainQueryScope("school-query-b", actor);
@@ -232,9 +225,9 @@ Deno.test("域统计与榜单：同源题三个域独立、撤销共享即时去
     (await getGlobalRankings({ page: 1 })).data[0].total_submissions,
     1,
   );
-  await db.update(problemShareSettings).set({ enabled: false }).where(
-    eq(problemShareSettings.problem_id, "query-source"),
-  );
+  await db.update(domainProblemBindings).set({
+    disabled_at: new Date().toISOString(),
+  }).where(eq(domainProblemBindings.id, "binding-school-query-a"));
   assertEquals((await getDomainStats(a)).submissions, 0);
   assertEquals((await getDomainStats(a)).problems, 0);
   assertEquals((await getDomainRankingRows(a, { page: 1 })).total, 0);

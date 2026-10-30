@@ -40,8 +40,6 @@ interface BindingRow {
   readonly domain_id: string;
   readonly problem_id: string;
   readonly revision: number;
-  readonly effective_version_mode: string;
-  readonly required_version_id: string | null;
 }
 
 /**
@@ -87,8 +85,6 @@ export async function lockOwnedProblemBindingTx(
     domain_id: domainProblemBindings.domain_id,
     problem_id: domainProblemBindings.problem_id,
     revision: domainProblemBindings.revision,
-    effective_version_mode: domainProblemBindings.effective_version_mode,
-    required_version_id: domainProblemBindings.required_version_id,
   }).from(domainProblemBindings).where(
     and(
       eq(domainProblemBindings.domain_id, domainId),
@@ -126,14 +122,18 @@ async function applyBindingPolicyTx(
   const nextRevision = binding.revision + 1;
   const now = new Date().toISOString();
   const [updated] = await tx.update(domainProblemBindings).set({
-    effective_version_mode: columns.effective_version_mode,
-    required_version_id: columns.required_version_id,
     revision: nextRevision,
     updated_at: now,
   }).where(eq(domainProblemBindings.id, binding.id)).returning({
     id: domainProblemBindings.id,
     revision: domainProblemBindings.revision,
   });
+  await tx.update(problems).set({
+    effective_version_mode: columns.effective_version_mode,
+    required_version_id: columns.required_version_id,
+    effective_policy_revision: nextRevision,
+    updated_at: now,
+  }).where(eq(problems.id, binding.problem_id));
   // 变更依据与策略同事务落库：删除题目时由 problems 自己清理这张表。
   await tx.insert(problemBindingHistory).values({
     id: crypto.randomUUID(),
@@ -205,8 +205,6 @@ export async function setProblemBindingPolicyTx(
     domain_id: domainProblemBindings.domain_id,
     problem_id: domainProblemBindings.problem_id,
     revision: domainProblemBindings.revision,
-    effective_version_mode: domainProblemBindings.effective_version_mode,
-    required_version_id: domainProblemBindings.required_version_id,
   }).from(domainProblemBindings).where(
     eq(domainProblemBindings.id, input.bindingId),
   ).for("update");

@@ -31,7 +31,7 @@ import {
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
-Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代码及成绩；恢复沿用原绑定", async () => {
+Deno.test("资源下架：副本独立下架，保留学生代码及成绩；恢复沿用原绑定", async () => {
   const f = await assignmentFixture();
   await f.db.update(domains).set({
     configuration: { ...f.school.configuration, access: "public" },
@@ -52,6 +52,12 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
     "class-school:1001",
     f.owner,
   );
+  const resource = await resolveDomainProblem(
+    f.other.slug,
+    imported.reference.display_ref,
+    f.owner,
+  );
+  const localRef = String(resource.problem.number);
   const classroom = await createClassroom(f.other.slug, f.owner, {
     name: "引用班级",
   });
@@ -59,7 +65,7 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
     role: "student",
   });
   const task = await createAssignment(f.other.slug, classroom.id, f.owner, {
-    title: "共享题作业",
+    title: "副本作业",
     items: [{
       binding_id: imported.binding.id,
       requirement: "min_score",
@@ -76,18 +82,18 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
       domain_id: f.other.id,
       domain_problem_binding_id: imported.binding.id,
       user_id: f.student,
-      problem_id: f.problemId,
+      problem_id: imported.binding.problem_id,
       language: "python",
       code: "学生原代码",
-      submitted_version_id: f.versionId,
+      submitted_version_id: imported.version_id,
       version_origin: "known",
       created_at: now,
     });
     await tx.insert(evaluationAttempts).values({
       id: attemptId,
       submission_id: submissionId,
-      problem_id: f.problemId,
-      problem_version_id: f.versionId,
+      problem_id: imported.binding.problem_id,
+      problem_version_id: imported.version_id,
       sequence: 0,
       source: "initial",
       state: "finished",
@@ -98,15 +104,15 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
     await tx.insert(submissionVersionResults).values({
       id: crypto.randomUUID(),
       submission_id: submissionId,
-      problem_id: f.problemId,
-      problem_version_id: f.versionId,
+      problem_id: imported.binding.problem_id,
+      problem_version_id: imported.version_id,
       current_attempt_id: attemptId,
       updated_at: now,
     });
     await recomputeSubmissionProjection(tx, {
       kind: "submission",
       id: submissionId,
-      problem_id: f.problemId,
+      problem_id: imported.binding.problem_id,
       domain_problem_binding_id: imported.binding.id,
       contest_id: null,
     });
@@ -117,20 +123,20 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
     7000,
   );
   const down = await setDomainProblemBindingState(
-    f.school.slug,
-    "1001",
+    f.other.slug,
+    localRef,
     f.owner,
-    1,
+    0,
     { disabled: true, reason: "临时下架" },
   );
-  assertEquals(down.revision, 2);
-  await assertRejects(
-    () => resolveDomainProblem(f.school.slug, "1001", f.owner),
-    NotFoundError,
+  assertEquals(down.revision, 1);
+  assertEquals(
+    (await resolveDomainProblem(f.school.slug, "1001", f.owner)).problem.id,
+    f.problemId,
   );
   await assertRejects(
     () =>
-      resolveDomainProblem(f.other.slug, "class-school:1001", f.student, {
+      resolveDomainProblem(f.other.slug, localRef, f.student, {
         write: true,
       }),
     NotFoundError,
@@ -160,22 +166,17 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
     f.owner,
   );
   assertEquals(retained.code, "学生原代码");
-  assertEquals(retained.display_ref, "class-school:1001");
+  assertEquals(retained.display_ref, localRef);
   assertEquals(
     (await f.db.select().from(submissions).where(
       eq(submissions.id, submissionId),
     ))[0].code,
     "学生原代码",
   );
-  await setDomainProblemBindingState(f.school.slug, "1001", f.owner, 2, {
+  await setDomainProblemBindingState(f.other.slug, localRef, f.owner, 1, {
     disabled: false,
-    reason: "恢复源题",
+    reason: "恢复副本",
   });
-  assertEquals(
-    (await importDomainProblem(f.other.slug, "class-school:1001", f.owner))
-      .binding.id,
-    imported.binding.id,
-  );
   assertEquals(
     (await getMyAssignmentProgress(f.other.slug, task.id, f.student)).cells[0]
       .status,
@@ -183,13 +184,13 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
   );
   assertEquals(
     (await f.db.select().from(problemBindingHistory).where(
-      eq(problemBindingHistory.binding_id, f.bindingId),
+      eq(problemBindingHistory.binding_id, imported.binding.id),
     )).map((h) => h.revision).sort(),
-    [1, 2, 3],
+    [0, 1, 2],
   );
 });
 
-Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目标域停用只影响本域且恢复重查授权", async () => {
+Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目标域停用只影响本域且恢复不依赖来源共享", async () => {
   const f = await assignmentFixture();
   await assertRejects(
     () =>
@@ -234,9 +235,10 @@ Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目�
     "class-school:1001",
     f.owner,
   );
+  const localRef = imported.reference.display_ref;
   await setDomainProblemBindingState(
     f.other.slug,
-    "class-school:1001",
+    localRef,
     f.owner,
     0,
     { disabled: true, reason: "此学校停用引用" },
@@ -251,26 +253,9 @@ Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目�
     scope: "all",
     targetDomainIds: [],
   });
-  await assertRejects(
-    () =>
-      setDomainProblemBindingState(
-        f.other.slug,
-        "class-school:1001",
-        f.owner,
-        1,
-        { disabled: false, reason: "源已撤销" },
-      ),
-    NotFoundError,
-  );
-  await setDomainProblemSharing(f.school.slug, "1001", f.owner, {
-    expectedRevision: 2,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
-  });
   const restored = await setDomainProblemBindingState(
     f.other.slug,
-    "class-school:1001",
+    localRef,
     f.owner,
     1,
     { disabled: false, reason: "重获授权" },

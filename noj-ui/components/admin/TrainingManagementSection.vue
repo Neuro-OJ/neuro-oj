@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Training, TrainingVisibility } from '~/composables/useTrainings'
+import type { Training } from '~/composables/useTrainings'
 import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 const { adminUpdateTraining, adminDeleteTraining } = useTrainings()
@@ -10,14 +10,14 @@ const { data, pending, error, refresh } = await useFetch<{ data: Training[]; tot
 
 const columns: AdminColumn[] = [
   { key: 'title', label: '标题' },
-  { key: 'visibility', label: '可见性' },
+  { key: 'state', label: '发布状态' },
   { key: 'is_pinned', label: '置顶' },
   { key: 'problem_count', label: '题目数' },
   { key: 'actions', label: '操作' },
 ]
 
-async function setVisibility(training: Training, visibility: TrainingVisibility) {
-  await adminUpdateTraining(training.id, { visibility }, {
+async function setState(training: Training, state: Training['state']) {
+  await adminUpdateTraining(training.id, { state }, {
     headers: { "If-Match": `"${training.updated_at}"` },
   })
   await refresh()
@@ -54,16 +54,16 @@ async function remove(training: Training) {
       :current-page="1"
     >
       <template #cell="{ row, column }">
-        <template v-if="column.key === 'visibility'">
+        <template v-if="column.key === 'state'">
           <USelect
-            :model-value="(row as unknown as Training).visibility"
+            :model-value="(row as unknown as Training).state"
             :items="[
-              { label: '私有', value: 'private' },
-              { label: '链接可见', value: 'unlisted' },
-              { label: '公开', value: 'public' },
+              { label: '草稿', value: 'draft' },
+              
+              { label: '已发布', value: 'published' },
             ]"
             class="min-w-[120px]"
-            @update:model-value="setVisibility(row as unknown as Training, $event as TrainingVisibility)"
+            @update:model-value="setState(row as unknown as Training, $event as Training['state'])"
           />
         </template>
         <template v-else-if="column.key === 'is_pinned'">

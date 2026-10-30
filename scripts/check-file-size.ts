@@ -42,9 +42,6 @@ export const SIZE_BASELINE: Record<string, number> = {
   // 以锁住成果（棘轮只允许下调）。
   "noj-cli/src/cli.ts": 1505,
   "noj-cli/src/prod/config.ts": 1218,
-  // 2026-10-23：P3 模块迁移保留的兼容入口；对外签名与单事务删除语义仍需
-  // 由该文件承接，后续拆分应继续下调此棘轮基线。
-  "noj-core/src/modules/problems/services/problems/problems-crud.ts": 1212,
 };
 
 const SCAN_ROOTS = [

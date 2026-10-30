@@ -21,28 +21,30 @@ import {
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 
-/** 域题单完整编辑表单使用来源题号；题单不复制源题内容。 */
+/** 域题单只编排本域题目；跨域复用先复制为独立资源。 */
 export interface DomainTrainingInput {
+  state?: "draft" | "published";
   title: string;
   description?: string;
-  visibility: "private" | "unlisted" | "public";
+  visibility?: "private" | "unlisted" | "public";
   problems: string[];
 }
 
 function validate(input: DomainTrainingInput) {
   if (
+    input.state !== undefined &&
+      !["draft", "published"].includes(input.state) ||
     typeof input.title !== "string" || !input.title.trim() ||
     input.title.length > 100 ||
     input.description !== undefined &&
       (typeof input.description !== "string" ||
         input.description.length > 30000) ||
-    !["private", "unlisted", "public"].includes(input.visibility) ||
     !Array.isArray(input.problems) || input.problems.length > 200 ||
     input.problems.some((ref) => typeof ref !== "string") ||
     new Set(input.problems).size !== input.problems.length
   ) {
     throw new BadRequestError(
-      "题单标题、可见性或题目列表格式错误（最多 200 道题）",
+      "题单标题、发布状态或题目列表格式错误（最多 200 道题）",
     );
   }
 }
@@ -55,6 +57,10 @@ export async function saveDomainTraining(
   existing?: { id: string; revision: number | null },
 ) {
   validate(input);
+  const state = input.state ??
+    (input.visibility === "public" || input.visibility === "unlisted"
+      ? "published"
+      : "draft");
   return await getDb().transaction(async (tx) => {
     const access = await loadWorkspace(slug, actorId, {
       executor: tx,
@@ -76,6 +82,9 @@ export async function saveDomainTraining(
           : "training:write_any"
         : "training:create",
     );
+    if (state === "published") {
+      assertWorkspacePermission(access.context, "training:publish");
+    }
     if (existing) {
       if (
         existing.revision === null ||
@@ -99,20 +108,13 @@ export async function saveDomainTraining(
     ) {
       throw new BadRequestError("同一道源题不能重复加入题单");
     }
-    if (
-      input.visibility === "public" &&
-      resources.some((r) =>
-        r.binding.visibility !== "public" || r.problem.visibility !== "public"
-      )
-    ) {
-      throw new BadRequestError("公开题单只能包含本域公开展示的公开题");
-    }
     const now = new Date().toISOString(),
       id = previous?.id ?? crypto.randomUUID();
     const values = {
       title: input.title.trim(),
       description: input.description?.trim() ?? "",
-      visibility: input.visibility,
+      state,
+      visibility: state === "published" ? "public" : "private",
       revision: previous ? previous.revision + 1 : 0,
       updated_at: now,
     };

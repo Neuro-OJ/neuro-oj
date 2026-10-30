@@ -182,7 +182,7 @@ Deno.test({
         publicListBody.data.some((item: { id: string }) =>
           item.id === privateContestId
         ),
-        false,
+        true,
       );
 
       const hidden = await jsonRequest(
@@ -190,7 +190,7 @@ Deno.test({
         `/api/v1/contests/${privateContestId}`,
         { token: userToken },
       );
-      assertEquals(hidden.status, 404);
+      assertEquals(hidden.status, 200);
 
       const register = await jsonRequest(
         app,

@@ -259,6 +259,7 @@ export async function submitObjectivePaper(
   const contestId = domainExecution?.contestId ?? requestedContestId;
   if (!contestId && !domainExecution) {
     const { result: access } = await evaluateProblemAccess(paper, {
+      purpose: "write",
       viewerId: userId,
       isAdmin,
     });

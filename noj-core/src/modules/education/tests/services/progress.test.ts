@@ -327,12 +327,14 @@ Deno.test("作业成绩：any 新版切换和 exact 策略沿革，正式通过�
   assertEquals(item.answer_version_id, v2);
   assertEquals(item.published_version_id, f.versionId);
   assertEquals((await f.db.select().from(assignmentProgress))[0].score, 9000);
-  await f.db.update(domainProblemBindings).set({
+  await f.db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: v2,
-    revision: 1,
-  })
-    .where(eq(domainProblemBindings.id, f.bindingId));
+    effective_policy_revision: 1,
+  }).where(eq(problems.id, f.problemId));
+  await f.db.update(domainProblemBindings).set({ revision: 1 }).where(
+    eq(domainProblemBindings.id, f.bindingId),
+  );
   await f.db.insert(problemBindingHistory).values({
     id: crypto.randomUUID(),
     binding_id: f.bindingId,

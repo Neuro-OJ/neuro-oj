@@ -451,15 +451,18 @@ Deno.test("result write: exact 策略下 graded 结果不产生有效成绩", as
   await db.update(problems).set({
     latest_version_id: "rw-p7-v2",
   }).where(eq(problems.id, "rw-p7"));
-  await db.update(domainProblemBindings).set({
+  await db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: "rw-p7-v2",
-    revision: 1,
+    effective_policy_revision: 1,
   }).where(
     eq(
-      domainProblemBindings.id,
-      (await problemExecutionForTest("rw-p7")).domain_problem_binding_id,
+      problems.id,
+      "rw-p7",
     ),
+  );
+  await getDb().update(domainProblemBindings).set({ revision: 1 }).where(
+    eq(domainProblemBindings.problem_id, "rw-p7"),
   );
 
   const outcome = await applyAttemptResult({
@@ -480,15 +483,18 @@ Deno.test("result write: exact 策略下 graded 结果不产生有效成绩", as
   assertEquals(submission.global_policy_revision, 1);
 
   // 切回 any 后，已有判定立即可用（不需要重新评测）
-  await db.update(domainProblemBindings).set({
+  await db.update(problems).set({
     effective_version_mode: "any",
     required_version_id: null,
-    revision: 2,
+    effective_policy_revision: 2,
   }).where(
     eq(
-      domainProblemBindings.id,
-      (await problemExecutionForTest("rw-p7")).domain_problem_binding_id,
+      problems.id,
+      "rw-p7",
     ),
+  );
+  await getDb().update(domainProblemBindings).set({ revision: 2 }).where(
+    eq(domainProblemBindings.problem_id, "rw-p7"),
   );
   const outcome2 = await applyAttemptResult({
     attemptId: attempt.id,

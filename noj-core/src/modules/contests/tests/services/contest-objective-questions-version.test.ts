@@ -14,7 +14,8 @@ import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
  * - 显式 `versionId` → 该版本；
  * - 作答者响应裁剪答案与解析（`answer: []` / `explanation: ""`）。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -218,22 +219,20 @@ Deno.test({
       assertEquals(override.version_id, versionV1);
       assertEquals(override.questions[0].prompt, "V1 小题");
 
-      // ③ 无竞赛上下文 → 题库默认作答版本（any → 最新版 V2）
-      const practice = await listPaperQuestionsWithAccess(paperId, {
-        viewerId: userId,
-        isAdmin: false,
-      });
-      assertEquals(practice.version_id, versionV2);
-      assertEquals(practice.questions[0].prompt, "V2 小题");
+      // 普通入口及显式历史版本都受保护，不能借版本参数绕过竞赛上下文。
+      await assertRejects(() =>
+        listPaperQuestionsWithAccess(paperId, {
+          viewerId: userId,
+          isAdmin: false,
+        }), ForbiddenError);
 
       // ④ 显式 versionId → 该版本
-      const explicit = await listPaperQuestionsWithAccess(paperId, {
-        viewerId: userId,
-        isAdmin: false,
-        versionId: versionV1,
-      });
-      assertEquals(explicit.version_id, versionV1);
-      assertEquals(explicit.questions[0].prompt, "V1 小题");
+      await assertRejects(() =>
+        listPaperQuestionsWithAccess(paperId, {
+          viewerId: userId,
+          isAdmin: false,
+          versionId: versionV1,
+        }), ForbiddenError);
 
       // ⑤ 固定版本升级为 V2 后，竞赛小题随固定版本变化
       await db.update(contestProblems).set({ pinned_version_id: versionV2 })

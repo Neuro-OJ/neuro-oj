@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../shared/base/errors.ts";
@@ -19,7 +19,8 @@ import { domainContestRouter } from "../../routes/domain-contests.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
 Deno.test({
-  name: "域比赛内容 HTTP：固定版本模板和客观卷面，源共享撤销拒绝读取",
+  name:
+    "域比赛内容 HTTP：固定版本模板和客观卷面，独立副本固定内容不受源共享撤销影响",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -49,8 +50,6 @@ Deno.test({
       const id = crypto.randomUUID(),
         v1 = crypto.randomUUID(),
         v2 = crypto.randomUUID();
-      ids.push(id);
-      versions.push(v1);
       await db.insert(problems).values({
         id,
         domain_id: source.id,
@@ -111,7 +110,11 @@ Deno.test({
           published_at: now,
         });
       }
-      await db.update(problems).set({ latest_version_id: v2 }).where(
+      await db.update(problems).set({
+        latest_version_id: v2,
+        effective_version_mode: "exact",
+        required_version_id: v1,
+      }).where(
         eq(problems.id, id),
       );
       await db.insert(domainProblemBindings).values({
@@ -120,8 +123,6 @@ Deno.test({
         problem_id: id,
         kind: "owned",
         visibility: "public",
-        effective_version_mode: "exact",
-        required_version_id: v1,
         created_by: owner,
         created_at: now,
         updated_at: now,
@@ -133,11 +134,13 @@ Deno.test({
         updated_by: owner,
         updated_at: now,
       });
-      await importDomainProblem(
+      const copied = await importDomainProblem(
         target.slug,
         `${source.slug}:${1001 + index}`,
         owner,
       );
+      ids.push(copied.binding.problem_id);
+      versions.push(copied.version_id);
     }
     const contest = await createDomainContest(target.slug, owner, {
       title: "content contest",
@@ -168,7 +171,7 @@ Deno.test({
       { token },
     );
     assertEquals(template.status, 200);
-    assertEquals((await template.json()).data.content, "# template-v1");
+    assertEquals((await template.json()).data.content, "# template-v2");
     const paper = await jsonRequest(
       application,
       `${path}/2/objective-questions?version_id=${versions[0]}`,
@@ -177,7 +180,7 @@ Deno.test({
     assertEquals(paper.status, 200);
     const body = await paper.json();
     assertEquals(body.version_id, versions[1]);
-    assertEquals(body.data[0].prompt, "question-v1");
+    assertEquals(body.data[0].prompt, "question-v2");
     assertEquals(body.data[0].answer, undefined);
     assertEquals(body.data[0].explanation, undefined);
     assertEquals(
@@ -187,10 +190,10 @@ Deno.test({
     await db.update(problemShareSettings).set({ enabled: false }).where(
       and(eq(problemShareSettings.problem_id, ids[0])),
     );
-    await assertRejects(() => getContestProblems(contest.id, owner));
+    assertEquals((await getContestProblems(contest.id, owner)).length, 2);
     assertEquals(
       (await jsonRequest(application, `${path}/1/template`, { token })).status,
-      404,
+      200,
     );
     assertEquals(
       (await jsonRequest(

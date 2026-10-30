@@ -7,13 +7,12 @@ import {
   problemVersions,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { assertCurrentProblemShare } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
 import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
 import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
 import type { ContestType } from "../types/contests.ts";
 
-/** 比赛固定目标域选择的已发布版本，后续读取仍检查源授权，不能恢复撤销的共享内容。 */
+/** 比赛只固定当前域自有题目的已发布版本；跨域题目须先独立复制。 */
 export async function resolveDomainContestProblems(
   executor: Executor,
   domainId: string,
@@ -49,16 +48,14 @@ export async function resolveDomainContestProblems(
   const bindingIds = new Map<string, string>();
   for (const { binding, problem, source } of rows) {
     if (
+      binding.kind !== "owned" || source.id !== domainId ||
       binding.disabled_at || source.status === "suspended" ||
       !problem.latest_version_id
     ) {
       throw new NotFoundError("比赛题目已下架或不可用");
     }
-    if (binding.kind === "shared") {
-      await assertCurrentProblemShare(problem, source, domainId, executor);
-    }
-    const versionId = binding.effective_version_mode === "exact"
-      ? binding.required_version_id
+    const versionId = problem.effective_version_mode === "exact"
+      ? problem.required_version_id
       : problem.latest_version_id;
     const [version] = versionId
       ? await executor.select().from(problemVersions).where(and(

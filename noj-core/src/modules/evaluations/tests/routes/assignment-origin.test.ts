@@ -386,7 +386,7 @@ Deno.test({
           },
         },
       );
-      const published = await http<{ version_id: string }>(
+      await http<{ version_id: string }>(
         f.app,
         f.ownerToken,
         `${sourcePath}/publish`,
@@ -397,12 +397,15 @@ Deno.test({
           body: { change_note: "HTTP 来源夹具" },
         },
       );
-      await http(f.app, f.ownerToken, `${sourcePath}/sharing`, 200, {
-        method: "POST",
-        headers: { "If-Match": "0" },
-        body: { enabled: true, scope: "all", target_domain_slugs: [] },
-      });
-      const imported = await http<{ data: { binding: { id: string } } }>(
+      const imported = await http<
+        {
+          data: {
+            binding: { id: string };
+            reference: { display_ref: string };
+            version_id: string;
+          };
+        }
+      >(
         f.app,
         f.ownerToken,
         `/domains/${f.a.slug}/problem-bindings`,
@@ -415,9 +418,9 @@ Deno.test({
       const first = await task(f, imported.data.binding.id),
         second = await task(f, imported.data.binding.id);
       const path =
-        `/domains/${f.a.slug}/problems/${f.source.slug}:${created.number}/objective-submissions`;
+        `/domains/${f.a.slug}/problems/${imported.data.reference.display_ref}/objective-submissions`;
       const input = {
-        version_id: published.version_id,
+        version_id: imported.data.version_id,
         answers: { q1: ["A"] },
       };
       await http(f.app, f.studentToken, path, 400, {
@@ -452,17 +455,23 @@ Deno.test({
           submitted.data.submission_id,
         );
       }
-      await http(f.app, f.ownerToken, `${sourcePath}/sharing`, 200, {
-        method: "POST",
-        headers: { "If-Match": "1" },
-        body: { enabled: false, scope: "all", target_domain_slugs: [] },
-      });
+      await http(
+        f.app,
+        f.ownerToken,
+        `/domains/${f.a.slug}/problems/${imported.data.reference.display_ref}/state`,
+        200,
+        {
+          method: "POST",
+          headers: { "If-Match": "0" },
+          body: { disabled: true, reason: "本域独立下架" },
+        },
+      );
       const withdrawnHistory = await readOrigin(f, historyPath, first);
       assertEquals(withdrawnHistory.resource_available, false);
       await http(
         f.app,
         f.studentToken,
-        `/domains/${f.a.slug}/problems/${f.source.slug}:${created.number}`,
+        `/domains/${f.a.slug}/problems/${imported.data.reference.display_ref}`,
         404,
       );
     });

@@ -1,11 +1,10 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
-  auditLogs,
   contests,
   problems,
   userRoles,
@@ -144,70 +143,20 @@ async function setupContestViaAdmin(): Promise<{
 }
 
 Deno.test({
-  name: "admin contest route: kind 可转公开赛",
+  name: "管理比赛：已移除转换分类与重置邀请码入口",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { app, adminId, adminToken, contestId } =
-      await setupContestViaAdmin();
-    const res = await jsonRequest(
-      app,
-      `/api/v1/admin/contest/contests/${contestId}/kind`,
-      {
-        method: "PATCH",
-        token: adminToken,
-        body: { kind: "public" },
-      },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.data.kind, "public");
-    assertEquals(body.data.is_public, true);
-
-    const db = getDb();
-    const rows = await db.select().from(auditLogs).where(
-      eq(auditLogs.admin_id, adminId),
-    );
-    assertEquals(
-      rows.some((r) => r.action === "contest.create"),
-      true,
-    );
-    assertEquals(
-      rows.some((r) => r.action === "contest.kind_change"),
-      true,
-    );
-  },
-});
-
-Deno.test({
-  name: "admin contest route: reset-code 返回新邀请码",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { app, adminId, adminToken, contestId } =
-      await setupContestViaAdmin();
-    const res = await jsonRequest(
-      app,
-      `/api/v1/admin/contest/contests/${contestId}/reset-code`,
-      { method: "POST", token: adminToken },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(typeof body.data.code, "string");
-    assertNotEquals(body.data.code, "");
-    assertEquals(body.data.contest.has_password, true);
-
-    const db = getDb();
-    const rows = await db.select().from(auditLogs).where(
-      eq(auditLogs.admin_id, adminId),
-    );
-    assertEquals(
-      rows.some((r) => r.action === "contest.reset_code"),
-      true,
-    );
-    assertEquals(
-      rows.filter((r) => r.action === "contest.reset_code").length,
-      1,
-    );
+    const { app, adminToken, contestId } = await setupContestViaAdmin();
+    for (
+      const [suffix, method] of [["kind", "PATCH"], ["reset-code", "POST"]]
+    ) {
+      const response = await jsonRequest(
+        app,
+        `/api/v1/admin/contest/contests/${contestId}/${suffix}`,
+        { method, token: adminToken, body: { kind: "public" } },
+      );
+      assertEquals(response.status, 404);
+    }
   },
 });

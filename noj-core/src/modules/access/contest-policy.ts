@@ -69,6 +69,37 @@ export type PublicContestSecrecyRef = Readonly<{
   title: string;
 }>;
 
+/** 批量读取本域保护信息；元数据列表保持可见，内容入口单独授权。 */
+export async function loadDomainProblemProtection(
+  domainId: string,
+  problemIds: string[],
+  executor: ReadExecutor = getDb(),
+): Promise<Map<string, PublicContestSecrecyRef[]>> {
+  const result = new Map<string, PublicContestSecrecyRef[]>();
+  if (!problemIds.length) return result;
+  const rows = await executor.select({
+    problemId: contestProblems.problem_id,
+    contestId: contests.id,
+    publicId: contests.public_id,
+    title: contests.title,
+  }).from(contestProblems).innerJoin(
+    contests,
+    eq(contests.id, contestProblems.contest_id),
+  )
+    .where(and(
+      eq(contests.domain_id, domainId),
+      inArray(contestProblems.problem_id, problemIds),
+      eq(contests.secrecy_enabled, true),
+      unendedWindowCondition(contests.end_time),
+    )).orderBy(asc(contests.end_time), asc(contests.id));
+  for (const { problemId, ...ref } of rows) {
+    const refs = result.get(problemId) ?? [];
+    refs.push(ref);
+    result.set(problemId, refs);
+  }
+  return result;
+}
+
 /** 题目在竞赛上下文中的准入与固定版本快照。 */
 export type ContestAccessInfo = Readonly<{
   contestId: string;
@@ -164,7 +195,7 @@ export async function loadPublicContestSecrecy(
             : undefined,
         )
         : undefined,
-      eq(contests.kind, "public"),
+      eq(contests.secrecy_enabled, true),
       unendedWindowCondition(contests.end_time),
     ))
     .orderBy(asc(contests.end_time), asc(contests.id));
@@ -185,7 +216,7 @@ export function unendedPublicContestForProblem(
       ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
       : sql``
   }
-      AND c.kind = 'public'
+      AND c.secrecy_enabled = true
       AND ${unendedWindowCondition(sql`c.end_time`)}
   )`;
 }
@@ -286,10 +317,12 @@ export async function verifyContestAccess(
         eq(contestParticipants.user_id, actor.userId),
       )).limit(1)
     : [];
+  const protectedNow = status === "ended" &&
+    (await loadPublicContestSecrecy(problemId, db, domainId)).length > 0;
   return {
     contestId: resolvedContestId,
     allowed: Boolean(participant) &&
-      (status === "running" || status === "ended"),
+      (status === "running" || status === "ended" && !protectedNow),
     running: status === "running",
     type: contest.type as ContestType,
     organizer,
@@ -311,7 +344,7 @@ export async function getContestPolicySnapshot(
     requiredVersionId: contestProblems.required_version_id,
     policyRevision: contestProblems.effective_policy_revision,
     config: contests.config,
-    kind: contests.kind,
+    secrecyEnabled: contests.secrecy_enabled,
     startTime: contests.start_time,
     endTime: contests.end_time,
   }).from(contestProblems).innerJoin(
@@ -339,6 +372,6 @@ export async function getContestPolicySnapshot(
     policyRevision: row.policyRevision,
     submissionLimit,
     running: contestStatus(row.startTime, row.endTime) === "running",
-    secrecy: row.kind === "public",
+    secrecy: row.secrecyEnabled,
   };
 }

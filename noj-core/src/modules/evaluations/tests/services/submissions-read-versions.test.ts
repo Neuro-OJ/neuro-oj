@@ -180,15 +180,18 @@ Deno.test({
     assertEquals(detail.version_results?.map((item) => item.sequence), [0, 1]);
 
     // 切换本域题库策略为 exact(V1)，V2 的通过不能满足当前通过要求。
-    await db.update(domainProblemBindings).set({
+    await db.update(problems).set({
       effective_version_mode: "exact",
       required_version_id: v1,
-      revision: 1,
+      effective_policy_revision: 1,
     }).where(
       eq(
-        domainProblemBindings.id,
-        (await problemExecutionForTest("srv-p1")).domain_problem_binding_id,
+        problems.id,
+        "srv-p1",
       ),
+    );
+    await getDb().update(domainProblemBindings).set({ revision: 1 }).where(
+      eq(domainProblemBindings.problem_id, "srv-p1"),
     );
     const exact = await getSubmission("srv-s1", "0");
     assertEquals(exact.effective_version_policy, {
@@ -261,15 +264,18 @@ Deno.test({
     assertEquals(list.data[0].version_origin, "legacy_unknown");
 
     // 收紧为 exact(V1) 后，未知版本桶不再计入候选：无有效成绩
-    await getDb().update(domainProblemBindings).set({
+    await getDb().update(problems).set({
       effective_version_mode: "exact",
       required_version_id: v1,
-      revision: 1,
+      effective_policy_revision: 1,
     }).where(
       eq(
-        domainProblemBindings.id,
-        (await problemExecutionForTest("srv-p2")).domain_problem_binding_id,
+        problems.id,
+        "srv-p2",
       ),
+    );
+    await getDb().update(domainProblemBindings).set({ revision: 1 }).where(
+      eq(domainProblemBindings.problem_id, "srv-p2"),
     );
     const exact = await getSubmission("srv-s2", "0");
     assertEquals(exact.version_results?.[0].is_effective, false);

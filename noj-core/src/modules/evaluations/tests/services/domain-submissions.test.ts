@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { setDomainProblemBindingPolicyCommand } from "../../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
@@ -20,7 +21,6 @@ import {
 import {
   readDomainProblem,
   setDomainProblemBindingPolicy,
-  setDomainProblemSharing,
 } from "../../../problems/index.ts";
 import {
   removeDomainMember,
@@ -101,7 +101,7 @@ Deno.test({
       f.ref,
       f.owner,
       f.bindingB.revision,
-      { mode: "exact", version_id: f.v1 },
+      { mode: "exact", version_id: f.v1B },
       "学校 B 使用第一版",
     );
     await withQueue(async () => {
@@ -115,7 +115,7 @@ Deno.test({
         f.b.slug,
         f.ref,
         f.student,
-        input(f.v1),
+        input(f.v1B),
       );
       assertEquals(a.domain_id, f.a.id);
       assertEquals(b.domain_id, f.b.id);
@@ -129,7 +129,7 @@ Deno.test({
       assertEquals(storedA.domain_problem_binding_id, f.bindingA.id);
       assertEquals(storedB.domain_problem_binding_id, f.bindingB.id);
       assertEquals(storedA.submitted_version_id, f.v2);
-      assertEquals(storedB.submitted_version_id, f.v1);
+      assertEquals(storedB.submitted_version_id, f.v1B);
       assertEquals(storedA.receipt_sequence < storedB.receipt_sequence, true);
       const [attempt] = await f.db.select().from(evaluationAttempts).where(
         eq(evaluationAttempts.submission_id, a.id),
@@ -193,7 +193,13 @@ Deno.test({
       NotFoundError,
     );
     await assertRejects(
-      () => createDomainSubmission(f.a.slug, "1001", f.student, input(f.v2)),
+      () =>
+        createDomainSubmission(
+          f.a.slug,
+          `${f.source.slug}:1001`,
+          f.student,
+          input(f.v2),
+        ),
       NotFoundError,
     );
     await assertRejects(
@@ -243,12 +249,7 @@ Deno.test({
       AppError,
     );
     assertEquals(changed.code, "PROBLEM_ANSWER_VERSION_CHANGED");
-    await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-      expectedRevision: 1,
-      enabled: false,
-      scope: "all",
-      targetDomainIds: [],
-    });
+    await setFixtureAvailability(f, false);
     await assertRejects(
       () =>
         f.db.transaction((tx) =>
@@ -294,22 +295,22 @@ Deno.test({
     });
     assertEquals(
       (await readDomainProblem(f.source.slug, "1001", f.outsider)).version_id,
-      f.v2,
+      f.sourceV2,
     );
     assertEquals(
       (await readDomainProblem(f.b.slug, f.ref, f.student)).version_id,
-      f.v2,
+      f.v2B,
     );
     const blocked = await assertRejects(
       () => createDomainSubmission(f.a.slug, f.ref, f.student, input(f.v2)),
       ForbiddenError,
     );
-    assertEquals(blocked.code, "CONTEST_PRACTICE_BLOCKED");
+    assertEquals(blocked.code, "CONTEST_PROBLEM_RESTRICTED");
     assertEquals(
       (await resolveDomainExecution(
         { slug: f.b.slug, reference: f.ref },
         f.student,
-        f.v2,
+        f.v2B,
       )).domain.id,
       f.b.id,
     );

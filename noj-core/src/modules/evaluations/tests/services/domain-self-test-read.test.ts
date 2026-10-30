@@ -1,9 +1,9 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { selfTests } from "../../../../shared/db/schema.ts";
-import { setDomainProblemSharing } from "../../../problems/index.ts";
 import {
   cancelDomainSelfTest,
   createDomainSelfTest,
@@ -121,12 +121,7 @@ Deno.test({
         output: "hidden evaluator output",
         details: JSON.stringify({ cases: [{ hidden: true, input: "secret" }] }),
       }).where(eq(selfTests.id, created.id));
-      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-        expectedRevision: 1,
-        enabled: false,
-        scope: "all",
-        targetDomainIds: [],
-      });
+      await setFixtureAvailability(f, false);
       const response = await app.request(path, { headers });
       assertEquals(response.status, 200);
       const result = await response.json() as {

@@ -4,6 +4,7 @@ import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 import { toDomainProblemView } from '~/utils/problemView';
 import type { PublicProblemStats } from '~/utils/problemStats';
+import { contestProtectionFromError } from '~/utils/contestProtection';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'problem', breadcrumbWidth: '1280px' });
 const route = useRoute();
@@ -19,6 +20,12 @@ const assignmentOrigin = computed<AssignmentSubmissionOrigin | undefined>(() => 
 const selectedVersion = computed(() => typeof route.query.version_id === 'string' ? route.query.version_id : undefined);
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'problem', reference.value, selectedVersion.value ?? 'current'));
 const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value, selectedVersion.value));
+const protection = contestProtectionFromError(error.value);
+if (protection) throw createError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: slug.value, contests: protection } });
+watch(error, (failure) => {
+  const contests = contestProtectionFromError(failure);
+  if (contests) showError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: slug.value, contests } });
+});
 const router = useRouter();
 function selectVersion(version_id: string) { void router.push({ query: { ...route.query, version_id } }); }
 const statementExpanded = ref(true);
@@ -47,6 +54,7 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
   <AsyncContent :status="error ? 'error' : data ? 'data' : status === 'pending' ? 'loading' : 'empty'"
     :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
     <div v-if="data && problemView" class="space-y-5">
+      <UAlert v-if="data.can_practice === false" title="当前为管理预览，普通练习与作业提交暂不可用。请从比赛入口正式参赛。" color="info" />
       <nav aria-label="题目导航" class="flex flex-wrap items-center gap-4 text-sm">
         <NuxtLink :to="`/d/${slug}/problems`" class="text-text-secondary no-underline hover:text-primary">题库</NuxtLink>
         <a href="#statement" class="text-text-secondary no-underline hover:text-primary">题面</a>
@@ -57,12 +65,12 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false">
             <template #actions>
               <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_own') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
-              <UButton v-if="!inlineAnswer" :to="solveTo" size="lg" :icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'">{{ editorLabel }}</UButton>
-              <UButton v-else to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
+              <UButton v-if="!inlineAnswer && data.can_practice !== false" :to="solveTo" size="lg" :icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'">{{ editorLabel }}</UButton>
+              <UButton v-else-if="data.can_practice !== false" to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
             </template>
           </ProblemHeader>
           <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description"
-            :editor-to="!inlineAnswer ? solveTo : null" :editor-label="editorLabel"
+            :editor-to="!inlineAnswer && data.can_practice !== false ? solveTo : null" :editor-label="editorLabel"
             :editor-icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'" :edit-to="editTo">
             <template #toolbar>
               <DomainProblemVersionSelect :slug="slug!" :reference="reference" :selected="data.version_id" :version="data.version"

@@ -1,30 +1,23 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import {
-  AppError,
+  assignmentItems,
+  domainProblemBindings,
+  problems,
+  problemVersions,
+  trainings,
+} from "../../../../shared/db/schema.ts";
+import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
-  assignmentItems,
-  assignments,
-  domainLimits,
-  domainProblemBindings,
-  domains,
-  domainTrainingBindings,
-  problems,
-  problemVersions,
-} from "../../../../shared/db/schema.ts";
-import {
+  importDomainProblem,
   importDomainTraining,
   readDomainTraining,
   saveDomainTraining,
-  setDomainProblemSharing,
-  setDomainTrainingSharing,
 } from "../../../problems/index.ts";
 import {
-  copyAssignment,
   createAssignment,
   getAssignment,
   publishAssignment,
@@ -33,363 +26,128 @@ import { assignmentFixture } from "../_assignment-fixture.ts";
 
 async function fixture() {
   const f = await assignmentFixture();
-  await f.db.update(domains).set({
-    configuration: { ...f.other.configuration, access: "public" },
-  }).where(eq(domains.id, f.other.id));
-  const refs: string[] = [];
-  for (const number of [2001, 2002]) {
-    const problemId = crypto.randomUUID(),
-      versionId = crypto.randomUUID(),
-      now = new Date().toISOString();
-    await f.db.insert(problems).values({
-      id: problemId,
-      domain_id: f.other.id,
-      number,
-      title: String(number),
-      description: "公开题面",
-      owner_id: f.owner,
-      visibility: "public",
-      created_at: now,
-      updated_at: now,
-    });
-    await f.db.insert(problemVersions).values({
-      id: versionId,
-      problem_id: problemId,
-      version: 1,
-      content: { kind: "ai", title: String(number), description: "公开题面" },
-      published_at: now,
-    });
-    await f.db.update(problems).set({ latest_version_id: versionId }).where(
-      eq(problems.id, problemId),
-    );
-    await f.db.insert(domainProblemBindings).values({
-      id: crypto.randomUUID(),
-      domain_id: f.other.id,
-      problem_id: problemId,
-      kind: "owned",
-      visibility: "public",
-      created_by: f.owner,
-      created_at: now,
-      updated_at: now,
-    });
-    await setDomainProblemSharing(f.other.slug, String(number), f.owner, {
-      expectedRevision: 0,
-      enabled: true,
-      scope: "all",
-      targetDomainIds: [],
-    });
-    refs.push(String(number));
-  }
-  const input = {
-    title: "公开训练",
-    visibility: "public" as const,
-    problems: refs,
-  };
-  const training = await saveDomainTraining(f.other.slug, f.owner, input);
-  await setDomainTrainingSharing(f.other.slug, training.id, f.owner, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
+  const first = await importDomainProblem(
+    f.other.slug,
+    `${f.school.slug}:1001`,
+    f.owner,
+  );
+  const [problem] = await f.db.select().from(problems).where(
+    eq(problems.id, first.binding.problem_id),
+  );
+  const training = await saveDomainTraining(f.other.slug, f.owner, {
+    title: "来源题单",
+    state: "published",
+    visibility: "private",
+    problems: [String(problem.number)],
   });
-  const taskInput = {
-    title: "来自公开题单",
-    training: {
-      id: training.id,
-      requirement: "min_score" as const,
-      minimum_score: 6000,
+  const copied = await importDomainTraining(
+    f.school.slug,
+    training.id,
+    f.owner,
+  );
+  return {
+    ...f,
+    sourceTraining: training,
+    trainingId: copied.training_id,
+    taskInput: {
+      title: "独立副本作业",
+      training: {
+        id: copied.training_id,
+        requirement: "min_score" as const,
+        minimum_score: 6000,
+      },
     },
   };
-  return { ...f, refs, training, trainingInput: input, taskInput };
 }
 
-Deno.test("题单作业：只保存来源引用，发布时取当前顺序并建立绑定；后续题单变化不改已发布集合", async () => {
+Deno.test("题单作业：使用本域独立副本发布，源题单改动不影响作业集合", async () => {
   const f = await fixture();
-  const imported = await importDomainTraining(
-    f.school.slug,
-    f.training.id,
-    f.teacher,
-  );
-  assertEquals(
-    (await importDomainTraining(f.school.slug, f.training.id, f.teacher)).id,
-    imported.id,
-  );
-  assertEquals((await f.db.select().from(domainTrainingBindings)).length, 1);
   const draft = await createAssignment(
     f.school.slug,
     f.classroom.id,
     f.teacher,
     f.taskInput,
   );
-  assertEquals(
-    (await getAssignment(f.school.slug, draft.id, f.teacher)).items.length,
-    0,
-  );
-  const draftCopy = await copyAssignment(
+  await f.db.update(trainings).set({ title: "源题单已更改", state: "draft" })
+    .where(eq(trainings.id, f.sourceTraining.id));
+  await publishAssignment(
     f.school.slug,
     draft.id,
     f.teacher,
     0,
-    "draft-copy",
-    {},
-  );
-  assertEquals(draftCopy.source_training_id, f.training.id);
-  assertEquals(
-    (await f.db.select().from(domainProblemBindings).where(
-      eq(domainProblemBindings.domain_id, f.school.id),
-    )).length,
-    1,
-  );
-  await saveDomainTraining(f.other.slug, f.owner, {
-    ...f.trainingInput,
-    problems: [...f.refs].reverse(),
-  }, { id: f.training.id, revision: 0 });
-  const preview = await readDomainTraining(
-    f.school.slug,
-    f.training.id,
-    f.teacher,
-  );
-  assertEquals(preview.items.map((item) => item.display_ref), [
-    "other-school:2002",
-    "other-school:2001",
-  ]);
-  assertEquals(preview.items[0].binding_id, null);
-  const published = await publishAssignment(
-    f.school.slug,
-    draft.id,
-    f.teacher,
-    0,
-    "expand",
+    "publish-copy",
   );
   const detail = await getAssignment(f.school.slug, draft.id, f.student);
-  assertEquals(detail.items.length, 2);
-  assertEquals(
-    detail.items.every((item) =>
-      item.minimum_score === 6000 && !!item.published_version_id
-    ),
-    true,
+  assertEquals(detail.items.length, 1);
+  const [item] = await f.db.select().from(assignmentItems).where(
+    eq(assignmentItems.assignment_id, draft.id),
   );
-  const problemIds = preview.items.map((item) => item.problem_id);
-  assertEquals(detail.items.map((item) => item.problem_id), problemIds);
-  await saveDomainTraining(f.other.slug, f.owner, {
-    ...f.trainingInput,
-    problems: [f.refs[0]],
-  }, { id: f.training.id, revision: 1 });
-  assertEquals(
-    (await getAssignment(f.school.slug, draft.id, f.student)).items.map((
-      item,
-    ) => item.problem_id),
-    problemIds,
+  const [identity] = await f.db.select().from(problems).where(
+    eq(problems.id, item.problem_id),
   );
+  assertEquals(identity.domain_id, f.school.id);
+  assert(identity.id !== f.problemId);
   assertEquals(
-    await publishAssignment(f.school.slug, draft.id, f.teacher, 0, "expand"),
-    published,
+    (await readDomainTraining(f.school.slug, f.trainingId, f.student)).state,
+    "published",
   );
 });
 
-Deno.test("题单作业：域教练可使用既有题库引用并管理题单", async () => {
+Deno.test("题单作业：不能直接挂接外域题单，草稿题单对学生不可见", async () => {
   const f = await fixture();
-  await importDomainTraining(f.school.slug, f.training.id, f.teacher);
-  const initial = await createAssignment(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.taskInput,
-  );
-  await publishAssignment(f.school.slug, initial.id, f.teacher, 0, "initial");
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
-  const task = await createAssignment(
-    f.school.slug,
-    f.classroom.id,
-    f.assistant,
-    f.taskInput,
-  );
-  const published = await publishAssignment(
-    f.school.slug,
-    task.id,
-    f.assistant,
-    0,
-    "assistant",
-  );
-  assertEquals(published.state, "published");
-  assertEquals(
-    (await importDomainTraining(f.school.slug, f.training.id, f.assistant)).id
-      .length > 0,
-    true,
-  );
-});
-
-Deno.test("题单作业：并非题单授权即题目授权，发布失败回滚已预留引用和整个任务", async () => {
-  const f = await fixture();
-  await importDomainTraining(f.school.slug, f.training.id, f.teacher);
-  const draft = await createAssignment(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.taskInput,
-  );
-  await f.db.update(domainLimits).set({ problems: 2 }).where(
-    eq(domainLimits.domain_id, f.school.id),
-  );
   await assertRejects(
-    () => publishAssignment(f.school.slug, draft.id, f.teacher, 0, "quota"),
-    AppError,
+    () =>
+      createAssignment(f.school.slug, f.classroom.id, f.teacher, {
+        ...f.taskInput,
+        training: { ...f.taskInput.training, id: f.sourceTraining.id },
+      }),
+    NotFoundError,
+  );
+  const draft = await saveDomainTraining(f.school.slug, f.teacher, {
+    title: "草稿",
+    state: "draft",
+    visibility: "private",
+    problems: ["1001"],
+  });
+  await assertRejects(
+    () => readDomainTraining(f.school.slug, draft.id, f.student),
+    NotFoundError,
   );
   assertEquals(
-    (await f.db.select().from(domainProblemBindings).where(
-      eq(domainProblemBindings.domain_id, f.school.id),
-    )).length,
-    1,
-  );
-  assertEquals(
-    (await f.db.select().from(assignmentItems).where(
-      eq(assignmentItems.assignment_id, draft.id),
-    )).length,
-    0,
-  );
-  assertEquals(
-    (await f.db.select().from(assignments).where(eq(assignments.id, draft.id)))[
-      0
-    ].state,
+    (await readDomainTraining(f.school.slug, draft.id, f.teacher)).state,
     "draft",
   );
-  await f.db.update(domainLimits).set({ problems: null }).where(
-    eq(domainLimits.domain_id, f.school.id),
-  );
-  await setDomainProblemSharing(f.other.slug, f.refs[1], f.owner, {
-    expectedRevision: 1,
-    enabled: false,
-    scope: "all",
-    targetDomainIds: [],
-  });
-  await assertRejects(
-    () =>
-      publishAssignment(f.school.slug, draft.id, f.teacher, 0, "revoked-item"),
-    NotFoundError,
-  );
-  assertEquals(
-    (await f.db.select().from(assignmentItems).where(
-      eq(assignmentItems.assignment_id, draft.id),
-    )).length,
-    0,
-  );
 });
 
-Deno.test("题单作业：题单撤销阻止新展开，已发布任务按源题各自授权保留且可复制补题", async () => {
+Deno.test("题单复制：学生无创建发布权限，失败不留下副本；版本归属严格属于本域新题", async () => {
   const f = await fixture();
-  await importDomainTraining(f.school.slug, f.training.id, f.teacher);
-  const first = await createAssignment(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.taskInput,
-  );
-  const second = await createAssignment(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.taskInput,
-  );
-  await publishAssignment(f.school.slug, first.id, f.teacher, 0, "first");
-  await setDomainTrainingSharing(f.other.slug, f.training.id, f.owner, {
-    expectedRevision: 1,
-    enabled: false,
-    scope: "all",
-    targetDomainIds: [],
-  });
-  await assertRejects(
-    () => importDomainTraining(f.school.slug, f.training.id, f.teacher),
-    NotFoundError,
+  const before = await f.db.select().from(problems).where(
+    eq(problems.domain_id, f.school.id),
   );
   await assertRejects(
-    () => readDomainTraining(f.school.slug, f.training.id, f.student),
-    NotFoundError,
-  );
-  await assertRejects(
-    () => publishAssignment(f.school.slug, second.id, f.teacher, 0, "second"),
-    NotFoundError,
-  );
-  assertEquals(
-    (await getAssignment(f.school.slug, first.id, f.student)).items.length,
-    2,
-  );
-  const copy = await copyAssignment(
-    f.school.slug,
-    first.id,
-    f.teacher,
-    1,
-    "remediation",
-    {},
-  );
-  assertEquals(copy.source_training_id, null);
-  assertEquals(
-    (await getAssignment(f.school.slug, copy.id, f.teacher)).items.length,
-    2,
-  );
-});
-
-Deno.test("题单引用：跨域身份、定向授权与资源 revision 独立校验", async () => {
-  const f = await fixture();
-  await assertRejects(
-    () => importDomainTraining(f.school.slug, f.training.id, f.student),
+    () => importDomainTraining(f.school.slug, f.sourceTraining.id, f.student),
     ForbiddenError,
   );
-  await assertRejects(
-    () => readDomainTraining(f.school.slug, f.training.id, f.teacher),
-    NotFoundError,
-  );
-  await assertRejects(
-    () =>
-      saveDomainTraining(f.school.slug, f.owner, f.trainingInput, {
-        id: f.training.id,
-        revision: 0,
-      }),
-    NotFoundError,
-  );
-  await assertRejects(
-    () =>
-      saveDomainTraining(f.other.slug, f.owner, f.trainingInput, {
-        id: f.training.id,
-        revision: null,
-      }),
-    AppError,
-  );
-  await setDomainTrainingSharing(f.other.slug, f.training.id, f.owner, {
-    expectedRevision: 1,
-    enabled: true,
-    scope: "selected",
-    targetDomainIds: [f.school.id],
-  });
-  await importDomainTraining(f.school.slug, f.training.id, f.teacher);
-  await setDomainTrainingSharing(f.other.slug, f.training.id, f.owner, {
-    expectedRevision: 2,
-    enabled: true,
-    scope: "selected",
-    targetDomainIds: [f.school.id],
-  });
   assertEquals(
-    (await readDomainTraining(f.school.slug, f.training.id, f.teacher)).items
-      .length,
-    2,
+    (await f.db.select().from(problems).where(
+      eq(problems.domain_id, f.school.id),
+    )).length,
+    before.length,
   );
-  await f.db.update(domainProblemBindings).set({ visibility: "members" }).where(
-    and(
-      eq(domainProblemBindings.domain_id, f.other.id),
-      eq(
-        domainProblemBindings.problem_id,
-        (await readDomainTraining(f.school.slug, f.training.id, f.teacher))
-          .items[0].problem_id,
-      ),
-    ),
-  );
-  const unavailable = (await readDomainTraining(
+  const detail = await readDomainTraining(
     f.school.slug,
-    f.training.id,
+    f.trainingId,
     f.teacher,
-  )).items[0];
-  // 题单仍可读，但撤销题只保留来源定位；不能恢复题面、绑定入口或再次引用。
-  assertEquals(unavailable.resource_available, false);
-  assertEquals(unavailable.binding_id, null);
-  assertEquals(unavailable.can_import, false);
-  assertEquals("title" in unavailable, false);
+  );
+  const item = detail.items[0];
+  assertEquals(item.source_domain_id, f.school.id);
+  const [version] = await f.db.select().from(problemVersions).where(
+    eq(problemVersions.problem_id, item.problem_id),
+  );
+  assertEquals(version.version, 1);
+  assert(item.binding_id);
+  const [binding] = await f.db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.id, item.binding_id),
+  );
+  assertEquals(binding.kind, "owned");
 });

@@ -237,8 +237,9 @@ export function importDomainProblemCommand(
   actor: UserActor,
   slug: string,
   sourceReference: string,
+  versionId?: string,
 ) {
-  return importDomainProblemForActor(slug, sourceReference, actor);
+  return importDomainProblemForActor(slug, sourceReference, actor, versionId);
 }
 
 export function setDomainProblemBindingPolicyCommand(

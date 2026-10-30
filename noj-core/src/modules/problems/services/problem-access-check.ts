@@ -1,19 +1,7 @@
 /**
- * 题目访问判定的**取数 + 判定**入口：题目读路径与写路径共用的唯一调用点。
- *
- * 为什么要有这一层：`problem-access.ts` 的纯函数判定需要"公开赛保密事实"
- * （`secrecy`）才能生效，而该事实要查库。若让每个 handler/service 各自取数，
- * 迟早有调用点忘记取，规则就会出现"某条路径漏判"的破口。因此统一在此取数后判定，
- * 调用方只关心 `result.allowed`。
- *
- * 取数口径（contest 域 `loadPublicContestSecrecy`）：题目被关联到至少一场
- * `kind = 'public'` 且 `now < end_time` 的竞赛 ⇒ 对非 owner/管理员不可见，
- * 除非请求携带了**有效竞赛上下文**（`contestAccess.allowed`，即该用户是这场竞赛的
- * 参赛者、这道题属于这场竞赛、窗口为 running/ended）。竞赛结束后保密自动失效。
- *
- * **查询次数**：每次判定固定多一次 `contest_problems ⋈ contests` 的索引 join
- * （不为 owner/admin 走捷径，换取"调用点无法漏判"）。结果不做缓存，因此不引入
- * 进程内可变状态，符合多副本约束。
+ * 默认域题目读取与作答统一检查 Domain、发布状态和当前比赛保护事实。
+ * 同域受保护正文返回带比赛入口的 403；编辑者允许预览，普通作答仍受保护。
+ * 不使用缓存，合法比赛上下文由服务端验证，比赛结束按当前时刻自动解除保护。
  */
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
@@ -39,16 +27,17 @@ import {
   type PublicContestSecrecyRef,
 } from "../../contests/contracts/read.ts";
 import { verifyContestAccess } from "../../access/contest-policy.ts";
+import { ForbiddenError } from "../../../shared/base/errors.ts";
 
-/** 判定结果 + 触发保密的公开赛列表（owner/管理员据此渲染保密提示）。 */
+/** 判定结果 + 触发保密的保密比赛列表（owner/管理员据此渲染保密提示）。 */
 export type ProblemAccessEvaluation = {
   result: ProblemAccessResult;
-  /** 关联的、尚未结束的公开赛；无关联为空数组 */
+  /** 关联的、尚未结束的保密比赛；无关联为空数组 */
   secrecy: PublicContestSecrecyRef[];
 };
 
 /**
- * 判定查看者可否访问某题目（含公开赛保密）。
+ * 判定查看者可否访问某题目（含保密比赛保密）。
  *
  * @param problem 题目最小字段集（id / visibility / owner_id）。
  * @param ctx 查看者上下文；`secrecy` 由本函数自行取数，调用方不要传。
@@ -56,13 +45,14 @@ export type ProblemAccessEvaluation = {
  */
 export async function evaluateProblemAccess(
   problem: ProblemAccessInput,
-  ctx: Omit<ProblemAccessContext, "secrecy">,
+  ctx: Omit<ProblemAccessContext, "secrecy"> & { purpose?: "read" | "write" },
   executor: Executor = getDb(),
 ): Promise<ProblemAccessEvaluation> {
   const db = executor;
   const [source] = await db.select({
     domain_id: problems.domain_id,
     owner_id: problems.owner_id,
+    latest_version_id: problems.latest_version_id,
   }).from(problems).where(eq(problems.id, problem.id)).limit(1);
   if (
     !source ||
@@ -85,15 +75,25 @@ export async function evaluateProblemAccess(
     source.owner_id === ctx.viewerId;
   const privileged = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("problem:write_any");
-  const visible = binding
-    ? binding.visibility === "public" || Boolean(workspace.membership) ||
-      workspace.platformAdmin
-    : problem.visibility === "public";
+  if (!source.latest_version_id && !privileged && !canReadOwn) {
+    return { result: { allowed: false, mode: "denied" }, secrecy: [] };
+  }
+  const visible = true;
   const secrecy = await loadPublicContestSecrecy(
     problem.id,
     executor,
     DEFAULT_DOMAIN_ID,
   );
+  if (
+    secrecy.length && !ctx.contestAccess?.allowed &&
+    (ctx.purpose === "write" || !privileged && !canReadOwn)
+  ) {
+    throw new ForbiddenError(
+      "此题受比赛保护，请从比赛入口作答",
+      "CONTEST_PROBLEM_RESTRICTED",
+      { contests: secrecy },
+    );
+  }
   return {
     result: resolveProblemAccess({
       ...problem,

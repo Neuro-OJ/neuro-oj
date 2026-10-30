@@ -43,12 +43,12 @@ async function add(trainingId?: string) {
       const { data } = await api.detail(scope.slug, trainingId);
       if (!data.items.some((item) => item.problem_id === problem.problem_id)) {
         await api.save(scope.slug, {
-          title: data.title, description: data.description, visibility: data.visibility,
+          title: data.title, description: data.description, state: data.state,
           problems: [...data.items.map((item) => item.display_ref), problem.display_ref],
         }, { id: data.id, revision: data.revision });
       }
     } else {
-      await api.save(scope.slug, { title: title.value.trim(), description: '', visibility: 'private', problems: [problem.display_ref] });
+      await api.save(scope.slug, { title: title.value.trim(), description: '', state: 'draft', problems: [problem.display_ref] });
     }
     if (scope.isCurrent()) {
       toast.success('已加入题单');

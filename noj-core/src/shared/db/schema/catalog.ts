@@ -382,6 +382,10 @@ export const trainings = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
+    /** 资源准备状态与域访问范围独立，发布后遵循所属域准入。 */
+    state: text("state").$type<"draft" | "published">().notNull().default(
+      "draft",
+    ),
     is_pinned: boolean("is_pinned").notNull().default(false),
     revision: integer("revision").notNull().default(0),
     created_by: text("created_by").notNull().references(() => users.id, {

@@ -8,6 +8,7 @@ const form = ref<DomainTrainingInput>({
   title: props.initial?.title ?? '',
   description: props.initial?.description ?? '',
   visibility: props.initial?.visibility ?? 'private',
+  state: props.initial?.state ?? 'draft',
   problems: props.initial?.items.map((item) => item.display_ref) ?? [],
 });
 const original = JSON.stringify(form.value), saving = ref(false), failure = ref('');
@@ -49,12 +50,12 @@ onBeforeRouteLeave(async () =>
         <AdminFormField label="说明">
           <MarkdownEditor v-model="form.description" />
         </AdminFormField>
-        <AdminFormField label="展示范围">
-          <USelect v-model="form.visibility"
-            :items="[{ label: '仅作者与管理者', value: 'private' }, { label: '获准进入本域且持有链接', value: 'unlisted' }, { label: '公开展示', value: 'public' }]" />
+        <AdminFormField label="准备状态">
+          <USelect v-model="form.state"
+            :items="[{ label: '草稿', value: 'draft' }, { label: '已发布', value: 'published' }]" />
         </AdminFormField>
         <p
-          class="text-xs text-text-muted">公开题单只包含在本域公开展示的公开题。引用题继续显示来源题号，不复制内容。</p>
+          class="text-xs text-text-muted">发布后的访问范围由所属域决定。跨域复用须先复制为本域独立题目；比赛保护仍逐题生效。</p>
       </UCard>
       <UCard>
         <DomainProblemChooser v-model="form.problems" :slug="slug" :disabled="saving" />

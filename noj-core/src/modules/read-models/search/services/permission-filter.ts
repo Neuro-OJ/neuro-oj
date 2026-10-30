@@ -178,9 +178,7 @@ export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
         AND coalesce(comment.domain_id,${DEFAULT_DOMAIN_ID})=${domainId} AND comment.status='published' AND ${postVisible})
     WHEN 'contest' THEN EXISTS (SELECT 1 FROM contests c WHERE c.id=${searchEntries.entity_id}
       AND coalesce(c.domain_id,${DEFAULT_DOMAIN_ID})=${domainId}
-      AND (c.is_public OR ${ctx.isAdmin} OR ${ctx.contestManageAny ?? false}
-        OR (${ctx.contestManageOwn ?? false} AND c.created_by=${userId})
-        OR EXISTS (SELECT 1 FROM contest_participants participant WHERE participant.contest_id=c.id AND participant.user_id=${userId})))
+       )
     WHEN 'submission' THEN EXISTS (SELECT 1 FROM submissions s WHERE s.id=${searchEntries.entity_id}
       AND ${
     submissionQueryVisibility({ domainId, member }, {

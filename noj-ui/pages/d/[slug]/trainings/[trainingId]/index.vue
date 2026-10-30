@@ -3,14 +3,12 @@ import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/
 import { extractApiError } from '~/utils/apiError';
 import type { BffEnvelope } from '~/utils/bff-view';
 import type { TrainingView, TrainingViewItem } from '~/utils/domain-trainings';
-import { useResourceRefresh } from '~/composables/useResourceRefresh';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const route = useRoute(), { slug, domain } = useWorkspace(), { user } = useAuth(), { api } = useApi();
 const resources = useDomainResources(), capture = useWorkspaceActionScope();
 const id = computed(() => String(route.params.trainingId));
 const page = computed(() => Math.max(1, Number(route.query.page) || 1));
-const importing = ref(''), failure = ref(''), sharingOpen = ref(false);
-const resource = useResourceRefresh();
+const importing = ref(''), failure = ref('');
 const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'training-view', id.value, String(page.value)),
   (_app, { signal }) => api.get<BffEnvelope>(
@@ -22,14 +20,10 @@ const { data, status, error, refresh } = await useAsyncData(
   },
 );
 const training = computed(() => data.value?.data.training);
-const sharing = await useAsyncData(
-  () => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'training-sharing', id.value, String(resource.generation.value)),
-  () => sharingOpen.value && training.value?.can_share ? resources.sharing(slug.value!, 'training', id.value) : Promise.resolve(null),
-  { watch: [sharingOpen, resource.generation] },
-);
 const solved = computed(() => data.value?.data.items.filter(item => item.progress === 'solved').length ?? 0);
 const known = computed(() => data.value?.data.items.filter(item => item.progress != null).length ?? 0);
 function progressLabel(item: TrainingViewItem) {
+  if (item.contest_protection?.length) return '比赛赛题 · 受保护';
   if (!item.resource_available) return item.can_import ? '尚未引用' : '资源不可用';
   if (item.summary_error) return '信息暂不可用';
   if (!user.value) return '登录查看进度';
@@ -51,10 +45,6 @@ async function importProblem(reference: string) {
   } finally {
     if (scope.isCurrent()) importing.value = '';
   }
-}
-async function reloadSharing() {
-  resource.begin();
-  await sharing.refresh();
 }
 useSeoMeta({ title: () => training.value?.title ?? '题单' });
 </script>
@@ -79,7 +69,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
           </div>
           <UAlert v-if="failure" color="error" :title="failure" class="m-4" />
           <ol class="divide-y divide-border">
-            <li v-for="item in data.data.items" :key="item.problem_id" class="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4 sm:flex-nowrap">
+            <li v-for="item in data.data.items" :key="item.problem_id" :class="{ 'contest-protected': item.contest_protection?.length }" class="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4 sm:flex-nowrap">
               <span class="w-6 shrink-0 text-sm text-text-muted tabular-nums">{{ item.position + 1 }}</span>
               <div class="min-w-0 flex-1 basis-[65%]">
                 <NuxtLink v-if="item.binding_id && item.resource_available" :to="workspaceProblemPath(slug!, item.display_ref)" class="block break-words font-medium text-text hover:text-primary">{{ item.title ?? `题目 ${item.display_ref}` }}</NuxtLink>
@@ -87,7 +77,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
                 <p class="mt-1 text-xs text-text-secondary"><span class="font-mono">{{ item.display_ref }}</span><span v-if="item.kind"> · {{ item.kind === 'oi' ? 'OI 题' : item.kind === 'objective' ? '客观题' : 'AI 题' }}</span></p>
               </div>
               <span class="text-sm" :class="item.progress === 'solved' ? 'text-signal-deep' : 'text-text-secondary'">{{ progressLabel(item) }}</span>
-              <UButton v-if="item.binding_id && item.resource_available" :to="workspaceProblemPath(slug!, item.display_ref)" variant="outline" class="ml-auto min-h-11 shrink-0">{{ item.progress === 'solved' ? '再次练习' : '继续作答' }}</UButton>
+              <UButton v-if="item.binding_id && item.resource_available" :to="workspaceProblemPath(slug!, item.display_ref)" variant="outline" class="ml-auto min-h-11 shrink-0">{{ item.can_practice === false ? '查看赛题保护' : item.progress === 'solved' ? '再次练习' : '继续作答' }}</UButton>
               <UButton v-else-if="domain?.status === 'active' && item.can_import" :loading="importing === item.qualified_ref" :disabled="!!importing" @click="importProblem(item.qualified_ref)">引用题目到当前域</UButton>
             </li>
           </ol>
@@ -98,14 +88,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
             <UButton :to="pageLink(page + 1)" :disabled="page * 20 >= data.data.total" variant="outline">下一页</UButton>
           </nav>
         </section>
-        <section v-if="training.can_share" class="rounded border border-border bg-bg-panel p-4">
-          <UButton variant="ghost" :aria-expanded="sharingOpen" @click="sharingOpen = !sharingOpen">{{ sharingOpen ? '收起共享设置' : '管理共享设置' }}</UButton>
-          <div v-if="sharingOpen" class="mt-4 space-y-3">
-            <UButton variant="outline" size="sm" @click="reloadSharing">重新读取共享政策</UButton>
-            <UAlert v-if="sharing.error.value" color="error" :title="extractApiError(sharing.error.value).message" />
-            <DomainSharingForm v-if="sharing.data.value" :key="`share:${id}:${resource.generation.value}`" :slug="slug!" kind="training" :reference="id" :initial="sharing.data.value.data" :writable="domain?.status === 'active'" />
-          </div>
-        </section>
+
       </div>
     </AsyncContent>
   </div>

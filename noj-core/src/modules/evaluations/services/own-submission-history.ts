@@ -11,6 +11,7 @@ import { oiVerdict } from "./submissions/oi-details.ts";
 import type { ContestType } from "../../contests/types/contests.ts";
 import type { ProblemReference } from "../../../shared/workspace/types.ts";
 import { currentTeacherSubmissionAccessWhere } from "../../education/contracts/cross-module/services_submission-access-sql.ts";
+import { resolveDomainProblem } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
 
 export type OwnSubmissionKind = "submission" | "objective";
 /** 由已授权服务器入口指定；查询条件在计数和分页之前执行。 */
@@ -213,26 +214,17 @@ async function readHistory(
   const accessible = sql`(${!!options
     .platformAdmin} OR ${entered} OR (owned.domain_id IS NULL AND history_domain.id IS NULL))`;
   const available = sql`(${accessible} AND (
-  (owned.domain_id IS NULL AND owned.domain_problem_binding_id IS NULL AND source_problem.visibility='public')
-  OR (EXISTS(SELECT 1 FROM domain_problem_bindings target_binding
-    WHERE target_binding.id=owned.domain_problem_binding_id
-    AND (${!!options
-    .platformAdmin} OR target_binding.visibility='public' OR EXISTS(SELECT 1 FROM domain_memberships member
-     WHERE member.domain_id=${domainId} AND member.user_id=${actorId} AND member.status='active')))
-   AND ${
+    (owned.domain_id IS NULL AND owned.domain_problem_binding_id IS NULL)
+    OR ${
     domainProblemBindingAvailableWhere(
       sql`owned.domain_problem_binding_id`,
       domainId,
       { member: true },
     )
-  })))`;
+  }))`;
   const submissionMode =
     sql`CASE WHEN owned.kind='objective' THEN 'objective' WHEN source_problem.submission_mode='code' AND source_problem.llm_config IS NOT NULL THEN 'llm' ELSE source_problem.submission_mode END`;
-  const visible = sql`(owned.user_id=${actorId} OR (${available} AND
-    (owned.contest_id IS NULL OR ${!!options.platformAdmin} OR EXISTS (
-      SELECT 1 FROM contests permitted_contest WHERE permitted_contest.id=owned.contest_id AND
-      (permitted_contest.is_public=true OR permitted_contest.created_by=${actorId}
-        OR EXISTS (SELECT 1 FROM contest_participants cp WHERE cp.contest_id=permitted_contest.id AND cp.user_id=${actorId}))))))`;
+  const visible = sql`(owned.user_id=${actorId} OR ${available})`;
   const where = sql`${
     options.visibleOnly ? visible : sql`owned.user_id=${actorId}`
   }
@@ -254,8 +246,8 @@ async function readHistory(
     options.upgradable
       ? sql`AND EXISTS (SELECT 1 FROM domain_problem_bindings upgrade_binding
     WHERE upgrade_binding.id=owned.domain_problem_binding_id AND
-    owned.submitted_version_id IS DISTINCT FROM CASE WHEN upgrade_binding.effective_version_mode='exact'
-      THEN upgrade_binding.required_version_id ELSE source_problem.latest_version_id END)`
+    owned.submitted_version_id IS DISTINCT FROM CASE WHEN source_problem.effective_version_mode='exact'
+      THEN source_problem.required_version_id ELSE source_problem.latest_version_id END)`
       : sql``
   }
   ${options.id ? sql`AND owned.id=${options.id}` : sql``}`;
@@ -437,6 +429,14 @@ export async function getDomainObjectiveSubmissionHistory(
   const canRead = row.user_id === actorId || organizer || !running &&
       (access.context.domainPermissions.has("submission:read_all") ||
         teacher === true);
+  if (canRead && row.resource_available) {
+    await resolveDomainProblem(
+      slug,
+      `${row.source_domain_slug}:${row.number}`,
+      actorId,
+      { contestId: row.contest_id ?? undefined },
+    );
+  }
   const item = projectHistory(
     organizer ? { ...row, contest_start: null, contest_end: null } : row,
     canRead,

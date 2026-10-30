@@ -23,10 +23,6 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
   kind: text("kind").$type<"owned" | "shared">().notNull(),
   visibility: text("visibility").$type<"public" | "members">().notNull()
     .default("members"),
-  effective_version_mode: text("effective_version_mode").$type<
-    EffectiveVersionMode
-  >().notNull().default("any"),
-  required_version_id: text("required_version_id"),
   revision: integer("revision").notNull().default(0),
   disabled_at: text("disabled_at"),
   created_by: text("created_by").notNull().references(() => users.id),
@@ -45,11 +41,6 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
     t.id,
     t.problem_id,
   ),
-  versionFk: foreignKey({
-    name: "domain_problem_bindings_required_version_fk",
-    columns: [t.problem_id, t.required_version_id],
-    foreignColumns: [problemVersions.problem_id, problemVersions.id],
-  }),
   kindCheck: check(
     "domain_problem_bindings_kind_check",
     sql`${t.kind} IN ('owned', 'shared')`,
@@ -57,10 +48,6 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
   visibilityCheck: check(
     "domain_problem_bindings_visibility_check",
     sql`${t.visibility} IN ('public', 'members')`,
-  ),
-  policyCheck: check(
-    "domain_problem_bindings_policy_check",
-    sql`(${t.effective_version_mode} = 'any' AND ${t.required_version_id} IS NULL) OR (${t.effective_version_mode} = 'exact' AND ${t.required_version_id} IS NOT NULL)`,
   ),
   revisionCheck: check(
     "domain_problem_bindings_revision_check",

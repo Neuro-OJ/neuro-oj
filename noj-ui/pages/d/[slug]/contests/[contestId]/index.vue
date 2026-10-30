@@ -52,8 +52,6 @@ const registration = computed(() => contest.value
     isLoggedIn: isLoggedIn.value,
     isRegistered: contest.value.is_registered === true,
     status: contest.value.status,
-    kind: contest.value.kind,
-    hasPassword: contest.value.has_password,
     canManage: contest.value.can_manage === true,
   })
   : null);
@@ -72,17 +70,14 @@ const problems = await useAsyncData(
 );
 
 const registerSection = ref<HTMLElement | null>(null);
-const passwordInput = ref<{ $el?: HTMLElement } | null>(null);
 
 /** 头部「报名参赛」把注意力带到报名区；需要凭据时直接聚焦输入框。 */
 function focusRegistration() {
-  const target = (passwordInput.value?.$el as HTMLElement | undefined)
-    ?? registerSection.value?.querySelector<HTMLElement>('input,button');
+  const target = registerSection.value?.querySelector<HTMLElement>('button');
   target?.focus?.();
   registerSection.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const password = ref('');
 const registering = ref(false);
 const failure = ref('');
 const registeredFlash = ref(false);
@@ -96,11 +91,10 @@ async function register() {
       setRegistering: (value) => registering.value = value,
       register: async () => {
         const operation = scope();
-        await api.register(operation.slug, id.value, password.value.trim());
+        await api.register(operation.slug, id.value);
       },
       onRegistered: () => {
         registeredFlash.value = true;
-        password.value = '';
       },
       refresh: async () => {
         await refresh();
@@ -174,8 +168,8 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
             <span class="rounded border border-border px-2 py-0.5 font-medium text-text-secondary">
               {{ contestType?.label }}
             </span>
-            <span v-if="contest.kind === 'invite'" class="rounded border border-border px-2 py-0.5 font-medium text-text-secondary">
-              邀请赛
+            <span v-if="contest.secrecy_enabled" class="rounded border border-border px-2 py-0.5 font-medium text-text-secondary">
+              赛题保护
             </span>
             <span v-if="contest.is_registered" class="inline-flex items-center gap-1.5 rounded border border-signal/30 bg-signal/10 px-2 py-0.5 font-semibold text-signal-deep">
               <UIcon name="i-lucide-user-check" class="size-3.5" />
@@ -267,21 +261,14 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
                 <div class="min-w-0">
                   <h2 class="text-base font-semibold text-text">报名参赛</h2>
                   <p class="mt-2 max-w-prose text-sm leading-6 text-text-secondary">
-                    {{
-                      registration.needsCredential
-                        ? `本场为${contest!.kind === 'invite' ? '邀请赛' : '设密码比赛'}，请向组织者索取${registration.credentialLabel}后报名。`
-                        : '报名即刻生效，可查看赛题并在受理时间内提交；成绩按赛制计入本场榜单。'
-                    }}
+                    报名即刻生效，开赛后可从本场比赛入口作答；成绩按赛制计入本场榜单。
                   </p>
                 </div>
                 <span class="rounded border border-border bg-bg-sunken px-2 py-1 text-xs tabular-nums text-text-muted">
-                  {{ contest!.has_password ? '需要凭据' : '公开报名' }}
+                  域内报名
                 </span>
               </div>
               <div class="mt-4 flex flex-wrap items-start gap-3">
-                <UInput v-if="registration.needsCredential" ref="passwordInput" v-model="password" type="password"
-                  :placeholder="registration.credentialLabel" :aria-label="registration.credentialLabel"
-                  class="w-full sm:w-64" :autofocus="true" @keyup.enter="register" />
                 <UButton :loading="registering" icon="i-lucide-user-plus" @click="register">
                   报名参赛
                 </UButton>

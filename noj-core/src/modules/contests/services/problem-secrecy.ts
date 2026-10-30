@@ -1,22 +1,7 @@
 /**
- * 公开赛题目保密事实：题目当前是否被**尚未结束的公开赛**（`contests.kind = 'public'`）
- * 收编，以及是哪些竞赛。
- *
- * 供题目读/写路径门控复用（见 catalog 域 `problem-access.ts` 的 `secrecy` 输入）：
- * 赛前与赛中的公开赛题目对非 owner/管理员一律按"不存在"处理（404），
- * 竞赛 `end_time` 一过自动恢复常规可见性（赛后复盘、补题、题解均可访问）。
- *
- * **设计取舍（与 `problem-exposure.ts` 一致，有意为之）**：
- * - **不使用缓存、不引入调度任务**：时间窗口实时比较，竞赛开始/结束无需任何状态
- *   翻转动作，因此不新增进程内可变状态（多副本约束见
- *   `dev-docs/engineering/domain-boundaries.md`）。
- * - **不按竞赛 `is_public` 分档**：链式/隐链公开赛（`is_public = false`）同样保密，
- *   保密只取决于 `kind`——隐链竞赛恰恰更需要保密。
- * - **邀请赛（`kind = 'invite'`）不参与**：邀请赛本身的题目访问已由参赛者身份与
- *   邀请码门控，本规则按需求只覆盖公开赛。
- *
- * 时间比较按「时刻」而非「文本」，复用 `unendedWindowCondition`
- * （`::timestamptz` + 形态守卫），杜绝字典序比较对 `+08:00` 形态静默 fail-open。
+ * 比赛保密事实：secrecy_enabled 开启且尚未结束时保护该题所有历史版本。
+ * 从加入比赛起生效；按当前时刻查询，无缓存或调度状态。
+ * 同域元信息保留，正文读取与普通作答由访问策略分别门控；比赛类别不参与授权。
  */
 import { and, asc, eq, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
@@ -37,11 +22,11 @@ export type PublicContestSecrecyRef = {
 };
 
 /**
- * 取该题目关联的、尚未结束的公开赛列表。
+ * 取该题目关联的、尚未结束的保密比赛列表。
  *
  * @param problemId 题目 UUID。
  * @returns 触发保密的竞赛列表（按结束时间升序，最近结束的在前）；空数组表示
- *          该题目当前不受公开赛保密约束。
+ *          该题目当前不受保密比赛保密约束。
  */
 export async function loadPublicContestSecrecy(
   problemId: string,
@@ -66,7 +51,7 @@ export async function loadPublicContestSecrecy(
             : undefined,
         )
         : undefined,
-      eq(contests.kind, "public"),
+      eq(contests.secrecy_enabled, true),
       unendedWindowCondition(contests.end_time),
     ))
     .orderBy(asc(contests.end_time), asc(contests.id));
@@ -74,17 +59,17 @@ export async function loadPublicContestSecrecy(
 }
 
 /**
- * 「该题目被尚未结束的公开赛收编」的共享 SQL 谓词：返回 `EXISTS (...)` 片段。
+ * 「该题目被尚未结束的保密比赛收编」的共享 SQL 谓词：返回 `EXISTS (...)` 片段。
  *
- * 这是**公开赛-题目保密事实的单一真相源在 SQL 层的出口**（审计 §4.1）。所有需要在
+ * 这是**保密比赛-题目保密事实的单一真相源在 SQL 层的出口**（审计 §4.1）。所有需要在
  * 数据库层排除/标注这类题目的位置（题库列表、题单、个人主页、全局搜索、社区帖子
  * 列表）都必须复用它，禁止各自手写时间窗口比较——此前四处副本的口径漂移正是
  * VULN-02 / VULN-07 的根因：
  * - 有的只查 `running`（`start <= now < end`），于是**赛前筹备期（pending）完全放行**；
  * - 有的漏掉 `discussion` 类型，只门控 `solution`。
  *
- * 判定口径为 `contests.kind = 'public' AND now < end_time`（含 pending 与 running），
- * 即「从公开赛收编该题起，直到比赛结束」全程保密；`end_time` 一过自动放行
+ * 判定口径为 `contests.secrecy_enabled = true AND now < end_time`（含 pending 与 running），
+ * 即「从保密比赛收编该题起，直到比赛结束」全程保密；`end_time` 一过自动放行
  * （赛后复盘、补题、题解均恢复正常）。
  *
  * 形态守卫与 fail-closed 取向由 {@link unendedWindowCondition} 提供（结束时间无法
@@ -92,7 +77,7 @@ export async function loadPublicContestSecrecy(
  *
  * @param problemIdExpr 题目 id 的列引用或 SQL 表达式（如 `problems.id`、
  *                      `community_posts.problem_id`）。
- * @returns 该题目受未结束公开赛保密时为真的 `EXISTS` 子查询。
+ * @returns 该题目受未结束保密比赛保密时为真的 `EXISTS` 子查询。
  */
 export function unendedPublicContestForProblem(
   problemIdExpr: AnyColumn | SQL,
@@ -107,20 +92,20 @@ export function unendedPublicContestForProblem(
       ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
       : sql``
   }
-      AND c.kind = 'public'
+      AND c.secrecy_enabled = true
       AND ${unendedWindowCondition(sql`c.end_time`)}
   )`;
 }
 
 /**
- * 单条内存判定：该题目当前是否被**尚未结束的公开赛**收编。
+ * 单条内存判定：该题目当前是否被**尚未结束的保密比赛**收编。
  *
  * 供写入路径（发帖/发题解前的 Write Guard）与需要逐条判定的读路径使用；
  * SQL 列表场景请用 {@link unendedPublicContestForProblem}（相关子查询，不受题量
  * 规模影响，也不会因 IN 列表上限静默漏判）。
  *
  * @param problemId 题目 UUID。
- * @returns 受未结束公开赛保密时为 true。
+ * @returns 受未结束保密比赛保密时为 true。
  */
 export async function isProblemInUnendedPublicContest(
   problemId: string,
@@ -141,7 +126,7 @@ export async function isProblemInUnendedPublicContest(
             : undefined,
         )
         : undefined,
-      eq(contests.kind, "public"),
+      eq(contests.secrecy_enabled, true),
       unendedWindowCondition(contests.end_time),
     ))
     .limit(1);
@@ -149,11 +134,11 @@ export async function isProblemInUnendedPublicContest(
 }
 
 /**
- * 判定全站当前是否存在任何尚未结束的公开赛（含 pending 筹备期与 running 进行期）。
+ * 判定全站当前是否存在任何尚未结束的保密比赛（含 pending 筹备期与 running 进行期）。
  *
- * 供赛时社区全局静默（决策 1）复用：普通用户在有未结束公开赛时禁止发讨论帖和动态。
+ * 供赛时社区全局静默（决策 1）复用：普通用户在有未结束保密比赛时禁止发讨论帖和动态。
  *
- * @returns 存在未结束公开赛时为 true。
+ * @returns 存在未结束保密比赛时为 true。
  */
 export async function hasUnendedPublicContest(
   domainId?: string,
@@ -171,7 +156,7 @@ export async function hasUnendedPublicContest(
             : undefined,
         )
         : undefined,
-      eq(contests.kind, "public"),
+      eq(contests.secrecy_enabled, true),
       unendedWindowCondition(contests.end_time),
     ))
     .limit(1);

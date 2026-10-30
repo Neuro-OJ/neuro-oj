@@ -1,11 +1,4 @@
-/**
- * 公开赛保密规则的路由级测试（2026-09-26）。
- *
- * 规格：题目一旦被加入**公开赛**（`contests.kind = 'public'`，邀请赛除外），
- * 除题目所有者与管理员外，所有访问题目相关页面/接口的人都拿到 404；
- * 所有者与管理员正常访问，并在响应里拿到 `contest_secrecy` 提示（前端据此渲染横幅）。
- * 竞赛 `end_time` 一过，题目自动恢复常规可见性。
- */
+/** 默认域兼容入口也遵循同域保护 403、隐藏域 404 与管理预览规则。 */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
@@ -133,7 +126,7 @@ async function cleanup(contestId: string, problemId: string): Promise<void> {
 }
 
 Deno.test({
-  name: "保密规则: 关联未结束公开赛的题目对匿名 404（不泄露存在性）",
+  name: "保密规则: 关联未结束公开赛的题目对匿名 403（不泄露存在性）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -141,8 +134,8 @@ Deno.test({
     const { problemId, contestId } = await setupRunningPublicContest();
     try {
       const res = await jsonRequest(app, `/api/v1/problems/${problemId}`);
-      assertEquals(res.status, 404);
-      assertEquals((await res.json()).error, "题目不存在");
+      assertEquals(res.status, 403);
+      assertEquals((await res.json()).code, "CONTEST_PROBLEM_RESTRICTED");
     } finally {
       await cleanup(contestId, problemId);
     }
@@ -150,7 +143,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: 关联未结束公开赛的题目对非 owner 登录用户 404",
+  name: "保密规则: 关联未结束公开赛的题目对非 owner 登录用户 403",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -161,7 +154,7 @@ Deno.test({
       const res = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
         token: otherToken,
       });
-      assertEquals(res.status, 404);
+      assertEquals(res.status, 403);
     } finally {
       await cleanup(contestId, problemId);
     }
@@ -241,7 +234,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: 邀请赛不触发保密（题目保持公开）",
+  name: "保密规则: 旧邀请赛字段不再绕过保护",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -256,7 +249,7 @@ Deno.test({
     });
     try {
       const res = await jsonRequest(app, `/api/v1/problems/${problemId}`);
-      assertEquals(res.status, 200);
+      assertEquals(res.status, 403);
     } finally {
       await cleanup(contestId, problemId);
     }
@@ -279,7 +272,7 @@ Deno.test({
     try {
       assertEquals(
         (await jsonRequest(app, `/api/v1/problems/${problemId}`)).status,
-        404,
+        403,
       );
       // owner 仍可访问
       assertEquals(
@@ -295,7 +288,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: 公开统计接口对匿名 404（不留统计侧预言机）",
+  name: "保密规则: 公开统计接口对匿名 403（不留统计侧预言机）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -306,7 +299,7 @@ Deno.test({
         app,
         `/api/v1/problems/${problemId}/stats/public`,
       );
-      assertEquals(res.status, 404);
+      assertEquals(res.status, 403);
     } finally {
       await cleanup(contestId, problemId);
     }
@@ -314,7 +307,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: starter code 模板对非 owner 404（此前无访问校验）",
+  name: "保密规则: starter code 模板对非 owner 403（此前无访问校验）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -327,7 +320,7 @@ Deno.test({
         `/api/v1/problems/${problemId}/template`,
         { token: otherToken },
       );
-      assertEquals(res.status, 404);
+      assertEquals(res.status, 403);
     } finally {
       await cleanup(contestId, problemId);
     }
@@ -335,7 +328,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: 支持包路由对非 owner 404，且不改变既有包权限口径",
+  name: "保密规则: 支持包路由对非 owner 403，且不改变既有包权限口径",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -347,14 +340,14 @@ Deno.test({
     const controlOwnerId = decodeJwt(controlOwnerToken).sub as string;
     const controlProblemId = await createOwnedPublicProblem(controlOwnerId);
     try {
-      // 保密命中：先于包权限校验返回 404「题目不存在」
+      // 保密命中：先于包权限校验返回 403「题目不存在」
       const secret = await jsonRequest(
         app,
         `/api/v1/problems/${problemId}/support-package`,
         { token: otherToken },
       );
-      assertEquals(secret.status, 404);
-      assertEquals((await secret.json()).error, "题目不存在");
+      assertEquals(secret.status, 403);
+      assertEquals((await secret.json()).code, "CONTEST_PROBLEM_RESTRICTED");
 
       // 非保密题：保持既有的 403（package_manage 权限）口径
       const control = await jsonRequest(

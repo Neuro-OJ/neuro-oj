@@ -215,7 +215,6 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
     eq(domainProblemBindings.problem_id, "ja-p1"),
   );
   assertEquals(binding1.revision, 0);
-  assertEquals(binding1.effective_version_mode, "any");
   // 未产生任务与条目
   assertEquals(
     (await db.select().from(submissionJobs).where(

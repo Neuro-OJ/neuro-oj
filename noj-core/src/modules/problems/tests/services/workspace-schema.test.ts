@@ -69,8 +69,8 @@ async function seed() {
   return { school, problem, other, versions, now };
 }
 
-Deno.test("域题库约束：同源题各域独立策略、同域唯一绑定和版本同题外键", async () => {
-  const { school, problem, other, versions, now } = await seed();
+Deno.test("域题库约束：同域唯一绑定、题目唯一策略和版本同题外键", async () => {
+  const { school, problem, versions, now } = await seed();
   const owned = {
     id: crypto.randomUUID(),
     domain_id: DEFAULT_DOMAIN_ID,
@@ -86,8 +86,6 @@ Deno.test("域题库约束：同源题各域独立策略、同域唯一绑定和
     id: crypto.randomUUID(),
     domain_id: school,
     kind: "shared" as const,
-    effective_version_mode: "exact" as const,
-    required_version_id: versions[0],
   };
   await getDb().insert(domainProblemBindings).values(shared);
   assertEquals((await getDb().select().from(domainProblemBindings)).length, 2);
@@ -98,15 +96,16 @@ Deno.test("域题库约束：同源题各域独立策略、同域唯一绑定和
     })
   );
   await constraintRejected((tx) =>
-    tx.insert(domainProblemBindings).values({
-      ...shared,
-      id: crypto.randomUUID(),
-      problem_id: other,
-    })
+    tx.update(problems).set({
+      effective_version_mode: "exact",
+      required_version_id: versions[1],
+    }).where(eq(problems.id, problem))
   );
   await constraintRejected((tx) =>
-    tx.update(domainProblemBindings).set({ required_version_id: null })
-      .where(eq(domainProblemBindings.id, shared.id))
+    tx.update(problems).set({
+      effective_version_mode: "exact",
+      required_version_id: null,
+    }).where(eq(problems.id, problem))
   );
   await constraintRejected((tx) =>
     tx.update(domainProblemBindings).set({ revision: -1 }).where(

@@ -290,6 +290,7 @@ export async function createUploadedSubmission(
     : null;
   if (!domainExecution) {
     const { result: access } = await evaluateProblemAccess(problem, {
+      purpose: "write",
       viewerId: userId,
       isAdmin,
       contestAccess,

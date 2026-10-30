@@ -284,7 +284,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
       eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
     ),
   );
-  const policyIdentity = binding ?? identity;
+  const policyIdentity = identity;
   const requestedVersionId = c.req.query("version_id")?.trim() || null;
   const canEdit = await canEditProblem(c, problem);
   if (!identity?.latest_version_id && !canEdit) {

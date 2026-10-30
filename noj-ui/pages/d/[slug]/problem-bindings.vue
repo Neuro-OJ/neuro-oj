@@ -20,20 +20,6 @@ const { data, error, status, refresh } = await useAsyncData(
   () => api.bindings(slug.value!, page.value, keyword.value),
 );
 const selected = computed(() => data.value?.items.find((item) => item.binding_id === selectedId.value));
-const sharing = await useAsyncData(
-  () =>
-    workspaceCacheKey(
-      slug.value!,
-      user.value?.id ?? null,
-      'problem-sharing',
-      selectedId.value,
-      String(generation.value),
-    ),
-  () =>
-    selected.value?.can_share
-      ? api.sharing(slug.value!, 'problem', selected.value.reference.display_ref)
-      : Promise.resolve(null),
-);
 function search() {
   page.value = 1;
   selectedId.value = null;
@@ -65,19 +51,19 @@ useSeoMeta({ title: '域题库资源管理' });
 </script>
 <template>
   <div class="space-y-5">
-    <AdminPageHeader title="题库资源管理" description="本域源题与跨域引用采用各自独立的有效策略和展示范围">
+    <AdminPageHeader title="题库资源管理" description="本域统一题库；跨域复用生成独立题目与发布版本">
       <template #actions>
         <UButton variant="outline" @click="reload">重新读取</UButton>
         <UButton :to="`/d/${slug}/problems`" variant="outline">浏览题库</UButton>
       </template>
     </AdminPageHeader>
     <UCard v-if="domain?.status === 'active' && (can('problem:import') || can('problem:create'))">
-      <h3 class="mb-3 font-semibold">引用公开源题</h3>
+      <h3 class="mb-3 font-semibold">复制其他域题目</h3>
       <p
-        class="mb-3 text-xs text-text-muted">填写来源题号，例如 main:1001。内容保留来源身份，作答、提交及 LLM 使用当前域。恢复停用引用也重新检查授权。</p>
+        class="mb-3 text-xs text-text-muted">填写来源题号，例如 main:1001。需具有源题编辑权限和目标域创建、发布权限。复制生成独立身份，后续内容、成绩与配置各自管理。</p>
       <div class="flex gap-2">
         <UInput v-model="source" placeholder="main:1001" class="grow" @keydown.enter.prevent="imported" />
-        <UButton :loading="importing" :disabled="!source.trim()" @click="imported">引用到本域</UButton>
+        <UButton :loading="importing" :disabled="!source.trim()" @click="imported">复制到本域</UButton>
       </div>
       <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
       <div class="mt-5 border-t border-border pt-5">
@@ -118,13 +104,8 @@ useSeoMeta({ title: '域题库资源管理' });
             <DomainProblemBindingEditor :slug="slug!" :initial="selected" :writable="domain?.status === 'active'"
               :can-policy="selected.can_manage_policy" @saved="refresh()" />
           </ClientOnly>
-          <UAlert v-if="sharing.error.value" color="error" :title="extractApiError(sharing.error.value).message" />
-          <DomainSharingForm v-if="selected.can_share && sharing.data.value"
-            :key="`share:${selected.binding_id}:${generation}`" :slug="slug!" kind="problem"
-            :reference="selected.reference.display_ref" :initial="sharing.data.value.data"
-            :writable="domain?.status === 'active'" />
         </UCard>
-        <p v-else class="text-sm text-text-muted">选择一道题目管理策略、上下架和共享。</p>
+        <p v-else class="text-sm text-text-muted">选择一道题目管理版本策略和上下架状态。</p>
       </div>
     </AsyncContent>
   </div>

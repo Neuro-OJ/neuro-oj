@@ -1,4 +1,6 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { ForbiddenError } from "../../../../shared/base/errors.ts";
+import { getOwnSubmissionHistory } from "../../services/own-submission-history.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -11,6 +13,66 @@ import {
 } from "../../index.ts";
 import { fixture, withQueue } from "../_domain-execution-fixture.ts";
 import { saveV2ResultForTest } from "../_versioning-fixtures.ts";
+
+Deno.test({
+  name: "赛前保护：既有练习详情不能泄露评测输出，本人原代码仍可从私人历史读取",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const f = await fixture();
+    await withQueue(async () => {
+      const own = await createDomainSubmission(f.a.slug, f.ref, f.student, {
+        version_id: f.v2,
+        language: "python3",
+        code: "print('original')",
+      });
+      await saveV2ResultForTest({
+        submission_id: own.id,
+        status: "finished",
+        score: 5000,
+        output: "secret statement",
+        details: {},
+      });
+      const id = crypto.randomUUID(), now = new Date().toISOString();
+      await f.db.insert(contests).values({
+        id,
+        domain_id: f.a.id,
+        title: "赛前保护",
+        type: "kaggle",
+        created_by: f.owner,
+        start_time: new Date(Date.now() + 60000).toISOString(),
+        end_time: new Date(Date.now() + 3600000).toISOString(),
+        secrecy_enabled: true,
+        created_at: now,
+        updated_at: now,
+      });
+      await f.db.insert(contestProblems).values({
+        contest_id: id,
+        domain_id: f.a.id,
+        domain_problem_binding_id: f.bindingA.id,
+        problem_id: f.problemId,
+        pinned_version_id: f.v2,
+        label: "A",
+        score: 10000,
+      });
+      const error = await assertRejects(
+        () => getDomainSubmission(f.a.slug, own.id, f.student),
+        ForbiddenError,
+      );
+      assertEquals(error.code, "CONTEST_PROBLEM_RESTRICTED");
+      const historical = await getOwnSubmissionHistory(
+        f.student,
+        "submission",
+        own.id,
+      );
+      assertEquals(historical.code, "print('original')");
+      assertEquals(
+        JSON.stringify(historical).includes("secret statement"),
+        false,
+      );
+    });
+  },
+});
 
 for (const type of ["oi", "ioi", "ioi_strict", "acm"] as const) {
   Deno.test({

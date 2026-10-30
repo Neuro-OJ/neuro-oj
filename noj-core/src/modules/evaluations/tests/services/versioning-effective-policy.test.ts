@@ -40,7 +40,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 
 const now = new Date().toISOString();
 
-Deno.test("policy: 默认入口仅修改 main 绑定，外域引用策略与源题旧字段保持独立", async () => {
+Deno.test("policy: 默认入口修改 main 题目唯一策略，旧外域绑定不能获得授权", async () => {
   const f = await domainFixture();
   await seedProblem("main-isolated-policy", 992090);
   await assertRejects(
@@ -60,8 +60,6 @@ Deno.test("policy: 默认入口仅修改 main 绑定，外域引用策略与源�
     domain_id: f.a.id,
     problem_id: problemId,
     kind: "shared",
-    effective_version_mode: "exact",
-    required_version_id: `${problemId}-v1`,
     revision: 7,
     created_by: f.owner,
     created_at: now,
@@ -76,13 +74,12 @@ Deno.test("policy: 默认入口仅修改 main 绑定，外域引用策略与源�
   const [source] = await f.db.select().from(problems).where(
     eq(problems.id, problemId),
   );
-  assertEquals(source.effective_version_mode, "any");
-  assertEquals(source.effective_policy_revision, 0);
+  assertEquals(source.effective_version_mode, "exact");
+  assertEquals(source.effective_policy_revision, 1);
   const [foreign] = await f.db.select().from(domainProblemBindings).where(
     eq(domainProblemBindings.id, foreignId),
   );
   assertEquals(foreign.revision, 7);
-  assertEquals(foreign.required_version_id, `${problemId}-v1`);
   const [member] = await f.db.select().from(domainMemberships).where(
     and(
       eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),

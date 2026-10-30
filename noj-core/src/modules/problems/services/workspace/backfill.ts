@@ -55,8 +55,6 @@ export async function backfillDefaultCatalog(
       problem_id: source.id,
       kind: "owned",
       visibility: source.visibility === "public" ? "public" : "members",
-      effective_version_mode: source.effective_version_mode as "any" | "exact",
-      required_version_id: source.required_version_id,
       revision: source.effective_policy_revision,
       created_by: domain.owner_id,
       created_at: source.created_at,
@@ -74,9 +72,9 @@ export async function backfillDefaultCatalog(
       binding_id: binding.id,
       problem_id: source.id,
       revision: binding.revision,
-      effective_version_mode: binding.effective_version_mode,
-      required_version_id: binding.required_version_id,
-      answer_version_id: binding.required_version_id ??
+      effective_version_mode: source.effective_version_mode as "any" | "exact",
+      required_version_id: source.required_version_id,
+      answer_version_id: source.required_version_id ??
         source.latest_version_id,
       actor_id: domain.owner_id,
       reason: "默认域存量策略回填",

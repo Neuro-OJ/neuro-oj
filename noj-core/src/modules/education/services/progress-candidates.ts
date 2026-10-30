@@ -47,6 +47,7 @@ export async function loadAssignmentCandidates(
     SELECT s.submission_id, s.source_kind, s.user_id, s.problem_id, s.received_at, s.receipt_sequence,
       e.id AS attempt_id, e.problem_version_id AS version_id, e.score, e.accepted, false AS pending, scope.name AS scope
     FROM eligible s JOIN domain_problem_bindings b ON b.id = s.binding_id
+    JOIN problems p ON p.id = s.problem_id
     JOIN submission_version_results v ON (s.source_kind = 'submission' AND v.submission_id = s.submission_id)
       OR (s.source_kind = 'objective' AND v.objective_submission_id = s.submission_id)
     JOIN evaluation_attempts e ON e.id = v.current_attempt_id
@@ -54,17 +55,18 @@ export async function loadAssignmentCandidates(
     WHERE e.problem_id = s.problem_id AND e.state = 'finished' AND e.result_kind = 'graded' AND e.score IS NOT NULL
       AND (scope.name = 'current' OR s.deadline_at IS NULL OR s.received_at <= s.deadline_at)
       AND (scope.name = 'current' OR s.ended_at IS NULL OR s.received_at <= s.ended_at)
-      AND (b.effective_version_mode = 'any' OR e.problem_version_id = b.required_version_id)
+      AND (p.effective_version_mode = 'any' OR e.problem_version_id = p.required_version_id)
   ), pending AS (
     SELECT s.submission_id, s.source_kind, s.user_id, s.problem_id, s.received_at, s.receipt_sequence,
       NULL::text AS attempt_id, e.problem_version_id AS version_id, NULL::integer AS score, false AS accepted, true AS pending, scope.name AS scope
     FROM eligible s JOIN domain_problem_bindings b ON b.id = s.binding_id
+    JOIN problems p ON p.id = s.problem_id
     JOIN evaluation_attempts e ON e.id = s.active_attempt_id
     CROSS JOIN (VALUES ('on_time'), ('current')) AS scope(name)
     WHERE e.state IN ('queued', 'judging')
       AND (scope.name = 'current' OR s.deadline_at IS NULL OR s.received_at <= s.deadline_at)
       AND (scope.name = 'current' OR s.ended_at IS NULL OR s.received_at <= s.ended_at)
-      AND (b.effective_version_mode = 'any' OR e.problem_version_id = b.required_version_id)
+      AND (p.effective_version_mode = 'any' OR e.problem_version_id = p.required_version_id)
   ), ranked AS (
     SELECT g.*, row_number() OVER (PARTITION BY user_id, problem_id, scope
       ORDER BY score DESC, receipt_sequence, attempt_id) AS best_rank,

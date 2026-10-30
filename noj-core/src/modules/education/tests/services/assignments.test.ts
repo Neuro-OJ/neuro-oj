@@ -14,6 +14,7 @@ import {
   assignments,
   domainProblemBindings,
   educationOutbox,
+  problems,
 } from "../../../../shared/db/schema.ts";
 import {
   changeAssignmentLifecycle,
@@ -245,11 +246,14 @@ Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验
 
 Deno.test("作业：按当前有效策略发布，延长截止有沿革，归档保留学生阅读", async () => {
   const f = await assignmentFixture();
-  await f.db.update(domainProblemBindings).set({
+  await f.db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: f.versionId,
-    revision: 2,
-  }).where(eq(domainProblemBindings.id, f.bindingId));
+    effective_policy_revision: 2,
+  }).where(eq(problems.id, f.problemId));
+  await f.db.update(domainProblemBindings).set({ revision: 2 }).where(
+    eq(domainProblemBindings.id, f.bindingId),
+  );
   const deadline = new Date(Date.now() + 3600000).toISOString();
   const draft = await createAssignment(
     f.school.slug,

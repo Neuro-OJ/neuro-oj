@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   domainProblemBindings,
+  domains,
   problems,
   problemVersions,
 } from "../../../shared/db/schema.ts";
@@ -36,7 +37,29 @@ export async function assignmentFixture() {
     id: versionId,
     problem_id: problemId,
     version: 1,
-    content: { kind: "ai", title: "教学题", description: "题面" },
+    content: {
+      kind: "ai",
+      title: "教学题",
+      description: "题面",
+      samples: [],
+      submission_mode: "code",
+      template_content: "print(1)",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      artifact_max_size_mb: null,
+      llm_config: null,
+    },
     published_at: now,
   });
   await f.db.update(problems).set({ latest_version_id: versionId }).where(
@@ -52,6 +75,9 @@ export async function assignmentFixture() {
     created_at: now,
     updated_at: now,
   });
+  await f.db.update(domains).set({ next_problem_number: 1002 }).where(
+    eq(domains.id, f.school.id),
+  );
   const input = {
     title: "基础作业",
     items: [{

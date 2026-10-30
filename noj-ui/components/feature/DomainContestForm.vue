@@ -29,8 +29,7 @@ const visibility = ref(props.existing?.ranking_visibility ?? defaults.ranking_vi
 const freezeMinutes = ref((props.existing?.freeze_duration_seconds ?? defaults.freeze_duration_seconds) / 60);
 const penalty = ref(props.existing?.config.penalty_minutes ?? 20);
 const scoreboard = ref<'self' | 'full'>(props.existing?.config.scoreboard_scope ?? 'self');
-const isPublic = ref(props.existing?.is_public ?? true);
-const password = ref('');
+const secrecy = ref(props.existing?.secrecy_enabled ?? true);
 const selected = ref<Array<{ problem: DomainProblemSummary; score: number; label: string }>>([]);
 if (props.existing) {
   const existingId = props.existing.id;
@@ -69,7 +68,7 @@ const saving = ref(false);
 const error = ref('');
 const snapshot = () => JSON.stringify({ title: title.value, description: description.value, type: type.value, classrooms: classrooms.value,
   start: start.value, end: end.value, visibility: visibility.value, freeze: freezeMinutes.value,
-  penalty: penalty.value, scoreboard: scoreboard.value, public: isPublic.value, password: password.value,
+  penalty: penalty.value, scoreboard: scoreboard.value, secrecy: secrecy.value,
   problems: selected.value.map(item => ({ id: item.problem.binding_id, label: item.label, score: item.score })),
 });
 const savedSnapshot = ref(snapshot());
@@ -96,8 +95,9 @@ async function save() {
     start_time: new Date(start.value).toISOString(),
     end_time: new Date(end.value).toISOString(),
     type: type.value,
-    kind: isPublic.value ? 'public' : 'invite',
-    is_public: isPublic.value,
+    secrecy_enabled: secrecy.value,
+    kind: 'public',
+    is_public: true,
     affect_global_ranking: false,
     ranking_visibility: visibility.value,
     freeze_duration_seconds: freezeMinutes.value * 60,
@@ -106,7 +106,6 @@ async function save() {
       : type.value === 'kaggle'
       ? { scoreboard_scope: scoreboard.value }
       : {},
-    ...(password.value ? { password: password.value } : {}),
     problems: selected.value.map((entry, sort_order) => ({
       problem_id: entry.problem.reference.problem_id,
       sort_order,
@@ -180,19 +179,15 @@ async function save() {
         <AdminFormField v-if="type === 'acm'" label="结束前封榜窗口（分钟，0 关闭）">
           <UInput v-model.number="freezeMinutes" type="number" min="0" :disabled="locked" />
         </AdminFormField>
-        <AdminFormField label="比赛入口">
-          <UCheckbox v-model="isPublic" label="域内公开比赛入口" :disabled="locked" />
-        </AdminFormField>
-        <AdminFormField v-if="!isPublic" label="报名密码">
-          <UInput v-model="password" type="password" autocomplete="new-password" :disabled="locked" />
+        <AdminFormField label="赛题保护">
+          <UCheckbox v-model="secrecy" label="从收录到比赛结束，仅允许从比赛入口作答" :disabled="locked" />
+          <p class="mt-2 text-xs text-text-secondary">题目仍显示在题库和作业中；保护涵盖所有历史版本，开赛后不能更改。此前已阅读或下载的内容无法收回。</p>
         </AdminFormField>
       </div>
       <UAlert v-if="locked" class="mt-4" title="已开赛，赛制与计分规则已锁定。当前仅修改名称和说明。" color="info" />
     </UCard>
     <UCard v-if="!locked">
       <h3 class="mb-3 font-semibold">题目与顺序</h3>
-      <UAlert v-if="selected.some((entry) => entry.problem.reference.is_shared)" color="warning"
-        title="引用公开题无法保证来源题面、题解及其他域练习保密。" class="mb-3" />
       <div v-for="(entry, index) in selected" :key="entry.problem.binding_id" class="mb-2 flex items-center gap-2">
         <UInput v-model="entry.label" aria-label="题目标号" class="w-20" /><span class="flex-1">{{ entry.problem.reference.display_ref }} · {{ entry.problem.title }}</span>
         <UInput v-model.number="entry.score" type="number" min="1" aria-label="题目满分" class="w-24" :disabled="entry.problem.kind === 'objective' || type === 'acm'" />

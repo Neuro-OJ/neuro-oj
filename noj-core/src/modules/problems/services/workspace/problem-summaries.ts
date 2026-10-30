@@ -18,7 +18,10 @@ import {
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { getProblemSubmissionSummaries } from "../../../access/submission-policy.ts";
-import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
+import {
+  loadDomainProblemProtection,
+  type PublicContestSecrecyRef,
+} from "../../../access/contest-policy.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";
 
 const MAX_PROBLEM_SUMMARIES = 50;
@@ -28,6 +31,9 @@ export type ProblemSummaryKind = (typeof PROBLEM_KINDS)[number];
 
 export interface DomainProblemSummaryItem {
   reference: string;
+  contest_protection?: PublicContestSecrecyRef[];
+  can_read?: boolean;
+  can_practice?: boolean;
   availability: "available" | "unavailable";
   title: string | null;
   kind: ProblemSummaryKind | null;
@@ -71,8 +77,6 @@ export async function readDomainProblemSummaries(
   const db = getDb();
   const source = alias(domains, "problem_summary_source_domain");
   const binding = domainProblemBindings;
-  const canEdit = workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("problem:write_any");
   const scope = {
     domainId: workspace.domain.id,
     member: !!workspace.membership || workspace.platformAdmin,
@@ -90,43 +94,9 @@ export async function readDomainProblemSummaries(
   const authorized = and(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
-    workspace.membership || workspace.platformAdmin
-      ? undefined
-      : eq(binding.visibility, "public"),
     isNotNull(problems.latest_version_id),
-    or(
-      and(
-        eq(binding.kind, "owned"),
-        eq(problems.domain_id, workspace.domain.id),
-        canEdit ? undefined : sql`NOT ${
-          unendedPublicContestForProblem(
-            problems.id,
-            sql`${workspace.domain.id}`,
-          )
-        }`,
-      ),
-      and(
-        eq(binding.kind, "shared"),
-        eq(problems.visibility, "public"),
-        sql`${source.status} <> 'suspended'`,
-        sql`${source.configuration}->>'access' = 'public'`,
-        eq(problemShareSettings.enabled, true),
-        sql`(${problemShareSettings.scope} = 'all' OR EXISTS (
-          SELECT 1 FROM problem_share_targets grant_target
-          WHERE grant_target.problem_id = ${problems.id}
-            AND grant_target.domain_id = ${workspace.domain.id}
-        ))`,
-        sql`EXISTS (
-          SELECT 1 FROM domain_problem_bindings source_binding
-          WHERE source_binding.problem_id = ${problems.id}
-            AND source_binding.domain_id = ${source.id}
-            AND source_binding.kind = 'owned'
-            AND source_binding.visibility = 'public'
-            AND source_binding.disabled_at IS NULL
-        )`,
-        sql`NOT ${unendedPublicContestForProblem(problems.id, source.id)}`,
-      ),
-    ),
+    eq(binding.kind, "owned"),
+    eq(problems.domain_id, workspace.domain.id),
   );
   const rows = await db.select({
     problem_id: problems.id,
@@ -146,8 +116,8 @@ export async function readDomainProblemSummaries(
         eq(problemVersions.problem_id, problems.id),
         eq(
           problemVersions.id,
-          sql`CASE WHEN ${binding.effective_version_mode} = 'exact'
-            THEN ${binding.required_version_id}
+          sql`CASE WHEN ${problems.effective_version_mode} = 'exact'
+            THEN ${problems.required_version_id}
             ELSE ${problems.latest_version_id} END`,
         ),
       ),
@@ -158,6 +128,11 @@ export async function readDomainProblemSummaries(
     )
     .where(and(authorized, referenceWhere));
   const problemIds = rows.map((row) => row.problem_id);
+  const protection = await loadDomainProblemProtection(
+    workspace.domain.id,
+    problemIds,
+    db,
+  );
   const statistics = actorId
     ? await getProblemSubmissionSummaries(scope, problemIds, actorId)
     : [];
@@ -186,6 +161,9 @@ export async function readDomainProblemSummaries(
       return {
         reference,
         availability: "available",
+        contest_protection: protection.get(row.problem_id) ?? [],
+        can_read: !protection.has(row.problem_id),
+        can_practice: !protection.has(row.problem_id),
         title: row.title,
         kind: row.kind as ProblemSummaryKind,
         answer_version_id: row.answer_version_id,

@@ -29,7 +29,6 @@ import {
   problemShareTargets,
   problemVersions,
   trainings,
-  trainingShareSettings,
 } from "../../../../shared/db/schema.ts";
 import {
   assertWorkspacePermission as assertLegacyWorkspacePermission,
@@ -37,7 +36,6 @@ import {
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { validateDomainSlug } from "../../../access/workspace/types.ts";
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
-import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";
 import { recordProblemEducationChange } from "./education-events.ts";
@@ -255,29 +253,28 @@ export async function listSharedDomainResources(
   const workspace = await loadLegacyWorkspace(slug, actorId), db = getDb();
   assertLegacyWorkspacePermission(
     workspace.context,
-    query.kind === "problem"
-      ? workspace.context.domainPermissions.has("problem:import")
-        ? "problem:import"
-        : "problem:create"
-      : "training:import",
+    query.kind === "problem" ? "problem:create" : "training:create",
+  );
+  assertLegacyWorkspacePermission(
+    workspace.context,
+    query.kind === "problem" ? "problem:publish" : "training:publish",
   );
   const sourceCondition = and(
     ne(domains.id, workspace.domain.id),
     sql`${domains.status} <> 'suspended'`,
-    sql`${domains.configuration}->>'access' = 'public'`,
     query.sourceSlug ? eq(domains.slug, query.sourceSlug) : undefined,
   );
   if (query.kind === "problem") {
     const condition = and(
       sourceCondition,
-      eq(problems.visibility, "public"),
       isNotNull(problems.latest_version_id),
       eq(domainProblemBindings.kind, "owned"),
-      eq(domainProblemBindings.visibility, "public"),
       isNull(domainProblemBindings.disabled_at),
-      eq(problemShareSettings.enabled, true),
-      sql`(${problemShareSettings.scope}='all' OR EXISTS (SELECT 1 FROM problem_share_targets target WHERE target.problem_id=${problems.id} AND target.domain_id=${workspace.domain.id}))`,
-      sql`NOT ${unendedPublicContestForProblem(problems.id, domains.id)}`,
+      sql`(${workspace.platformAdmin} OR EXISTS (
+        SELECT 1 FROM domain_memberships m JOIN domain_member_roles r ON r.membership_id=m.id
+        WHERE m.domain_id=${domains.id} AND m.user_id=${actorId} AND m.status='active'
+          AND (r.role IN ('owner','admin','educator') OR (r.role='editor' AND ${problems.owner_id}=${actorId}))
+      ))`,
       query.keyword
         ? ilike(
           sql`${domains.slug} || ':' || ${problems.number} || ' ' || (${problemVersions.content}->>'title')`,
@@ -302,9 +299,6 @@ export async function listSharedDomainResources(
             eq(domainProblemBindings.domain_id, domains.id),
             eq(domainProblemBindings.problem_id, problems.id),
           ),
-        ).innerJoin(
-          problemShareSettings,
-          eq(problemShareSettings.problem_id, problems.id),
         ).innerJoin(
           problemVersions,
           eq(problemVersions.id, problems.latest_version_id),
@@ -336,9 +330,12 @@ export async function listSharedDomainResources(
   }
   const condition = and(
     sourceCondition,
-    eq(trainings.visibility, "public"),
-    eq(trainingShareSettings.enabled, true),
-    sql`(${trainingShareSettings.scope}='all' OR EXISTS (SELECT 1 FROM training_share_targets target WHERE target.training_id=${trainings.id} AND target.domain_id=${workspace.domain.id}))`,
+    eq(trainings.state, "published"),
+    sql`(${workspace.platformAdmin} OR EXISTS (
+      SELECT 1 FROM domain_memberships m JOIN domain_member_roles r ON r.membership_id=m.id
+      WHERE m.domain_id=${domains.id} AND m.user_id=${actorId} AND m.status='active'
+        AND (r.role IN ('owner','admin','educator') OR (r.role='editor' AND ${trainings.created_by}=${actorId}))
+    ))`,
     query.keyword ? ilike(trainings.title, `%${query.keyword}%`) : undefined,
   );
   const rowsQuery = () =>
@@ -349,10 +346,7 @@ export async function listSharedDomainResources(
       source_domain_id: domains.id,
       source_domain_slug: domains.slug,
     }).from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
-      .innerJoin(
-        trainingShareSettings,
-        eq(trainingShareSettings.training_id, trainings.id),
-      ).where(condition);
+      .where(condition);
   const [[total], items] = await Promise.all([
     db.select({ total: count() }).from(
       rowsQuery().as("discoverable_shared_trainings"),

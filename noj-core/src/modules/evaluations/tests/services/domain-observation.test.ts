@@ -46,7 +46,7 @@ Deno.test({
       await createDomainSubmission(f.b.slug, f.ref, f.student, {
         language: "python3",
         code: "other domain",
-        version_id: f.v2,
+        version_id: f.v2B,
       });
       const now = new Date().toISOString(),
         paper = "unified-paper",
@@ -55,7 +55,7 @@ Deno.test({
       await f.db.insert(problems).values({
         id: paper,
         domain_id: f.a.id,
-        number: 1001,
+        number: 1002,
         title: "客观卷",
         description: "",
         is_objective: true,
@@ -172,7 +172,7 @@ Deno.test({
       await createDomainSubmission(f.b.slug, f.ref, f.student, {
         language: "python3",
         code: "hidden",
-        version_id: f.v2,
+        version_id: f.v2B,
       });
       const mine = await getQueueOverview(false, f.student, {
         domainId: f.a.id,

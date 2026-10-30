@@ -862,6 +862,27 @@
       "when": 1793064383162,
       "tag": "0123_issue_696_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1793353900752,
+      "tag": "0124_domain_contest_problem_protection",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1793354655493,
+      "tag": "0125_domain_training_publication_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1793366243666,
+      "tag": "0126_problem_owned_effective_policy",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
@@ -9,7 +10,6 @@ import {
   contests,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import { setDomainProblemSharing } from "../../../problems/index.ts";
 import {
   consumeDomainInvitation,
   createDomainInvitation,
@@ -44,7 +44,7 @@ Deno.test({
         {
           language: "python3",
           code: "public",
-          version_id: f.v2,
+          version_id: f.sourceV2,
         },
       );
       await createDomainSubmission(f.a.slug, f.ref, f.student, {
@@ -115,12 +115,7 @@ Deno.test({
         })).total,
         0,
       );
-      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-        expectedRevision: 1,
-        enabled: false,
-        scope: "all",
-        targetDomainIds: [],
-      });
+      await setFixtureAvailability(f, false);
       const withdrawn = await getDomainSubmission(
         f.a.slug,
         created.id,

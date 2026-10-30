@@ -2,6 +2,7 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import {
   domainProblemBindings,
+  domains,
   problems,
   problemVersions,
   users,
@@ -9,16 +10,30 @@ import {
 import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../../shared/mq/connection.ts";
 import {
-  importDomainProblem,
-  setDomainProblemSharing,
-} from "../../problems/index.ts";
-import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
 } from "../../access/workspace/index.ts";
 import { updateSetting } from "../../platform/system/index.ts";
 import { startFakeRedis } from "./_fake-redis.ts";
+import { setDomainProblemBindingState } from "../../problems/index.ts";
+
+/** 本域下架替代旧共享撤销；保留个人历史，但阻止新的执行。 */
+export async function setFixtureAvailability(
+  f: Awaited<ReturnType<typeof fixture>>,
+  enabled: boolean,
+) {
+  const [binding] = await f.db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.id, f.bindingA.id),
+  );
+  await setDomainProblemBindingState(
+    f.a.slug,
+    f.ref,
+    f.owner,
+    binding.revision,
+    { disabled: !enabled, reason: "测试本域资源下架与恢复" },
+  );
+}
 async function account() {
   const id = crypto.randomUUID(), now = new Date().toISOString();
   await getDb().insert(users).values({
@@ -63,7 +78,7 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
   const now = new Date().toISOString(), problemId = crypto.randomUUID();
   await getDb().insert(problems).values({
     id: problemId,
-    domain_id: source.id,
+    domain_id: a.id,
     number: 1001,
     judge_type: mode === "oi" ? "oi" : "dual",
     submission_mode: mode === "artifact" ? "artifact" : "code",
@@ -131,7 +146,7 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
   );
   await getDb().insert(domainProblemBindings).values({
     id: crypto.randomUUID(),
-    domain_id: source.id,
+    domain_id: a.id,
     problem_id: problemId,
     kind: "owned",
     visibility: "public",
@@ -139,15 +154,51 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
     created_at: now,
     updated_at: now,
   });
-  await setDomainProblemSharing(source.slug, "1001", owner, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
-  });
-  const ref = `${source.slug}:1001`;
-  const { binding: bindingA } = await importDomainProblem(a.slug, ref, owner);
-  const { binding: bindingB } = await importDomainProblem(b.slug, ref, owner);
+  const [bindingA] = await getDb().select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, problemId),
+  );
+  const [base] = await getDb().select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  const baseVersions = await getDb().select().from(problemVersions).where(
+    eq(problemVersions.problem_id, problemId),
+  );
+  async function independent(domainId: string) {
+    const identity = crypto.randomUUID(),
+      versions = [crypto.randomUUID(), crypto.randomUUID()];
+    await getDb().insert(problems).values({
+      ...base,
+      id: identity,
+      searchVector: undefined,
+      domain_id: domainId,
+      latest_version_id: null,
+    });
+    await getDb().insert(problemVersions).values(
+      baseVersions.map((row) => ({
+        ...row,
+        id: versions[row.version - 1],
+        problem_id: identity,
+      })),
+    );
+    await getDb().update(problems).set({ latest_version_id: versions[1] })
+      .where(eq(problems.id, identity));
+    const [binding] = await getDb().insert(domainProblemBindings).values({
+      ...bindingA,
+      id: crypto.randomUUID(),
+      domain_id: domainId,
+      problem_id: identity,
+    }).returning();
+    return { identity, versions, binding };
+  }
+  const copiedB = await independent(b.id),
+    copiedSource = await independent(source.id);
+  for (const domain of [a, b, source]) {
+    await getDb().update(domains).set({ next_problem_number: 1002 }).where(
+      eq(domains.id, domain.id),
+    );
+  }
+  const bindingB = copiedB.binding;
+  const ref = "1001";
   return {
     db: getDb(),
     owner,
@@ -162,6 +213,12 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
     ref,
     bindingA,
     bindingB,
+    problemB: copiedB.identity,
+    v1B: copiedB.versions[0],
+    v2B: copiedB.versions[1],
+    sourceProblemId: copiedSource.identity,
+    sourceV1: copiedSource.versions[0],
+    sourceV2: copiedSource.versions[1],
     runtime,
   };
 }

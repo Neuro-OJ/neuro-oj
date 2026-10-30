@@ -148,17 +148,17 @@ describe('比赛详情页的报名状态机', () => {
     page.unmount();
   });
 
-  it('需要凭据的比赛显示邀请码/密码输入，报名携带输入值', async () => {
+  it('历史比赛分类不再要求报名凭据', async () => {
     api.detail.mockResolvedValue(contest({ is_registered: false, kind: 'invite', has_password: true }));
     const page = await view();
-    expect(page.find('input').attributes('placeholder')).toBe('邀请码');
-    await page.find('input').setValue('ABC123');
+    expect(page.find('input[type=password]').exists()).toBe(false);
+    expect(page.text()).not.toContain('邀请码');
     // 头部与报名区各有一个「报名参赛」；点击报名区里的那个才真正提交。
     const buttons = page.findAll('button').filter((button) => button.text().includes('报名参赛'));
     expect(buttons.length).toBe(2);
     await buttons[1]!.trigger('click');
     await flushPromises();
-    expect(api.register).toHaveBeenCalledWith('school', 'contest', 'ABC123');
+    expect(api.register).toHaveBeenCalledWith('school', 'contest');
     page.unmount();
   });
 

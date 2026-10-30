@@ -387,14 +387,12 @@ Deno.test("jobs: 策略变更作用域校验与生效", async () => {
   const [problem] = await db.select().from(problems).where(
     eq(problems.id, "rj-p9"),
   );
-  assertEquals(problem.effective_version_mode, "any");
-  assertEquals(problem.required_version_id, null);
-  assertEquals(problem.effective_policy_revision, 0);
+  assertEquals(problem.effective_version_mode, "exact");
+  assertEquals(problem.required_version_id, "rj-p9-v2");
+  assertEquals(problem.effective_policy_revision, 1);
   const [binding] = await getDb().select().from(domainProblemBindings).where(
     eq(domainProblemBindings.problem_id, "rj-p9"),
   );
-  assertEquals(binding.effective_version_mode, "exact");
-  assertEquals(binding.required_version_id, "rj-p9-v2");
   assertEquals(binding.revision, 1);
 
   // 预期 revision 过时 → 409（且不产生新任务）

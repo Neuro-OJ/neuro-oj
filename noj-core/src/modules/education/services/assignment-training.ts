@@ -2,10 +2,9 @@ import { eq } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentItems, assignments } from "../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { importDomainProblem } from "../../problems/contracts/cross-module/services_workspace_problem-bindings.ts";
 import { readDomainTraining } from "../../problems/contracts/cross-module/services_workspace_training-access.ts";
 
-/** 发布事务内展开当前题单，建立使用域绑定并固定顺序；任意题失效则整体回滚。 */
+/** 发布事务内展开本域题单并固定顺序；任意题失效则整体回滚。 */
 export async function expandAssignmentTraining(
   tx: Executor,
   slug: string,
@@ -25,11 +24,9 @@ export async function expandAssignmentTraining(
   const rule = assignment.source_training_rule!;
   const rows: Array<typeof assignmentItems.$inferInsert> = [];
   for (const [sort_order, item] of training.items.entries()) {
-    const bindingId = item.binding_id ??
-      (item.is_shared
-        ? (await importDomainProblem(slug, item.qualified_ref, actorId, tx))
-          .binding.id
-        : null);
+    const bindingId = item.source_domain_id === assignment.domain_id
+      ? item.binding_id
+      : null;
     if (!bindingId) throw new BadRequestError("题目不在此域题库中");
     rows.push({
       id: crypto.randomUUID(),

@@ -99,6 +99,7 @@ export interface ContestProblemInput {
 }
 
 export interface CreateContestInput {
+  secrecy_enabled?: boolean;
   classroom_ids?: string[];
   title: string;
   description?: string;
@@ -119,6 +120,7 @@ export interface CreateContestInput {
 }
 
 export interface UpdateContestInput {
+  secrecy_enabled?: boolean;
   classroom_ids?: string[];
   title?: string;
   description?: string;
@@ -138,6 +140,7 @@ export interface UpdateContestInput {
 }
 
 export interface ContestResponse {
+  secrecy_enabled: boolean;
   id: string;
   domain_id: string | null;
   revision: number;

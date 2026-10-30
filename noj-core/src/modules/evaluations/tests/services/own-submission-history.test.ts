@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
@@ -11,7 +12,6 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
-import { setDomainProblemSharing } from "../../../problems/index.ts";
 import { removeDomainMember } from "../../../access/workspace/index.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import {
@@ -38,7 +38,7 @@ Deno.test({
       const b = await createDomainSubmission(f.b.slug, f.ref, f.student, {
         language: "python3",
         code: "student b",
-        version_id: f.v2,
+        version_id: f.v2B,
       });
       await saveV2ResultForTest({
         submission_id: a.id,
@@ -71,12 +71,7 @@ Deno.test({
         () => getOwnSubmissionHistory(f.owner, "submission", a.id),
         NotFoundError,
       );
-      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-        expectedRevision: 1,
-        enabled: false,
-        scope: "all",
-        targetDomainIds: [],
-      });
+      await setFixtureAvailability(f, false);
       const withdrawn = await getOwnSubmissionHistory(
         f.student,
         "submission",
@@ -100,12 +95,7 @@ Deno.test({
       assert(!serialized.includes("never expose"));
       assert(!serialized.includes("hidden data"));
       assert(!serialized.includes("任意评测正文"));
-      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-        expectedRevision: 2,
-        enabled: true,
-        scope: "all",
-        targetDomainIds: [],
-      });
+      await setFixtureAvailability(f, true);
       assertEquals(
         (await getOwnSubmissionHistory(f.student, "submission", a.id))
           .resource_available,
@@ -144,7 +134,7 @@ Deno.test({
     await db.insert(problems).values({
       id: paper,
       domain_id: f.a.id,
-      number: 1001,
+      number: 1002,
       is_objective: true,
       title: "秘密客观卷",
       description: "秘密题面",

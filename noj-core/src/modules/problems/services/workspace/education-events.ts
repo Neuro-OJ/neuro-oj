@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, getTableColumns } from "drizzle-orm";
 import type { DbTx } from "../../../../shared/db/executor.ts";
 import {
   domainProblemBindings,
@@ -19,10 +19,17 @@ export async function recordPublishedBindingChanges(
   actorId: string | null,
   now: string,
 ) {
-  const bindings = await tx.select().from(domainProblemBindings).where(
+  const bindings = await tx.select({
+    ...getTableColumns(domainProblemBindings),
+  }).from(domainProblemBindings).innerJoin(
+    problems,
+    eq(problems.id, domainProblemBindings.problem_id),
+  ).where(
     and(
       eq(domainProblemBindings.problem_id, problemId),
-      eq(domainProblemBindings.effective_version_mode, "any"),
+      eq(domainProblemBindings.kind, "owned"),
+      eq(domainProblemBindings.domain_id, problems.domain_id),
+      eq(problems.effective_version_mode, "any"),
     ),
   ).orderBy(domainProblemBindings.domain_id, domainProblemBindings.id).for(
     "update",

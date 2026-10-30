@@ -271,8 +271,6 @@ export async function bindPublishedProblemForTest(
     problem_id: problem.id,
     kind: "owned",
     visibility: problem.visibility === "public" ? "public" : "members",
-    effective_version_mode: problem.effective_version_mode as "any" | "exact",
-    required_version_id: problem.required_version_id,
     revision: problem.effective_policy_revision,
     created_by: problem.owner_id ?? "0",
     created_at: problem.created_at,

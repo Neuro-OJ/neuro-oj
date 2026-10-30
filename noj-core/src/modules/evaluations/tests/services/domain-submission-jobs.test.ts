@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -16,10 +17,7 @@ import {
   submissionJobs,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import {
-  setDomainProblemBindingPolicy,
-  setDomainProblemSharing,
-} from "../../../problems/index.ts";
+import { setDomainProblemBindingPolicy } from "../../../problems/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   removeDomainMember,
@@ -50,10 +48,12 @@ async function source(
     domain_id: f[school].id,
     domain_problem_binding_id: school === "a" ? f.bindingA.id : f.bindingB.id,
     user_id: f.student,
-    problem_id: f.problemId,
+    problem_id: school === "a" ? f.problemId : f.problemB,
     language: "python3",
     code: "original",
-    submitted_version_id: version,
+    submitted_version_id: school === "b"
+      ? (version === f.v1 ? f.v1B : f.v2B)
+      : version,
     version_origin: "known",
     status: "finished",
     created_at: new Date().toISOString(),
@@ -232,7 +232,7 @@ Deno.test({
     );
     await setDomainProblemBindingPolicy(f.b.slug, f.ref, f.owner, 0, {
       mode: "exact",
-      version_id: f.v1,
+      version_id: f.v1B,
     }, "本域固定旧版");
     assertEquals(
       (await getDomainSubmission(f.b.slug, b, f.student)).is_latest,
@@ -259,7 +259,7 @@ Deno.test({
       fixed.job_id,
       { page: 1, perPage: 20 },
     );
-    assertEquals(items.data[0].target_version_id, f.v1);
+    assertEquals(items.data[0].target_version_id, f.v1B);
     await cancelDomainSubmissionJob(f.b.slug, f.student, other.job_id);
     await cancelDomainSubmissionJob(f.b.slug, f.student, fixed.job_id);
     await withQueue(async () => {
@@ -399,12 +399,7 @@ Deno.test({
         .counts?.failed,
       1,
     );
-    await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-      expectedRevision: 1,
-      enabled: false,
-      scope: "all",
-      targetDomainIds: [],
-    });
+    await setFixtureAvailability(f, false);
     const unavailable = await runSubmissionJobWorkerOnce("withdrawn-source", {
       limit: 1,
     });
@@ -417,12 +412,7 @@ Deno.test({
     );
     assertEquals(rows.data[0].reason_code, "RESOURCE_UNAVAILABLE");
     assertEquals(rows.data[0].attempt_id, null);
-    await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-      expectedRevision: 2,
-      enabled: true,
-      scope: "all",
-      targetDomainIds: [],
-    });
+    await setFixtureAvailability(f, true);
     const cancelled = await acceptDomainSubmissionJob(f.a.slug, f.owner, {
       kind: "rejudge",
       scope: { type: "problem", problem_id: f.problemId },
@@ -486,8 +476,11 @@ Deno.test({
     const [binding] = await f.db.select().from(domainProblemBindings).where(
       eq(domainProblemBindings.id, f.bindingA.id),
     );
-    assertEquals(binding.effective_version_mode, "exact");
-    assertEquals(binding.required_version_id, f.v1);
+    const [policy] = await f.db.select().from(problems).where(
+      eq(problems.id, binding.problem_id),
+    );
+    assertEquals(policy.effective_version_mode, "exact");
+    assertEquals(policy.required_version_id, f.v1);
     assertEquals(binding.revision, 1);
     assertEquals(
       (await getDomainSubmissionJob(f.a.slug, f.owner, created.job_id))

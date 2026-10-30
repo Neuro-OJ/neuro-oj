@@ -5,7 +5,7 @@
     role="option"
     :aria-selected="selected"
     class="flex items-center gap-3 px-4 py-3 transition-colors rounded-md cursor-pointer"
-    :class="{ 'bg-signal/20': selected, 'hover:bg-gray-50': !selected }"
+    :class="{ 'bg-signal/20': selected, 'hover:bg-gray-50': !selected, 'contest-protected': item.metadata.contest_protected === true }"
   >
     <div
       class="flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center text-sm font-mono font-semibold"
@@ -30,6 +30,7 @@
       </div>
       <div class="text-xs text-text-secondary truncate">
         {{ metaLine(item) }}
+        <span v-if="item.metadata.contest_protected === true"> · 比赛保护中</span>
       </div>
     </div>
 

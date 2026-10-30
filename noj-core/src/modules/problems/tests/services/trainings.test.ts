@@ -51,7 +51,7 @@ async function createUser(prefix: string): Promise<string> {
 }
 
 Deno.test({
-  name: "trainings service: CRUD 与可见性矩阵",
+  name: "trainings service: CRUD 与草稿发布矩阵",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -60,27 +60,27 @@ Deno.test({
     const db = getDb();
 
     const privateTraining = await createTraining(
-      { title: "私有题单", visibility: "private" },
+      { title: "私有题单", state: "draft" },
       owner,
     );
     const unlistedTraining = await createTraining(
-      { title: "链接题单", visibility: "unlisted" },
+      { title: "链接题单", state: "published" },
       owner,
     );
     const publicTraining = await createTraining(
-      { title: "公开题单", visibility: "unlisted" },
+      { title: "公开题单", state: "published" },
       owner,
     );
     await updateTraining(
       publicTraining.id,
-      { visibility: "public" },
+      { state: "published" },
       owner,
       { isAdmin: true },
     );
 
     try {
-      assertEquals(privateTraining.visibility, "private");
-      assertEquals(unlistedTraining.visibility, "unlisted");
+      assertEquals(privateTraining.state, "draft");
+      assertEquals(unlistedTraining.state, "published");
 
       await assertRejects(
         () => getTraining(privateTraining.id, other),
@@ -110,7 +110,7 @@ Deno.test({
       );
       assertEquals(
         publicList.data.some((t) => t.id === unlistedTraining.id),
-        false,
+        true,
       );
 
       const mine = await listMyTrainings(owner, { page: 1, perPage: 20 });
@@ -149,11 +149,11 @@ Deno.test({
       // 自定义角色即使没有 write_any/admin，只要拥有 publish/pin 权限即可操作自己的题单
       const publishOwn = await updateTraining(
         unlistedTraining.id,
-        { visibility: "public" },
+        { state: "published" },
         owner,
         { canPublish: true },
       );
-      assertEquals(publishOwn.visibility, "public");
+      assertEquals(publishOwn.state, "published");
       const pinOwn = await updateTraining(
         unlistedTraining.id,
         { is_pinned: true },
@@ -210,7 +210,7 @@ Deno.test({
     }
 
     const training = await createTraining(
-      { title: "进度题单", visibility: "unlisted" },
+      { title: "进度题单", state: "published" },
       owner,
     );
     const p1 = await createProblem(940001);
@@ -328,7 +328,7 @@ Deno.test({
       updated_at: now,
     });
     const training = await createTraining(
-      { title: "私有题测试题单", visibility: "unlisted" },
+      { title: "私有题测试题单", state: "published" },
       owner,
     );
     try {

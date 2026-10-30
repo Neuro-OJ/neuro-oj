@@ -1,6 +1,7 @@
 import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
 import { workspaceProblemPath, workspaceSolvePath } from '~/utils/workspace';
 import { isNotFoundError } from '~/utils/apiError';
+import { contestProtectionFromError } from '~/utils/contestProtection';
 /** 旧入口在页面 setup 前转到 main，旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
@@ -36,6 +37,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
       );
       reference = defaultProblemReference(String(result.data.number ?? result.data.display_id ?? ''));
     } catch (error) {
+      const contests = contestProtectionFromError(error);
+      if (contests) {
+        throw createError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: 'main', contests } });
+      }
       if (isNotFoundError(error)) throw createError({ statusCode: 404, statusMessage: '题目不存在' });
       throw error;
     }

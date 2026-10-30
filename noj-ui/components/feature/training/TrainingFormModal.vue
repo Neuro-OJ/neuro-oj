@@ -11,7 +11,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
 const { createTraining, updateTraining } = useTrainings()
 const title = ref('')
 const description = ref('')
-const visibility = ref<'private' | 'unlisted' | 'public'>('private')
+const state = ref<'draft' | 'published'>('draft')
 const saving = ref(false)
 
 const isEdit = computed(() => !!props.training)
@@ -22,7 +22,7 @@ watch(
     if (!t) return
     title.value = t.title
     description.value = t.description
-    visibility.value = t.visibility
+    state.value = t.state
   },
   { immediate: true },
 )
@@ -34,7 +34,7 @@ async function submit() {
     const body: TrainingPayload = {
       title: title.value.trim(),
       description: description.value,
-      visibility: visibility.value,
+      state: state.value,
     }
     if (props.training) {
       await updateTraining(props.training.id, body)
@@ -57,20 +57,20 @@ async function submit() {
     @update:open="emit('update:modelValue', $event)"
   >
     <template #body>
-      <UForm :state="{ title, description, visibility }" class="space-y-4" @submit="submit">
+      <UForm :state="{ title, description, state }" class="space-y-4" @submit="submit">
         <UFormField label="标题" required>
           <UInput v-model="title" placeholder="题单标题" />
         </UFormField>
         <UFormField label="简介">
           <UTextarea v-model="description" placeholder="题单简介" />
         </UFormField>
-        <UFormField label="可见性">
+        <UFormField label="发布状态">
           <USelect
-            v-model="visibility"
+            v-model="state"
             :items="[
-              { label: '私有', value: 'private' },
-              { label: '链接可见', value: 'unlisted' },
-              { label: '公开', value: 'public' },
+              { label: '草稿', value: 'draft' },
+              
+              { label: '已发布', value: 'published' },
             ]"
           />
         </UFormField>

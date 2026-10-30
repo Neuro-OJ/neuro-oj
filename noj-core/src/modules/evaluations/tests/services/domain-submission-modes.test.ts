@@ -1,3 +1,4 @@
+import { setFixtureAvailability } from "../_domain-execution-fixture.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { contestProblemExecutionForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
@@ -18,10 +19,7 @@ import {
   selfTests,
   submissions,
 } from "../../../../shared/db/schema.ts";
-import {
-  importDomainProblem,
-  setDomainProblemSharing,
-} from "../../../problems/index.ts";
+import {} from "../../../problems/index.ts";
 import {
   getObjectiveSubmission,
   listObjectiveSubmissions,
@@ -142,12 +140,7 @@ Deno.test({
           }),
         ForbiddenError,
       );
-      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-        expectedRevision: 1,
-        enabled: false,
-        scope: "all",
-        targetDomainIds: [],
-      });
+      await setFixtureAvailability(f, false);
       await assertRejects(
         () =>
           createDomainSubmission(f.a.slug, "A", f.student, {
@@ -238,12 +231,7 @@ Deno.test({
         "artifact",
       );
     });
-    await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
-      expectedRevision: 1,
-      enabled: false,
-      scope: "all",
-      targetDomainIds: [],
-    });
+    await setFixtureAvailability(f, false);
     await assertRejects(
       () =>
         createDomainArtifactSubmission(f.a.slug, f.ref, f.student, {
@@ -327,7 +315,7 @@ async function objectiveFixture() {
     now = new Date().toISOString();
   await f.db.insert(problems).values({
     id: paper,
-    domain_id: f.source.id,
+    domain_id: f.a.id,
     number: 1002,
     title: "客观题",
     description: "",
@@ -363,7 +351,7 @@ async function objectiveFixture() {
   );
   await f.db.insert(domainProblemBindings).values({
     id: crypto.randomUUID(),
-    domain_id: f.source.id,
+    domain_id: f.a.id,
     problem_id: paper,
     kind: "owned",
     visibility: "public",
@@ -371,14 +359,10 @@ async function objectiveFixture() {
     created_at: now,
     updated_at: now,
   });
-  await setDomainProblemSharing(f.source.slug, "1002", f.owner, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
-  });
-  const ref = `${f.source.slug}:1002`;
-  const { binding } = await importDomainProblem(f.a.slug, ref, f.owner);
+  const [binding] = await f.db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, paper),
+  );
+  const ref = "1002";
   return { ...f, paper, version, objectiveRef: ref, objectiveBinding: binding };
 }
 
@@ -449,12 +433,9 @@ Deno.test({
     });
     assertEquals(listed.total, 0);
     assertEquals(listed.best_score, null);
-    await setDomainProblemSharing(f.source.slug, "1002", f.owner, {
-      expectedRevision: 1,
-      enabled: false,
-      scope: "all",
-      targetDomainIds: [],
-    });
+    await f.db.update(domainProblemBindings).set({
+      disabled_at: new Date().toISOString(),
+    }).where(eq(domainProblemBindings.id, f.objectiveBinding.id));
     await assertRejects(
       () =>
         submitDomainObjectivePaper(f.a.slug, f.objectiveRef, f.student, {
@@ -530,7 +511,7 @@ Deno.test({
       ]
     ) {
       const rejected = await assertRejects(attempt, ForbiddenError);
-      assertEquals(rejected.code, "CONTEST_PRACTICE_BLOCKED");
+      assertEquals(rejected.code, "CONTEST_PROBLEM_RESTRICTED");
     }
     assertEquals((await f.db.select().from(submissions)).length, 0);
     assertEquals((await f.db.select().from(selfTests)).length, 0);

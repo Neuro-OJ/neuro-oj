@@ -180,15 +180,18 @@ Deno.test("projection: any 采用全部版本，exact(X) 只用 X", async () => 
   assertEquals(plan.global.effective_attempt_id, "proj-s1-a1");
 
   // exact(V2)：只有 V2 候选，不通过
-  await db.update(domainProblemBindings).set({
+  await db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: v2,
-    revision: 1,
+    effective_policy_revision: 1,
   }).where(
     eq(
-      domainProblemBindings.id,
-      (await problemExecutionForTest("proj-p1")).domain_problem_binding_id,
+      problems.id,
+      "proj-p1",
     ),
+  );
+  await getDb().update(domainProblemBindings).set({ revision: 1 }).where(
+    eq(domainProblemBindings.problem_id, "proj-p1"),
   );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_valid, true);
@@ -207,15 +210,18 @@ Deno.test("projection: any 采用全部版本，exact(X) 只用 X", async () => 
     sequence: 2,
     source_kind: "rejudge",
   });
-  await db.update(domainProblemBindings).set({
+  await db.update(problems).set({
     effective_version_mode: "any",
     required_version_id: null,
-    revision: 2,
+    effective_policy_revision: 2,
   }).where(
     eq(
-      domainProblemBindings.id,
-      (await problemExecutionForTest("proj-p1")).domain_problem_binding_id,
+      problems.id,
+      "proj-p1",
     ),
+  );
+  await getDb().update(domainProblemBindings).set({ revision: 2 }).where(
+    eq(domainProblemBindings.problem_id, "proj-p1"),
   );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_accepted, false);
@@ -260,15 +266,18 @@ Deno.test("projection: 未知版本桶只在 any 下有效", async () => {
   assertEquals(plan.global.is_valid, true);
   assertEquals(plan.global.is_accepted, true);
 
-  await db.update(domainProblemBindings).set({
+  await db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: "proj-p2-v1",
-    revision: 1,
+    effective_policy_revision: 1,
   }).where(
     eq(
-      domainProblemBindings.id,
-      (await problemExecutionForTest("proj-p2")).domain_problem_binding_id,
+      problems.id,
+      "proj-p2",
     ),
+  );
+  await getDb().update(domainProblemBindings).set({ revision: 1 }).where(
+    eq(domainProblemBindings.problem_id, "proj-p2"),
   );
   plan = await computeSubmissionProjection(db, source);
   assertEquals(plan.global.is_valid, false);

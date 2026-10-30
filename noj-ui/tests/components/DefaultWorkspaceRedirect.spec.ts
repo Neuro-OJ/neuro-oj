@@ -46,6 +46,21 @@ describe('旧业务入口的默认域兼容', () => {
     expect(get).toHaveBeenCalledWith('/api/v1/trainings/tr-old', { silent: true });
     expect(navigate.mock.calls[0]![0].path).toBe('/d/main/trainings/training-uuid');
   });
+  it('旧 UUID 的赛题保护拒绝保持 403，不退化为不存在或跳转其他域', async () => {
+    get.mockRejectedValue({
+      data: {
+        code: 'CONTEST_PROBLEM_RESTRICTED',
+        contests: [
+          { contestId: 'contest-id', publicId: 'ct-abc123', title: '保护中的比赛' },
+        ],
+      },
+    });
+    await expect(enter('/problems/protected-uuid')).rejects.toMatchObject({
+      statusCode: 403,
+      message: '赛题正在保护中',
+    });
+    expect(navigate).not.toHaveBeenCalled();
+  });
   it('已经显式指定其他域的资源完全保留路径', async () => {
     await enter('/d/school/problems/main:1001');
     expect(get).not.toHaveBeenCalled();

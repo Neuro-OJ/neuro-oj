@@ -6,6 +6,7 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   classroomMemberships,
   classrooms,
+  contestProblems,
   contests,
   domainMemberRoles,
   domainMemberships,
@@ -74,15 +75,27 @@ export async function fixture() {
     created_at: now,
     updated_at: now,
   });
+  for (const domain_id of ["school-query-a", "school-query-b"]) {
+    await db.insert(problems).values({
+      id: `query-source-${domain_id}`,
+      domain_id,
+      number: 997001,
+      title: "共享题",
+      description: "题面",
+      owner_id: actor,
+      created_at: now,
+      updated_at: now,
+    });
+  }
   await db.insert(domainProblemBindings).values(
     [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
       (domain_id) => ({
         id: `binding-${domain_id}`,
         domain_id,
-        problem_id: "query-source",
-        kind: domain_id === DEFAULT_DOMAIN_ID
-          ? "owned" as const
-          : "shared" as const,
+        problem_id: domain_id === DEFAULT_DOMAIN_ID
+          ? "query-source"
+          : `query-source-${domain_id}`,
+        kind: "owned" as const,
         visibility: "public" as const,
         created_by: actor,
         created_at: now,
@@ -104,7 +117,9 @@ export async function fixture() {
         id: `submit-${domain_id}`,
         domain_id,
         domain_problem_binding_id: `binding-${domain_id}`,
-        problem_id: "query-source",
+        problem_id: domain_id === DEFAULT_DOMAIN_ID
+          ? "query-source"
+          : `query-source-${domain_id}`,
         user_id: actor,
         language: "python3",
         code: "print(1)",
@@ -116,6 +131,15 @@ export async function fixture() {
       }),
     ),
   );
+  for (
+    const id of [
+      "query-source",
+      "query-source-school-query-a",
+      "query-source-school-query-b",
+    ]
+  ) {
+    await upsertSearchEntry((await buildProblemEntry(id))!);
+  }
   return { db, actor, now };
 }
 
@@ -138,19 +162,19 @@ const search = (
       guestReadEnabled: true,
     },
   });
-Deno.test("域搜索：同源题引用在目标域使用、撤销即时影响命中与分页", async () => {
+Deno.test("域搜索：独立副本按本域查询，下架影响本域，源共享变化不影响副本", async () => {
   const { db, actor } = await fixture();
   await upsertSearchEntry((await buildProblemEntry("query-source"))!);
   const shared = await search("school-query-a", actor);
   assertEquals(shared.items.length, 1);
   assertEquals(shared.items[0].metadata.reference, {
-    problem_id: "query-source",
-    source_domain_id: DEFAULT_DOMAIN_ID,
-    source_domain_slug: "main",
+    problem_id: "query-source-school-query-a",
+    source_domain_id: "school-query-a",
+    source_domain_slug: "school-query-a",
     number: 997001,
-    qualified_ref: "main:997001",
-    display_ref: "main:997001",
-    is_shared: true,
+    qualified_ref: "school-query-a:997001",
+    display_ref: "997001",
+    is_shared: false,
   });
   const local = await search(DEFAULT_DOMAIN_ID, actor);
   assertEquals(
@@ -171,7 +195,7 @@ Deno.test("域搜索：同源题引用在目标域使用、撤销即时影响命
   await db.update(problemShareSettings).set({ enabled: false }).where(
     eq(problemShareSettings.problem_id, "query-source"),
   );
-  assertEquals((await search("school-query-b", actor)).items.length, 0);
+  assertEquals((await search("school-query-b", actor)).items.length, 1);
   assertEquals(
     (await searchGrouped({
       q: "共享题",
@@ -372,4 +396,62 @@ Deno.test("域搜索比赛摘要：旧索引赛题关键词及metadata不成为�
   assertEquals(result.items.length, 1);
   assertEquals(result.items[0].metadata.problem_titles, undefined);
   assertEquals(result.items[0].metadata.problem_display_ids, undefined);
+});
+
+Deno.test("赛题保护搜索：保留标题和标记，正文不参与命中、摘要或分页数量，结束自动恢复", async () => {
+  const { db, actor, now } = await fixture();
+  const [p] = await db.select().from(problems).where(
+    eq(problems.id, "query-source"),
+  );
+  const contestId = crypto.randomUUID();
+  await db.insert(contests).values({
+    id: contestId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    title: "保护赛",
+    type: "kaggle",
+    created_by: actor,
+    start_time: new Date(Date.now() + 60000).toISOString(),
+    end_time: new Date(Date.now() + 120000).toISOString(),
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(contestProblems).values({
+    contest_id: contestId,
+    problem_id: p.id,
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: `binding-${DEFAULT_DOMAIN_ID}`,
+    pinned_version_id: p.latest_version_id!,
+    label: "A",
+    sort_order: 0,
+    score: 10000,
+  });
+  assertEquals(
+    (await search(DEFAULT_DOMAIN_ID, actor, "题面")).items.length,
+    0,
+  );
+  const title = await search(DEFAULT_DOMAIN_ID, actor);
+  assertEquals(title.items.length, 1);
+  assertEquals(title.items[0].highlight.includes("题面"), false);
+  assertEquals(title.items[0].metadata.contest_protected, true);
+  const grouped = await searchGrouped({
+    q: "题面",
+    types: ["problem"],
+    perType: 5,
+    ctx: {
+      domainId: DEFAULT_DOMAIN_ID,
+      userId: actor,
+      isAdmin: false,
+      member: true,
+      guestReadEnabled: true,
+    },
+  });
+  assertEquals(grouped.groups.problem.items.length, 0);
+  await db.update(contests).set({
+    start_time: new Date(Date.now() - 120000).toISOString(),
+    end_time: new Date(Date.now() - 60000).toISOString(),
+  }).where(eq(contests.id, contestId));
+  assertEquals(
+    (await search(DEFAULT_DOMAIN_ID, actor, "题面")).items.length,
+    1,
+  );
 });

@@ -26,9 +26,7 @@ defineProps<{ training: Training }>()
     </p>
     <div class="mt-auto flex items-center gap-4 border-t border-border pt-3 text-xs text-text-secondary">
       <span>{{ training.problem_count }} 题</span>
-      <span v-if="training.visibility === 'private'" class="ml-auto">私有</span>
-      <span v-else-if="training.visibility === 'unlisted'" class="ml-auto">链接可见</span>
-      <span v-else class="ml-auto">公开</span>
+      <span class="ml-auto">{{ training.state === 'published' ? '已发布' : '草稿' }}</span>
     </div>
   </NuxtLink>
 </template>

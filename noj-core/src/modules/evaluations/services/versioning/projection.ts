@@ -267,7 +267,15 @@ async function loadBindingPolicies(
     offset < ids.length;
     offset += PROJECTION_QUERY_BATCH_SIZE
   ) {
-    const rows = await db.select().from(domainProblemBindings).where(
+    const rows = await db.select({
+      id: domainProblemBindings.id,
+      revision: domainProblemBindings.revision,
+      effective_version_mode: problems.effective_version_mode,
+      required_version_id: problems.required_version_id,
+    }).from(domainProblemBindings).innerJoin(
+      problems,
+      eq(problems.id, domainProblemBindings.problem_id),
+    ).where(
       inArray(
         domainProblemBindings.id,
         ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE),

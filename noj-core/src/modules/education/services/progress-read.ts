@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, isNull, like, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { loadDomainProblemProtection } from "../../access/contest-policy.ts";
 import type { AssignmentProgressStatus } from "../../../shared/education-types.ts";
 import {
   assignmentItems,
@@ -120,8 +121,10 @@ export async function getAssignmentMatrix(
       left_at: s.recipient.left_at,
       cells: result.cells.filter((c) => c.user_id === s.recipient.user_id).map(
         (cell) => {
-          const canReadCode = access.staff || cell.user_id === actorId ||
-            assignmentHasEnded(access.assignment);
+          const protectedItem = result.items.find((i) => i.id === cell.item_id)
+            ?.can_read === false;
+          const canReadCode = !protectedItem && (access.staff ||
+            cell.user_id === actorId || assignmentHasEnded(access.assignment));
           return {
             ...cell,
             can_read_code: canReadCode,
@@ -196,6 +199,11 @@ async function readCells(
     )
     .orderBy(assignmentItems.sort_order);
   const items = sourceRows.map((row) => row.item);
+  const protection = await loadDomainProblemProtection(
+    access.domain.id,
+    items.map((i) => i.problem_id),
+    db,
+  );
   const references = new Map(
     sourceRows.map((
       row,
@@ -281,6 +289,9 @@ async function readCells(
       id: i.id,
       reference: references.get(i.id)!,
       problem_id: i.problem_id,
+      contest_protection: protection.get(i.problem_id) ?? [],
+      can_read: !protection.has(i.problem_id),
+      can_practice: !protection.has(i.problem_id),
       binding_id: i.binding_id,
       sort_order: i.sort_order,
       requirement: i.requirement,

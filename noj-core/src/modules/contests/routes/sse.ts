@@ -6,7 +6,6 @@ import { Channels, onEvent } from "../../../shared/sse/event-bus.ts";
 import { lastEventId } from "../../../shared/sse/server-helpers.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
-import { NotFoundError } from "../../../shared/base/errors.ts";
 import { getContest } from "../services/contests.ts";
 import { resolveDefaultContestAccess } from "../services/default-access.ts";
 import { loadDomainContest } from "../services/domain-access.ts";
@@ -60,9 +59,6 @@ for (
         const contest = await getContest(id, viewerId),
           admin = permissions.has("admin:full_access") ||
             permissions.has("contest:manage");
-        if (
-          !contest.is_public && !admin && !contest.is_registered
-        ) throw new NotFoundError("竞赛不存在");
         return { contest, admin };
       }
       const initial = await loadAccess();

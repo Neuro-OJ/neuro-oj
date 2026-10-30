@@ -249,7 +249,9 @@ export async function acceptDomainSubmissionJob(
       const current = await resolveDomainJobContexts(
         slug,
         actorId,
-        problemIds,
+        normalized.kind === "upgrade" && normalized.context === "source_contest"
+          ? []
+          : problemIds,
         tx,
         changes.length > 0,
       );
@@ -290,7 +292,27 @@ export async function acceptDomainSubmissionJob(
           }
         }
       } else {for (const source of members) {
-          const context = current.contexts.get(source.problem_id)!;
+          // 组织者代表原参赛者升级时，沿用原参赛者经服务端核验的比赛入口。
+          // 不能把批任务当作普通练习入口绕过保密，也不要求组织者本人报名。
+          const context =
+            normalized.context === "source_contest" && source.contest_id
+              ? (await resolveDomainJobContexts(
+                slug,
+                source.user_id,
+                [source.problem_id],
+                tx,
+                false,
+                source.contest_id,
+              )).contexts.get(source.problem_id)!
+              : current.contexts.get(source.problem_id);
+          if (!context) {
+            throw new AppError(
+              "源提交没有有效比赛上下文",
+              403,
+              "CONTEST_CONTEXT_REQUIRED",
+            );
+          }
+          current.contexts.set(source.problem_id, context);
           const target = context.answer_version_id;
           let reason: { code: string; message: string } | undefined;
           if (source.active_attempt_id) {

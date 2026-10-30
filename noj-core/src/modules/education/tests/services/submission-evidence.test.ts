@@ -338,12 +338,14 @@ Deno.test("教学候选依据：exact 排除其他正式版本，教学停用期
     eq(problemVersions.problem_id, f.problemId),
   )
     .orderBy(problemVersions.version);
-  await f.db.update(domainProblemBindings).set({
+  await f.db.update(problems).set({
     effective_version_mode: "exact",
     required_version_id: oldVersion.id,
-    revision: 1,
-  })
-    .where(eq(domainProblemBindings.id, f.bindingId));
+    effective_policy_revision: 1,
+  }).where(eq(problems.id, f.problemId));
+  await f.db.update(domainProblemBindings).set({ revision: 1 }).where(
+    eq(domainProblemBindings.id, f.bindingId),
+  );
   assertEquals((await cell(f)).data[0].candidate_attempt_ids, []);
   assertEquals((await history(f, id)).data[0].matches_policy, false);
   await f.db.insert(domainFeatureIntervals).values({

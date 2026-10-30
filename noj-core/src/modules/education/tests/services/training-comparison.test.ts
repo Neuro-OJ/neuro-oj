@@ -126,6 +126,8 @@ async function grade(
     score: number;
     accepted?: boolean;
     domainId?: string;
+    problemId?: string;
+    versionId?: string;
     bindingId?: string;
     contestId?: string;
     objective?: boolean;
@@ -140,7 +142,7 @@ async function grade(
     domain_id: input.domainId ?? f.school.id,
     domain_problem_binding_id: input.bindingId ?? f.bindingId,
     user_id: f.student,
-    submitted_version_id: f.versionId,
+    submitted_version_id: input.versionId ?? f.versionId,
     created_at: input.at,
     status: input.pending ? "pending" as const : "finished" as const,
     contest_id: input.contestId,
@@ -148,7 +150,7 @@ async function grade(
   if (input.objective) {
     await f.db.insert(objectiveSubmissions).values({
       ...source,
-      paper_id: f.problemId,
+      paper_id: input.problemId ?? f.problemId,
       answers: Object.fromEntries(
         Array.from(
           { length: 10 },
@@ -160,7 +162,7 @@ async function grade(
     });
   } else {await f.db.insert(submissions).values({
       ...source,
-      problem_id: f.problemId,
+      problem_id: input.problemId ?? f.problemId,
       language: "python3",
       code: "private code excluded",
       version_origin: "known",
@@ -170,8 +172,8 @@ async function grade(
     ...(input.objective
       ? { objective_submission_id: id }
       : { submission_id: id }),
-    problem_id: f.problemId,
-    problem_version_id: f.versionId,
+    problem_id: input.problemId ?? f.problemId,
+    problem_version_id: input.versionId ?? f.versionId,
     sequence: 0,
     source: "initial",
     state: input.pending ? "queued" : "finished",
@@ -189,8 +191,8 @@ async function grade(
       ...(input.objective
         ? { objective_submission_id: id }
         : { submission_id: id }),
-      problem_id: f.problemId,
-      problem_version_id: f.versionId,
+      problem_id: input.problemId ?? f.problemId,
+      problem_version_id: input.versionId ?? f.versionId,
       current_attempt_id: attempt,
       updated_at: now,
     });}
@@ -375,6 +377,8 @@ Deno.test("训练比较：相同源题跨域记录和未结束比赛排除，策
     accepted: true,
     domainId: f.other.id,
     bindingId: imported.binding.id,
+    problemId: imported.binding.problem_id,
+    versionId: imported.version_id,
   });
   const contestId = crypto.randomUUID(), now = new Date().toISOString();
   await f.db.insert(contests).values({

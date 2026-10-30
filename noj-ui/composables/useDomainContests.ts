@@ -21,30 +21,66 @@ export function useDomainContests() {
   const path = (slug: string, id?: string) =>
     `/api/v1/domains/${encodeURIComponent(slug)}/contests${id ? `/${encodeURIComponent(id)}` : ''}`;
   return {
-    list: (slug: string, page: number, filters: { classroom_id?: string; my_classrooms?: boolean } = {}) =>
+    list: (
+      slug: string,
+      page: number,
+      filters: { classroom_id?: string; my_classrooms?: boolean } = {},
+    ) =>
       api.get<{ data: DomainContest[]; pagination: Pagination }>(path(slug), {
         query: { page, per_page: 20, ...filters },
         silent: true,
       }),
     detail: (slug: string, id: string) => api.get<{ data: DomainContest }>(path(slug, id), { silent: true }),
     create: (slug: string, body: ContestPayload) => api.post<{ data: DomainContest }>(path(slug), body),
-    update: (slug: string, id: string, body: Partial<ContestPayload>, revision: number) =>
-      api.patch<{ data: DomainContest }>(path(slug, id), body, { headers: { 'If-Match': String(revision) } }),
-    register: (slug: string, id: string, password: string) => api.post(`${path(slug, id)}/register`, { password }),
+    update: (
+      slug: string,
+      id: string,
+      body: Partial<ContestPayload>,
+      revision: number,
+    ) =>
+      api.patch<{ data: DomainContest }>(path(slug, id), body, {
+        headers: { 'If-Match': String(revision) },
+      }),
+    register: (slug: string, id: string, _password?: string) => api.post(`${path(slug, id)}/register`, {}),
     problems: (slug: string, id: string) =>
-      api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, { silent: true }),
-    ranking: (slug: string, id: string, official = false, classroomId?: string) =>
-      api.get<DomainContestRanking>(`${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`, {
-        query: { classroom_id: classroomId },
+      api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, {
         silent: true,
       }),
+    ranking: (
+      slug: string,
+      id: string,
+      official = false,
+      classroomId?: string,
+    ) =>
+      api.get<DomainContestRanking>(
+        `${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`,
+        {
+          query: { classroom_id: classroomId },
+          silent: true,
+        },
+      ),
     settlement: (slug: string, id: string) =>
-      api.get<{ data: { ready: boolean; pending_count: number; failed_count: number; [key: string]: unknown } }>(
+      api.get<
+        {
+          data: {
+            ready: boolean;
+            pending_count: number;
+            failed_count: number;
+            [key: string]: unknown;
+          };
+        }
+      >(
         `${path(slug, id)}/settlement`,
         { silent: true },
       ),
     snapshots: (slug: string, id: string) =>
-      api.get<{ data: Array<{ id: string; version: number; note: string; created_at: string }> }>(
+      api.get<
+        {
+          data: Array<
+            { id: string; version: number; note: string; created_at: string }
+          >;
+        }
+      >(
         `${path(slug, id)}/snapshots`,
         { silent: true },
       ),

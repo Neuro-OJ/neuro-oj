@@ -3,7 +3,6 @@ import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   importDomainProblemCommand,
   setDomainProblemBindingPolicyCommand,
-  setDomainProblemSharingCommand,
 } from "../../application/problems.ts";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
@@ -14,7 +13,6 @@ import {
   parseJsonBody,
 } from "../../../shared/http/request.ts";
 import { listDomainProblemBindings } from "../services/workspace/problem-bindings.ts";
-import { readDomainProblemSharing } from "../services/workspace/problem-sharing.ts";
 import type { EffectiveVersionPolicy } from "../../../shared/versioning/types.ts";
 import { listSharedDomainResources } from "../services/workspace/problem-sharing.ts";
 
@@ -51,59 +49,29 @@ domainResourceManagementRouter.post(
   `${prefix}/problem-bindings`,
   authMiddleware,
   async (c) => {
-    const input = await parseJsonBody<{ source_ref: string }>(c);
+    const input = await parseJsonBody<
+      { source_ref: string; version_id?: string }
+    >(c);
     assertObjectBody(input);
     if (typeof input.source_ref !== "string") {
       throw new BadRequestError(
         "需要来源题号 source_ref",
       );
     }
+    if (
+      input.version_id !== undefined &&
+      (typeof input.version_id !== "string" || !input.version_id)
+    ) {
+      throw new BadRequestError("version_id 必须为已发布版本 ID");
+    }
     return c.json({
       data: await importDomainProblemCommand(
         userActorFromAuthenticatedId(c.var.userId),
         c.req.param("slug")!,
         input.source_ref,
+        input.version_id,
       ),
     }, 201);
-  },
-);
-domainResourceManagementRouter.get(
-  `${prefix}/problems/:reference/sharing`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: await readDomainProblemSharing(
-        c.req.param("slug")!,
-        c.req.param("reference")!,
-        c.var.userId,
-      ),
-    }),
-);
-domainResourceManagementRouter.post(
-  `${prefix}/problems/:reference/sharing`,
-  authMiddleware,
-  async (c) => {
-    const input = await parseJsonBody<
-      {
-        enabled: boolean;
-        scope: "all" | "selected";
-        target_domain_slugs: string[];
-      }
-    >(c);
-    assertObjectBody(input);
-    return c.json({
-      data: await setDomainProblemSharingCommand(
-        userActorFromAuthenticatedId(c.var.userId),
-        c.req.param("slug")!,
-        c.req.param("reference")!,
-        {
-          enabled: input.enabled,
-          scope: input.scope,
-          targetDomainSlugs: input.target_domain_slugs,
-          expectedRevision: revision(c.req.header("If-Match")),
-        },
-      ),
-    });
   },
 );
 domainResourceManagementRouter.put(

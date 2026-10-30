@@ -2,7 +2,7 @@ import {
   contestClassrooms,
   setContestClassrooms,
 } from "./classroom-contests.ts";
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
   contestParticipants,
@@ -49,8 +49,6 @@ export async function listDomainContests(
   },
 ) {
   const db = getDb(), workspace = await loadWorkspace(slug, actorId);
-  const manager = workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("contest:manage");
   const visible = and(
     eq(contests.domain_id, workspace.domain.id),
     query.type ? eq(contests.type, query.type) : undefined,
@@ -76,15 +74,6 @@ export async function listDomainContests(
       }
       )`
       : undefined,
-    manager ? undefined : or(
-      eq(contests.is_public, true),
-      actorId
-        ? sql`EXISTS (SELECT 1 FROM contest_participants cp WHERE cp.contest_id = ${contests.id} AND cp.user_id = ${actorId})`
-        : undefined,
-      actorId && workspace.context.domainPermissions.has("contest:manage_own")
-        ? eq(contests.created_by, actorId)
-        : undefined,
-    ),
   );
   const [[total], rows] = await Promise.all([
     db.select({ total: count() }).from(contests).where(visible),
@@ -234,6 +223,7 @@ export async function updateDomainContest(
         input.end_time,
         input.freeze_start_time,
         input.freeze_duration_seconds,
+        input.secrecy_enabled,
       ].some((v) => v !== undefined)
     ) {
       throw new ConflictError("开赛后不能修改赛制、题目、受理窗口或封榜规则");

@@ -86,6 +86,7 @@ useSeoMeta({ title: '题库' });
               class="whitespace-nowrap text-xs text-primary no-underline"><ProblemId :display-id="row.original.reference.display_ref" type="T" /></NuxtLink>
           </template>
           <template #title-cell="{row}">
+            <div :class="{'contest-protected': row.original.contest_protection?.length}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
               class="break-words font-medium leading-relaxed text-text no-underline hover:text-primary">{{ row.original.title }}</NuxtLink>
             <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
@@ -93,6 +94,8 @@ useSeoMeta({ title: '题库' });
                 class="rounded border border-primary/20 bg-primary-bg px-1.5 text-primary">{{ {oi:'OI',ai:'AI / LLM',objective:'客观题'}[row.original.kind] }}</span>
               <span v-if="row.original.judge_backend" class="rounded border border-border px-1.5 font-mono text-text-secondary">{{ row.original.judge_backend }}</span>
               <span v-if="user && row.original.best_score != null" class="text-success-text sm:hidden">{{ (row.original.best_score / 100).toFixed(2) }} 分</span>
+              <span v-if="row.original.contest_protection?.length" class="inline-flex items-center gap-1 font-medium text-text-secondary"><UIcon name="i-lucide-lock-keyhole" class="size-3" />比赛赛题 · 受保护</span>
+            </div>
             </div>
           </template>
           <template

@@ -110,7 +110,7 @@ function toProblemResponse(
     domain_id: row.domain_id ?? DEFAULT_DOMAIN_ID,
     // 特权用户（admin/owner）看到"该题已被公开赛收编"的标记；对普通用户这些行
     // 根本不会出现，故恒为 false（审计 VULN-07）
-    is_contest_hidden: viewer.isOwnerOrAdmin ? isContestHidden : false,
+    is_contest_hidden: isContestHidden,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -228,11 +228,11 @@ export async function listProblems(
   if (query.keyword) {
     const kw = `%${query.keyword}%`;
     conditions.push(
-      sql`(${ilike(problems.title, kw)} OR ${
-        ilike(problems.description, kw)
-      } OR ${ilike(problems.id, kw)} OR ${
-        ilike(sql`CAST(${problems.number} AS TEXT)`, kw)
-      })`,
+      sql`(${ilike(problems.title, kw)} OR ${sql`(NOT ${
+        unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
+      } AND ${ilike(problems.description, kw)})`} OR ${
+        ilike(problems.id, kw)
+      } OR ${ilike(sql`CAST(${problems.number} AS TEXT)`, kw)})`,
     );
   }
 
@@ -255,9 +255,6 @@ export async function listProblems(
   const canManageOwn = workspace.context.domainPermissions.has(
     "problem:write_own",
   );
-  if (!workspace.membership && !canManageAny) {
-    conditions.push(eq(problems.visibility, "public"));
-  }
   if (!canManageAny) {
     conditions.push(
       or(
@@ -267,19 +264,11 @@ export async function listProblems(
           : sql`FALSE`,
       )!,
     );
-    conditions.push(sql`(
-      NOT (${
-      unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
-    })
-      OR (${canManageOwn} AND ${problems.owner_id} = ${viewer.userId ?? null})
-    )`);
   }
   conditions.push(sql`NOT EXISTS (
     SELECT 1 FROM domain_problem_bindings b
     WHERE b.domain_id = ${DEFAULT_DOMAIN_ID} AND b.problem_id = ${problems.id}
-      AND (b.disabled_at IS NOT NULL OR (${
-    !workspace.membership && !canManageAny
-  } AND b.visibility <> 'public'))
+      AND b.disabled_at IS NOT NULL
   )`);
 
   // 按标签筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
@@ -337,7 +326,11 @@ export async function listProblems(
 
   return {
     items: rows.map((r) => ({
-      ...toProblemResponse(r.problem, {
+      ...toProblemResponse({
+        ...r.problem,
+        description: r.is_contest_hidden ? "" : r.problem.description,
+        samples: r.is_contest_hidden ? [] : r.problem.samples,
+      }, {
         isOwnerOrAdmin: !r.authoring_restricted && (canManageAny ||
           (canManageOwn && viewer.userId === r.problem.owner_id)),
       }, r.is_contest_hidden === true),

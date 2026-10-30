@@ -1,3 +1,8 @@
+import {
+  commitDomainProblemCopy,
+  compensateProblemCopy,
+  prepareDomainProblemCopy,
+} from "./problem-copy.ts";
 import { and, asc, count, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import {
   domainProblemBindingAvailableWhere,
@@ -11,9 +16,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
-import { assertWorkspacePermission as assertAccessWorkspacePermission } from "../../../access/policy.ts";
 import { loadWorkspaceTx } from "../../../access/policy.ts";
-import { setDomainResourceCounterTx } from "../../../access/resource-counters.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { workspaceAuditTx } from "../../../access/audit.ts";
 import { recordProblemChangeTx } from "../../../education/contracts/events.ts";
@@ -31,7 +34,6 @@ import {
   assertWorkspacePermission as assertLegacyWorkspacePermission,
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import { getDomainEffectiveLimits } from "../../../access/contracts/cross-module/workspace_services_limits.ts";
 import {
   assertCurrentProblemShare,
   legacyWorkspaceFromAccess,
@@ -55,13 +57,18 @@ async function recordBinding(
   reason: string,
   tx: DbTx,
 ) {
+  const [policyProblem] = await tx.select().from(problems).where(
+    eq(problems.id, binding.problem_id),
+  );
   await tx.insert(problemBindingHistory).values({
     id: crypto.randomUUID(),
     binding_id: binding.id,
     problem_id: binding.problem_id,
     revision: binding.revision,
-    effective_version_mode: binding.effective_version_mode,
-    required_version_id: binding.required_version_id,
+    effective_version_mode: policyProblem.effective_version_mode as
+      | "any"
+      | "exact",
+    required_version_id: policyProblem.required_version_id,
     answer_version_id: answerVersionId,
     disabled_at: binding.disabled_at,
     actor_id: actorId,
@@ -95,148 +102,31 @@ async function recordBinding(
   );
 }
 
-/** 显式引用公开源题；同域重复请求复用绑定且不重复扣容量。 */
+/** 跨域导入创建独立已发布副本；文件预检在事务外完成。 */
 export async function importDomainProblem(
   slug: string,
   sourceReference: string,
   actorId: string,
   executor?: Executor,
+  versionId?: string,
 ) {
-  const parsed = parseDomainProblemReference(sourceReference);
-  if (!parsed.sourceSlug || parsed.sourceSlug === slug) {
-    throw new BadRequestError("引用题必须使用其他域的来源题号");
+  if (executor) {
+    throw new BadRequestError("请先在目标域复制题目，再将本域题目加入作业");
   }
-  const importProblem = async (tx: DbTx) => {
-    const actor = userActorFromAuthenticatedId(actorId);
-    // 多域写入按稳定 ID 加锁，避免两个域互相引用时形成相反锁顺序。
-    await loadWorkspaceTx(tx, slug, actor, { write: true });
-    await tx.select({ id: domains.id }).from(domains).where(
-      inArray(domains.slug, [slug, parsed.sourceSlug!]),
-    ).orderBy(asc(domains.id)).for("update");
-    const { domain, context } = await loadWorkspaceTx(tx, slug, actor, {
-      write: true,
-    });
-    if (!context.domainPermissions.has("problem:import")) {
-      assertAccessWorkspacePermission(context, "problem:create");
-    }
-    const [source] = await tx.select({ problem: problems, domain: domains })
-      .from(problems).innerJoin(domains, eq(domains.id, problems.domain_id))
-      .where(
-        and(
-          eq(domains.slug, parsed.sourceSlug!),
-          eq(problems.number, parsed.number),
-        ),
-      ).for("share");
-    if (!source) throw new NotFoundError("源题不存在或不可引用");
-    await assertCurrentProblemShare(
-      source.problem,
-      source.domain,
-      domain.id,
-      tx,
+  const prepared = await prepareDomainProblemCopy(
+    slug,
+    sourceReference,
+    actorId,
+    versionId,
+  );
+  try {
+    return await getDb().transaction((tx) =>
+      commitDomainProblemCopy(tx, prepared)
     );
-    const [existing] = await tx.select().from(domainProblemBindings).where(
-      and(
-        eq(domainProblemBindings.domain_id, domain.id),
-        eq(domainProblemBindings.problem_id, source.problem.id),
-      ),
-    ).for("update");
-    if (existing) {
-      if (existing.kind !== "shared") {
-        throw new AppError(
-          "绑定来源不一致",
-          503,
-          "PROBLEM_BINDING_INCONSISTENT",
-        );
-      }
-      if (!existing.disabled_at) {
-        return {
-          binding: existing,
-          reference: domainProblemReference(
-            { ...source.problem, domain_id: source.domain.id },
-            source.domain.slug,
-            domain.id,
-          ),
-        };
-      }
-      // 重复引用不能让教学人员撤销管理员的下架决定。
-      assertAccessWorkspacePermission(context, "problem:policy");
-      const [restored] = await tx.update(domainProblemBindings).set({
-        disabled_at: null,
-        revision: existing.revision + 1,
-        updated_at: new Date().toISOString(),
-      }).where(eq(domainProblemBindings.id, existing.id)).returning();
-      await recordBinding(
-        restored,
-        restored.required_version_id ?? source.problem.latest_version_id,
-        actorId,
-        "恢复引用",
-        tx,
-      );
-      return {
-        binding: restored,
-        reference: domainProblemReference(
-          { ...source.problem, domain_id: source.domain.id },
-          source.domain.slug,
-          domain.id,
-        ),
-      };
-    }
-    const { effective: limit } = await getDomainEffectiveLimits(domain.id, tx);
-    const [usage] = await tx.select({ count: count() }).from(
-      domainProblemBindings,
-    ).where(eq(domainProblemBindings.domain_id, domain.id));
-    if (
-      limit.problems !== null &&
-      usage.count >= limit.problems
-    ) throw new AppError("域题库条目额度已用尽", 429, "DOMAIN_PROBLEM_LIMIT");
-    const [sourceBinding] = await tx.select().from(domainProblemBindings).where(
-      and(
-        eq(domainProblemBindings.domain_id, source.domain.id),
-        eq(domainProblemBindings.problem_id, source.problem.id),
-      ),
-    );
-    if (
-      !sourceBinding || sourceBinding.kind !== "owned" ||
-      sourceBinding.disabled_at
-    ) throw new NotFoundError("源域题库配置不可用");
-    const now = new Date().toISOString();
-    const [binding] = await tx.insert(domainProblemBindings).values({
-      id: crypto.randomUUID(),
-      domain_id: domain.id,
-      problem_id: source.problem.id,
-      kind: "shared",
-      visibility: "members",
-      effective_version_mode: sourceBinding.effective_version_mode,
-      required_version_id: sourceBinding.required_version_id,
-      created_by: actorId,
-      created_at: now,
-      updated_at: now,
-    }).returning();
-    await setDomainResourceCounterTx(
-      tx,
-      domain.id,
-      "problems",
-      usage.count + 1,
-    );
-    await recordBinding(
-      binding,
-      binding.required_version_id ?? source.problem.latest_version_id,
-      actorId,
-      "引用源题并复制初始策略",
-      tx,
-    );
-    return {
-      binding,
-      reference: domainProblemReference(
-        { ...source.problem, domain_id: source.domain.id },
-        source.domain.slug,
-        domain.id,
-      ),
-    };
-  };
-  return executor && isDbTx(executor)
-    ? await importProblem(executor)
-    : await getDb().transaction(importProblem);
+  } catch (error) {
+    await compensateProblemCopy(prepared);
+    throw error;
+  }
 }
 
 /** 新 application 入口的显式用户合同；旧字符串入口仅供迁移期调用方使用。 */
@@ -244,8 +134,15 @@ export function importDomainProblemForActor(
   slug: string,
   sourceReference: string,
   actor: UserActor,
+  versionId?: string,
 ) {
-  return importDomainProblem(slug, sourceReference, actor.userId);
+  return importDomainProblem(
+    slug,
+    sourceReference,
+    actor.userId,
+    undefined,
+    versionId,
+  );
 }
 
 /** 题库策略独立修改；不更新其他域绑定或改写旧版本和提交。 */
@@ -311,11 +208,14 @@ export async function setDomainProblemBindingPolicy(
       if (!version) throw new BadRequestError("要求版本不属于此题或未发布");
     }
     const [updated] = await tx.update(domainProblemBindings).set({
-      effective_version_mode: policy.mode,
-      required_version_id: required,
       revision: binding.revision + 1,
       updated_at: new Date().toISOString(),
     }).where(eq(domainProblemBindings.id, binding.id)).returning();
+    await tx.update(problems).set({
+      effective_version_mode: policy.mode,
+      required_version_id: required,
+      effective_policy_revision: binding.revision + 1,
+    }).where(eq(problems.id, binding.problem_id));
     await recordBinding(
       updated,
       required ?? resolved.problem.latest_version_id,
@@ -457,7 +357,7 @@ export async function setDomainProblemBindingState(
     }
     await recordBinding(
       updated,
-      updated.required_version_id ?? currentProblem.latest_version_id,
+      currentProblem.required_version_id ?? currentProblem.latest_version_id,
       actorId,
       input.reason.trim(),
       tx,
@@ -543,6 +443,8 @@ export async function listDomainProblemBindings(
         owner_id: problems.owner_id,
         title: problems.title,
         latest_version_id: problems.latest_version_id,
+        effective_version_mode: problems.effective_version_mode,
+        required_version_id: problems.required_version_id,
       },
     }).from(domainProblemBindings).innerJoin(
       problems,
@@ -588,12 +490,11 @@ export async function listDomainProblemBindings(
         visibility: row.binding.visibility,
         disabled_at: row.binding.disabled_at,
         resource_available: status?.available ?? false,
-        effective_version_mode: row.binding.effective_version_mode,
-        required_version_id: row.binding.required_version_id,
+        effective_version_mode: row.problem.effective_version_mode,
+        required_version_id: row.problem.required_version_id,
         answer_version_id: status?.answer_version_id ?? null,
         can_edit: canEdit,
-        can_share: owned &&
-          (workspace.platformAdmin || permissions.has("problem:share")),
+        can_share: false,
         can_manage_policy: workspace.platformAdmin ||
           permissions.has("problem:policy"),
         can_change_state: canEdit ||

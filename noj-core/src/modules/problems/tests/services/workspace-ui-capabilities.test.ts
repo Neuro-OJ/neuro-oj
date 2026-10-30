@@ -84,7 +84,7 @@ Deno.test("域集成能力：界面题包须有ui.html，v2保留模型能力和
 });
 
 Deno.test({
-  name: "域集成能力：HTTP共享界面取目标版本，模板不公开且撤销即时拒绝",
+  name: "域集成能力：HTTP独立副本复制选定界面文件，来源撤销不影响副本",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -220,9 +220,28 @@ Deno.test({
         scope: "all",
         targetDomainIds: [],
       });
-      await importDomainProblem(school.slug, "ui-source:1001", actor);
+      const copied = await importDomainProblem(
+        school.slug,
+        "ui-source:1001",
+        actor,
+        undefined,
+        versions[1],
+      );
+      const firstCopy = await importDomainProblem(
+        school.slug,
+        "ui-source:1001",
+        actor,
+        undefined,
+        versions[0],
+      );
+      const [identity] = await getDb().select().from(problems).where(
+        eq(problems.id, copied.binding.problem_id),
+      );
+      const [firstIdentity] = await getDb().select().from(problems).where(
+        eq(problems.id, firstCopy.binding.problem_id),
+      );
       const app = createApp(),
-        path = `/api/v1/domains/${school.slug}/problems/ui-source:1001`;
+        path = `/api/v1/domains/${school.slug}/problems/${identity.number}`;
       const capabilities = await jsonRequest(
         app,
         `/api/v1/domains/${school.slug}/problems/llm-model-aliases`,
@@ -244,7 +263,7 @@ Deno.test({
       );
       let response = await jsonRequest(
         app,
-        `${path}/ui?version_id=${versions[1]}`,
+        `${path}/ui?version_id=${copied.version_id}`,
         { token: studentToken },
       );
       assertEquals(response.status, 200);
@@ -256,19 +275,25 @@ Deno.test({
       );
       await setDomainProblemBindingPolicy(
         school.slug,
-        "ui-source:1001",
+        String(identity.number),
         actor,
         0,
-        { mode: "exact", version_id: versions[0] },
+        { mode: "exact", version_id: copied.version_id },
         "固定界面V1",
       );
       response = await jsonRequest(app, `${path}/ui`, { token: studentToken });
-      assertEquals((await response.json()).data.html, "<h1>V1</h1>");
+      assertEquals((await response.json()).data.html, "<h1>V2</h1>");
+      const v1Response = await jsonRequest(
+        app,
+        `/api/v1/domains/${school.slug}/problems/${firstIdentity.number}/ui`,
+        { token: studentToken },
+      );
+      assertEquals((await v1Response.json()).data.html, "<h1>V1</h1>");
       assertEquals(
         (await jsonRequest(app, `${path}/ui?version_id=${versions[1]}`, {
           token: studentToken,
         })).status,
-        200,
+        404,
       );
       assertEquals(
         (await jsonRequest(
@@ -286,7 +311,7 @@ Deno.test({
       });
       assertEquals(
         (await jsonRequest(app, `${path}/ui`, { token: studentToken })).status,
-        404,
+        200,
       );
     } finally {
       globalThis.fetch = oldFetch;

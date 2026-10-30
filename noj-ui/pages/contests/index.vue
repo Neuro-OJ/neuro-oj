@@ -98,7 +98,6 @@ watch([selectedType, selectedStatus], () => {
               <div class="flex items-center gap-4">
                 <span class="flex items-center gap-1.5"><UIcon name="i-lucide-users" class="size-3.5" />{{ t('contest.participants', { count: contest.participant_count }) }}</span>
                 <span>{{ t('contest.problems', { count: contest.problem_count }) }}</span>
-                <span v-if="contest.has_password" class="ml-auto flex items-center gap-1 text-warning-text"><UIcon name="i-lucide-lock-keyhole" class="size-3" />{{ t('contest.password') }}</span>
               </div>
             </div>
           </NuxtLink>

@@ -8,12 +8,14 @@ import {
   contestParticipants,
   contestProblems,
   contests,
+  domainLimits,
   domainProblemBindings,
   evaluationAttempts,
   problems,
-  problemShareSettings,
   problemVersions,
   submissions,
+  trainingProblems,
+  trainings,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -29,6 +31,223 @@ import {
   setMemberRoles,
 } from "../../../access/workspace/index.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
+
+Deno.test({
+  name: "域资源复制：题单及题目整体发布，额度失败整体回滚后可重试",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const source = await workspace("copy-training-source"),
+      target = await workspace("copy-training-target");
+    await join(source.domain.slug, source.owner, target.owner);
+    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+      "admin",
+    ]);
+    const first = await item(source.domain.id, source.owner, "objective", 1001),
+      second = await item(source.domain.id, source.owner, "objective", 1002),
+      trainingId = crypto.randomUUID(),
+      now = new Date().toISOString(),
+      db = getDb();
+    await db.insert(trainings).values({
+      id: trainingId,
+      domain_id: source.domain.id,
+      title: "可复制题单",
+      state: "published",
+      created_by: source.owner,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(trainingProblems).values([
+      { training_id: trainingId, problem_id: first.id, position: 0 },
+      { training_id: trainingId, problem_id: second.id, position: 1 },
+    ]);
+    await db.insert(domainLimits).values({
+      domain_id: target.domain.id,
+      problems: 1,
+    })
+      .onConflictDoUpdate({
+        target: domainLimits.domain_id,
+        set: { problems: 1 },
+      });
+    await assertRejects(() =>
+      importDomainTraining(target.domain.slug, trainingId, target.owner)
+    );
+    assertEquals(
+      (await db.select().from(problems).where(
+        eq(problems.domain_id, target.domain.id),
+      )).length,
+      0,
+    );
+    assertEquals(
+      (await db.select().from(trainings).where(
+        eq(trainings.domain_id, target.domain.id),
+      )).length,
+      0,
+    );
+    await db.update(domainLimits).set({ problems: 5 }).where(
+      eq(domainLimits.domain_id, target.domain.id),
+    );
+    const copied = await importDomainTraining(
+      target.domain.slug,
+      trainingId,
+      target.owner,
+    );
+    assert(copied.training_id !== trainingId);
+    await removeDomainMember(source.domain.slug, source.owner, target.owner);
+    const detail = await readDomainTraining(
+      target.domain.slug,
+      copied.training_id,
+      target.owner,
+    );
+    assertEquals(detail.state, "published");
+    assertEquals(detail.items.length, 2);
+    assert(
+      detail.items.every((row) =>
+        row.source_domain_id === target.domain.id && row.resource_available
+      ),
+    );
+    assert(
+      detail.items.every((row) =>
+        row.problem_id !== first.id && row.problem_id !== second.id
+      ),
+    );
+  },
+});
+import { importDomainTraining } from "../../../problems/services/workspace/training-sharing.ts";
+import { readDomainTraining } from "../../../problems/services/workspace/training-access.ts";
+
+Deno.test({
+  name: "域赛题保护：赛前全版本、元数据、管理预览、重叠比赛与自动解除",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const a = await workspace("protection-school"), student = await account();
+    await join(a.domain.slug, a.owner, student);
+    const p = await item(a.domain.id, a.owner);
+    const pending = await createDomainContest(
+      a.domain.slug,
+      a.owner,
+      input(p.id),
+    );
+    assertEquals(pending.secrecy_enabled, true);
+    for (const versionId of [p.v1, p.v2]) {
+      const denied = await assertRejects(
+        () =>
+          resolveDomainProblem(a.domain.slug, "1001", student, { versionId }),
+        ForbiddenError,
+      );
+      assertEquals(denied.code, "CONTEST_PROBLEM_RESTRICTED");
+    }
+    await resolveDomainProblem(a.domain.slug, "1001", a.owner);
+    for (const user of [student, a.owner]) {
+      await assertRejects(
+        () => assertDomainPracticeAllowed(a.domain.id, p.id, user),
+        ForbiddenError,
+      );
+      await assertRejects(
+        () =>
+          resolveDomainProblem(a.domain.slug, "1001", user, { write: true }),
+        ForbiddenError,
+      );
+    }
+    const listed = await listDomainProblems(a.domain.slug, student, {
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(listed.items.length, 1);
+    assertEquals(listed.items[0].can_practice, false);
+    assertEquals(listed.items[0].contest_protection[0].contestId, pending.id);
+    const summaries = await readDomainProblemSummaries(
+      a.domain.slug,
+      ["1001"],
+      student,
+    );
+    assertEquals(summaries.items[0].availability, "available");
+    assertEquals(summaries.items[0].can_read, false);
+    await registerForDomainContest(a.domain.slug, pending.id, student);
+    await assertRejects(
+      () =>
+        resolveDomainProblem(a.domain.slug, "1001", student, {
+          contestId: pending.id,
+        }),
+      NotFoundError,
+    );
+    const active = await createDomainContest(
+      a.domain.slug,
+      a.owner,
+      input(p.id, "ioi", true),
+    );
+    await registerForDomainContest(a.domain.slug, active.id, student);
+    const admitted = await resolveDomainProblem(
+      a.domain.slug,
+      "1001",
+      student,
+      { contestId: active.id, write: true },
+    );
+    assertEquals(admitted.version.id, p.v1);
+    await assertRejects(
+      () =>
+        updateDomainContest(
+          a.domain.slug,
+          active.id,
+          a.owner,
+          active.revision,
+          { secrecy_enabled: false },
+        ),
+      ConflictError,
+    );
+    const past = new Date(Date.now() - 1000).toISOString();
+    await getDb().update(contests).set({ end_time: past }).where(
+      eq(contests.id, active.id),
+    );
+    await assertRejects(
+      () => getDomainContestProblems(a.domain.slug, active.id, student),
+      ForbiddenError,
+    );
+    await assertRejects(
+      () => assertDomainPracticeAllowed(a.domain.id, p.id, student),
+      ForbiddenError,
+    );
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: past,
+    }).where(eq(contests.id, pending.id));
+    await resolveDomainProblem(a.domain.slug, "1001", student);
+    await assertDomainPracticeAllowed(a.domain.id, p.id, student);
+    await assertRejects(
+      () =>
+        resolveDomainProblem(a.domain.slug, "1001", student, {
+          contestId: active.id,
+          write: true,
+        }),
+      NotFoundError,
+    );
+  },
+});
+
+Deno.test({
+  name: "域赛题保护：关闭保护不再依赖邀请赛或公开赛标签",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const a = await workspace("protection-off"), student = await account();
+    await join(a.domain.slug, a.owner, student);
+    const p = await item(a.domain.id, a.owner);
+    await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      secrecy_enabled: false,
+    });
+    await resolveDomainProblem(a.domain.slug, "1001", student);
+    await assertDomainPracticeAllowed(a.domain.id, p.id, student);
+  },
+});
+import { resolveDomainProblem } from "../../../problems/services/workspace/problem-binding-access.ts";
+import { listDomainProblems } from "../../../problems/services/workspace/problem-read.ts";
+import { readDomainProblemSummaries } from "../../../problems/services/workspace/problem-summaries.ts";
+import { assertDomainPracticeAllowed } from "../../services/practice-admission.ts";
 import {
   addDomainContestParticipants,
   createDomainContest,
@@ -100,13 +319,49 @@ async function item(
     id: v1,
     problem_id: id,
     version: 1,
-    content: { kind, title: "固定题面", description: "v1" },
+    content: {
+      kind,
+      title: "固定题面",
+      description: "v1",
+      samples: [],
+      ...(kind === "objective"
+        ? {
+          questions: [{
+            key: "q",
+            sort_order: 0,
+            type: "single",
+            prompt: "题干",
+            options: [{ key: "A", text: "a" }],
+            answer: ["A"],
+            explanation: "",
+          }],
+        }
+        : {}),
+    },
     published_at: now,
   }, {
     id: v2,
     problem_id: id,
     version: 2,
-    content: { kind, title: "新题面", description: "v2" },
+    content: {
+      kind,
+      title: "新题面",
+      description: "v2",
+      samples: [],
+      ...(kind === "objective"
+        ? {
+          questions: [{
+            key: "q",
+            sort_order: 0,
+            type: "single",
+            prompt: "新题干",
+            options: [{ key: "A", text: "a" }],
+            answer: ["A"],
+            explanation: "",
+          }],
+        }
+        : {}),
+    },
     published_at: now,
   }]);
   await db.update(problems).set({ latest_version_id: v2 }).where(
@@ -119,12 +374,14 @@ async function item(
     problem_id: id,
     kind: "owned",
     visibility: "public",
-    effective_version_mode: "exact",
-    required_version_id: v1,
     created_by: owner,
     created_at: now,
     updated_at: now,
   });
+  await db.update(problems).set({
+    effective_version_mode: "exact",
+    required_version_id: v1,
+  }).where(eq(problems.id, id));
   return { id, v1, v2, binding };
 }
 function input(
@@ -289,7 +546,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "域比赛：报名不绕过域成员、邀请赛仅授权可见、组织角色撤销生效",
+  name: "域比赛：统一域内可见、报名不绕过域成员、组织角色撤销生效",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -304,25 +561,17 @@ Deno.test({
     const p = await item(a.domain.id, a.owner);
     const contest = await createDomainContest(a.domain.slug, editor, {
       ...input(p.id),
-      kind: "invite",
-      password: "secret",
     });
     assertEquals(
       (await listDomainContests(a.domain.slug, student, {
         page: 1,
         perPage: 20,
       })).total,
-      0,
+      1,
     );
     await assertRejects(
-      () =>
-        registerForDomainContest(a.domain.slug, contest.id, outsider, "secret"),
+      () => registerForDomainContest(a.domain.slug, contest.id, outsider),
       NotFoundError,
-    );
-    await assertRejects(
-      () =>
-        registerForDomainContest(a.domain.slug, contest.id, student, "wrong"),
-      ForbiddenError,
     );
     await registerForDomainContest(
       a.domain.slug,
@@ -347,43 +596,54 @@ Deno.test({
     await setMemberRoles(a.domain.slug, a.owner, editor, ["member"]);
     await assertRejects(
       () => getDomainContestSettlement(a.domain.slug, contest.id, editor),
-      NotFoundError,
+      ForbiddenError,
     );
     await assertRejects(
       () =>
         updateDomainContest(a.domain.slug, contest.id, editor, 0, {
           title: "越权",
         }),
-      NotFoundError,
+      ForbiddenError,
     );
   },
 });
 
 Deno.test({
-  name: "域比赛：引用源题号、源共享即时撤销及其他域比赛不扩大保密",
+  name: "域比赛：独立复制不继承源保护，源域变化不会撤销目标副本",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     const source = await workspace("contest-source", "community"),
       target = await workspace("contest-target"),
-      p = await item(source.domain.id, source.owner);
-    await getDb().insert(problemShareSettings).values({
-      problem_id: p.id,
-      enabled: true,
-      scope: "all",
-      updated_by: source.owner,
-      updated_at: new Date().toISOString(),
-    });
-    await importDomainProblem(
+      p = await item(source.domain.id, source.owner, "objective");
+    await assertRejects(
+      () =>
+        importDomainProblem(
+          target.domain.slug,
+          `${source.domain.slug}:1001`,
+          target.owner,
+        ),
+      ForbiddenError,
+    );
+    await join(source.domain.slug, source.owner, target.owner);
+    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+      "admin",
+    ]);
+    const copied = await importDomainProblem(
       target.domain.slug,
       `${source.domain.slug}:1001`,
       target.owner,
+      undefined,
+      p.v1,
     );
+    const copiedId = copied.binding.problem_id;
+    assert(copiedId !== p.id);
+    assertEquals(copied.binding.kind, "owned");
     const contest = await createDomainContest(
       target.domain.slug,
       target.owner,
-      input(p.id, "ioi", true),
+      input(copiedId, "oi", true),
     );
     assertEquals(
       (await getDomainContestProblems(
@@ -391,23 +651,25 @@ Deno.test({
         contest.id,
         target.owner,
       ))[0].display_id,
-      "contest-source:1001",
+      String(copied.reference.number),
     );
     assertEquals(
       (await loadPublicContestSecrecy(p.id, getDb(), source.domain.id)).length,
       0,
     );
     assertEquals(
-      (await loadPublicContestSecrecy(p.id, getDb(), target.domain.id)).length,
+      (await loadPublicContestSecrecy(copiedId, getDb(), target.domain.id))
+        .length,
       1,
     );
-    await getDb().update(problemShareSettings).set({ enabled: false }).where(
-      eq(problemShareSettings.problem_id, p.id),
-    );
-    await assertRejects(
-      () =>
-        getDomainContestProblems(target.domain.slug, contest.id, target.owner),
-      NotFoundError,
+    await removeDomainMember(source.domain.slug, source.owner, target.owner);
+    assertEquals(
+      (await getDomainContestProblems(
+        target.domain.slug,
+        contest.id,
+        target.owner,
+      )).length,
+      1,
     );
     await assertRejects(
       () => createDomainContest(target.domain.slug, target.owner, input(p.id)),
@@ -541,7 +803,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "班级竞赛发现：分页前筛选、跨班去重、私有赛保密及退班即时生效",
+  name: "班级竞赛发现：分页前筛选、跨班去重、域内统一可见及退班即时生效",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -568,7 +830,7 @@ Deno.test({
       appointed_at: now,
     })));
     const p = await item(a.domain.id, a.owner);
-    const linked = await createDomainContest(a.domain.slug, a.owner, {
+    const _linked = await createDomainContest(a.domain.slug, a.owner, {
       ...input(p.id),
       classroom_ids: rooms,
     });
@@ -581,15 +843,15 @@ Deno.test({
     });
     const query = { page: 1, perPage: 1, myClassrooms: true };
     const result = await listDomainContests(a.domain.slug, student, query);
-    assertEquals(result.total, 1);
-    assertEquals(result.data.map((c) => c.id), [linked.id]);
+    assertEquals(result.total, 2);
+    assertEquals(result.data.length, 1);
     assertEquals(result.data[0].classrooms.length, 2);
     assertEquals(
       (await listDomainContests(a.domain.slug, student, {
         ...query,
         page: 2,
       })).data.length,
-      0,
+      1,
     );
     assertEquals(
       (await listDomainContests(a.domain.slug, student, {
@@ -597,7 +859,7 @@ Deno.test({
         perPage: 20,
         classroomId: rooms[0],
       })).total,
-      1,
+      2,
     );
     assertEquals(
       (await listDomainContests(a.domain.slug, student, {

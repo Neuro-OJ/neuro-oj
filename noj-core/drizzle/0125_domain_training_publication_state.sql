@@ -1,0 +1,1 @@
+ALTER TABLE "trainings" ADD COLUMN "state" text DEFAULT 'draft' NOT NULL;

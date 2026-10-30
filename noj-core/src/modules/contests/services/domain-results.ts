@@ -16,6 +16,7 @@ import {
   publishContestRankingSnapshot,
 } from "./contest-ranking.ts";
 import type { ContestType, KaggleRankingRow } from "../types/contests.ts";
+import { loadDomainProblemProtection } from "../../access/contest-policy.ts";
 
 /** 赛题从固定版本读取，引用题每次读取实时验证源共享；来源题号保持不变。 */
 export async function getDomainContestProblems(
@@ -41,6 +42,24 @@ export async function getDomainContestProblems(
     .from(contestProblems).where(
       eq(contestProblems.contest_id, access.contest.id),
     );
+  if (status === "ended" && !access.organizer) {
+    const protection = await loadDomainProblemProtection(
+      access.domain.id,
+      selected.map((item) => item.problem_id),
+      db,
+    );
+    const contests = [...new Map(
+      [...protection.values()].flat()
+        .map((ref) => [ref.contestId, ref]),
+    ).values()];
+    if (contests.length) {
+      throw new ForbiddenError(
+        "赛题仍受其他比赛保护",
+        "CONTEST_PROBLEM_RESTRICTED",
+        { contests },
+      );
+    }
+  }
   const sources = await resolveDomainContestProblems(
     db,
     access.domain.id,

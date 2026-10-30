@@ -352,14 +352,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems route: 匿名读取 private U 题返回 404",
+  name: "problems route: 匿名读取 已发布旧 private U 题返回 200",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const p = await createProblemForTest({ visibility: "private" });
     const app = createApp();
     const res = await jsonRequest(app, `/api/v1/problems/${p.id}`);
-    assertEquals(res.status, 404);
+    assertEquals(res.status, 200);
   },
 });
 
@@ -431,7 +431,7 @@ Deno.test("problems route: 匿名选手可读取 OI 语言白名单但看不到�
 });
 
 Deno.test({
-  name: "problems route: 匿名读取 private 套卷 questions 返回 404",
+  name: "problems route: 匿名读取 已发布旧 private 套卷 questions 返回 200",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -441,7 +441,7 @@ Deno.test({
     });
     const app = createApp();
     const res = await jsonRequest(app, `/api/v1/problems/${p.id}/questions`);
-    assertEquals(res.status, 404);
+    assertEquals(res.status, 200);
   },
 });
 
