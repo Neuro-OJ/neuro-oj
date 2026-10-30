@@ -14,7 +14,7 @@ export function communityNotificationVisibleWhere(
   const member =
     sql`${platformAdmin} OR EXISTS (SELECT 1 FROM domain_memberships dm
     WHERE dm.domain_id = ${accountNotifications.domain_id} AND dm.user_id = ${actorId} AND dm.status = 'active')`;
-  return sql`${accountNotifications.assignment_id} IS NULL AND (
+  return sql`${accountNotifications.type} <> 'clarification' AND ${accountNotifications.assignment_id} IS NULL AND (
     ${accountNotifications.domain_id} IS NULL OR EXISTS (SELECT 1 FROM domains d
       WHERE d.id = ${accountNotifications.domain_id} AND d.status <> 'suspended'
         AND (d.configuration->>'access' = 'public' OR ${member})

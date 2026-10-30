@@ -1,3 +1,6 @@
+import { createApp } from "../../../../app.ts";
+import { signToken } from "../../../access/identity/index.ts";
+import { jsonRequest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -6,6 +9,7 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   accountNotifications,
   contests,
+  domains,
   problems,
   userRoles,
   users,
@@ -434,5 +438,62 @@ Deno.test({
     assertEquals(anonymous.data[0].is_public, true);
     assertEquals(anonymous.data[0].replies.length, 1);
     assertEquals(anonymous.data[0].replies[0].is_public, true);
+  },
+});
+
+Deno.test({
+  name: "统一通知：社区关闭仍可读取竞赛答疑，源竞赛删除后隐藏并拒绝已读",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("clar-inbox-creator");
+    const student = await createUser("clar-inbox-student");
+    const problem = await createProblem(920010);
+    const contestId = await createContestWithWindow(creator, [problem]);
+    await registerForContest(contestId, student, "InvitePass123");
+    const question = await createClarification(contestId, student, {
+      content: "测试答疑",
+    });
+    await replyToClarification(contestId, question.id, creator, {
+      content: "私密答复",
+      is_public: false,
+    });
+    const db = getDb(), app = createApp();
+    const token = await signToken({ sub: student, role: "user" });
+    const [domain] = await db.select().from(domains).where(
+      eq(domains.id, DEFAULT_DOMAIN_ID),
+    );
+    try {
+      await db.update(domains).set({
+        configuration: {
+          ...domain.configuration,
+          features: { ...domain.configuration.features, community: false },
+        },
+      }).where(eq(domains.id, DEFAULT_DOMAIN_ID));
+      const response = await jsonRequest(app, "/api/v1/notifications", {
+        token,
+      });
+      assertEquals(response.status, 200);
+      const inbox = await response.json();
+      assertEquals(inbox.total, 1);
+      assertEquals(inbox.unread_count, 1);
+      const path = `/api/v1/notifications/${inbox.data[0].notification.id}`;
+      assertEquals((await jsonRequest(app, path, { token })).status, 200);
+      await db.delete(contests).where(eq(contests.id, contestId));
+      assertEquals(
+        (await (await jsonRequest(app, "/api/v1/notifications", { token }))
+          .json()).unread_count,
+        0,
+      );
+      assertEquals((await jsonRequest(app, path, { token })).status, 404);
+      assertEquals(
+        (await jsonRequest(app, `${path}/read`, { token, method: "POST" }))
+          .status,
+        404,
+      );
+    } finally {
+      await db.update(domains).set({ configuration: domain.configuration })
+        .where(eq(domains.id, DEFAULT_DOMAIN_ID));
+    }
   },
 });

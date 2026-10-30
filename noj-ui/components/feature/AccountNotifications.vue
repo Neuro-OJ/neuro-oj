@@ -3,13 +3,14 @@ import type { NotificationRow } from '~/composables/useCommunity';
 import { extractApiError } from '~/utils/apiError';
 import { notificationTarget, notificationTypeLabel, notificationTypeIcon } from '~/utils/communityNotifications';
 const { api } = useApi(), { user } = useAuth(), workspace = useWorkspaceApi();
-const page = ref(1), domainId = ref(''), opening = ref('');
+const page = ref(1), domainId = ref('all'), opening = ref(''), actionError = ref('');
+const selectedDomainId = computed(() => domainId.value === 'all' ? undefined : domainId.value);
 const badge = useAccountNotifications();
 const domains = await useAsyncData(() => `notification-domains:${user.value?.id}`, () => workspace.list(true));
 const key = computed(() => `notifications:${user.value?.id}:${domainId.value}:${page.value}`);
 const { data, error, status, refresh } = await useAsyncData(key, () => api.get<{
   data: NotificationRow[]; total: number; unread_count: number;
-}>('/api/v1/notifications', { query: { page: page.value, domain_id: domainId.value || undefined }, silent: true }));
+}>('/api/v1/notifications', { query: { page: page.value, domain_id: selectedDomainId.value }, silent: true }));
 watch(domainId, () => { page.value = 1; });
 const stream = useEventSource({
   url: '/api/v1/notifications/events', scopeKey: computed(() => user.value?.id ?? ''),
@@ -18,13 +19,14 @@ const stream = useEventSource({
 });
 async function reload() { await Promise.all([refresh(), badge.refresh()]); }
 async function readAll() {
-  await api.post('/api/v1/notifications/read', undefined, { query: { domain_id: domainId.value || undefined } });
+  await api.post('/api/v1/notifications/read', undefined, { query: { domain_id: selectedDomainId.value } });
   await reload();
 }
 async function open(item: NotificationRow) {
   if (opening.value) return;
   const actor = user.value?.id;
   opening.value = item.notification.id;
+  actionError.value = '';
   try {
     // 先确认通知仍可访问，再标记和跳转，撤权不会继续打开旧定位。
     const current = await api.get<{ data: NotificationRow }>(`/api/v1/notifications/${item.notification.id}`, { silent: true });
@@ -32,6 +34,8 @@ async function open(item: NotificationRow) {
     if (actor !== user.value?.id) return;
     await badge.refresh();
     await navigateTo(notificationTarget(current.data, current.data.domain?.slug ?? null) ?? `/notifications/${item.notification.id}`);
+  } catch (error: unknown) {
+    actionError.value = extractApiError(error).message || '通知不存在或无权查看';
   } finally { opening.value = ''; }
 }
 useSeoMeta({ title: '通知' });
@@ -41,8 +45,9 @@ useSeoMeta({ title: '通知' });
     <LibraryPageHeader title="通知" :description="`当前筛选有 ${data?.unread_count ?? 0} 条未读通知`" icon="i-lucide-bell">
       <template #actions><UButton variant="outline" icon="i-lucide-check-check" @click="readAll">全部已读</UButton></template>
     </LibraryPageHeader>
-    <USelect v-model="domainId" :items="[{ label: '全部域', value: '' }, ...(domains.data.value?.data ?? []).map(domain => ({ label: domain.name, value: domain.id }))]" aria-label="通知所属域" class="w-full sm:w-72" />
+    <USelect v-model="domainId" :items="[{ label: '全部域', value: 'all' }, ...(domains.data.value?.data ?? []).map(domain => ({ label: domain.name, value: domain.id }))]" aria-label="通知所属域" class="w-full sm:w-72" />
     <p v-if="stream.state.value === 'fallback'" class="text-xs text-text-muted">实时连接暂不可用，正在定时刷新。</p>
+    <p v-if="actionError" role="alert" class="text-sm text-error-text">{{ actionError }}</p>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无通知" @retry="reload()">
       <div class="flex flex-col gap-3">

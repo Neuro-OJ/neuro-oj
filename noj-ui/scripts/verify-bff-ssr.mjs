@@ -5,6 +5,36 @@ import { strict as assert } from 'node:assert';
 const requests = [];
 let brokenCarousel = false;
 let draftAssignment = false;
+let inboxFixture = false;
+let revokedNotice = false;
+const inbox = [
+  {
+    notification: {
+      id: 'account-notice',
+      type: 'moderation',
+      post_id: null,
+      assignment_id: null,
+      data: { message: '账号通知详情' },
+      read_at: null,
+      created_at: '2026-10-01T10:00:00Z',
+    },
+    actor: null,
+    domain: null,
+  },
+  {
+    notification: {
+      id: 'teaching-notice',
+      type: 'assignment',
+      post_id: null,
+      assignment_id: 'a',
+      data: {},
+      read_at: null,
+      created_at: '2026-10-01T09:00:00Z',
+    },
+    actor: null,
+    domain: { id: 'domain', slug: 'school', name: '空间首屏' },
+  },
+];
 const isLayoutApi = (requestPath) =>
   requestPath === '/api/v1/instance' ||
   requestPath === '/api/v1/site/meta' ||
@@ -69,7 +99,11 @@ const fixture = Deno.serve(
       );
     }
     if (path === '/api/v1/auth/me') return Response.json({ data: user(actor) });
-    if (path === '/api/v1/me/domains') return Response.json({ data: [] });
+    if (path === '/api/v1/me/domains') {
+      return Response.json({
+        data: inboxFixture ? [{ id: 'domain', slug: 'school', name: '空间首屏' }] : [],
+      });
+    }
     if (path === '/api/v1/conversations/unread-count') {
       return Response.json({
         unread_count: 0,
@@ -149,7 +183,45 @@ const fixture = Deno.serve(
       });
     }
     if (path === '/api/v1/notifications') {
+      if (inboxFixture) {
+        const visible = inbox.filter((item) =>
+          !url.searchParams.get('domain_id') ||
+          item.domain?.id === url.searchParams.get('domain_id')
+        );
+        return Response.json({
+          data: visible,
+          total: visible.length,
+          unread_count: visible.filter((item) => !item.notification.read_at).length,
+        });
+      }
       return Response.json({ ...page, unread_count: 5 });
+    }
+    if (
+      inboxFixture && path === '/api/v1/notifications/read' &&
+      request.method === 'POST'
+    ) {
+      for (const item of inbox) {
+        if (
+          !url.searchParams.get('domain_id') ||
+          item.domain?.id === url.searchParams.get('domain_id')
+        ) {
+          item.notification.read_at = new Date().toISOString();
+        }
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (inboxFixture && path.startsWith('/api/v1/notifications/')) {
+      const item = inbox.find((item) => item.notification.id === path.split('/')[4]);
+      if (
+        !item || (revokedNotice && item.notification.id === 'teaching-notice')
+      ) {
+        return Response.json({ error: '通知不存在' }, { status: 404 });
+      }
+      if (request.method === 'POST') {
+        item.notification.read_at = new Date().toISOString();
+        return new Response(null, { status: 204 });
+      }
+      return Response.json({ data: item });
     }
     if (path.endsWith('/carousel/slides')) {
       return brokenCarousel ? Response.json({ error: '轮播暂不可用' }, { status: 503 }) : Response.json({
@@ -623,6 +695,81 @@ try {
     '草稿预览也应复用聚合数据',
   );
   await draftContext.close();
+  // 使用真实 Nuxt UI 控件检查统一收件箱，覆盖组件 stub 无法发现的选择器和移动端问题。
+  inboxFixture = true;
+  const inboxContext = await browser.newContext();
+  await inboxContext.addCookies([
+    { name: 'noj:token', value: 'student', url: base },
+    {
+      name: 'noj:session',
+      value: JSON.stringify({ ...user('student'), userId: 'student' }),
+      url: base,
+    },
+  ]);
+  const inboxTab = await inboxContext.newPage(), inboxErrors = [];
+  inboxTab.on('pageerror', (error) => inboxErrors.push(error.message));
+  for (const width of [1440, 390]) {
+    await inboxTab.setViewportSize({ width, height: 900 });
+    await inboxTab.goto(base + '/notifications');
+    await inboxTab.getByRole('heading', { name: '通知', exact: true })
+      .waitFor();
+    await inboxTab.getByRole('button', { name: /收到作业/ }).waitFor({
+      timeout: 10000,
+    }).catch(async (error) => {
+      console.log(
+        JSON.stringify({
+          errors: inboxErrors,
+          body: await inboxTab.locator('body').innerText(),
+          requests: requests.slice(-12),
+        }),
+      );
+      throw error;
+    });
+    assert.equal(
+      await inboxTab.getByRole('button', { name: /更新了内容审核状态/ })
+        .count(),
+      1,
+    );
+    assert.deepEqual(inboxErrors, [], `统一通知 ${width} 页面错误`);
+    assert.equal(
+      await inboxTab.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+      `通知 ${width} 横向溢出`,
+    );
+    await inboxTab.getByRole('combobox', { name: '通知所属域' }).click();
+    await inboxTab.getByRole('option', { name: '空间首屏', exact: true })
+      .click();
+    await inboxTab.getByRole('button', { name: /更新了内容审核状态/ }).waitFor({
+      state: 'hidden',
+    });
+    await inboxTab.getByRole('button', { name: /收到作业/ }).waitFor();
+    await inboxTab.getByRole('combobox', { name: '通知所属域' }).click();
+    await inboxTab.getByRole('option', { name: '全部域', exact: true }).click();
+    await inboxTab.getByRole('button', { name: /更新了内容审核状态/ })
+      .waitFor();
+  }
+  await inboxTab.getByRole('button', { name: /更新了内容审核状态/ }).click();
+  await inboxTab.waitForURL('**/notifications/account-notice');
+  await inboxTab.getByText('账号通知详情', { exact: true }).waitFor();
+  assert(inbox[0].notification.read_at, '打开账号通知应标记已读');
+  await inboxTab.goto(base + '/notifications');
+  await inboxTab.getByRole('button', { name: /收到作业/ }).waitFor();
+  await inboxTab.getByRole('button', { name: '全部已读', exact: true }).click();
+  await inboxTab.getByText('当前筛选有 0 条未读通知', { exact: true })
+    .waitFor();
+  revokedNotice = true;
+  await inboxTab.getByRole('button', { name: /收到作业/ }).click();
+  await inboxTab.getByRole('alert').filter({ hasText: '通知不存在' }).waitFor();
+  assert.equal(
+    new URL(inboxTab.url()).pathname,
+    '/notifications',
+    '撤权后应留在收件箱',
+  );
+  revokedNotice = false;
+  await inboxTab.getByRole('button', { name: /收到作业/ }).click();
+  await inboxTab.waitForURL('**/d/school/assignments/a');
+  assert.deepEqual(inboxErrors, [], '通知筛选、已读和目标跳转不应产生页面错误');
+  await inboxContext.close();
   brokenCarousel = true;
   const degraded = await fetch(`${base}/api/bff/v1/domains/school/home`);
   assert.equal(degraded.status, 200);

@@ -14,6 +14,7 @@ import {
 } from "../communication/account-notifications.ts";
 import { communityNotificationVisibleWhere } from "../communication/community/services/notification-access.ts";
 import { educationNotificationVisibleWhere } from "../education/services/notifications.ts";
+import { contestNotificationVisibleWhere } from "../contests/services/notification-access.ts";
 import { Channels, onEvent } from "../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../shared/sse/sse-stream.ts";
 import { replaySseEvents } from "../../shared/sse/sse-events.ts";
@@ -32,6 +33,7 @@ async function visible(actorId: string, domainId?: string) {
     or(
       communityNotificationVisibleWhere(actorId, admin),
       educationNotificationVisibleWhere(actorId, admin),
+      contestNotificationVisibleWhere(actorId, admin),
     ),
   )!;
 }
