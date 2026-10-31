@@ -129,14 +129,16 @@ async function loadContest() {
   contestLoading.value = true
   contestError.value = ''
   try {
-    const res = await api.get<{ data: ContestProblem[] }>(
-      `/api/v1/contests/${id}/problems`,
+    // 管理端详情一次带回 `problems`：替换旧无域读接口（只保留兼容，计划 0.12 下线）。
+    const res = await api.get<{ data: { id: string; problems: ContestProblem[] } }>(
+      `/api/v1/admin/contest/contests/${encodeURIComponent(id)}`,
       { silent: true },
     )
+    const problems = res.data.problems ?? []
     contestId.value = id
-    contestProblems.value = res.data
+    contestProblems.value = problems
     const draft: Record<string, { versionId: string; mode: 'any' | 'exact'; versionChoice: string }> = {}
-    for (const item of res.data) {
+    for (const item of problems) {
       draft[item.problem_id] = {
         versionId: item.version_id ?? '',
         mode: item.effective_version_policy?.mode === 'exact' ? 'exact' : 'any',

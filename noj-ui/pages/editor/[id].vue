@@ -9,13 +9,15 @@ import type { ProblemContestSecrecyNotice, SubmissionMode } from '~/utils/proble
 import type { EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
- * 独立做题页（标准题库与竞赛共用）。
+ * 独立做题页（**题库模式**）。
  *
- * 竞赛模式：`/editor/:problemId?contest=<contestId>&label=<label>`
- * - 题目/提交/历史走竞赛接口，提交计入竞赛
- * - 仅参赛者/管理员可在进行中进入做题；结束后拦截（仅可查看）
+ * 竞赛模式（`?contest=<id>&label=<label>`）的深链接已由 `legacy-contest-editor`
+ * 路由中间件在渲染前 301 到 `/d/main/contests/<id>/solve/<label>`：该入口的提交调用
+ * 在生产环境返回 410，读取也只会保留到 0.12。因此下面 `isContest` 分支不可达，
+ * 仅作过渡期兜底保留，随旧无域读接口一并删除（见
+ * `.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`）。
  */
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, middleware: ['legacy-contest-editor'] })
 
 const route = useRoute()
 const problemId = computed(() => route.params.id as string)

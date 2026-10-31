@@ -139,13 +139,18 @@ async function resolveProblemInternalId(input: string): Promise<string> {
   }
 }
 
-/** 竞赛外部标识（公开 ID）→ 内部 UUID（core 的 `/contests/:id` 支持 public_id）。 */
+/**
+ * 竞赛外部标识（公开 ID）→ 内部 UUID。
+ *
+ * 走**管理端**入口 `/admin/contest/contests/:id`：它同样接受 public_id，但授权口径
+ * 是管理员，不依赖旧无域读接口（该接口只保留兼容，计划在 0.12 下线）。
+ */
 async function resolveContestInternalId(input: string): Promise<string> {
   const value = input.trim()
   if (UUID_RE.test(value)) return value
   try {
     const res = await api.get<{ data: { id: string } }>(
-      `/api/v1/contests/${encodeURIComponent(value)}`,
+      `/api/v1/admin/contest/contests/${encodeURIComponent(value)}`,
       { silent: true },
     )
     if (!res.data?.id) throw new Error('未返回竞赛 ID')
@@ -205,11 +210,14 @@ async function expandVersionNumber(problemIds: string[], versionNumber: number):
 async function collectProblemIds(scope: RejudgeScope): Promise<string[]> {
   if (scope.type === 'problem') return [scope.problem_id]
   if (scope.type === 'contest') {
-    const res = await api.get<{ data: ContestProblem[] }>(
-      `/api/v1/contests/${scope.contest_id}/problems`,
+    // 管理端详情已带 `problems`：一次请求同时拿到竞赛与赛题，避免再打旧无域读接口。
+    const res = await api.get<{ data: { problems: ContestProblem[] } }>(
+      `/api/v1/admin/contest/contests/${
+        encodeURIComponent(scope.contest_id)
+      }`,
       { silent: true },
     )
-    return res.data.map((item) => item.problem_id)
+    return (res.data.problems ?? []).map((item) => item.problem_id)
   }
   // 手选：逐条读取提交详情以取得题目（上限 500，受理前先做数量校验）。
   // 客观题提交详情返回的是 `paper_id`（套卷题目 ID），普通提交返回 `problem_id`
