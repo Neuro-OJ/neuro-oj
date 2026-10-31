@@ -119,7 +119,12 @@ export async function changeCommentStatus(
     }).where(eq(accountNotifications.comment_id, commentId));
   }
 
-  publishCommunitySearchEvent("community_comment", commentId, "upsert", scope);
+  await publishCommunitySearchEvent(
+    "community_comment",
+    commentId,
+    "upsert",
+    scope,
+  );
 
   return rows[0]!;
 }
@@ -208,7 +213,12 @@ export async function createComment(
     );
   }
 
-  publishCommunitySearchEvent("community_comment", comment.id, "upsert", scope);
+  await publishCommunitySearchEvent(
+    "community_comment",
+    comment.id,
+    "upsert",
+    scope,
+  );
 
   return comment;
 }
@@ -329,7 +339,12 @@ export async function updateComment(
     updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
 
-  publishCommunitySearchEvent("community_comment", commentId, "upsert", scope);
+  await publishCommunitySearchEvent(
+    "community_comment",
+    commentId,
+    "upsert",
+    scope,
+  );
 
   return rows[0]!;
 }
@@ -379,7 +394,12 @@ export async function deleteComment(
     comment_id: null,
   }).where(eq(accountNotifications.comment_id, commentId));
 
-  publishCommunitySearchEvent("community_comment", commentId, "delete", scope);
+  await publishCommunitySearchEvent(
+    "community_comment",
+    commentId,
+    "delete",
+    scope,
+  );
 
   return rows[0]!;
 }

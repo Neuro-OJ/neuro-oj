@@ -72,7 +72,7 @@ export {
 } from "./problem-edit-permission.ts";
 import { mergeProblemContentPatch } from "./problem-content-patch.ts";
 export { mergeProblemContentPatch } from "./problem-content-patch.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
@@ -362,7 +362,7 @@ export async function createProblem(
     }
   }
 
-  await publishSearchIndexEvent("problem", id, "upsert");
+  await enqueueSearchIndexTask("problem", id, "upsert");
 
   return getProblem(id);
 }
@@ -957,7 +957,7 @@ export async function updateProblem(
     }
   }
 
-  await publishSearchIndexEvent("problem", id, "upsert");
+  await enqueueSearchIndexTask("problem", id, "upsert");
 
   return getProblem(id);
 }
@@ -1140,7 +1140,7 @@ export async function finalizeDeletedProblem(
     { type: "problem", id },
   );
 
-  await publishSearchIndexEvent("problem", id, "delete");
+  await enqueueSearchIndexTask("problem", id, "delete");
 }
 
 /**

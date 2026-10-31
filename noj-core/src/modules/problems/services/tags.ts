@@ -19,7 +19,7 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems, problemTags, tags } from "../../../shared/db/schema.ts";
-import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../application/search-tasks.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -83,7 +83,7 @@ async function publishTagProblemEvents(tagId: string): Promise<void> {
       .from(problemTags)
       .where(eq(problemTags.tag_id, tagId));
     for (const row of rows) {
-      await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+      await enqueueSearchIndexTask("problem", row.problem_id, "upsert");
     }
   } catch (err) {
     logger.error("发布标签关联题目搜索索引事件失败", { tagId, err });
@@ -355,7 +355,7 @@ export async function deleteTag(id: string): Promise<void> {
   );
 
   for (const row of relatedProblemIds) {
-    await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+    await enqueueSearchIndexTask("problem", row.problem_id, "upsert");
   }
 }
 
@@ -448,7 +448,7 @@ export async function mergeTags(
       affectedProblemIds.add(row.problem_id);
     }
     for (const problemId of affectedProblemIds) {
-      await publishSearchIndexEvent("problem", problemId, "upsert");
+      await enqueueSearchIndexTask("problem", problemId, "upsert");
     }
   } catch (err) {
     logger.error("发布合并标签关联题目搜索索引事件失败", {

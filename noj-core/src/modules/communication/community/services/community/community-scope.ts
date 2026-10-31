@@ -2,10 +2,8 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../../shared/db/executor.ts";
-import {
-  publishSearchIndexEvent,
-  type SearchIndexAction,
-} from "../../../../../shared/search-events.ts";
+import { type SearchIndexAction } from "../../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import {
   communityPosts,
   domainProblemBindings,
@@ -89,18 +87,24 @@ export function communityDb(scope?: CommunityScope) {
   return scope?.executor ?? getDb();
 }
 
-/** 索引消费者只能读取已提交内容；回滚的授权事务不发送消息。 */
-export function publishCommunitySearchEvent(
+/**
+ * 登记社区内容的搜索索引任务。
+ *
+ * 有授权事务时在同一事务内登记：事务回滚则任务一并回滚，worker 也只能在
+ * 事务提交后领取，因此不会读到未提交内容（#698 N1）。
+ */
+export async function publishCommunitySearchEvent(
   entityType: "community_post" | "community_comment",
   entityId: string,
   action: SearchIndexAction,
   scope?: CommunityScope,
-): void {
-  const publish = () => {
-    void publishSearchIndexEvent(entityType, entityId, action);
-  };
-  if (scope) scope.afterCommit.push(publish);
-  else publish();
+): Promise<void> {
+  await enqueueSearchIndexTask(
+    entityType,
+    entityId,
+    action,
+    communityDb(scope),
+  );
 }
 
 /** 内部题目 ID 与来源题号都必须先定位到当前域的有效绑定。 */

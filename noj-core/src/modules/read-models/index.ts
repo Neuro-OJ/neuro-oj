@@ -46,8 +46,6 @@ export {
   contestSecrecyProblemWhere,
   currentSearchResourceWhere,
   deleteSearchEntry,
-  handleSearchIndexEvent,
-  isSearchIndexConsumerAlive,
   notGatedContestContentWhere,
   permissionWhere,
   processSearchIndexEvent,
@@ -56,8 +54,6 @@ export {
   searchFlat,
   searchGrouped,
   searchRateLimit,
-  shutdownSearchIndexConsumer,
-  startSearchIndexConsumer,
   upsertSearchEntry,
 } from "./search/index.ts";
 export type {

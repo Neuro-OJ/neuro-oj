@@ -11,7 +11,7 @@
 
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "../../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import {
   judgeImages,
   roles,
@@ -204,7 +204,7 @@ export async function ensureAdminFromEnv(): Promise<void> {
       updated_at: now,
     });
     await ensureAdminRoleAssignment(id);
-    await publishSearchIndexEvent("user", id, "upsert");
+    await enqueueSearchIndexTask("user", id, "upsert");
     const guard = shouldForcePasswordChange()
       ? "已强制首次改密"
       : "开发模式：未强制首次改密";

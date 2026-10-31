@@ -34,7 +34,6 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import { enqueueSearchIndexTaskTx } from "../../../application/search-tasks.ts";
 import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
@@ -651,11 +650,6 @@ export async function publishProblemVersion(
     };
   });
 
-  // 提交后的 Redis 通知：索引已随事务持久化，通知只是缩短可见延迟；
-  // 通知失败不再造成"永久缺索引"，可由 reindexAll 或下一次发布收敛。
-  if (!outcome.unchanged) {
-    await publishSearchIndexEvent("problem", problemId, "upsert");
-  }
   return outcome;
 }
 

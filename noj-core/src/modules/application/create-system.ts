@@ -20,7 +20,6 @@ import { createSseStreamScope } from "../../shared/sse/sse-stream.ts";
 import { snapshotEnv } from "../platform/services/env-snapshot.ts";
 import { validateRegistry } from "../../shared/config/settings-registry.ts";
 import { startReviewConsumer } from "../communication/review/mq/review-consumer.ts";
-import { startSearchIndexConsumer } from "../read-models/search/consumer/search-index-consumer.ts";
 import {
   startEducationEmailWorker,
   startEducationPublishingWorker,
@@ -32,6 +31,7 @@ import {
 } from "../education/contracts/outbox-migration.ts";
 import { startTaskWorker } from "../runtime/tasks/worker.ts";
 import { createBackgroundHandlers } from "./background-handlers.ts";
+import { startSearchTaskRetentionTask } from "./search-tasks.ts";
 import { getStorageProvider } from "../assets/storage/mod.ts";
 import { startDomainStorageReconciliation } from "../assets/services/domain-reconciliation.ts";
 import { getEmailConfigStatus } from "../platform/system/services/email-status.ts";
@@ -360,9 +360,6 @@ export async function startCore() {
     // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
     backgroundTasks.add(startReviewConsumer());
 
-    // 启动搜索索引事件消费者（后台运行，带自动重连，不阻塞 HTTP）
-    backgroundTasks.add(startSearchIndexConsumer());
-
     // 启动 processing 超时重投 + pending 提交恢复 sweeper
     backgroundTasks.add(startQueueSweeper());
 
@@ -389,6 +386,9 @@ export async function startCore() {
 
     // 启动 SSE 事件保留任务（A4：事件表保留策略，默认 7 天）
     backgroundTasks.add(startSseEventRetentionTask());
+
+    // 启动搜索索引任务保留清理（#698 N1：已成功的 search.index 任务保留 7 天）
+    backgroundTasks.add(startSearchTaskRetentionTask());
 
     // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求与任务领取，再等全部
     // 在途工作结束，最后关闭 Redis/DB；任一失败或超时都以非零码退出。

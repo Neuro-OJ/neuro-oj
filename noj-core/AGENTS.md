@@ -124,7 +124,7 @@ noj-core/
 │   │   ├── security/      # cidr / public-id / image-validation
 │   │   ├── testing/       # 共享测试夹具（赛期门控等）
 │   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
-│   │   └── search-events.ts # 搜索索引事件（跨域共享）
+│   │   └── search-events.ts # 搜索索引共享类型（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
@@ -410,10 +410,11 @@ docker compose down     # 停止
 7. **生产配置校验**（致命）与**对象存储 bucket 检查**（非致命，失败仅 warn）
 8. **连接 Redis** — 失败则 degraded 模式（HTTP
    仍启动，评测功能不可用）；成功后迁移旧单队列残留任务
-9. **启动后台任务** —
-   评测结果消费者（自动重连，指数退避）、私信审核消费者、搜索索引消费者、 队列
-   sweeper、批量任务 worker（`submission_job_items` 领取/续租/退避）、 SSE
-   事件订阅；均接入现有关闭流程
+9. **启动后台任务** — 评测结果消费者（自动重连，指数退避）、私信审核消费者、队列
+   sweeper、批量任务 worker（`submission_job_items` 领取/续租/退避）、后台任务
+   worker（`background_tasks`，含 `search.index`）、 SSE
+   事件订阅，以及审计日志、 SSE
+   事件与已成功搜索任务的保留清理；均接入现有关闭流程
 10. **启动 HTTP 服务**
 
 ## 数据库 Schema 设计
@@ -646,7 +647,12 @@ flat/grouped 两种返回。设计文档见
 
 **索引模型**：
 
-- 唯一写者是 search domain，源域通过 Redis 事件异步维护 `search_entries`
+- 唯一写者是 search domain。源域在业务写入时经
+  `modules/application/search-tasks.ts`（`enqueueSearchIndexTask` /
+  `enqueueSearchIndexTaskTx`）登记 `search.index` 后台任务，处在业务事务中时
+  必须传入该事务；后台任务 worker 从最新事实重建 `search_entries`。已成功的
+  搜索任务保留 7 天（`startSearchTaskRetentionTask`）。原 Redis
+  `noj:search:index` 队列已移除（#698 N1）
 - `search_vector` 为 GENERATED 列：`title` 权重 A + `body` 权重 B
 - 查询走 `tsvector @@ websearch_to_tsquery(...) OR title/body ILIKE '%q%'`，配合
   GIN 索引（`idx_search_entries_vector` / `title_trgm` / `body_trgm`）

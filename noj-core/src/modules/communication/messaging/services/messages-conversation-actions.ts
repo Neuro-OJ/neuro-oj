@@ -22,7 +22,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "../../../../shared/sse/event-bus.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "messaging"]);
@@ -243,7 +243,7 @@ export async function editMessage(
       message_id: messageId,
     },
   );
-  await publishSearchIndexEvent("message", messageId, "upsert");
+  await enqueueSearchIndexTask("message", messageId, "upsert");
 }
 
 /**
@@ -300,7 +300,7 @@ export async function recallMessage(
       message_id: messageId,
     },
   );
-  await publishSearchIndexEvent("message", messageId, "upsert");
+  await enqueueSearchIndexTask("message", messageId, "upsert");
 }
 
 /**
@@ -404,7 +404,7 @@ export async function clearConversationMessages(
       .onConflictDoNothing();
     try {
       for (const row of msgRows) {
-        await publishSearchIndexEvent("message", row.id, "upsert");
+        await enqueueSearchIndexTask("message", row.id, "upsert");
       }
     } catch (err) {
       logger.error("清空会话后发布搜索索引事件失败", { err });

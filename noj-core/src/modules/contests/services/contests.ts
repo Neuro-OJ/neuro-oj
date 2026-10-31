@@ -2,7 +2,7 @@ import type { Executor } from "../../../shared/db/executor.ts";
 import { rescheduleContestEducation } from "../../education/contracts/contest-facts.ts";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../application/search-tasks.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -506,7 +506,7 @@ export async function createContest(
     );
   });
 
-  await publishSearchIndexEvent("contest", id, "upsert");
+  await enqueueSearchIndexTask("contest", id, "upsert", db);
 
   return getContest(id, undefined, db);
 }
@@ -726,7 +726,7 @@ export async function updateContest(
     }
   });
 
-  await publishSearchIndexEvent("contest", id, "upsert");
+  await enqueueSearchIndexTask("contest", id, "upsert", db);
 
   return getContest(id, undefined, db);
 }
@@ -752,7 +752,7 @@ export async function deleteContest(id: string): Promise<void> {
   // data revision（2026-10-11 复审问题 8；与题目/策略路径共用同一入口）。
   await bumpProjectionRevision(db, globalScopeKey());
 
-  await publishSearchIndexEvent("contest", id, "delete");
+  await enqueueSearchIndexTask("contest", id, "delete", db);
 }
 
 /**
@@ -885,7 +885,7 @@ export async function registerForContest(
     throw new ConflictError("已注册该竞赛");
   }
 
-  await publishSearchIndexEvent("contest", contestId, "upsert");
+  await enqueueSearchIndexTask("contest", contestId, "upsert", db);
 }
 
 /**
@@ -925,7 +925,7 @@ export async function addParticipants(
     })),
   ).onConflictDoNothing().returning({ user_id: contestParticipants.user_id });
 
-  await publishSearchIndexEvent("contest", contestId, "upsert");
+  await enqueueSearchIndexTask("contest", contestId, "upsert", db);
 
   return inserted.length;
 }
@@ -952,7 +952,7 @@ export async function removeParticipant(
     throw new NotFoundError("竞赛参与者不存在");
   }
 
-  await publishSearchIndexEvent("contest", contestId, "upsert");
+  await enqueueSearchIndexTask("contest", contestId, "upsert", db);
 }
 
 /**
