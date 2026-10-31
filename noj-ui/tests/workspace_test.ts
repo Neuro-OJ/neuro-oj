@@ -6,6 +6,7 @@ import {
   getInvitationStatus,
   isInvitationCredential,
   normalizeInvitationCredential,
+  postLoginDestination,
   workspaceCacheKey,
   workspaceInvitationLink,
   workspaceInvitationToken,
@@ -139,4 +140,25 @@ Deno.test('认证回跳：只接受本站路径，拒绝外站、控制字符和
       ['a'],
     ]
   ) assertEquals(safeAuthRedirect(bad), '/');
+});
+
+Deno.test('登录落点：唯一成员空间优先，其次唯一的非默认空间', () => {
+  // 只有一处成员关系：直接进那个空间。
+  assertEquals(postLoginDestination([{ slug: 'school' }], 'main'), '/d/school');
+  // 默认空间对每个账号都是成员，因此"唯一非默认空间"是实际会命中的分支。
+  assertEquals(
+    postLoginDestination([{ slug: 'main' }, { slug: 'school' }], 'main'),
+    '/d/school',
+  );
+  // 多数空间的账号回站点根，由根路径按默认空间跳转，不猜偏好。
+  assertEquals(
+    postLoginDestination([{ slug: 'main' }, { slug: 'a-school' }, { slug: 'b-school' }], 'main'),
+    '/',
+  );
+  // 实例还没回默认空间时按"非默认"退化为全量：两个空间仍不猜。
+  assertEquals(
+    postLoginDestination([{ slug: 'a-school' }, { slug: 'b-school' }], null),
+    '/',
+  );
+  assertEquals(postLoginDestination([], 'main'), '/');
 });
