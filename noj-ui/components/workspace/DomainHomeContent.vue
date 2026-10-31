@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue';
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
@@ -6,9 +7,8 @@ const props = defineProps<{ initialData?: { data: EducationDashboardData } }>();
 const { slug, domain, can } = useWorkspace(), { user } = useAuth();
 const api = useEducationApi();
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'home-tasks'));
-const mode = ref<'teaching' | 'my-learning'>(
-  can('classroom:create') || can('classroom:manage_any') ? 'teaching' : 'my-learning',
-);
+const defaultMode = can('classroom:create') || can('classroom:manage_any') ? 'teaching' : 'my-learning';
+const mode = ref<'teaching' | 'my-learning'>(defaultMode);
 const enabled = computed(() =>
   !!user.value && !!domain.value?.configuration.features.assignment &&
   (domain.value.is_member || domain.value.platform_admin)
@@ -19,7 +19,12 @@ const tasks = await useViewAsyncData(
   () => enabled.value ? api.dashboard(slug.value!, mode.value, 1) : Promise.resolve(null),
   { immediate: !props.initialData },
 );
-const dashboard = computed(() => props.initialData ?? tasks.data.value);
+watch(mode, () => {
+  if (enabled.value) void tasks.refresh();
+});
+const dashboard = computed(() =>
+  tasks.data.value ?? (mode.value === defaultMode ? props.initialData : null)
+);
 useEducationNotifications(async () => {
   if (enabled.value) await tasks.refresh();
 }, enabled);

@@ -36,7 +36,7 @@ const pendingCount = ref(0);
 const tabItems = computed(() => {
   const items = [
     {
-      label: `班级花名册 (${roster.data.value?.data.length ?? 0})`,
+      label: `班级花名册 (${rosterStats.value.total})`,
       value: 'roster',
       icon: 'i-lucide-users',
     },
@@ -186,7 +186,7 @@ useSeoMeta({ title: '班级成员' });
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="break-all font-medium text-text">{{ member.username }}</span>
-                  <UBadge color="neutral" variant="subtle" size="sm">学生</UBadge>
+                  <UBadge color="neutral" variant="subtle" size="sm">{{ member.role === 'student' ? '学生' : member.role }}</UBadge>
                   <UBadge
                     :color="member.effective_active ? 'success' : 'neutral'"
                     variant="subtle"

@@ -13,6 +13,7 @@ import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
+  setMemberRoles,
 } from "../../../../access/workspace/index.ts";
 import {
   ensureRbacSeeds,
@@ -149,7 +150,22 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
       title: "source problem",
       description: "source body",
       samples: [],
-      runtime_config: { languages: ["cpp20"] },
+      runtime_config: {
+        backend: "native",
+        languages: ["cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [
+          {
+            id: "1",
+            score: 100,
+            cases: [
+              { input: "1.in", output: "1.out" },
+            ],
+          },
+        ],
+      },
     },
     published_at: f.now,
   });
@@ -173,10 +189,24 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     updated_by: f.a,
     updated_at: f.now,
   });
+  const sourceInvite = await createDomainInvitation(
+    f.source.slug,
+    f.a,
+    `${f.b}@example.com`,
+  );
+  await consumeDomainInvitation(sourceInvite.token, f.b);
+  await setMemberRoles(f.source.slug, f.a, f.b, ["admin"]);
   const imported = await importDomainProblem(
     f.target.slug,
     `${f.source.slug}:1001`,
     f.b,
   );
-  return { id, version, binding, targetBinding: imported.binding.id };
+  return {
+    id: imported.binding.problem_id,
+    sourceId: id,
+    version: imported.version_id,
+    sourceVersion: version,
+    binding,
+    targetBinding: imported.binding.id,
+  };
 }

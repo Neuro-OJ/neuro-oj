@@ -153,8 +153,12 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
           @result="selfTestRecord = $event" @refresh="emit('refresh')" />
         <DomainUiRuns :slug="slug" :problem-id="problem.reference.problem_id"
           :reference="problem.reference.display_ref" :submission-id="submissionId" :self-test="selfTestRecord"
-          :code="currentCode" :writable="writable" @result="uiResult = $event" />
+          :code="currentCode" :writable="writable" @restore="panel?.setCode($event)" @result="uiResult = $event" />
       </ClientOnly>
+    </template>
+
+    <template #submit-hint>
+      <p class="text-xs text-text-muted">提交归属 {{ slug }}，来源题号 {{ problem.reference.display_ref }}。</p>
     </template>
   </ProblemAnswerPanel>
 </template>

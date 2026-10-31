@@ -32,6 +32,10 @@ let domainA = "",
   submissionA = "",
   submissionB = "";
 let originalAttempt = "";
+const copies: Record<
+  string,
+  { ref: string; problemId: string; versionId: string }
+> = {};
 
 interface Usage {
   domain_id: string;
@@ -160,13 +164,14 @@ async function importBundle(network = true) {
 }
 
 async function submit(slug: string) {
+  const copy = copies[slug];
   const response = await call(
     "POST",
     `/api/v1/domains/${slug}/submissions`,
     student,
     {
-      problem_ref: `${source}:${number}`,
-      version_id: versionId,
+      problem_ref: copy.ref,
+      version_id: copy.versionId,
       language: "python3",
       code: "def solve(): return 1",
     },
@@ -299,31 +304,25 @@ e2eTest(
       draft.draft_revision,
     ) as { version_id: string };
     versionId = published.version_id;
-    const sharing = await call(
-      "GET",
-      `/api/v1/domains/${source}/problems/${number}/sharing`,
-      admin,
-    ) as { data: { revision: number } };
-    await call(
-      "POST",
-      `/api/v1/domains/${source}/problems/${number}/sharing`,
-      admin,
-      {
-        enabled: true,
-        scope: "selected",
-        target_domain_slugs: [schoolA, schoolB, empty],
-      },
-      sharing.data.revision,
-    );
-    for (
-      const [slug, token] of [[schoolA, ownerA], [schoolB, ownerB], [
-        empty,
+    for (const slug of [schoolA, schoolB, empty]) {
+      const copied = await call(
+        "POST",
+        `/api/v1/domains/${slug}/problem-bindings`,
         admin,
-      ]]
-    ) {
-      await call("POST", `/api/v1/domains/${slug}/problem-bindings`, token, {
-        source_ref: `${source}:${number}`,
-      });
+        {
+          source_ref: `${source}:${number}`,
+        },
+      ) as {
+        data: {
+          reference: { problem_id: string; display_ref: string };
+          version_id: string;
+        };
+      };
+      copies[slug] = {
+        ref: copied.data.reference.display_ref,
+        problemId: copied.data.reference.problem_id,
+        versionId: copied.data.version_id,
+      };
     }
   },
 );
@@ -375,11 +374,12 @@ e2eTest(
 e2eTest(
   "[e2e/llm-gateway] 无本域 Provider 的共享 LLM 题在提交前被拒绝",
   async () => {
+    const copy = copies[empty];
     const response = await api("POST", `/api/v1/domains/${empty}/submissions`, {
       token: student,
       body: {
-        problem_ref: `${source}:${number}`,
-        version_id: versionId,
+        problem_ref: copy.ref,
+        version_id: copy.versionId,
         language: "python3",
         code: "def solve(): return 1",
       },
@@ -391,7 +391,7 @@ e2eTest(
     );
     const list = await call(
       "GET",
-      `/api/v1/domains/${empty}/submissions?problem_id=${problemId}`,
+      `/api/v1/domains/${empty}/submissions?problem_id=${copy.problemId}`,
       student,
     ) as { pagination: { total: number } };
     assertEquals(list.pagination.total, 0);
@@ -415,11 +415,12 @@ e2eTest(
         [schoolB, ownerB, submissionB, domainB, providerB, modelB],
       ]
     ) {
+      const copy = copies[slug];
       const rows = await usage(slug, token, id);
       assertEquals(rows.length, 1);
       assertEquals(rows[0].domain_id, domain);
-      assertEquals(rows[0].problem_id, problemId);
-      assertEquals(rows[0].problem_version_id, versionId);
+      assertEquals(rows[0].problem_id, copy.problemId);
+      assertEquals(rows[0].problem_version_id, copy.versionId);
       assertEquals(rows[0].provider_id, provider);
       assertEquals(rows[0].model, model);
       assertEquals(rows[0].total_tokens, 8);
@@ -512,6 +513,7 @@ e2eTest(
     });
 
     async function checkProviderDisabled() {
+      const copyA = copies[schoolA];
       const providers = await call(
         "GET",
         `/api/v1/domains/${schoolA}/llm/providers`,
@@ -521,7 +523,7 @@ e2eTest(
       };
       const before = await call(
         "GET",
-        `/api/v1/domains/${schoolA}/submissions?problem_id=${problemId}`,
+        `/api/v1/domains/${schoolA}/submissions?problem_id=${copyA.problemId}`,
         student,
       ) as {
         pagination: { total: number };
@@ -540,8 +542,8 @@ e2eTest(
         {
           token: student,
           body: {
-            problem_ref: `${source}:${number}`,
-            version_id: versionId,
+            problem_ref: copyA.ref,
+            version_id: copyA.versionId,
             language: "python3",
             code: "def solve(): return 1",
           },
@@ -550,7 +552,7 @@ e2eTest(
       assertEquals(rejected.status, 400);
       const after = await call(
         "GET",
-        `/api/v1/domains/${schoolA}/submissions?problem_id=${problemId}`,
+        `/api/v1/domains/${schoolA}/submissions?problem_id=${copyA.problemId}`,
         student,
       ) as {
         pagination: { total: number };

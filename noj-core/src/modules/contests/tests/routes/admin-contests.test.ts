@@ -1,6 +1,6 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -101,6 +101,9 @@ async function setupContestViaAdmin(): Promise<{
     user_id: adminId,
     role_id: "admin",
   }).onConflictDoNothing();
+  const [nextNumber] = await db.select({
+    value: sql<number>`coalesce(max(${problems.number}), 0) + 1`,
+  }).from(problems).where(eq(problems.domain_id, DEFAULT_DOMAIN_ID));
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
@@ -108,7 +111,7 @@ async function setupContestViaAdmin(): Promise<{
     description: "测试题面",
     difficulty: "easy",
     runtime_config: {},
-    number: 990001 + Math.floor(Math.random() * 1000),
+    number: nextNumber.value,
     owner_id: adminId,
     created_at: now,
     updated_at: now,

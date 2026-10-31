@@ -8,7 +8,7 @@ const { slug } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainContests();
 const id = computed(() => String(route.params.contestId));
-const official = ref(false), group = ref<'classroom' | 'other'>('classroom'), classroomId = ref('');
+const official = ref(false), group = ref<'classroom' | 'other' | 'all'>('classroom'), classroomId = ref('');
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'contest-ranking', id.value));
 const { data: contest, refresh: refreshContest } = await useAsyncData(
   computed(() => `${key.value}:contest`),
@@ -18,8 +18,15 @@ const { data, error, status, refresh } = await useAsyncData(
   computed(() => `${key.value}:${official.value}:${classroomId.value}`),
   () => api.ranking(slug.value!, id.value, official.value, classroomId.value || undefined),
 );
+watch(group, (next) => {
+  if (next !== 'classroom') classroomId.value = '';
+});
 const rows = computed(() => data.value?.classrooms?.length
-  ? group.value === 'classroom' ? data.value.classroom_rows ?? [] : data.value.other_rows ?? []
+  ? group.value === 'all'
+    ? data.value.data ?? []
+    : group.value === 'classroom'
+      ? data.value.classroom_rows ?? []
+      : data.value.other_rows ?? []
   : data.value?.data ?? []);
 useSeoMeta({ title: '比赛成绩榜' });
 usePolling({ intervalMs: computed(() => contest.value?.data.status !== 'ended' ? 2000 : null), immediate: false, fetcher: () => refreshContest() });
@@ -43,8 +50,8 @@ usePolling({
       </div>
     </div>
     <div v-if="data?.classrooms?.length" class="flex flex-wrap items-center gap-3">
-      <USelect v-model="group" :items="[{ label: '关联班级学生', value: 'classroom' }, { label: '其他选手', value: 'other' }]" aria-label="榜单分组" />
-      <USelect v-model="classroomId" :items="[{ label: '全部关联班级', value: '' }, ...data.classrooms.map(room => ({ label: room.name, value: room.id }))]" aria-label="班级筛选" />
+      <USelect v-model="group" :items="[{ label: '关联班级学生', value: 'classroom' }, { label: '其他选手', value: 'other' }, { label: '全部参赛者', value: 'all' }]" aria-label="榜单分组" />
+      <USelect v-if="group === 'classroom'" v-model="classroomId" :items="[{ label: '全部关联班级', value: '' }, ...data.classrooms.map(room => ({ label: room.name, value: room.id }))]" aria-label="班级筛选" />
       <p class="text-xs text-text-muted">按当前学生名单分组，赛后练习不计入比赛成绩。</p>
     </div>
     <UAlert v-if="data?.view === 'frozen' || data?.frozen" color="warning"

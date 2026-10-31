@@ -7,12 +7,16 @@ export interface InputModeAccount {
   email: string;
   token: string;
 }
-export interface InputModeProblem {
+export interface InputModeProblemCopy {
   id: string;
   number: number;
   reference: string;
   v1: string;
   v2: string;
+}
+export interface InputModeProblem extends InputModeProblemCopy {
+  /** 各学校通过导入得到的独立副本，按域 slug 索引。 */
+  copies: Record<string, InputModeProblemCopy>;
 }
 export async function inputModeFixture<T>(
   method: string,
@@ -209,6 +213,7 @@ export async function inputModeProblem(
     reference: `${slug}:${first.number}`,
     v1: first.version_id,
     v2: "",
+    copies: {},
   };
 }
 export async function inputModeVersionTwo(
@@ -219,29 +224,35 @@ export async function inputModeVersionTwo(
 ) {
   const second = await importVersion(slug, mode, 2, admin, problem.number);
   problem.v2 = second.version_id;
+  // 独立副本不随源题更新；同步在每个副本上发布V2以保持跨域版本对照。
+  for (const [target, copy] of Object.entries(problem.copies)) {
+    const next = await importVersion(target, mode, 2, admin, copy.number);
+    copy.v2 = next.version_id;
+  }
 }
 export async function shareInputModeProblem(
-  source: string,
+  _source: string,
   problem: InputModeProblem,
   schools: string[],
   admin: string,
 ) {
-  const { data } = await inputModeFixture<{ data: { revision: number } }>(
-    "GET",
-    `/domains/${source}/problems/${problem.number}/sharing`,
-    admin,
-  );
-  await inputModeFixture(
-    "POST",
-    `/domains/${source}/problems/${problem.number}/sharing`,
-    admin,
-    { enabled: true, scope: "selected", target_domain_slugs: schools },
-    data.revision,
-  );
   for (const slug of schools) {
-    await inputModeFixture("POST", `/domains/${slug}/problem-bindings`, admin, {
+    const copied = await inputModeFixture<{
+      data: {
+        reference: { problem_id: string; display_ref: string };
+        version_id: string;
+      };
+    }>("POST", `/domains/${slug}/problem-bindings`, admin, {
       source_ref: problem.reference,
     });
+    const display = copied.data.reference.display_ref;
+    problem.copies[slug] = {
+      id: copied.data.reference.problem_id,
+      number: Number(display),
+      reference: display,
+      v1: copied.data.version_id,
+      v2: "",
+    };
   }
 }
 export async function inputModePolicy(
@@ -250,14 +261,15 @@ export async function inputModePolicy(
   admin: string,
   version: string | null,
 ) {
+  const target = problem.copies[slug] ?? problem;
   const resource = await inputModeFixture<{ policy_revision: number }>(
     "GET",
-    `/domains/${slug}/problems/${problem.reference}`,
+    `/domains/${slug}/problems/${target.reference}`,
     admin,
   );
   await inputModeFixture(
     "PUT",
-    `/domains/${slug}/problems/${problem.reference}/policy`,
+    `/domains/${slug}/problems/${target.reference}/policy`,
     admin,
     {
       policy: version

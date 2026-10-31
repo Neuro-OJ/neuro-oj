@@ -224,12 +224,18 @@ export function useContests() {
   }
 
   // ── 竞赛答疑 API ─────────────────────────────────────────────
+  const clarificationBase = (contestId: string, slug?: string) =>
+    slug
+      ? `/api/v1/domains/${encodeURIComponent(slug)}/contests/${encodeURIComponent(contestId)}/clarifications`
+      : `/api/v1/contests/${encodeURIComponent(contestId)}/clarifications`;
+
   function listClarifications(
     contestId: string,
     query?: { page?: number; per_page?: number },
+    slug?: string,
   ) {
     return api.get<{ data: Clarification[]; pagination: Pagination }>(
-      `/api/v1/contests/${contestId}/clarifications`,
+      clarificationBase(contestId, slug),
       { query, silent: true },
     );
   }
@@ -254,9 +260,10 @@ export function useContests() {
   function askClarification(
     contestId: string,
     body: { content: string; problem_id?: string },
+    slug?: string,
   ) {
     return api.post<{ data: Clarification }>(
-      `/api/v1/contests/${contestId}/clarifications`,
+      clarificationBase(contestId, slug),
       body,
     );
   }
@@ -265,9 +272,10 @@ export function useContests() {
     contestId: string,
     clarId: string,
     body: { content: string; is_public: boolean },
+    slug?: string,
   ) {
     return api.post<{ data: ClarificationReply }>(
-      `/api/v1/contests/${contestId}/clarifications/${clarId}/reply`,
+      `${clarificationBase(contestId, slug)}/${encodeURIComponent(clarId)}/reply`,
       body,
     );
   }

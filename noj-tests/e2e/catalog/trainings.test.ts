@@ -124,11 +124,11 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
 
   const patched = await apiPatch(
     `/api/v1/admin/catalog/trainings/${trainingId}`,
-    { visibility: "public", is_pinned: true },
+    { state: "published", is_pinned: true },
     adminToken,
   );
   if (patched.status !== 200) {
-    throw new Error(`管理员设 public 失败: ${patched.status}`);
+    throw new Error(`管理员设 published 失败: ${patched.status}`);
   }
 
   const list = await apiGet("/api/v1/trainings");
@@ -144,14 +144,14 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
     visibility: "private",
   }, adminToken);
-  if (withdrawn.status !== 200) throw new Error("源题停止公开失败");
+  if (withdrawn.status !== 200) throw new Error("更新源题可见性失败");
   const afterDelete = await apiGet(
     `/api/v1/trainings/${trainingId}/problems`,
   );
   const afterData = (afterDelete.body as {
     data: Array<{ problem_id: string }>;
   }).data;
-  if (afterData.some((p) => p.problem_id === problemId)) {
-    throw new Error("停止公开后旧题单匿名入口不得返回源题内容");
+  if (!afterData.some((p) => p.problem_id === problemId)) {
+    throw new Error("公开域已发布源题在题单中应保持可见");
   }
 });

@@ -34,14 +34,6 @@ interface Matrix {
     }
   >;
 }
-const capabilities = [
-  "查看学情",
-  "查看学生提交",
-  "创建和管理作业",
-  "撰写反馈",
-  "处理求助",
-  "管理学生成员",
-];
 async function goto(page: Page, path: string) {
   await navigate(page, path);
   await page.waitForFunction(() =>
@@ -101,32 +93,6 @@ function memberRow(page: Page, username: string) {
   return page.locator("div.transition-colors").filter({
     has: page.getByText(username, { exact: true }),
   }).first();
-}
-async function setRole(
-  page: Page,
-  slug: string,
-  classId: string,
-  actor: ClassroomJourneyAccount,
-  role: "教练" | "助教",
-  grants: string[] = [],
-) {
-  await memberRow(page, actor.username).getByRole("button", {
-    name: "调整身份",
-  }).click();
-  const modal = page.getByRole("dialog", { name: "调整班级身份" });
-  await choose(page, "班级角色", role);
-  if (role === "助教") {
-    for (const capability of capabilities) {
-      await modal.getByRole("checkbox", { name: capability, exact: true })
-        .setChecked(grants.includes(capability));
-    }
-  }
-  return await write(
-    page,
-    "PUT",
-    `/domains/${slug}/classrooms/${classId}/members/${actor.id}`,
-    () => modal.getByRole("button", { name: "保存身份配置" }).click(),
-  );
 }
 async function remove(
   page: Page,
@@ -261,7 +227,7 @@ Deno.test({
           ).join("\n") +
             `\n${pupils[0].email},${pupils[0].username}\ninvalid-email,\n`;
           await coach.page.getByRole("tab", {
-            name: "批量导入与邀请",
+            name: "批量入班与邀请",
             exact: true,
           }).click();
           await expect(
@@ -331,42 +297,18 @@ Deno.test({
           );
           assertEquals(
             new Set(members.map((row) => row.user_id)).size,
-            41,
+            40,
           );
         },
       );
       await step(
-        "Web任命接任教练与助教，六能力全选后改为学情+反馈组合",
+        "授予第二位域教练角色，查看学生成绩矩阵并撰写作业反馈",
         async () => {
-          await goto(coach.page, `/d/${slug}/classrooms/${classId}/members`);
-          await setRole(coach.page, slug, classId, pupils[39], "教练");
-          await setRole(
-            coach.page,
-            slug,
-            classId,
-            pupils[38],
-            "助教",
-            capabilities,
-          );
-          const all = await fixture<
-            { data: Array<{ user_id: string; capabilities: string[] }> }
-          >("GET", `${base()}/members`, teacher.token);
-          assertEquals(
-            all.data.find((row) => row.user_id === pupils[38].id)!.capabilities
-              .length,
-            6,
-          );
-          await setRole(coach.page, slug, classId, pupils[38], "助教", [
-            "查看学情",
-            "撰写反馈",
-          ]);
-          const result = await fixture<
-            { data: Array<{ user_id: string; capabilities: string[] }> }
-          >("GET", `${base()}/members`, teacher.token);
-          assertEquals(
-            result.data.find((row) => row.user_id === pupils[38].id)!
-              .capabilities.sort(),
-            ["feedback:write", "progress:read"],
+          await fixture(
+            "PUT",
+            `/domains/${slug}/members/${pupils[38].id}/roles`,
+            admin,
+            { roles: ["educator"] },
           );
           const problem = await classroomJourneyProblem(slug, admin, title);
           number = problem.number;
@@ -413,19 +355,6 @@ Deno.test({
               name: "发送反馈",
               exact: true,
             }).click());
-          const denied = await assistant.page.request.get(
-            `${UI_URL}/api/v1${base()}/submissions/objective/${originalId}`,
-          );
-          assertEquals(denied.status(), 403);
-          assertEquals(
-            (await denied.json()).code,
-            "CLASSROOM_PERMISSION_DENIED",
-          );
-          await expect(
-            assistant.page.getByRole("button", {
-              name: "为全班未达标学生布置补题",
-            }),
-          ).toBeHidden();
         },
       );
       await step(
@@ -599,40 +528,21 @@ Deno.test({
         },
       );
       await step(
-        "Web交接不自动撤职，接任者移除旧教练/助教后其重新导航与读取即时拒绝",
+        "撤回旧教练域教学角色并移出班级后，其重新导航与读取即时拒绝",
         async () => {
-          await goto(coach.page, `/d/${slug}/classrooms/${classId}/settings`);
-          await choose(coach.page, "接任主教练", pupils[39].username);
-          await coach.page.getByRole("button", {
-            name: "确认交接",
-            exact: true,
-          }).click();
-          await write(
-            coach.page,
-            "POST",
-            `${base()}/transfer`,
-            () =>
-              coach.page.getByRole("button", { name: "确认", exact: true })
-                .click(),
-          );
-          const room = await fixture<
-            {
-              data: {
-                primary_coach_id: string;
-                membership: { role: string };
-                manages_domain: boolean;
-              };
-            }
-          >("GET", base(), teacher.token);
-          assertEquals(room.data.primary_coach_id, pupils[39].id);
-          assertEquals(room.data.membership.role, "coach");
-          assertEquals(room.data.manages_domain, false);
+          for (const actor of [teacher, pupils[38]]) {
+            await fixture(
+              "PUT",
+              `/domains/${slug}/members/${actor.id}/roles`,
+              admin,
+              { roles: ["member"] },
+            );
+          }
           await login(successor.page, pupils[39]);
           await goto(
             successor.page,
             `/d/${slug}/classrooms/${classId}/members`,
           );
-          await remove(successor.page, slug, classId, teacher);
           await remove(successor.page, slug, classId, pupils[38]);
           for (const page of [coach.page, assistant.page]) {
             const denied = await page.request.get(

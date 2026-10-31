@@ -15913,6 +15913,10 @@
         "trainings_visibility_check": {
           "name": "trainings_visibility_check",
           "value": "\"trainings\".\"visibility\" IN ('private', 'unlisted', 'public')"
+        },
+        "trainings_state_check": {
+          "name": "trainings_state_check",
+          "value": "\"trainings\".\"state\" IN ('draft', 'published')"
         }
       },
       "isRLSEnabled": false

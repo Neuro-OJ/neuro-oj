@@ -237,25 +237,15 @@ Deno.test({
       `/api/v1/problems/${sourceId}`,
       admin,
     );
-    const reference = `main:${source.data.number}`;
-    const sharingPath =
-      `/api/v1/domains/main/problems/${source.data.number}/sharing`;
-    const sharing = await fixture<{ data: { revision: number } }>(
-      "GET",
-      sharingPath,
-      admin,
-    );
-    await fixture("POST", sharingPath, admin, {
-      enabled: true,
-      scope: "selected",
-      target_domain_slugs: [slug],
-    }, { "If-Match": String(sharing.data.revision) });
-    const binding = await fixture<{ data: { binding: { id: string } } }>(
+    const binding = await fixture<{
+      data: { binding: { id: string }; reference: { display_ref: string } };
+    }>(
       "POST",
       `${domainPath}/problem-bindings`,
-      teacherToken,
-      { source_ref: reference },
+      admin,
+      { source_ref: `main:${source.data.number}` },
     );
+    const reference = binding.data.reference.display_ref;
     const problem = await fixture<
       { reference: { problem_id: string }; version_id: string }
     >(
@@ -368,10 +358,12 @@ Deno.test({
           );
           assertEquals(spaces.status(), 200);
           assertEquals(
-            (await spaces.json()).data.map((space: { slug: string }) =>
-              space.slug
+            new Set(
+              (await spaces.json()).data.map((space: { slug: string }) =>
+                space.slug
+              ),
             ),
-            [slug],
+            new Set([slug, "main"]),
           );
           await expect(student.page.getByTestId("domain-identity")).toHaveText(
             `${studentName}@${slug}`,
@@ -686,7 +678,7 @@ Deno.test({
           assertEquals(archived.data.status, "archived");
           await expect(
             teacher.page.getByText(
-              "当前只能读取班级设置，无权修改配置或交接负责人",
+              "当前只能读取班级设置，无权修改配置",
               { exact: true },
             ),
           ).toBeVisible();

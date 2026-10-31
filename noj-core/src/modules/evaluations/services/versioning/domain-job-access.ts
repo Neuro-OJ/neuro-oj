@@ -35,6 +35,7 @@ export async function resolveDomainJobContexts(
   executor: Executor,
   policyWrite = false,
   contestId?: string,
+  rejudge = false,
 ) {
   const access = await loadWorkspace(slug, actorId, { executor, write: true });
   const sources = problemIds.length
@@ -94,7 +95,8 @@ export async function resolveDomainJobContexts(
     const ref = `${source.slug ?? "main"}:${source.number}`;
     const resolved = await resolveDomainProblem(slug, ref, actorId, {
       executor,
-      write: true,
+      write: !rejudge,
+      rejudge,
       contestId,
     });
     contexts.set(source.id, {
@@ -231,6 +233,7 @@ export async function assertDomainJobExecution(
     kind === "upgrade" && request.context === "source_contest"
       ? source.contest_id ?? undefined
       : undefined,
+    kind === "rejudge",
   );
   const context = resolved.contexts.get(source.problem_id)!;
   if (kind === "upgrade" && request.context !== "source_contest") {

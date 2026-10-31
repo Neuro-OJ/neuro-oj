@@ -34,6 +34,7 @@ const EDITOR_PERMISSIONS = [
   "training:import",
   "problem:import",
   "training:write_own",
+  "training:delete_own",
   "contest:create",
   "contest:manage_own",
 ] as const;
@@ -49,6 +50,7 @@ const ADMIN_PERMISSIONS = [
   "submission:read_all",
   "submission:rejudge",
   "training:write_any",
+  "training:delete_any",
   "training:share",
   "contest:manage",
   "classroom:manage_any",
@@ -85,6 +87,7 @@ export function domainPermissions(
           "problem:delete_any",
           "problem:policy",
           "training:write_any",
+          "training:delete_any",
           "contest:manage",
         ]
       ) permissions.add(permission);

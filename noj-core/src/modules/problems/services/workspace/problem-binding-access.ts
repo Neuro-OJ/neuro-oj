@@ -109,6 +109,7 @@ export async function resolveDomainProblem(
   options: {
     executor?: Executor;
     write?: boolean;
+    rejudge?: boolean;
     contestId?: string;
     versionId?: string;
     domainLock?: "share";
@@ -121,12 +122,15 @@ export async function resolveDomainProblem(
         executor,
         slug,
         actorId ? userActorFromAuthenticatedId(actorId) : guestActor(),
-        { write: options.write, lock: options.domainLock ?? options.write },
+        {
+          write: options.write || options.rejudge,
+          lock: options.domainLock ?? (options.write || options.rejudge),
+        },
       ),
     )
     : await loadWorkspace(slug, actorId, {
       executor,
-      write: options.write,
+      write: options.write || options.rejudge,
     });
   return await resolveDomainProblemInWorkspace(workspace, reference, {
     ...options,
@@ -141,6 +145,7 @@ export async function resolveDomainProblemInWorkspace(
   options: {
     executor: Executor;
     write?: boolean;
+    rejudge?: boolean;
     contestId?: string;
     versionId?: string;
   },
@@ -148,7 +153,9 @@ export async function resolveDomainProblemInWorkspace(
   const executor = options.executor;
   const actorId = workspace.context.actorId;
   const parsed = parseDomainProblemReference(reference);
-  if (options.write) {
+  if (options.rejudge) {
+    assertWorkspacePermission(workspace.context, "submission:rejudge");
+  } else if (options.write) {
     assertWorkspacePermission(workspace.context, "submission:create");
   }
   const sourceDomains = alias(domains, "source_domains");
@@ -210,7 +217,7 @@ export async function resolveDomainProblemInWorkspace(
       row.source.id,
     );
     if (
-      protection.length && !contestAccess?.allowed &&
+      !options.rejudge && protection.length && !contestAccess?.allowed &&
       (!editable || options.write)
     ) {
       throw new ForbiddenError(

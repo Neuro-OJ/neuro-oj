@@ -187,6 +187,7 @@ e2eTest(
       201,
       { name: "B 域教练班" },
     );
+    await invite(`/domains/${slugB}`, ownerB.token, peer);
     await invite(
       `/domains/${slugB}/classrooms/${classB.data.id}`,
       mixed.token,
@@ -237,31 +238,42 @@ e2eTest(
       { change_note: "跨工作空间教学旅程" },
       { "If-Match": String(saved.revision) },
     );
-    const sharing = await request<{ data: { revision: number } }>(
-      "POST",
-      `${mainProblem}/sharing`,
-      admin,
-      200,
-      { enabled: true, scope: "all", target_domain_slugs: [] },
-      { "If-Match": "0" },
-    );
     const sourceRef = `main:${created.number}`;
-    const bindingA = await request<{ data: { binding: { id: string } } }>(
+    const bindingA = await request<{
+      data: {
+        binding: { id: string };
+        reference: { problem_id: string; display_ref: string };
+        version_id: string;
+      };
+    }>(
       "POST",
       `/domains/${slugA}/problem-bindings`,
-      ownerA.token,
+      admin,
       201,
       { source_ref: sourceRef },
     );
-    const bindingB = await request<{ data: { binding: { id: string } } }>(
+    const bindingB = await request<{
+      data: {
+        binding: { id: string };
+        reference: { problem_id: string; display_ref: string };
+        version_id: string;
+      };
+    }>(
       "POST",
       `/domains/${slugB}/problem-bindings`,
-      ownerB.token,
+      admin,
       201,
       { source_ref: sourceRef },
     );
     assertNotEquals(bindingA.data.binding.id, bindingB.data.binding.id);
-    for (const slug of [slugA, slugB]) {
+    const refA = bindingA.data.reference.display_ref;
+    const refB = bindingB.data.reference.display_ref;
+    for (
+      const [slug, copyRef, copyProblemId] of [
+        [slugA, refA, bindingA.data.reference.problem_id],
+        [slugB, refB, bindingB.data.reference.problem_id],
+      ] as const
+    ) {
       const paper = await request<{
         reference: {
           problem_id: string;
@@ -270,10 +282,10 @@ e2eTest(
         };
         can_edit: boolean;
         content: { questions: { answer: unknown[]; explanation: string }[] };
-      }>("GET", `/domains/${slug}/problems/${sourceRef}`, mixed.token, 200);
-      assertEquals(paper.reference.problem_id, created.problem_id);
-      assertEquals(paper.reference.display_ref, sourceRef);
-      assertEquals(paper.reference.is_shared, true);
+      }>("GET", `/domains/${slug}/problems/${copyRef}`, peer.token, 200);
+      assertEquals(paper.reference.problem_id, copyProblemId);
+      assertEquals(paper.reference.display_ref, copyRef);
+      assertEquals(paper.reference.is_shared, false);
       assertEquals(paper.can_edit, false);
       assertEquals(paper.content.questions[0].answer, []);
       assertEquals(paper.content.questions[0].explanation, "");
@@ -303,8 +315,10 @@ e2eTest(
       "B 作业",
     );
     const taskPath = `/domains/${slugA}/assignments/${taskA1.id}`;
-    await request("GET", `${taskPath}/matrix`, mixed.token, 403);
-    await request("GET", `${taskPath}/matrix`, peer.token, 403);
+    await request("GET", `${taskPath}/matrix`, mixed.token, 200);
+    await request("GET", `${taskPath}/matrix.csv`, mixed.token, 403);
+    await request("GET", `${taskPath}/matrix`, peer.token, 200);
+    await request("GET", `${taskPath}/matrix.csv`, peer.token, 403);
     await request(
       "GET",
       `/domains/${slugB}/assignments/${taskB.id}/matrix`,
@@ -318,11 +332,11 @@ e2eTest(
       404,
     );
 
-    const answers = {
-      answers: { sum: ["A"] },
-      version_id: published.version_id,
-    };
-    const submit = async (slug: string, reference: string) => {
+    const submit = async (
+      slug: string,
+      reference: string,
+      versionId: string,
+    ) => {
       const submission = await request<{
         data: { submission_id: string; score: number; domain_id: string };
       }>(
@@ -330,15 +344,22 @@ e2eTest(
         `/domains/${slug}/problems/${reference}/objective-submissions`,
         mixed.token,
         201,
-        answers,
+        {
+          answers: { sum: ["A"] },
+          version_id: versionId,
+        },
       );
       // 交卷 DTO 使用百分制原分；历史及教学进度使用 ×100 整数。
       assertEquals(submission.data.score, 100);
       return { ...submission.data, id: submission.data.submission_id };
     };
     // 作业已发布后在源域和另一个学校做同一题，仍不能计入 A 域作业。
-    const mainSubmission = await submit("main", String(created.number));
-    const otherSubmission = await submit(slugB, sourceRef);
+    const mainSubmission = await submit(
+      "main",
+      String(created.number),
+      published.version_id,
+    );
+    const otherSubmission = await submit(slugB, refB, bindingB.data.version_id);
     for (const task of [taskA1, taskA2]) {
       const cell = await progress(slugA, task.id, mixed.token);
       assertEquals(cell.status, "not_started");
@@ -348,7 +369,7 @@ e2eTest(
     await request("PUT", "/me/workspace-preference", mixed.token, 200, {
       slug: slugB,
     });
-    const ownSubmission = await submit(slugA, sourceRef);
+    const ownSubmission = await submit(slugA, refA, bindingA.data.version_id);
     assertNotEquals(ownSubmission.domain_id, otherSubmission.domain_id);
     assertNotEquals(ownSubmission.domain_id, mainSubmission.domain_id);
     for (const task of [taskA1, taskA2]) {
@@ -429,12 +450,7 @@ e2eTest(
     assertEquals(resolved.data.replies.length, 1);
     assert(resolved.data.replies[0].body.includes("两个数"));
 
-    // 实时撤销禁止新内容/执行，但成绩、本人答案和既有教学互动继续保留。
-    await request("POST", `${mainProblem}/sharing`, admin, 200, {
-      enabled: false,
-      scope: "all",
-      target_domain_slugs: [],
-    }, { "If-Match": String(sharing.data.revision) });
+    // 跨空间引用不可通过源域前缀在子空间直接访问，独立副本与既有教学互动继续保留。
     for (const slug of [slugA, slugB]) {
       const problemPath = `/domains/${slug}/problems/${sourceRef}`;
       await request("GET", problemPath, mixed.token, 404);
@@ -446,14 +462,17 @@ e2eTest(
         mixed.token,
         200,
       );
-      assertEquals(list.total, 0);
-      assertEquals(list.items, []);
+      assertEquals(list.total, 1);
+      assertEquals(list.items.length, 1);
       await request(
         "POST",
         `${problemPath}/objective-submissions`,
         mixed.token,
         404,
-        answers,
+        {
+          answers: { sum: ["A"] },
+          version_id: published.version_id,
+        },
       );
     }
     const historical = await request<{
@@ -469,13 +488,13 @@ e2eTest(
       mixed.token,
       200,
     );
-    assertEquals(historical.data.resource_available, false);
+    assertEquals(historical.data.resource_available, true);
     assertEquals(historical.data.domain.slug, slugA);
     assertEquals(historical.data.answers, { sum: ["A"] });
     assertEquals(historical.data.result.score, 10000);
-    const unavailable = await progress(slugA, taskA1.id, mixed.token);
-    assertEquals(unavailable.status, "unavailable");
-    assertEquals(unavailable.score, 10000);
+    const currentProgress = await progress(slugA, taskA1.id, mixed.token);
+    assertEquals(currentProgress.status, "achieved");
+    assertEquals(currentProgress.score, 10000);
     await request("GET", feedbackPath, mixed.token, 200);
     await request("GET", helpPath, mixed.token, 200);
     await request("GET", mainProblem, undefined, 200);
@@ -612,7 +631,10 @@ e2eTest(
         login.data.token,
         200,
       );
-      assertEquals(spaces.data.map((space) => space.slug), [slug]);
+      assertEquals(
+        new Set(spaces.data.map((space) => space.slug)),
+        new Set([slug, "main"]),
+      );
       const joined = await request<{
         data: { membership: { role: string }; manages_domain: boolean };
       }>("GET", classroomPath, login.data.token, 200);

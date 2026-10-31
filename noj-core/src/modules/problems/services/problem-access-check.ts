@@ -73,7 +73,7 @@ export async function evaluateProblemAccess(
   const canReadOwn =
     workspace.context.domainPermissions.has("problem:write_own") &&
     source.owner_id === ctx.viewerId;
-  const privileged = workspace.platformAdmin ||
+  const privileged = Boolean(ctx.isAdmin) || workspace.platformAdmin ||
     workspace.context.domainPermissions.has("problem:write_any");
   if (!source.latest_version_id && !privileged && !canReadOwn) {
     return { result: { allowed: false, mode: "denied" }, secrecy: [] };

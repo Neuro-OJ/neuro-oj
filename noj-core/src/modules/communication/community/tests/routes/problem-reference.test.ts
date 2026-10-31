@@ -44,12 +44,12 @@ Deno.test("域社区题号：引用题解显示来源题号，普通讨论无题
   assertEquals(data.problem_title, "source problem");
   assertEquals(data.problem_reference, {
     problem_id: item.id,
-    source_domain_id: f.source.id,
-    source_domain_slug: f.source.slug,
+    source_domain_id: f.target.id,
+    source_domain_slug: f.target.slug,
     number: 1001,
-    qualified_ref: `${f.source.slug}:1001`,
-    display_ref: `${f.source.slug}:1001`,
-    is_shared: true,
+    qualified_ref: `${f.target.slug}:1001`,
+    display_ref: "1001",
+    is_shared: false,
   });
   assertEquals("problem_identity" in data, false);
   const discussion = await jsonRequest(

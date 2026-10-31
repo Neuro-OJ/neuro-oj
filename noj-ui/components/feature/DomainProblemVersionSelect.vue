@@ -8,7 +8,14 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [id: string] }>();
 const { user } = useAuth(), api = useDomainProblems(), page = ref(1), open = ref(false);
 const key = computed(() => workspaceCacheKey(props.slug, user.value?.id ?? null, 'version-selector', props.reference, String(page.value)));
-const { data, status, error, refresh } = await useAsyncData(key, () => api.versions(props.slug, props.reference, page.value));
+const { data, status, error, refresh } = await useAsyncData(
+  key,
+  () => api.versions(props.slug, props.reference, page.value),
+  { immediate: false },
+);
+watch([open, page], ([isOpen]) => {
+  if (isOpen) void refresh();
+});
 watch(() => props.reference, () => { page.value = 1; open.value = false; });
 const recognized = (id: string) => props.mode === 'any' || id === props.required;
 function select(id: string) { emit('select', id); open.value = false; }

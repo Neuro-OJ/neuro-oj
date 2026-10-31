@@ -35,6 +35,7 @@ export type TrainingViewItem = DomainTrainingDetail['items'][number] & {
   title: string | null;
   kind: DomainProblemSummary['kind'] | null;
   progress: DomainProblemSummary['progress'];
+  best_score?: number | null;
   summary_error: boolean;
 };
 export interface TrainingView {

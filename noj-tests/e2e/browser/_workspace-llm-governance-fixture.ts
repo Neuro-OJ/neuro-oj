@@ -170,31 +170,7 @@ export async function createLlmGovernanceFixture(suffix: string) {
     { change_note: "Browser LLM治理验收" },
     problem.draft_revision,
   );
-  const sharing = await llmFixtureApi<{ data: { revision: number } }>(
-    "GET",
-    `/domains/${source}/problems/${problem.number}/sharing`,
-    admin,
-  );
-  await llmFixtureApi(
-    "POST",
-    `/domains/${source}/problems/${problem.number}/sharing`,
-    admin,
-    {
-      enabled: true,
-      scope: "selected",
-      target_domain_slugs: schools.map((s) => s.slug),
-    },
-    sharing.data.revision,
-  );
   const ref = `${source}:${problem.number}`;
-  for (const school of schools) {
-    await llmFixtureApi(
-      "POST",
-      `/domains/${school.slug}/problem-bindings`,
-      school.owner.token,
-      { source_ref: ref },
-    );
-  }
   return {
     schools,
     student,
@@ -202,6 +178,33 @@ export async function createLlmGovernanceFixture(suffix: string) {
     ref,
     problemId: problem.problem_id,
     versionId: published.version_id,
+  };
+}
+
+export interface LlmGovernanceCopy {
+  ref: string;
+  problemId: string;
+  versionId: string;
+}
+
+/** 学校配置 fast 别名后，把源题导入为本域独立副本；返回本域题号与版本。 */
+export async function copyLlmGovernanceProblem(
+  school: LlmSchool,
+  sourceRef: string,
+  admin: string,
+): Promise<LlmGovernanceCopy> {
+  const copied = await llmFixtureApi<{
+    data: {
+      reference: { problem_id: string; display_ref: string };
+      version_id: string;
+    };
+  }>("POST", `/domains/${school.slug}/problem-bindings`, admin, {
+    source_ref: sourceRef,
+  });
+  return {
+    ref: copied.data.reference.display_ref,
+    problemId: copied.data.reference.problem_id,
+    versionId: copied.data.version_id,
   };
 }
 

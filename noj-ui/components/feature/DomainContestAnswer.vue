@@ -113,6 +113,7 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
     :ui-html="uiHtml"
     :ui-error="uiError"
     :writable="active && !!user"
+    :objective-submitted="isObjective && !!problem.user_status && problem.user_status !== 'untouched'"
     :draft-key="draftKey"
     :draft-requires-login="true"
     :handlers="handlers"
@@ -124,11 +125,7 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
         <DomainUiRuns :slug="slug" :problem-id="problem.problem_id"
           :reference="problem.reference?.display_ref ?? problem.display_id" :contest-id="contestId"
           :submission-id="submissionId" :self-test="null" :code="currentCode"
-          :questions="questions"
-    :questions-error="questionsError"
-    :ui-html="uiHtml"
-    :ui-error="uiError"
-    :writable="active && !!user" @restore="panel?.setCode($event)" @result="uiResult = $event" />
+          :writable="active && !!user" @restore="panel?.setCode($event)" @result="uiResult = $event" />
       </ClientOnly>
     </template>
     <template #submit-hint>

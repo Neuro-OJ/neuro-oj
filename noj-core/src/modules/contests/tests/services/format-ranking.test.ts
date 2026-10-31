@@ -12,6 +12,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import {
   contests,
+  domainMemberships,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -287,6 +288,12 @@ Deno.test("OI 读取：详情、本人列表和结果筛选不能泄露赛时成
     email: `${user}@example.com`,
     created_at: now,
     updated_at: now,
+  });
+  await getDb().insert(domainMemberships).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    user_id: user,
+    joined_at: now,
   });
   await addParticipants(c.id, [user]);
   const accepted = await receipt(c, p, 1, 10000, "AC", true, user);

@@ -10,7 +10,7 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import {
   bindPublishedProblemForTest,
@@ -113,6 +113,13 @@ Deno.test({
           }),
         },
       );
+    const redis = getRedis();
+    const sec = await redis.eval("return redis.call('TIME')[1]", 0);
+    if (Number(sec) % 60 >= 58) {
+      await new Promise((r) =>
+        setTimeout(r, (60 - (Number(sec) % 60)) * 1000 + 100)
+      );
+    }
     assertEquals((await submit()).status, 201);
     const denied = await submit();
     assertEquals(denied.status, 429);

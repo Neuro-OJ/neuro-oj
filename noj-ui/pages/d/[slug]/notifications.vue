@@ -1,4 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ middleware: 'auth' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 </script>
 <template><AccountNotifications /></template>

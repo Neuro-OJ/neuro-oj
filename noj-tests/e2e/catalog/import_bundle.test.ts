@@ -226,7 +226,7 @@ e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () 
 });
 
 e2eTest(
-  "[e2e/import-bundle] 历史引用阻止物理删除，源题可停止公开",
+  "[e2e/import-bundle] 历史引用阻止物理删除，源题在公开域保持可读",
   async () => {
     if (!isE2E || !problemId) return;
     const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
@@ -238,8 +238,8 @@ e2eTest(
     const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
       visibility: "private",
     }, adminToken);
-    if (withdrawn.status !== 200) throw new Error("停止公开失败");
+    if (withdrawn.status !== 200) throw new Error("更新可见性失败");
     const check = await apiGet(`/api/v1/problems/${problemId}`);
-    if (check.status !== 404) throw new Error("停止公开后匿名仍能访问");
+    if (check.status !== 200) throw new Error("公开域已发布题目应保持可访问");
   },
 );

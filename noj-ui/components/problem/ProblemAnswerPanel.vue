@@ -78,6 +78,8 @@ const props = withDefaults(defineProps<{
   uiError?: string;
   /** 输入与提交是否可用（比赛为受理窗口 + 已报名）。 */
   writable: boolean;
+  /** 比赛客观题是否已交卷（刷新页面后保持锁定）。 */
+  objectiveSubmitted?: boolean;
   draftKey: string;
   guestKey?: string;
   /** 本地草稿是否要求登录：题库允许游客草稿（登录后认领），比赛要求登录。 */
@@ -93,6 +95,7 @@ const props = withDefaults(defineProps<{
   questionsError: undefined,
   uiHtml: null,
   uiError: undefined,
+  objectiveSubmitted: false,
   guestKey: undefined,
   draftRequiresLogin: false,
   loginRedirect: '/',
@@ -162,7 +165,7 @@ const questions = computed<AnswerQuestion[]>(() => props.questions ?? []);
 const uiValues = computed(() => parseValues(code.value));
 
 /** 比赛客观题一次交卷后按钮必须真正不可用，避免赛题被反复提交。 */
-const objectiveLocked = computed(() => props.context === 'contest' && result.value !== null);
+const objectiveLocked = computed(() => props.context === 'contest' && (props.objectiveSubmitted || result.value !== null));
 const canWrite = computed(() => props.writable && !objectiveLocked.value);
 const canSubmit = computed(() => {
   if (!canWrite.value || submitting.value || changed.value) return false;
@@ -332,9 +335,13 @@ defineExpose({
         <p class="mb-2 text-xs text-text-muted">第 {{ index + 1 }} 题 · {{ questionLabel(question.type) }}</p>
         <MarkdownRenderer :content="question.prompt" />
         <div class="mt-3 flex flex-col gap-2">
-          <UCheckbox v-for="option in questionOptions(question)" :key="String(option.key)" :label="option.text"
-            :model-value="(answers[questionKey(question)] ?? []).includes(option.key)" :disabled="!canWrite || submitting"
-            @update:model-value="toggle(question, option.key)" />
+          <div v-for="option in questionOptions(question)" :key="String(option.key)" class="flex items-center gap-1.5">
+            <span v-if="typeof option.key === 'string' && !option.text.startsWith(`${option.key}.`)" aria-hidden="true"
+              class="text-sm font-medium text-text-secondary">{{ option.key }}.</span>
+            <UCheckbox :label="option.text"
+              :model-value="(answers[questionKey(question)] ?? []).includes(option.key)" :disabled="!canWrite || submitting"
+              @update:model-value="toggle(question, option.key)" />
+          </div>
         </div>
       </div>
       <p v-if="context === 'contest'" class="text-xs text-text-muted">一次正式交卷；赛中不返回标准答案和逐题正确性。</p>
@@ -383,6 +390,7 @@ defineExpose({
     <UAlert v-if="result" color="success"
       :title="result.score === null || result.score === undefined ? labels.scorePending : labels.scoreResult(result.score)"
       class="mt-4" />
+    <UAlert v-else-if="objectiveLocked" color="info" title="本题已完成一次正式交卷，不可重复提交" class="mt-4" />
     <div class="mt-4 flex flex-wrap items-center gap-3">
       <UButton :loading="submitting" :disabled="!canSubmit" @click="submit">
         {{ isObjective ? labels.objectiveSubmit : labels.submit }}

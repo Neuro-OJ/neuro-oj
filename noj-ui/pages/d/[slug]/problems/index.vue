@@ -117,7 +117,7 @@ useSeoMeta({ title: '题库' });
           <template
             #rate-cell="{row}"><span class="text-xs tabular-nums text-text-secondary" :title="`${row.original.accepted_submissions ?? 0} 次通过 / ${row.original.valid_submissions ?? 0} 次有效提交`">{{ row.original.valid_submissions ? `${((row.original.accepted_submissions ?? 0)*100/row.original.valid_submissions).toFixed(1)}%` : '—' }}</span></template>
           <template
-            #progress-cell="{row}"><span class="inline-flex items-center gap-1 whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : 'text-text-muted'"><UIcon :name="row.original.progress === 'solved' ? 'i-lucide-circle-check' : row.original.progress === 'attempted' ? 'i-lucide-circle-alert' : 'i-lucide-circle'" class="size-3.5" />{{ row.original.best_score != null ? `${(row.original.best_score / 100).toFixed(2)} 分` : {solved:'已通过',attempted:'尝试未通过',unseen:'未尝试'}[row.original.progress ?? 'unseen'] }}</span></template>
+            #progress-cell="{row}"><span class="inline-flex items-center gap-1 whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : 'text-text-muted'"><UIcon :name="row.original.progress === 'solved' ? 'i-lucide-circle-check' : row.original.progress === 'attempted' ? 'i-lucide-circle-alert' : 'i-lucide-circle'" class="size-3.5" />{{ {solved:'已通过',attempted:'尝试未通过',unseen:'未尝试'}[row.original.progress ?? 'unseen'] }}<template v-if="row.original.best_score != null"> · {{ (row.original.best_score / 100).toFixed(2) }} 分</template></span></template>
         </UTable>
       </div>
       <PaginationNav v-if="data && data.total>30" class="mt-5" :current-page="page"

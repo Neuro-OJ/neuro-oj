@@ -131,6 +131,7 @@ export async function aggregateView(reader: CoreReader, input: {
           title: summary.title,
           kind: summary.kind,
           progress: summary.progress,
+          ...(summary.best_score !== undefined ? { best_score: summary.best_score } : {}),
         };
       });
       put('training', { data: { training, items, page, per_page: 20, total: all.length } });

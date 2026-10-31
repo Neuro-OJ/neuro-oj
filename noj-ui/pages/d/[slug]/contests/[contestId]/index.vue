@@ -70,12 +70,19 @@ const problems = await useAsyncData(
 );
 
 const registerSection = ref<HTMLElement | null>(null);
+const clarificationsSection = ref<HTMLElement | null>(null);
 
 /** 头部「报名参赛」把注意力带到报名区；需要凭据时直接聚焦输入框。 */
 function focusRegistration() {
   const target = registerSection.value?.querySelector<HTMLElement>('button');
   target?.focus?.();
   registerSection.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function focusClarificationsIfNeeded() {
+  if (route.query?.tab === 'clarifications') {
+    clarificationsSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 const registering = ref(false);
@@ -113,7 +120,9 @@ const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   timer = setInterval(() => now.value = Date.now(), 1000);
+  focusClarificationsIfNeeded();
 });
+watch(() => route.query?.tab, () => focusClarificationsIfNeeded());
 onUnmounted(() => {
   if (timer) clearInterval(timer);
 });
@@ -364,9 +373,13 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
                     </span>
                   </span>
                   <span class="flex items-center gap-3">
-                    <span v-if="problem.user_status && problem.user_status !== 'untouched'"
+                    <span v-if="user && problem.user_status"
                       class="text-xs font-medium"
-                      :class="problem.user_status === 'solved' ? 'text-signal-deep' : 'text-warning-text'">
+                      :class="problem.user_status === 'solved'
+                        ? 'text-signal-deep'
+                        : problem.user_status === 'attempted'
+                          ? 'text-warning-text'
+                          : 'text-text-muted'">
                       {{ problemStatusLabel[problem.user_status] }}
                     </span>
                     <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-text-muted" />
@@ -397,6 +410,12 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
             <div class="text-sm leading-7">
               <MarkdownRenderer :content="announcement" />
             </div>
+          </section>
+
+          <!-- ── 竞赛答疑 ──────────────────────────────────────── -->
+          <section id="clarifications" ref="clarificationsSection"
+            class="scroll-mt-24 rounded-lg border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
+            <ClarificationsPanel :slug="slug!" :contest="contest" :problems="problems.data.value?.data ?? []" />
           </section>
         </div>
 

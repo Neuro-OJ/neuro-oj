@@ -10,6 +10,7 @@ export interface ProblemSummary {
   answer_version_id: string | null;
   answer_version: number | null;
   progress: 'solved' | 'attempted' | 'unseen' | null;
+  best_score?: number | null;
 }
 export interface ProblemSummaries {
   items: ProblemSummary[];

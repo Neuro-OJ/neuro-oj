@@ -94,7 +94,10 @@ async function finished(
   return record!;
 }
 async function upload(page: Page, slug: string, problem: InputModeProblem) {
-  await goto(page, `/d/${slug}/problems/${problem.reference}`);
+  await goto(
+    page,
+    `/d/${slug}/problems/${(problem.copies[slug] ?? problem).reference}`,
+  );
   await page.locator('input[type="file"]').setInputFiles({
     name: "predictions.csv",
     mimeType: "text/csv",
@@ -171,7 +174,7 @@ Deno.test({
           await shareInputModeProblem(source, prediction, [a, b], admin);
           await shareInputModeProblem(source, ui, [a, b], admin);
           await inputModeVersionTwo(source, "prediction", prediction, admin);
-          await inputModePolicy(a, prediction, admin, prediction.v1);
+          await inputModePolicy(a, prediction, admin, prediction.copies[a].v1);
           await login(session.page, student.email);
         },
       );
@@ -184,7 +187,7 @@ Deno.test({
             first.domain_id,
             first.submitted_version_id,
             first.result.score,
-          ], [aId, prediction!.v1, 5000]);
+          ], [aId, prediction!.copies[a].v1, 5000]);
           await session.page.getByRole("link", {
             name: "查看评测",
             exact: true,
@@ -197,7 +200,7 @@ Deno.test({
             next.domain_id,
             next.submitted_version_id,
             next.result.score,
-          ], [bId, prediction!.v2, 10000]);
+          ], [bId, prediction!.copies[b].v2, 10000]);
           await second.getByRole("link", { name: "查看评测", exact: true })
             .click();
           await expect(second.getByText("100.0", { exact: true }))
@@ -207,7 +210,10 @@ Deno.test({
       await step(
         "iframe填写参数触发自测与正式提交，NOJ.onResult展示真实Judge汇总",
         async () => {
-          await goto(session.page, `/d/${a}/problems/${ui!.reference}`);
+          await goto(
+            session.page,
+            `/d/${a}/problems/${ui!.copies[a].reference}`,
+          );
           // 题目页同时有主 CTA 和题干内入口；两者指向同一真实界面题。
           await session.page.getByRole("link", {
             name: "打开界面",
@@ -216,7 +222,7 @@ Deno.test({
           await frame(session.page).getByLabel("参数提示").fill("first");
           const selfTest = await write(
             session.page,
-            `/domains/${a}/problems/${ui!.reference}/self-tests`,
+            `/domains/${a}/problems/${ui!.copies[a].reference}/self-tests`,
             () =>
               frame(session.page).getByRole("button", { name: "界面自测" })
                 .click(),
@@ -240,7 +246,7 @@ Deno.test({
             record.submitted_version_id,
             record.language,
             record.result.score,
-          ], [aId, ui!.v1, "ui", 10000]);
+          ], [aId, ui!.copies[a].v1, "ui", 10000]);
           assertEquals(JSON.parse(record.code), { prompt: "first" });
           await expect(frame(session.page).getByRole("status")).toContainText(
             "100 分",
@@ -267,7 +273,7 @@ Deno.test({
             "40 分",
             { timeout: 15000 },
           );
-          await goto(session.page, `/d/${a}/solve/${ui!.reference}`);
+          await goto(session.page, `/d/${a}/solve/${ui!.copies[a].reference}`);
           await expect(frame(session.page).getByLabel("参数提示")).toHaveValue(
             "different",
           );
@@ -292,10 +298,10 @@ Deno.test({
           await frame(session.page).getByLabel("参数提示").fill(
             "school-a-draft",
           );
-          await goto(second, `/d/${b}/solve/${ui!.reference}`);
+          await goto(second, `/d/${b}/solve/${ui!.copies[b].reference}`);
           await frame(second).getByLabel("参数提示").fill("school-b-draft");
-          await goto(session.page, `/d/${a}/solve/${ui!.reference}`);
-          await goto(second, `/d/${b}/solve/${ui!.reference}`);
+          await goto(session.page, `/d/${a}/solve/${ui!.copies[a].reference}`);
+          await goto(second, `/d/${b}/solve/${ui!.copies[b].reference}`);
           await expect(frame(session.page).getByLabel("参数提示")).toHaveValue(
             "school-a-draft",
           );
@@ -304,7 +310,7 @@ Deno.test({
           );
           await expect(
             session.page.getByText(
-              `提交归属 ${a}，来源题号 ${ui!.reference}。`,
+              `提交归属 ${a}，来源题号 ${ui!.copies[a].reference}。`,
             ),
           ).toBeVisible();
         },
@@ -313,7 +319,7 @@ Deno.test({
         "源题已发布V2时，比赛iframe与参数执行仍遵守固定V1",
         async () => {
           await inputModeVersionTwo(source, "ui", ui!, admin);
-          await inputModePolicy(a, ui!, admin, ui!.v1);
+          await inputModePolicy(a, ui!, admin, ui!.copies[a].v1);
           const now = Date.now();
           const contest = await fixture<{ data: { id: string } }>(
             "POST",
@@ -328,7 +334,7 @@ Deno.test({
               start_time: new Date(now - 60000).toISOString(),
               end_time: new Date(now + 900000).toISOString(),
               problems: [{
-                problem_id: ui!.id,
+                problem_id: ui!.copies[a].id,
                 label: "A",
                 score: 10000,
                 sort_order: 0,
@@ -366,7 +372,7 @@ Deno.test({
             record.contest_id,
             record.submitted_version_id,
             record.result.score,
-          ], [contest.data.id, ui!.v1, 10000]);
+          ], [contest.data.id, ui!.copies[a].v1, 10000]);
           await expect(frame(session.page).getByRole("status")).toContainText(
             "100 分",
             { timeout: 15000 },

@@ -349,9 +349,12 @@ export async function setDomainProblemBindingState(
       revision: binding.revision + 1,
       updated_at: now,
     }).where(eq(domainProblemBindings.id, binding.id)).returning();
-    if (binding.kind === "owned" && input.visibility) {
+    if (binding.kind === "owned") {
       await tx.update(problems).set({
-        visibility: input.visibility === "public" ? "public" : "private",
+        ...(input.visibility
+          ? { visibility: input.visibility === "public" ? "public" : "private" }
+          : {}),
+        effective_policy_revision: binding.revision + 1,
         updated_at: now,
       }).where(eq(problems.id, resource.problem.id));
     }

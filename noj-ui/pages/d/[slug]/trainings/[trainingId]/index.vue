@@ -27,7 +27,14 @@ function progressLabel(item: TrainingViewItem) {
   if (!item.resource_available) return item.can_import ? '尚未引用' : '资源不可用';
   if (item.summary_error) return '信息暂不可用';
   if (!user.value) return '登录查看进度';
-  return item.progress === 'solved' ? '已完成' : item.progress === 'attempted' ? '已尝试' : item.progress === 'unseen' ? '未作答' : '进度暂不可用';
+  const scoreText = item.best_score != null ? ` · ${item.best_score / 100} 分` : '';
+  return item.progress === 'solved'
+    ? `已完成${scoreText}`
+    : item.progress === 'attempted'
+      ? `已尝试${scoreText}`
+      : item.progress === 'unseen'
+        ? '未作答'
+        : '进度暂不可用';
 }
 function pageLink(value: number) {
   return { path: route.path, query: { ...route.query, page: value } };

@@ -62,6 +62,7 @@ const stubs = {
   },
   MarkdownRenderer: { props: ['content'], template: '<div>{{ content }}</div>' },
   NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+  ClarificationsPanel: true,
 };
 
 async function view() {

@@ -119,11 +119,11 @@
 | noj-tests/e2e/browser/19_search_unified.test.ts | 197 | ignore |
 | noj-tests/e2e/browser/settings-experience.test.ts | 17 | ignore |
 | noj-tests/e2e/browser/workspace-bundle-import.test.ts | 24 | ignore |
-| noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 191 | ignore |
+| noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 157 | ignore |
 | noj-tests/e2e/browser/workspace-domain-content.test.ts | 16 | ignore |
 | noj-tests/e2e/browser/workspace-governance.test.ts | 206 | ignore |
-| noj-tests/e2e/browser/workspace-input-modes.test.ts | 125 | ignore |
-| noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 187 | ignore |
+| noj-tests/e2e/browser/workspace-input-modes.test.ts | 128 | ignore |
+| noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 189 | ignore |
 | noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 173 | ignore |
 | noj-tests/e2e/browser/workspace-public-mixed-journeys.test.ts | 198 | ignore |
 | noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 199 | ignore |
@@ -189,8 +189,8 @@
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 54 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 59 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 92 | early-return |
-| noj-tests/e2e/contest/contest_lifecycle.test.ts | 149 | early-return |
-| noj-tests/e2e/contest/contest_lifecycle.test.ts | 175 | early-return |
+| noj-tests/e2e/contest/contest_lifecycle.test.ts | 148 | early-return |
+| noj-tests/e2e/contest/contest_lifecycle.test.ts | 174 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 22 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 33 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 43 | early-return |

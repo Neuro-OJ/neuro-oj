@@ -2,8 +2,8 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
   contests,
+  domainProblemBindings,
   domains,
-  problemShareSettings,
   submissions,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -136,11 +136,11 @@ Deno.test({
     const f = await domainFixture("community-share"), p = await sharedItem(f);
     await f.db.insert(submissions).values({
       id: crypto.randomUUID(),
-      problem_id: p.id,
+      problem_id: p.sourceId,
       user_id: f.student,
       domain_id: f.source.id,
       domain_problem_binding_id: p.binding,
-      submitted_version_id: p.version,
+      submitted_version_id: p.sourceVersion,
       version_origin: "known",
       language: "cpp20",
       code: "source code",
@@ -204,8 +204,10 @@ Deno.test({
       )).length,
       1,
     );
-    await f.db.update(problemShareSettings).set({ enabled: false }).where(
-      eq(problemShareSettings.problem_id, p.id),
+    await f.db.update(domainProblemBindings).set({
+      disabled_at: new Date().toISOString(),
+    }).where(
+      eq(domainProblemBindings.id, p.targetBinding),
     );
     await assertRejects(
       () =>
@@ -366,7 +368,7 @@ Deno.test({
           f.a,
           {
             type: "solution",
-            problem_id: p.id,
+            problem_id: p.sourceId,
             title: "source solution",
             content: "public source solution",
           },

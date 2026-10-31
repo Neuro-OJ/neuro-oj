@@ -301,21 +301,17 @@ Deno.test({
     );
     const problem = await objectiveFixture(admin, `共同源题 ${suffix}`),
       reference = `main:${problem.number}`;
-    const shareRoot = `/domains/main/problems/${problem.number}/sharing`;
-    const sharing = await fixture<{ data: { revision: number } }>(
-      "GET",
-      shareRoot,
-      admin,
-    );
-    await fixture("POST", shareRoot, admin, {
-      enabled: true,
-      scope: "selected",
-      target_domain_slugs: [schoolA, schoolB],
-    }, { "If-Match": String(sharing.data.revision) });
+    let schoolRef = "";
     for (const [slug, owner] of [[schoolA, host], [schoolB, actor]] as const) {
-      await fixture("POST", `/domains/${slug}/problem-bindings`, owner.token, {
+      const copied = await fixture<{
+        data: { reference: { display_ref: string } };
+      }>("POST", `/domains/${slug}/problem-bindings`, admin, {
         source_ref: reference,
       });
+      if (schoolRef && schoolRef !== copied.data.reference.display_ref) {
+        throw new Error("两学校独立副本题号应一致");
+      }
+      schoolRef = copied.data.reference.display_ref;
       const provider = await fixture<{ data: { id: string } }>(
         "POST",
         `/domains/${slug}/llm/providers`,
@@ -348,6 +344,7 @@ Deno.test({
       {
         title: trainingTitle,
         description: "公开题单实际练习入口。",
+        state: "published",
         visibility: "public",
         problems: [String(problem.number)],
       },
@@ -511,7 +508,7 @@ Deno.test({
               "POST",
               `/domains/main/contests/${contestId}/register`,
               () =>
-                session.page.getByRole("button", {
+                session.page.locator("#contest-register").getByRole("button", {
                   name: "报名参赛",
                   exact: true,
                 }).click(),
@@ -658,11 +655,11 @@ Deno.test({
         },
       );
       await step(
-        "两学校Web同源题显示main题号，双标签页交卷及历史归属隔离",
+        "两学校Web独立副本题显示本域题号，双标签页交卷及历史归属隔离",
         async () => {
           const second = await learner.context.newPage();
-          await gotoPage(learner.page, `/d/${schoolA}/problems/${reference}`);
-          await gotoPage(second, `/d/${schoolB}/problems/${reference}`);
+          await gotoPage(learner.page, `/d/${schoolA}/problems/${schoolRef}`);
+          await gotoPage(second, `/d/${schoolB}/problems/${schoolRef}`);
           for (const page of [learner.page, second]) {
             await expect(
               page.getByRole("heading", {
@@ -678,17 +675,17 @@ Deno.test({
                 exact: true,
               }),
             });
-            await expect(problemHeader.getByText(reference, { exact: true }))
+            await expect(problemHeader.getByText(schoolRef, { exact: true }))
               .toBeVisible();
           }
           const first = await handIn(
             learner.page,
-            `/domains/${schoolA}/problems/${reference}/objective-submissions`,
+            `/domains/${schoolA}/problems/${schoolRef}/objective-submissions`,
             "待改进选项",
           );
           const next = await handIn(
             second,
-            `/domains/${schoolB}/problems/${reference}/objective-submissions`,
+            `/domains/${schoolB}/problems/${schoolRef}/objective-submissions`,
             "正确选项",
           );
           assertEquals(first.data.score, 0);
@@ -703,11 +700,11 @@ Deno.test({
             .toBeVisible();
           assertEquals(
             new URL(learner.page.url()).pathname,
-            `/d/${schoolA}/problems/${reference}`,
+            `/d/${schoolA}/problems/${schoolRef}`,
           );
           assertEquals(
             new URL(second.url()).pathname,
-            `/d/${schoolB}/problems/${reference}`,
+            `/d/${schoolB}/problems/${schoolRef}`,
           );
           const wrongDomain = await second.request.get(
             `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateA}`,

@@ -300,6 +300,7 @@ domainContestRouter.get(
         c.req.param("slug")!,
         c.req.param("id")!,
         c.var.userId ?? null,
+        c.req.query("classroom_id"),
       ),
     ),
 );

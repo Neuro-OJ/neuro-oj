@@ -149,7 +149,7 @@ e2eTest("[e2e/problems] 2.7 非法难度值", async () => {
   console.log("  ✓ 非法难度 400");
 });
 
-e2eTest("[e2e/problems] 2.8 已发布题目保护版本并停止公开", async () => {
+e2eTest("[e2e/problems] 2.8 已发布题目保护版本且在公开域保持可读", async () => {
   if (!isE2E) return;
   const { status } = await apiDelete(
     "/api/v1/problems/" + problemId,
@@ -159,13 +159,13 @@ e2eTest("[e2e/problems] 2.8 已发布题目保护版本并停止公开", async (
   const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
     visibility: "private",
   }, adminToken);
-  if (withdrawn.status !== 200) throw new Error("停止公开失败");
+  if (withdrawn.status !== 200) throw new Error("更新可见性失败");
   const getRes = await apiGet("/api/v1/problems/" + problemId);
-  if (getRes.status !== 404) throw new Error("停止公开后匿名应 404");
+  if (getRes.status !== 200) throw new Error("公开域已发布题目匿名应 200");
   const retained = await apiGet(
     `/api/v1/problems/${problemId}/versions`,
     adminToken,
   );
   if (retained.status !== 200) throw new Error("停止公开后历史版本应保留");
-  console.log("  ✓ 版本保护与停止公开");
+  console.log("  ✓ 版本保护与公开域可读");
 });

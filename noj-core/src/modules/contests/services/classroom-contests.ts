@@ -55,7 +55,10 @@ export async function contestClassrooms(contestId: string) {
   return await getDb().select({ id: classrooms.id, name: classrooms.name })
     .from(classroomContestLinks).innerJoin(
       classrooms,
-      eq(classrooms.id, classroomContestLinks.classroom_id),
+      and(
+        eq(classrooms.id, classroomContestLinks.classroom_id),
+        eq(classrooms.status, "active"),
+      ),
     )
     .where(eq(classroomContestLinks.contest_id, contestId)).orderBy(
       classrooms.created_at,

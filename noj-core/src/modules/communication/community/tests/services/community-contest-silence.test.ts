@@ -29,10 +29,7 @@ import {
   updatePost,
 } from "../../index.ts";
 import { createContest } from "../../../../contests/index.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../../shared/base/errors.ts";
+import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import {
   _resetSystemSettingsForTest,
   ensureRbacSeeds,
@@ -301,8 +298,8 @@ Deno.test({
     // 赛题本身仍得到更具体的保密提示
     await assertRejects(
       () => createPost(userId, { ...input, problem_id: contestProblemId }),
-      NotFoundError,
-      "比赛保密窗口",
+      ForbiddenError,
+      "此题受比赛保护",
     );
     // 审核员免静默
     const official = await createPost(ownerId, input, true);

@@ -4,7 +4,6 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   ConflictError,
-  ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
@@ -12,12 +11,12 @@ import {
   domains,
   domainTrainingBindings,
   problems,
+  problemVersions,
   trainingProblems,
   trainings,
   trainingShareSettings,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import { resolveDomainProblem } from "./problem-binding-access.ts";
 
 /** 只读取本域题单；作者身份不能绕过域进入政策。 */
 export async function resolveDomainTraining(
@@ -78,29 +77,40 @@ export async function readDomainTraining(
     resource.items.map((item) => item.problem.id),
     executor,
   );
+  const versionIds = Array.from(
+    new Set(
+      resource.items.map((item) =>
+        item.problem.effective_version_mode === "exact"
+          ? item.problem.required_version_id
+          : item.problem.latest_version_id
+      ).filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const existingVersions = new Set(
+    versionIds.length
+      ? (await executor.select({
+        id: problemVersions.id,
+        problem_id: problemVersions.problem_id,
+      }).from(problemVersions).where(inArray(problemVersions.id, versionIds)))
+        .map((row) => `${row.problem_id}:${row.id}`)
+      : [],
+  );
   const items = [];
   for (const item of resource.items) {
     const qualified = `${item.source.slug}:${item.problem.number}`;
-    let sourceAvailable = true;
-    let protection: unknown[] = protectionByProblem.get(item.problem.id) ?? [];
-    try {
-      if (item.source.id !== resource.domain.id) {
-        throw new NotFoundError("题目不属于当前域，请先独立复制");
-      } else {
-        await resolveDomainProblem(slug, String(item.problem.number), actorId, {
-          executor,
-        });
-      }
-    } catch (error) {
-      if (
-        error instanceof ForbiddenError &&
-        error.code === "CONTEST_PROBLEM_RESTRICTED"
-      ) {
-        protection = (error.meta?.contests as unknown[]) ?? [];
-      } else if (error instanceof NotFoundError) {
-        sourceAvailable = false;
-      } else throw error;
-    }
+    const answerVersionId = item.problem.effective_version_mode === "exact"
+      ? item.problem.required_version_id
+      : item.problem.latest_version_id;
+    const sourceAvailable = item.source.id === resource.domain.id &&
+      item.binding?.kind === "owned" &&
+      !item.binding.disabled_at &&
+      Boolean(item.problem.latest_version_id) &&
+      Boolean(
+        answerVersionId &&
+          existingVersions.has(`${item.problem.id}:${answerVersionId}`),
+      );
+    const protection: unknown[] = protectionByProblem.get(item.problem.id) ??
+      [];
     const bindingId = item.binding?.disabled_at
       ? null
       : item.binding?.id ?? null;

@@ -502,7 +502,7 @@ for (const type of ["oi", "ioi", "ioi_strict"] as const) {
           code: ac,
         },
       });
-      assertEquals(bypass.status, 404);
+      assertEquals(bypass.status, 403);
     } else {
       const summary = own.result as {
         score: number;

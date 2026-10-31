@@ -644,7 +644,7 @@ Deno.test({
             await row.getByRole("button", { name: "配置", exact: true })
               .click();
             await manager.page.getByPlaceholder(
-              "说明策略、展示范围或上下架调整原因",
+              "说明策略或上下架调整原因",
             ).fill("公开目录撤销验收，仅下架本次新题。");
             await manager.page.getByRole("checkbox", {
               name: "暂停此题在本域的内容访问和新提交",
