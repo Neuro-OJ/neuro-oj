@@ -99,7 +99,6 @@ async function createContestWithStatus(
     start_time: new Date(Date.now() + startOffsetMs).toISOString(),
     end_time: new Date(Date.now() + endOffsetMs).toISOString(),
     type: "kaggle",
-    password: "InvitePass123",
     problems: [{
       problem_id: problemId,
       label: "A",
@@ -128,7 +127,6 @@ Deno.test({
     const created = await createDomainContest(school.slug, creator, {
       title: "学校域比赛",
       type: "kaggle",
-      kind: "public",
       start_time: new Date(Date.now() - 10000).toISOString(),
       end_time: new Date(Date.now() + 3600000).toISOString(),
       problems: [{

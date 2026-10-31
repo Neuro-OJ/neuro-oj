@@ -157,12 +157,12 @@ onMounted(async()=> {
     <ProblemSampleEditor v-model="samples" v-model:statement="description" />
     <section class="space-y-3 border-t border-border pt-4">
       <div class="flex flex-wrap gap-2"><UButton variant="outline" :loading="fileLoading" @click="uploadInput?.click()">导入 Hydro／NOJ 题目包</UButton><UButton variant="outline" @click="dataInput?.click()">上传数据文件</UButton><UButton variant="ghost" @click="previewPairs">自动配对预览</UButton></div>
-      <details class="rounded-md border border-border p-3 text-xs text-text-secondary"><summary class="cursor-pointer font-medium text-text">题目包格式说明</summary><div class="mt-3 grid gap-3 sm:grid-cols-2"><div><p class="mb-2 font-semibold">Hydro 题目包</p><pre class="overflow-auto rounded bg-sunken p-2">problem.yaml       # 标题等元数据
+      <details class="rounded-md border border-border p-3 text-xs text-text-secondary"><summary class="cursor-pointer font-medium text-text">题目包格式说明</summary><div class="mt-3 grid gap-3 sm:grid-cols-2"><div><p class="mb-2 font-semibold">Hydro 题目包</p><pre class="overflow-auto rounded bg-bg-sunken p-2">problem.yaml       # 标题等元数据
 problem.md         # 题面
 testdata/
   config.yaml      # 时空限制、子任务、checker
   1.in
-  1.out            # 也支持 .ans</pre></div><div><p class="mb-2 font-semibold">NOJ OI 题目包</p><pre class="overflow-auto rounded bg-sunken p-2">problem.json       # judge_type: oi、runtime_config
+  1.out            # 也支持 .ans</pre></div><div><p class="mb-2 font-semibold">NOJ OI 题目包</p><pre class="overflow-auto rounded bg-bg-sunken p-2">problem.json       # judge_type: oi、runtime_config
 statement.md       # 题面
 config.yaml        # 可选 OI 配置
 testdata/
@@ -180,7 +180,7 @@ testdata/
       <UFormField label="允许的语言"><USelectMenu v-model="runtime.languages" multiple :items="[{label:'C99',value:'c'},{label:'C++11',value:'cc'}]" value-key="value" class="w-full" /></UFormField>
       <div class="grid gap-3 sm:grid-cols-2"><UFormField label="比较器"><USelect v-model="runtime.checker.type" :items="[{label:'default · 忽略空白',value:'default'},{label:'strict · 逐字节比较',value:'strict'},{label:'testlib · 自定义比较器',value:'testlib'}]" class="w-full" @update:model-value="runtime.checker.type !== 'testlib' && delete runtime.checker.path" /></UFormField><UFormField v-if="runtime.checker.type==='testlib'" label="checker 路径"><UInput v-model="runtime.checker.path" class="w-full" /></UFormField><UFormField label="文件 IO 前缀（留空为标准 IO）"><UInput v-model="runtime.filename" class="w-full" @blur="!runtime.filename && delete runtime.filename" /></UFormField></div>
     </section>
-    <div class="rounded-md bg-sunken p-3 text-xs text-text-secondary"><p><strong>default：</strong>按空白分隔的 token 比较，忽略空格数量、制表符及换行差异；token 内容仍须一致。</p><p class="mt-1"><strong>strict：</strong>逐字节比较，空格、换行及末尾换行不同都会判错。</p><p class="mt-1"><strong>testlib：</strong>运行题目提供的 checker，可处理多解、误差容忍及部分分，需要填写包内 checker 源码路径。</p><p class="mt-1">以上用于正式评测；自测始终使用忽略行末空白的文本比较。</p></div>
+    <div class="rounded-md bg-bg-sunken p-3 text-xs text-text-secondary"><p><strong>default：</strong>按空白分隔的 token 比较，忽略空格数量、制表符及换行差异；token 内容仍须一致。</p><p class="mt-1"><strong>strict：</strong>逐字节比较，空格、换行及末尾换行不同都会判错。</p><p class="mt-1"><strong>testlib：</strong>运行题目提供的 checker，可处理多解、误差容忍及部分分，需要填写包内 checker 源码路径。</p><p class="mt-1">以上用于正式评测；自测始终使用忽略行末空白的文本比较。</p></div>
     <section class="space-y-3 border-t border-border pt-4">
       <div class="flex items-center justify-between"><h2 class="font-semibold">子任务与测试点</h2><UButton size="sm" variant="outline" icon="i-lucide-plus" @click="addSubtask">新增子任务</UButton></div>
       <p class="text-xs text-text-secondary">整题求和，声明满分 {{ total }}。min 零分和 max 满分可短路；依赖要求前置子任务 AC。</p>

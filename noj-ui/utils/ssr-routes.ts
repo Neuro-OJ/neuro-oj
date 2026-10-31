@@ -6,8 +6,6 @@ export const CLIENT_ONLY_ROUTES = [
   '/community/notifications',
   '/community/notifications/*',
   '/community/reports/*',
-  '/contests/*/problems/*',
-  '/contests/*/ranking',
   '/d/*/community/bookmarks',
   '/d/*/community/manage',
   '/d/*/community/notifications',

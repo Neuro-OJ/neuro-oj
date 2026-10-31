@@ -3,14 +3,25 @@
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
 import { useToast } from '~/composables/useToast'
 
-import type { Clarification, Contest, ContestProblem } from '~/composables/useContests'
+import type { Clarification, Contest, ContestProblem } from '~/utils/contest-types'
 import { extractApiError } from '~/utils/apiError'
 
-const props = defineProps<{ contest: Contest & { can_manage?: boolean }; problems: ContestProblem[]; slug?: string }>()
+/**
+ * 竞赛答疑面板（**域页面专用**）。
+ *
+ * 只调用域入口 `/api/v1/domains/:slug/contests/:id/clarifications`：答疑的可见性、
+ * 保密与主持人判定都按域规则执行。旧无域 `/api/v1/contests/:id/clarifications`
+ * 仍保留只读兼容，但混用会拿到另一套授权结果，因此本组件不再接受无域调用。
+ */
+const props = defineProps<{
+  slug: string
+  contest: Contest & { can_manage?: boolean }
+  problems: ContestProblem[]
+}>()
 
 const { user } = useAuth()
 const toast = useToast()
-const { listClarifications, askClarification, replyClarification } = useContests()
+const contests = useDomainContests()
 
 const clarifications = ref<Clarification[]>([])
 const loading = ref(true)
@@ -55,7 +66,10 @@ async function load(reset = true, silent = false) {
   }
   loadError.value = ''
   try {
-    const result = await listClarifications(props.contest.id, { page: page.value, per_page: perPage }, props.slug)
+    const result = await contests.listClarifications(props.slug, props.contest.id, {
+      page: page.value,
+      per_page: perPage,
+    })
     clarifications.value = reset
       ? result.data
       : [...clarifications.value, ...result.data]
@@ -93,10 +107,10 @@ async function submitQuestion() {
   asking.value = true
   questionError.value = ''
   try {
-    const result = await askClarification(props.contest.id, {
+    const result = await contests.askClarification(props.slug, props.contest.id, {
       content,
       problem_id: questionProblemId.value || undefined,
-    }, props.slug)
+    })
     clarifications.value = [...clarifications.value, result.data]
     total.value += 1
     questionContent.value = ''
@@ -119,10 +133,10 @@ async function submitReply(clarId: string) {
   replying.value = true
   replyError.value = ''
   try {
-    const result = await replyClarification(props.contest.id, clarId, {
+    const result = await contests.replyClarification(props.slug, props.contest.id, clarId, {
       content,
       is_public: draft.isPublic,
-    }, props.slug)
+    })
     const target = clarifications.value.find((item) => item.id === clarId)
     if (target) target.replies.push(result.data)
     // 提交成功后清除该提问的草稿并收起回复表单

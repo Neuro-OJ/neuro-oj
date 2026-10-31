@@ -1,5 +1,5 @@
 import type { DomainProblemReference } from '~/utils/domain-problems';
-import type { Pagination } from './useContests';
+import type { Pagination } from '~/utils/contest-types';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 
 export interface DomainSubmission {

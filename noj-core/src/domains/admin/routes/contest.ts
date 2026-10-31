@@ -152,7 +152,6 @@ router.post(
             id?: string;
             title?: string;
             type?: string;
-            kind?: string;
           };
         }>(c);
         return {
@@ -160,7 +159,6 @@ router.post(
           contest_id: body?.result?.id ?? "",
           title: body?.input?.title ?? body?.result?.title ?? "",
           type: body?.input?.type ?? body?.result?.type ?? "",
-          kind: body?.input?.kind ?? body?.result?.kind ?? "",
         };
       },
     },
@@ -204,8 +202,6 @@ router.put(
           contest_id: body?.contestId ?? "",
           title: body?.input?.title,
           type: body?.input?.type,
-          kind: body?.input?.kind,
-          is_public: body?.input?.is_public,
         };
       },
     },

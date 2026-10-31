@@ -97,7 +97,6 @@ Deno.test({
       start_time: startTime,
       end_time: endTime,
       type: "kaggle",
-      password: "ContestPass123",
       problems: [{
         problem_id: problemA,
         label: "A",
@@ -108,10 +107,7 @@ Deno.test({
 
     try {
       assertEquals(contest.status, "pending");
-      assertEquals(contest.kind, "public");
-      assertEquals(contest.is_public, true);
       assertEquals(contest.problem_count, 1);
-      assertEquals(contest.has_password, false);
       const [binding] = await getDb().select().from(contestProblemRows).where(
         eq(contestProblemRows.contest_id, contest.id),
       );
@@ -132,10 +128,10 @@ Deno.test({
       const listed = await listContests({ page: 1, perPage: 20 });
       assertEquals(listed.data.some((item) => item.id === contest.id), true);
 
-      await registerForContest(contest.id, participantId, "ContestPass123");
+      await registerForContest(contest.id, participantId);
       assertEquals(await isParticipant(contest.id, participantId), true);
       await assertRejects(
-        () => registerForContest(contest.id, participantId, "ContestPass123"),
+        () => registerForContest(contest.id, participantId),
         ConflictError,
         "已注册该竞赛",
       );
@@ -150,16 +146,14 @@ Deno.test({
 
       const updated = await updateContest(contest.id, {
         title: "已更新竞赛",
-        password: "RotatedPass123",
         problems: [
           { problem_id: problemA, label: "A", sort_order: 0, score: 10000 },
           { problem_id: problemB, label: "B", sort_order: 1, score: 10000 },
         ],
       });
       assertEquals(updated.title, "已更新竞赛");
-      assertEquals(updated.has_password, false);
       assertEquals(updated.problem_count, 2);
-      await registerForContest(contest.id, invitedId, "RotatedPass123");
+      await registerForContest(contest.id, invitedId);
       const contestProblems = await getContestProblems(
         contest.id,
         participantId,
@@ -190,7 +184,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "contests service: 旧分类与密码字段不再建立额外隔离",
+  name: "contests service: 统一报名与赛题保护开关不再受旧分类影响",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -202,9 +196,6 @@ Deno.test({
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
       type: "kaggle",
-      kind: "invite",
-      is_public: false,
-      password: "discarded",
       problems: [{
         problem_id: problemId,
         label: "A",
@@ -213,16 +204,13 @@ Deno.test({
       }],
     }, creator);
     try {
-      assertEquals(contest.has_password, false);
+      // 旧分类字段已从输入类型与响应中移除；报名不再需要任何凭据。
       assertEquals(contest.secrecy_enabled, true);
       await registerForContest(contest.id, participant);
       assertEquals(await isParticipant(contest.id, participant), true);
       const updated = await updateContest(contest.id, {
-        kind: "invite",
-        password: null,
         secrecy_enabled: false,
       });
-      assertEquals(updated.has_password, false);
       assertEquals(updated.secrecy_enabled, false);
       assertEquals((await getContest(contest.id)).secrecy_enabled, false);
     } finally {

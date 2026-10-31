@@ -104,7 +104,7 @@
          已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
     <div
       v-if="legalConsentRequired"
-      class="rounded border border-warning-text/40 bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+      class="rounded border border-warning-text/40 bg-bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
       data-testid="oauth-legal-consent-notice"
     >
       {{ t('auth.oauthLegalConsentRequired') }}

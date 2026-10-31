@@ -2,8 +2,8 @@ import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
@@ -88,7 +88,6 @@ async function createContestWithWindow(
     start_time: new Date(Date.now() + startOffsetMs).toISOString(),
     end_time: new Date(Date.now() + endOffsetMs).toISOString(),
     type: "kaggle",
-    password: "InvitePass123",
     problems: problemIds.map((problemId, index) => ({
       problem_id: problemId,
       label: String.fromCharCode(65 + index),
@@ -128,7 +127,7 @@ Deno.test({
     const problemA = await createProblem(920001);
     const problemB = await createProblem(920002);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, participantId, "InvitePass123");
+    await registerForContest(contestId, participantId);
 
     // 挂题目提问成功
     const withProblem = await createClarification(contestId, participantId, {
@@ -191,8 +190,8 @@ Deno.test({
     );
     // ended 竞赛无法注册（registerForContest 拒绝），先以 running 窗口注册，再改为已结束
     const endedId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(pendingId, participantId, "InvitePass123");
-    await registerForContest(endedId, participantId, "InvitePass123");
+    await registerForContest(pendingId, participantId);
+    await registerForContest(endedId, participantId);
     await getDb().update(contests).set({
       start_time: new Date(Date.now() - 7_200_000).toISOString(),
       end_time: new Date(Date.now() - 3_600_000).toISOString(),
@@ -224,10 +223,10 @@ Deno.test({
     const otherParticipantId = await createUser("clar-reply-other");
     const problemA = await createProblem(920004);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, participantId, "InvitePass123");
-    await registerForContest(contestId, otherParticipantId, "InvitePass123");
+    await registerForContest(contestId, participantId);
+    await registerForContest(contestId, otherParticipantId);
     // 创建者提问场景：创建者本身也注册参赛
-    await registerForContest(contestId, creatorId, "InvitePass123");
+    await registerForContest(contestId, creatorId);
 
     const question = await createClarification(contestId, participantId, {
       content: "内存限制是多少？",
@@ -328,8 +327,8 @@ Deno.test({
     const otherParticipantId = await createUser("clar-list-other");
     const problemA = await createProblem(920005);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, askerId, "InvitePass123");
-    await registerForContest(contestId, otherParticipantId, "InvitePass123");
+    await registerForContest(contestId, askerId);
+    await registerForContest(contestId, otherParticipantId);
 
     const question = await createClarification(contestId, askerId, {
       content: "公开提问",
@@ -408,8 +407,8 @@ Deno.test({
     const otherParticipantId = await createUser("clar-v1-other");
     const problemA = await createProblem(920006);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, askerId, "InvitePass123");
-    await registerForContest(contestId, otherParticipantId, "InvitePass123");
+    await registerForContest(contestId, askerId);
+    await registerForContest(contestId, otherParticipantId);
 
     // 选手提问（内容含解法思路）——修复前会对全场实时可见
     const question = await createClarification(contestId, askerId, {
@@ -450,7 +449,7 @@ Deno.test({
     const student = await createUser("clar-inbox-student");
     const problem = await createProblem(920010);
     const contestId = await createContestWithWindow(creator, [problem]);
-    await registerForContest(contestId, student, "InvitePass123");
+    await registerForContest(contestId, student);
     const question = await createClarification(contestId, student, {
       content: "测试答疑",
     });
@@ -494,6 +493,91 @@ Deno.test({
     } finally {
       await db.update(domains).set({ configuration: domain.configuration })
         .where(eq(domains.id, DEFAULT_DOMAIN_ID));
+    }
+  },
+});
+
+Deno.test({
+  name: "统一通知：非参赛者读不到私密答疑，公开回复对同域成员可见",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("clar-scope-creator");
+    const asker = await createUser("clar-scope-asker");
+    const outsider = await createUser("clar-scope-outsider");
+    const problem = await createProblem(920011);
+    const contestId = await createContestWithWindow(creator, [problem]);
+    await registerForContest(contestId, asker);
+    // 通知在**回复时**创建（不是提问时），因此先落一条私密回复。
+    const question = await createClarification(contestId, asker, {
+      content: "私密提问",
+    });
+    await replyToClarification(contestId, question.id, creator, {
+      content: "私密答复",
+      is_public: false,
+    });
+
+    const db = getDb(), app = createApp();
+    const askerToken = await signToken({ sub: asker, role: "user" });
+    const outsiderToken = await signToken({ sub: outsider, role: "user" });
+
+    /**
+     * 每条回复各自生成一条通知，`data.clarification_id` 指向**该条回复**。
+     * 这里改写收件人，验证可见性由**答疑本身的授权**决定，而不是"谁被写进
+     * recipient_id 谁就能读"。
+     *
+     * 必须按 `contest_id` 限定：同文件的其它用例也会留下 clarification 通知，
+     * 全局 select 会取到别场竞赛的行，导致断言对着错误记录跑。
+     */
+    const notifications = async () =>
+      await db.select().from(accountNotifications).where(
+        and(
+          eq(accountNotifications.type, "clarification"),
+          sql`${accountNotifications.data}->>'contest_id' = ${contestId}`,
+        ),
+      );
+    /**
+     * 只读**这一条**通知：列表接口返回的是整个收件箱总数，不能用来判定单条可见性。
+     * 详情接口复用同一授权条件，越权返回 404。
+     */
+    const canRead = async (userId: string, notificationId: string) => {
+      await db.update(accountNotifications).set({ recipient_id: userId })
+        .where(eq(accountNotifications.id, notificationId));
+      const response = await jsonRequest(
+        app,
+        `/api/v1/notifications/${notificationId}`,
+        { token: userId === outsider ? outsiderToken : askerToken },
+      );
+      return response.status === 200;
+    };
+
+    const [privateReply] = await notifications();
+    assert(privateReply !== undefined, "私密回复后应创建 clarification 通知");
+    try {
+      // 线程仍是私密：非参赛者读不到，提问者本人读得到。
+      assertEquals(await canRead(outsider, privateReply.id), false);
+      assertEquals(await canRead(asker, privateReply.id), true);
+
+      /**
+       * 公开回复 = 公告广播：把**根提问**一并转为公开，使全场能看到"问题 + 官方答复"
+       * （VULN-01 的既定口径）。通知指向根提问，因此整条线程的可见性随之提升——
+       * 之前那条私密回复的通知也变得可读。这不是授权漏洞，而是"公开即公告"的必然
+       * 后果：主办方一旦公开，整条线程就是公开的。
+       */
+      await replyToClarification(contestId, question.id, creator, {
+        content: "公开答复",
+        is_public: true,
+      });
+      const [publicReply] = (await notifications()).filter((row) =>
+        row.id !== privateReply.id
+      );
+      assert(publicReply !== undefined, "公开回复应再创建一条通知");
+      assertEquals(await canRead(outsider, publicReply.id), true);
+      assertEquals(await canRead(outsider, privateReply.id), true);
+    } finally {
+      await db.update(accountNotifications).set({
+        recipient_id: privateReply.recipient_id,
+      }).where(eq(accountNotifications.id, privateReply.id));
     }
   },
 });

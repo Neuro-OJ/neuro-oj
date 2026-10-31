@@ -11,7 +11,7 @@ import {
   type SubmissionJobItemView,
   type SubmissionJobView,
 } from '~/composables/useProblemVersions'
-import type { ContestProblem } from '~/composables/useContests'
+import type { ContestProblem } from '~/utils/contest-types'
 import { publicUrl } from '~/utils/publicIdentifiers'
 
 /**

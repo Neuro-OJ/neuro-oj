@@ -90,10 +90,9 @@ export async function deleteContestCommand(
 export function registerForContestCommand(
   actor: UserActor,
   contestId: string,
-  password: string | undefined,
   _options: ContestCommandOptions,
 ): Promise<void> {
-  return registerForContest(contestId, actor.userId, password);
+  return registerForContest(contestId, actor.userId);
 }
 
 export async function addContestParticipantsCommand(
@@ -136,14 +135,13 @@ export function updateDomainContestCommand(
   return updateDomainContest(slug, reference, actor.userId, revision, input);
 }
 
-/** 注册指定工作空间的竞赛；邀请码仍由 contests 本地服务校验。 */
+/** 注册指定工作空间的竞赛；报名只由域访问权决定，不再有密码/邀请码。 */
 export function registerDomainContestCommand(
   actor: UserActor,
   slug: string,
   reference: string,
-  password: string | undefined,
 ): ReturnType<typeof registerForDomainContest> {
-  return registerForDomainContest(slug, reference, actor.userId, password);
+  return registerForDomainContest(slug, reference, actor.userId);
 }
 
 /** 批量加入指定工作空间的参赛者。 */

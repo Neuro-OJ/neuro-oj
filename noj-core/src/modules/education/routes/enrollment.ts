@@ -16,6 +16,7 @@ import {
   requestClassroomJoin,
   reviewClassroomJoin,
 } from "../services/join-requests.ts";
+import { educationWriteRateLimit } from "./write-rate-limit.ts";
 
 /** 入班准备接口沿用班级父路由的认证及 no-store，路径域在每条服务重新校验。 */
 export const classroomEnrollmentRouter = new Hono<AuthEnv>();
@@ -40,18 +41,22 @@ classroomEnrollmentRouter.get(
       ),
     }),
 );
-classroomEnrollmentRouter.post(`${prefix}/join`, async (c) => {
-  const input = await parseJsonBody<{ reason: string }>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await requestClassroomJoin(
-      c.req.param("slug")!,
-      c.req.param("id")!,
-      c.var.userId,
-      input.reason,
-    ),
-  }, 201);
-});
+classroomEnrollmentRouter.post(
+  `${prefix}/join`,
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<{ reason: string }>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await requestClassroomJoin(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId,
+        input.reason,
+      ),
+    }, 201);
+  },
+);
 classroomEnrollmentRouter.get(`${prefix}/join-requests`, async (c) => {
   const { page } = parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 });
   return c.json({
@@ -72,6 +77,7 @@ classroomEnrollmentRouter.get(`${prefix}/join-requests`, async (c) => {
 });
 classroomEnrollmentRouter.post(
   `${prefix}/join-requests/:requestId/review`,
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<{ decision: "approve" | "reject" }>(c);
     assertObjectBody(input);
@@ -88,34 +94,44 @@ classroomEnrollmentRouter.post(
     });
   },
 );
-classroomEnrollmentRouter.post(`${prefix}/imports/preview`, async (c) => {
-  const input = await parseJsonBody<{ csv: string; replace_pending?: boolean }>(
-    c,
-  );
-  assertObjectBody(input);
-  return c.json({
-    data: await previewClassroomImport(
-      c.req.param("slug")!,
-      c.req.param("id")!,
-      c.var.userId,
-      input.csv,
-      input.replace_pending === true,
-    ),
-  });
-});
-classroomEnrollmentRouter.post(`${prefix}/imports/execute`, async (c) => {
-  const input = await parseJsonBody<
-    { csv: string; preview_hash: string; replace_pending?: boolean }
-  >(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await executeClassroomImport(
-      c.req.param("slug")!,
-      c.req.param("id")!,
-      c.var.userId,
-      c.req.header("Idempotency-Key") ?? "",
-      revision(c),
-      input,
-    ),
-  });
-});
+classroomEnrollmentRouter.post(
+  `${prefix}/imports/preview`,
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<
+      { csv: string; replace_pending?: boolean }
+    >(
+      c,
+    );
+    assertObjectBody(input);
+    return c.json({
+      data: await previewClassroomImport(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId,
+        input.csv,
+        input.replace_pending === true,
+      ),
+    });
+  },
+);
+classroomEnrollmentRouter.post(
+  `${prefix}/imports/execute`,
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<
+      { csv: string; preview_hash: string; replace_pending?: boolean }
+    >(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await executeClassroomImport(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId,
+        c.req.header("Idempotency-Key") ?? "",
+        revision(c),
+        input,
+      ),
+    });
+  },
+);

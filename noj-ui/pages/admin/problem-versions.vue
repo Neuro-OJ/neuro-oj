@@ -7,7 +7,7 @@ import {
   type ProblemVersionSummary,
 } from '~/composables/useProblemVersions'
 import type { ProblemResource } from '~/utils/problemView'
-import type { ContestProblem } from '~/composables/useContests'
+import type { ContestProblem } from '~/utils/contest-types'
 
 /**
  * 管理端：题目版本策略与竞赛固定版本（Handbook §4.5）。

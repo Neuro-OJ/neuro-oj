@@ -57,6 +57,55 @@
   凭据（`NOJ_INTERNAL_SERVICE_TOKEN`，常量时间比较），由容器内
   `/app/bin/noj maintain` 与 noj-cli 自动排空调用，不对浏览器或匿名开放；对其做用户向限流会
   破坏 `wait` 轮询语义，故显式豁免（见 `scripts/check-write-rate-limits.ts` 的 ALLOWLIST）。
+- **域管理级写操作**（域社区治理 `/manage/*`、域 LLM 配置、域题库资源管理）：都要求域管理员级
+  权限（`community:moderate` / `llm:manage` / `problem:create` / `problem:policy`）并写域审计，
+  沿用管理豁免；逐文件依据登记在 ALLOWLIST。
+  - `POST /domains/:slug/community/reports` 由父路由 `domain-community.ts` 的
+    `enforceReportRateLimit` 覆盖（60s/30），不是无限制端点。
+- **仍待偿还的欠债（`pending`，保持可见）**：
+  `access/identity/routes/checkin.ts`（每日签到，按天幂等但无任何限流）与
+  `platform/system/routes/email-delivery.ts`（邮件投递回执，需先确认是否对外可达）。
+
+## 2026-10-31 补齐的域内写端点
+
+`educationWriteRateLimit`（`education/routes/write-rate-limit.ts`）此前只装在 `assignments.ts`。
+下列 6 条写路由**完全没有限流**，而门禁也没发现——原因是门禁的写路由正则不认局部常量/模板
+路径写法（见下节），这两个文件根本没进入检查。现已装上限流并补回归断言：
+
+| 操作 | 路由 | 限流方式 | 阈值 |
+| --- | --- | --- | --- |
+| 学生入班申请 | `POST /domains/:slug/classrooms/:id/join` | `educationWriteRateLimit` | 60s/120（域 slug + user） |
+| 入班申请审阅 | `POST .../join-requests/:requestId/review` | `educationWriteRateLimit` | 60s/120 |
+| 班级名单导入预览 | `POST .../imports/preview` | `educationWriteRateLimit` | 60s/120 |
+| 班级名单导入执行 | `POST .../imports/execute` | `educationWriteRateLimit` | 60s/120 |
+| 提交批注创建 | `POST .../submissions/submission/:submissionId/annotations` | `educationWriteRateLimit` | 60s/120 |
+| 提交批注更新 | `PATCH .../annotations/:annotationId` | `educationWriteRateLimit` | 60s/120 |
+
+比赛侧另有两处，此前已在矩阵外被漏记：
+
+| 操作 | 路由 | 限流方式 | 阈值 |
+| --- | --- | --- | --- |
+| 比赛报名 | `POST /contests/:id/register`、`POST /domains/:slug/contests/:id/register` | `enforceContestRegisterRateLimit` | 见 `CONTEST_REGISTER_*` 配置 |
+| 竞赛答疑提问 | `POST /contests/:id/clarifications`、`POST /domains/:slug/contests/:id/clarifications` | 服务层 `checkRateLimit` | 60s/5（比赛 + 用户） |
+
+## 门禁口径与已知盲区（2026-10-31）
+
+`scripts/check-write-rate-limits.ts` 是**文件级**判定：文件内出现任一限流证据即视为已覆盖。
+这个粒度是有意为之（逐 handler 解析容易误判），但它此前还有一个更严重的问题——**路径解析**：
+
+```ts
+const path = "/domains/:slug/contests";
+router.post(path, ...);
+router.patch(`${path}/:id`, ...);
+```
+
+正则只认字符串字面量路径，于是 `domain-contests.ts` 的 8 条写路由（含"创建比赛""批量加参赛
+者""发布正式成绩"）**一条都没被解析**，文件因"没有写路由"直接跳过判定——不是判定太粗，是根本
+没进入检查。修正后写路由总数从 171 条升到 237 条；新暴露的 5 个文件已逐条处置（2 个补限流、
+3 个登记管理豁免），并补了「域比赛 8 条写路由必须全部被发现」的回归断言。
+
+文件级判定仍然成立：同一文件里"有一条限流"不代表每条都限流，因此**新增写端点时必须同时更新
+本矩阵**；门禁只负责拦住"整个文件没考虑限流"这一类漂移。
 
 ## 新增写端点 Checklist
 

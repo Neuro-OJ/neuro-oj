@@ -68,7 +68,6 @@ async function contest(type: ContestType, item: { id: string }) {
     {
       title: type,
       type,
-      kind: "public",
       start_time: new Date(base).toISOString(),
       end_time: new Date(base + 7_200_000).toISOString(),
       freeze_duration_seconds: 0,
@@ -207,7 +206,6 @@ Deno.test("赛制规则：创建及编辑拒绝错误题型，开赛后冻结赛
     {
       title: "赛前改赛制",
       type: "kaggle",
-      kind: "public",
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
       problems: [{
@@ -268,7 +266,6 @@ Deno.test("ACM 榜单：CE 不计罚、首 AC、封榜 pending 及短赛默认�
     {
       title: "short",
       type: "acm",
-      kind: "public",
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 1_860_000).toISOString(),
       problems: [{ problem_id: p.id, score: 10000, label: "A", sort_order: 0 }],

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Contest, ContestProblem } from '~/composables/useContests'
+import type { Contest, ContestProblem } from '~/utils/contest-types'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { getEditorHistoryUrl } from '~/utils/editorHistory'
@@ -272,7 +272,7 @@ const templateUrl = (pid: string) =>
       class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
     >
       <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
-        <span class="flex size-11 items-center justify-center rounded-full bg-sunken text-text-muted text-xl font-bold">
+        <span class="flex size-11 items-center justify-center rounded-full bg-bg-sunken text-text-muted text-xl font-bold">
           404
         </span>
         <p class="text-sm font-medium text-text">题目不存在</p>

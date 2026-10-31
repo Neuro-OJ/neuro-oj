@@ -52,7 +52,6 @@ Deno.test({
         start_time: startTime,
         end_time: endTime,
         type: "kaggle",
-        kind: "public",
         problems: [{
           problem_id: "p-contest-event",
           label: "A",

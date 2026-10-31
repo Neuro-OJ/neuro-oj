@@ -577,7 +577,6 @@ Deno.test({
       a.domain.slug,
       contest.id,
       student,
-      "secret",
     );
     assertEquals(
       (await listDomainContests(a.domain.slug, student, {
@@ -838,8 +837,6 @@ Deno.test({
     await createDomainContest(a.domain.slug, a.owner, {
       ...input(p.id),
       classroom_ids: rooms,
-      kind: "invite",
-      password: "secret",
     });
     const query = { page: 1, perPage: 1, myClassrooms: true };
     const result = await listDomainContests(a.domain.slug, student, query);
