@@ -65,8 +65,6 @@
     "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
     "@alicloud/openapi-core": "npm:@alicloud/openapi-core@^1.0.7",
     "tencentcloud-sdk-nodejs-ses": "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
-    "pkijs": "npm:pkijs@3.2.4",
-    "asn1js": "npm:asn1js@3.0.5",
     "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
     "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
     "fflate": "npm:fflate@~0.8.3",

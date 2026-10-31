@@ -90,6 +90,7 @@ Deno.test({
     const cur = await getCurrentDocument("terms");
     assertEquals(cur?.version, 2);
     assertEquals(cur?.content, "第二版");
+    assertEquals(cur?.content_hash, await hashContent("第二版"));
     assertEquals((await listVersions("terms")).length, 2);
   },
 });
