@@ -398,7 +398,7 @@ jj config get signing.key
 - bcrypt cost 12，最小 8 位含大小写字母与数字
 - 容器：`cap_drop ALL`、`no-new-privileges`、`network_mode none`、`ipc_mode none`、`pids_limit 256`
 - ZIP：拒绝路径穿越，≤1000 条目 / 64MiB 单文件 / 512MiB 总解压
-- 日志：UUID 截断、score 隐藏、DB 密码脱敏
+- 日志：业务 ID 与 score 完整保留，code/token/secret/password 等敏感内容及 DB 密码脱敏
 - 审计日志保留 90 天（可配置）
 
 ---

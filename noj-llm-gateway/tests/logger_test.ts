@@ -213,7 +213,7 @@ Deno.test("formatPretty 着色时使用契约 SGR（dim 时间戳 / 级别色 / 
   assertStrictEquals(hasUnclosedSgr(warnLine), false, "不得留下未闭合 SGR");
 });
 
-Deno.test("message 中的插值值按占位符名脱敏（生产不泄露完整 ID/IP）", () => {
+Deno.test("message 中的插值值按占位符名脱敏（生产保留 ID、抹除 IP）", () => {
   const uuid = "550e8400-e29b-41d4-a716-446655440000";
   const [record] = capture((log) => {
     log.warn("eval_token 多来源 IP 调用 {submission_id} {client_ip}", {
@@ -228,20 +228,19 @@ Deno.test("message 中的插值值按占位符名脱敏（生产不泄露完整 
     );
     assertEquals(
       line.includes(uuid),
-      false,
-      `完整 UUID 不得出现在日志中: ${line}`,
+      true,
+      `完整 UUID 必须保留在日志中: ${line}`,
     );
     assertEquals(
       line.includes("203.0.113.7"),
       false,
       `明文 IP 不得出现在日志中: ${line}`,
     );
-    // 但仍保留可识别前缀
-    assertStringIncludes(line, "550e8400...");
+    assertStringIncludes(line, uuid);
   });
 });
 
-Deno.test("redactFields：生产脱敏敏感键、截断 ID；开发保留原值", () => {
+Deno.test("redactFields：生产脱敏敏感键、保留 ID 和分数；开发保留原值", () => {
   const fields = {
     password: "hunter2",
     eval_token: "tok_live_abc",
@@ -249,15 +248,23 @@ Deno.test("redactFields：生产脱敏敏感键、截断 ID；开发保留原值
     submission_id: "550e8400-e29b-41d4-a716-446655440000",
     client_ip: "203.0.113.7",
     queue_length: 3,
+    score: 9500,
+    payload: { user_id: "short", score: 0, token: "nested-secret" },
   };
   withEnv({ NOJ_ENV: "production" }, () => {
     const out = redactFields(fields);
     assertEquals(out.password, "[redacted]");
     assertEquals(out.eval_token, "[redacted]");
     assertEquals(out.api_key, "[redacted]");
-    assertEquals(out.submission_id, "550e8400...");
+    assertEquals(out.submission_id, fields.submission_id);
     assertEquals(out.client_ip, "[redacted]");
     assertEquals(out.queue_length, 3);
+    assertEquals(out.score, 9500);
+    assertEquals(out.payload, {
+      user_id: "short",
+      score: 0,
+      token: "[redacted]",
+    });
   });
   withEnv({ NOJ_ENV: "development" }, () => {
     const out = redactFields(fields);
@@ -290,7 +297,7 @@ Deno.test("production 显式注入：覆盖环境判定，两个方向都生效"
   withEnv({ NOJ_ENV: "development" }, () => {
     const prodJson = makeGatewayJsonFormatter({ production: true })(record);
     assertEquals(prodJson.includes(secret), false, "注入 production 必须脱敏");
-    assertEquals(prodJson.includes(uuid), false, "id 必须截断");
+    assertEquals(prodJson.includes(uuid), true, "id 必须完整保留");
 
     const devJson = makeGatewayJsonFormatter({ production: false })(record);
     assertEquals(devJson.includes(secret), true, "production:false 不得脱敏");

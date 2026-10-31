@@ -182,39 +182,6 @@ const SENSITIVE_KEYS = new Set([
   "store_key",
 ]);
 
-/** 需要截断展示的 ID 字段。 */
-const ID_KEYS = new Set([
-  "submission_id",
-  "user_id",
-  "problem_id",
-  "conversation_id",
-  "message_id",
-]);
-
-/**
- * 免除 id 脱敏的**关联标识**（契约 §6 的显式例外）。
- *
- * `*_id` 通配规则的本意是保护业务实体 id，但 `request_id` 不是业务实体：
- * 它由服务端随机生成、不携带用户隐私，且唯一用途就是**跨服务串联同一次请求**。
- * 一旦被截断成前 8 字符，生产环境的日志就无法与上游/下游对齐，串联能力失效。
- * 该键同时由 pretty 侧自行 `slice(0, 8)` 控制展示长度（契约 §1），
- * 因此 JSON 侧保留完整值不会带来泄露面。
- */
-const CORRELATION_KEYS = new Set([
-  "request_id",
-]);
-
-/**
- * 截断 ID 用于日志展示，保留前缀可识别性但避免完整泄露。
- *
- * @example
- * redactId("550e8400-e29b-41d4-a716-446655440000") // "550e8400..."
- */
-export function redactId(id: string, visiblePrefix = 8): string {
-  if (!id || id.length <= visiblePrefix) return "[redacted]";
-  return `${id.slice(0, visiblePrefix)}...`;
-}
-
 /**
  * Error → 契约形状（生产去掉 stack）。
  *
@@ -252,14 +219,6 @@ export function redactValueByKey(
   if (!production) return serializeValue(value, production);
   const lower = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lower)) return "[redacted]";
-  if (lower === "score") return "[redacted]";
-  // 关联标识先于 `*_id` 通配判定，否则会被误截断（见 CORRELATION_KEYS）
-  if (CORRELATION_KEYS.has(lower)) return serializeValue(value, production);
-  if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-    return typeof value === "string"
-      ? redactId(value)
-      : serializeValue(value, production);
-  }
   // 非敏感键也要递归：顶层键名匹配不到嵌套结构里的 password/api_key，
   // 整块直通即明文泄露（Error 的 details/context 是典型入口）。
   return redactNested(value, 0, new WeakSet(), production);
@@ -309,18 +268,8 @@ function redactNested(
       const [k, v] of Object.entries(serialized as Record<string, unknown>)
     ) {
       const lower = k.toLowerCase();
-      if (SENSITIVE_KEYS.has(lower) || lower === "score") {
+      if (SENSITIVE_KEYS.has(lower)) {
         out[k] = "[redacted]";
-        continue;
-      }
-      if (CORRELATION_KEYS.has(lower)) {
-        out[k] = serializeValue(v, production);
-        continue;
-      }
-      if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-        out[k] = typeof v === "string"
-          ? redactId(v)
-          : redactNested(v, depth + 1, seen, production);
         continue;
       }
       out[k] = redactNested(v, depth + 1, seen, production);
@@ -337,10 +286,10 @@ function redactNested(
 /**
  * 对字段做环境相关脱敏。
  *
- * 开发/测试：仅做 Error 序列化。生产：敏感键抹除、`score` 隐藏、`*_id` 截断。
+ * 开发/测试：仅做 Error 序列化。生产：敏感键抹除，业务 ID 与分数完整保留。
  *
  * 逐值委托 `redactValueByKey`，**不重复实现规则**——两条并行的规则副本曾导致
- * `request_id` 豁免只在一条上生效（另一条仍把它截断），这类漂移必须从结构上消除。
+ * 消息插值与结构化字段必须使用相同规则。
  */
 export function redactFields(
   fields: Record<string, unknown>,
@@ -348,7 +297,6 @@ export function redactFields(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
-    if (production && key.toLowerCase() === "score") continue; // 分值隐藏
     out[key] = redactValueByKey(key, value, production);
   }
   return out;
