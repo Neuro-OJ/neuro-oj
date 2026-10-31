@@ -85,7 +85,7 @@ describe('域比赛独立作答入口', () => {
   });
   it('客观题使用稳定小题 ID，一次交卷后不再提交且不将隐藏分数显示为零', async () => {
     const view = await answer(true);
-    await view.findAll('button').find((button) => button.text() === '选项 A')!.trigger('click');
+    await view.findAll('button').find((button) => button.text() === 'A. 选项 A')!.trigger('click');
     await view.findAll('button').find((button) => button.text() === '一次正式交卷')!.trigger('click');
     await flushPromises();
     expect(api.objective).toHaveBeenCalledWith('school', 'contest', 'A', 'fixed-v1', { 'question-stable-id': ['A'] });

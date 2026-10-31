@@ -400,6 +400,10 @@ export const trainings = pgTable(
       "trainings_visibility_check",
       sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
     ),
+    stateCheck: check(
+      "trainings_state_check",
+      sql`${table.state} IN ('draft', 'published')`,
+    ),
     visibilityPinnedCreatedIdx: index(
       "idx_trainings_visibility_pinned_created",
     ).on(table.visibility, table.is_pinned, table.created_at),

@@ -50,7 +50,7 @@ const problemView = computed(() => data.value ? toContestProblemView(data.value.
 const contestProblem = computed(() => data.value?.data ?? null);
 const inlineAnswer = computed(() =>
   !!contestProblem.value &&
-  (contestProblem.value.is_objective === true || ['artifact', 'prediction', 'ui'].includes(contestProblem.value.submission_mode ?? ''))
+  (contestProblem.value.is_objective === true || ['artifact', 'prediction'].includes(contestProblem.value.submission_mode ?? ''))
 );
 const solveTo = computed(() =>
   `/d/${slug.value}/contests/${encodeURIComponent(id.value)}/solve/${encodeURIComponent(label.value)}`
@@ -140,18 +140,6 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             </template>
           </ProblemHeader>
 
-          <!-- 比赛固定版本与受理状态：与题库页「作答版本」条同构，只换文案与门控 -->
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-bg-panel px-4 py-3 text-sm">
-            <span class="text-text-secondary">作答版本</span>
-            <UBadge color="primary" variant="subtle">V{{ contestProblem?.version ?? '—' }}</UBadge>
-            <span class="text-text-muted">本场固定，题库发布新版本不影响本场评测</span>
-            <span class="ml-auto inline-flex items-center gap-1.5 text-xs"
-              :class="active ? 'text-signal-deep' : 'text-text-muted'">
-              <UIcon :name="active ? 'i-lucide-radio' : 'i-lucide-lock'" class="size-3.5" />
-              {{ active ? '受理中' : contestRow?.status === 'ended' ? '已结束' : contestRow?.status === 'pending' ? '未开赛' : '未报名' }}
-            </span>
-          </div>
-
           <UAlert v-if="!active" color="info"
             :title="contestRow?.status === 'pending'
               ? '比赛尚未开始，赛题可在开赛后作答'
@@ -166,6 +154,11 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             <template #toolbar>
               <span class="rounded border border-border bg-bg-sunken px-2 py-1 text-xs tabular-nums text-text-muted">
                 固定版本 V{{ contestProblem?.version ?? '—' }}
+              </span>
+              <span class="inline-flex items-center gap-1.5 text-xs"
+                :class="active ? 'text-signal-deep' : 'text-text-muted'">
+                <UIcon :name="active ? 'i-lucide-radio' : 'i-lucide-lock'" class="size-3.5" />
+                {{ active ? '受理中' : contestRow?.status === 'ended' ? '已结束' : contestRow?.status === 'pending' ? '未开赛' : '未报名' }}
               </span>
             </template>
             <template #after-content>

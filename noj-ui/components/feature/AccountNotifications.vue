@@ -3,7 +3,15 @@ import type { NotificationRow } from '~/composables/useCommunity';
 import { extractApiError } from '~/utils/apiError';
 import { notificationTarget, notificationTypeLabel, notificationTypeIcon } from '~/utils/communityNotifications';
 const { api } = useApi(), { user } = useAuth(), workspace = useWorkspaceApi();
-const page = ref(1), domainId = ref('all'), opening = ref(''), actionError = ref('');
+const workspaceCtx = typeof useWorkspace === 'function' ? useWorkspace() : null;
+const page = ref(1), domainId = ref(workspaceCtx?.domain?.value?.id ?? 'all'), opening = ref(''), actionError = ref('');
+watch(() => workspaceCtx?.domain?.value?.id, (id) => {
+  if (id) domainId.value = id;
+});
+function notificationSummary(item: NotificationRow) {
+  const d = item.notification.data ?? {};
+  return d.message || d.reason || d.resolution || (d.problem_label ? `题目 ${d.problem_label}` : '');
+}
 const selectedDomainId = computed(() => domainId.value === 'all' ? undefined : domainId.value);
 const badge = useAccountNotifications();
 const domains = await useAsyncData(() => `notification-domains:${user.value?.id}`, () => workspace.list(true));
@@ -56,7 +64,8 @@ useSeoMeta({ title: '通知' });
           :class="!item.notification.read_at && 'border-primary/40'" @click="open(item)">
           <UIcon :name="notificationTypeIcon(item.notification.type)" class="mt-1 size-5 shrink-0 text-primary" />
           <span class="min-w-0 flex-1">
-            <span class="flex flex-wrap items-center gap-2 font-medium">{{ notificationTypeLabel(item.notification.type) }}<UBadge v-if="!item.notification.read_at" size="sm" variant="subtle">未读</UBadge></span>
+            <span class="flex flex-wrap items-center gap-2 font-medium"><span v-if="item.actor" class="text-text">{{ item.actor.username }}</span><span>{{ notificationTypeLabel(item.notification.type) }}</span><UBadge v-if="!item.notification.read_at" size="sm" variant="subtle">未读</UBadge></span>
+            <span v-if="notificationSummary(item)" class="mt-0.5 block truncate text-xs text-text-secondary">{{ notificationSummary(item) }}</span>
             <span class="mt-1 block text-xs text-text-muted">{{ item.domain?.name ?? '账号通知' }} · {{ new Date(item.notification.created_at).toLocaleString() }}</span>
           </span>
           <UIcon name="i-lucide-chevron-right" class="mt-1 size-4 text-text-muted" />

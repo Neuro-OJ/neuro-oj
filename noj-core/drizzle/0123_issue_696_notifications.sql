@@ -33,6 +33,13 @@ ALTER TABLE "community_notifications" DISABLE ROW LEVEL SECURITY;--> statement-b
 ALTER TABLE "education_notifications" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "education_notification_emails" DROP CONSTRAINT "education_notification_emails_notification_id_education_notifications_id_fk";
 --> statement-breakpoint
+INSERT INTO "notifications" ("id", "domain_id", "recipient_id", "actor_id", "type", "post_id", "comment_id", "data", "read_at", "created_at")
+SELECT "id", "domain_id", "recipient_id", "actor_id", "type", "post_id", "comment_id", "data", "read_at", "created_at"
+FROM "community_notifications" ON CONFLICT DO NOTHING;--> statement-breakpoint
+INSERT INTO "notifications" ("id", "domain_id", "recipient_id", "type", "assignment_id", "event_id", "feedback_id", "help_id", "reply_id", "data", "read_at", "created_at")
+SELECT "id", "domain_id", "user_id", "type", "assignment_id", "event_id", "feedback_id", "help_id", "reply_id", '{}'::jsonb, "read_at", "created_at"
+FROM "education_notifications" ON CONFLICT DO NOTHING;--> statement-breakpoint
+DELETE FROM "education_notification_emails" WHERE NOT EXISTS (SELECT 1 FROM "notifications" WHERE "notifications"."id" = "education_notification_emails"."notification_id");--> statement-breakpoint
 DROP TABLE "community_notifications" CASCADE;--> statement-breakpoint
 DROP TABLE "education_notifications" CASCADE;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

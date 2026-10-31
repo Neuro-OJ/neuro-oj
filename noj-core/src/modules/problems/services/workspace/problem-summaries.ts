@@ -40,6 +40,7 @@ export interface DomainProblemSummaryItem {
   answer_version_id: string | null;
   answer_version: number | null;
   progress: "solved" | "attempted" | "unseen" | null;
+  best_score?: number | null;
 }
 
 function progressOf(
@@ -172,6 +173,9 @@ export async function readDomainProblemSummaries(
           statisticsByProblem.get(row.problem_id),
           !!actorId,
         ),
+        best_score: actorId
+          ? statisticsByProblem.get(row.problem_id)?.best_score ?? null
+          : null,
       };
     }),
   };

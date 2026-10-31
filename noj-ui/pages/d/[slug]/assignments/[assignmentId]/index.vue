@@ -534,7 +534,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                     <div class="flex flex-wrap items-center gap-2">
                       <UButton v-if="progressCell(item.id)?.source_kind === 'submission'" variant="ghost" color="neutral"
                         size="sm" @click="selectOwnSubmission(progressCell(item.id)!)">查看原提交</UButton>
-                      <UButton v-if="writable" variant="ghost" color="neutral" size="sm"
+                      <UButton v-if="writable" variant="soft" color="primary" size="sm"
                         icon="i-lucide-message-circle-question-mark" @click="askFromItem(item.id)">求助</UButton>
                       <UButton v-if="item.resource_available" :to="{
                         path: workspaceProblemPath(slug!, item.reference.qualified_ref),

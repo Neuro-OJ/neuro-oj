@@ -72,6 +72,8 @@ export async function syncStudentAssignmentRecipients(
           credit_intervals: [{
             start: task.include_previous_submissions
               ? "1970-01-01T00:00:00.000Z"
+              : now > task.published_at!
+              ? now
               : task.published_at!,
             end: null,
           }],

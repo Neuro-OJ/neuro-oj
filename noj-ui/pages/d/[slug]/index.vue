@@ -72,9 +72,9 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
       </div>
     </section>
 
-    <!-- 加入空间引导条（非成员且非仅邀请） -->
+    <!-- 加入空间引导条（非成员且非仅邀请，排除默认主域） -->
     <section
-      v-if="!domain.is_member && domain.status === 'active' && domain.configuration.join_policy !== 'invite'"
+      v-if="domain.slug !== 'main' && !domain.is_member && domain.status === 'active' && domain.configuration.join_policy !== 'invite'"
       class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg/40 px-5 py-3.5 text-sm shadow-xs"
       aria-label="加入空间"
     >

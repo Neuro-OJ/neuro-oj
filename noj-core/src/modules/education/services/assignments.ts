@@ -62,11 +62,22 @@ export function assignmentDate(
   return new Date(value).toISOString();
 }
 
-function draftInput(input: AssignmentDraftInput) {
-  const source = input.submission_source ?? "domain_any";
+function draftInput(
+  input: AssignmentDraftInput,
+  defaults?: {
+    submission_source?: "assignment_only" | "domain_any";
+    include_previous_submissions?: boolean;
+  },
+) {
+  const source = input.submission_source ??
+    defaults?.submission_source ??
+    "domain_any";
+  const includePrevious = input.include_previous_submissions ??
+    defaults?.include_previous_submissions ??
+    false;
   if (
     !["assignment_only", "domain_any"].includes(source) ||
-    source === "assignment_only" && input.include_previous_submissions
+    source === "assignment_only" && includePrevious
   ) {
     throw new BadRequestError("提交来源非法；仅本作业入口不能接受发布前提交");
   }
@@ -130,7 +141,7 @@ function draftInput(input: AssignmentDraftInput) {
     title: input.title.trim(),
     description: input.description?.trim() ?? "",
     deadline_at: assignmentDate(input.deadline_at, "截止时间"),
-    include_previous_submissions: input.include_previous_submissions ?? false,
+    include_previous_submissions: includePrevious,
     submission_source: source,
     target_student_ids: target,
     source_training_id: input.training?.id ?? null,
@@ -305,7 +316,6 @@ export async function updateAssignment(
   revision: number | null,
   input: AssignmentDraftInput,
 ) {
-  const values = draftInput(input);
   return await getDb().transaction(async (tx) => {
     const access = await loadAssignment(slug, id, actorId, {
       executor: tx,
@@ -318,6 +328,14 @@ export async function updateAssignment(
         "ASSIGNMENT_IMMUTABLE",
       );
     }
+    const nextSource = input.submission_source ??
+      access.assignment.submission_source;
+    const values = draftInput(input, {
+      submission_source: nextSource,
+      include_previous_submissions: nextSource === "assignment_only"
+        ? false
+        : access.assignment.include_previous_submissions,
+    });
     await assignmentStudents(
       tx,
       access.domain.id,

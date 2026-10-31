@@ -63,7 +63,10 @@ export async function copyAssignment(
             description: input.description ?? access.assignment.description,
             deadline_at: input.deadline_at ?? null,
             include_previous_submissions: input.include_previous_submissions ??
-              false,
+              ((input.submission_source ??
+                  access.assignment.submission_source) === "assignment_only"
+                ? false
+                : access.assignment.include_previous_submissions),
             submission_source: input.submission_source ??
               access.assignment.submission_source,
             target_student_ids: input.target_student_ids ?? null,

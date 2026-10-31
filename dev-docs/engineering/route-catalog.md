@@ -219,7 +219,6 @@
 | PATCH | `/:id/messages/:messageId` | noj-core/src/modules/communication/messaging/routes/conversations.ts |
 | PATCH | `/boards/:boardId` | noj-core/src/domains/admin/routes/community.ts |
 | PATCH | `/comments/:commentId` | noj-core/src/modules/communication/community/routes/community.ts |
-| PATCH | `/contests/:id/kind` | noj-core/src/domains/admin/routes/contest.ts |
 | PATCH | `/data-requests/:id` | noj-core/src/modules/platform/legal-legacy/routes/admin.ts |
 | PATCH | `/domains/:slug/assignments/:id` | noj-core/src/modules/education/routes/assignments.ts |
 | PATCH | `/domains/:slug/assignments/:id/feedback/:feedbackId` | noj-core/src/modules/education/routes/interactions.ts |
@@ -268,7 +267,6 @@
 | POST | `/contests` | noj-core/src/domains/admin/routes/contest.ts |
 | POST | `/contests/:id/participants` | noj-core/src/domains/admin/routes/contest.ts |
 | POST | `/contests/:id/ranking-snapshots` | noj-core/src/domains/admin/routes/contest.ts |
-| POST | `/contests/:id/reset-code` | noj-core/src/domains/admin/routes/contest.ts |
 | POST | `/data-requests` | noj-core/src/modules/platform/legal-legacy/routes/data-requests.ts |
 | POST | `/documents/:kind/versions` | noj-core/src/modules/platform/legal-legacy/routes/admin.ts |
 | POST | `/documents/:kind/versions/:version/verify-tsa` | noj-core/src/modules/platform/legal-legacy/routes/admin.ts |

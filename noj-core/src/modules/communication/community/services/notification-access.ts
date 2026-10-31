@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   accountNotifications,
+  communityComments,
   communityPosts,
 } from "../../../../shared/db/schema.ts";
 import { domainProblemBindingAvailableWhere } from "../../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
@@ -37,5 +38,9 @@ export function communityNotificationVisibleWhere(
       accountNotifications.domain_id,
     )
   })
-    ))`;
+    ))
+    AND (${accountNotifications.comment_id} IS NULL OR EXISTS (SELECT 1 FROM community_comments
+      WHERE ${communityComments.id} = ${accountNotifications.comment_id}
+        AND ${communityComments.domain_id} = ${accountNotifications.domain_id}
+        AND (${communityComments.status} = 'published' OR ${communityComments.author_id} = ${actorId})))`;
 }

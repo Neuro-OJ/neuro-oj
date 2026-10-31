@@ -6,7 +6,7 @@ import { useToast } from '~/composables/useToast'
 import type { Clarification, Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 
-const props = defineProps<{ contest: Contest; problems: ContestProblem[] }>()
+const props = defineProps<{ contest: Contest & { can_manage?: boolean }; problems: ContestProblem[]; slug?: string }>()
 
 const { user } = useAuth()
 const toast = useToast()
@@ -45,7 +45,7 @@ const canAsk = computed(() =>
   !!user.value && props.contest.status === 'running' && props.contest.is_registered === true,
 )
 const isManager = computed(() =>
-  !!user.value && (user.value.is_admin || props.contest.created_by === user.value.id),
+  !!user.value && (props.contest.can_manage === true || user.value.is_admin || props.contest.created_by === user.value.id),
 )
 
 async function load(reset = true, silent = false) {
@@ -55,7 +55,7 @@ async function load(reset = true, silent = false) {
   }
   loadError.value = ''
   try {
-    const result = await listClarifications(props.contest.id, { page: page.value, per_page: perPage })
+    const result = await listClarifications(props.contest.id, { page: page.value, per_page: perPage }, props.slug)
     clarifications.value = reset
       ? result.data
       : [...clarifications.value, ...result.data]
@@ -96,7 +96,7 @@ async function submitQuestion() {
     const result = await askClarification(props.contest.id, {
       content,
       problem_id: questionProblemId.value || undefined,
-    })
+    }, props.slug)
     clarifications.value = [...clarifications.value, result.data]
     total.value += 1
     questionContent.value = ''
@@ -122,7 +122,7 @@ async function submitReply(clarId: string) {
     const result = await replyClarification(props.contest.id, clarId, {
       content,
       is_public: draft.isPublic,
-    })
+    }, props.slug)
     const target = clarifications.value.find((item) => item.id === clarId)
     if (target) target.replies.push(result.data)
     // 提交成功后清除该提问的草稿并收起回复表单

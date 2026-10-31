@@ -181,7 +181,7 @@ describe('共用作答面板：比赛上下文', () => {
       texts: contestText,
     });
     await flushPromises();
-    await view.findAll('button').find((button) => button.attributes('data-label') === '正确')!.trigger('click');
+    await view.findAll('button').find((button) => button.attributes('data-label') === 'A. 正确')!.trigger('click');
     await view.findAll('button').find((button) => button.text() === '一次正式交卷')!.trigger('click');
     await flushPromises();
     expect(handlers.submitObjective).toHaveBeenCalledWith('v1', { q1: ['A'] });

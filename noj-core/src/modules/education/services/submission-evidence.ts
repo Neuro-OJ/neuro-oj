@@ -3,6 +3,7 @@ import {
   assertClassroomPeer,
   assignmentHasEnded,
 } from "./peer-access.ts";
+import { unendedPublicContestForProblem } from "../../access/contest-policy.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
@@ -55,7 +56,7 @@ export async function listAssignmentItemSubmissions(
   }
   const db = getDb(),
     access = await loadAssignment(slug, assignmentId, actorId);
-  if (!access.staff) {
+  if (!access.staff && userId !== actorId) {
     assertClassroomPeer(access);
     if (!assignmentHasEnded(access.assignment)) {
       assertClassroomCapability(access, "submissions:read");
@@ -79,11 +80,18 @@ export async function listAssignmentItemSubmissions(
     teachingSubmissionRelation(access)
   } AND s.user_id = ${userId} AND s.problem_id = ${item.problem_id}
     ${
-    access.staff
-      ? sql``
-      : sql`AND ${
-        activeClassmateCondition(access)
-      } AND ${recipient.status} = 'active'`
+    access.staff ? sql`` : sql`AND NOT ${
+      unendedPublicContestForProblem(
+        sql`s.problem_id`,
+        sql`${access.domain.id}`,
+      )
+    }${
+      userId === actorId
+        ? sql``
+        : sql` AND ${
+          activeClassmateCondition(access)
+        } AND ${recipient.status} = 'active'`
+    }`
   }
     AND (${access.assignment.include_previous_submissions} OR s.created_at >= ${access.assignment.published_at})
     AND (${access.assignment.submission_source} = 'domain_any' OR
