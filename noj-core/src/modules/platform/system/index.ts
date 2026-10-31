@@ -165,6 +165,7 @@ export {
   REPORT_USER_LIMIT,
   SELF_TEST_IP_LIMIT,
   SELF_TEST_USER_LIMIT,
+  SHARED_IP_SEATS,
   SUBMISSION_IP_LIMIT,
   SUBMISSION_QUOTA_BUCKETS,
   SUBMISSION_USER_LIMIT,
@@ -174,7 +175,10 @@ export {
   UPGRADE_JOB_IP_LIMIT,
   UPGRADE_JOB_USER_LIMIT,
 } from "./services/hardening-rate-limit.ts";
-export type { SubmissionQuotaBucket } from "./services/hardening-rate-limit.ts";
+export type {
+  RateLimitUnavailablePolicy,
+  SubmissionQuotaBucket,
+} from "./services/hardening-rate-limit.ts";
 export {
   getStorageProvider,
   getStorageProviderKind,

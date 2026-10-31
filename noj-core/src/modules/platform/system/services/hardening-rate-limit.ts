@@ -1,11 +1,17 @@
 /**
  * 审计修复（NOJ-093/094/096/069）使用的高风险端点限流。
  *
- * 与登录限流一样走 Redis 固定窗口，并在 Redis 不可用时 fail-closed（503）。
+ * 与登录限流一样走 Redis 固定窗口。Redis 不可用时默认 fail-closed（503）；
+ * 低风险写入（社区互动、教学写操作、创建题目）可显式选择放行，见
+ * {@link RateLimitUnavailablePolicy}。
  * 阈值故意保持宽松以兼容现有 API 客户端，同时阻止无差别批量刷接口。
  */
 
-import { RateLimitedError } from "../../../../shared/base/errors.ts";
+import { getLogger } from "@logtape/logtape";
+import {
+  RateLimitedError,
+  ServiceUnavailableError,
+} from "../../../../shared/base/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,
@@ -13,6 +19,17 @@ import {
 } from "../../../../shared/rate-limit/rate-limit.ts";
 import { getClientIp, isRateLimitEnabled } from "./rate-limit-env.ts";
 import type { Context } from "hono";
+
+const logger = getLogger(["noj", "system"]);
+
+/**
+ * 机房场景下同一出口 IP 背后的并发考生数估计。
+ *
+ * 学校机房通常整间共用一个 NAT 出口。提交类接口的 IP 维度只用于拦截明显的
+ * 脚本刷量，阈值按「用户阈值 × 席位数」计算；真正的单人上限由用户维度负责。
+ * 此前 IP 阈值与用户阈值相同，60 人集中交卷时会被 IP 维度误伤（#698 P0-1）。
+ */
+export const SHARED_IP_SEATS = 60;
 
 export const REGISTER_LIMIT: RateLimitConfig = {
   windowSec: 3600,
@@ -39,19 +56,14 @@ export const MESSAGE_SEND_LIMIT: RateLimitConfig = {
   max: 60,
 };
 
-export const SUBMISSION_IP_LIMIT: RateLimitConfig = {
-  windowSec: 60,
-  max: 120,
-};
-
 export const SUBMISSION_USER_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 120,
 };
 
-export const SELF_TEST_IP_LIMIT: RateLimitConfig = {
+export const SUBMISSION_IP_LIMIT: RateLimitConfig = {
   windowSec: 60,
-  max: 30,
+  max: SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const SELF_TEST_USER_LIMIT: RateLimitConfig = {
@@ -59,14 +71,19 @@ export const SELF_TEST_USER_LIMIT: RateLimitConfig = {
   max: 4,
 };
 
-export const CONTEST_SUBMISSION_IP_LIMIT: RateLimitConfig = {
+export const SELF_TEST_IP_LIMIT: RateLimitConfig = {
   windowSec: 60,
-  max: 120,
+  max: SELF_TEST_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const CONTEST_SUBMISSION_USER_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 120,
+};
+
+export const CONTEST_SUBMISSION_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: CONTEST_SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 /**
@@ -83,14 +100,14 @@ export const UPGRADE_JOB_USER_LIMIT: RateLimitConfig = {
   max: 3,
 };
 
-export const OBJECTIVE_SUBMIT_IP_LIMIT: RateLimitConfig = {
+export const OBJECTIVE_SUBMIT_USER_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 60,
 };
 
-export const OBJECTIVE_SUBMIT_USER_LIMIT: RateLimitConfig = {
+export const OBJECTIVE_SUBMIT_IP_LIMIT: RateLimitConfig = {
   windowSec: 60,
-  max: 60,
+  max: OBJECTIVE_SUBMIT_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const PROBLEM_CREATE_IP_LIMIT: RateLimitConfig = {
@@ -262,16 +279,59 @@ export function submissionUserQuotaRedisKey(userId: string): string {
   return submissionQuotaRedisKey("code", userId);
 }
 
+/**
+ * Redis 不可用时的处理策略。
+ *
+ * - `reject`（默认）：fail-closed，返回 503。用于认证、提交、导入等被绕过即有
+ *   实际代价的入口。
+ * - `allow`：放行并记录告警。用于点赞、收藏、教学写操作这类低风险写入，避免
+ *   Redis 抖动时整站写入一起不可用（#698 P0-2）。
+ */
+export type RateLimitUnavailablePolicy = "reject" | "allow";
+
+/**
+ * 按固定窗口扣减一次额度，超限抛 {@link RateLimitedError}。
+ *
+ * @param key 未归一化的逻辑键
+ * @param cfg 窗口配置
+ * @param message 超限时的提示
+ * @param onUnavailable Redis 不可用时的处理策略，默认 `reject`
+ */
 export async function enforceRateLimit(
   key: string,
   cfg: RateLimitConfig,
   message = "请求过于频繁，请稍后重试",
+  onUnavailable: RateLimitUnavailablePolicy = "reject",
 ): Promise<void> {
   if (!isRateLimitEnabled()) return;
-  const result = await checkRateLimit(
-    `hardening:${normalizeLimitKey(key)}`,
-    cfg,
-  );
+  await enforceRateLimitWith(checkRateLimit, key, cfg, message, onUnavailable);
+}
+
+/**
+ * {@link enforceRateLimit} 的实现，计数函数可注入以便测试 Redis 故障分支。
+ *
+ * @internal 仅供本文件与测试使用，不经模块门面导出。
+ */
+export async function enforceRateLimitWith(
+  check: typeof checkRateLimit,
+  key: string,
+  cfg: RateLimitConfig,
+  message: string,
+  onUnavailable: RateLimitUnavailablePolicy,
+): Promise<void> {
+  const normalized = `hardening:${normalizeLimitKey(key)}`;
+  let result;
+  try {
+    result = await check(normalized, cfg);
+  } catch (err) {
+    if (onUnavailable === "allow" && err instanceof ServiceUnavailableError) {
+      logger.warn("限流服务不可用，低风险写入按放行策略处理", {
+        limit_key: normalized.split(":").slice(0, 3).join(":"),
+      });
+      return;
+    }
+    throw err;
+  }
   if (!result.allowed) {
     throw new RateLimitedError(message, rateLimitHeaders(cfg, result));
   }
@@ -289,6 +349,7 @@ export async function enforceEducationWriteRateLimit(
     `education-write:${domainSlug}:${actorId}`,
     EDUCATION_WRITE_LIMIT,
     "教学操作过于频繁，请稍后重试",
+    "allow",
   );
 }
 
@@ -489,10 +550,14 @@ export async function enforceProblemCreateRateLimit(
   await enforceRateLimit(
     `problem-create:ip:${getClientIp(c)}`,
     PROBLEM_CREATE_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `problem-create:user:${userId}`,
     PROBLEM_CREATE_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -519,10 +584,14 @@ export async function enforcePostLikeRateLimit(
   await enforceRateLimit(
     `post-like:ip:${getClientIp(c)}`,
     POST_LIKE_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `post-like:user:${userId}`,
     POST_LIKE_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -534,10 +603,14 @@ export async function enforceCommentLikeRateLimit(
   await enforceRateLimit(
     `comment-like:ip:${getClientIp(c)}`,
     COMMENT_LIKE_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `comment-like:user:${userId}`,
     COMMENT_LIKE_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -549,10 +622,14 @@ export async function enforceBookmarkRateLimit(
   await enforceRateLimit(
     `bookmark:ip:${getClientIp(c)}`,
     BOOKMARK_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `bookmark:user:${userId}`,
     BOOKMARK_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -564,10 +641,14 @@ export async function enforceFollowRateLimit(
   await enforceRateLimit(
     `follow:ip:${getClientIp(c)}`,
     FOLLOW_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `follow:user:${userId}`,
     FOLLOW_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -579,10 +660,14 @@ export async function enforceReportRateLimit(
   await enforceRateLimit(
     `report:ip:${getClientIp(c)}`,
     REPORT_IP_LIMIT,
+    undefined,
+    "allow",
   );
   await enforceRateLimit(
     `report:user:${userId}`,
     REPORT_USER_LIMIT,
+    undefined,
+    "allow",
   );
 }
 
@@ -597,6 +682,7 @@ export async function enforceCheckinRateLimit(userId: string): Promise<void> {
     `checkin:user:${userId}`,
     CHECKIN_USER_LIMIT,
     "签到请求过于频繁，请稍后再试",
+    "allow",
   );
 }
 

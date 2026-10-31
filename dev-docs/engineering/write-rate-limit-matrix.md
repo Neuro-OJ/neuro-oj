@@ -8,8 +8,9 @@
 - **登录限流**：`noj-core/src/domains/identity/middleware/login-rate-limit.ts`，专用于认证端点。
 - **通用中间件限流**：`noj-core/src/domains/system/middleware/rate-limit.ts`，进程内最小间隔限流（多实例各自计数）。
 - **Hardening
-  限流（推荐）**：`noj-core/src/domains/system/services/hardening-rate-limit.ts`，Redis
-  固定窗口、fail-closed，适合高价值/批量写操作。
+  限流（推荐）**：`noj-core/src/modules/platform/system/services/hardening-rate-limit.ts`，Redis
+  固定窗口，适合高价值/批量写操作。Redis 不可用时默认 fail-closed（503）；社区互动、签到、
+  教学写操作与创建题目显式传 `"allow"` 放行并记告警（见下文「Redis 故障策略」）。
 - **服务层频率限制**：部分业务（社区发帖）在服务层按配置间隔限流，见
   `community-post-crud.ts`。
 
@@ -24,10 +25,10 @@
 | 修改密码                                   | `POST /auth/change-password`                                                               | 账号限流（loginThrottle）                                     | 独立命名空间                                                    |
 | TFA 确认/禁用                              | `POST /auth/tfa/*`                                                                         | 账号限流（loginThrottle）                                     | TFA_NAMESPACE                                                   |
 | 私信发送                                   | `POST /conversations/:id/messages`                                                         | hardening user                                                | 60s/60                                                          |
-| 代码提交                                   | `POST /submissions`                                                                        | hardening IP+user                                             | 60s/120                                                         |
-| 自测                                       | `POST /problems/:id/self-test`                                                             | hardening IP+user                                             | 60s/30；user 60s/4                                              |
-| 竞赛提交                                   | `POST /contests/:id/submit`                                                                | hardening IP+user                                             | 60s/120                                                         |
-| 客观题提交                                 | `POST /problems/:id/submit`（objective）                                                   | hardening IP+user                                             | 60s/60                                                          |
+| 代码提交                                   | `POST /submissions`                                                                        | hardening IP+user                                             | IP 60s/7200；user 60s/120                                        |
+| 自测                                       | `POST /problems/:id/self-test`                                                             | hardening IP+user                                             | IP 60s/240；user 60s/4                                          |
+| 竞赛提交                                   | `POST /contests/:id/submit`                                                                | hardening IP+user                                             | IP 60s/7200；user 60s/120                                        |
+| 客观题提交                                 | `POST /problems/:id/submit`（objective）                                                   | hardening IP+user                                             | IP 60s/3600；user 60s/60                                         |
 | 创建题目                                   | `POST /problems`                                                                           | hardening IP+user                                             | 60s/30                                                          |
 | 题目导入                                   | `POST /problems/import-bundle`                                                             | hardening IP+user                                             | 60s/10                                                          |
 | 帖子点赞/取消                              | `POST /posts/:postId/like`                                                                 | hardening IP+user                                             | 60s/120                                                         |
@@ -39,6 +40,24 @@
 | 升级任务受理                               | `POST /submission-upgrade-jobs`                                                            | hardening IP+user                                             | 60s/10；user 60s/3                                              |
 | 作业写操作、复制与批量补题                 | `POST/PATCH /domains/:slug/assignments/*`、`POST /domains/:slug/classrooms/:id/assignments | contest-remediation*`                                         | hardening 域 slug + user；与教学互动共享 `education-write` 窗口 |
 | 教学反馈、学生求助/回复/处理、教学通知已读 | `POST/PATCH/DELETE /domains/:slug/assignments/:id/feedback                                 | help-requests*`、`POST /domains/:slug/notifications/:id/read` | hardening 域 slug + user；与作业写操作共享窗口，GET/HEAD 不扣额 |
+
+## IP 维度与机房 NAT
+
+代码提交、竞赛提交、客观题提交与自测的 IP 阈值为「用户阈值 × `SHARED_IP_SEATS`（60）」。
+学校机房通常整间共用一个出口 IP，IP 维度只拦截明显的脚本刷量，单人上限由用户维度负责
+（#698 P0-1）。新增面向考生的写端点时沿用同一口径，不要让 IP 阈值等于用户阈值。
+
+## Redis 故障策略
+
+`enforceRateLimit(key, cfg, message, onUnavailable)` 的 `onUnavailable` 默认 `"reject"`：
+
+| 策略 | 适用端点 |
+| --- | --- |
+| `reject`（503） | 注册、找回/重置密码、验证邮件、邮件投递回执、私信、代码/竞赛/客观题提交、自测、升级任务、题目导入 |
+| `allow`（放行并记 warn） | 帖子/评论点赞、收藏、关注、举报、每日签到、教学写窗口、创建题目 |
+
+判断标准：被绕过时是否会产生评测算力、邮件、存储或垃圾内容等实际代价。有代价用 `reject`，
+否则用 `allow`，避免 Redis 抖动时整站写入一起不可用（#698 P0-2）。
 
 ## 已知未覆盖/可接受
 

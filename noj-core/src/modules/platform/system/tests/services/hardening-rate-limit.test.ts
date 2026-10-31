@@ -4,26 +4,39 @@
  * 不依赖 DB；限流基础行为依赖 Redis（无 Redis 时跳过）。
  */
 
-import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   BOOKMARK_IP_LIMIT,
   BOOKMARK_USER_LIMIT,
   COMMENT_LIKE_IP_LIMIT,
   COMMENT_LIKE_USER_LIMIT,
+  CONTEST_SUBMISSION_IP_LIMIT,
+  CONTEST_SUBMISSION_USER_LIMIT,
   enforceRateLimit,
   FOLLOW_IP_LIMIT,
   FOLLOW_USER_LIMIT,
+  OBJECTIVE_SUBMIT_IP_LIMIT,
+  OBJECTIVE_SUBMIT_USER_LIMIT,
   POST_LIKE_IP_LIMIT,
   POST_LIKE_USER_LIMIT,
   REPORT_IP_LIMIT,
   REPORT_USER_LIMIT,
+  SELF_TEST_IP_LIMIT,
+  SELF_TEST_USER_LIMIT,
+  SHARED_IP_SEATS,
+  SUBMISSION_IP_LIMIT,
+  SUBMISSION_USER_LIMIT,
 } from "../../index.ts";
 import {
   connectRedis,
   getRedis,
   resetRedisForTest,
 } from "../../../../../shared/mq/connection.ts";
-import { RateLimitedError } from "../../../../../shared/base/errors.ts";
+import {
+  RateLimitedError,
+  ServiceUnavailableError,
+} from "../../../../../shared/base/errors.ts";
+import { enforceRateLimitWith } from "../../services/hardening-rate-limit.ts";
 
 const hasRedis = !!Deno.env.get("REDIS_URL");
 
@@ -95,5 +108,98 @@ Deno.test({
         Deno.env.set("NOJ_ENV", previousNojEnv);
       }
     }
+  },
+});
+
+Deno.test({
+  name:
+    "hardening rate limit: 提交类 IP 阈值按机房席位放大，不再等于用户阈值（#698）",
+  fn: () => {
+    const pairs = [
+      [SUBMISSION_IP_LIMIT, SUBMISSION_USER_LIMIT],
+      [CONTEST_SUBMISSION_IP_LIMIT, CONTEST_SUBMISSION_USER_LIMIT],
+      [OBJECTIVE_SUBMIT_IP_LIMIT, OBJECTIVE_SUBMIT_USER_LIMIT],
+      [SELF_TEST_IP_LIMIT, SELF_TEST_USER_LIMIT],
+    ] as const;
+    for (const [ip, user] of pairs) {
+      assertEquals(ip.windowSec, user.windowSec);
+      assertEquals(ip.max, user.max * SHARED_IP_SEATS);
+    }
+    // 60 人机房同时交一次客观题不应触发 IP 维度
+    assert(OBJECTIVE_SUBMIT_IP_LIMIT.max >= 60 * 1);
+    assert(SELF_TEST_IP_LIMIT.max >= 60 * SELF_TEST_USER_LIMIT.max);
+  },
+});
+
+const unavailableCheck = () =>
+  Promise.reject(new ServiceUnavailableError("限流服务暂时不可用"));
+
+Deno.test({
+  name: "hardening rate limit: Redis 不可用时默认 reject 抛 503",
+  fn: async () => {
+    await assertRejects(
+      () =>
+        enforceRateLimitWith(
+          unavailableCheck,
+          "test:reject",
+          { windowSec: 60, max: 1 },
+          "x",
+          "reject",
+        ),
+      ServiceUnavailableError,
+    );
+  },
+});
+
+Deno.test({
+  name: "hardening rate limit: Redis 不可用时 allow 策略放行",
+  fn: async () => {
+    await enforceRateLimitWith(
+      unavailableCheck,
+      "test:allow",
+      { windowSec: 60, max: 1 },
+      "x",
+      "allow",
+    );
+  },
+});
+
+Deno.test({
+  name: "hardening rate limit: allow 策略不吞掉非 Redis 故障错误",
+  fn: async () => {
+    await assertRejects(
+      () =>
+        enforceRateLimitWith(
+          () => Promise.reject(new TypeError("bug")),
+          "test:allow-bug",
+          { windowSec: 60, max: 1 },
+          "x",
+          "allow",
+        ),
+      TypeError,
+    );
+  },
+});
+
+Deno.test({
+  name: "hardening rate limit: allow 策略下超限仍抛 429",
+  fn: async () => {
+    await assertRejects(
+      () =>
+        enforceRateLimitWith(
+          () =>
+            Promise.resolve({
+              allowed: false,
+              remaining: 0,
+              resetAt: 0,
+              retryAfter: 1,
+            }),
+          "test:allow-limited",
+          { windowSec: 60, max: 1 },
+          "x",
+          "allow",
+        ),
+      RateLimitedError,
+    );
   },
 });
