@@ -1,6 +1,6 @@
 import { eq, ne } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "../../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import {
   roles,
   systemSettings,
@@ -90,6 +90,6 @@ export async function initializeFirstAdmin(
     );
   }
   if (createdUserId) {
-    await publishSearchIndexEvent("user", createdUserId, "upsert");
+    await enqueueSearchIndexTask("user", createdUserId, "upsert");
   }
 }

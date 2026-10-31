@@ -130,5 +130,11 @@ export { getDomainProblemSummaries } from "./read-models/problems.ts";
 export type { ProblemSubmissionSummary } from "./read-models/problems.ts";
 export { getUserProfilePage } from "./user-profile.ts";
 export type { UserProfileResponse } from "./user-profile.ts";
-export { enqueueSearchIndexTaskTx } from "./search-tasks.ts";
+export {
+  cleanupSucceededSearchTasks,
+  enqueueSearchIndexTask,
+  enqueueSearchIndexTaskTx,
+  SEARCH_TASK_RETENTION_DAYS,
+  startSearchTaskRetentionTask,
+} from "./search-tasks.ts";
 export type { SearchIndexTaskAction } from "./search-tasks.ts";

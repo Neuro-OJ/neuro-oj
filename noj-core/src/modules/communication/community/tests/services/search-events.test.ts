@@ -3,10 +3,12 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { createBoard } from "../../services/community/community-boards.ts";
 import { createPost } from "../../services/community/community-post-crud.ts";
-import { assertSearchEventPublished } from "../../../../../../tests/helper/search-events.ts";
-import { connectRedis, getRedis } from "../../../../../shared/mq/connection.ts";
+import {
+  assertSearchEventPublished,
+  hasSearchIndexTask,
+} from "../../../../../../tests/helper/search-events.ts";
+import { connectRedis } from "../../../../../shared/mq/connection.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { SEARCH_INDEX_QUEUE } from "../../../../../shared/search-events.ts";
 import { withDomainCommunity } from "../../index.ts";
 import { domainFixture } from "./domain-fixture.ts";
 
@@ -37,9 +39,6 @@ Deno.test({
       updated_at: now,
     });
     const board = await createBoard({ slug: "event-board", name: "事件板块" });
-    // 不要 del(SEARCH_INDEX_QUEUE)：同一分片内多个测试文件会并行操作同一
-    // Redis 键，删除会把对方正在等待观测的事件一并删掉（实测：全量分片必现假
-    // 失败、单文件必过）。断言按本次生成的唯一 entityId 查找，无需清空。
     const post = await createPost("u-community-event", {
       type: "discussion",
       board_id: board.id,
@@ -71,11 +70,10 @@ Deno.test({
         true,
         scope,
       );
-      const queued = await getRedis().lrange(SEARCH_INDEX_QUEUE, 0, -1);
       assertEquals(
-        queued.some((value) => JSON.parse(value).entityId === post.id),
+        await hasSearchIndexTask("community_post", post.id, "upsert"),
         false,
-        "不能让消费者在事务完成前读取本次帖子",
+        "不能让 worker 在事务完成前读取本次帖子",
       );
       return post;
     });
@@ -113,9 +111,8 @@ Deno.test({
       Error,
       "测试回滚",
     );
-    const queued = await getRedis().lrange(SEARCH_INDEX_QUEUE, 0, -1);
     assertEquals(
-      queued.some((value) => JSON.parse(value).entityId === postId),
+      await hasSearchIndexTask("community_post", postId, "upsert"),
       false,
     );
   },

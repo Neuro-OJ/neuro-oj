@@ -307,7 +307,7 @@ export async function createPost(
   // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
   // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
 
-  publishCommunitySearchEvent("community_post", post.id, "upsert", scope);
+  await publishCommunitySearchEvent("community_post", post.id, "upsert", scope);
 
   return post;
 }
@@ -481,7 +481,7 @@ export async function updatePost(
     updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
 
-  publishCommunitySearchEvent("community_post", postId, "upsert", scope);
+  await publishCommunitySearchEvent("community_post", postId, "upsert", scope);
 
   return rows[0]!;
 }

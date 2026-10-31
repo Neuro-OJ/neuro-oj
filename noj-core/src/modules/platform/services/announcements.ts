@@ -18,7 +18,7 @@
 
 import { and, asc, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../application/search-tasks.ts";
 import { announcements } from "../../../shared/db/schema.ts";
 import { NotFoundError, ValidationError } from "../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
@@ -377,7 +377,7 @@ export async function createAnnouncement(
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate(scope);
-  await publishSearchIndexEvent("announcement", id, "upsert");
+  await enqueueSearchIndexTask("announcement", id, "upsert");
 
   return { ...row! };
 }
@@ -439,7 +439,7 @@ export async function updateAnnouncement(
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate(scope);
-  await publishSearchIndexEvent("announcement", id, "upsert");
+  await enqueueSearchIndexTask("announcement", id, "upsert");
 
   return { ...row! };
 }
@@ -483,5 +483,5 @@ export async function deleteAnnouncement(
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate(scope);
-  await publishSearchIndexEvent("announcement", id, "delete");
+  await enqueueSearchIndexTask("announcement", id, "delete");
 }

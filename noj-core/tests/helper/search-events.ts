@@ -1,41 +1,42 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getRedis } from "../../src/shared/mq/connection.ts";
-import { SEARCH_INDEX_QUEUE } from "../../src/shared/search-events.ts";
+import { and, eq, sql } from "drizzle-orm";
+import { getDb } from "../../src/shared/db/connection.ts";
+import { backgroundTasks } from "../../src/shared/db/schema.ts";
 
+/**
+ * 查询是否已登记指定实体的 `search.index` 任务（#698 N1：索引事件改为
+ * PostgreSQL 后台任务，不再写 Redis 列表）。
+ */
+export async function hasSearchIndexTask(
+  entityType: string,
+  entityId: string,
+  action: "upsert" | "delete",
+): Promise<boolean> {
+  const rows = await getDb().select({ id: backgroundTasks.id }).from(
+    backgroundTasks,
+  ).where(and(
+    eq(backgroundTasks.task_type, "search.index"),
+    eq(backgroundTasks.target_id, entityId),
+    sql`${backgroundTasks.payload}->>'entity_type' = ${entityType}`,
+    sql`${backgroundTasks.payload}->>'action' = ${action}`,
+  )).limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * 断言已登记指定实体的搜索索引任务。
+ *
+ * 任务与业务写入在调用返回前同步登记，无需轮询；按唯一 entityId 查找，
+ * 不受并行测试影响。
+ */
 export async function assertSearchEventPublished(
   entityType: string,
   entityId: string,
   action: "upsert" | "delete",
 ): Promise<void> {
-  const redis = getRedis();
-  // 轮询窗口 5s（原 2s）：搜索索引事件是 fire-and-forget LPUSH（见
-  // shared/search-events.ts），在并行分片 + 高负载下 2s 不足以稳定观测，
-  // 曾造成“事件其实已发布但断言失败”的假失败。窗口放宽不削弱判定强度——
-  // 事件始终不到达时仍会失败。
-  const deadline = Date.now() + 5000;
-  let found = false;
-  while (Date.now() < deadline) {
-    const raw = await redis.lrange(SEARCH_INDEX_QUEUE, 0, -1);
-    found = raw.some((item) => {
-      try {
-        const parsed = JSON.parse(item) as {
-          entityType?: string;
-          entityId?: string;
-          action?: string;
-        };
-        return parsed.entityType === entityType &&
-          parsed.entityId === entityId &&
-          parsed.action === action;
-      } catch {
-        return false;
-      }
-    });
-    if (found) break;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
   assertEquals(
-    found,
+    await hasSearchIndexTask(entityType, entityId, action),
     true,
-    `未找到搜索索引事件 ${entityType}:${entityId}:${action}`,
+    `未找到搜索索引任务 ${entityType}:${entityId}:${action}`,
   );
 }

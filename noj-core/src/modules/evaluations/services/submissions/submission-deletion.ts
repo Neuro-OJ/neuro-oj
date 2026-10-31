@@ -3,7 +3,7 @@ import { getLogger } from "@logtape/logtape";
 import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { submissions } from "../../../../shared/db/schema.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import { deleteStorageObject } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { prepareEducationSubmissionDeletion } from "../../../education/contracts/cross-module/services_submission-lifecycle.ts";
@@ -78,5 +78,5 @@ export async function deleteSubmission(
       });
     }
   }
-  await publishSearchIndexEvent("submission", id, "delete");
+  await enqueueSearchIndexTask("submission", id, "delete");
 }

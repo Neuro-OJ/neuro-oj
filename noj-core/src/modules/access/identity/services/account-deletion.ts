@@ -6,7 +6,7 @@
  * HTTP 路由逐步迁移。调用者必须传入已认证的 UserActor。
  */
 import { getDb } from "../../../../shared/db/connection.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { deleteAvatarIfUnreferenced } from "./users/users-avatar.ts";
@@ -37,7 +37,7 @@ function accountLifecycleBoundary(): AccountLifecycleBoundary {
           // 账户事实已提交；头像删除沿用原有幂等清理语义。
         }
       }
-      await publishSearchIndexEvent("user", userId, "delete");
+      await enqueueSearchIndexTask("user", userId, "delete");
     },
   };
 }

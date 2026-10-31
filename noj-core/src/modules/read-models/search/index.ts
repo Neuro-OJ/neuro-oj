@@ -29,9 +29,3 @@ export {
 export type { SearchPermissionContext } from "./services/permission-filter.ts";
 export { searchRateLimit } from "./middleware/search-rate-limit.ts";
 export type { SearchRateLimitDimension } from "./middleware/search-rate-limit.ts";
-export {
-  handleSearchIndexEvent,
-  isSearchIndexConsumerAlive,
-  shutdownSearchIndexConsumer,
-  startSearchIndexConsumer,
-} from "./consumer/search-index-consumer.ts";

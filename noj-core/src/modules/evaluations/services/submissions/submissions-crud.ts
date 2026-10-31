@@ -37,7 +37,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { consumeDomainSubmissionQuota } from "../../../access/contracts/cross-module/workspace_services_submission-limit.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   assertDefaultProblemSource,
@@ -743,7 +743,7 @@ export async function createSubmission(
     );
   }
 
-  await publishSearchIndexEvent("submission", id, "upsert");
+  await enqueueSearchIndexTask("submission", id, "upsert");
 
   return {
     id,

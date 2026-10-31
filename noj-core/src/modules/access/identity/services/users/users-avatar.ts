@@ -2,7 +2,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { users } from "../../../../../shared/db/schema.ts";
-import { publishSearchIndexEvent } from "../../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import {
   getStorageProvider,
@@ -117,7 +117,7 @@ export async function updateUserAvatar(
     }
   }
 
-  await publishSearchIndexEvent("user", userId, "upsert");
+  await enqueueSearchIndexTask("user", userId, "upsert");
 
   return { avatar_url: newUrl };
 }

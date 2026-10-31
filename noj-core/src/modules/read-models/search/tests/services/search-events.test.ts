@@ -1,28 +1,134 @@
+import { assertEquals } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import { connectRedis } from "../../../../../shared/mq/connection.ts";
-import { publishSearchIndexEvent } from "../../../../../shared/search-events.ts";
-import { assertSearchEventPublished } from "../../../../../../tests/helper/search-events.ts";
-
-try {
-  await connectRedis();
-} catch (e) {
-  if (!String(e).includes("already connecting/connected")) {
-    console.warn("[setup] Redis 连接失败:", e);
-  }
-}
+import {
+  assertSearchEventPublished,
+  hasSearchIndexTask,
+} from "../../../../../../tests/helper/search-events.ts";
+import { getDb } from "../../../../../shared/db/connection.ts";
+import { backgroundTasks } from "../../../../../shared/db/schema.ts";
+import {
+  cleanupSucceededSearchTasks,
+  enqueueSearchIndexTask,
+} from "../../../../application/search-tasks.ts";
 
 await resetDbForTest();
 
 Deno.test({
-  name: "search event: publishSearchIndexEvent 发布问题 upsert",
+  name: "search task: enqueueSearchIndexTask 登记 search.index 任务",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
-    // 不要 del(SEARCH_INDEX_QUEUE)：同一分片内多个测试文件会并行操作同一
-    // Redis 键，删除会把对方正在等待观测的事件一并删掉（实测：全量分片必现假
-    // 失败、单文件必过）。断言按本次生成的唯一 entityId 查找，无需清空。
-    await publishSearchIndexEvent("problem", "p-1", "upsert");
-    await assertSearchEventPublished("problem", "p-1", "upsert");
+    const id = `p-${crypto.randomUUID()}`;
+    await enqueueSearchIndexTask("problem", id, "upsert");
+    await assertSearchEventPublished("problem", id, "upsert");
+  },
+});
+
+Deno.test({
+  name: "search task: 同一实体多次登记不合并，保证后续变更不被旧任务吞掉",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const id = `p-${crypto.randomUUID()}`;
+    await enqueueSearchIndexTask("problem", id, "upsert");
+    await enqueueSearchIndexTask("problem", id, "upsert");
+    const rows = await getDb().select({ id: backgroundTasks.id }).from(
+      backgroundTasks,
+    ).where(eq(backgroundTasks.target_id, id));
+    assertEquals(rows.length, 2);
+  },
+});
+
+Deno.test({
+  name: "search task: 传入业务事务时随事务回滚",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const id = `p-${crypto.randomUUID()}`;
+    await getDb().transaction(async (tx) => {
+      await enqueueSearchIndexTask("problem", id, "upsert", tx);
+      tx.rollback();
+    }).catch(() => {});
+    assertEquals(await hasSearchIndexTask("problem", id, "upsert"), false);
+  },
+});
+
+Deno.test({
+  name: "search task: 传入业务事务时随事务提交",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const id = `p-${crypto.randomUUID()}`;
+    await getDb().transaction(async (tx) => {
+      await enqueueSearchIndexTask("problem", id, "upsert", tx);
+    });
+    assertEquals(await hasSearchIndexTask("problem", id, "upsert"), true);
+  },
+});
+
+Deno.test({
+  name: "search task: 保留清理只删除过期的已成功搜索任务",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const old = new Date(Date.now() - 8 * 86400 * 1000).toISOString();
+    const base = {
+      target_kind: "problem",
+      dedupe_key: "",
+      payload: {},
+      available_at: now,
+      created_at: now,
+      updated_at: now,
+    };
+    const tag = crypto.randomUUID();
+    await db.insert(backgroundTasks).values([
+      {
+        ...base,
+        id: `old-ok-${tag}`,
+        task_type: "search.index",
+        target_id: `old-ok-${tag}`,
+        status: "succeeded",
+        finished_at: old,
+      },
+      {
+        ...base,
+        id: `new-ok-${tag}`,
+        task_type: "search.index",
+        target_id: `new-ok-${tag}`,
+        status: "succeeded",
+        finished_at: now,
+      },
+      {
+        ...base,
+        id: `old-failed-${tag}`,
+        task_type: "search.index",
+        target_id: `old-failed-${tag}`,
+        status: "failed",
+        finished_at: old,
+      },
+      {
+        ...base,
+        id: `old-dispatch-${tag}`,
+        task_type: "evaluation.dispatch",
+        target_kind: "submission",
+        target_id: `old-dispatch-${tag}`,
+        status: "succeeded",
+        finished_at: old,
+      },
+    ]);
+
+    await cleanupSucceededSearchTasks(7);
+
+    const remaining = new Set(
+      (await db.select({ id: backgroundTasks.id }).from(backgroundTasks))
+        .map((row) => row.id),
+    );
+    assertEquals(remaining.has(`old-ok-${tag}`), false);
+    assertEquals(remaining.has(`new-ok-${tag}`), true);
+    assertEquals(remaining.has(`old-failed-${tag}`), true);
+    assertEquals(remaining.has(`old-dispatch-${tag}`), true);
   },
 });

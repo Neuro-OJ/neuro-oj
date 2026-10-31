@@ -18,7 +18,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
-import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import type { SystemActor } from "../../../access/contracts/actor.ts";
 import { getLogger } from "@logtape/logtape";
@@ -391,5 +391,5 @@ export async function updateSubmissionStatus(
     .update(submissions)
     .set(updates)
     .where(eq(submissions.id, id));
-  await publishSearchIndexEvent("submission", id, "upsert");
+  await enqueueSearchIndexTask("submission", id, "upsert");
 }

@@ -91,7 +91,7 @@ export async function changePostStatus(
     );
   }
 
-  publishCommunitySearchEvent("community_post", postId, "upsert", scope);
+  await publishCommunitySearchEvent("community_post", postId, "upsert", scope);
 
   return rows[0];
 }
