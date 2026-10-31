@@ -94,14 +94,17 @@ async function createPrivatePaper(
   return problem.problem_id;
 }
 
-/** 创建运行中的竞赛。isPublic=false 时用于 SSE 非参赛者隔离场景。 */
+/**
+ * 创建运行中的竞赛。
+ *
+ * 0.11 起比赛不再区分公开赛/邀请赛，也没有比赛密码：可见性与报名都由域访问权决定，
+ * 因此请求体不带 `kind` / `is_public` / `password`（带上会被 400 拒绝）。非参赛者
+ * 隔离场景靠"不报名"来表达，不靠 `is_public=false`。
+ */
 async function createContest(
   title: string,
   opts: {
     problemId: string;
-    isPublic: boolean;
-    kind?: "public" | "invite";
-    password?: string;
     submissionLimit?: number;
   },
 ): Promise<string> {
@@ -114,8 +117,6 @@ async function createContest(
     config: opts.submissionLimit === undefined
       ? {}
       : { submission_limits: { [opts.problemId]: opts.submissionLimit } },
-    is_public: opts.isPublic,
-    kind: opts.kind ?? (opts.isPublic ? "public" : "invite"),
     affect_global_ranking: false,
     problems: [{
       problem_id: opts.problemId,
@@ -124,7 +125,6 @@ async function createContest(
       score: 100,
     }],
   };
-  if (opts.password) body.password = opts.password;
   const res = await apiPost("/api/v1/admin/contest/contests", body, adminToken);
   if (res.status !== 201) {
     throw new Error(
@@ -278,16 +278,13 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     throw new Error(`共享题目 ${publicProblemId} 没有已发布作答版本`);
   }
 
-  // SSE 隔离场景使用非公开邀请赛；注册参赛者供后续触发提交
+  // SSE 隔离场景：注册参赛者供后续触发提交；非参赛者就是"没报名的人"
   sseContestId = await createContest(`E2E SSE 防作弊赛 ${ts}`, {
     problemId: publicProblemId,
-    isPublic: false,
-    kind: "invite",
-    password: "SseInvitePass1",
   });
   const regSse = await apiPost(
     `/api/v1/contests/${sseContestId}/register`,
-    { password: "SseInvitePass1" },
+    {},
     participantToken,
   );
   if (regSse.status !== 201) {
@@ -299,8 +296,6 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
   // 限额赛：submission_limits=1，用于 429 与赛中详情/队列场景
   limitContestId = await createContest(`E2E 限额防作弊赛 ${ts}`, {
     problemId: publicProblemId,
-    isPublic: true,
-    kind: "public",
     submissionLimit: 1,
   });
   const regLimit = await apiPost(
@@ -429,7 +424,7 @@ e2eTest(
 
 e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404", async () => {
   if (!isE2E) return;
-  // 4.1 攻击者创建自己的 invite 赛，但尝试加入别人的私有套卷
+  // 4.1 攻击者创建自己的比赛（0.11 无 kind/password），但尝试加入别人的私有套卷
   const now = Date.now();
   const contestRes = await apiPost(
     "/api/v1/contests",
@@ -438,8 +433,6 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
-      kind: "invite",
-      password: "AttackInvite1",
       config: {},
       affect_global_ranking: false,
       problems: [{

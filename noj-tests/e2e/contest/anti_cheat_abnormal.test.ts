@@ -93,10 +93,8 @@ e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
     {
       title: "AC Abnormal " + ts,
       type: "kaggle",
-      kind: "public",
       start_time: new Date(now - 3600_000).toISOString(),
       end_time: new Date(now + 3600_000).toISOString(),
-      is_public: true,
       affect_global_ranking: false,
       config: {},
       problems: [{

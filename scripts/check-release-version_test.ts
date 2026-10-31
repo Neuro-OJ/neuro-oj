@@ -3,6 +3,7 @@ import {
   compareReleaseVersion,
   normalizeVersion,
   readManifestVersion,
+  resolveReleaseTagInput,
 } from "./check-release-version.ts";
 
 /**
@@ -60,4 +61,51 @@ Deno.test("readManifestVersion: 真实仓库能读到一个合法版本", async 
   const manifest = await readManifestVersion(REPO_ROOT);
   assert(manifest !== null, "应能从仓库清单读出模块版本");
   assert(normalizeVersion(manifest!.version) !== null, manifest!.version);
+});
+
+Deno.test("resolveReleaseTagInput: 分支推送不再被当成发布标签", () => {
+  // 回归：rc/v0.11 分支上的 Root Gates 曾把分支名当标签判失败。
+  assertEquals(
+    resolveReleaseTagInput(undefined, {
+      refName: "rc/v0.11",
+      refType: "branch",
+    })
+      .tag,
+    "",
+  );
+  // 没有 REF_TYPE 的旧环境：分支名长得不像版本号 → 同样跳过。
+  assertEquals(
+    resolveReleaseTagInput(undefined, { refName: "rc/v0.11" }).tag,
+    "",
+  );
+  assertEquals(
+    resolveReleaseTagInput(undefined, { refName: "main" }).skipReason?.includes(
+      "不是发布标签",
+    ),
+    true,
+  );
+});
+
+Deno.test("resolveReleaseTagInput: 标签上下文按 REF_TYPE 与显式参数识别", () => {
+  assertEquals(
+    resolveReleaseTagInput(undefined, {
+      refName: "v0.11.0-rc.1",
+      refType: "tag",
+    }).tag,
+    "v0.11.0-rc.1",
+  );
+  // 旧环境无 REF_TYPE，但 ref 名是版本号 → 仍按标签校验（向后兼容）。
+  assertEquals(
+    resolveReleaseTagInput(undefined, { refName: "v0.11.0" }).tag,
+    "v0.11.0",
+  );
+  // 显式参数最优先，且原样使用（严格校验由 compareReleaseVersion 负责）。
+  assertEquals(
+    resolveReleaseTagInput("v0.11.0-rc.1", {
+      refName: "main",
+      refType: "branch",
+    }).tag,
+    "v0.11.0-rc.1",
+  );
+  assertEquals(resolveReleaseTagInput(undefined, {}).tag, "");
 });

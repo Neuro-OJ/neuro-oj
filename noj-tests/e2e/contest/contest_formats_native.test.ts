@@ -212,7 +212,6 @@ function contestInput(
     type,
     start_time: new Date(now - 120000).toISOString(),
     end_time: new Date(now + 600000).toISOString(),
-    is_public: true,
     config: {},
     problems: [{
       problem_id: problem.id,

@@ -481,8 +481,6 @@ Deno.test({
               type: "kaggle",
               start_time: new Date(now - 1000).toISOString(),
               end_time: new Date(now + 45000).toISOString(),
-              kind: "public",
-              is_public: true,
               affect_global_ranking: false,
               ranking_visibility: "participants",
               config: { scoreboard_scope: "self" },

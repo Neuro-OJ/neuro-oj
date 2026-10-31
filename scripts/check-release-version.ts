@@ -101,13 +101,62 @@ export async function readManifestVersion(
   return null;
 }
 
+/** 发布标签输入解析结果：要么拿到标签，要么明确跳过。 */
+export interface ReleaseTagInput {
+  /** 待校验的标签；跳过时为空串 */
+  tag: string;
+  /** 跳过原因（仅在 tag 为空时有值） */
+  skipReason?: string;
+}
+
+/**
+ * 决定本次是否处于"发布标签"上下文。
+ *
+ * 2026-10-31 修复：此前直接把 `GITHUB_REF_NAME` 当标签，于是在**分支推送**上
+ * （如 `rc/v0.11`）会误判成非法标签并把 Root Gates 打红。判据改为：
+ * - 显式标签参数 → 采用（发布流水线或用例显式传入）；
+ * - `GITHUB_REF_TYPE === "tag"` → 采用 `GITHUB_REF_NAME`；
+ * - 未提供 `GITHUB_REF_TYPE`（老工作流 / 本地）但 `GITHUB_REF_NAME` 长得像版本号
+ *   → 采用，保持向后兼容；
+ * - 其余（分支推送、无相关 env）→ 跳过。
+ *
+ * @param argvTag 命令行第一个参数
+ * @param env 相关环境变量
+ * @returns 标签输入；`tag` 为空串表示跳过
+ */
+export function resolveReleaseTagInput(
+  argvTag: string | undefined,
+  env: { refName?: string; refType?: string },
+): ReleaseTagInput {
+  const explicit = (argvTag ?? "").trim();
+  if (explicit) return { tag: explicit };
+
+  const refName = (env.refName ?? "").trim();
+  const refType = (env.refType ?? "").trim();
+  if (!refName) {
+    return {
+      tag: "",
+      skipReason: "未提供 Release 标签（用法：deno run -A " +
+        "scripts/check-release-version.ts v0.11.0-rc.1）",
+    };
+  }
+  if (refType === "tag") return { tag: refName };
+  if (refType) {
+    return { tag: "", skipReason: `当前 ref 类型是 ${refType}，不是发布标签` };
+  }
+  // 没有 REF_TYPE 的旧环境：只在 ref 名本身是版本号时才当标签。
+  if (/^v?\d+\.\d+\.\d+/.test(refName)) return { tag: refName };
+  return { tag: "", skipReason: `当前 ref（${refName}）不是发布标签` };
+}
+
 if (import.meta.main) {
-  const tag = (Deno.args[0] ?? Deno.env.get("GITHUB_REF_NAME") ?? "").trim();
+  const input = resolveReleaseTagInput(Deno.args[0], {
+    refName: Deno.env.get("GITHUB_REF_NAME"),
+    refType: Deno.env.get("GITHUB_REF_TYPE"),
+  });
+  const tag = input.tag;
   if (!tag) {
-    console.log(
-      "发布阶段版本校验跳过：未提供 Release 标签" +
-        "（用法：deno run -A scripts/check-release-version.ts v0.11.0-rc.1）",
-    );
+    console.log(`发布阶段版本校验跳过：${input.skipReason ?? "未提供标签"}`);
     Deno.exit(0);
   }
 
