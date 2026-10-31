@@ -6,7 +6,7 @@
  * - `getCurrentDocument()`：取当前版本（含正文）。
  * - `getRequiredConsentVersion()`：取最近一个"重大"版本号；**只对重大版本要求重新同意**。
  * - `listVersions()`：版本历史。
- * - `publishVersion()`：发布新版本（不可变追加），可选打时间戳（见 `tsa.ts`）。
+ * - `publishVersion()`：发布新版本（不可变追加）。
  *
  * 约定：版本行只追加、不可修改；改政策 = 发新版本。
  */
@@ -29,7 +29,6 @@ import type {
   LegalVersionSummary,
 } from "../../legal/types.ts";
 import { isLegalKind } from "../../legal/types.ts";
-import { timestampHash, tsaEnabled } from "./tsa.ts";
 import { type AuditMeta, recordAudit } from "../audit-log.ts";
 
 type LegalReader = Pick<DbRoot, "select">;
@@ -225,8 +224,7 @@ export async function listVersions(
  * 发布新版本（不可变追加）。
  *
  * 事务内：文档行不存在则创建 → `current_version + 1` → 插入版本行（含内容哈希）
- * → 更新 `current_version`。若启用 TSA 且为重大变更，**同步**打时间戳；
- * 打戳失败不阻塞发布（`tsa_*` 保持 null）。
+ * → 更新 `current_version`。
  *
  * @param kind 文档类型
  * @param content Markdown 正文
@@ -334,91 +332,5 @@ export async function publishVersion(
     { type: "legal_document", id: kind },
   );
 
-  // 打时间戳：失败不阻塞发布（政策发布是低频人工操作，可容忍降级）。
-  if (isMaterial && tsaEnabled()) {
-    const result = await timestampHash(contentHash);
-    if (result) {
-      const [doc] = await db
-        .select({ id: legalDocuments.id })
-        .from(legalDocuments)
-        .where(eq(legalDocuments.kind, kind))
-        .limit(1);
-      if (doc) {
-        await db
-          .update(legalDocumentVersions)
-          .set({
-            tsa_provider: result.provider,
-            tsa_token: result.token,
-            tsa_chain: result.chain,
-            tsa_query: result.query,
-            tsa_timestamp: result.timestamp,
-          })
-          .where(
-            and(
-              eq(legalDocumentVersions.document_id, doc.id),
-              eq(legalDocumentVersions.version, newVersion),
-            ),
-          );
-      }
-    }
-  }
-
   return newVersion;
-}
-
-/**
- * 读取某版本保存的时间戳记录（供管理端验证）。
- *
- * @param kind 文档类型
- * @param version 版本号
- * @returns 时间戳字段；无记录或该版本不存在时返回 null
- */
-export async function getVersionTsa(
-  kind: LegalKind,
-  version: number,
-): Promise<
-  {
-    content_hash: string;
-    provider: string | null;
-    token: string | null;
-    chain: string | null;
-    query: string | null;
-    timestamp: string | null;
-  } | null
-> {
-  assertKind(kind);
-  const db = getDb();
-  const [doc] = await db
-    .select()
-    .from(legalDocuments)
-    .where(eq(legalDocuments.kind, kind))
-    .limit(1);
-  if (!doc) return null;
-
-  const [row] = await db
-    .select({
-      content_hash: legalDocumentVersions.content_hash,
-      tsa_provider: legalDocumentVersions.tsa_provider,
-      tsa_token: legalDocumentVersions.tsa_token,
-      tsa_chain: legalDocumentVersions.tsa_chain,
-      tsa_query: legalDocumentVersions.tsa_query,
-      tsa_timestamp: legalDocumentVersions.tsa_timestamp,
-    })
-    .from(legalDocumentVersions)
-    .where(
-      and(
-        eq(legalDocumentVersions.document_id, doc.id),
-        eq(legalDocumentVersions.version, version),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  return {
-    content_hash: row.content_hash,
-    provider: row.tsa_provider,
-    token: row.tsa_token,
-    chain: row.tsa_chain,
-    query: row.tsa_query,
-    timestamp: row.tsa_timestamp,
-  };
 }

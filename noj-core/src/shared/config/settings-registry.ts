@@ -198,37 +198,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "legal",
     visible: false,
   },
-  {
-    key: "tsa_provider",
-    type: "string",
-    default: "disabled",
-    description:
-      "政策版本时间戳 Provider：disabled | freetsa | digicert | custom（仅技术验证用免费 Provider）",
-    is_secret: false,
-    scope: "runtime",
-    envFallback: "TSA_PROVIDER",
-    category: "legal",
-  },
-  {
-    key: "tsa_url",
-    type: "string",
-    default: "",
-    description: "自定义 TSA 端点（tsa_provider=custom 时填写）",
-    is_secret: false,
-    scope: "runtime",
-    envFallback: "TSA_URL",
-    category: "legal",
-  },
-  {
-    key: "tsa_root_cert",
-    type: "text",
-    default: "",
-    description: "TSA 根证书（PEM，custom 时用于验证时间戳签发者链）",
-    is_secret: true,
-    scope: "runtime",
-    envFallback: "TSA_ROOT_CERT",
-    category: "legal",
-  },
   // ── auth ──────────────────────────────────────────────────
   {
     key: "allow_register",

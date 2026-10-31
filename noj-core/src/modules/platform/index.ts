@@ -124,18 +124,11 @@ export {
   getCurrentDocument,
   getRequiredConsentInfo,
   getRequiredConsentVersion,
-  getVersionTsa,
   hashContent,
   listVersions,
   normalizeContent,
   publishVersion,
 } from "./services/legal/documents.ts";
-export {
-  buildTimeStampQuery,
-  timestampHash,
-  tsaEnabled,
-  verifyTimestamp,
-} from "./services/legal/tsa.ts";
 export { isLegalKind, LEGAL_KINDS } from "./legal/types.ts";
 export type {
   LegalConsentStatus,

@@ -23,8 +23,7 @@ type TabKey =
   | "third_parties"
   | "review"
   | "retention"
-  | "requests"
-  | "tsa";
+  | "requests";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "privacy", label: "隐私政策" },
@@ -34,7 +33,6 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "review", label: "内容审查" },
   { key: "retention", label: "留存期限" },
   { key: "requests", label: "删除/更正请求" },
-  { key: "tsa", label: "时间戳 TSA" },
 ];
 const activeTab = ref<TabKey>("privacy");
 
@@ -89,7 +87,7 @@ async function doPublish(kind: LegalKind) {
   }
 }
 
-// ─── 配置草稿（legal_* / tsa_*）────────────────────────────────
+// ─── 配置草稿（legal_*）────────────────────────────────
 const SETTING_KEYS = [
   "legal_operator_name",
   "legal_contact",
@@ -99,9 +97,6 @@ const SETTING_KEYS = [
   "legal_police_number",
   "legal_police_url",
   "legal_third_parties",
-  "tsa_provider",
-  "tsa_url",
-  "tsa_root_cert",
 ] as const;
 type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -120,26 +115,24 @@ function isDirty(key: SettingKey): boolean {
 const dirtyCount = computed(() => SETTING_KEYS.filter((k) => isDirty(k)).length);
 
 async function loadSettings(silent = false) {
-  // 后端返回 `effective_value`（已脱敏）；secret 项不回填草稿，避免把掩码当真实值。
+  // 后端返回配置的生效值。
   const res = await api.get<{
     data: Array<{
       key: string;
       effective_value: string | null;
-      is_secret: boolean;
       updated_at: string | null;
     }>;
   }>("/api/v1/admin/system/settings", { silent });
   const relevant = res.data.filter((s) => (SETTING_KEYS as readonly string[]).includes(s.key));
   for (const item of relevant) {
-    // secret 项后端只回脱敏值，不填入草稿（避免把掩码当真实值）
-    savedValues[item.key] = item.is_secret ? "" : String(item.effective_value ?? "");
+    savedValues[item.key] = String(item.effective_value ?? "");
     versions.value[item.key] = item.updated_at;
   }
   resetDraftsToSaved();
   return relevant;
 }
 
-/** 把草稿重置为已保存值（secret 项留空）；加载后与「放弃」都用它。 */
+/** 把草稿重置为已保存值；加载后与「放弃」都用它。 */
 function resetDraftsToSaved() {
   for (const k of Object.keys(drafts)) delete drafts[k];
   for (const key of SETTING_KEYS) {
@@ -485,27 +478,6 @@ onMounted(loadAll);
             </tbody>
           </table>
         </div>
-      </div>
-
-      <!-- 时间戳 TSA -->
-      <div v-else-if="activeTab === 'tsa'" class="mt-4 grid gap-4 max-w-2xl">
-        <AdminFormField label="TSA Provider" hint="默认 disabled；freetsa/digicert 仅技术验证，中国法律场景建议 custom 并接国内 TSA">
-          <USelect
-            v-model="drafts.tsa_provider"
-            :items="[
-              { label: 'disabled（关闭）', value: 'disabled' },
-              { label: 'freetsa（免费，仅技术验证）', value: 'freetsa' },
-              { label: 'digicert（免费）', value: 'digicert' },
-              { label: 'custom（自填端点）', value: 'custom' },
-            ]"
-          />
-        </AdminFormField>
-        <AdminFormField label="自定义 TSA 端点" hint="provider=custom 时填写">
-          <UInput v-model="drafts.tsa_url" placeholder="https://..." />
-        </AdminFormField>
-        <AdminFormField label="TSA 根证书（PEM）" hint="供后续验证/审计，敏感字段">
-          <UTextarea v-model="drafts.tsa_root_cert" :rows="6" class="font-mono" />
-        </AdminFormField>
       </div>
     </AsyncContent>
   </div>
