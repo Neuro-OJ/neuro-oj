@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import type { BffCacheStore } from '../utils/bff-cache';
 
-/** 只共享连接；缓存内容和填充锁始终位于 Redis。 */
+/** 只共享连接；缓存内容位于 Redis。 */
 export default defineNitroPlugin((app) => {
   const url = useRuntimeConfig().bffRedisUrl as string;
   if (!url) return;
@@ -16,20 +16,7 @@ export default defineNitroPlugin((app) => {
   redis.on('error', () => {});
   const store: BffCacheStore = {
     get: (key) => redis.get(key),
-    set: async (key, value, ttl, onlyIfAbsent) => {
-      const result = onlyIfAbsent
-        ? await redis.set(key, value, 'EX', ttl, 'NX')
-        : await redis.set(key, value, 'EX', ttl);
-      return result === 'OK';
-    },
-    unlock: async (key, owner) => {
-      await redis.eval(
-        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-        1,
-        key,
-        owner,
-      );
-    },
+    set: async (key, value, ttl) => (await redis.set(key, value, 'EX', ttl)) === 'OK',
   };
   app.hooks.hook('request', (event) => {
     event.context.bffCacheStore = store;

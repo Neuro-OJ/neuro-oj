@@ -7,14 +7,9 @@ function cache() {
   let now = 0;
   const store: BffCacheStore = {
     get: (key) => Promise.resolve((values.get(key)?.expires ?? 0) > now ? values.get(key)!.value : null),
-    set: (key, value, ttl, nx) => {
-      if (nx && (values.get(key)?.expires ?? 0) > now) return Promise.resolve(false);
+    set: (key, value, ttl) => {
       values.set(key, { value, expires: now + ttl * 1000 });
       return Promise.resolve(true);
-    },
-    unlock: (key, owner) => {
-      if (values.get(key)?.value === owner) values.delete(key);
-      return Promise.resolve();
     },
   };
   return {
@@ -36,12 +31,12 @@ Deno.test('BFF 公共元信息跨请求命中，30 秒后回源，命名空间�
   assertEquals(await cachedSiteMeta(store, 'deploy-a:meta', load), { data: 3 });
 });
 
-Deno.test('BFF 并发缓存填充由共享锁合并', async () => {
+Deno.test('BFF 并发未命中均可回源，无需等待填充锁', async () => {
   const { store } = cache();
   let calls = 0;
   const load = async () => {
     calls++;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     return 42;
   };
   assertEquals(await Promise.all(Array.from({ length: 5 }, () => cachedSiteMeta(store, 'meta', load))), [
@@ -51,34 +46,36 @@ Deno.test('BFF 并发缓存填充由共享锁合并', async () => {
     42,
     42,
   ]);
-  assertEquals(calls, 1);
+  assertEquals(calls, 5);
 });
 
-Deno.test('BFF 慢填充超时的等待者降级，不重复冲击上游', async () => {
-  let calls = 0;
-  const store: BffCacheStore = {
-    get: () => Promise.resolve(null),
-    set: () => Promise.resolve(false),
-    unlock: () => Promise.resolve(),
-  };
-  await assertRejects(() =>
-    cachedSiteMeta(store, 'meta', () => {
-      calls++;
-      return Promise.resolve(42);
-    })
-  );
-  assertEquals(calls, 0);
-});
-
-Deno.test('BFF Redis 故障绕过缓存，失败不缓存且释放填充锁', async () => {
+Deno.test('BFF Redis 读取故障绕过缓存', async () => {
   const broken: BffCacheStore = {
     get: () => Promise.reject(new Error('offline')),
     set: () => Promise.reject(new Error('offline')),
-    unlock: () => Promise.reject(new Error('offline')),
   };
-  assertEquals(await cachedSiteMeta(broken, 'meta', () => Promise.resolve(42)), 42);
+  const states: string[] = [];
+  assertEquals(await cachedSiteMeta(broken, 'meta', () => Promise.resolve(42), (state) => states.push(state)), 42);
+  assertEquals(states, ['bypass']);
+});
+
+Deno.test('BFF 缓存写入故障仍返回已加载的结果，不重复回源', async () => {
+  const store: BffCacheStore = {
+    get: () => Promise.resolve(null),
+    set: () => Promise.reject(new Error('offline')),
+  };
+  let calls = 0;
+  assertEquals(await cachedSiteMeta(store, 'meta', () => Promise.resolve(++calls)), 1);
+  assertEquals(calls, 1);
+});
+
+Deno.test('BFF 上游失败不缓存，后续请求可重试', async () => {
   const { store } = cache();
   await assertRejects(() => cachedSiteMeta(store, 'meta', () => Promise.reject(new Error('upstream'))));
   assertEquals(await store.get('meta'), null);
-  assertEquals(await store.get('meta:lock'), null);
+  assertEquals(await cachedSiteMeta(store, 'meta', () => Promise.resolve(42)), 42);
+});
+
+Deno.test('BFF 未配置缓存时直接回源', async () => {
+  assertEquals(await cachedSiteMeta(null, 'meta', () => Promise.resolve(42)), 42);
 });
