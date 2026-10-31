@@ -98,16 +98,6 @@ export const ALLOWLIST: Record<
     reason:
       "域题单 CRUD：本域资源管理权限与审计，沿用题单低频管理豁免；不接受普通成员内容写入",
   },
-  // ── 本次新暴露、尚未限流（欠债，保持可见）──
-  "noj-core/src/modules/access/identity/routes/checkin.ts": {
-    status: "pending",
-    reason:
-      "每日签到本身按天幂等；但写路由无任何限流，建议补 IP 限流或明确豁免",
-  },
-  "noj-core/src/modules/platform/system/routes/email-delivery.ts": {
-    status: "pending",
-    reason: "邮件投递回执写路由无限流，需确认是否外部可达",
-  },
   // ── 内部服务端点（P1d）：凭据保护、仅容器内 CLI 调用，不面向浏览器 ──
   "noj-core/src/modules/platform/system/routes/internal-drain.ts": {
     status: "exempt",

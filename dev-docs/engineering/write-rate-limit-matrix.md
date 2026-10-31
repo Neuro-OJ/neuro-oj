@@ -62,9 +62,21 @@
   沿用管理豁免；逐文件依据登记在 ALLOWLIST。
   - `POST /domains/:slug/community/reports` 由父路由 `domain-community.ts` 的
     `enforceReportRateLimit` 覆盖（60s/30），不是无限制端点。
-- **仍待偿还的欠债（`pending`，保持可见）**：
-  `access/identity/routes/checkin.ts`（每日签到，按天幂等但无任何限流）与
-  `platform/system/routes/email-delivery.ts`（邮件投递回执，需先确认是否对外可达）。
+- **仍待偿还的欠债（`pending`，保持可见）**：无。此前登记的两条已于 2026-10-31 补齐
+  （见下节），`check-write-rate-limits` 现在的输出是"待偿还欠债 0 个"。
+
+## 2026-10-31 偿还的两条欠债
+
+这两条是门禁此前唯一暴露出来、却一直挂着的 `pending`：都是真写端点，只是理由当时没写清。
+
+| 操作 | 路由 | 限流方式 | 阈值 | 为什么是这个维度 |
+| --- | --- | --- | --- | --- |
+| 每日签到 | `POST /api/v1/checkin` | `enforceCheckinRateLimit(userId)` | 60s/10（账号） | 按天幂等**不等于**可以无限调用：重复请求仍会开事务写 `check_ins` 并重算连续天数。只按账号计数、**不按 IP**——机房/校园 NAT 下同班学生共用出口 IP，IP 窗口会让他们互相顶掉签到 |
+| 邮件投递回执 | `POST /api/v1/email-events/:provider` | `enforceEmailDeliveryEventRateLimit(c)` | 60s/120（来源 IP） | 该端点对公网开放（厂商回调），签名校验是第一道门；限流挡的是伪造/重放的高频请求在验签前后白白消耗连接与 DB。窗口放到 120 是因为厂商会批量追送回执 |
+
+两条都补了 HTTP 层回归：预置窗口计数到上限前一次，断言"最后一次放行 + 超额 429 +
+带 `Retry-After`"，并断言被拒的请求**没有业务副作用**（签到不写 `check_ins`、回执不进入
+验签）。签名校验与限流的顺序明确写死：**限流不替代验签**。
 
 ## 2026-10-31 补齐的域内写端点
 
