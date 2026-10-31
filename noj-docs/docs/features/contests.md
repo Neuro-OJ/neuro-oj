@@ -155,3 +155,53 @@ Settlement）**阶段：
 3. **动态监控**：赛中通过后台实时榜单面板无视封榜限制监控全场提交波形与沙箱评测负载；
 4. **成绩归档**：一键生成最终排名 CSV
    报表与代码打包下载，用于离线颁奖与存档备案。
+
+---
+
+## 兼容与弃用（0.11）
+
+比赛不再区分公开赛与邀请赛，因此下列字段已从 API 与界面中移除：
+
+| 字段 | 位置 | 现状 |
+| --- | --- | --- |
+| `kind`（`public` / `invite`） | 比赛响应与创建/更新请求 | 已移除；请求里带上会返回 `400 CONTEST_LEGACY_FIELD` |
+| `is_public` | 同上 | 已移除；报名与可见性改由域访问权决定 |
+| `has_password` | 比赛响应 | 已移除 |
+| `password` | 报名与创建/更新请求 | 已移除；请求里带上会返回 `400 CONTEST_LEGACY_FIELD` |
+
+数据库中的 `contests.kind` / `is_public` / `password` 三列暂时保留（写入恒为中性值），
+它们**不参与任何授权判定**，将在后续迁移中删除。
+
+旧的无域比赛入口（`/contests/**`、`/api/v1/contests/**`）保留 301 与默认域门控，
+但已登记为**弃用**：新代码请使用 `/d/:slug/contests/**`，无域入口最早在 0.12 评估下线。
+已退役的写接口仍返回 410，不在本表的弃用范围内。
+
+### 无域读接口的下线评估（2026-10-31）
+
+对 `rc/v0.11` 做了一次静态清点（门禁脚本 `scripts/check-legacy-contest-api.ts`），
+结论是**现在还不能删，但已经没人用**：
+
+| 项 | 现状 |
+| --- | --- |
+| 仍在服务的无域只读路由 | 8 条（列表、详情、赛题、单题、实时榜、正式榜、我的提交、答疑） |
+| 无域写路由 | 5 条，全部已退役（生产返回 `410 ENDPOINT_RETIRED`） |
+| 第一方生产调用方 | 仅 `editor/[id].vue` 与 `utils/editorHistory.ts` 的旧竞赛分支，**不可达** |
+| 测试引用 | 37 处，全部在非生产环境的 E2E 里 |
+
+三个必须知道的事实：
+
+1. **退役只在生产启用。** 410 由 `retireLegacyEndpoints`（默认取
+   `NOJ_ENV === "production"`）控制，因此 E2E 里旧写接口仍返回 201。**测试通过不是退役
+   证据**，退役契约由门禁的静态断言保证：写方法必须全部登记在
+   `retired-endpoints.json`。
+2. **旧编辑器入口已收敛。** `/editor/:id?contest=<id>&label=<label>` 会被
+   `legacy-contest-editor` 中间件在渲染前 301 到 `/d/main/contests/<id>/solve/<label>`。
+   它原本的提交调用在生产环境已经是 410。
+3. **授权口径绑默认域。** 无域读路径经 `resolveDefaultContestAccess`，固定 `main` 且
+   拒绝其他域的比赛；旧入口不能"顺手"改成域无关。
+
+0.12 下线的前置条件：删除 `editor/[id].vue` 的 `isContest` 分支与
+`utils/editorHistory.ts` 的竞赛分支，清空 `scripts/check-legacy-contest-api.ts` 的
+`CALLER_ALLOWLIST`，让无域读路由返回 410 并观察一个版本；同时决定 E2E 是否切到
+`retireLegacyEndpoints: true` 运行。评估记录见
+[`.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`](../../../.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md)。

@@ -32,13 +32,11 @@ let userToken = "";
 let problemId = "";
 let contestId = "";
 
-/** 邀请赛邀请码（`kind='invite'` 必须设置，报名时校验）。 */
-const CONTEST_PASSWORD = "PqInvitePass1";
-
 /**
- * 建一场进行中的**邀请赛**并把题目挂进去，同时让 userToken 报名参赛。
+ * 建一场进行中的比赛并把题目挂进去，同时让 userToken 报名参赛。
  *
- * 邀请赛验证实际报名与密码；题目独立，不让比赛保密窗口影响其他回归。
+ * 0.11 起比赛不再区分公开赛/邀请赛，也没有比赛密码：报名由域访问权决定，
+ * 因此创建体里不再带 `kind` / `is_public` / `password`（带上会被 400 拒绝）。
  *
  * @returns 竞赛 id（high 提交与报名身份都需要）。
  */
@@ -53,9 +51,6 @@ async function createRunningContestWithRegistration(): Promise<string> {
       end_time: new Date(now + 3_600_000).toISOString(),
       type: "kaggle",
       config: {},
-      is_public: false,
-      kind: "invite",
-      password: CONTEST_PASSWORD,
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,
@@ -76,7 +71,7 @@ async function createRunningContestWithRegistration(): Promise<string> {
   // 竞赛提交要求参赛者身份（verifyContestAccess 校验成员 + 窗口）
   const reg = await apiPost(
     `/api/v1/contests/${id}/register`,
-    { password: CONTEST_PASSWORD },
+    {},
     userToken,
   );
   if (reg.status !== 200 && reg.status !== 201) {

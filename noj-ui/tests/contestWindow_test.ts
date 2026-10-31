@@ -4,6 +4,7 @@ import { assertEquals } from 'jsr:@std/assert@^1';
 import {
   contestCountdown,
   contestDurationText,
+  contestPhase,
   contestProblemsState,
   contestRegistrationState,
   rankingVisibilityText,
@@ -14,8 +15,6 @@ const base = {
   isLoggedIn: true,
   isRegistered: false,
   status: 'running' as const,
-  kind: 'public' as const,
-  hasPassword: false,
   canManage: false,
 };
 
@@ -30,24 +29,7 @@ Deno.test('contestWindow: 未登录只引导登录，不进入报名', () => {
 
 Deno.test('contestWindow: 已报名进入参赛者态，未报名进入报名态', () => {
   assertEquals(contestRegistrationState({ ...base, isRegistered: true }), { kind: 'registered', canEnter: true });
-  assertEquals(contestRegistrationState(base), {
-    kind: 'register',
-    needsCredential: false,
-    credentialLabel: '',
-  });
-});
-
-Deno.test('contestWindow: 域比赛报名统一不要求额外凭据', () => {
-  assertEquals(contestRegistrationState({ ...base, kind: 'invite' }), {
-    kind: 'register',
-    needsCredential: false,
-    credentialLabel: '',
-  });
-  assertEquals(contestRegistrationState({ ...base, hasPassword: true }), {
-    kind: 'register',
-    needsCredential: false,
-    credentialLabel: '',
-  });
+  assertEquals(contestRegistrationState(base), { kind: 'register' });
 });
 
 Deno.test('contestWindow: 赛题可见性由开赛与报名决定，组织者始终可见', () => {
@@ -58,6 +40,28 @@ Deno.test('contestWindow: 赛题可见性由开赛与报名决定，组织者始
   assertEquals(contestProblemsState({ status: 'ended', isRegistered: true, canManage: false }), 'visible');
   assertEquals(contestProblemsState({ status: 'ended', isRegistered: false, canManage: false }), 'visible');
   assertEquals(contestProblemsState({ status: 'pending', isRegistered: false, canManage: true }), 'visible');
+});
+
+Deno.test('contestWindow: 本地阶段按赛程推导，服务端 ended 为终态', () => {
+  const start = '2026-10-27T00:00:00.000Z';
+  const end = '2026-10-27T02:00:00.000Z';
+  const contest = { start_time: start, end_time: end, status: 'pending' };
+  const at = (iso: string) => Date.parse(iso);
+  // 赛前 / 赛中 / 赛后 由本地时钟决定
+  assertEquals(contestPhase(contest, at('2026-10-26T23:00:00.000Z')), 'pending');
+  assertEquals(contestPhase(contest, at('2026-10-27T01:00:00.000Z')), 'running');
+  assertEquals(contestPhase(contest, at('2026-10-27T03:00:00.000Z')), 'ended');
+  // 服务端已结束 → 即使客户端时钟落后也不能回到 running（否则会重开作答入口）
+  assertEquals(
+    contestPhase({ ...contest, status: 'ended' }, at('2026-10-27T01:00:00.000Z')),
+    'ended',
+  );
+  // 缺失或无赛程时安全降级
+  assertEquals(contestPhase(null, at('2026-10-27T01:00:00.000Z')), 'pending');
+  assertEquals(
+    contestPhase({ start_time: 'bad', end_time: 'bad', status: 'pending' }, Date.now()),
+    'running',
+  );
 });
 
 Deno.test('contestWindow: 倒计时按天/时分秒降级，过期归零', () => {

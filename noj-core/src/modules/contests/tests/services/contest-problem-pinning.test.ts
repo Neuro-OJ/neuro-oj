@@ -142,7 +142,6 @@ Deno.test({
           start_time: new Date(Date.now() + 60_000).toISOString(),
           end_time: new Date(Date.now() + 3_600_000).toISOString(),
           type: "kaggle",
-          password: "ContestPass123",
           problems: [
             {
               problem_id: "cp-pin-p1",
@@ -166,7 +165,6 @@ Deno.test({
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
       type: "kaggle",
-      password: "ContestPass123",
       problems: [
         { problem_id: "cp-pin-p1", label: "A", sort_order: 0, score: 10000 },
       ],
@@ -203,7 +201,6 @@ Deno.test({
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
       type: "kaggle",
-      password: "ContestPass123",
       problems: [
         { problem_id: "cp-pin-p3", label: "A", sort_order: 0, score: 10000 },
       ],
@@ -281,7 +278,6 @@ Deno.test({
       start_time: new Date(Date.now() + 60_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
       type: "kaggle",
-      password: "ContestPass123",
       problems: [{
         problem_id: "cp-pin-p5",
         label: "A",

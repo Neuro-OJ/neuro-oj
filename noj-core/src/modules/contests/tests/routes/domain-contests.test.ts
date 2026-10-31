@@ -4,6 +4,8 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import {
+  classroomMemberships,
+  classrooms,
   domainProblemBindings,
   problems,
   problemVersions,
@@ -21,6 +23,7 @@ import {
   addDomainContestParticipants,
   createDomainContest,
 } from "../../index.ts";
+import { setContestClassrooms } from "../../services/classroom-contests.ts";
 import { domainContestRouter } from "../../routes/domain-contests.ts";
 import {
   _dispatchToLocalListenersForTest,
@@ -328,6 +331,105 @@ Deno.test({
     } finally {
       controller.abort();
       await reader.cancel();
+    }
+  },
+});
+
+Deno.test({
+  name: "域比赛 SSE：榜单载荷带班级分区且筛选参数与 REST 同源",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const f = await fixture("contest-sse-classroom", true), application = app();
+    /**
+     * 直接插入班级与成员行，而不是走 `createClassroom`：本夹具的域 preset 是 `team`，
+     * 教学模块在该 preset 下被停用，接口会返回「此模块已停用」。本用例验证的是
+     * **SSE 载荷的分区形状**，与教学模块开关无关，用最小数据构造即可。
+     */
+    const room = { id: crypto.randomUUID(), name: "一班" };
+    const now = new Date().toISOString();
+    await getDb().insert(classrooms).values({
+      id: room.id,
+      domain_id: f.domain.id,
+      name: room.name,
+      created_at: now,
+      updated_at: now,
+    });
+    await getDb().insert(classroomMemberships).values({
+      id: crypto.randomUUID(),
+      domain_id: f.domain.id,
+      classroom_id: room.id,
+      user_id: f.student,
+      role: "student",
+      status: "active",
+      joined_at: now,
+      appointed_at: now,
+    });
+    await getDb().transaction((tx) =>
+      setContestClassrooms(tx, f.domain.id, f.contest.id, f.owner, [room.id])
+    );
+
+    /** 读一次流首帧（`contest:ranking:snapshot`）并解析成 JSON。 */
+    async function readSnapshot(query: string) {
+      const controller = new AbortController();
+      const response = await application.request(
+        `/api/v1/domains/${f.domain.slug}/contests/${f.contest.id}/events${query}`,
+        {
+          headers: { Authorization: `Bearer ${f.ownerToken}` },
+          signal: controller.signal,
+        },
+      );
+      const reader = response.body!.getReader(), decoder = new TextDecoder();
+      try {
+        const chunk = decoder.decode((await reader.read()).value);
+        const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+        assert(line !== undefined, chunk);
+        return JSON.parse(line!.slice("data: ".length));
+      } finally {
+        controller.abort();
+        await reader.cancel();
+      }
+    }
+
+    const unfiltered = await readSnapshot("");
+    assert(Array.isArray(unfiltered.classrooms), "载荷必须带 classrooms");
+    assertEquals(unfiltered.classrooms.map((r: { id: string }) => r.id), [
+      room.id,
+    ]);
+    assert(Array.isArray(unfiltered.classroom_rows));
+    assert(Array.isArray(unfiltered.other_rows));
+    assertEquals(unfiltered.classroom_id, null);
+
+    const filtered = await readSnapshot(`?classroom_id=${room.id}`);
+    assertEquals(filtered.classroom_id, room.id);
+    assert(Array.isArray(filtered.classroom_rows));
+
+    // 非关联班级的筛选不能静默返回全部：首帧推送抛 BadRequestError 后流被关闭，
+    // 因此读端拿不到 `contest:ranking:snapshot`。这与 REST 的 400 是同一口径。
+    const controller = new AbortController();
+    const rejected = await application.request(
+      `/api/v1/domains/${f.domain.slug}/contests/${f.contest.id}/events?classroom_id=${crypto.randomUUID()}`,
+      {
+        headers: { Authorization: `Bearer ${f.ownerToken}` },
+        signal: controller.signal,
+      },
+    );
+    const rejectedReader = rejected.body!.getReader(),
+      decoder = new TextDecoder();
+    try {
+      let text = "";
+      while (true) {
+        const { value, done } = await rejectedReader.read();
+        if (done) break;
+        text += decoder.decode(value);
+      }
+      assert(
+        !text.includes("contest:ranking:snapshot"),
+        `非关联班级不应拿到榜单快照：${text}`,
+      );
+    } finally {
+      controller.abort();
+      await rejectedReader.cancel();
     }
   },
 });

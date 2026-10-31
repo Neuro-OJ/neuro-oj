@@ -5,9 +5,11 @@ import { DOMAIN_CONTEST_TYPES } from '~/utils/domain-contests';
 import { extractApiError } from '~/utils/apiError';
 import { formatDateTime } from '~/utils/submissionFormat';
 import { runContestRegistration } from '~/utils/contestRegistration';
+import { useOfficialSolutions } from '~/composables/useOfficialSolutions';
 import {
   contestCountdown,
   contestDurationText,
+  contestPhase,
   contestProblemsState,
   contestRegistrationState,
   rankingVisibilityText,
@@ -30,7 +32,7 @@ definePageMeta({
 });
 
 const route = useRoute();
-const { slug } = useWorkspace();
+const { slug, domain } = useWorkspace();
 const { user, isLoggedIn } = useAuth();
 const api = useDomainContests();
 const scope = useWorkspaceActionScope();
@@ -39,25 +41,53 @@ const id = computed(() => String(route.params.contestId));
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'contest', id.value));
 
 const { data, error, status, refresh } = await useAsyncData(key, () => api.detail(slug.value!, id.value));
-usePolling({
-  intervalMs: computed(() => data.value?.data.status !== 'ended' ? 5000 : null),
-  immediate: false,
-  fetcher: () => refresh(),
-});
 
 const contest = computed(() => data.value?.data ?? null);
+// ── 倒计时：只读 Date.now()，每秒重算（SSR 首帧不依赖本地时钟） ──
+const now = ref(Date.now());
+let timer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  timer = setInterval(() => now.value = Date.now(), 1000);
+  focusClarificationsIfNeeded();
+});
+// 头部/外部链接带 `?tab=clarifications` 直达答疑区；路由复用同一组件时 query 变化也要响应。
+watch(() => route.query?.tab, () => focusClarificationsIfNeeded());
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
+/**
+ * 本地阶段：赛前 / 赛中 / 赛后只看 `start_time` / `end_time`。
+ *
+ * 不依赖服务端下发的 `status`（它只在低频同步时更新），因此跨越边界是即时的：
+ * 倒计时归零的那一刻，报名区、赛题区与作答入口会一起切到下一阶段。
+ */
+const phase = computed(() => contestPhase(contest.value, now.value));
+/** 阶段或 revision 变化 → 立即重取一次事实（报名、公告、赛程）。 */
+watch(
+  [phase, () => contest.value?.status, () => contest.value?.revision],
+  (next, previous) => {
+    // 本地阶段、服务端状态、revision 任一变化都重取：本地时钟负责边界，服务端状态
+    // 负责"赛程被改过"这类客户端推不出来的事实。
+    if (!previous || next[0] !== previous[0] || next[1] !== previous[1] || next[2] !== previous[2]) void refresh();
+  },
+);
+const countdownTarget = computed(() =>
+  contest.value ? (phase.value === 'pending' ? contest.value.start_time : contest.value.end_time) : null
+);
+const countdown = computed(() => contestCountdown(countdownTarget.value, now.value));
+
 const contestType = computed(() => DOMAIN_CONTEST_TYPES.find((type) => type.value === contest.value?.type));
 const registration = computed(() => contest.value
   ? contestRegistrationState({
     isLoggedIn: isLoggedIn.value,
     isRegistered: contest.value.is_registered === true,
-    status: contest.value.status,
+    status: phase.value,
     canManage: contest.value.can_manage === true,
   })
   : null);
 const problemsState = computed(() => contest.value
   ? contestProblemsState({
-    status: contest.value.status,
+    status: phase.value,
     isRegistered: contest.value.is_registered === true,
     canManage: contest.value.can_manage === true,
   })
@@ -115,27 +145,29 @@ async function register() {
   }
 }
 
-// ── 倒计时：只读 Date.now()，每秒重算（SSR 首帧不依赖本地时钟） ──
-const now = ref(Date.now());
-let timer: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  timer = setInterval(() => now.value = Date.now(), 1000);
-  focusClarificationsIfNeeded();
+/**
+ * 详情同步策略：本地时钟负责「赛前/赛中/赛后」的展示，服务端只做低频事实同步。
+ *
+ * 此前这里是 5 秒 detail 轮询：赛时每场比赛的每个在线观众每 5 秒打一次详情查询，
+ * 而详情里真正会变的东西（报名状态、公告、revision、赛程）只在组织者操作或本人报名
+ * 时才变。现在：
+ * - 跨过开赛 / 结束边界 → 立即重取；
+ * - `revision` 变化（服务端下发）→ 立即重取；
+ * - 其余每 30 秒同步一次，另在页面重新可见时补一次。
+ * 不能用「revision 变了才刷新」当唯一条件——当前没有独立的 revision 通知渠道。
+ */
+usePolling({
+  intervalMs: computed(() => (phase.value !== 'ended' ? 30000 : null)),
+  immediate: false,
+  fetcher: () => refresh(),
 });
-watch(() => route.query?.tab, () => focusClarificationsIfNeeded());
-onUnmounted(() => {
-  if (timer) clearInterval(timer);
-});
-const countdownTarget = computed(() =>
-  contest.value ? (contest.value.status === 'pending' ? contest.value.start_time : contest.value.end_time) : null
-);
-const countdown = computed(() => contestCountdown(countdownTarget.value, now.value));
+
 const durationText = computed(() =>
   contest.value ? contestDurationText(contest.value.start_time, contest.value.end_time) : null
 );
 
 const statusMeta = computed(() => {
-  switch (contest.value?.status) {
+  switch (phase.value) {
     case 'running':
       return { label: '进行中', icon: 'i-lucide-radio', tone: 'signal' as const };
     case 'pending':
@@ -151,6 +183,32 @@ const announcement = computed(() => contest.value?.announcement ?? '');
 
 // ── 赛题行状态：用户状态由后端下发 ──
 const problemStatusLabel: Record<string, string> = { solved: '已解决', attempted: '尝试过', untouched: '未开始' };
+
+/**
+ * 赛后复盘：官方题解入口。
+ *
+ * 只在比赛结束后启用（赛中给出会提前泄露判定思路），一次拉取本域官方题解再按题分组，
+ * 避免每道赛题各发一次请求。授权与保密仍由域社区读取路径决定，前端不做过滤。
+ */
+const officialSolutions = await useOfficialSolutions(
+  slug,
+  computed(() => phase.value === 'ended' && domain.value?.configuration.features.community !== false),
+);
+/** 该题是否有官方题解（用于列表里显示入口，没有就不显示死链）。 */
+const hasOfficialSolution = (problemId: string) =>
+  officialSolutions.forProblem(problemId).length > 0;
+/** 单篇直达，多篇落到赛题页选择。 */
+const officialSolutionLink = (problemId: string) => {
+  const rows = officialSolutions.forProblem(problemId);
+  if (rows.length !== 1) {
+    return `/d/${slug.value}/contests/${encodeURIComponent(id.value)}/problems/${
+      encodeURIComponent(
+        problems.data.value?.data.find((item) => item.problem_id === problemId)?.label ?? '',
+      )
+    }`;
+  }
+  return officialSolutions.hrefOf(rows[0]!);
+};
 
 useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
 </script>
@@ -235,10 +293,10 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
         </div>
 
         <!-- 倒计时：只在未结束时出现，进行中为「距离结束」 -->
-        <div v-if="contest.status !== 'ended' && !countdown.expired"
+        <div v-if="phase !== 'ended' && !countdown.expired"
           class="flex flex-wrap items-center justify-between gap-3 bg-bg-sunken/60 px-5 py-3 sm:px-7">
           <p class="text-xs text-text-secondary">
-            {{ contest.status === 'pending' ? '距离开始还有' : '距离结束还有' }}
+            {{ phase === 'pending' ? '距离开始还有' : '距离结束还有' }}
           </p>
           <p class="font-mono text-lg font-semibold tabular-nums tracking-wide text-text">{{ countdown.text }}</p>
         </div>
@@ -298,7 +356,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
                     <template v-if="problemsState === 'not-started'">
                       比赛尚未开始，赛题与作答入口将在开赛后开放；现在可以先确认赛制与榜单规则。
                     </template>
-                    <template v-else-if="contest.status === 'ended'">
+                    <template v-else-if="phase === 'ended'">
                       比赛已结束，赛题仍可查看与复盘，提交不再受理。
                     </template>
                     <template v-else>
@@ -373,6 +431,15 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
                     </span>
                   </span>
                   <span class="flex items-center gap-3">
+                    <!-- 赛后复盘：仅在该题确有官方题解时给出入口，不制造死链。 -->
+                    <NuxtLink
+                      v-if="phase === 'ended' && hasOfficialSolution(problem.problem_id)"
+                      :to="officialSolutionLink(problem.problem_id)"
+                      class="inline-flex items-center gap-1 text-xs font-medium text-primary no-underline hover:underline"
+                      @click.stop>
+                      <UIcon name="i-lucide-book-open-check" class="size-3.5" />
+                      官方题解
+                    </NuxtLink>
                     <span v-if="user && problem.user_status"
                       class="text-xs font-medium"
                       :class="problem.user_status === 'solved'

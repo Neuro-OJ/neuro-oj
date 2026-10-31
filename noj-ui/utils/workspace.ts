@@ -138,6 +138,25 @@ export function workspacePath(slug: string, section = '') {
   if (section && !/^[a-z][a-z0-9/-]*$/.test(section)) throw new Error('空间页面无效');
   return `/d/${slug}${section ? `/${section}` : ''}`;
 }
+
+/**
+ * 登录成功后的落点。
+ *
+ * 规则（只影响导航，不是授权：成员关系早已由后端确定）：
+ * 1. 只属于一个空间 → 直接进那个空间；
+ * 2. 除默认空间外只属于一个空间 → 进那个空间（被邀请进某所学校的学生不该被丢回
+ *    公共默认空间——默认空间对每个账号都是成员，`length === 1` 几乎永不成立）；
+ * 3. 其余情况回站点根，由根路径按默认空间跳转。
+ */
+export function postLoginDestination(
+  spaces: ReadonlyArray<{ slug: string }>,
+  defaultSlug: string | null,
+): string {
+  if (spaces.length === 1) return workspacePath(spaces[0]!.slug);
+  const primary = spaces.filter((space) => space.slug !== defaultSlug);
+  if (primary.length === 1) return workspacePath(primary[0]!.slug);
+  return '/';
+}
 /** 从当前 URL 解析空间，任何偏好或 Cookie 都不能改变此值。 */
 export function workspaceSlugFromPath(path: string): string | null {
   const slug = /^\/d\/([^/]+)(?:\/|$)/.exec(path)?.[1];

@@ -63,7 +63,7 @@ const firstAcText = computed(() => formatFirstAcMedian(props.stats.first_ac_medi
             <code class="font-mono" :class="item.hidden ? 'italic text-text-muted' : 'text-text'">{{ item.case_id }}</code>
             <span class="font-mono tabular-nums text-text-secondary">{{ item.failed }}</span>
           </div>
-          <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-sunken">
+          <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-bg-sunken">
             <div
               class="h-full rounded-full"
               :class="item.hidden ? 'bg-border' : 'bg-signal'"

@@ -60,18 +60,15 @@ export {
   publishContestRankingSnapshot,
 } from "./services/contest-ranking.ts";
 export {
-  CONTEST_KINDS,
   CONTEST_STATUSES,
   CONTEST_TYPES,
   isValidContestConfig,
-  isValidContestKind,
   isValidContestType,
   isValidRankingVisibility,
   RANKING_VISIBILITIES,
 } from "./types/contests.ts";
 export type {
   ContestConfig,
-  ContestKind,
   ContestProblemInput,
   ContestProblemResponse,
   ContestProblemUserStatus,

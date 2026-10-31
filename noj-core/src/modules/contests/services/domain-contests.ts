@@ -134,7 +134,7 @@ export async function createDomainContest(
       input.type,
     );
     const created = await createContest(
-      { ...input, kind: input.kind ?? "public", affect_global_ranking: false },
+      { ...input, affect_global_ranking: false },
       actorId,
       true,
       {
@@ -256,12 +256,16 @@ export async function updateDomainContest(
   });
 }
 
-/** 邀请码只能加入本域比赛，不能把未入域账号提升为域成员。 */
+/**
+ * 域比赛的统一报名。
+ *
+ * 比赛不再有密码或邀请码：能否报名只由本域访问权（`contest:participate`）决定。
+ * 报名不会把未入域的账号提升为域成员。
+ */
 export async function registerForDomainContest(
   slug: string,
   reference: string,
   actorId: string,
-  password?: string,
 ) {
   await getDb().transaction(async (tx) => {
     const access = await loadDomainContest(slug, reference, actorId, {
@@ -271,7 +275,7 @@ export async function registerForDomainContest(
       joining: true,
     });
     assertWorkspacePermission(access.context, "contest:participate");
-    await registerForContest(access.contest.id, actorId, password, tx);
+    await registerForContest(access.contest.id, actorId, tx);
   });
 }
 

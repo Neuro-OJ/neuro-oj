@@ -10,8 +10,6 @@
  */
 
 export type ContestPhase = 'pending' | 'running' | 'ended';
-/** 比赛类型（公开/邀请）；命名避开 `useContests` 的同名导出，避免自动导入歧义。 */
-export type ContestEntryKind = 'public' | 'invite';
 
 /** 报名区应展示的状态。 */
 export type RegistrationState =
@@ -21,16 +19,41 @@ export type RegistrationState =
   | { kind: 'ended' }
   /** 已报名：展示参赛身份与进入赛题入口。 */
   | { kind: 'registered'; canEnter: boolean }
-  /** 未报名：可自助报名；`needsCredential` 表示邀请赛/设密码，需要输入邀请码/密码。 */
-  | { kind: 'register'; needsCredential: boolean; credentialLabel: string };
+  /** 未报名：可按域访问权自助报名 */
+  | { kind: 'register' };
 
 export interface RegistrationInput {
   isLoggedIn: boolean;
   isRegistered: boolean;
   status: ContestPhase;
-  kind?: ContestEntryKind;
-  hasPassword?: boolean;
   canManage: boolean;
+}
+
+/**
+ * 用**本地时钟**推导比赛阶段（赛前 / 赛中 / 赛后）。
+ *
+ * 页面展示的倒计时、报名区、赛题入口都依赖它，所以规则只在这里实现一次。
+ *
+ * 两条硬约束：
+ * 1. **服务端的 `ended` 是终态**：即使浏览器时钟落后，也不能把已结束的比赛重新算成
+ *    `running`，否则本地的作答入口会在服务端已关闭之后重新亮起。
+ * 2. 这**不是授权**：它只决定"现在该给用户看什么"，能否报名 / 读题 / 提交一律以后端
+ *    的受理窗口与报名关系为准（客户端时钟可被篡改，多亮几秒按钮不会放行请求）。
+ *
+ * @param contest 至少包含赛程与服务端状态
+ * @param now 当前毫秒时间戳
+ * @returns 本地阶段
+ */
+export function contestPhase(
+  contest: { start_time: string; end_time: string; status?: string } | null | undefined,
+  now: number,
+): ContestPhase {
+  if (!contest) return 'pending';
+  if (contest.status === 'ended') return 'ended';
+  const start = Date.parse(contest.start_time), end = Date.parse(contest.end_time);
+  if (Number.isFinite(start) && now < start) return 'pending';
+  if (Number.isFinite(end) && now >= end) return 'ended';
+  return 'running';
 }
 
 /**
@@ -48,11 +71,7 @@ export function contestRegistrationState(
     // 已报名即可进入赛题页；未开赛时后端会拒绝读取，页面据 `problemsState` 说明原因。
     return { kind: 'registered', canEnter: true };
   }
-  return {
-    kind: 'register',
-    needsCredential: false,
-    credentialLabel: '',
-  };
+  return { kind: 'register' };
 }
 
 /**

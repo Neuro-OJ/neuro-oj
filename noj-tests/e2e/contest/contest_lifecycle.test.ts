@@ -66,8 +66,6 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
       config: {},
-      is_public: true,
-      password: "ContestPass123",
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,

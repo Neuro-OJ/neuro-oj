@@ -8,7 +8,7 @@ import type {
   ContestPayload,
   Pagination,
   ContestProblem,
-} from '~/composables/useContests'
+} from '~/utils/contest-types'
 import type { SimilarSubmissionPair, SimilarSubmissionsMeta } from '~/utils/contestAntiCheat'
 import { describeCoverage, isTruncated } from '~/utils/contestAntiCheat'
 import { useToast } from '~/composables/useToast'
@@ -16,7 +16,7 @@ import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', })
 
-const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatSimilarSubmissions } = useContests()
+const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatSimilarSubmissions } = useContestAdminLabels()
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
