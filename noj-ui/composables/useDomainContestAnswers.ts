@@ -1,4 +1,4 @@
-import type { ContestProblem } from './useContests';
+import type { ContestProblem } from '~/utils/contest-types';
 import type { ObjectiveQuestion, SubmitResult } from './useObjective';
 
 /** 比赛作答使用比赛固定版本独立入口，不将 contest_id 注入普通题库提交。 */

@@ -98,16 +98,6 @@ export const ALLOWLIST: Record<
     reason:
       "域题单 CRUD：本域资源管理权限与审计，沿用题单低频管理豁免；不接受普通成员内容写入",
   },
-  // ── 本次新暴露、尚未限流（欠债，保持可见）──
-  "noj-core/src/modules/access/identity/routes/checkin.ts": {
-    status: "pending",
-    reason:
-      "每日签到本身按天幂等；但写路由无任何限流，建议补 IP 限流或明确豁免",
-  },
-  "noj-core/src/modules/platform/system/routes/email-delivery.ts": {
-    status: "pending",
-    reason: "邮件投递回执写路由无限流，需确认是否外部可达",
-  },
   // ── 内部服务端点（P1d）：凭据保护、仅容器内 CLI 调用，不面向浏览器 ──
   "noj-core/src/modules/platform/system/routes/internal-drain.ts": {
     status: "exempt",
@@ -116,23 +106,118 @@ export const ALLOWLIST: Record<
       "仅由容器内 maintain CLI / noj-cli 自动排空调用，不对浏览器或匿名开放；" +
       "对内部 wait 轮询做用户向限流会破坏排空语义",
   },
+  // ── 2026-10-31 解析器修复后新进入检查的文件 ──────────────────────────
+  // 这批文件此前因"路径写成局部常量/模板字符串"而完全没被解析（extracted=[]），
+  // 门禁的"通过"只是因为它们没被检查。以下逐条说明真实处置，不编造覆盖。
+  "noj-core/src/modules/communication/community/routes/domain-governance.ts": {
+    status: "exempt",
+    reason:
+      "域社区治理：除 `/reports` 外的 8 条写路由都要求 community:moderate（域审核员/管理员），" +
+      "属权限 + 审计兜底的管理操作，与 admin 写操作同口径；" +
+      "`POST /reports` 本身由父路由 domain-community.ts 的 enforceReportRateLimit 覆盖（60s/30）",
+  },
+  "noj-core/src/modules/platform/gateway/routes/domain-llm.ts": {
+    status: "exempt",
+    reason: "域 LLM 配置：全部写路由要求 llm:manage（域管理员级），频率极低；" +
+      "`providers/:id/test` 会发起真实上游请求，属人工排障动作，限流会误伤连续排查",
+  },
+  "noj-core/src/modules/problems/routes/domain-resource-management.ts": {
+    status: "exempt",
+    reason:
+      "域题库资源管理：import 要求 problem:create、policy 要求 problem:policy，" +
+      "均为域资源管理权限 + 审计记录，沿用题单/标签的低频管理豁免",
+  },
 };
 
 /** 限流证据模式（文件级启发式：宁可宽松，避免"已限流却报错"的噪声）。 */
 const RATE_LIMIT_RE =
   /enforce[A-Za-z]*RateLimit|hardeningRateLimit|RateLimitConfig|rateLimit|rate-limit/i;
 
-/** 写方法路由（接收者锚定 + 路径以 / 开头，与路由目录生成器同一口径）。 */
+/**
+ * 写方法路由（接收者锚定 + 路径以 / 开头，与路由目录生成器同一口径）。
+ *
+ * **2026-10-31 修复**：此前的路径捕获组是 `["'`]([^"'`]+)["'`]`，只认**字符串字面量**
+ * 路径。而域路由普遍用局部常量与模板字符串书写：
+ *
+ * ```ts
+ * const path = "/domains/:slug/contests";
+ * domainContestRouter.post(path, authMiddleware, ...);
+ * domainContestRouter.patch(`${path}/:id`, ...);
+ * ```
+ *
+ * 于是 `domain-contests.ts` 的 8 条写路由**一条都没被解析出来**（实测 `extracted: []`），
+ * 文件因"没有写路由"直接跳过判定——不是"文件级判定太粗"，而是该文件根本没进入检查。
+ * 现在额外接受三类路径表达式：
+ *
+ * 1. 标识符（局部常量，如 `path`）；
+ * 2. 模板字符串（含 `${path}` 插值）；
+ * 3. `标识符 + 字符串` 的简单拼接。
+ *
+ * 仍然要求"接收者锚定"，避免把 `c.get("userId")` 这类上下文读取误判为路由。
+ */
 const WRITE_ROUTE_RE =
-  /\b([A-Za-z_$][\w$]*)\.(post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g;
+  /\b([A-Za-z_$][\w$]*)\.(post|put|patch|delete)\(\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Za-z_$][\w$]*))\s*[,)]/g;
 
-/** 从文件内容中提取写路由路径。 */
+/**
+ * 从文件内容中提取写路由路径。
+ *
+ * 模板字符串会保留 `${...}` 原样（例如 `POST ${path}/:id`），标识符路径会解析成
+ * `@<identifier>` 形式——两者都不要求可读，只要求**能被识别出一条写路由**。
+ * 局部常量的真实值由 `resolvePathConstants` 尽量回填，便于报错信息可读。
+ */
 export function extractWriteRoutes(text: string): string[] {
+  const constants = collectPathConstants(text);
   const paths: string[] = [];
   for (const m of text.matchAll(WRITE_ROUTE_RE)) {
-    if (m[3]?.startsWith("/")) paths.push(`${m[2].toUpperCase()} ${m[3]}`);
+    const method = m[2].toUpperCase();
+    const literal = m[3] ?? m[4];
+    const template = m[5];
+    const identifier = m[6];
+    let path: string | null = null;
+    if (literal !== undefined) path = literal;
+    else if (template !== undefined) path = expandTemplate(template, constants);
+    else if (identifier !== undefined) {
+      path = constants.get(identifier) ?? `@${identifier}`;
+    }
+    if (path && (path.startsWith("/") || path.startsWith("@"))) {
+      paths.push(`${method} ${path}`);
+    }
   }
   return paths;
+}
+
+/**
+ * 展开模板字符串里的常量插值（`${path}/:id` → `/domains/:slug/contests/:id`）。
+ *
+ * 未解析到的插值保留 `${name}` 原样：只要模板以已解析的常量开头，它仍然是一条
+ * 可识别的写路由；无法判定前缀时返回 `@template` 占位而不是丢弃。
+ */
+function expandTemplate(
+  template: string,
+  constants: Map<string, string>,
+): string {
+  const expanded = template.replace(
+    /\$\{([A-Za-z_$][\w$]*)\}/g,
+    (whole, name: string) => constants.get(name) ?? whole,
+  );
+  if (expanded.startsWith("/")) return expanded;
+  // 首个插值解析失败但后面还有路径片段：保留模板形态，仍视为一条写路由。
+  return expanded.includes("/") ? `@${template}` : template;
+}
+
+/**
+ * 收集文件内的路径常量（`const path = "/x"` / `const PREFIX = '/y'`）。
+ *
+ * 只用于把标识符还原成可读路径；解析不到时保留 `@name` 占位，仍然算"识别到写路由"。
+ */
+function collectPathConstants(text: string): Map<string, string> {
+  const constants = new Map<string, string>();
+  const re =
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::\s*string)?\s*=\s*(["'`])([^"'`]+)\2/g;
+  for (const m of text.matchAll(re)) {
+    if (m[3]?.startsWith("/")) constants.set(m[1], m[3]);
+  }
+  return constants;
 }
 
 /** 文件是否含限流证据。 */

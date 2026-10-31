@@ -146,6 +146,16 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: 校验发布标签与模块清单版本一致
+        # 0.11 RC：标签是 v0.11.0 而清单仍是 0.10.5 时，产物身份（页脚 /
+        # /api/v1/site/meta / OCI version label）会与发布说明长期错位，而静态门禁
+        # 只断言清单彼此一致、永远绿灯。这里在构建任何镜像之前先断言基础版本相等。
+        env:
+          GITHUB_REF_NAME: ${{ github.event.release.tag_name || github.ref_name }}
+        run: deno run -A scripts/check-release-version.ts
       - name: 检查生产发布约束
         run: bash scripts/release/check-supply-chain.sh
 

@@ -1,10 +1,20 @@
-import type { Contest, ContestPayload, ContestProblem, KaggleRankingRow, Pagination } from './useContests';
+import type {
+  Clarification,
+  ClarificationReply,
+  Contest,
+  ContestPayload,
+  ContestProblem,
+  KaggleRankingRow,
+  Pagination,
+} from '~/utils/contest-types';
 export interface DomainContest extends Contest {
   domain_id: string;
   revision: number;
   can_manage?: boolean;
   classrooms?: { id: string; name: string }[];
 }
+/** 榜单行（页面按此渲染表格；与 SSE 事件载荷同构）。 */
+export type DomainContestRankingRow = KaggleRankingRow;
 export interface DomainContestRanking {
   classrooms?: { id: string; name: string }[];
   classroom_rows?: KaggleRankingRow[];
@@ -41,11 +51,41 @@ export function useDomainContests() {
       api.patch<{ data: DomainContest }>(path(slug, id), body, {
         headers: { 'If-Match': String(revision) },
       }),
-    register: (slug: string, id: string, _password?: string) => api.post(`${path(slug, id)}/register`, {}),
+    register: (slug: string, id: string) => api.post(`${path(slug, id)}/register`, {}),
     problems: (slug: string, id: string) =>
       api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, {
         silent: true,
       }),
+    /**
+     * 竞赛答疑（域入口）。
+     *
+     * 只走域路径：旧无域 `/api/v1/contests/:id/clarifications` 仍保留只读兼容，
+     * 但域页面的可见性、保密与主持人判定都按域规则执行，混用会拿到另一套授权结果。
+     */
+    listClarifications: (
+      slug: string,
+      id: string,
+      query?: { page?: number; per_page?: number },
+    ) =>
+      api.get<{ data: Clarification[]; pagination: Pagination }>(
+        `${path(slug, id)}/clarifications`,
+        { query, silent: true },
+      ),
+    askClarification: (
+      slug: string,
+      id: string,
+      body: { content: string; problem_id?: string },
+    ) => api.post<{ data: Clarification }>(`${path(slug, id)}/clarifications`, body),
+    replyClarification: (
+      slug: string,
+      id: string,
+      clarId: string,
+      body: { content: string; is_public: boolean },
+    ) =>
+      api.post<{ data: ClarificationReply }>(
+        `${path(slug, id)}/clarifications/${encodeURIComponent(clarId)}/reply`,
+        body,
+      ),
     ranking: (
       slug: string,
       id: string,

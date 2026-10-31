@@ -368,10 +368,7 @@ function toContestResponse(
     freeze_start_time: row.freeze_start_time,
     freeze_duration_seconds: row.freeze_duration_seconds,
     secrecy_enabled: row.secrecy_enabled,
-    kind: "public",
     config: row.config as ContestConfig,
-    is_public: true,
-    has_password: false,
     affect_global_ranking: row.affect_global_ranking,
     created_by: row.created_by,
     announcement: row.announcement,
@@ -865,14 +862,12 @@ export async function listContests(
  *
  * @param contestId 竞赛 UUID
  * @param userId 用户 ID
- * @param _password 历史兼容参数，不参与授权
  * @throws {ForbiddenError} 竞赛已结束或域访问被拒时
  * @throws {ConflictError} 已注册该竞赛时
  */
 export async function registerForContest(
   contestId: string,
   userId: string,
-  _password?: string,
   executor?: Executor,
 ): Promise<void> {
   const contest = await findContestRow(contestId, executor);

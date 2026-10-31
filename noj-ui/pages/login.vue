@@ -104,7 +104,7 @@
          已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
     <div
       v-if="legalConsentRequired"
-      class="rounded border border-warning-text/40 bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+      class="rounded border border-warning-text/40 bg-bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
       data-testid="oauth-legal-consent-notice"
     >
       {{ t('auth.oauthLegalConsentRequired') }}
@@ -251,7 +251,7 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
 import { safeAuthRedirect } from "~/utils/authRedirect"
-import { workspacePath } from "~/utils/workspace"
+import { postLoginDestination } from "~/utils/workspace"
 import {
   assertRecoveryCodeFileSize,
   parseRecoveryCodesFile,
@@ -425,8 +425,11 @@ async function handleLogin() {
       if (!destination) {
         const results = await Promise.allSettled([workspaces.instance(), workspaces.list(true)])
         const policy = results[0]; const available = results[1]
-        destination = policy.status === "fulfilled" && policy.value.data.access === "authenticated" && available.status === "fulfilled" && available.value.data.length === 1
-          ? workspacePath(available.value.data[0]!.slug) : "/"
+        const authenticated = policy.status === "fulfilled" && policy.value.data.access === "authenticated"
+        const defaultSlug = policy.status === "fulfilled" ? policy.value.data.default_domain_slug : null
+        destination = authenticated
+          ? postLoginDestination(available.status === "fulfilled" ? available.value.data : [], defaultSlug)
+          : "/"
       }
       router.replace(destination)
     }

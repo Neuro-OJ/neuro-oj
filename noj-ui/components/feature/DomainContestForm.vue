@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainContest } from '~/composables/useDomainContests';
-import type { ContestPayload, ContestType } from '~/composables/useContests';
+import type { ContestPayload, ContestType } from '~/utils/contest-types';
 import type { DomainProblemSummary } from '~/utils/domain-problems';
 import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestDefaults } from '~/utils/domain-contests';
 import { extractApiError } from '~/utils/apiError';
@@ -96,8 +96,6 @@ async function save() {
     end_time: new Date(end.value).toISOString(),
     type: type.value,
     secrecy_enabled: secrecy.value,
-    kind: 'public',
-    is_public: true,
     affect_global_ranking: false,
     ranking_visibility: visibility.value,
     freeze_duration_seconds: freezeMinutes.value * 60,

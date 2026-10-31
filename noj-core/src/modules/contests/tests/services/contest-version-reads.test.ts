@@ -713,9 +713,6 @@ Deno.test({
           start_time: atMinutes(-10),
           end_time: atMinutes(60),
           type: "kaggle",
-          is_public: false,
-          kind: "invite",
-          password: "invite-code",
           problems: [{
             problem_id: problemId,
             label: "A",

@@ -166,6 +166,29 @@ async function requireContestAccess(
 }
 
 /**
+ * 比赛已无密码 / 邀请码 / 公开范围分类。
+ *
+ * 旧客户端仍会带 `password` / `kind` / `is_public`。静默忽略最糟：调用方会以为凭据
+ * 被接受了，实际只是走了统一报名。因此显式 400 并指出字段名。
+ *
+ * @param body 已解析的请求体
+ * @throws {BadRequestError} 出现任一遗留字段
+ */
+function assertNoLegacyContestCredential(body: Record<string, unknown>): void {
+  const legacy = ["password", "kind", "is_public"].filter((key) =>
+    body !== null && typeof body === "object" && key in body
+  );
+  if (legacy.length > 0) {
+    throw new BadRequestError(
+      `比赛不再使用 ${
+        legacy.join(" / ")
+      }：报名由域访问权决定，请移除这些字段后重试`,
+      "CONTEST_LEGACY_FIELD",
+    );
+  }
+}
+
+/**
  * GET / —— 竞赛公开列表（可选分页与类型筛选）。
  * 权限：公开。query：page、perPage、type。响应：{ data, pagination }。
  */
@@ -196,7 +219,12 @@ contests.get("/", async (c) => {
  * 响应：201 { data }。
  */
 contests.post("/", authMiddleware, async (c) => {
-  const body = await parseJsonBody<CreateContestInput>(c);
+  const body = await parseJsonBody<
+    CreateContestInput & Record<string, unknown>
+  >(
+    c,
+  );
+  assertNoLegacyContestCredential(body as unknown as Record<string, unknown>);
   const actor = userActorFromAuthenticatedId(c.var.userId!);
   const data = await createContestCommand(actor, body, {
     domainSlug: DEFAULT_DOMAIN_SLUG,
@@ -205,24 +233,30 @@ contests.post("/", authMiddleware, async (c) => {
 });
 
 /**
- * POST /:id/register —— 注册参赛（公开竞赛自助注册，可带密码）。
- * 权限：登录。path：id（UUID/public_id）。body：{ password? }。
+ * POST /:id/register —— 注册参赛（统一报名，无需任何凭据）。
+ * 权限：登录。path：id（UUID/public_id）。body：可省略。
  * 响应：201 { message }。
  */
 contests.post("/:id/register", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
+  /**
+   * 报名请求体历史上是可选的（`{}` 或干脆不发）。比赛不再有密码/邀请码，但旧客户端
+   * 仍会带 `password`：出现这些字段时显式 400，而不是静默忽略——否则调用方会以为
+   * 自己的凭据被接受了。空 body 仍然照常受理，保持既有调用方兼容。
+   */
   const rawBody = await c.req.text();
-  let body: { password?: string } = {};
   if (rawBody.trim()) {
+    let parsed: Record<string, unknown>;
     try {
-      body = JSON.parse(rawBody) as { password?: string };
+      parsed = JSON.parse(rawBody) as Record<string, unknown>;
     } catch {
       throw new BadRequestError("请求体格式错误：需要有效的 JSON");
     }
+    assertNoLegacyContestCredential(parsed);
   }
   await enforceContestRegisterRateLimit(c, contestId);
   const actor = userActorFromAuthenticatedId(c.var.userId!);
-  await registerForContestCommand(actor, contestId, body.password, {
+  await registerForContestCommand(actor, contestId, {
     domainSlug: DEFAULT_DOMAIN_SLUG,
   });
   // 注：此前此处广播 `contest_joined` 自动动态（会对外暴露私密邀请赛标题），
@@ -276,12 +310,8 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
   const isAdmin = await checkPermission(c, "contest:manage");
-  if (
-    !contest.is_public && !isAdmin &&
-    !contest.is_registered
-  ) {
-    throw new NotFoundError("竞赛不存在");
-  }
+  // 访问由 Domain 决定：无域入口已由 `resolveDefaultContestAccess` 门控到 main 域，
+  // 这里不再用已废弃的 `is_public` 二次判定（它恒为 true，等于没有检查）。
   if (!isAdmin && contest.ranking_visibility === "hidden") {
     throw new NotFoundError("竞赛排名不可见");
   }
@@ -320,12 +350,6 @@ contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
   const isAdmin = await checkPermission(c, "contest:manage");
-  if (
-    !contest.is_public && !isAdmin &&
-    !contest.is_registered
-  ) {
-    throw new NotFoundError("竞赛不存在");
-  }
   if (!isAdmin && contest.ranking_visibility === "hidden") {
     throw new NotFoundError("竞赛排名不可见");
   }
@@ -477,14 +501,8 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
 contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId;
-  // 私有竞赛门禁：与 GET /:id 一致，仅 admin/参赛者可见（创建者通常为 admin）
-  const contest = await getContest(contestId, userId);
-  if (
-    !contest.is_public && !await checkPermission(c, "contest:manage") &&
-    !contest.is_registered
-  ) {
-    throw new NotFoundError("竞赛不存在");
-  }
+  // 答疑列表本身按调用者身份裁剪（私密提问只有提问者与主办方可见），域访问权
+  // 已由 `/:id` 中间件的默认域门控保证，不再做一次无效的竞赛可见性判定。
   const { page, perPage } = parsePagination(c);
   const result = await listClarifications(contestId, userId, {
     page,
@@ -537,13 +555,8 @@ contests.post(
  */
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
+  // 域访问权由 `resolveDefaultContestAccess` 中间件保证；此处直接返回域内可见的详情。
   const data = await getContest(contestId, c.var.userId);
-  if (
-    !data.is_public && !await checkPermission(c, "contest:manage") &&
-    !data.is_registered
-  ) {
-    throw new NotFoundError("竞赛不存在");
-  }
   return c.json({ data });
 });
 

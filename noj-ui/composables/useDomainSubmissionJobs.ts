@@ -1,4 +1,4 @@
-import type { Pagination } from './useContests';
+import type { Pagination } from '~/utils/contest-types';
 import type {
   DomainSubmissionJob,
   DomainSubmissionJobItem,

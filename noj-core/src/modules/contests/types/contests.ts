@@ -7,9 +7,6 @@ export const CONTEST_TYPES = [
 ] as const;
 export type ContestType = typeof CONTEST_TYPES[number];
 
-export const CONTEST_KINDS = ["public", "invite"] as const;
-export type ContestKind = typeof CONTEST_KINDS[number];
-
 export const CONTEST_STATUSES = ["pending", "running", "ended"] as const;
 export type ContestStatus = typeof CONTEST_STATUSES[number];
 
@@ -42,10 +39,6 @@ export function isValidRankingVisibility(
   value: string,
 ): value is RankingVisibility {
   return RANKING_VISIBILITIES.includes(value as RankingVisibility);
-}
-
-export function isValidContestKind(value: string): value is ContestKind {
-  return CONTEST_KINDS.includes(value as ContestKind);
 }
 
 export function isValidContestConfig(
@@ -109,11 +102,7 @@ export interface CreateContestInput {
   freeze_start_time?: string | null;
   freeze_duration_seconds?: number;
   type: ContestType;
-  /** 竞赛分类：public=公开赛（仅管理员）/ invite=邀请赛（需邀请码） */
-  kind?: ContestKind;
   config?: ContestConfig;
-  is_public?: boolean;
-  password?: string | null;
   affect_global_ranking?: boolean;
   announcement?: string;
   problems: ContestProblemInput[];
@@ -130,10 +119,7 @@ export interface UpdateContestInput {
   freeze_start_time?: string | null;
   freeze_duration_seconds?: number;
   type?: ContestType;
-  kind?: ContestKind;
   config?: ContestConfig;
-  is_public?: boolean;
-  password?: string | null;
   affect_global_ranking?: boolean;
   announcement?: string;
   problems?: ContestProblemInput[];
@@ -153,10 +139,7 @@ export interface ContestResponse {
   freeze_start_time: string | null;
   freeze_duration_seconds: number;
   type: ContestType;
-  kind: ContestKind;
   config: ContestConfig;
-  is_public: boolean;
-  has_password: boolean;
   affect_global_ranking: boolean;
   created_by: string | null;
   announcement: string;

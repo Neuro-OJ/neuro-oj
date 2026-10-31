@@ -54,7 +54,7 @@ AI 工程能力。
 及更早的二进制必须显式指定）：
 
 ```bash
-VERSION=v0.10.6   # 替换为目标 Release 标签（见 Releases 页面）
+VERSION=v0.11.0-rc.1   # 替换为目标 Release 标签（见 Releases 页面）
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256

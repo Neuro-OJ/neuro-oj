@@ -379,7 +379,6 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     end_time: new Date(now + 60 * 60 * 1000).toISOString(),
     type: "kaggle",
     config: {},
-    is_public: true,
     affect_global_ranking: false,
     problems: [{ problem_id: paperId, sort_order: 0, label: "A", score: 100 }],
   }, adminToken);

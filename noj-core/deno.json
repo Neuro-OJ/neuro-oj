@@ -1,6 +1,6 @@
 {
   "name": "@noj/core",
-  "version": "0.10.5",
+  "version": "0.11.0",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
@@ -14,6 +14,7 @@
     "problems:import": "deno run --env-file=.env -A scripts/noj.ts problems import",
     "search:reindex": "deno run -A --env-file=.env scripts/noj.ts search reindex",
     "storage:audit": "deno run --env-file=.env -A scripts/storage-audit.ts",
+    "preflight": "deno run --env-file=.env -A scripts/preflight-upgrade.ts",
     "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "db:catalog-backfill": "deno run --env-file=.env -A scripts/noj.ts db catalog-backfill",

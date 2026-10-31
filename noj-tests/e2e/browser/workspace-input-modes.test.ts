@@ -328,9 +328,6 @@ Deno.test({
             {
               title: `界面固定版本 ${suffix}`,
               type: "kaggle",
-              kind: "invite",
-              password: `input-${suffix}`,
-              is_public: false,
               start_time: new Date(now - 60000).toISOString(),
               end_time: new Date(now + 900000).toISOString(),
               problems: [{

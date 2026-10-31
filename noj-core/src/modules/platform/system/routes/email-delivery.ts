@@ -14,16 +14,21 @@ import {
   normalizeEmailDeliveryEvent,
 } from "../services/email-delivery/service.ts";
 import { EmailDeliveryAdapterError } from "../services/email-delivery/types.ts";
+import { enforceEmailDeliveryEventRateLimit } from "../../contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 /**
  * 邮件事件接收入口。
  *
  * 只有 fixture 适配器已实现；阿里云/腾讯云在官方回调协议确认前明确返回
  * 503，不把猜测的字段或签名算法暴露为生产接口。
+ *
+ * 该端点对公网开放（厂商回调），因此先按来源 IP 做写窗口（60s/120），再验签：
+ * 限流只挡高频伪造/重放，不替代 `email_webhook_secret` 签名校验。
  */
 const router = new Hono();
 
 router.post("/email-events/:provider", async (c) => {
+  await enforceEmailDeliveryEventRateLimit(c);
   const provider = c.req.param("provider");
   if (provider === "fixture" && Deno.env.get("NOJ_ENV") === "production") {
     throw new ServiceUnavailableError(

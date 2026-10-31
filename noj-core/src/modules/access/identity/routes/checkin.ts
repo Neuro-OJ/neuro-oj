@@ -9,15 +9,20 @@ import {
   getCheckinStats,
   getTodayCheckIn,
 } from "../services/checkin.ts";
+import { enforceCheckinRateLimit } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
 /**
  * 签到。
  * POST /api/v1/checkin
+ *
+ * 按天幂等不等于可以无限调用：重复请求仍会开事务写 `check_ins` 并重算连续天数，
+ * 因此加账号维度写窗口（60s/10）。只按账号计数，不按 IP——NAT 下同班学生会互相顶掉。
  */
 router.post("/", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
+  await enforceCheckinRateLimit(userId);
   const result = await checkIn(userId);
   return c.json({ data: result });
 });

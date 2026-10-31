@@ -77,6 +77,26 @@ function revision(value?: string) {
   }
   return Number(match[1]);
 }
+/**
+ * 比赛已没有公开范围分类、密码与邀请码。
+ *
+ * 旧客户端仍会带 `kind` / `is_public` / `password`。静默忽略最糟：调用方会以为自己的
+ * 凭据或分类被接受了，实际只是走了统一报名 / 域默认值；因此显式拒绝并指出字段名。
+ *
+ * @param input 已解析的请求体
+ * @throws {BadRequestError} 出现任一遗留字段
+ */
+function assertNoLegacyContestField(input: Record<string, unknown>): void {
+  const legacy = ["password", "kind", "is_public"].filter((key) =>
+    key in input
+  );
+  if (legacy.length > 0) {
+    throw new BadRequestError(
+      `比赛不再使用 ${legacy.join(" / ")}：报名由域访问权决定，请移除后重试`,
+      "CONTEST_LEGACY_FIELD",
+    );
+  }
+}
 domainContestRouter.get(path, async (c) => {
   const { page, perPage } = parsePagination(c), type = c.req.query("type");
   if (type && !isValidContestType(type)) {
@@ -103,11 +123,13 @@ domainContestRouter.post(
   authMiddleware,
   async (c) => {
     const actor = userActorFromAuthenticatedId(c.var.userId!);
+    const input = await body<CreateContestInput & Record<string, unknown>>(c);
+    assertNoLegacyContestField(input as unknown as Record<string, unknown>);
     return c.json({
       data: await createDomainContestCommand(
         actor,
         c.req.param("slug")!,
-        await body<CreateContestInput>(c),
+        input,
       ),
     }, 201);
   },
@@ -128,19 +150,23 @@ domainContestRouter.patch(
   authMiddleware,
   async (c) => {
     const actor = userActorFromAuthenticatedId(c.var.userId!);
+    const input = await body<UpdateContestInput & Record<string, unknown>>(c);
+    assertNoLegacyContestField(input as unknown as Record<string, unknown>);
     return c.json({
       data: await updateDomainContestCommand(
         actor,
         c.req.param("slug")!,
         c.req.param("id")!,
         revision(c.req.header("If-Match")),
-        await body<UpdateContestInput>(c),
+        input,
       ),
     });
   },
 );
 domainContestRouter.post(`${path}/:id/register`, authMiddleware, async (c) => {
-  const input = await body<{ password?: string }>(c);
+  // 比赛不再有密码/邀请码：旧客户端带上这些字段时显式 400，避免它以为凭据被接受。
+  const input = await body<Record<string, unknown>>(c);
+  assertNoLegacyContestField(input);
   const access = await loadDomainContest(
     c.req.param("slug")!,
     c.req.param("id")!,
@@ -153,7 +179,6 @@ domainContestRouter.post(`${path}/:id/register`, authMiddleware, async (c) => {
     actor,
     c.req.param("slug")!,
     c.req.param("id")!,
-    input.password,
   );
   return c.json({ message: "竞赛注册成功" }, 201);
 });

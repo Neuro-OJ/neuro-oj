@@ -446,11 +446,14 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 | `ranking_visibility`        | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/participants/hidden` | 榜单可见性                                        |
 | `freeze_start_time`         | text    | NULL；CHECK 形态                                                 | 封榜开始时间                                      |
 | `freeze_duration_seconds`   | integer | NOT NULL；DEFAULT `0`；CHECK `>= 0`                              | 结束前冻结时长（秒）；0=不封榜                    |
-| `type`                      | text    | NOT NULL；CHECK `kaggle`                                         | 竞赛类型                                          |
-| `kind`                      | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/invite`              | 公开 / 邀请制                                     |
+| `domain_id`                 | text    | NOT NULL；FK→`domains(id)`；UNIQUE(`domain_id`,`id`)；索引       | 归属使用域（Domain）；Domain 是资源访问边界       |
+| `revision`                  | integer | NOT NULL；DEFAULT `0`                                            | 乐观锁版本（`If-Match`）                          |
+| `secrecy_enabled`           | boolean | NOT NULL；DEFAULT `true`                                         | 赛题保密开关；开赛后锁定，不能再改                |
+| `type`                      | text    | NOT NULL；CHECK `kaggle` / `oi` / `ioi` / `ioi_strict` / `acm`   | 竞赛赛制                                          |
 | `config`                    | jsonb   | NOT NULL；DEFAULT `{}`；CHECK 为对象                             | 竞赛配置（含 `submission_limits` 等）             |
-| `is_public`                 | boolean | NOT NULL；DEFAULT `true`                                         | 是否公开可见                                      |
-| `password`                  | text    | NULL                                                             | <span class="noj-danger-col">邀请码 / 口令</span> |
+| `kind`                      | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/invite`              | **兼容遗留**：已不参与授权，写入恒为 `public` |
+| `is_public`                 | boolean | NOT NULL；DEFAULT `true`                                         | **兼容遗留**：已不参与授权，写入恒为 `true` |
+| `password`                  | text    | NULL                                                             | **兼容遗留**：已不参与授权，写入恒为 `NULL` |
 | `affect_global_ranking`     | boolean | NOT NULL；DEFAULT `false`                                        | 是否计入全局排行                                  |
 | `created_by`                | text    | FK→`users(id)` ON DELETE SET NULL；索引                          | 创建者                                            |
 | `announcement`              | text    | NOT NULL；DEFAULT `''`                                           | 竞赛公告                                          |
