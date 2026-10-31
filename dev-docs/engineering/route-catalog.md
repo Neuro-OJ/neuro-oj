@@ -269,7 +269,6 @@
 | POST | `/contests/:id/ranking-snapshots` | noj-core/src/modules/http/admin/routes/contest.ts |
 | POST | `/data-requests` | noj-core/src/modules/platform/legal/routes/data-requests.ts |
 | POST | `/documents/:kind/versions` | noj-core/src/modules/platform/legal/routes/admin.ts |
-| POST | `/documents/:kind/versions/:version/verify-tsa` | noj-core/src/modules/platform/legal/routes/admin.ts |
 | POST | `/domains/:slug/assignments/:id/${action}` | noj-core/src/modules/education/routes/assignments.ts |
 | POST | `/domains/:slug/assignments/:id/copy` | noj-core/src/modules/education/routes/assignments.ts |
 | POST | `/domains/:slug/assignments/:id/feedback` | noj-core/src/modules/education/routes/interactions.ts |

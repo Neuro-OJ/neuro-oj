@@ -965,11 +965,6 @@ IP 黑名单，支持裸 IP 与 CIDR。
 | `is_material`    | boolean | NOT NULL；DEFAULT `false`；索引                                                | 是否重大变更（触发重新同意）           |
 | `published_at`   | text    | NOT NULL                                                                       | 发布时间                               |
 | `created_by`     | text    | FK→`users(id)` ON DELETE SET NULL                                              | 创建人                                 |
-| `tsa_provider`   | text    | NULL                                                                           | 时间戳 Provider 标识                   |
-| `tsa_token`      | text    | NULL                                                                           | RFC 3161 TimeStampToken（base64）      |
-| `tsa_chain`      | text    | NULL                                                                           | 时间戳证书链（base64）                 |
-| `tsa_query`      | text    | NULL                                                                           | 原始 RFC 3161 请求（base64）           |
-| `tsa_timestamp`  | text    | NULL                                                                           | 时间戳签发时间                         |
 
 #### `user_consents`
 

@@ -28,8 +28,9 @@ Deno.test({
     assertEquals(keys.includes("legal_icp_number"), true);
     assertEquals(keys.includes("legal_police_number"), true);
     assertEquals(keys.includes("legal_third_parties"), true);
-    assertEquals(keys.includes("tsa_provider"), true);
-    assertEquals(keys.includes("tsa_url"), true);
+    assertEquals(keys.includes("tsa_provider"), false);
+    assertEquals(keys.includes("tsa_url"), false);
+    assertEquals(keys.includes("tsa_root_cert"), false);
   },
 });
 
@@ -123,8 +124,5 @@ Deno.test({
     assertEquals(body.data.build.version, getBuildInfo().version);
     assertEquals(body.data.build.commit, getBuildInfo().commit);
     assertEquals(body.data.build.builtAt, getBuildInfo().builtAt);
-    // secret 项（tsa_root_cert）绝不出现
-    assertEquals("tsa_root_cert" in body.data, false);
-    assertEquals("tsa_root_cert" in body.data.build, false);
   },
 });
