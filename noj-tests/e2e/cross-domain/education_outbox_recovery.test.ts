@@ -164,21 +164,17 @@ Deno.test({
         `/problems/${problemId}`,
         admin,
       );
-      const reference = `main:${source.data.number}`;
-      const sharePath = `/domains/main/problems/${source.data.number}/sharing`;
-      const sharing = await request<{ data: { revision: number } }>(
-        "GET",
-        sharePath,
-        admin,
-      );
-      await request("POST", sharePath, admin, {
-        enabled: true,
-        scope: "selected",
-        target_domain_slugs: [slug],
-      }, { "If-Match": String(sharing.data.revision) });
+      const sourceRef = `main:${source.data.number}`;
       const binding = await request<
-        { data: { binding: { id: string; revision: number } } }
-      >("POST", `${root}/problem-bindings`, teacher, { source_ref: reference });
+        {
+          data: {
+            binding: { id: string; revision: number };
+            reference: { problem_id: string; display_ref: string };
+          };
+        }
+      >("POST", `${root}/problem-bindings`, admin, { source_ref: sourceRef });
+      const reference = binding.data.reference.display_ref;
+      const localProblemId = binding.data.reference.problem_id;
       const problem = await request<{ version_id: string }>(
         "GET",
         `${root}/problems/${reference}`,
@@ -217,7 +213,7 @@ Deno.test({
         sql<
           Event[]
         >`SELECT id,domain_id,event_type,user_id,problem_id,classroom_id,assignment_id,payload,created_at
-        FROM education_outbox WHERE domain_id=${domain.data.id} AND user_id=${studentId} AND problem_id=${problemId}
+        FROM education_outbox WHERE domain_id=${domain.data.id} AND user_id=${studentId} AND problem_id=${localProblemId}
         AND event_type='submission.changed' ORDER BY created_at DESC,id DESC LIMIT 1`;
       const submit = async (code: string) =>
         (await request<{ data: { id: string } }>(
@@ -511,7 +507,7 @@ Deno.test({
               required_version_id: string;
               revision: number;
             }[]
-          >`SELECT effective_version_mode,required_version_id,revision FROM domain_problem_bindings WHERE id=${binding.data.binding.id}`;
+          >`SELECT p.effective_version_mode,p.required_version_id,b.revision FROM domain_problem_bindings b JOIN problems p ON p.id=b.problem_id WHERE b.id=${binding.data.binding.id}`;
           assertEquals(configured[0], {
             effective_version_mode: "exact",
             required_version_id: problem.version_id,

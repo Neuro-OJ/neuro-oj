@@ -156,5 +156,9 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
           :code="currentCode" :writable="writable" @result="uiResult = $event" />
       </ClientOnly>
     </template>
+
+    <template #submit-hint>
+      <p class="text-xs text-text-muted">提交归属 {{ slug }}，来源题号 {{ problem.reference.display_ref }}。</p>
+    </template>
   </ProblemAnswerPanel>
 </template>

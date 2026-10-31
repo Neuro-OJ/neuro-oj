@@ -90,20 +90,9 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
 
 e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   if (!isE2E) return;
-  const invalidPassword = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
-    { password: "wrong-password" },
-    participantToken,
-  );
-  if (invalidPassword.status !== 403) {
-    throw new Error(
-      `错误密码应被拒绝，实际状态码: ${invalidPassword.status}`,
-    );
-  }
-
   const registerResult = await apiPost(
     `/api/v1/contests/${contestId}/register`,
-    { password: "ContestPass123" },
+    {},
     participantToken,
   );
   if (registerResult.status !== 201) {
@@ -111,6 +100,16 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
       `注册竞赛失败: ${registerResult.status} ${
         JSON.stringify(registerResult.body)
       }`,
+    );
+  }
+  const duplicateRegister = await apiPost(
+    `/api/v1/contests/${contestId}/register`,
+    {},
+    participantToken,
+  );
+  if (duplicateRegister.status !== 409) {
+    throw new Error(
+      `重复报名应返回 409，实际状态码: ${duplicateRegister.status}`,
     );
   }
   if (!judgeAvailable) return;

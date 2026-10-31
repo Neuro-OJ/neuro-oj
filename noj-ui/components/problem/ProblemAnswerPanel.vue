@@ -185,10 +185,6 @@ const questionOptions = (question: AnswerQuestion) =>
   question.type === 'judge'
     ? [{ key: true as const, text: '正确' }, { key: false as const, text: '错误' }]
     : question.options;
-function optionLabel(option: { key: string | boolean; text: string }) {
-  if (typeof option.key !== 'string') return option.text;
-  return option.text.startsWith(`${option.key}.`) ? option.text : `${option.key}. ${option.text}`;
-}
 
 function toggle(question: AnswerQuestion, value: string | boolean) {
   const key = questionKey(question);
@@ -339,9 +335,13 @@ defineExpose({
         <p class="mb-2 text-xs text-text-muted">第 {{ index + 1 }} 题 · {{ questionLabel(question.type) }}</p>
         <MarkdownRenderer :content="question.prompt" />
         <div class="mt-3 flex flex-col gap-2">
-          <UCheckbox v-for="option in questionOptions(question)" :key="String(option.key)" :label="optionLabel(option)"
-            :model-value="(answers[questionKey(question)] ?? []).includes(option.key)" :disabled="!canWrite || submitting"
-            @update:model-value="toggle(question, option.key)" />
+          <div v-for="option in questionOptions(question)" :key="String(option.key)" class="flex items-center gap-1.5">
+            <span v-if="typeof option.key === 'string' && !option.text.startsWith(`${option.key}.`)" aria-hidden="true"
+              class="text-sm font-medium text-text-secondary">{{ option.key }}.</span>
+            <UCheckbox :label="option.text"
+              :model-value="(answers[questionKey(question)] ?? []).includes(option.key)" :disabled="!canWrite || submitting"
+              @update:model-value="toggle(question, option.key)" />
+          </div>
         </div>
       </div>
       <p v-if="context === 'contest'" class="text-xs text-text-muted">一次正式交卷；赛中不返回标准答案和逐题正确性。</p>

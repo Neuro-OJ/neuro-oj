@@ -254,6 +254,8 @@ export async function acceptDomainSubmissionJob(
           : problemIds,
         tx,
         changes.length > 0,
+        undefined,
+        normalized.kind === "rejudge",
       );
       assertWorkspacePermission(
         current.access.context,

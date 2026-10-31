@@ -35,6 +35,38 @@ const isStudent = computed(() =>
 );
 const canReadProgress = computed(() => can('progress:read') || room.data.value?.data.membership?.role === 'student');
 const canManage = computed(() => can('assignments:manage'));
+// 角色可见范围 / 反馈定位 / 历史定位
+const requestedHelp = computed(() => typeof route.query?.help === 'string' ? route.query.help : undefined);
+const requestedFeedback = computed(() => typeof route.query?.feedback === 'string' ? route.query.feedback : undefined);
+const canSeeFeedbackTab = computed(() => isStudent.value || can('feedback:write') || can('help:manage'));
+const tab = ref<'matrix' | 'progress' | 'feedback'>(
+  isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : canSeeFeedbackTab.value ? 'feedback' : 'matrix',
+);
+const tabItems = computed(() => {
+  const items: Array<{ label: string; value: string; icon: string; badge?: { label: string; color: 'warning'; variant: 'subtle' } }> = [];
+  if (canReadProgress.value) items.push({ label: isStudent.value ? '同班完成情况' : '学情矩阵', value: 'matrix', icon: 'i-lucide-table-2' });
+  if (isStudent.value) items.push({ label: '我的进度', value: 'progress', icon: 'i-lucide-list-checks' });
+  if (canSeeFeedbackTab.value) {
+    const badge = can('help:manage') && pendingHelp.value > 0
+      ? { label: String(pendingHelp.value), color: 'warning' as const, variant: 'subtle' as const }
+      : undefined;
+    items.push({ label: '反馈与求助', value: 'feedback', icon: 'i-lucide-messages-square', ...(badge ? { badge } : {}) });
+  }
+  return items;
+});
+watch(tabItems, (items) => {
+  if (!items.some((item) => item.value === tab.value)) {
+    tab.value = (items[0]?.value ?? 'matrix') as typeof tab.value;
+  }
+}, { immediate: true });
+if (canSeeFeedbackTab.value && (requestedHelp.value || requestedFeedback.value)) tab.value = 'feedback';
+watch([requestedHelp, requestedFeedback], ([help, feedback]) => {
+  if (canSeeFeedbackTab.value && (help || feedback)) tab.value = 'feedback';
+});
+const shouldLoadMatrix = computed(() =>
+  (can('progress:read') || (canReadProgress.value && tab.value === 'matrix')) &&
+  !!task.data.value?.data.published_at
+);
 const query = computed(() => ({
   scope: scope.value,
   page: page.value,
@@ -45,14 +77,12 @@ const query = computed(() => ({
   verdict: verdictFilter.value === 'all' ? undefined : verdictFilter.value,
 }));
 const matrix = await useAsyncData(
+  () => `${key.value}:matrix:${JSON.stringify(query.value)}:${shouldLoadMatrix.value}`,
   () =>
-    `${key.value}:matrix:${JSON.stringify(query.value)}:${canReadProgress.value}:${!!task.data.value?.data
-      .published_at}`,
-  () =>
-    canReadProgress.value && task.data.value?.data.published_at
+    shouldLoadMatrix.value
       ? education.matrix(slug.value!, id.value, query.value)
       : Promise.resolve(null),
-  { watch: [query, task.data, room.data] },
+  { watch: [query, shouldLoadMatrix, task.data, room.data] },
 );
 const progress = await useAsyncData(
   () => `${key.value}:progress:${scope.value}:${isStudent.value}:${!!task.data.value?.data.published_at}`,
@@ -136,35 +166,6 @@ const matrixSummary = computed(() =>
 );
 const totalMatrixPages = computed(() => Math.max(1, Math.ceil(matrixTotal.value / 50)));
 
-// 角色可见范围 / 反馈定位 / 历史定位
-const requestedHelp = computed(() => typeof route.query.help === 'string' ? route.query.help : undefined);
-const requestedFeedback = computed(() => typeof route.query.feedback === 'string' ? route.query.feedback : undefined);
-const canSeeFeedbackTab = computed(() => isStudent.value || can('feedback:write') || can('help:manage'));
-const tab = ref<'matrix' | 'progress' | 'feedback'>(
-  isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : canSeeFeedbackTab.value ? 'feedback' : 'matrix',
-);
-const tabItems = computed(() => {
-  const items: Array<{ label: string; value: string; icon: string; badge?: { label: string; color: 'warning'; variant: 'subtle' } }> = [];
-  if (canReadProgress.value) items.push({ label: isStudent.value ? '同班完成情况' : '学情矩阵', value: 'matrix', icon: 'i-lucide-table-2' });
-  if (isStudent.value) items.push({ label: '我的进度', value: 'progress', icon: 'i-lucide-list-checks' });
-  if (canSeeFeedbackTab.value) {
-    const badge = can('help:manage') && pendingHelp.value > 0
-      ? { label: String(pendingHelp.value), color: 'warning' as const, variant: 'subtle' as const }
-      : undefined;
-    items.push({ label: '反馈与求助', value: 'feedback', icon: 'i-lucide-messages-square', ...(badge ? { badge } : {}) });
-  }
-  return items;
-});
-watch(tabItems, (items) => {
-  if (!items.some((item) => item.value === tab.value)) {
-    tab.value = (items[0]?.value ?? 'matrix') as typeof tab.value;
-  }
-}, { immediate: true });
-if (canSeeFeedbackTab.value && (requestedHelp.value || requestedFeedback.value)) tab.value = 'feedback';
-watch([requestedHelp, requestedFeedback], ([help, feedback]) => {
-  if (canSeeFeedbackTab.value && (help || feedback)) tab.value = 'feedback';
-});
-
 watch([matrix.data, progress.data], ([matrixValue, progressValue]) => {
   const current = selected.value;
   if (!current) return;
@@ -186,7 +187,7 @@ usePolling({
   immediate: false,
   fetcher: async () => {
     await Promise.all([
-      canReadProgress.value ? matrix.refresh() : Promise.resolve(),
+      shouldLoadMatrix.value ? matrix.refresh() : Promise.resolve(),
       isStudent.value ? progress.refresh() : Promise.resolve(),
     ]);
   },
@@ -196,7 +197,7 @@ useEducationNotifications(async () => {
   if (task.error.value) return;
   await room.refresh();
   await Promise.all([
-    canReadProgress.value ? matrix.refresh() : Promise.resolve(),
+    shouldLoadMatrix.value ? matrix.refresh() : Promise.resolve(),
     isStudent.value ? progress.refresh() : Promise.resolve(),
   ]);
 });

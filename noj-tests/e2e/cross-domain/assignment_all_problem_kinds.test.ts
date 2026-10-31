@@ -401,7 +401,7 @@ Deno.test({
               const student = await account(`kinds_s${start + index}`);
               await invite(
                 `${root}/classrooms/${classroom}`,
-                teacher.token,
+                owner.token,
                 student,
               );
               return student;

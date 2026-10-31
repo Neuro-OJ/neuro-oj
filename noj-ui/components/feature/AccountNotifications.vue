@@ -3,7 +3,7 @@ import type { NotificationRow } from '~/composables/useCommunity';
 import { extractApiError } from '~/utils/apiError';
 import { notificationTarget, notificationTypeLabel, notificationTypeIcon } from '~/utils/communityNotifications';
 const { api } = useApi(), { user } = useAuth(), workspace = useWorkspaceApi();
-const workspaceCtx = typeof useWorkspace === 'function' ? useWorkspace() : null;
+const workspaceCtx = typeof useOptionalWorkspace === 'function' ? useOptionalWorkspace() : null;
 const page = ref(1), domainId = ref(workspaceCtx?.domain?.value?.id ?? 'all'), opening = ref(''), actionError = ref('');
 watch(() => workspaceCtx?.domain?.value?.id, (id) => {
   if (id) domainId.value = id;

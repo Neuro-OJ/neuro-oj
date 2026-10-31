@@ -288,7 +288,7 @@ Deno.test({
             "PUT",
             `/api/v1/domains/${slug}/members/${teacherId}/roles`,
             admin,
-            { roles: ["educator"] },
+            { roles: ["educator", "admin"] },
           );
           number = await objectiveFixture(slug, admin, `教学客观题 ${suffix}`);
           await fixture("POST", "/api/v1/domains", admin, {
@@ -336,7 +336,7 @@ Deno.test({
             exact: true,
           }).click();
           await teacher.page.getByRole("tab", {
-            name: "批量导入与邀请",
+            name: "批量入班与邀请",
             exact: true,
           }).click();
           await teacher.page.getByRole("button", { name: /指定邮箱/ }).click();

@@ -3,7 +3,7 @@ import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
 import postgres from "npm:postgres@3.4.5";
 import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
-import { TEST_PASSWORD } from "../helper.ts";
+import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage,
@@ -12,10 +12,12 @@ import {
   UI_URL,
 } from "./browser.ts";
 import {
+  copyLlmGovernanceProblem,
   createLlmGovernanceFixture,
   finishLlmGovernance,
   type LlmAccount,
   llmFixtureApi,
+  type LlmGovernanceCopy,
   llmGovernanceUsage,
   type LlmSchool,
   submitLlmGovernance,
@@ -207,6 +209,7 @@ Deno.test({
         currentA = `${modelA}-current`,
         nextA = `${modelA}-next`;
       let providerA = "", providerB = "";
+      const copies: Record<string, LlmGovernanceCopy> = {};
       assertEquals(
         await t.step(
           "两普通owner在Web创建独立Provider、RPM/TPM并测试真实连接",
@@ -226,6 +229,14 @@ Deno.test({
             assertNotEquals(providerA, providerB);
             await createAlias(browserA.page, a, `Provider A ${suffix}`, modelA);
             await createAlias(browserB.page, b, `Provider B ${suffix}`, modelB);
+            const admin = await getAdminToken();
+            for (const school of [a, b]) {
+              copies[school.id] = await copyLlmGovernanceProblem(
+                school,
+                f.ref,
+                admin,
+              );
+            }
           },
         ),
         true,
@@ -275,13 +286,19 @@ Deno.test({
         await t.step(
           "Judge→Gateway实际调用使用受理域快照，后续别名变更只影响新尝试",
           async () => {
+            const copyA = copies[a.id], copyB = copies[b.id];
             const idA = await submitLlmGovernance(
                 a,
                 f.student,
-                f.ref,
-                f.versionId,
+                copyA.ref,
+                copyA.versionId,
               ),
-              idB = await submitLlmGovernance(b, f.student, f.ref, f.versionId);
+              idB = await submitLlmGovernance(
+                b,
+                f.student,
+                copyB.ref,
+                copyB.versionId,
+              );
             const [attempt] =
               await sql`SELECT ea.id,ea.task_snapshot,s.domain_id,ea.state FROM evaluation_attempts ea JOIN submissions s ON s.id=ea.submission_id WHERE s.id=${idA} ORDER BY ea.sequence DESC LIMIT 1`;
             assertEquals(attempt.domain_id, a.id);
@@ -319,8 +336,11 @@ Deno.test({
               assertEquals(rows[0].model, model);
               assertEquals(rows[0].total_tokens, 8);
               assertEquals(rows[0].status, "ok");
-              assertEquals(rows[0].problem_id, f.problemId);
-              assertEquals(rows[0].problem_version_id, f.versionId);
+              assertEquals(rows[0].problem_id, copies[school.id].problemId);
+              assertEquals(
+                rows[0].problem_version_id,
+                copies[school.id].versionId,
+              );
               if (school.id === a.id) {
                 assertEquals(rows[0].attempt_id, attempt.id);
               }
@@ -334,8 +354,8 @@ Deno.test({
             const fresh = await submitLlmGovernance(
               a,
               f.student,
-              f.ref,
-              f.versionId,
+              copyA.ref,
+              copyA.versionId,
             );
             await finishLlmGovernance(a, f.student, fresh);
             assertEquals((await llmGovernanceUsage(a, fresh))[0].model, nextA);
@@ -367,17 +387,23 @@ Deno.test({
               true,
             );
             for (
-              const [page, model, slug] of [[browserA.page, nextA, a.slug], [
+              const [page, model, slug, problemId] of [[
+                browserA.page,
+                nextA,
+                a.slug,
+                copyA.problemId,
+              ], [
                 browserB.page,
                 modelB,
                 b.slug,
+                copyB.problemId,
               ]] as const
             ) {
               await gotoPage(page, `/d/${slug}/settings/llm/usage`);
               await page.getByRole("textbox", {
                 name: "按题筛选用量",
                 exact: true,
-              }).fill(f.problemId);
+              }).fill(problemId);
               await page.getByRole("button", { name: "刷新用量", exact: true })
                 .click();
               await expect(page.getByText(new RegExp(`${model}.*8 Token`)))

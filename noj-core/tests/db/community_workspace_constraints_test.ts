@@ -3,9 +3,9 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 import {
+  accountNotifications as communityNotifications,
   communityBoards,
   communityComments,
-  communityNotifications,
   communityPosts,
   communityReports,
   problems,
@@ -205,7 +205,7 @@ Deno.test("社区迁移：真实父关系回填域，原正文和账号通知保
         "community_reports_workspace_post_fk",
         "community_reports_workspace_comment_fk",
       ]],
-      ["community_notifications", [
+      ["notifications", [
         "community_notifications_workspace_check",
         "community_notifications_workspace_post_fk",
         "community_notifications_workspace_comment_fk",
@@ -272,7 +272,8 @@ Deno.test("社区迁移：真实父关系回填域，原正文和账号通知保
     new URL("../../drizzle/0116_peaceful_gorilla_man.sql", import.meta.url),
   );
   const backfill = migration.split("-- BEGIN COMMUNITY WORKSPACE BACKFILL")[1]
-    .split("-- END COMMUNITY WORKSPACE BACKFILL")[0];
+    .split("-- END COMMUNITY WORKSPACE BACKFILL")[0]
+    .replaceAll("community_notifications", "notifications");
   const restoredConstraints = new Set([
     "community_posts_binding_required_check",
     "community_reports_workspace_check",
@@ -290,6 +291,14 @@ Deno.test("社区迁移：真实父关系回填域，原正文和账号通知保
       .test(statement) ||
     [...restoredConstraints].some((name) =>
       statement.includes(`ADD CONSTRAINT "${name}"`)
+    )
+  ).map((statement) =>
+    statement.replaceAll(
+      'ALTER TABLE "community_notifications"',
+      'ALTER TABLE "notifications"',
+    ).replaceAll(
+      '"community_notifications"."',
+      '"notifications"."',
     )
   );
   for (
