@@ -17,6 +17,7 @@ import {
   getTeachingTextFile,
   listTeachingTextFiles,
 } from "../services/submission-text.ts";
+import { educationWriteRateLimit } from "./write-rate-limit.ts";
 
 /** 批注准备路由，使用班级父路由认证及 no-store；所有操作重新检查源码权限。 */
 export const annotationRouter = new Hono<AuthEnv>();
@@ -68,39 +69,47 @@ annotationRouter.get(`${path}/annotations`, async (c) => {
     ),
   });
 });
-annotationRouter.post(`${path}/annotations`, async (c) => {
-  const input = await parseJsonBody<unknown>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await createSubmissionAnnotation(
-      c.req.param("slug")!,
-      c.req.param("id")!,
-      c.req.param("submissionId")!,
-      c.var.userId,
-      c.req.header("Idempotency-Key") ?? "",
-      input as unknown as SubmissionAnnotationInput,
-    ),
-  }, 201);
-});
-annotationRouter.patch(`${path}/annotations/:annotationId`, async (c) => {
-  const input = await parseJsonBody<unknown>(c);
-  assertObjectBody(input);
-  const match = c.req.header("If-Match");
-  if (match !== undefined && !/^"?[0-9]+"?$/.test(match)) {
-    throw new BadRequestError("If-Match 必须是批注 revision");
-  }
-  return c.json({
-    data: await updateSubmissionAnnotation(
-      c.req.param("slug")!,
-      c.req.param("id")!,
-      c.req.param("submissionId")!,
-      c.req.param("annotationId")!,
-      c.var.userId,
-      match === undefined ? null : Number(match.replaceAll('"', "")),
-      {
-        body: input.body as string | undefined,
-        withdraw: input.withdraw === true,
-      },
-    ),
-  });
-});
+annotationRouter.post(
+  `${path}/annotations`,
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<unknown>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await createSubmissionAnnotation(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("submissionId")!,
+        c.var.userId,
+        c.req.header("Idempotency-Key") ?? "",
+        input as unknown as SubmissionAnnotationInput,
+      ),
+    }, 201);
+  },
+);
+annotationRouter.patch(
+  `${path}/annotations/:annotationId`,
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<unknown>(c);
+    assertObjectBody(input);
+    const match = c.req.header("If-Match");
+    if (match !== undefined && !/^"?[0-9]+"?$/.test(match)) {
+      throw new BadRequestError("If-Match 必须是批注 revision");
+    }
+    return c.json({
+      data: await updateSubmissionAnnotation(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("submissionId")!,
+        c.req.param("annotationId")!,
+        c.var.userId,
+        match === undefined ? null : Number(match.replaceAll('"', "")),
+        {
+          body: input.body as string | undefined,
+          withdraw: input.withdraw === true,
+        },
+      ),
+    });
+  },
+);

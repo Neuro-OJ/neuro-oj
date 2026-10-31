@@ -180,6 +180,30 @@ export const REPORT_USER_LIMIT: RateLimitConfig = {
   max: 30,
 };
 
+/**
+ * 每日签到：按账号的写窗口。
+ *
+ * 签到本身按 (user_id, 日期) 幂等，重复调用不会重复计分，但它仍是**写**端点：
+ * 无窗口时脚本可以无限次打 DB 事务。窗口取得比交互频率宽（60s/10），正常用户
+ * 一天点一次不会触发，连续重试也不会被误伤。
+ */
+export const CHECKIN_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 10,
+};
+
+/**
+ * 邮件投递回执：按来源 IP 的写窗口。
+ *
+ * 该端点对公网开放（厂商回调），签名与 `email_webhook_secret` 校验才是第一道门；
+ * 限流挡的是伪造/重放的高频请求在签名校验前后白白消耗 DB 与连接。厂商可能批量
+ * 追送回执，因此窗口放到 60s/120，远高于单次回调频率。
+ */
+export const EMAIL_DELIVERY_EVENT_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
 function normalizeLimitKey(value: string): string {
   return value.trim().toLowerCase().slice(0, 128);
 }
@@ -644,5 +668,36 @@ export async function enforceReportRateLimit(
     REPORT_USER_LIMIT,
     undefined,
     "allow",
+  );
+}
+
+/**
+ * 每日签到：按账号维度限流。
+ *
+ * 只做账号维度、不做 IP 维度：机房/校园 NAT 下多个学生共用出口 IP，IP 窗口会让
+ * 同班同学互相顶掉签到。
+ */
+export async function enforceCheckinRateLimit(userId: string): Promise<void> {
+  await enforceRateLimit(
+    `checkin:user:${userId}`,
+    CHECKIN_USER_LIMIT,
+    "签到请求过于频繁，请稍后再试",
+    "allow",
+  );
+}
+
+/**
+ * 邮件投递回执：按来源 IP 维度限流。
+ *
+ * 无账号上下文（厂商回调），只能按 IP 计数；签名校验在限流之后仍然执行，
+ * 限流不替代验签。
+ */
+export async function enforceEmailDeliveryEventRateLimit(
+  c: Context,
+): Promise<void> {
+  await enforceRateLimit(
+    `email-delivery:ip:${getClientIp(c)}`,
+    EMAIL_DELIVERY_EVENT_IP_LIMIT,
+    "邮件回执请求过于频繁，请稍后重试",
   );
 }

@@ -88,6 +88,10 @@ beforeEach(() => {
   vi.stubGlobal('useWorkspace', () => ({ slug: ref('school') }));
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal('useDomainContests', () => api);
+  // 赛后官方题解入口走 useApi + 域社区读取；页面测试只关心渲染，返回空列表即可。
+  vi.stubGlobal('useApi', () => ({
+    api: { get: vi.fn().mockResolvedValue({ data: [] }) },
+  }));
   vi.stubGlobal('usePolling', (options: (typeof polling)[number]) => polling.push(options));
   vi.stubGlobal('useAsyncData', async (_key: unknown, load: () => Promise<unknown>) => {
     const data = ref<unknown>(null), error = ref<unknown>(null), status = ref('success');
@@ -201,10 +205,11 @@ describe('比赛详情页的信息与实时性', () => {
     page.unmount();
   });
 
-  it('比赛结束后停止轮询，进行中按固定间隔刷新', async () => {
+  it('详情低频同步：赛中 30 秒一次，结束后停止', async () => {
+    // 阶段由本地时钟推导，服务端只做低频事实同步（此前是 5 秒 detail 轮询）。
     api.detail.mockResolvedValue(contest());
     const page = await view();
-    expect(polling[0]!.intervalMs.value).toBe(5000);
+    expect(polling[0]!.intervalMs.value).toBe(30000);
     api.detail.mockResolvedValue(contest({ status: 'ended' }));
     await polling[0]!.fetcher();
     await flushPromises();

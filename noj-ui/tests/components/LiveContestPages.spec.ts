@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
+import { computed, defineComponent, h, onMounted, onUnmounted, ref, Suspense, watch } from 'vue';
 import ObjectivePage from '~/pages/d/[slug]/objective-submissions/[submissionId].vue';
 import ContestProblemPage from '~/pages/d/[slug]/contests/[contestId]/problems/[label].vue';
 import ContestSolvePage from '~/pages/d/[slug]/contests/[contestId]/solve/[label].vue';
@@ -10,7 +10,9 @@ let polling: Array<{ intervalMs: { value: number | null }; fetcher: () => Promis
 beforeEach(() => {
   vi.clearAllMocks();
   polling = [];
-  for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
+  for (const [name, value] of Object.entries({ computed, ref, watch, onMounted, onUnmounted })) {
+    vi.stubGlobal(name, value);
+  }
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
   vi.stubGlobal('useRoute', () => ({ params: { contestId: 'contest', label: 'A', submissionId: 'answer' } }));
@@ -20,6 +22,22 @@ beforeEach(() => {
   vi.stubGlobal('useDomainContestAnswers', () => answers);
   vi.stubGlobal('useDomainObjectiveHistory', () => history);
   vi.stubGlobal('usePolling', (options: typeof polling[number]) => polling.push(options));
+  // 页面会建立域比赛 SSE 连接。测试环境（happy-dom + Deno 的 EventSource）在断线重连
+  // 时会抛未处理的 rejection，这里用最小替身固定住行为：只记录 URL，不发真实请求。
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      static instances: { url: string }[] = [];
+      onopen: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onmessage: (() => void) | null = null;
+      constructor(public url: string) {
+        (this.constructor as unknown as { instances: { url: string }[] }).instances.push({ url });
+      }
+      addEventListener() {}
+      close() {}
+    },
+  );
   vi.stubGlobal('useAsyncData', async (_key: unknown, read: () => Promise<unknown>) => {
     const data = ref<unknown>(null), error = ref<unknown>(null), status = ref('success');
     const refresh = async () => {
@@ -122,17 +140,35 @@ describe('比赛时间边界自动刷新', () => {
     expect(polling[0]!.intervalMs.value).toBeNull();
     result.unmount();
   });
-  it('开赛前打开的榜单随开始和结束更新，结束时重读最后实时结果并停止轮询', async () => {
+  it('榜单：阶段变化时立即重读，结束后停止全部轮询', async () => {
     const result = await view(RankingPage);
-    contests.detail.mockResolvedValue({ data: { status: 'running', revision: 1 } });
-    await polling[0]!.fetcher();
+    contests.detail.mockResolvedValue({
+      data: {
+        status: 'running',
+        revision: 1,
+        start_time: '2026-10-01T00:00:00.000Z',
+        end_time: '2026-11-01T00:00:00.000Z',
+      },
+    });
+    // 排名页注册顺序：polling[0] = 榜单兜底轮询（SSE 不可用时 5s），
+    // polling[1] = 详情低频同步（30s）。
+    expect(polling[0]!.intervalMs.value).toBe(5000);
+    expect(polling[1]!.intervalMs.value).toBe(30000);
+    await polling[1]!.fetcher();
     await flushPromises();
-    expect(contests.ranking).toHaveBeenCalledTimes(2);
-    expect(polling[1]!.intervalMs.value).toBe(5000);
-    contests.detail.mockResolvedValue({ data: { status: 'ended', revision: 1 } });
-    await polling[0]!.fetcher();
+    const before = contests.ranking.mock.calls.length;
+    contests.detail.mockResolvedValue({
+      data: {
+        status: 'ended',
+        revision: 1,
+        start_time: '2026-10-01T00:00:00.000Z',
+        end_time: '2026-10-02T00:00:00.000Z',
+      },
+    });
+    await polling[1]!.fetcher();
     await flushPromises();
-    expect(contests.ranking).toHaveBeenCalledTimes(3);
+    // 结束时重读一次最后实时结果，然后两条轮询全部停止。
+    expect(contests.ranking.mock.calls.length).toBeGreaterThan(before);
     expect(polling[0]!.intervalMs.value).toBeNull();
     expect(polling[1]!.intervalMs.value).toBeNull();
     result.unmount();

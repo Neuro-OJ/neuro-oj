@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, nextTick, ref, Suspense } from 'vue';
 import DomainContestAnswer from '~/components/feature/DomainContestAnswer.vue';
-import type { ContestProblem } from '~/composables/useContests';
+import type { ContestProblem } from '~/utils/contest-types';
 const api = { questions: vi.fn(), code: vi.fn(), artifact: vi.fn(), objective: vi.fn(), template: vi.fn() };
 const confirm = vi.fn();
 const problem = {

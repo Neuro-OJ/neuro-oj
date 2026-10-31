@@ -6,6 +6,7 @@ import checkin from "../../routes/checkin.ts";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
+import { getRedis } from "../../../../../shared/mq/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { checkIns, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../../services/security/password.ts";
@@ -25,7 +26,7 @@ function registerAppErrorHandler(
   app.onError((err, c) => {
     if (err instanceof AppError) {
       const requestId = crypto.randomUUID();
-      return c.json(
+      const response = c.json(
         {
           error: err.message,
           code: err.code,
@@ -33,6 +34,12 @@ function registerAppErrorHandler(
         },
         err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
       );
+      // 与 src/app.ts 一致：限流错误携带 Retry-After / X-RateLimit-* 响应头。
+      const extra = (err as { headers?: Record<string, string> }).headers;
+      for (const [k, v] of Object.entries(extra ?? {})) {
+        response.headers.set(k, v);
+      }
+      return response;
     }
     console.error("未处理的错误:", err);
     return c.json({ error: "服务器内部错误" }, 500);
@@ -353,6 +360,56 @@ Deno.test({
       );
       assertEquals(bad.status, 400);
     } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "checkin route: 签到写窗口按账号计数——窗口内最后一次放行，超额 429 且不落库",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    const redis = getRedis();
+    const key = `ratelimit:hardening:checkin:user:${userId}`;
+    const previous = Deno.env.get("RATE_LIMIT_ENABLED");
+    try {
+      const token = await signToken({ sub: userId, role: "user" });
+      const app = createTestApp();
+      // 窗口计数预置到上限前一次：先证明"最后一次"仍然放行，再证明超额被拒。
+      await redis.del(key);
+      await redis.set(key, "9", "EX", 60);
+      Deno.env.set("RATE_LIMIT_ENABLED", "true");
+
+      const last = await jsonRequest(app, "/api/v1/checkin", {
+        method: "POST",
+        token,
+      });
+      assertEquals(last.status, 200, "窗口内最后一次签到应放行");
+      assertEquals(await redis.get(key), "10", "放行请求也只扣一次额度");
+
+      const blocked = await jsonRequest(app, "/api/v1/checkin", {
+        method: "POST",
+        token,
+      });
+      assertEquals(blocked.status, 429, "超额签到应被限流");
+      assertEquals(
+        blocked.headers.get("retry-after") !== null,
+        true,
+        "限流响应需带 Retry-After",
+      );
+      // 限流在服务层之前生效：本次被拒的请求没有再次写 check_ins。
+      const db = getDb();
+      const rows = await db.select().from(checkIns).where(
+        eq(checkIns.user_id, userId),
+      );
+      assertEquals(rows.length, 1, "被限流的重试不得写入签到记录");
+    } finally {
+      if (previous === undefined) Deno.env.delete("RATE_LIMIT_ENABLED");
+      else Deno.env.set("RATE_LIMIT_ENABLED", previous);
+      await redis.del(key);
       await cleanup(userId);
     }
   },

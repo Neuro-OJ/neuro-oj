@@ -6,7 +6,7 @@ import type {
   ContestPayload,
   ContestProblemInput,
   ContestType,
-} from '~/composables/useContests'
+} from '~/utils/contest-types'
 
 const {
   open = false,
@@ -226,10 +226,8 @@ function submit() {
     start_time: new Date(startTime.value).toISOString(),
     end_time: new Date(endTime.value).toISOString(),
     type: type.value,
-    kind: 'public',
     secrecy_enabled: secrecyEnabled.value,
     config,
-    is_public: true,
     affect_global_ranking: affectGlobalRanking.value,
     ranking_visibility: rankingVisibility.value,
     freeze_duration_seconds: Math.max(0, Math.floor(freezeMinutes.value * 60)),

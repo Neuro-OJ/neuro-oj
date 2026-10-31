@@ -2,7 +2,7 @@
 import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import { toContestProblemView } from '~/utils/problemView';
-import { contestDurationText, scoreboardScopeText } from '~/utils/contestWindow';
+import { contestDurationText, contestPhase, scoreboardScopeText } from '~/utils/contestWindow';
 import { formatDateTime } from '~/utils/submissionFormat';
 
 /**
@@ -21,7 +21,7 @@ import { formatDateTime } from '~/utils/submissionFormat';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], workspaceWidth: 'problem', breadcrumbWidth: '1280px' });
 
 const route = useRoute();
-const { slug } = useWorkspace();
+const { slug, domain } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainContestAnswers();
 const contestApi = useDomainContests();
@@ -35,17 +35,37 @@ const contest = await useAsyncData(
   () => contestApi.detail(slug.value!, id.value),
 );
 
-// 比赛状态与 revision 变化时重读赛题：换版/开赛/结束都会改变可写性。
-usePolling({
-  intervalMs: computed(() => contest.data.value?.data.status !== 'ended' ? 5000 : null),
-  immediate: false,
-  fetcher: () => contest.refresh(),
-});
-watch(() => [contest.data.value?.data.revision, contest.data.value?.data.status], (next, previous) => {
-  if (previous[0] != null && (next[0] !== previous[0] || next[1] !== previous[1])) void refresh();
-});
-
 const contestRow = computed(() => contest.data.value?.data ?? null);
+
+/**
+ * 受理窗口用本地阶段判定，详情只做低频同步。
+ *
+ * 本地阶段只影响「是否给出编码入口 / 是否显示受理状态」，**不是授权**：真正的受理
+ * 判定由后端在提交时复核（受理窗口 + 报名关系）。因此这里去掉 5 秒轮询不会放松任何
+ * 服务端约束，只是把「服务器每 5 秒被观众敲一次」换成「边界时刻重取一次」。
+ */
+const now = ref(Date.now());
+let clock: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  clock = setInterval(() => { now.value = Date.now(); }, 1000);
+});
+onUnmounted(() => {
+  if (clock) clearInterval(clock);
+  clock = null;
+});
+const phase = computed(() => contestPhase(contestRow.value, now.value));
+// 跨越受理边界或 revision 变化（换版、报名）→ 重读赛题与比赛事实。
+watch([phase, () => contestRow.value?.status, () => contestRow.value?.revision], (next, previous) => {
+  if (!previous || next[0] !== previous[0] || next[1] !== previous[1] || next[2] !== previous[2]) {
+    void contest.refresh();
+    void refresh();
+  }
+});
+usePolling({
+  intervalMs: computed(() => (phase.value !== 'ended' ? 30000 : null)),
+  immediate: false,
+  fetcher: () => contest.refresh().then(() => undefined),
+});
 const problemView = computed(() => data.value ? toContestProblemView(data.value.data) : null);
 const contestProblem = computed(() => data.value?.data ?? null);
 const inlineAnswer = computed(() =>
@@ -56,7 +76,7 @@ const solveTo = computed(() =>
   `/d/${slug.value}/contests/${encodeURIComponent(id.value)}/solve/${encodeURIComponent(label.value)}`
 );
 const active = computed(() =>
-  contestRow.value?.status === 'running' && contestRow.value.is_registered === true
+  phase.value === 'running' && contestRow.value?.is_registered === true
 );
 const statementExpanded = ref(true);
 const submissionsPanel = ref<{ refresh: () => Promise<unknown> } | null>(null);
@@ -74,10 +94,30 @@ const scoreboardHint = computed(() =>
   contestRow.value ? scoreboardScopeText(contestRow.value.type, contestRow.value.config?.scoreboard_scope) : ''
 );
 
+/**
+ * 相邻题目导航依赖赛题列表。
+ *
+ * 此前这里用 `.catch(() => null)` 把失败静默吞掉：列表请求抖一次，上一题/下一题与
+ * 题号位置就会无声消失，用户还会误以为「已经是第一题」。现在失败写进 error ref，
+ * 页面给出可重试的提示。
+ */
+const problemsError = ref<string | null>(null);
 const problems = await useAsyncData(
   () => `${key.value}:list`,
-  () => contestRow.value ? contestApi.problems(slug.value!, id.value).catch(() => null) : Promise.resolve(null),
+  async () => {
+    problemsError.value = null;
+    if (!contestRow.value) return null;
+    try {
+      return await contestApi.problems(slug.value!, id.value);
+    } catch (e) {
+      problemsError.value = extractApiError(e).message;
+      return null;
+    }
+  },
 );
+async function retryProblems() {
+  await problems.refresh();
+}
 const position = computed(() => {
   const list = problems.data.value?.data ?? [];
   const index = list.findIndex((item) => item.label === label.value);
@@ -141,9 +181,9 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
           </ProblemHeader>
 
           <UAlert v-if="!active" color="info"
-            :title="contestRow?.status === 'pending'
+            :title="phase === 'pending'
               ? '比赛尚未开始，赛题可在开赛后作答'
-              : contestRow?.status === 'ended'
+              : phase === 'ended'
                 ? '比赛已结束，仅可查看题面'
                 : '仅在比赛受理时间内且已报名时可提交'" />
 
@@ -166,6 +206,13 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             </template>
           </ProblemStatement>
 
+          <!-- 赛后复盘：官方题解入口。赛中不给（会提前泄露判定思路）。 -->
+          <div v-if="phase === 'ended' && contestProblem?.problem_id"
+            class="rounded border border-border bg-bg-panel px-4 py-3">
+            <OfficialSolutionEntry :slug="slug!" :problem-id="contestProblem.problem_id"
+              :enabled="domain?.configuration.features.community !== false" />
+          </div>
+
           <div v-if="inlineAnswer" id="answer" class="scroll-mt-24">
             <DomainContestAnswer v-if="contestProblem?.version_id" :key="`${key}:${contestProblem.version_id}`"
               :slug="slug!" :contest-id="id" :problem="{ ...contestProblem, version_id: contestProblem.version_id }"
@@ -173,6 +220,14 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             <UAlert v-else color="warning" title="本场题目尚未固定作答版本，请联系组织者" />
           </div>
 
+          <!-- 赛题列表失败时不能让导航静默消失：给出可重试的提示。 -->
+          <div v-if="problemsError" role="status"
+            class="flex flex-wrap items-center justify-between gap-2 rounded border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
+            <span>赛题列表暂不可用，上一题/下一题与题号位置暂时无法显示。</span>
+            <UButton size="xs" color="neutral" variant="outline" icon="i-lucide-refresh-cw" @click="retryProblems()">
+              重试
+            </UButton>
+          </div>
           <nav v-if="position && position.total > 1" class="flex flex-wrap items-center justify-between gap-3" aria-label="赛题切换">
             <UButton v-if="previous" :to="problemTo(previous)" color="neutral" variant="outline" icon="i-lucide-arrow-left"
               class="justify-start">

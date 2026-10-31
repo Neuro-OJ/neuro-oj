@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { watch } from 'vue';
-import type { ContestProblem } from '~/composables/useContests';
+import type { ContestProblem } from '~/utils/contest-types';
 import type { UiFrameResult } from '~/utils/uiFrame';
 import ProblemAnswerPanel, { type AnswerHandlers, type AnswerQuestion } from '~/components/problem/ProblemAnswerPanel.vue';
 import { extractApiError } from '~/utils/apiError';

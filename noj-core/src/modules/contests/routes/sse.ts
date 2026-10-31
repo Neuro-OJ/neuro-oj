@@ -14,6 +14,8 @@ import {
   getContestRankingView,
   isContestFrozen,
 } from "../services/contest-ranking.ts";
+import { partitionClassroomRanking } from "../services/classroom-contests.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 
 /**
  * contest 域竞赛 SSE 路由。
@@ -37,6 +39,21 @@ for (
     async (c) => {
       const viewerId = c.var.userId;
       const slug = c.req.param("slug"), reference = c.req.param("id")!;
+      /**
+       * 域比赛可按关联班级筛选。
+       *
+       * 筛选在**连接建立时**确定：切换班级需要重建 SSE 连接，与 `useEventSource`
+       * 的 `scopeKey` 语义一致。这样每次推送的分区结果与 REST `/ranking` 完全同源
+       * （都走 `partitionClassroomRanking`），不会出现"实时榜分组和刷新后不一致"。
+       *
+       * 无域入口（旧 `/contests/:id/events`）不接受该参数——那里没有班级概念。
+       */
+      const classroomId = slug
+        ? c.req.query("classroom_id") || undefined
+        : undefined;
+      if (!slug && c.req.query("classroom_id")) {
+        throw new BadRequestError("无域比赛入口不支持按班级筛选");
+      }
       async function loadAccess() {
         if (slug) {
           const access = await loadDomainContest(
@@ -122,18 +139,41 @@ for (
               viewerId,
             );
             currentView = result.view;
+            /**
+             * 域比赛的榜单载荷必须与 REST `/domains/:slug/contests/:id/ranking`
+             * 同构，否则前端接上 SSE 后会丢掉班级分组与筛选。
+             *
+             * 分区放在赛制引擎（保密/封榜/正式视图选择）**之后**执行：它只把已经
+             * 授权过的行按当前学生名单分组，不改变可见范围。
+             */
+            const partition = slug
+              ? await partitionClassroomRanking(
+                contestId,
+                result.rows,
+                classroomId,
+              )
+              : null;
             await ctx.stream.writeSSE({
               event,
               data: JSON.stringify({
                 type: event,
                 contest_id: contestId,
-                data: result.rows,
+                data: partition ? partition.rows : result.rows,
                 view: result.view,
                 ranking_visibility: result.ranking_visibility,
                 freeze_start_time: result.freeze_start_time,
                 freeze_end_time: result.freeze_end_time,
                 settlement_pending: result.settlement_pending,
                 admin_live: isAdmin && result.view === "live",
+                // 班级分区只在域入口下发；旧入口保持原有载荷面不变。
+                ...(partition
+                  ? {
+                    classrooms: partition.classrooms,
+                    classroom_rows: partition.classroom_rows,
+                    other_rows: partition.other_rows,
+                    classroom_id: classroomId ?? null,
+                  }
+                  : {}),
               }),
             });
             lastRankingPushAt = Date.now();

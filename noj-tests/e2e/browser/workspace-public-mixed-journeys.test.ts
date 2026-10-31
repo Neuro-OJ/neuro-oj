@@ -481,8 +481,6 @@ Deno.test({
               type: "kaggle",
               start_time: new Date(now - 1000).toISOString(),
               end_time: new Date(now + 45000).toISOString(),
-              kind: "public",
-              is_public: true,
               affect_global_ranking: false,
               ranking_visibility: "participants",
               config: { scoreboard_scope: "self" },
@@ -513,10 +511,14 @@ Deno.test({
                   exact: true,
                 }).click(),
             );
-            await session.page.getByRole("link", {
-              name: `A · 共同源题 ${suffix}`,
-              exact: true,
-            }).click();
+            // 按**赛题行链接的 href** 定位，不按可访问名。
+            //
+            // 行内文本会随界面演进变化（标签徽标、固定版本、分值与本人状态都会进入
+            // 可访问名），此前写死 `A · 共同源题 …` + `exact: true` 与页面改版后的
+            // DOM 不再匹配，红的是选择器而不是业务。href 在同一路径契约下稳定。
+            await session.page.locator(
+              `a[href*="/contests/${contestId}/problems/A"]`,
+            ).first().click();
             const result = await handIn(
               session.page,
               `/domains/main/contests/${contestId}/problems/A/objective-submissions`,
