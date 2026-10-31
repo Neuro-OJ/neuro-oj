@@ -204,4 +204,4 @@ Settlement）**阶段：
 `utils/editorHistory.ts` 的竞赛分支，清空 `scripts/check-legacy-contest-api.ts` 的
 `CALLER_ALLOWLIST`，让无域读路由返回 410 并观察一个版本；同时决定 E2E 是否切到
 `retireLegacyEndpoints: true` 运行。评估记录见
-[`.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`](../../../.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md)。
+[`.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`](https://github.com/Neuro-OJ/neuro-oj/blob/65a4fb101d0759929b2cd75484fb3beac7174ba1/.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md)。
