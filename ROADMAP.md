@@ -90,8 +90,8 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
       （`GET /contests/:id/final-ranking`、`/domains/:slug/contests/:id/final-ranking`）
 - [x] 比赛保密与统一报名：`secrecy_enabled` 从收录到比赛结束保护全部历史版本；
       报名由域访问权决定，不再有公开赛 / 邀请赛 / 比赛密码
-- [x] 防作弊基础：IP 记录、代码相似度检测（`noj-core/src/domains/contest/services/contest-anti-cheat.ts`；端点 `GET /contests/:id/anti-cheat/similar-submissions`，见 `domains/admin/routes/contest.ts:504`）
-- [x] 统计导出：成绩单 CSV / JSON（端点 `GET /contests/:id/ranking-snapshots/<version>.csv|json` 与 `latest.csv|json`，见 `noj-core/src/domains/admin/routes/contest.ts:569-760`；CSV 含注入防护）
+- [x] 防作弊基础：IP 记录、代码相似度检测（`noj-core/src/domains/contest/services/contest-anti-cheat.ts`；端点 `GET /contests/:id/anti-cheat/similar-submissions`，见 `modules/http/admin/routes/contest.ts`）
+- [x] 统计导出：成绩单 CSV / JSON（端点 `GET /contests/:id/ranking-snapshots/<version>.csv|json` 与 `latest.csv|json`，见 `noj-core/src/modules/http/admin/routes/contest.ts`；CSV 含注入防护）
 - [x] 产物提交：支持 zip（预测结果 / 模型 / 代码 / 数据）作为提交物
 - [ ] 隐藏测试集评测：A/B 榜与更复杂的榜单隔离规则（封榜与正式快照**不等于** A/B 榜，
       后者需要两套独立测试集与榜单隔离规则）

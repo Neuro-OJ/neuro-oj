@@ -21,12 +21,12 @@ import {
   jsonRequest,
 } from "../../../../../../tests/helper.ts";
 import { sameStorageObject } from "../../index.ts";
-import { S3StorageProvider } from "../../../../platform/system/index.ts";
+import { S3StorageProvider } from "../../../../assets/storage/mod.ts";
 import {
   getStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../../platform/system/index.ts";
+} from "../../../../assets/storage/mod.ts";
 
 // 绕过 JWT 撤销检查（Redis），保持 测试数据库-only 测试自包含
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");

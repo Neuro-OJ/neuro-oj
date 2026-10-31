@@ -339,7 +339,7 @@ function pathsFor(options: LauncherOptions): string[] {
     case "test":
     case "pg":
     case "watch":
-      return ["tests", "src/domains", ...allTargetModuleTestRoots()];
+      return ["tests", ...allTargetModuleTestRoots()];
     case "parallel":
       return [];
   }

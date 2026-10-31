@@ -8,8 +8,8 @@ Neuro OJ 仓库根目录的脚本统一存放点。
 > 首次安装改为**手动下载 Release 二进制**后执行 `install`（不再有自举脚本）。
 > `deploy.sh` 与 `restore-drill.sh` 仍在过渡期保留，但已加**弃用闸门**。
 > 注意：`scripts/release/test-supply-chain.sh`、`scripts/staging/test-acceptance.sh`
->、`scripts/deploy/test-deprecation-gate.sh` 等**门禁/回归测试**脚本仍然保留
->（被删除的是旧的自举与运维入口脚本，不含这些测试）。
+> 、`scripts/deploy/test-deprecation-gate.sh` 等**门禁/回归测试**脚本仍然保留
+> （被删除的是旧的自举与运维入口脚本，不含这些测试）。
 
 ## 安装、部署与运维入口
 
@@ -64,19 +64,19 @@ scripts/
 
 ## 按使用场景速查
 
-| 我想...                 | 使用                                                                                   |
-| ----------------------- | -------------------------------------------------------------------------------------- |
-| **首次安装**            | 手动下载 Release 二进制 → `./noj-cli-linux-amd64 install --dir <目录>`（见 `noj-cli/README.md`） |
-| **环境检测**            | `noj-cli check`                                                                        |
-| **启动/停止/重启/状态** | `noj-cli start\|stop\|restart\|status`                                                 |
-| **查看日志**            | `noj-cli logs [core,ui,...] [--follow]`                                                |
-| **升级**                | `noj-cli update [--latest]`                                                            |
-| **创建/校验备份**       | `noj-cli backup create` / `noj-cli backup verify <快照>`                               |
-| **源码运行 noj-cli**    | `cd noj-cli && deno run -A src/cli.ts --help`                                          |
-| **执行 staging 验收**   | `bash scripts/staging/acceptance.sh all --env-file .env.staging`                       |
-| **跑跨模块 E2E 测试**   | `bash scripts/e2e/run-all.sh`                                                          |
-| **查看 P3 模块依赖诊断** | `deno run -A scripts/check-module-boundaries.ts`                                       |
-| **验证 P3 诊断器负例**   | `deno run -A scripts/check-ci.ts`（其中包含正式 gate 自测）       |
+| 我想...                  | 使用                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| **首次安装**             | 手动下载 Release 二进制 → `./noj-cli-linux-amd64 install --dir <目录>`（见 `noj-cli/README.md`） |
+| **环境检测**             | `noj-cli check`                                                                                  |
+| **启动/停止/重启/状态**  | `noj-cli start\|stop\|restart\|status`                                                           |
+| **查看日志**             | `noj-cli logs [core,ui,...] [--follow]`                                                          |
+| **升级**                 | `noj-cli update [--latest]`                                                                      |
+| **创建/校验备份**        | `noj-cli backup create` / `noj-cli backup verify <快照>`                                         |
+| **源码运行 noj-cli**     | `cd noj-cli && deno run -A src/cli.ts --help`                                                    |
+| **执行 staging 验收**    | `bash scripts/staging/acceptance.sh all --env-file .env.staging`                                 |
+| **跑跨模块 E2E 测试**    | `bash scripts/e2e/run-all.sh`                                                                    |
+| **查看 P3 模块依赖诊断** | `deno run -A scripts/check-module-boundaries.ts`                                                 |
+| **验证 P3 诊断器负例**   | `deno run -A scripts/check-ci.ts`（其中包含正式 gate 自测）                                      |
 
 ## 与原 `deno task` / `cargo run` 的关系
 

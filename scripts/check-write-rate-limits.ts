@@ -6,7 +6,7 @@
  * 完全没有限流证据，其中 9 个是文档"已知未覆盖"里说明过的）。
  *
  * 检查方式（文件级，刻意保守）：
- * - 扫描 `noj-core/src/domains/*\/routes/*.ts` 中的写方法路由（POST/PUT/PATCH/DELETE）；
+ * - 扫描 `collectRouteFiles()` 发现的全部路由文件中的写方法路由（POST/PUT/PATCH/DELETE）；
  * - 文件内出现任一限流证据（`enforce*RateLimit` / `rateLimit(` / `RateLimitConfig` /
  *   `rate-limit` 引用）即视为已覆盖；
  * - 否则必须出现在下方 `ALLOWLIST`（附理由与状态）。
@@ -43,43 +43,43 @@ export const ALLOWLIST: Record<
   { status: AllowlistStatus; reason: string }
 > = {
   // ── 管理后台写操作：权限 + 审计兜底，矩阵文档明确列为可接受 ──
-  "noj-core/src/domains/admin/routes/catalog.ts": {
+  "noj-core/src/modules/http/admin/routes/catalog.ts": {
     status: "exempt",
     reason:
       "管理后台写操作：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
   },
-  "noj-core/src/domains/admin/routes/community.ts": {
+  "noj-core/src/modules/http/admin/routes/community.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/domains/admin/routes/contest.ts": {
+  "noj-core/src/modules/http/admin/routes/contest.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/domains/admin/routes/gateway.ts": {
+  "noj-core/src/modules/http/admin/routes/gateway.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/domains/admin/routes/identity.ts": {
+  "noj-core/src/modules/http/admin/routes/identity.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/domains/admin/routes/submission.ts": {
+  "noj-core/src/modules/http/admin/routes/submission.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/domains/admin/routes/background-tasks.ts": {
+  "noj-core/src/modules/http/admin/routes/background-tasks.ts": {
     status: "exempt",
     reason:
       "管理后台任务重试：admin 权限 + 审计日志兜底；任务状态转换本身幂等且不接受普通成员写入",
   },
   // ── 题目版本管理（2026-10-10）：管理端写操作，admin 权限 + 审计兜底 ──
-  "noj-core/src/domains/admin/routes/submission-jobs.ts": {
+  "noj-core/src/modules/http/admin/routes/submission-jobs.ts": {
     status: "exempt",
     reason:
       "管理后台批量重测受理/重试：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
   },
-  "noj-core/src/domains/admin/routes/problem-versions.ts": {
+  "noj-core/src/modules/http/admin/routes/problem-versions.ts": {
     status: "exempt",
     reason:
       "管理后台版本策略/固定版本：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",

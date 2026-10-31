@@ -257,6 +257,14 @@ export async function startCore() {
       );
     }
 
+    // 已废弃的 GitHub OAuth 密钥别名：v0.12 移除（#698），提前告警便于迁移。
+    if (Deno.env.get("OAUTH_GITHUB_SECRET")?.trim()) {
+      logger.warn(
+        "环境变量 OAUTH_GITHUB_SECRET 已废弃，将在 v0.12 移除；" +
+          "请改用 OAUTH_GITHUB_CLIENT_SECRET",
+      );
+    }
+
     // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
     // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。
     try {

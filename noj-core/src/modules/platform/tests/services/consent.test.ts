@@ -6,6 +6,7 @@
  *
  * 依赖 独立测试数据库。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -17,10 +18,12 @@ import {
   publishVersion,
   recordConsent,
   recordConsentsForRegistration,
-} from "../../legal-legacy/index.ts";
+} from "../../index.ts";
 
 const USER = "legal-test-user";
+const USER_ACTOR = userActorFromAuthenticatedId(USER);
 const PUBLISHER = "legal-test-publisher";
+const PUBLISHER_ACTOR = userActorFromAuthenticatedId(PUBLISHER);
 
 async function setup() {
   await resetDbForTest();
@@ -55,12 +58,19 @@ Deno.test({
   sanitizeOps: false,
   async fn() {
     await setup();
-    await publishVersion("privacy", "v1", null, true, PUBLISHER);
-    await publishVersion("privacy", "v2", null, true, PUBLISHER);
+    await publishVersion("privacy", "v1", null, true, PUBLISHER_ACTOR);
+    await publishVersion("privacy", "v2", null, true, PUBLISHER_ACTOR);
 
-    await recordConsent(USER, "privacy", 1, "hash1", "1.2.3.4", "UA/1");
-    await recordConsent(USER, "privacy", 1, "hash1", "1.2.3.4", "UA/1"); // 幂等
-    await recordConsent(USER, "privacy", 2, "hash2", "1.2.3.4", "UA/2");
+    await recordConsent(USER_ACTOR, "privacy", 1, "hash1", "1.2.3.4", "UA/1");
+    await recordConsent(
+      USER_ACTOR,
+      "privacy",
+      1,
+      "hash1",
+      "1.2.3.4",
+      "UA/1",
+    ); // 幂等
+    await recordConsent(USER_ACTOR, "privacy", 2, "hash2", "1.2.3.4", "UA/2");
 
     const latest = await getUserConsent(USER, "privacy");
     assertEquals(latest?.version, 2);
@@ -75,12 +85,12 @@ Deno.test({
   sanitizeOps: false,
   async fn() {
     await setup();
-    await publishVersion("privacy", "p1", null, true, PUBLISHER);
-    await publishVersion("terms", "t1", null, true, PUBLISHER);
+    await publishVersion("privacy", "p1", null, true, PUBLISHER_ACTOR);
+    await publishVersion("terms", "t1", null, true, PUBLISHER_ACTOR);
 
     const db = getDb();
     await db.transaction(async (tx) => {
-      await recordConsentsForRegistration(tx, USER, "9.9.9.9", "UA/reg");
+      await recordConsentsForRegistration(tx, USER_ACTOR, "9.9.9.9", "UA/reg");
     });
 
     const privacy = await getUserConsent(USER, "privacy");

@@ -3,6 +3,7 @@
  *
  * 覆盖：非 legal:manage 访问 403；发布版本；请求列表与状态更新。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -191,11 +192,11 @@ Deno.test({
 
     // 2. 处置数据请求 → legal.data_request_update
     const { createDataRequest } = await import(
-      "../../legal-legacy/services/data-requests.ts"
+      "../../index.ts"
     );
     // 请求需要一个真实用户；直接用刚建的管理员账号作为请求人。
     const requestId = await createDataRequest(
-      userId,
+      userActorFromAuthenticatedId(userId),
       "delete",
       "profile",
       null,

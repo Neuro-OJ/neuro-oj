@@ -17,19 +17,19 @@ import {
   submissions,
   users,
 } from "../src/shared/db/schema.ts";
+import { initSystemSettings } from "../src/modules/platform/system/index.ts";
 import {
   getStorageProvider,
   getStorageProviderKind,
-  initSystemSettings,
-} from "../src/modules/platform/system/index.ts";
+} from "../src/modules/assets/storage/mod.ts";
 import {
   buildStorageAuditReport,
   renderStorageAuditPrometheus,
   type StorageAuditReport,
   type StorageReference,
   type StorageReferenceKind,
-} from "../src/modules/platform/system/services/storage/audit.ts";
-import { parseStorageUrl } from "../src/modules/platform/system/services/storage/types.ts";
+} from "../src/modules/assets/services/audit.ts";
+import { parseStorageUrl } from "../src/modules/assets/storage/types.ts";
 
 interface Options {
   output?: string;

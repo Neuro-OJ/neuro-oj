@@ -25,9 +25,9 @@ import {
   publishProblemVersion,
   resolveProblemAnswerVersion,
 } from "../../services/versioning/publish.ts";
-import { registerReadyStorageObject } from "../../../platform/system/index.ts";
-import { setStorageProviderForTest } from "../../../platform/system/index.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
+import { registerReadyStorageObject } from "../../../assets/index.ts";
+import { setStorageProviderForTest } from "../../../assets/storage/mod.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import type {
   AiProblemContent,

@@ -13,14 +13,11 @@
  * 测试夹具用 pkijs **真实构造** TimeStampResp（自签证书 + CMS 签名），
  * 而非伪造字节，以真正覆盖解析与验签路径。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { updateSetting } from "../../system/services/system-settings.ts";
-import {
-  timestampHash,
-  tsaEnabled,
-  verifyTimestamp,
-} from "../../legal-legacy/index.ts";
+import { timestampHash, tsaEnabled, verifyTimestamp } from "../../index.ts";
 import {
   buildForgedTimeStampRespWithCert,
   buildTestTimeStampResp,
@@ -442,7 +439,7 @@ Deno.test({
 
     // 先算出内容哈希以构造匹配的 TSA 响应
     const { hashContent, publishVersion, getVersionTsa } = await import(
-      "../../legal-legacy/index.ts"
+      "../../index.ts"
     );
     const content = "# 政策正文（TSA 落库）";
     const hash = await hashContent(content);
@@ -453,7 +450,13 @@ Deno.test({
     const original = globalThis.fetch;
     globalThis.fetch = fetchImpl;
     try {
-      await publishVersion("privacy", content, "重大", true, publisher);
+      await publishVersion(
+        "privacy",
+        content,
+        "重大",
+        true,
+        userActorFromAuthenticatedId(publisher),
+      );
     } finally {
       globalThis.fetch = original;
     }

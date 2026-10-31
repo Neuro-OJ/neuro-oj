@@ -3,14 +3,16 @@
  *
  * 覆盖：当前文档列表（未发布为 null）、发布后返回、非法 kind 400、版本历史。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { users } from "../../../../shared/db/schema.ts";
-import { publishVersion } from "../../legal-legacy/index.ts";
+import { publishVersion } from "../../index.ts";
 import { createApp } from "../../../../app.ts";
 
 const PUBLISHER = "legal-route-publisher";
+const PUBLISHER_ACTOR = userActorFromAuthenticatedId(PUBLISHER);
 
 /** 构造测试用户（发布者 FK）。 */
 async function seedPublisher() {
@@ -51,8 +53,14 @@ Deno.test({
   async fn() {
     await resetDbForTest();
     await seedPublisher();
-    await publishVersion("privacy", "隐私第一版", null, true, PUBLISHER);
-    await publishVersion("privacy", "隐私第二版", "修订", false, PUBLISHER);
+    await publishVersion("privacy", "隐私第一版", null, true, PUBLISHER_ACTOR);
+    await publishVersion(
+      "privacy",
+      "隐私第二版",
+      "修订",
+      false,
+      PUBLISHER_ACTOR,
+    );
 
     const app = createApp();
     const docRes = await app.request("/api/v1/legal/documents");

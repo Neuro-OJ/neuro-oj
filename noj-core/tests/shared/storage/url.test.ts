@@ -11,7 +11,7 @@ import {
   isStorageUrl,
   parseDownloadUrl,
   parseStorageUrl,
-} from "../../../src/modules/platform/system/services/storage/types.ts";
+} from "../../../src/modules/assets/storage/types.ts";
 
 // ── `noj-storage://` 解析 ────────────────────────────────────
 

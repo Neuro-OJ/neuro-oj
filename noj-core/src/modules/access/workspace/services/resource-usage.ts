@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { domainResourceCounters } from "../../../../shared/db/schema.ts";
-import { getDomainStorageUsage } from "./storage-quota.ts";
+import { getDomainStorageUsage } from "../../../assets/index.ts";
 
 /** 授权配额页面读取实际占用与预约，不把每分钟提交频率当容量计数。 */
 export async function getDomainResourceUsage(domainId: string) {

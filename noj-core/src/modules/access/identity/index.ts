@@ -118,7 +118,6 @@ export type {
 export {
   comparePassword,
   hashPassword,
-  isBcryptHash,
 } from "./services/security/password.ts";
 export {
   decryptTfaSecret,

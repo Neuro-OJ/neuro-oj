@@ -8,7 +8,7 @@ import {
   messages,
 } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
-import adminCommunityRouter from "../../../../../domains/admin/routes/community.ts";
+import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import {
   createUserToken,
   jsonRequest,

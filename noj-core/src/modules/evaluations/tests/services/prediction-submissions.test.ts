@@ -46,7 +46,7 @@ import {
   LocalStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
 import {
   getRedis,
   resetRedisForTest,

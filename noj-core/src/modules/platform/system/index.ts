@@ -176,66 +176,6 @@ export {
 } from "./services/hardening-rate-limit.ts";
 export type { SubmissionQuotaBucket } from "./services/hardening-rate-limit.ts";
 export {
-  getStorageProvider,
-  getStorageProviderKind,
-  resetStorageProvider,
-  setStorageProviderForTest,
-} from "./services/storage/mod.ts";
-export { LocalStorageProvider } from "./services/storage/mod.ts";
-export { S3StorageProvider } from "./services/storage/mod.ts";
-export { deliverStoredArtifact } from "./services/storage/mod.ts";
-export {
-  assertStorageObjectBindable,
-  collectStorageReferences,
-  compensateUploadedObject,
-  deleteStorageObject,
-  getStorageObject,
-  registerLegacyStorageObject,
-  registerReadyStorageObject,
-  registerStorageObject,
-  registerStreamedStorageObject,
-  releaseStorageObjectUploadReservation,
-  reserveStorageObjectUpload,
-  reserveStorageObjectUploadForContent,
-  STORAGE_UPLOAD_RESERVATION_TTL_MS,
-  StorageObjectDeletedError,
-  StorageObjectMissingError,
-  StorageUploadInFlightError,
-  uploadStorageObjectWithReservation,
-  verifyStorageObject,
-} from "./services/storage/mod.ts";
-export type {
-  ParsedDownloadUrl,
-  ParsedStorageUrl,
-  StorageAuditObject,
-  StorageAuditReport,
-  StorageDeleteOutcome,
-  StorageObjectInfo,
-  StorageObjectRecord,
-  StorageObjectStat,
-  StorageProvider,
-  StorageReference,
-  StorageReferenceKind,
-  StorageReferenceReport,
-  StorageUploadReservation,
-} from "./services/storage/mod.ts";
-export {
-  buildBase64DownloadUrl,
-  buildLocalDownloadUrl,
-  buildS3DownloadUrl,
-  buildStorageAuditReport,
-  buildStorageUrl,
-  classifyStorageObjectKey,
-  isDownloadUrl,
-  isStorageUrl,
-  parseDownloadUrl,
-  parseStorageUrl,
-  reconcileDomainStorageBatch,
-  renderStorageAuditPrometheus,
-  sha256Hex,
-  startDomainStorageReconciliation,
-} from "./services/storage/mod.ts";
-export {
   resetEmailProvider,
   sendEmailVerificationEmail,
   sendNotificationEmail,

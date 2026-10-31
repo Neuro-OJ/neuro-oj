@@ -1,3 +1,4 @@
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { problemExecutionForTest } from "../../../../../../tests/helper.ts";
 /**
  * 个人信息导出端点测试（PIPL 第 45 条）。
@@ -10,10 +11,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { submissions, users } from "../../../../../shared/db/schema.ts";
 import { problems } from "../../../../../shared/db/schema.ts";
-import {
-  publishVersion,
-  recordConsent,
-} from "../../../../platform/legal-legacy/index.ts";
+import { publishVersion, recordConsent } from "../../../../platform/index.ts";
 import { createApp } from "../../../../../app.ts";
 import { signToken } from "../../services/security/jwt.ts";
 
@@ -101,8 +99,21 @@ Deno.test({
     ]).onConflictDoNothing();
 
     // 本人同意记录
-    await publishVersion("privacy", "v1", null, true, "export-user-1");
-    await recordConsent("export-user-1", "privacy", 1, "h", null, null);
+    await publishVersion(
+      "privacy",
+      "v1",
+      null,
+      true,
+      userActorFromAuthenticatedId("export-user-1"),
+    );
+    await recordConsent(
+      userActorFromAuthenticatedId("export-user-1"),
+      "privacy",
+      1,
+      "h",
+      null,
+      null,
+    );
 
     const app = createApp();
     const res = await app.request("/api/v1/users/me/data-export", {

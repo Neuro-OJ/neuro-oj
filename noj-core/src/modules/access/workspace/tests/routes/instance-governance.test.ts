@@ -15,9 +15,9 @@ import { updateSetting } from "../../../../platform/system/index.ts";
 import {
   createDomain,
   requestDomainCreation,
-  reserveDomainStorageUpload,
   setDomainStatus,
 } from "../../index.ts";
+import { reserveDomainStorageUpload } from "../../../../assets/index.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 
 async function account(admin = false) {

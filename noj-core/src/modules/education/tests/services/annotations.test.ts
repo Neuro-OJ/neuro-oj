@@ -17,7 +17,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { deleteSubmission } from "../../../evaluations/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
-import { getStorageProvider } from "../../../platform/system/index.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import {
   createSubmissionAnnotation,
   getClassroomStudentSubmission,

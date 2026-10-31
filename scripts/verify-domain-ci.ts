@@ -214,11 +214,17 @@ const e2e = parseWorkflow(e2eText);
 
 const coreDomainDirs = [...LEGACY_DOMAIN_NAMES].sort();
 // legacy 域允许按计划搬迁；身份来自统一元数据而不是当前物理目录名称。
-for await (
-  const entry of Deno.readDir(new URL("noj-core/src/domains/", root))
-) {
-  if (entry.isDirectory && !coreDomainDirs.includes(entry.name)) {
-    fail(`遗留域 ${entry.name} 未登记到模块元数据`);
+// src/domains 已全部迁入 src/modules（#698 P1-3）；目录若被重新创建仍需登记。
+const legacyDomainRoot = new URL("noj-core/src/domains/", root);
+const legacyDomainRootExists = await Deno.stat(legacyDomainRoot).then(
+  (info) => info.isDirectory,
+  () => false,
+);
+if (legacyDomainRootExists) {
+  for await (const entry of Deno.readDir(legacyDomainRoot)) {
+    if (entry.isDirectory && !coreDomainDirs.includes(entry.name)) {
+      fail(`遗留域 ${entry.name} 未登记到模块元数据`);
+    }
   }
 }
 if (
