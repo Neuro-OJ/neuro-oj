@@ -156,7 +156,15 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
         time_limit_ms: 1000,
         memory_limit_mb: 256,
         checker: { type: "default" },
-        subtasks: [],
+        subtasks: [
+          {
+            id: "1",
+            score: 100,
+            cases: [
+              { input: "1.in", output: "1.out" },
+            ],
+          },
+        ],
       },
     },
     published_at: f.now,
