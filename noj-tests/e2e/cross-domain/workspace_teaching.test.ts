@@ -315,8 +315,10 @@ e2eTest(
       "B 作业",
     );
     const taskPath = `/domains/${slugA}/assignments/${taskA1.id}`;
-    await request("GET", `${taskPath}/matrix`, mixed.token, 403);
-    await request("GET", `${taskPath}/matrix`, peer.token, 403);
+    await request("GET", `${taskPath}/matrix`, mixed.token, 200);
+    await request("GET", `${taskPath}/matrix.csv`, mixed.token, 403);
+    await request("GET", `${taskPath}/matrix`, peer.token, 200);
+    await request("GET", `${taskPath}/matrix.csv`, peer.token, 403);
     await request(
       "GET",
       `/domains/${slugB}/assignments/${taskB.id}/matrix`,

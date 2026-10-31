@@ -370,7 +370,7 @@ Deno.test({
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
-          ).toBeVisible();
+          ).toHaveCount(0);
           const room = await student.page.request.get(
             `${UI_URL}${domainPath}/classrooms/${classroomId}`,
           );

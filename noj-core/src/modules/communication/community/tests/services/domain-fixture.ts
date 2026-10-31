@@ -150,7 +150,14 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
       title: "source problem",
       description: "source body",
       samples: [],
-      runtime_config: { languages: ["cpp20"] },
+      runtime_config: {
+        backend: "native",
+        languages: ["cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [],
+      },
     },
     published_at: f.now,
   });

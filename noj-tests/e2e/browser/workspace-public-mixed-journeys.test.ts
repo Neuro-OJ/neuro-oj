@@ -508,10 +508,10 @@ Deno.test({
               "POST",
               `/domains/main/contests/${contestId}/register`,
               () =>
-                session.page.getByRole("button", {
+                session.page.locator("#contest-register").getByRole("button", {
                   name: "报名参赛",
                   exact: true,
-                }).first().click(),
+                }).click(),
             );
             await session.page.getByRole("link", {
               name: `A · 共同源题 ${suffix}`,
