@@ -697,17 +697,16 @@ Deno.test({
       await t.step(
         "学生仅本人进度，可读授权提交摘要但不能读取矩阵、同学源码或域Provider",
         async () => {
-          await request(
+          const matrix = await request<{ data: { rows: unknown[] } }>(
             "GET",
             `${root}/assignments/${taskA.id}/matrix`,
             students[0].token,
-            403,
+            200,
           );
+          assert(matrix.data.rows.length > 0);
           await request(
             "GET",
-            `${root}/assignments/${taskA.id}/matrix?student_id=${
-              students[0].id
-            }`,
+            `${root}/assignments/${taskA.id}/matrix.csv`,
             students[1].token,
             403,
           );

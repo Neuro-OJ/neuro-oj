@@ -45,7 +45,7 @@ describe('成绩矩阵', () => {
     const view = mount(AssignmentMatrix, { props: { matrix }, global: { stubs } });
     expect(view.text()).toContain('main:1001');
     expect(view.text()).toContain('至少 60 分');
-    expect(view.get('button').attributes('aria-label')).toContain('100 分 · 已达标');
+    expect(view.get('button').attributes('aria-label')).toContain('100 · 已达标');
     expect(view.text()).toContain('1/1 达标');
     await view.get('button').trigger('click');
     expect(view.emitted('select')?.[0]).toEqual(['student', cell]);

@@ -180,7 +180,7 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     `${f.b}@example.com`,
   );
   await consumeDomainInvitation(sourceInvite.token, f.b);
-  await setMemberRoles(f.source.slug, f.a, f.b, ["editor"]);
+  await setMemberRoles(f.source.slug, f.a, f.b, ["admin"]);
   const imported = await importDomainProblem(
     f.target.slug,
     `${f.source.slug}:1001`,

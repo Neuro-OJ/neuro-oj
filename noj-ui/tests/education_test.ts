@@ -65,8 +65,8 @@ Deno.test('教学缓存：域、查看者、统计范围、页码和原提交分
 });
 Deno.test('教学成绩：过期成绩不可展示，最低分不反推 AC，逾期单独标识', () => {
   const cell = { status: 'achieved', score: 6500, accepted: false, late: false, updating: false } as TeachingCell;
-  assertEquals(teachingCellLabel(cell), '65 分 · 已达标');
-  assertEquals(teachingCellLabel({ ...cell, late: true }), '65 分 · 已达标 · 逾期');
+  assertEquals(teachingCellLabel(cell), '65 · 已达标');
+  assertEquals(teachingCellLabel({ ...cell, late: true }), '65 · 已达标 · 逾期');
   assertEquals(teachingCellLabel({ ...cell, updating: true, score: 10000 }), '更新中');
   assertEquals(teachingCellLabel({ ...cell, score: null, status: 'unavailable' }), '资源不可用');
 });

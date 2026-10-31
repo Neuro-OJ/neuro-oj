@@ -267,7 +267,7 @@ export const PROGRESS_LABELS: Record<ProgressStatus, string> = {
 export function teachingCellLabel(cell: TeachingCell) {
   if (cell.updating) return '更新中';
   const status = PROGRESS_LABELS[cell.status];
-  return cell.score === null ? status : `${cell.score / 100} 分 · ${status}${cell.late ? ' · 逾期' : ''}`;
+  return cell.score === null ? status : `${cell.score / 100} · ${status}${cell.late ? ' · 逾期' : ''}`;
 }
 /** 截止只结束按时统计，不把仍在评测的任务视为成绩永久冻结。 */
 export function assignmentPhase(

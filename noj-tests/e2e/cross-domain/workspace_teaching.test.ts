@@ -282,10 +282,11 @@ e2eTest(
         };
         can_edit: boolean;
         content: { questions: { answer: unknown[]; explanation: string }[] };
-      }>("GET", `/domains/${slug}/problems/${copyRef}`, mixed.token, 200);
+      }>("GET", `/domains/${slug}/problems/${copyRef}`, peer.token, 200);
       assertEquals(paper.reference.problem_id, copyProblemId);
       assertEquals(paper.reference.display_ref, copyRef);
       assertEquals(paper.reference.is_shared, false);
+      assertEquals(paper.can_edit, false);
       assertEquals(paper.content.questions[0].answer, []);
       assertEquals(paper.content.questions[0].explanation, "");
     }
@@ -628,7 +629,10 @@ e2eTest(
         login.data.token,
         200,
       );
-      assertEquals(spaces.data.map((space) => space.slug), [slug]);
+      assertEquals(
+        new Set(spaces.data.map((space) => space.slug)),
+        new Set([slug, "main"]),
+      );
       const joined = await request<{
         data: { membership: { role: string }; manages_domain: boolean };
       }>("GET", classroomPath, login.data.token, 200);

@@ -358,17 +358,19 @@ Deno.test({
           );
           assertEquals(spaces.status(), 200);
           assertEquals(
-            (await spaces.json()).data.map((space: { slug: string }) =>
-              space.slug
+            new Set(
+              (await spaces.json()).data.map((space: { slug: string }) =>
+                space.slug
+              ),
             ),
-            [slug],
+            new Set([slug, "main"]),
           );
           await expect(student.page.getByTestId("domain-identity")).toHaveText(
             `${studentName}@${slug}`,
           );
           await expect(
             student.page.getByRole("button", { name: "切换空间", exact: true }),
-          ).toHaveCount(0);
+          ).toBeVisible();
           const room = await student.page.request.get(
             `${UI_URL}${domainPath}/classrooms/${classroomId}`,
           );

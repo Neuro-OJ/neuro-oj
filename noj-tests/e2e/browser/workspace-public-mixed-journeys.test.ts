@@ -511,7 +511,7 @@ Deno.test({
                 session.page.getByRole("button", {
                   name: "报名参赛",
                   exact: true,
-                }).click(),
+                }).first().click(),
             );
             await session.page.getByRole("link", {
               name: `A · 共同源题 ${suffix}`,
