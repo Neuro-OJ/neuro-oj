@@ -587,6 +587,18 @@ Deno.test({
       sse.headers.get("content-type")?.includes("text/event-stream"),
       true,
     );
+    // 读到 connected（服务端完成初始回放查询）后再关闭流：否则 SSE 处理函数的
+    // 通知查询会与下一个测试的 TRUNCATE 并发，触发 PostgreSQL 死锁。
+    const reader = sse.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = "";
+    while (!received.includes("event: connected")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    assertEquals(received.includes("event: connected"), true);
   },
 });
 

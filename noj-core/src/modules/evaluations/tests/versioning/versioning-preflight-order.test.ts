@@ -11,7 +11,7 @@ import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
  * - 重派只续签交付凭据，Provider/模型/预算取自既有尝试快照，**不重新解析当前默认**。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
@@ -115,13 +115,18 @@ async function seedProblem(
 ): Promise<{ problemId: string; versionId: string }> {
   const problemId = `pf-order-prob-${tag}-${ts}`;
   const versionId = `pf-order-v1-${tag}-${ts}`;
+  // 题号取域内当前最大值 + 1：随机号段会与同分片其他测试文件撞上
+  // problems_domain_number_unique（CI 偶发失败）。
+  const [nextNumber] = await db.select({
+    value: sql<number>`coalesce(max(${problems.number}), 0) + 1`,
+  }).from(problems).where(eq(problems.domain_id, DEFAULT_DOMAIN_ID));
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `预检顺序测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 95400 + Math.floor(Math.random() * 900),
+    number: nextNumber.value,
     owner_id: "0",
     judge_type: "dual",
     runtime_config: dualConfig,
