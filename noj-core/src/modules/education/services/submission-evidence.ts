@@ -57,8 +57,9 @@ export async function listAssignmentItemSubmissions(
   const db = getDb(),
     access = await loadAssignment(slug, assignmentId, actorId);
   if (!access.staff) {
+    // 本人仍须是当前在班学生；只有查看他人时才要求作业已结束或具备教学权限。
     assertClassroomPeer(access);
-    if (!assignmentHasEnded(access.assignment)) {
+    if (userId !== actorId && !assignmentHasEnded(access.assignment)) {
       assertClassroomCapability(access, "submissions:read");
     }
   }

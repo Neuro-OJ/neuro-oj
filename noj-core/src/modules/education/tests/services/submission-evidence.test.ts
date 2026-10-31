@@ -29,6 +29,7 @@ import {
   listAssignmentItemSubmissions,
   publishAssignment,
   removeClassroomMember,
+  setClassroomMember,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
@@ -406,4 +407,19 @@ Deno.test("教学依据 HTTP：域教练可查比赛沿革，进行中成绩不�
     eq(assignmentRecipients.assignment_id, f.assignmentId),
   );
   await assertRejects(() => cell(f), NotFoundError);
+});
+
+Deno.test("教学单元依据：作业进行中学生可查本人提交，查看同班他人仍需作业结束", async () => {
+  const f = await fixture();
+  const own = await submit(f);
+  assertEquals((await cell(f, f.student)).data.map((r) => r.id), [own]);
+  await setClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.assistant,
+    1,
+    { role: "student" },
+  );
+  await assertRejects(() => cell(f, f.assistant), ForbiddenError);
 });

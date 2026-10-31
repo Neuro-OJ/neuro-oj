@@ -17,7 +17,7 @@ Status: implemented
 
 1. 重新生成 `dev-docs/engineering/route-catalog.md`。
 2. 在 `0122`、`0123`、`0125`、`0126` 迁移中补齐旧表数据迁移、非学生角色清理、题单发布态回填与 `trainings_state_check` 约束、自有绑定有效版本策略回填，并在 `setDomainProblemBindingState` 中同步递增 `problems.effective_policy_revision`。
-3. 在 `listAssignmentItemSubmissions` 中允许学生本人查看自己的提交并补充 `unendedPublicContestForProblem` 赛题保密条件；在 `communityNotificationVisibleWhere` 中校验关联评论状态；为 `editor` / `admin` / `educator` 补齐题单删除权限。
+3. 在 `listAssignmentItemSubmissions` 中允许当前在班学生在作业进行中查看自己的提交（已离班仍拒绝，查看他人仍须作业结束；查询保留同班与保密过滤），并补充 `unendedPublicContestForProblem` 赛题保密条件；在 `communityNotificationVisibleWhere` 中校验关联评论状态；为 `editor` / `admin` / `educator` 补齐题单删除权限。
 4. 在 `updateAssignment`、`copyAssignment`、`syncStudentAssignmentRecipients` 中修正历史提交计入与区间起点语义；在 `readDomainTraining` 中改为批量查询题目版本以消除 N+1。
 5. 修复域比赛题目页、成绩榜、答疑面板、客观题作答面板、域首页教学卡片、题单与题库分数展示、域内通知页布局及版本选择器按需加载。
 
