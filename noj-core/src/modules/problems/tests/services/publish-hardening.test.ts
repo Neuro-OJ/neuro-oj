@@ -42,10 +42,10 @@ import {
 } from "../../services/versioning/publish.ts";
 import { importProblemBundle } from "../../services/problems/problem-bundle.ts";
 import { assertDraftContentSecurity } from "../../services/versioning/content-security.ts";
-import { registerReadyStorageObject } from "../../../platform/system/index.ts";
-import { setStorageProviderForTest } from "../../../platform/system/index.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
-import { buildStorageUrl } from "../../../platform/system/index.ts";
+import { registerReadyStorageObject } from "../../../assets/index.ts";
+import { setStorageProviderForTest } from "../../../assets/storage/mod.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
+import { buildStorageUrl } from "../../../assets/storage/mod.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 

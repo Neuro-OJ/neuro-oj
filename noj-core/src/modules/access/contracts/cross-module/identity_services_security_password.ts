@@ -2,5 +2,4 @@
 export {
   comparePassword,
   hashPassword,
-  isBcryptHash,
 } from "../../identity/services/security/password.ts";

@@ -3,6 +3,7 @@
  *
  * 覆盖：创建、本人列表、状态机合法/非法转换、未知请求报错。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -15,9 +16,10 @@ import {
   createDataRequest,
   listUserDataRequests,
   updateDataRequestStatus,
-} from "../../legal-legacy/index.ts";
+} from "../../index.ts";
 
 const USER = "dr-test-user";
+const USER_ACTOR = userActorFromAuthenticatedId(USER);
 
 async function setup() {
   await resetDbForTest();
@@ -43,7 +45,7 @@ Deno.test({
   async fn() {
     await setup();
     const id = await createDataRequest(
-      USER,
+      USER_ACTOR,
       "delete",
       "post",
       "post-1",
@@ -63,7 +65,7 @@ Deno.test({
   async fn() {
     await setup();
     await assertRejects(
-      () => createDataRequest(USER, "bogus", "post", null, "x"),
+      () => createDataRequest(USER_ACTOR, "bogus", "post", null, "x"),
       Error,
     );
   },
@@ -76,24 +78,36 @@ Deno.test({
   async fn() {
     await setup();
     const id = await createDataRequest(
-      USER,
+      USER_ACTOR,
       "correct",
       "profile",
       null,
       "更正",
     );
 
-    await updateDataRequestStatus(id, "processing", USER, null);
-    await updateDataRequestStatus(id, "resolved", USER, "已处理");
+    await updateDataRequestStatus(id, "processing", USER_ACTOR, null);
+    await updateDataRequestStatus(id, "resolved", USER_ACTOR, "已处理");
 
     // resolved 为终态：不能再回到 pending
     await assertRejects(
-      () => updateDataRequestStatus(id, "pending", USER, null),
+      () =>
+        updateDataRequestStatus(
+          id,
+          "pending",
+          USER_ACTOR,
+          null,
+        ),
       BadRequestError,
     );
     // 未知请求
     await assertRejects(
-      () => updateDataRequestStatus("nope", "processing", USER, null),
+      () =>
+        updateDataRequestStatus(
+          "nope",
+          "processing",
+          USER_ACTOR,
+          null,
+        ),
       NotFoundError,
     );
   },

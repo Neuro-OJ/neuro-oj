@@ -136,4 +136,11 @@ export {
   tsaEnabled,
   verifyTimestamp,
 } from "./services/legal/tsa.ts";
-export type { LegalKind } from "./legal/types.ts";
+export { isLegalKind, LEGAL_KINDS } from "./legal/types.ts";
+export type {
+  LegalConsentStatus,
+  LegalDocumentSnapshot,
+  LegalKind,
+  LegalVersionSummary,
+  UserConsentSnapshot,
+} from "./legal/types.ts";

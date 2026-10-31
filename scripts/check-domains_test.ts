@@ -227,6 +227,9 @@ Deno.test("checkFile: search 域同域 import 与 shared 不报违规", () => {
 
 Deno.test("domainOf: 磁盘上每个 domains 子目录都被登记（防新域漏登记）", async () => {
   const domainsDir = "noj-core/src/domains";
+  // src/domains 已全部迁入 src/modules（#698 P1-3）；目录不存在即无遗留域可漏登记。
+  const exists = await Deno.stat(domainsDir).then(() => true, () => false);
+  if (!exists) return;
   const dirs: string[] = [];
   for await (const entry of Deno.readDir(domainsDir)) {
     if (entry.isDirectory) dirs.push(entry.name);

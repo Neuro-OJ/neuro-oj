@@ -392,7 +392,7 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     key: "OAUTH_GITHUB_SECRET",
     type: "string",
     description:
-      "【已废弃别名】GitHub OAuth Client Secret 的旧名，仅向后兼容；新部署请使用 OAUTH_GITHUB_CLIENT_SECRET",
+      "【已废弃别名，v0.12 移除】GitHub OAuth Client Secret 的旧名，仅向后兼容；新部署请使用 OAUTH_GITHUB_CLIENT_SECRET",
     is_secret: true,
     scope: "bootstrap",
     envKey: "OAUTH_GITHUB_SECRET",

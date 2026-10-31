@@ -7,10 +7,8 @@ import { domainLimits, domains, users } from "../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import {
-  createDomain,
-  getDomainStorageUsage,
-} from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../access/workspace/index.ts";
+import { getDomainStorageUsage } from "../../../assets/index.ts";
 import {
   createAnnouncement,
   createSlide,

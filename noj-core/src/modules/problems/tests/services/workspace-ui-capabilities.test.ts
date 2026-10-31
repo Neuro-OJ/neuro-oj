@@ -18,10 +18,8 @@ import {
   createDomain,
   createDomainInvitation,
 } from "../../../access/workspace/index.ts";
-import {
-  getStorageProvider,
-  uploadStorageObjectWithReservation,
-} from "../../../platform/system/index.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
+import { uploadStorageObjectWithReservation } from "../../../assets/index.ts";
 import { parseDomainDraftBundle } from "../../services/workspace/problem-bundle-edit.ts";
 import {
   importDomainProblem,

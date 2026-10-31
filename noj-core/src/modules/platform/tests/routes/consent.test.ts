@@ -4,16 +4,18 @@
  * 覆盖：未发布文档 400、非法 kind 400、未登录 401、同意后写记录、
  * `/auth/me` 的 legal 状态（重大版本触发 needs_consent，非重大不触发）。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { userConsents, users } from "../../../../shared/db/schema.ts";
-import { publishVersion } from "../../legal-legacy/index.ts";
+import { publishVersion } from "../../index.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
 
 const PUBLISHER = "legal-consent-publisher";
+const PUBLISHER_ACTOR = userActorFromAuthenticatedId(PUBLISHER);
 
 async function seedPublisher() {
   const db = getDb();
@@ -102,7 +104,7 @@ Deno.test({
   async fn() {
     await resetDbForTest();
     await seedPublisher();
-    await publishVersion("privacy", "v1", null, true, PUBLISHER); // 重大
+    await publishVersion("privacy", "v1", null, true, PUBLISHER_ACTOR); // 重大
 
     const userId = "consent-user-c";
     const token = await makeUser(userId);
@@ -141,7 +143,7 @@ Deno.test({
     assertEquals(me2Body.data.legal.privacy.needs_consent, false);
 
     // 发布非重大新版本：不触发重新同意
-    await publishVersion("privacy", "v2", "错字", false, PUBLISHER);
+    await publishVersion("privacy", "v2", "错字", false, PUBLISHER_ACTOR);
     const me3 = await app.request("/api/v1/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -149,7 +151,7 @@ Deno.test({
     assertEquals(me3Body.data.legal.privacy.needs_consent, false);
 
     // 发布新的重大版本：触发重新同意，且返回该版摘要
-    await publishVersion("privacy", "v3", "重大修订", true, PUBLISHER);
+    await publishVersion("privacy", "v3", "重大修订", true, PUBLISHER_ACTOR);
     const me4 = await app.request("/api/v1/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     });

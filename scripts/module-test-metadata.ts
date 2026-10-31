@@ -57,13 +57,13 @@ function targetTestRoots(module: ModuleTestTarget): string[] {
       `${root}/${part}/tests`
     )
     : module.name === "platform"
-    ? ["system", "gateway", "observability", "legal-legacy"].map((part) =>
+    ? ["system", "gateway", "observability", "legal"].map((part) =>
       `${root}/${part}/tests`
     )
     : module.name === "read-models"
     ? ["queries", "search"].map((part) => `${root}/${part}/tests`)
     : module.name === "http"
-    ? ["src/domains/admin/tests"]
+    ? [`${root}/admin/tests`]
     : [];
   return [`${root}/tests`, ...nested];
 }

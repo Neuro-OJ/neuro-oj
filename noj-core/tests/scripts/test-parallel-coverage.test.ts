@@ -75,7 +75,7 @@ Deno.test("shards: 每个 domain 的 tests 目录都被某个分片覆盖", () =
   for (
     const root of [
       "src/modules/platform/observability/tests",
-      "src/domains/admin/tests",
+      "src/modules/http/admin/tests",
       "src/modules/access/workspace/tests",
       "src/modules/education/tests",
     ]

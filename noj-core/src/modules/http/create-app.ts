@@ -15,7 +15,7 @@ import { registerSubmissionObservability } from "../evaluations/observability.ts
 import { registerDbHealthProbe } from "../../shared/db/connection.ts";
 import { registerRedisHealthProbe } from "../../shared/mq/connection.ts";
 import { normalizeMetricRoute } from "../../shared/observability/registry.ts";
-import admin from "../../domains/admin/index.ts";
+import admin from "./admin/index.ts";
 import { identityRouter } from "../access/identity/routes/index.ts";
 import { catalogRouter } from "../problems/routes/index.ts";
 import { submissionRouter } from "../evaluations/routes/index.ts";
@@ -27,7 +27,7 @@ import { messagingRouter } from "../communication/messaging/routes/index.ts";
 import { systemRouter } from "../platform/system/routes/index.ts";
 import { internalLlmPolicyRouter } from "../platform/system/routes/internal-llm-policy.ts";
 import { createInternalDrainRouter } from "../platform/system/routes/internal-drain.ts";
-import { legalRouter } from "../platform/legal-legacy/routes/index.ts";
+import { legalRouter } from "../platform/legal/routes/index.ts";
 import { workspaceRouter } from "../access/workspace/routes/index.ts";
 import { domainProblemsRouter } from "../problems/routes/domain-problems.ts";
 import { domainTrainingsRouter } from "../problems/routes/domain-trainings.ts";

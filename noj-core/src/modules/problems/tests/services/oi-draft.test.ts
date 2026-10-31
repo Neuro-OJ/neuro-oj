@@ -31,9 +31,9 @@ import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import {
   getStorageProvider,
   setStorageProviderForTest,
-} from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
 import { readOiArchive } from "../../services/oi-archive.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 const now = new Date().toISOString();

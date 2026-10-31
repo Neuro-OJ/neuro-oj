@@ -1,3 +1,4 @@
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -136,10 +137,16 @@ Deno.test({
         updated_at: now,
       }).onConflictDoNothing();
       const { publishVersion, LEGAL_KINDS } = await import(
-        "../../../../platform/legal-legacy/index.ts"
+        "../../../../platform/index.ts"
       );
       for (const kind of LEGAL_KINDS) {
-        await publishVersion(kind, `${kind} 正文`, null, true, publisherId);
+        await publishVersion(
+          kind,
+          `${kind} 正文`,
+          null,
+          true,
+          userActorFromAuthenticatedId(publisherId),
+        );
       }
 
       // 同意 → 建号成功

@@ -24,8 +24,8 @@ import {
 } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
-import { setStorageProviderForTest } from "../../../platform/system/index.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
+import { setStorageProviderForTest } from "../../../assets/storage/mod.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import type { ProblemDraftContent } from "../../types/problem-content.ts";
 
 const now = new Date().toISOString();

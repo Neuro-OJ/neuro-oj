@@ -30,7 +30,7 @@ import {
   getStorageProvider,
   LocalStorageProvider,
   setStorageProviderForTest,
-} from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
 import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });

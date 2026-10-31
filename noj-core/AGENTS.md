@@ -359,9 +359,9 @@ docker compose down     # 停止
 - `PUT /me` 必须在 `GET /:id/profile` **之前**注册，否则 "me" 会被匹配为 `:id`
 - 注释明确警告此顺序依赖
 
-**管理路由挂载**（`domains/admin/index.ts`）：
+**管理路由挂载**（`modules/http/admin/index.ts`）：
 
-- 管理端统一由 `domains/admin` 门面域挂载到 `/api/v1/admin`
+- 管理端统一由 `modules/http/admin` 组合层挂载到 `/api/v1/admin`
 - 按 sub domain 组织：`/identity`、`/catalog`、`/contest`、`/system`、
   `/community`、`/gateway`、`/submission`、`/query`
 

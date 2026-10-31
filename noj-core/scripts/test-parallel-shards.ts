@@ -30,7 +30,6 @@ export const SHARDS: Shard[] = [
     dirs: [
       "tests/00_migrate_test.ts",
       "tests/shared",
-      "src/domains/admin/tests/middleware",
       "tests/data",
       "tests/app.test.ts",
       "tests/defensive-patterns_test.ts",
@@ -47,8 +46,6 @@ export const SHARDS: Shard[] = [
       "tests/scripts",
       "tests/smoke.test.ts",
       "tests/seed_bootstrap_admin_test.ts",
-      "src/domains/admin/tests/services",
-      "src/domains/admin/tests/routes",
       // 迁移期模块测试与 legacy domain 测试同时进入正式分片。目录由
       // module-boundaries.json 推导，新增 application/http/runtime 测试不会
       // 因忘记手抄一条 shard 路径而静默漏跑。

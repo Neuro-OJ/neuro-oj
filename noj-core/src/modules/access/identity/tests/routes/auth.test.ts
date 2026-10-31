@@ -1,3 +1,4 @@
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -23,7 +24,7 @@ import {
   hashResetToken,
 } from "../../services/security/resetToken.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
-import { publishVersion } from "../../../../platform/legal-legacy/index.ts";
+import { publishVersion } from "../../../../platform/index.ts";
 
 // 独立测试数据库始终可用，无需检测
 const hasRedis = !!Deno.env.get("REDIS_URL");
@@ -1181,8 +1182,20 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await publishVersion("privacy", "隐私政策正文", null, true, publisherId);
-    await publishVersion("terms", "服务条款正文", null, true, publisherId);
+    await publishVersion(
+      "privacy",
+      "隐私政策正文",
+      null,
+      true,
+      userActorFromAuthenticatedId(publisherId),
+    );
+    await publishVersion(
+      "terms",
+      "服务条款正文",
+      null,
+      true,
+      userActorFromAuthenticatedId(publisherId),
+    );
 
     const app = createApp();
     const username = `legal_yes_${ts}`;

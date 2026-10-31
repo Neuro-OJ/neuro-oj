@@ -198,7 +198,9 @@ function rendererSource(
     ? `makeFormatter({ color: f.color, production: !!f.production })(record)`
     : `formatPretty({ timestamp: "14:32:07.412", record }, { color: f.color, production: !!f.production })`;
   const imp = mode === "formatter"
-    ? `import { ${formatterName} as makeFormatter } from ${JSON.stringify(absImport)};`
+    ? `import { ${formatterName} as makeFormatter } from ${
+      JSON.stringify(absImport)
+    };`
     : `import { formatPretty } from ${JSON.stringify(absImport)};`;
   return `
 ${imp}
@@ -362,10 +364,12 @@ export function assertProductionRedaction(
           `校验的敏感哨兵（uuid 或邮箱）——该 fixture 无法证明脱敏真的生效。`,
       );
     }
-    for (const [side, rendered] of [
-      ["core", coreRendered],
-      ["gateway", gatewayRendered],
-    ] as const) {
+    for (
+      const [side, rendered] of [
+        ["core", coreRendered],
+        ["gateway", gatewayRendered],
+      ] as const
+    ) {
       const text = rendered[i] ?? "";
       for (const secret of secrets) {
         if (text.includes(secret)) {
@@ -386,7 +390,9 @@ export function collectSentinels(fixture: Fixture): string[] {
   const consider = (v: unknown): void => {
     if (typeof v !== "string") return;
     // uuid 形状，或邮箱形状；两类都是不该明文出现在生产日志里的值。
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+    ) {
       out.add(v);
     } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) {
       out.add(v);

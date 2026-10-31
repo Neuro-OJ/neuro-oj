@@ -24,9 +24,9 @@ import {
 import {
   resetStorageProvider,
   setStorageProviderForTest,
-  type StorageProvider,
-} from "../../../platform/system/index.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
+import { type StorageProvider } from "../../../assets/index.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-oi-author-" });

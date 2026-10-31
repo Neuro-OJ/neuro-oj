@@ -16,7 +16,7 @@ import {
 import {
   getStorageProvider,
   resetStorageProvider,
-} from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
 
 const ts = Date.now();
 const OWNER_ID = `test-owner-${ts}`;

@@ -6,6 +6,7 @@
  *
  * 依赖测试启动器提供的独立 PostgreSQL 数据库。
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -17,9 +18,10 @@ import {
   hashContent,
   listVersions,
   publishVersion,
-} from "../../legal-legacy/index.ts";
+} from "../../index.ts";
 
 const PUBLISHER = "legal-test-publisher";
+const PUBLISHER_ACTOR = userActorFromAuthenticatedId(PUBLISHER);
 
 /** 重置 DB 并插入发布者用户（created_by FK 需要）。 */
 async function setup() {
@@ -69,14 +71,20 @@ Deno.test({
   sanitizeOps: false,
   async fn() {
     await setup();
-    const v1 = await publishVersion("terms", "第一版", null, false, PUBLISHER);
+    const v1 = await publishVersion(
+      "terms",
+      "第一版",
+      null,
+      false,
+      PUBLISHER_ACTOR,
+    );
     assertEquals(v1, 1);
     const v2 = await publishVersion(
       "terms",
       "第二版",
       "改错字",
       false,
-      PUBLISHER,
+      PUBLISHER_ACTOR,
     );
     assertEquals(v2, 2);
     const cur = await getCurrentDocument("terms");
@@ -92,11 +100,11 @@ Deno.test({
   sanitizeOps: false,
   async fn() {
     await setup();
-    await publishVersion("privacy", "v1", null, true, PUBLISHER); // 重大
+    await publishVersion("privacy", "v1", null, true, PUBLISHER_ACTOR); // 重大
     assertEquals(await getRequiredConsentVersion("privacy"), 1);
-    await publishVersion("privacy", "v2", null, false, PUBLISHER); // 非重大
+    await publishVersion("privacy", "v2", null, false, PUBLISHER_ACTOR); // 非重大
     assertEquals(await getRequiredConsentVersion("privacy"), 1); // 不变
-    await publishVersion("privacy", "v3", null, true, PUBLISHER); // 重大
+    await publishVersion("privacy", "v3", null, true, PUBLISHER_ACTOR); // 重大
     assertEquals(await getRequiredConsentVersion("privacy"), 3);
   },
 });
@@ -108,7 +116,14 @@ Deno.test({
   async fn() {
     await setup();
     await assertRejects(
-      () => publishVersion("privacy", "   ", null, false, PUBLISHER),
+      () =>
+        publishVersion(
+          "privacy",
+          "   ",
+          null,
+          false,
+          PUBLISHER_ACTOR,
+        ),
       ValidationError,
     );
   },

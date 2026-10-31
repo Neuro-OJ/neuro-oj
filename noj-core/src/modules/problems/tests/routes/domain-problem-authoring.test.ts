@@ -21,12 +21,12 @@ import {
   createDomain,
   ensureDefaultWorkspace,
 } from "../../../access/workspace/index.ts";
+import { updateSetting } from "../../../platform/system/index.ts";
 import {
   resetStorageProvider,
   setStorageProviderForTest,
-  updateSetting,
-} from "../../../platform/system/index.ts";
-import { LocalStorageProvider } from "../../../platform/system/index.ts";
+} from "../../../assets/storage/mod.ts";
+import { LocalStorageProvider } from "../../../assets/storage/mod.ts";
 import { domainProblemsRouter } from "../../routes/domain-problems.ts";
 
 const runtime = {

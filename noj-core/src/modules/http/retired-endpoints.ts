@@ -1,3 +1,10 @@
+/**
+ * 已下线接口的 410 合同：命中时返回替代接口与原因。
+ *
+ * 保留期限：v0.11 内保留，v0.12 删除本文件与 `retired-endpoints.json`（#698）。
+ * 保留理由是 LMCC VS Code 插件由用户自行安装、升级滞后，旧版插件调用到已下线
+ * 接口时需要明确提示；Web 前端、CLI 与 judge 随版本协调升级，不依赖本表。
+ */
 import type { Context, MiddlewareHandler } from "hono";
 import retiredEndpoints from "./retired-endpoints.json" with { type: "json" };
 

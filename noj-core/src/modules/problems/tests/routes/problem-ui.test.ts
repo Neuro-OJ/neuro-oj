@@ -14,10 +14,8 @@ import {
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import {
-  getStorageProvider,
-  uploadStorageObjectWithReservation,
-} from "../../../platform/system/index.ts";
+import { getStorageProvider } from "../../../assets/storage/mod.ts";
+import { uploadStorageObjectWithReservation } from "../../../assets/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 
 /**

@@ -88,26 +88,6 @@ export {
   DOMAIN_SUBMISSION_QUOTA_SCRIPT,
 } from "./services/submission-limit.ts";
 export {
-  attachDomainStorageUpload,
-  attachDomainStorageUploadTx,
-  getDomainOwnedStorageBytes,
-  getDomainStorageUsage,
-  growDomainStorageUpload,
-  growDomainStorageUploadTx,
-  listDomainStorageBaselineObjects,
-  listDomainStorageReconciliationDomains,
-  listExpiredDomainStorageUploads,
-  reconcileDomainStorageCounters,
-  releaseDomainStorageObject,
-  releaseDomainStorageObjectTx,
-  releaseDomainStorageUpload,
-  releaseDomainStorageUploadTx,
-  reserveDomainStorageUpload,
-  reserveDomainStorageUploadTx,
-  settleDomainStorageUpload,
-  settleDomainStorageUploadTx,
-} from "./services/storage-quota.ts";
-export {
   assertAccountHasNoOwnedDomain,
   lockActiveWorkspaceAccount,
   retireAccountWorkspaceMemberships,

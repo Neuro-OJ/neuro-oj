@@ -45,8 +45,6 @@ export const CONCRETE_PROVIDERS: readonly string[] = [
 export const ALLOWED_IMPORTERS: readonly string[] = [
   "modules/assets/storage/factory.ts",
   "modules/assets/storage/mod.ts",
-  "modules/platform/system/services/storage/local.ts",
-  "modules/platform/system/services/storage/mod.ts",
   "modules/platform/system/services/email.ts",
   "modules/communication/review/providers/index.ts",
 ];

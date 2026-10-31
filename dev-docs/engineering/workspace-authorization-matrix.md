@@ -205,7 +205,7 @@ Participant
 [教学历史提交](../../noj-core/src/modules/education/services/student-submissions.ts)、
 [本人历史 DTO](../../noj-core/src/modules/evaluations/services/own-submission-history.ts)、
 [共享实时检查](../../noj-core/src/modules/problems/services/workspace/problem-binding-access.ts)、
-[旧治理路由](../../noj-core/src/domains/admin/routes/community.ts)。
+[旧治理路由](../../noj-core/src/modules/http/admin/routes/community.ts)。
 
 ## 7. Provider、限额与平台敏感评测字段
 
