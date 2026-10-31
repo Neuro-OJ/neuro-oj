@@ -10,7 +10,10 @@ import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { auditLogs, backgroundTasks } from "../../../../../shared/db/schema.ts";
-import { createUserToken, jsonRequest } from "../../../../../../tests/helper.ts";
+import {
+  createUserToken,
+  jsonRequest,
+} from "../../../../../../tests/helper.ts";
 
 const db = getDb();
 

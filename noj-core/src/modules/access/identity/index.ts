@@ -115,10 +115,7 @@ export type {
   SignTokenOptions,
   TokenPayload,
 } from "./services/security/jwt.ts";
-export {
-  comparePassword,
-  hashPassword,
-} from "./services/security/password.ts";
+export { comparePassword, hashPassword } from "./services/security/password.ts";
 export {
   decryptTfaSecret,
   encryptTfaSecret,
