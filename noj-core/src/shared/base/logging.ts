@@ -1,15 +1,15 @@
 /**
  * 结构化日志（兼容层）。
  *
- * 外观与导出**保持不变**，内部已迁移到 LogTape 2.3.4：
+ * 基于 LogTape 2.3.4，提供统一日志外观：
  * - 级别控制：`LOG_LEVEL`（debug/info/warn/error），默认生产 warn、开发 debug
  * - 输出格式：`LOG_FORMAT`（json/pretty），默认生产 json、开发 pretty
  * - 结构化字段优先（借鉴 noj-judge 的 tracing 风格）
- * - 内置脱敏：生产环境自动截断 *_id、隐藏 score、抹除 code/token/secret 等
+ * - 内置脱敏：生产环境抹除 code/token/secret 等敏感内容，保留业务 ID 与分数
  * - 自动附带 request_id（通过 AsyncLocalStorage，无需逐层透传）
  * - 可注入 sink，便于测试捕获输出（替代重写 console.*）
  *
- * 所有涉及 submission_id / score / code / token 等敏感字段的日志，
+ * 所有涉及 code / token 等敏感字段的日志，
  * 均应通过本模块的 `logger`，由 logger 统一脱敏，避免散落实现导致泄露。
  *
  * 渲染与脱敏规则实现在 `log-format.ts`；LogTape 装配在 `log-config.ts`。
@@ -26,7 +26,7 @@ import {
 } from "./log-format.ts";
 
 export type { LogLevel };
-export { isProduction, redactId } from "./log-format.ts";
+export { isProduction } from "./log-format.ts";
 
 /** 结构化日志记录。 */
 export interface LogRecord {

@@ -232,13 +232,15 @@ Deno.test("log-format: 多行 msg 缩进到 msg 列", () => {
   );
 });
 
-Deno.test("log-format: 生产环境消息插值位置也脱敏", () => {
+Deno.test("log-format: 生产环境消息插值保留完整业务 ID", () => {
   {
     // 显式注入 production：不改写进程级 env（--parallel 安全）
     const production = true;
     const records = capture((emit) => {
-      emit("info", "提交 {submission_id} 完成", {
+      emit("info", "提交 {submission_id} 得分 {score}，令牌 {token}", {
         submission_id: "550e8400-e29b-41d4-a716-446655440000",
+        score: 9500,
+        token: "private-token",
       });
     });
     const formatted = makeJsonFormatter({ production })(records[0]!);
@@ -246,8 +248,12 @@ Deno.test("log-format: 生产环境消息插值位置也脱敏", () => {
       msg: string;
       submission_id: string;
     };
-    assertEquals(parsed.msg, "提交 550e8400... 完成", "msg 内的插值必须脱敏");
-    assertEquals(parsed.submission_id, "550e8400...");
+    assertEquals(
+      parsed.msg,
+      "提交 550e8400-e29b-41d4-a716-446655440000 得分 9500，令牌 [redacted]",
+      "msg 内的业务 ID 必须完整",
+    );
+    assertEquals(parsed.submission_id, "550e8400-e29b-41d4-a716-446655440000");
   }
 });
 
@@ -263,7 +269,7 @@ Deno.test("log-format: 生产环境敏感键整值抹除", () => {
       redactValueByKey("api_key", "sk-123", production),
       "[redacted]",
     );
-    assertEquals(redactValueByKey("score", 9500, production), "[redacted]");
+    assertEquals(redactValueByKey("score", 9500, production), 9500);
     assertEquals(redactValueByKey("status", "ok", production), "ok");
   }
 });
@@ -277,10 +283,7 @@ Deno.test("log-format: 开发环境不脱敏", () => {
   }
 });
 
-Deno.test("log-format: request_id 不被 *_id 通配规则误截断", () => {
-  // 回归防线：`request_id` 以 `_id` 结尾，会被截断规则命中。
-  // 但它的用途是跨服务串联同一次请求，截断即失效；
-  // 契约 §1 已由 pretty 侧自行取前 8 字符控制展示长度。
+Deno.test("log-format: 生产环境保留关联标识及业务 ID", () => {
   {
     // 显式注入 production：不改写进程级 env（--parallel 安全）
     const production = true;
@@ -290,12 +293,12 @@ Deno.test("log-format: request_id 不被 *_id 通配规则误截断", () => {
       uuid,
       "关联标识必须完整保留，否则生产环境无法串联请求",
     );
-    // 同一通配规则下的业务实体 id 仍必须截断——例外只开给关联标识
+    // 关联标识和业务实体 ID 均完整保留。
     assertEquals(
       redactValueByKey("submission_id", uuid, production),
-      "550e8400...",
+      uuid,
     );
-    assertEquals(redactValueByKey("trace_id", uuid, production), "550e8400...");
+    assertEquals(redactValueByKey("trace_id", uuid, production), uuid);
   }
 });
 
@@ -393,8 +396,8 @@ Deno.test("log-format: 嵌套对象内的敏感键也脱敏", () => {
     );
     assertStrictEquals(
       text.includes("550e8400-e29b-41d4-a716-446655440000"),
-      false,
-      "嵌套 submission_id 必须截断",
+      true,
+      "嵌套 submission_id 必须完整保留",
     );
   }
 });

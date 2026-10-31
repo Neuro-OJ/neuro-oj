@@ -177,11 +177,11 @@ Deno.test("logging: 装配层把 production 传给渲染器（评审 I2）", () 
     },
   };
 
-  // 生产 + json：id 必须截断、email 必须抹除
+  // 生产 + json：完整保留 ID，抹除 email
   const prodFmt = makeCoreFormatters(
     envOf({ NOJ_ENV: "production", LOG_FORMAT: "json" }),
   )("stdout")(record);
-  assertEquals(prodFmt.includes("550e8400-e29b-41d4-a716-446655440000"), false);
+  assertEquals(prodFmt.includes("550e8400-e29b-41d4-a716-446655440000"), true);
   assertEquals(prodFmt.includes("a@b.com"), false);
   assertEquals(prodFmt.includes("[redacted]"), true);
 

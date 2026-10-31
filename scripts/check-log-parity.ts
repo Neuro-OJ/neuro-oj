@@ -138,7 +138,7 @@ export const FIXTURES: Fixture[] = [
     },
   },
   {
-    name: "生产脱敏（id 截断 + 敏感键抹除）",
+    name: "生产脱敏（保留 ID、抹除敏感键）",
     color: false,
     production: true,
     record: {
@@ -168,6 +168,7 @@ export const FIXTURES: Fixture[] = [
         // name（`error: TypeError: boom`）；若 gateway 不补就会渲染成
         // `error: boom`，造成跨服务不一致（review 复审指出）。
         error: { name: "TypeError", message: "boom" },
+        email: "operator@example.test",
         submission_id: "550e8400-e29b-41d4-a716-446655440000",
       },
     },
@@ -355,13 +356,13 @@ export function assertProductionRedaction(
 
   for (const [f, i] of prodIdx) {
     // 哨兵：该 fixture 输入里出现过的、且**不该**原样出现在输出中的明文。
-    // 只取明显敏感的长字面量（uuid / 含 @ 的邮箱），避免把模块名等普通
+    // 只取明显敏感的长字面量（含 @ 的邮箱），避免把模块名等普通
     // 字符串误当哨兵。
     const secrets = collectSentinels(f);
     if (secrets.length === 0) {
       problems.push(
         `fixture #${i} 「${f.name}」标了 production:true，但输入里找不到可用于` +
-          `校验的敏感哨兵（uuid 或邮箱）——该 fixture 无法证明脱敏真的生效。`,
+          `校验的敏感哨兵（邮箱）——该 fixture 无法证明脱敏真的生效。`,
       );
     }
     for (
@@ -389,14 +390,8 @@ export function collectSentinels(fixture: Fixture): string[] {
   const out = new Set<string>();
   const consider = (v: unknown): void => {
     if (typeof v !== "string") return;
-    // uuid 形状，或邮箱形状；两类都是不该明文出现在生产日志里的值。
-    if (
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
-    ) {
-      out.add(v);
-    } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) {
-      out.add(v);
-    }
+    // 邮箱来自敏感字段；UUID 已是允许保留的业务标识。
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) out.add(v);
   };
   for (const v of Object.values(fixture.record.properties)) consider(v);
   for (const v of fixture.record.message) consider(v);
