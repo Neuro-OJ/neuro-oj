@@ -226,11 +226,76 @@ Release， 保证安装与升级使用同一版本集合，不会选中资产未
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
+### 0.11 首个 RC：只支持新装，不做原地升级
+
+0.11 的首个 RC（`v0.11.0-rc.N`）**只交付新装路径**。它把 Domain 变成资源访问边界、
+把比赛改为统一报名、把通知合并成单一模型——这些都是数据形态迁移，而历史数据的
+转换工具不在本轮范围。
+
+因此：
+
+- **新装**：用同一 Release 的 `noj-cli`、core、gateway、judge、UI 与适配的 IDE
+  组件，从**空库**安装。全新安装走的是完整迁移链，空库里没有旧数据，因此不会命中
+  `0116` 的数据守卫。
+- **已有 0.10.x 实例**：继续运行原版本，**不要**执行 0.11 的 `noj-cli update`。
+  0.10.x → 0.11 的升级能力另行设计并单独验收，完成前不提供该路径。
+- **不要**为了"让它过"而删除比赛、删除题目或绕过迁移守卫。`0116` 的中止是刻意的
+  数据契约，不是待修的缺陷。
+
+#### 升级前的只读预检
+
+迁移 `0116_peaceful_gorilla_man.sql` 开头是兼容性守卫：存量库只要还有旧 `U` 型题
+或任意一行 `contests`，迁移就会以 `55000` 中止。想在动手前知道命中了什么，先跑预检：
+
+```bash
+cd /opt/neuro-oj/noj-core      # 源码树中即 noj-core/
+deno run --env-file=.env -A scripts/preflight-upgrade.ts \
+  --json /tmp/noj-preflight.json --csv /tmp/noj-preflight.csv
+```
+
+或在 `noj-core` 目录用任务别名：
+
+```bash
+deno task preflight -- --json /tmp/noj-preflight.json
+```
+
+预检的所有查询都在一个 `SET TRANSACTION READ ONLY` 事务里执行，**不写任何业务
+数据**。报告包含迁移位置、旧 `U` 型题与比赛的数量及标识、相关依赖计数和遗留列
+提示。退出码：`0` 未命中阻塞、`2` 命中阻塞（迁移会中止）、`1` 预检本身失败。
+
+> **预检报告不是备份。** 它只用于决策，不能替代 `noj-cli backup create`、
+> `noj-cli backup verify` 与 `noj-cli backup drill`。
+
+#### 新装 runbook
+
+1. 准备主机与 `.env.prod`（`docker-compose.prod.yml` 与 `.env.prod.example` 必须
+   与 Release 同版本），生成 `NOJ_INTERNAL_SERVICE_TOKEN`（见下文
+   [新增环境变量](#011-新增环境变量)）；
+2. 用 Release 的 CLI 安装：`noj-cli install --dir <目录> --ref v0.11.0-rc.N`，
+   安装器会下载并校验同名部署文件及其 `.sha256`；
+3. `noj-cli check` → `noj-cli start`，等待健康检查通过；
+4. `noj-cli bootstrap first-admin` 创建首个管理员（仅空站可执行一次）；
+5. 冒烟：注册 / 登录、题目读取、一次真实 Judge 提交、一次客观题交卷、一次比赛报名；
+6. 新装失败时**停止候选服务并保留诊断资料**（`noj-cli logs`、容器状态、迁移日志），
+   不要在有数据的库上反复重试迁移。
+
+### 0.11 新增环境变量
+
+| 变量 | 默认值 | 配置位置 | 说明 |
+| --- | --- | --- | --- |
+| `NOJ_INTERNAL_SERVICE_TOKEN` | 空（关闭） | `.env.prod` | 内部维护 / 排空 API 的服务凭据（`Authorization: Bearer <token>`）。`openssl rand -hex 32` 生成。**未设置时所有 drain 端点返回 503**，`noj-cli update` 的自动排空会失败并提示设置本变量；过渡期可显式 `--skip-drain` 跳过。首次从尚无该 API 的旧版本升级时，`update` 会识别 `endpoint_unavailable` 并自动跳过。 |
+| `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj` | `.env.prod` / compose | 身份 Cookie 前缀。同一主机不同端口运行多套 UI 时分别设置，避免登录 Cookie 互相覆盖。 |
+| `NUXT_BFF_CACHE_PREFIX` | `noj:ui:bff:v1` | `.env.prod` / compose | UI BFF 聚合缓存的 Redis 命名空间（TTL 30 秒，复用现有 Redis）。多套 UI 共用同一 Redis 时必须区分。 |
+
+三者都由 `docker-compose.prod.yml` 插值传入容器；修改后需要重建受影响的容器
+（`noj-cli restart`）。`check-prod-env-injection.ts` 会校验它们在被声明与实际注入
+之间没有断链。
+
 ### 题目版本管理升级（协调升级，必须按维护窗口执行）
 
 题目版本管理（草稿/发布、不可变版本、评测尝试、有效版本策略）是 **core / judge /
 gateway / UI / IDE / CLI 的协调升级**，新旧评测协议**不能混跑**：新 core 只接受
-`evaluation_protocol_version = 2` 的结果，旧 judge
+`evaluation_protocol_version = 3` 的结果，旧 judge
 的结果会被拒绝落库（不会写坏数据， 但提交会一直拿不到成绩）。因此：
 
 1. 确认 CI、迁移演练与完整验收通过（含 `noj-core` 迁移安全、`noj-tests` E2E）；

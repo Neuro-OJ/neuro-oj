@@ -50,6 +50,8 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
   "scripts/check-version-consistency_test.ts",
+  // 发布阶段版本校验（0.11 RC）：标签基础版本必须等于清单基础版本。
+  "scripts/check-release-version_test.ts",
   "scripts/check-action-pins_test.ts",
   "scripts/check-prod-env-injection_test.ts",
   // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）。
@@ -153,6 +155,11 @@ export const REPO_GATES: Gate[] = [
   // version，没有任何同步机制——实测 noj-tests 已漂移到 0.9.5，其余为 0.10.5，
   // 而页脚/构建身份/文档各取一处，无人察觉。只断言彼此一致，不绑定 Release 标签。
   { args: ["deno", "run", "-A", "scripts/check-version-consistency.ts"] },
+  // 发布阶段版本校验（2026-10-31，0.11 RC）：上一条只断言清单彼此一致、不绑定 Release
+  // 标签，于是"标签是 v0.11.0、清单还写 0.10.5"这种发布身份错位永远是绿的
+  // （0.10.6 之后 412 个提交零版本跃迁正是此状态）。本门禁在**未提供标签时跳过**，
+  // 只作发布流水线前置断言，本地 check-all 不会因此误报。
+  { args: ["deno", "run", "-A", "scripts/check-release-version.ts"] },
   // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
   // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
   { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },

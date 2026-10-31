@@ -69,7 +69,8 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 
 **noj-judge**
 
-- [ ] SPJ（Special Judge）
+- [x] SPJ（Special Judge）：OI 题支持 testlib checker（`noj-judge/src/oi/runner.rs` 的
+      `OiCheckerType::Testlib` 路径，checker 源码随题包冻结在版本里）
 - [ ] 交互题支持
 - [ ] 评测优化：容器预热、镜像缓存
 
@@ -84,11 +85,16 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 - [x] 竞赛管理：创建类 Kaggle 比赛、时间窗口、题目集
 - [x] 参赛流程：公开竞赛报名与参赛
 - [x] 比赛规则：按各题最高分累计排名，并支持每题提交次数限制
-- [x] 实时榜单：SSE 更新排名
+- [x] 实时榜单：SSE 更新排名（域比赛 SSE 端点已就绪，前端接线见 Phase 2 noj-ui）
+- [x] 封榜与正式成绩快照：`ranking_visibility` + 封榜窗口 + 版本化快照发布
+      （`GET /contests/:id/final-ranking`、`/domains/:slug/contests/:id/final-ranking`）
+- [x] 比赛保密与统一报名：`secrecy_enabled` 从收录到比赛结束保护全部历史版本；
+      报名由域访问权决定，不再有公开赛 / 邀请赛 / 比赛密码
 - [x] 防作弊基础：IP 记录、代码相似度检测（`noj-core/src/domains/contest/services/contest-anti-cheat.ts`；端点 `GET /contests/:id/anti-cheat/similar-submissions`，见 `domains/admin/routes/contest.ts:504`）
 - [x] 统计导出：成绩单 CSV / JSON（端点 `GET /contests/:id/ranking-snapshots/<version>.csv|json` 与 `latest.csv|json`，见 `noj-core/src/domains/admin/routes/contest.ts:569-760`；CSV 含注入防护）
 - [x] 产物提交：支持 zip（预测结果 / 模型 / 代码 / 数据）作为提交物
-- [ ] 隐藏测试集评测：A/B 榜与更复杂的榜单隔离规则
+- [ ] 隐藏测试集评测：A/B 榜与更复杂的榜单隔离规则（封榜与正式快照**不等于** A/B 榜，
+      后者需要两套独立测试集与榜单隔离规则）
 - [ ] IOAI / NOAI 赛制模板：At-Home 长周期 + 现场短时
 
 **noj-ui**
@@ -96,9 +102,13 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 - [x] 竞赛大厅：列表、倒计时
 - [x] 比赛界面：题目切换、实时状态
 - [x] 赛时排行榜
-- [ ] 赛后复盘：题解、排行榜回放
+- [x] 比赛详情页信息架构：赛程、规模、赛制、榜单可见性、封榜、计分范围、关联班级
+- [x] 题库与比赛统一题面 / 作答面板（固定版本、受理窗口、客观题一次交卷）
+- [ ] 赛后复盘：官方题解入口与正式成绩版本切换（题解入口见 Phase 2「已交付」注释）
+- [ ] 赛后复盘：按提交时间轴回放（需新的时间轴端点，`receipt_sequence` 已具备）
 - [x] 产物提交页：上传 zip 产物
-- [ ] 排行榜页：公开榜 / 私有榜
+- [ ] 排行榜页：公开榜 / 私有榜（当前有「实时榜 / 正式成绩」与班级分组，
+      尚未区分 A/B 榜）
 
 ---
 
