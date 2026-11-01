@@ -12,7 +12,6 @@ import {
   performShutdown,
   type ShutdownHttp,
 } from "../../shared/runtime/shutdown.ts";
-import { migrateLegacyJudgeQueue } from "../evaluations/mq/legacy-judge-queue.ts";
 import { migratePoolJudgeQueues } from "../evaluations/mq/pool-judge-queue.ts";
 import { initEventSubscriber } from "../../shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "../../shared/sse/sse-events.ts";
@@ -346,10 +345,9 @@ export async function startCore() {
     // 评测相关功能将通过健康检查暴露为 degraded。
     try {
       await connectRedis();
-      // 三级优先级队列升级：把旧单队列残留任务迁入 medium，避免升级瞬间
-      // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
+      // 资源池队列升级：把旧单队列与三级队列的残留任务迁入资源池布局，避免升级
+      // 瞬间在途任务永久卡在 pending/judging（幂等）。
       await migratePoolJudgeQueues();
-      await migrateLegacyJudgeQueue();
       await restoreAttemptTokenRevocations();
     } catch (err) {
       if (err instanceof Error && /迁移|processing/.test(err.message)) {
