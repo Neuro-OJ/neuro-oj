@@ -88,7 +88,7 @@ async function submitInContest(code = CODE_SAMPLES.accepted): Promise<string> {
     problemId,
   );
   const res = await apiPost(
-    `/api/v1/domains/main/contests/${contestId}/submit`,
+    `/api/v1/domains/main/contests/${contestId}/problems/A/submissions`,
     { problem_id: problemId, language: "python3", code, version_id: versionId },
     userToken,
   );

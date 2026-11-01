@@ -189,7 +189,7 @@
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 59 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 90 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 146 | early-return |
-| noj-tests/e2e/contest/contest_lifecycle.test.ts | 172 | early-return |
+| noj-tests/e2e/contest/contest_lifecycle.test.ts | 175 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 22 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 33 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 43 | early-return |

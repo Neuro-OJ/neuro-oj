@@ -374,7 +374,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const first = await apiPost(
-      `/api/v1/domains/main/contests/${limitContestId}/submit`,
+      `/api/v1/domains/main/contests/${limitContestId}/problems/A/submissions`,
       {
         problem_id: publicProblemId,
         language: "python3",
@@ -393,7 +393,7 @@ e2eTest(
     contestSubmissionId = (first.body as { data: { id: string } }).data.id;
 
     const second = await apiPost(
-      `/api/v1/domains/main/contests/${limitContestId}/submit`,
+      `/api/v1/domains/main/contests/${limitContestId}/problems/A/submissions`,
       {
         problem_id: publicProblemId,
         language: "python3",
@@ -490,7 +490,7 @@ e2eTest(
     );
     // 触发一次参赛者提交，验证非参赛者的流中不会出现 contest:submission:created
     const submit = await apiPost(
-      `/api/v1/domains/main/contests/${sseContestId}/submit`,
+      `/api/v1/domains/main/contests/${sseContestId}/problems/A/submissions`,
       {
         problem_id: publicProblemId,
         language: "python3",
