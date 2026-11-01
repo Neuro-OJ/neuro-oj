@@ -180,9 +180,9 @@
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 349 | early-return |
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 375 | early-return |
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 426 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 483 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 517 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 592 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 511 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 545 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 620 | early-return |
 | noj-tests/e2e/contest/contest_formats_native.test.ts | 49 | ignore |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 42 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 54 | early-return |
