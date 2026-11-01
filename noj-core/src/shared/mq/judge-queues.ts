@@ -64,6 +64,3 @@ export function judgeQueueFor(
     ? JUDGE_QUEUES[priority]
     : JUDGE_POOL_QUEUES[pool][priority];
 }
-
-/** 升级前的单队列名（仅用于一次性迁移，见 legacy-judge-queue.ts）。 */
-export const LEGACY_JUDGE_QUEUE: string = JUDGE_QUEUE_PREFIX;
