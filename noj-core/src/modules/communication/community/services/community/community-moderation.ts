@@ -772,9 +772,6 @@ const PRESETS: Record<
     community_discussions_enabled: true,
     community_moments_enabled: true,
     community_comments_enabled: true,
-    community_reactions_enabled: true,
-    community_bookmarks_enabled: true,
-    community_follows_enabled: true,
     community_external_images_enabled: true,
   },
   private: {
@@ -785,9 +782,6 @@ const PRESETS: Record<
     community_discussions_enabled: true,
     community_moments_enabled: true,
     community_comments_enabled: true,
-    community_reactions_enabled: true,
-    community_bookmarks_enabled: true,
-    community_follows_enabled: true,
     community_external_images_enabled: false,
   },
   knowledge: {
@@ -798,9 +792,6 @@ const PRESETS: Record<
     community_discussions_enabled: true,
     community_moments_enabled: false,
     community_comments_enabled: false,
-    community_reactions_enabled: false,
-    community_bookmarks_enabled: false,
-    community_follows_enabled: false,
     community_external_images_enabled: false,
   },
 };

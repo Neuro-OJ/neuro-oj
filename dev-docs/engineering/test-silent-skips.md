@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **342** 处（early-return=231 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
+> 当前命中 **341** 处（early-return=230 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -164,8 +164,7 @@
 | noj-tests/e2e/catalog/tags.test.ts | 362 | early-return |
 | noj-tests/e2e/community/community.test.ts | 42 | early-return |
 | noj-tests/e2e/community/community.test.ts | 103 | early-return |
-| noj-tests/e2e/community/community.test.ts | 322 | early-return |
-| noj-tests/e2e/community/community.test.ts | 375 | early-return |
+| noj-tests/e2e/community/community.test.ts | 242 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 81 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 114 | early-return |
 | noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 134 | early-return |

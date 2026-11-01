@@ -416,7 +416,6 @@ onMounted(() => {
       <div class="flex items-center gap-2">
         <UButton color="primary" variant="outline" v-if="config?.enabled && isLoggedIn" :to="scope.href('notifications')" icon="i-lucide-bell">本域通知</UButton>
         <UButton color="primary" variant="outline" v-if="config?.permissions.moderate" :to="scope.href('manage')" icon="i-lucide-shield">社区管理</UButton>
-        <UButton color="primary" variant="outline" v-if="config?.enabled && isLoggedIn && config.bookmarks_enabled" :to="scope.href('bookmarks')"><UIcon name="i-lucide-bookmark" class="size-4" />我的收藏</UButton>
         <UButton color="primary" v-if="config?.enabled && isLoggedIn && !config.read_only"  :disabled="!canCreateCurrentType" :title="canCreateCurrentType ? '发布内容' : config.contest_silence ? '本域公开赛进行期间暂停发布，赛后恢复' : '当前账号没有发布此类内容的权限'" @click="prepareEditor"><UIcon name="i-lucide-plus" class="size-4" />发布内容</UButton>
       </div>
     </div>
@@ -511,7 +510,6 @@ onMounted(() => {
             <UserIdentity :user="item.author" size="sm" />
             <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
             <span v-if="isCommunityEdited(item.post.created_at, item.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
-            <span aria-label="点赞数" class="inline-flex items-center"><UIcon name="i-lucide-heart" class="mr-1 size-3.5" />{{ item.likes }}</span>
             <span aria-label="评论数" class="inline-flex items-center"><UIcon name="i-lucide-message-square" class="mr-1 size-3.5" />{{ item.comments }}</span>
             <UButton color="neutral" variant="ghost" size="xs" class="ml-auto" v-if="canReport && user?.id !== item.post.author_id" type="button" @click="reportPost(item)"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>

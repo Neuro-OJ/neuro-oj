@@ -304,55 +304,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 用户仅能读取自己的可见收藏",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const app = createApp();
-    const board = (await getDb().select().from(communityBoards))[0];
-    const authorToken = await signToken({ sub: authorId, role: "user" });
-    const responderToken = await signToken({ sub: responderId, role: "user" });
-    const created = await jsonRequest(app, "/api/v1/community/posts", {
-      method: "POST",
-      token: authorToken,
-      body: {
-        type: "discussion",
-        board_id: board?.id,
-        title: "收藏路由测试",
-        content: "用于验证个人收藏列表",
-      },
-    });
-    const postId = (await created.json()).data.id as string;
-    const bookmarked = await jsonRequest(
-      app,
-      `/api/v1/community/posts/${postId}/bookmark`,
-      { method: "POST", token: responderToken },
-    );
-    assertEquals(bookmarked.status, 200);
-
-    const detail = await jsonRequest(
-      app,
-      `/api/v1/community/posts/${postId}`,
-      { token: responderToken },
-    );
-    assertEquals((await detail.json()).data.bookmarked, true);
-
-    const unauthorized = await jsonRequest(app, "/api/v1/community/bookmarks");
-    assertEquals(unauthorized.status, 401);
-    const listed = await jsonRequest(app, "/api/v1/community/bookmarks", {
-      token: responderToken,
-    });
-    const body = await listed.json();
-    assertEquals(listed.status, 200);
-    assertEquals(
-      body.data.map((item: { post: { id: string } }) => item.post.id),
-      [postId],
-    );
-  },
-});
-
-Deno.test({
   name: "community route: 关闭动态模块后动态列表返回 FEATURE_DISABLED",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -772,66 +723,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 关注动态流仅包含已关注用户的内容且游客不可见",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const app = createApp();
-    const authorToken = await signToken({ sub: authorId, role: "user" });
-    const responderToken = await signToken({ sub: responderId, role: "user" });
-
-    // 私域预设下游客访问关注流 401
-    const guest = await jsonRequest(
-      app,
-      "/api/v1/community/feed?view=following",
-    );
-    assertEquals(guest.status, 401);
-
-    // author 发一条短动态
-    const moment = await jsonRequest(app, "/api/v1/community/posts", {
-      method: "POST",
-      token: authorToken,
-      body: { type: "moment", content: "关注流里的短动态" },
-    });
-    assertEquals(moment.status, 201);
-    const momentId = (await moment.json()).data.id as string;
-
-    // 未关注时 responder 的关注流为空
-    const emptyFeed = await jsonRequest(
-      app,
-      "/api/v1/community/feed?view=following",
-      { token: responderToken },
-    );
-    assertEquals((await emptyFeed.json()).data.length, 0);
-
-    // responder 关注 author 后，关注流出现该动态
-    const followed = await jsonRequest(
-      app,
-      `/api/v1/community/users/${authorId}/follow`,
-      { method: "POST", token: responderToken },
-    );
-    assertEquals(followed.status, 200);
-    const feed = await jsonRequest(
-      app,
-      "/api/v1/community/feed?view=following",
-      { token: responderToken },
-    );
-    assertEquals(feed.status, 200);
-    const feedData = (await feed.json()).data as Array<{
-      kind: string;
-      post: { id: string };
-    }>;
-    assertEquals(
-      feedData.some(
-        (item) => item.kind === "moment" && item.post.id === momentId,
-      ),
-      true,
-    );
-  },
-});
-
-Deno.test({
   name: "community route: 管理员可查看并批准待审评论，普通用户无权访问队列",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1195,22 +1086,13 @@ Deno.test({
     );
     assertEquals(((await bounded.json()).data as unknown[]).length, 5);
 
-    // 其余三个此前同样直接 Number() 的列表端点：非法 limit 也应回退而非
-    // 让 NaN 穿透（feed 走 `Math.min(Math.max(nan,1),100)`，同样整体变 NaN）。
-    for (
-      const path of [
-        "/api/v1/community/feed?limit=abc",
-        "/api/v1/community/bookmarks?limit=abc",
-        "/api/v1/notifications?per_page=abc",
-      ]
-    ) {
-      const response = await jsonRequest(app, path, { token: authorToken });
-      assertEquals(
-        response.status,
-        path.startsWith("/api/v1/notifications") ? 400 : 200,
-        `${path} 应拒绝或安全回退非法分页`,
-      );
-    }
+    // 通知列表此前同样直接 Number()：非法分页必须明确拒绝，不能让 NaN 穿透。
+    const notifications = await jsonRequest(
+      app,
+      "/api/v1/notifications?per_page=abc",
+      { token: authorToken },
+    );
+    assertEquals(notifications.status, 400);
   },
 });
 

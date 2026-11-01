@@ -42,8 +42,6 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "community", action: "create_discussion" },
   { resource: "community", action: "create_moment" },
   { resource: "community", action: "comment" },
-  { resource: "community", action: "react" },
-  { resource: "community", action: "follow" },
   { resource: "community", action: "report" },
   { resource: "training", action: "create" },
   { resource: "training", action: "read" },

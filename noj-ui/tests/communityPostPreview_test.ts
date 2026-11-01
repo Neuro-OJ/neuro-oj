@@ -21,7 +21,6 @@ Deno.test('community post previews are generated when rows enter the list', () =
         updated_at: '2026-01-01T00:00:00.000Z',
       },
       author: { id: 'user-1', username: 'alice' },
-      likes: 0,
       comments: 0,
     },
   ]);

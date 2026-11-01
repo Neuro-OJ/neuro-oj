@@ -65,7 +65,6 @@ const mountHome = () =>
         AnnouncementSection: true,
         RandomProblems: true,
         LatestSubmissions: true,
-        FollowingFeed: true,
       },
     },
   });

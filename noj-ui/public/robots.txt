@@ -4,7 +4,6 @@ Disallow: /admin/
 Disallow: /editor/
 Disallow: /settings
 Disallow: /my/
-Disallow: /community/bookmarks
 Disallow: /community/notifications
 Disallow: /community/reports/
 Disallow: /api/

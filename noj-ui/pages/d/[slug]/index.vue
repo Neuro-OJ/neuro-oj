@@ -3,7 +3,6 @@ import { workspacePath } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 import type { BffEnvelope } from '~/utils/bff-view';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
-import type { CommunityConfig, FeedItem } from '~/composables/useCommunity';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
 import type { DomainProblemSummary } from '~/utils/domain-problems';
 type HomeSnapshot = { total: number; full_score: number; not_full_score: number };
@@ -43,8 +42,6 @@ const announcements = computed(() => (section<{ data: AnnouncementSummary[] }>('
 const dashboard = computed(() => section<{ data: EducationDashboardData }>('dashboard'));
 const activity = computed(() => section<HomeActivity>('activity'));
 const randomProblems = computed(() => section<DomainProblemSummary[]>('randomProblems'));
-const communityConfig = computed(() => section<{ key: string; config: CommunityConfig }>('communityConfig')?.config);
-const feed = computed(() => section<{ data: FeedItem[] }>('feed')?.data);
 async function join() {
   if (!domain.value || joining.value) return;
   joining.value = true;
@@ -120,12 +117,10 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
       <DomainHomeContent :initial-data="dashboard" />
     </div>
 
-    <!-- 推荐与实时动态网格 -->
+    <!-- 推荐与最新评测 -->
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <RandomProblems :domain-slug="domain.slug" :initial-data="randomProblems" />
       <LatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
-      <FollowingFeed v-if="domain.configuration.features.community" class="min-h-48 lg:col-span-full"
-        :initial-data="feed" :initial-config="communityConfig" />
     </div>
   </div>
   </AsyncContent>

@@ -187,10 +187,6 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { param: 'postId' }],
   },
   {
-    pattern: '/d/:slug/community/bookmarks',
-    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.myBookmarks' }],
-  },
-  {
     pattern: '/d/:slug/community/notifications',
     trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.notifications' }],
   },
@@ -382,10 +378,6 @@ const ROUTES: BreadcrumbRoute[] = [
   {
     pattern: '/community/posts/:postId',
     trail: [{ key: 'nav.community', to: '/community' }, { param: 'postId' }],
-  },
-  {
-    pattern: '/community/bookmarks',
-    trail: [{ key: 'nav.community', to: '/community' }, { key: 'breadcrumb.myBookmarks' }],
   },
   {
     pattern: '/community/notifications',

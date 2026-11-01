@@ -364,7 +364,6 @@ Deno.test({
       community_enabled: true,
       community_discussions_enabled: true,
       community_comments_enabled: true,
-      community_reactions_enabled: true,
       community_read_only: false,
       community_new_user_review_hours: 0,
     };
@@ -434,7 +433,7 @@ Deno.test({
           learner.page.getByText("本次成绩：100 分", { exact: true }),
         ).toBeVisible();
       });
-      await step("Public普通成员发布讨论、另一成员评论和点赞", async () => {
+      await step("Public普通成员发布讨论、另一成员评论", async () => {
         const id = await post(
           learner.page,
           "main",
@@ -456,17 +455,6 @@ Deno.test({
         await expect(
           friend.page.getByText(`公共回复 ${suffix}`, { exact: true }),
         ).toBeVisible();
-        await write(
-          friend.page,
-          "POST",
-          `/domains/main/community/posts/${id}/like`,
-          () =>
-            friend.page.getByRole("button", { name: "点赞", exact: true })
-              .click(),
-        );
-        await expect(
-          friend.page.getByRole("button", { name: "点赞", exact: true }),
-        ).toContainText("1");
       });
       await step(
         "Public两成员Web报名、各一次客观题交卷，赛时本人榜",

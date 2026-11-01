@@ -40,8 +40,6 @@ export interface UserProfileResponse {
     created_at: string;
   }[];
   community_stats: {
-    following_count: number;
-    follower_count: number;
     solution_count: number;
     moment_count: number;
   };
@@ -90,8 +88,6 @@ export interface ProfileRecentSubmissionRow {
 
 /** 社区关注/内容统计行。 */
 export interface ProfileCommunityStatsRow {
-  following_count: number;
-  follower_count: number;
   solution_count: number;
   moment_count: number;
 }

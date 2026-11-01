@@ -6,10 +6,9 @@
  * - community-boards.ts        板块 角色授权
  * - community-post-common.ts   帖子辅助（类型映射/题目解析/门槛判定）
  * - community-post-crud.ts     帖子增删改查（create/get/update）
- * - community-post-list.ts     帖子列表与收藏（list/count/bookmarks）
+ * - community-post-list.ts     帖子列表（list/count）
  * - community-post-moderation.ts 帖子审核处置（改状态/锁/置顶）
  * - community-comments.ts      评论
- * - community-interactions.ts  点赞/收藏/关注
  * - community-feed.ts          动态流与通知
  * - community-moderation.ts    举报/处罚/预设
  */
@@ -41,11 +40,7 @@ export {
   setPostOfficial,
   updatePost,
 } from "./community-post-crud.ts";
-export {
-  countPostsByType,
-  listBookmarks,
-  listPosts,
-} from "./community-post-list.ts";
+export { countPostsByType, listPosts } from "./community-post-list.ts";
 export {
   changePostStatus,
   togglePostFlag,
@@ -59,15 +54,8 @@ export {
   updateComment,
 } from "./community-comments.ts";
 export {
-  toggleBookmark,
-  toggleCommentLike,
-  toggleFollow,
-  togglePostLike,
-} from "./community-interactions.ts";
-export {
   getNotification,
   getNotificationUnreadCount,
-  listFeed,
   listNotifications,
   markNotificationRead,
   markNotificationsRead,

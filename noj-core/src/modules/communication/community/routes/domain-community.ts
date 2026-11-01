@@ -23,15 +23,10 @@ import {
   getPost,
   hasAcceptedSolution,
   listBoards,
-  listBookmarks,
   listComments,
-  listFeed,
   listPosts,
   resolvePostId,
   setPostOfficial,
-  toggleBookmark,
-  toggleCommentLike,
-  togglePostLike,
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
@@ -44,9 +39,6 @@ import { resolveCommunityProblem } from "../services/community/community-scope.t
 import { domainCommunityGovernanceRouter } from "./domain-governance.ts";
 import { hasUnendedPublicContest } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import {
-  enforceBookmarkRateLimit,
-  enforceCommentLikeRateLimit,
-  enforcePostLikeRateLimit,
   enforceReportRateLimit,
 } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
@@ -58,14 +50,8 @@ domainCommunityRouter.use(`${prefix}/*`, async (c, next) => {
   c.header("Cache-Control", "no-store");
   if (c.req.method === "POST" && c.var.userId) {
     const path = c.req.path, actorId = c.var.userId;
-    if (/\/posts\/[^/]+\/like$/.test(path)) {
-      await enforcePostLikeRateLimit(c, actorId);
-    } else if (/\/comments\/[^/]+\/like$/.test(path)) {
-      await enforceCommentLikeRateLimit(c, actorId);
-    } else if (/\/posts\/[^/]+\/bookmark$/.test(path)) {
-      await enforceBookmarkRateLimit(c, actorId);
-    } else if (path.endsWith("/reports")) {
-      await enforceReportRateLimit(c, actorId);
+    if (path.endsWith("/reports")) {
+      await enforceReportRateLimit(actorId);
     }
   }
   await next();
@@ -123,8 +109,6 @@ domainCommunityRouter.get(
           discussion: s.member,
           moment: s.member,
           comment: s.member,
-          react: s.member,
-          follow: s.actorId !== null,
           report: s.member,
           moderate: s.moderator,
         },
@@ -282,86 +266,6 @@ domainCommunityRouter.delete(
       data: await write(c, "community:comment", (s) =>
         deleteComment(c.req.param("id")!, s.actorId!, s.moderator, s), true),
     }),
-);
-domainCommunityRouter.post(
-  `${prefix}/posts/:id/like`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: {
-        liked: await write(
-          c,
-          "community:read",
-          async (s) =>
-            togglePostLike(
-              s.actorId!,
-              await resolvePostId(c.req.param("id")!),
-              s,
-            ),
-        ),
-      },
-    }),
-);
-domainCommunityRouter.post(
-  `${prefix}/posts/:id/bookmark`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: {
-        bookmarked: await write(
-          c,
-          "community:read",
-          async (s) =>
-            toggleBookmark(
-              s.actorId!,
-              await resolvePostId(c.req.param("id")!),
-              s,
-            ),
-        ),
-      },
-    }),
-);
-domainCommunityRouter.post(
-  `${prefix}/comments/:id/like`,
-  authMiddleware,
-  async (c) =>
-    c.json({
-      data: {
-        liked: await write(
-          c,
-          "community:read",
-          (s) => toggleCommentLike(s.actorId!, c.req.param("id")!, s),
-        ),
-      },
-    }),
-);
-domainCommunityRouter.get(
-  `${prefix}/bookmarks`,
-  authMiddleware,
-  async (c) =>
-    c.json(
-      await read(c, (s) =>
-        listBookmarks(
-          s.actorId!,
-          c.req.query("cursor"),
-          parseQueryLimit(c.req.query("limit"), { default: 20 }),
-          s,
-        )),
-    ),
-);
-domainCommunityRouter.get(
-  `${prefix}/feed`,
-  async (c) =>
-    c.json(
-      await read(c, (s) =>
-        listFeed(
-          c.req.query("view") === "following" ? "following" : "latest",
-          s.actorId ?? undefined,
-          c.req.query("cursor"),
-          parseQueryLimit(c.req.query("limit"), { default: 20 }),
-          s,
-        )),
-    ),
 );
 domainCommunityRouter.get(
   `${prefix}/solutions/eligibility`,

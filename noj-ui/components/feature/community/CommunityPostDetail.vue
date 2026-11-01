@@ -27,9 +27,6 @@ interface PostDetail {
   author: { id: string; username: string }
   problem_title: string | null
   problem_reference: DomainProblemReference | null
-  likes: number
-  liked: boolean
-  bookmarked: boolean
 }
 
 const typeLabel: Record<PostType, string> = {
@@ -52,7 +49,6 @@ useSeoMeta({
   ogDescription: () => post.value?.post?.content ? post.value.post.content.slice(0, 160) : 'Neuro OJ 社区内容',
 })
 const comment = ref("")
-const interaction = ref<"like" | "bookmark" | null>(null)
 const submittingComment = ref(false)
 
 const replyingTo = ref<string | null>(null)
@@ -66,13 +62,6 @@ const editPreview = ref(false)
 const savingPost = ref(false)
 
 const currentUserId = computed(() => user.value?.id)
-const canReact = computed(
-  () => isLoggedIn.value && config.value?.reactions_enabled === true &&
-    config.value.permissions.react === true,
-)
-const canBookmark = computed(
-  () => isLoggedIn.value && config.value?.bookmarks_enabled === true,
-)
 // 赛时社区全局静默：服务端强制拒绝写入，此处预先禁用入口避免用户写完才被拒
 const contestSilenced = computed(() => config.value?.contest_silence === true)
 const canComment = computed(
@@ -113,19 +102,6 @@ async function load() {
   if (!scope.isCurrent()) return
   post.value = postResult.data
   comments.value = commentResult.data
-}
-
-async function toggle(kind: "like" | "bookmark", path: string) {
-  if (!isLoggedIn.value) return navigateTo("/login")
-  if ((kind === "like" ? !canReact.value : !canBookmark.value) || interaction.value) return
-  interaction.value = kind
-  try {
-    await api.post(path)
-    if (!scope.isCurrent()) return
-    await load()
-  } finally {
-    interaction.value = null
-  }
 }
 
 async function sendComment() {
@@ -326,10 +302,6 @@ watch(initialData, (value) => {
           <MarkdownRenderer :content="post.post.content" :allow-external-images="config?.external_images_enabled === true" />
         </template>
 
-        <div class="mt-6 flex gap-3 border-t border-border pt-4">
-          <UButton color="primary" variant="outline" aria-label="点赞" :class="{ 'border-signal bg-primary-bg text-primary': post.liked }" :disabled="!canReact || interaction !== null" @click="toggle('like', scope.apiPath(`posts/${post.post.id}/like`))"><UIcon name="i-lucide-heart" class="size-4" />{{ interaction === 'like' ? '处理中…' : post.likes }}</UButton>
-          <UButton color="primary" variant="outline" aria-label="收藏" :class="{ 'border-signal bg-primary-bg text-primary': post.bookmarked }" :disabled="!canBookmark || interaction !== null" @click="toggle('bookmark', scope.apiPath(`posts/${post.post.id}/bookmark`))"><UIcon name="i-lucide-bookmark" class="size-4" />{{ interaction === 'bookmark' ? '处理中…' : post.bookmarked ? '已收藏' : '收藏' }}</UButton>
-        </div>
       </template>
     </article>
 

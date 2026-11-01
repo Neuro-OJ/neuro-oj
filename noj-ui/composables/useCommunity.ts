@@ -12,9 +12,6 @@ export interface CommunityConfig {
   discussions_enabled: boolean;
   moments_enabled: boolean;
   comments_enabled: boolean;
-  reactions_enabled: boolean;
-  bookmarks_enabled: boolean;
-  follows_enabled: boolean;
   external_images_enabled: boolean;
   solution_requires_accepted: boolean;
   new_user_review_hours?: number;
@@ -103,7 +100,6 @@ export interface ReportRow {
 export interface PostRow {
   post: CommunityPost;
   author: { id: string; username: string };
-  likes: number;
   comments: number;
 }
 
@@ -124,16 +120,6 @@ export interface CommunityComment {
 export interface CommentRow {
   comment: CommunityComment;
   author: { id: string; username: string };
-  likes: number;
-}
-
-/** 个人收藏列表行 */
-export interface BookmarkRow {
-  post: CommunityPost;
-  author: { id: string; username: string };
-  bookmarked_at: string;
-  likes: number;
-  comments: number;
 }
 
 /** 各类型已发布帖子计数 */
@@ -141,18 +127,6 @@ export interface CommunityCounts {
   solution: number;
   discussion: number;
   moment: number;
-}
-
-/**
- * 关注流条目。
- *
- * 系统活动事件（`community_activity_events`）已全栈下线（VULN-08）：
- * `GET /api/v1/community/feed` 只返回帖子，故这里不再有 `activity` 分支。
- */
-export interface FeedItem {
-  kind: 'moment';
-  post: CommunityPost;
-  author: { id: string; username: string };
 }
 
 /** 社区通知行 */

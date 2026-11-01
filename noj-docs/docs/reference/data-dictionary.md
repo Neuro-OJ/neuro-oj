@@ -600,28 +600,6 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 | `moderation_reason`         | text | NULL                                                                      | 审核原因                                     |
 | `created_at` / `updated_at` | text | NOT NULL                                                                  | 创建 / 更新时间                              |
 
-#### `community_post_likes` / `community_comment_likes` / `community_bookmarks`
-
-点赞与收藏关联表，结构一致。
-
-| 列                       | 类型 | 约束 / 默认                                                     | 说明     |
-| ------------------------ | ---- | --------------------------------------------------------------- | -------- |
-| `post_id` / `comment_id` | text | NOT NULL；FK→对应内容表 ON DELETE CASCADE；与 `user_id` 共同 PK | 目标内容 |
-| `user_id`                | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                | 用户     |
-| `created_at`             | text | NOT NULL                                                        | 创建时间 |
-
-#### `community_follows`
-
-用户关注关系。
-
-| 列            | 类型 | 约束 / 默认                                                          | 说明     |
-| ------------- | ---- | -------------------------------------------------------------------- | -------- |
-| `follower_id` | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；与 `followee_id` 共同 PK | 关注者   |
-| `followee_id` | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                     | 被关注者 |
-| `created_at`  | text | NOT NULL                                                             | 创建时间 |
-
-`CHECK community_follows_not_self_check`：不能关注自己。
-
 #### `community_reports` <span class="noj-danger-zone">DANGER ZONE</span>
 
 举报记录；目标须为帖子/评论之一。
@@ -684,7 +662,7 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 | `id`           | text  | PK                                                                      | 通知 UUID           |
 | `recipient_id` | text  | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引（含未读部分索引）      | 接收者              |
 | `actor_id`     | text  | FK→`users(id)` ON DELETE SET NULL；索引                                 | 触发者              |
-| `type`         | text  | NOT NULL；CHECK `reply/like/follow/moderation/clarification/report/ban` | 类型                |
+| `type`         | text  | NOT NULL；CHECK `reply/like/follow/moderation/clarification/report/ban`（like/follow 仅存于历史通知） | 类型                |
 | `post_id`      | text  | FK→`community_posts(id)` ON DELETE SET NULL；索引                       | 关联帖子            |
 | `comment_id`   | text  | FK→`community_comments(id)` ON DELETE SET NULL；索引                    | 关联评论            |
 | `data`         | jsonb | NOT NULL；DEFAULT `{}`                                                  | 附加数据            |
@@ -1095,8 +1073,7 @@ namespace 默认 `login`；改密用 `pwchange`；TFA 用 `tfa`。
 | `ratelimit:hardening:contest-submission:...`                                             | 60s / 120              |
 | `ratelimit:hardening:objective-submit:...`                                               | 60s / 60               |
 | `ratelimit:hardening:problem-create:...` / `problem-import:...`                          | 60s / 30、60s / 10     |
-| `ratelimit:hardening:post-like:...` / `comment-like:...` / `bookmark:...` / `follow:...` | 60s / 120              |
-| `ratelimit:hardening:report:...`                                                         | 60s / 30               |
+| `ratelimit:hardening:report:user:<id>`（举报，仅用户维度）                                | 60s / 30               |
 | `ratelimit:hardening:contest-register:ip:<ip>:c:<contestId>`                             | 30s / 5                |
 
 ### 竞赛提交预算（noj-core）

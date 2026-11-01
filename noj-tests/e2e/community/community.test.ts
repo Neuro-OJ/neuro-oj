@@ -168,57 +168,6 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
   );
   if (comment.status !== 201) throw new Error(`评论失败: ${comment.status}`);
 
-  const liked = await apiPost(
-    `${community}/posts/${postId}/like`,
-    {},
-    responderToken,
-  );
-  if (liked.status !== 200) throw new Error(`点赞失败: ${liked.status}`);
-
-  const bookmarked = await apiPost(
-    `${community}/posts/${postId}/bookmark`,
-    {},
-    responderToken,
-  );
-  if (bookmarked.status !== 200) {
-    throw new Error(`收藏失败: ${bookmarked.status}`);
-  }
-  const bookmarks = await apiGet(
-    `${community}/bookmarks`,
-    responderToken,
-  );
-  const savedPosts = (bookmarks.body as {
-    data: Array<{ post: { id: string } }>;
-  }).data;
-  if (
-    bookmarks.status !== 200 ||
-    !savedPosts.some((item) => item.post.id === postId)
-  ) {
-    throw new Error("收藏内容未出现在个人收藏列表中");
-  }
-  const detail = await apiGet(
-    `${community}/posts/${postId}`,
-    responderToken,
-  );
-  if (
-    detail.status !== 200 ||
-    (detail.body as { data: { bookmarked: boolean } }).data.bookmarked !==
-      true
-  ) {
-    throw new Error("帖子详情未标记当前用户已收藏");
-  }
-
-  // responder 关注帖子作者（生成关注通知；原实现为残缺坏代码，此处按 267 行
-  // 动态流测试的既有模式补全：先取作者 id 再 POST follow）
-  const authorMe = await apiGet("/api/v1/auth/me", authorToken);
-  const authorId = (authorMe.body as { data: { id: string } }).data.id;
-  const followed = await apiPost(
-    `/api/v1/community/users/${authorId}/follow`,
-    {},
-    responderToken,
-  );
-  if (followed.status !== 200) throw new Error(`关注失败: ${followed.status}`);
-
   const notifications = await apiGet(
     `/api/v1/notifications?domain_id=${domainId}`,
     authorToken,
@@ -237,23 +186,9 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
     `/api/v1/notifications?domain_id=${domainId}&per_page=1`,
     authorToken,
   );
-  const unreadCount = (unread.body as { unread_count: number }).unread_count;
   assertEquals(unread.status, 200);
-  const followNotifications = await apiGet(
-    "/api/v1/notifications",
-    authorToken,
-  );
-  assertEquals(followNotifications.status, 200);
-  const followEntries =
-    (followNotifications.body as { data: { notification: { type: string } }[] })
-      .data;
-  assertEquals(
-    followEntries.some((item) => item.notification.type === "follow"),
-    true,
-    "账号层面的关注通知",
-  );
-  if (unreadCount < 2 || unreadCount + followEntries.length < 3) {
-    throw new Error("作者未收到互动与关注通知");
+  if ((unread.body as { unread_count: number }).unread_count < 1) {
+    throw new Error("作者未收到回复通知");
   }
   const markedRead = await apiPost(
     `/api/v1/notifications/read?domain_id=${domainId}`,
@@ -301,75 +236,7 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
   ) {
     throw new Error("已删除讨论仍出现在普通列表中");
   }
-  const bookmarksAfterDelete = await apiGet(
-    `${community}/bookmarks`,
-    responderToken,
-  );
-  const remainingBookmarks = (bookmarksAfterDelete.body as {
-    data: Array<{ post: { id: string } }>;
-  }).data;
-  if (
-    bookmarksAfterDelete.status !== 200 ||
-    remainingBookmarks.some((item) => item.post.id === postId)
-  ) {
-    throw new Error("已删除讨论仍出现在个人收藏列表中");
-  }
 });
-
-e2eTest(
-  "[e2e/community] 关注动态流：已关注用户发布的短动态进入关注流",
-  async () => {
-    if (!isE2E) return;
-    const suffix = Date.now().toString(36) + "f";
-    const aToken = await registerUser(
-      `feed_a_${suffix}`,
-      `feed_a_${suffix}@test.com`,
-      TEST_PASSWORD,
-    );
-    const bToken = await registerUser(
-      `feed_b_${suffix}`,
-      `feed_b_${suffix}@test.com`,
-      TEST_PASSWORD,
-    );
-    await joinDomain(aToken, `feed_a_${suffix}@test.com`);
-    await joinDomain(bToken, `feed_b_${suffix}@test.com`);
-    const aMe = await apiGet("/api/v1/auth/me", aToken);
-    const aId = (aMe.body as { data: { id: string } }).data.id;
-
-    // b 关注 a
-    const follow = await apiPost(
-      `/api/v1/community/users/${aId}/follow`,
-      {},
-      bToken,
-    );
-    if (follow.status !== 200) throw new Error(`关注失败: ${follow.status}`);
-
-    // a 发布短动态
-    const moment = await apiPost(
-      `${community}/posts`,
-      { type: "moment", content: "E2E 关注流短动态" },
-      aToken,
-    );
-    if (moment.status !== 201) {
-      throw new Error(`发布动态失败: ${moment.status}`);
-    }
-    const momentId = (moment.body as { data: { id: string } }).data.id;
-
-    // b 的关注流包含该动态
-    const feed = await apiGet(`${community}/feed?view=following`, bToken);
-    const items = (feed.body as {
-      data: Array<{ kind: string; post?: { id: string } }>;
-    }).data;
-    if (
-      feed.status !== 200 ||
-      !items.some((item) =>
-        item.kind === "moment" && item.post?.id === momentId
-      )
-    ) {
-      throw new Error("已关注用户的短动态未出现在关注流中");
-    }
-  },
-);
 
 e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", async () => {
   if (!isE2E) return;
