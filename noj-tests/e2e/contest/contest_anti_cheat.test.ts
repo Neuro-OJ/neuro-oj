@@ -492,7 +492,9 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
         description: "",
         visibility: "private",
         state: "draft",
-        problems: [privatePaperId],
+        // 域题号必须是 `域:题号` 形态：传 UUID 只会被当成格式非法的 400，
+        // 证明不了跨域隔离。这里用私有域的真实题号，才能落在"引用是否可见"这条判定上。
+        problems: [`${privateDomain}:${privateNumber}`],
       },
     },
   );
