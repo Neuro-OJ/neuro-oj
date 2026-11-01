@@ -453,11 +453,21 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
     );
   }
 
-  // 4.2 攻击者创建私有题单并加入别人的私有套卷
+  // 4.2 本域题单引用其他域私有套卷 → 404
+  //
+  // 0.11 起题单写入只在域入口；与 4.1 同理，断言的是**引用隔离**而不是建单权限，
+  // 因此用管理员在 main 建单，再尝试把其他域的私有套卷写进题号列表。
+  const trainingTitle = `E2E 跨域私有引用题单 ${ts}`;
   const trainingRes = await apiPost(
-    "/api/v1/trainings",
-    { title: `E2E 攻击者题单 ${ts}`, visibility: "private" },
-    attackerToken,
+    "/api/v1/domains/main/trainings",
+    {
+      title: trainingTitle,
+      description: "",
+      visibility: "private",
+      state: "draft",
+      problems: [],
+    },
+    adminToken,
   );
   if (trainingRes.status !== 201) {
     throw new Error(
@@ -465,14 +475,30 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
     );
   }
   const trainingId = (trainingRes.body as { data: { id: string } }).data.id;
-  const addRes = await apiPost(
-    `/api/v1/trainings/${trainingId}/problems`,
-    { problem_id: privatePaperId },
-    attackerToken,
+  const detailRes = await apiGet(
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    adminToken,
+  );
+  const revision = (detailRes.body as { data: { revision: number } }).data
+    .revision;
+  const addRes = await api(
+    "PATCH",
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    {
+      token: adminToken,
+      headers: { "If-Match": String(revision) },
+      body: {
+        title: trainingTitle,
+        description: "",
+        visibility: "private",
+        state: "draft",
+        problems: [privatePaperId],
+      },
+    },
   );
   if (addRes.status !== 404) {
     throw new Error(
-      `把他人私有题加入自己题单应 404，实际 ${addRes.status}`,
+      `把他人私有题加入本域题单应 404，实际 ${addRes.status}`,
     );
   }
 });
