@@ -19,6 +19,7 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getProblemReference,
   pollSubmission,
   publishProblemVersion,
   registerUser,
@@ -366,9 +367,9 @@ e2eTest(
     );
 
     const sub = await apiPost(
-      "/api/v1/submissions",
+      "/api/v1/domains/main/submissions",
       {
-        problem_id: problemId,
+        problem_ref: await getProblemReference(problemId, userToken),
         version_id: versionId,
         language: "python3",
         code:

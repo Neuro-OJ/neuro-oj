@@ -359,30 +359,6 @@ export function useProblemVersions() {
       .then((r) => r.data);
   }
 
-  /** 受理用户升级任务（本人提交；`context = source_contest` 时留在原竞赛）。 */
-  function acceptUpgradeJob(
-    submissions: Array<{ kind: 'submission' | 'objective'; id: string }>,
-    context: 'practice' | 'source_contest' = 'practice',
-    idempotencyKey = newIdempotencyKey(),
-  ) {
-    return api
-      .post<{ data: AcceptJobResult }>(
-        '/api/v1/submission-upgrade-jobs',
-        { submissions, context },
-        { headers: { 'Idempotency-Key': idempotencyKey } },
-      )
-      .then((r) => r.data);
-  }
-
-  /** 读取升级任务（本人或管理员）。 */
-  function getUpgradeJob(jobId: string) {
-    return api
-      .get<{ data: UpgradeJobView }>(
-        `/api/v1/submission-upgrade-jobs/${jobId}`,
-      )
-      .then((r) => r.data);
-  }
-
   /**
    * 轮询任务直到终态（管理端进度展示用）。
    *
@@ -416,8 +392,6 @@ export function useProblemVersions() {
     getJob,
     listJobItems,
     retryJob,
-    acceptUpgradeJob,
-    getUpgradeJob,
     waitForJobTerminal,
   };
 }

@@ -96,6 +96,12 @@
   旧前端组件 `AddToTrainingMenu.vue`、`TrainingManagementSection.vue`、旧页面
   `pages/admin/trainings.vue` 与 `pages/problems/[id].vue`、以及只服务它们的
   `composables/useTrainings.ts` 一并删除（活着的域页面用的是 `DomainAddToTrainingMenu`）。
+- 无域提交与自测写接口**已删除**：`POST /api/v1/submissions`、`POST /api/v1/self-tests/:id/cancel`、
+  `POST /api/v1/submission-upgrade-jobs` 只存在于域入口
+  （`/api/v1/domains/:slug/submissions`、`/domains/:slug/self-tests/:id/cancel`、
+  `/domains/:slug/submission-jobs`）。题目的无域 `POST /problems/:id/self-test` 同步删除。
+  前端随之删除 `OiSelfTestPanel.vue` 与 `useProblemVersions` 的升级任务受理/读取
+  （只有自己的单测在调）；E2E 的提交统一走域入口，helper 负责把题目 UUID 换成题号。
 
 ### 已知未完成
 

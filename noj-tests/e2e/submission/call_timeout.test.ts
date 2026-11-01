@@ -16,6 +16,7 @@ import {
   e2eTest,
   getAdminToken,
   getAnswerVersionId,
+  getProblemReference,
   publishProblemVersion,
   registerUser,
 } from "../helper.ts";
@@ -130,8 +131,13 @@ async function submitAndWait(
   const versionId = await getAnswerVersionId(userToken, problemId);
   if (!versionId) throw new Error("调用超时题没有已发布作答版本");
   const sub = await apiPost(
-    "/api/v1/submissions",
-    { problem_id: problemId, language: "python3", code, version_id: versionId },
+    "/api/v1/domains/main/submissions",
+    {
+      problem_ref: await getProblemReference(problemId, userToken),
+      language: "python3",
+      code,
+      version_id: versionId,
+    },
     userToken,
   );
   if (sub.status !== 201) {

@@ -509,10 +509,29 @@ export async function getContestAnswerVersionId(
   return problem.version_id;
 }
 
+/** 题目 UUID → 本域题号（域提交入口只接受数字或 `domain:number`）。 */
+export async function getProblemReference(
+  problemId: string,
+  token?: string,
+): Promise<string> {
+  const res = await apiGet(`/api/v1/problems/${problemId}`, token);
+  if (res.status !== 200) {
+    throw new Error(
+      `读取题目 ${problemId} 的题号失败: ${res.status} ${JSON.stringify(res.body)}`,
+    );
+  }
+  const number = (res.body as { data: { number: number } }).data.number;
+  return String(number);
+}
+
 /**
  * 提交代码并返回 submission ID。
  *
  * `versionId` 缺省时自动读取题目**默认作答版本**（新客户端必须携带版本）。
+ *
+ * 0.11 起提交只走域入口 `/api/v1/domains/:slug/submissions`（无域 `POST /submissions`
+ * 已删除）。题目以「题号」定位，因此这里把调用方传的 UUID 换成题号；非 main 域的题目
+ * 需要显式传 `domainSlug`。
  */
 export async function submitCode(
   token: string,
@@ -520,6 +539,7 @@ export async function submitCode(
   code: string,
   language = "python3",
   versionId?: string | null,
+  options: { domainSlug?: string; reference?: string } = {},
 ): Promise<string> {
   const version = versionId ?? await getAnswerVersionId(token, problemId);
   if (!version) {
@@ -527,9 +547,11 @@ export async function submitCode(
       `题目 ${problemId} 尚未发布任何版本，无法提交（先调用 publishProblemVersion）`,
     );
   }
+  const slug = options.domainSlug ?? "main";
+  const reference = options.reference ?? await getProblemReference(problemId, token);
   const res = await apiPost(
-    "/api/v1/submissions",
-    { problem_id: problemId, language, code, version_id: version },
+    `/api/v1/domains/${slug}/submissions`,
+    { problem_ref: reference, language, code, version_id: version },
     token,
   );
 

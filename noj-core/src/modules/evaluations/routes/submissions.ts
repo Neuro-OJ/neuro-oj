@@ -2,17 +2,12 @@ import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
 import {
-  composeEvaluationAdmissionContext,
   getEvaluationTodayStats,
   getEvaluationTotalStats,
-  submitArtifactCommand,
-  submitCodeCommand,
 } from "../../application/evaluations.ts";
-import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
   getSubmission,
   listSubmissions,
-  resolveProblemSubmissionMode,
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
@@ -26,14 +21,12 @@ import {
 import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { rateLimit } from "../../platform/system/middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { parseJsonBody } from "../../../shared/http/request.ts";
 import { createFileStream } from "../../../shared/http/file-stream.ts";
 import {
   buildPaginationMeta,
   parsePagination,
 } from "../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
-import { enforceSubmissionRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
@@ -45,18 +38,6 @@ type Env = {
 };
 
 const router = new Hono<Env>();
-
-/**
- * 提交代码最大长度（字符数）。
- *
- * 限制原因：
- * 1. Redis 单值上限 512MB，超大消息会导致 LPUSH 失败或集群分裂
- * 2. 评测 worker 在 Docker 容器内加载代码，过大文件增加 IO 与内存开销
- * 3. 防止恶意用户通过超大提交耗尽存储与带宽
- *
- * 100KB 足以覆盖绝大多数 ACM/OI 题目的解题代码；如有特殊需求可走管理员通道。
- */
-const MAX_CODE_LENGTH = 100 * 1024;
 
 /** 解析布尔筛选参数：`1` / `true` 为真，其余（含缺省）为假。 */
 function parseFlag(value: string | undefined): boolean | undefined {
@@ -216,85 +197,6 @@ export function parseArtifactMultipart(
     ).pipe(bb);
   });
 }
-
-/**
- * 创建提交。
- */
-router.post("/", authMiddleware, async (c) => {
-  const userId = c.var.userId as string;
-  const actor = userActorFromAuthenticatedId(userId);
-
-  const contentType = c.req.header("content-type") ?? "";
-  if (contentType.startsWith("multipart/form-data")) {
-    const parsed = await parseArtifactMultipart(c);
-    // 参数解析合法后执行提交限流
-    await enforceSubmissionRateLimit(c, userId);
-    // multipart 已解析但题目尚未加载：先只读解析题目模式用于分派，
-    // 服务层随后会重新校验模式、版本与访问规则。
-    const mode = await resolveProblemSubmissionMode(parsed.problem_id);
-    const context = await composeEvaluationAdmissionContext(actor, {
-      problemId: parsed.problem_id,
-      versionId: parsed.version_id,
-    });
-    const artifactMode = mode === "prediction" ? "prediction" : "artifact";
-    const result = await submitArtifactCommand(
-      actor,
-      context,
-      parsed,
-      artifactMode,
-    );
-    return c.json({ data: result }, 201);
-  }
-
-  const body = await parseJsonBody<Record<string, unknown>>(c);
-
-  // 必填字段验证
-  if (!body.problem_id || !body.language || !body.code) {
-    const missing: string[] = [];
-    if (!body.problem_id) missing.push("problem_id");
-    if (!body.language) missing.push("language");
-    if (!body.code) missing.push("code");
-    throw new BadRequestError(`缺少必填字段: ${missing.join(", ")}`);
-  }
-
-  // 大小限制：防止恶意大请求耗尽存储与 Redis 单值上限（512MB）
-  // 100KB 足以覆盖绝大多数代码提交；超过则提示客户端精简代码或拆分提交
-  if (typeof body.code !== "string") {
-    throw new BadRequestError("code 字段必须为字符串");
-  }
-  if (body.code.length > MAX_CODE_LENGTH) {
-    throw new BadRequestError(
-      `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
-    );
-  }
-
-  // 校验通过后执行提交限流，避免格式错误消耗配额
-  await enforceSubmissionRateLimit(c, userId);
-
-  const input = {
-    problem_id: body.problem_id as string,
-    language: body.language as string,
-    code: body.code as string,
-    file_name: body.file_name as string | undefined,
-    version_id: typeof body.version_id === "string" && body.version_id
-      ? body.version_id
-      : undefined,
-    contest_id: typeof body.contest_id === "string" && body.contest_id
-      ? body.contest_id
-      : undefined,
-  };
-  const context = await composeEvaluationAdmissionContext(actor, {
-    problemId: input.problem_id,
-    versionId: input.version_id,
-    contestId: input.contest_id,
-  });
-  const result = await submitCodeCommand(actor, context, {
-    ...input,
-    contest_id: context.contest?.contestId,
-  });
-
-  return c.json({ data: result }, 201);
-});
 
 /**
  * 公开最新评测列表（无需登录）。

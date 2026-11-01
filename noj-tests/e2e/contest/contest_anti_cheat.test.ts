@@ -407,9 +407,9 @@ e2eTest(
     }
 
     const ordinary = await apiPost(
-      "/api/v1/submissions",
+      `/api/v1/domains/${privateDomain}/submissions`,
       {
-        problem_id: privatePaperId,
+        problem_ref: String(privateNumber),
         language: "python3",
         code: "print('steal')",
         version_id: privateVersionId,

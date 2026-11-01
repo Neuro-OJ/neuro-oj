@@ -92,29 +92,6 @@ describe('useProblemVersions', () => {
     );
   });
 
-  it('升级任务受理带 context 与幂等键', async () => {
-    const fetchMock = vi.fn(() => ({ data: { job_id: 'j2', status: 'queued', total_items: 1 } }));
-    vi.stubGlobal('$fetch', fetchMock);
-    const versions = useProblemVersions();
-
-    await versions.acceptUpgradeJob(
-      [{ kind: 'objective', id: 'o1' }],
-      'practice',
-      'key-2',
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/submission-upgrade-jobs',
-      expect.objectContaining({
-        method: 'post',
-        headers: { 'Idempotency-Key': 'key-2' },
-        body: {
-          submissions: [{ kind: 'objective', id: 'o1' }],
-          context: 'practice',
-        },
-      }),
-    );
-  });
-
   it('waitForJobTerminal 轮询到终态即返回（不依赖进程内计数）', async () => {
     const statuses = ['queued', 'running', 'completed'];
     let index = 0;

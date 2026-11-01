@@ -82,23 +82,5 @@
     "path": "/api/v1/problems/oi-author/:id/save",
     "replacement": "POST /api/v1/domains/:slug/problems/:reference/oi/save",
     "reason": "OI 草稿文件写入必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/submissions",
-    "replacement": "POST /api/v1/domains/:slug/submissions",
-    "reason": "正式评测受理必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/self-tests/:id/cancel",
-    "replacement": "POST /api/v1/domains/:slug/self-tests/:id/cancel",
-    "reason": "自测控制必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/submission-upgrade-jobs",
-    "replacement": "POST /api/v1/domains/:slug/submission-jobs",
-    "reason": "提交升级必须绑定显式工作空间"
   }
 ]

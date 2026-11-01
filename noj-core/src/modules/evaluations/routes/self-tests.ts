@@ -10,11 +10,7 @@ import {
   composeEvaluationAdmissionContext,
   submitSelfTestCommand,
 } from "../../application/evaluations.ts";
-import {
-  cancelSelfTest,
-  getSelfTest,
-  listMySelfTests,
-} from "../services/self-tests.ts";
+import { getSelfTest, listMySelfTests } from "../services/self-tests.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 
 const router = new Hono<AuthEnv>();
@@ -104,11 +100,6 @@ router.get("/self-tests/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const result = await getSelfTest(id, c);
   return c.json({ data: result });
-});
-
-router.post("/self-tests/:id/cancel", authMiddleware, async (c) => {
-  await cancelSelfTest(c.req.param("id") as string, c);
-  return c.json({ data: { cancel_requested: true } });
 });
 
 export default router;

@@ -202,7 +202,6 @@
 | PATCH | `/users/:id/role` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PATCH | `/users/:id/unban` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/` | noj-core/src/modules/access/identity/routes/checkin.ts |
-| POST | `/` | noj-core/src/modules/evaluations/routes/submissions.ts |
 | POST | `/` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
 | POST | `/` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/` | noj-core/src/modules/problems/routes/tags.ts |
@@ -276,10 +275,8 @@
 | POST | `/reset-password` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/roles` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/sanctions` | noj-core/src/modules/http/admin/routes/community.ts |
-| POST | `/self-tests/:id/cancel` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | POST | `/set-password` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/settings/email/test-send` | noj-core/src/modules/http/admin/routes/system.ts |
-| POST | `/submission-upgrade-jobs` | noj-core/src/modules/evaluations/routes/upgrade-jobs.ts |
 | POST | `/submissions/:id/rejudge` | noj-core/src/modules/http/admin/routes/submission.ts |
 | POST | `/tfa/confirm` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/tfa/disable` | noj-core/src/modules/access/identity/routes/auth.ts |

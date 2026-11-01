@@ -16,34 +16,10 @@ import { Hono } from "hono";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
-import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import {
-  getUpgradeJobForActor,
-  type UpgradeRequest,
-} from "../services/versioning/upgrade-jobs.ts";
-import { enforceUpgradeJobRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
-import { acceptUpgradeJobCommand } from "../../application/evaluations.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { getUpgradeJobForActor } from "../services/versioning/upgrade-jobs.ts";
 
 const router = new Hono<AuthEnv>();
-
-/**
- * 受理升级任务。
- *
- * POST /api/v1/submission-upgrade-jobs
- */
-router.post("/submission-upgrade-jobs", authMiddleware, async (c) => {
-  const actor = c.var.actor;
-  const idempotencyKey = c.req.header("idempotency-key")?.trim() ?? "";
-  const body = await c.req.json<UpgradeRequest>().catch(() => null);
-  if (!body || typeof body !== "object" || !Array.isArray(body.submissions)) {
-    throw new BadRequestError("缺少必填字段：submissions");
-  }
-  // 参数合法后限流：一次受理最多 500 条提交，必须按 §4.4 执行提交速率限制
-  // （避免格式错误消耗配额，与 /submissions 的校验后限流顺序一致）。
-  await enforceUpgradeJobRateLimit(c, actor.userId);
-  const accepted = await acceptUpgradeJobCommand(actor, body, idempotencyKey);
-  return c.json({ data: accepted }, 202);
-});
 
 /**
  * 读取升级任务：本人或管理员。

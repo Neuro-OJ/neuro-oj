@@ -14,6 +14,7 @@ import {
   e2eTest,
   getAdminToken,
   getAnswerVersionId,
+  getProblemReference,
   isE2E,
   publishProblemVersion,
   waitForServer,
@@ -255,8 +256,8 @@ e2eTest(
       throw new Error("故障夹具的提交基线应为空");
     }
     const versionId = await getAnswerVersionId(adminToken, brokenProblemId);
-    const rejected = await apiPost("/api/v1/submissions", {
-      problem_id: brokenProblemId,
+    const rejected = await apiPost("/api/v1/domains/main/submissions", {
+      problem_ref: await getProblemReference(brokenProblemId, adminToken),
       version_id: versionId,
       language: "python3",
       code: "print(1)",

@@ -20,55 +20,21 @@ await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
-  name: "submissions route: POST /api/v1/submissions 无 token 返回 401",
+  name:
+    "submissions route: POST /api/v1/submissions 已删除（0.11 起只有域入口）",
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/submissions", {
-      method: "POST",
-      body: {
-        problem_id: "1001",
-        language: "python3",
-        code: "print('hi')",
-      },
-    });
-    assertEquals(res.status, 401);
-    const body = await res.json();
-    assertEquals(body.error, "未提供认证令牌");
-  },
-});
-
-Deno.test({
-  name: "submissions route: POST /api/v1/submissions 无效 token 返回 401",
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/submissions", {
-      method: "POST",
-      body: {
-        problem_id: "1001",
-        language: "python3",
-        code: "print('hi')",
-      },
-      token: "invalid-token-here",
-    });
-    assertEquals(res.status, 401);
-    const body = await res.json();
-    assertEquals(body.error, "认证令牌无效或已过期");
-  },
-});
-
-Deno.test({
-  name: "submissions route: POST /api/v1/submissions 缺少字段返回 400",
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/submissions", {
-      method: "POST",
-      body: { problem_id: "1001" }, // 缺少 language 和 code
-      token,
-    });
-    assertEquals(res.status, 400);
-    const body = await res.json();
-    assertEquals(body.error.includes("缺少必填字段"), true);
+    // 无域提交入口在 0.11 被删除：不再区分"未登录 401 / 缺字段 400"，
+    // 任何请求都落到 404。真正的提交契约由
+    // `/api/v1/domains/:slug/submissions` 覆盖（见 domain-submissions 测试）。
+    for (const token of [undefined, "invalid-token-here"]) {
+      const res = await jsonRequest(app, "/api/v1/submissions", {
+        method: "POST",
+        body: { problem_id: "1001", language: "python3", code: "print('hi')" },
+        ...(token ? { token } : {}),
+      });
+      assertEquals(res.status, 404);
+    }
   },
 });
 
