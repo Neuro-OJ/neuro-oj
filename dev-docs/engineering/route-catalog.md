@@ -335,7 +335,11 @@
 | POST | `/tfa/disable` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/tfa/recovery-codes/regenerate` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/tfa/setup` | noj-core/src/modules/access/identity/routes/auth.ts |
+| POST | `/users` | noj-core/src/modules/http/admin/routes/identity.ts |
+| POST | `/users/:id/reset-password` | noj-core/src/modules/http/admin/routes/identity.ts |
+| POST | `/users/:id/unlock-login` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/users/:userId/follow` | noj-core/src/modules/communication/community/routes/community.ts |
+| POST | `/users/import` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/trainings.ts |

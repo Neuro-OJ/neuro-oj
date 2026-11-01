@@ -139,6 +139,7 @@ export {
 export {
   _resetLoginBackoffForTest,
   applyLoginBackoff,
+  clearAllLoginFailures,
   clearLoginFailure,
   isLoginLocked,
   recordLoginBackoff,

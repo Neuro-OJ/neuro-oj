@@ -5,7 +5,7 @@
 
 ## 限流原语
 
-- **登录限流**：`noj-core/src/domains/identity/middleware/login-rate-limit.ts`，专用于认证端点。
+- **登录限流**：`noj-core/src/modules/access/identity/middleware/login-rate-limit.ts`，专用于认证端点。
 - **通用中间件限流**：`noj-core/src/domains/system/middleware/rate-limit.ts`，进程内最小间隔限流（多实例各自计数）。
 - **Hardening
   限流（推荐）**：`noj-core/src/modules/platform/system/services/hardening-rate-limit.ts`，Redis
@@ -147,3 +147,25 @@ router.patch(`${path}/:id`, ...);
 4. 更新本文档矩阵。
 5. 至少补充一个“超过阈值返回 429”的测试（可走 `enforceRateLimit` 基础测试 +
    路由权限测试）。
+
+## 登录失败锁定粒度（2026-10-31）
+
+登录、改密（`pwchange`）与 TFA 管理（`tfa`）的失败计数、锁定及既有内存退避，
+从单独账号调整为“账号标识 + 客户端 IP”。客户端 IP 统一取 `getClientIp(c)`，
+沿用可信代理解析。用户名/邮箱登录仍解析为用户 ID；已认证的改密/TFA 直接使用用户 ID。
+标识先小写归一化并进行 URI 编码（额外编码 `*`），Redis 键为
+`<ns>fail:<user>:<ip>` / `<ns>lock:<user>:<ip>`，内存键为 `<ns>::<user>::<ip>`。
+同一 IP 的失败不会锁住其他 IP；认证成功仅清理当前命名空间下当前账号 + IP 的记录。
+
+用户名在排行榜、个人主页公开，账号级长时间锁定可被恶意输错密码滥用为拒绝服务。
+新粒度把锁定范围限制到发起失败的客户端 IP，避免比赛期间受害者被他人锁在门外。
+默认阈值、失败计数 TTL、锁定时间、退避系数与配置名均保持不变。
+独立的 IP 窗口（30s/10 次）和账号窗口（30s/5 次）逻辑保持不变，
+账号窗口继续跨 IP 聚合，承担分布式撞库防护。
+
+`POST /api/v1/admin/identity/users/:id/unlock-login` 仅管理员可调用：通过 SCAN 分页
+清除该用户所有 IP、所有命名空间的失败/锁定键，覆盖 ID、用户名和旧 TFA 解析标识，
+并清理当前进程既有内存退避，记录 `users.unlock_login` 审计。
+该操作不清理窗口限流，不新增进程内状态；Redis 不可用时返回 503。
+多副本中其他进程的内存退避仍按原期限到期；已进入等待的请求继续原有等待。
+部署前的无 IP 旧键不再读取，按原 TTL 自然过期，不需要数据库迁移。

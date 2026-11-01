@@ -1,7 +1,8 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { passwordResetTokens, users } from "../../../../shared/db/schema.ts";
-import { hashPassword } from "./security/password.ts";
+import { hashPassword, passwordUpdate } from "./security/password.ts";
+import { isInvalidEmailAddress } from "../../../../shared/security/email-address.ts";
 import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
 import { isEmailSuppressed } from "../../../platform/contracts/cross-module/system_services_email-delivery_service.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
@@ -82,7 +83,7 @@ export async function requestReset(
   }
 
   const userId = userRows[0].id;
-  if (await isEmailSuppressed(email)) {
+  if (isInvalidEmailAddress(email) || await isEmailSuppressed(email)) {
     await logAuthEvent(
       userId,
       clientIp ?? "unknown",
@@ -203,12 +204,7 @@ export async function resetPassword(
     // 更新密码
     await tx
       .update(users)
-      .set({
-        password_hash: newHash,
-        session_version: sql`${users.session_version} + 1`,
-        must_change_password: false,
-        updated_at: nowIso,
-      })
+      .set(passwordUpdate(newHash, false))
       .where(eq(users.id, user.id));
   });
 

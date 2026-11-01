@@ -202,7 +202,7 @@ async function seedContest(
     public_id: `ct-${contestId}`.slice(0, 20),
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",
-    end_time: "2026-12-31T00:00:00.000Z",
+    end_time: "2099-12-31T00:00:00.000Z",
     type: "kaggle",
     kind: "public",
     is_public: true,

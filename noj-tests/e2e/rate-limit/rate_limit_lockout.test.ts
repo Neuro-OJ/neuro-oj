@@ -10,12 +10,12 @@
  * 因此这里断言的是**服务端真实锁定状态**：
  * 1. 连续错误密码都返回 401（不是 429 限流）；
  * 2. 达到阈值后，用**正确密码**登录也被拒，且提示账号已锁定；
- * 3. Redis 中存在 `loginlock:<userId>` 标记（不依赖响应文案）。
+ * 3. Redis 中存在 `loginlock:<userId>:<ip>` 标记（不依赖响应文案）。
  *
  * 注意：锁定 key 经 `resolveLoginAccountKey` 归一化为 `users.id`（NOJ-092），
- * 用户名/邮箱登录共享同一锁定桶，因此不能按 username 查 Redis。
+ * 同一 IP 的用户名/邮箱登录共享锁定桶，因此不能按 username 查 Redis。
  *
- * 参考实现：noj-core `src/domains/identity/services/security/loginThrottle.ts`。
+ * 参考实现：noj-core `src/modules/access/identity/services/security/loginThrottle.ts`。
  */
 
 import {
@@ -32,7 +32,7 @@ const LOCK_THRESHOLD = Number(
 );
 
 e2eTest(
-  "[e2e/rate-limit] 连续错误密码触发账号锁定（正确密码也被拒）",
+  "[e2e/rate-limit] 连续错误密码触发当前 IP 的账号锁定（正确密码也被拒）",
   async () => {
     if (!isE2E) return;
     const ts = Date.now().toString(36);
@@ -87,17 +87,25 @@ e2eTest(
         "redis-cli",
         "-n",
         "1",
-        "EXISTS",
-        `loginlock:${userId.toLowerCase()}`,
+        "--scan",
+        "--pattern",
+        `loginlock:${userId.toLowerCase()}:*`,
       ],
     });
     const { stdout, success } = await cmd.output();
     if (!success) {
       throw new Error("docker exec noj-e2e-redis 失败，无法验证锁定标记");
     }
-    const exists = new TextDecoder().decode(stdout).trim();
-    if (exists !== "1") {
-      throw new Error(`Redis 中缺少 loginlock 标记（EXISTS 返回 ${exists}）`);
+    const keys = new TextDecoder().decode(stdout).trim().split("\n").filter(
+      Boolean,
+    );
+    if (
+      keys.length !== 1 ||
+      !keys[0].startsWith(`loginlock:${userId.toLowerCase()}:`)
+    ) {
+      throw new Error(
+        `Redis 应仅有当前 IP 的 loginlock 标记，实际 ${JSON.stringify(keys)}`,
+      );
     }
     console.log("  ✓ 账号锁定已生效（401 + loginlock 标记）");
   },

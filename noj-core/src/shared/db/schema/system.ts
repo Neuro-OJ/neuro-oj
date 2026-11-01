@@ -168,6 +168,10 @@ export const auditLogs = pgTable(
       "audit_logs_action_check",
       sql`${table.action} IN (
         'users.role_change',
+        'users.create',
+        'users.import',
+        'users.reset_password',
+        'users.unlock_login',
         'users.ban',
         'users.unban',
         'users.delete',

@@ -304,45 +304,49 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                                         | 权限        | 说明                                                                |
-| ------ | -------------------------------------------- | ----------- | ------------------------------------------------------------------- |
-| POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                                            |
-| POST   | `/api/v1/auth/email/verify`                  | 公开        | 消费一次性邮箱验证令牌                                              |
-| POST   | `/api/v1/auth/email/resend`                  | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）                              |
-| POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                                                |
-| GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                                        |
-| GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）                                  |
-| POST   | `/api/v1/tags`                               | tag:manage  | 创建标签（默认仅 admin，可配置）                                    |
-| PUT    | `/api/v1/tags/:id`                           | tag:manage  | 更新标签（改名/改 kind）                                            |
-| DELETE | `/api/v1/tags/:id`                           | tag:manage  | 删除标签（级联清理关联）                                            |
-| POST   | `/api/v1/tags/:id/merge`                     | tag:manage  | 合并标签（关联重指向后删除源标签）                                  |
-| GET    | `/api/v1/problems`                           | 公开        | 题目列表（分页+筛选）                                               |
-| GET    | `/api/v1/problems/:id`                       | 公开        | 题目详情（**双索引**：UUID/display_id/数字）                        |
-| POST   | `/api/v1/problems`                           | 登录        | 创建题目（U/P 类型）                                                |
-| PUT    | `/api/v1/problems/:id`                       | 登录        | 更新题目                                                            |
-| DELETE | `/api/v1/problems/:id`                       | 登录        | 删除题目                                                            |
-| GET    | `/api/v1/submissions`                        | 登录        | 我的提交列表                                                        |
-| POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                                            |
-| GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                                            |
-| GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                                        |
-| GET    | `/api/v1/admin/submission/submissions`       | 管理员      | 全部提交管理                                                        |
-| GET    | `/api/v1/admin/identity/users`               | 管理员      | 用户列表                                                            |
-| PATCH  | `/api/v1/admin/identity/users/:id/role`      | 管理员      | 角色变更                                                            |
-| GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                                            |
-| PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                                        |
-| POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                                        |
-| DELETE | `/api/v1/admin/identity/users/:id`           | 管理员      | 注销用户并写入审计日志                                              |
-| POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                                      |
-| POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228）                       |
-| POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）                        |
-| POST   | `/api/v1/auth/tfa/disable`                   | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）                          |
-| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate` | 登录        | 重新生成恢复码（issue #228）                                        |
-| POST   | `/api/v1/auth/logout`                        | 公开        | 登出（no-op stub，客户端自行清 Cookie）                             |
-| GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）                         |
-| POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                                        |
-| GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                                                    |
-| GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
-| GET    | `/health`                                    | 公开        | 健康检查                                                            |
+| 方法   | 路径                                              | 权限        | 说明                                                                |
+| ------ | ------------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| POST   | `/api/v1/auth/register`                           | 公开        | 用户注册                                                            |
+| POST   | `/api/v1/auth/email/verify`                       | 公开        | 消费一次性邮箱验证令牌                                              |
+| POST   | `/api/v1/auth/email/resend`                       | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）                              |
+| POST   | `/api/v1/auth/login`                              | 公开        | 用户登录（返回 JWT）                                                |
+| GET    | `/api/v1/auth/me`                                 | 登录        | 当前用户信息                                                        |
+| GET    | `/api/v1/tags`                                    | 公开        | 标签列表（含算法标签名，发现路径）                                  |
+| POST   | `/api/v1/tags`                                    | tag:manage  | 创建标签（默认仅 admin，可配置）                                    |
+| PUT    | `/api/v1/tags/:id`                                | tag:manage  | 更新标签（改名/改 kind）                                            |
+| DELETE | `/api/v1/tags/:id`                                | tag:manage  | 删除标签（级联清理关联）                                            |
+| POST   | `/api/v1/tags/:id/merge`                          | tag:manage  | 合并标签（关联重指向后删除源标签）                                  |
+| GET    | `/api/v1/problems`                                | 公开        | 题目列表（分页+筛选）                                               |
+| GET    | `/api/v1/problems/:id`                            | 公开        | 题目详情（**双索引**：UUID/display_id/数字）                        |
+| POST   | `/api/v1/problems`                                | 登录        | 创建题目（U/P 类型）                                                |
+| PUT    | `/api/v1/problems/:id`                            | 登录        | 更新题目                                                            |
+| DELETE | `/api/v1/problems/:id`                            | 登录        | 删除题目                                                            |
+| GET    | `/api/v1/submissions`                             | 登录        | 我的提交列表                                                        |
+| POST   | `/api/v1/submissions`                             | 登录        | 创建提交                                                            |
+| GET    | `/api/v1/submissions/:id`                         | 登录        | 提交详情                                                            |
+| GET    | `/api/v1/submissions/:id/status`                  | 登录        | 提交队列状态                                                        |
+| GET    | `/api/v1/admin/submission/submissions`            | 管理员      | 全部提交管理                                                        |
+| GET    | `/api/v1/admin/identity/users`                    | 管理员      | 用户列表                                                            |
+| POST   | `/api/v1/admin/identity/users`                    | 管理员      | 单建账号（可选邮箱/密码/角色，默认 user；初始密码仅返回一次）       |
+| POST   | `/api/v1/admin/identity/users/import`             | 管理员      | 最多 500 行账号，逐行校验，整批事务创建                             |
+| POST   | `/api/v1/admin/identity/users/:id/reset-password` | 管理员      | 重置临时密码、强制改密并撤销全部旧会话；禁止 root/已注销用户        |
+| POST   | `/api/v1/admin/identity/users/:id/unlock-login`   | 管理员      | 解除所有 IP、所有命名空间的登录失败锁定并审计                       |
+| PATCH  | `/api/v1/admin/identity/users/:id/role`           | 管理员      | 角色变更                                                            |
+| GET    | `/api/v1/users/:id/profile`                       | 公开        | 用户主页                                                            |
+| PUT    | `/api/v1/users/me`                                | 登录        | 更新个人简介                                                        |
+| POST   | `/api/v1/users/me/delete-account`                 | 登录        | 密码确认后软删除并匿名化账户                                        |
+| DELETE | `/api/v1/admin/identity/users/:id`                | 管理员      | 注销用户并写入审计日志                                              |
+| POST   | `/api/v1/auth/change-password`                    | 登录        | 修改密码（issue #75 强制改密）                                      |
+| POST   | `/api/v1/auth/tfa/setup`                          | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228）                       |
+| POST   | `/api/v1/auth/tfa/confirm`                        | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）                        |
+| POST   | `/api/v1/auth/tfa/disable`                        | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）                          |
+| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate`      | 登录        | 重新生成恢复码（issue #228）                                        |
+| POST   | `/api/v1/auth/logout`                             | 公开        | 登出（no-op stub，客户端自行清 Cookie）                             |
+| GET    | `/api/v1/problems/:id/support-package`            | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）                         |
+| POST   | `/api/v1/checkin`                                 | 登录        | 每日签到（返回当前连续天数）                                        |
+| GET    | `/api/v1/checkin/today`                           | 登录        | 查询今日签到状态                                                    |
+| GET    | `/api/v1/search`                                  | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
+| GET    | `/health`                                         | 公开        | 健康检查                                                            |
 
 ### 路由层关键模式
 
@@ -612,13 +616,29 @@ Redis 缓存键与物化视图刷新都以 revision 为准；多副本下无进�
 
 三机制组合使用，配置项全部支持环境变量覆盖（见 `.env.example`）：
 
-| 维度     | 默认值    | Redis Key                    | 说明                                            |
-| -------- | --------- | ---------------------------- | ----------------------------------------------- |
-| IP 窗口  | 30s/10 次 | `ratelimit:login:ip:<ip>`    | 单 IP 暴力破解防护                              |
-| 账号窗口 | 30s/5 次  | `ratelimit:login:acc:<user>` | 分布式撞同一账号防护                            |
-| 失败计数 | 10 次触发 | `loginfail:<user>`           | 跨进程一致（Redis）                             |
-| 失败退避 | +15s/次   | 内存 Map `inMemoryBackoff`   | 不阻塞响应（不依赖 Redis）                      |
-| 失败锁定 | 1h TTL    | `loginlock:<user>`           | 阈值后拒绝登录，需 `clearLoginFailure` 或等 TTL |
+| 维度     | 默认值    | Redis Key                     | 说明                                                 |
+| -------- | --------- | ----------------------------- | ---------------------------------------------------- |
+| IP 窗口  | 30s/10 次 | `ratelimit:login:ip:<ip>`     | 单 IP 暴力破解防护                                   |
+| 账号窗口 | 30s/5 次  | `ratelimit:login:acc:<user>`  | 分布式撞同一账号防护                                 |
+| 失败计数 | 10 次触发 | `<ns>fail:<user>:<ip>`        | 同一账号 + IP 计数，跨进程一致（Redis）              |
+| 失败退避 | +15s/次   | 内存 Map `<ns>::<user>::<ip>` | 当次立即响应，下次请求等待（不依赖 Redis）           |
+| 失败锁定 | 1h TTL    | `<ns>lock:<user>:<ip>`        | 仅拒绝该账号 + IP；成功清理本 IP、管理员解锁或等 TTL |
+
+`<ns>` 保持 `login`（默认）、`pwchange`（改密）、`tfa`（TFA 管理）隔离。
+失败计数、锁定和内存退避均按账号标识 + `getClientIp(c)` 解析的客户端 IP 计算；
+账号标识保持小写，再进行 URI 编码（包括 `*`），避免分隔符冲突和 SCAN
+通配符扩散。 登录沿用现有用户名/邮箱 → 用户 ID 解析，改密/TFA
+直接使用已认证的用户 ID。
+用户名公开，因此按账号单独锁定会让攻击者恶意锁住他人的账号；按 IP 隔离后，
+受害者可从其他 IP 登录。独立的账号窗口仍按账号跨 IP 计数，以限制分布式撞库。
+
+管理员可调用
+`POST /api/v1/admin/identity/users/:id/unlock-login`，或在用户列表点击
+“解除登录锁定”，清除该用户所有
+IP、所有命名空间的失败计数、锁定与**当前进程**退避， 并记录 `users.unlock_login`
+审计；此操作不清除独立的 IP/账号窗口计数。
+其他副本的现有内存退避仍按原期限到期；Redis 锁定在各副本共享。 旧版不含 IP
+的失败键不再读取，按原 TTL 自然过期，无需数据库迁移。
 
 **响应头**（触发限流时返回 429）：
 

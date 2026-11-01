@@ -1,265 +1,301 @@
 <script setup lang="ts">
-import { useAdminList } from "~/composables/useAdminList"
-import { extractApiError } from '~/utils/apiError'
-import { useToast } from "~/composables/useToast"
-import type { AdminColumn } from "~/components/admin/AdminTable.vue"
+import { useAdminList } from '~/composables/useAdminList';
+import { extractApiError } from '~/utils/apiError';
+import { useToast } from '~/composables/useToast';
+import type { AdminColumn } from '~/components/admin/AdminTable.vue';
 
 definePageMeta({
-  layout: "admin",
-  middleware: "admin",
+  layout: 'admin',
+  middleware: 'admin',
+});
 
-})
+const { isLoggedIn, loading } = useAuth();
+const router = useRouter();
 
-const { isLoggedIn, loading } = useAuth()
-const router = useRouter()
+useRequireLogin();
 
-useRequireLogin()
-
-const { api } = useApi()
+const { api } = useApi();
+const resetTarget = ref<{ id: string; username: string } | null>(null);
 
 interface User {
-  id: string
-  username: string
-  email: string
-  is_admin: boolean
-  role_ids: string[]
+  id: string;
+  username: string;
+  email: string;
+  is_admin: boolean;
+  role_ids: string[];
   /** user-ban-table：活跃封禁信息 */
-  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null; updated_at?: string | null } | null
-  created_at: string
-  updated_at: string
-  deleted_at?: string | null
+  active_ban: {
+    reason: string;
+    banned_until: string | null;
+    scope?: 'platform' | 'social' | null;
+    updated_at?: string | null;
+  } | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
 }
 
 // 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；封禁到期 badge 随刷新自动消失）
-const pollInterval = ref<number | null>(30000)
+const pollInterval = ref<number | null>(30000);
 
-const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange, lastRefresh } = useAdminList<User>({
-  path: "/api/v1/admin/identity/users",
-  fetchOptions: { dataField: "data", totalField: "pagination.total" },
+const {
+  items: users,
+  totalPages,
+  loading: tableLoading,
+  error: tableError,
+  currentPage,
+  perPage,
+  searchInput,
+  load: loadUsers,
+  onPageChange,
+  lastRefresh,
+} = useAdminList<User>({
+  path: '/api/v1/admin/identity/users',
+  fetchOptions: { dataField: 'data', totalField: 'pagination.total' },
   polling: { intervalMs: pollInterval },
-})
+});
 
 // 操作（封禁/解封/改角色）后刷新：若当前页超出总页数（删除/变更导致）则回退到最后一页，避免停在空页
 async function reloadAfterMutation() {
   if (currentPage.value > totalPages.value && totalPages.value >= 1) {
-    await loadUsers(totalPages.value)
+    await loadUsers(totalPages.value);
   } else {
-    await loadUsers(currentPage.value)
+    await loadUsers(currentPage.value);
   }
 }
 
 const columns: AdminColumn[] = [
-  { key: "username", label: "用户名" },
-  { key: "email", label: "邮箱" },
-  { key: "role", label: "角色" },
-  { key: "created_at", label: "注册时间" },
-  { key: "actions", label: "操作" },
-]
+  { key: 'username', label: '用户名' },
+  { key: 'email', label: '邮箱' },
+  { key: 'role', label: '角色' },
+  { key: 'created_at', label: '注册时间' },
+  { key: 'actions', label: '操作' },
+];
 
 watch(isLoggedIn, (val) => {
-  if (val) loadUsers()
-}, { immediate: true })
+  if (val) loadUsers();
+}, { immediate: true });
 
 // ─── 角色管理（RBAC PATCH：role_ids）───────
 interface Role {
-  id: string
-  name: string
-  is_admin: boolean
-  is_system: boolean
-  is_default: boolean
+  id: string;
+  name: string;
+  is_admin: boolean;
+  is_system: boolean;
+  is_default: boolean;
 }
 
-const allRoles = ref<Role[]>([])
-const targetUser = ref<User | null>(null)
-const showRoleModal = ref(false)
-const switchingRole = ref(false)
-const switchError = ref("")
-const selectedRoleIds = ref<string[]>([])
+const allRoles = ref<Role[]>([]);
+const targetUser = ref<User | null>(null);
+const showRoleModal = ref(false);
+const switchingRole = ref(false);
+const switchError = ref('');
+const selectedRoleIds = ref<string[]>([]);
 
 async function loadRoles() {
   try {
-    const res = await api.get<{ data: Role[] }>("/api/v1/admin/identity/roles", { silent: true })
-    allRoles.value = res.data
+    const res = await api.get<{ data: Role[] }>('/api/v1/admin/identity/roles', { silent: true });
+    allRoles.value = res.data;
   } catch {
     // 角色加载失败不影响用户列表
   }
 }
 
 function confirmRoleSwitch(user: User) {
-  targetUser.value = user
-  switchError.value = ""
-  selectedRoleIds.value = [...user.role_ids]
-  showRoleModal.value = true
-  void loadRoles()
+  targetUser.value = user;
+  switchError.value = '';
+  selectedRoleIds.value = [...user.role_ids];
+  showRoleModal.value = true;
+  void loadRoles();
 }
 
 function toggleRoleId(roleId: string) {
-  const idx = selectedRoleIds.value.indexOf(roleId)
+  const idx = selectedRoleIds.value.indexOf(roleId);
   if (idx >= 0) {
-    selectedRoleIds.value.splice(idx, 1)
+    selectedRoleIds.value.splice(idx, 1);
   } else {
-    selectedRoleIds.value.push(roleId)
+    selectedRoleIds.value.push(roleId);
   }
 }
 
 async function handleRoleSwitch() {
-  if (!targetUser.value) return
-  switchingRole.value = true
-  switchError.value = ""
+  if (!targetUser.value) return;
+  switchingRole.value = true;
+  switchError.value = '';
   try {
     await api.patch(`/api/v1/admin/identity/users/${targetUser.value.username}/role`, {
       role_ids: selectedRoleIds.value,
-    })
-    showRoleModal.value = false
-    await reloadAfterMutation()
+    });
+    showRoleModal.value = false;
+    await reloadAfterMutation();
   } catch (err: unknown) {
-    switchError.value = extractApiError(err).message
+    switchError.value = extractApiError(err).message;
   } finally {
-    switchingRole.value = false
+    switchingRole.value = false;
   }
 }
 
 // ─── 封禁 / 解封（issue #102）─────────────────────
-const showBanModal = ref(false)
-const banTarget = ref<User | null>(null)
-const banForm = reactive({ reason: "", banned_until: "", scope: "platform" as "platform" | "social" })
-const banning = ref(false)
-const banError = ref("")
-const { dialog } = useDialog()
-const { toast } = useToast()
+const showBanModal = ref(false);
+const banTarget = ref<User | null>(null);
+const banForm = reactive({ reason: '', banned_until: '', scope: 'platform' as 'platform' | 'social' });
+const banning = ref(false);
+const banError = ref('');
+const { dialog } = useDialog();
+const { toast } = useToast();
 
 function confirmBan(user: User) {
-  banTarget.value = user
-  banForm.reason = ""
-  banForm.banned_until = ""
-  banForm.scope = "platform"
-  banError.value = ""
-  showBanModal.value = true
+  banTarget.value = user;
+  banForm.reason = '';
+  banForm.banned_until = '';
+  banForm.scope = 'platform';
+  banError.value = '';
+  showBanModal.value = true;
 }
 
 async function handleBan() {
-  if (!banTarget.value) return
-  banning.value = true
-  banError.value = ""
+  if (!banTarget.value) return;
+  banning.value = true;
+  banError.value = '';
   try {
     await api.patch(`/api/v1/admin/identity/users/${banTarget.value.username}/ban`, {
       reason: banForm.reason.trim() || undefined,
-      banned_until: banForm.banned_until
-        ? new Date(banForm.banned_until).toISOString()
-        : null,
+      banned_until: banForm.banned_until ? new Date(banForm.banned_until).toISOString() : null,
       scope: banForm.scope,
-    })
-    showBanModal.value = false
-    toast.success(`已封禁 ${banTarget.value.username}`)
+    });
+    showBanModal.value = false;
+    toast.success(`已封禁 ${banTarget.value.username}`);
   } catch (err: unknown) {
-    banError.value = extractApiError(err).message
-    banning.value = false
-    return
+    banError.value = extractApiError(err).message;
+    banning.value = false;
+    return;
   }
   try {
-    await reloadAfterMutation()
+    await reloadAfterMutation();
   } catch {
     // 刷新失败不影响操作成功
   } finally {
-    banning.value = false
+    banning.value = false;
   }
 }
 
 async function confirmUnban(user: User) {
   const ok = await dialog.confirm(
     `将解除 ${user.username} 的封禁状态。此操作立即生效。`,
-    { title: "确认解封用户？", confirmText: "确认解封" },
-  )
-  if (!ok) return
-  banning.value = true
+    { title: '确认解封用户？', confirmText: '确认解封' },
+  );
+  if (!ok) return;
+  banning.value = true;
   try {
     await api.patch(`/api/v1/admin/identity/users/${user.username}/unban`, undefined, {
-      headers: user.active_ban?.updated_at ? { "If-Match": `"${user.active_ban.updated_at}"` } : undefined,
-    })
-    toast.success(`已解封 ${user.username}`)
+      headers: user.active_ban?.updated_at ? { 'If-Match': `"${user.active_ban.updated_at}"` } : undefined,
+    });
+    toast.success(`已解封 ${user.username}`);
   } catch {
-    banning.value = false
-    return
+    banning.value = false;
+    return;
   }
   try {
-    await reloadAfterMutation()
+    await reloadAfterMutation();
   } catch {
     // 刷新失败不影响操作成功
   } finally {
-    banning.value = false
+    banning.value = false;
+  }
+}
+
+// 管理员解锁覆盖所有 IP 与认证命名空间，独立于用户封禁状态。
+const unlockingUserId = ref<string | null>(null);
+
+async function unlockLogin(user: User) {
+  if (unlockingUserId.value) return;
+  unlockingUserId.value = user.id;
+  try {
+    await api.post(`/api/v1/admin/identity/users/${user.id}/unlock-login`, undefined, { silent: true });
+    toast.success(`已解除 ${user.username} 的登录锁定`);
+  } catch (error: unknown) {
+    toast.error(extractApiError(error).message);
+  } finally {
+    unlockingUserId.value = null;
   }
 }
 
 // ─── 封禁历史（user-ban-table）─────────────────────
 interface BanRecord {
-  id: string
-  reason: string
-  scope: "platform" | "social"
-  banned_until: string | null
-  banned_at: string
-  banned_by: { id: string; username: string } | null
-  unbanned_at: string | null
-  unbanned_by: { id: string; username: string } | null
+  id: string;
+  reason: string;
+  scope: 'platform' | 'social';
+  banned_until: string | null;
+  banned_at: string;
+  banned_by: { id: string; username: string } | null;
+  unbanned_at: string | null;
+  unbanned_by: { id: string; username: string } | null;
 }
 
-const showHistoryModal = ref(false)
-const historyTarget = ref<User | null>(null)
-const historyRecords = ref<BanRecord[]>([])
-const historyLoading = ref(false)
-const historyError = ref("")
+const showHistoryModal = ref(false);
+const historyTarget = ref<User | null>(null);
+const historyRecords = ref<BanRecord[]>([]);
+const historyLoading = ref(false);
+const historyError = ref('');
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit",
-    })
-  } catch { return iso }
+    return new Date(iso).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
 }
 
 async function showBanHistory(user: User) {
-  historyTarget.value = user
-  historyRecords.value = []
-  historyError.value = ""
-  historyLoading.value = true
-  showHistoryModal.value = true
+  historyTarget.value = user;
+  historyRecords.value = [];
+  historyError.value = '';
+  historyLoading.value = true;
+  showHistoryModal.value = true;
   try {
     const res = await api.get<{ data: BanRecord[] }>(
       `/api/v1/admin/identity/users/${user.username}/bans`,
       { silent: true },
-    )
-    historyRecords.value = res.data
+    );
+    historyRecords.value = res.data;
   } catch (err: unknown) {
-    historyError.value = extractApiError(err).message
+    historyError.value = extractApiError(err).message;
   } finally {
-    historyLoading.value = false
+    historyLoading.value = false;
   }
 }
 
 async function confirmDeleteUser(user: User) {
   const confirmed = await dialog.confirm(
     `注销 ${user.username} 后，该用户将无法登录，公开内容会匿名保留。此操作不可恢复。`,
-    { title: "二次确认注销用户", confirmText: "确认注销", danger: true },
-  )
-  if (!confirmed) return
+    { title: '二次确认注销用户', confirmText: '确认注销', danger: true },
+  );
+  if (!confirmed) return;
   try {
     await api.delete(`/api/v1/admin/identity/users/${user.id}`, {
-      body: { confirmation: "DELETE" },
+      body: { confirmation: 'DELETE' },
       silent: true,
-    })
-    toast.success(`已注销 ${user.username}`)
-    await reloadAfterMutation()
+    });
+    toast.success(`已注销 ${user.username}`);
+    await reloadAfterMutation();
   } catch (error: unknown) {
-    toast.error(extractApiError(error).message)
+    toast.error(extractApiError(error).message);
   }
 }
-
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
     <AdminPageHeader title="用户管理" description="管理所有用户的角色权限">
       <template #actions>
+        <AdminAccountDialogs :reset-user="resetTarget" @reset-closed="resetTarget = null"
+          @changed="reloadAfterMutation" />
         <RefreshControl
           v-model:interval="pollInterval"
           :last-refresh="lastRefresh"
@@ -294,7 +330,7 @@ async function confirmDeleteUser(user: User) {
           <span class="text-text-secondary">{{ row.email }}</span>
         </template>
         <template v-else-if="column.key === 'created_at'">
-          {{ new Date(row.created_at as string).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }) }}
+          {{ new Date(row.created_at as string).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) }}
         </template>
         <template v-else-if="column.key === 'role'">
           <div class="flex items-center gap-1.5 flex-wrap">
@@ -304,7 +340,7 @@ async function confirmDeleteUser(user: User) {
             >
               <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="(row as unknown as User).is_admin"/>
               <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
-              {{ (row as unknown as User).is_admin ? "管理员" : "用户" }}
+              {{ (row as unknown as User).is_admin ? '管理员' : '用户' }}
             </span>
             <span
               v-if="(row as unknown as User).deleted_at"
@@ -315,13 +351,24 @@ async function confirmDeleteUser(user: User) {
               class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
               :title="(row as unknown as User).active_ban?.banned_until ? `至 ${(row as unknown as User).active_ban?.banned_until} 解封` : '永久封禁'"
             >
-              {{ (row as unknown as User).active_ban?.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
+              {{ (row as unknown as User).active_ban?.scope === 'social' ? '已封禁·仅社交' : '已封禁' }}
             </span>
           </div>
         </template>
       </template>
       <template #actions="{ row }">
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <UButton v-if="!(row as unknown as User).deleted_at && row.id !== '0'" color="neutral" variant="outline"
+            size="sm" @click="resetTarget = { id: String(row.id), username: String(row.username) }">重置密码</UButton>
+          <UButton
+            v-if="!(row as unknown as User).deleted_at && row.id !== '0'"
+            color="neutral" variant="outline" size="sm"
+            :loading="unlockingUserId === row.id"
+            :disabled="unlockingUserId !== null"
+            @click="unlockLogin(row as unknown as User)"
+          >
+            解除登录锁定
+          </UButton>
           <button
             v-if="!(row as unknown as User).deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
@@ -345,10 +392,13 @@ async function confirmDeleteUser(user: User) {
           >
             解封
           </button>
-          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row as unknown as User)">
+          <UButton color="neutral" variant="outline" size="sm"
+            class="py-1 border-border text-text-secondary hover:bg-page hover:text-text"
+            @click="showBanHistory(row as unknown as User)">
             历史
           </UButton>
-          <UButton v-if="!(row as unknown as User).deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row as unknown as User)">
+          <UButton v-if="!(row as unknown as User).deleted_at" color="error" variant="outline" size="sm"
+            @click="confirmDeleteUser(row as unknown as User)">
             注销
           </UButton>
         </div>
@@ -412,7 +462,8 @@ async function confirmDeleteUser(user: User) {
             仅限制社交功能
           </label>
         </div>
-        <p class="mt-1 text-[12px] text-text-secondary">平台封禁禁止登录与评测；社交封禁仅限制社区发布，仍可使用平台。</p>
+        <p
+          class="mt-1 text-[12px] text-text-secondary">平台封禁禁止登录与评测；社交封禁仅限制社区发布，仍可使用平台。</p>
       </div>
       <div>
         <label class="block text-sm font-semibold text-text mb-1">封禁原因</label>
@@ -436,7 +487,8 @@ async function confirmDeleteUser(user: User) {
 
     <template #footer>
       <div class="flex items-center justify-between w-full">
-        <UButton color="neutral" variant="ghost" size="sm" :disabled="banning" @click="showBanModal = false">取消</UButton>
+        <UButton color="neutral" variant="ghost" size="sm" :disabled="banning"
+          @click="showBanModal = false">取消</UButton>
         <UButton color="error" size="sm" :loading="banning" @click="handleBan">确认封禁</UButton>
       </div>
     </template>
@@ -471,7 +523,7 @@ async function confirmDeleteUser(user: User) {
             <span
               class="text-xs px-2 py-0.5 rounded bg-gray-100 text-text-secondary"
             >
-              {{ rec.scope === "social" ? "仅社交" : "平台封禁" }}
+              {{ rec.scope === 'social' ? '仅社交' : '平台封禁' }}
             </span>
             <span
               class="text-xs px-2 py-0.5 rounded"

@@ -7,6 +7,10 @@ import type { WorkspaceAuditAction } from "../../../shared/workspace/audit.ts";
 export type AuditAction =
   | WorkspaceAuditAction
   | "users.role_change"
+  | "users.create"
+  | "users.import"
+  | "users.reset_password"
+  | "users.unlock_login"
   | "users.ban"
   | "users.unban"
   | "users.delete"
