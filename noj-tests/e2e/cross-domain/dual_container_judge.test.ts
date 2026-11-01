@@ -24,6 +24,7 @@ import {
   pollSubmission,
   publishProblemVersion,
   registerUser,
+  setProblemState,
 } from "../helper.ts";
 
 // ── 测试常量 ─────────────────────────────────────────
@@ -337,11 +338,9 @@ e2eTest(
       adminToken,
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
-    const visibility = await apiPut(
-      `${await domainProblemPath(problemId)}/state`,
-      { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
-      adminToken,
-    );
+    const visibility = await setProblemState(adminToken, problemId, {
+      visibility: "public",
+    });
     if (visibility.status !== 200) {
       throw new Error(`公开题目失败 ${JSON.stringify(visibility)}`);
     }

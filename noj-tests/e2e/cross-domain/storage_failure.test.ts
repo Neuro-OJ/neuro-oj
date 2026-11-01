@@ -173,7 +173,7 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
       body: formData,
     },
   );
-  if (res.status !== 200) {
+  if (res.status !== 200 && res.status !== 201) {
     throw new Error("导入失败: " + res.status + " " + await res.text());
   }
   const body = (await res.json()) as {

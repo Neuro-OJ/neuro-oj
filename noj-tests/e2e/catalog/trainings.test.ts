@@ -12,6 +12,7 @@ import {
   getProblemIdByNumber,
   pollSubmission,
   publishProblemVersion,
+  setProblemState,
   submitCode,
 } from "../helper.ts";
 
@@ -62,11 +63,9 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
   const problemId = (problemRes.body as { problem_id: string }).problem_id;
-  const publicRes = await apiPut(
-    `${await domainProblemPath(problemId)}/state`,
-    { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
-    adminToken,
-  );
+  const publicRes = await setProblemState(adminToken, problemId, {
+    visibility: "public",
+  });
   if (publicRes.status !== 200) {
     throw new Error(
       `管理员设题目 public 失败: ${JSON.stringify(publicRes.body)}`,
@@ -147,13 +146,9 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   if (deleted.status !== 409) {
     throw new Error(`已发布源题不得物理删除: ${deleted.status}`);
   }
-  const withdrawn = await apiPut(
-    `${await domainProblemPath(problemId)}/state`,
-    {
-      visibility: "private",
-    },
-    adminToken,
-  );
+  const withdrawn = await setProblemState(adminToken, problemId, {
+    visibility: "members",
+  });
   if (withdrawn.status !== 200) throw new Error("更新源题可见性失败");
   const afterDelete = await apiGet(
     `/api/v1/trainings/${trainingId}/problems`,

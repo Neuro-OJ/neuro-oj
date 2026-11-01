@@ -125,7 +125,7 @@ async function importBundle(): Promise<string> {
       body: formData,
     },
   );
-  if (response.status !== 200) {
+  if (response.status !== 200 && response.status !== 201) {
     throw new Error(
       `题包导入失败: ${response.status} ${await response.text()}`,
     );
@@ -253,7 +253,7 @@ e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
     {},
     adminToken,
   );
-  if (response.status !== 200) {
+  if (response.status !== 200 && response.status !== 201) {
     throw new Error(`重测发起失败: ${response.status}`);
   }
   const result = await pollSubmission(adminToken, submissionId);

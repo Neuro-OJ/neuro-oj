@@ -18,6 +18,7 @@ import {
   isJudgeAvailable,
   pollSubmission,
   publishProblemVersion,
+  setProblemState,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -145,7 +146,7 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
       body: formData,
     },
   );
-  if (res.status !== 200) {
+  if (res.status !== 200 && res.status !== 201) {
     throw new Error(
       `导入失败: ${res.status} ${await res.text()}`,
     );
@@ -243,13 +244,9 @@ e2eTest(
         `已发布且有历史提交的题目必须禁止物理删除: ${res.status}`,
       );
     }
-    const withdrawn = await apiPut(
-      `${await domainProblemPath(problemId)}/state`,
-      {
-        visibility: "private",
-      },
-      adminToken,
-    );
+    const withdrawn = await setProblemState(adminToken, problemId, {
+      visibility: "members",
+    });
     if (withdrawn.status !== 200) throw new Error("更新可见性失败");
     const check = await apiGet(`/api/v1/problems/${problemId}`);
     if (check.status !== 200) throw new Error("公开域已发布题目应保持可访问");

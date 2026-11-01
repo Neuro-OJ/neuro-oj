@@ -447,6 +447,33 @@ export async function loginAndChangePassword(
  * 版本化后**提交必须携带 `version_id`**：只创建不发布的题目没有作答版本，
  * 提交会被 409 拒绝。E2E 建题后应先调用本函数固定版本。
  */
+/** 设置域题目状态（可见性/停用）：域端点要求 If-Match 草稿 revision。 */
+export async function setProblemState(
+  token: string,
+  problemId: string,
+  body: {
+    disabled?: boolean;
+    visibility?: "public" | "members";
+    reason?: string;
+  },
+) {
+  const path = await domainProblemPath(problemId, token);
+  const draft = await apiGet(`${path}/draft`, token);
+  const draftBody = draft.body as {
+    revision?: number;
+    data?: { revision?: number };
+  };
+  const revision = draftBody.revision ?? draftBody.data?.revision;
+  if (typeof revision !== "number") {
+    throw new Error(`读取草稿 revision 失败: ${JSON.stringify(draft.body)}`);
+  }
+  return await api("POST", `${path}/state`, {
+    body: { disabled: false, reason: "e2e", ...body },
+    token,
+    headers: { "If-Match": String(revision) },
+  });
+}
+
 export async function publishProblemVersion(
   token: string,
   problemId: string,

@@ -28,6 +28,7 @@ import {
   pollSubmission,
   publishProblemVersion,
   registerUser,
+  setProblemState,
   submitCode,
   TEST_PASSWORD,
   waitForServer,
@@ -178,15 +179,22 @@ async function importBundle(zip: Uint8Array): Promise<string> {
       `导入失败: ${res.status} ${(await res.text()).slice(0, 500)}`,
     );
   }
-  const body = (await res.json()) as {
+  // 域导入只回 problem_id/number：runtime_config 从草稿内容里核对
+  const body = (await res.json()) as { data: { problem_id: string } };
+  const draft = await apiGet(
+    `/api/v1/problems/${body.data.problem_id}/draft`,
+    adminToken,
+  );
+  const draftContent = (draft.body as {
     data: {
-      problem_id: string;
-      runtime_config: {
-        evaluator: { network?: { enabled?: boolean } };
+      content: {
+        runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
       };
     };
-  };
-  if (body.data.runtime_config.evaluator.network?.enabled !== true) {
+  }).data.content;
+  if (
+    draftContent.runtime_config?.evaluator.network?.enabled !== true
+  ) {
     throw new Error(
       "导入后 runtime_config.evaluator.network.enabled 未保留为 true",
     );
@@ -284,15 +292,19 @@ e2eTest(
         }`,
       );
     }
-    const data = (res.body as {
+    const created = res.body as { problem_id: string };
+    const draft = await apiGet(
+      `/api/v1/problems/${created.problem_id}/draft`,
+      adminToken,
+    );
+    const draftContent = (draft.body as {
       data: {
-        id: string;
-        runtime_config: {
-          evaluator: { network?: { enabled?: boolean } };
+        content: {
+          runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
         };
       };
-    }).data;
-    if (data.runtime_config.evaluator.network?.enabled !== true) {
+    }).data.content;
+    if (draftContent.runtime_config?.evaluator.network?.enabled !== true) {
       throw new Error("runtime_config.evaluator.network.enabled 未保留为 true");
     }
   },
@@ -305,11 +317,9 @@ e2eTest(
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
     // 默认域新导入资源先显式公开，再发布作答版本。
-    const pubRes = await apiPut(
-      `${await domainProblemPath(bundleProblemId)}/state`,
-      { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
-      adminToken,
-    );
+    const pubRes = await setProblemState(adminToken, bundleProblemId, {
+      visibility: "public",
+    });
     if (pubRes.status !== 200) {
       throw new Error(
         `设置导入题目公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,

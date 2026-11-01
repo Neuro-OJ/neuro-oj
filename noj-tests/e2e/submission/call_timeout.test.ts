@@ -117,7 +117,7 @@ async function createDualProblem(
       }`,
     );
   }
-  const problemId = (res.body as { data: { id: string } }).data.id;
+  const problemId = (res.body as { problem_id: string }).problem_id;
   await publishProblemVersion(adminToken, problemId, "E2E 调用超时版本");
   return problemId;
 }

@@ -75,7 +75,7 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
       }`,
     );
   }
-  const problemId = (createRes.body as { data: { id: string } }).data.id;
+  const problemId = (createRes.body as { problem_id: string }).problem_id;
   // 域提交入口按题号定位题目（无域 POST /submissions 已删除）
   const problemRef = await getProblemReference(problemId, adminToken);
 

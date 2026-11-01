@@ -90,7 +90,7 @@ e2eTest("[e2e/audit-log] Setup", async () => {
     },
   }, adminToken);
   if (probRes.status !== 201) throw new Error("创建题目失败");
-  problemId = (probRes.body as { data: { id: string } }).data.id;
+  problemId = (probRes.body as { problem_id: string }).problem_id;
 
   // 创建标签（用于 tags.delete / tags.merge 审计）
   const tagRes = await apiPost("/api/v1/tags", {

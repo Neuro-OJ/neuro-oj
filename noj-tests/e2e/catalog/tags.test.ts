@@ -20,6 +20,7 @@ import {
   isJudgeAvailable,
   pollSubmission,
   publishProblemVersion,
+  setProblemState,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -145,11 +146,9 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   problemId = (res.body as { problem_id: string }).problem_id;
 
   // 标签筛选与匿名详情需要公开可见。
-  const pubRes = await apiPut(
-    `${await domainProblemPath(problemId)}/state`,
-    { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
-    adminToken,
-  );
+  const pubRes = await setProblemState(adminToken, problemId, {
+    visibility: "public",
+  });
   if (pubRes.status !== 200) {
     throw new Error(
       "设置题目公开失败: " + pubRes.status + " " +

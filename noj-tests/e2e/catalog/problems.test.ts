@@ -5,6 +5,7 @@
 import {
   apiDelete,
   apiGet,
+  apiPatch,
   apiPost,
   apiPut,
   domainProblemPath,
@@ -12,6 +13,7 @@ import {
   getAdminToken,
   isE2E,
   publishProblemVersion,
+  setProblemState,
   waitForServer,
 } from "../helper.ts";
 
@@ -26,7 +28,7 @@ e2eTest("[e2e/problems] Setup", async () => {
 
 e2eTest("[e2e/problems] 2.1 公共列表", async () => {
   if (!isE2E) return;
-  const { status, body } = await apiGet("/api/v1/domains/main/problems");
+  const { status, body } = await apiGet("/api/v1/problems");
   if (status !== 200) throw new Error("期望 200");
   const d = body as { data: unknown[]; total: number };
   if (!Array.isArray(d.data)) throw new Error("data 应为数组");
@@ -90,12 +92,27 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
   if (draft.status !== 200) throw new Error("读取更新基线失败");
   const revision = (draft.body as { data: { revision: number } }).data.revision;
-  const { status, body } = await apiPut(await domainProblemPath(problemId), {
-    title: "E2E v2",
-    difficulty: "hard",
-    expected_revision: revision,
-  }, adminToken);
+  const draftContent =
+    (draft.body as { data: { content: Record<string, unknown> } })
+      .data.content;
+  // 管理信息（难度）走域 PATCH；内容（标题）只写共享草稿。
+  const { status, body } = await apiPatch(
+    await domainProblemPath(problemId),
+    { difficulty: "hard", expected_revision: revision },
+    adminToken,
+  );
   if (status !== 200) throw new Error("更新失败: " + status);
+  const patched = await apiPut(
+    `${await domainProblemPath(problemId)}/draft`,
+    { content: { ...draftContent, title: "E2E v2" } },
+    adminToken,
+    { "If-Match": String(revision) },
+  );
+  if (patched.status !== 200) {
+    throw new Error(
+      `写草稿失败: ${patched.status} ${JSON.stringify(patched.body)}`,
+    );
+  }
   // 内容更新只写共享草稿，公开版本在发布前仍保持原内容（Handbook §6.2）。
   const d = body as { data: { difficulty: string } };
   if (d.data.difficulty !== "hard") throw new Error("管理信息未更新");
@@ -157,13 +174,9 @@ e2eTest("[e2e/problems] 2.8 已发布题目保护版本且在公开域保持可�
     adminToken,
   );
   if (status !== 409) throw new Error("已发布题目删除应 409, 实际 " + status);
-  const withdrawn = await apiPut(
-    `${await domainProblemPath(problemId)}/state`,
-    {
-      visibility: "private",
-    },
-    adminToken,
-  );
+  const withdrawn = await setProblemState(adminToken, problemId, {
+    visibility: "members",
+  });
   if (withdrawn.status !== 200) throw new Error("更新可见性失败");
   const getRes = await apiGet(await domainProblemPath(problemId));
   if (getRes.status !== 200) throw new Error("公开域已发布题目匿名应 200");
