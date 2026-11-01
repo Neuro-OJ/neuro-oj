@@ -11,6 +11,7 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getProblemReference,
   isE2E,
   registerUser,
   TEST_PASSWORD,
@@ -205,6 +206,12 @@ async function storageUrl(f: PackageFixture) {
   );
   return url;
 }
+/** 0.11 起支持包写入只在域入口：UUID → 题号后拼域路径。 */
+async function domainPackagePath(f: PackageFixture): Promise<string> {
+  const ref = await getProblemReference(f.problemId, f.owner);
+  return `/domains/main/problems/${ref}/support-package`;
+}
+
 async function download(f: PackageFixture, actor = f.owner) {
   const response = await fetch(
     `${BASE_URL}/api/v1/problems/${f.problemId}/support-package`,
@@ -398,7 +405,7 @@ e2eTest(
     await publish(f);
     const url2 = await storageUrl(f),
       editing = await draft(f),
-      deletePath = `/problems/${f.problemId}/support-package`;
+      deletePath = await domainPackagePath(f);
     await request("DELETE", deletePath, f.owner, 428);
     await request("DELETE", deletePath, f.owner, 409, undefined, {
       "If-Match": String(editing.revision - 1),
@@ -431,7 +438,7 @@ e2eTest(
     const url = await storageUrl(f), current = await draft(f);
     await request(
       "DELETE",
-      `/problems/${f.problemId}/support-package`,
+      await domainPackagePath(f),
       f.stranger,
       403,
       undefined,
