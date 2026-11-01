@@ -52,7 +52,7 @@ export function useDraftStorage(
   // 加载（仅客户端）
   onMounted(loadDraft);
 
-  // NOJ-235：同一编辑器实例切换题目时，先清旧代码再加载新题草稿。
+  // 同一编辑器切换题目或账号时，先清旧代码再加载新上下文草稿。
   watch(problemId, (newId, oldId) => {
     if (!import.meta.client || oldId === undefined || newId === oldId) return;
     if (timer) {
@@ -64,7 +64,7 @@ export function useDraftStorage(
     state.value = 'idle';
     // 等 code 重置提交后再读新 key，避免旧 watcher 竞态。
     requestAnimationFrame(loadDraft);
-  });
+  }, { flush: 'sync' });
 
   // 监听变化写入（防抖）
   watch(code, (val) => {
@@ -76,11 +76,13 @@ export function useDraftStorage(
     }
     if (timer) clearTimeout(timer);
     state.value = 'dirty';
+    const target = key.value;
     timer = setTimeout(() => {
+      if (target !== key.value) return;
       state.value = 'saving';
       try {
         localStorage.setItem(
-          key.value,
+          target,
           JSON.stringify({ content: val, updatedAt: Date.now() } satisfies DraftData),
         );
         savedAt.value = new Date();

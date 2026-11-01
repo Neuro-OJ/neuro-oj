@@ -2,6 +2,7 @@ import type { ApiErrorInfo } from '~/utils/apiError';
 import { extractApiError } from '~/utils/apiError';
 import { useToast } from '~/composables/useToast';
 import { authCookieNames } from '~/utils/auth-cookies';
+import { clearUserDrafts } from '~/utils/draft-storage';
 
 /**
  * 统一 API 调用层。
@@ -99,10 +100,12 @@ export function useApi(targetRoute?: { path: string; fullPath: string }) {
       ) {
         // NOJ-210：统一 401 处理必须清掉僵尸登录态——
         // 本地 user state、可读 session cookie，以及 HTTP-only token cookie。
-        const authUser = useState<unknown>('auth:user', () => null);
+        const authUser = useState<{ id: string } | null>('auth:user', () => null);
+        clearUserDrafts(authUser.value?.id);
         authUser.value = null;
         try {
-          const session = useCookie(cookieNames.session);
+          const session = useCookie<{ userId?: string } | null>(cookieNames.session);
+          clearUserDrafts(session.value?.userId);
           session.value = null;
         } catch {
           // ignore

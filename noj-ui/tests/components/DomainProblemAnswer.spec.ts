@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick, ref } from 'vue';
 import DomainProblemAnswer from '~/components/feature/DomainProblemAnswer.vue';
 import type { DomainProblemDetail } from '~/utils/domain-problems';
+import { domainAnswerKey } from '~/utils/domain-problems';
 const api = { code: vi.fn(), objective: vi.fn(), artifact: vi.fn(), template: vi.fn(), ui: vi.fn() };
 const confirm = vi.fn();
 const detail: DomainProblemDetail = {
@@ -82,6 +83,22 @@ beforeEach(() => {
   api.template.mockResolvedValue({ data: { version_id: 'v1', template_content: '# version template' } });
 });
 describe('域题作答', () => {
+  it('题库面板键随账号变化，游客键始终使用 anonymous', async () => {
+    const user = ref<{ id: string } | null>({ id: 'first' });
+    vi.stubGlobal('useAuth', () => ({ user, isLoggedIn: computed(() => !!user.value) }));
+    const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: detail }, global: { stubs } });
+    const panel = view.findComponent({ name: 'ProblemAnswerPanel' });
+    const guest = domainAnswerKey('anonymous', 'school', 'p', 'v1', 'answer');
+    expect(panel.props('draftKey')).toBe(domainAnswerKey('first', 'school', 'p', 'v1', 'answer'));
+    expect(panel.props('guestKey')).toBe(guest);
+    user.value = { id: 'second' };
+    await nextTick();
+    expect(panel.props('draftKey')).toBe(domainAnswerKey('second', 'school', 'p', 'v1', 'answer'));
+    user.value = null;
+    await nextTick();
+    expect(panel.props('draftKey')).toBe(guest);
+    view.unmount();
+  });
   it('游客模板按钮不可操作，不调用需要登录的权限上下文', async () => {
     const capture = vi.fn(() => {
       throw new Error('操作需要登录');

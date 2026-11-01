@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import type { DomainProblemDetail } from '~/utils/domain-problems';
+import { domainAnswerKey } from '~/utils/domain-problems';
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 import type { UiFrameResult } from '~/utils/uiFrame';
@@ -21,7 +22,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ refresh: [] }>();
 
-const { isLoggedIn } = useAuth();
+const { user, isLoggedIn } = useAuth();
 const { domain } = useWorkspace();
 const scope = useWorkspaceActionScope();
 const api = useDomainProblems();
@@ -35,8 +36,12 @@ const submissionId = ref('');
 
 const isObjective = computed(() => props.problem.content.kind === 'objective');
 const submissionMode = computed(() => props.problem.content.submission_mode ?? 'code');
-const draftKey = computed(() => `${props.slug}:${props.problem.reference.problem_id}:${props.problem.version_id}`);
-const guestKey = computed(() => `${props.slug}:guest:${props.problem.reference.problem_id}:${props.problem.version_id}`);
+const draftKey = computed(() =>
+  domainAnswerKey(user.value?.id ?? 'anonymous', props.slug, props.problem.reference.problem_id, props.problem.version_id, 'answer')
+);
+const guestKey = computed(() =>
+  domainAnswerKey('anonymous', props.slug, props.problem.reference.problem_id, props.problem.version_id, 'answer')
+);
 const writable = computed(() => isLoggedIn.value && domain.value?.status === 'active' && props.problem.can_practice !== false);
 
 const handlers: AnswerHandlers = {

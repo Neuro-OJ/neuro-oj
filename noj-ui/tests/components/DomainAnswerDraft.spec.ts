@@ -3,14 +3,16 @@ import { mount } from '@vue/test-utils';
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDomainAnswerDraft } from '~/composables/useDomainAnswerDraft';
 import { domainAnswerKey } from '~/utils/domain-problems';
+import { clearUserDrafts } from '~/utils/draft-storage';
 const draftKey = (actor: string, slug = 'school', version = 'v1') =>
   domainAnswerKey(actor, slug, 'problem', version, 'cc');
 const write = (actor: string, code: string) =>
   localStorage.setItem(`noj:draft:${draftKey(actor)}`, JSON.stringify({ code, answers: {} }));
 function answer(actorId: string, slug = 'school', version = 'v1') {
   const actor = ref(actorId), code = ref(''), answers = ref<Record<string, (string | boolean)[]>>({});
-  const key = computed(() => draftKey(actor.value, slug, version)),
-    guestKey = ref(draftKey('anonymous', slug, version));
+  const domain = ref(slug);
+  const key = computed(() => draftKey(actor.value, domain.value, version)),
+    guestKey = computed(() => draftKey('anonymous', domain.value, version));
   let state!: ReturnType<typeof useDomainAnswerDraft>;
   const view = mount(defineComponent({
     setup() {
@@ -18,7 +20,7 @@ function answer(actorId: string, slug = 'school', version = 'v1') {
       return () => null;
     },
   }));
-  return { view, actor, code, answers, state };
+  return { view, actor, domain, code, answers, state };
 }
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -29,6 +31,55 @@ beforeEach(() => {
   }
 });
 describe('作答草稿和登录交接', () => {
+  it('新账号草稿损坏时清空旧账号输入，不会把旧代码保存给新账号', async () => {
+    const own = answer('first');
+    own.code.value = 'private code';
+    own.answers.value = { private: ['answer'] };
+    localStorage.setItem(`noj:draft:${draftKey('second')}`, '{broken');
+    own.actor.value = 'second';
+    expect(own.code.value).toBe('');
+    expect(own.answers.value).toEqual({});
+    await nextTick();
+    own.view.unmount();
+    expect(localStorage.getItem(`noj:draft:${draftKey('second')}`) ?? '').not.toContain('private');
+  });
+  it('登出清理后立即换账号，待保存输入和卸载回调都不会写回旧账号或带给游客', async () => {
+    const own = answer('first');
+    own.code.value = 'private unsaved code';
+    own.answers.value = { q1: ['private answer'] };
+    clearUserDrafts('first');
+    own.actor.value = 'anonymous';
+    await nextTick();
+    expect(own.code.value).toBe('');
+    expect(own.answers.value).toEqual({});
+    own.actor.value = 'second';
+    await nextTick();
+    expect(own.code.value).toBe('');
+    own.view.unmount();
+    expect(localStorage.getItem(`noj:draft:${draftKey('first')}`)).toBeNull();
+    expect(localStorage.getItem(`noj:draft:${draftKey('second')}`) ?? '').not.toContain('private');
+    expect(localStorage.getItem(`noj:draft:${draftKey('anonymous')}`) ?? '').not.toContain('private');
+  });
+  it('游客同一拍输入并登录时仍能认领当前草稿', async () => {
+    const own = answer('anonymous');
+    own.code.value = 'guest input';
+    own.answers.value = { q1: [true] };
+    own.actor.value = 'student';
+    await nextTick();
+    expect(own.code.value).toBe('guest input');
+    expect(own.answers.value).toEqual({ q1: [true] });
+    expect(localStorage.getItem(`noj:draft:${draftKey('anonymous')}`)).toBeNull();
+    own.view.unmount();
+  });
+  it('同一账号切题时仍保存尚未落盘的旧上下文', async () => {
+    const own = answer('student');
+    own.code.value = 'same account work';
+    own.domain.value = 'other';
+    await nextTick();
+    expect(localStorage.getItem(`noj:draft:${draftKey('student')}`)).toContain('same account work');
+    expect(own.code.value).toBe('');
+    own.view.unmount();
+  });
   it('游客离开后登录恢复同域同版本草稿，并认领到账号中', async () => {
     const guest = answer('anonymous');
     guest.code.value = 'int main(){return 7;}';

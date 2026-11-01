@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, nextTick, ref, Suspense } from 'vue';
 import DomainContestAnswer from '~/components/feature/DomainContestAnswer.vue';
 import type { ContestProblem } from '~/utils/contest-types';
+import { domainAnswerKey } from '~/utils/domain-problems';
 const api = { questions: vi.fn(), code: vi.fn(), artifact: vi.fn(), objective: vi.fn(), template: vi.fn() };
 const confirm = vi.fn();
 const problem = {
@@ -75,6 +76,21 @@ async function answer(objective = false) {
   return view;
 }
 describe('域比赛独立作答入口', () => {
+  it('比赛面板键包含当前账号，未登录使用 anonymous', async () => {
+    const user = ref<{ id: string } | null>({ id: 'first' });
+    vi.stubGlobal('useAuth', () => ({ user }));
+    const view = await answer();
+    const panel = view.findComponent({ name: 'ProblemAnswerPanel' });
+    const key = (actor: string) => domainAnswerKey(actor, 'school', 'contest:contest:p', 'fixed-v1', 'answer');
+    expect(panel.props('draftKey')).toBe(key('first'));
+    user.value = { id: 'second' };
+    await nextTick();
+    expect(panel.props('draftKey')).toBe(key('second'));
+    user.value = null;
+    await nextTick();
+    expect(panel.props('draftKey')).toBe(key('anonymous'));
+    view.unmount();
+  });
   it('代码以使用域、比赛标号和固定版本提交，不进入普通题库', async () => {
     const view = await answer();
     await view.find('textarea').setValue('print(1)');
