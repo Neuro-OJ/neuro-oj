@@ -14,6 +14,7 @@ import {
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { ensureRbacSeeds } from "../../../platform/system/index.ts";
+import { createTraining } from "../../services/trainings.ts";
 
 await resetDbForTest();
 await initRedisForTest();
@@ -99,13 +100,12 @@ Deno.test({
 
     let trainingId: string | undefined;
     try {
-      const createRes = await jsonRequest(app, "/api/v1/trainings", {
-        method: "POST",
-        token: userToken,
-        body: { title: "待管理题单", state: "draft" },
-      });
-      assertEquals(createRes.status, 201);
-      trainingId = (await createRes.json()).data.id;
+      // 无域创建路由已删除：直接走服务层准备数据，管理端断言仍走 HTTP。
+      const created = await createTraining(
+        { title: "待管理题单", state: "draft" },
+        userId,
+      );
+      trainingId = created.id;
 
       const forbidden = await jsonRequest(
         app,

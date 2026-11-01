@@ -74,26 +74,25 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   await publishProblemVersion(adminToken, problemId, "题单源题发布");
   const sampleProblemId = await getProblemIdByNumber(1001);
 
+  // 0.11 起题单写入只在域入口：创建时一次性提交题号列表（无域写路由已删除）。
+  const problemDetail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+  const sourceNumber = (problemDetail.body as { data: { number: number } })
+    .data.number;
   const created = await apiPost(
-    "/api/v1/trainings",
-    { title: "E2E 题单", visibility: "private" },
+    "/api/v1/domains/main/trainings",
+    {
+      title: "E2E 题单",
+      description: "",
+      visibility: "private",
+      state: "draft",
+      problems: [String(sourceNumber), "1001"],
+    },
     user.token,
   );
   if (created.status !== 201) {
     throw new Error(`建题单失败: ${JSON.stringify(created.body)}`);
   }
   const trainingId = (created.body as { data: { id: string } }).data.id;
-
-  for (const pid of [problemId, sampleProblemId]) {
-    const added = await apiPost(
-      `/api/v1/trainings/${trainingId}/problems`,
-      { problem_id: pid },
-      user.token,
-    );
-    if (added.status !== 201) {
-      throw new Error(`加题失败: ${JSON.stringify(added.body)}`);
-    }
-  }
 
   const hidden = await apiGet(`/api/v1/trainings/${trainingId}`, other.token);
   if (hidden.status !== 404) {

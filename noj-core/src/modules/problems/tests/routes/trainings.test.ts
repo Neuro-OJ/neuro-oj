@@ -11,13 +11,26 @@ import {
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { ensureRbacSeeds } from "../../../platform/system/index.ts";
+import {
+  addTrainingProblem,
+  createTraining,
+  updateTraining,
+} from "../../services/trainings.ts";
 
 await resetDbForTest();
 await initRedisForTest();
 await ensureRbacSeeds();
 
+/**
+ * 无域题单的**只读**契约。
+ *
+ * 0.11 起题单的创建、更新、删除与题目增删只存在于域入口
+ * `/api/v1/domains/:slug/trainings`（覆盖见 `domain-trainings.test.ts`）；无域写路由
+ * 已删除。这里保留对仍存在的无域读端点的断言：公开列表、mine、containing、
+ * 详情可见性与题目列表。准备数据一律直接调用服务层，不再经由 HTTP 写路由。
+ */
 Deno.test({
-  name: "trainings routes: 公开列表、mine、CRUD、题目管理",
+  name: "trainings routes: 公开列表、mine、containing 与详情可见性（只读）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -77,32 +90,18 @@ Deno.test({
     let publicTrainingId: string | undefined;
 
     try {
-      const createRes = await jsonRequest(app, "/api/v1/trainings", {
-        method: "POST",
-        token: userToken,
-        body: { title: "我的题单", state: "draft" },
-      });
-      assertEquals(createRes.status, 201);
-      trainingId = (await createRes.json()).data.id;
+      const own = await createTraining(
+        { title: "我的题单", state: "draft" },
+        userId,
+      );
+      trainingId = own.id;
       assertExists(trainingId);
 
-      const publicRes = await jsonRequest(app, "/api/v1/trainings", {
-        method: "POST",
-        token: adminToken,
-        body: { title: "公开题单", state: "published" },
-      });
-      assertEquals(publicRes.status, 201);
-      publicTrainingId = (await publicRes.json()).data.id;
-      const publishRes = await jsonRequest(
-        app,
-        `/api/v1/trainings/${publicTrainingId}`,
-        {
-          method: "PUT",
-          token: adminToken,
-          body: { state: "published" },
-        },
+      const published = await createTraining(
+        { title: "公开题单", state: "published" },
+        adminId,
       );
-      assertEquals(publishRes.status, 200);
+      publicTrainingId = published.id;
 
       const listRes = await jsonRequest(app, "/api/v1/trainings");
       const listBody = await listRes.json();
@@ -127,18 +126,9 @@ Deno.test({
       const profileBody = await profileRes.json();
       assertEquals(profileBody.data.length, 0);
 
-      const addRes = await jsonRequest(
-        app,
-        `/api/v1/trainings/${trainingId}/problems`,
-        {
-          method: "POST",
-          token: userToken,
-          body: { problem_id: problemId },
-        },
-      );
-      assertEquals(addRes.status, 201);
+      await addTrainingProblem(trainingId, problemId, undefined, userId);
 
-      // 新增 /containing：预勾选已含题目的题单
+      // 预勾选已含题目的题单
       const containingRes = await jsonRequest(
         app,
         `/api/v1/trainings/containing?problem_id=${problemId}`,
@@ -170,38 +160,39 @@ Deno.test({
       );
       assertEquals((await problemsRes.json()).data.length, 1);
 
-      const forbiddenPublish = await jsonRequest(
-        app,
-        `/api/v1/trainings/${trainingId}`,
-        {
-          method: "PUT",
-          token: userToken,
-          body: { state: "published" },
-        },
-      );
-      assertEquals(forbiddenPublish.status, 200);
-
       const adminView = await jsonRequest(
         app,
         `/api/v1/trainings/${trainingId}`,
         { token: adminToken },
       );
       assertEquals(adminView.status, 200);
-      const makePrivate = await jsonRequest(
-        app,
-        `/api/v1/trainings/${trainingId}`,
-        {
-          method: "PUT",
-          token: userToken,
-          body: { state: "draft" },
-        },
-      );
-      assertEquals(makePrivate.status, 200);
+
+      // 转回 draft 后匿名不可见（可见性由服务层状态决定）
+      await updateTraining(trainingId, { state: "draft" }, userId);
       const hiddenByAnon = await jsonRequest(
         app,
         `/api/v1/trainings/${trainingId}`,
       );
       assertEquals(hiddenByAnon.status, 404);
+
+      // 已删除的无域写路由：确认不再存在（0.11 起只有域入口）
+      for (
+        const [method, path] of [
+          ["POST", "/api/v1/trainings"],
+          ["PUT", `/api/v1/trainings/${trainingId}`],
+          ["DELETE", `/api/v1/trainings/${trainingId}`],
+          ["POST", `/api/v1/trainings/${trainingId}/problems`],
+          ["PUT", `/api/v1/trainings/${trainingId}/problems`],
+          ["DELETE", `/api/v1/trainings/${trainingId}/problems/${problemId}`],
+        ] as const
+      ) {
+        const res = await jsonRequest(app, path, { method, token: adminToken });
+        assertEquals(
+          res.status,
+          404,
+          `${method} ${path} 应已删除，实际 ${res.status}`,
+        );
+      }
     } finally {
       if (trainingId) {
         await db.delete(trainings).where(eq(trainings.id, trainingId));

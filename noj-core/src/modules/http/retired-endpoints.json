@@ -100,41 +100,5 @@
     "path": "/api/v1/submission-upgrade-jobs",
     "replacement": "POST /api/v1/domains/:slug/submission-jobs",
     "reason": "提交升级必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/trainings",
-    "replacement": "POST /api/v1/domains/:slug/trainings",
-    "reason": "题单创建必须绑定显式工作空间"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/trainings/:id",
-    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id",
-    "reason": "题单修改必须绑定显式工作空间"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/trainings/:id",
-    "replacement": "DELETE /api/v1/domains/:slug/trainings/:id",
-    "reason": "题单删除必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/trainings/:id/problems",
-    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
-    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/trainings/:id/problems",
-    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
-    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/trainings/:id/problems/:problemId",
-    "replacement": "PATCH /api/v1/domains/:slug/trainings/:id（提交完整题单题号列表）",
-    "reason": "题单内容修改必须绑定显式工作空间与完整 revision"
   }
 ]

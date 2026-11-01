@@ -90,6 +90,12 @@
   `pages/editor/[id].vue` 及其专用组件、`utils/editorHistory.ts` 一并删除（它们此前已被
   全局 301 覆盖，永不可达）。`scripts/check-legacy-contest-api.ts` 锁定"路由文件不得复活 +
   第一方零引用 + 退役清单不得再登记比赛"。
+- 无域题单写接口（`POST/PUT/DELETE /api/v1/trainings`、`/trainings/:id/problems`）**已删除**：
+  题单创建、更新、删除与题目增删只存在于 `/api/v1/domains/:slug/trainings`（全域入口按
+  `If-Match` revision 提交完整题号列表）。`catalog/routes/trainings.ts` 只剩只读端点；
+  旧前端组件 `AddToTrainingMenu.vue`、`TrainingManagementSection.vue`、旧页面
+  `pages/admin/trainings.vue` 与 `pages/problems/[id].vue`、以及只服务它们的
+  `composables/useTrainings.ts` 一并删除（活着的域页面用的是 `DomainAddToTrainingMenu`）。
 
 ### 已知未完成
 

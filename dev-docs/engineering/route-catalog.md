@@ -7,8 +7,6 @@
 | --- | --- | --- |
 | DELETE | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | DELETE | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
-| DELETE | `/:id` | noj-core/src/modules/problems/routes/trainings.ts |
-| DELETE | `/:id/problems/:problemId` | noj-core/src/modules/problems/routes/trainings.ts |
 | DELETE | `/:id/questions/:qid` | noj-core/src/modules/problems/routes/problems.ts |
 | DELETE | `/:id/support-package` | noj-core/src/modules/problems/routes/problems.ts |
 | DELETE | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
@@ -208,9 +206,7 @@
 | POST | `/` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
 | POST | `/` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/` | noj-core/src/modules/problems/routes/tags.ts |
-| POST | `/` | noj-core/src/modules/problems/routes/trainings.ts |
 | POST | `/:id/merge` | noj-core/src/modules/problems/routes/tags.ts |
-| POST | `/:id/problems` | noj-core/src/modules/problems/routes/trainings.ts |
 | POST | `/:id/questions` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/:id/retry` | noj-core/src/modules/http/admin/routes/background-tasks.ts |
 | POST | `/:id/retry` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
@@ -295,9 +291,7 @@
 | POST | `/users/import` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
-| PUT | `/:id` | noj-core/src/modules/problems/routes/trainings.ts |
 | PUT | `/:id/draft` | noj-core/src/modules/problems/routes/problems.ts |
-| PUT | `/:id/problems` | noj-core/src/modules/problems/routes/trainings.ts |
 | PUT | `/:id/questions/:qid` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/:id/visibility` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
