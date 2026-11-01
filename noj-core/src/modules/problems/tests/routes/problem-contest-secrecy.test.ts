@@ -371,34 +371,64 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const { problemId, contestId } = await setupRunningPublicContest();
-    const otherToken = await createUserToken();
+    // 域入口要求当前域授予 `submission:create`（旧无域入口只校验登录）：
+    // 用 member 角色身份，才能让 403 落在"保密"而不是"权限"上。
+    const otherToken = await createDefaultCatalogToken("member");
     // 对照题：同样是 public U 型题，但不属于任何竞赛
     const controlOwnerToken = await createUserToken();
     const controlOwnerId = decodeJwt(controlOwnerToken).sub as string;
     const controlProblemId = await createOwnedPublicProblem(controlOwnerId);
     try {
-      const secret = await jsonRequest(app, "/api/v1/submissions", {
-        method: "POST",
-        token: otherToken,
-        body: {
-          problem_id: problemId,
-          language: "python3",
-          code: "print(1)",
+      // 0.11 起提交只走域入口：按题号定位题目（无域 POST /submissions 已删除）。
+      // 题号直接从库里读：这道题正是"保密中"，走 HTTP 读详情会被 403 挡住。
+      const [secretRow] = await getDb().select({
+        number: problems.number,
+        versionId: problems.latest_version_id,
+      }).from(problems).where(eq(problems.id, problemId));
+      const problemRef = String(secretRow!.number);
+      const secret = await jsonRequest(
+        app,
+        "/api/v1/domains/main/submissions",
+        {
+          method: "POST",
+          token: otherToken,
+          body: {
+            problem_ref: problemRef,
+            version_id: secretRow!.versionId,
+            language: "python3",
+            code: "print(1)",
+          },
         },
-      });
+      );
       assertEquals(secret.status, 403);
+      // 用机器码判定：文案是"此题受比赛保护…"，按文案匹配会随措辞漂移。
+      const secretBody = await secret.clone().json() as { code?: string };
+      assertEquals(secretBody.code, "CONTEST_PROBLEM_RESTRICTED");
 
-      const control = await jsonRequest(app, "/api/v1/submissions", {
-        method: "POST",
-        token: otherToken,
-        body: {
-          problem_id: controlProblemId,
-          language: "python3",
-          code: "print(1)",
+      const [controlRow] = await getDb().select({
+        number: problems.number,
+        versionId: problems.latest_version_id,
+      }).from(problems).where(eq(problems.id, controlProblemId));
+      const controlRef = String(controlRow!.number);
+      const control = await jsonRequest(
+        app,
+        "/api/v1/domains/main/submissions",
+        {
+          method: "POST",
+          token: otherToken,
+          body: {
+            problem_ref: controlRef,
+            version_id: controlRow!.versionId,
+            language: "python3",
+            code: "print(1)",
+          },
         },
-      });
-      // 不被保密规则拦截：状态由其他校验决定（400/201 均可能），只要不是 403
-      assertEquals(control.status === 403, false);
+      );
+      // 对照题不被**保密规则**拦截：域入口可能因其他原因拒绝（如权限/版本），
+      // 因此这里断言"拒绝理由里没有保密"，而不是"状态码不是 403"——
+      // 旧无域路径已删除，域名提交的 403 也可能是权限，不能混为一谈。
+      const controlBody = await control.json() as { code?: string };
+      assertEquals(controlBody.code === "CONTEST_PROBLEM_RESTRICTED", false);
     } finally {
       await cleanup(contestId, problemId);
       await getDb().delete(problems).where(eq(problems.id, controlProblemId))
@@ -409,4 +439,7 @@ Deno.test({
 
 import { resetDbForTest } from "../default-fixture.ts";
 
-import { grantDefaultCatalogRole } from "../default-fixture.ts";
+import {
+  createDefaultCatalogToken,
+  grantDefaultCatalogRole,
+} from "../default-fixture.ts";

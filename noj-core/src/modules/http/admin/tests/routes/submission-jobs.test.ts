@@ -23,6 +23,7 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../../../../../../tests/helper.ts";
+import { grantDefaultCatalogRole } from "../../../../problems/tests/default-fixture.ts";
 
 const now = new Date().toISOString();
 const ts = Date.now();
@@ -47,7 +48,10 @@ const runtimeConfig = {
 };
 
 /** 建题（含 V1 版本与最新版指针）与一名提交用户，返回 ID 集合。 */
-async function seedProblemAndSubmission(tag: string): Promise<{
+async function seedProblemAndSubmission(
+  tag: string,
+  ownerId?: string,
+): Promise<{
   problemId: string;
   versionId: string;
   userId: string;
@@ -55,16 +59,18 @@ async function seedProblemAndSubmission(tag: string): Promise<{
 }> {
   const problemId = `tst-jobs-prob-${tag}-${ts}`;
   const versionId = `tst-jobs-ver-${tag}-${ts}`;
-  const userId = `tst-jobs-user-${tag}-${ts}`;
+  const userId = ownerId ?? `tst-jobs-user-${tag}-${ts}`;
   const submissionId = `tst-jobs-sub-${tag}-${ts}`;
-  await db.insert(users).values({
-    id: userId,
-    username: `tstjobs-${tag}-${ts}`,
-    email: `tstjobs-${tag}-${ts}@test.noj`,
-    password_hash: "hash",
-    created_at: now,
-    updated_at: now,
-  });
+  if (!ownerId) {
+    await db.insert(users).values({
+      id: userId,
+      username: `tstjobs-${tag}-${ts}`,
+      email: `tstjobs-${tag}-${ts}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+  }
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
@@ -161,6 +167,16 @@ Deno.test({
         },
       },
     );
+    if (accepted.status !== 202) {
+      console.log(
+        "UPGRADE_DEBUG",
+        accepted.status,
+        await accepted.clone().text(),
+      );
+    }
+    if (accepted.status !== 202) {
+      console.log("UPGRADE_BODY", await accepted.clone().text());
+    }
     assertEquals(accepted.status, 202);
     const jobId = (await accepted.json()).data.job_id as string;
     assertEquals(typeof jobId, "string");
@@ -300,14 +316,17 @@ Deno.test({
     // 因此这里以 userId 为准构造“他人”场景（ownerToken 非该提交所有者）。
     const ownerAccepted = await jsonRequest(
       app,
-      "/api/v1/submission-upgrade-jobs",
+      "/api/v1/domains/main/submission-jobs",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${admin}`,
           "Idempotency-Key": crypto.randomUUID(),
         },
-        body: { submissions: [{ kind: "submission", id: submissionId }] },
+        body: {
+          kind: "upgrade",
+          submissions: [{ kind: "submission", id: submissionId }],
+        },
       },
     );
     // 管理员通过管理入口为原用户升级：由服务层判定跨用户权限
@@ -316,23 +335,31 @@ Deno.test({
       assertEquals([400, 403].includes(ownerAccepted.status), true);
     }
 
-    // 本人场景：新建一条归属该 token 用户的提交
-    const mine = await seedProblemAndSubmission("upgrade-mine");
+    // 本人场景：直接以该 token 的主体为所有者建提交（不再事后改归属，
+    // 避免把"升级自己的提交"这条判定搅混）
     const myUserId = (await (await jsonRequest(app, "/api/v1/auth/me", {
       headers: { Authorization: `Bearer ${ownerToken}` },
     })).json()).data.id as string;
-    await db.update(submissions).set({ user_id: myUserId }).where(
-      eq(submissions.id, mine.submissionId),
-    );
+    const mine = await seedProblemAndSubmission("upgrade-mine", myUserId);
+    // 域入口除归属外还要求当前域授予 `submission:create`（旧无域入口只校验归属）。
+    // 用默认目录夹具补成员身份与 member 角色，否则 403 会先于任务语义发生。
+    await grantDefaultCatalogRole(myUserId, "member");
 
-    const accepted = await jsonRequest(app, "/api/v1/submission-upgrade-jobs", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ownerToken}`,
-        "Idempotency-Key": crypto.randomUUID(),
+    const accepted = await jsonRequest(
+      app,
+      "/api/v1/domains/main/submission-jobs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ownerToken}`,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: {
+          kind: "upgrade",
+          submissions: [{ kind: "submission", id: mine.submissionId }],
+        },
       },
-      body: { submissions: [{ kind: "submission", id: mine.submissionId }] },
-    });
+    );
     assertEquals(accepted.status, 202);
     const jobId = (await accepted.json()).data.job_id as string;
 

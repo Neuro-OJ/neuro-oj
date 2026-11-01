@@ -9,6 +9,7 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getProblemReference,
   isE2E,
   publishProblemVersion,
   registerUser,
@@ -75,17 +76,19 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
     );
   }
   const problemId = (createRes.body as { data: { id: string } }).data.id;
+  // 域提交入口按题号定位题目（无域 POST /submissions 已删除）
+  const problemRef = await getProblemReference(problemId, adminToken);
 
   // 发布作答版本：版本化后提交必须携带 version_id，未发布的题目无法提交
   const versionId = await publishProblemVersion(adminToken, problemId, "e2e");
 
   // 上传 zip
   const form = new FormData();
-  form.append("problem_id", problemId);
+  form.append("problem_ref", problemRef);
   form.append("version_id", versionId);
   form.append("language", "python3");
   form.append("file", makeZip(), "submission.zip");
-  const uploadRes = await fetch(`${BASE_URL}/api/v1/submissions`, {
+  const uploadRes = await fetch(`${BASE_URL}/api/v1/domains/main/submissions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${userToken}` },
     body: form,

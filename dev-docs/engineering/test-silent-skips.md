@@ -282,11 +282,11 @@
 | noj-tests/e2e/submission/abnormal_rejudge.test.ts | 37 | early-return |
 | noj-tests/e2e/submission/abnormal_rejudge.test.ts | 56 | early-return |
 | noj-tests/e2e/submission/abnormal_rejudge.test.ts | 83 | early-return |
-| noj-tests/e2e/submission/artifact_submission.test.ts | 29 | early-return |
-| noj-tests/e2e/submission/artifact_submission.test.ts | 34 | early-return |
+| noj-tests/e2e/submission/artifact_submission.test.ts | 30 | early-return |
+| noj-tests/e2e/submission/artifact_submission.test.ts | 35 | early-return |
 | noj-tests/e2e/submission/mq_invalid_message.test.ts | 60 | early-return |
-| noj-tests/e2e/submission/prediction_submission.test.ts | 76 | early-return |
-| noj-tests/e2e/submission/prediction_submission.test.ts | 81 | early-return |
+| noj-tests/e2e/submission/prediction_submission.test.ts | 77 | early-return |
+| noj-tests/e2e/submission/prediction_submission.test.ts | 82 | early-return |
 | noj-tests/e2e/submission/priority_queue.test.ts | 104 | early-return |
 | noj-tests/e2e/submission/priority_queue.test.ts | 119 | early-return |
 | noj-tests/e2e/submission/priority_queue.test.ts | 158 | early-return |
