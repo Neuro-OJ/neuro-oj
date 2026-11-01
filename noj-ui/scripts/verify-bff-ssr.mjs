@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { strict as assert } from 'node:assert';
 
 const requests = [];
-let brokenCarousel = false;
+let brokenAnnouncements = false;
 let draftAssignment = false;
 let inboxFixture = false;
 let revokedNotice = false;
@@ -223,27 +223,15 @@ const fixture = Deno.serve(
       }
       return Response.json({ data: item });
     }
-    if (path.endsWith('/carousel/slides')) {
-      return brokenCarousel ? Response.json({ error: '轮播暂不可用' }, { status: 503 }) : Response.json({
-        data: [{
-          id: 'slide',
-          kind: 'text',
-          title: '轮播首屏',
-          subtitle: '聚合返回的内容',
-          gradient_key: 'sky',
-          image_storage_url: null,
-          link_url: null,
-          sort_order: 0,
-          is_enabled: true,
-        }],
-      });
-    }
     if (path.endsWith('/announcements/banner')) {
       return Response.json({
         data: null,
       });
     }
     if (path.endsWith('/announcements')) {
+      if (brokenAnnouncements) {
+        return Response.json({ error: '公告暂不可用' }, { status: 503 });
+      }
       return Response.json({
         data: [{
           id: 'notice',
@@ -464,7 +452,7 @@ try {
   }
   assert(ready, `生产构建未就绪，日志：${logPath}`);
   const html = await (await fetch(`${base}/d/school`)).text();
-  for (const text of ['空间首屏', '轮播首屏', '公告首屏', '题目首屏']) {
+  for (const text of ['空间首屏', '公告首屏', '题目首屏']) {
     assert(html.includes(text), `SSR 缺少 ${text}`);
   }
   assert.equal((await fetch(`${base}/d/missing`)).status, 404);
@@ -477,7 +465,7 @@ try {
   for (const path of ['/settings', '/admin', '/d/school/solve/1001']) {
     const shell = await (await fetch(base + path)).text();
     assert(
-      !shell.includes('轮播首屏') && !shell.includes('个人资料编辑'),
+      !shell.includes('公告首屏') && !shell.includes('个人资料编辑'),
       `${path} 应仅返回客户端外壳`,
     );
   }
@@ -531,7 +519,7 @@ try {
         ? '班级首屏'
         : path.endsWith('/assignments/a')
         ? '作业首屏'
-        : '轮播首屏';
+        : '公告首屏';
       assert(
         (await tab.locator('body').innerText()).includes(expectedTitle),
         `${role} ${path} 未显示主要内容`,
@@ -770,10 +758,10 @@ try {
   await inboxTab.waitForURL('**/d/school/assignments/a');
   assert.deepEqual(inboxErrors, [], '通知筛选、已读和目标跳转不应产生页面错误');
   await inboxContext.close();
-  brokenCarousel = true;
+  brokenAnnouncements = true;
   const degraded = await fetch(`${base}/api/bff/v1/domains/school/home`);
   assert.equal(degraded.status, 200);
-  assert.equal((await degraded.json()).sections.carousel.error.statusCode, 503);
+  assert.equal((await degraded.json()).sections.announcements.error.statusCode, 503);
   console.log(
     'BFF 生产 SSR、身份分支、浏览器水合、SPA 单请求和局部刷新验收通过',
   );

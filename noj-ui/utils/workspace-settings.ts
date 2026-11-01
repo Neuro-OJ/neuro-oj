@@ -30,7 +30,6 @@ export function workspaceSettingsNavigation(domain: WorkspaceDetail): WorkspaceS
       : []),
     ...(can('domain:settings')
       ? [
-        { label: '轮播管理', to: base + '/carousel', icon: 'i-lucide-gallery-horizontal', group: '内容' as const },
         { label: '公告管理', to: base + '/announcements', icon: 'i-lucide-megaphone', group: '内容' as const },
       ]
       : []),

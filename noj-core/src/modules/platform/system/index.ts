@@ -59,22 +59,6 @@ export type {
   UpdateAnnouncementInput,
 } from "./services/announcements.ts";
 export {
-  createSlide,
-  deleteSlide,
-  getCarouselImageBytes,
-  listAllSlides,
-  listEnabledSlides,
-  reorderSlides,
-  updateSlide,
-  uploadCarouselImage,
-} from "./services/carousel.ts";
-export { MAX_CAROUSEL_IMAGE_SIZE } from "./services/carousel.ts";
-export type {
-  CarouselKind,
-  CarouselSlide,
-  CarouselSlideInput,
-} from "./services/carousel.ts";
-export {
   createJudgeImage,
   deleteJudgeImage,
   listJudgeImages,

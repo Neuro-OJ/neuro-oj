@@ -27,7 +27,6 @@ import problemVersionsAdminRouter from "./routes/problem-versions.ts";
 import queryAdminRouter from "./routes/query.ts";
 import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
-import carouselAdminRouter from "./routes/carousel.ts";
 import communityAdminRouter from "./routes/community.ts";
 import gatewayAdminRouter from "./routes/gateway.ts";
 import backgroundTasksAdminRouter from "./routes/background-tasks.ts";
@@ -40,7 +39,6 @@ const FINE_GRAINED_ADMIN_PREFIXES = [
   "/api/v1/admin/system/announcements",
   "/api/v1/admin/community",
   "/api/v1/admin/legal",
-  "/api/v1/admin/carousel",
 ] as const;
 
 router.use("*", authMiddleware, async (c, next) => {
@@ -64,7 +62,6 @@ router.route("/system", systemAdminRouter);
 router.route("/community", communityAdminRouter);
 router.route("/gateway", gatewayAdminRouter);
 router.route("/legal", legalAdminRouter);
-router.route("/carousel", carouselAdminRouter);
 // P4 持久后台任务：运维查看积压/健康并人工重试终态失败任务。
 router.route("/background-tasks", backgroundTasksAdminRouter);
 

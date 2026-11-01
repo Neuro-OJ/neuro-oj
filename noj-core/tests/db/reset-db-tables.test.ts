@@ -1,8 +1,7 @@
 /**
  * `resetDbForTest()` 的表覆盖回归测试（2026-09-24 评审）。
  *
- * 评审实测：`ALL_TABLES` 长期漏登记 5 张表（`carousel_slides`、
- * `objective_submissions`、`self_tests`、`sse_events`），
+ * 评审实测：`ALL_TABLES` 长期漏登记多张表（`objective_submissions`、`self_tests`、`sse_events`），
  * 导致 `resetDbForTest()` 的 TRUNCATE 漏表、同进程用例相互污染；而
  * schema parity / 迁移门禁都看不到该名单遗漏。
  *
@@ -15,39 +14,9 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
-import { carouselSlides, sseEvents } from "../../src/shared/db/schema.ts";
+import { sseEvents } from "../../src/shared/db/schema.ts";
 Deno.test({
-  name: "resetDbForTest: carousel_slides 会被清空（2026-09-24 评审回归）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  async fn() {
-    await resetDbForTest();
-    const db = getDb();
-    const now = new Date().toISOString();
-
-    await db.insert(carouselSlides).values({
-      id: crypto.randomUUID(),
-      kind: "text",
-      title: "reset-probe",
-      sort_order: 0,
-      is_enabled: true,
-      created_at: now,
-      updated_at: now,
-    });
-    assertEquals((await db.select().from(carouselSlides)).length, 1);
-
-    await resetDbForTest();
-
-    assertEquals(
-      (await db.select().from(carouselSlides)).length,
-      0,
-      "resetDbForTest 后 carousel_slides 必须为空（否则跨用例污染）",
-    );
-  },
-});
-
-Deno.test({
-  name: "resetDbForTest: sse_events 会被清空（同批补登记的表）",
+  name: "resetDbForTest: sse_events 会被清空（2026-09-24 评审回归）",
   sanitizeResources: false,
   sanitizeOps: false,
   async fn() {
@@ -76,18 +45,12 @@ Deno.test({
     // 清空的断言把这种静默失败变成红灯。
     await resetDbForTest();
     const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(carouselSlides).values({
-      id: crypto.randomUUID(),
-      kind: "image",
-      title: "t",
-      image_storage_url: "noj-storage://probe.png",
-      sort_order: 1,
-      is_enabled: false,
-      created_at: now,
-      updated_at: now,
+    await db.insert(sseEvents).values({
+      channel: "probe-truncate",
+      payload: { probe: true },
+      created_at: new Date().toISOString(),
     });
     await resetDbForTest();
-    assertEquals((await db.select().from(carouselSlides)).length, 0);
+    assertEquals((await db.select().from(sseEvents)).length, 0);
   },
 });

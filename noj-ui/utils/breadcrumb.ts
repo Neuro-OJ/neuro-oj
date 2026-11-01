@@ -88,10 +88,6 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ param: 'slug' }, { key: 'announcement.title', to: '/d/:slug/announcements' }, { param: 'id' }],
   },
   {
-    pattern: '/d/:slug/settings/carousel',
-    trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'breadcrumb.carousel' }],
-  },
-  {
     pattern: '/d/:slug/settings/announcements',
     trail: [{ param: 'slug' }, { key: 'breadcrumb.settings', to: '/d/:slug/settings' }, { key: 'announcement.title' }],
   },

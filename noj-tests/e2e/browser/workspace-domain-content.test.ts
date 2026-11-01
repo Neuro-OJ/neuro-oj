@@ -2,7 +2,7 @@
 /** 实例与两域运营内容：管理页面实际发布，公开入口与隔离用真实 API 核对。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { api, BASE_URL, getAdminToken } from "../helper.ts";
+import { api, getAdminToken } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage,
@@ -12,7 +12,7 @@ import {
 import { inputModeFixture as fixture } from "./_workspace-input-mode-fixtures.ts";
 
 Deno.test({
-  name: "workspace-domain-content: 原版域设置发布公告轮播、实例合并与跨域隔离",
+  name: "workspace-domain-content: 原版域设置发布公告、实例合并与跨域隔离",
   ignore: !BROWSER_E2E,
   sanitizeOps: false,
   sanitizeResources: false,
@@ -84,29 +84,7 @@ Deno.test({
       await expect(
         page.getByRole("cell", { name: `本域公告 ${suffix}`, exact: true }),
       ).toBeVisible();
-      await page.getByRole("navigation", { name: "域设置", exact: true })
-        .getByRole("link", { name: "轮播管理", exact: true }).click();
-      await page.getByRole("button", { name: "新建幻灯片", exact: true })
-        .click();
-      const slide = page.getByRole("dialog", {
-        name: "新建幻灯片",
-        exact: true,
-      });
-      await slide.getByPlaceholder("幻灯片标题", { exact: true }).fill(
-        `本域轮播 ${suffix}`,
-      );
-      const [saved] = await Promise.all([
-        page.waitForResponse((r) =>
-          r.url().endsWith(`/domains/${a}/settings/carousel/slides`) &&
-          r.request().method() === "POST"
-        ),
-        slide.getByRole("button", { name: "立即创建", exact: true }).click(),
-      ]);
-      assertEquals(saved.status(), 201, await saved.text());
-      await expect(slide).toBeHidden();
       await gotoPage(page, `/d/${a}`);
-      await expect(page.getByText(`本域轮播 ${suffix}`, { exact: true }))
-        .toBeVisible();
       await expect(
         page.getByRole("link", { name: new RegExp(`本域公告 ${suffix}`) }),
       ).toBeVisible();
@@ -143,47 +121,6 @@ Deno.test({
         (await api("GET", `/api/v1/domains/${b}/announcements`)).status,
         404,
       );
-      // 私有域上传的图片仍由当前域授权入口读取，不能经其他域或实例 URL 公开。
-      const png = Uint8Array.from(
-        atob(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7x8AAAAASUVORK5CYII=",
-        ),
-        (c) => c.charCodeAt(0),
-      );
-      const form = new FormData();
-      form.set("file", new File([png], "banner.png", { type: "image/png" }));
-      const uploaded = await fetch(
-        `${BASE_URL}/api/v1/domains/${b}/settings/carousel/images`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
-        },
-      );
-      assertEquals(uploaded.status, 201);
-      const image = (await uploaded.json()).data.image_storage_url as string;
-      const imageSlide = await fixture<{ data: { id: string } }>(
-        "POST",
-        `/domains/${b}/settings/carousel/slides`,
-        token,
-        { kind: "image", image_storage_url: image },
-      );
-      const imagePath = `/carousel/slides/${imageSlide.data.id}/image`;
-      const bytes = await fetch(`${BASE_URL}/api/v1/domains/${b}${imagePath}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      assertEquals(bytes.status, 200);
-      assertEquals(new Uint8Array(await bytes.arrayBuffer()), png);
-      assertEquals(
-        (await api("GET", `/api/v1/domains/${b}${imagePath}`)).status,
-        404,
-      );
-      assertEquals(
-        (await api("GET", `/api/v1/domains/${a}${imagePath}`, { token }))
-          .status,
-        404,
-      );
-      assertEquals((await api("GET", `/api/v1${imagePath}`)).status, 404);
       await page.setViewportSize({ width: 390, height: 844 });
       await gotoPage(page, `/d/${a}/settings`);
       await expect(

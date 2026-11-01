@@ -60,7 +60,7 @@ const mountHome = () =>
         UButton: { template: '<button><slot /></button>' },
         UTextarea: true,
         DomainHomeContent: true,
-        Carousel: { props: ['domainSlug', 'title'], template: '<section data-testid="carousel">{{ title }}</section>' },
+        WorkspaceHero: { props: ['title'], template: '<section data-testid="workspace-hero">{{ title }}</section>' },
         HomepageCheckIn: true,
         AnnouncementSection: true,
         RandomProblems: true,
@@ -75,7 +75,7 @@ describe('明确的域首页不跳走', () => {
     const view = mountHome();
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();
-    expect(view.find('[data-testid="carousel"]').text()).toBe('学校');
+    expect(view.find('[data-testid="workspace-hero"]').text()).toBe('学校');
     expect(view.find('random-problems-stub').attributes('domain-slug')).toBe('school');
     view.unmount();
   });

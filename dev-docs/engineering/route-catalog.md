@@ -29,7 +29,6 @@
 | DELETE | `/roles/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
 | DELETE | `/sanctions/:sanctionId` | noj-core/src/modules/http/admin/routes/community.ts |
 | DELETE | `/settings/:key` | noj-core/src/modules/http/admin/routes/system.ts |
-| DELETE | `/slides/:id` | noj-core/src/modules/http/admin/routes/carousel.ts |
 | DELETE | `/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
 | DELETE | `/trainings/:id` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | DELETE | `/users/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
@@ -195,9 +194,6 @@
 | GET | `/self-tests/:id` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | GET | `/settings` | noj-core/src/modules/http/admin/routes/system.ts |
 | GET | `/settings/email/status` | noj-core/src/modules/http/admin/routes/system.ts |
-| GET | `/slides` | noj-core/src/modules/http/admin/routes/carousel.ts |
-| GET | `/slides` | noj-core/src/modules/platform/system/routes/carousel.ts |
-| GET | `/slides/:id/image` | noj-core/src/modules/platform/system/routes/carousel.ts |
 | GET | `/solutions/eligibility` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/stats` | noj-core/src/modules/access/identity/routes/checkin.ts |
 | GET | `/stats` | noj-core/src/modules/read-models/queries/routes/stats.ts |
@@ -225,7 +221,6 @@
 | PATCH | `/domains/:slug/assignments/:id/help-requests/:helpId` | noj-core/src/modules/education/routes/interactions.ts |
 | PATCH | `/posts/:postId` | noj-core/src/modules/communication/community/routes/community.ts |
 | PATCH | `/posts/:postId/official` | noj-core/src/modules/communication/community/routes/community.ts |
-| PATCH | `/slides/:id` | noj-core/src/modules/http/admin/routes/carousel.ts |
 | PATCH | `/trainings/:id` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | PATCH | `/users/:id/ban` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PATCH | `/users/:id/role` | noj-core/src/modules/http/admin/routes/identity.ts |
@@ -294,7 +289,6 @@
 | POST | `/email/resend` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/email/verify` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/forgot-password` | noj-core/src/modules/access/identity/routes/auth.ts |
-| POST | `/images` | noj-core/src/modules/http/admin/routes/carousel.ts |
 | POST | `/import-bundle` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/internal/drain/enter` | noj-core/src/modules/platform/system/routes/internal-drain.ts |
 | POST | `/internal/drain/exit` | noj-core/src/modules/platform/system/routes/internal-drain.ts |
@@ -327,8 +321,6 @@
 | POST | `/self-tests/:id/cancel` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | POST | `/set-password` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/settings/email/test-send` | noj-core/src/modules/http/admin/routes/system.ts |
-| POST | `/slides` | noj-core/src/modules/http/admin/routes/carousel.ts |
-| POST | `/slides/reorder` | noj-core/src/modules/http/admin/routes/carousel.ts |
 | POST | `/submission-upgrade-jobs` | noj-core/src/modules/evaluations/routes/upgrade-jobs.ts |
 | POST | `/submissions/:id/rejudge` | noj-core/src/modules/http/admin/routes/submission.ts |
 | POST | `/tfa/confirm` | noj-core/src/modules/access/identity/routes/auth.ts |

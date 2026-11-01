@@ -16,7 +16,6 @@ export type BffSectionName =
   | 'siteMeta'
   | 'communityConfig'
   | 'accountNotifications'
-  | 'carousel'
   | 'announcements'
   | 'randomProblems'
   | 'activity'

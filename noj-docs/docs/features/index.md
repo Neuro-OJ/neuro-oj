@@ -69,7 +69,7 @@ Neuro OJ 围绕 AI
 ### 📢 [系统公告与横幅（Announcements）](./announcements.md)
 
 支持 Markdown 排版的平台公告发布系统，具备导航栏置顶横幅通知、变更 SSE
-实时广播，与首页轮播海报完全解耦。
+实时广播。
 
 </div>
 

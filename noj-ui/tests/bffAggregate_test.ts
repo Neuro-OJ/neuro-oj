@@ -112,15 +112,15 @@ Deno.test('BFF 辅助模块 5xx 保留局部错误，必要主资源和 401 不�
   const { reader } = fixture();
   const original = reader.get;
   reader.get = (path, options) =>
-    path.endsWith('/carousel/slides')
-      ? Promise.reject(new BffError(503, { error: '轮播故障' }))
+    path.includes('/announcements?')
+      ? Promise.reject(new BffError(503, { error: '公告故障' }))
       : original(path, options);
   const result = await aggregateView(
     reader,
     { kind: 'home', slug: 'school', authenticated: false },
     () => Promise.resolve({}),
   );
-  assertEquals(result.sections.carousel?.error?.statusCode, 503);
+  assertEquals(result.sections.announcements?.error?.statusCode, 503);
   assert(result.sections.activity?.data);
   reader.get = () => Promise.reject(new BffError(404, { error: '空间不存在' }));
   const missing = await assertRejects(

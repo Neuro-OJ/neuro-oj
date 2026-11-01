@@ -46,7 +46,6 @@ import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
 import {
-  carouselSlides,
   problemDraftObjects,
   problemVersionObjects,
   storageObjectReservations,
@@ -79,7 +78,6 @@ export interface StorageReferenceReport {
   version_refs: number;
   artifact_submissions: number;
   self_test_refs: number;
-  carousel_refs: number;
   total: number;
 }
 
@@ -636,20 +634,15 @@ export async function collectStorageReferences(
   const [artifact] = await db.select({ count: sql<number>`count(*)::int` })
     .from(submissions)
     .where(eq(submissions.artifact_storage_url, storageUrl));
-  const [carousel] = await db.select({ count: sql<number>`count(*)::int` })
-    .from(carouselSlides).where(
-      eq(carouselSlides.image_storage_url, storageUrl),
-    );
   const report: StorageReferenceReport = {
     draft_refs: draft?.count ?? 0,
     version_refs: version?.count ?? 0,
     artifact_submissions: artifact?.count ?? 0,
     self_test_refs: 0,
-    carousel_refs: carousel?.count ?? 0,
     total: 0,
   };
   report.total = report.draft_refs + report.version_refs +
-    report.artifact_submissions + report.self_test_refs + report.carousel_refs;
+    report.artifact_submissions + report.self_test_refs;
   return report;
 }
 
