@@ -1,27 +1,14 @@
-/** CI 的真实 Python 选择器回归：共享改动覆盖全部任务，教育域不会因缺少环境映射被遗漏。 */
+/** CI 的真实选择器回归：共享改动覆盖全部任务，教育域不会因缺少环境映射被遗漏。 */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { MODULE_TEST_METADATA } from "./module-test-metadata.ts";
+import { selectDomains } from "./select-core-ci.ts";
 
-async function select(
+function select(
   aliases: Record<string, string>,
   env: Record<string, string>,
 ) {
-  const command = new Deno.Command("python3", {
-    args: [
-      "-c",
-      `import json, runpy, sys
-module = runpy.run_path(sys.argv[1], run_name="selector_test")
-data = json.loads(sys.argv[2])
-print(json.dumps(module["select_domains"](data["metadata"], data["env"])))`,
-      new URL("./select-core-ci.py", import.meta.url).pathname,
-      JSON.stringify({ metadata: { legacyDomainToModule: aliases }, env }),
-    ],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const result = await command.output();
-  if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
-  return JSON.parse(new TextDecoder().decode(result.stdout)) as string[];
+  return Promise.resolve()
+    .then(() => selectDomains({ legacyDomainToModule: aliases }, env));
 }
 
 Deno.test("Core CI: shared 改动从唯一元数据选择全部域和共享测试", async () => {
@@ -50,7 +37,11 @@ Deno.test("Core CI: workflow 向选择器传递每个元数据域的真实变更
   const text = await Deno.readTextFile(
     new URL("../.github/workflows/ci.yml", import.meta.url),
   );
-  assert(text.includes("python3 scripts/select-core-ci.py"));
+  assert(
+    text.includes(
+      "deno run --allow-read --allow-env --allow-write scripts/select-core-ci.ts",
+    ),
+  );
   for (const domain of Object.keys(MODULE_TEST_METADATA.legacyDomainToModule)) {
     const flag = `CORE_${domain.toUpperCase().replaceAll("-", "_")}`;
     assert(

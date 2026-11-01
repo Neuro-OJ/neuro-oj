@@ -235,7 +235,11 @@ if (
     "新模块必须由 core-test-sharded 的正式完整分片任务覆盖，不能只执行共享分片",
   );
 }
-if (!ciText.includes("python3 scripts/select-core-ci.py")) {
+if (
+  !ciText.includes(
+    "deno run --allow-read --allow-env --allow-write scripts/select-core-ci.ts",
+  )
+) {
   fail("Core CI 必须由统一元数据选择任务，不得维护独立 all_core 列表");
 }
 for (const module of MODULE_TEST_METADATA.targetModules) {
