@@ -35,10 +35,10 @@ noj-ui/
 │   ├── index.vue          # 首页（Hero）
 │   ├── login.vue / register.vue / forgot-password.vue / reset-password.vue / change-password.vue
 │   ├── problems.vue + problems/       # 题目列表 / 题目详情 + 代码提交
-│   ├── submissions/       # 提交历史
+│   ├── submissions/       # 旧提交入口兜底（跳转到 /d/main/submissions）
 │   ├── ranking.vue        # 用户榜单
 │   ├── queue.vue          # 评测队列状态
-│   ├── contests/          # 竞赛（列表 / 详情 / 榜单）
+│   ├── contests/          # 旧竞赛入口兜底（跳转到 /d/main/contests）
 │   ├── community/         # 社区（板块 / 帖子 / 动态流）
 │   ├── messages/          # 站内私信
 │   ├── search.vue / settings.vue / about.vue / users/ / my/
