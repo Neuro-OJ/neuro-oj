@@ -83,13 +83,13 @@
 
 - 旧比赛前端页面（`/contests/**`）已在上一轮被全局中间件 301 到 `/d/main/contests/**`，
   本轮删除其页面与仅供旧页使用的组件 / 组合式运行时代码，保留 URL 301 行为。
-- 无域前缀的比赛读 API 继续保留，但受默认域隔离门控管辖，登记为**弃用**，最早 0.12
-  评估下线；已退役的写接口仍返回 410，不加入退役清单。本轮完成下线评估并加门禁：
-  8 条只读路由保留、5 条写路由已退役，第一方生产调用方只剩旧编辑器与
-  `editorHistory` 的**不可达**竞赛分支（`isContest`）。后台两处读接口已迁到
-  `GET /api/v1/admin/contest/contests/:id`，旧编辑器深链接
-  `/editor/:id?contest=&label=` 改为 301 到域作答页（它原本的提交调用在生产已是 410）。
-  新增 `scripts/check-legacy-contest-api.ts` 锁定"写方法必须已退役 + 不得新增生产调用方"。
+- 无域前缀的比赛 API（`/api/v1/contests/**`）**已在 0.11 整体删除**：8 条只读路由、5 条
+  写入路由与 SSE `/contests/:id/events` 全部移除，不保留 301/410 兼容层，也不再有退役清单
+  条目；全域入口是 `/api/v1/domains/:slug/contests/**`。E2E 的 37 处旧路径调用已迁到域路径，
+  后台两处读接口改走 `GET /api/v1/admin/contest/contests/:id`；旧编辑器页
+  `pages/editor/[id].vue` 及其专用组件、`utils/editorHistory.ts` 一并删除（它们此前已被
+  全局 301 覆盖，永不可达）。`scripts/check-legacy-contest-api.ts` 锁定"路由文件不得复活 +
+  第一方零引用 + 退役清单不得再登记比赛"。
 
 ### 已知未完成
 

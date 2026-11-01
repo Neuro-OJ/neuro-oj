@@ -165,7 +165,6 @@ Deno.test({
       const path of [
         `/api/v1/problems/${f.problemId}`,
         `/api/v1/submissions/${submissionId}`,
-        `/api/v1/contests/${contestId}`,
         `/api/v1/domains/${f.other.slug}/submissions/${submissionId}`,
         `/api/v1/domains/${f.other.slug}/assignments/${assignment.id}`,
         `/api/v1/domains/${f.other.slug}/contests/${contestId}`,

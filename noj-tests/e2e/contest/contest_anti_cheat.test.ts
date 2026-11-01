@@ -283,7 +283,7 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     problemId: publicProblemId,
   });
   const regSse = await apiPost(
-    `/api/v1/contests/${sseContestId}/register`,
+    `/api/v1/domains/main/contests/${sseContestId}/register`,
     {},
     participantToken,
   );
@@ -299,7 +299,7 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     submissionLimit: 1,
   });
   const regLimit = await apiPost(
-    `/api/v1/contests/${limitContestId}/register`,
+    `/api/v1/domains/main/contests/${limitContestId}/register`,
     {},
     participantToken,
   );
@@ -374,7 +374,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const first = await apiPost(
-      `/api/v1/contests/${limitContestId}/submit`,
+      `/api/v1/domains/main/contests/${limitContestId}/submit`,
       {
         problem_id: publicProblemId,
         language: "python3",
@@ -393,7 +393,7 @@ e2eTest(
     contestSubmissionId = (first.body as { data: { id: string } }).data.id;
 
     const second = await apiPost(
-      `/api/v1/contests/${limitContestId}/submit`,
+      `/api/v1/domains/main/contests/${limitContestId}/submit`,
       {
         problem_id: publicProblemId,
         language: "python3",
@@ -424,12 +424,15 @@ e2eTest(
 
 e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404", async () => {
   if (!isE2E) return;
-  // 4.1 攻击者创建自己的比赛（0.11 无 kind/password），但尝试加入别人的私有套卷
+  // 4.1 本域建赛时挂入其他域的私有套卷 → 404
+  //
+  // 断言的是**引用隔离**，不是建赛权限：0.11 起建赛只能走显式域入口，普通账号没有
+  // main 域的 contest:create，因此这里用管理员身份建赛——它同样会被跨域私有引用挡住。
   const now = Date.now();
   const contestRes = await apiPost(
-    "/api/v1/contests",
+    "/api/v1/domains/main/contests",
     {
-      title: `E2E 攻击者建赛 ${ts}`,
+      title: `E2E 跨域私有引用建赛 ${ts}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
@@ -442,11 +445,11 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
         score: 100,
       }],
     },
-    attackerToken,
+    adminToken,
   );
   if (contestRes.status !== 404) {
     throw new Error(
-      `把他人私有题加入自己竞赛应 404，实际 ${contestRes.status}`,
+      `把其他域私有题加入本域竞赛应 404，实际 ${contestRes.status}`,
     );
   }
 
@@ -481,13 +484,13 @@ e2eTest(
     // 非参赛者打开非公开赛 SSE。当前实现返回 404（无法订阅），同样满足“无事件”。
     // 若未来成员校验放宽为可连接但不推送，这里也会在事件收集后断言无 submission 事件。
     const eventsPromise = readSSEEventNames(
-      `/api/v1/contests/${sseContestId}/events`,
+      `/api/v1/domains/main/contests/${sseContestId}/events`,
       attackerToken,
       3000,
     );
     // 触发一次参赛者提交，验证非参赛者的流中不会出现 contest:submission:created
     const submit = await apiPost(
-      `/api/v1/contests/${sseContestId}/submit`,
+      `/api/v1/domains/main/contests/${sseContestId}/submit`,
       {
         problem_id: publicProblemId,
         language: "python3",

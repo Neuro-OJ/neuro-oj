@@ -114,7 +114,7 @@ e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async 
   if (!isE2E) return;
   // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
   const res = await fetch(
-    `http://localhost:8099/api/v1/contests/${contestId}/events`,
+    `http://localhost:8099/api/v1/domains/main/contests/${contestId}/events`,
     { headers: { Authorization: "Bearer " + userToken } },
   );
   if (res.status !== 200) {
@@ -133,7 +133,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const reg = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
+      `/api/v1/domains/main/contests/${contestId}/register`,
       {},
       userToken,
     );
@@ -141,7 +141,7 @@ e2eTest(
       throw new Error(`报名失败: ${reg.status}`);
     }
     const res = await fetch(
-      `http://localhost:8099/api/v1/contests/${contestId}/events`,
+      `http://localhost:8099/api/v1/domains/main/contests/${contestId}/events`,
       { headers: { Authorization: "Bearer " + userToken } },
     );
     if (res.status !== 200) {

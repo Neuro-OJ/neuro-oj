@@ -180,9 +180,9 @@
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 349 | early-return |
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 375 | early-return |
 | noj-tests/e2e/contest/contest_anti_cheat.test.ts | 426 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 480 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 514 | early-return |
-| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 589 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 483 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 517 | early-return |
+| noj-tests/e2e/contest/contest_anti_cheat.test.ts | 592 | early-return |
 | noj-tests/e2e/contest/contest_formats_native.test.ts | 49 | ignore |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 42 | early-return |
 | noj-tests/e2e/contest/contest_lifecycle.test.ts | 54 | early-return |
@@ -227,7 +227,7 @@
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 150 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 244 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 283 | early-return |
-| noj-tests/e2e/helper.ts | 617 | ignore |
+| noj-tests/e2e/helper.ts | 620 | ignore |
 | noj-tests/e2e/identity/auth.test.ts | 34 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 49 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 58 | early-return |

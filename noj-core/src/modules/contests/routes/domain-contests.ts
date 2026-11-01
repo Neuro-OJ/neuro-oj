@@ -164,8 +164,23 @@ domainContestRouter.patch(
   },
 );
 domainContestRouter.post(`${path}/:id/register`, authMiddleware, async (c) => {
-  // 比赛不再有密码/邀请码：旧客户端带上这些字段时显式 400，避免它以为凭据被接受。
-  const input = await body<Record<string, unknown>>(c);
+  // 比赛不再有密码/邀请码：报名不需要任何请求体。
+  // 旧客户端带上 password/kind/is_public 时显式 400，避免它以为凭据被接受；
+  // 空 body 与 `{}` 都视为"无凭据报名"（不再要求客户端伪造一个 JSON 对象）。
+  const raw = await c.req.text();
+  let input: Record<string, unknown> = {};
+  if (raw.trim().length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new BadRequestError("请求体必须是 JSON 对象");
+      }
+      input = parsed as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof BadRequestError) throw error;
+      throw new BadRequestError("请求体必须是合法 JSON");
+    }
+  }
   assertNoLegacyContestField(input);
   const access = await loadDomainContest(
     c.req.param("slug")!,

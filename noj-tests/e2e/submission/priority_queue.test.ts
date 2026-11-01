@@ -70,7 +70,7 @@ async function createRunningContestWithRegistration(): Promise<string> {
 
   // 竞赛提交要求参赛者身份（verifyContestAccess 校验成员 + 窗口）
   const reg = await apiPost(
-    `/api/v1/contests/${id}/register`,
+    `/api/v1/domains/main/contests/${id}/register`,
     {},
     userToken,
   );
@@ -88,7 +88,7 @@ async function submitInContest(code = CODE_SAMPLES.accepted): Promise<string> {
     problemId,
   );
   const res = await apiPost(
-    `/api/v1/contests/${contestId}/submit`,
+    `/api/v1/domains/main/contests/${contestId}/submit`,
     { problem_id: problemId, language: "python3", code, version_id: versionId },
     userToken,
   );

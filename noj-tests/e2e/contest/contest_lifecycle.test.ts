@@ -89,7 +89,7 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
 e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   if (!isE2E) return;
   const registerResult = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
+    `/api/v1/domains/main/contests/${contestId}/register`,
     {},
     participantToken,
   );
@@ -101,7 +101,7 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
     );
   }
   const duplicateRegister = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
+    `/api/v1/domains/main/contests/${contestId}/register`,
     {},
     participantToken,
   );
@@ -119,7 +119,7 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   );
 
   const submitResult = await apiPost(
-    `/api/v1/contests/${contestId}/submit`,
+    `/api/v1/domains/main/contests/${contestId}/submit`,
     {
       problem_id: problemId,
       version_id: versionId,
@@ -149,8 +149,8 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   // 缺失返回 401、非参赛者返回 403，参赛者只见自身行）。因此这里用
   // 参赛者 token 验证其排名包含刚才提交的分数，管理员可看完整榜单。
   const [participantResult, adminResult] = await Promise.all([
-    apiGet(`/api/v1/contests/${contestId}/ranking`, participantToken),
-    apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
+    apiGet(`/api/v1/domains/main/contests/${contestId}/ranking`, participantToken),
+    apiGet(`/api/v1/domains/main/contests/${contestId}/ranking`, adminToken),
   ]);
   if (participantResult.status !== 200 || adminResult.status !== 200) {
     throw new Error(
@@ -183,7 +183,7 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
     );
   }
 
-  const contestResult = await apiGet(`/api/v1/contests/${contestId}`);
+  const contestResult = await apiGet(`/api/v1/domains/main/contests/${contestId}`);
   const contest = (contestResult.body as { data: ContestData }).data;
   if (contestResult.status !== 200 || contest.status !== "ended") {
     throw new Error("竞赛结束后状态应为 ended");
@@ -203,7 +203,7 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
     );
   }
 
-  const rankingResult = await apiGet(`/api/v1/contests/${contestId}/ranking`);
+  const rankingResult = await apiGet(`/api/v1/domains/main/contests/${contestId}/ranking`);
   const rows = (rankingResult.body as { data: KaggleRankingRow[] }).data;
   if (rankingResult.status !== 200 || rows[0]?.total_score <= 0) {
     throw new Error("竞赛结束后公开排名应显示最终分数");

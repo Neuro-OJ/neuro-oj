@@ -493,7 +493,10 @@ export async function getContestAnswerVersionId(
   contestId: string,
   problemId: string,
 ): Promise<string> {
-  const res = await apiGet(`/api/v1/contests/${contestId}/problems`, token);
+  const res = await apiGet(
+    `/api/v1/domains/main/contests/${contestId}/problems`,
+    token,
+  );
   if (res.status !== 200) {
     throw new Error(
       `读取竞赛题目失败: ${res.status} ${JSON.stringify(res.body)}`,

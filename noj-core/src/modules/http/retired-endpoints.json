@@ -103,36 +103,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/contests",
-    "replacement": "POST /api/v1/domains/:slug/contests",
-    "reason": "竞赛创建必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/contests/:id/register",
-    "replacement": "POST /api/v1/domains/:slug/contests/:id/register",
-    "reason": "竞赛报名必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/contests/:id/submit",
-    "replacement": "POST /api/v1/domains/:slug/contests/:id/problems/:label/submissions",
-    "reason": "竞赛执行必须绑定显式工作空间与题目标签"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/contests/:id/clarifications",
-    "replacement": "POST /api/v1/domains/:slug/contests/:id/clarifications",
-    "reason": "竞赛答疑必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/contests/:id/clarifications/:clarId/reply",
-    "replacement": "POST /api/v1/domains/:slug/contests/:id/clarifications/:clarId/reply",
-    "reason": "竞赛答疑回复必须绑定显式工作空间"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/trainings",
     "replacement": "POST /api/v1/domains/:slug/trainings",
     "reason": "题单创建必须绑定显式工作空间"

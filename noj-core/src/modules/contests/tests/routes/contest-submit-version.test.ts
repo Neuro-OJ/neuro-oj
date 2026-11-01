@@ -136,10 +136,19 @@ Deno.test({
       assertEquals(create.status, 201);
       contestId = (await create.json()).data.id;
 
+      // 域入口要求提交者是当前域的成员且已报名：建赛时已自动建立成员身份，
+      // 这里只补报名；否则 403 会先于"版本不一致 409"发生，测不到本文件的目的。
+      const register = await jsonRequest(
+        app,
+        `/api/v1/domains/main/contests/${contestId}/register`,
+        { method: "POST", token: adminToken, body: {} },
+      );
+      assertEquals(register.status, 201);
+
       // 创建竞赛即固定当时最新已发布版本，且题目详情下发作答版本
       const detail = await jsonRequest(
         app,
-        `/api/v1/contests/${contestId}/problems/A`,
+        `/api/v1/domains/main/contests/${contestId}/problems/A`,
         { token: adminToken },
       );
       assertEquals(detail.status, 200);
@@ -150,12 +159,11 @@ Deno.test({
       // 客户端携带旧版本（页面缓存）→ 409，且不创建提交
       const stale = await jsonRequest(
         app,
-        `/api/v1/contests/${contestId}/submit`,
+        `/api/v1/domains/main/contests/${contestId}/problems/A/submissions`,
         {
           method: "POST",
           token: adminToken,
           body: {
-            problem_id: problemId,
             language: "python3",
             code: "print(1)",
             version_id: versionV1,
@@ -171,12 +179,11 @@ Deno.test({
       // 携带一致版本 → 放行（Redis 不可用时为 500，但绝不能再是 409）
       const fresh = await jsonRequest(
         app,
-        `/api/v1/contests/${contestId}/submit`,
+        `/api/v1/domains/main/contests/${contestId}/problems/A/submissions`,
         {
           method: "POST",
           token: adminToken,
           body: {
-            problem_id: problemId,
             language: "python3",
             code: "print(2)",
             version_id: versionV2,
@@ -191,12 +198,11 @@ Deno.test({
       // 缺省版本：新契约下必须 409 VERSION_REQUIRED（不猜固定版本、不落库）
       const missingVersion = await jsonRequest(
         app,
-        `/api/v1/contests/${contestId}/submit`,
+        `/api/v1/domains/main/contests/${contestId}/problems/A/submissions`,
         {
           method: "POST",
           token: adminToken,
           body: {
-            problem_id: problemId,
             language: "python3",
             code: "print(3)",
           },

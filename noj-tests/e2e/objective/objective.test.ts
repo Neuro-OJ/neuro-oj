@@ -394,7 +394,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
 
   // 3.2 注册参赛
   const reg = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
+    `/api/v1/domains/main/contests/${contestId}/register`,
     {},
     solverToken,
   );
@@ -554,7 +554,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
 
   // 3.6 排名计入：满分套卷应计入 total_score
   const ranking = await apiGet(
-    `/api/v1/contests/${contestId}/ranking?type=kaggle`,
+    `/api/v1/domains/main/contests/${contestId}/ranking?type=kaggle`,
     adminToken,
   );
   if (ranking.status !== 200) {

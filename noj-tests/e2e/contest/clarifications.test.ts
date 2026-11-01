@@ -98,7 +98,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
 
   for (const token of [participantToken, otherParticipantToken]) {
     const registerResult = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
+      `/api/v1/domains/main/contests/${contestId}/register`,
       undefined,
       token,
     );
@@ -115,7 +115,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
 e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async () => {
   if (!isE2E) return;
   const withProblem = await apiPost(
-    `/api/v1/contests/${contestId}/clarifications`,
+    `/api/v1/domains/main/contests/${contestId}/clarifications`,
     { content: "样例输入第三行是什么含义？", problem_id: problemId },
     participantToken,
   );
@@ -136,7 +136,7 @@ e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async
   }
 
   const globalQuestion = await apiPost(
-    `/api/v1/contests/${contestId}/clarifications`,
+    `/api/v1/domains/main/contests/${contestId}/clarifications`,
     { content: "罚时规则如何计算？" },
     participantToken,
   );
@@ -154,7 +154,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const forbidden = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       { content: "非参赛者提问" },
       outsiderToken,
     );
@@ -186,7 +186,7 @@ e2eTest(
     const endedContestId =
       (endedCreate.body as { data: { id: string } }).data.id;
     const registerResult = await apiPost(
-      `/api/v1/contests/${endedContestId}/register`,
+      `/api/v1/domains/main/contests/${endedContestId}/register`,
       undefined,
       participantToken,
     );
@@ -225,7 +225,7 @@ e2eTest(
     const pendingContestId =
       (pendingCreate.body as { data: { id: string } }).data.id;
     const pendingRegister = await apiPost(
-      `/api/v1/contests/${pendingContestId}/register`,
+      `/api/v1/domains/main/contests/${pendingContestId}/register`,
       undefined,
       participantToken,
     );
@@ -237,7 +237,7 @@ e2eTest(
       );
     }
     const pendingAsk = await apiPost(
-      `/api/v1/contests/${pendingContestId}/clarifications`,
+      `/api/v1/domains/main/contests/${pendingContestId}/clarifications`,
       { content: "赛前提问" },
       participantToken,
     );
@@ -272,7 +272,7 @@ e2eTest(
     const endedAskContestId =
       (endedAskCreate.body as { data: { id: string } }).data.id;
     const endedAskRegister = await apiPost(
-      `/api/v1/contests/${endedAskContestId}/register`,
+      `/api/v1/domains/main/contests/${endedAskContestId}/register`,
       undefined,
       participantToken,
     );
@@ -294,7 +294,7 @@ e2eTest(
       );
     }
     const endedAsk = await apiPost(
-      `/api/v1/contests/${endedAskContestId}/clarifications`,
+      `/api/v1/domains/main/contests/${endedAskContestId}/clarifications`,
       { content: "赛后提问" },
       participantToken,
     );
@@ -313,7 +313,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const listResult = await apiGet(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       adminToken,
     );
     if (listResult.status !== 200) {
@@ -327,7 +327,7 @@ e2eTest(
 
     // admin 公开回复
     const publicReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "第三行是边界数据。", is_public: true },
       adminToken,
     );
@@ -341,7 +341,7 @@ e2eTest(
 
     // admin 私密回复
     const privateReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "注意初始化变量。", is_public: false },
       adminToken,
     );
@@ -355,7 +355,7 @@ e2eTest(
 
     // 非主办方（其他参赛者）回复被拒
     const forbiddenReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "我也回复", is_public: true },
       otherParticipantToken,
     );
@@ -365,7 +365,7 @@ e2eTest(
 
     // 回复不存在的提问
     const notFound = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/00000000-0000-0000-0000-000000000000/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/00000000-0000-0000-0000-000000000000/reply`,
       { content: "x", is_public: true },
       adminToken,
     );
@@ -409,7 +409,7 @@ e2eTest("[e2e/clarifications] 6. 答疑列表可见性", async () => {
     token?: string,
   ): Promise<ClarificationData[]> => {
     const res = await apiGet(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       token,
     );
     if (res.status !== 200) {
