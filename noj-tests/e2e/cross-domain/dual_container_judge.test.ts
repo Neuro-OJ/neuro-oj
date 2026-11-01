@@ -313,7 +313,8 @@ e2eTest(
       throw new Error(`Create failed: ${res.status}`);
     }
 
-    const problemId = (res.body as { data: { problem_id: string } }).data.problem_id;
+    const problemId =
+      (res.body as { data: { problem_id: string } }).data.problem_id;
     const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     const rc = (detail.body as { data: { runtime_config: unknown } }).data
       .runtime_config;

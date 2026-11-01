@@ -177,7 +177,7 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     throw new Error("导入失败: " + res.status + " " + await res.text());
   }
   const body = (await res.json()) as {
-    data: { id: string; support_package_storage_url: string | null };
+    data: { problem_id: string; support_package_storage_url: string | null };
   };
   brokenProblemId = body.data.problem_id;
   // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。

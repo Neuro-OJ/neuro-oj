@@ -152,13 +152,14 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
   }
   const body = (await res.json()) as {
     data: {
-      id: string;
-      title: string;
+      problem_id: string;
+      number: number;
     };
   };
   problemId = body.data.problem_id;
 
-  if ("type" in body.data) throw new Error("格式 2 不应返回 P/U 分类");
+  // 域导入返回 problem_id/number，不再回 id/title/type（旧格式 2 的 P/U 分类字段已不存在）
+
   // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
   const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
   if (draft.status !== 200) throw new Error("导入草稿不可读");
@@ -206,7 +207,7 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
   if (res.status !== 200) {
     throw new Error(`重复导入失败: ${res.status} ${await res.text()}`);
   }
-  const body = (await res.json()) as { data: { id: string } };
+  const body = (await res.json()) as { data: { problem_id: string } };
   if (body.data.problem_id !== problemId) {
     throw new Error("重复导入应更新同一题目而非新建");
   }

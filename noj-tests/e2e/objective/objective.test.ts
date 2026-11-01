@@ -140,9 +140,19 @@ e2eTest("objective e2e: 域建卷→草稿→发布→作答即时判定", async
       `发布失败: ${published.status} ${JSON.stringify(published.body)}`,
     );
   }
+  // 域提交必须携带版本（缺失会 409 VERSION_REQUIRED）
+  const publishedBody = published.body as {
+    version_id?: string;
+    data?: { version_id?: string };
+  };
+  const versionId = publishedBody.version_id ?? publishedBody.data?.version_id;
+  if (!versionId) {
+    throw new Error(`发布未回传 version_id: ${JSON.stringify(published.body)}`);
+  }
 
   // 4. 作答：一题对一题错 → 50 分
   const submission = await apiPost(`${paperPath}/objective-submissions`, {
+    version_id: versionId,
     answers: { "q-single": ["B"], "q-judge": [false] },
   }, answerer.token);
   if (submission.status !== 201) {

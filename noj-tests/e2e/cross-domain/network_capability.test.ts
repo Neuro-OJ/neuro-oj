@@ -180,7 +180,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
   }
   const body = (await res.json()) as {
     data: {
-      id: string;
+      problem_id: string;
       runtime_config: {
         evaluator: { network?: { enabled?: boolean } };
       };

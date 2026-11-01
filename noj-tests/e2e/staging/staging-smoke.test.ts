@@ -130,20 +130,20 @@ async function importBundle(): Promise<string> {
       `题包导入失败: ${response.status} ${await response.text()}`,
     );
   }
-  const body = await response.json() as {
-    data: {
-      id: string;
-      type: string;
-      support_package_storage_url: string | null;
-    };
-  };
-  if (body.data.type !== "U" || !body.data.support_package_storage_url) {
-    throw new Error("题包导入响应缺少 U 型题目或对象存储地址");
+  // 域导入只回 problem_id/number（不再回 id/type/支持包地址）
+  const body = await response.json() as { data: { problem_id: string } };
+  const detail = await apiGet(
+    `/api/v1/problems/${body.data.problem_id}`,
+    adminToken,
+  );
+  const storageUrl = (detail.body as {
+    data: { support_package_storage_url: string | null };
+  }).data.support_package_storage_url;
+  if (!storageUrl) {
+    throw new Error("题包导入后题目缺少对象存储地址");
   }
-  if (!body.data.support_package_storage_url.startsWith("noj-storage://s3/")) {
-    throw new Error(
-      `staging 未使用 S3 支持包地址: ${body.data.support_package_storage_url}`,
-    );
+  if (!storageUrl.startsWith("noj-storage://s3/")) {
+    throw new Error(`staging 未使用 S3 支持包地址: ${storageUrl}`);
   }
   return body.data.problem_id;
 }

@@ -129,9 +129,9 @@
 | noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 199 | ignore |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 113 | early-return |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 123 | early-return |
-| noj-tests/e2e/catalog/import_bundle.test.ts | 177 | early-return |
-| noj-tests/e2e/catalog/import_bundle.test.ts | 216 | early-return |
-| noj-tests/e2e/catalog/import_bundle.test.ts | 235 | early-return |
+| noj-tests/e2e/catalog/import_bundle.test.ts | 178 | early-return |
+| noj-tests/e2e/catalog/import_bundle.test.ts | 217 | early-return |
+| noj-tests/e2e/catalog/import_bundle.test.ts | 236 | early-return |
 | noj-tests/e2e/catalog/problem_template.test.ts | 21 | early-return |
 | noj-tests/e2e/catalog/problem_template.test.ts | 29 | early-return |
 | noj-tests/e2e/catalog/problem_template.test.ts | 48 | early-return |
