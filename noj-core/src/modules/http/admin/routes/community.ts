@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import type { Context, MiddlewareHandler, Next } from "hono";
-import { getDb } from "../../../../shared/db/connection.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import type { Context, Next } from "hono";
 import { parseJsonBody } from "../../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
@@ -9,7 +7,6 @@ import { listBoards } from "../../../communication/community/services/community/
 import {
   BadRequestError,
   ForbiddenError,
-  NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
   assertPermission,
@@ -20,7 +17,6 @@ import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
 } from "../../../communication/community/types/community.ts";
-import { MAX_SAFE_PAGE } from "../../../../shared/http/pagination.ts";
 import {
   authMiddleware,
   getUserBanState,
@@ -36,7 +32,6 @@ import {
   deleteBoardRoleGrant,
   getLatestActiveBanId,
   getReportBanScope,
-  getReportImageBytes,
   getReportTarget,
   listBoardRoleGrants,
   listPendingComments,
@@ -55,13 +50,6 @@ import { resolveUserId } from "../../../access/identity/services/users/users-id.
 import { parseQueryLimit } from "../../../communication/community/services/community/query-limit.ts";
 import { type CommunityScope } from "../../../communication/community/services/community/community-scope.ts";
 import { withDefaultCommunity } from "../../../communication/community/services/community/domain-community.ts";
-import { getReviewQueueDetail } from "../../../communication/review/services/review-detail.ts";
-import {
-  getReviewQueueItem,
-  listReviewQueue,
-  resolveReviewQueue,
-  type ReviewQueueAccess,
-} from "../../../communication/review/services/review-queue.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/admin/community，见 app.ts）。
@@ -86,8 +74,6 @@ interface CommunityAdminEnv extends OptionalAuthEnv {
   Variables: OptionalAuthEnv["Variables"] & {
     communityScope?: CommunityScope;
     reportTarget?: Awaited<ReturnType<typeof getReportTarget>>;
-    reviewTarget?: Awaited<ReturnType<typeof getReviewQueueItem>>;
-    reviewAccess?: ReviewQueueAccess;
   };
 }
 const router = new Hono<CommunityAdminEnv>();
@@ -133,7 +119,7 @@ async function withMainScope(c: Context<CommunityAdminEnv>, next: Next) {
   });
 }
 router.use("*", async (c, next) => {
-  // 私信举报和平台审查仍是账号治理；内容、板块与禁言明确以 main 为目标。
+  // 内容、板块与禁言明确以 main 为目标。
   const contentRoute =
     /\/(?:boards|posts|comments|sanctions)(?:\/|$)/.test(c.req.path) ||
     /\/users\/[^/]+\/sanctions$/.test(c.req.path);
@@ -143,32 +129,8 @@ router.use("*", async (c, next) => {
 router.use("/reports/:reportId/:status", async (c, next) => {
   const target = await getReportTarget(c.req.param("reportId"));
   c.set("reportTarget", target);
-  if (target.report.content_type === "message") return await next();
   await withMainScope(c, next);
 });
-
-const reviewTargetScope: MiddlewareHandler<CommunityAdminEnv> = async (
-  c,
-  next,
-) => {
-  const row = await getReviewQueueItem(c.req.param("id")!);
-  c.set("reviewTarget", row);
-  if (row.content_type === "message") {
-    c.set("reviewAccess", { domainId: null, executor: getDb() });
-    return await next();
-  }
-  if (row.source_domain_id !== DEFAULT_DOMAIN_ID) {
-    throw new NotFoundError("审查记录不存在");
-  }
-  await withMainScope(c, async () => {
-    const scope = c.var.communityScope!;
-    const access = { domainId: scope.domainId, executor: scope.executor };
-    c.set("reviewAccess", access);
-    await next();
-  });
-};
-router.use("/content-review/:id", reviewTargetScope);
-router.use("/content-review/:id/:status", reviewTargetScope);
 
 /**
  * POST /admin/preset/:preset — 应用社区预设（public / private / knowledge）。
@@ -334,8 +296,7 @@ router.delete(
 );
 /**
  * GET /admin/reports — 列出举报工单。
- * 权限：社区审核及 main 进入／社区权限。query：status（默认 pending），
- * content_type=message 明确只查询账号私信举报，不依赖 main。
+ * 权限：社区审核及 main 进入／社区权限。query：status（默认 pending）。
  * 响应：{ data: 举报列表 }。
  */
 router.get(
@@ -351,17 +312,11 @@ router.get(
     if (!["pending", "resolved", "dismissed", "all"].includes(s)) {
       throw new BadRequestError("无效举报状态");
     }
-    const contentType = c.req.query("content_type");
-    if (contentType && contentType !== "message") {
-      throw new BadRequestError("content_type 仅支持 message");
-    }
-    const data = contentType === "message"
-      ? await listReports(s, undefined, "only")
-      : await withDefaultCommunity(
-        userId(c),
-        { moderator: true },
-        (scope) => listReports(s, scope, "include"),
-      );
+    const data = await withDefaultCommunity(
+      userId(c),
+      { moderator: true },
+      (scope) => listReports(s, scope),
+    );
     return c.json({ data });
   },
 );
@@ -448,8 +403,7 @@ router.post(
 
     // 处理（resolved）：被处罚用户必须从举报目标派生，不允许客户端指定任意用户（越权封禁）
     const target = c.var.reportTarget!;
-    const targetUserId = target.post?.author_id ?? target.comment?.author_id ??
-      target.message?.sender_id;
+    const targetUserId = target.post?.author_id ?? target.comment?.author_id;
     if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
 
     // 审核员不能借举报流程对管理员/其他审核员施加社交封禁（需 admin:full_access）
@@ -492,7 +446,7 @@ router.post(
         ? await getLatestActiveBanId(targetUserId)
         : undefined;
     } else {
-      // 默认移除内容：隐藏帖子或评论；私信消息无公开内容可隐藏，仅记录处理
+      // 默认移除内容：隐藏帖子或评论
       const reason = body.resolution || "被举报隐藏";
       if (target.post) {
         await changePostStatus(
@@ -667,137 +621,5 @@ router.get(
     });
   },
 );
-
-// 审核员读取举报附带的私信图片（审核员非会话参与者，不能走 conversations 图片端点）
-router.get(
-  "/reports/images/:conversationId/:messageId",
-  async (c) => {
-    const { conversationId, messageId } = c.req.param();
-    const { bytes, contentType, etag } = await getReportImageBytes(
-      conversationId,
-      messageId,
-    );
-    return new Response(bytes as BodyInit, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "private, max-age=86400",
-        "ETag": etag,
-      },
-    });
-  },
-);
-
-/**
- * GET /admin/content-review — 统一人工审查队列（issue #413）。
- * 权限：社区审核。
- * query：status / content_type / channel / from / to / page / per_page。
- * 响应：{ data, pagination }。
- */
-router.get(
-  "/content-review",
-  async (c) => {
-    const parsePage = (raw: string | undefined, fallback: number) => {
-      const n = Number(raw ?? fallback);
-      if (!Number.isInteger(n) || n < 1) return fallback;
-      // **页码上界**（评审发现的同类漏网）：`Number.isInteger(1e20) === true`，
-      // 而 `offset((page-1)*perPage)` 会超 bigint → PG 报
-      // `value ... out of range for type bigint` → 全局 onError → 500。
-      // 本 PR 已为 5 个路由补了 `MAX_SAFE_PAGE`，此处与之一致。
-      return Math.min(n, MAX_SAFE_PAGE);
-    };
-    const status = c.req.query("status");
-    const content_type = c.req.query("content_type");
-    const channel = c.req.query("channel");
-    const validStatus = [
-      "pending_review",
-      "approved",
-      "rejected",
-      "reviewed",
-      "dismissed",
-    ];
-    if (status && !validStatus.includes(status)) {
-      throw new BadRequestError("无效审查状态");
-    }
-    if (
-      content_type && !["post", "comment", "message"].includes(content_type)
-    ) {
-      throw new BadRequestError("无效内容类型");
-    }
-    if (channel && !["ugc", "dm"].includes(channel)) {
-      throw new BadRequestError("无效来源渠道");
-    }
-    const filter = {
-      status: status as never || undefined,
-      content_type: content_type as never || undefined,
-      channel: channel as never || undefined,
-      from: c.req.query("from") ?? undefined,
-      to: c.req.query("to") ?? undefined,
-      page: parsePage(c.req.query("page"), 1),
-      perPage: Math.min(parsePage(c.req.query("per_page"), 20), 100),
-    };
-    const result = channel === "dm" || content_type === "message"
-      ? await listReviewQueue(filter, { domainId: null, executor: getDb() })
-      : await withDefaultCommunity(
-        userId(c),
-        { moderator: true },
-        (scope) =>
-          listReviewQueue(filter, {
-            domainId: scope.domainId,
-            executor: scope.executor,
-          }),
-      );
-    return c.json({
-      data: result.data,
-      pagination: {
-        page: result.page,
-        per_page: result.per_page,
-        total: result.total,
-        total_pages: result.total_pages,
-      },
-    });
-  },
-);
-/**
- * GET /admin/content-review/:id — 审查队列详情（附目标内容上下文）。
- * 权限：社区审核。
- */
-router.get("/content-review/:id", async (c) => {
-  const detail = await getReviewQueueDetail(
-    c.var.reviewTarget!,
-    c.var.reviewAccess!.executor,
-  );
-  return c.json({
-    data: {
-      ...detail.queue,
-      context: detail.context,
-    },
-  });
-});
-/**
- * POST /admin/content-review/:id/:status — 处置/驳回统一审查队列。
- * 权限：社区审核；隐藏内容或封禁操作走既有内容/处罚端点（本端点仅记录处置留痕）。
- * body：{ resolution, action? }（action：record_only / hide_post / hide_comment / dismiss）。
- * 响应：{ data: 更新后的记录 }。
- */
-router.post("/content-review/:id/:status", async (c) => {
-  const status = c.req.param("status");
-  if (status !== "reviewed" && status !== "dismissed") {
-    throw new BadRequestError("无效审查状态");
-  }
-  const body = await parseJsonBody<{ resolution?: string; action?: string }>(c);
-  const action = status === "dismissed"
-    ? "dismiss"
-    : body.action ?? "record_only";
-  const record = await resolveReviewQueue(
-    c.req.param("id"),
-    userId(c),
-    status,
-    action,
-    body.resolution ?? (status === "dismissed" ? "无需处置" : "已人工复核"),
-    c.var.reviewAccess!,
-  );
-  return c.json({ data: record });
-});
 
 export default router;

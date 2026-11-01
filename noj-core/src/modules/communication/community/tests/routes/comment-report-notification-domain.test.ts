@@ -2,11 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
-import {
-  accountNotifications,
-  conversations,
-  messages,
-} from "../../../../../shared/db/schema.ts";
+import { accountNotifications } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import {
@@ -117,39 +113,5 @@ Deno.test({
       DEFAULT_DOMAIN_ID,
       DEFAULT_DOMAIN_ID,
     ]);
-  },
-});
-
-Deno.test({
-  name: "举报通知归属：旧管理处理和重开私信举报保持账号空域",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
-    const f = await fixture();
-    const conversationId = crypto.randomUUID(), messageId = crypto.randomUUID();
-    const [user1, user2] = [f.a, f.student].sort();
-    await f.db.insert(conversations).values({
-      id: conversationId,
-      user1_id: user1,
-      user2_id: user2,
-      last_message_at: f.now,
-      created_at: f.now,
-    });
-    await f.db.insert(messages).values({
-      id: messageId,
-      conversation_id: conversationId,
-      sender_id: f.a,
-      content: "私信",
-      created_at: f.now,
-    });
-    const report = await createReport(f.student, {
-      message_id: messageId,
-      reason: "私信举报",
-      category: "其他",
-    });
-    assertEquals(report.domain_id, null);
-    assertEquals(await noticeDomains(f, report.id), [null]);
-    await resolveAndReopen(f, report.id);
-    assertEquals(await noticeDomains(f, report.id), [null, null, null]);
   },
 });

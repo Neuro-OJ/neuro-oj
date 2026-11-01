@@ -111,9 +111,6 @@ jobs:
             e2e-community:
               - 'noj-tests/e2e/community/**'
               - 'noj-core/src/domains/community/**'
-            e2e-messaging:
-              - 'noj-tests/e2e/messaging/**'
-              - 'noj-core/src/domains/messaging/**'
             e2e-objective:
               - 'noj-tests/e2e/objective/**'
               - 'noj-core/src/domains/objective/**'
@@ -168,7 +165,6 @@ jobs:
           E2E_CONTEST: ${{ steps.filter.outputs.e2e-contest }}
           E2E_SYSTEM: ${{ steps.filter.outputs.e2e-system }}
           E2E_COMMUNITY: ${{ steps.filter.outputs.e2e-community }}
-          E2E_MESSAGING: ${{ steps.filter.outputs.e2e-messaging }}
           E2E_OBJECTIVE: ${{ steps.filter.outputs.e2e-objective }}
           E2E_ADMIN: ${{ steps.filter.outputs.e2e-admin }}
           E2E_RATE_LIMIT: ${{ steps.filter.outputs.e2e-rate-limit }}
@@ -180,7 +176,7 @@ jobs:
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_e2e = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","rate-limit"]
+          all_e2e = ["identity","catalog","submission","contest","system","community","objective","admin","rate-limit"]
           e2e_domains = []
           if flag('E2E_INFRA'):
               e2e_domains = all_e2e[:]
@@ -316,20 +312,6 @@ jobs:
       - uses: ./.github/actions/e2e-domain
         with:
           domain: community
-
-  e2e-messaging:
-    name: E2E messaging
-    needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'messaging') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      COMPOSE_PROJECT_NAME: noj-e2e-messaging
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/e2e-domain
-        with:
-          domain: messaging
 
   e2e-objective:
     name: E2E objective

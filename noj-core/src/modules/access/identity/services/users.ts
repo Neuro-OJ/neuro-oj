@@ -27,4 +27,3 @@ export {
   adminUpdateUserProfile,
   updateUserProfile,
 } from "./users/users-profile-edit.ts";
-export { searchUsers } from "./users/users-search.ts";

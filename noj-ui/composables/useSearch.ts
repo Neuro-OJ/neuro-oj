@@ -95,7 +95,7 @@ export function useSearch() {
             const res = await api.get('/api/v1/search', {
               params: {
                 q: trimmed,
-                types: 'problem,user,community_post,community_comment,contest,submission,message,announcement',
+                types: 'problem,user,community_post,community_comment,contest,submission,announcement',
                 per_type: 5,
               },
               silent: true,

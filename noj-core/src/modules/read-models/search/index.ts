@@ -3,7 +3,6 @@ export {
   buildCommunityCommentEntry,
   buildCommunityPostEntry,
   buildContestEntry,
-  buildMessageEntry,
   buildProblemEntry,
   buildSubmissionEntry,
   buildUserEntry,

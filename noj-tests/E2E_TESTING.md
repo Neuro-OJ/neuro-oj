@@ -45,7 +45,6 @@ noj-tests/
     ├── contest/               # 竞赛生命周期、榜单、答疑、防作弊
     ├── system/                # 签到、审计日志、公告、自测
     ├── community/             # 社区（帖子/评论/审核/动态流）
-    ├── messaging/             # 站内私信
     ├── objective/             # 客观题
     ├── admin/                 # 管理端点
     ├── rate-limit/            # 登录限流与锁定
@@ -93,7 +92,6 @@ noj-tests/
 | `system/announcements.test.ts`              | 公告                               | 发布/下架/SSE                                                                                        |
 | `system/self_test.test.ts`                  | 自测                               | 编辑器内自测任务不进入正式提交                                                                       |
 | `community/community.test.ts`               | 社区                               | 帖子/评论/审核/动态流/通知                                                                           |
-| `messaging/messaging.test.ts`               | 站内私信                           | 会话/消息/已读/删除                                                                                  |
 | `objective/objective.test.ts`               | 客观题                             | 单选/多选/判断的服务端判定                                                                           |
 | `admin/admin_endpoints.test.ts`             | 管理端点                           | 用户/题目/黑名单等                                                                                   |
 | `rate-limit/rate_limit_lockout.test.ts`     | 登录限流与锁定                     | 窗口/退避/锁定                                                                                       |
@@ -181,8 +179,8 @@ deno task test:domain cross-domain --filter=workspace-teaching  # 仍使用统�
 ```
 
 可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
-`community` / `messaging` / `objective` / `admin` / `rate-limit` /
-`cross-domain` / `browser` / `staging`。
+`community` / `objective` / `admin` / `rate-limit` / `cross-domain` / `browser`
+/ `staging`。
 
 > 本地运行需要完整的 E2E 栈（`env.e2e.template` 会设置 `NOJ_RUN_E2E=1`）；
 > 栈未启动时用例会被静默跳过，请先 `bash ../scripts/e2e/setup.sh`。

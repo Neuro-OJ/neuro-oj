@@ -21,7 +21,6 @@ type TabKey =
   | "terms"
   | "identity"
   | "third_parties"
-  | "review"
   | "retention"
   | "requests";
 
@@ -30,7 +29,6 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "terms", label: "服务条款" },
   { key: "identity", label: "备案与主体" },
   { key: "third_parties", label: "第三方服务" },
-  { key: "review", label: "内容审查" },
   { key: "retention", label: "留存期限" },
   { key: "requests", label: "删除/更正请求" },
 ];
@@ -394,13 +392,6 @@ onMounted(loadAll);
       </div>
 
       <!-- 内容审查（聚合既有配置，跳转系统设置） -->
-      <div v-else-if="activeTab === 'review'" class="mt-4 max-w-2xl space-y-3 text-sm text-text-secondary">
-        <p>内容审核（腾讯云 TMS / 阿里云内容安全等）的 Provider 与阈值配置位于「系统设置 → 内容合规审核」。</p>
-        <UButton to="/admin/settings" color="neutral" variant="outline" icon="i-lucide-external-link">
-          前往系统设置
-        </UButton>
-      </div>
-
       <!-- 留存期限（聚合既有配置） -->
       <div v-else-if="activeTab === 'retention'" class="mt-4 max-w-2xl space-y-3 text-sm text-text-secondary">
         <p>留存期限配置（审计日志、反作弊 IP、SSE 事件）位于「系统设置」的对应分类。</p>

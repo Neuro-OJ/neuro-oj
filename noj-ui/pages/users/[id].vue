@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
@@ -10,9 +9,7 @@ import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 definePageMeta({ breadcrumbWidth: '900px' })
 
 const route = useRoute()
-const router = useRouter()
 const { user: currentUser } = useAuth()
-const { findOrCreateConversation } = useMessages()
 const { toast } = useToast()
 const { api } = useApi()
 
@@ -176,7 +173,7 @@ const profileTrainings = computed(() => trainingsData.value?.data ?? [])
 // 当前登录用户是否在查看自己的主页。
 // userId 来自 URL（userUrl 生成 /users/{username}），故用 username 对比；
 // 用 id 对比会因类型不同（UUID vs username）导致自己主页误判为他人主页，
-// 从而错误地显示关注/私信按钮。
+// 从而错误地显示关注按钮。
 const isOwnProfile = computed(
   () => currentUser.value?.username === userId,
 )
@@ -196,11 +193,6 @@ function formatDate(iso: string): string {
     month: "2-digit",
     day: "2-digit",
   })
-}
-
-async function startConversation() {
-  await findOrCreateConversation(userId)
-  router.push(`/messages`)
 }
 
 async function toggleFollow() {
@@ -245,13 +237,7 @@ async function toggleFollow() {
               to="/settings">
               编辑个人资料
             </UButton>
-            <!-- 发送私信按钮（查看他人主页时显示，与关注按钮并列） -->
-            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5" v-else-if="currentUser"
-              @click="startConversation">
-              <UIcon name="i-lucide-send" class="size-3.5" />
-              发送私信
-            </UButton>
-            <!-- 关注按钮：独立 v-if（需与私信按钮同时显示） -->
+            <!-- 关注按钮（查看他人主页时显示） -->
             <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
           </div>
 

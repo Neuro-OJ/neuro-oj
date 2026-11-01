@@ -57,10 +57,9 @@ Neuro OJ 围绕 AI
 
 <div class="p-5 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-500 transition-all">
 
-### 🔍 [全局搜索与站内私信](./search-messages.md)
+### 🔍 [全局搜索](./search-messages.md)
 
-毫秒级多类型分面搜索与 `Ctrl + K` 命令面板，独立安全限流；端到端站内 1-on-1
-私信、单向软删除历史与 SSE 实时同步。
+毫秒级多类型分面搜索与 `Ctrl + K` 命令面板，独立安全限流。
 
 </div>
 

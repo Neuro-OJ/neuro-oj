@@ -10,7 +10,6 @@ export type BffSectionName =
   | 'instanceNavigation'
   | 'announcementBanner'
   | 'userSpaces'
-  | 'messageUnread'
   | 'draftRoster'
   | 'draftTraining'
   | 'siteMeta'

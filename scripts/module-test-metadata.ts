@@ -53,9 +53,7 @@ function targetTestRoots(module: ModuleTestTarget): string[] {
   const nested = module.name === "access"
     ? ["identity", "workspace"].map((part) => `${root}/${part}/tests`)
     : module.name === "communication"
-    ? ["community", "messaging", "review"].map((part) =>
-      `${root}/${part}/tests`
-    )
+    ? ["community"].map((part) => `${root}/${part}/tests`)
     : module.name === "platform"
     ? ["system", "gateway", "observability", "legal"].map((part) =>
       `${root}/${part}/tests`

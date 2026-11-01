@@ -21,7 +21,6 @@ export {
   MAX_AVATAR_SIZE,
   resolveUserId,
   sameStorageObject,
-  searchUsers,
   unbanUser,
   updateUserAvatar,
   updateUserProfile,

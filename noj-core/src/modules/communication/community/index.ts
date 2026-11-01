@@ -22,8 +22,6 @@ export {
   getPost,
   getReportBanScope,
   getReportDetail,
-  getReportImageBytes,
-  getReportMessageHistory,
   getReportTarget,
   hasAcceptedSolution,
   listBoardRoleGrants,

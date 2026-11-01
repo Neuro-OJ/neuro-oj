@@ -11,6 +11,7 @@ export type StorageReferenceKind =
   | "support_package"
   | "artifact_submission"
   | "avatar"
+  /** 私信图片：私信已下线（#698），此类对象不再有引用，盘点时全部计为孤儿。 */
   | "message_image";
 
 export interface StorageReference {

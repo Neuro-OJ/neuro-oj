@@ -37,7 +37,6 @@ import {
   authorProjection,
   postStatsProjection,
 } from "./community-post-select.ts";
-import { reviewUgcContent } from "./community-review.ts";
 import { isProblemInUnendedPublicContest } from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { domainProblemReference } from "../../../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
 import {
@@ -291,17 +290,6 @@ export async function createPost(
     created_at: createdAt,
     updated_at: createdAt,
   };
-  // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
-  await reviewUgcContent({
-    domain_id: communityDomainId(scope),
-    content_type: "post",
-    target_id: post.id,
-    title: title ?? undefined,
-    content,
-    author_id: authorId,
-    moderator,
-    finalStatus: status === "pending" ? "pending" : "published",
-  });
   const db = communityDb(scope);
   await db.insert(communityPosts).values(post);
   // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
@@ -463,17 +451,6 @@ export async function updatePost(
     : config.post_max_length;
   if (content.length > maxLength) throw new ValidationError("内容超过长度限制");
   if (title && title.length > 200) throw new ValidationError("标题过长");
-  // 内容合规同步审核（issue #413）：编辑后仍公开的内容高置信违规时拒绝保存
-  await reviewUgcContent({
-    domain_id: communityDomainId(scope),
-    content_type: "post",
-    target_id: postId,
-    title: title ?? undefined,
-    content,
-    author_id: actorId,
-    moderator,
-    finalStatus: current.post.status === "pending" ? "pending" : "published",
-  });
   const db = communityDb(scope);
   const rows = await db.update(communityPosts).set({
     content,

@@ -41,7 +41,6 @@ const isLayoutApi = (requestPath) =>
   requestPath === '/api/v1/auth/ban-status' ||
   requestPath === '/api/v1/auth/me' ||
   requestPath === '/api/v1/me/domains' ||
-  requestPath === '/api/v1/conversations/unread-count' ||
   requestPath === '/api/v1/notifications' ||
   /^\/api\/v1\/domains\/[^/]+$/.test(requestPath) ||
   /^\/api\/v1\/domains\/[^/]+\/(announcements\/banner|community\/config)$/
@@ -102,11 +101,6 @@ const fixture = Deno.serve(
     if (path === '/api/v1/me/domains') {
       return Response.json({
         data: inboxFixture ? [{ id: 'domain', slug: 'school', name: '空间首屏' }] : [],
-      });
-    }
-    if (path === '/api/v1/conversations/unread-count') {
-      return Response.json({
-        unread_count: 0,
       });
     }
     if (path === '/api/v1/site/meta') {

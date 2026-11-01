@@ -12,7 +12,7 @@ usage() {
 用法：bash scripts/run-e2e-domain.sh <domain> [deno test 选项]
 
 可选 domain：
-  identity catalog submission contest system community messaging objective
+  identity catalog submission contest system community objective
   admin rate-limit cross-domain browser staging
 
 示例：bash scripts/run-e2e-domain.sh submission
@@ -28,7 +28,7 @@ fi
 domain="$1"
 shift
 known_domains=(
-  identity catalog submission contest system community messaging objective
+  identity catalog submission contest system community objective
   admin rate-limit cross-domain browser staging
 )
 if [[ ! " ${known_domains[*]} " == *" $domain "* ]]; then

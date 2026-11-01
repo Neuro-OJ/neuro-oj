@@ -57,9 +57,8 @@
 | `audit_logs`                                                   | 全站审计留痕                                                                                                                                                              | 误删破坏合规证据链                                                                 |
 | `submissions` / `self_tests`                                   | <span class="noj-danger-col">`code`</span>、<span class="noj-danger-col">`artifact_storage_url`</span>                                                                    | 用户代码/产物可能含隐私与密钥                                                      |
 | `ip_bans` / `user_bans` / `contest_clarifications`             | 风控与申诉数据                                                                                                                                                            | 误删放开攻击者；误加封禁误伤用户                                                   |
-| `search_entries`                                               | <span class="noj-danger-col">`body`</span> 含私信原文（含撤回前内容）                                                                                                     | 整表导出等同于导出用户私信，必须脱敏                                               |
+| `search_entries`                                               | <span class="noj-danger-col">`body`</span> 含索引内容正文                                                                                                     | 整表导出等同于导出用户私信，必须脱敏                                               |
 | `community_posts` / `community_comments` / `community_reports` | 用户生成内容与举报数据                                                                                                                                                    | 泄露用户隐私；误删破坏审核证据                                                     |
-| `messages`                                                     | <span class="noj-danger-col">私信原文</span>与撤回状态                                                                                                                    | 泄露私信；误删破坏会话完整性                                                       |
 | Redis 会话/限流键                                              | 见下文「Redis 键族」                                                                                                                                                      | `DEL jwt:revoked:*` 会让已撤销令牌复活；`DEL` 评测队列会丢评测任务                 |
 
 ---
@@ -98,8 +97,7 @@
 - **不要**直接改写 `password_hash` 或
   `session_version`：前者会破坏登录校验，后者会强制目标用户全部会话失效。
 - 注销（软删除）走 `deleted_at`，不要物理删除：部分表为
-  CASCADE（会连带删除用户内容），另有 `submissions` / `self_tests` /
-  `messages.sender_id` / `conversations` 等为 **NO
+  CASCADE（会连带删除用户内容），另有 `submissions` / `self_tests` 等为 **NO
   ACTION**，物理删除会因外键违约直接失败回滚，无法作为清理手段。 :::
 
 #### `oauth_accounts` <span class="noj-danger-zone">DANGER ZONE</span>
@@ -531,91 +529,6 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 唯一约束
 `objective_submissions_contest_unique(paper_id, user_id, contest_id)`：同一竞赛内同一用户对同一套卷仅一条。
 
-### 私信
-
-#### `conversations`
-
-私信会话；每对用户一个会话。
-
-| 列                | 类型 | 约束 / 默认                                                                      | 说明                                   |
-| ----------------- | ---- | -------------------------------------------------------------------------------- | -------------------------------------- |
-| `id`              | text | PK                                                                               | 会话 UUID                              |
-| `user1_id`        | text | NOT NULL；FK→`users(id)`；与 `user2_id` 共同 UNIQUE；CHECK `user1_id < user2_id` | 参与者（字典序小）                     |
-| `user2_id`        | text | NOT NULL；FK→`users(id)`                                                         | 参与者（字典序大）                     |
-| `last_message_at` | text | NOT NULL；索引                                                                   | 最后消息时间（列表排序用，反范式缓存） |
-| `created_at`      | text | NOT NULL                                                                         | 创建时间                               |
-
-#### `messages` <span class="noj-danger-zone">DANGER ZONE</span>
-
-私信消息，支持文本/图片、回复、转发、编辑、撤回。
-
-| 列                       | 类型 | 约束 / 默认                                              | 说明                                                                                      |
-| ------------------------ | ---- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `id`                     | text | PK                                                       | 消息 UUID                                                                                 |
-| `conversation_id`        | text | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE；索引 | 会话                                                                                      |
-| `sender_id`              | text | NOT NULL；FK→`users(id)`；索引                           | 发送者                                                                                    |
-| `type`                   | text | NOT NULL；DEFAULT `'text'`；CHECK `text/image`           | 消息类型                                                                                  |
-| `image_url`              | text | NULL                                                     | <span class="noj-danger-col">图片存储地址</span>（`noj-storage://`）；`type=image` 时必填 |
-| `reply_to_message_id`    | text | FK→`messages(id)` ON DELETE SET NULL                     | 引用的消息                                                                                |
-| `forwarded_from_user_id` | text | FK→`users(id)` ON DELETE SET NULL                        | 转发来源                                                                                  |
-| `content`                | text | NOT NULL                                                 | <span class="noj-danger-col">文本内容</span>                                              |
-| `created_at`             | text | NOT NULL                                                 | 创建时间                                                                                  |
-| `edited_at`              | text | NULL                                                     | 编辑时间                                                                                  |
-| `recalled_at`            | text | NULL                                                     | 撤回时间                                                                                  |
-| `edit_history`           | text | NULL                                                     | <span class="noj-danger-col">编辑历史 JSON 数组</span>（仅后台保存，不对外展示）          |
-
-#### `message_reactions`
-
-消息表情反应；同一用户对同一消息可加多个不同表情。
-
-| 列           | 类型 | 约束 / 默认                                         | 说明                 |
-| ------------ | ---- | --------------------------------------------------- | -------------------- |
-| `message_id` | text | NOT NULL；FK→`messages(id)` ON DELETE CASCADE；索引 | 消息                 |
-| `user_id`    | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE          | 用户                 |
-| `emoji`      | text | NOT NULL                                            | 表情（取自固定集合） |
-| `created_at` | text | NOT NULL                                            | 创建时间             |
-
-PK 为 `(message_id, user_id, emoji)`。
-
-#### `conversation_reads`
-
-会话已读位置。
-
-| 列                     | 类型 | 约束 / 默认                                        | 说明                           |
-| ---------------------- | ---- | -------------------------------------------------- | ------------------------------ |
-| `user_id`              | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE         | 用户                           |
-| `conversation_id`      | text | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE | 会话                           |
-| `last_read_message_id` | text | NULL                                               | 最后已读消息 ID；NULL=从未阅读 |
-| `updated_at`           | text | NOT NULL                                           | 更新时间                       |
-
-PK 为 `(user_id, conversation_id)`。
-
-#### `message_deletions`
-
-单用户视角的消息删除记录（原始消息仍保留）。
-
-| 列           | 类型 | 约束 / 默认                                         | 说明     |
-| ------------ | ---- | --------------------------------------------------- | -------- |
-| `user_id`    | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE          | 用户     |
-| `message_id` | text | NOT NULL；FK→`messages(id)` ON DELETE CASCADE；索引 | 消息     |
-| `deleted_at` | text | NOT NULL                                            | 删除时间 |
-
-PK 为 `(user_id, message_id)`。
-
-#### `conversation_preferences`
-
-每用户每会话的偏好（备注名 / 免打扰）。
-
-| 列                | 类型    | 约束 / 默认                                              | 说明                           |
-| ----------------- | ------- | -------------------------------------------------------- | ------------------------------ |
-| `user_id`         | text    | NOT NULL；FK→`users(id)` ON DELETE CASCADE               | 用户                           |
-| `conversation_id` | text    | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE；索引 | 会话                           |
-| `remark_name`     | text    | NULL                                                     | 备注名；NULL/空=使用真实用户名 |
-| `is_muted`        | boolean | NOT NULL；DEFAULT `false`                                | 消息免打扰                     |
-| `updated_at`      | text    | NOT NULL                                                 | 更新时间                       |
-
-PK 为 `(user_id, conversation_id)`。
-
 ### 社区
 
 社区共 13 张表。内容类表（`community_posts` /
@@ -711,15 +624,14 @@ PK 为 `(user_id, conversation_id)`。
 
 #### `community_reports` <span class="noj-danger-zone">DANGER ZONE</span>
 
-举报记录；目标须为帖子/评论/私信之一。
+举报记录；目标须为帖子/评论之一。
 
 | 列                          | 类型 | 约束 / 默认                                                       | 说明                                                 |
 | --------------------------- | ---- | ----------------------------------------------------------------- | ---------------------------------------------------- |
 | `id`                        | text | PK                                                                | 举报 UUID                                            |
 | `reporter_id`               | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                  | 举报人                                               |
-| `post_id`                   | text | FK→`community_posts(id)` ON DELETE SET NULL；索引                 | 被举报帖子（三选一）                                 |
-| `comment_id`                | text | FK→`community_comments(id)` ON DELETE SET NULL；索引              | 被举报评论（三选一）                                 |
-| `message_id`                | text | FK→`messages(id)` ON DELETE SET NULL；索引                        | 被举报私信（三选一）                                 |
+| `post_id`                   | text | FK→`community_posts(id)` ON DELETE SET NULL；索引                 | 被举报帖子（二选一）                                 |
+| `comment_id`                | text | FK→`community_comments(id)` ON DELETE SET NULL；索引              | 被举报评论（二选一）                                 |
 | `content_type`              | text | NOT NULL；DEFAULT `'post'`                                        | 内容类型                                             |
 | `sanction_id`               | text | FK→`community_sanctions(id)` ON DELETE SET NULL                   | 关联处罚                                             |
 | `ban_id`                    | text | FK→`user_bans(id)` ON DELETE SET NULL                             | 关联封禁                                             |
@@ -732,7 +644,7 @@ PK 为 `(user_id, conversation_id)`。
 | `resolved_at`               | text | NULL                                                              | 处理时间                                             |
 | `updated_at` / `created_at` | text | NOT NULL                                                          | 时间                                                 |
 
-`CHECK community_reports_target_check`：`num_nonnulls(post_id, comment_id, message_id) = 1`。
+`CHECK community_reports_target_check`：`num_nonnulls(post_id, comment_id) = 1`。
 
 #### `community_moderation_actions`
 
@@ -887,9 +799,8 @@ IP 黑名单，支持裸 IP 与 CIDR。
 
 #### `search_entries` <span class="noj-danger-zone">DANGER ZONE</span>
 
-统一搜索索引表，唯一写者是 search domain（源域通过 Redis
-事件异步维护）。**私信条目会写入 `body`
-原文**，整表导出等同于导出用户私信，必须脱敏/加密。
+统一搜索索引表，唯一写者是 search domain（源域登记 `search.index` 后台任务
+异步维护）。`body` 含帖子、评论等正文，整表导出前须评估脱敏。
 
 | 列                          | 类型     | 约束 / 默认                                                      | 说明                                                                                   |
 | --------------------------- | -------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -897,7 +808,7 @@ IP 黑名单，支持裸 IP 与 CIDR。
 | `entity_type`               | text     | NOT NULL；与 `entity_id` 共同唯一（`idx_search_entries_entity`） | 实体类型                                                                               |
 | `entity_id`                 | text     | NOT NULL                                                         | 实体 ID                                                                                |
 | `title`                     | text     | NOT NULL；DEFAULT `''`                                           | 标题（权重 A）                                                                         |
-| `body`                      | text     | NOT NULL；DEFAULT `''`                                           | <span class="noj-danger-col">正文（权重 B）；私信条目为私信原文（含撤回前内容）</span> |
+| `body`                      | text     | NOT NULL；DEFAULT `''`                                           | 正文（权重 B） |
 | `search_vector`             | tsvector | GENERATED ALWAYS                                                 | 全文向量，GIN 索引                                                                     |
 | `metadata`                  | jsonb    | NOT NULL；DEFAULT `{}`                                           | 元数据                                                                                 |
 | `owner_id`                  | text     | NULL；索引                                                       | 所有者                                                                                 |
@@ -910,32 +821,6 @@ IP 黑名单，支持裸 IP 与 CIDR。
 
 可选扩展：`idx_search_entries_title_trgm` /
 `idx_search_entries_body_trgm`（`pg_trgm` GIN，生产迁移创建）。
-
-### 内容审核
-
-#### `content_review_queue`
-
-内容合规审核队列（UGC 同步 + 私信异步）。
-
-| 列                          | 类型 | 约束 / 默认                                                           | 说明                                                           |
-| --------------------------- | ---- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `id`                        | text | PK                                                                    | 记录 UUID                                                      |
-| `content_type`              | text | NOT NULL；CHECK `post/comment/message`                                | 目标类型                                                       |
-| `target_id`                 | text | NOT NULL；索引                                                        | 目标内容主键                                                   |
-| `channel`                   | text | NOT NULL；CHECK `ugc/dm`                                              | 来源渠道                                                       |
-| `status`                    | text | NOT NULL；CHECK `pending_review/approved/rejected/reviewed/dismissed` | 处理状态                                                       |
-| `review_provider`           | text | NOT NULL                                                              | 判定 Provider（`mock/aliyun/tencent/none`）                    |
-| `verdict`                   | text | NOT NULL；CHECK `pass/review/block/error`                             | 机器结论                                                       |
-| `label`                     | text | NULL                                                                  | 命中分类标签（JSON 数组字符串）                                |
-| `hit_words`                 | text | NULL                                                                  | 命中词（JSON 数组字符串）                                      |
-| `risk_level`                | text | NULL                                                                  | 风险级别（`low/medium/high`）                                  |
-| `content_snapshot`          | text | NOT NULL；DEFAULT `''`                                                | <span class="noj-danger-col">送审内容快照</span>（私信仅文本） |
-| `meta`                      | text | NOT NULL；DEFAULT `'{}'`                                              | 上下文 JSON                                                    |
-| `reviewed_by`               | text | FK→`users(id)` ON DELETE SET NULL                                     | 人工处置人                                                     |
-| `reviewed_at`               | text | NULL                                                                  | 处置时间                                                       |
-| `resolution`                | text | NULL                                                                  | 处置说明                                                       |
-| `action_taken`              | text | NULL                                                                  | 处置动作（留痕）                                               |
-| `created_at` / `updated_at` | text | NOT NULL                                                              | 时间                                                           |
 
 ### 法律与合规
 
@@ -1150,7 +1035,7 @@ key；对非空列表设 TTL 会连未消费任务一起删）。 :::
 | ------------------------------------ | ------------ | ------------------ | ---- | ---------------------------------- | --------------------------------------- |
 | `noj:events:submission:<id>`         | Pub/Sub 频道 | noj-core `publish` | 瞬时 | 单提交状态变更通知（SSE 推送）     | 不适用（Pub/Sub）                       |
 | `noj:events:queue`                   | Pub/Sub 频道 | noj-core           | 瞬时 | 全局队列变更通知                   | 不适用                                  |
-| `noj:events:user:<id>`               | Pub/Sub 频道 | noj-core           | 瞬时 | 用户私信通知                       | 不适用                                  |
+| `noj:events:user:<id>`               | Pub/Sub 频道 | noj-core           | 瞬时 | 用户通知                           | 不适用                                  |
 | `noj:events:contest:<id>:ranking`    | Pub/Sub 频道 | noj-core           | 瞬时 | 竞赛排名变更                       | 不适用                                  |
 | `noj:events:contest:<id>:submission` | Pub/Sub 频道 | noj-core           | 瞬时 | 竞赛新提交                         | 不适用                                  |
 | `noj:events:stats`                   | Pub/Sub 频道 | noj-core           | 瞬时 | 统计数据变更                       | 不适用                                  |
@@ -1163,12 +1048,8 @@ DB，只删缓存会读到 env/默认值而非真实新值。 :::
 
 ### 异步消费者队列（noj-core）
 
-| 键模式                     | 类型 | 写入方             | TTL | 作用                 | 能否删除 |
-| -------------------------- | ---- | ------------------ | --- | -------------------- | -------- |
-| `noj:review:dm`            | List | messaging 域 RPUSH | 无  | 私信异步内容审核队列 | 谨慎     |
-| `noj:review:dm:processing` | List | review 消费者      | 无  | 已取未确认审核任务   | 谨慎     |
-
-（各消费者自动登记进 sweeper 兜底表；坏消息进入对应 `:dead` 队列。）
+Core 内部已不再使用 Redis 列表队列：私信异步内容审核队列（原 `noj:review:dm`）已随私信下线（#698），
+升级后残留的 `noj:review:dm*` 键可直接删除。
 
 > 搜索索引不再使用 Redis 队列（原 `noj:search:index`，#698
 > N1）：源域在业务写入时 登记 PostgreSQL `background_tasks` 中的 `search.index`

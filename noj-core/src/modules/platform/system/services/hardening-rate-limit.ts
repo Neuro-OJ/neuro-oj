@@ -51,11 +51,6 @@ export const EMAIL_VERIFICATION_RESEND_LIMIT: RateLimitConfig = {
   max: 1,
 };
 
-export const MESSAGE_SEND_LIMIT: RateLimitConfig = {
-  windowSec: 60,
-  max: 60,
-};
-
 export const SUBMISSION_USER_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 120,
@@ -449,16 +444,6 @@ export async function enforceEmailVerificationResendRateLimit(
   await enforceRateLimit(
     `email-verification:user:${userId}`,
     EMAIL_VERIFICATION_RESEND_LIMIT,
-  );
-}
-
-/** 私信发送：按发送用户维度。 */
-export async function enforceMessageSendRateLimit(
-  userId: string,
-): Promise<void> {
-  await enforceRateLimit(
-    `message:user:${userId}`,
-    MESSAGE_SEND_LIMIT,
   );
 }
 

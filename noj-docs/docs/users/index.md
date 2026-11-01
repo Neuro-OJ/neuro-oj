@@ -25,7 +25,7 @@
 - [客观题套卷](../features/objective.md)：单选题、多选题与判断题的在线作答与即时判分。
 - [排行榜与每日签到](../features/ranking.md)：天梯积分、解题数排名规则与每日打卡活跃度。
 - [社区交流与讨论](../features/community.md)：题目讨论区、题解分享与社区发帖规范。
-- [站内搜索与私信](../features/search-messages.md)：全文检索题目与用户，站内实时沟通。
+- [站内搜索](../features/search-messages.md)：全文检索题目、竞赛与社区内容。
 - [系统公告](../features/announcements.md)：获取平台更新与赛事重要通知。
 
 ### 4. 账号与个人中心

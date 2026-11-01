@@ -57,7 +57,7 @@ export async function aggregateView(reader: CoreReader, input: {
   ];
   const member = !!viewer && (workspace.is_member || workspace.platform_admin);
   if (viewer) {
-    tasks.push(read('userSpaces', '/api/v1/me/domains'), read('messageUnread', '/api/v1/conversations/unread-count'));
+    tasks.push(read('userSpaces', '/api/v1/me/domains'));
   }
   const features = workspace.configuration.features;
   if (viewer) tasks.push(read('accountNotifications', '/api/v1/notifications?per_page=1'));

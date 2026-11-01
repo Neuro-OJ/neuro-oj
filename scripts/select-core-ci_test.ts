@@ -19,13 +19,13 @@ Deno.test("Core CI: shared 改动从唯一元数据选择全部域和共享测�
   ]);
 });
 
-Deno.test("Core CI: education 与连字符别名均通过实际选择器触发", async () => {
+Deno.test("Core CI: 多个域标志同时触发对应任务", async () => {
   assertEquals(
     await select(MODULE_TEST_METADATA.legacyDomainToModule, {
       CORE_EDUCATION: "true",
-      CORE_CONTENT_REVIEW: "true",
+      CORE_SEARCH: "true",
     }),
-    ["content-review", "education"],
+    ["education", "search"],
   );
 });
 

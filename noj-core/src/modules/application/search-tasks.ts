@@ -39,7 +39,6 @@ const TARGET_KIND_BY_ENTITY: Record<SearchEntityType, TaskTargetKind> = {
   community_comment: "problem",
   contest: "problem",
   submission: "submission",
-  message: "domain",
   announcement: "domain",
 };
 

@@ -22,39 +22,12 @@ interface ReportComment {
   post_id: string
   author_id: string
 }
-interface ReportMessage {
-  id: string
-  content: string
-  type: string
-  conversation_id: string
-  sender_id: string
-  recalled_at: string | null
-}
-interface MessageHistoryItem {
-  id: string
-  conversation_id: string
-  sender_id: string
-  type: string
-  content: string
-  created_at: string
-  recalled_at: string | null
-  image_url: string | null
-  reply_to_message_id: string | null
-  reply_to: {
-    sender_name: string
-    content: string
-    type: string
-  } | null
-  forwarded_from_user_id: string | null
-  forwarded_from_user: { id: string; username: string } | null
-}
 interface ReportRow {
   report: {
     id: string
     reporter_id: string
     post_id: string | null
     comment_id: string | null
-    message_id: string | null
     content_type: string
     category: string
     reason: string
@@ -77,7 +50,6 @@ interface ReportRow {
   } | null
   post: ReportPost | null
   comment: ReportComment | null
-  message: ReportMessage | null
 }
 
 const { toast } = useToast()
@@ -88,25 +60,11 @@ type Tab = "pending" | "resolved" | "dismissed"
 const activeTab = ref<Tab>("pending")
 const lists = reactive<Record<Tab, ReportRow[]>>({ pending: [], resolved: [], dismissed: [] })
 const loading = ref(false)
-const contentFilter = ref<"all" | "post" | "comment" | "message">("all")
 const loadErrors = reactive<Record<Tab, string>>({ pending: "", resolved: "", dismissed: "" })
-const contentOptions = [
-  { label: "全部社区内容与私信", value: "all" },
-  { label: "帖子", value: "post" },
-  { label: "评论", value: "comment" },
-  { label: "私信", value: "message" },
-]
-
 // 处理相关状态
 const processingId = ref<string | null>(null)
 const showProcess = ref(false)
 const processTarget = ref<ReportRow | null>(null)
-// 聊天记录预览弹窗
-const showHistory = ref(false)
-const historyLoading = ref(false)
-const historyConversation = ref("")
-const historyMessages = ref<MessageHistoryItem[]>([])
-const reporterUserId = ref("")
 const processAction = ref<"remove_content" | "ban">("remove_content")
 const processReason = ref("")
 const processExpiresAt = ref("")
@@ -116,31 +74,20 @@ const typeLabel: Record<string, string> = {
   discussion: "讨论",
   solution: "题解",
   moment: "动态",
-  message: "私信",
 }
 
 async function load(tab: Tab) {
-  const filter = contentFilter.value
   loadErrors[tab] = ""
   try {
     const result = await api.get<{ data: ReportRow[] }>(
       "/api/v1/admin/community/reports",
-      { query: { status: tab, content_type: filter === "all" ? undefined : filter }, silent: true },
+      { query: { status: tab }, silent: true },
     )
-    if (contentFilter.value === filter) lists[tab] = result.data
+    lists[tab] = result.data
   } catch (error) {
-    if (contentFilter.value === filter) {
-      lists[tab] = []
-      loadErrors[tab] = extractApiError(error).message
-    }
+    lists[tab] = []
+    loadErrors[tab] = extractApiError(error).message
   }
-}
-
-async function filterReports() {
-  lists.pending = []
-  lists.resolved = []
-  lists.dismissed = []
-  await Promise.all([load("pending"), load("resolved"), load("dismissed")])
 }
 
 function switchTab(tab: Tab) {
@@ -148,16 +95,12 @@ function switchTab(tab: Tab) {
   load(tab)
 }
 
-// 内容跳转链接：评论跳转到所属帖子详情页；私信消息无公开页面
+// 内容跳转链接：评论跳转到所属帖子详情页
 function contentHref(row: ReportRow): string {
-  if (row.report.content_type === "message") return "#"
   const postId = row.post?.id ?? row.comment?.post_id
   return postId ? `/community/posts/${postId}` : "#"
 }
 function contentLabel(row: ReportRow): string {
-  if (row.report.content_type === "message") {
-    return `私信消息：${row.report.content_snapshot?.slice(0, 60) ?? ""}`
-  }
   if (row.report.content_type === "comment") {
     return `评论：${row.report.content_snapshot?.slice(0, 60) ?? ""}`
   }
@@ -171,27 +114,6 @@ function openProcess(row: ReportRow) {
   processExpiresAt.value = ""
   processScope.value = "social"
   showProcess.value = true
-}
-
-// 打开举报附带的完整聊天记录（管理员可见全部，含撤回原文）
-async function openHistory(row: ReportRow) {
-  if (!row.message?.conversation_id) return
-  historyConversation.value = row.report.content_snapshot
-  reporterUserId.value = row.reporter.id
-  historyMessages.value = []
-  showHistory.value = true
-  historyLoading.value = true
-  try {
-    const result = await api.get<{ data: { message_history?: MessageHistoryItem[] } }>(
-      `/api/v1/community/reports/${row.report.id}`,
-      { silent: true },
-    )
-    historyMessages.value = result.data.message_history ?? []
-  } catch {
-    historyMessages.value = []
-  } finally {
-    historyLoading.value = false
-  }
 }
 
 async function submitProcess() {
@@ -272,12 +194,6 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
   <div>
     <AdminPageHeader title="举报管理" description="处理社区举报工单" icon="i-lucide-flag" />
 
-    <div class="mb-4 flex flex-wrap items-center gap-3">
-      <USelect v-model="contentFilter" :items="contentOptions" aria-label="举报内容类型"
-        class="w-60" @update:model-value="filterReports" />
-      <p class="text-sm text-text-secondary">社区内容使用默认空间权限；私信可独立处理。</p>
-    </div>
-
     <!-- 三板块 Tab -->
     <div class="mb-6 flex gap-2 border-b border-border">
       <button
@@ -309,7 +225,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
           <div class="flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span class="font-mono">#{{ row.report.id.slice(0, 8) }}</span>
-            <span class="rounded bg-primary-bg px-2 py-0.5 text-primary">{{ row.report.content_type === "comment" ? "评论" : row.report.content_type === "message" ? "私信" : (typeLabel[row.post?.type ?? ""] ?? "内容") }}</span>
+            <span class="rounded bg-primary-bg px-2 py-0.5 text-primary">{{ row.report.content_type === "comment" ? "评论" : (typeLabel[row.post?.type ?? ""] ?? "内容") }}</span>
             <NuxtTime :datetime="row.report.created_at" locale="zh-CN" class="text-text-secondary" />
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -363,10 +279,6 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
           <template v-else>
             <UButton color="neutral" variant="outline" size="sm" :disabled="processingId !== null" @click="reopenReport(row)">撤销</UButton>
           </template>
-          <!-- 举报私信消息：可查看完整聊天记录 -->
-          <UButton v-if="row.message" color="neutral" variant="outline" size="sm" @click="openHistory(row)">
-            <UIcon name="i-lucide-messages-square" class="size-3.5" />查看聊天记录
-          </UButton>
         </div>
       </article>
     </div>
@@ -424,76 +336,5 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
         </label>
       </div>
     </AdminEditPanel>
-
-    <!-- 举报附带的完整聊天记录抽屉 -->
-    <AdminDetailDrawer
-      :open="showHistory"
-      :title="`完整聊天记录：${historyConversation}`"
-      width-class="sm:max-w-xl"
-      @update:open="(val: boolean) => showHistory = val"
-      @close="showHistory = false"
-    >
-      <div class="space-y-3">
-        <p class="text-xs text-text-secondary">被举报会话：{{ historyConversation }}</p>
-        <div v-if="historyLoading" class="py-8 text-center text-sm text-text-secondary">加载中…</div>
-        <div v-else-if="historyMessages.length === 0" class="py-8 text-center text-sm text-text-secondary">该会话暂无消息</div>
-        <div v-else class="space-y-2 rounded-md bg-bg-page p-3">
-          <div
-            v-for="m in historyMessages"
-            :key="m.id"
-            class="flex gap-2 text-sm"
-            :class="m.sender_id === reporterUserId ? 'justify-end' : ''"
-          >
-            <div
-              class="max-w-[80%] rounded-lg px-2.5 py-1.5 text-text-secondary"
-              :class="m.sender_id === reporterUserId ? 'bg-primary/10' : 'bg-default border border-border'"
-            >
-              <div class="mb-0.5 flex items-center gap-1.5 text-xs text-text-muted">
-                <span>{{ m.sender_id === reporterUserId ? "举报者" : "被举报者" }}</span>
-                <span v-if="m.forwarded_from_user" class="inline-flex items-center gap-0.5 text-primary">
-                  <UIcon name="i-lucide-forward" class="size-3" />转自 @{{ m.forwarded_from_user.username }}
-                </span>
-              </div>
-              <!-- 回复引用框 -->
-              <div
-                v-if="m.reply_to"
-                class="mb-1 rounded-md border-l-[3px] border-primary bg-primary/5 px-2 py-1 text-xs leading-snug"
-              >
-                <span class="font-semibold text-primary">{{ m.reply_to.sender_name }}</span>
-                <span class="ml-1 text-text-secondary">{{ m.reply_to.content }}</span>
-              </div>
-              <!-- 撤回消息：管理员可见原文/原图（带已撤回标记），举报者本人场景后端已隐藏为"该消息已撤回" -->
-              <template v-if="m.recalled_at">
-                <template v-if="m.content && m.content !== '该消息已撤回'">
-                  <span class="italic text-text-muted">（已撤回）</span>{{ m.content }}
-                </template>
-                <template v-else-if="m.type === 'image' && m.image_url">
-                  <span class="italic text-text-muted">（已撤回）</span>
-                  <img
-                    :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
-                    alt="举报图片（已撤回）"
-                    class="max-h-40 rounded-md object-contain"
-                    loading="lazy"
-                  />
-                </template>
-                <span v-else class="italic opacity-60">该消息已撤回</span>
-              </template>
-              <!-- 图片消息 -->
-              <span v-else-if="m.type === 'image' && m.image_url">
-                <img
-                  :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
-                  alt="举报图片"
-                  class="max-h-40 rounded-md object-contain"
-                  loading="lazy"
-                />
-              </span>
-              <span v-else-if="m.type === 'image'">[图片]</span>
-              <!-- 文本 -->
-              <span v-else>{{ m.content }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </AdminDetailDrawer>
   </div>
 </template>

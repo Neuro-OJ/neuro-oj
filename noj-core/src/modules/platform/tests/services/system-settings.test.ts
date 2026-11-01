@@ -220,9 +220,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    // content_review_risk_threshold 定义 max:100（runtime 项）
+    // rate_limit_login_acc_max 定义 max:100（runtime 项）
     await assertRejects(
-      () => updateSetting("content_review_risk_threshold", 999, "0"),
+      () => updateSetting("rate_limit_login_acc_max", 999, "0"),
       ValidationError,
       "不能大于 100",
     );
