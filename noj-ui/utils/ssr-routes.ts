@@ -14,7 +14,6 @@ export const CLIENT_ONLY_ROUTES = [
   '/d/*/contests/*/solve/*',
   '/d/*/queue',
   '/d/*/settings/announcements',
-  '/d/*/settings/carousel',
   '/d/*/settings/community',
   '/d/*/solve/*',
   '/editor/*',

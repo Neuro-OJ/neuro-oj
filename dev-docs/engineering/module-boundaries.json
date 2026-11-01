@@ -144,7 +144,6 @@
     "schemaOwners": {
       "assignment-progress.ts": "education",
       "assignment.ts": "education",
-      "carousel.ts": "platform",
       "catalog-workspace.ts": "problems",
       "catalog.ts": "problems",
       "common.ts": "platform",

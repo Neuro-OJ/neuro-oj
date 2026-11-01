@@ -5,7 +5,6 @@ const props = defineProps<{
 const { user, isLoggedIn } = useAuth();
 const { api } = useApi();
 
-// 轮播与公告已解耦：轮播见 components/feature/Carousel.vue，
 // 常驻公告区块见 components/feature/AnnouncementSection.vue。
 
 // ── Check-in ──

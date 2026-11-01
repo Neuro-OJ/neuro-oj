@@ -68,7 +68,6 @@ const ROUTE_MAP: Record<string, RouteMetaMap> = {
   "/admin/content-review": { group: "社区与风控", label: "内容审查" },
   "/admin/reports": { group: "社区与风控", label: "举报中心" },
   "/admin/announcements": { group: "社区与风控", label: "全站公告" },
-  "/admin/carousel": { group: "社区与风控", label: "轮播管理" },
   "/admin/users": { group: "用户与安全", label: "用户管理" },
   "/admin/roles": { group: "用户与安全", label: "角色权限" },
   "/admin/blacklist": { group: "用户与安全", label: "黑名单管理" },

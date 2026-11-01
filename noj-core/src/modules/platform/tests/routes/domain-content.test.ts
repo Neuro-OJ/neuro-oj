@@ -1,17 +1,14 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { domainLimits, domains, users } from "../../../../shared/db/schema.ts";
+import { users } from "../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { createDomain } from "../../../access/workspace/index.ts";
-import { getDomainStorageUsage } from "../../../assets/index.ts";
 import {
   createAnnouncement,
-  createSlide,
   ensureRbacSeeds,
   initSystemSettings,
   runWithContext,
@@ -60,7 +57,6 @@ async function fixture() {
         banner_text: "实例横幅",
       }),
   );
-  const instanceSlide = await createSlide({ kind: "text", title: "实例轮播" });
   return {
     db,
     app,
@@ -71,7 +67,6 @@ async function fixture() {
     tokenA,
     tokenB,
     instanceNotice,
-    instanceSlide,
     pathA: `/api/v1/domains/${first.slug}`,
     pathB: `/api/v1/domains/${second.slug}`,
   };
@@ -150,82 +145,8 @@ Deno.test("域运营：合并实例与本域内容、实例优先、实例接口
   );
 });
 
-Deno.test("域运营管理：成员权限与资源归属独立校验，轮播排序仅影响本域", async () => {
+Deno.test("域运营管理：实例与本域公告互不可改", async () => {
   const f = await fixture();
-  const created = await jsonRequest(
-    f.app,
-    `${f.pathA}/settings/carousel/slides`,
-    {
-      method: "POST",
-      token: f.tokenA,
-      body: { kind: "text", title: "本域轮播" },
-    },
-  );
-  assertEquals(created.status, 201);
-  const slideId = (await created.json()).data.id;
-  const otherId = await createSlide({ kind: "text", title: "第二域轮播" }, {
-    domainId: f.second.id,
-  });
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathA}/settings/carousel/slides`, {
-      token: f.tokenB,
-    })).status,
-    403,
-  );
-  for (const id of [f.instanceSlide, otherId]) {
-    assertEquals(
-      (await jsonRequest(f.app, `${f.pathA}/settings/carousel/slides/${id}`, {
-        method: "PATCH",
-        token: f.tokenA,
-        body: { title: "不能修改" },
-      })).status,
-      404,
-    );
-  }
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathA}/settings/carousel/slides/reorder`, {
-      method: "POST",
-      token: f.tokenA,
-      body: { ids: [slideId] },
-    })).status,
-    200,
-  );
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathA}/settings/carousel/slides/reorder`, {
-      method: "POST",
-      token: f.tokenA,
-      body: { ids: [f.instanceSlide, slideId] },
-    })).status,
-    400,
-  );
-  const combined =
-    await (await jsonRequest(f.app, `${f.pathA}/carousel/slides`)).json();
-  assertEquals(combined.data.map((item: { id: string }) => item.id), [
-    f.instanceSlide,
-    slideId,
-  ]);
-  const global = await (await jsonRequest(f.app, "/api/v1/carousel/slides"))
-    .json();
-  assertEquals(global.data.map((item: { id: string }) => item.id), [
-    f.instanceSlide,
-  ]);
-  assertEquals(
-    (await jsonRequest(
-      f.app,
-      `${f.pathA}/settings/carousel/slides/${slideId}`,
-      {
-        method: "PATCH",
-        token: f.tokenA,
-        body: { is_enabled: false },
-      },
-    )).status,
-    200,
-  );
-  const hidden = await (await jsonRequest(f.app, `${f.pathA}/carousel/slides`))
-    .json();
-  assertEquals(hidden.data.map((item: { id: string }) => item.id), [
-    f.instanceSlide,
-  ]);
   const notice = await runWithContext(
     { actorId: f.a, actorIp: "127.0.0.1", actorRole: "user" },
     () =>
@@ -249,81 +170,6 @@ Deno.test("域运营管理：成员权限与资源归属独立校验，轮播排
     )).status,
     404,
   );
-});
-
-Deno.test("私有域轮播：图片访问受域授权、存储预占结算及删除释放有效", async () => {
-  const f = await fixture();
-  await f.db.update(domains).set({
-    configuration: { ...f.first.configuration, access: "members" },
-  }).where(eq(domains.id, f.first.id));
-  const bytes = Uint8Array.from(
-    atob(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4VQAAAAASUVORK5CYII=",
-    ),
-    (char) => char.charCodeAt(0),
-  );
-  const upload = async (path: string, token: string) => {
-    const body = new FormData();
-    body.set("file", new File([bytes], "banner.png", { type: "image/png" }));
-    return await f.app.fetch(
-      new Request(`http://localhost${path}/settings/carousel/images`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body,
-      }),
-    );
-  };
-  const uploaded = await upload(f.pathA, f.tokenA);
-  assertEquals(uploaded.status, 201);
-  const url = (await uploaded.json()).data.image_storage_url;
-  assertEquals((await getDomainStorageUsage(f.first.id)).used, bytes.length);
-  const created = await jsonRequest(
-    f.app,
-    `${f.pathA}/settings/carousel/slides`,
-    {
-      method: "POST",
-      token: f.tokenA,
-      body: { kind: "image", image_storage_url: url, title: "私有图片" },
-    },
-  );
-  assertEquals(created.status, 201);
-  const id = (await created.json()).data.id;
-  const imagePath = `${f.pathA}/carousel/slides/${id}/image`;
-  const allowed = await jsonRequest(f.app, imagePath, { token: f.tokenA });
-  assertEquals(allowed.status, 200);
-  assertEquals(allowed.headers.get("Cache-Control"), "private, no-store");
-  assertEquals((await jsonRequest(f.app, imagePath)).status, 404);
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathB}/carousel/slides/${id}/image`, {
-      token: f.tokenB,
-    })).status,
-    404,
-  );
-  assertEquals(
-    (await jsonRequest(f.app, `/api/v1/carousel/slides/${id}/image`)).status,
-    404,
-  );
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathB}/settings/carousel/slides`, {
-      method: "POST",
-      token: f.tokenB,
-      body: { kind: "image", image_storage_url: url },
-    })).status,
-    400,
-  );
-  await f.db.update(domainLimits).set({ storage_bytes: 0 }).where(
-    eq(domainLimits.domain_id, f.second.id),
-  );
-  assertEquals((await upload(f.pathB, f.tokenB)).status, 429);
-  assertEquals((await getDomainStorageUsage(f.second.id)).reserved, 0);
-  assertEquals(
-    (await jsonRequest(f.app, `${f.pathA}/settings/carousel/slides/${id}`, {
-      method: "DELETE",
-      token: f.tokenA,
-    })).status,
-    204,
-  );
-  assertEquals((await getDomainStorageUsage(f.first.id)).used, 0);
 });
 
 Deno.test("域公告搜索：实例公告全域可见，其他域及实例默认入口不泄露本域公告", async () => {

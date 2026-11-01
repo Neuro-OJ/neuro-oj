@@ -36,7 +36,6 @@ Deno.test('域设置导航：默认域与其他域共用管理入口，成员无
       slug,
       permissions: ['domain:settings', 'domain:members', 'domain:limits'],
     });
-    assert(entries.some((item) => item.to === `/d/${slug}/settings/carousel`));
     assert(entries.some((item) => item.to === `/d/${slug}/settings/announcements`));
     assert(entries.every((item) => item.to.startsWith(`/d/${slug}/`)));
   }

@@ -3,7 +3,6 @@ import { workspacePath } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 import type { BffEnvelope } from '~/utils/bff-view';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
-import type { CarouselSlide } from '~/composables/useCarousel';
 import type { CommunityConfig, FeedItem } from '~/composables/useCommunity';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
 import type { DomainProblemSummary } from '~/utils/domain-problems';
@@ -40,7 +39,6 @@ const { data: view, error: viewError, status: viewStatus, refresh: refreshView }
   { dedupe: 'defer' },
 );
 const section = <T>(name: keyof BffEnvelope['sections']) => view.value?.sections[name]?.data as T | undefined;
-const carousel = computed(() => (section<{ data: CarouselSlide[] }>('carousel')?.data ?? undefined));
 const announcements = computed(() => (section<{ data: AnnouncementSummary[] }>('announcements')?.data ?? undefined));
 const dashboard = computed(() => section<{ data: EducationDashboardData }>('dashboard'));
 const activity = computed(() => section<HomeActivity>('activity'));
@@ -64,10 +62,10 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
   <AsyncContent v-if="domain" :status="viewError ? 'error' : viewStatus === 'pending' ? 'loading' : view ? 'data' : 'empty'"
     :error="viewError ? '首页数据读取失败，请重试' : undefined" @retry="refreshView()">
   <div :key="domain.id + ':' + (user?.id ?? 'guest')" class="space-y-6">
-    <!-- 头部核心区：轮播与签到 -->
+    <!-- 头部核心区：域简介与签到 -->
     <section class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
       <div class="flex min-h-[320px] flex-col lg:flex-row">
-        <Carousel :domain-slug="domain.slug" :title="domain.name" :description="domain.description" :initial-slides="carousel" />
+        <WorkspaceHero :title="domain.name" :description="domain.description" />
         <HomepageCheckIn :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
       </div>
     </section>

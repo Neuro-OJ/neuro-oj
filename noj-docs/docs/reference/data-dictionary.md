@@ -831,7 +831,7 @@ DB，只删缓存会读到 env/默认值而非真实新值）。 :::
 | `created_at`  | text  | NOT NULL；索引                     | 时间                           |
 
 `action` 的 `CHECK` 覆盖
-`users.*`、`roles.*`、`problems.*`、`submissions.*`、`settings.update`、`auth.*`、`community.*`、`announcement.*`、`carousel.*`、`review.*`、`contest.*`、`ip_ban.*`、`judge_images.*`、`email_delivery.clear_suppression`、`llm_provider.*`、`llm_quota.upsert`
+`users.*`、`roles.*`、`problems.*`、`submissions.*`、`settings.update`、`auth.*`、`community.*`、`announcement.*`、`carousel.*`（已下线，仅保留历史记录）、`review.*`、`contest.*`、`ip_ban.*`、`judge_images.*`、`email_delivery.clear_suppression`、`llm_provider.*`、`llm_quota.upsert`
 等。
 
 ::: tip 保留策略 超过 `AUDIT_LOG_RETENTION_DAYS`（默认 **90
@@ -998,25 +998,6 @@ PIPL 删除/更正请求（内容类），状态机
 | `handled_at`                | text | NULL                                                                              | 处理时间     |
 | `resolution`                | text | NULL                                                                              | 处理结果说明 |
 | `created_at` / `updated_at` | text | NOT NULL                                                                          | 时间         |
-
-### 首页轮播
-
-#### `carousel_slides`
-
-首页轮播（与公告解耦）。
-
-| 列                          | 类型    | 约束 / 默认                  | 说明                          |
-| --------------------------- | ------- | ---------------------------- | ----------------------------- |
-| `id`                        | text    | PK                           | 幻灯片 UUID                   |
-| `kind`                      | text    | NOT NULL；CHECK `image/text` | 图片 / 渐变文案               |
-| `image_storage_url`         | text    | NULL                         | 图片地址（`kind=image` 必填） |
-| `title`                     | text    | NULL                         | 主标题（`kind=text` 必填）    |
-| `subtitle`                  | text    | NULL                         | 副标题                        |
-| `gradient_key`              | text    | NULL                         | 渐变预设键（`kind=text`）     |
-| `link_url`                  | text    | NULL                         | 跳转地址；为空则整卡不可点    |
-| `sort_order`                | integer | NOT NULL；DEFAULT `0`；索引  | 排序（升序）                  |
-| `is_enabled`                | boolean | NOT NULL；DEFAULT `true`     | 是否启用                      |
-| `created_at` / `updated_at` | text    | NOT NULL                     | 时间                          |
 
 ### LLM 网关表（noj-llm-gateway）
 

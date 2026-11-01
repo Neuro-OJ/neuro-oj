@@ -143,7 +143,6 @@ export {
   storageObjects,
   systemSettings,
 } from "./system.ts";
-export { carouselSlides } from "./carousel.ts";
 export {
   dataRequests,
   legalDocuments,

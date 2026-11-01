@@ -77,7 +77,6 @@ export async function aggregateView(reader: CoreReader, input: {
   const loadView = async () => {
     if (input.kind === 'home') {
       const reads: Promise<unknown>[] = [
-        read('carousel', `${root}/carousel/slides`),
         read('announcements', `${root}/announcements?page=1&per_page=5`),
         read('activity', `${root}/activity`),
         optional('randomProblems', async () => {
