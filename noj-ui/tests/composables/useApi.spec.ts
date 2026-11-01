@@ -7,13 +7,39 @@ vi.mock('~/composables/useToast', () => ({
 }));
 
 import { useApi } from '~/composables/useApi';
+import { ref } from 'vue';
+import { domainAnswerKey } from '~/utils/domain-problems';
 
 describe('useApi', () => {
   beforeEach(() => {
+    localStorage.clear();
     toastError.mockClear();
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { authCookiePrefix: 'noj' } }));
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'zh-CN' } }));
     vi.stubGlobal('useRoute', () => ({ path: '/problems', fullPath: '/problems' }));
+  });
+
+  it.each([true, false])('普通 API 的 401 清理账号与旧草稿（user 已恢复：%s）', async (hasUser) => {
+    const user = ref(hasUser ? { id: 'student' } : null);
+    const session = ref<{ userId: string } | null>({ userId: 'student' });
+    const ownKey = `noj:draft:${domainAnswerKey('student', 'school', 'p', 'v1', 'cc')}`;
+    const guestKey = `noj:draft:${domainAnswerKey('anonymous', 'school', 'p', 'v1', 'cc')}`;
+    for (const key of [ownKey, guestKey, 'noj:draft:old']) localStorage.setItem(key, 'draft');
+    vi.stubGlobal('useState', () => user);
+    vi.stubGlobal('useCookie', () => session);
+    const navigate = vi.fn();
+    vi.stubGlobal('navigateTo', navigate);
+    vi.stubGlobal(
+      '$fetch',
+      vi.fn((url: string) => url === '/api/auth/logout' ? Promise.resolve() : Promise.reject({ status: 401 })),
+    );
+    await expect(useApi().api.get('/api/v1/problems/p', { silent: true })).rejects.toEqual({ status: 401 });
+    expect(user.value).toBeNull();
+    expect(session.value).toBeNull();
+    expect(localStorage.getItem(ownKey)).toBeNull();
+    expect(localStorage.getItem('noj:draft:old')).toBeNull();
+    expect(localStorage.getItem(guestKey)).toBe('draft');
+    expect(navigate).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/problems' } });
   });
 
   it('成功请求返回数据', async () => {

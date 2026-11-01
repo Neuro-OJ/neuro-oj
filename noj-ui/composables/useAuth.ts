@@ -1,5 +1,6 @@
 import { extractApiError } from '~/utils/apiError';
 import { authCookieNames } from '~/utils/auth-cookies';
+import { clearUserDrafts } from '~/utils/draft-storage';
 
 import type { AuthUser as UserResponse } from '~/utils/auth-user';
 
@@ -45,6 +46,25 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
     path: '/',
     maxAge: 60 * 60 * 24,
   });
+
+  function clearSession() {
+    clearUserDrafts(user.value?.id ?? session.value?.userId);
+    user.value = null;
+    session.value = null;
+  }
+
+  if (import.meta.client) {
+    // 账号被替换时同样清理，覆盖登录切换和其他会话状态更新。
+    watch(() => user.value?.id, (next, previous) => {
+      if (previous && previous !== next) clearUserDrafts(previous);
+    }, { flush: 'sync' });
+    watch(() => session.value?.userId, (next, previous) => {
+      if (previous && !next) {
+        clearUserDrafts(previous);
+        user.value = null;
+      }
+    }, { flush: 'sync' });
+  }
 
   // `token` 不再由客户端管理，Nitro 代理从 HTTP-only cookie 自动注入
   // 保留 isLoggedIn 计算属性简化其他页面的访问
@@ -308,9 +328,12 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
       }
     } catch (err) {
       const info = extractApiError(err);
-      user.value = info.status === 401 ? null : sessionToUser(snapshot);
-      // 明确 401：清掉可读 session cookie，避免登录页仍显示已登录态
-      if (info.status === 401 && import.meta.client) session.value = null;
+      if (info.status === 401) {
+        // user 尚未恢复时也使用 session 快照清理该账号草稿。
+        clearSession();
+      } else {
+        user.value = sessionToUser(snapshot);
+      }
     } finally {
       loading.value = false;
     }
@@ -340,7 +363,7 @@ export function useAuth(targetRoute?: { path: string; fullPath: string }) {
     } catch {
       // 即使网络错误也要清除本地状态
     }
-    user.value = null;
+    clearSession();
   }
 
   return {

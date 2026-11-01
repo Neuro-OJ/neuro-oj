@@ -3,6 +3,7 @@ import type { Contest, ContestProblem } from '~/utils/contest-types'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { getEditorHistoryUrl } from '~/utils/editorHistory'
+import { domainAnswerKey } from '~/utils/domain-problems'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { isNotFoundError, isVersionConflictError } from '~/utils/apiError'
 import type { ProblemContestSecrecyNotice, SubmissionMode } from '~/utils/problemView'
@@ -214,9 +215,13 @@ const backUrl = computed(() => isContest.value
   ? `/contests/${contestId.value}/problems/${label.value}`
   : `/problems/${problemId.value}`)
 
-const draftKey = computed(() => isContest.value
-  ? `contest:${contestId.value}:${label.value}`
-  : problemId.value)
+const draftKey = computed(() => domainAnswerKey(
+  user.value?.id ?? 'anonymous',
+  'global',
+  isContest.value ? `contest:${contestId.value}:${label.value}` : problemId.value,
+  '',
+  'answer',
+))
 
 /**
  * 模板地址：竞赛模式携带 `contest_id`。

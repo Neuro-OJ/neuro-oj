@@ -1,3 +1,5 @@
+import { draftActor } from '~/utils/draft-storage';
+
 interface AnswerDraft {
   code: string;
   answers: Record<string, (string | boolean)[]>;
@@ -63,8 +65,14 @@ export function useDomainAnswerDraft(
     }
   }
   onMounted(load);
-  watch(key, (_next, previous) => {
-    save(previous);
+  watch(key, (next, previous) => {
+    // 切题仍保存旧上下文；切账号不能把已清理的草稿写回，也不能带给下一位用户。
+    // 游客登录前先保存当前输入，继续支持同一上下文的草稿认领。
+    const previousActor = draftActor(previous);
+    const nextActor = draftActor(next);
+    if (previousActor === nextActor || previousActor === 'anonymous') save(previous);
+    // 新账号草稿损坏或存储不可读时，也不能留下上一账号的内存输入。
+    if (previousActor !== nextActor) apply(null);
     load();
   }, { flush: 'sync' });
   watch([code, answers], () => save(), { deep: true, flush: 'post' });

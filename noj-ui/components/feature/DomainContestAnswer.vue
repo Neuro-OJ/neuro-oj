@@ -4,6 +4,7 @@ import type { ContestProblem } from '~/utils/contest-types';
 import type { UiFrameResult } from '~/utils/uiFrame';
 import ProblemAnswerPanel, { type AnswerHandlers, type AnswerQuestion } from '~/components/problem/ProblemAnswerPanel.vue';
 import { extractApiError } from '~/utils/apiError';
+import { domainAnswerKey } from '~/utils/domain-problems';
 
 /**
  * 比赛作答入口：把比赛独立提交入口适配到共用作答面板。
@@ -35,7 +36,9 @@ const submissionId = ref('');
 
 const isObjective = computed(() => props.problem.is_objective === true);
 const submissionMode = computed(() => props.problem.submission_mode ?? 'code');
-const draftKey = computed(() => `${props.slug}:contest:${props.contestId}:${props.problem.problem_id}:${props.problem.version_id}`);
+const draftKey = computed(() =>
+  domainAnswerKey(user.value?.id ?? 'anonymous', props.slug, `contest:${props.contestId}:${props.problem.problem_id}`, props.problem.version_id, 'answer')
+);
 const versionId = computed(() => props.problem.version_id);
 const version = computed(() => props.problem.version ?? 1);
 
