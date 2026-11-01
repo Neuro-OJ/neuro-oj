@@ -195,11 +195,8 @@ Participant
 查询、计数和分页使用相同授权条件；本人跨域历史不向公共主页增加私有域通过数或活跃数据。
 
 旧无域业务入口固定 `main`，不使用上次工作空间偏好。 旧
-`/admin/community/reports` 与 `/content-review` 默认混合列表要求 main
-当前可进入且社区模块可用； `reports?content_type=message`、审核队列
-`channel=dm`／`content_type=message` 是明确账号私信专项，独立于 main。
-统一审核快照按真实目标域或服务器保存的 `meta.domain_id`
-定位；其他域或未知归属的孤立记录不借用 main。
+`/admin/community/reports` 列表要求 main 当前可进入且社区模块可用。私信举报与
+统一审核队列已随私信、第三方内容审核下线（#698）。
 
 实现依据：[当前教师关系 SQL](../../noj-core/src/modules/education/services/submission-access-sql.ts)、
 [教学历史提交](../../noj-core/src/modules/education/services/student-submissions.ts)、
@@ -300,7 +297,7 @@ main 的 0116，保留存量回填与原始身份。0116 同时将模型别名�
 | submission_job_items                       | domain_problem_binding_id | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史                                                  |
 | community_posts                            | domain_problem_binding_id | 仅 solution 非空；discussion／moment 必须为空                                                            |
 | community_moderation_actions               | domain_id                 | message／user_ban 账号历史为空；其他域审核目标非空                                                       |
-| community_reports、community_notifications | domain_id                 | 私信举报、全站关注及账号封禁为空；reply／like／moderation／clarification 通知非空；report 由真实举报决定 |
+| community_reports、community_notifications | domain_id                 | 全站关注及账号封禁为空；reply／like／moderation／clarification 通知非空；report 由真实举报决定 |
 | education_disabled_intervals               | domain_id                 | 空域表示实例级停用区间；域级区间保存实际域                                                               |
 
 PostgreSQL 复合 FK 采用默认 MATCH SIMPLE；归属非空列与类型 CHECK
@@ -326,7 +323,7 @@ required_version_id、未开始进度无来源提交／尝试、整体作业反�
 | education `loadClassroom`／`loadAssignment`／来源与教师读取门面                | 任职、固定能力、实际名单及教学历史依据                   | 对应操作 revision、文本作者、源题及比赛保密  |
 | submission/objective 正式受理与专用读取门面                                    | 可信执行上下文、版本、排队和 DTO                         | 不接受调用者自行构造域覆盖值                 |
 | gateway 域管理与 token 门面                                                    | llm:manage、域 Provider、远端原子 revision、冻结尝试计量 | 不将 LLM 管理能力当作比赛或源码权限          |
-| community `withDomainCommunity`／`withDefaultCommunity`                        | 当前模块、路径域、板块／资源授权及事务                   | 具体治理能力、账号私信与域内容的明确分类     |
+| community `withDomainCommunity`／`withDefaultCommunity`                        | 当前模块、路径域、板块／资源授权及事务                   | 具体治理能力与域内容的明确分类               |
 
 | 情况                                                     | 当前稳定处理                                                                                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |

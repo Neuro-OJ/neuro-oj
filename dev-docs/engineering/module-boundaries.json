@@ -50,9 +50,7 @@
       "root": "noj-core/src/modules/communication",
       "kind": "business",
       "legacyDomains": [
-        "community",
-        "messaging",
-        "content-review"
+        "community"
       ]
     },
     {
@@ -111,8 +109,6 @@
     "contest": "contests",
     "education": "education",
     "community": "communication",
-    "messaging": "communication",
-    "content-review": "communication",
     "system": "platform",
     "legal": "platform",
     "gateway": "platform",
@@ -148,7 +144,6 @@
       "catalog.ts": "problems",
       "common.ts": "platform",
       "community.ts": "communication",
-      "content-review.ts": "communication",
       "contest.ts": "contests",
       "education-interactions.ts": "education",
       "notification-delivery.ts": "education",
@@ -157,7 +152,6 @@
       "evaluation-records.ts": "evaluations",
       "identity.ts": "access",
       "legal.ts": "platform",
-      "messaging.ts": "communication",
       "objective.ts": "evaluations",
       "query.ts": "read-models",
       "search.ts": "read-models",

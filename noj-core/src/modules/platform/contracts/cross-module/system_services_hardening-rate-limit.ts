@@ -9,7 +9,6 @@ export {
   enforceEmailDeliveryEventRateLimit,
   enforceEmailVerificationResendRateLimit,
   enforceFollowRateLimit,
-  enforceMessageSendRateLimit,
   enforceObjectiveSubmitRateLimit,
   enforcePasswordResetEmailRateLimit,
   enforcePasswordResetIpRateLimit,

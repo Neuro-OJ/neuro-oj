@@ -15,7 +15,6 @@ export type SearchEntityType =
   | "community_comment"
   | "contest"
   | "submission"
-  | "message"
   | "announcement";
 
 /** 索引动作。 */

@@ -28,7 +28,6 @@ export async function upsertSearchEntry(
       metadata: input.metadata,
       owner_id: input.ownerId ?? null,
       participant_ids: input.participantIds ?? [],
-      deleted_by_user_ids: input.deletedByUserIds ?? [],
       is_public: input.isPublic,
       admin_only: input.adminOnly ?? false,
       is_active: input.isActive ?? true,
@@ -44,7 +43,6 @@ export async function upsertSearchEntry(
         metadata: input.metadata,
         owner_id: input.ownerId ?? null,
         participant_ids: input.participantIds ?? [],
-        deleted_by_user_ids: input.deletedByUserIds ?? [],
         is_public: input.isPublic,
         admin_only: input.adminOnly ?? false,
         is_active: input.isActive ?? true,
@@ -478,73 +476,6 @@ export async function buildSubmissionEntry(
   };
 }
 
-export async function buildMessageEntry(
-  id: string,
-): Promise<SearchEntryInput | null> {
-  const db = getDb();
-  const rows = await db.execute<{
-    id: string;
-    conversation_id: string;
-    sender_id: string;
-    content: string;
-    recalled_at: string | null;
-    created_at: string;
-    user1_id: string;
-    user2_id: string;
-    user1_username: string;
-    user2_username: string;
-    deleted_by_user_ids: string[];
-  }>(sql`
-    SELECT m.id, m.conversation_id, m.sender_id, m.content, m.recalled_at,
-           m.created_at,
-           c.user1_id, c.user2_id,
-           u1.username AS user1_username, u2.username AS user2_username,
-           COALESCE((
-             SELECT array_agg(md.user_id)
-             FROM message_deletions md
-             WHERE md.message_id = m.id
-           ), '{}') AS deleted_by_user_ids
-    FROM messages m
-    JOIN conversations c ON c.id = m.conversation_id
-    JOIN users u1 ON u1.id = c.user1_id
-    JOIN users u2 ON u2.id = c.user2_id
-    WHERE m.id = ${id}
-  `);
-  const row = unwrapFirstRow<{
-    id: string;
-    conversation_id: string;
-    sender_id: string;
-    content: string;
-    recalled_at: string | null;
-    created_at: string;
-    user1_id: string;
-    user2_id: string;
-    user1_username: string;
-    user2_username: string;
-    deleted_by_user_ids: string[];
-  }>(rows as never);
-  if (!row) return null;
-  return {
-    entityType: "message",
-    entityId: row.id,
-    title: `与 ${row.user1_username} / ${row.user2_username} 的私信`,
-    body: `${row.content} ${row.user1_username} ${row.user2_username}`.trim(),
-    metadata: {
-      conversation_id: row.conversation_id,
-      sender_id: row.sender_id,
-      sent_at: row.created_at,
-    },
-    ownerId: null,
-    participantIds: [row.user1_id, row.user2_id],
-    deletedByUserIds: row.deleted_by_user_ids,
-    isPublic: false,
-    adminOnly: false,
-    isActive: row.recalled_at === null,
-    createdAt: row.created_at,
-    updatedAt: row.created_at,
-  };
-}
-
 export async function buildAnnouncementEntry(
   id: string,
 ): Promise<SearchEntryInput | null> {
@@ -600,7 +531,6 @@ const BUILDERS: Record<
   community_comment: buildCommunityCommentEntry,
   contest: buildContestEntry,
   submission: buildSubmissionEntry,
-  message: buildMessageEntry,
   announcement: buildAnnouncementEntry,
 };
 
@@ -685,7 +615,6 @@ function entityTypeToTable(entityType: string): ReturnType<typeof sql> {
     community_comment: sql`community_comments`,
     contest: sql`contests`,
     submission: sql`submissions`,
-    message: sql`messages`,
     announcement: sql`announcements`,
   };
   const table = map[entityType];

@@ -904,6 +904,13 @@
       "when": 1793520968826,
       "tag": "0129_modern_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1793522665825,
+      "tag": "0130_orange_lightspeed",
+      "breakpoints": true
     }
   ]
 }

@@ -48,7 +48,6 @@ export function getCommunityConfig(): CommunityConfig {
     reactions_enabled: settingBoolean("community_reactions_enabled"),
     bookmarks_enabled: settingBoolean("community_bookmarks_enabled"),
     follows_enabled: settingBoolean("community_follows_enabled"),
-    private_messaging_enabled: settingBoolean("private_messaging_enabled"),
     external_images_enabled: settingBoolean(
       "community_external_images_enabled",
     ),

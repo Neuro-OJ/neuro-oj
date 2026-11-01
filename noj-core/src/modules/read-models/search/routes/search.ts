@@ -34,7 +34,6 @@ const ALL_TYPES = [
   "community_comment",
   "contest",
   "submission",
-  "message",
   "announcement",
 ];
 
@@ -54,9 +53,7 @@ const handler = async (c: Context<Env>) => {
     typesParam?.split(",").map((type) => type.trim()).filter(Boolean) ??
       (typeParam ? [typeParam] : []);
   const accountOnly = !slug && requestedTypes.length > 0 &&
-    requestedTypes.every((type) =>
-      ["message", "user", "announcement"].includes(type)
-    );
+    requestedTypes.every((type) => ["user", "announcement"].includes(type));
   if (!slug && !accountOnly) await ensureDefaultWorkspace();
   const access = accountOnly
     ? null

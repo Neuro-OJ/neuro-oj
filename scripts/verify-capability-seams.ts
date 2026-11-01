@@ -35,10 +35,6 @@ export const CONCRETE_PROVIDERS: readonly string[] = [
   "modules/platform/system/services/email-providers/mock.ts",
   "modules/platform/system/services/email-providers/aliyun.ts",
   "modules/platform/system/services/email-providers/tencent.ts",
-  // 内容审核（2026-09-12 评审补充：该家族同样只有装配点 index.ts 可引用）
-  "modules/communication/review/providers/mock.ts",
-  "modules/communication/review/providers/aliyun.ts",
-  "modules/communication/review/providers/tencent.ts",
 ];
 
 /** 允许引用具体 Provider 的装配点（相对 src 的路径）。 */
@@ -46,7 +42,6 @@ export const ALLOWED_IMPORTERS: readonly string[] = [
   "modules/assets/storage/factory.ts",
   "modules/assets/storage/mod.ts",
   "modules/platform/system/services/email.ts",
-  "modules/communication/review/providers/index.ts",
 ];
 
 /** 测试代码不受本规则约束（需要直接构造 mock provider）。 */

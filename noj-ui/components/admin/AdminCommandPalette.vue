@@ -42,7 +42,6 @@ const allItems: PaletteItem[] = [
 
   // 社区与风控
   { id: "comm", label: "社区管理", to: "/admin/community", icon: "i-lucide-messages-square", group: "社区与风控", keywords: ["shequ", "community", "post", "comment"] },
-  { id: "review", label: "内容审查", to: "/admin/content-review", icon: "i-lucide-shield-alert", group: "社区与风控", keywords: ["shenhe", "review", "audit", "moderation"] },
   { id: "reports", label: "举报中心", to: "/admin/reports", icon: "i-lucide-flag", group: "社区与风控", keywords: ["jubao", "report", "violation"] },
   { id: "announce", label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone", group: "社区与风控", keywords: ["gonggao", "announcement", "notice"] },
 

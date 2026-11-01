@@ -62,8 +62,7 @@ function requiresVerifiedEmail(c: Context): boolean {
   return path === "/api/v1/submissions" ||
     /^\/api\/v1\/(?:problems|contests)\/[^/]+\/submit$/.test(path) ||
     path.startsWith("/api/v1/self-tests") ||
-    path.startsWith("/api/v1/community") ||
-    path.startsWith("/api/v1/conversations");
+    path.startsWith("/api/v1/community");
 }
 
 async function getActiveAccount(userId: string) {

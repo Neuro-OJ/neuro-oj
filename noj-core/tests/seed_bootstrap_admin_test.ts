@@ -15,12 +15,8 @@ import { resetDbForTest } from "./helpers/db.ts";
 import { and, eq, inArray, not } from "drizzle-orm";
 import {
   auditLogs,
-  conversationReads,
-  conversations,
   domainMemberRoles,
   domainMemberships,
-  messageDeletions,
-  messages,
   roles,
   submissions,
   userRoles,
@@ -50,20 +46,12 @@ async function getAdminCount(): Promise<number> {
 
 /**
  * 清理测试间残留的 admin 用户（除 root 外），确保种子测试从干净状态开始。
- *
- * 注意：conversations 等表的 FK 引用了 users.id 且无 ON DELETE CASCADE，
- * 需要先清理这些表中的数据，否则 DELETE FROM users 会因 FK 约束失败。
  */
 async function cleanNonRootAdmins(): Promise<void> {
   const db = getDb();
   // 清理 submissions 相关表的 FK 引用（无 CASCADE，须手动清理；
   // 评测尝试/分版本判定随提交级联删除）
   await db.delete(submissions);
-  // 清理 conversations 相关表的 FK 引用
-  await db.delete(messageDeletions);
-  await db.delete(messages);
-  await db.delete(conversationReads);
-  await db.delete(conversations);
   // 现在可以安全删除 admin 用户（关联 admin 角色的非 root 用户）
   const adminUsers = await db
     .select({ user_id: userRoles.user_id })

@@ -65,7 +65,7 @@ runtime/type SCC 为 0。
 | evaluations   | `src/modules/evaluations/`   | 提交、评测结果、评测队列、重测、自测与有效成绩            |
 | contests      | `src/modules/contests/`      | 竞赛、参赛者、题目关联、澄清与竞赛读模型                  |
 | education     | `src/modules/education/`     | 班级、作业、教学授权、学情、反馈、求助和补题              |
-| communication | `src/modules/communication/` | 社区、私信、内容审核与通知                                |
+| communication | `src/modules/communication/` | 社区与通知                                                |
 | assets        | `src/modules/assets/`        | 对象存储、容量预约、存储对象生命周期                      |
 | platform      | `src/modules/platform/`      | 系统设置、审计、法律文档、Gateway 平台能力与观测/健康/SLO |
 | read-models   | `src/modules/read-models/`   | 搜索、统计、排行榜、Dashboard 等只读投影                  |
@@ -83,7 +83,6 @@ runtime/type SCC 为 0。
 | `submissions`、`evaluation_results`、`self_tests`、`sse_events`                                                                                                                                                                                                                                                               | submission                                             |
 | `contests`、`contest_problems`、`contest_participants`、`contest_clarifications`                                                                                                                                                                                                                                              | contest                                                |
 | `community_boards`、`community_board_role_grants`、`community_posts`、`community_comments`、`community_post_likes`、`community_comment_likes`、`community_bookmarks`、`community_follows`、`community_activity_events`、`community_reports`、`community_moderation_actions`、`community_sanctions`、`community_notifications` | community                                              |
-| `conversations`、`messages`、`conversation_reads`、`message_deletions`                                                                                                                                                                                                                                                        | messaging                                              |
 | `system_settings`、`announcements`、`audit_logs`、`ip_bans`、`judge_images`                                                                                                                                                                                                                                                   | system                                                 |
 | `llm_providers`、`llm_usage`、`llm_quotas`                                                                                                                                                                                                                                                                                    | noj-llm-gateway（同库 public schema，core 不直接读写） |
 

@@ -34,12 +34,7 @@ export function permissionWhere(ctx: SearchPermissionContext) {
     OR ${searchEntries.owner_id} = ${userId}
     OR ${userId} = ANY(${searchEntries.participant_ids})
     OR ${ctx.isAdmin} = true
-  ) AND (${searchEntries.admin_only} = false OR ${ctx.isAdmin} = true)
-  AND (
-    ${searchEntries.entity_type} <> 'message'
-    OR ${userId} = ''
-    OR NOT (${userId} = ANY(${searchEntries.deleted_by_user_ids}))
-  )`;
+  ) AND (${searchEntries.admin_only} = false OR ${ctx.isAdmin} = true)`;
 }
 
 export function communityVisibilityWhere(ctx: SearchPermissionContext) {
@@ -197,13 +192,6 @@ export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
       userId,
     )
   }))
-    WHEN 'message' THEN ${
-    ctx.accountEntities ?? ctx.domainId === undefined
-  } AND EXISTS (
-      SELECT 1 FROM messages m JOIN conversations c ON c.id=m.conversation_id
-      WHERE m.id=${searchEntries.entity_id} AND m.recalled_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM message_deletions deletion WHERE deletion.message_id=m.id AND deletion.user_id=${userId})
-        AND (c.user1_id=${userId} OR c.user2_id=${userId}))
     WHEN 'user' THEN ${
     ctx.accountEntities ?? ctx.domainId === undefined
   } AND ${ctx.isAdmin}

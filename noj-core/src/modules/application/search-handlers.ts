@@ -23,7 +23,6 @@ const KNOWN_ENTITY_TYPES = new Set<SearchEntityType>([
   "community_comment",
   "contest",
   "submission",
-  "message",
   "announcement",
 ]);
 

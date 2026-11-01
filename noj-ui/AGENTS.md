@@ -40,7 +40,6 @@ noj-ui/
 │   ├── queue.vue          # 评测队列状态
 │   ├── contests/          # 旧竞赛入口兜底（跳转到 /d/main/contests）
 │   ├── community/         # 社区（板块 / 帖子 / 动态流）
-│   ├── messages/          # 站内私信
 │   ├── search.vue / settings.vue / about.vue / users/ / my/
 │   ├── editor/            # 题目编辑器
 │   ├── admin/             # 管理后台（管理员，ssr: false）
@@ -49,7 +48,7 @@ noj-ui/
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── uiproblem/         # UiWorkspace / UiFrame（界面题：沙箱 iframe 渲染题包 ui.html，editor/[id].vue 按 submission_mode 选择）
-│   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
+│   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / search（SearchPalette / SearchResultItem）/ community（CommentCard）
 │   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
 │   ├── card/              # ProblemCard / SubmissionCard
@@ -64,7 +63,7 @@ noj-ui/
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
 │   ├── useSubmissionPolling.ts # 提交状态轮询（终态自动停止）
-│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplitter.ts / useAccountNotifications.ts  # 业务与工具 composables
+│   ├── useCommunity.ts / useContests.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplitter.ts / useAccountNotifications.ts  # 业务与工具 composables
 ├── layouts/               # 页面布局
 │   ├── default.vue        # 默认布局（导航栏 + 页脚）
 │   ├── auth.vue           # 认证页面布局（登录/注册）
@@ -366,7 +365,7 @@ cd dist
   上下文，异步回调内不得再次调用。
 - 非关键数据（社区配置、首页公告等）SSR 失败 MUST 降级为空态/默认值，不得导致整页 502。
 - `ssr: false`
-  边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、私信、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用
+  边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用
   `ssr: false`；内容/SEO 页保持 SSR。
 
 ## 中间件

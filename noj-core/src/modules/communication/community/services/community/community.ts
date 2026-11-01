@@ -81,8 +81,6 @@ export {
   getLatestActiveBanId,
   getReportBanScope,
   getReportDetail,
-  getReportImageBytes,
-  getReportMessageHistory,
   getReportTarget,
   listReports,
   listSanctions,

@@ -220,7 +220,7 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket
    检查（非致命）
 5. 连接 Redis（失败 → degraded，HTTP 仍启动）
-6. 启动后台消费者（评测结果、私信审核、搜索索引）、队列 sweeper 与 SSE 事件订阅
+6. 启动后台消费者（评测结果）、后台任务 worker（含搜索索引）、队列 sweeper 与 SSE 事件订阅
 7. 启动 HTTP
 
 以 [`noj-core/src/main.ts`](noj-core/src/main.ts) 中 `main()` 的实现为准。

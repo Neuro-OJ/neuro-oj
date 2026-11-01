@@ -23,7 +23,6 @@ import { queryRouter } from "../read-models/queries/routes/index.ts";
 import { searchRouter } from "../read-models/search/routes/index.ts";
 import { contestRouter } from "../contests/routes/index.ts";
 import { communityRouter } from "../communication/community/routes/index.ts";
-import { messagingRouter } from "../communication/messaging/routes/index.ts";
 import { systemRouter } from "../platform/system/routes/index.ts";
 import { internalLlmPolicyRouter } from "../platform/system/routes/internal-llm-policy.ts";
 import { createInternalDrainRouter } from "../platform/system/routes/internal-drain.ts";
@@ -236,7 +235,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   app.route("/api/v1", searchRouter);
   app.route("/api/v1", contestRouter);
   app.route("/api/v1", communityRouter);
-  app.route("/api/v1", messagingRouter);
   app.route("/api/v1", systemRouter);
   app.route("/api/v1", legalRouter);
   app.route("/api/v1", workspaceRouter);

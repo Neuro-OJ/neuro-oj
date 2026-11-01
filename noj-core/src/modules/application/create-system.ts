@@ -18,7 +18,6 @@ import { startSseEventRetentionTask } from "../../shared/sse/sse-events.ts";
 import { createSseStreamScope } from "../../shared/sse/sse-stream.ts";
 import { snapshotEnv } from "../platform/services/env-snapshot.ts";
 import { validateRegistry } from "../../shared/config/settings-registry.ts";
-import { startReviewConsumer } from "../communication/review/mq/review-consumer.ts";
 import {
   startEducationEmailWorker,
   startEducationPublishingWorker,
@@ -362,9 +361,6 @@ export async function startCore() {
     // 等待在途工作结束，再关闭 Redis 与数据库连接。登记顺序即启动顺序。
     // 启动评测结果消费者池（后台运行，带自动重连，不阻塞 HTTP）
     backgroundTasks.add(startResultConsumerPool());
-
-    // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
-    backgroundTasks.add(startReviewConsumer());
 
     // 启动 processing 超时重投 + pending 提交恢复 sweeper
     backgroundTasks.add(startQueueSweeper());

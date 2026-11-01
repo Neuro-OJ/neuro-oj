@@ -64,7 +64,6 @@ const navGroups: NavGroup[] = [
   {
     label: '社区与风控',
     items: [
-      { label: '内容审查', to: '/admin/content-review', icon: 'i-lucide-shield-alert' },
       { label: '举报中心', to: '/admin/reports', icon: 'i-lucide-flag' },
       { label: '实例公告', to: '/admin/announcements', icon: 'i-lucide-megaphone' },
     ],

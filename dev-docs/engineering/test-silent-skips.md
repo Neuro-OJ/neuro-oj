@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **359** 处（early-return=248 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
+> 当前命中 **342** 处（early-return=231 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -267,23 +267,6 @@
 | noj-tests/e2e/identity/tfa.test.ts | 116 | early-return |
 | noj-tests/e2e/identity/tfa.test.ts | 141 | early-return |
 | noj-tests/e2e/identity/tfa.test.ts | 177 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 33 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 60 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 74 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 91 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 104 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 119 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 137 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 150 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 166 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 179 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 195 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 210 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 222 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 248 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 269 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 286 | early-return |
-| noj-tests/e2e/messaging/messaging.test.ts | 301 | early-return |
 | noj-tests/e2e/objective/objective.test.ts | 111 | early-return |
 | noj-tests/e2e/objective/objective.test.ts | 141 | early-return |
 | noj-tests/e2e/objective/objective.test.ts | 278 | early-return |

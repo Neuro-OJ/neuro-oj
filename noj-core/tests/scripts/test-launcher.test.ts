@@ -117,8 +117,8 @@ Deno.test("test-launcher: mode/domain/shard 参数发现明确", () => {
   );
   assertEquals(
     LEGACY_DOMAIN_NAMES.length,
-    17,
-    "metadata 必须保留 17 个 legacy domain 别名",
+    15,
+    "metadata 必须保留 15 个 legacy domain 别名",
   );
   for (const target of TEST_TARGET_NAMES) {
     assertEquals(

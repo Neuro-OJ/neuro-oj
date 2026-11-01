@@ -9,9 +9,6 @@ import {
   communityComments,
   communityPosts,
   contests,
-  conversations,
-  messageDeletions,
-  messages,
   problems,
   searchEntries,
   submissions,
@@ -22,7 +19,6 @@ import {
   buildCommunityCommentEntry,
   buildCommunityPostEntry,
   buildContestEntry,
-  buildMessageEntry,
   buildProblemEntry,
   buildSubmissionEntry,
   buildUserEntry,
@@ -162,58 +158,6 @@ Deno.test({
       sql`${searchEntries.entity_type} = 'user' AND ${searchEntries.entity_id} = 'u-search-2'`,
     );
     assertEquals(rows.length, 1);
-  },
-});
-
-Deno.test({
-  name: "index-writer: buildMessageEntry 携带删除者列表",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(users).values([
-      {
-        id: "u-msg-del-a",
-        username: "del_a",
-        email: "del_a@example.com",
-        password_hash: "x",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: "u-msg-del-b",
-        username: "del_b",
-        email: "del_b@example.com",
-        password_hash: "x",
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-    await db.insert(conversations).values({
-      id: "conv-msg-del",
-      user1_id: "u-msg-del-a",
-      user2_id: "u-msg-del-b",
-      last_message_at: now,
-      created_at: now,
-    });
-    await db.insert(messages).values({
-      id: "msg-del-1",
-      conversation_id: "conv-msg-del",
-      sender_id: "u-msg-del-a",
-      content: "这条消息已被一方删除",
-      created_at: now,
-    });
-    await db.insert(messageDeletions).values({
-      user_id: "u-msg-del-a",
-      message_id: "msg-del-1",
-      deleted_at: now,
-    });
-    const entry = await buildMessageEntry("msg-del-1");
-    assertEquals(entry !== null, true);
-    assertEquals(entry?.participantIds, ["u-msg-del-a", "u-msg-del-b"]);
-    assertEquals(entry?.deletedByUserIds, ["u-msg-del-a"]);
   },
 });
 

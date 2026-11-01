@@ -122,15 +122,6 @@ export {
   communityReports,
   communitySanctions,
 } from "./community.ts";
-export {
-  conversationPreferences,
-  conversationReads,
-  conversations,
-  messageDeletions,
-  messageReactions,
-  messages,
-} from "./messaging.ts";
-export { contentReviewQueue } from "./content-review.ts";
 
 // platform
 export {

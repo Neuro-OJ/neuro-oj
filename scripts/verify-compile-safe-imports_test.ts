@@ -40,7 +40,7 @@ Deno.test("compile-safe-imports: 真实仓库通过且确实扫到了动态导�
   assert(stats.scanned_files > 100, `扫描文件数异常：${stats.scanned_files}`);
   assert(
     stats.dynamic_imports > 0,
-    "扫描目录内应存在动态导入（storage factory / content-review provider），否则规则可能已失效",
+    "扫描目录内应存在动态导入（storage factory 等），否则规则可能已失效",
   );
 });
 

@@ -49,10 +49,6 @@ import {
   ValidationError,
 } from "../../../../../shared/base/errors.ts";
 import {
-  findOrCreateConversation,
-  sendMessage,
-} from "../../../messaging/index.ts";
-import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
@@ -842,47 +838,6 @@ Deno.test({
   },
 });
 
-Deno.test({
-  name: "community service: 举报私信消息（校验参与者）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // actorId(community-test-user) 与 observerId 建立会话，由 actorId 发消息
-    const { conversation } = await findOrCreateConversation(
-      actorId,
-      observerId,
-    );
-    const msg = await sendMessage(actorId, conversation.id, "举报这条私信");
-    const report = await createReport(observerId, {
-      message_id: msg.id,
-      reason: "私信内容违规",
-      category: "垃圾信息",
-    });
-    assertEquals(report.content_type, "message");
-    assertEquals(report.message_id, msg.id);
-    // 重复举报拒绝
-    await assertRejects(
-      () =>
-        createReport(observerId, {
-          message_id: msg.id,
-          reason: "重复",
-          category: "垃圾信息",
-        }),
-      ConflictError,
-      "已举报该内容",
-    );
-  },
-});
-
-/**
- * 2026-09-14 评审回归：`listPosts` 的排序键是
- * `(is_official, is_pinned, created_at)`，而游标只按 `created_at` 推进。
- * 此前只排除了 `is_pinned`，漏掉 `is_official` → **官方题解在每一页重复出现**。
- *
- * 规则：所有非 created_at 的排序键都必须在游标分支中排除，否则该行会固定排在
- * 每页最前，永不"用过期"。
- */
 Deno.test({
   name:
     "community service: 游标翻页时官方题解不在每页重复（排序键必须全部排除）",

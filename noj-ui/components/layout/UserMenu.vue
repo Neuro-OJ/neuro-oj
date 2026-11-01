@@ -5,7 +5,6 @@ import { domainIdentityLabel } from '~/utils/domain-navigation';
 import { userUrl } from '~/utils/publicIdentifiers';
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import type { WorkspaceSummary } from '~/utils/workspace';
-import { readUnreadCount } from '~/utils/unread-count';
 const route = useRoute(), slug = useNavigationDomain();
 const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();
@@ -34,24 +33,6 @@ const domainSettingsEntry = computed(() => {
   const domain = workspace?.domain.value ?? menuDomain.data.value;
   return domain ? workspaceSettingsNavigation(domain)[0] : undefined;
 });
-const messages = useViewAsyncData(
-  'messageUnread',
-  () => `user-menu-messages:${user.value?.id ?? 'guest'}`,
-  () => user.value ? api.get<{ unread_count: number }>('/api/v1/conversations/unread-count', { silent: true }) : Promise.resolve({ unread_count: 0 }),
-);
-const lastMessages = ref({ actor: user.value?.id ?? null, count: 0 });
-const unreadCount = computed(() => {
-  const actor = user.value?.id ?? null;
-  if (!actor) return 0;
-  return lastMessages.value.actor === actor ? lastMessages.value.count : 0;
-});
-watch([() => user.value?.id, messages.data], ([actor, response], previous) => {
-  if (lastMessages.value.actor !== (actor ?? null)) lastMessages.value = { actor: actor ?? null, count: 0 };
-  if (previous.length && actor !== previous[0] && response === previous[1]) return;
-  const count = readUnreadCount(response, 'messages');
-  if (actor && count !== null) lastMessages.value = { actor, count };
-}, { immediate: true });
-usePolling({ intervalMs: 30000, active: isLoggedIn, fetcher: () => messages.refresh(), immediate: false });
 async function selectDomain(space: WorkspaceSummary) {
   await workspaces.remember(space.slug);
   await navigateTo(workspacePath(space.slug));
@@ -71,7 +52,6 @@ const items = computed(() => [
       ? [{ label: '我的题目', icon: 'i-lucide-book-open', to: workspacePath(slug.value, 'problem-drafts') }]
       : []),
     { label: '通知', icon: 'i-lucide-bell', to: '/notifications' },
-    { label: '消息', icon: 'i-lucide-mail', to: accountLink('/messages'), badge: unreadCount.value || undefined },
   ],
   [
     {

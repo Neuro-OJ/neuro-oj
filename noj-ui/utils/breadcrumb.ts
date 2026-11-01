@@ -410,9 +410,8 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/announcements', trail: [{ key: 'nav.announcements' }] },
   { pattern: '/announcements/:id', trail: [{ key: 'nav.announcements', to: '/announcements' }, { param: 'id' }] },
 
-  // ── 用户与私信 ──
+  // ── 用户 ──
   { pattern: '/users/:id', trail: [{ param: 'id' }] },
-  { pattern: '/messages', trail: [{ key: 'breadcrumb.messages' }] },
   { pattern: '/notifications', trail: [{ key: 'breadcrumb.notifications' }] },
   {
     pattern: '/notifications/:id',

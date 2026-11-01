@@ -52,7 +52,6 @@ export interface CommunityConfig {
   reactions_enabled: boolean;
   bookmarks_enabled: boolean;
   follows_enabled: boolean;
-  private_messaging_enabled: boolean;
   external_images_enabled: boolean;
   solution_requires_accepted: boolean;
   new_user_review_hours: number;
