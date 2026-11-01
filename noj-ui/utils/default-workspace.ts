@@ -24,7 +24,6 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/ranking': 'rankings',
     '/search': 'search',
     '/community': 'community',
-    '/community/bookmarks': 'community/bookmarks',
     '/my/problems': 'problem-drafts',
     '/admin/problems': 'problem-bindings',
     '/admin/contests': 'contests',

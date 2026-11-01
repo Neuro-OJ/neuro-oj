@@ -169,7 +169,6 @@ const fixture = Deno.serve(
       return Response.json({
         data: {
           enabled: true,
-          follows_enabled: true,
           moments_enabled: true,
           guest_read_enabled: true,
           permissions: {},
@@ -313,7 +312,6 @@ const fixture = Deno.serve(
     if (
       path.endsWith('/my-learning') || path.endsWith('/teaching')
     ) return Response.json({ data: { assignments: [] } });
-    if (path.endsWith('/community/feed')) return Response.json({ data: [] });
     if (path.endsWith('/classrooms/c')) {
       return Response.json({
         data: {

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   communityBoards,
   communityPosts,
@@ -347,16 +347,6 @@ export async function getPost(
       slug: sourceIdentity.slug,
     },
     ...postStatsProjection,
-    bookmarked: viewerId
-      ? sql<
-        boolean
-      >`exists(select 1 from community_bookmarks where post_id = ${communityPosts.id} and user_id = ${viewerId})`
-      : sql<boolean>`false`,
-    liked: viewerId
-      ? sql<
-        boolean
-      >`exists(select 1 from community_post_likes where post_id = ${communityPosts.id} and user_id = ${viewerId})`
-      : sql<boolean>`false`,
   }).from(communityPosts).innerJoin(
     users,
     eq(users.id, communityPosts.author_id),

@@ -24,16 +24,11 @@ import {
   createSanction,
   getPost,
   hasAcceptedSolution,
-  listBookmarks,
   listComments,
-  listFeed,
   listNotifications,
   listPosts,
   listReports,
   listSanctions,
-  toggleBookmark,
-  toggleCommentLike,
-  toggleFollow,
   updatePost,
   withDomainCommunity,
 } from "../../index.ts";
@@ -73,7 +68,6 @@ Deno.test({
       )).discussion,
       1,
     );
-    await toggleFollow(f.student, f.a);
     await withDomainCommunity(
       f.source.slug,
       f.a,
@@ -96,18 +90,9 @@ Deno.test({
         f.target.slug,
         f.student,
         {},
-        (s) => listFeed("latest", f.student, undefined, 20, s),
+        (s) => listPosts({ viewerId: f.student, type: "moment", scope: s }),
       )).data.map((r) => r.post.id),
       [moment.id],
-    );
-    assertEquals(
-      (await withDomainCommunity(
-        f.target.slug,
-        f.student,
-        {},
-        (s) => listFeed("following", f.student, undefined, 20, s),
-      )).data.length,
-      0,
     );
     await removeDomainMember(f.target.slug, f.b, f.student);
     await assertRejects(
@@ -184,10 +169,6 @@ Deno.test({
         false,
         s,
       ));
-    await withDomainCommunity(f.target.slug, f.student, {
-      write: true,
-      permission: "community:read",
-    }, (s) => toggleBookmark(f.student, solution.id, s));
     await withDomainCommunity(
       f.target.slug,
       f.b,
@@ -234,14 +215,6 @@ Deno.test({
         withDomainCommunity(f.target.slug, f.student, {
           write: true,
           permission: "community:read",
-        }, (s) => toggleCommentLike(f.student, comment.id, s)),
-      NotFoundError,
-    );
-    await assertRejects(
-      () =>
-        withDomainCommunity(f.target.slug, f.student, {
-          write: true,
-          permission: "community:read",
         }, (s) =>
           createReport(
             f.student,
@@ -250,15 +223,6 @@ Deno.test({
             s,
           )),
       NotFoundError,
-    );
-    assertEquals(
-      (await withDomainCommunity(
-        f.target.slug,
-        f.student,
-        {},
-        (s) => listBookmarks(f.student, undefined, 20, s),
-      )).data.length,
-      0,
     );
     assertEquals(
       (await withDomainCommunity(

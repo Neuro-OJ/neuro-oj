@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { contestHiddenRowClass } from "~/utils/contestHidden"
@@ -10,8 +9,6 @@ definePageMeta({ breadcrumbWidth: '900px' })
 
 const route = useRoute()
 const { user: currentUser } = useAuth()
-const { toast } = useToast()
-const { api } = useApi()
 
 const userId = route.params.id as string
 
@@ -55,7 +52,7 @@ interface UserProfile {
     score: number | null
     created_at: string
   }[]
-  community_stats: { following_count: number; follower_count: number; solution_count: number; moment_count: number }
+  community_stats: { solution_count: number; moment_count: number }
   solutions: { id: string; public_id?: string; title: string; created_at: string }[]
   moments: { id: string; public_id?: string; content: string; created_at: string }[]
 }
@@ -132,8 +129,6 @@ const contributionStart = computed(() => {
 })
 const contributionDays = computed(() => checkinHistory.value?.data?.days ?? [])
 
-const following = ref(false)
-
 // 该用户创建的 U 型题目
 interface CreatedProblem {
   id: string
@@ -195,12 +190,6 @@ function formatDate(iso: string): string {
   })
 }
 
-async function toggleFollow() {
-  const result = await api.post<{ data: { following: boolean } }>(`/api/v1/community/users/${userId}/follow`)
-  following.value = result.data.following
-  toast.success(following.value ? "已关注" : "已取消关注")
-}
-
 </script>
 
 <template>
@@ -237,8 +226,6 @@ async function toggleFollow() {
               to="/settings">
               编辑个人资料
             </UButton>
-            <!-- 关注按钮（查看他人主页时显示） -->
-            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
           </div>
 
           <!-- Bio（Markdown 渲染） -->
@@ -290,22 +277,12 @@ async function toggleFollow() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <!-- 社交：关注 + 粉丝 -->
-        <div class="rounded-xl border border-border bg-white px-5 py-4">
-          <h3 class="text-sm font-semibold text-text">社交</h3>
-          <div class="mt-3 flex items-center gap-8">
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">关注</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.following_count }}</p></div>
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">粉丝</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.follower_count }}</p></div>
-          </div>
-        </div>
-        <!-- 我的创作：题解 + 动态 -->
-        <div class="rounded-xl border border-border bg-white px-5 py-4">
-          <h3 class="text-sm font-semibold text-text">我的创作</h3>
-          <div class="mt-3 flex items-center gap-8">
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">动态</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
-          </div>
+      <!-- 我的创作：题解 + 动态 -->
+      <div class="rounded-xl border border-border bg-white px-5 py-4">
+        <h3 class="text-sm font-semibold text-text">我的创作</h3>
+        <div class="mt-3 flex items-center gap-8">
+          <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
+          <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">动态</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
         </div>
       </div>
 

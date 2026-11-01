@@ -1,10 +1,6 @@
 import { Hono } from "hono";
 import { parseJsonBody } from "../../../../shared/http/request.ts";
 import {
-  enforceBookmarkRateLimit,
-  enforceCommentLikeRateLimit,
-  enforceFollowRateLimit,
-  enforcePostLikeRateLimit,
   enforceReportRateLimit,
 } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import {
@@ -17,7 +13,6 @@ import {
   assertPermission,
   checkPermission,
 } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
-import { resolveUserId } from "../../../access/contracts/cross-module/identity_services_users_users-id.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -42,17 +37,11 @@ import {
   getReportDetail,
   hasAcceptedSolution,
   listBoards,
-  listBookmarks,
   listComments,
-  listFeed,
   listPosts,
   resolvePostId,
   resolveProblemId,
   setPostOfficial,
-  toggleBookmark,
-  toggleCommentLike,
-  toggleFollow,
-  togglePostLike,
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
@@ -70,8 +59,7 @@ interface CommunityEnv extends OptionalAuthEnv {
 }
 const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
-  const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path) ||
-    /\/users\/[^/]+\/follow$/.test(c.req.path);
+  const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
   if (!accountRoute) {
     await ensureDefaultWorkspace();
     await withDefaultCommunity(c.var.userId ?? null, {
@@ -150,8 +138,6 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
       discussion: await checkPermission(c, "community:create_discussion"),
       moment: await checkPermission(c, "community:create_moment"),
       comment: await checkPermission(c, "community:comment"),
-      react: await checkPermission(c, "community:react"),
-      follow: await checkPermission(c, "community:follow"),
       report: await checkPermission(c, "community:report"),
       moderate: await isModerator(c),
     }
@@ -214,22 +200,6 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       moderator,
       scope: c.var.communityScope,
     }),
-  );
-});
-
-/**
- * GET /bookmarks — 获取当前用户收藏的帖子列表。
- * 认证：必填（authMiddleware）。query：cursor、limit。
- * 响应：{ data, next_cursor }。
- */
-router.get("/bookmarks", authMiddleware, async (c) => {
-  return c.json(
-    await listBookmarks(
-      userId(c),
-      c.req.query("cursor"),
-      parseQueryLimit(c.req.query("limit"), { default: 20 }),
-      c.var.communityScope,
-    ),
   );
 });
 
@@ -520,114 +490,13 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
 });
 
 /**
- * POST /posts/:postId/like — 切换帖子点赞状态。
- * 认证：必填。需 community:react 权限。
- * 响应：{ data: { liked } }。
- */
-router.post("/posts/:postId/like", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await enforcePostLikeRateLimit(c, actorId);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c), {
-    scope: c.var.communityScope,
-  });
-  return c.json({
-    data: {
-      liked: await togglePostLike(actorId, postId, c.var.communityScope),
-    },
-  });
-});
-/**
- * POST /posts/:postId/bookmark — 切换帖子收藏状态。
- * 认证：必填。需 community:react 权限。
- * 响应：{ data: { bookmarked } }。
- */
-router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await enforceBookmarkRateLimit(c, actorId);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c), {
-    scope: c.var.communityScope,
-  });
-  return c.json({
-    data: {
-      bookmarked: await toggleBookmark(
-        actorId,
-        postId,
-        c.var.communityScope,
-      ),
-    },
-  });
-});
-/**
- * POST /comments/:commentId/like — 切换评论点赞状态。
- * 认证：必填。需 community:react 权限。
- * 响应：{ data: { liked } }。
- */
-router.post("/comments/:commentId/like", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await enforceCommentLikeRateLimit(c, actorId);
-  await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c), {
-    scope: c.var.communityScope,
-  });
-  return c.json({
-    data: {
-      liked: await toggleCommentLike(
-        actorId,
-        c.req.param("commentId") as string,
-        c.var.communityScope,
-      ),
-    },
-  });
-});
-
-/**
- * POST /users/:userId/follow — 切换关注关系。
- * 认证：必填。需 community:follow 权限。:userId 可为 username 或 UUID。
- * 响应：{ data: { following } }。
- */
-router.post("/users/:userId/follow", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await enforceFollowRateLimit(c, actorId);
-  await assertPermission(c, "community:follow");
-  await assertCommunityWritable(actorId, await isModerator(c));
-  // followeeId 可能是 username，解析为 UUID（与 profile 路由一致）
-  const followeeId = await resolveUserId(c.req.param("userId") as string);
-  return c.json({
-    data: {
-      following: await toggleFollow(actorId, followeeId),
-    },
-  });
-});
-/**
- * GET /feed — 获取社区动态流（最新 / 关注）。
- * 认证：可选。query：view（latest/following）、cursor、limit。
- * 响应：{ data, next_cursor }。
- */
-router.get("/feed", optionalAuthMiddleware, async (c) => {
-  requireGuestRead(c);
-  const view = c.req.query("view") === "following" ? "following" : "latest";
-  return c.json(
-    await listFeed(
-      view,
-      c.get("userId"),
-      c.req.query("cursor"),
-      parseQueryLimit(c.req.query("limit"), { default: 20 }),
-      c.var.communityScope,
-    ),
-  );
-});
-/**
  * POST /reports — 提交举报工单。
  * 认证：必填。需 community:report 权限。body：{ post_id?/comment_id?, reason, category? }。
  * 响应：201 { data: 新建举报 }。
  */
 router.post("/reports", authMiddleware, async (c) => {
   const actorId = userId(c);
-  await enforceReportRateLimit(c, actorId);
+  await enforceReportRateLimit(actorId);
   await assertPermission(c, "community:report");
   // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
   await assertCommunityWritable(actorId, await isModerator(c));

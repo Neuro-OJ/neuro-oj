@@ -127,8 +127,6 @@ export async function getUserProfileAggregate(
     solved_problems: solvedProblems,
     recent_submissions: recentSubmissions,
     community_stats: {
-      following_count: Number(communityStats?.following_count ?? 0),
-      follower_count: Number(communityStats?.follower_count ?? 0),
       solution_count: Number(communityStats?.solution_count ?? 0),
       moment_count: Number(communityStats?.moment_count ?? 0),
     },

@@ -2,11 +2,9 @@
 export const CLIENT_ONLY_ROUTES = [
   '/admin',
   '/admin/**',
-  '/community/bookmarks',
   '/community/notifications',
   '/community/notifications/*',
   '/community/reports/*',
-  '/d/*/community/bookmarks',
   '/d/*/community/manage',
   '/d/*/community/notifications',
   '/d/*/community/notifications/*',

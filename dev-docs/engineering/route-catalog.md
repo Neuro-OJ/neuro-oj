@@ -78,7 +78,6 @@
 | GET | `/blacklist` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/boards` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/boards/:boardId/role-grants` | noj-core/src/modules/http/admin/routes/community.ts |
-| GET | `/bookmarks` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/checkin` | noj-core/src/modules/read-models/queries/routes/rankings.ts |
 | GET | `/comments/pending` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/config` | noj-core/src/modules/communication/community/routes/community.ts |
@@ -136,7 +135,6 @@
 | GET | `/domains/:slug/submissions/stats/events` | noj-core/src/modules/read-models/queries/routes/sse.ts |
 | GET | `/email-delivery/suppressions` | noj-core/src/modules/http/admin/routes/system.ts |
 | GET | `/events` | noj-core/src/modules/platform/system/routes/announcements.ts |
-| GET | `/feed` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/health` | noj-core/src/modules/http/admin/routes/background-tasks.ts |
 | GET | `/health` | noj-core/src/modules/platform/observability/routes/health.ts |
 | GET | `/health/live` | noj-core/src/modules/platform/observability/routes/health.ts |
@@ -236,7 +234,6 @@
 | POST | `/boards` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/change-password` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/comments/:commentId/:status` | noj-core/src/modules/http/admin/routes/community.ts |
-| POST | `/comments/:commentId/like` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/consent` | noj-core/src/modules/platform/legal/routes/consent.ts |
 | POST | `/contests` | noj-core/src/modules/http/admin/routes/contest.ts |
 | POST | `/contests/:id/participants` | noj-core/src/modules/http/admin/routes/contest.ts |
@@ -283,9 +280,7 @@
 | POST | `/posts` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/posts/:postId/:flag` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/posts/:postId/:status` | noj-core/src/modules/http/admin/routes/community.ts |
-| POST | `/posts/:postId/bookmark` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
-| POST | `/posts/:postId/like` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/preset/:preset` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/preview` | noj-core/src/modules/problems/routes/oi-author.ts |
 | POST | `/problems/:id/rejudge` | noj-core/src/modules/http/admin/routes/submission.ts |
@@ -309,7 +304,6 @@
 | POST | `/users` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/users/:id/reset-password` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/users/:id/unlock-login` | noj-core/src/modules/http/admin/routes/identity.ts |
-| POST | `/users/:userId/follow` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/users/import` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/tags.ts |

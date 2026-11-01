@@ -29,16 +29,11 @@ import {
   createSanction,
   deleteComment,
   getPost,
-  listBookmarks,
   listComments,
-  listFeed,
   listNotifications,
   listPendingComments,
   listPosts,
   resolveReport,
-  toggleBookmark,
-  toggleCommentLike,
-  togglePostLike,
   updateBoardRoleGrant,
   updatePost,
 } from "../../index.ts";
@@ -107,41 +102,6 @@ async function setup(): Promise<void> {
 }
 
 Deno.test({
-  name: "community service: 自动动态功能已下线，动态流只含用户短动态",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // 审计 VULN-08：community_activity_events 功能整体移除，
-    // 动态流不再混排 first_accepted / solution_published / contest_joined 事件。
-    const now = new Date().toISOString();
-    await getDb().insert(communityPosts).values({
-      domain_id: DEFAULT_DOMAIN_ID,
-      id: "feed-moment-1",
-      public_id: "post_feedmoment1",
-      type: "moment",
-      author_id: actorId,
-      problem_id: null,
-      board_id: null,
-      title: null,
-      content: "动态流只应有我这一条短动态",
-      status: "published",
-      is_locked: false,
-      is_pinned: false,
-      moderation_reason: null,
-      published_at: now,
-      created_at: now,
-      updated_at: now,
-    });
-
-    const feed = await listFeed("latest");
-    assertEquals(feed.data.length, 1);
-    assertEquals(feed.data[0]?.kind, "moment");
-    assertEquals(feed.data[0]?.post.id, "feed-moment-1");
-  },
-});
-
-Deno.test({
   name: "community service: 讨论互动仅允许一级回复",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -166,55 +126,6 @@ Deno.test({
       ValidationError,
       "仅支持回复一级评论",
     );
-    assertEquals(await togglePostLike(actorId, post.id), true);
-    assertEquals(await toggleBookmark(actorId, post.id), true);
-    assertEquals((await getPost(post.id, actorId)).bookmarked, true);
-    assertEquals((await getPost(post.id, observerId)).bookmarked, false);
-  },
-});
-
-Deno.test({
-  name: "community service: 收藏列表仅返回自己的已发布内容",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const board = await createBoard({
-      slug: "bookmark-board",
-      name: "收藏板块",
-    });
-    const visible = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "可见收藏",
-      content: "会展示在收藏列表中",
-    });
-    const hidden = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "隐藏收藏",
-      content: "不应展示",
-    });
-    const deleted = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "删除收藏",
-      content: "不应展示",
-    });
-    await toggleBookmark(actorId, visible.id);
-    await toggleBookmark(actorId, hidden.id);
-    await toggleBookmark(actorId, deleted.id);
-    await toggleBookmark(observerId, visible.id);
-    await getDb().update(communityPosts).set({ status: "hidden" }).where(
-      eq(communityPosts.id, hidden.id),
-    );
-    await getDb().update(communityPosts).set({ status: "deleted" }).where(
-      eq(communityPosts.id, deleted.id),
-    );
-
-    const result = await listBookmarks(actorId);
-    assertEquals(result.data.map((item) => item.post.id), [visible.id]);
-    assertEquals(result.data[0]?.author.id, actorId);
   },
 });
 
@@ -302,7 +213,6 @@ Deno.test({
       assertEquals(knowledgeConfig.read_only, true);
       assertEquals(knowledgeConfig.moments_enabled, false);
       assertEquals(knowledgeConfig.comments_enabled, false);
-      assertEquals(knowledgeConfig.follows_enabled, false);
     } finally {
       leaveTestContext();
     }
@@ -440,34 +350,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community service: 评论点赞通知被赞者且校验评论存在",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const board = await createBoard({ slug: "like-board", name: "点赞板块" });
-    const post = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "评论点赞测试",
-      content: "内容",
-    });
-    const comment = await createComment(actorId, post.id, "待点赞评论");
-    await assertRejects(
-      () => toggleCommentLike(observerId, "not-exist-comment"),
-      NotFoundError,
-    );
-    await toggleCommentLike(observerId, comment.id);
-    const notifications = await listNotifications(actorId);
-    assertEquals(
-      notifications.some((n) => n.notification.type === "like"),
-      true,
-    );
-    assertEquals(await toggleCommentLike(observerId, comment.id), false);
-  },
-});
-
-Deno.test({
   name: "community service: 待审评论进入审核队列",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -539,7 +421,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community service: 隐藏活动不进入他人的动态流，举报可处置且拒绝重复",
+  name: "community service: 举报可处置且拒绝重复",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -586,10 +468,6 @@ Deno.test({
       eq(communityReports.id, report.id),
     );
     assertEquals(reports[0]?.resolution, "已处理");
-
-    // 审计 VULN-08：自动动态已下线，动态流不再可能泄露任何自动事件
-    const feed = await listFeed("latest", observerId);
-    assertEquals(feed.data.some((item) => item.kind !== "moment"), false);
   },
 });
 
@@ -711,43 +589,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community service: 动态流复合游标翻页不重复不丢失",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // 手动插入 3 条同 created_at 的 moment，验证 (created_at, id) 复合游标
-    const createdAt = new Date().toISOString();
-    const values = [1, 2, 3].map((i) => ({
-      domain_id: DEFAULT_DOMAIN_ID,
-      id: `feed-moment-${i}`,
-      type: "moment" as const,
-      author_id: actorId,
-      problem_id: null,
-      board_id: null,
-      title: null,
-      content: `短动态 ${i}`,
-      status: "published" as const,
-      is_locked: false,
-      is_pinned: false,
-      moderation_reason: null,
-      published_at: createdAt,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }));
-    await getDb().insert(communityPosts).values(values);
-    const page1 = await listFeed("latest", undefined, undefined, 2);
-    assertEquals(page1.data.length, 2);
-    assertEquals(page1.next_cursor !== null, true);
-    const page2 = await listFeed("latest", undefined, page1.next_cursor!, 2);
-    assertEquals(page2.data.length, 1);
-    const ids1 = new Set(page1.data.map((i) => i.post.id));
-    const ids2 = new Set(page2.data.map((i) => i.post.id));
-    for (const id of ids2) assertEquals(ids1.has(id), false);
-  },
-});
-
-Deno.test({
   name: "community service: 软删除帖子和评论会清空通知关联",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -813,28 +654,6 @@ Deno.test({
       assertEquals(notification, { post_id: null, comment_id: null });
     }
     assertEquals(thirdComment.post_id, post.id);
-  },
-});
-
-Deno.test({
-  name: "community service: 点赞已删除评论返回 404",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const board = await createBoard({ slug: "del-board", name: "删除板块" });
-    const post = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "删除测试",
-      content: "内容",
-    });
-    const comment = await createComment(actorId, post.id, "将被删除");
-    await deleteComment(comment.id, actorId, false);
-    await assertRejects(
-      () => toggleCommentLike(observerId, comment.id),
-      NotFoundError,
-    );
   },
 });
 

@@ -62,17 +62,14 @@ export async function aggregateView(reader: CoreReader, input: {
   const features = workspace.configuration.features;
   if (viewer) tasks.push(read('accountNotifications', '/api/v1/notifications?per_page=1'));
   else put('accountNotifications', { data: [], total: 0, unread_count: 0 });
-  let community: Record<string, unknown> | null = null;
-  const communityTask = features.community
-    ? optional('communityConfig', async () => {
+  if (features.community) {
+    tasks.push(optional('communityConfig', async () => {
       const response = await reader.get<{ data: Record<string, unknown> }>(`${root}/community/config`, {
         timeout: 2000,
       });
-      community = response.data;
-      return { key: `community:${input.slug}:${viewer?.id ?? 'guest'}`, config: community };
-    })
-    : Promise.resolve();
-  tasks.push(communityTask);
+      return { key: `community:${input.slug}:${viewer?.id ?? 'guest'}`, config: response.data };
+    }));
+  }
 
   const loadView = async () => {
     if (input.kind === 'home') {
@@ -91,12 +88,6 @@ export async function aggregateView(reader: CoreReader, input: {
               timeout: 2000,
             });
           return selected.items.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-        }),
-        communityTask.then(() => {
-          if (viewer && community?.follows_enabled && community?.moments_enabled) {
-            return read('feed', `${root}/community/feed?view=following&limit=5`);
-          }
-          put('feed', { data: [] });
         }),
       ];
       if (viewer) reads.push(read('checkin', '/api/v1/checkin/today'));

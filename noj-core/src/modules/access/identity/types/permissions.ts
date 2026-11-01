@@ -92,8 +92,6 @@ export const PERMISSION_DEFS: Array<{
   },
   { resource: "community", action: "create_moment", description: "发布动态" },
   { resource: "community", action: "comment", description: "发表评论" },
-  { resource: "community", action: "react", description: "点赞和收藏社区内容" },
-  { resource: "community", action: "follow", description: "关注社区用户" },
   { resource: "community", action: "report", description: "举报社区内容" },
   // 社区治理
   {

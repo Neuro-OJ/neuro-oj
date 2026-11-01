@@ -81,7 +81,7 @@ authMiddleware → 注入 isAdmin
 | user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
 | tag                  | read/manage                                                                                                                                 | 标签操作                      |
 | contest              | create/manage/anti_cheat_read/participate                                                                                                   | 竞赛                          |
-| community            | read/create_solution/create_discussion/create_moment/comment/react/follow/report                                                            | 社区内容与互动                |
+| community            | read/create_solution/create_discussion/create_moment/comment/report                                                                         | 社区内容与互动                |
 | community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
 | community_board      | manage                                                                                                                                      | 社区板块                      |
 | training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                  | 题单                          |
@@ -442,10 +442,9 @@ docker compose down     # 停止
 >   `contest_clarifications`
 > - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
->   `community_follows` / `community_reports` / `community_moderation_actions` /
->   `community_sanctions` / `community_notifications` 等 16
->   张（`community_activity_events` 已随 2026-09-28 审计 VULN-08
->   整体下线，见迁移 `0095`）
+>   `community_reports` / `community_moderation_actions` / `community_sanctions`
+>   / `community_notifications` 等 12 张（`community_activity_events` 已随
+>   2026-09-28 审计 VULN-08 整体下线，见迁移 `0095`）
 > - **题目版本管理**（2026-10-10 实施）：`problem_versions`（不可变版本）、
 >   `problem_drafts`（共享草稿，`revision` 乐观锁）、`storage_objects` /
 >   `problem_draft_objects` / `problem_version_objects`（文件引用与删除守卫）、
@@ -472,7 +471,7 @@ docker compose down     # 停止
   - **题库列表、题单、个人主页（已通过题目/最近提交）与全局搜索整行不返回**
     （SQL 层过滤，非特权用户看不到存在性与任何元数据）；特权用户保留该行并收到
     `is_contest_hidden: true`（前端渲染浅灰斜纹底 + Tooltip）；
-  - 题解与讨论的**读**（列表/详情/收藏/Tab 计数/搜索）与**写**（`createPost`）
+  - 题解与讨论的**读**（列表/详情/Tab 计数/搜索）与**写**（`createPost`）
     一并封禁，只有 `moderator` 免门控；
   - `end_time` 一过全部自动失效（赛后复盘正常）。 判定事实由 contest
     域**单一真相源** `problem-secrecy.ts` 提供：内存判定

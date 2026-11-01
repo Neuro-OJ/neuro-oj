@@ -297,7 +297,7 @@ main 的 0116，保留存量回填与原始身份。0116 同时将模型别名�
 | submission_job_items                       | domain_problem_binding_id | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史                                                  |
 | community_posts                            | domain_problem_binding_id | 仅 solution 非空；discussion／moment 必须为空                                                            |
 | community_moderation_actions               | domain_id                 | message／user_ban 账号历史为空；其他域审核目标非空                                                       |
-| community_reports、community_notifications | domain_id                 | 全站关注及账号封禁为空；reply／like／moderation／clarification 通知非空；report 由真实举报决定 |
+| community_reports、community_notifications | domain_id                 | 历史关注通知及账号封禁为空；reply／moderation／clarification 通知非空；report 由真实举报决定 |
 | education_disabled_intervals               | domain_id                 | 空域表示实例级停用区间；域级区间保存实际域                                                               |
 
 PostgreSQL 复合 FK 采用默认 MATCH SIMPLE；归属非空列与类型 CHECK

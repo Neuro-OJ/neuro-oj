@@ -20,7 +20,6 @@ export type BffSectionName =
   | 'activity'
   | 'checkin'
   | 'dashboard'
-  | 'feed'
   | 'classroom'
   | 'assignments'
   | 'assignment'

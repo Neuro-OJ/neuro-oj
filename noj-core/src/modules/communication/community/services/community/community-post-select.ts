@@ -12,13 +12,10 @@ export const authorProjection = {
 } as const;
 
 /**
- * 帖子点赞/评论数投影。
- * 用于帖子列表、详情、收藏等查询。
+ * 帖子评论数投影。
+ * 用于帖子列表与详情查询。
  */
 export const postStatsProjection = {
-  likes: sql<
-    number
-  >`(select count(*)::int from community_post_likes where post_id = ${communityPosts.id})`,
   comments: sql<
     number
   >`(select count(*)::int from community_comments where post_id = ${communityPosts.id} and status = 'published')`,

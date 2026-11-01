@@ -45,7 +45,6 @@ Deno.test('域通知目标留在使用域，关注仍是账号关系，账号举
 Deno.test('旧内容链接固定main，账号通知与账号举报继续自己的授权入口', () => {
   assertEquals(defaultWorkspaceDestination('/community'), { path: '/d/main/community' });
   assertEquals(defaultWorkspaceDestination('/community/posts/post'), { path: '/d/main/community/posts/post' });
-  assertEquals(defaultWorkspaceDestination('/community/bookmarks'), { path: '/d/main/community/bookmarks' });
   assertEquals(defaultWorkspaceDestination('/community/notifications'), null);
   assertEquals(defaultWorkspaceDestination('/community/reports/dm'), null);
 });

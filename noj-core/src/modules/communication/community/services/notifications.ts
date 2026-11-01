@@ -22,7 +22,8 @@ import {
 import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 
 /**
- * 通知类型：社区互动（reply/like/follow/moderation）与竞赛答疑（clarification）。
+ * 通知类型：社区互动（reply/moderation）与竞赛答疑（clarification）。
+ * like/follow 仅为历史通知保留（点赞与关注已于 #698 下线，不再产生）。
  * 与 `community_notifications_type_check` CHECK 约束保持一致。
  */
 export type NotificationType =

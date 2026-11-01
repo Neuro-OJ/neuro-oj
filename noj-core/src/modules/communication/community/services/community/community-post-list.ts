@@ -4,17 +4,12 @@ import {
   eq,
   ilike,
   inArray,
-  lt,
   ne,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
-import {
-  communityBookmarks,
-  communityPosts,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { communityPosts, users } from "../../../../../shared/db/schema.ts";
 import type { CommunityPostType } from "../../types/community.ts";
 import {
   assertCommunityEnabled,
@@ -239,46 +234,6 @@ export async function countPostsByType(scope?: CommunityScope): Promise<
     result[row.type as CommunityPostType] = Number(row.count);
   }
   return result;
-}
-
-/** 列出用户收藏且仍可见的帖子。 */
-export async function listBookmarks(
-  userId: string,
-  cursor?: string,
-  requestedLimit?: number,
-  scope?: CommunityScope,
-) {
-  assertCommunityEnabled("bookmarks_enabled");
-  const conditions = [
-    eq(communityBookmarks.user_id, userId),
-    eq(communityPosts.status, "published"),
-    communityDomainWhere(communityPosts.domain_id, scope),
-    communityResourceVisible(scope),
-    // 收藏列表同受门控：赛前/赛期不展示被门控的题解与讨论
-    notGatedContestContent(scope),
-  ];
-  if (cursor) conditions.push(lt(communityBookmarks.created_at, cursor));
-  const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);
-  const rows = await communityDb(scope).select({
-    post: communityPosts,
-    author: authorProjection,
-    bookmarked_at: communityBookmarks.created_at,
-    ...postStatsProjection,
-  }).from(communityBookmarks).innerJoin(
-    communityPosts,
-    eq(communityPosts.id, communityBookmarks.post_id),
-  ).innerJoin(
-    users,
-    eq(users.id, communityPosts.author_id),
-  ).where(and(...conditions)).orderBy(
-    desc(communityBookmarks.created_at),
-  ).limit(limit + 1);
-  const hasMore = rows.length > limit;
-  const data = hasMore ? rows.slice(0, limit) : rows;
-  return {
-    data,
-    next_cursor: hasMore ? data.at(-1)?.bookmarked_at ?? null : null,
-  };
 }
 
 /** 分页阶段：置顶/官方帖区（pinned）与普通帖区（normal）。 */

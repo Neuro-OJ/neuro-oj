@@ -34,7 +34,7 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
         data = { data: { id: 'a', classroom_id: 'c', published_at: '2026-10-18' } };
       } else if (pathname.endsWith('/problems')) data = { items: [], total: 0 };
       else if (pathname.endsWith('/community/config')) {
-        data = { data: { enabled: true, follows_enabled: true, moments_enabled: true } };
+        data = { data: { enabled: true, moments_enabled: true } };
       }
       return Promise.resolve(data as T);
     },
@@ -62,7 +62,7 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
   return { reader, calls, workspace };
 }
 
-Deno.test('BFF 匿名首页不读取身份、签到、教学和关注流，公共布局只载入一次', async () => {
+Deno.test('BFF 匿名首页不读取身份、签到和教学，公共布局只载入一次', async () => {
   const { reader, calls } = fixture();
   let meta = 0;
   const result = await aggregateView(

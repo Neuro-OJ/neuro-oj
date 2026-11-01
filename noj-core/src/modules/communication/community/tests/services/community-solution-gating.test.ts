@@ -5,9 +5,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { contests, problems, users } from "../../../../../shared/db/schema.ts";
 import {
-  communityBookmarks,
   communityComments,
-  communityPostLikes,
   communityPosts,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -16,11 +14,7 @@ import {
   createReport,
   getPost,
   getReportDetail,
-  listBookmarks,
-  listFeed,
   listPosts,
-  toggleBookmark,
-  togglePostLike,
 } from "../../index.ts";
 import { createContest } from "../../../../contests/index.ts";
 import {
@@ -297,7 +291,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "solution-gating: 门控覆盖全部五条读路径（列表/详情/计数/收藏/动态）",
+  name: "solution-gating: 门控覆盖列表、详情与计数三条读路径",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -314,28 +308,7 @@ Deno.test({
     await assertRejects(() => getPost(post.id, ownerId, false), Error);
     // 3. 计数（赛期不计入）
     assertEquals((await countPostsByType()).solution, 0);
-    // 4. 互动（High#6）：对门控帖的点赞/收藏必须被拒绝，既防写入隐藏互动行，
-    //    也避免"成功 vs 外键错"构成存在性预言机
-    await assertRejects(() => toggleBookmark(ownerId, post.id), Error);
-    await assertRejects(() => togglePostLike(ownerId, post.id), Error);
-    // 门控生效期间不应产生任何互动行
-    const likeRows = await getDb().select().from(communityPostLikes)
-      .where(eq(communityPostLikes.post_id, post.id));
-    assertEquals(likeRows.length, 0);
-    const bookmarkRows = await getDb().select().from(communityBookmarks)
-      .where(eq(communityBookmarks.post_id, post.id));
-    assertEquals(bookmarkRows.length, 0);
-    const bookmarks = await listBookmarks(ownerId);
-    assertEquals(
-      bookmarks.data.filter((row) => row.post.id === post.id).length,
-      0,
-    );
-    // 5. 动态流不再携带任何自动事件（审计 VULN-08 已整体下线该功能），
-    //    因此不存在"某选手通过某题"的实时广播侧信道。
-    const feed = await listFeed("latest", ownerId);
-    assertEquals(feed.data.some((item) => item.kind !== "moment"), false);
-
-    // 赛后全部恢复（含互动不再被拒）
+    // 赛后全部恢复
     await getDb().update(contests)
       .set({ end_time: new Date(Date.now() - 1_000).toISOString() })
       .where(eq(contests.id, contestId));
@@ -345,12 +318,6 @@ Deno.test({
       1,
     );
     assertEquals((await countPostsByType()).solution, 1);
-    assertEquals(await toggleBookmark(ownerId, post.id), true);
-    assertEquals(
-      (await listBookmarks(ownerId))
-        .data.filter((row) => row.post.id === post.id).length,
-      1,
-    );
   },
 });
 

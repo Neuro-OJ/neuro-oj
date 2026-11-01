@@ -30,11 +30,7 @@
 | 客观题提交                                 | `POST /problems/:id/submit`（objective）                                                   | hardening IP+user                                             | IP 60s/3600；user 60s/60                                         |
 | 创建题目                                   | `POST /problems`                                                                           | hardening IP+user                                             | 60s/30                                                          |
 | 题目导入                                   | `POST /problems/import-bundle`                                                             | hardening IP+user                                             | 60s/10                                                          |
-| 帖子点赞/取消                              | `POST /posts/:postId/like`                                                                 | hardening IP+user                                             | 60s/120                                                         |
-| 评论点赞/取消                              | `POST /comments/:commentId/like`                                                           | hardening IP+user                                             | 60s/120                                                         |
-| 收藏/取消                                  | `POST /posts/:postId/bookmark`                                                             | hardening IP+user                                             | 60s/120                                                         |
-| 关注/取关                                  | `POST /users/:userId/follow`                                                               | hardening IP+user                                             | 60s/120                                                         |
-| 举报                                       | `POST /reports`                                                                            | hardening IP+user                                             | 60s/30                                                          |
+| 举报                                       | `POST /reports`                                                                            | hardening user                                                | 60s/30                                                          |
 | 社区发帖/评论                              | `POST/PATCH/DELETE /community/posts                                                        | comments`                                                     | 服务层发布频率                                                  |
 | 升级任务受理                               | `POST /submission-upgrade-jobs`                                                            | hardening IP+user                                             | 60s/10；user 60s/3                                              |
 | 作业写操作、复制与批量补题                 | `POST/PATCH /domains/:slug/assignments/*`、`POST /domains/:slug/classrooms/:id/assignments | contest-remediation*`                                         | hardening 域 slug + user；与教学互动共享 `education-write` 窗口 |
@@ -53,7 +49,7 @@
 | 策略 | 适用端点 |
 | --- | --- |
 | `reject`（503） | 注册、找回/重置密码、验证邮件、邮件投递回执、代码/竞赛/客观题提交、自测、升级任务、题目导入 |
-| `allow`（放行并记 warn） | 帖子/评论点赞、收藏、关注、举报、每日签到、教学写窗口、创建题目 |
+| `allow`（放行并记 warn） | 举报、每日签到、教学写窗口、创建题目 |
 
 判断标准：被绕过时是否会产生评测算力、邮件、存储或垃圾内容等实际代价。有代价用 `reject`，
 否则用 `allow`，避免 Redis 抖动时整站写入一起不可用（#698 P0-2）。

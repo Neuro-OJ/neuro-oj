@@ -277,12 +277,6 @@ export function queryProfileCommunityStats(
     }`,
   )!;
   return db.select({
-    following_count: sql<
-      number
-    >`(select count(*) from community_follows where follower_id = ${userId})::int`,
-    follower_count: sql<
-      number
-    >`(select count(*) from community_follows where followee_id = ${userId})::int`,
     solution_count: sql<
       number
     >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,

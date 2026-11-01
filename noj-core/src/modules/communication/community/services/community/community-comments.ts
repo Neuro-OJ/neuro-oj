@@ -250,9 +250,6 @@ export async function listComments(
   return db.select({
     comment: communityComments,
     author: authorProjection,
-    likes: sql<
-      number
-    >`(select count(*)::int from community_comment_likes where comment_id = ${communityComments.id})`,
   }).from(communityComments).innerJoin(
     users,
     eq(users.id, communityComments.author_id),
