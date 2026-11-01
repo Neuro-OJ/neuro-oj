@@ -9,6 +9,7 @@ import {
   api,
   apiDelete,
   apiGet,
+  apiPatch,
   apiPost,
   apiPut,
   domainProblemPath,
@@ -131,8 +132,19 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
       title,
       description: "标签筛选测试",
       difficulty: "easy",
-      runtime_config: null,
-      is_objective: true,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       tag_ids: [tagId],
     },
     adminToken,
@@ -145,7 +157,8 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   }
   problemId = (res.body as { problem_id: string }).problem_id;
 
-  // 标签筛选与匿名详情需要公开可见。
+  // 标签筛选与匿名详情需要公开可见：先发布（创建绑定）再改状态。
+  await publishProblemVersion(adminToken, problemId, "标签题发布");
   const pubRes = await setProblemState(adminToken, problemId, {
     visibility: "public",
   });
@@ -158,7 +171,6 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
 
   const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
   const revision = (draft.body as { data: { revision: number } }).data.revision;
-  await publishProblemVersion(adminToken, problemId, "标签题发布");
 
   // 按标签筛选命中
   const listRes = await apiGet(
@@ -248,8 +260,8 @@ e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见",
   }
 
   // 给编程题打上算法标签（admin 更新）
-  const putRes = await apiPut(
-    `/api/v1/problems/${gatingProblemId}`,
+  const putRes = await apiPatch(
+    await domainProblemPath(gatingProblemId),
     { tag_ids: [algorithmTagId] },
     adminToken,
   );

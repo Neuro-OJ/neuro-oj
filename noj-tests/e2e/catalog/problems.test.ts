@@ -98,15 +98,22 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   // 管理信息（难度）走域 PATCH；内容（标题）只写共享草稿。
   const { status, body } = await apiPatch(
     await domainProblemPath(problemId),
-    { difficulty: "hard", expected_revision: revision },
+    { title: "E2E v2", difficulty: "hard", expected_revision: revision },
     adminToken,
   );
   if (status !== 200) throw new Error("更新失败: " + status);
+  // PATCH 会推进草稿 revision：重新读取后再写内容，避免 409。
+  const afterPatch = await apiGet(
+    `/api/v1/problems/${problemId}/draft`,
+    adminToken,
+  );
+  const patchRevision =
+    (afterPatch.body as { data: { revision: number } }).data.revision;
   const patched = await apiPut(
     `${await domainProblemPath(problemId)}/draft`,
     { content: { ...draftContent, title: "E2E v2" } },
     adminToken,
-    { "If-Match": String(revision) },
+    { "If-Match": String(patchRevision) },
   );
   if (patched.status !== 200) {
     throw new Error(
@@ -133,12 +140,14 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
     throw new Error("发布前公开题面没有保持 V1");
   }
   await publishProblemVersion(adminToken, problemId, "e2e v2");
+  // 域详情是绑定视图（reference/policy...），公开题面仍读无域只读投影。
   const afterPublish = await apiGet(
-    await domainProblemPath(problemId),
+    `/api/v1/problems/${problemId}`,
     adminToken,
   );
-  const pub = afterPublish.body as { data: { title: string } };
-  if (pub.data.title !== "E2E v2") throw new Error("发布后公开标题未更新");
+  const publishedTitle =
+    (afterPublish.body as { data: { title: string } }).data.title;
+  if (publishedTitle !== "E2E v2") throw new Error("发布后公开标题未更新");
   console.log("  ✓ 更新题目 + 发布 V2");
 });
 

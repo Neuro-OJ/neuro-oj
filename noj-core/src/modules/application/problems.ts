@@ -175,7 +175,7 @@ export function deleteProblemCommand(
       await bumpProjectionRevision(tx, problemScopeKey(problemId));
       return result;
     });
-    await finalizeDeletedProblem(problemId, deleted);
+    await finalizeDeletedProblem(problemId, deleted, actor);
   })();
 }
 

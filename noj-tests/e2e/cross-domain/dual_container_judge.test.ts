@@ -140,7 +140,7 @@ finally:
         `导入双容器题包失败 ${response.status}: ${JSON.stringify(imported)}`,
       );
     }
-    return imported.data.id;
+    return imported.data.problem_id as string;
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -314,8 +314,7 @@ e2eTest(
       throw new Error(`Create failed: ${res.status}`);
     }
 
-    const problemId =
-      (res.body as { data: { problem_id: string } }).data.problem_id;
+    const problemId = (res.body as { problem_id: string }).problem_id;
     const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     const rc = (detail.body as { data: { runtime_config: unknown } }).data
       .runtime_config;
@@ -338,17 +337,18 @@ e2eTest(
       adminToken,
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
+    // 先发布（建绑定）再公开：`/state` 的 If-Match 是题库配置 revision。
+    const versionId = await publishProblemVersion(
+      adminToken,
+      problemId,
+      "E2E 双容器作答版本",
+    );
     const visibility = await setProblemState(adminToken, problemId, {
       visibility: "public",
     });
     if (visibility.status !== 200) {
       throw new Error(`公开题目失败 ${JSON.stringify(visibility)}`);
     }
-    const versionId = await publishProblemVersion(
-      adminToken,
-      problemId,
-      "E2E 双容器作答版本",
-    );
 
     // 普通用户提交代码
     const userToken = await registerUser(

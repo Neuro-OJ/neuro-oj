@@ -458,19 +458,41 @@ export async function setProblemState(
   },
 ) {
   const path = await domainProblemPath(problemId, token);
-  const draft = await apiGet(`${path}/draft`, token);
-  const draftBody = draft.body as {
-    revision?: number;
-    data?: { revision?: number };
-  };
-  const revision = draftBody.revision ?? draftBody.data?.revision;
-  if (typeof revision !== "number") {
-    throw new Error(`读取草稿 revision 失败: ${JSON.stringify(draft.body)}`);
+  const reference = path.split("/").pop()!;
+  // `/state` 的 If-Match 是**题库配置 revision**（绑定行），不是草稿 revision。
+  const bindings = await apiGet(
+    `/api/v1/domains/main/problem-bindings?keyword=${
+      encodeURIComponent(reference)
+    }&limit=100`,
+    token,
+  );
+  // 绑定列表返回 `{page, limit, total, items: [...]}`，reference 是对象。
+  const rows = (bindings.body as {
+    items?: Array<{
+      reference?: {
+        number?: number;
+        display_ref?: string;
+        qualified_ref?: string;
+      };
+      revision: number;
+    }>;
+  }).items ?? [];
+  const hit = rows.find((row) =>
+    String(row.reference?.number ?? "") === reference ||
+    row.reference?.display_ref === reference ||
+    row.reference?.qualified_ref?.endsWith(`:${reference}`)
+  );
+  if (!hit) {
+    throw new Error(
+      `未找到题目 ${reference} 的域绑定（先发布再改状态）: ${
+        JSON.stringify(bindings.body)
+      }`,
+    );
   }
   return await api("POST", `${path}/state`, {
     body: { disabled: false, reason: "e2e", ...body },
     token,
-    headers: { "If-Match": String(revision) },
+    headers: { "If-Match": String(hit.revision) },
   });
 }
 
@@ -569,16 +591,37 @@ export async function getProblemReference(
   problemId: string,
   token?: string,
 ): Promise<string> {
-  const res = await apiGet(`/api/v1/problems/${problemId}`, token);
-  if (res.status !== 200) {
-    throw new Error(
-      `读取题目 ${problemId} 的题号失败: ${res.status} ${
-        JSON.stringify(res.body)
-      }`,
-    );
+  const auth = token ?? await getAdminToken();
+  // 未发布的域新题对匿名/普通用户 404：调用方没带 token 时用管理员身份再读一次。
+  let res = await apiGet(`/api/v1/problems/${problemId}`, auth);
+  if (res.status === 200) {
+    const number = (res.body as { data: { number: number } }).data.number;
+    return String(number);
   }
-  const number = (res.body as { data: { number: number } }).data.number;
-  return String(number);
+  // 无域详情只服务"已绑定默认域"的题目：未发布的域新题会 404，
+  // 退回域草稿列表按 id 反查题号。
+  const admin = auth;
+  for (const page of [1, 2, 3, 4, 5]) {
+    const list = await apiGet(
+      `/api/v1/domains/main/problem-drafts?page=${page}&limit=100`,
+      admin,
+    );
+    if (list.status !== 200) break;
+    // 列表统一返回 `{page, limit, total, items: [...]}`。
+    const payload = list.body as {
+      items?: Array<{ id: string; number: number }>;
+      data?: Array<{ id: string; number: number }>;
+    };
+    const rows = payload.items ?? payload.data ?? [];
+    const hit = rows.find((row) => row.id === problemId);
+    if (hit) return String(hit.number);
+    if (rows.length < 100) break;
+  }
+  throw new Error(
+    `读取题目 ${problemId} 的题号失败: ${res.status} ${
+      JSON.stringify(res.body)
+    }`,
+  );
 }
 
 /**

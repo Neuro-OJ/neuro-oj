@@ -138,7 +138,7 @@ e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
       "创建题目失败: " + res.status + " " + JSON.stringify(res.body),
     );
   }
-  const pid = (res.body as { data: { problem_id: string } }).data.problem_id;
+  const pid = (res.body as { problem_id: string }).problem_id;
   const download = await apiGet(
     `/api/v1/problems/${pid}/support-package`,
     adminToken,

@@ -174,7 +174,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
       body: formData,
     },
   );
-  if (res.status !== 200) {
+  if (res.status !== 200 && res.status !== 201) {
     throw new Error(
       `导入失败: ${res.status} ${(await res.text()).slice(0, 500)}`,
     );
@@ -316,7 +316,9 @@ e2eTest(
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
-    // 默认域新导入资源先显式公开，再发布作答版本。
+    // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
+    await publishProblemVersion(adminToken, bundleProblemId, "E2E 联网题 V1");
+    // 发布建立域绑定后，才能通过 `/state` 修改题库配置（含公开范围）。
     const pubRes = await setProblemState(adminToken, bundleProblemId, {
       visibility: "public",
     });
@@ -325,8 +327,6 @@ e2eTest(
         `设置导入题目公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
       );
     }
-    // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
-    await publishProblemVersion(adminToken, bundleProblemId, "E2E 联网题 V1");
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );

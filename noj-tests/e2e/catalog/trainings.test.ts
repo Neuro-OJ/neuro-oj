@@ -63,6 +63,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
   const problemId = (problemRes.body as { problem_id: string }).problem_id;
+  await publishProblemVersion(adminToken, problemId, "题单源题发布");
   const publicRes = await setProblemState(adminToken, problemId, {
     visibility: "public",
   });
@@ -71,7 +72,6 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
       `管理员设题目 public 失败: ${JSON.stringify(publicRes.body)}`,
     );
   }
-  await publishProblemVersion(adminToken, problemId, "题单源题发布");
   const sampleProblemId = await getProblemIdByNumber(1001);
 
   // 0.11 起题单写入只在域入口：创建时一次性提交题号列表（无域写路由已删除）。

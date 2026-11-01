@@ -46,7 +46,11 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
-import { logAudit } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
+import {
+  type AuditDetail,
+  logAudit,
+  recordAudit,
+} from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { assertLlmLimitsWithinDefault } from "../../../platform/contracts/cross-module/gateway_services_llm-limits.ts";
 import {
   type CreateProblemInput,
@@ -1118,6 +1122,7 @@ export async function deleteProblemOwnedRowsTx(
 export async function finalizeDeletedProblem(
   id: string,
   result: DeleteProblemTxResult,
+  actor: UserActor | null = null,
 ): Promise<void> {
   // 存储对象统一经引用守卫删除：仍被其他题目/版本引用时保留字节
   for (const url of result.objectUrls) {
@@ -1130,15 +1135,31 @@ export async function finalizeDeletedProblem(
   }
 
   // 审计日志：删除成功后才记录（display_id 为域内数字题号）
-  await logAudit(
-    "problems.delete",
-    {
-      action: "problems.delete",
-      title: result.problem.title,
-      display_id: String(result.problem.number),
-    },
-    { type: "problem", id },
-  );
+  // 审计必须带上**真实操作者**：审计列表默认过滤掉系统身份（admin_id='0'）的记录，
+  // 用 logAudit（系统主体）会让删除动作在管理端完全不可见。
+  if (actor) {
+    await recordAudit(
+      actor,
+      { ipAddress: "system" },
+      "problems.delete",
+      {
+        action: "problems.delete",
+        title: result.problem.title,
+        display_id: String(result.problem.number),
+      } as AuditDetail,
+      { type: "problem", id },
+    );
+  } else {
+    await logAudit(
+      "problems.delete",
+      {
+        action: "problems.delete",
+        title: result.problem.title,
+        display_id: String(result.problem.number),
+      },
+      { type: "problem", id },
+    );
+  }
 
   await enqueueSearchIndexTask("problem", id, "delete");
 }
