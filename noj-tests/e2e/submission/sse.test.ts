@@ -11,14 +11,13 @@
 import {
   BASE_URL,
   CODE_SAMPLES,
+  e2eTest,
   getProblemIdByNumber,
   isE2E,
   registerUser,
   submitCode,
-  waitForServer,
-  e2eTest,
   TEST_PASSWORD,
-
+  waitForServer,
 } from "../helper.ts";
 
 let token = "";
@@ -82,88 +81,88 @@ async function readSSEEvents(
 }
 
 e2eTest("[e2e/sse] Setup", async () => {
-    if (!isE2E) return;
-    await waitForServer();
-    const ts = Date.now().toString(36);
-    token = await registerUser(
-      "sse_user_" + ts,
-      "sse_user_" + ts + "@test.com",
-      TEST_PASSWORD,
+  if (!isE2E) return;
+  await waitForServer();
+  const ts = Date.now().toString(36);
+  token = await registerUser(
+    "sse_user_" + ts,
+    "sse_user_" + ts + "@test.com",
+    TEST_PASSWORD,
+  );
+  // 创建真实提交（用于 SSE 连接测试）
+  try {
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    problemId = await getProblemIdByNumber(1001);
+    submissionId = await submitCode(token, problemId, CODE_SAMPLES.accepted);
+    console.log(
+      "  ✓ SSE 测试用户已注册，提交 ID: " + submissionId.slice(0, 8),
     );
-    // 创建真实提交（用于 SSE 连接测试）
-    try {
-      // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
-      problemId = await getProblemIdByNumber(1001);
-      submissionId = await submitCode(token, problemId, CODE_SAMPLES.accepted);
-      console.log(
-        "  ✓ SSE 测试用户已注册，提交 ID: " + submissionId.slice(0, 8),
-      );
-    } catch {
-      submissionId = "";
-      console.log("  ✓ SSE 测试用户已注册（提交创建跳过）");
-    }
-  });
+  } catch {
+    submissionId = "";
+    console.log("  ✓ SSE 测试用户已注册（提交创建跳过）");
+  }
+});
 
 e2eTest("[e2e/sse] 1.1 未认证用户 SSE 返回 401", async () => {
-    if (!isE2E) return;
-    const res = await fetch(
-      `${BASE_URL}/api/v1/submissions/00000000-0000-0000-0000-000000000000/events`,
-    );
-    if (res.status !== 401) {
-      throw new Error("期望 401, 实际 " + res.status);
-    }
-    console.log("  ✓ 未认证访问 SSE 返回 401");
-  });
+  if (!isE2E) return;
+  const res = await fetch(
+    `${BASE_URL}/api/v1/submissions/00000000-0000-0000-0000-000000000000/events`,
+  );
+  if (res.status !== 401) {
+    throw new Error("期望 401, 实际 " + res.status);
+  }
+  console.log("  ✓ 未认证访问 SSE 返回 401");
+});
 
 e2eTest("[e2e/sse] 1.2 队列 SSE 未认证返回 401", async () => {
-    if (!isE2E) return;
-    const res = await fetch(`${BASE_URL}/api/v1/queue/events`);
-    if (res.status !== 401) {
-      throw new Error("期望 401, 实际 " + res.status);
-    }
-    console.log("  ✓ 队列 SSE 未认证返回 401");
-  });
+  if (!isE2E) return;
+  const res = await fetch(`${BASE_URL}/api/v1/queue/events`);
+  if (res.status !== 401) {
+    throw new Error("期望 401, 实际 " + res.status);
+  }
+  console.log("  ✓ 队列 SSE 未认证返回 401");
+});
 
 e2eTest("[e2e/sse] 1.3 队列 SSE 连接建立收到初始状态", async () => {
-    if (!isE2E) return;
-    const events = await readSSEEvents(
-      `${BASE_URL}/api/v1/queue/events`,
-      token,
-      1,
-      10000,
-    );
-    if (events.length === 0) {
-      // 可能连接已关闭（无队列事件），非致命
-      console.log("  ⚠ 未收到队列 SSE 事件");
-      return;
-    }
-    console.log("  ✓ 队列 SSE 收到事件: " + events.join(", "));
-  });
+  if (!isE2E) return;
+  const events = await readSSEEvents(
+    `${BASE_URL}/api/v1/queue/events`,
+    token,
+    1,
+    10000,
+  );
+  if (events.length === 0) {
+    // 可能连接已关闭（无队列事件），非致命
+    console.log("  ⚠ 未收到队列 SSE 事件");
+    return;
+  }
+  console.log("  ✓ 队列 SSE 收到事件: " + events.join(", "));
+});
 
 e2eTest("[e2e/sse] 1.4 提交状态 SSE 端点连接正常", async () => {
-    if (!isE2E) return;
-    const sid = submissionId || "00000000-0000-0000-0000-000000000000";
-    const res = await fetch(
-      `${BASE_URL}/api/v1/submissions/${sid}/events`,
-      {
-        headers: { Authorization: "Bearer " + token },
-        signal: AbortSignal.timeout(5000),
-      },
-    );
-    if (!submissionId) {
-      // 无真实提交 ID 时可能 404，非致命
-      if (res.status === 404) {
-        console.log("  ⚠ 无提交可连接（已跳过）");
-        return;
-      }
+  if (!isE2E) return;
+  const sid = submissionId || "00000000-0000-0000-0000-000000000000";
+  const res = await fetch(
+    `${BASE_URL}/api/v1/submissions/${sid}/events`,
+    {
+      headers: { Authorization: "Bearer " + token },
+      signal: AbortSignal.timeout(5000),
+    },
+  );
+  if (!submissionId) {
+    // 无真实提交 ID 时可能 404，非致命
+    if (res.status === 404) {
+      console.log("  ⚠ 无提交可连接（已跳过）");
+      return;
     }
-    if (res.status !== 200) {
-      throw new Error("期望 200, 实际 " + res.status);
-    }
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("text/event-stream")) {
-      // 非强制断言：是否为 text/event-stream 取决于实现
-      console.log("  ⚠ Content-Type 非 event-stream: " + ct);
-    }
-    console.log("  ✓ SSE 端点返回 200");
-  });
+  }
+  if (res.status !== 200) {
+    throw new Error("期望 200, 实际 " + res.status);
+  }
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("text/event-stream")) {
+    // 非强制断言：是否为 text/event-stream 取决于实现
+    console.log("  ⚠ Content-Type 非 event-stream: " + ct);
+  }
+  console.log("  ✓ SSE 端点返回 200");
+});

@@ -452,15 +452,24 @@ export async function publishProblemVersion(
   problemId: string,
   changeNote = "e2e",
 ): Promise<string> {
-  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, token);
+  // 0.11 起发布只在域入口：`POST /domains/:slug/problems/:reference/publish`
+  const path = await domainProblemPath(problemId, token);
+  const draft = await apiGet(`${path}/draft`, token);
   if (draft.status !== 200) {
     throw new Error(
       `读取草稿失败: ${draft.status} ${JSON.stringify(draft.body)}`,
     );
   }
-  const revision = (draft.body as { data: { revision: number } }).data.revision;
+  const draftBody = draft.body as {
+    revision?: number;
+    data?: { revision?: number };
+  };
+  const revision = draftBody.revision ?? draftBody.data?.revision;
+  if (typeof revision !== "number") {
+    throw new Error(`草稿未回传 revision: ${JSON.stringify(draft.body)}`);
+  }
 
-  const pub = await api("POST", `/api/v1/problems/${problemId}/versions`, {
+  const pub = await api("POST", `${path}/publish`, {
     body: { change_note: changeNote },
     token,
     headers: { "If-Match": String(revision) },
@@ -470,7 +479,15 @@ export async function publishProblemVersion(
       `发布版本失败: ${pub.status} ${JSON.stringify(pub.body)}`,
     );
   }
-  return (pub.body as { data: { version_id: string } }).data.version_id;
+  const body = pub.body as {
+    version_id?: string;
+    data?: { version_id?: string };
+  };
+  const versionId = body.version_id ?? body.data?.version_id;
+  if (!versionId) {
+    throw new Error(`发布未回传 version_id: ${JSON.stringify(pub.body)}`);
+  }
+  return versionId;
 }
 
 /**
@@ -509,6 +526,17 @@ export async function getContestAnswerVersionId(
   return problem.version_id;
 }
 
+/** 域题目路径（0.11 起写操作只在域入口）：UUID → 题号。 */
+export async function domainProblemPath(
+  problemId: string,
+  token?: string,
+): Promise<string> {
+  return `/api/v1/domains/main/problems/${await getProblemReference(
+    problemId,
+    token,
+  )}`;
+}
+
 /** 题目 UUID → 本域题号（域提交入口只接受数字或 `domain:number`）。 */
 export async function getProblemReference(
   problemId: string,
@@ -517,7 +545,9 @@ export async function getProblemReference(
   const res = await apiGet(`/api/v1/problems/${problemId}`, token);
   if (res.status !== 200) {
     throw new Error(
-      `读取题目 ${problemId} 的题号失败: ${res.status} ${JSON.stringify(res.body)}`,
+      `读取题目 ${problemId} 的题号失败: ${res.status} ${
+        JSON.stringify(res.body)
+      }`,
     );
   }
   const number = (res.body as { data: { number: number } }).data.number;
@@ -548,7 +578,8 @@ export async function submitCode(
     );
   }
   const slug = options.domainSlug ?? "main";
-  const reference = options.reference ?? await getProblemReference(problemId, token);
+  const reference = options.reference ??
+    await getProblemReference(problemId, token);
   const res = await apiPost(
     `/api/v1/domains/${slug}/submissions`,
     { problem_ref: reference, language, code, version_id: version },

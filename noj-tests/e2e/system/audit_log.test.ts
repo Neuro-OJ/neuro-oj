@@ -14,6 +14,7 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -69,7 +70,7 @@ e2eTest("[e2e/audit-log] Setup", async () => {
   targetUserId = (me.body as { data: { id: string } }).data.id;
 
   // 创建题目（用于 problems.delete 审计）
-  const probRes = await apiPost("/api/v1/problems", {
+  const probRes = await apiPost("/api/v1/domains/main/problems", {
     title: "审计删除测试题",
     description: "将被删除以产生审计日志",
     difficulty: "easy",
@@ -167,7 +168,7 @@ e2eTest("[e2e/audit-log] 3.1b ban/unban 产生审计记录", async () => {
 e2eTest("[e2e/audit-log] 3.1c problems.delete 产生审计记录", async () => {
   if (!isE2E) return;
   const delRes = await apiDelete(
-    `/api/v1/problems/${problemId}`,
+    await domainProblemPath(problemId),
     adminToken,
   );
   if (delRes.status !== 200 && delRes.status !== 204) {

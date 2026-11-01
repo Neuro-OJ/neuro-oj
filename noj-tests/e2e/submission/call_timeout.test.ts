@@ -88,7 +88,7 @@ async function createDualProblem(
   callTimeoutMs: number,
 ): Promise<string> {
   const res = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title,
       description: `# ${title}\n\nMarkdown 内容`,

@@ -235,7 +235,10 @@ e2eTest(
     }
 
     // 管理列表仍可见（含已下架）
-    const adminList = await apiGet("/api/v1/admin/system/announcements", adminToken);
+    const adminList = await apiGet(
+      "/api/v1/admin/system/announcements",
+      adminToken,
+    );
     const adminData = adminList.body as {
       data: Array<{ id: string; is_active: boolean }>;
     };
@@ -279,7 +282,10 @@ e2eTest(
     // 验证 P0 修复：无 admin:full_access 但显式拥有 announcement:manage 的用户
     // 可调用公告管理端点（spec: 持有 admin:full_access 通配放行或显式拥有该权限）。
     // 1. 查 announcement:manage 权限 id（响应按 resource 分组）
-    const permRes = await apiGet("/api/v1/admin/identity/permissions", adminToken);
+    const permRes = await apiGet(
+      "/api/v1/admin/identity/permissions",
+      adminToken,
+    );
     const perms = permRes.body as {
       data?: Record<string, Array<{ id: string; action: string }>>;
     };
@@ -351,7 +357,10 @@ e2eTest(
     const opAnnId = (postRes.body as { data: { id: string } }).data.id;
 
     // 7. 清理：删除公告 + 角色
-    await apiDelete(`/api/v1/admin/system/announcements/${opAnnId}`, adminToken);
+    await apiDelete(
+      `/api/v1/admin/system/announcements/${opAnnId}`,
+      adminToken,
+    );
     await apiDelete(`/api/v1/admin/identity/roles/${roleId}`, adminToken);
     console.log("  ✓ 细粒度 announcement:manage 用户可管理公告");
   },
@@ -360,10 +369,16 @@ e2eTest(
 e2eTest("[e2e/announcements] Cleanup: 删除公告", async () => {
   if (!isE2E) return;
   if (pinnedId) {
-    await apiDelete(`/api/v1/admin/system/announcements/${pinnedId}`, adminToken);
+    await apiDelete(
+      `/api/v1/admin/system/announcements/${pinnedId}`,
+      adminToken,
+    );
   }
   if (normalId) {
-    await apiDelete(`/api/v1/admin/system/announcements/${normalId}`, adminToken);
+    await apiDelete(
+      `/api/v1/admin/system/announcements/${normalId}`,
+      adminToken,
+    );
   }
   console.log("  ✓ 公告清理完成");
 });

@@ -43,7 +43,7 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
 
   // 创建 artifact 题目
   const createRes = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: `[E2E] Artifact ${ts}`,
       description: "artifact submission e2e",

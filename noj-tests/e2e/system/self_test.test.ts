@@ -10,6 +10,7 @@
 import {
   apiGet,
   apiPost,
+  domainProblemPath,
   e2eTest,
   getOrCreateUser,
   isE2E,

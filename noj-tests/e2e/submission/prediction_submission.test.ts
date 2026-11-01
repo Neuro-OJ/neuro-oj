@@ -90,7 +90,7 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
 
   // 创建 prediction 题目：无 Solution 容器，故省略 runtime_config.solution
   const createRes = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: `[E2E] Prediction ${ts}`,
       description: "prediction submission e2e",

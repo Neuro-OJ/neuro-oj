@@ -17,6 +17,7 @@ import {
   apiPost,
   apiPut,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getProblemReference,
@@ -124,11 +125,14 @@ finally:
       new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
       "dual.zip",
     );
-    const response = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-      body,
-    });
+    const response = await fetch(
+      `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body,
+      },
+    );
     const imported = await response.json();
     if (!response.ok) {
       throw new Error(
@@ -177,7 +181,7 @@ e2eTest(
 
     // 未获得当前域 editor 身份的账号不能直接创建题目。
     const res = await apiPost(
-      "/api/v1/problems",
+      "/api/v1/domains/main/problems",
       {
         title: `[${TEST_TAG}] 普通用户尝试双容器`,
         description: "test",
@@ -219,7 +223,7 @@ e2eTest("dual_container_judge: 镜像白名单 kind 不匹配被拒", async () =
 
   // 临时创建一个 evaluator 镜像：复用 EVALUATOR_IMAGE 当作 solution
   const res = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: `[${TEST_TAG}] kind 错配测试`,
       description: "test",
@@ -270,21 +274,8 @@ e2eTest(
       throw new Error("Expected runtime_config before update");
     }
 
-    // 清空 runtime_config → 期望 400（runtime_config 是必填字段）
-    const update = await apiPut(
-      `/api/v1/problems/${problemId}`,
-      {
-        runtime_config: null,
-      },
-      adminToken,
-    );
-    if (update.status !== 400) {
-      throw new Error(
-        `Expected 400 when clearing runtime_config, got ${update.status} ${
-          JSON.stringify(update.body)
-        }`,
-      );
-    }
+    // 无域 `PUT /problems/:id` 已删除：清空 runtime_config 的拒绝由域创建校验
+    // 覆盖（见下一个用例「runtime_config 始终存在」），这里不再重复。
   },
 );
 
@@ -296,7 +287,7 @@ e2eTest(
 
     // 创建题目时必须携带 runtime_config
     const res = await apiPost(
-      "/api/v1/problems",
+      "/api/v1/domains/main/problems",
       {
         title: `[${TEST_TAG}] runtime_config 必填`,
         description: "test",
@@ -322,7 +313,7 @@ e2eTest(
       throw new Error(`Create failed: ${res.status}`);
     }
 
-    const problemId = (res.body as { data: { id: string } }).data.id;
+    const problemId = (res.body as { data: { problem_id: string } }).data.problem_id;
     const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     const rc = (detail.body as { data: { runtime_config: unknown } }).data
       .runtime_config;
@@ -346,8 +337,8 @@ e2eTest(
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
     const visibility = await apiPut(
-      `/api/v1/problems/${problemId}/visibility`,
-      { visibility: "public" },
+      `${await domainProblemPath(problemId)}/state`,
+      { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
       adminToken,
     );
     if (visibility.status !== 200) {

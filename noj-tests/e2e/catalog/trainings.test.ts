@@ -5,6 +5,7 @@ import {
   apiPost,
   apiPut,
   CODE_SAMPLES,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
@@ -37,7 +38,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
 
   // 管理员创建默认域题目，普通成员不得设置敏感评测字段。
   const problemRes = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: "Training E2E Problem",
       description: "e2e",
@@ -60,10 +61,10 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   if (problemRes.status !== 201) {
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
-  const problemId = (problemRes.body as { data: { id: string } }).data.id;
+  const problemId = (problemRes.body as { problem_id: string }).problem_id;
   const publicRes = await apiPut(
-    `/api/v1/problems/${problemId}/visibility`,
-    { visibility: "public" },
+    `${await domainProblemPath(problemId)}/state`,
+    { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
     adminToken,
   );
   if (publicRes.status !== 200) {
@@ -75,7 +76,10 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   const sampleProblemId = await getProblemIdByNumber(1001);
 
   // 0.11 起题单写入只在域入口：创建时一次性提交题号列表（无域写路由已删除）。
-  const problemDetail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+  const problemDetail = await apiGet(
+    `/api/v1/problems/${problemId}`,
+    adminToken,
+  );
   const sourceNumber = (problemDetail.body as { data: { number: number } })
     .data.number;
   const created = await apiPost(
@@ -136,13 +140,20 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error("公开列表应包含该题单");
   }
 
-  const deleted = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+  const deleted = await apiDelete(
+    await domainProblemPath(problemId),
+    adminToken,
+  );
   if (deleted.status !== 409) {
     throw new Error(`已发布源题不得物理删除: ${deleted.status}`);
   }
-  const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
-    visibility: "private",
-  }, adminToken);
+  const withdrawn = await apiPut(
+    `${await domainProblemPath(problemId)}/state`,
+    {
+      visibility: "private",
+    },
+    adminToken,
+  );
   if (withdrawn.status !== 200) throw new Error("更新源题可见性失败");
   const afterDelete = await apiGet(
     `/api/v1/trainings/${trainingId}/problems`,

@@ -11,6 +11,7 @@ import {
   apiGet,
   apiPost,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -116,11 +117,14 @@ async function importBundle(): Promise<string> {
     ], { type: "application/zip" }),
     "staging-bundle.zip",
   );
-  const response = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
-    body: formData,
-  });
+  const response = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    },
+  );
   if (response.status !== 200) {
     throw new Error(
       `题包导入失败: ${response.status} ${await response.text()}`,
@@ -141,7 +145,7 @@ async function importBundle(): Promise<string> {
       `staging 未使用 S3 支持包地址: ${body.data.support_package_storage_url}`,
     );
   }
-  return body.data.id;
+  return body.data.problem_id;
 }
 
 function currentCode(secret: string): string {
@@ -260,7 +264,10 @@ e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
 
 e2eTest("[e2e/staging] 清理验收题目", async () => {
   if (!isE2E || !problemId) return;
-  const response = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+  const response = await apiDelete(
+    await domainProblemPath(problemId),
+    adminToken,
+  );
   if (response.status !== 200 && response.status !== 204) {
     throw new Error(`清理 staging 题目失败: ${response.status}`);
   }

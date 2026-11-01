@@ -11,6 +11,7 @@ import {
   apiDelete,
   apiGet,
   apiPut,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -137,7 +138,7 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
   const res = await fetch(
     `${await import("../helper.ts").then((m) =>
       m.BASE_URL
-    )}/api/v1/problems/import-bundle`,
+    )}/api/v1/domains/main/problems/import-bundle`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${adminToken}` },
@@ -155,7 +156,7 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
       title: string;
     };
   };
-  problemId = body.data.id;
+  problemId = body.data.problem_id;
 
   if ("type" in body.data) throw new Error("格式 2 不应返回 P/U 分类");
   // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
@@ -191,19 +192,22 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
     "e2e-bundle.zip",
   );
   const { BASE_URL } = await import("../helper.ts");
-  const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${adminToken}`,
-      "If-Match": String(revision),
+  const res = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "If-Match": String(revision),
+      },
+      body: formData,
     },
-    body: formData,
-  });
+  );
   if (res.status !== 200) {
     throw new Error(`重复导入失败: ${res.status} ${await res.text()}`);
   }
   const body = (await res.json()) as { data: { id: string } };
-  if (body.data.id !== problemId) {
+  if (body.data.problem_id !== problemId) {
     throw new Error("重复导入应更新同一题目而非新建");
   }
 });
@@ -229,15 +233,22 @@ e2eTest(
   "[e2e/import-bundle] 历史引用阻止物理删除，源题在公开域保持可读",
   async () => {
     if (!isE2E || !problemId) return;
-    const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+    const res = await apiDelete(
+      await domainProblemPath(problemId),
+      adminToken,
+    );
     if (res.status !== 409) {
       throw new Error(
         `已发布且有历史提交的题目必须禁止物理删除: ${res.status}`,
       );
     }
-    const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
-      visibility: "private",
-    }, adminToken);
+    const withdrawn = await apiPut(
+      `${await domainProblemPath(problemId)}/state`,
+      {
+        visibility: "private",
+      },
+      adminToken,
+    );
     if (withdrawn.status !== 200) throw new Error("更新可见性失败");
     const check = await apiGet(`/api/v1/problems/${problemId}`);
     if (check.status !== 200) throw new Error("公开域已发布题目应保持可访问");

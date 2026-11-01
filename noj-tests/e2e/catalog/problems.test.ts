@@ -7,6 +7,7 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -25,7 +26,7 @@ e2eTest("[e2e/problems] Setup", async () => {
 
 e2eTest("[e2e/problems] 2.1 公共列表", async () => {
   if (!isE2E) return;
-  const { status, body } = await apiGet("/api/v1/problems");
+  const { status, body } = await apiGet("/api/v1/domains/main/problems");
   if (status !== 200) throw new Error("期望 200");
   const d = body as { data: unknown[]; total: number };
   if (!Array.isArray(d.data)) throw new Error("data 应为数组");
@@ -34,7 +35,7 @@ e2eTest("[e2e/problems] 2.1 公共列表", async () => {
 
 e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
   if (!isE2E) return;
-  const { status, body } = await apiPost("/api/v1/problems", {
+  const { status, body } = await apiPost("/api/v1/domains/main/problems", {
     title: "E2E 两数之和",
     description: "实现两数之和。",
     difficulty: "easy",
@@ -54,7 +55,7 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
     },
   }, adminToken);
   if (status !== 201) throw new Error("创建失败: " + status);
-  problemId = (body as { data: { id: string } }).data.id;
+  problemId = (body as { problem_id: string }).problem_id;
   if (!problemId) throw new Error("未返回 ID");
   await publishProblemVersion(adminToken, problemId, "e2e v1");
   console.log("  ✓ 创建题目: " + problemId.slice(0, 8));
@@ -62,7 +63,7 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
 
 e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
   if (!isE2E) return;
-  const { status } = await apiPost("/api/v1/problems", {
+  const { status } = await apiPost("/api/v1/domains/main/problems", {
     title: "Hack",
     description: "x",
     runtime_config: {
@@ -89,7 +90,7 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
   if (draft.status !== 200) throw new Error("读取更新基线失败");
   const revision = (draft.body as { data: { revision: number } }).data.revision;
-  const { status, body } = await apiPut("/api/v1/problems/" + problemId, {
+  const { status, body } = await apiPut(await domainProblemPath(problemId), {
     title: "E2E v2",
     difficulty: "hard",
     expected_revision: revision,
@@ -116,7 +117,7 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   }
   await publishProblemVersion(adminToken, problemId, "e2e v2");
   const afterPublish = await apiGet(
-    "/api/v1/problems/" + problemId,
+    await domainProblemPath(problemId),
     adminToken,
   );
   const pub = afterPublish.body as { data: { title: string } };
@@ -152,15 +153,19 @@ e2eTest("[e2e/problems] 2.7 非法难度值", async () => {
 e2eTest("[e2e/problems] 2.8 已发布题目保护版本且在公开域保持可读", async () => {
   if (!isE2E) return;
   const { status } = await apiDelete(
-    "/api/v1/problems/" + problemId,
+    await domainProblemPath(problemId),
     adminToken,
   );
   if (status !== 409) throw new Error("已发布题目删除应 409, 实际 " + status);
-  const withdrawn = await apiPut(`/api/v1/problems/${problemId}/visibility`, {
-    visibility: "private",
-  }, adminToken);
+  const withdrawn = await apiPut(
+    `${await domainProblemPath(problemId)}/state`,
+    {
+      visibility: "private",
+    },
+    adminToken,
+  );
   if (withdrawn.status !== 200) throw new Error("更新可见性失败");
-  const getRes = await apiGet("/api/v1/problems/" + problemId);
+  const getRes = await apiGet(await domainProblemPath(problemId));
   if (getRes.status !== 200) throw new Error("公开域已发布题目匿名应 200");
   const retained = await apiGet(
     `/api/v1/problems/${problemId}/versions`,

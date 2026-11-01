@@ -20,6 +20,7 @@ import {
   apiPost,
   apiPut,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -164,11 +165,14 @@ async function importBundle(zip: Uint8Array): Promise<string> {
     "netcap-bundle.zip",
   );
   const baseUrl = BASE_URL;
-  const res = await fetch(`${baseUrl}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
-    body: formData,
-  });
+  const res = await fetch(
+    `${baseUrl}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    },
+  );
   if (res.status !== 200) {
     throw new Error(
       `导入失败: ${res.status} ${(await res.text()).slice(0, 500)}`,
@@ -187,7 +191,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
       "导入后 runtime_config.evaluator.network.enabled 未保留为 true",
     );
   }
-  return body.data.id;
+  return body.data.problem_id;
 }
 
 /** 探测 judge 是否可用：提交样例题并等待评测有结果。
@@ -251,7 +255,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const res = await apiPost(
-      "/api/v1/problems",
+      "/api/v1/domains/main/problems",
       {
         title: `[${TEST_TAG}] 联网能力测试题`,
         description: `# 联网能力测试题\n\n管理员创建，evaluator 开启联网。`,
@@ -302,8 +306,8 @@ e2eTest(
     bundleProblemId = await importBundle(zip);
     // 默认域新导入资源先显式公开，再发布作答版本。
     const pubRes = await apiPut(
-      `/api/v1/problems/${bundleProblemId}/visibility`,
-      { visibility: "public" },
+      `${await domainProblemPath(bundleProblemId)}/state`,
+      { disabled: false, visibility: "public", reason: "e2e 可见性调整" },
       adminToken,
     );
     if (pubRes.status !== 200) {

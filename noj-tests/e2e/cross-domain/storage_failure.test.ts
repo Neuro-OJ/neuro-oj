@@ -11,6 +11,7 @@ import {
   apiGet,
   apiPost,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getAnswerVersionId,
@@ -111,7 +112,7 @@ e2eTest("[e2e/storage-failure] Setup", async () => {
 e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
   if (!isE2E) return;
   const res = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: "存储故障无包测试",
       description: "无支持包",
@@ -137,7 +138,7 @@ e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
       "创建题目失败: " + res.status + " " + JSON.stringify(res.body),
     );
   }
-  const pid = (res.body as { data: { id: string } }).data.id;
+  const pid = (res.body as { data: { problem_id: string } }).data.problem_id;
   const download = await apiGet(
     `/api/v1/problems/${pid}/support-package`,
     adminToken,
@@ -164,18 +165,21 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     "storage-failure-bundle.zip",
   );
 
-  const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
-    body: formData,
-  });
+  const res = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    },
+  );
   if (res.status !== 200) {
     throw new Error("导入失败: " + res.status + " " + await res.text());
   }
   const body = (await res.json()) as {
     data: { id: string; support_package_storage_url: string | null };
   };
-  brokenProblemId = body.data.id;
+  brokenProblemId = body.data.problem_id;
   // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。
   await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
   const published = await apiGet(
@@ -282,10 +286,13 @@ e2eTest(
   "[e2e/storage-failure] 已发布版本受删除保护，不级联清除历史依据",
   async () => {
     if (!isE2E || !brokenProblemId) return;
-    const del = await fetch(`${BASE_URL}/api/v1/problems/${brokenProblemId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
+    const del = await fetch(
+      `${BASE_URL}${await domainProblemPath(brokenProblemId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      },
+    );
     await del.arrayBuffer();
     if (del.status !== 409) {
       throw new Error("已发布题目物理删除应返回409，实际 " + del.status);
