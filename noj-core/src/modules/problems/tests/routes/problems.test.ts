@@ -218,122 +218,30 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems route: POST /api/v1/problems 未登录返回 401",
+  name: "problems route: 无域写入口已删除（0.11 起只有域入口）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/problems", {
-      method: "POST",
-      body: { title: "新题" },
-    });
-    assertEquals(res.status, 401);
-  },
-});
-
-Deno.test({
-  name:
-    "problems route: POST /api/v1/problems 普通成员无默认域创建能力返回 403",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-
-    const res = await jsonRequest(app, "/api/v1/problems", {
-      method: "POST",
-      body: {
-        title: "新题",
-        description: "描述",
-        runtime_config: {
-          evaluator: {
-            image: "noj-evaluator-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-          },
-
-          solution: {
-            image: "noj-solution-python",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
-        },
-      },
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
-  name: "problems route: POST /api/v1/problems 管理员创建成功",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken("admin");
-
-    const res = await jsonRequest(app, "/api/v1/problems", {
-      method: "POST",
-      body: {
-        title: "管理员创建的新题",
-        description: "测试描述",
-        difficulty: "medium",
-        runtime_config: {
-          evaluator: {
-            image: "noj-evaluator-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-          },
-
-          solution: {
-            image: "noj-solution-python",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
-        },
-      },
-      token,
-    });
-    assertEquals(res.status, 201);
-
-    const body = await res.json();
-    assertEquals(body.data.title, "管理员创建的新题");
-  },
-});
-
-Deno.test({
-  name: "problems route: PUT /api/v1/problems/:id 非管理员返回 403",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-
-    const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
-      method: "PUT",
-      body: { title: "被篡改" },
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
-  name: "problems route: DELETE /api/v1/problems/:id 非管理员返回 403",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-
-    const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
-      method: "DELETE",
-      token,
-    });
-    assertEquals(res.status, 403);
+    const admin = await createUserToken("admin");
+    // 无域 POST/PUT/DELETE 已在 0.11 删除：不再区分 401/403/201，
+    // 任何身份都落到 404。真正的出题契约由
+    // `/api/v1/domains/:slug/problems/**` 覆盖（domain-problem-authoring / -versioning）。
+    for (
+      const [method, path, token] of [
+        ["POST", "/api/v1/problems", undefined],
+        ["POST", "/api/v1/problems", admin],
+        ["PUT", `/api/v1/problems/${TEST_PROBLEM_ID}`, admin],
+        ["DELETE", `/api/v1/problems/${TEST_PROBLEM_ID}`, admin],
+      ] as const
+    ) {
+      const res = await jsonRequest(app, path, {
+        method,
+        body: method === "POST" ? { title: "新题" } : { title: "改" },
+        ...(token ? { token } : {}),
+      });
+      assertEquals(res.status, 404, `${method} ${path} 应已删除`);
+    }
   },
 });
 

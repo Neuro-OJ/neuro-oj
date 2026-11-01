@@ -4,6 +4,7 @@
  * 依赖 DATABASE_URL + JWT_SECRET 环境变量。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { decodeJwt } from "jose";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -15,7 +16,10 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { eq, sql } from "drizzle-orm";
-import { createUserToken } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  createUserToken,
+} from "../../../../../tests/helper.ts";
 
 const ts = Date.now();
 const OWNER_ID = `route-sp-owner-${ts}`;
@@ -95,6 +99,32 @@ async function createTestProblem(
   return pid;
 }
 
+/** 读取域草稿的当前 revision（写文件引用必须带它）。 */
+async function currentDraftRevision(
+  problemId: string,
+  token: string,
+): Promise<number> {
+  const res = await createApp().request(
+    (await domainSupportPackageUrl(problemId)).replace(
+      /\/support-package$/,
+      "/draft",
+    ),
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const body = await res.json() as {
+    draft_revision?: number;
+    data?: { draft_revision?: number };
+  };
+  return body.draft_revision ?? body.data?.draft_revision ?? 1;
+}
+
+/** 0.11 起支持包写入只在域入口：用域题号定位题目。 */
+async function domainSupportPackageUrl(problemId: string): Promise<string> {
+  const [row] = await getDb().select({ number: problems.number })
+    .from(problems).where(eq(problems.id, problemId)).limit(1);
+  return `/api/v1/domains/main/problems/${row!.number}/support-package`;
+}
+
 Deno.test({
   name: "support-package route: POST 上传端点已移除返回 404",
   sanitizeResources: false,
@@ -122,76 +152,24 @@ Deno.test({
 });
 
 Deno.test({
-  name: "support-package route: DELETE 删除成功",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const pid = await createTestProblem();
-    const app = createApp();
-    const token = await signToken({ sub: OWNER_ID, role: "user" });
-
-    // 直接设置评测包 URL（等价于导入端点写入后的状态）
-    const db = getDb();
-    await db
-      .update(problems)
-      .set({
-        support_package_storage_url:
-          "noj-storage://local/dGVzdA?checksum_sha256=abc",
-        updated_at: new Date().toISOString(),
-      })
-      .where(eq(problems.id, pid));
-
-    // 再删除（文件引用修改必须携带编辑基线 revision：缺失 428）
-    const res = await app.request(
-      `/api/v1/problems/${problemIdRef[0]}/support-package`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
-      },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.data.support_package_storage_url, null);
-  },
-});
-
-Deno.test({
-  name: "support-package route: DELETE 不存在的支持包幂等返回 200",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await createTestProblem();
-    const app = createApp();
-    const token = await signToken({ sub: OWNER_ID, role: "user" });
-
-    const res = await app.request(
-      `/api/v1/problems/${problemIdRef[0]}/support-package`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
-      },
-    );
-    assertEquals(res.status, 200);
-  },
-});
-
-Deno.test({
   name: "support-package route: DELETE 非 owner 返回 403",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem();
+    const pid = await createTestProblem();
+    await bindPublishedProblemForTest(pid);
     const app = createApp();
     const token = await createUserToken();
+    // 域入口要求成员身份才可能 403（非成员会得到 404 以免泄露存在性）
+    await grantDefaultCatalogRole(decodeJwt(token).sub as string, "member");
+    const revision = String(await currentDraftRevision(pid, token));
 
     const res = await app.request(
-      `/api/v1/problems/${problemIdRef[0]}/support-package`,
+      await domainSupportPackageUrl(problemIdRef[0]),
       {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
+        headers: { Authorization: `Bearer ${token}`, "If-Match": revision },
       },
     );
     assertEquals(res.status, 403);

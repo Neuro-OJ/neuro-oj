@@ -4,7 +4,6 @@ import {
   optionalAuthMiddleware,
 } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
-import { parseJsonBody } from "../../../shared/http/request.ts";
 import { and, eq } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getDb } from "../../../shared/db/connection.ts";
@@ -13,40 +12,15 @@ import {
   problems,
   problemVersions,
 } from "../../../shared/db/schema.ts";
-import {
-  AppError,
-  BadRequestError,
-  NotFoundError,
-} from "../../../shared/base/errors.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
   MAX_SAFE_PAGE,
   parsePagination,
 } from "../../../shared/http/pagination.ts";
-import {
-  enforceObjectiveSubmitRateLimit,
-  enforceProblemCreateRateLimit,
-  enforceProblemImportRateLimit,
-} from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
-import { withActorContext } from "../../platform/contracts/cross-module/system_services_request-context.ts";
 import {
-  createObjectiveQuestionCommand,
-  createProblemCommand,
-  deleteObjectiveQuestionCommand,
-  deleteProblemCommand,
-  deleteSupportPackageCommand,
-  importProblemBundleCommand,
-  publishImportedProblemCommand,
-  publishProblemVersionCommand,
-  saveProblemDraftCommand,
-  updateObjectiveQuestionCommand,
-  updateProblemCommand,
-} from "../../application/problems.ts";
-import {
-  composeEvaluationAdmissionContext,
   getObjectiveSubmissionCommand,
   listObjectiveSubmissionsCommand,
-  submitObjectivePaperCommand,
 } from "../../application/evaluations.ts";
 import { listLlmModelAliases } from "../../platform/contracts/cross-module/gateway_services_llm-model-aliases.ts";
 import { LLM_DEFAULT_MODEL_ALIAS } from "../types/problems.ts";
@@ -54,10 +28,7 @@ import {
   assertProblemEditPermissionForActor,
   listProblems,
 } from "../services/problems/problems.ts";
-import {
-  draftRevisionRequired,
-  getProblemDraft,
-} from "../services/versioning/draft.ts";
+import { getProblemDraft } from "../services/versioning/draft.ts";
 import {
   getProblemVersionOrThrow,
   listProblemVersions,
@@ -87,28 +58,9 @@ import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
 } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
-import type {
-  CreateProblemInput,
-  ProblemListQuery,
-  UpdateProblemInput,
-} from "../types/problems.ts";
-import {
-  getSupportPackageBytes,
-  MAX_SUPPORT_PACKAGE_SIZE,
-} from "../services/support-package.ts";
-import {
-  assertObjectivePaper,
-  assertPaperManageableForActor,
-  getPaperOrThrow,
-  listPaperQuestionsWithAccess,
-  serializeQuestion,
-} from "../services/objective/objective-questions.ts";
-import type {
-  CreateQuestionInput,
-  SubmitObjectiveInput,
-  UpdateQuestionInput,
-} from "../types/objective.ts";
-import type { ObjectiveQuestionSnapshot } from "../types/problem-content.ts";
+import type { ProblemListQuery } from "../types/problems.ts";
+import { getSupportPackageBytes } from "../services/support-package.ts";
+import { listPaperQuestionsWithAccess } from "../services/objective/objective-questions.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -381,28 +333,6 @@ async function resolveLatestVersionNumber(
   return row?.version ?? null;
 }
 
-/**
- * 解析草稿写入的预期 revision。
- *
- * 优先 `If-Match` 请求头（HTTP 语义），其次 body.expected_revision；
- * 两者都没有时返回 428（`draftRevisionRequired`），避免"盲写覆盖他人编辑"。
- */
-function parseExpectedRevision(
-  c: { req: { header: (name: string) => string | undefined } },
-  bodyRevision?: number,
-): number {
-  const ifMatch = c.req.header("if-match")?.trim().replace(/^W\//, "")
-    .replace(/^"|"$/g, "");
-  const raw = ifMatch ||
-    (bodyRevision !== undefined ? String(bodyRevision) : "");
-  if (!raw) throw draftRevisionRequired();
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new BadRequestError("预期 revision 必须是非负整数");
-  }
-  return parsed;
-}
-
 /** 读取题目是否允许当前查看者编辑（用于内容裁剪，不在此处抛错）。 */
 async function canEditProblem(
   c: Context<AuthEnv>,
@@ -475,47 +405,6 @@ function trimVersionContent(
 }
 
 /**
- * 创建题目。
- * 仅默认域获授权编辑者可创建；旧分类输入被拒绝。
- * POST /api/v1/problems
- */
-router.post("/", authMiddleware, async (c) => {
-  const body = await parseJsonBody<CreateProblemInput>(c);
-
-  if (!body.title) {
-    throw new BadRequestError("缺少必填字段：title");
-  }
-
-  if (!body.description) {
-    throw new BadRequestError("缺少必填字段：description");
-  }
-
-  // 客观题套卷（is_objective）无需 runtime_config；其余必填
-  if (!body.is_objective && !body.runtime_config) {
-    throw new BadRequestError("缺少必填字段：runtime_config");
-  }
-
-  // NOJ-115/NOJ-116：support_package_storage_url 仅允许服务端
-  // import-bundle 流程生成，客户端直传一律拒绝。
-  if (
-    body.support_package_storage_url !== undefined &&
-    body.support_package_storage_url !== null
-  ) {
-    throw new BadRequestError(
-      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
-    );
-  }
-
-  const userId = c.get("userId");
-  await enforceProblemCreateRateLimit(c, userId);
-  const actor = userActorFromAuthenticatedId(userId);
-  const problem = await createProblemCommand(actor, body, {
-    allowServerDerivedFields: false,
-  });
-  return c.json({ data: problem }, 201);
-});
-
-/**
  * 读取共享草稿（编辑者）。
  *
  * 没有草稿行时返回基于最新版内容（其次题目投影）的编辑初值，`synthesized: true`。
@@ -534,32 +423,6 @@ router.get("/:id/draft", authMiddleware, async (c) => {
 });
 
 /**
- * 保存共享草稿（编辑者，乐观锁）。
- *
- * 请求头 `If-Match: <revision>` 或 body.expected_revision 二者之一必填；
- * 缺少预期 revision 返回 428，过时返回 409。
- *
- * PUT /api/v1/problems/:id/draft
- */
-router.put("/:id/draft", authMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  const body = await parseJsonBody<{
-    content?: unknown;
-    expected_revision?: number;
-  }>(c);
-  if (body.content === undefined || body.content === null) {
-    throw new BadRequestError("缺少必填字段：content");
-  }
-  const revision = parseExpectedRevision(c, body.expected_revision);
-  const actor = userActorFromAuthenticatedId(c.get("userId"));
-  const saved = await saveProblemDraftCommand(actor, problem.id, {
-    content: body.content as never,
-    expectedRevision: revision,
-  });
-  return c.json({ data: saved });
-});
-
-/**
  * 发布预检（编辑者）：对**当前**草稿 revision 执行完整校验，不写库。
  *
  * GET /api/v1/problems/:id/draft/preflight
@@ -574,29 +437,6 @@ router.get("/:id/draft/preflight", authMiddleware, async (c) => {
     verifyObjects: c.req.query("verify") !== "false",
   });
   return c.json({ data: report });
-});
-
-/**
- * 发布草稿为新版本（编辑者）。
- *
- * 发布与"切换有效版本策略"、"重测指定版本"是三个独立动作：本接口只新增版本，
- * 不改策略、不触发重测。相同内容重复发布返回 `unchanged: true` 与既有版本。
- *
- * POST /api/v1/problems/:id/versions
- */
-router.post("/:id/versions", authMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  const body = await parseJsonBody<{
-    change_note?: string;
-    expected_revision?: number;
-  }>(c);
-  const revision = parseExpectedRevision(c, body.expected_revision);
-  const actor = userActorFromAuthenticatedId(c.get("userId"));
-  const published = await publishProblemVersionCommand(actor, problem.id, {
-    expectedRevision: revision,
-    changeNote: typeof body.change_note === "string" ? body.change_note : "",
-  });
-  return c.json({ data: published }, published.unchanged ? 200 : 201);
 });
 
 /**
@@ -648,209 +488,6 @@ router.get("/:id/versions/:versionId", optionalAuthMiddleware, async (c) => {
         version.content as ProblemContentV1,
         canEdit,
       ),
-    },
-  });
-});
-
-/**
- * 全量更新题目（双索引：UUID 或 display_id）。
- * 权限在服务层按默认域角色和源题归属判断。
- */
-router.put("/:id", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
-  const body = await parseJsonBody<UpdateProblemInput>(c);
-  const userId = c.get("userId");
-
-  // 双索引解析获取实际题目 ID
-  const problem = await resolveProblem(id);
-
-  // NOJ-115/NOJ-116：客户端 PUT 不得直传存储 URL。
-  if (
-    body.support_package_storage_url !== undefined &&
-    body.support_package_storage_url !== null
-  ) {
-    throw new BadRequestError(
-      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
-    );
-  }
-
-  // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
-  // （updateProblem 内部会记录 problems.runtime_config_changed 审计）
-  const actor = userActorFromAuthenticatedId(userId);
-  const updated = await updateProblemCommand(actor, problem.id, body, {
-    allowServerDerivedFields: false,
-  });
-  return c.json({ data: updated });
-});
-
-/**
- * 修改题目可见性。
- * PUT /api/v1/problems/:id/visibility
- * owner 只能将题目转 public（需 problem:write_own）；admin/write_any 可任意设置。
- */
-router.put("/:id/visibility", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
-  const body = await parseJsonBody<{ visibility?: string }>(c);
-  const visibility = body.visibility;
-  if (visibility !== "public" && visibility !== "private") {
-    throw new BadRequestError("visibility 必须为 public 或 private");
-  }
-
-  const problem = await resolveProblem(id);
-  const userId = c.get("userId");
-
-  const actor = userActorFromAuthenticatedId(userId);
-  const updated = await updateProblemCommand(
-    actor,
-    problem.id,
-    { visibility },
-    {
-      allowServerDerivedFields: false,
-    },
-  );
-  return c.json({ data: updated });
-});
-
-/**
- * 删除题目（双索引：UUID 或 display_id）。
- * 权限在服务层按默认域角色和源题归属判断。
- */
-router.delete("/:id", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
-  const userId = c.get("userId");
-
-  // 双索引解析获取实际题目 ID
-  const problem = await resolveProblem(id);
-
-  // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
-  const actor = userActorFromAuthenticatedId(userId);
-  return withActorContext(c, async () => {
-    await deleteProblemCommand(actor, problem.id);
-    return c.body(null, 204);
-  });
-});
-
-/**
- * 统一题目包导入。
- * POST /api/v1/problems/import-bundle
- *
- * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按默认域 number
- * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；非 admin 提供 number
- * 被拒（400），普通用户导入仅创建（number 自动分配）。
- *
- * **目标题目模式**（编辑器支持包上传，tracking #55）：body 带 `problem_id` 时内容只
- * 写该题的**共享草稿**，不新建题目、不按包内题号匹配；此时必须携带编辑基线
- * （`If-Match: <revision>` 或 body `expected_revision`），缺失 428、过时 409，
- * 冲突时零写入。响应回传新 `draft_revision`，且 `id` 恒等于目标题目。
- */
-router.post("/import-bundle", authMiddleware, async (c) => {
-  const userId = c.get("userId");
-  await enforceProblemImportRateLimit(c, userId);
-
-  // 解析 multipart/form-data
-  const body = await c.req.parseBody();
-  const file = body["file"];
-
-  if (!file || !(file instanceof File)) {
-    throw new BadRequestError("请上传有效的 zip 文件");
-  }
-
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    throw new BadRequestError("仅支持 .zip 格式文件");
-  }
-
-  // Content-Type 校验（防御性：扩展名校验的补充）
-  if (
-    file.type &&
-    !["application/zip", "application/x-zip-compressed"].includes(file.type)
-  ) {
-    throw new BadRequestError("仅支持 .zip 格式文件");
-  }
-
-  if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
-    throw new BadRequestError(
-      `导入包大小超过限制（最大 ${
-        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
-      }MB）`,
-    );
-  }
-
-  const fileBytes = new Uint8Array(await file.arrayBuffer());
-
-  // 验证 zip magic bytes（PK 头：0x50, 0x4B）
-  if (fileBytes.length < 4 || fileBytes[0] !== 0x50 || fileBytes[1] !== 0x4B) {
-    throw new BadRequestError("文件不是有效的 zip 格式");
-  }
-
-  const targetProblemId = typeof body["problem_id"] === "string"
-    ? body["problem_id"]
-    : undefined;
-  let targetExpectedRevision: number | undefined;
-  if (targetProblemId) {
-    const bodyRevision = typeof body["expected_revision"] === "string"
-      ? body["expected_revision"]
-      : typeof body["expected_revision"] === "number"
-      ? String(body["expected_revision"])
-      : undefined;
-    // 与 PUT /problems/:id/draft 同一乐观锁语义：缺失 428、过时 409。
-    targetExpectedRevision = parseExpectedRevision(
-      c,
-      bodyRevision ? Number(bodyRevision) : undefined,
-    );
-  }
-
-  const actor = userActorFromAuthenticatedId(userId);
-  const expectedRevision = targetProblemId
-    ? undefined
-    : c.req.header("if-match") !== undefined
-    ? parseExpectedRevision(c)
-    : undefined;
-  const result = await importProblemBundleCommand(
-    actor,
-    { name: file.name, data: fileBytes },
-    expectedRevision,
-    targetProblemId
-      ? {
-        problemId: targetProblemId,
-        expectedRevision: targetExpectedRevision,
-      }
-      : undefined,
-  );
-
-  // 目标题目模式：包身份必须与目标题目一致（双保险：前端已校验），
-  // 且回传新 draft revision（客户端据此继续编辑，无需再读一次草稿）。
-  if (targetProblemId && result.id !== targetProblemId) {
-    throw new AppError(
-      "导入结果与目标题目不一致，已拒绝",
-      409,
-      "BUNDLE_TARGET_MISMATCH",
-    );
-  }
-  const draftRevision = targetProblemId
-    ? (await getProblemDraft(targetProblemId)).revision
-    : null;
-
-  // `publish=true`：导入后显式发布为版本（与 `problems import --publish` 同口径）。
-  // 不发布时题目只有草稿：普通访问者读不到、也无法按版本提交。
-  const wantsPublish = String(body["publish"] ?? "").toLowerCase() === "true";
-  if (!wantsPublish) {
-    return c.json({
-      data: { ...result, draft_revision: draftRevision, published: null },
-    });
-  }
-  const published = await publishImportedProblemCommand(
-    actor,
-    result.id,
-    "题目包导入",
-  );
-  const afterPublishRevision = targetProblemId
-    ? (await getProblemDraft(targetProblemId)).revision
-    : null;
-  return c.json({
-    data: {
-      ...result,
-      draft_revision: afterPublishRevision ?? draftRevision,
-      published,
     },
   });
 });
@@ -1006,24 +643,6 @@ router.get("/:id/stats", authMiddleware, async (c) => {
   return c.json({ data: await getProblemStatsDetail(problem.id, windowDays) });
 });
 
-/**
- * 删除支持包。
- * DELETE /api/v1/problems/:id/support-package
- */
-router.delete("/:id/support-package", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
-  const userId = c.get("userId");
-
-  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
-  const problem = await resolveProblem(id);
-
-  const actor = userActorFromAuthenticatedId(userId);
-  const expectedRevision = parseExpectedRevision(c);
-  await deleteSupportPackageCommand(actor, problem.id, expectedRevision);
-
-  return c.json({ data: { support_package_storage_url: null } });
-});
-
 // ── 客观题（并入 problems 体系，is_objective 标记）───────────────────────────
 
 /**
@@ -1059,138 +678,6 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
     version_id: result.version_id,
     version: result.version,
   });
-});
-
-/** 小题响应：附带写入后的草稿 revision，供客户端继续做乐观锁。 */
-async function questionEnvelope(
-  paperId: string,
-  question: ObjectiveQuestionSnapshot,
-) {
-  const draft = await getProblemDraft(paperId);
-  return {
-    ...serializeQuestion(paperId, question, true),
-    draft_revision: draft.revision,
-  };
-}
-
-/**
- * 创建客观题小题（写共享草稿）。
- * POST /api/v1/problems/:id/questions
- * 要求 `If-Match: <draft revision>` 或 body.expected_revision（缺失 428、过时 409）。
- */
-router.post("/:id/questions", authMiddleware, async (c) => {
-  const userId = c.get("userId");
-  const body = await parseJsonBody<
-    CreateQuestionInput & {
-      expected_revision?: number;
-    }
-  >(c);
-  const paperId = (await resolveProblem(c.req.param("id") as string)).id;
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  await assertPaperManageableForActor(
-    paper,
-    userActorFromAuthenticatedId(userId),
-  );
-  const revision = parseExpectedRevision(c, body.expected_revision);
-  const actor = userActorFromAuthenticatedId(userId);
-  const data = await createObjectiveQuestionCommand(
-    actor,
-    paperId,
-    body,
-    revision,
-  );
-  return c.json({ data: await questionEnvelope(paperId, data) }, 201);
-});
-
-/**
- * 更新客观题小题（写共享草稿，`key` 跨版本稳定）。
- * PUT /api/v1/problems/:id/questions/:qid
- */
-router.put("/:id/questions/:qid", authMiddleware, async (c) => {
-  const userId = c.get("userId");
-  const body = await parseJsonBody<
-    UpdateQuestionInput & {
-      expected_revision?: number;
-    }
-  >(c);
-  const paperId = (await resolveProblem(c.req.param("id") as string)).id;
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  await assertPaperManageableForActor(
-    paper,
-    userActorFromAuthenticatedId(userId),
-  );
-  const revision = parseExpectedRevision(c, body.expected_revision);
-  const actor = userActorFromAuthenticatedId(userId);
-  const data = await updateObjectiveQuestionCommand(
-    actor,
-    paperId,
-    c.req.param("qid") as string,
-    body,
-    revision,
-  );
-  return c.json({ data: await questionEnvelope(paperId, data) });
-});
-
-/**
- * 删除客观题小题（写共享草稿；删除后不参与判分）。
- * DELETE /api/v1/problems/:id/questions/:qid
- *
- * 返回 `200 { draft_revision }`（不再用 204）：删除同样递增草稿 revision，
- * 客户端需要新的 revision 才能继续编辑。
- */
-router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
-  const userId = c.get("userId");
-  const body = await parseJsonBody<
-    { expected_revision?: number } | undefined
-  >(c).catch(() => undefined);
-  const paperId = (await resolveProblem(c.req.param("id") as string)).id;
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  await assertPaperManageableForActor(
-    paper,
-    userActorFromAuthenticatedId(userId),
-  );
-  const revision = parseExpectedRevision(c, body?.expected_revision);
-  const actor = userActorFromAuthenticatedId(userId);
-  await deleteObjectiveQuestionCommand(
-    actor,
-    paperId,
-    c.req.param("qid") as string,
-    revision,
-  );
-  const draft = await getProblemDraft(paperId);
-  return c.json({ data: { draft_revision: draft.revision } });
-});
-
-/**
- * 提交套卷答案（即时判定）。
- * POST /api/v1/problems/:id/submit
- * body: { answers: {question_id: [...]}, contest_id?: string }
- */
-router.post("/:id/submit", authMiddleware, async (c) => {
-  const paperId = c.req.param("id") as string;
-  const userId = c.get("userId");
-  await enforceObjectiveSubmitRateLimit(c, userId);
-  const body = await parseJsonBody<SubmitObjectiveInput>(c);
-
-  if (!body.answers) {
-    throw new BadRequestError("缺少必填字段：answers");
-  }
-  const actor = userActorFromAuthenticatedId(userId);
-  const context = await composeEvaluationAdmissionContext(actor, {
-    problemId: paperId,
-    versionId: body.version_id,
-    contestId: body.contest_id,
-  });
-  const result = await submitObjectivePaperCommand(
-    actor,
-    context,
-    context.problem.problemId,
-    body,
-  );
-  return c.json({ data: result }, 201);
 });
 
 export default router;

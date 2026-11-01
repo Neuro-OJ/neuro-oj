@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **341** 处（early-return=230 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
+> 当前命中 **337** 处（early-return=226 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -266,10 +266,6 @@
 | noj-tests/e2e/identity/tfa.test.ts | 116 | early-return |
 | noj-tests/e2e/identity/tfa.test.ts | 141 | early-return |
 | noj-tests/e2e/identity/tfa.test.ts | 177 | early-return |
-| noj-tests/e2e/objective/objective.test.ts | 111 | early-return |
-| noj-tests/e2e/objective/objective.test.ts | 141 | early-return |
-| noj-tests/e2e/objective/objective.test.ts | 278 | early-return |
-| noj-tests/e2e/objective/objective.test.ts | 373 | early-return |
 | noj-tests/e2e/rate-limit/rate_limit_lockout.test.ts | 37 | early-return |
 | noj-tests/e2e/staging/staging-smoke.test.ts | 173 | early-return |
 | noj-tests/e2e/staging/staging-smoke.test.ts | 180 | early-return |

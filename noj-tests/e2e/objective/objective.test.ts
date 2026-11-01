@@ -1,594 +1,182 @@
 /**
- * 客观题（objective）全链路 E2E（issue #222）。
+ * 客观题练习全链路 E2E（域入口）。
  *
- * 覆盖：
- * 1. 建套卷 → 建三题型小题 → 答对/答错提交 → 即时判定落库（objective_submissions）
- * 2. 练习重复提交取最高分；非 owner 不可见答案
- * 3. 竞赛集成：套卷挂入 contest_problems、竞赛内一次性提交、排名计入
+ * 0.11 删除了无域 `/api/v1/problems/**` 写路径，作者侧改为：
+ *   建卷 POST /domains/main/problems
+ *   → 草稿 PUT /domains/main/problems/:reference/draft（If-Match revision）
+ *   → 发布 POST /domains/main/problems/:reference/publish
+ * 作答侧：POST /domains/main/problems/:reference/objective-submissions。
+ *
+ * 覆盖：建卷 → 草稿写两题 → 发布 → 一题答对一题答错 → 分数与逐题判定；
+ * 并验证非编辑者不能写草稿。
  */
+
 import {
   api,
-  apiDelete,
   apiGet,
   apiPost,
   apiPut,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
-  isE2E,
-  waitForServer,
 } from "../helper.ts";
 
-const testSuffix = Date.now().toString(36);
+const PREFIX = "/api/v1/domains/main/problems";
 
-interface PaperData {
-  id: string;
-  type: string;
-  is_objective: boolean;
+interface CreatedPaper {
+  problem_id: string;
   number: number;
-  owner_id: string;
-}
-interface QuestionData {
-  id: string;
-  type: string;
-  answer?: string[] | boolean[];
-  explanation?: string;
-  options: { key: string; text: string }[];
+  draft_revision: number;
 }
 
-let adminToken = "";
-let ownerToken = "";
-let solverToken = "";
-let paperId = "";
-let singleId = "";
-let multipleId = "";
-let judgeId = "";
-let paperVersionId = "";
-/** 共享草稿 revision（小题写入与发布的乐观锁，Handbook §2.4/§6.4）。 */
-let draftRevision = 0;
-
-/** 读取套卷草稿 revision（小题写入前刷新）。 */
-async function refreshDraftRevision(): Promise<number> {
-  const res = await apiGet(`/api/v1/problems/${paperId}/draft`, ownerToken);
-  if (res.status !== 200) {
-    throw new Error(`读取草稿失败: ${res.status} ${JSON.stringify(res.body)}`);
-  }
-  draftRevision = (res.body as { data: { revision: number } }).data.revision;
-  return draftRevision;
+interface SubmitResult {
+  score: number;
+  details?: { questions?: Array<{ key: string; correct: boolean }> };
 }
 
-/**
- * 带草稿乐观锁的小题写入（复用同一个 revision 链）。
- *
- * 成功响应回传新 `draft_revision`，失败（4xx）不递增。
- */
-async function questionWrite(
-  method: "POST" | "PUT" | "DELETE",
-  path: string,
-  body?: unknown,
-  token = ownerToken,
-): Promise<{ status: number; body: unknown }> {
-  const res = await api(method, path, {
-    body,
-    token,
-    headers: { "If-Match": String(draftRevision) },
-  });
-  const data = (res.body as { data?: { draft_revision?: number } } | null)
-    ?.data;
-  if (
-    res.status >= 200 && res.status < 300 &&
-    typeof data?.draft_revision === "number"
-  ) {
-    draftRevision = data.draft_revision;
-  }
-  return res;
-}
-
-/** 发布当前草稿为新版本（作答与公开读取的事实源）。 */
-async function publishPaper(changeNote = "E2E 发布"): Promise<string> {
-  const revision = draftRevision || await refreshDraftRevision();
-  const res = await api("POST", `/api/v1/problems/${paperId}/versions`, {
-    token: ownerToken,
-    headers: { "If-Match": String(revision) },
-    body: { change_note: changeNote },
-  });
-  if (res.status !== 201 && res.status !== 200) {
-    throw new Error(`发布套卷失败: ${res.status} ${JSON.stringify(res.body)}`);
-  }
-  const data = (res.body as {
-    data: {
-      draft_revision: number;
-      version: number;
-      version_id: string;
-      unchanged: boolean;
-    };
-  }).data;
-  draftRevision = data.draft_revision;
-  return data.version_id;
-}
-
-e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  adminToken = await getAdminToken();
+e2eTest("objective e2e: 域建卷→草稿→发布→作答即时判定", async () => {
+  const adminToken = await getAdminToken();
+  const suffix = Date.now().toString(36);
   const owner = await getOrCreateUser(
     "objective_owner",
-    `objective_owner_${testSuffix}`,
-    `objective_owner_${testSuffix}@test.com`,
+    `objective_owner_${suffix}`,
+    `objective_owner_${suffix}@test.com`,
   );
-  ownerToken = owner.token;
-  const identity = await apiGet("/api/v1/auth/me", ownerToken);
-  const ownerId = (identity.body as { data: { id: string } }).data.id;
-  const granted = await apiPut(
-    `/api/v1/domains/main/members/${ownerId}/roles`,
-    {
+  const answerer = await getOrCreateUser(
+    "objective_answerer",
+    `objective_answerer_${suffix}`,
+    `objective_answerer_${suffix}@test.com`,
+  );
+
+  // 域写权限：作者与答题者都进入 main 域并拿到编辑器角色（域入口要求 submission:create）
+  for (
+    const token of [owner.token, answerer.token]
+  ) {
+    const me = await apiGet("/api/v1/auth/me", token);
+    const id = (me.body as { data: { id: string } }).data.id;
+    const granted = await apiPut(`/api/v1/domains/main/members/${id}/roles`, {
       roles: ["editor"],
-    },
-    adminToken,
-  );
-  if (granted.status !== 200) {
-    throw new Error(`授予域资源编辑角色失败: ${JSON.stringify(granted.body)}`);
+    }, adminToken);
+    if (granted.status !== 200) {
+      throw new Error(`授予域角色失败: ${JSON.stringify(granted.body)}`);
+    }
   }
-  const solver = await getOrCreateUser(
-    "objective_solver",
-    `objective_solver_${testSuffix}`,
-    `objective_solver_${testSuffix}@test.com`,
-  );
-  solverToken = solver.token;
-});
 
-e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落库", async () => {
-  if (!isE2E) return;
-  // 1.1 在默认域创建客观题套卷，无需 runtime_config。
-  const paperRes = await apiPost("/api/v1/problems", {
+  // 1. 建客观题套卷
+  const title = `E2E 客观题卷 ${suffix}`;
+  const created = await apiPost(PREFIX, {
+    title,
+    description: "客观题域入口用例",
     is_objective: true,
-    title: `E2E 客观题套卷 ${testSuffix}`,
-    description: "LMCC 成人组模拟卷",
-  }, ownerToken);
-  if (paperRes.status !== 201) {
+  }, owner.token);
+  if (created.status !== 201) {
     throw new Error(
-      `创建套卷失败: ${paperRes.status} ${JSON.stringify(paperRes.body)}`,
+      `建卷失败: ${created.status} ${JSON.stringify(created.body)}`,
     );
   }
-  const paper = (paperRes.body as { data: PaperData }).data;
-  if (!paper.is_objective) throw new Error("套卷 is_objective 应为 true");
-  paperId = paper.id;
-  // 小题写入走共享草稿：先取当前 revision（创建即建草稿）
-  await refreshDraftRevision();
+  const paper = created.body as CreatedPaper;
+  const paperPath = `${PREFIX}/${paper.number}`;
 
-  // 练习提交使用公开的已发布版本。
-  const pubRes = await apiPut(
-    `/api/v1/problems/${paperId}/visibility`,
-    { visibility: "public" },
-    ownerToken,
-  );
-  if (pubRes.status !== 200) {
-    throw new Error(
-      `设置套卷公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
-    );
-  }
-
-  // 1.2 单选小题
-  const single = await questionWrite(
-    "POST",
-    `/api/v1/problems/${paperId}/questions`,
+  // 2. 写草稿：单选 + 判断
+  const questions = [
     {
+      key: "q-single",
+      sort_order: 0,
       type: "single",
-      prompt: "LMCC 全称对应的英文是？",
+      prompt: "HTTP 状态码 201 表示？",
       options: [
-        { key: "A", text: "Large Model Certification of China" },
-        { key: "B", text: "大语言模型能力认证" },
+        { key: "A", text: "已接受" },
+        { key: "B", text: "已创建" },
       ],
       answer: ["B"],
-      explanation: "LMCC = 大语言模型能力认证",
+      explanation: "",
     },
-    ownerToken,
-  );
-  if (single.status !== 201) {
-    throw new Error(
-      `创建单选失败: ${single.status} ${JSON.stringify(single.body)}`,
-    );
-  }
-  singleId = (single.body as { data: QuestionData }).data.id;
-
-  // 1.3 多选小题
-  const multiple = await questionWrite(
-    "POST",
-    `/api/v1/problems/${paperId}/questions`,
     {
-      type: "multiple",
-      prompt: "以下哪些属于大模型基本素养？",
-      options: [
-        { key: "A", text: "提示词工程" },
-        { key: "B", text: "上下文管理" },
-        { key: "C", text: "烘焙技术" },
-      ],
-      answer: ["A", "B"],
+      key: "q-judge",
+      sort_order: 1,
+      type: "judge",
+      prompt: "客观题判定在 core 内即时完成。",
+      options: [],
+      answer: [true],
+      explanation: "",
     },
-    ownerToken,
-  );
-  if (multiple.status !== 201) {
-    throw new Error(
-      `创建多选失败: ${multiple.status} ${JSON.stringify(multiple.body)}`,
-    );
-  }
-  multipleId = (multiple.body as { data: QuestionData }).data.id;
-
-  // 1.4 判断题
-  const judge = await questionWrite(
-    "POST",
-    `/api/v1/problems/${paperId}/questions`,
-    { type: "judge", prompt: "大语言模型具备逻辑推理能力", answer: [true] },
-    ownerToken,
-  );
-  if (judge.status !== 201) {
-    throw new Error(
-      `创建判断失败: ${judge.status} ${JSON.stringify(judge.body)}`,
-    );
-  }
-  judgeId = (judge.body as { data: QuestionData }).data.id;
-
-  // 1.4 发布 V1：作答与公开读取都以版本快照为准（未发布时非编辑者 404）
-  paperVersionId = await publishPaper("E2E 初始卷");
-
-  // 1.5 答对提交 → 即时判定满分
-  const okRes = await apiPost(
-    `/api/v1/problems/${paperId}/submit`,
+  ];
+  const draft = await apiPut(
+    `${paperPath}/draft`,
     {
-      answers: {
-        [singleId]: ["B"],
-        [multipleId]: ["A", "B"],
-        [judgeId]: [true],
+      content: {
+        kind: "objective",
+        title,
+        description: "客观题域入口用例",
+        samples: [],
+        questions,
       },
-      version_id: paperVersionId,
     },
-    solverToken,
+    owner.token,
+    { "If-Match": String(paper.draft_revision) },
   );
-  if (okRes.status !== 201) {
-    throw new Error(`提交失败: ${okRes.status} ${JSON.stringify(okRes.body)}`);
-  }
-  const ok = (okRes.body as { data: Record<string, unknown> }).data;
-  if (ok.score !== 100 || ok.score_db !== 10000) {
-    throw new Error(`全对应得满分，实际 ${JSON.stringify(ok)}`);
-  }
-  const details = ok.details as Record<string, { correct: boolean }>;
-  if (
-    !details[singleId]?.correct || !details[multipleId]?.correct ||
-    !details[judgeId]?.correct
-  ) {
-    throw new Error("三题型均应判对");
-  }
-
-  // 1.6 落库验证：提交历史存在且为 finished
-  const hist = await apiGet(
-    `/api/v1/problems/submissions?paper_id=${paperId}`,
-    solverToken,
-  );
-  if (hist.status !== 200) throw new Error("历史查询失败");
-  const histBody =
-    (hist.body as { data: { total: number; best_score: number } }).data;
-  if (histBody.total !== 1 || histBody.best_score !== 10000) {
-    throw new Error(`落库异常: ${JSON.stringify(histBody)}`);
-  }
-});
-
-e2eTest(
-  "[e2e/objective] 2. 答错提交 + 重复提交最高分 + 答案不可见",
-  async () => {
-    if (!isE2E) return;
-    // 2.1 答错 → 0 分（练习可重复提交）
-    const badRes = await apiPost(
-      `/api/v1/problems/${paperId}/submit`,
-      {
-        answers: {
-          [singleId]: ["A"],
-          [multipleId]: ["A"],
-          [judgeId]: [false],
-        },
-        version_id: paperVersionId,
-      },
-      solverToken,
-    );
-    if (badRes.status !== 201) throw new Error("答错提交应成功");
-    const bad = (badRes.body as {
-      data: {
-        score: number;
-        details: Record<string, { expected?: unknown; explanation?: unknown }>;
-      };
-    }).data;
-    if (bad.score !== 0) throw new Error(`全错应 0 分，实际 ${bad.score}`);
-    // 练习模式：判定详情含期望答案与解析（可复盘）
-    if (bad.details[singleId]?.expected === undefined) {
-      throw new Error("练习模式应返回期望答案");
-    }
-    if (bad.details[singleId]?.explanation === undefined) {
-      throw new Error("练习模式应返回解析");
-    }
-
-    // 2.2 再提交全对 → 最高分保持 10000（练习取 MAX）
-    const best = await apiGet(
-      `/api/v1/problems/submissions?paper_id=${paperId}`,
-      solverToken,
-    );
-    const bestBody =
-      (best.body as { data: { total: number; best_score: number } }).data;
-    if (bestBody.total !== 2 || bestBody.best_score !== 10000) {
-      throw new Error(`最高分异常: ${JSON.stringify(bestBody)}`);
-    }
-
-    // 2.3 非 owner 公开视图裁剪答案
-    const qView = await apiGet(
-      `/api/v1/problems/${paperId}/questions`,
-      solverToken,
-    );
-    if (qView.status !== 200) throw new Error("题目查询失败");
-    const questions = (qView.body as { data: QuestionData[] }).data;
-    for (const q of questions) {
-      if (q.answer !== undefined || q.explanation !== undefined) {
-        throw new Error("非 owner 不应看到答案与解析");
-      }
-    }
-
-    // 2.4 owner 视图含答案
-    const ownerView = await apiGet(
-      `/api/v1/problems/${paperId}/questions`,
-      ownerToken,
-    );
-    const ownerQuestions = (ownerView.body as { data: QuestionData[] }).data;
-    if (ownerQuestions.length !== 3 || ownerQuestions[0].answer === undefined) {
-      throw new Error("owner 视图应含答案");
-    }
-
-    // 2.5 非 owner 编辑小题被拒
-    const forbidden = await apiDelete(
-      `/api/v1/problems/${paperId}/questions/${singleId}`,
-      solverToken,
-    );
-    if (forbidden.status !== 403) {
-      throw new Error(`非 owner 删除应 403，实际 ${forbidden.status}`);
-    }
-
-    // 2.6 owner 更新小题解析
-    const upd = await questionWrite(
-      "PUT",
-      `/api/v1/problems/${paperId}/questions/${singleId}`,
-      { explanation: "更新后的解析" },
-      ownerToken,
-    );
-    if (upd.status !== 200) throw new Error("更新小题失败");
-
-    // 2.7 缺少预期 revision → 428（不静默覆盖他人草稿）
-    const noRevision = await apiPut(
-      `/api/v1/problems/${paperId}/questions/${singleId}`,
-      { explanation: "不应保存" },
-      ownerToken,
-    );
-    if (noRevision.status !== 428) {
-      throw new Error(`缺少 If-Match 应 428，实际 ${noRevision.status}`);
-    }
-  },
-);
-
-e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", async () => {
-  if (!isE2E) return;
-  // 3.1 管理员创建 Kaggle 竞赛并挂入套卷
-  const now = Date.now();
-  const contestRes = await apiPost("/api/v1/admin/contest/contests", {
-    title: `E2E 客观题竞赛 ${testSuffix}`,
-    start_time: new Date(now - 60 * 60 * 1000).toISOString(),
-    end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-    type: "kaggle",
-    config: {},
-    affect_global_ranking: false,
-    problems: [{ problem_id: paperId, sort_order: 0, label: "A", score: 100 }],
-  }, adminToken);
-  if (contestRes.status !== 201) {
+  if (draft.status !== 200) {
     throw new Error(
-      `创建竞赛失败: ${contestRes.status} ${JSON.stringify(contestRes.body)}`,
+      `写草稿失败: ${draft.status} ${JSON.stringify(draft.body)}`,
     );
   }
-  // 浏览器竞赛 URL 使用 public_id，覆盖从读题、管理设置到提交和历史的完整契约。
-  const contestId =
-    (contestRes.body as { data: { public_id: string } }).data.public_id;
-  if (!contestId?.startsWith("ct-")) throw new Error("竞赛没有公开 ID");
-
-  // 3.2 注册参赛
-  const reg = await apiPost(
-    `/api/v1/domains/main/contests/${contestId}/register`,
-    {},
-    solverToken,
-  );
-  if (reg.status !== 200 && reg.status !== 201) {
-    throw new Error(`注册失败: ${reg.status}`);
-  }
-
-  const policy = await apiPut(
-    `/api/v1/admin/contests/${contestId}/problems/${paperId}/effective-version-policy`,
-    {
-      policy: { mode: "exact", version_id: paperVersionId },
-      expected_revision: 0,
-    },
-    adminToken,
-  );
-  if (policy.status !== 200) {
-    throw new Error(`公开 ID 保存策略失败: ${JSON.stringify(policy)}`);
-  }
-  const version = await apiPut(
-    `/api/v1/admin/contests/${contestId}/problems/${paperId}/version`,
-    {
-      version_id: paperVersionId,
-      policy: { mode: "any" },
-      expected_revision: 1,
-    },
-    adminToken,
-  );
-  if (version.status !== 200) {
-    throw new Error(`公开 ID 保存固定版本失败: ${JSON.stringify(version)}`);
-  }
-
-  const questions = await apiGet(
-    `/api/v1/problems/${paperId}/questions?contest_id=${contestId}`,
-    solverToken,
-  );
-  const questionView = questions.body as {
-    data: QuestionData[];
-    version_id: string;
+  const draftBody = draft.body as {
+    revision?: number;
+    draft_revision?: number;
   };
-  if (
-    questions.status !== 200 || questionView.version_id !== paperVersionId ||
-    questionView.data.length !== 3 || questionView.data.some((q) =>
-      q.answer !== undefined
-    )
-  ) {
+  const revision = draftBody.revision ?? draftBody.draft_revision;
+  if (typeof revision !== "number") {
+    throw new Error(`草稿未回传 revision: ${JSON.stringify(draft.body)}`);
+  }
+
+  // 3. 发布
+  const published = await api("POST", `${paperPath}/publish`, {
+    body: { change_note: "E2E 首次发布" },
+    token: owner.token,
+    headers: { "If-Match": String(revision) },
+  });
+  if (published.status !== 200) {
     throw new Error(
-      `公开 ID 读题应使用固定版本并裁剪答案: ${JSON.stringify(questions)}`,
+      `发布失败: ${published.status} ${JSON.stringify(published.body)}`,
     );
   }
 
-  // 3.3 竞赛内提交（contest_id 携带）→ 判定满分
-  const submit = await apiPost(
-    `/api/v1/problems/${paperId}/submit`,
+  // 4. 作答：一题对一题错 → 50 分
+  const submission = await apiPost(`${paperPath}/objective-submissions`, {
+    answers: { "q-single": ["B"], "q-judge": [false] },
+  }, answerer.token);
+  if (submission.status !== 201) {
+    throw new Error(
+      `交卷失败: ${submission.status} ${JSON.stringify(submission.body)}`,
+    );
+  }
+  const result = (submission.body as { data: SubmitResult }).data;
+  if (result.score !== 50) {
+    throw new Error(`一题对一题错应得 50 分，实际 ${result.score}`);
+  }
+
+  // 5. 非编辑者写草稿被拒（域权限）
+  const forbidden = await apiPut(
+    `${paperPath}/draft`,
     {
-      answers: {
-        [singleId]: ["B"],
-        [multipleId]: ["A", "B"],
-        [judgeId]: [true],
+      content: {
+        kind: "objective",
+        title,
+        description: "篡改",
+        samples: [],
+        questions,
       },
-      contest_id: contestId,
-      version_id: paperVersionId,
     },
-    solverToken,
+    answerer.token,
+    { "If-Match": String(revision + 1) },
   );
-  if (submit.status !== 201) {
-    throw new Error(
-      `竞赛提交失败: ${submit.status} ${JSON.stringify(submit.body)}`,
-    );
-  }
-  const submitted = (submit.body as {
-    data: {
-      submission_id: string;
-      status?: string;
-      contest_mode: boolean;
-      score?: number | null;
-      correct_count?: number | null;
-      details: Record<
-        string,
-        {
-          expected?: unknown;
-          explanation?: unknown;
-          correct?: unknown;
-        }
-      >;
-    };
-  }).data;
-  if (!submitted.contest_mode) throw new Error("竞赛提交应标记 contest_mode");
-  const history = await apiGet(
-    `/api/v1/problems/submissions?paper_id=${paperId}&contest_id=${contestId}`,
-    solverToken,
-  );
-  if (
-    history.status !== 200 ||
-    (history.body as { data: { total: number } }).data.total !== 1
-  ) {
-    throw new Error(`公开 ID 查询竞赛历史失败: ${JSON.stringify(history)}`);
-  }
-  // Kaggle 本人可见百分制原始总分，仍禁止逐题正确性和答案。
-  if (submitted.score !== 100 || submitted.correct_count !== null) {
-    throw new Error(
-      `Kaggle应仅返回原始总分: ${JSON.stringify(submitted)}`,
-    );
-  }
-  if (Object.keys(submitted.details).length !== 0) {
-    throw new Error(
-      `竞赛模式赛期不得返回逐题判定: ${JSON.stringify(submitted.details)}`,
-    );
+  if (forbidden.status !== 403) {
+    throw new Error(`非编辑者写草稿应 403，实际 ${forbidden.status}`);
   }
 
-  // 3.4 竞赛内重复提交被拒（一次性）
-  const dup = await apiPost(
-    `/api/v1/problems/${paperId}/submit`,
-    {
-      answers: {
-        [singleId]: ["B"],
-        [multipleId]: ["A", "B"],
-        [judgeId]: [true],
-      },
-      contest_id: contestId,
-      version_id: paperVersionId,
-    },
-    solverToken,
-  );
-  if (dup.status !== 400 && dup.status !== 409) {
-    throw new Error(`竞赛重复提交应 4xx，实际 ${dup.status}`);
-  }
-
-  // 3.5 竞赛提交详情（本人）：同样不含期望答案与解析（防泄题）
-  const subDetail = await apiGet(
-    `/api/v1/problems/submissions/${submitted.submission_id}`,
-    solverToken,
-  );
-  if (subDetail.status !== 200) throw new Error("竞赛提交详情查询失败");
-  const detailData = (subDetail.body as {
-    data: {
-      score?: number | null;
-      details: Record<
-        string,
-        { expected?: unknown; explanation?: unknown; correct?: unknown }
-      >;
-    };
-  }).data;
-  // 历史详情分数采用 ×100 整数，Kaggle 本人可见总分。
-  if (detailData.score !== 10000) {
-    throw new Error(
-      `Kaggle详情应返回原始总分: ${JSON.stringify(detailData.score)}`,
-    );
-  }
-  for (const d of Object.values(detailData.details)) {
-    if (
-      d.expected !== undefined || d.explanation !== undefined ||
-      d.correct !== undefined
-    ) {
-      throw new Error("竞赛模式提交详情不应包含期望答案、解析或对错");
-    }
-  }
-
-  // 3.6 排名计入：满分套卷应计入 total_score
-  const ranking = await apiGet(
-    `/api/v1/domains/main/contests/${contestId}/ranking?type=kaggle`,
-    adminToken,
-  );
-  if (ranking.status !== 200) {
-    throw new Error(
-      `排名查询失败: ${ranking.status} ${JSON.stringify(ranking.body)}`,
-    );
-  }
-  const rows = (ranking.body as { data: Array<{ total_score: number }> }).data;
-  if (rows.length === 0 || rows[0].total_score <= 0) {
-    throw new Error(
-      `客观题提交应计入排名 total_score，实际 ${JSON.stringify(rows)}`,
-    );
-  }
-
-  // 3.7 未注册用户竞赛提交被拒（403）
-  const outsider = await getOrCreateUser(
-    "objective_outsider",
-    `objective_outsider_${testSuffix}`,
-    `objective_outsider_${testSuffix}@test.com`,
-  );
-  const outsiderSubmit = await apiPost(
-    `/api/v1/problems/${paperId}/submit`,
-    {
-      answers: {
-        [singleId]: ["B"],
-        [multipleId]: ["A", "B"],
-        [judgeId]: [true],
-      },
-      contest_id: contestId,
-      version_id: paperVersionId,
-    },
-    outsider.token,
-  );
-  if (outsiderSubmit.status !== 403) {
-    throw new Error(`未注册用户竞赛提交应 403，实际 ${outsiderSubmit.status}`);
+  // 6. 发布后可读详情（版本快照）
+  const detail = await apiGet(`${paperPath}`, answerer.token);
+  if (detail.status !== 200) {
+    throw new Error(`读套卷详情失败: ${detail.status}`);
   }
 });

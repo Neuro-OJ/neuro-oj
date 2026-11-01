@@ -61,14 +61,11 @@ import { getRedis } from "../../shared/mq/connection.ts";
 import type { SseStreamScope } from "../../shared/sse/sse-stream.ts";
 import { registerRuntimeObservability } from "../runtime/index.ts";
 import { registerEducationObservability } from "../education/index.ts";
-import { retiredEndpointMiddleware } from "./retired-endpoints.ts";
 
 /** 应用装配选项；外部运行资源由入口创建并传入。 */
 export interface CreateAppOptions {
   /** 本次 Core 装配拥有的 SSE 流 scope；生产入口显式注入。 */
   sseStreamScope?: SseStreamScope;
-  /** 是否返回旧默认域写入的 410；未显式传入时仅生产环境启用。 */
-  retireLegacyEndpoints?: boolean;
 }
 
 /** 创建并配置 Hono 应用实例。 */
@@ -113,7 +110,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     .map((s) => s.trim())
     .filter(Boolean);
   const isProd = Deno.env.get("NOJ_ENV") === "production";
-  const retireLegacyEndpoints = options.retireLegacyEndpoints ?? isProd;
   const developmentOrigins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -200,10 +196,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     // shared 层不依赖业务域：维护开关读取器由组合根注入（实时读取，不缓存）。
     createMaintenanceMode(() => getSetting("maintenance_mode")?.value === true),
   );
-  if (retireLegacyEndpoints) {
-    // 只拦截 retired-endpoints.json 中列出的写方法；同路径 GET 深链接继续工作。
-    app.use("/api/v1/*", retiredEndpointMiddleware());
-  }
   app.route("/api/v1", internalLlmPolicyRouter);
   // 内部排空端点：必须位于维护中间件之后（中间件放行 /api/v1/internal/*）。
   // system 域不得跨域 import submission/observability，读取实现由组合根注入。

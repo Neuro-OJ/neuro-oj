@@ -2,35 +2,20 @@ import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../../access/policy.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  DEFAULT_DOMAIN_SLUG,
-} from "../../../shared/workspace/types.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
 import { Hono } from "hono";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
-import {
-  createProblemCommand,
-  saveOiDraftCommand,
-  updateProblemCommand,
-} from "../../application/problems.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { parseOiArchive } from "../services/oi-archive.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
 import { authorizeOiData, validateOiDataPath } from "../services/oi-data.ts";
-import {
-  draftRevisionRequired,
-  getProblemDraft,
-} from "../services/versioning/draft.ts";
+import { getProblemDraft } from "../services/versioning/draft.ts";
 import {
   listDraftOiFiles,
   loadOiDataFromDraft,
 } from "../services/versioning/oi-draft.ts";
-import type {
-  CreateProblemInput,
-  UpdateProblemInput,
-} from "../types/problems.ts";
 import { enforceProblemImportRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const router = new Hono<AuthEnv>();
@@ -139,182 +124,6 @@ router.get("/:id/file", async (c) => {
     });
   }
   return c.json({ data: preview(path, bytes) });
-});
-
-router.post("/:id/save", async (c) => {
-  const reference = c.req.param("id") === "new" ? null : c.req.param("id");
-  const actor = userActorFromAuthenticatedId(c.var.userId);
-  const previous = reference
-    ? await authorizeOiData(actor, reference)
-    : undefined;
-  if (!reference) {
-    assertWorkspacePermission(
-      (await loadWorkspace(DEFAULT_DOMAIN_SLUG, actor, { write: true }))
-        .context,
-      "problem:create",
-    );
-  }
-  await enforceProblemImportRateLimit(c, c.get("userId"));
-  const form = await c.req.parseBody({ all: true });
-  if (
-    typeof form.metadata !== "string" || form.metadata.length > 4 * 1024 * 1024
-  ) throw new BadRequestError("缺少合法编辑配置");
-  let metadata: {
-    problem: CreateProblemInput & UpdateProblemInput;
-    changes?: Record<string, string>;
-    removed?: string[];
-    updated_at?: string;
-    /** 草稿乐观锁：`GET /:id/files` 下发的 `draft_revision`。 */
-    draft_revision?: number;
-    upload_paths?: string[];
-  };
-  try {
-    metadata = JSON.parse(form.metadata);
-  } catch {
-    throw new BadRequestError("编辑配置不是有效 JSON");
-  }
-  if (
-    !metadata || typeof metadata !== "object" || Array.isArray(metadata) ||
-    !metadata.problem || typeof metadata.problem.title !== "string" ||
-    !metadata.problem.title.trim() ||
-    typeof metadata.problem.description !== "string"
-  ) throw new BadRequestError("标题和题面不能为空");
-  if (
-    (metadata.changes !== undefined &&
-      (!metadata.changes || typeof metadata.changes !== "object" ||
-        Array.isArray(metadata.changes))) ||
-    (metadata.removed !== undefined &&
-      (!Array.isArray(metadata.removed) ||
-        !metadata.removed.every((item) => typeof item === "string"))) ||
-    (metadata.upload_paths !== undefined &&
-      (!Array.isArray(metadata.upload_paths) ||
-        !metadata.upload_paths.every((item) => typeof item === "string")))
-  ) {
-    throw new BadRequestError("文件变更配置非法");
-  }
-  if ("type" in metadata.problem) {
-    throw new BadRequestError("题目已取消 P/U 分类");
-  }
-  // 客户端不能向数据服务注入已有对象引用。
-  delete metadata.problem.oi_data_files;
-  delete metadata.problem.support_package_storage_url;
-
-  // 草稿 revision 是唯一乐观锁（Handbook §5.2 第 2 步）：迁移期老客户端只传
-  // `updated_at` 时拒绝，不静默绑定新版草稿。
-  if (reference && metadata.draft_revision == null) {
-    throw draftRevisionRequired();
-  }
-
-  const wantsFiles = form.file !== undefined || form.data_files !== undefined ||
-    Object.keys(metadata.changes ?? {}).length > 0 ||
-    (metadata.removed ?? []).length > 0;
-
-  // 逐文件内容：整包替换 → 删除 → 文本编辑 → 追加新文件（与既有语义一致）。
-  let entries: Record<string, Uint8Array> | undefined;
-  if (wantsFiles) {
-    let files: Record<string, Uint8Array> = reference
-      ? await loadOiDataFromDraft(previous!.row.id)
-      : Object.create(null);
-    if (form.file instanceof File) {
-      files = Object.create(null);
-      for (
-        const [path, bytes] of Object.entries(
-          (await archive(form.file)).entries,
-        )
-      ) {
-        if (
-          ["problem.json", "problem.yaml", "problem.md", "statement.md"]
-            .includes(path)
-        ) continue;
-        files[path] = bytes;
-      }
-    }
-    for (
-      const path of [
-        "problem.json",
-        "problem.yaml",
-        "problem.md",
-        "statement.md",
-      ]
-    ) delete files[path];
-    for (const path of metadata.removed ?? []) {
-      validateOiDataPath(path);
-      delete files[path];
-    }
-    for (const [path, text] of Object.entries(metadata.changes ?? {})) {
-      validateOiDataPath(path);
-      if (typeof text !== "string") {
-        throw new BadRequestError("编辑内容必须是文本");
-      }
-      files[path] = new TextEncoder().encode(text);
-    }
-    const added = form.data_files;
-    let uploadIndex = 0;
-    for (
-      const file of added === undefined
-        ? []
-        : Array.isArray(added)
-        ? added
-        : [added]
-    ) {
-      if (!(file instanceof File) || file.size > 64 * 1024 * 1024) {
-        throw new BadRequestError("数据文件超过 64 MiB 或格式非法");
-      }
-      const path = metadata.upload_paths?.[uploadIndex++] ?? file.name;
-      if (typeof path !== "string") throw new BadRequestError("上传路径非法");
-      validateOiDataPath(path);
-      files[path] = new Uint8Array(await file.arrayBuffer());
-    }
-    entries = files;
-  }
-
-  // 管理信息（难度、标签、可见性）与内容分离：内容进草稿，管理信息进题目行。
-  const management = {
-    difficulty: metadata.problem.difficulty,
-    tag_ids: metadata.problem.tag_ids,
-    visibility: metadata.problem.visibility,
-  };
-  const hasManagement = management.difficulty !== undefined ||
-    management.tag_ids !== undefined || management.visibility !== undefined;
-
-  let problemId: string;
-  let expectedRevision: number | null | undefined = metadata.draft_revision ??
-    null;
-  if (reference) {
-    problemId = previous!.row.id;
-    if (hasManagement) {
-      await updateProblemCommand(actor, problemId, management, {
-        allowServerDerivedFields: false,
-      });
-    }
-  } else {
-    // 创建：先建身份与空草稿，再按草稿 revision 写入内容与文件引用。
-    const created = await createProblemCommand(
-      actor,
-      { ...metadata.problem, judge_type: "oi" },
-      { allowServerDerivedFields: false },
-    );
-    problemId = created.id;
-    expectedRevision = (await getProblemDraft(problemId)).revision;
-  }
-
-  const saved = await saveOiDraftCommand(actor, problemId, {
-    domainId: DEFAULT_DOMAIN_ID,
-    runtime_config: metadata.problem.runtime_config,
-    title: metadata.problem.title.trim(),
-    description: metadata.problem.description,
-    samples: metadata.problem.samples,
-    expectedRevision,
-  }, entries);
-
-  return c.json({
-    data: {
-      id: problemId,
-      problem_id: problemId,
-      draft_revision: saved.revision,
-      files_changed: saved.files_changed,
-    },
-  });
 });
 
 export default router;

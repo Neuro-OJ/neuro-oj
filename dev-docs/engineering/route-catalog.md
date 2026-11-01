@@ -5,10 +5,7 @@
 
 | 方法 | 路径 | 文件 |
 | --- | --- | --- |
-| DELETE | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | DELETE | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
-| DELETE | `/:id/questions/:qid` | noj-core/src/modules/problems/routes/problems.ts |
-| DELETE | `/:id/support-package` | noj-core/src/modules/problems/routes/problems.ts |
 | DELETE | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
 | DELETE | `/blacklist/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
 | DELETE | `/boards/:boardId/role-grants/:roleId` | noj-core/src/modules/http/admin/routes/community.ts |
@@ -203,15 +200,10 @@
 | PATCH | `/users/:id/unban` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/` | noj-core/src/modules/access/identity/routes/checkin.ts |
 | POST | `/` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
-| POST | `/` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/` | noj-core/src/modules/problems/routes/tags.ts |
 | POST | `/:id/merge` | noj-core/src/modules/problems/routes/tags.ts |
-| POST | `/:id/questions` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/:id/retry` | noj-core/src/modules/http/admin/routes/background-tasks.ts |
 | POST | `/:id/retry` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
-| POST | `/:id/save` | noj-core/src/modules/problems/routes/oi-author.ts |
-| POST | `/:id/submit` | noj-core/src/modules/problems/routes/problems.ts |
-| POST | `/:id/versions` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/announcements` | noj-core/src/modules/http/admin/routes/system.ts |
 | POST | `/blacklist` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/boards` | noj-core/src/modules/http/admin/routes/community.ts |
@@ -248,7 +240,6 @@
 | POST | `/email/resend` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/email/verify` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/forgot-password` | noj-core/src/modules/access/identity/routes/auth.ts |
-| POST | `/import-bundle` | noj-core/src/modules/problems/routes/problems.ts |
 | POST | `/internal/drain/enter` | noj-core/src/modules/platform/system/routes/internal-drain.ts |
 | POST | `/internal/drain/exit` | noj-core/src/modules/platform/system/routes/internal-drain.ts |
 | POST | `/judge-images` | noj-core/src/modules/http/admin/routes/system.ts |
@@ -286,11 +277,7 @@
 | POST | `/users/:id/reset-password` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/users/:id/unlock-login` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/users/import` | noj-core/src/modules/http/admin/routes/identity.ts |
-| PUT | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
-| PUT | `/:id/draft` | noj-core/src/modules/problems/routes/problems.ts |
-| PUT | `/:id/questions/:qid` | noj-core/src/modules/problems/routes/problems.ts |
-| PUT | `/:id/visibility` | noj-core/src/modules/problems/routes/problems.ts |
 | PUT | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
 | PUT | `/boards/:boardId/role-grants/:roleId` | noj-core/src/modules/http/admin/routes/community.ts |
 | PUT | `/contests/:contestId/problems/:problemId/effective-version-policy` | noj-core/src/modules/http/admin/routes/problem-versions.ts |

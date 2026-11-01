@@ -9,7 +9,7 @@ import {
 
 const props = defineProps<{ stats: ProblemStatsDetail }>()
 
-// 该组件与其使用者（CodingProblemEditor）均未接入 i18n（全仓约定：低频管理页面硬编码中文）
+// 该组件未接入 i18n（全仓约定：低频管理页面硬编码中文）
 const statusRows = computed(() => sortedStatusDistribution(props.stats.status_distribution))
 const failedCases = computed(() => topFailedCases(props.stats.case_failure_distribution))
 const firstAcText = computed(() => formatFirstAcMedian(props.stats.first_ac_median_ms))

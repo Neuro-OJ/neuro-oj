@@ -102,6 +102,17 @@
   `/domains/:slug/submission-jobs`）。题目的无域 `POST /problems/:id/self-test` 同步删除。
   前端随之删除 `OiSelfTestPanel.vue` 与 `useProblemVersions` 的升级任务受理/读取
   （只有自己的单测在调）；E2E 的提交统一走域入口，helper 负责把题目 UUID 换成题号。
+- **无域出题写接口全部删除**：`POST/PUT/DELETE /api/v1/problems`、`/problems/:id/draft`、
+  `/problems/:id/versions`、`/problems/:id/questions**`、`/problems/:id/submit`、
+  `/problems/:id/support-package`、`/problems/import-bundle`、`/problems/oi-author/:id/save`
+  只存在于 `/api/v1/domains/:slug/problems/**`。旧前端出题链（`ProblemEditor`、
+  `CodingProblemEditor`、`OiProblemEditor`、`SupportPackageUpload`、`ObjectiveProblemEditor`、
+  `ObjectiveAnswerForm` 及对应死页面）与 `useObjective()` 的运行时 API 一并删除；
+  该 composable 只保留类型与题型标签。
+- **退役清单机制整体删除**：`retired-endpoints.json`、`retired-endpoints.ts`、
+  `retiredEndpointMiddleware` 与 `createApp({ retireLegacyEndpoints })` 开关全部移除。
+  旧路径不再返回 `410 ENDPOINT_RETIRED`，就是 404。门禁
+  `scripts/check-legacy-api-removed.ts` 锁定"机制不得复活 + 生产代码零无域写引用"。
 
 ### 已知未完成
 

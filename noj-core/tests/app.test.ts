@@ -117,11 +117,10 @@ Deno.test("app: 开发环境 CORS 允许本地 UI 并暴露公共响应头", asy
   }
 });
 
-Deno.test("app: 显式启用生产退役门禁时旧默认域写入返回 410", async () => {
-  const app = createApp({ retireLegacyEndpoints: true });
+Deno.test("app: 退役清单机制已移除，旧默认域写入只落到 404", async () => {
+  // 0.11 起不再有「登记式退役（410 + replacement）」：处理函数删除后，
+  // 旧路径就是不存在。任何环境（含生产）都不该再拿到 410 兼容响应。
+  const app = createApp();
   const response = await app.request("/api/v1/problems", { method: "POST" });
-  assertEquals(response.status, 410);
-  const body = await response.json();
-  assertEquals(body.code, "ENDPOINT_RETIRED");
-  assertEquals(body.replacement, "POST /api/v1/domains/:slug/problems");
+  assertEquals(response.status, 404);
 });
