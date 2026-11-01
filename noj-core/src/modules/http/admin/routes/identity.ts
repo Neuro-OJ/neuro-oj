@@ -11,16 +11,22 @@
  * - service 层已审计的操作（users.ban / users.unban / users.delete /
  *   ip_ban.create / ip_ban.delete）以 service 为唯一审计源，路由层不再重复写。
  * - 路由层 withAudit 仅补充原本未在 service 审计的写操作
- *   （users.role_change / roles.create / roles.update / roles.delete）。
+ *   （users.role_change / users.create / users.import / users.reset_password /
+ *   users.unlock_login / roles.create / roles.update / roles.delete）。
+ * - 管理员开号与重置密码的审计绝不缓存含密码的请求体。
  */
 import { MAX_SAFE_PAGE } from "../../../../shared/http/pagination.ts";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { eq } from "drizzle-orm";
 import type { AuthEnv } from "../../../access/identity/middleware/auth.ts";
-import { parseJsonBody } from "../../../../shared/http/request.ts";
+import {
+  assertObjectBody,
+  parseJsonBody,
+} from "../../../../shared/http/request.ts";
 import {
   BadRequestError,
+  NotFoundError,
   ValidationError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -47,9 +53,14 @@ import {
   listIpBans,
   removeIpBan,
 } from "../../../access/identity/services/banlist.ts";
+import { clearAllLoginFailures } from "../../../access/identity/services/security/loginThrottle.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
+import {
+  adminResetPassword,
+  createAdminAccounts,
+} from "../../../access/identity/services/admin-accounts.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -71,6 +82,90 @@ function auditRoute(
 }
 
 const router = new Hono<AuthEnv>();
+
+/**
+ * 管理员开号处理器：单建与批量导入共用校验、事务与审计。
+ * 不受公开注册开关或邮件配置限制；审计只缓存白名单字段，绝不包含密码。
+ */
+function createAccountsHandler(bulk: boolean) {
+  const operation = bulk ? "users.import" as const : "users.create" as const;
+  return auditRoute({
+    action: operation,
+    target: (c) => ({
+      type: "user",
+      id: getAuditBody<{ ids: string[] }>(c)?.ids[0] ?? "",
+    }),
+    buildDetail: (c) => ({
+      action: operation,
+      ...getAuditBody<{ ids: string[]; usernames: string[]; role?: string }>(
+        c,
+      ),
+    }),
+  }, async (c) => {
+    const body = await parseJsonBody<
+      {
+        users?: unknown;
+        username?: unknown;
+        email?: unknown;
+        password?: unknown;
+        role?: unknown;
+      }
+    >(c);
+    assertObjectBody(body);
+    const credentials = await createAdminAccounts(
+      bulk ? body.users : [body],
+      body.role,
+    );
+    setAuditBody(c, {
+      ids: credentials.map((item) => item.id),
+      usernames: credentials.map((item) => item.username),
+      count: credentials.length,
+      role: body.role ?? "user",
+    });
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: bulk ? credentials : credentials[0] }, 201);
+  });
+}
+
+/** 管理员创建单个用户。POST /api/v1/admin/identity/users */
+router.post("/users", createAccountsHandler(false));
+
+/** 管理员批量导入用户（最多 500 行，整批事务）。POST /api/v1/admin/identity/users/import */
+router.post("/users/import", createAccountsHandler(true));
+
+router.post(
+  "/users/:id/reset-password",
+  auditRoute({
+    action: "users.reset_password",
+    target: (c) => ({
+      type: "user",
+      id: getAuditBody<{ id: string }>(c)?.id ?? "",
+    }),
+    buildDetail: (c) => ({
+      action: "users.reset_password",
+      user_id: getAuditBody<{ id: string }>(c)?.id,
+    }),
+  }, async (c) => {
+    // 允许不带请求体，表示生成随机临时密码。
+    const text = await c.req.text();
+    let body: { password?: unknown } = {};
+    if (text.trim()) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new ValidationError("请求体必须为 JSON 对象");
+      }
+      if (
+        !body || typeof body !== "object" || Array.isArray(body)
+      ) throw new ValidationError("请求体必须为 JSON 对象");
+    }
+    const userId = await resolveUserId(c.req.param("id")!);
+    const credential = await adminResetPassword(userId, body.password);
+    setAuditBody(c, { id: credential.id });
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: credential });
+  }),
+);
 
 /**
  * 管理员获取用户列表（分页 + 搜索筛选）。
@@ -138,6 +233,39 @@ router.patch(
         { data: { id: targetUserId, role_ids: body.role_ids } },
         200,
       );
+    },
+  ),
+);
+
+/** 管理员解除该用户所有 IP、所有认证命名空间下的失败锁定。 */
+router.post(
+  "/users/:id/unlock-login",
+  auditRoute(
+    {
+      action: "users.unlock_login",
+      target: (c) => ({
+        type: "user",
+        id: getAuditBody<{ id: string }>(c)!.id,
+      }),
+      buildDetail: () => ({ action: "users.unlock_login" }),
+    },
+    async (c) => {
+      const targetUserId = await resolveUserId(c.req.param("id")!);
+      const [user] = await getDb().select({
+        id: users.id,
+        username: users.username,
+      })
+        .from(users).where(eq(users.id, targetUserId)).limit(1);
+      if (!user) throw new NotFoundError("用户不存在");
+      setAuditBody(c, { id: user.id });
+      // 登录会解析为用户 ID；同时覆盖直接以用户名记录的失败条目。
+      await clearAllLoginFailures(user.id);
+      await clearAllLoginFailures(user.username);
+      // 兼容旧 TFA 路径把可信用户 ID 当登录名再次解析后的标识。
+      await clearAllLoginFailures(
+        `unknown:${user.id.toLowerCase().slice(0, 64)}`,
+      );
+      return c.json({ data: { id: user.id, message: "已解除登录锁定" } });
     },
   ),
 );

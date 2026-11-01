@@ -327,6 +327,10 @@ docker compose down     # 停止
 | GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                                        |
 | GET    | `/api/v1/admin/submission/submissions`       | 管理员      | 全部提交管理                                                        |
 | GET    | `/api/v1/admin/identity/users`               | 管理员      | 用户列表                                                            |
+| POST   | `/api/v1/admin/identity/users`               | 管理员      | 单建账号（可选邮箱/密码/角色，默认 user；初始密码仅返回一次）         |
+| POST   | `/api/v1/admin/identity/users/import`        | 管理员      | 最多 500 行账号，逐行校验，整批事务创建                              |
+| POST   | `/api/v1/admin/identity/users/:id/reset-password` | 管理员 | 重置临时密码、强制改密并撤销全部旧会话；禁止 root/已注销用户          |
+| POST   | `/api/v1/admin/identity/users/:id/unlock-login` | 管理员 | 解除所有 IP、所有命名空间的登录失败锁定并审计 |
 | PATCH  | `/api/v1/admin/identity/users/:id/role`      | 管理员      | 角色变更                                                            |
 | GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                                            |
 | PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                                        |
@@ -612,13 +616,26 @@ Redis 缓存键与物化视图刷新都以 revision 为准；多副本下无进�
 
 三机制组合使用，配置项全部支持环境变量覆盖（见 `.env.example`）：
 
-| 维度     | 默认值    | Redis Key                    | 说明                                            |
-| -------- | --------- | ---------------------------- | ----------------------------------------------- |
-| IP 窗口  | 30s/10 次 | `ratelimit:login:ip:<ip>`    | 单 IP 暴力破解防护                              |
-| 账号窗口 | 30s/5 次  | `ratelimit:login:acc:<user>` | 分布式撞同一账号防护                            |
-| 失败计数 | 10 次触发 | `loginfail:<user>`           | 跨进程一致（Redis）                             |
-| 失败退避 | +15s/次   | 内存 Map `inMemoryBackoff`   | 不阻塞响应（不依赖 Redis）                      |
-| 失败锁定 | 1h TTL    | `loginlock:<user>`           | 阈值后拒绝登录，需 `clearLoginFailure` 或等 TTL |
+| 维度 | 默认值 | Redis Key | 说明 |
+| --- | --- | --- | --- |
+| IP 窗口 | 30s/10 次 | `ratelimit:login:ip:<ip>` | 单 IP 暴力破解防护 |
+| 账号窗口 | 30s/5 次 | `ratelimit:login:acc:<user>` | 分布式撞同一账号防护 |
+| 失败计数 | 10 次触发 | `<ns>fail:<user>:<ip>` | 同一账号 + IP 计数，跨进程一致（Redis） |
+| 失败退避 | +15s/次 | 内存 Map `<ns>::<user>::<ip>` | 当次立即响应，下次请求等待（不依赖 Redis） |
+| 失败锁定 | 1h TTL | `<ns>lock:<user>:<ip>` | 仅拒绝该账号 + IP；成功清理本 IP、管理员解锁或等 TTL |
+
+`<ns>` 保持 `login`（默认）、`pwchange`（改密）、`tfa`（TFA 管理）隔离。
+失败计数、锁定和内存退避均按账号标识 + `getClientIp(c)` 解析的客户端 IP 计算；
+账号标识保持小写，再进行 URI 编码（包括 `*`），避免分隔符冲突和 SCAN 通配符扩散。
+登录沿用现有用户名/邮箱 → 用户 ID 解析，改密/TFA 直接使用已认证的用户 ID。
+用户名公开，因此按账号单独锁定会让攻击者恶意锁住他人的账号；按 IP 隔离后，
+受害者可从其他 IP 登录。独立的账号窗口仍按账号跨 IP 计数，以限制分布式撞库。
+
+管理员可调用 `POST /api/v1/admin/identity/users/:id/unlock-login`，或在用户列表点击
+“解除登录锁定”，清除该用户所有 IP、所有命名空间的失败计数、锁定与**当前进程**退避，
+并记录 `users.unlock_login` 审计；此操作不清除独立的 IP/账号窗口计数。
+其他副本的现有内存退避仍按原期限到期；Redis 锁定在各副本共享。
+旧版不含 IP 的失败键不再读取，按原 TTL 自然过期，无需数据库迁移。
 
 **响应头**（触发限流时返回 429）：
 

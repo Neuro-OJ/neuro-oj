@@ -8,17 +8,21 @@
  * - clearLoginFailure 成功清零
  */
 
+import { FakeTime } from "jsr:@std/testing@1/time";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { checkRateLimit } from "../../../../../shared/rate-limit/rate-limit.ts";
 import {
   _resetLoginBackoffForTest,
   applyLoginBackoff,
+  clearAllLoginFailures,
   clearLoginFailure,
   isLoginLocked,
+  recordLoginBackoff,
   recordLoginFailure,
 } from "../../services/security/loginThrottle.ts";
 import {
   connectRedis,
+  getRedis,
   resetRedisForTest,
 } from "../../../../../shared/mq/connection.ts";
 
@@ -107,20 +111,20 @@ Deno.test({
       const username = `locktest_${Date.now()}_${Math.random()}`;
       // 前 9 次：未锁定
       for (let i = 1; i <= 9; i++) {
-        await recordLoginFailure(username);
+        await recordLoginFailure(username, "192.0.2.1");
         assertEquals(
-          await isLoginLocked(username),
+          await isLoginLocked(username, "192.0.2.1"),
           false,
           `第 ${i} 次失败不应锁定`,
         );
       }
       // 第 10 次：触发锁定
-      await recordLoginFailure(username);
-      assertEquals(await isLoginLocked(username), true);
+      await recordLoginFailure(username, "192.0.2.1");
+      assertEquals(await isLoginLocked(username, "192.0.2.1"), true);
 
       // 清理
-      await clearLoginFailure(username);
-      assertEquals(await isLoginLocked(username), false);
+      await clearLoginFailure(username, "192.0.2.1");
+      assertEquals(await isLoginLocked(username, "192.0.2.1"), false);
     });
   },
 });
@@ -134,15 +138,15 @@ Deno.test({
       await ensureConnected();
       const username = `cleartest_${Date.now()}_${Math.random()}`;
       for (let i = 0; i < 5; i++) {
-        await recordLoginFailure(username);
+        await recordLoginFailure(username, "192.0.2.1");
       }
-      await clearLoginFailure(username);
+      await clearLoginFailure(username, "192.0.2.1");
       // 清零后不会触发锁定（需要 10 次）
       for (let i = 0; i < 8; i++) {
-        await recordLoginFailure(username);
+        await recordLoginFailure(username, "192.0.2.1");
       }
-      assertEquals(await isLoginLocked(username), false);
-      await clearLoginFailure(username);
+      assertEquals(await isLoginLocked(username, "192.0.2.1"), false);
+      await clearLoginFailure(username, "192.0.2.1");
     });
   },
 });
@@ -154,7 +158,10 @@ Deno.test({
   fn: async () => {
     _resetLoginBackoffForTest();
     const t0 = Date.now();
-    await applyLoginBackoff(`nodata_${Date.now()}_${Math.random()}`);
+    await applyLoginBackoff(
+      `nodata_${Date.now()}_${Math.random()}`,
+      "192.0.2.1",
+    );
     const elapsed = Date.now() - t0;
     assert(elapsed < 50, `期望立即返回，实际 ${elapsed}ms`);
   },
@@ -176,5 +183,144 @@ Deno.test({
     assertEquals(headers["X-RateLimit-Remaining"], "0");
     assertEquals(headers["X-RateLimit-Reset"], "1700000000");
     assertEquals(headers["Retry-After"], "25");
+  },
+});
+
+Deno.test({
+  name: "loginThrottle: 各命名空间按小写账号 + IP 隔离，成功仅清理本 IP",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withRateLimitEnabled(async () => {
+      await ensureConnected();
+      const username = `ip_scope_${crypto.randomUUID()}`;
+      const ipA = "192.0.2.10";
+      const ipB = "2001:db8::20";
+      try {
+        for (const ns of ["login", "pwchange", "tfa"]) {
+          for (let i = 0; i < 10; i++) {
+            await recordLoginFailure(username.toUpperCase(), ipA, ns);
+          }
+          assertEquals(await isLoginLocked(username, ipA, ns), true);
+          assertEquals(await isLoginLocked(username, ipB, ns), false);
+          assertEquals(await recordLoginFailure(username, ipB, ns), 1);
+          await clearLoginFailure(username, ipB, ns);
+          assertEquals(await recordLoginFailure(username, ipB, ns), 1);
+          assertEquals(await isLoginLocked(username, ipA, ns), true);
+        }
+        await clearLoginFailure(username, ipA, "pwchange");
+        assertEquals(await isLoginLocked(username, ipA, "pwchange"), false);
+        assertEquals(await isLoginLocked(username, ipA, "login"), true);
+        assertEquals(await isLoginLocked(username, ipA, "tfa"), true);
+      } finally {
+        await clearAllLoginFailures(username);
+      }
+    });
+  },
+});
+
+Deno.test({
+  name: "loginThrottle: 退避按 IP 与命名空间隔离，管理员清理全部退避",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withRateLimitEnabled(async () => {
+      await ensureConnected();
+      const username = `backoff_scope_${crypto.randomUUID()}`;
+      using time = new FakeTime();
+      try {
+        recordLoginBackoff(username.toUpperCase(), "192.0.2.1", 1);
+        await applyLoginBackoff(username, "192.0.2.2");
+        await applyLoginBackoff(username, "192.0.2.1", "pwchange");
+        let finished = false;
+        const waiting = applyLoginBackoff(username, "192.0.2.1").then(() => {
+          finished = true;
+        });
+        await Promise.resolve();
+        assertEquals(finished, false);
+        time.tick(15_000);
+        await waiting;
+        assertEquals(finished, true);
+
+        for (const ns of ["login", "pwchange", "tfa", "custom-ns"]) {
+          for (const ip of ["192.0.2.1", "2001:db8::2"]) {
+            recordLoginBackoff(username, ip, 1, ns);
+          }
+        }
+        await clearAllLoginFailures(username.toUpperCase());
+        for (const ns of ["login", "pwchange", "tfa", "custom-ns"]) {
+          await applyLoginBackoff(username, "192.0.2.1", ns);
+          await applyLoginBackoff(username, "2001:db8::2", ns);
+        }
+        // 成功清理退避也只作用于当前 IP。
+        recordLoginBackoff(username, "192.0.2.1", 1);
+        recordLoginBackoff(username, "192.0.2.2", 1);
+        await clearLoginFailure(username, "192.0.2.1");
+        await applyLoginBackoff(username, "192.0.2.1");
+        finished = false;
+        const otherIp = applyLoginBackoff(username, "192.0.2.2").then(() => {
+          finished = true;
+        });
+        await Promise.resolve();
+        assertEquals(finished, false);
+        time.tick(15_000);
+        await otherIp;
+      } finally {
+        _resetLoginBackoffForTest();
+      }
+    });
+  },
+});
+
+Deno.test({
+  name: "loginThrottle: 管理员扫描分页清理全部命名空间且不扩散到其他账号或窗口",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withRateLimitEnabled(async () => {
+      await ensureConnected();
+      const redis = getRedis();
+      const username = `scan_*?[x]:${crypto.randomUUID()}`;
+      const other = `${username}_other`;
+      const windowKey = `ratelimit:login:acc:${username}`;
+      try {
+        // 超过 SCAN COUNT 提示值，覆盖多页扫描。
+        for (let i = 0; i < 120; i++) {
+          await recordLoginFailure(username, `192.0.2.${i}`, "custom-ns");
+        }
+        for (const ns of ["login", "pwchange", "tfa"]) {
+          for (const ip of ["192.0.2.1", "2001:db8::2"]) {
+            for (let i = 0; i < 10; i++) {
+              await recordLoginFailure(username, ip, ns);
+            }
+          }
+        }
+        await recordLoginFailure(other, "192.0.2.1");
+        await redis.set(windowKey, "5", "EX", 30);
+        // 即使临时关闭限流，管理员仍需清理已有键。
+        Deno.env.set("RATE_LIMIT_ENABLED", "false");
+        await clearAllLoginFailures(username.toUpperCase());
+        Deno.env.set("RATE_LIMIT_ENABLED", "true");
+        for (let i = 0; i < 120; i++) {
+          assertEquals(
+            await recordLoginFailure(username, `192.0.2.${i}`, "custom-ns"),
+            1,
+          );
+        }
+        for (const ns of ["login", "pwchange", "tfa"]) {
+          for (const ip of ["192.0.2.1", "2001:db8::2"]) {
+            assertEquals(await isLoginLocked(username, ip, ns), false);
+            assertEquals(await recordLoginFailure(username, ip, ns), 1);
+          }
+        }
+        assertEquals(await recordLoginFailure(other, "192.0.2.1"), 2);
+        assertEquals(await redis.get(windowKey), "5");
+      } finally {
+        Deno.env.set("RATE_LIMIT_ENABLED", "true");
+        await clearAllLoginFailures(username);
+        await clearAllLoginFailures(other);
+        await redis.del(windowKey);
+      }
+    });
   },
 });

@@ -252,7 +252,7 @@ auth.post("/email/resend", authMiddleware, async (c) => {
  * 1. IP 维度（中间件）：30s 10 次 → 429
  * 2. 账号维度（路由层）：30s 5 次 → 429
  * 3. 失败退避：连续失败每次 +15s 等待（内存 Map）
- * 4. 失败锁定：连续 10 次失败 → 锁 1 小时
+ * 4. 失败锁定：同一账号 + IP 连续 10 次失败 → 锁 1 小时
  */
 
 /**
@@ -261,19 +261,25 @@ auth.post("/email/resend", authMiddleware, async (c) => {
  */
 async function enforceAccountRateLimit(
   account: string,
+  clientIp: string,
   namespace?: string,
 ): Promise<string> {
-  const accountKey = await resolveLoginAccountKey(account);
+  // 改密/TFA 已持有可信用户 ID，直接用于失败桶，避免再次按登录名解析成 unknown。
+  // 账号窗口仍调用原有 checkLoginAccountRateLimit，保持跨 IP 窗口语义不变。
+  const accountKey =
+    namespace === PWCHANGE_NAMESPACE || namespace === TFA_NAMESPACE
+      ? account.toLowerCase()
+      : await resolveLoginAccountKey(account);
   const accResult = await checkLoginAccountRateLimit(account, namespace);
   if (!accResult.allowed) {
     throwRateLimited(LOGIN_LIMITS.acc, accResult);
   }
 
   // 内存退避：未到 deadline 则 sleep
-  await applyLoginBackoff(accountKey, namespace);
+  await applyLoginBackoff(accountKey, clientIp, namespace);
 
-  // 账号锁定检查
-  if (await isLoginLocked(accountKey, namespace)) {
+  // 账号 + IP 锁定检查
+  if (await isLoginLocked(accountKey, clientIp, namespace)) {
     throw new UnauthorizedError("登录尝试过多，账号已临时锁定");
   }
   return accountKey;
@@ -282,25 +288,31 @@ async function enforceAccountRateLimit(
 /** 记录一次认证失败（失败计数 + 退避），不阻塞响应。 */
 async function recordAuthFailure(
   account: string,
+  clientIp: string,
   namespace?: string,
 ): Promise<void> {
-  const failCount = await recordLoginFailure(account, namespace);
-  await recordLoginBackoff(account, failCount, namespace);
+  const failCount = await recordLoginFailure(account, clientIp, namespace);
+  recordLoginBackoff(account, clientIp, failCount, namespace);
 }
 
 /** 执行需验证码的 TFA 管理操作，并以独立限流桶防止验证码枚举。 */
 async function executeTfaProtectedAction<T>(
   userId: string,
+  clientIp: string,
   action: () => Promise<T>,
 ): Promise<T> {
-  const accountKey = await enforceAccountRateLimit(userId, TFA_NAMESPACE);
+  const accountKey = await enforceAccountRateLimit(
+    userId,
+    clientIp,
+    TFA_NAMESPACE,
+  );
   try {
     const result = await action();
-    await clearLoginFailure(accountKey, TFA_NAMESPACE);
+    await clearLoginFailure(accountKey, clientIp, TFA_NAMESPACE);
     return result;
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      await recordAuthFailure(accountKey, TFA_NAMESPACE);
+      await recordAuthFailure(accountKey, clientIp, TFA_NAMESPACE);
     }
     throw err;
   }
@@ -316,9 +328,11 @@ async function tfaAction<T>(
     throw new ValidationError("缺少字段 code");
   }
   const userId = c.get("userId") as string;
+  const clientIp = getClientIp(c);
   return executeTfaProtectedAction(
     userId,
-    () => action(userId, body.code!, getClientIp(c)),
+    clientIp,
+    () => action(userId, body.code!, clientIp),
   );
 }
 
@@ -339,18 +353,18 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
   }
 
   // 1. 账号维度限流（限流 + 退避 + 锁定）
-  const accountKey = await enforceAccountRateLimit(body.login);
+  const clientIp = getClientIp(c);
+  const accountKey = await enforceAccountRateLimit(body.login, clientIp);
 
   // 2. 验证
   try {
-    const clientIp = getClientIp(c);
     const result = await loginUser(body, clientIp);
-    await clearLoginFailure(accountKey);
+    await clearLoginFailure(accountKey, clientIp);
     return c.json({ data: result }, 200);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       // 失败：记录（不阻塞响应）
-      await recordAuthFailure(accountKey);
+      await recordAuthFailure(accountKey, clientIp);
     }
     throw err;
   }
@@ -601,7 +615,7 @@ auth.get("/me", authMiddleware, async (c) => {
  * 1. IP 维度（中间件）：30s 10 次 → 429
  * 2. 账号维度（路由层）：30s 5 次 → 429
  * 3. 失败退避：连续失败每次 +15s 等待（内存 Map，独立 namespace）
- * 4. 失败锁定：连续 10 次失败 → 锁 1 小时（独立 namespace）
+ * 4. 失败锁定：同一账号 + IP 连续 10 次失败 → 锁 1 小时（独立 namespace）
  *
  * 业务：
  * - 成功：清改密失败计数 + 撤销旧 token + 签发新 token + 返回
@@ -629,16 +643,17 @@ auth.post(
     const userId = c.get("userId") as string;
 
     // 账号维度限流：按 userId 防止暴力试老密码（独立 namespace）
-    await enforceAccountRateLimit(userId, PWCHANGE_NAMESPACE);
+    const clientIp = getClientIp(c);
+    await enforceAccountRateLimit(userId, clientIp, PWCHANGE_NAMESPACE);
 
     try {
       const { user, sessionVersion } = await changePassword(
         userId,
         body.old_password,
         body.new_password,
-        getClientIp(c),
+        clientIp,
       );
-      await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
+      await clearLoginFailure(userId, clientIp, PWCHANGE_NAMESPACE);
 
       // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取旧 token 剩余有效期，
       // 「记住我」token 可能长达 30d，固定 24h 会让撤销条目先于 token 过期
@@ -660,7 +675,7 @@ auth.post(
       return c.json({ data: { user, token: newToken } }, 200);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
-        await recordAuthFailure(userId, PWCHANGE_NAMESPACE);
+        await recordAuthFailure(userId, clientIp, PWCHANGE_NAMESPACE);
       }
       throw err;
     }

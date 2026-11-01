@@ -16,10 +16,18 @@ import type {
 } from "./email-providers/types.ts";
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "./system-settings.ts";
+import { isInvalidEmailAddress } from "../../../../shared/security/email-address.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "system"]);
 import { observability as metrics } from "../../observability/write.ts";
+
+/** 在加载 Provider 及记录发送指标之前跳过保留域名，不暴露收件人。 */
+function skipInvalidRecipient(email: string): boolean {
+  if (!isInvalidEmailAddress(email)) return false;
+  logger.debug("跳过保留 invalid 域名的邮件");
+  return true;
+}
 
 /** 每个 Provider 模块必须实现的最小接口。 */
 interface EmailProviderModule {
@@ -133,6 +141,7 @@ export async function sendPasswordResetEmail(
   resetLink: string,
   expiresInMinutes = 15,
 ): Promise<void> {
+  if (skipInvalidRecipient(email)) return;
   metrics.inc("noj_email_send_attempts_total", {
     provider: currentProvider(),
     message_type: "password_reset",
@@ -147,6 +156,7 @@ export async function sendEmailVerificationEmail(
   verifyLink: string,
   expiresInMinutes = 30,
 ): Promise<boolean> {
+  if (skipInvalidRecipient(email)) return false;
   metrics.inc("noj_email_send_attempts_total", {
     provider: currentProvider(),
     message_type: "verification",
@@ -166,6 +176,7 @@ export async function sendEmailVerificationEmail(
  * disabled Provider 会返回 false，临时故障由调用方捕获并反馈。
  */
 export async function sendTestEmail(to: string): Promise<boolean> {
+  if (skipInvalidRecipient(to)) return false;
   metrics.inc("noj_email_send_attempts_total", {
     provider: currentProvider(),
     message_type: "test",
@@ -185,6 +196,7 @@ export async function sendNotificationEmail(
   subject: string,
   html: string,
 ): Promise<boolean> {
+  if (skipInvalidRecipient(to)) return false;
   metrics.inc("noj_email_send_attempts_total", {
     provider: currentProvider(),
     message_type: "notification",

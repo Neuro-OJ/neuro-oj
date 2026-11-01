@@ -13,7 +13,11 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../../../../shared/mq/connection.ts";
-import { _resetLoginBackoffForTest } from "../../services/security/loginThrottle.ts";
+import {
+  _resetLoginBackoffForTest,
+  clearAllLoginFailures,
+  recordLoginFailure,
+} from "../../services/security/loginThrottle.ts";
 import {
   type LogRecord,
   resetLogSink,
@@ -569,7 +573,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "routes: POST /login 10 次失败后账号被锁定（route 层）",
+  name:
+    "routes: POST /login 10 次失败仅锁定当前 IP，其他 IP 可登录且只清理自身失败计数",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -579,9 +584,8 @@ Deno.test({
       await ensureRedisConnected();
       const app = createApp();
       const user = `lockout_route_${ts}`;
-      const ip = `192.168.${(ts & 0xff)}.${
-        (Math.floor(Math.random() * 254) + 1) + 50
-      }`;
+      const ip = "192.0.2.61";
+      const otherIp = "192.0.2.62";
 
       // 注册
       const registerRes = await jsonRequest(app, `${BASE}/register`, {
@@ -629,7 +633,7 @@ Deno.test({
         method: "POST",
         body: {
           login: user,
-          password: "WrongPwd-Cd2",
+          password: "CorrectPwd-Ab1",
         },
         ip,
       });
@@ -637,19 +641,35 @@ Deno.test({
       const body = await res.json();
       assertEquals(body.error, "登录尝试过多，账号已临时锁定");
 
+      // 另一个 IP 的成功登录仅清除自身失败记录，IP A 仍被锁定。
+      await recordLoginFailure(userId, otherIp);
+      const otherRes = await jsonRequest(app, `${BASE}/login`, {
+        method: "POST",
+        body: { login: user, password: "CorrectPwd-Ab1" },
+        ip: otherIp,
+      });
+      assertEquals(otherRes.status, 200);
+      assertEquals(
+        await getRedis().exists(`loginfail:${userId}:${otherIp}`),
+        0,
+      );
+      assertEquals(await getRedis().get(`loginfail:${userId}:${ip}`), "10");
+      assertEquals(await getRedis().exists(`loginlock:${userId}:${ip}`), 1);
+
       // 清理
       _resetLoginBackoffForTest();
       try {
         const redis = getRedis();
         await redis.del(
-          `loginfail:${userId}`,
-          `loginlock:${userId}`,
+          `loginfail:${userId}:${ip}`,
+          `loginlock:${userId}:${ip}`,
           `ratelimit:login:ip:${ip}`,
           `ratelimit:login:acc:${userId}`,
         );
       } catch {
         // ignore
       }
+      await clearAllLoginFailures(userId);
       await cleanupUser(user);
     } finally {
       restore();
