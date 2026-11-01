@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
-import { auditLogs, users } from "../../../../../shared/db/schema.ts";
+import { auditLogs } from "../../../../../shared/db/schema.ts";
 import { getRedis } from "../../../../../shared/mq/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {

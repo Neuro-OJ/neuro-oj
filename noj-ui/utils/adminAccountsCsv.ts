@@ -54,7 +54,8 @@ export function parseAccountCsv(source: string): AccountCsvRow[] {
   if (records.length < 1 || records.length > 500) throw new Error('每次必须导入 1-500 行账号');
   return records.map((values, index) => {
     if (values.length !== 3) throw new Error(`第 ${index + 1} 行必须包含 username,email,password 三列`);
-    return { username: values[0], email: values[1] || undefined, password: values[2] || undefined };
+    const [username = '', email = '', password = ''] = values;
+    return { username, email: email || undefined, password: password || undefined };
   });
 }
 

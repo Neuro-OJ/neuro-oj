@@ -231,7 +231,7 @@ Deno.test("作业成绩：同域一次提交可计两份任务，其他域和赛
     domain_id: f.school.id,
     title: "保密 OI",
     start_time: "2026-10-01T00:00:00.000Z",
-    end_time: "2026-11-01T00:00:00.000Z",
+    end_time: "2099-12-31T00:00:00.000Z",
     type: "oi",
     created_at: now,
     updated_at: now,
