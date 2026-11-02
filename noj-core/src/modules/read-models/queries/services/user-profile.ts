@@ -4,6 +4,7 @@ import { scoreFromDb } from "../../../evaluations/types/index.ts";
 import type { UserProfileResponse } from "./user-profile-types.ts";
 import {
   queryProfileCommunityStats,
+  queryProfileCreatedProblems,
   queryProfileMoments,
   queryProfileSolutions,
   queryProfileStats,
@@ -48,6 +49,7 @@ export async function getUserProfileAggregate(
     communityStats,
     solutions,
     moments,
+    createdProblems,
   ] = await Promise.all([
     queryProfileUser(db, userId),
     // 统计与列表同口径（面 1.4 审计 F-04a）：必须传 viewer，否则计数会包含被
@@ -58,6 +60,7 @@ export async function getUserProfileAggregate(
     queryProfileCommunityStats(db, userId, moderator),
     queryProfileSolutions(db, userId, moderator),
     queryProfileMoments(db, userId),
+    queryProfileCreatedProblems(db, userId, viewer),
   ]);
 
   if (!userRow) {
@@ -110,6 +113,7 @@ export async function getUserProfileAggregate(
   }));
 
   return {
+    created_problems: createdProblems,
     user: {
       id: userRow.id,
       username: userRow.username,

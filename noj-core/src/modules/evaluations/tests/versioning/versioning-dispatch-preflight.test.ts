@@ -102,6 +102,17 @@ async function makeUser(tag: string): Promise<string> {
   return id;
 }
 
+/**
+ * 建题用的题号分配器。
+ *
+ * 旧实现是 `96900 + Math.random() * 900`：同一测试进程里多次建题会在 900 个号段内
+ * 随机取样，(default_domain, number) 唯一约束因此可能被自身撞上（CI 曾以
+ * `problems_domain_number_unique` 失败）。这里改成"随机基址 + 单调自增"，既与其它
+ * 测试文件的号段（64xxx / 9xx xxx / 10xxxx）不重叠，也不会在同一进程内重复。
+ */
+const PROBLEM_NUMBER_BASE = 2_000_000 + Math.floor(Math.random() * 1_000) * 100;
+let problemNumberSeq = 0;
+
 /** 建题 + 单个已发布版本（内容按参数构造），返回版本 ID。 */
 async function seedVersionContent(
   tag: string,
@@ -115,7 +126,7 @@ async function seedVersionContent(
     title: `预检测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 96900 + Math.floor(Math.random() * 900),
+    number: PROBLEM_NUMBER_BASE + problemNumberSeq++,
     owner_id: "0",
     judge_type: "dual",
     runtime_config: runtime,

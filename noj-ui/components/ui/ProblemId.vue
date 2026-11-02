@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { defaultProblemLabel } from '~/utils/default-workspace';
 interface Props {
+  /** 域内题目引用：`{domain}:{number}` 或纯数字。 */
   displayId: string;
-  type: string;
 }
 
 defineProps<Props>();

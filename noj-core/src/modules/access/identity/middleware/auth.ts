@@ -54,17 +54,6 @@ export const BAN_WHITELIST: readonly string[] = [
   "/api/v1/auth/logout",
 ] as const;
 
-/** 未验证邮箱仅限制会产生公开或私密用户内容的写操作。 */
-function requiresVerifiedEmail(c: Context): boolean {
-  if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return false;
-  const path = c.req.path;
-  if (path.startsWith("/api/v1/admin/")) return false;
-  return path === "/api/v1/submissions" ||
-    /^\/api\/v1\/(?:problems|contests)\/[^/]+\/submit$/.test(path) ||
-    path.startsWith("/api/v1/self-tests") ||
-    path.startsWith("/api/v1/community");
-}
-
 async function getActiveAccount(userId: string) {
   const [account] = await getDb().select({
     emailVerified: users.email_verified,
@@ -231,10 +220,6 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
 
   // 封禁校验
   await checkBanStatus(c, payload.sub);
-
-  if (!account.emailVerified && requiresVerifiedEmail(c)) {
-    throw new ForbiddenError("请先验证邮箱", "EMAIL_VERIFICATION_REQUIRED");
-  }
 
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);

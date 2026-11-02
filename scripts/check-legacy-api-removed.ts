@@ -94,6 +94,52 @@ export function isWriteUsage(line: string, prefix: string): boolean {
     );
 }
 
+/**
+ * 相对路径形态的已删除写前缀。
+ *
+ * 2026-11-02 rc/v0.11 审计 F3 的直接教训：恢复演练以 `api("POST",
+ * "/problems/import-bundle")` 调用了**已删除**的无域入口，而本门禁只认
+ * 完整前缀 `"/api/v1/problems"` 且要求方法出现在同一行 —— 于是 825 个 CLI
+ * 单测全绿、真实 core 返回 404。
+ *
+ * 这里补上三类漏检：
+ * 1. 相对 URL（`"/problems/..."`）：CLI/UI 客户端把基址与路径拼起来；
+ * 2. 方法跨行：`api(
+  "POST",
+  "/problems/import-bundle",
+)`；
+ * 3. 模板字符串拼接。
+ */
+export const RELATIVE_WRITE_PREFIXES = [
+  "/contests",
+  "/trainings",
+  "/submissions",
+  "/self-tests",
+  "/submission-upgrade-jobs",
+  "/problems",
+];
+
+/** 收集某个前缀出现的窗口（向前看 3 行），用于跨行方法识别。 */
+function surroundingText(lines: string[], index: number): string {
+  return lines.slice(Math.max(0, index - 3), index + 4).join("\n");
+}
+
+/** 相对路径前缀是否被用作**写**调用（方法可出现在相邻行）。 */
+export function isRelativeWriteUsage(
+  lines: string[],
+  index: number,
+  prefix: string,
+): boolean {
+  const line = lines[index]!;
+  // 只要字符串字面量以该前缀开头（后接 `/`、`?` 或字面量结尾）
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const literal = new RegExp(`["'\`]${escaped}(?=[/"'\`?]|$)`);
+  if (!literal.test(line)) return false;
+  const window = surroundingText(lines, index);
+  return /\b(POST|PUT|PATCH|DELETE)\b/.test(window) ||
+    /api\.(post|put|patch|delete)\(/.test(window);
+}
+
 /** 在给定文件内容中查找无域写前缀的写用法（已剥离注释）。 */
 export function findWriteUsages(
   files: Array<{ file: string; text: string }>,
@@ -105,7 +151,14 @@ export function findWriteUsages(
       for (const prefix of REMOVED_WRITE_PREFIXES) {
         if (line.includes(prefix) && isWriteUsage(line, prefix)) {
           offenses.push({ file, line: index + 1, snippet: line.trim() });
-          break;
+          return;
+        }
+      }
+      // 相对 URL 形态（含跨行方法）
+      for (const prefix of RELATIVE_WRITE_PREFIXES) {
+        if (isRelativeWriteUsage(lines, index, prefix)) {
+          offenses.push({ file, line: index + 1, snippet: line.trim() });
+          return;
         }
       }
     });

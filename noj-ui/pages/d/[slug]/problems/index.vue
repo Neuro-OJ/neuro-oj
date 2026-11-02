@@ -83,7 +83,7 @@ useSeoMeta({ title: '题库' });
         <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemId :display-id="row.original.reference.display_ref" type="T" /></NuxtLink>
+              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemId :display-id="row.original.reference.display_ref" /></NuxtLink>
           </template>
           <template #title-cell="{row}">
             <div :class="{'contest-protected': row.original.contest_protection?.length}">

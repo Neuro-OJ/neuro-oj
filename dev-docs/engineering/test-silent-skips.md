@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **337** 处（early-return=226 rust-ignore=46 ignore=32 rust-env-guard=27 env-guard=6）。
+> 当前命中 **339** 处（early-return=227 rust-ignore=46 ignore=33 rust-env-guard=27 env-guard=6）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -214,6 +214,8 @@
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 112 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 128 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 141 | early-return |
+| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1149 | ignore |
+| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1158 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 31 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 43 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 88 | early-return |

@@ -1,3 +1,6 @@
+import https from "node:https";
+import http from "node:http";
+import { Readable } from "node:stream";
 /**
  * Provider 上游地址出站校验（审计 G-03）。
  *
@@ -147,6 +150,25 @@ export function assertSafeBaseUrl(
   }
 }
 
+/** node:http/https 的薄封装：允许测试注入，避免真实网络。 */
+export type RequestFn = typeof import("node:https").request;
+let httpsRequest: RequestFn = https.request;
+let httpRequest: RequestFn = http.request;
+/** 测试注入请求实现。 */
+export function setRequestImplementations(
+  https: RequestFn,
+  http: RequestFn,
+): void {
+  httpsRequest = https;
+  httpRequest = http;
+}
+
+/** 恢复默认请求实现（测试收尾用，防止跨用例污染）。 */
+export function resetRequestImplementations(): void {
+  httpsRequest = https.request;
+  httpRequest = http.request;
+}
+
 /** DNS 解析函数（可注入，便于测试）。 */
 export type ResolveFn = (
   host: string,
@@ -181,4 +203,172 @@ export async function assertResolvesPublic(
   );
   if (addresses.length === 0) throw new Error(UPSTREAM_BLOCKED);
   if (addresses.some(isPrivateAddress)) throw new Error(UPSTREAM_BLOCKED);
+}
+
+/**
+ * 出站校验结果：允许连接的**已验证地址集合**。
+ *
+ * 2026-11-02 rc/v0.11 审计 R1：旧实现只校验 DNS 解析结果，之后由 `fetch` 用原
+ * hostname 重新解析并连接 —— 校验对象与连接对象不是同一批地址（DNS rebinding /
+ * TOCTOU）。这里把已验证地址返回给调用方，由 {@link fetchPinned} 把连接**钉在**
+ * 这批地址上，检查与连接因此绑定。
+ */
+export interface PublicResolution {
+  /** 已验证为公网的地址；空数组表示该 host 无需固定（白名单或 IP 字面量）。 */
+  addresses: string[];
+  /** 去除方括号的裸 host。 */
+  host: string;
+}
+
+/**
+ * 校验出站目标并返回可用于固定连接的地址集合。
+ *
+ * 白名单主机与 IP 字面量不做 DNS 校验（登记时已校验），返回空地址集合表示
+ * "按原样连接"。
+ */
+export async function resolvePublicUpstream(
+  baseUrl: string,
+  allowedHosts: Set<string>,
+  resolve: ResolveFn = defaultResolve,
+): Promise<PublicResolution> {
+  assertSafeBaseUrl(baseUrl, allowedHosts);
+  const host = bareHost(new URL(baseUrl).hostname);
+  if (allowedHosts.has(host) || isIpLiteral(host)) {
+    return { addresses: [], host };
+  }
+  const results = await Promise.allSettled([
+    resolve(host, "A"),
+    resolve(host, "AAAA"),
+  ]);
+  const resolved = results.flatMap((r) =>
+    r.status === "fulfilled" ? r.value : []
+  );
+  // A/AAAA 可能返回重叠地址（双栈主机常见），去重后再返回：地址集合是
+  // "已验证可连接"的集合，重复项没有语义，也会让调用方误以为存在备用地址。
+  const addresses = [...new Set(resolved)];
+  if (addresses.length === 0) throw new Error(UPSTREAM_BLOCKED);
+  if (addresses.some(isPrivateAddress)) throw new Error(UPSTREAM_BLOCKED);
+  return { addresses, host };
+}
+
+/**
+ * 固定连接传输层签名。默认实现是 {@link nodePinnedTransport}；测试可注入替身，
+ * 让既有 `stubFetch` 风格的用例继续拦截上游请求（生产路径始终是默认实现）。
+ */
+export type PinnedTransport = (
+  url: string,
+  init: RequestInit,
+  resolution: PublicResolution,
+) => Promise<Response>;
+
+let pinnedTransport: PinnedTransport = nodePinnedTransport;
+
+/** 注入固定连接传输层（测试用；不传参数恢复默认实现）。 */
+export function setPinnedTransport(transport?: PinnedTransport): void {
+  pinnedTransport = transport ?? nodePinnedTransport;
+}
+
+/**
+ * 用**已校验地址**发起 HTTP(S) 请求，返回与会话一致的 `Response`。
+ *
+ * @param url 完整上游 URL
+ * @param init 与 fetch 兼容的请求参数（method/headers/body/signal）
+ * @param resolution {@link resolvePublicUpstream} 的结果
+ */
+export async function fetchPinned(
+  url: string,
+  init: RequestInit,
+  resolution: PublicResolution,
+): Promise<Response> {
+  return await pinnedTransport(url, init, resolution);
+}
+
+/**
+ * 默认传输层：node:http/https + 自定义 `lookup`。
+ *
+ * 关键点：
+ * - `lookup` 把连接固定到 {@link PublicResolution.addresses} 里的地址，连接阶段
+ *   不再解析 DNS（消除 rebinding 窗口）；
+ * - 保留 `servername`（SNI）与原 Host 头，因此 TLS 证书仍按真实主机名校验；
+ * - 3xx 一律拒绝，等价于原先 `fetch(..., { redirect: "error" })` 的语义；
+ * - 响应体以 Web Stream 透传，SSE 流式输出不受影响。
+ */
+async function nodePinnedTransport(
+  url: string,
+  init: RequestInit,
+  resolution: PublicResolution,
+): Promise<Response> {
+  const target = new URL(url);
+  const isTls = target.protocol === "https:";
+  if (!isTls && target.protocol !== "http:") {
+    throw new Error(UPSTREAM_BLOCKED);
+  }
+  const host = bareHost(target.hostname);
+  // 选第一个已验证地址；连接失败不再回退到其它地址（避免绕过验证语义）
+  const pinned = resolution.addresses[0];
+  const body = init.body === undefined || init.body === null
+    ? undefined
+    : typeof init.body === "string"
+    ? init.body
+    : init.body instanceof Uint8Array
+    ? init.body
+    : String(init.body);
+  const headers = new Headers(init.headers);
+  if (body !== undefined && !headers.has("content-length")) {
+    headers.set(
+      "content-length",
+      String(typeof body === "string" ? body.length : body.byteLength),
+    );
+  }
+  return await new Promise<Response>((resolve, reject) => {
+    const lookup = pinned === undefined ? undefined : ((
+      _host: string,
+      options: { all?: boolean } | number,
+      callback: (...args: unknown[]) => void,
+    ) => {
+      const all = typeof options === "object" && options !== null &&
+        options.all === true;
+      const family = pinned.includes(":") ? 6 : 4;
+      if (all) callback(null, [{ address: pinned, family }]);
+      else callback(null, pinned, family);
+    }) as never;
+    const request = (isTls ? httpsRequest : httpRequest)({
+      protocol: target.protocol,
+      host,
+      port: target.port === "" ? (isTls ? 443 : 80) : Number(target.port),
+      path: `${target.pathname}${target.search}`,
+      method: init.method ?? "GET",
+      headers: Object.fromEntries(headers),
+      // SNI 与证书校验都用真实主机名
+      servername: isTls ? host : undefined,
+      lookup,
+      signal: init.signal ?? undefined,
+    }, (incoming) => {
+      const status = incoming.statusCode ?? 502;
+      if (status >= 300 && status < 400) {
+        // 与 redirect: "error" 等价：不跟随、也不把跳转目标当成上游响应
+        incoming.resume();
+        reject(new Error(UPSTREAM_BLOCKED));
+        return;
+      }
+      const responseHeaders = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (value === undefined) continue;
+        if (Array.isArray(value)) {
+          for (const item of value) responseHeaders.append(name, item);
+        } else responseHeaders.set(name, String(value));
+      }
+      const stream = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
+      resolve(
+        new Response(init.method === "HEAD" ? null : stream, {
+          status,
+          statusText: incoming.statusMessage ?? "",
+          headers: responseHeaders,
+        }),
+      );
+    });
+    request.on("error", reject);
+    if (body !== undefined) request.write(body);
+    request.end();
+  });
 }

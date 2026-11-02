@@ -827,3 +827,43 @@ Deno.test({
     assertEquals(seen.length, 5);
   },
 });
+
+Deno.test({
+  name: "community service: 未验证邮箱的账号不得产出内容（审计 F2）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const unverifiedId = "community-test-unverified";
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+      id: unverifiedId,
+      username: "community-test-unverified",
+      email: "community-test-unverified@example.com",
+      password_hash: "hash",
+      email_verified: false,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      // 政策绑定在写能力闸口上：旧入口与域入口（withDomainCommunity）共用
+      const error = await assertRejects(
+        () => assertCommunityWritable(unverifiedId, false),
+        ForbiddenError,
+      );
+      assertEquals(
+        (error as { code?: string }).code,
+        "EMAIL_VERIFICATION_REQUIRED",
+      );
+      // 托管员不豁免（与旧中间件按路径拦截的口径一致）
+      await assertRejects(
+        () => assertCommunityWritable(unverifiedId, true),
+        ForbiddenError,
+      );
+      // 已验证账号不受影响
+      await assertCommunityWritable(actorId, false);
+    } finally {
+      leaveTestContext();
+    }
+  },
+});

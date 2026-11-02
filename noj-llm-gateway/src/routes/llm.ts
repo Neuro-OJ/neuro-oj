@@ -32,8 +32,9 @@ import { calcBilledUsage, type UpstreamUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
 import {
-  assertResolvesPublic,
+  fetchPinned,
   type ResolveFn,
+  resolvePublicUpstream,
   UPSTREAM_BLOCKED,
 } from "../upstream-guard.ts";
 
@@ -542,8 +543,13 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     // 出站目标校验（G-03）：调用前解析 DNS，目标落在内网即拒绝（白名单除外）。
     // 放在额度扣减之前，被拦截的调用不消耗配额。
+    let upstreamResolution: Awaited<
+      ReturnType<typeof resolvePublicUpstream>
+    >;
     try {
-      await assertResolvesPublic(
+      // 校验与连接绑定（审计 R1）：这里拿到**已验证地址**，下面用 fetchPinned
+      // 把连接钉在这批地址上，避免校验后再次解析（DNS rebinding / TOCTOU）。
+      upstreamResolution = await resolvePublicUpstream(
         providerSecret.provider.base_url,
         deps.config.upstreamAllowedHosts,
         deps.resolveDns,
@@ -710,7 +716,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     ]);
     let upstreamRes: Response;
     try {
-      upstreamRes = await fetch(upstreamUrl, {
+      upstreamRes = await fetchPinned(upstreamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -722,8 +728,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           ),
         ),
         signal: upstreamSignal,
-        redirect: "error",
-      });
+      }, upstreamResolution);
     } catch {
       const errorCode = c.req.raw.signal.aborted
         ? "client_closed_request"

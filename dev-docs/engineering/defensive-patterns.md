@@ -69,3 +69,18 @@ spawn 子进程/容器前，必须清理环境变量中的 `*KEY*`、`*SECRET*`�
 - `tmpfs /tmp`（256M）
 
 适用：`noj-judge` 沙箱。
+
+## 服务端富文本净化
+
+- 服务端**必须**用解析型净化器（当前为 `sanitize-html`），政策集中在
+  `noj-ui/utils/sanitize-policy.ts`；客户端 DOMPurify 复用同一政策。
+- **禁止**用正则重写 HTML 或自写实体解码：浏览器接受省略分号的数字实体
+  （`&#58`、`&#x3A`）与 `&colon;`，正则路径会在协议判定前后产生分歧，
+  已有真实点击触发 XSS 的审计结论。
+- 协议白名单只允许 `http`/`https`/`mailto`/`tel`；协议相对 URL 拒绝；
+  `style` 属性禁用（KaTeX 由净化后回填处理）。
+- 净化失败降级纯文本（fail-closed），不得回退到未净化 HTML。
+- 回归证据三层：单测（服务端实现）、组件测试（客户端实现）、
+  `noj-ui` 的 `deno task test:bff:ssr`（生产构建 + 真实 Chromium 首屏/点击/水合）。
+
+适用：`noj-ui` 的 Markdown 渲染、评论/题面/公告富文本与任何 SSR 输出 HTML 的位置。

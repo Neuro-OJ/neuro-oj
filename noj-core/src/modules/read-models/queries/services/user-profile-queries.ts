@@ -1,6 +1,7 @@
 import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
   communityPosts,
   evaluationAttempts,
@@ -12,6 +13,8 @@ import { endedWindowCondition } from "../../../contests/contracts/cross-module/s
 import { unendedPublicContestForProblem } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import type {
   ProfileCommunityStatsRow,
+  ProfileCreatedProblemRow,
+  ProfileCreatedProblemView,
   ProfileMomentRow,
   ProfileRecentSubmissionRow,
   ProfileSolutionRow,
@@ -350,4 +353,79 @@ export function queryProfileMoments(
         publicCommunityCondition(),
       ),
     ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
+}
+
+/**
+ * 用户主页「创建的题目」（2026-11-02 rc/v0.11 审计 F5）。
+ *
+ * 0.11 起题目只存在于域内，题库列表也已取消 P/U 分类：原实现请求
+ * `/api/v1/problems?type=U` 会被后端 400 拒绝，页面再静默回退空数组。
+ *
+ * 可见性规则（与域题库列表同口径，逐行过滤而非整页）：
+ * - 只看**已发布**（至少存在一个版本）且绑定未停用的题目；
+ * - 域必须 active；域公开、或查看者是成员/平台管理员；
+ * - 绑定可见性为 `members` 时同样要求成员/管理员；
+ * - 被「未结束的保密比赛」收编的题目对非特权查看者（非管理员、非主页本人）排除。
+ *
+ * 返回 `display_id` 为 `{domain_slug}:{number}`，前端按域路由生成链接
+ * （不再假设所有题目都在默认域）。
+ */
+export function queryProfileCreatedProblems(
+  db: Db,
+  profileUserId: string,
+  viewer: ProfileViewerContext = {},
+): Promise<ProfileCreatedProblemView[]> {
+  const viewerId = viewer.viewerId ?? null;
+  const privileged = viewer.isAdmin === true ||
+    (viewerId !== null && viewerId === profileUserId);
+  const secrecy = privileged
+    ? sql`true`
+    : sql`NOT (${
+      unendedPublicContestForProblem(sql`p.id`, sql`${DEFAULT_DOMAIN_ID}`)
+    })`;
+  return db.execute(sql`
+    SELECT DISTINCT ON (p.id)
+      p.id            AS id,
+      p.title         AS title,
+      p.difficulty    AS difficulty,
+      p.created_at    AS created_at,
+      p.number        AS number,
+      d.slug          AS domain_slug
+    FROM domain_problem_bindings b
+    JOIN problems p ON p.id = b.problem_id
+    JOIN domains d ON d.id = b.domain_id
+    WHERE p.owner_id = ${profileUserId}
+      AND b.disabled_at IS NULL
+      AND d.status = 'active'
+      AND EXISTS (SELECT 1 FROM problem_versions v WHERE v.problem_id = p.id)
+      AND (
+        ${privileged}
+        OR d.configuration->>'access' = 'public'
+        OR (${viewerId}::text IS NOT NULL AND EXISTS (
+          SELECT 1 FROM domain_memberships m
+          WHERE m.domain_id = d.id AND m.user_id = ${viewerId}::text AND m.status = 'active'
+        ))
+      )
+      AND (
+        ${privileged}
+        OR b.visibility = 'public'
+        OR (${viewerId}::text IS NOT NULL AND EXISTS (
+          SELECT 1 FROM domain_memberships m2
+          WHERE m2.domain_id = d.id AND m2.user_id = ${viewerId}::text AND m2.status = 'active'
+        ))
+      )
+      AND ${secrecy}
+    ORDER BY p.id, p.created_at DESC
+    LIMIT 50
+  `).then((rows: unknown) =>
+    unwrapRows<ProfileCreatedProblemRow>(rows as never)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        difficulty: row.difficulty,
+        created_at: row.created_at,
+        display_id: `${row.domain_slug}:${row.number}`,
+      }))
+  );
 }

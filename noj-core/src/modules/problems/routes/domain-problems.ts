@@ -15,9 +15,14 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../access/identity/middleware/auth.ts";
+import {
+  assertWorkspacePermission,
+  loadWorkspace,
+} from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { parsePagination } from "../../../shared/http/pagination.ts";
 import {
+  assertDeclaredBodyWithin,
   assertObjectBody,
   parseJsonBody,
 } from "../../../shared/http/request.ts";
@@ -154,6 +159,13 @@ domainProblemsRouter.post(
     const header = c.req.header("If-Match");
     const revision = header === undefined ? undefined : draftRevision(header);
     await enforceProblemImportRateLimit(c, c.var.userId);
+    // 授权与体积前置（审计 F6）：先在**读体之前**解析域与导入权限、核对声明的
+    // Content-Length，避免无权限或超大请求先吃掉 128 MiB 缓冲再拒绝。
+    const access = await loadWorkspace(c.req.param("slug")!, c.var.userId, {
+      write: true,
+    });
+    assertWorkspacePermission(access.context, "problem:import");
+    assertDeclaredBodyWithin(c, MAX_SUPPORT_PACKAGE_SIZE, "题目包");
     const form = await c.req.parseBody();
     if (
       !(form.file instanceof File) ||
@@ -165,9 +177,8 @@ domainProblemsRouter.post(
       throw new BadRequestError("题目包超过 128 MiB");
     }
     c.header("Cache-Control", "no-store");
-    const actor = userActorFromAuthenticatedId(c.var.userId);
     const saved = await importDomainProblemBundleCommand(
-      actor,
+      userActorFromAuthenticatedId(c.var.userId),
       c.req.param("slug")!,
       new Uint8Array(await form.file.arrayBuffer()),
       revision,
@@ -182,6 +193,13 @@ domainProblemsRouter.post(
   async (c) => {
     const revision = draftRevision(c.req.header("If-Match"));
     await enforceProblemImportRateLimit(c, c.var.userId);
+    // 同 `/import-bundle`：授权与声明长度前置，避免先缓冲再拒绝。
+    const actor = userActorFromAuthenticatedId(c.var.userId);
+    const access = await loadWorkspace(c.req.param("slug")!, c.var.userId, {
+      write: true,
+    });
+    assertWorkspacePermission(access.context, "problem:import");
+    assertDeclaredBodyWithin(c, MAX_SUPPORT_PACKAGE_SIZE, "题目包");
     const form = await c.req.parseBody();
     if (
       !(form.file instanceof File) ||
@@ -193,7 +211,6 @@ domainProblemsRouter.post(
       throw new BadRequestError("题目包超过 128 MiB");
     }
     c.header("Cache-Control", "no-store");
-    const actor = userActorFromAuthenticatedId(c.var.userId);
     return c.json({
       data: await importDomainProblemDraftBundleCommand(
         actor,

@@ -17,9 +17,9 @@
  *
  * 1. `login`（必需）：`POST /auth/login`，Cookie 与 JSON token **双兼容**；
  * 2. `problem_read`（必需）：`GET /problems`（+ 有题目 ID 时读详情）；
- * 3. `problem_import`（非 skip-judge）：`POST /problems/import-bundle` 导入 A+B 演练题；
- * 4. `attachment_download`（非 skip-judge，需题目 ID）：下载支持包并校验 zip 魔数；
- * 5. `evaluation`（非 skip-judge）：提交 A+B 解 + 轮询自测（上限 10 分钟），
+ * 3. `problem_import` + `problem_publish`（非 skip-judge）：域入口导入草稿并显式发布；
+ * 4. `attachment_download`（非 skip-judge）：域入口下载支持包并校验 zip 魔数；
+ * 5. `evaluation`（非 skip-judge）：域入口提交 A+B 解（带 version_id）+ 轮询自测，
  *    要求 `status=finished` 且 `score > 0`；
  * 6. `register_probe`（观察项）：`POST /auth/register`，失败**只记 warning**。
  *
@@ -30,6 +30,16 @@
  */
 
 import { zipSync } from "fflate";
+import {
+  createSelfTest,
+  type DomainProblemClientDeps,
+  downloadSupportPackage,
+  getSelfTest,
+  importProblemBundle,
+  listProblems,
+  publishProblemVersion,
+  readProblem,
+} from "../../problem/client.ts";
 import {
   DEFAULT_EVALUATOR_IMAGE,
   DEFAULT_SOLUTION_IMAGE,
@@ -70,6 +80,11 @@ export interface VerifyOptions {
   /** 轮询间隔与上限（测试注入小值）。 */
   pollIntervalMs?: number;
   evaluationTimeoutMs?: number;
+  /**
+   * 目标工作空间 slug（0.11 起题目只存在于域内，无域写入口已删除）。
+   * 缺省 `main`：系统初始化即创建该域，演练管理员有全域权限。
+   */
+  domain?: string;
   /** 步骤输出的汇聚点（人类日志；缺省丢弃）。 */
   log?: (line: string) => void;
   /** 时间源（测试注入）。 */
@@ -193,6 +208,21 @@ class Verifier {
     });
   }
 
+  /** 域题目契约客户端（路径定义只有一处，见 `problem/client.ts`）。 */
+  private client(): DomainProblemClientDeps {
+    return {
+      baseUrl: this.base,
+      fetch: this.fetch,
+      domain: this.opts.domain ?? "main",
+      headers: () => {
+        const headers: Record<string, string> = {};
+        if (this.authCookie) headers.Cookie = this.authCookie;
+        if (this.authToken) headers.Authorization = `Bearer ${this.authToken}`;
+        return headers;
+      },
+    };
+  }
+
   /** 兼容 Cookie 与 JSON token 两种登录响应（原实现 `captureAuth` 的等价）。 */
   private captureAuth(res: Response, payload: unknown): void {
     const setCookie = res.headers.get("set-cookie") ?? "";
@@ -233,69 +263,72 @@ class Verifier {
     );
   }
 
-  /** 题目读取：列表 + （有 ID 时）题目详情。 */
-  async stepProblemRead(problemId: string | null): Promise<void> {
-    const listRes = await this.api("GET", "/problems");
-    if (listRes.status !== 200) {
+  /** 题目读取（域入口）：列表 + （有引用时）题目详情。 */
+  async stepProblemRead(reference: number | null): Promise<void> {
+    const client = this.client();
+    let total = 0;
+    try {
+      total = (await listProblems(client)).total;
+    } catch (error) {
       this.required(
         "problem_read",
         false,
-        `GET /problems 返回 HTTP ${listRes.status}`,
+        error instanceof Error ? error.message : String(error),
       );
       return;
     }
-    const list = await listRes.json();
-    const data = (list as { data?: unknown })?.data;
-    const total = Array.isArray(data)
-      ? data.length
-      : typeof (data as { total?: number })?.total === "number"
-      ? (data as { total: number }).total
-      : 0;
-    if (!problemId) {
+    if (reference === null) {
       this.required(
         "problem_read",
         true,
-        `GET /problems 正常返回（当前可见题目数：${total}）`,
+        `域题目列表正常返回（当前可见题目数：${total}）`,
       );
       return;
     }
-    const detailRes = await this.api("GET", `/problems/${problemId}`);
-    this.required(
-      "problem_read",
-      detailRes.status === 200,
-      detailRes.status === 200
-        ? `GET /problems 正常（可见题目数：${total}），题目详情 ${problemId} 读取正常`
-        : `GET /problems/${problemId} 返回 HTTP ${detailRes.status}`,
-    );
+    try {
+      await readProblem(client, reference);
+      this.required(
+        "problem_read",
+        true,
+        `域题目列表正常（可见题目数：${total}），题目详情 ${reference} 读取正常`,
+      );
+    } catch (error) {
+      this.required(
+        "problem_read",
+        false,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   /** 附件下载：经 core 代理从恢复后的对象存储下载支持包。 */
-  async stepAttachmentDownload(problemId: string): Promise<void> {
-    const res = await this.api("GET", `/problems/${problemId}/support-package`);
-    if (res.status !== 200) {
+  async stepAttachmentDownload(reference: number): Promise<void> {
+    try {
+      const bytes = await downloadSupportPackage(this.client(), reference);
+      const zipMagic = bytes[0] === 0x50 && bytes[1] === 0x4b;
+      this.required(
+        "attachment_download",
+        bytes.length > 0 && zipMagic,
+        `支持包下载成功：${bytes.length} 字节，zip 头校验${
+          zipMagic ? "通过" : "失败"
+        }`,
+      );
+    } catch (error) {
       this.required(
         "attachment_download",
         false,
-        `GET /problems/${problemId}/support-package 返回 HTTP ${res.status}`,
+        error instanceof Error ? error.message : String(error),
       );
-      return;
     }
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const zipMagic = bytes[0] === 0x50 && bytes[1] === 0x4b;
-    this.required(
-      "attachment_download",
-      bytes.length > 0 && zipMagic,
-      `支持包下载成功：${bytes.length} 字节，zip 头校验${
-        zipMagic ? "通过" : "失败"
-      }`,
-    );
   }
 
   /**
    * 真实评测：提交 A+B 正确解并轮询自测结果。
    * 走完整链路：core 入队 → judge 沙箱 → Evaluator + Solution 双容器 → 结果回写。
    */
-  async stepEvaluation(problemId: string): Promise<void> {
+  async stepEvaluation(
+    target: { reference: number; versionId: string },
+  ): Promise<void> {
     if (this.opts.skipEvaluation === true) {
       this.record(
         "evaluation",
@@ -306,32 +339,22 @@ class Verifier {
     }
     const code =
       "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)\n";
-    const createRes = await this.api(
-      "POST",
-      `/problems/${problemId}/self-test`,
-      {
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          language: "python3",
-          code,
-          file_name: "main.py",
-        }),
-      },
-    );
-    if (createRes.status !== 201) {
+    const client = this.client();
+    let selfTestId: string;
+    try {
+      // 评测协议 v3：自测必须显式带 version_id，不能静默绑定最新版
+      selfTestId = (await createSelfTest(client, target.reference, {
+        language: "python3",
+        code,
+        file_name: "main.py",
+        version_id: target.versionId,
+      })).id;
+    } catch (error) {
       this.required(
         "evaluation",
         false,
-        `POST self-test 返回 HTTP ${createRes.status}：${
-          (await createRes.text()).slice(0, 200)
-        }`,
+        error instanceof Error ? error.message : String(error),
       );
-      return;
-    }
-    const created = await createRes.json();
-    const selfTestId = (created as { data?: { id?: string } })?.data?.id;
-    if (!selfTestId) {
-      this.required("evaluation", false, "self-test 响应缺少 id");
       return;
     }
 
@@ -344,26 +367,22 @@ class Verifier {
     let score: number | null = null;
     while (now() < deadline) {
       await sleep(this.opts.pollIntervalMs ?? 5000);
-      const poll = await this.api("GET", `/self-tests/${selfTestId}`);
-      if (poll.status !== 200) {
+      let detail: Record<string, unknown>;
+      try {
+        detail = await getSelfTest(client, selfTestId);
+      } catch (error) {
         this.required(
           "evaluation",
           false,
-          `GET /self-tests/${selfTestId} 返回 HTTP ${poll.status}`,
+          error instanceof Error ? error.message : String(error),
         );
         return;
       }
-      const body = await poll.json();
-      const d = (body as {
-        data?: {
-          status?: string;
-          result_status?: string | null;
-          score?: number;
-        };
-      })?.data;
-      status = d?.status ?? "";
-      resultStatus = d?.result_status ?? null;
-      score = typeof d?.score === "number" ? d.score : null;
+      status = typeof detail.status === "string" ? detail.status : "";
+      resultStatus = typeof detail.result_status === "string"
+        ? detail.result_status
+        : null;
+      score = typeof detail.score === "number" ? detail.score : null;
       if (status === "finished" || status === "error") break;
     }
     const ok = status === "finished" && resultStatus === "finished" &&
@@ -402,53 +421,49 @@ class Verifier {
     }
   }
 
-  /** 导入演练题目包（admin 权限）：同时验证对象存储写入与数据库写入。 */
-  async stepImportBundle(): Promise<string | null> {
+  /**
+   * 导入演练题目包并**显式发布**（admin 权限）：同时验证对象存储写入与数据库写入。
+   *
+   * 0.11 起无域 `POST /problems/import-bundle` 已删除，旧 multipart `publish=true`
+   * 约定也不再存在：必须先导入草稿，再用 `If-Match: <draft_revision>` 调发布端点
+   * （2026-11-02 审计 F3 直接对应此处）。
+   */
+  async stepImportBundle(): Promise<
+    { reference: number; versionId: string } | null
+  > {
     const evaluator = this.opts.evaluatorImage ?? DEFAULT_EVALUATOR_IMAGE;
     const solution = this.opts.solutionImage ?? DEFAULT_SOLUTION_IMAGE;
     const bundle = buildDrillBundle(evaluator, solution);
-    const form = new FormData();
-    form.append(
-      "file",
-      new File([bundle as unknown as BlobPart], "noj-drill-bundle.zip", {
-        type: "application/zip",
-      }),
-    );
-    // 演练必须**显式发布**：否则题目只有草稿，后续"演练提交"会因缺少已发布版本
-    // 被服务端拒绝，演练结论会误报为平台故障（Handbook §6.8）。
-    form.append("publish", "true");
-    const importRes = await this.api("POST", "/problems/import-bundle", {
-      body: form,
-    });
-    if (importRes.status === 200 || importRes.status === 201) {
-      const payload = await importRes.json();
-      const problemId =
-        (payload as { data?: { problem?: { id?: string }; id?: string } })?.data
-          ?.problem?.id ??
-          (payload as { data?: { id?: string } })?.data?.id ?? null;
-      const published = (payload as {
-        data?: { published?: { version?: number } | null };
-      })?.data?.published;
+    const client = this.client();
+    try {
+      const imported = await importProblemBundle(client, {
+        name: "noj-drill-bundle.zip",
+        data: bundle,
+      });
       this.record(
         "problem_import",
         "passed",
-        problemId
-          ? `演练题目导入并发布成功：${problemId}${
-            published?.version ? `（V${published.version}）` : ""
-          }`
-          : "演练题目导入成功（响应中未解析到题目 ID）",
+        `演练题目导入草稿成功：${imported.problem_id}（题号 ${imported.number}，revision ${imported.draft_revision}）`,
       );
-      return problemId;
+      const published = await publishProblemVersion(
+        client,
+        imported.number,
+        imported.draft_revision,
+        "恢复演练自动发布",
+      );
+      this.record(
+        "problem_publish",
+        "passed",
+        published.unchanged
+          ? `演练题目已是最新版本 V${published.version}`
+          : `演练题目发布成功：V${published.version}（${published.version_id}）`,
+      );
+      return { reference: imported.number, versionId: published.version_id };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.required("problem_import", false, message);
+      return null;
     }
-    this.record(
-      "problem_import",
-      "failed",
-      `POST /problems/import-bundle 返回 HTTP ${importRes.status}：${
-        (await importRes.text()).slice(0, 200)
-      }`,
-    );
-    this.requiredFailure = true;
-    return null;
   }
 }
 
@@ -476,11 +491,11 @@ export async function runBusinessVerification(
     return finish(v);
   }
 
-  const problemId = await v.stepImportBundle();
-  if (problemId) {
-    await v.stepProblemRead(problemId);
-    await v.stepAttachmentDownload(problemId);
-    await v.stepEvaluation(problemId);
+  const imported = await v.stepImportBundle();
+  if (imported) {
+    await v.stepProblemRead(imported.reference);
+    await v.stepAttachmentDownload(imported.reference);
+    await v.stepEvaluation(imported);
   } else {
     await v.stepProblemRead(null);
   }

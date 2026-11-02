@@ -227,6 +227,21 @@ cd dist
 | 速率限制       | **未实现**（无 IP 封禁 / CAPTCHA）                                                           |
 | 错误信息       | 后端错误信息直接显示给用户（`e.data?.error`）                                                |
 | 管理路由       | `/admin/*` 路径在客户端 bundle 中可见，非管理员静默重定向到 `/`                              |
+| 富文本净化     | 服务端用**解析型** `sanitize-html`（政策见 `utils/sanitize-policy.ts`），客户端用 DOMPurify；**禁止用正则净化服务端富文本** |
+
+### 富文本净化的硬规则（2026-11-02 rc/v0.11 审计 F1）
+
+1. **不得用正则承担服务端 HTML 净化的安全职责**。实体解码交给 HTML 解析器：
+   `javascript&#58alert(1)` / `javascript&#x3Aalert(1)` 这类省略分号的数字实体，
+   正则解码器要么漏解、要么解码时机早于协议判定，两者都会产出可执行的
+   `javascript:` 链接（审计已在实际链路复现）。
+2. 新增富文本入口（Markdown、评论、题面、公告、邮件正文等）必须复用
+   `utils/sanitize-policy.ts` 的政策；服务端与客户端行为差异只能在 `imagePolicy` /
+   `afterSanitizeAttributes` 这一层，不得各写一套标签白名单。
+3. 净化失败一律**降级纯文本**（fail-closed），不得输出未净化的 HTML。
+4. 载荷回归语料只有一份：`tests/fixtures/xss-corpus.ts`；新增绕过手法必须同时
+   加进语料，并跑「Deno 单测 + 组件测试 + `deno task test:bff:ssr`（真实 Chromium
+   首屏/点击/水合）」三层证据。
 
 ## 样式规范
 

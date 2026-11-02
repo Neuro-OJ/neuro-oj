@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
-import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { problemUrl, publicUrl, workspaceProblemUrl } from "~/utils/publicIdentifiers"
 import { contestHiddenRowClass } from "~/utils/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
@@ -50,6 +50,15 @@ interface UserProfile {
     status: string
     result_status: string | null
     score: number | null
+    created_at: string
+  }[]
+  /** 该用户创建的题目（跨域，按查看者可见性过滤；审计 F5）。 */
+  created_problems: {
+    id: string
+    /** `{domain}:{number}`，链接按域路由生成。 */
+    display_id: string
+    title: string
+    difficulty: string
     created_at: string
   }[]
   community_stats: { solution_count: number; moment_count: number }
@@ -129,22 +138,9 @@ const contributionStart = computed(() => {
 })
 const contributionDays = computed(() => checkinHistory.value?.data?.days ?? [])
 
-// 该用户创建的 U 型题目
-interface CreatedProblem {
-  id: string
-  title: string
-  difficulty: string
-  display_id: string
-  created_at: string
-}
-
-const { data: createdData, pending: createdPending } = useFetch<{
-  data: CreatedProblem[]
-}>(
-  `/api/v1/problems?type=U&owner_id=${userId}&limit=50`,
-)
-
-const createdProblems = computed(() => createdData.value?.data ?? [])
+// 该用户创建的题目：0.11 起题库列表取消 P/U 分类，改由 profile 聚合下发
+// （审计 F5：原先请求 ?type=U 会被后端 400，页面再静默回退空数组）。
+const createdProblems = computed(() => profile.value?.created_problems ?? [])
 
 interface TrainingProfile {
   id: string
@@ -412,9 +408,9 @@ function formatDate(iso: string): string {
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3">
-              <ProblemId :display-id="problem.display_id" :type="'U'" />
+              <ProblemId :display-id="problem.display_id" />
               <NuxtLink
-                :to="problemUrl(problem.id, problem.display_id)"
+                :to="workspaceProblemUrl(problem.display_id)"
                 class="text-sm text-primary no-underline hover:underline"
               >
                 {{ problem.title }}

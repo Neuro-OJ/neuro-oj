@@ -43,6 +43,15 @@ export interface UserProfileResponse {
     solution_count: number;
     moment_count: number;
   };
+  /** 该用户创建的题目（跨域、按查看者可见性过滤；审计 F5）。 */
+  created_problems: {
+    id: string;
+    /** `{domain_slug}:{number}`，前端据此生成域路由链接。 */
+    display_id: string;
+    title: string;
+    difficulty: string;
+    created_at: string;
+  }[];
   solutions: { id: string; title: string; created_at: string }[];
   moments: { id: string; content: string; created_at: string }[];
 }
@@ -103,5 +112,25 @@ export interface ProfileSolutionRow {
 export interface ProfileMomentRow {
   id: string;
   content: string;
+  created_at: string;
+}
+
+/** 「创建的题目」行（含域 slug 与题号，用于拼 display_id）。 */
+export interface ProfileCreatedProblemRow {
+  id: string;
+  title: string;
+  difficulty: string;
+  created_at: string;
+  number: number;
+  domain_slug: string;
+  display_id?: string;
+}
+
+/** 「创建的题目」视图行（已拼好 display_id，直接下发）。 */
+export interface ProfileCreatedProblemView {
+  id: string;
+  display_id: string;
+  title: string;
+  difficulty: string;
   created_at: string;
 }

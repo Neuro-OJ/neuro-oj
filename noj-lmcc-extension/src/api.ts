@@ -2,12 +2,12 @@ import * as http from "node:http";
 import * as https from "node:https";
 import type {
   CreatedSubmission,
+  Domain,
+  DomainProblem,
   Problem,
   ProblemDetail,
   SubmissionDetail,
   User,
-  Domain,
-  DomainProblem,
 } from "./types";
 
 export interface HttpRequest {
@@ -173,7 +173,9 @@ export class NeuroOjApi {
         items: DomainProblem[];
         total: number;
       }>(
-        `/api/v1/domains/${encodeURIComponent(slug)}/problems?page=${page}&limit=100`,
+        `/api/v1/domains/${encodeURIComponent(
+          slug,
+        )}/problems?page=${page}&limit=100`,
       );
       for (const problem of result.items) {
         if (problem.kind === "objective") continue;
@@ -200,7 +202,9 @@ export class NeuroOjApi {
     content: { submission_mode?: string; title: string };
   }> {
     return await this.request(
-      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}`,
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+        reference,
+      )}`,
     );
   }
 
@@ -231,7 +235,9 @@ export class NeuroOjApi {
   async domainSubmission(slug: string, id: string): Promise<SubmissionDetail> {
     return (
       await this.request<{ data: SubmissionDetail }>(
-        `/api/v1/domains/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(id)}`,
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(
+          id,
+        )}`,
       )
     ).data;
   }
@@ -241,7 +247,9 @@ export class NeuroOjApi {
     reference: string,
     versionId: string,
   ): Promise<{ version_id: string; template_content: string | null }> {
-    const path = `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}/template`;
+    const path = `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+      reference,
+    )}/template`;
     return (
       await this.request<{
         data: { version_id: string; template_content: string | null };
@@ -266,28 +274,9 @@ export class NeuroOjApi {
     answer_version_id: string;
   }> {
     return await this.request(
-      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}/versions?page=${page}&limit=20`,
-    );
-  }
-
-  async listProblems(): Promise<Problem[]> {
-    const items: Problem[] = [];
-    let page = 1;
-    let total = Number.POSITIVE_INFINITY;
-
-    while (items.length < total) {
-      const response = await this.request<{
-        data: Problem[];
-        total: number;
-      }>(`/api/v1/problems?page=${page}&limit=100&type=P`);
-      items.push(...response.data);
-      total = response.total;
-      if (response.data.length === 0) break;
-      page += 1;
-    }
-
-    return items.filter(
-      (problem) => !problem.is_objective && problem.submission_mode === "code",
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+        reference,
+      )}/versions?page=${page}&limit=20`,
     );
   }
 

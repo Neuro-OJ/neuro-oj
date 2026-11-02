@@ -116,6 +116,20 @@ async function countClarificationNotifications(
   return rows.length;
 }
 
+/** 构造答疑授权结论：`canManage` 来自域比赛入口的 organizer 判定。 */
+function accessFor(
+  userId: string,
+  opts: { canManage?: boolean; isParticipant?: boolean } = {},
+) {
+  return {
+    actorId: userId,
+    canManage: opts.canManage === true,
+    isParticipant: opts.isParticipant !== false,
+  };
+}
+const access = (userId: string, canManage = false) =>
+  accessFor(userId, { canManage });
+
 Deno.test({
   name: "contest-clarifications: 参赛者提问（时间窗口、题目归属、内容校验）",
   sanitizeResources: false,
@@ -128,6 +142,36 @@ Deno.test({
     const problemB = await createProblem(920002);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
     await registerForContest(contestId, participantId);
+
+    // 审计 F4：域 owner（域级 contest:manage，非比赛创建者）必须能看私密提问并回复。
+    // canManage 由域比赛入口的 `access.organizer` 计算，服务只消费结论。
+    {
+      const domainOwnerId = await createUser("clar-domain-owner");
+      const domainOwnerQuestion = await createClarification(
+        contestId,
+        participantId,
+        { content: "域 owner 可见的私密提问" },
+      );
+      const ownerAccess = {
+        actorId: domainOwnerId,
+        canManage: true,
+        isParticipant: false,
+      };
+      const listed = await listClarifications(contestId, ownerAccess);
+      assertEquals(
+        listed.data.some((row) => row.id === domainOwnerQuestion.id),
+        true,
+        "域 owner 应能看到他人的私密提问",
+      );
+      const replied = await replyToClarification(
+        contestId,
+        domainOwnerQuestion.id,
+        domainOwnerId,
+        ownerAccess,
+        { content: "组织者答复", is_public: false },
+      );
+      assertEquals(replied.is_public, false);
+    }
 
     // 挂题目提问成功
     const withProblem = await createClarification(contestId, participantId, {
@@ -238,6 +282,7 @@ Deno.test({
       contestId,
       question.id,
       adminId,
+      access(adminId, true),
       { content: "512MB。", is_public: true },
     );
     assertEquals(publicReply.is_public, true);
@@ -256,6 +301,7 @@ Deno.test({
       contestId,
       question.id,
       creatorId,
+      access(creatorId, true),
       { content: "注意初始化。", is_public: false },
     );
     assertEquals(privateReply.is_public, false);
@@ -263,21 +309,33 @@ Deno.test({
     // 普通参赛者（非主办方）回复被拒
     await assertRejects(
       () =>
-        replyToClarification(contestId, question.id, otherParticipantId, {
-          content: "我也补充一句",
-          is_public: true,
-        }),
+        replyToClarification(
+          contestId,
+          question.id,
+          otherParticipantId,
+          access(otherParticipantId),
+          {
+            content: "我也补充一句",
+            is_public: true,
+          },
+        ),
       ForbiddenError,
-      "仅管理员或竞赛创建者可回复",
+      "仅比赛组织者可回复",
     );
 
     // 回复不存在的提问
     await assertRejects(
       () =>
-        replyToClarification(contestId, crypto.randomUUID(), adminId, {
-          content: "x",
-          is_public: true,
-        }),
+        replyToClarification(
+          contestId,
+          crypto.randomUUID(),
+          adminId,
+          access(adminId, true),
+          {
+            content: "x",
+            is_public: true,
+          },
+        ),
       NotFoundError,
       "提问不存在",
     );
@@ -285,10 +343,16 @@ Deno.test({
     // 回复的回复被拒
     await assertRejects(
       () =>
-        replyToClarification(contestId, publicReply.id, adminId, {
-          content: "再回复一层",
-          is_public: true,
-        }),
+        replyToClarification(
+          contestId,
+          publicReply.id,
+          adminId,
+          access(adminId, true),
+          {
+            content: "再回复一层",
+            is_public: true,
+          },
+        ),
       BadRequestError,
       "仅可回复提问本身",
     );
@@ -296,9 +360,15 @@ Deno.test({
     // is_public 缺失被拒
     await assertRejects(
       () =>
-        replyToClarification(contestId, question.id, adminId, {
-          content: "缺 is_public",
-        }),
+        replyToClarification(
+          contestId,
+          question.id,
+          adminId,
+          access(adminId, true),
+          {
+            content: "缺 is_public",
+          },
+        ),
       BadRequestError,
       "is_public 必须为布尔值",
     );
@@ -307,10 +377,16 @@ Deno.test({
     const selfQuestion = await createClarification(contestId, creatorId, {
       content: "创建者自己提问",
     });
-    await replyToClarification(contestId, selfQuestion.id, creatorId, {
-      content: "自己回复",
-      is_public: true,
-    });
+    await replyToClarification(
+      contestId,
+      selfQuestion.id,
+      creatorId,
+      access(creatorId, true),
+      {
+        content: "自己回复",
+        is_public: true,
+      },
+    );
     assertEquals(await countClarificationNotifications(creatorId), 0);
   },
 });
@@ -334,29 +410,45 @@ Deno.test({
       content: "公开提问",
       problem_id: problemA,
     });
-    await replyToClarification(contestId, question.id, adminId, {
-      content: "公开回复",
-      is_public: true,
-    });
-    await replyToClarification(contestId, question.id, adminId, {
-      content: "私密回复",
-      is_public: false,
-    });
+    await replyToClarification(
+      contestId,
+      question.id,
+      adminId,
+      access(adminId, true),
+      {
+        content: "公开回复",
+        is_public: true,
+      },
+    );
+    await replyToClarification(
+      contestId,
+      question.id,
+      adminId,
+      access(adminId, true),
+      {
+        content: "私密回复",
+        is_public: false,
+      },
+    );
 
     // 匿名：仅公开问答
-    const anonymous = await listClarifications(contestId, undefined);
+    const anonymous = await listClarifications(contestId, {
+      actorId: undefined,
+      canManage: false,
+      isParticipant: false,
+    });
     assertEquals(anonymous.total, 1);
     assertEquals(anonymous.data[0].replies.length, 1);
     assertEquals(anonymous.data[0].replies[0].content, "公开回复");
 
     // 未参赛用户：同匿名
     const outsiderId = await createUser("clar-list-outsider");
-    const outsider = await listClarifications(contestId, outsiderId);
+    const outsider = await listClarifications(contestId, access(outsiderId));
     assertEquals(outsider.total, 1);
     assertEquals(outsider.data[0].replies.length, 1);
 
     // 提问者：能看到自己的私密回复
-    const asker = await listClarifications(contestId, askerId);
+    const asker = await listClarifications(contestId, access(askerId));
     assertEquals(asker.total, 1);
     assertEquals(asker.data[0].replies.length, 2);
     assertEquals(
@@ -365,7 +457,10 @@ Deno.test({
     );
 
     // 其他参赛者：看不到提问者的私密回复
-    const other = await listClarifications(contestId, otherParticipantId);
+    const other = await listClarifications(
+      contestId,
+      access(otherParticipantId),
+    );
     assertEquals(other.total, 1);
     assertEquals(other.data[0].replies.length, 1);
     assertEquals(
@@ -374,22 +469,35 @@ Deno.test({
     );
 
     // 主办方：全部可见
-    const admin = await listClarifications(contestId, adminId);
+    const admin = await listClarifications(contestId, access(adminId, true));
     assertEquals(admin.total, 1);
     assertEquals(admin.data[0].replies.length, 2);
 
     // 创建者（非 admin）：全部可见
-    const creator = await listClarifications(contestId, creatorId);
+    const creator = await listClarifications(
+      contestId,
+      access(creatorId, true),
+    );
     assertEquals(creator.data[0].replies.length, 2);
 
     // 分页参数校验
     await assertRejects(
-      () => listClarifications(contestId, undefined, { page: 0 }),
+      () =>
+        listClarifications(
+          contestId,
+          { actorId: undefined, canManage: false, isParticipant: false },
+          { page: 0 },
+        ),
       BadRequestError,
       "page 必须为正整数",
     );
     await assertRejects(
-      () => listClarifications(contestId, undefined, { perPage: 1000 }),
+      () =>
+        listClarifications(
+          contestId,
+          { actorId: undefined, canManage: false, isParticipant: false },
+          { perPage: 1000 },
+        ),
       BadRequestError,
     );
   },
@@ -418,21 +526,44 @@ Deno.test({
     assertEquals(question.is_public, false);
 
     // 匿名 / 其他参赛者均看不到这条未公开的提问
-    assertEquals((await listClarifications(contestId, undefined)).total, 0);
     assertEquals(
-      (await listClarifications(contestId, otherParticipantId)).total,
+      (await listClarifications(contestId, {
+        actorId: undefined,
+        canManage: false,
+        isParticipant: false,
+      })).total,
+      0,
+    );
+    assertEquals(
+      (await listClarifications(contestId, access(otherParticipantId))).total,
       0,
     );
     // 提问者本人与主办方可见
-    assertEquals((await listClarifications(contestId, askerId)).total, 1);
-    assertEquals((await listClarifications(contestId, creatorId)).total, 1);
+    assertEquals(
+      (await listClarifications(contestId, access(askerId))).total,
+      1,
+    );
+    assertEquals(
+      (await listClarifications(contestId, access(creatorId, true))).total,
+      1,
+    );
 
     // 主办方以"公告广播"方式公开答复 → 根提问与答复一并转为全员可见
-    await replyToClarification(contestId, question.id, adminId, {
-      content: "题意澄清：B 题数据范围已修正。",
-      is_public: true,
+    await replyToClarification(
+      contestId,
+      question.id,
+      adminId,
+      access(adminId, true),
+      {
+        content: "题意澄清：B 题数据范围已修正。",
+        is_public: true,
+      },
+    );
+    const anonymous = await listClarifications(contestId, {
+      actorId: undefined,
+      canManage: false,
+      isParticipant: false,
     });
-    const anonymous = await listClarifications(contestId, undefined);
     assertEquals(anonymous.total, 1);
     assertEquals(anonymous.data[0].is_public, true);
     assertEquals(anonymous.data[0].replies.length, 1);
@@ -453,10 +584,16 @@ Deno.test({
     const question = await createClarification(contestId, student, {
       content: "测试答疑",
     });
-    await replyToClarification(contestId, question.id, creator, {
-      content: "私密答复",
-      is_public: false,
-    });
+    await replyToClarification(
+      contestId,
+      question.id,
+      creator,
+      access(creator, true),
+      {
+        content: "私密答复",
+        is_public: false,
+      },
+    );
     const db = getDb(), app = createApp();
     const token = await signToken({ sub: student, role: "user" });
     const [domain] = await db.select().from(domains).where(
@@ -512,10 +649,16 @@ Deno.test({
     const question = await createClarification(contestId, asker, {
       content: "私密提问",
     });
-    await replyToClarification(contestId, question.id, creator, {
-      content: "私密答复",
-      is_public: false,
-    });
+    await replyToClarification(
+      contestId,
+      question.id,
+      creator,
+      access(creator, true),
+      {
+        content: "私密答复",
+        is_public: false,
+      },
+    );
 
     const db = getDb(), app = createApp();
     const askerToken = await signToken({ sub: asker, role: "user" });
@@ -564,10 +707,16 @@ Deno.test({
        * 之前那条私密回复的通知也变得可读。这不是授权漏洞，而是"公开即公告"的必然
        * 后果：主办方一旦公开，整条线程就是公开的。
        */
-      await replyToClarification(contestId, question.id, creator, {
-        content: "公开答复",
-        is_public: true,
-      });
+      await replyToClarification(
+        contestId,
+        question.id,
+        creator,
+        access(creator, true),
+        {
+          content: "公开答复",
+          is_public: true,
+        },
+      );
       const [publicReply] = (await notifications()).filter((row) =>
         row.id !== privateReply.id
       );

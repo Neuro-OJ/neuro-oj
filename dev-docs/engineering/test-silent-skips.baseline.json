@@ -1,9 +1,9 @@
 {
-  "total": 341,
+  "total": 339,
   "by_reason": {
-    "early-return": 230,
+    "early-return": 227,
     "env-guard": 6,
-    "ignore": 32,
+    "ignore": 33,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
@@ -57,6 +57,7 @@
     "noj-tests/e2e/cross-domain/education_outbox_recovery.test.ts": 1,
     "noj-tests/e2e/cross-domain/network_capability.test.ts": 6,
     "noj-tests/e2e/cross-domain/pipeline.test.ts": 12,
+    "noj-tests/e2e/cross-domain/restore_drill_contract.test.ts": 2,
     "noj-tests/e2e/cross-domain/search.test.ts": 8,
     "noj-tests/e2e/cross-domain/storage_failure.test.ts": 5,
     "noj-tests/e2e/helper.ts": 1,
@@ -65,7 +66,6 @@
     "noj-tests/e2e/identity/password_reset.test.ts": 6,
     "noj-tests/e2e/identity/profile.test.ts": 11,
     "noj-tests/e2e/identity/tfa.test.ts": 7,
-    "noj-tests/e2e/objective/objective.test.ts": 4,
     "noj-tests/e2e/rate-limit/rate_limit_lockout.test.ts": 1,
     "noj-tests/e2e/staging/staging-smoke.test.ts": 7,
     "noj-tests/e2e/submission/abnormal_rejudge.test.ts": 4,

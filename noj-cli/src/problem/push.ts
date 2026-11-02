@@ -10,6 +10,13 @@
  */
 import type { PromptIO } from "../tui/io.ts";
 import { UsageError } from "../util/args.ts";
+import {
+  type DomainProblemClientDeps,
+  DomainProblemHttpError,
+  type ImportedBundle,
+  importProblemBundle,
+  publishProblemVersion,
+} from "./client.ts";
 
 /** 推送所需的外部依赖（测试注入 fake）。 */
 export interface PushDeps {
@@ -89,8 +96,17 @@ export function extractLoginToken(
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+/** 把域客户端错误/响应错误统一成 {@link PushError}。 */
+function toPushError(error: unknown, fallback: string): PushError {
+  if (error instanceof DomainProblemHttpError) {
+    return new PushError(error.message, error.status, error.code);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new PushError(`${fallback}：${message}`);
+}
+
 /** 解析平台错误响应体为 {@link PushError}。 */
-async function toPushError(
+async function responseToPushError(
   res: Response,
   fallback: string,
 ): Promise<PushError> {
@@ -126,11 +142,11 @@ async function interactiveLogin(
 
   let res = await attempt();
   if (!res.ok) {
-    const err = await toPushError(res, "登录失败");
+    const err = await responseToPushError(res, "登录失败");
     if (err.code !== "TFA_REQUIRED") throw err;
     const code = (await io.readLine("两步验证码: ")).trim();
     res = await attempt(code);
-    if (!res.ok) throw await toPushError(res, "登录失败");
+    if (!res.ok) throw await responseToPushError(res, "登录失败");
   }
   const token = extractLoginToken(
     await res.json().catch(() => null),
@@ -156,7 +172,6 @@ export async function pushBundle(
       "--domain 必须为工作空间 slug（小写字母、数字与连字符）",
     );
   }
-  const problemPath = `${server}/api/v1/domains/${input.domain}/problems`;
   let token = deps.envToken?.trim();
   if (!token) {
     if (!deps.io) {
@@ -167,41 +182,43 @@ export async function pushBundle(
     token = await interactiveLogin(server, deps);
   }
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([input.bundle.data as BlobPart], { type: "application/zip" }),
-    input.bundle.name,
-  );
-  const res = await deps.fetch(`${problemPath}/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-  if (!res.ok) throw await toPushError(res, "导入失败");
-
-  const data = (await res.json() as {
-    data: { problem_id: string; number: number; draft_revision: number };
-  }).data;
+  const client: DomainProblemClientDeps = {
+    baseUrl: `${server}/api/v1`,
+    fetch: deps.fetch,
+    domain: input.domain,
+    headers: () => ({ Authorization: `Bearer ${token}` }),
+  };
+  let imported: ImportedBundle;
+  try {
+    imported = await importProblemBundle(client, {
+      name: input.bundle.name,
+      data: input.bundle.data,
+    });
+  } catch (error) {
+    throw toPushError(error, "导入失败");
+  }
   let published: PushResult["published"] = null;
   if (input.publish) {
-    const response = await deps.fetch(`${problemPath}/${data.number}/publish`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "If-Match": String(data.draft_revision),
-      },
-      body: JSON.stringify({ change_note: "noj-cli problem push" }),
-    });
-    if (!response.ok) throw await toPushError(response, "草稿已导入，发布失败");
-    published = await response.json() as NonNullable<PushResult["published"]>;
+    try {
+      const result = await publishProblemVersion(
+        client,
+        imported.number,
+        imported.draft_revision,
+        "noj-cli problem push",
+      );
+      published = {
+        version: result.version,
+        unchanged: result.unchanged,
+      };
+    } catch (error) {
+      throw toPushError(error, "草稿已导入，发布失败");
+    }
   }
   return {
-    id: data.problem_id,
-    display_id: `${input.domain}:${data.number}`,
+    id: imported.problem_id,
+    display_id: `${input.domain}:${imported.number}`,
     published,
-    edit_url: `${server}/d/${input.domain}/editor/${data.number}`,
+    edit_url: `${server}/d/${input.domain}/editor/${imported.number}`,
   };
 }
 

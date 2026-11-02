@@ -155,7 +155,14 @@ Deno.test("pushBundle: --publish 按域题号与草稿 revision 显式发布", a
       json(201, imported),
     "/api/v1/domains/school-a/problems/1001/publish": (init) => {
       assertEquals((init.headers as Record<string, string>)["If-Match"], "7");
-      return json(200, { version: 1 });
+      // 契约：发布响应**顶层**返回 version_id（不是 data 包裹）
+      return json(200, {
+        problem_id: "uuid-1",
+        version_id: "ver-1",
+        version: 1,
+        draft_revision: 7,
+        unchanged: false,
+      });
     },
   });
   const result = await pushBundle(

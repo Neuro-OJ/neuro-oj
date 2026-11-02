@@ -35,8 +35,6 @@ export interface ObjectivePaper {
   description: string;
   difficulty: string;
   number: number;
-  /** 题目类型：U（用户题）/ P（主题题），权限随类型 */
-  type: 'U' | 'P';
   /** 客观题标记（并入 problems 体系） */
   is_objective: boolean;
   owner_id: string;

@@ -18,6 +18,7 @@ import {
 import { presetConfiguration } from "../../../workspace/index.ts";
 import {
   queryProfileCommunityStats,
+  queryProfileCreatedProblems,
   queryProfileMoments,
   queryProfileSolutions,
   queryProfileStats,
@@ -159,5 +160,61 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
   assertEquals(
     Number((await queryProfileStats(db, actor))!.total_submissions),
     0,
+  );
+});
+
+Deno.test("公共主页「创建的题目」：按域可见性逐行过滤（审计 F5）", async () => {
+  await resetDbForTest();
+  const db = getDb(), now = new Date().toISOString(), owner = "profile-author";
+  await db.insert(users).values({
+    id: owner,
+    username: owner,
+    email: `${owner}@example.com`,
+    created_at: now,
+    updated_at: now,
+  });
+  // 私有域（members）里的题：匿名查看者看不到，owner 本人与管理员可见
+  await db.insert(domains).values({
+    id: "profile-private-domain",
+    slug: "profile-private-domain",
+    name: "私有学校",
+    owner_id: owner,
+    preset: "education",
+    configuration: presetConfiguration("education"),
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(problems).values({
+    id: "profile-authored-problem",
+    domain_id: "profile-private-domain",
+    number: 997020,
+    title: "我出的题",
+    description: "题面",
+    owner_id: owner,
+    created_at: now,
+    updated_at: now,
+  });
+  await bindPublishedProblemForTest("profile-authored-problem");
+  await publishBaselineVersionForTest("profile-authored-problem");
+
+  // 匿名查看者：私有域不返回
+  assertEquals(
+    (await queryProfileCreatedProblems(db, owner, {})).length,
+    0,
+    "匿名查看者不得看到私有域里创建的题目",
+  );
+  // 主页本人：可见，且 display_id 带域 slug 前缀（前端据此生成域路由）
+  const own = await queryProfileCreatedProblems(db, owner, {
+    viewerId: owner,
+  });
+  assertEquals(own.length, 1);
+  assertEquals(own[0]!.display_id, "profile-private-domain:997020");
+  // 平台管理员：可见
+  assertEquals(
+    (await queryProfileCreatedProblems(db, owner, {
+      viewerId: "admin-viewer",
+      isAdmin: true,
+    })).length,
+    1,
   );
 });

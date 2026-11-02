@@ -49,6 +49,9 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-write-rate-limits_test.ts",
   // 旧无域比赛 API 下线门禁：写方法必须已退役 + 不允许新增生产调用方。
   "scripts/check-legacy-api-removed_test.ts",
+  "scripts/check-dependency-audit_test.ts",
+  "scripts/check-upload-limits_test.ts",
+  "scripts/check-contract-reexports_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
   "scripts/check-version-consistency_test.ts",
@@ -153,6 +156,9 @@ export const REPO_GATES: Gate[] = [
   // 旧无域比赛 API 下线门禁（0.11 RC）：写方法必须已退役，且第一方生产代码
   // 不得再引用 `/api/v1/contests/*`（只保留只读兼容到 0.12）。
   { args: ["deno", "run", "-A", "scripts/check-legacy-api-removed.ts"] },
+  { args: ["deno", "run", "-A", "scripts/check-dependency-audit.ts"] },
+  { args: ["deno", "run", "-A", "scripts/check-upload-limits.ts"] },
+  { args: ["deno", "run", "-A", "scripts/check-contract-reexports.ts"] },
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },

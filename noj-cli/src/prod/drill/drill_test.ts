@@ -268,6 +268,7 @@ function makeFetch(
     detailStatus?: number;
     attachment?: Uint8Array;
     importStatus?: number;
+    publishStatus?: number;
     selfTestCreateStatus?: number;
     selfTestStatuses?: string[];
     registerStatus?: number;
@@ -278,6 +279,8 @@ function makeFetch(
   const handler = (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input);
     calls.push(url);
+    // 域路径会带 query（列表分页），匹配时去掉查询串
+    const path = url.split("?")[0]!;
     const json = (body: unknown, status = 200): Response =>
       new Response(JSON.stringify(body), {
         status,
@@ -305,7 +308,29 @@ function makeFetch(
           new Response("bad", { status: opts.importStatus }),
         );
       }
-      return Promise.resolve(json({ data: { problem: { id: "p-1" } } }, 200));
+      // 契约（0.11）：无域导入已删除，域导入返回草稿事实 {problem_id, number, draft_revision}
+      return Promise.resolve(
+        json({
+          data: { problem_id: "p-1", number: 1001, draft_revision: 7 },
+        }, 201),
+      );
+    }
+    if (url.includes("/problems/1001/publish")) {
+      if ((opts.publishStatus ?? 200) !== 200) {
+        return Promise.resolve(
+          new Response("bad", { status: opts.publishStatus }),
+        );
+      }
+      // 契约：发布响应顶层返回 version_id
+      return Promise.resolve(
+        json({
+          problem_id: "p-1",
+          version_id: "ver-1",
+          version: 1,
+          draft_revision: 7,
+          unchanged: false,
+        }, 200),
+      );
     }
     if (url.includes("/support-package")) {
       return Promise.resolve(
@@ -332,12 +357,12 @@ function makeFetch(
       return Promise.resolve(json({ data: { id: "st-1" } }, 201));
     }
     // 题目详情 /problems/<id> 与列表 /problems
-    if (/\/problems\/[^/]+$/.test(url)) {
+    if (/\/problems\/[^/]+$/.test(path)) {
       return Promise.resolve(
         new Response("{}", { status: opts.detailStatus ?? 200 }),
       );
     }
-    if (url.endsWith("/problems")) {
+    if (path.endsWith("/problems")) {
       if ((opts.problemsStatus ?? 200) !== 200) {
         return Promise.resolve(
           new Response("bad", { status: opts.problemsStatus }),
@@ -934,6 +959,7 @@ Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/�
   assertEquals(steps, [
     "login",
     "problem_import",
+    "problem_publish",
     "problem_read",
     "attachment_download",
     "evaluation",
@@ -1405,4 +1431,42 @@ Deno.test("P2b: 演练按 Core → Gateway → Core HTTP 顺序执行且不重�
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
+});
+
+Deno.test("T19 业务验收：全部请求命中域契约路径（旧无域写入口一律失败）", async () => {
+  const { fetch, calls } = makeFetch();
+  await runBusinessVerification({
+    baseUrl: "http://core:8000/api/v1",
+    fetch,
+    sleep: () => Promise.resolve(),
+  });
+  // 0.11 起无域写入口已删除：任何 `/api/v1/problems...` 写路径都是 404。
+  // 这里把"演练实际发出的路径"固定成白名单，mock 与真实契约再次脱节时直接失败
+  // （2026-11-02 审计 F3 的根因就是缺这条断言）。
+  const allowed = [
+    /^\/api\/v1\/auth\/login$/,
+    /^\/api\/v1\/auth\/register$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/import-bundle$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/publish$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/support-package$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/self-tests$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/self-tests\/[^/]+$/,
+  ];
+  for (const url of calls) {
+    const path = new URL(url).pathname;
+    assert(
+      allowed.some((pattern) => pattern.test(path)),
+      `演练请求了未登记路径：${path}（0.11 已删除无域写入口）`,
+    );
+  }
+  assert(
+    calls.some((url) => url.includes("/problems/import-bundle")),
+    "完整链路应包含题包导入",
+  );
+  assert(
+    calls.some((url) => url.includes("/publish")),
+    "完整链路应包含显式发布",
+  );
 });

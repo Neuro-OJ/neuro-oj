@@ -9,6 +9,7 @@ import {
   mintEvalToken,
 } from "../src/crypto.ts";
 import { createLlmRouter } from "../src/routes/llm.ts";
+import { setPinnedTransport } from "../src/upstream-guard.ts";
 
 export class FakeRedis implements RedisClient {
   serverId(): Promise<string> {
@@ -306,9 +307,15 @@ export function stubFetch(
     }
     return impl(input, init);
   };
+  // 上游调用自 rc/v0.11 起走固定连接传输层（审计 R1），不再是直接 `fetch`；
+  // 这里把传输层一并指向替身，否则用例会打真实网络。
+  setPinnedTransport((url, init) =>
+    (globalThis.fetch as typeof fetch)(url, init)
+  );
   return () => {
     // deno-lint-ignore no-explicit-any
     (globalThis as any).fetch = original;
+    setPinnedTransport();
   };
 }
 

@@ -2,8 +2,13 @@ import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import {
   assertResolvesPublic,
   assertSafeBaseUrl,
+  fetchPinned,
   isPrivateAddress,
   parseAllowedHosts,
+  resetRequestImplementations,
+  resolvePublicUpstream,
+  setPinnedTransport,
+  setRequestImplementations,
   UPSTREAM_BLOCKED,
 } from "../src/upstream-guard.ts";
 import { createInternalRouter } from "../src/routes/internal.ts";
@@ -232,5 +237,106 @@ Deno.test("upstream guard: 连通性测试对内网目标拒绝且不发起请�
     assertEquals(fetched, false);
   } finally {
     restore();
+  }
+});
+
+// ── 审计 R1：DNS 校验与连接绑定 ─────────────────────────────────────
+Deno.test("resolvePublicUpstream: 返回已验证地址，供连接层固定", async () => {
+  const resolution = await resolvePublicUpstream(
+    "https://api.example.com/v1",
+    new Set(),
+    (host) =>
+      Promise.resolve(host === "api.example.com" ? ["93.184.216.34"] : []),
+  );
+  assertEquals(resolution.host, "api.example.com");
+  assertEquals(resolution.addresses, ["93.184.216.34"]);
+});
+
+Deno.test("resolvePublicUpstream: 私网地址直接拒绝", async () => {
+  await assertRejects(() =>
+    resolvePublicUpstream(
+      "https://evil.example.com/v1",
+      new Set(),
+      () => Promise.resolve(["10.0.0.5"]),
+    )
+  );
+});
+
+Deno.test("resolvePublicUpstream: A/AAAA 重叠地址去重（双栈主机不留重复项）", async () => {
+  // 双栈主机：A 与 AAAA 各取到公网地址，两条都保留。
+  const dual = await resolvePublicUpstream(
+    "https://dual.example.com/v1",
+    new Set(),
+    (_host, type) =>
+      Promise.resolve(
+        type === "A"
+          ? ["93.184.216.34"]
+          : ["2606:2800:220:1:248:1893:25c8:1946"],
+      ),
+  );
+  assertEquals(dual.addresses, [
+    "93.184.216.34",
+    "2606:2800:220:1:248:1893:25c8:1946",
+  ]);
+  // 解析器对两种查询返回同一地址（常见于桩/缓存）：去重后只剩一条。
+  const overlap = await resolvePublicUpstream(
+    "https://dual.example.com/v1",
+    new Set(),
+    () => Promise.resolve(["93.184.216.34"]),
+  );
+  assertEquals(overlap.addresses, ["93.184.216.34"]);
+});
+
+Deno.test("fetchPinned: 连接使用 lookup 固定的已校验地址（rebinding 无法改变目标）", () => {
+  // 若连接阶段重新解析 DNS，测试里的 lookup 会读到注入的第二批地址；固定后
+  // lookup 只可能拿到校验过的地址。
+  const seen: string[] = [];
+  const fakeRequest = ((
+    options: { lookup?: unknown },
+    _cb: unknown,
+  ) => {
+    const lookup = options.lookup as (
+      h: string,
+      o: { all?: boolean },
+      cb: (e: null, a: unknown, f?: number) => void,
+    ) => void;
+    lookup("api.example.com", { all: false }, (_e, address) => {
+      seen.push(String(address));
+    });
+    return { on: () => {}, write: () => {}, end: () => {} } as never;
+  }) as never;
+  setRequestImplementations(fakeRequest, fakeRequest);
+  try {
+    // 请求不会真正完成（fake 从不回调），这里只验证 lookup 被固定
+    void fetchPinned(
+      "https://api.example.com/v1/chat",
+      { method: "POST", body: "{}" },
+      { addresses: ["93.184.216.34"], host: "api.example.com" },
+    ).catch(() => {});
+    assertEquals(seen, ["93.184.216.34"]);
+  } finally {
+    resetRequestImplementations();
+  }
+});
+
+Deno.test("fetchPinned: 传输层可注入，且调用方拿到已验证地址（路由接线契约）", async () => {
+  const calls: Array<{ url: string; addresses: string[] }> = [];
+  setPinnedTransport((url, _init, resolution) => {
+    calls.push({ url, addresses: resolution.addresses });
+    return Promise.resolve(new Response("pinned", { status: 200 }));
+  });
+  try {
+    const res = await fetchPinned(
+      "https://api.example.com/v1/chat/completions",
+      { method: "POST", body: "{}" },
+      { addresses: ["93.184.216.34"], host: "api.example.com" },
+    );
+    assertEquals(await res.text(), "pinned");
+    assertEquals(calls, [{
+      url: "https://api.example.com/v1/chat/completions",
+      addresses: ["93.184.216.34"],
+    }]);
+  } finally {
+    setPinnedTransport();
   }
 });

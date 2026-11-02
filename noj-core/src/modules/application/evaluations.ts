@@ -11,6 +11,7 @@ import type { DbRoot } from "../../shared/db/executor.ts";
 import type { SystemActor, UserActor } from "../access/contracts/actor.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../shared/workspace/types.ts";
 import { loadWorkspace } from "../access/policy.ts";
+import { assertContentWriteAccount } from "../access/contracts/cross-module/identity_services_security_account-access.ts";
 import {
   getContestPolicySnapshot,
   resolveContestId,
@@ -144,6 +145,9 @@ export async function composeEvaluationAdmissionContext(
   actor: UserActor,
   input: ComposeEvaluationAdmissionInput,
 ): Promise<EvaluationAdmissionContext> {
+  // 账号政策（审计 F2）：所有评测受理（提交/自测/客观题答卷）在组合快照前
+  // 统一校验邮箱验证状态；旧 `/submissions` 与域入口共用这一处。
+  await assertContentWriteAccount(actor.userId);
   const paper = await getPaperOrThrow(input.problemId);
   const problem: ProblemAccessInput = {
     id: paper.id,
@@ -227,6 +231,8 @@ export async function composeDomainEvaluationAdmissionPlan(
     contestId: input.contestId,
     assignment: input.assignment,
   };
+  // 账号政策（审计 F2）：域入口与旧入口共用同一判定。
+  await assertContentWriteAccount(actor.userId);
   const versionId = requireEvaluationVersion(input.versionId);
   const resolved = await resolveDomainExecution(
     request,

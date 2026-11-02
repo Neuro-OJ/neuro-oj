@@ -206,9 +206,14 @@ domainContestRouter.get(
       c.var.userId ?? null,
     );
     const { page, perPage } = parsePagination(c);
+    // 授权结论只在这里算一次（审计 F4）：答疑服务不再自行解释身份
     const result = await listClarifications(
       access.contest.id,
-      c.var.userId ?? undefined,
+      {
+        actorId: c.var.userId ?? undefined,
+        canManage: access.organizer,
+        isParticipant: access.registered,
+      },
       { page, perPage },
     );
     return c.json({
@@ -251,6 +256,11 @@ domainContestRouter.post(
         access.contest.id,
         c.req.param("clarId")!,
         c.var.userId!,
+        {
+          actorId: c.var.userId!,
+          canManage: access.organizer,
+          isParticipant: access.registered,
+        },
         await body<{ content?: string; is_public?: boolean }>(c),
       ),
     }, 201);

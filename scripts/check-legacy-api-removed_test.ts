@@ -68,3 +68,28 @@ Deno.test("扫描：真实写调用被抓到并给出行号", () => {
   assertEquals(offenses.map((o) => o.file), ["noj-ui/a.vue"]);
   assertEquals(offenses[0]!.line, 2);
 });
+
+Deno.test("扫描：相对 URL + 跨行方法同样被抓到（审计 F3 漏检）", () => {
+  // 演练的真实写法：基址在别处，路径是相对的，方法在相邻行。
+  const offenses = findWriteUsages([
+    {
+      file: "noj-cli/src/prod/drill/verify.ts",
+      text: [
+        "const res = await this.api(",
+        '  "POST",',
+        '  "/problems/import-bundle",',
+        "  { body: form },",
+        ");",
+      ].join("\n"),
+    },
+    {
+      // 相对路径的读端点仍然允许（GET /problems/:id 还在）
+      file: "noj-cli/src/problem/read.ts",
+      text: 'const res = await api("GET", "/problems/1001");',
+    },
+  ]);
+  assertEquals(offenses.map((o) => o.file), [
+    "noj-cli/src/prod/drill/verify.ts",
+  ]);
+  assertEquals(offenses[0]!.line, 3);
+});

@@ -6,6 +6,7 @@ import {
 import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
 import { getSetting } from "../../../../platform/contracts/cross-module/services_system-settings.ts";
+import { assertContentWriteAccount } from "../../../../access/contracts/cross-module/identity_services_security_account-access.ts";
 import type { CommunityConfig } from "../../types/community.ts";
 import {
   communityDb,
@@ -87,6 +88,10 @@ export async function assertCommunityWritable(
   if (config.read_only && !isModerator) {
     throw new ForbiddenError("社区当前为只读模式", "COMMUNITY_READ_ONLY");
   }
+  // 账号政策（审计 F2）：邮箱未验证的账号不得产出用户内容。判定放在
+  // 托管员短路之前，与旧中间件按路径拦截的口径一致；这里是**唯一闸口**，
+  // 旧 `/community` 与 `/domains/:slug/community/*` 都经过它。
+  await assertContentWriteAccount(userId, communityDb(opts.scope));
   if (isModerator) return;
   const db = communityDb(opts.scope);
   // 平台封禁或社交封禁都限制社区发布（social 不限制登录/评测，仅在此处拦截社区写操作）

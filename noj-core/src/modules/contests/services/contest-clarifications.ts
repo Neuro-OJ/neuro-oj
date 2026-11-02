@@ -29,7 +29,21 @@ import {
   NotFoundError,
   RateLimitedError,
 } from "../../../shared/base/errors.ts";
-import { isUserAdmin } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
+/**
+ * 答疑访问结论（由路由层用 `loadDomainContest(...)` 统一算出）。
+ *
+ * 审计 F4：答疑服务原先各自重新解释身份（`isUserAdmin() || created_by`），
+ * 与域比赛入口承认的 `contest:manage` 不一致，导致域 owner 看不到私密提问、
+ * 回复被 403。现在服务只消费这一份结论，不再查身份。
+ */
+export interface ClarificationAccess {
+  /** 已认证用户 ID（匿名读取时为 undefined）。 */
+  readonly actorId?: string;
+  /** 当前域比赛的授权管理结论（`access.organizer`）。 */
+  readonly canManage: boolean;
+  /** 是否为该比赛的参赛者（`access.registered`）。 */
+  readonly isParticipant: boolean;
+}
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../communication/contracts/cross-module/community_services_notifications.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
@@ -249,6 +263,7 @@ export async function replyToClarification(
   contestId: string,
   clarId: string,
   userId: string,
+  access: ClarificationAccess,
   input: { content?: string; is_public?: boolean },
 ): Promise<ClarificationReplyResponse> {
   const content = validateContent(input.content, "回复内容");
@@ -256,9 +271,8 @@ export async function replyToClarification(
     throw new BadRequestError("is_public 必须为布尔值");
   }
   const contest = await findContestRow(contestId);
-  const canManage = await isUserAdmin(userId) || contest.created_by === userId;
-  if (!canManage) {
-    throw new ForbiddenError("仅管理员或竞赛创建者可回复");
+  if (!access.canManage) {
+    throw new ForbiddenError("仅比赛组织者可回复");
   }
 
   const db = getDb();
@@ -336,7 +350,7 @@ export async function replyToClarification(
  */
 export async function listClarifications(
   contestId: string,
-  userId: string | undefined,
+  access: ClarificationAccess,
   params: ListClarificationsParams = {},
 ): Promise<ListClarificationsResult> {
   const page = params.page ?? 1;
@@ -347,11 +361,10 @@ export async function listClarifications(
   if (!Number.isInteger(perPage) || perPage < 1 || perPage > MAX_PAGE_SIZE) {
     throw new BadRequestError(`perPage 必须为 1-${MAX_PAGE_SIZE} 的整数`);
   }
-  const contest = await findContestRow(contestId);
-  const isManager = userId !== undefined &&
-    (await isUserAdmin(userId) || contest.created_by === userId);
-  const isPart = userId !== undefined &&
-    (await isParticipant(contestId, userId));
+  await findContestRow(contestId);
+  const userId = access.actorId;
+  const isManager = access.canManage;
+  const isPart = userId !== undefined && access.isParticipant;
 
   const db = getDb();
   // 过滤可见提问（匿名/未参赛仅公开；参赛者公开 + 自己的）
