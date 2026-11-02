@@ -1,20 +1,22 @@
 # NOJ 测试体系
 
-本文档汇总 NOJ 各模块的测试分层、运行命令与约定。详细模块级内容以各模块 `AGENTS.md` / `CLAUDE.md` 为准。
+本文档汇总 NOJ 各模块的测试分层、运行命令与约定。详细模块级内容以各模块
+`AGENTS.md` / `CLAUDE.md` 为准。
 
 ## 分层
 
-| 层 | 位置 | 说明 |
-|---|---|---|
-| Domain 单元/集成测试 | `noj-core/src/domains/<domain>/tests/`（按 `routes/`、`services/`、`mq/`、`middleware/` 等分组） | 各业务域的路由、服务与 MQ 测试，部分需要 DB/Redis；由 `deno task test:domain <domain>` 运行 |
-| 共享/全局测试 | `noj-core/tests/`（`shared/`、`routes/`、`app.test.ts` 等） | 跨域共享基础设施、全局中间件与应用装配；由 `scripts/test-shared.sh` 运行 |
-| 纯逻辑/契约测试 | `noj-core/tests/scripts/` 与 `noj-core/tests/shared/runtime/` | 参数、资源命名、分片覆盖与生命周期 fake；不连接 PostgreSQL、Redis 或 Docker，由 `deno task test:logic` 运行 |
-| 冒烟测试 | `noj-core/tests/smoke.test.ts` | 快速验证 HTTP 核心路径 |
-| noj-llm-gateway 测试 | `noj-llm-gateway/tests/` | 网关逻辑、限流、审计 |
-| noj-ui 测试 | `noj-ui/tests/` | 工具函数、部分 composable |
-| judge 单元测试 | `noj-judge/`（cargo test） | 无需 Docker |
-| judge Docker E2E | `noj-judge/tests/e2e_*.rs` | 需要 Docker + `NOJ_RUN_E2E=1` |
-| 跨模块 E2E | `noj-tests/e2e/` | 启动完整栈后运行 |
+| 层                   | 位置                                                                                             | 说明                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Domain 单元/集成测试 | `noj-core/src/domains/<domain>/tests/`（按 `routes/`、`services/`、`mq/`、`middleware/` 等分组） | 各业务域的路由、服务与 MQ 测试，部分需要 DB/Redis；由 `deno task test:domain <domain>` 运行                   |
+| 共享/全局测试        | `noj-core/tests/`（`shared/`、`routes/`、`app.test.ts` 等）                                      | 跨域共享基础设施、全局中间件与应用装配；由 `scripts/test-shared.sh` 运行                                      |
+| 纯逻辑/契约测试      | `noj-core/tests/scripts/` 与 `noj-core/tests/shared/runtime/`                                    | 参数、资源命名、分片覆盖与生命周期 fake；不连接 PostgreSQL、Redis 或 Docker，由 `deno task test:logic` 运行   |
+| 冒烟测试             | `noj-core/tests/smoke.test.ts`                                                                   | 快速验证 HTTP 核心路径                                                                                        |
+| noj-llm-gateway 测试 | `noj-llm-gateway/tests/`                                                                         | 网关逻辑、限流、审计                                                                                          |
+| noj-ui 测试          | `noj-ui/tests/`                                                                                  | 工具函数、部分 composable                                                                                     |
+| judge 单元测试       | `noj-judge/`（cargo test）                                                                       | 无需 Docker                                                                                                   |
+| judge Docker E2E     | `noj-judge/tests/e2e_*.rs`                                                                       | 需要 Docker + `NOJ_RUN_E2E=1`                                                                                 |
+| 跨模块 E2E           | `noj-tests/e2e/`                                                                                 | 启动完整栈后运行                                                                                              |
+| noj-tests 零依赖单测 | `noj-tests/tests/unit/`                                                                          | 等待器、启动器清单/canary、题包 builder、浏览器生命周期与分组规划；不启动服务，由 `deno task test:logic` 运行 |
 
 ## 常用命令
 
@@ -24,13 +26,16 @@ cd noj-core
 # 除 `test:logic` 外的正式入口不会读取 .env；先提供本次隔离 run 的资源：
 # TEST_PG_ADMIN_URL / TEST_REDIS_URL / TEST_STORAGE_ROOT / JWT_SECRET
 deno task test            # 全量真实 PostgreSQL（迁移 + 显式 seed）
-deno task test:parallel   # 模板克隆的独立数据库分片
+deno task test:parallel   # 按实际测试文件发现的模板克隆分片（默认 --shards 4 --jobs 2）
+deno task test:parallel --shards 4 --jobs 2 --profile   # 额外记录阶段计时与分片计划
 deno task test:smoke      # HTTP 冒烟（真实 PostgreSQL + Redis）
 deno task test:logic      # 纯逻辑/契约测试（不连接 PostgreSQL、Redis 或 Docker）
 deno task test:domain identity   # 按 Domain 跑单元/集成测试
 bash scripts/test-shared.sh      # 共享/全局测试
 deno task test:pg         # 真实 PostgreSQL 全量别名
 deno task test:perf       # 显式性能基准
+deno task test:baseline --suite core --repeat 3   # 性能基线（墙钟 + 阶段计时 + JUnit）
+deno run -A scripts/reset-bench.ts --repeat 30 --label after  # reset 采样（需 TEST_*）
 deno task test:watch      # 长驻 watch，退出时清理 run 资源
 
 # noj-llm-gateway
@@ -58,16 +63,24 @@ NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 
 # 跨模块 E2E
 cd noj-tests
-deno task test                    # 全量（需完整评测栈）
+deno task test:logic              # 零依赖 helper/启动器/分组规划单测
+deno task test:api                # API、管道与队列 E2E（排除 e2e/browser）
 deno task test:domain identity    # 按 Domain 跑 E2E
 deno task test:domain cross-domain # 跨域 E2E
+deno task test:browser            # Browser E2E（每 journey 一个 Chromium）
+deno task env:up --session <name> --fresh    # 本地隔离会话（独立 project/端口/网络）
+deno task test:browser --session <name> --profile
+deno task env:down --session <name>
+deno task test:baseline --suite browser --repeat 3  # Browser 性能基线
 ```
 
 ## 约定
 
 - 必须使用 `deno task` 封装命令运行 Deno 测试，不要手拼 `deno test`。
-- 按 Domain 测试必须使用 `deno task test:domain <domain>` 或 `scripts/test-shared.sh`，禁止手拼 `deno test` 绕过脚本。
-- noj-tests E2E 文件按 Domain 目录组织：`e2e/<domain>/`、`e2e/cross-domain/`、`e2e/browser/`。
+- 按 Domain 测试必须使用 `deno task test:domain <domain>` 或
+  `scripts/test-shared.sh`，禁止手拼 `deno test` 绕过脚本。
+- noj-tests E2E 文件按 Domain
+  目录组织：`e2e/<domain>/`、`e2e/cross-domain/`、`e2e/browser/`。
 - noj-core DB 测试由 `scripts/test-launcher.ts` 创建独立模板库、执行正式迁移和
   显式 seed，再为每个入口克隆本 run 数据库；缺少
   `TEST_PG_ADMIN_URL`、`TEST_REDIS_URL`、`TEST_STORAGE_ROOT` 或 `JWT_SECRET`
@@ -75,12 +88,13 @@ deno task test:domain cross-domain # 跨域 E2E
 - `TEST_REDIS_URL` 是模板迁移与显式 seed 使用的 bootstrap endpoint；启动器先检查
   它可用，再为每个 run/shard 创建带 owner label 的独立 `redis:7-alpine` 容器供
   child 测试使用。测试进程不对共享 Redis 执行 `FLUSHDB`，也不依赖固定 DB slot。
-  finally 只在 container ID 与
-  owner/name/created-by 标签精确匹配时删除本 run 创建的容器。对象存储测试目录
-  位于 `TEST_STORAGE_ROOT/<run-prefix>/`；父目录可由启动器递归创建，run 目录使用
+  finally 只在 container ID 与 owner/name/created-by 标签精确匹配时删除本 run
+  创建的容器。对象存储测试目录 位于
+  `TEST_STORAGE_ROOT/<run-prefix>/`；父目录可由启动器递归创建，run 目录使用
   独占创建，预存在时直接失败，finally 只清理本次创建的 run 目录，不删除父目录。
 - 启动器要求 `docker` 可执行文件及 `redis:7-alpine` 镜像可用；Docker 或显式
-  `TEST_REDIS_URL` 不可用时直接失败，不降级到 fake Redis、开发 `.env` 或静默跳过。
+  `TEST_REDIS_URL` 不可用时直接失败，不降级到 fake Redis、开发 `.env`
+  或静默跳过。
 - 分片不共享 PostgreSQL schema 或 truncate；每个分片从同一正式迁移/seed 模板
   克隆独立数据库，helper 通过 `NOJ_TEST_DATABASE_OWNED=1`、前缀、精确库名及
   `current_database()` 复核清理范围。
@@ -89,21 +103,63 @@ deno task test:domain cross-domain # 跨域 E2E
 - judge E2E 使用 `#[serial_test::serial]` 串行执行，避免 Docker 资源竞争。
 - 资源测试必须自建自清，失败/重试/超时也要清理。
 
+## 计时、运行清单与性能报告
+
+正式入口（Core 启动器、noj-tests 启动器）在开启 `--profile` 时记录阶段计时，
+并在运行结束时写出可归因的产物：
+
+| 产物     | 位置                                                                                              | 内容                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 阶段计时 | `test-results/performance/<runId>/*.jsonl`（Core 为 `noj-core/.test-cache/performance/<runId>/`） | 每个测试 isolate 独立文件：phase、durationMs、success、file、caseName、count                    |
+| 运行清单 | 同目录 `manifest.json`                                                                            | 命令、提交 SHA、Deno 版本、Runner、并发度、发现/选择/执行文件、JUnit 路径、Judge canary、退出码 |
+| JUnit    | `test-results/junit/<runId>/junit[-shard].xml`                                                    | Deno reporter 生成，汇总通过/失败/跳过                                                          |
+| 分片计划 | 同目录 `shard-plan.json` / `browser-plan.json`                                                    | 文件级分配、基线来源、未知文件估值                                                              |
+
+- 汇总：`deno run -A scripts/test-performance-report.ts <timingDir> [report.md]`，
+  同时区分「测试变少」「单用例变快」「并行度增加」。
+- 计时默认关闭；只有 `--profile`（启动器转换为 `NOJ_TEST_PROFILE=1`）才落盘。
+  记录禁止包含 token、密码、连接串或请求内容。
+- noj-tests 启动器在需要 Judge 的运行中只执行一次 canary，并把
+  `{runId, submissionId, attemptId, result}` 写入清单；子测试只读取并校验清单，
+  Judge 不可用或清单 run 不匹配时直接失败，不再「探测失败后静默跳过」。
+- 本地 E2E 使用 `scripts/e2e/session.ts` 管理的隔离会话：Compose project、
+  evaluator 网络与主机端口均按 session/run 派生，清单与私有 env 位于
+  `noj-tests/test-results/e2e-sessions/`；不再依赖固定容器名或全局
+  `/tmp/noj-e2e-env.sh`。UI/支持包缓存以输入 fingerprint
+  与产物摘要同时命中才复用。
+- 轮询统一使用 `noj-tests/fixtures/wait.ts` 的 `waitUntil()`：首次立即读取、
+  100/250/500/1000ms 退避后每秒、绝对截止时间、单次请求 ≤5s、请求/解析/等待计入
+  预算；不要再新增固定 `sleep` + 重试循环。
+
 ## 覆盖率报告与基线
 
-- 覆盖率报告：`deno run -A scripts/coverage-report.ts --report`，输出到 `dev-docs/engineering/test-coverage.md`（生成物，不入库）。
-  加 `--check` 时各模块 `test:coverage` 自带的 `--threshold` 生效（当前 noj-llm-gateway ≥ 54%、noj-ui ≥ 60%）；
-  CI 的 Coverage Check job 即以 `--report --check` 运行，属于**硬门禁**。noj-core / noj-judge 的覆盖率由各自 CI job 采集，不在该报告聚合范围内。
-- 静默跳过清单：`deno run -A scripts/silent-skip-report.ts`，输出到 `dev-docs/engineering/test-silent-skips.md`。
-- 慢测试基线：`deno run -A scripts/test-baseline.ts`，输出到 `dev-docs/engineering/test-baseline.md`（生成物，不入库）。
+- 覆盖率报告：`deno run -A scripts/coverage-report.ts --report`，输出到
+  `dev-docs/engineering/test-coverage.md`（生成物，不入库）。 加 `--check`
+  时各模块 `test:coverage` 自带的 `--threshold` 生效（当前 noj-llm-gateway ≥
+  54%、noj-ui ≥ 60%）； CI 的 Coverage Check job 即以 `--report --check`
+  运行，属于**硬门禁**。noj-core / noj-judge 的覆盖率由各自 CI job
+  采集，不在该报告聚合范围内。
+- 静默跳过清单：`deno run -A scripts/silent-skip-report.ts`，输出到
+  `dev-docs/engineering/test-silent-skips.md`。
+- 本地实测证据：`dev-docs/engineering/test-performance-local.md`（单次本地运行，
+  不是 CI 正式基线）；正式基线需在固定 Deno 版本与 Runner 上重复三次。
+- 慢测试基线：`deno task test:baseline --suite <core|browser|api> --repeat 3`（各模块
+  task 封装）， 默认输出
+  `dev-docs/engineering/test-performance-baseline.md`（生成物，不入库）；
+  `--suite legacy` 保留旧的 smoke 基线。文件级耗时基线与分片调度使用同一份数据。
 
 ## 已落地的配套门禁
 
-- 集中 gate runner：`scripts/check-all.ts`（本地）/ `scripts/check-ci.ts`（CI），闸门清单见 `scripts/gate-list.ts`。
-- 入口存在性检查：`scripts/smoke-entrypoints.ts`（CI 中运行；仅校验入口源文件与已构建产物存在，不启动进程）。
-- LLM 回放测试：`cd noj-llm-gateway && deno task test:snapshot`（录制用 `test:snapshot:record`）。
+- 集中 gate runner：`scripts/check-all.ts`（本地）/
+  `scripts/check-ci.ts`（CI），闸门清单见 `scripts/gate-list.ts`。
+- 入口存在性检查：`scripts/smoke-entrypoints.ts`（CI
+  中运行；仅校验入口源文件与已构建产物存在，不启动进程）。
+- LLM 回放测试：`cd noj-llm-gateway && deno task test:snapshot`（录制用
+  `test:snapshot:record`）。
 
 ## 后续计划
 
-- 真实入口 smoke：启动 judge release binary / Docker 镜像、core `deno compile` 产物并探活。
-- 提高覆盖率阈值：目标 noj-core ≥ 75%、noj-judge ≥ 80%、noj-llm-gateway ≥ 80%、noj-ui 关键 composables ≥ 60%。
+- 真实入口 smoke：启动 judge release binary / Docker 镜像、core `deno compile`
+  产物并探活。
+- 提高覆盖率阈值：目标 noj-core ≥ 75%、noj-judge ≥ 80%、noj-llm-gateway ≥
+  80%、noj-ui 关键 composables ≥ 60%。

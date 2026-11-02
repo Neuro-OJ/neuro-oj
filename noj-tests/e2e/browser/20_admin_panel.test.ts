@@ -18,12 +18,7 @@
  * 启用：NOJ_RUN_BROWSER_E2E=1 deno task test:browser
  */
 
-import {
-  BROWSER_E2E,
-  launchBrowser,
-  teardownBrowser,
-  UI_URL,
-} from "./browser.ts";
+import { BROWSER_E2E, UI_URL, withBrowserJourney } from "./browser.ts";
 import { getAdminToken } from "../helper.ts";
 
 type Page = import("npm:playwright@1.62.1").Page;
@@ -92,10 +87,8 @@ Deno.test("[ui/browser] 管理后台：刷新 /admin/* 保持登录且列表渲�
   // 归一化 admin 密码（首次走强制改密），使 UI 登录可用
   await getAdminToken();
 
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    const { page } = session;
+  await withBrowserJourney("admin-panel", async (journey) => {
+    const { page } = await journey.newSession("admin");
     const pageErrors = collectPageErrors(page);
     await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
@@ -131,10 +124,7 @@ Deno.test("[ui/browser] 管理后台：刷新 /admin/* 保持登录且列表渲�
     if (pageErrors.length > 0) {
       throw new Error(`页面出现未捕获异常：${pageErrors.join(" | ")}`);
     }
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "admin-panel");
-  }
+  });
 });
 
 Deno.test("[ui/browser] 管理后台：审计日志渲染含 null 管理员的行", async () => {
@@ -144,10 +134,8 @@ Deno.test("[ui/browser] 管理后台：审计日志渲染含 null 管理员的�
   }
   await getAdminToken();
 
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    const { page } = session;
+  await withBrowserJourney("admin-audit-logs", async (journey) => {
+    const { page } = await journey.newSession("admin");
     const pageErrors = collectPageErrors(page);
     await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
@@ -159,8 +147,5 @@ Deno.test("[ui/browser] 管理后台：审计日志渲染含 null 管理员的�
     if (pageErrors.length > 0) {
       throw new Error(`审计日志页出现未捕获异常：${pageErrors.join(" | ")}`);
     }
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "admin-audit-logs");
-  }
+  });
 });

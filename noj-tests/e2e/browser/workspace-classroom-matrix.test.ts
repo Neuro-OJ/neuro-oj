@@ -7,9 +7,8 @@ import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage as navigate,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 import {
   classroomJourneyAccount,
@@ -161,25 +160,27 @@ Deno.test({
     const suffix = Date.now().toString(36),
       slug = `classgov-${suffix}`,
       title = `学情跟进 ${suffix}`;
-    const admin = await getAdminToken(),
-      sessions = await Promise.all(
-        Array.from({ length: 4 }, () => launchBrowser()),
-      );
-    const [coach, successor, assistant, learner] = sessions;
-    let failed = true,
-      classId = "",
-      taskId = "",
-      remediationId = "",
-      number = 0,
-      originalId = "";
-    let teacher: ClassroomJourneyAccount;
-    const pupils: ClassroomJourneyAccount[] = [];
-    const base = () => `/domains/${slug}/classrooms/${classId}`;
-    const assignment = (id = taskId) => `/domains/${slug}/assignments/${id}`;
-    async function step(name: string, action: () => Promise<void>) {
-      assertEquals(await t.step(name, action), true, name);
-    }
-    try {
+    await withBrowserJourney("workspace-classroom-matrix", async (journey) => {
+      const admin = await getAdminToken(),
+        // 四角色共用一个 Chromium，各自独立上下文；只付一次进程启动成本。
+        sessions = await Promise.all(
+          ["coach", "successor", "assistant", "learner"].map((actor) =>
+            journey.newSession(actor)
+          ),
+        );
+      const [coach, successor, assistant, learner] = sessions;
+      let classId = "",
+        taskId = "",
+        remediationId = "",
+        number = 0,
+        originalId = "";
+      let teacher: ClassroomJourneyAccount;
+      const pupils: ClassroomJourneyAccount[] = [];
+      const base = () => `/domains/${slug}/classrooms/${classId}`;
+      const assignment = (id = taskId) => `/domains/${slug}/assignments/${id}`;
+      async function step(name: string, action: () => Promise<void>) {
+        assertEquals(await t.step(name, action), true, name);
+      }
       await step(
         "准备40个已经存在的普通账号、独立教育域与无域治理权限的教练",
         async () => {
@@ -573,17 +574,6 @@ Deno.test({
           ).toBeVisible();
         },
       );
-      failed = false;
-    } finally {
-      await Promise.all(
-        sessions.map((session, index) =>
-          teardownBrowser(
-            session,
-            failed,
-            `workspace-classroom-matrix-${index}`,
-          )
-        ),
-      );
-    }
+    });
   },
 });

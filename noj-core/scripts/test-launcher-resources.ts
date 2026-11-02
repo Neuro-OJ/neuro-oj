@@ -141,10 +141,16 @@ export function createRunPlan(
     crypto.randomUUID().replaceAll("-", "").slice(0, 12)
   }`,
 ): RunPlan {
-  if (!/^[A-Za-z0-9_]{4,32}$/.test(runId)) {
-    throw new Error("NOJ_TEST_RUN_ID 只能包含字母、数字和下划线，长度 4-32");
+  // runId 是报告关联标识（P0 `NOJ_TEST_RUN_ID`），允许连字符以便
+  // `scripts/test-baseline.ts` 传入 `baseline-<ts>-<i>`；数据库前缀必须是
+  // 合法标识符，因此单独把非标识符字符替换为下划线。
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(runId)) {
+    throw new Error(
+      "NOJ_TEST_RUN_ID 只能包含字母、数字、下划线和连字符，长度 4-32",
+    );
   }
-  const prefix = assertDatabaseIdentifier(`noj_test_${runId}`);
+  const databaseRunId = runId.replaceAll("-", "_");
+  const prefix = assertDatabaseIdentifier(`noj_test_${databaseRunId}`);
   const templateDatabase = assertDatabaseIdentifier(`${prefix}_template`);
   const root = storageRoot.replace(/\/+$/, "");
   if (!root || root === "/") {

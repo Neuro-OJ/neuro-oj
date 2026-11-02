@@ -7,9 +7,8 @@ import { api, getAdminToken, registerUser, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage as navigatePage,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 
 type Page = import("npm:playwright@1.62.1").Page;
@@ -383,498 +382,513 @@ Deno.test({
           : undefined,
       );
     }
-    const learner = await launchBrowser(),
-      friend = await launchBrowser(),
-      organizer = await launchBrowser();
-    let failed = true, privateA = "", privateB = "", contestId = "";
-    async function step(name: string, action: () => Promise<void>) {
-      assertEquals(await t.step(name, action), true, name);
-    }
-    try {
-      for (const [key, value] of Object.entries(communityPolicy)) {
-        await setPolicy(key, value);
+    await withBrowserJourney("workspace-public-mixed", async (journey) => {
+      const learner = await journey.newSession("learner"),
+        friend = await journey.newSession("peer"),
+        organizer = await journey.newSession("host");
+      let privateA = "", privateB = "", contestId = "";
+      async function step(name: string, action: () => Promise<void>) {
+        assertEquals(await t.step(name, action), true, name);
       }
-      await login(learner.page, actor);
-      await login(friend.page, peer);
-      await login(organizer.page, host);
-      await step("Public普通成员从默认题单入口实际练习", async () => {
-        await gotoPage(learner.page, "/trainings");
-        await learner.page.waitForURL((url) =>
-          url.pathname === "/d/main/trainings"
-        );
-        await learner.page.getByPlaceholder("搜索题单名称").fill(trainingTitle);
-        await learner.page.getByRole("button", { name: "搜索", exact: true })
-          .click();
-        // 当前 Domain 题单列表由整张 NuxtLink 卡片承载，不再渲染旧的
-        // “查看题单”子链接；以卡片内标题定位仍保持题单唯一性。
-        await learner.page.getByRole("link").filter({
-          has: learner.page.getByRole("heading", {
-            name: trainingTitle,
-            exact: true,
-          }),
-        }).click();
-        await learner.page.waitForURL((url) =>
-          url.pathname === `/d/main/trainings/${training.data.id}`
-        );
-        // 题单条目当前直接使用“继续作答/再次练习”进入题目页；旧的
-        // “在当前域作答”按钮已随 Domain 题单重构移除。
-        await learner.page.getByRole("link", { name: /(?:继续|再次)作答/ })
-          .click();
-        await learner.page.waitForURL((url) =>
-          url.pathname === `/d/main/problems/${problem.number}`
-        );
-        const result = await handIn(
-          learner.page,
-          `/domains/main/problems/${problem.number}/objective-submissions`,
-          "正确选项",
-        );
-        assertEquals(result.data.score, 100);
-        await expect(
-          learner.page.getByText("本次成绩：100 分", { exact: true }),
-        ).toBeVisible();
-      });
-      await step("Public普通成员发布讨论、另一成员评论", async () => {
-        const id = await post(
-          learner.page,
-          "main",
-          names.main,
-          boardNames.main,
-        );
-        await gotoPage(friend.page, `/d/main/community/posts/${id}`);
-        await friend.page.getByPlaceholder(/写下你的想法/).fill(
-          `公共回复 ${suffix}`,
-        );
-        await write(
-          friend.page,
-          "POST",
-          `/domains/main/community/posts/${id}/comments`,
-          () =>
-            friend.page.getByRole("button", { name: "发送", exact: true })
-              .click(),
-        );
-        await expect(
-          friend.page.getByText(`公共回复 ${suffix}`, { exact: true }),
-        ).toBeVisible();
-      });
-      await step(
-        "Public两成员Web报名、各一次客观题交卷，赛时本人榜",
-        async () => {
-          const now = Date.now();
-          const contest = await fixture<{ data: { id: string } }>(
-            "POST",
-            "/domains/main/contests",
-            host.token,
-            {
-              title: `Web短比赛 ${suffix}`,
-              type: "kaggle",
-              start_time: new Date(now - 1000).toISOString(),
-              end_time: new Date(now + 45000).toISOString(),
-              affect_global_ranking: false,
-              ranking_visibility: "participants",
-              config: { scoreboard_scope: "self" },
-              problems: [{
-                problem_id: problem.problem_id,
-                sort_order: 0,
-                label: "A",
-                score: 10000,
-              }],
-            },
+      try {
+        for (const [key, value] of Object.entries(communityPolicy)) {
+          await setPolicy(key, value);
+        }
+        await login(learner.page, actor);
+        await login(friend.page, peer);
+        await login(organizer.page, host);
+        await step("Public普通成员从默认题单入口实际练习", async () => {
+          await gotoPage(learner.page, "/trainings");
+          await learner.page.waitForURL((url) =>
+            url.pathname === "/d/main/trainings"
           );
-          contestId = contest.data.id;
-          for (
-            const [session, choice, score] of [[learner, "正确选项", 100], [
-              friend,
-              "待改进选项",
-              0,
-            ]] as const
-          ) {
-            await gotoPage(session.page, `/d/main/contests/${contestId}`);
-            await write(
-              session.page,
+          await learner.page.getByPlaceholder("搜索题单名称").fill(
+            trainingTitle,
+          );
+          await learner.page.getByRole("button", { name: "搜索", exact: true })
+            .click();
+          // 当前 Domain 题单列表由整张 NuxtLink 卡片承载，不再渲染旧的
+          // “查看题单”子链接；以卡片内标题定位仍保持题单唯一性。
+          await learner.page.getByRole("link").filter({
+            has: learner.page.getByRole("heading", {
+              name: trainingTitle,
+              exact: true,
+            }),
+          }).click();
+          await learner.page.waitForURL((url) =>
+            url.pathname === `/d/main/trainings/${training.data.id}`
+          );
+          // 题单条目当前直接使用“继续作答/再次练习”进入题目页；旧的
+          // “在当前域作答”按钮已随 Domain 题单重构移除。
+          await learner.page.getByRole("link", { name: /(?:继续|再次)作答/ })
+            .click();
+          await learner.page.waitForURL((url) =>
+            url.pathname === `/d/main/problems/${problem.number}`
+          );
+          const result = await handIn(
+            learner.page,
+            `/domains/main/problems/${problem.number}/objective-submissions`,
+            "正确选项",
+          );
+          assertEquals(result.data.score, 100);
+          await expect(
+            learner.page.getByText("本次成绩：100 分", { exact: true }),
+          ).toBeVisible();
+        });
+        await step("Public普通成员发布讨论、另一成员评论", async () => {
+          const id = await post(
+            learner.page,
+            "main",
+            names.main,
+            boardNames.main,
+          );
+          await gotoPage(friend.page, `/d/main/community/posts/${id}`);
+          await friend.page.getByPlaceholder(/写下你的想法/).fill(
+            `公共回复 ${suffix}`,
+          );
+          await write(
+            friend.page,
+            "POST",
+            `/domains/main/community/posts/${id}/comments`,
+            () =>
+              friend.page.getByRole("button", { name: "发送", exact: true })
+                .click(),
+          );
+          await expect(
+            friend.page.getByText(`公共回复 ${suffix}`, { exact: true }),
+          ).toBeVisible();
+        });
+        await step(
+          "Public两成员Web报名、各一次客观题交卷，赛时本人榜",
+          async () => {
+            const now = Date.now();
+            const contest = await fixture<{ data: { id: string } }>(
               "POST",
-              `/domains/main/contests/${contestId}/register`,
+              "/domains/main/contests",
+              host.token,
+              {
+                title: `Web短比赛 ${suffix}`,
+                type: "kaggle",
+                start_time: new Date(now - 1000).toISOString(),
+                end_time: new Date(now + 45000).toISOString(),
+                affect_global_ranking: false,
+                ranking_visibility: "participants",
+                config: { scoreboard_scope: "self" },
+                problems: [{
+                  problem_id: problem.problem_id,
+                  sort_order: 0,
+                  label: "A",
+                  score: 10000,
+                }],
+              },
+            );
+            contestId = contest.data.id;
+            for (
+              const [session, choice, score] of [[learner, "正确选项", 100], [
+                friend,
+                "待改进选项",
+                0,
+              ]] as const
+            ) {
+              await gotoPage(session.page, `/d/main/contests/${contestId}`);
+              await write(
+                session.page,
+                "POST",
+                `/domains/main/contests/${contestId}/register`,
+                () =>
+                  session.page.locator("#contest-register").getByRole(
+                    "button",
+                    {
+                      name: "报名参赛",
+                      exact: true,
+                    },
+                  ).click(),
+              );
+              // 按**赛题行链接的 href** 定位，不按可访问名。
+              //
+              // 行内文本会随界面演进变化（标签徽标、固定版本、分值与本人状态都会进入
+              // 可访问名），此前写死 `A · 共同源题 …` + `exact: true` 与页面改版后的
+              // DOM 不再匹配，红的是选择器而不是业务。href 在同一路径契约下稳定。
+              await session.page.locator(
+                `a[href*="/contests/${contestId}/problems/A"]`,
+              ).first().click();
+              const result = await handIn(
+                session.page,
+                `/domains/main/contests/${contestId}/problems/A/objective-submissions`,
+                choice,
+                "一次正式交卷",
+              );
+              assertEquals(result.data.score, score);
+              await expect(
+                session.page.getByText(`本次原始总分：${score} 分`, {
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(
+                session.page.getByRole("button", {
+                  name: "一次正式交卷",
+                  exact: true,
+                }),
+              ).toBeDisabled();
+            }
+            await gotoPage(
+              learner.page,
+              `/d/main/contests/${contestId}/ranking`,
+            );
+            const table = learner.page.getByRole("table");
+            await expect(table.getByText(actor.username, { exact: true }))
+              .toBeVisible();
+            await expect(table.getByText(peer.username, { exact: true }))
+              .toHaveCount(0);
+            await expect(table.getByText("100.00", { exact: true }).first())
+              .toBeVisible();
+          },
+        );
+        await step(
+          "比赛按真实时间结束，组织者Web发布正式榜，普通成员读取授权完整榜",
+          async () => {
+            await expect.poll(async () => {
+              const response = await learner.page.request.get(
+                `${UI_URL}/api/v1/domains/main/contests/${contestId}`,
+              );
+              assertEquals(response.status(), 200);
+              return (await response.json()).data.status;
+            }, { timeout: 60000, intervals: [1000] }).toBe("ended");
+            await gotoPage(
+              organizer.page,
+              `/d/main/contests/${contestId}/manage`,
+            );
+            await organizer.page.getByRole("textbox", {
+              name: "正式成绩发布说明",
+            }).fill("真实客观题交卷完成后发布。");
+            await write(
+              organizer.page,
+              "POST",
+              `/domains/main/contests/${contestId}/publish-ranking`,
               () =>
-                session.page.locator("#contest-register").getByRole("button", {
-                  name: "报名参赛",
+                organizer.page.getByRole("button", {
+                  name: "发布新版本正式成绩",
                   exact: true,
                 }).click(),
             );
-            // 按**赛题行链接的 href** 定位，不按可访问名。
-            //
-            // 行内文本会随界面演进变化（标签徽标、固定版本、分值与本人状态都会进入
-            // 可访问名），此前写死 `A · 共同源题 …` + `exact: true` 与页面改版后的
-            // DOM 不再匹配，红的是选择器而不是业务。href 在同一路径契约下稳定。
-            await session.page.locator(
-              `a[href*="/contests/${contestId}/problems/A"]`,
-            ).first().click();
-            const result = await handIn(
-              session.page,
-              `/domains/main/contests/${contestId}/problems/A/objective-submissions`,
-              choice,
-              "一次正式交卷",
+            await gotoPage(
+              learner.page,
+              `/d/main/contests/${contestId}/ranking`,
             );
-            assertEquals(result.data.score, score);
+            const official = learner.page.waitForResponse((response) =>
+              new URL(response.url()).pathname ===
+                `/api/v1/domains/main/contests/${contestId}/final-ranking`
+            );
+            await learner.page.getByRole("button", {
+              name: "正式成绩",
+              exact: true,
+            }).click();
+            const response = await official;
+            assertEquals(response.status(), 200);
+            assertEquals((await response.json()).data.length, 2);
+            await expect(learner.page.getByText(/正式成绩 V1/)).toBeVisible();
             await expect(
-              session.page.getByText(`本次原始总分：${score} 分`, {
+              learner.page.getByRole("table").getByText(peer.username, {
                 exact: true,
               }),
             ).toBeVisible();
-            await expect(
-              session.page.getByRole("button", {
-                name: "一次正式交卷",
-                exact: true,
-              }),
-            ).toBeDisabled();
-          }
-          await gotoPage(learner.page, `/d/main/contests/${contestId}/ranking`);
-          const table = learner.page.getByRole("table");
-          await expect(table.getByText(actor.username, { exact: true }))
-            .toBeVisible();
-          await expect(table.getByText(peer.username, { exact: true }))
-            .toHaveCount(0);
-          await expect(table.getByText("100.00", { exact: true }).first())
-            .toBeVisible();
-        },
-      );
-      await step(
-        "比赛按真实时间结束，组织者Web发布正式榜，普通成员读取授权完整榜",
-        async () => {
-          await expect.poll(async () => {
-            const response = await learner.page.request.get(
-              `${UI_URL}/api/v1/domains/main/contests/${contestId}`,
-            );
-            assertEquals(response.status(), 200);
-            return (await response.json()).data.status;
-          }, { timeout: 60000, intervals: [1000] }).toBe("ended");
-          await gotoPage(
-            organizer.page,
-            `/d/main/contests/${contestId}/manage`,
-          );
-          await organizer.page.getByRole("textbox", {
-            name: "正式成绩发布说明",
-          }).fill("真实客观题交卷完成后发布。");
-          await write(
-            organizer.page,
-            "POST",
-            `/domains/main/contests/${contestId}/publish-ranking`,
-            () =>
-              organizer.page.getByRole("button", {
-                name: "发布新版本正式成绩",
-                exact: true,
-              }).click(),
-          );
-          await gotoPage(learner.page, `/d/main/contests/${contestId}/ranking`);
-          const official = learner.page.waitForResponse((response) =>
-            new URL(response.url()).pathname ===
-              `/api/v1/domains/main/contests/${contestId}/final-ranking`
-          );
-          await learner.page.getByRole("button", {
-            name: "正式成绩",
-            exact: true,
-          }).click();
-          const response = await official;
-          assertEquals(response.status(), 200);
-          assertEquals((await response.json()).data.length, 2);
-          await expect(learner.page.getByText(/正式成绩 V1/)).toBeVisible();
-          await expect(
-            learner.page.getByRole("table").getByText(peer.username, {
-              exact: true,
-            }),
-          ).toBeVisible();
-        },
-      );
-      await step(
-        "Mixed同一账号切换为A班学生和B班教练，导航能力随域变化",
-        async () => {
-          await learner.page.getByRole("button", {
-            name: "用户菜单",
-            exact: true,
-          }).click();
-          await learner.page.getByRole("menuitem", {
-            name: "切换域",
-            exact: true,
-          }).hover();
-          await learner.page.getByRole("menuitem", {
-            name: `学校A ${suffix} · ${schoolA}`,
-            exact: true,
-          }).click();
-          await learner.page.waitForURL((url) =>
-            url.pathname === `/d/${schoolA}`
-          );
-          await gotoPage(
-            learner.page,
-            `/d/${schoolA}/classrooms/${roomA.data.id}`,
-          );
-          await expect(
-            learner.page.getByRole("link", { name: "创建作业", exact: true }),
-          ).toHaveCount(0);
-          await expect(learner.page.getByTestId("domain-identity")).toHaveText(
-            `${actor.username}@${schoolA}`,
-          );
-          await learner.page.getByRole("button", {
-            name: "用户菜单",
-            exact: true,
-          }).click();
-          await learner.page.getByRole("menuitem", {
-            name: "切换域",
-            exact: true,
-          }).hover();
-          await learner.page.getByRole("menuitem", {
-            name: `学校B ${suffix} · ${schoolB}`,
-            exact: true,
-          }).click();
-          await learner.page.waitForURL((url) =>
-            url.pathname === `/d/${schoolB}`
-          );
-          await gotoPage(
-            learner.page,
-            `/d/${schoolB}/classrooms/${roomB.data.id}`,
-          );
-          await expect(
-            learner.page.getByRole("link", { name: "创建作业", exact: true }),
-          ).toBeVisible();
-          // 导航入口随视口宽度在"主导航"与"更多"下拉之间移动，标签也已从
-          // 「班级研练」收敛为「教学」（页面标题仍是"班级研练中心"）。这里断言
-          // **能力**而不是具体位置：本域教师必须能通过导航进入班级研练中心。
-          const classroomsPath = `/d/${schoolB}/classrooms`;
-          const nav = learner.page.getByRole("navigation", {
-            name: "空间导航",
-          });
-          const entry = nav.getByRole("link", { name: "教学", exact: true });
-          if (await entry.count()) {
-            await entry.first().click();
-          } else {
+          },
+        );
+        await step(
+          "Mixed同一账号切换为A班学生和B班教练，导航能力随域变化",
+          async () => {
             await learner.page.getByRole("button", {
-              name: "更多",
+              name: "用户菜单",
               exact: true,
             }).click();
             await learner.page.getByRole("menuitem", {
-              name: "教学",
+              name: "切换域",
+              exact: true,
+            }).hover();
+            await learner.page.getByRole("menuitem", {
+              name: `学校A ${suffix} · ${schoolA}`,
               exact: true,
             }).click();
-          }
-          await learner.page.waitForURL((url) =>
-            url.pathname === classroomsPath
-          );
-        },
-      );
-      await step(
-        "两学校Web独立副本题显示本域题号，双标签页交卷及历史归属隔离",
-        async () => {
-          const second = await learner.context.newPage();
-          await gotoPage(learner.page, `/d/${schoolA}/problems/${schoolRef}`);
-          await gotoPage(second, `/d/${schoolB}/problems/${schoolRef}`);
-          for (const page of [learner.page, second]) {
+            await learner.page.waitForURL((url) =>
+              url.pathname === `/d/${schoolA}`
+            );
+            await gotoPage(
+              learner.page,
+              `/d/${schoolA}/classrooms/${roomA.data.id}`,
+            );
             await expect(
-              page.getByRole("heading", {
-                name: `共同源题 ${suffix}`,
+              learner.page.getByRole("link", { name: "创建作业", exact: true }),
+            ).toHaveCount(0);
+            await expect(learner.page.getByTestId("domain-identity"))
+              .toHaveText(
+                `${actor.username}@${schoolA}`,
+              );
+            await learner.page.getByRole("button", {
+              name: "用户菜单",
+              exact: true,
+            }).click();
+            await learner.page.getByRole("menuitem", {
+              name: "切换域",
+              exact: true,
+            }).hover();
+            await learner.page.getByRole("menuitem", {
+              name: `学校B ${suffix} · ${schoolB}`,
+              exact: true,
+            }).click();
+            await learner.page.waitForURL((url) =>
+              url.pathname === `/d/${schoolB}`
+            );
+            await gotoPage(
+              learner.page,
+              `/d/${schoolB}/classrooms/${roomB.data.id}`,
+            );
+            await expect(
+              learner.page.getByRole("link", { name: "创建作业", exact: true }),
+            ).toBeVisible();
+            // 导航入口随视口宽度在"主导航"与"更多"下拉之间移动，标签也已从
+            // 「班级研练」收敛为「教学」（页面标题仍是"班级研练中心"）。这里断言
+            // **能力**而不是具体位置：本域教师必须能通过导航进入班级研练中心。
+            const classroomsPath = `/d/${schoolB}/classrooms`;
+            const nav = learner.page.getByRole("navigation", {
+              name: "空间导航",
+            });
+            const entry = nav.getByRole("link", { name: "教学", exact: true });
+            if (await entry.count()) {
+              await entry.first().click();
+            } else {
+              await learner.page.getByRole("button", {
+                name: "更多",
+                exact: true,
+              }).click();
+              await learner.page.getByRole("menuitem", {
+                name: "教学",
+                exact: true,
+              }).click();
+            }
+            await learner.page.waitForURL((url) =>
+              url.pathname === classroomsPath
+            );
+          },
+        );
+        await step(
+          "两学校Web独立副本题显示本域题号，双标签页交卷及历史归属隔离",
+          async () => {
+            const second = await learner.context.newPage();
+            await gotoPage(learner.page, `/d/${schoolA}/problems/${schoolRef}`);
+            await gotoPage(second, `/d/${schoolB}/problems/${schoolRef}`);
+            for (const page of [learner.page, second]) {
+              await expect(
+                page.getByRole("heading", {
+                  name: `共同源题 ${suffix}`,
+                  exact: true,
+                }),
+              ).toBeVisible();
+              // 题号同时出现在面包屑、ProblemHeader 徽章和右侧元信息中；
+              // 这里锁定包含当前题目标题的 ProblemHeader，避免全局严格定位歧义。
+              const problemHeader = page.locator("main header").filter({
+                has: page.getByRole("heading", {
+                  name: `共同源题 ${suffix}`,
+                  exact: true,
+                }),
+              });
+              await expect(problemHeader.getByText(schoolRef, { exact: true }))
+                .toBeVisible();
+            }
+            const first = await handIn(
+              learner.page,
+              `/domains/${schoolA}/problems/${schoolRef}/objective-submissions`,
+              "待改进选项",
+            );
+            const next = await handIn(
+              second,
+              `/domains/${schoolB}/problems/${schoolRef}/objective-submissions`,
+              "正确选项",
+            );
+            assertEquals(first.data.score, 0);
+            assertEquals(next.data.score, 100);
+            privateA = first.data.submission_id;
+            privateB = next.data.submission_id;
+            assertNotEquals(privateA, privateB);
+            await expect(
+              learner.page.getByText("本次成绩：0 分", { exact: true }),
+            ).toBeVisible();
+            await expect(second.getByText("本次成绩：100 分", { exact: true }))
+              .toBeVisible();
+            assertEquals(
+              new URL(learner.page.url()).pathname,
+              `/d/${schoolA}/problems/${schoolRef}`,
+            );
+            assertEquals(
+              new URL(second.url()).pathname,
+              `/d/${schoolB}/problems/${schoolRef}`,
+            );
+            const wrongDomain = await second.request.get(
+              `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateA}`,
+            );
+            assertEquals(wrongDomain.status(), 404);
+            const outsider = await friend.page.request.get(
+              `${UI_URL}/api/v1/domains/${schoolA}/objective-submissions/${privateA}`,
+            );
+            assertEquals(outsider.status(), 404);
+            const otherStudent = await friend.page.request.get(
+              `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateB}`,
+            );
+            assertEquals(otherStudent.status(), 200);
+            const peerSummary = (await otherStudent.json()).data;
+            assertEquals(peerSummary.can_view_answers, false);
+            assertEquals(peerSummary.can_view_source, false);
+            assertEquals(peerSummary.answers, undefined);
+            assertEquals(peerSummary.code, undefined);
+            assertEquals(peerSummary.assignment_origin, null);
+            await gotoPage(learner.page, "/d/main/objective-submissions");
+            await expect(learner.page.locator(`a[href$="/${privateA}"]`))
+              .toHaveCount(0);
+            await expect(learner.page.locator(`a[href$="/${privateB}"]`))
+              .toHaveCount(0);
+            await gotoPage(learner.page, `/d/${schoolA}/objective-submissions`);
+            await expect(
+              learner.page.locator(
+                `a[href="/d/${schoolA}/objective-submissions/${privateA}"]`,
+              ),
+            ).toBeVisible();
+            await expect(learner.page.locator(`a[href$="/${privateB}"]`))
+              .toHaveCount(0);
+            await second.close();
+          },
+        );
+        await step(
+          "学校社区分别发布，B学生可读本校、不能读A校或错误域帖子",
+          async () => {
+            const postA = await post(
+              learner.page,
+              schoolA,
+              names.a,
+              boardNames[schoolA],
+            );
+            const postB = await post(
+              learner.page,
+              schoolB,
+              names.b,
+              boardNames[schoolB],
+            );
+            await gotoPage(
+              friend.page,
+              `/d/${schoolB}/community/posts/${postB}`,
+            );
+            await expect(
+              friend.page.getByRole("heading", { name: names.b, exact: true }),
+            ).toBeVisible();
+            const privatePost = await friend.page.request.get(
+              `${UI_URL}/api/v1/domains/${schoolA}/community/posts/${postA}`,
+            );
+            assertEquals(privatePost.status(), 404);
+            const wrongPath = await learner.page.request.get(
+              `${UI_URL}/api/v1/domains/${schoolB}/community/posts/${postA}`,
+            );
+            assertEquals(wrongPath.status(), 404);
+            await gotoPage(friend.page, `/d/${schoolB}/community`);
+            await expect(
+              friend.page.getByRole("link").filter({
+                has: friend.page.getByRole("heading", {
+                  name: names.b,
+                  exact: true,
+                }),
+              }),
+            ).toBeVisible();
+            await expect(friend.page.getByText(names.a, { exact: true }))
+              .toHaveCount(0);
+            await gotoPage(learner.page, "/d/main/community");
+            await expect(learner.page.getByText(names.a, { exact: true }))
+              .toHaveCount(0);
+            await expect(learner.page.getByText(names.b, { exact: true }))
+              .toHaveCount(0);
+          },
+        );
+        await step(
+          "两学校LLM配置与用量页面读取当前域，A学生没有管理入口",
+          async () => {
+            await gotoPage(organizer.page, `/d/${schoolA}/llm`);
+            await expect(
+              organizer.page.getByRole("textbox", {
+                name: "默认模型",
+                exact: true,
+              }),
+            ).toHaveValue(`model-${schoolA}`);
+            await gotoPage(organizer.page, `/d/${schoolA}/settings/llm/usage`);
+            await expect(
+              organizer.page.getByRole("heading", {
+                name: "LLM 用量统计",
                 exact: true,
               }),
             ).toBeVisible();
-            // 题号同时出现在面包屑、ProblemHeader 徽章和右侧元信息中；
-            // 这里锁定包含当前题目标题的 ProblemHeader，避免全局严格定位歧义。
-            const problemHeader = page.locator("main header").filter({
-              has: page.getByRole("heading", {
-                name: `共同源题 ${suffix}`,
+            await write(
+              organizer.page,
+              "GET",
+              `/domains/${schoolA}/llm/usage`,
+              () =>
+                organizer.page.getByRole("button", {
+                  name: "刷新用量",
+                  exact: true,
+                }).click(),
+            );
+            await gotoPage(learner.page, `/d/${schoolB}/llm`);
+            await expect(
+              learner.page.getByRole("textbox", {
+                name: "默认模型",
                 exact: true,
               }),
-            });
-            await expect(problemHeader.getByText(schoolRef, { exact: true }))
-              .toBeVisible();
-          }
-          const first = await handIn(
-            learner.page,
-            `/domains/${schoolA}/problems/${schoolRef}/objective-submissions`,
-            "待改进选项",
-          );
-          const next = await handIn(
-            second,
-            `/domains/${schoolB}/problems/${schoolRef}/objective-submissions`,
-            "正确选项",
-          );
-          assertEquals(first.data.score, 0);
-          assertEquals(next.data.score, 100);
-          privateA = first.data.submission_id;
-          privateB = next.data.submission_id;
-          assertNotEquals(privateA, privateB);
-          await expect(
-            learner.page.getByText("本次成绩：0 分", { exact: true }),
-          ).toBeVisible();
-          await expect(second.getByText("本次成绩：100 分", { exact: true }))
-            .toBeVisible();
-          assertEquals(
-            new URL(learner.page.url()).pathname,
-            `/d/${schoolA}/problems/${schoolRef}`,
-          );
-          assertEquals(
-            new URL(second.url()).pathname,
-            `/d/${schoolB}/problems/${schoolRef}`,
-          );
-          const wrongDomain = await second.request.get(
-            `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateA}`,
-          );
-          assertEquals(wrongDomain.status(), 404);
-          const outsider = await friend.page.request.get(
-            `${UI_URL}/api/v1/domains/${schoolA}/objective-submissions/${privateA}`,
-          );
-          assertEquals(outsider.status(), 404);
-          const otherStudent = await friend.page.request.get(
-            `${UI_URL}/api/v1/domains/${schoolB}/objective-submissions/${privateB}`,
-          );
-          assertEquals(otherStudent.status(), 200);
-          const peerSummary = (await otherStudent.json()).data;
-          assertEquals(peerSummary.can_view_answers, false);
-          assertEquals(peerSummary.can_view_source, false);
-          assertEquals(peerSummary.answers, undefined);
-          assertEquals(peerSummary.code, undefined);
-          assertEquals(peerSummary.assignment_origin, null);
-          await gotoPage(learner.page, "/d/main/objective-submissions");
-          await expect(learner.page.locator(`a[href$="/${privateA}"]`))
-            .toHaveCount(0);
-          await expect(learner.page.locator(`a[href$="/${privateB}"]`))
-            .toHaveCount(0);
-          await gotoPage(learner.page, `/d/${schoolA}/objective-submissions`);
-          await expect(
-            learner.page.locator(
-              `a[href="/d/${schoolA}/objective-submissions/${privateA}"]`,
-            ),
-          ).toBeVisible();
-          await expect(learner.page.locator(`a[href$="/${privateB}"]`))
-            .toHaveCount(0);
-          await second.close();
-        },
-      );
-      await step(
-        "学校社区分别发布，B学生可读本校、不能读A校或错误域帖子",
-        async () => {
-          const postA = await post(
-            learner.page,
-            schoolA,
-            names.a,
-            boardNames[schoolA],
-          );
-          const postB = await post(
-            learner.page,
-            schoolB,
-            names.b,
-            boardNames[schoolB],
-          );
-          await gotoPage(friend.page, `/d/${schoolB}/community/posts/${postB}`);
-          await expect(
-            friend.page.getByRole("heading", { name: names.b, exact: true }),
-          ).toBeVisible();
-          const privatePost = await friend.page.request.get(
-            `${UI_URL}/api/v1/domains/${schoolA}/community/posts/${postA}`,
-          );
-          assertEquals(privatePost.status(), 404);
-          const wrongPath = await learner.page.request.get(
-            `${UI_URL}/api/v1/domains/${schoolB}/community/posts/${postA}`,
-          );
-          assertEquals(wrongPath.status(), 404);
-          await gotoPage(friend.page, `/d/${schoolB}/community`);
-          await expect(
-            friend.page.getByRole("link").filter({
-              has: friend.page.getByRole("heading", {
-                name: names.b,
+            ).toHaveValue(`model-${schoolB}`);
+            await expect(
+              learner.page.getByText(`独立Provider ${schoolA}`, {
                 exact: true,
               }),
-            }),
-          ).toBeVisible();
-          await expect(friend.page.getByText(names.a, { exact: true }))
-            .toHaveCount(0);
-          await gotoPage(learner.page, "/d/main/community");
-          await expect(learner.page.getByText(names.a, { exact: true }))
-            .toHaveCount(0);
-          await expect(learner.page.getByText(names.b, { exact: true }))
-            .toHaveCount(0);
-        },
-      );
-      await step(
-        "两学校LLM配置与用量页面读取当前域，A学生没有管理入口",
-        async () => {
-          await gotoPage(organizer.page, `/d/${schoolA}/llm`);
-          await expect(
-            organizer.page.getByRole("textbox", {
-              name: "默认模型",
-              exact: true,
-            }),
-          ).toHaveValue(`model-${schoolA}`);
-          await gotoPage(organizer.page, `/d/${schoolA}/settings/llm/usage`);
-          await expect(
-            organizer.page.getByRole("heading", {
-              name: "LLM 用量统计",
-              exact: true,
-            }),
-          ).toBeVisible();
-          await write(
-            organizer.page,
-            "GET",
-            `/domains/${schoolA}/llm/usage`,
-            () =>
-              organizer.page.getByRole("button", {
-                name: "刷新用量",
+            ).toHaveCount(0);
+            await gotoPage(learner.page, `/d/${schoolB}/settings/llm/usage`);
+            await write(
+              learner.page,
+              "GET",
+              `/domains/${schoolB}/llm/usage`,
+              () =>
+                learner.page.getByRole("button", {
+                  name: "刷新用量",
+                  exact: true,
+                }).click(),
+            );
+            await gotoPage(learner.page, `/d/${schoolA}/llm`);
+            await expect(
+              learner.page.getByRole("heading", {
+                name: "LLM 配置与用量",
                 exact: true,
-              }).click(),
-          );
-          await gotoPage(learner.page, `/d/${schoolB}/llm`);
-          await expect(
-            learner.page.getByRole("textbox", {
-              name: "默认模型",
-              exact: true,
-            }),
-          ).toHaveValue(`model-${schoolB}`);
-          await expect(
-            learner.page.getByText(`独立Provider ${schoolA}`, { exact: true }),
-          ).toHaveCount(0);
-          await gotoPage(learner.page, `/d/${schoolB}/settings/llm/usage`);
-          await write(
-            learner.page,
-            "GET",
-            `/domains/${schoolB}/llm/usage`,
-            () =>
-              learner.page.getByRole("button", {
-                name: "刷新用量",
-                exact: true,
-              }).click(),
-          );
-          await gotoPage(learner.page, `/d/${schoolA}/llm`);
-          await expect(
-            learner.page.getByRole("heading", {
-              name: "LLM 配置与用量",
-              exact: true,
-            }),
-          ).toHaveCount(0);
-          const denied = await learner.page.request.get(
-            `${UI_URL}/api/v1/domains/${schoolA}/llm/providers`,
-          );
-          assertEquals(denied.status(), 403);
-        },
-      );
-      failed = false;
-    } finally {
-      for (const key of Object.keys(communityPolicy)) {
-        await setPolicy(
-          key,
-          originalSettings.find((setting) => setting.key === key)!
-            .effective_value,
+              }),
+            ).toHaveCount(0);
+            const denied = await learner.page.request.get(
+              `${UI_URL}/api/v1/domains/${schoolA}/llm/providers`,
+            );
+            assertEquals(denied.status(), 403);
+          },
         );
+      } finally {
+        for (const key of Object.keys(communityPolicy)) {
+          await setPolicy(
+            key,
+            originalSettings.find((setting) => setting.key === key)!
+              .effective_value,
+          );
+        }
+        const restored = (await fixture<{ data: Setting[] }>(
+          "GET",
+          "/admin/system/settings",
+          admin,
+        )).data;
+        for (const key of Object.keys(communityPolicy)) {
+          assertEquals(
+            restored.find((setting) => setting.key === key)!.effective_value,
+            originalSettings.find((setting) => setting.key === key)!
+              .effective_value,
+            `恢复社区政策 ${key}`,
+          );
+        }
       }
-      const restored = (await fixture<{ data: Setting[] }>(
-        "GET",
-        "/admin/system/settings",
-        admin,
-      )).data;
-      for (const key of Object.keys(communityPolicy)) {
-        assertEquals(
-          restored.find((setting) => setting.key === key)!.effective_value,
-          originalSettings.find((setting) => setting.key === key)!
-            .effective_value,
-          `恢复社区政策 ${key}`,
-        );
-      }
-      await teardownBrowser(learner, failed, `public-mixed-actor-${suffix}`);
-      await teardownBrowser(friend, failed, `public-mixed-peer-${suffix}`);
-      await teardownBrowser(organizer, failed, `public-mixed-host-${suffix}`);
-    }
+    });
   },
 });

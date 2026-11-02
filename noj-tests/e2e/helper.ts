@@ -11,6 +11,9 @@
  *   E2E_BASE_URL      - noj-core 服务地址（默认 http://localhost:8099）
  */
 
+import { measurePhase } from "../../scripts/lib/test-timing.ts";
+import { WaitHttpError, waitUntil } from "../fixtures/wait.ts";
+
 // ── 配置 ──────────────────────────────────────────
 
 export const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
@@ -25,6 +28,8 @@ async function request(
     body?: unknown;
     token?: string;
     headers?: Record<string, string>;
+    /** 轮询读取传入的取消信号（单次请求超时/外部取消）。 */
+    signal?: AbortSignal;
   },
 ): Promise<{ status: number; body: unknown }> {
   const headers: Record<string, string> = {
@@ -40,6 +45,7 @@ async function request(
     method,
     headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
+    signal: options?.signal,
   });
 
   let body: unknown;
@@ -119,27 +125,35 @@ export async function waitForJobCompleted(
   maxRetries = 60,
   intervalMs = 1000,
 ): Promise<{ status: string; total_items: number }> {
-  let lastStatus = "(未取得)";
-  for (let i = 0; i < maxRetries; i++) {
-    const res = await apiGet(`/api/v1/admin/submission-jobs/${jobId}`, token);
-    if (res.status === 200) {
-      const data = (res.body as {
-        data: { status: string; total_items: number };
-      }).data;
-      lastStatus = data.status;
-      if (
-        data.status === "completed" || data.status === "completed_with_errors"
-      ) {
-        return data;
-      }
-    }
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(
-    `任务 ${jobId} 超时（${
-      maxRetries * intervalMs
-    }ms 未完成），最后状态 ${lastStatus}`,
-  );
+  // 旧签名是"重试次数 × 间隔"，转换为总预算；首次读取立即执行，不再固定 sleep。
+  const timeoutMs = maxRetries * intervalMs;
+  return await measurePhase("job wait", () =>
+    waitUntil(
+      async (signal) => {
+        const res = await request(
+          "GET",
+          `/api/v1/admin/submission-jobs/${jobId}`,
+          { token, signal },
+        );
+        if (res.status !== 200) {
+          throw new WaitHttpError(
+            res.status,
+            `读取任务 ${jobId} 失败: ${res.status}`,
+          );
+        }
+        return (res.body as {
+          data: { status: string; total_items: number };
+        }).data;
+      },
+      (data) =>
+        data.status === "completed" ||
+        data.status === "completed_with_errors",
+      {
+        timeoutMs,
+        resourceId: `任务 ${jobId}`,
+        describe: (data) => `status=${data.status}`,
+      },
+    ));
 }
 
 // ── 用户辅助 ──────────────────────────────────────
@@ -239,53 +253,141 @@ export async function getProblemIdByNumber(
 }
 
 /**
- * 检测 judge worker 是否可用（提交后数秒内状态离开 pending）。
+ * Judge canary 证据（由统一启动器 `scripts/test-runner.ts` 在正式运行前生成）。
  *
- * 判定口径是「judge 是否在消费队列」，因此状态推进到
- * judging / finished / **error** 都算可用：error 说明 judge 领取并处理了任务，
- * 只是评测结果为错误——判据是 worker 的消费能力，而非该次提交的代码正确性。
- *
- * 历史教训（2026-09-11）：此前只接受 judging/finished，于是当 judge 因
- * 「RESULT payload 竞态」把评测统一判为 error 时，本函数返回 false，
- * 导致整个优先级队列 E2E 套件**静默跳过**（以 201µs「通过」），
- * 把真实缺陷长时间掩盖成绿色。放宽为接受 error 后，judge 消费异常会表现为
- * 测试真实执行（并如实失败），而不是被无声跳过。
- *
- * **已知局限（评审补充，勿据此认为「error 一定代表 judge 在消费」）**：
- * `error` 状态并非只由 judge 产生，以下路径也会把它置为 error 而不涉及 judge 消费：
- *   - `submissions-crud.ts` 的 MQ 推送永久失败
- *   - `sweeper.ts` 的重投超限
- *   - `queue.ts` 的管理员移出队列
- * 因此本函数对 `error` 的接受是**启发式**而非判据。实践中 `submitCode()` 在推送
- * 失败路径上会直接抛错（不会走到轮询），故 CI 里这条启发式是安全的；若要收严，
- * 应额外断言该提交存在 `judge_started_at` 或评测结果行，而不是仅看 status。
+ * 子测试不再各自提交探测任务：只读取运行清单里的 canary 记录，校验 runId 与
+ * 提交/尝试 ID 后继续自己的真实评测断言。缺少证据或证据来自其他运行直接失败，
+ * 避免"探测失败 → 直接 return → 显示通过"的历史问题。
  */
-export async function isJudgeAvailable(): Promise<boolean> {
-  try {
-    // 探测仅判断 worker 是否消费任务；用管理员避免同域公开赛保密使基础题 404，
-    // 从而把实际在线的 Judge 误判为不可用并静默跳过后续评测断言。
-    const t = await getAdminToken();
-    // 题目 id 为 UUID（统一题目包导入），须动态获取
-    const problemId = await getProblemIdByNumber(1001);
-    const id = await submitCode(t, problemId, "print(1)");
-    // judge 忙时（评测积压）领取任务可能超过 2s，单次探测会误报不可用；
-    // 改为轮询最多 30s，等待状态离开 pending。
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
-        headers: { Authorization: "Bearer " + t },
-      });
-      const data = await res.json();
-      const status = (data as { data?: { status?: string } })?.data?.status ||
-        "";
-      if (status === "judging" || status === "finished" || status === "error") {
-        return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
+export interface JudgeCanaryEvidence {
+  runId: string;
+  submissionId: string;
+  attemptId: string;
+  result: string;
+}
+
+interface JudgeCanaryManifest {
+  version?: number;
+  runId?: string;
+  canary?: {
+    runId?: string;
+    submissionId?: string;
+    attemptId?: string;
+    result?: string;
+  } | null;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * 校验运行清单中的 canary 证据。
+ *
+ * 拒绝伪造/串运行清单：清单 runId 必须等于期望 runId，canary.runId 必须与
+ * 清单一致，提交与尝试 ID 必须是合法 UUID，结果必须是 finished。
+ */
+export function validateJudgeCanaryManifest(
+  raw: unknown,
+  expected: { runId: string; submissionId?: string },
+): JudgeCanaryEvidence {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error("Judge canary 清单不是 JSON 对象");
   }
+  const manifest = raw as JudgeCanaryManifest;
+  if (manifest.version !== 1) {
+    throw new Error(`Judge canary 清单版本不支持：${String(manifest.version)}`);
+  }
+  if (!expected.runId) throw new Error("缺少期望 runId，拒绝读取 canary 清单");
+  if (manifest.runId !== expected.runId) {
+    throw new Error(
+      `Judge canary 清单 runId 不匹配：清单 ${
+        manifest.runId ?? "(缺失)"
+      }，期望 ${expected.runId}`,
+    );
+  }
+  const canary = manifest.canary;
+  if (!canary || typeof canary !== "object") {
+    throw new Error(`运行 ${expected.runId} 没有 Judge canary 证据`);
+  }
+  if (canary.runId !== manifest.runId) {
+    throw new Error(
+      `Judge canary runId 与清单不一致：canary ${
+        canary.runId ?? "(缺失)"
+      }，清单 ${manifest.runId}`,
+    );
+  }
+  if (!canary.submissionId || !UUID_PATTERN.test(canary.submissionId)) {
+    throw new Error(
+      `Judge canary 提交 ID 非法：${canary.submissionId ?? "(缺失)"}`,
+    );
+  }
+  if (!canary.attemptId || !UUID_PATTERN.test(canary.attemptId)) {
+    throw new Error(
+      `Judge canary 尝试 ID 非法：${canary.attemptId ?? "(缺失)"}`,
+    );
+  }
+  if (expected.submissionId && canary.submissionId !== expected.submissionId) {
+    throw new Error(
+      `Judge canary 提交 ID 不匹配：清单 ${canary.submissionId}，期望 ${expected.submissionId}`,
+    );
+  }
+  if (canary.result !== "finished") {
+    throw new Error(
+      `Judge canary 结果不是完成的正常评测：${canary.result ?? "(缺失)"}`,
+    );
+  }
+  return {
+    runId: manifest.runId,
+    submissionId: canary.submissionId,
+    attemptId: canary.attemptId,
+    result: canary.result,
+  };
+}
+
+/**
+ * 读取并校验启动器写出的运行清单（路径由 `NOJ_TEST_MANIFEST` 注入）。
+ */
+export async function readJudgeCanary(
+  manifestPath?: string,
+): Promise<JudgeCanaryEvidence> {
+  const path = manifestPath ?? Deno.env.get("NOJ_TEST_MANIFEST");
+  const runId = Deno.env.get("NOJ_TEST_RUN_ID");
+  if (!path || !runId) {
+    throw new Error(
+      "缺少 NOJ_TEST_MANIFEST / NOJ_TEST_RUN_ID：请通过 scripts/test-runner.ts 运行 E2E",
+    );
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await Deno.readTextFile(path));
+  } catch (error) {
+    throw new Error(
+      `读取 Judge canary 清单失败（${path}）：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  return validateJudgeCanaryManifest(raw, { runId });
+}
+
+/** 读取 canary 并输出定位信息；缺少证据时抛错（正式运行不再静默跳过）。 */
+export async function requireJudgeCanary(): Promise<JudgeCanaryEvidence> {
+  const canary = await readJudgeCanary();
+  console.log(
+    `  → Judge canary 可用：submission=${
+      canary.submissionId.slice(0, 8)
+    } attempt=${canary.attemptId.slice(0, 8)}`,
+  );
+  return canary;
+}
+
+/**
+ * 为题包构建阶段计时（P1 阶段归因）。
+ *
+ * 测试在构造 ZIP 时调用；未开启 `NOJ_TEST_PROFILE` 时直接执行，无额外开销。
+ */
+export function measureBundleBuild<T>(fn: () => Promise<T> | T): Promise<T> {
+  return measurePhase("bundle build", async () => await fn());
 }
 
 /**
@@ -294,7 +396,7 @@ export async function isJudgeAvailable(): Promise<boolean> {
  * E2E 栈会在注册响应中返回仅供隔离测试环境使用的一次性验证令牌；辅助函数
  * 随即调用公开验证端点，确保后续写操作与真实已验证账号走相同代码路径。
  */
-export async function registerUser(
+async function registerUserAccount(
   username: string,
   email: string,
   password: string,
@@ -350,6 +452,18 @@ export async function registerUser(
   return (loginRes.body as { data: { token: string } }).data.token;
 }
 
+/** 注册（或复用已有账号）并完成邮箱验证；阶段计时归入账号准备。 */
+export function registerUser(
+  username: string,
+  email: string,
+  password: string,
+): Promise<string> {
+  return measurePhase(
+    "account preparation",
+    () => registerUserAccount(username, email, password),
+  );
+}
+
 /**
  * 登录用户返回 token。
  */
@@ -399,7 +513,7 @@ async function tryLogin(
  * @param newPassword 改密后的密码（所有测试统一目标）
  * @returns 无改密 flag 的 admin token
  */
-export async function loginAndChangePassword(
+async function loginAndChangePasswordFlow(
   login: string,
   password: string,
   newPassword: string,
@@ -438,6 +552,18 @@ export async function loginAndChangePassword(
   // 密码），或并发竞争持续存在。
   throw new Error(
     `loginAndChangePassword: ${login} 重试 3 轮后仍无法完成改密流程（既无法用初始密码登录，也无法用改密后密码登录）`,
+  );
+}
+
+/** 登录并完成强制改密；阶段计时归入账号准备（含并发竞态重试）。 */
+export function loginAndChangePassword(
+  login: string,
+  password: string,
+  newPassword: string,
+): Promise<string> {
+  return measurePhase(
+    "account preparation",
+    () => loginAndChangePasswordFlow(login, password, newPassword),
   );
 }
 
@@ -593,7 +719,7 @@ export async function getProblemReference(
 ): Promise<string> {
   const auth = token ?? await getAdminToken();
   // 未发布的域新题对匿名/普通用户 404：调用方没带 token 时用管理员身份再读一次。
-  let res = await apiGet(`/api/v1/problems/${problemId}`, auth);
+  const res = await apiGet(`/api/v1/problems/${problemId}`, auth);
   if (res.status === 200) {
     const number = (res.body as { data: { number: number } }).data.number;
     return String(number);
@@ -664,13 +790,61 @@ export async function submitCode(
   return (res.body as { data: { id: string } }).data.id;
 }
 
+/** 提交详情轮询结果；attempt 字段用于识别"旧 attempt 已结束、新重评测未完成"。 */
+export interface SubmissionPollResult {
+  status: string;
+  verdict: string;
+  score: number;
+  /** 最近一次评测尝试 ID（提交绑定版本后必有）。 */
+  attempt_id: string | null;
+  /** 最近一次评测尝试状态（finished / error / queued / judging / superseded）。 */
+  attempt_state: string | null;
+}
+
+interface SubmissionPollData {
+  status?: string;
+  result?: { status?: string; score?: number } | null;
+  latest_attempt?: {
+    attempt_id?: string;
+    state?: string;
+  } | null;
+}
+
+/**
+ * 判断提交是否真正完成（而不是"旧 attempt 的 finished 仍然可见"）。
+ *
+ * 重评测会创建新的 attempt；提交状态在旧结果上可能仍是 finished，因此
+ * 必须同时要求 latest_attempt 进入终态（finished / error）。error 提交本身
+ * 已是终态（可能是 MQ 推送失败等平台错误），不再等 attempt，保持原有
+ * `allowErrorResult` 语义。
+ */
+function submissionSettled(data: SubmissionPollData): boolean {
+  const status = data.status;
+  if (status === "error") return true;
+  if (status !== "finished") return false;
+  const latest = data.latest_attempt;
+  if (!latest) return true;
+  return latest.state === "finished" || latest.state === "error";
+}
+
+function describeSubmission(data: SubmissionPollData): string {
+  const attempt = data.latest_attempt;
+  return `status=${data.status ?? "(未知)"} attempt=${
+    attempt
+      ? `${attempt.state ?? "?"}/${attempt.attempt_id?.slice(0, 8) ?? "?"}`
+      : "(无)"
+  }`;
+}
+
 /**
  * 轮询 submission 直到完成或超时。
  *
- * 默认阈值 90s（45 次 × 2s）：CI 上多组 E2E 并行提交真实评测时，
+ * 默认预算 90s（45 次 × 2s）：CI 上多组 E2E 并行提交真实评测时，
  * judge 队列排队 + 容器启动开销叠加，原 30s 阈值会误判为超时。
- * 超时错误会附带最后一次观测到的 status / HTTP 码，便于区分
- * 「评测排队未完成」与「接口异常」。
+ * 超时错误会附带最后一次观测到的 status / attempt / HTTP 码与读取次数。
+ *
+ * 重评测保护：只有 latest_attempt 也进入终态才返回，避免旧 attempt 的
+ * finished 让调用方提前成功；`allowErrorResult` 保留原有语义。
  */
 export async function pollSubmission(
   token: string,
@@ -678,45 +852,54 @@ export async function pollSubmission(
   maxRetries = 45,
   intervalMs = 2000,
   allowErrorResult = false,
-): Promise<{ status: string; verdict: string; score: number }> {
-  // 记录最后一次观测状态，用于超时时给出可诊断的错误信息
-  let lastStatus = "(未取得)";
-  let lastHttpStatus = 0;
-
-  for (let i = 0; i < maxRetries; i++) {
-    const res = await apiGet(
-      `/api/v1/submissions/${submissionId}`,
-      token,
-    );
-    lastHttpStatus = res.status;
-
-    if (res.status === 200) {
-      const data = (res.body as { data: Record<string, unknown> }).data;
-      const subStatus = data.status as string;
-      lastStatus = subStatus;
-
-      if (subStatus === "finished" || subStatus === "error") {
-        // API 返回 data.result.status / data.result.score（见 getSubmission）
-        const resultData = data.result as Record<string, unknown> | null;
-        const verdict = (resultData?.status as string) || "Unknown";
-        const score = (resultData?.score as number) || 0;
-
-        if (subStatus === "error" && !allowErrorResult) {
-          throw new Error(
-            `Submission ${submissionId} 评测失败，verdict=${verdict}`,
+): Promise<SubmissionPollResult> {
+  const timeoutMs = maxRetries * intervalMs;
+  return await measurePhase("submission wait", async () => {
+    const data = await waitUntil(
+      async (signal) => {
+        const res = await request(
+          "GET",
+          `/api/v1/submissions/${submissionId}`,
+          { token, signal },
+        );
+        if (res.status !== 200) {
+          throw new WaitHttpError(
+            res.status,
+            `读取提交 ${submissionId} 失败: ${res.status}`,
           );
         }
+        return (res.body as { data: SubmissionPollData }).data;
+      },
+      submissionSettled,
+      {
+        timeoutMs,
+        resourceId: `提交 ${submissionId}`,
+        describe: describeSubmission,
+      },
+    );
 
-        return { status: subStatus, verdict, score };
-      }
+    const subStatus = data.status as string;
+    // API 返回 data.result.status / data.result.score（见 getSubmission）
+    const verdict = data.result?.status || "Unknown";
+    const score = data.result?.score || 0;
+    const attemptId = data.latest_attempt?.attempt_id ?? null;
+    const attemptState = data.latest_attempt?.state ?? null;
+
+    if (subStatus === "error" && !allowErrorResult) {
+      throw new Error(
+        `Submission ${submissionId} 评测失败，verdict=${verdict}` +
+          (attemptId ? `，attempt=${attemptId}` : ""),
+      );
     }
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  const timeoutMs = maxRetries * intervalMs;
-  const detail = `status=${lastStatus}, HTTP=${lastHttpStatus}`;
-  throw new Error(
-    `Submission ${submissionId} 超时（${timeoutMs}ms 未完成），最后状态 ${detail}`,
-  );
+
+    return {
+      status: subStatus,
+      verdict,
+      score,
+      attempt_id: attemptId,
+      attempt_state: attemptState,
+    };
+  });
 }
 
 /**
@@ -749,26 +932,37 @@ export function e2eTest(
 
 /**
  * 等待 noj-core API 就绪。
+ *
+ * 保留位置参数签名（重试次数 × 间隔 → 总预算）；首次请求立即发出，
+ * 5xx/网络错误在预算内重试，404 等确定性错误直接失败。
  */
 export async function waitForServer(
   retries = 30,
   intervalMs = 2000,
 ): Promise<void> {
+  const timeoutMs = retries * intervalMs;
   console.log(`  → 等待 noj-core API 就绪 (${BASE_URL})...`);
-  for (let i = 0; i < retries; i++) {
-    try {
-      const r = await fetch(`${BASE_URL}/health`);
-      if (r.ok) {
-        console.log(`  ✓ noj-core API 就绪 (${i + 1}/${retries})`);
-        return;
-      }
-    } catch {
-      // 未就绪，继续等待
-    }
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(
-    `noj-core API ${BASE_URL} 未就绪（重试 ${retries} 次）`,
+  const started = performance.now();
+  await measurePhase(
+    "server wait",
+    () =>
+      waitUntil(
+        async (signal) => {
+          const res = await fetch(`${BASE_URL}/health`, { signal });
+          if (!res.ok) {
+            throw new WaitHttpError(
+              res.status,
+              `健康检查返回 ${res.status}`,
+            );
+          }
+          return true;
+        },
+        (ready) => ready,
+        { timeoutMs, resourceId: `noj-core API ${BASE_URL}` },
+      ),
+  );
+  console.log(
+    `  ✓ noj-core API 就绪（${Math.round(performance.now() - started)}ms）`,
   );
 }
 

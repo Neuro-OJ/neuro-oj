@@ -11,6 +11,10 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 
+/** Compose 已移除固定 container_name；CI 通过 E2E_REDIS_CONTAINER 注入 ID。 */
+const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ??
+  "noj-e2e-redis";
+
 let adminToken = "";
 let userToken = "";
 let contestId = "";
@@ -63,7 +67,7 @@ async function publishContestSubmissionEvent(
     const cmd = new Deno.Command("docker", {
       args: [
         "exec",
-        "noj-e2e-redis",
+        REDIS_CONTAINER,
         "redis-cli",
         "PUBLISH",
         `noj:events:contest:${contestId}:submission`,
@@ -121,7 +125,9 @@ e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async 
     throw new Error(`公开赛订阅应 200，实际 ${res.status}`);
   }
   const published = await publishContestSubmissionEvent(contestId);
-  if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+  if (!published) {
+    throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+  }
   const frames = await readSseFrames(res, 5_000);
   if (frames.includes("contest:submission:created")) {
     throw new Error(`未报名用户收到了提交事件帧: ${frames.slice(0, 200)}`);
@@ -148,7 +154,9 @@ e2eTest(
       throw new Error(`报名用户订阅应 200，实际 ${res.status}`);
     }
     const published = await publishContestSubmissionEvent(contestId);
-    if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+    if (!published) {
+      throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+    }
     const frames = await readSseFrames(res, 10_000);
     const submissionData = extractSseEventData(
       frames,

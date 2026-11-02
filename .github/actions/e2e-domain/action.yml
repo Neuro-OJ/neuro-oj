@@ -9,6 +9,14 @@ inputs:
     description: 是否运行 UI 浏览器门禁（true/false）
     required: false
     default: "false"
+  shard:
+    description: Browser 分组标识（如 browser1）；留空表示不分组
+    required: false
+    default: ""
+  groups:
+    description: Browser 分组总数（shard 非空时生效）
+    required: false
+    default: "3"
 
 runs:
   using: composite
@@ -25,6 +33,10 @@ runs:
 
     - name: 校验 LLM Mock 的模型回显与安全读取契约
       run: python3 -B scripts/e2e/check_llm_mock.py
+      shell: bash
+
+    - name: 校验测试协调服务的屏障契约
+      run: python3 -B scripts/e2e/check_test_coordinator.py
       shell: bash
 
     # ── 缓存依赖 ──────────────────────────────
@@ -84,15 +96,20 @@ runs:
       run: |
         docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d --no-build
         echo "等待 noj-core 健康（bash 轮询 docker inspect，600s 超时）..."
+        # 不再依赖固定容器名：所有查询都经 compose 解析服务对应的容器 ID。
+        core_id=$(docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME ps -q noj-core)
         for i in $(seq 1 600); do
-          status=$(docker inspect --format='{{.State.Health.Status}}' \
-                   noj-e2e-core 2>/dev/null || echo "missing")
+          if [ -z "$core_id" ]; then
+            status=missing
+            state=missing
+          else
+            status=$(docker inspect --format='{{.State.Health.Status}}' "$core_id" 2>/dev/null || echo "missing")
+            state=$(docker inspect --format='{{.State.Status}}' "$core_id" 2>/dev/null || echo "missing")
+          fi
           if [ "$status" = "healthy" ]; then
             echo "✅ noj-core 健康就绪 ($i s)"
             exit 0
           fi
-          state=$(docker inspect --format='{{.State.Status}}' \
-                  noj-e2e-core 2>/dev/null || echo "missing")
           if [ "$state" = "exited" ] || [ "$state" = "dead" ]; then
             echo "::error::noj-core 容器已退出，状态=$state (health=$status)"
             docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
@@ -104,6 +121,49 @@ runs:
         echo "::error::noj-core 未在 600s 内健康就绪 (status=$status)"
         docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
           logs --tail=100 noj-core
+        exit 1
+      shell: bash
+
+    # 测试需要 docker exec 进具体容器（Redis 锁定键、MinIO 故障注入、core 重启等）。
+    # Compose 已移除固定 container_name，这里统一把服务解析成容器 ID 写入环境，
+    # 测试与脚本只依赖 ID，不再猜测容器名。
+    - name: 解析 E2E 容器 ID
+      run: |
+        set -euo pipefail
+        compose=(docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME")
+        resolve() {
+          local var="$1" service="$2" id
+          id=$("${compose[@]}" ps -q "$service")
+          if [ -z "$id" ]; then
+            echo "::error::无法解析 $service 容器 ID（Compose project=$COMPOSE_PROJECT_NAME）"
+            exit 1
+          fi
+          echo "$var=$id" >> "$GITHUB_ENV"
+        }
+        resolve E2E_REDIS_CONTAINER redis
+        resolve E2E_POSTGRES_CONTAINER postgres
+        resolve E2E_MINIO_CONTAINER minio
+        resolve E2E_CORE_CONTAINER noj-core
+        resolve E2E_JUDGE_CONTAINER noj-judge
+        resolve E2E_GATEWAY_CONTAINER noj-llm-gateway
+      shell: bash
+
+    # 显式同步屏障协调服务（LLM 治理 Browser 用例）。健康检查走宿主 loopback
+    # 发布端口；它的容器内部只加入 noj-eval-net，evaluator 用容器网络名访问。
+    - name: 等待测试协调服务健康
+      if: inputs.browser == 'true'
+      run: |
+        port="${E2E_TEST_COORDINATOR_PORT:-18010}"
+        for i in $(seq 1 60); do
+          if curl -sf "http://127.0.0.1:$port/health" > /dev/null; then
+            echo "✅ 测试协调服务就绪 (:$port)"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::测试协调服务未在 60s 内就绪"
+        docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" \
+          logs --tail=100 test-coordinator
         exit 1
       shell: bash
 
@@ -182,7 +242,9 @@ runs:
         S3_SECRET_KEY: minioadmin
         S3_BUCKET: noj-support-packages
         S3_FORCE_PATH_STYLE: "true"
-      run: deno task test:domain submission --filter=e2e/s3-support-pkg
+      # S3 模式只验收支持包对象链路，不需要 Judge；此时 core 生成的 S3
+      # 预签名 URL 是集群内 http 地址，Judge 会按安全策略拒绝，canary 必然失败。
+      run: deno task test:domain submission --filter=e2e/s3-support-pkg --no-canary
       shell: bash
 
     - name: 缓存 Playwright 浏览器
@@ -208,14 +270,28 @@ runs:
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
         E2E_LLM_MOCK_INSPECT_URL: http://localhost:8002/
         E2E_LLM_GOVERNANCE_DATABASE_URL: ${{ env.E2E_DB_URL }}
-      run: deno task test:browser
+        # 屏障地址分两套：管理端口只发布在宿主 loopback；写进 evaluator 的必须是
+        # evaluator 网络内的服务名（容器端口固定 8010）。端口可由 CI/会话覆盖。
+        E2E_TEST_COORDINATOR_PORT: ${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
+        E2E_TEST_COORDINATOR_URL: http://127.0.0.1:${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
+        E2E_TEST_COORDINATOR_EVALUATOR_URL: http://noj-e2e-test-coordinator:8010
+        # evaluator 网络按 run/CI 注入；judge 用同名网络挂载 evaluator。
+        E2E_EVALUATOR_NETWORK: ${{ env.E2E_EVALUATOR_NETWORK || 'noj-eval-net' }}
+      # shard 非空时按分组执行（P6-A）；否则保持单进程全量，参数完全不变。
+      run: |
+        if [ -n "${{ inputs.shard }}" ]; then
+          deno task test:browser --shard "${{ inputs.shard }}" --groups "${{ inputs.groups }}"
+        else
+          deno task test:browser
+        fi
       shell: bash
 
     - name: 上传 UI 浏览器诊断产物
       if: failure() && inputs.browser == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: ui-browser-artifacts
+        # 分组并行时 artifact 名必须带 shard，否则三组互相覆盖。
+        name: ui-browser-artifacts${{ inputs.shard != '' && format('-{0}', inputs.shard) || '' }}
         path: noj-tests/test-results/ui-browser/
         retention-days: 7
         if-no-files-found: ignore
@@ -236,6 +312,13 @@ runs:
       run: |
         echo "=== noj-judge 日志 ==="
         docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-judge 2>&1 || echo "容器可能未启动"
+      shell: bash
+
+    - name: 输出测试协调服务日志
+      if: always() && inputs.browser == 'true'
+      run: |
+        echo "=== test-coordinator 日志 ==="
+        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 test-coordinator 2>&1 || echo "容器可能未启动"
       shell: bash
 
     - name: 输出 noj-core 日志
@@ -280,7 +363,7 @@ runs:
       if: failure() || cancelled()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: e2e-${{ inputs.domain }}-logs
+        name: e2e-${{ inputs.domain }}${{ inputs.shard != '' && format('-{0}', inputs.shard) || '' }}-logs
         path: |
           noj-judge.log
           noj-migrate.log

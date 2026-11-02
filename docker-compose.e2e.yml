@@ -2,8 +2,7 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: noj-e2e-redis
-    ports: ["6380:6379"]
+    ports: ["${E2E_REDIS_PORT:-6380}:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -13,12 +12,12 @@ services:
   postgres:
     image: postgres:16-alpine
     shm_size: 512m
-    container_name: noj-e2e-postgres
-    ports: ["5433:5432"]
+    ports: ["${E2E_PG_PORT:-5433}:5432"]
     environment:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e
-      POSTGRES_DB: e2e
+      # 每个会话独立库名：DB 名与 E2E_DB_URL 由 session.ts 同时注入。
+      POSTGRES_DB: ${E2E_DATABASE_NAME:-e2e}
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "e2e"]
       interval: 3s
@@ -35,8 +34,10 @@ services:
   # （RELEASE.2024-11-07），且该镜像同时内置 `minio` 与 `mc` 两个二进制。
   minio:
     image: bitnamilegacy/minio:2024.11.7-debian-12-r2
-    container_name: noj-e2e-minio
-    ports: ["9002:9000"]
+    ports:
+      # S3 API 与控制台端口都可被会话覆盖，避免本机多会话冲突。
+      - "${E2E_MINIO_PORT:-9002}:9000"
+      - "${E2E_MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -78,7 +79,6 @@ services:
       context: ./noj-core
       dockerfile: Dockerfile.e2e
     image: noj-e2e-core
-    container_name: noj-e2e-migrate
     entrypoint: ["/entrypoint.sh", "setup"]
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/${E2E_DATABASE_NAME:-e2e}
@@ -104,8 +104,7 @@ services:
       context: ./noj-core
       dockerfile: Dockerfile.e2e
     image: noj-e2e-core
-    container_name: noj-e2e-core
-    ports: ["8099:8000"]
+    ports: ["${E2E_CORE_PORT:-8099}:8000"]
     # 健康探测。noj-core 只跑 server（migrate + seed 在 noj-migrate 里跑完了），
     # 启动 < 1s，健康检查几乎立即通过；start_period/retries 调到小值即可。
     healthcheck:
@@ -162,7 +161,6 @@ services:
       context: ./noj-judge
       dockerfile: Dockerfile.e2e
     image: noj-e2e-judge
-    container_name: noj-e2e-judge
     environment:
       REDIS_URL: redis://redis:6379/1
       JUDGE_QUEUE: noj:judge:queue
@@ -173,6 +171,8 @@ services:
       JUDGE_AI_TASK_CONCURRENCY: "2"
       WORK_DIR: /tmp/noj-work
       JUDGE_INSTANCE_ID: noj-e2e-judge-1
+      # evaluator 网络按 run 命名：会话隔离时 judge 必须用实际网络名。
+      JUDGE_EVALUATOR_NETWORK: ${E2E_EVALUATOR_NETWORK:-noj-eval-net}
       JUDGE_IMAGE_PREFIX: noj-
       JUDGE_COMMAND_WHITELIST: python3,deno,node,bash,sh
       # E2E capability-network 用例需要 evaluator 联网能力
@@ -198,18 +198,58 @@ services:
   # Mock LLM：OpenAI 兼容的假上游，供 LLM Gateway E2E 使用
   llm-mock:
     image: python:3.12-slim
-    container_name: noj-e2e-llm-mock
     ports:
-      - "8002:8002"
+      - "${E2E_LLM_MOCK_PORT:-8002}:8002"
     command: ["python3", "-u", "/mock/llm_mock.py"]
     volumes:
       - ./scripts/e2e/llm_mock.py:/mock/llm_mock.py:ro
+    networks:
+      default:
+        # 保留固定内部 alias：网关白名单与测试里的上游地址都指向它，
+        # 隔离靠会话私有网络，而不是靠容器名。
+        aliases:
+          - noj-e2e-llm-mock
+
+  # 显式同步屏障协调服务（LLM 治理 Browser 用例）：evaluator 在真实 llm.complete()
+  # 之前阻塞在这里，测试进程确认「尝试仍在途」后经 UI 修改模型别名，再放行；
+  # 取代原来 evaluator 固定 sleep 20 秒的做法。
+  # 网络约束：只接入评测隔离网络 noj-eval-net——evaluator 容器只在该网络上，
+  # 它看到的地址就是本服务名；管理端口只绑定宿主 loopback，两者绝不能混用。
+  test-coordinator:
+    image: python:3.12-slim
+    ports:
+      - "127.0.0.1:${E2E_TEST_COORDINATOR_PORT:-18010}:8010"
+    command:
+      - "python3"
+      - "-u"
+      - "/coordinator/test_coordinator.py"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8010"
+    volumes:
+      - ./scripts/e2e/test_coordinator.py:/coordinator/test_coordinator.py:ro
+    healthcheck:
+      # python:3.12-slim 没有 curl，用标准库探活。
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=2).read()"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      noj-eval-net:
+        # 固定 evaluator 侧 alias（P2 夹具与 action 默认值）；容器名不再固定，
+        # 跨会话隔离由会话私有网络名承担。
+        aliases:
+          - noj-e2e-test-coordinator
 
   noj-llm-gateway:
     build:
       context: ./noj-llm-gateway
     image: noj-e2e-llm-gateway
-    container_name: noj-e2e-llm-gateway
     ports:
       - "${E2E_LLM_GATEWAY_PORT:-8003}:8001"
     environment:
@@ -237,7 +277,6 @@ services:
     build:
       context: ./noj-llm-gateway
     image: noj-e2e-llm-gateway
-    container_name: noj-e2e-llm-gateway-migrate
     entrypoint: ["deno", "run", "-A", "src/db/migrate-cli.ts"]
     environment:
       NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
@@ -266,5 +305,7 @@ volumes:
 # - bridge 驱动自带出网 NAT，满足 capability-network 用例的真实出网探测需求。
 networks:
   noj-eval-net:
-    name: noj-eval-net
+    # 网络名由会话 / CI 注入：本地并行会话各自得到 noj-e2e-<run>-evaluator，
+    # judgment 用同名网络挂载 evaluator，跨会话不会串网。
+    name: ${E2E_EVALUATOR_NETWORK:-noj-eval-net}
     driver: bridge

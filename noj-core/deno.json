@@ -45,7 +45,8 @@
     "check:runtime-contract": "cd .. && deno run -A scripts/check-runtime-contract.ts",
     "check:runbooks": "cd .. && deno run -A scripts/check-runbooks.ts",
     "test:pg": "deno run -A scripts/test-launcher.ts pg",
-    "test:perf": "deno run -A scripts/test-launcher.ts perf"
+    "test:perf": "deno run -A scripts/test-launcher.ts perf",
+    "test:baseline": "deno run -A ../scripts/test-baseline.ts --suite core"
   },
   "imports": {
     "yaml": "npm:yaml@^2.9.1",

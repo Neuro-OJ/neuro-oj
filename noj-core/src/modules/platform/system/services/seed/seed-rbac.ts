@@ -8,9 +8,16 @@
  * - ensureSensitiveFieldDefaultPermissions() — 敏感字段权限项一次性默认撤销
  * - migrateExistingUsers() — 将现有 users.role 同步到 user_roles 表
  * - ensureRbacSeeds() — 全量幂等初始化
+ *
+ * 写入策略（P3 测试提速）：固定集合一律走一次批量语句，去掉逐条往返。
+ * 批量写法必须保持原有语义：
+ * - 权限按 (resource, action) 冲突只同步 description，保留原 ID；描述未变不更新；
+ * - 角色按现有 name 复用真实 ID（运维可能用自定义 UUID 建过同名角色）；
+ * - 目标集合为空时直接跳过，不发无效 INSERT；
+ * - 敏感权限撤销只在标记缺失时发生一次，管理员后续显式授权不被覆盖。
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import {
   permissions,
@@ -104,198 +111,215 @@ function now(): string {
 const ROLE_ADMIN = "admin";
 const ROLE_USER = "user";
 
+/** 权限映射键：resource:action。 */
+function permissionKey(resource: string, action: string): string {
+  return `${resource}:${action}`;
+}
+
+/**
+ * 读取全部权限的 resource:action 到 id 的映射。
+ *
+ * 一次查询供默认授权与撤销复用；权限总量固定在几十条量级。
+ *
+ * @returns 权限映射表
+ */
+async function loadPermissionIdMap(): Promise<Map<string, string>> {
+  const rows = await getDb()
+    .select({
+      id: permissions.id,
+      resource: permissions.resource,
+      action: permissions.action,
+    })
+    .from(permissions);
+  return new Map(
+    rows.map((row) => [permissionKey(row.resource, row.action), row.id]),
+  );
+}
+
+/**
+ * 按现有角色 name 查真实 ID。
+ *
+ * 缺失时返回 undefined：独立执行 bootstrap:admin 等场景下 roles 可能尚未 seed，
+ * 调用方按非致命处理，保持既有语义。
+ *
+ * @param name 角色名
+ * @returns 真实角色 ID 或 undefined
+ */
+async function findRoleIdByName(name: string): Promise<string | undefined> {
+  const [role] = await getDb()
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, name))
+    .limit(1);
+  return role?.id;
+}
+
+/**
+ * 为指定角色批量补齐默认权限。
+ *
+ * 先读现有角色与权限（各一次查询），再构造关联数组一次插入；已存在的关联由
+ * ON CONFLICT DO NOTHING 跳过，空数组不发语句。
+ *
+ * @param roleName 角色名
+ * @param defaults 该角色的默认权限集合
+ * @returns 无返回值
+ */
+async function assignRolePermissions(
+  roleName: string,
+  defaults: Array<{ resource: string; action: string }>,
+): Promise<void> {
+  const roleId = await findRoleIdByName(roleName);
+  if (!roleId) return;
+
+  const permissionIds = await loadPermissionIdMap();
+  const seen = new Set<string>();
+  const rows: Array<{ role_id: string; permission_id: string }> = [];
+  for (const { resource, action } of defaults) {
+    const permissionId = permissionIds.get(permissionKey(resource, action));
+    if (!permissionId || seen.has(permissionId)) continue;
+    seen.add(permissionId);
+    rows.push({ role_id: roleId, permission_id: permissionId });
+  }
+  if (rows.length === 0) return;
+
+  await getDb().insert(rolePermissions).values(rows).onConflictDoNothing();
+}
+
 // ── 公开 API ─────────────────────────────────────────────
 
 /**
  * 幂等创建系统预置角色（admin、user）。
  *
- * 不存在时按 name 冲突忽略插入（onConflictDoNothing），重复调用安全。
+ * 两个角色一次 values([...]) 写入，按 name 冲突忽略插入；运维用自定义 UUID 建过的
+ * 同名角色会被保留并继续复用。重复调用安全。
  *
  * @returns 无返回值
  */
 export async function ensureSystemRoles(): Promise<void> {
   const db = getDb();
+  const timestamp = now();
 
-  await db.insert(roles).values({
-    id: ROLE_ADMIN,
-    name: ROLE_ADMIN,
-    description: "系统管理员",
-    is_system: true,
-    is_default: false,
-    parent_id: null,
-    created_at: now(),
-    updated_at: now(),
-  }).onConflictDoNothing({ target: roles.name });
-
-  await db.insert(roles).values({
-    id: ROLE_USER,
-    name: ROLE_USER,
-    description: "普通用户",
-    is_system: true,
-    is_default: true,
-    parent_id: null,
-    created_at: now(),
-    updated_at: now(),
-  }).onConflictDoNothing({ target: roles.name });
+  await db.insert(roles).values([
+    {
+      id: ROLE_ADMIN,
+      name: ROLE_ADMIN,
+      description: "系统管理员",
+      is_system: true,
+      is_default: false,
+      parent_id: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+    {
+      id: ROLE_USER,
+      name: ROLE_USER,
+      description: "普通用户",
+      is_system: true,
+      is_default: true,
+      parent_id: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+  ]).onConflictDoNothing({ target: roles.name });
 }
 
 /**
  * 幂等创建系统权限定义（来自 PERMISSION_DEFS）。
  *
- * 为每个权限项生成 UUID 主键，按 (resource, action) 冲突时仅同步 description：
- * 权限描述以代码为唯一真相源（管理端不可编辑），存量库在启动时自动更新为
- * 最新文案，无需为改描述单独写数据迁移。主键与角色绑定保持不变。
+ * 全量权限一次批量 upsert：为每个权限项生成 UUID 主键，按 (resource, action)
+ * 冲突时仅同步 description。权限描述以代码为唯一真相源（管理端不可编辑），
+ * 存量库在启动时自动更新为最新文案，无需为改描述单独写数据迁移；
+ * 主键与角色绑定保持不变。描述未变化时 setWhere 跳过写入，
+ * 避免每次启动产生无意义的行更新。
  *
  * @returns 无返回值
  */
 export async function ensurePermissions(): Promise<void> {
   const db = getDb();
 
-  for (const perm of PERMISSION_DEFS) {
-    await db.insert(permissions).values({
-      id: uuid(),
-      resource: perm.resource,
-      action: perm.action,
-      description: perm.description,
-    }).onConflictDoUpdate({
-      target: [permissions.resource, permissions.action],
-      set: { description: sql`excluded.description` },
-      // 描述未变化时跳过写入，避免每次启动产生无意义的行更新
-      setWhere:
-        sql`${permissions.description} IS DISTINCT FROM excluded.description`,
-    });
-  }
+  const rows = PERMISSION_DEFS.map((perm) => ({
+    id: uuid(),
+    resource: perm.resource,
+    action: perm.action,
+    description: perm.description,
+  }));
+  if (rows.length === 0) return;
+
+  await db.insert(permissions).values(rows).onConflictDoUpdate({
+    target: [permissions.resource, permissions.action],
+    set: { description: sql`excluded.description` },
+    // 描述未变化时跳过写入，避免每次启动产生无意义的行更新
+    setWhere:
+      sql`${permissions.description} IS DISTINCT FROM excluded.description`,
+  });
 }
 
 /**
  * 幂等为 user 角色分配 USER_DEFAULT_PERMISSIONS 中定义的默认权限。
  *
- * 按 "resource:action" 匹配现有权限并写入 role_permissions，已存在则忽略。
+ * 按 resource:action 匹配现有权限并一次批量写入 role_permissions，
+ * 已存在则忽略；角色或权限缺失时不发语句。
  *
  * @returns 无返回值
  */
 export async function ensureUserRolePermissions(): Promise<void> {
-  const db = getDb();
-
-  const [userRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.name, ROLE_USER))
-    .limit(1);
-  if (!userRole) return;
-
-  const allPerms = await db
-    .select({
-      id: permissions.id,
-      resource: permissions.resource,
-      action: permissions.action,
-    })
-    .from(permissions);
-
-  const permMap = new Map(
-    allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
-  );
-
-  for (const { resource, action } of USER_DEFAULT_PERMISSIONS) {
-    const permId = permMap.get(`${resource}:${action}`);
-    if (!permId) continue;
-    await db.insert(rolePermissions).values({
-      role_id: userRole.id,
-      permission_id: permId,
-    }).onConflictDoNothing();
-  }
+  await assignRolePermissions(ROLE_USER, USER_DEFAULT_PERMISSIONS);
 }
 
 /**
  * 幂等为 admin 角色分配 ADMIN_DEFAULT_PERMISSIONS 中定义的默认权限。
  *
- * 按 "resource:action" 匹配现有权限并写入 role_permissions，已存在则忽略。
+ * 按 resource:action 匹配现有权限并一次批量写入 role_permissions，
+ * 已存在则忽略；角色或权限缺失时不发语句。
  *
  * @returns 无返回值
  */
 export async function ensureAdminRolePermissions(): Promise<void> {
-  const db = getDb();
-
-  const [adminRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.name, ROLE_ADMIN))
-    .limit(1);
-  if (!adminRole) return;
-
-  const allPerms = await db
-    .select({
-      id: permissions.id,
-      resource: permissions.resource,
-      action: permissions.action,
-    })
-    .from(permissions);
-
-  const permMap = new Map(
-    allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
-  );
-
-  for (const { resource, action } of ADMIN_DEFAULT_PERMISSIONS) {
-    const permId = permMap.get(`${resource}:${action}`);
-    if (!permId) continue;
-    await db.insert(rolePermissions).values({
-      role_id: adminRole.id,
-      permission_id: permId,
-    }).onConflictDoNothing();
-  }
+  await assignRolePermissions(ROLE_ADMIN, ADMIN_DEFAULT_PERMISSIONS);
 }
 
 /**
  * 为尚无任何 user_roles 关联的存量用户补齐默认 user 角色。
  * （users.role 列已废弃删除；历史迁移过的数据不受影响）
+ *
+ * 单条 INSERT ... SELECT ... WHERE NOT EXISTS ... ON CONFLICT DO NOTHING：
+ * 只补完全没有角色的用户，已有其他角色的用户不会被追加 user 角色；
+ * root（UID=0）显式排除。没有待补用户时语句本身即为 no-op。
+ *
+ * @returns 无返回值
  */
 export async function migrateExistingUsers(): Promise<void> {
-  const db = getDb();
+  const userRoleId = await findRoleIdByName(ROLE_USER);
+  if (!userRoleId) return;
 
-  const allUsers = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(sql`${users.id} <> '0'`);
-
-  const [userRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.name, ROLE_USER))
-    .limit(1);
-  if (!userRole || allUsers.length === 0) return;
-
-  const existingRows = await db
-    .select({ user_id: userRoles.user_id })
-    .from(userRoles);
-  const existingIds = new Set(existingRows.map((r) => r.user_id));
-
-  for (const u of allUsers) {
-    if (existingIds.has(u.id)) continue;
-    await db.insert(userRoles).values({
-      user_id: u.id,
-      role_id: userRole.id,
-    }).onConflictDoNothing();
-  }
+  await getDb().execute(sql`
+    INSERT INTO ${userRoles} (user_id, role_id)
+    SELECT u.id, ${userRoleId}
+    FROM ${users} AS u
+    WHERE u.id <> ${ROOT_USER_ID}
+      AND NOT EXISTS (
+        SELECT 1 FROM ${userRoles} AS ur WHERE ur.user_id = u.id
+      )
+    ON CONFLICT DO NOTHING
+  `);
 }
 
 /**
  * NOJ-062：敏感字段权限从 user 角色撤销一次。
  *
- * 升级/初始化时执行一次撤销，之后写入 system_settings 内部标记；
+ * 升级/初始化时执行一次集合 delete，之后写入 system_settings 内部标记；
  * 管理员后续在 RBAC 面板中给 user 角色重新授权后，重启不会被本函数再次撤销。
  *
  * 直接读写 system_settings 表（不走 settings 服务层缓存）：本函数在启动期
  * ensureRbacSeeds 中调用，此时 settings 缓存尚未初始化（main.ts 顺序）。
+ *
+ * @returns 无返回值
  */
 export async function ensureSensitiveFieldDefaultPermissions(): Promise<void> {
   const db = getDb();
 
-  const [userRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.name, ROLE_USER))
-    .limit(1);
-  if (!userRole) return;
+  const userRoleId = await findRoleIdByName(ROLE_USER);
+  if (!userRoleId) return;
 
   const [marker] = await db
     .select({ key: systemSettings.key })
@@ -304,41 +328,36 @@ export async function ensureSensitiveFieldDefaultPermissions(): Promise<void> {
     .limit(1);
   if (marker) return;
 
-  const allPerms = await db
-    .select({
-      id: permissions.id,
-      resource: permissions.resource,
-      action: permissions.action,
-    })
-    .from(permissions);
-  const permMap = new Map(
-    allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
-  );
+  const permissionIds = await loadPermissionIdMap();
+  const sensitiveIds = SENSITIVE_FIELD_REVOKE_PERMISSIONS
+    .map(({ resource, action }) =>
+      permissionIds.get(permissionKey(resource, action))
+    )
+    .filter((id): id is string => Boolean(id));
 
-  for (const { resource, action } of SENSITIVE_FIELD_REVOKE_PERMISSIONS) {
-    const permId = permMap.get(`${resource}:${action}`);
-    if (!permId) continue;
+  if (sensitiveIds.length > 0) {
     await db.delete(rolePermissions).where(
       and(
-        eq(rolePermissions.role_id, userRole.id),
-        eq(rolePermissions.permission_id, permId),
+        eq(rolePermissions.role_id, userRoleId),
+        inArray(rolePermissions.permission_id, sensitiveIds),
       ),
     );
   }
 
-  const now = new Date().toISOString();
   await db.insert(systemSettings).values({
     key: SENSITIVE_FIELD_REVOKE_SEED_KEY,
     value: "1",
     description: "内部：NOJ-062 敏感字段默认权限已撤销（勿手动修改）",
     is_secret: false,
-    updated_at: now,
+    updated_at: now(),
     updated_by: ROOT_USER_ID,
   }).onConflictDoNothing();
 }
 
 /**
  * 全量幂等初始化。应在启动期（migration 后）或 seed 时调用。
+ *
+ * @returns 无返回值
  */
 export async function ensureRbacSeeds(): Promise<void> {
   await ensureSystemRoles();

@@ -4,20 +4,20 @@
  * 覆盖：admin 上传统一题目包 → 题目创建（含 command 默认注入、评测包注册）
  * → 提交评测 → 结果正常（评测包剥离后可用）。
  *
- * 依赖：noj-core 服务（E2E 环境）+ noj-judge（评测部分，isJudgeAvailable 守卫）。
+ * 依赖：noj-core 服务（E2E 环境）+ noj-judge（评测部分由启动器 canary 保证）。
  */
 
 import {
   apiDelete,
   apiGet,
-  apiPut,
   domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
-  isJudgeAvailable,
+  measureBundleBuild,
   pollSubmission,
   publishProblemVersion,
+  requireJudgeCanary,
   setProblemState,
   submitCode,
   waitForServer,
@@ -26,7 +26,6 @@ import {
 const testSuffix = Date.now().toString(36);
 let adminToken = "";
 let problemId = "";
-let judgeAvailable = false;
 
 const EVALUATOR_PY = `# E2E 统一包导入测试评测脚本
 import json
@@ -114,15 +113,16 @@ e2eTest("[e2e/import-bundle] Setup: 管理员登录 + 构造统一包", async ()
   if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
-  judgeAvailable = await isJudgeAvailable();
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+  await requireJudgeCanary();
   // 构造 zip 提前验证可打包
-  const zip = await makeBundleZip();
+  const zip = await measureBundleBuild(() => makeBundleZip());
   if (zip.length === 0) throw new Error("统一包构造失败");
 });
 
 e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
   if (!isE2E) return;
-  const zip = await makeBundleZip();
+  const zip = await measureBundleBuild(() => makeBundleZip());
   const formData = new FormData();
   formData.append(
     "file",
@@ -214,8 +214,8 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
   }
 });
 
-e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () => {
-  if (!isE2E || !problemId || !judgeAvailable) return;
+e2eTest("[e2e/import-bundle] 提交评测闭环", async () => {
+  if (!isE2E || !problemId) return;
   // 统一题包导入只写共享草稿（Handbook §6.2），提交前必须显式发布版本
   await publishProblemVersion(adminToken, problemId, "e2e 导入后发布");
   const submissionId = await submitCode(

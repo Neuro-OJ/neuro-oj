@@ -35,7 +35,13 @@ noj-tests/
 ├── E2E_TESTING.md             # 本文档
 ├── run-e2e.sh                 # 本地全量运行脚本
 ├── scripts/
-│   └── run-e2e-domain.sh      # 按 Domain 运行（CI 与本地同一命令）
+│   ├── test-runner.ts         # 统一启动器：环境检查、Judge canary、JUnit、运行清单
+│   ├── test-plan.ts           # Browser 三组规划（按文件耗时基线）
+│   └── run-e2e-domain.sh      # 按 Domain 运行（兼容入口，转发统一启动器）
+├── fixtures/
+│   ├── wait.ts                # 统一轮询等待器（绝对截止 + 单次请求上限）
+│   └── problem-bundle.ts      # 内存题包 builder（替代临时目录 + 外部 zip）
+├── tests/unit/                # 零依赖 helper 单测（test:logic）
 └── e2e/
     ├── helper.ts              # 共享辅助函数（API 客户端、注册、e2eTest 包装）
     ├── identity/              # 认证、用户主页、改密守卫、密码重置、头像、TFA
@@ -174,9 +180,24 @@ ignored 标记；正式比赛 CI 设置上述配置后实际执行。
 
 ```bash
 cd noj-tests
+deno task test:logic                  # 零依赖 helper/启动器/分组规划单测
+deno task test:api                    # API/管道 E2E（排除 e2e/browser）
 deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh submission
 deno task test:domain cross-domain --filter=workspace-teaching  # 仍使用统一环境和目录
+deno task test:browser --filter=ui-flows                        # Browser journey
 ```
+
+启动器在运行前会：
+
+1. 加载 `env.e2e.template`，并在 `NOJ_RUN_E2E != 1` 时直接失败（避免全部 ignore
+   的假绿）；
+2. 执行一次 Judge canary（独立题包 → 发布 → 提交 → 等到真实 attempt 的
+   finished + graded），把 `{runId, submissionId, attemptId, result}`
+   写入运行清单；
+3. 把阶段计时、`manifest.json` 写到 `test-results/performance/<runId>/`， JUnit
+   写到 `test-results/junit/<runId>/`；`--profile` 才记录阶段计时；
+4. 子测试只读取清单校验 canary，不再各自提交探测任务；Judge 不可用、清单 run
+   不匹配或没有真实 attempt 证据时直接失败。
 
 可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
 `community` / `objective` / `admin` / `rate-limit` / `cross-domain` / `browser`
@@ -194,11 +215,34 @@ deno task test:domain cross-domain --filter=workspace-teaching  # 仍使用统�
 `E2E_LLM_GATEWAY_PORT` 可调整该端口，同时更新 core 发给 evaluator 的 Gateway
 地址，避免测试流量调用开发库的 Provider。
 
+### 本地隔离会话（P6-B）
+
+不再依赖固定容器名、固定主机端口或全局 `/tmp/noj-e2e-env.sh`。每个会话拥有独立
+Compose project、按 run 命名的 evaluator 网络、自动分配并写回清单的端口，以及
+session 私有清单（`noj-tests/test-results/e2e-sessions/<name>.json`）：
+
+```bash
+cd noj-tests
+deno task env:up --session perf-clean --fresh     # --fresh 清卷重建；--ui 一并构建 UI
+deno task test:browser --session perf-clean --profile
+deno task test:domain submission --session perf-clean --filter=e2e/rejudge --profile
+deno task env:show --session perf-clean           # 查看项目名、端口、网络与产物复用结论
+deno task env:down --session perf-clean           # 只删除本会话资源
+```
+
+- session 名只允许小写字母/数字/连字符；实际 run ID 自动加随机后缀。
+- 同名 session 已存在时拒绝覆盖：先 `env:down` 再重建。
+- 产物缓存以输入 fingerprint + 产物摘要同时命中才复用；`--fresh` 强制重建；
+  复用会话在运行清单 `session.reusedSession` 中标记，不与 clean-run 基线混合。
+- 两个 session 可并行：端口冲突自动换端口并写回真实值；清理前核对
+  session/project/owner label，关闭一个不影响另一个或开发栈。
+
 ### 一键运行所有 E2E 测试（本地全量）
 
 ```bash
 cd noj-tests
-NOJ_RUN_E2E=1 deno task test
+NOJ_RUN_E2E=1 deno task test      # API/管道全量（Browser 由 test:browser 单独跑）
+NOJ_RUN_E2E=1 deno task test:browser --profile
 ```
 
 启动脚本回归检查：
@@ -224,24 +268,30 @@ docker compose -f ../docker-compose.e2e.yml logs -f noj-core
 # 查看 noj-judge 日志
 docker compose -f ../docker-compose.e2e.yml logs -f noj-judge
 
-# 手动进入 noj-core 容器
-docker exec -it noj-e2e-core sh
+# 容器名由 Compose project 自动生成，先定位服务容器
+docker compose -p <session-project> -f ../docker-compose.e2e.yml ps -q noj-core
+docker compose -p <session-project> -f ../docker-compose.e2e.yml exec noj-core sh
 
-# 手动启动/停止栈
-docker compose -f ../docker-compose.e2e.yml up -d
-docker compose -f ../docker-compose.e2e.yml down -v
+# 手动启动/停止栈（优先使用 env:up / env:down 维护会话清单）
+docker compose -p <session-project> -f ../docker-compose.e2e.yml up -d
+docker compose -p <session-project> -f ../docker-compose.e2e.yml down -v
 ```
 
 ## 环境变量
 
-| 变量                  | 默认值                  | 说明                        |
-| --------------------- | ----------------------- | --------------------------- |
-| `NOJ_RUN_E2E`         | —                       | 设为 `1` 启用 E2E 测试      |
-| `E2E_BASE_URL`        | `http://localhost:8099` | noj-core 地址               |
-| `E2E_NO_CLEANUP`      | —                       | 设为 `1` 不自动清理容器     |
-| `E2E_JWT_SECRET`      | `e2e-test-secret`       | JWT 签名密钥                |
-| `NOJ_RUN_BROWSER_E2E` | —                       | 设为 `1` 启用 UI 浏览器门禁 |
-| `E2E_UI_URL`          | `http://localhost:3000` | noj-ui 地址（浏览器门禁用） |
+| 变量                                 | 默认值                   | 说明                                         |
+| ------------------------------------ | ------------------------ | -------------------------------------------- |
+| `NOJ_RUN_E2E`                        | —                        | 设为 `1` 启用 E2E 测试                       |
+| `E2E_BASE_URL`                       | `http://localhost:8099`  | noj-core 地址                                |
+| `E2E_NO_CLEANUP`                     | —                        | 设为 `1` 不自动清理容器                      |
+| `E2E_JWT_SECRET`                     | `e2e-test-secret`        | JWT 签名密钥                                 |
+| `NOJ_RUN_BROWSER_E2E`                | —                        | 设为 `1` 启用 UI 浏览器门禁                  |
+| `E2E_UI_URL`                         | `http://localhost:3000`  | noj-ui 地址（浏览器门禁用）                  |
+| `NOJ_TEST_PROFILE`                   | —                        | 启动器 `--profile` 转换；设为 1 记录阶段计时 |
+| `NOJ_TEST_TIMING_DIR`                | 由启动器生成             | 计时 JSONL 与 manifest 输出目录              |
+| `NOJ_TEST_MANIFEST`                  | 由启动器生成             | 子测试读取 canary 证据的清单路径             |
+| `E2E_TEST_COORDINATOR_URL`           | `http://127.0.0.1:18010` | 主机侧屏障管理地址（仅 loopback）            |
+| `E2E_TEST_COORDINATOR_EVALUATOR_URL` | 容器网络地址             | evaluator 侧屏障地址（不能写 localhost）     |
 
 ## CI 集成
 

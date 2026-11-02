@@ -16,6 +16,8 @@ let polling: Array<{ intervalMs: { value: number | null }; fetcher: () => Promis
 let loggedIn = true;
 
 function contest(overrides: Record<string, unknown> = {}) {
+  // 固定日期会在某天开始把「进行中」用例变成「已结束」；按当前时间生成稳定窗口。
+  const now = Date.now();
   return {
     data: {
       id: 'contest',
@@ -23,8 +25,8 @@ function contest(overrides: Record<string, unknown> = {}) {
       title: '班级联赛体验：判断题热身',
       description: '预览一班与预览二班联合热身赛。',
       announcement: '',
-      start_time: '2026-10-27T05:13:16.098Z',
-      end_time: '2026-11-03T05:14:16.098Z',
+      start_time: new Date(now - 7 * 86_400_000).toISOString(),
+      end_time: new Date(now + 86_400_000).toISOString(),
       type: 'kaggle',
       kind: 'public',
       config: { scoreboard_scope: 'self' },
@@ -40,7 +42,7 @@ function contest(overrides: Record<string, unknown> = {}) {
       is_registered: true,
       can_manage: false,
       classrooms: [],
-      updated_at: '2026-10-27T05:14:16.111Z',
+      updated_at: new Date(now - 7 * 86_400_000).toISOString(),
       ...overrides,
     },
   };

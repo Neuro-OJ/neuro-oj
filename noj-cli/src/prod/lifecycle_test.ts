@@ -4898,8 +4898,14 @@ Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标
       // Releases 列表走 stub，部署文件走既有 ASSETS stub（URL 感知）
       fetcher: (url: string) => {
         // 注意：下载地址也含 `/releases/`（`/releases/download/<tag>/…`），
-        // 必须用 API 特征串区分，否则会把清单 JSON 当成部署文件返回。
-        if (url.includes("/releases?") || url.includes("api.github.com")) {
+        // 必须解析 host 而不是做子串匹配，否则任意包含该串的 URL 都会被误判。
+        let apiHost = false;
+        try {
+          apiHost = new URL(url).hostname === "api.github.com";
+        } catch {
+          apiHost = false;
+        }
+        if (url.includes("/releases?") || apiHost) {
           return Promise.resolve(
             new Response(
               JSON.stringify([

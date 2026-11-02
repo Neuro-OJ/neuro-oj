@@ -7,9 +7,8 @@ import { api, getAdminToken, registerUser, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage as navigatePage,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 
 type Page = import("npm:playwright@1.62.1").Page;
@@ -222,483 +221,516 @@ Deno.test({
       (await fixture<{ data: Domain }>("GET", "/domains/main", admin)).data;
     const owner = await account("govern_owner", suffix),
       student = await account("govern_student", suffix);
-    const manager = await launchBrowser(),
-      applicant = await launchBrowser(),
-      learner = await launchBrowser();
-    for (const session of [manager, applicant, learner]) {
-      session.page.setDefaultTimeout(20_000);
-    }
-    let failed = true, problem: Problem, submissionId = "", published: Problem;
-    async function restoreSetting(key: string) {
-      const current = (await fixture<{ data: Setting[] }>(
-        "GET",
-        "/admin/system/settings",
-        admin,
-      )).data.find((row) => row.key === key)!;
-      await fixture(
-        "PUT",
-        `/admin/system/settings/${key}`,
-        admin,
-        { value: settings.find((row) => row.key === key)!.effective_value },
-        current.updated_at
-          ? { "If-Match": `"${current.updated_at}"` }
-          : undefined,
-      );
-    }
-    const step = async (label: string, fn: () => Promise<void>) =>
-      assertEquals(await t.step(label, fn), true, label);
-    try {
-      await login(
-        manager.page,
-        Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com",
-        "E2eAdminChangedPass1",
-        true,
-      );
-      await login(applicant.page, owner.username, TEST_PASSWORD);
-      await login(learner.page, student.username, TEST_PASSWORD);
-      await step(
-        "平台Web改为申请审核，普通用户Web提交两份创建申请",
-        async () => {
-          await gotoPage(manager.page, "/admin/instance/creation");
-          await select(
-            manager.page,
-            "空间创建审批政策",
-            "用户申请审核",
-          );
-          await write(
-            manager.page,
-            "PATCH",
-            "/admin/instance/settings/creation",
-            () =>
-              manager.page.getByRole("button", {
-                name: "保存政策",
-                exact: true,
-              }).click(),
-          );
-          await gotoPage(applicant.page, "/workspaces");
-          for (
-            const [target, title] of [[slug, name], [
-              rejectedSlug,
-              rejectedName,
-            ]]
-          ) {
-            await applicant.page.getByRole("button", {
-              name: "申请创建",
-              exact: true,
-            }).click();
-            await applicant.page.getByRole("textbox", {
-              name: "空间名称",
-              exact: true,
-            }).fill(title);
-            await applicant.page.getByRole("textbox", {
-              name: "空间网址标识",
-              exact: true,
-            }).fill(target);
-            await select(applicant.page, "域类型", "教学");
-            await applicant.page.getByRole("textbox", {
-              name: "创建申请理由",
-              exact: true,
-            }).fill("用于独立治理与教学验收。");
-            await write(
-              applicant.page,
-              "POST",
-              "/domain-creation-requests",
-              () =>
-                applicant.page.getByRole("button", {
-                  name: "提交申请",
-                  exact: true,
-                }).click(),
-              201,
-            );
-            await expect(
-              applicant.page.getByRole("dialog", { name: "申请创建空间" }),
-            ).toBeHidden();
-          }
-        },
-      );
-      await step("平台Web批准与拒绝明确申请，负责人是普通申请人", async () => {
-        await gotoPage(manager.page, "/admin/instance/requests");
-        const section = manager.page.locator("main");
-        const rows =
-          (await fixture<{ data: Array<{ id: string; slug: string }> }>(
-            "GET",
-            "/admin/instance/domain-creation-requests?status=pending",
-            admin,
-          )).data;
-        for (
-          const [target, title, approved] of [[slug, name, true], [
-            rejectedSlug,
-            rejectedName,
-            false,
-          ]] as const
-        ) {
-          const row = section.getByRole("heading", { name: new RegExp(title) })
-            .locator("..").locator("..");
-          await expect(row).toContainText(owner.username);
-          await confirmed(
-            manager.page,
-            "POST",
-            `/admin/instance/domain-creation-requests/${
-              rows.find((row) => row.slug === target)!.id
-            }/review`,
-            () =>
-              row.getByRole("button", {
-                name: approved ? "批准创建" : "拒绝申请",
-                exact: true,
-              }).click(),
-          );
-        }
-        const domain = (await fixture<{ data: Domain }>(
+    await withBrowserJourney("workspace-governance", async (journey) => {
+      const manager = await journey.newSession("manager"),
+        applicant = await journey.newSession("owner"),
+        learner = await journey.newSession("student");
+      for (const session of [manager, applicant, learner]) {
+        session.page.setDefaultTimeout(20_000);
+      }
+      let problem: Problem, submissionId = "", published: Problem;
+      async function restoreSetting(key: string) {
+        const current = (await fixture<{ data: Setting[] }>(
           "GET",
-          `/domains/${slug}`,
-          owner.token,
-        )).data;
-        assertEquals(domain.owner_id, owner.id);
-        assertEquals(domain.is_member, true);
-        const rejected = await api("GET", `/api/v1/domains/${rejectedSlug}`, {
-          token: admin,
-        });
-        assertEquals(rejected.status, 404);
-        await select(manager.page, "创建申请状态", "已拒绝");
-        await expect(
-          section.getByRole("heading", { name: new RegExp(rejectedName) }),
-        ).toBeVisible();
-      });
-      await step(
-        "普通域成员完成真实交卷，保存成员、源题和提交历史依据",
-        async () => {
-          const invitation = await fixture<{ data: { token: string } }>(
-            "POST",
-            `/domains/${slug}/invitations`,
-            owner.token,
-            { email: student.email },
-          );
-          await fixture("POST", "/domain-invitations/accept", student.token, {
-            token: invitation.data.token,
-          });
-          problem = await objective(slug, owner.token, `保留原题 ${suffix}`);
-          await gotoPage(learner.page, `/d/${slug}/problems/${problem.number}`);
-          await learner.page.getByRole("checkbox", {
-            name: "正确选项",
-            exact: true,
-          }).check();
-          const response = await confirmed(
-            learner.page,
-            "POST",
-            `/domains/${slug}/problems/${problem.number}/objective-submissions`,
-            () =>
-              learner.page.getByRole("button", { name: "交卷", exact: true })
-                .click(),
-            201,
-          );
-          assertEquals(response.body.data.score, 100);
-          submissionId = response.body.data.submission_id;
-          await expect(
-            learner.page.getByText("本次成绩：100 分", { exact: true }),
-          ).toBeVisible();
-        },
-      );
-      await step(
-        "平台Web暂停与恢复同一域，普通用户即时失去并重新获得进入权",
-        async () => {
-          await gotoPage(manager.page, "/admin/instance/domains");
-          await manager.page.getByRole("textbox", {
-            name: "搜索治理空间",
-            exact: true,
-          }).fill(slug);
-          await manager.page.getByRole("button", {
-            name: "搜索",
-            exact: true,
-          }).click();
-          const row = manager.page.getByRole("row").filter({ hasText: name });
-          await row.getByRole("button", { name: "更多操作" }).click();
-          await confirmed(
-            manager.page,
-            "POST",
-            `/domains/${slug}/status`,
-            () =>
-              manager.page.getByRole("menuitem", {
-                name: "暂停访问",
-                exact: true,
-              })
-                .click(),
-          );
-          const blocked = await learner.page.request.get(
-            `${UI_URL}/api/v1/domains/${slug}`,
-          );
-          assertEquals(blocked.status(), 404);
-          await gotoPage(learner.page, `/d/${slug}/problems/${problem.number}`);
-          await expect(
-            learner.page.getByText("空间不存在", { exact: true }),
-          ).toBeVisible();
-          await row.getByRole("button", { name: "更多操作" }).click();
-          await confirmed(
-            manager.page,
-            "POST",
-            `/domains/${slug}/status`,
-            () =>
-              manager.page.getByRole("menuitem", {
-                name: "恢复使用",
-                exact: true,
-              })
-                .click(),
-          );
-          assertEquals(
-            (await learner.page.request.get(`${UI_URL}/api/v1/domains/${slug}`))
-              .status(),
-            200,
-          );
-        },
-      );
-      await step(
-        "两标签页的额度修改产生真实409，旧表单保留输入并明确提示",
-        async () => {
-          const other = await manager.context.newPage();
-          try {
-            for (const page of [manager.page, other]) {
-              await gotoPage(page, `/d/${slug}/settings/limits`);
-              await select(page, "成员额度模式", "设置本域上限");
-            }
-            await manager.page.getByRole("spinbutton", {
-              name: "成员上限",
-              exact: true,
-            }).fill("40");
-            await other.getByRole("spinbutton", {
-              name: "成员上限",
-              exact: true,
-            }).fill("30");
-            await expect(
-              manager.page.getByRole("button", {
-                name: "保存配额配置",
-                exact: true,
-              }),
-            )
-              .toBeEnabled();
-            await expect(
-              other.getByRole("button", { name: "保存配额配置", exact: true }),
-            )
-              .toBeEnabled();
-            const first = await write(
-              manager.page,
-              "PATCH",
-              `/domains/${slug}/limits`,
-              () =>
-                manager.page.getByRole("button", {
-                  name: "保存配额配置",
-                  exact: true,
-                }).click(),
-            );
-            const conflict = await write(
-              other,
-              "PATCH",
-              `/domains/${slug}/limits`,
-              () =>
-                other.getByRole("button", { name: "保存配额配置", exact: true })
-                  .click(),
-              409,
-            );
-            assertEquals(
-              conflict.request.headers()["if-match"],
-              first.request.headers()["if-match"],
-            );
-            await expect(
-              other.locator('p[role="alert"]').filter({
-                hasText: "工作空间配置已变化，请重新读取",
-              }),
-            ).toBeVisible();
-            await expect(
-              other.getByRole("spinbutton", { name: "成员上限", exact: true }),
-            ).toHaveValue("30");
-            const limits = await fixture<
-              { data: { configured: { members: number } } }
-            >("GET", `/domains/${slug}/limits`, admin);
-            assertEquals(limits.data.configured.members, 40);
-          } finally {
-            await other.close();
-          }
-        },
-      );
-      await step(
-        "域类型和能力固定，设置修改保留成员、原题、答案与成绩",
-        async () => {
-          const members = await fixture(
-            "GET",
-            `/domains/${slug}/members`,
-            owner.token,
-          );
-          const detail = await fixture(
-            "GET",
-            `/domains/${slug}/problems/${problem.number}`,
-            owner.token,
-          );
-          const history = await fixture(
-            "GET",
-            `/domains/${slug}/objective-submissions/${submissionId}`,
-            student.token,
-          );
-          await gotoPage(applicant.page, `/d/${slug}/settings`);
-          await expect(
-            applicant.page.getByText(/创建后(?:固定|不可更改)/, {
-              exact: false,
-            }),
-          )
-            .toBeVisible();
-          await expect(
-            applicant.page.getByRole("button", {
-              name: "预览差异",
-              exact: true,
-            }),
-          ).toHaveCount(0);
-          const fixed = await api("PATCH", `/api/v1/domains/${slug}`, {
-            token: owner.token,
-            headers: {
-              "If-Match": String(
-                (await fixture<{ data: Domain }>(
-                  "GET",
-                  `/domains/${slug}`,
-                  owner.token,
-                )).data.revision,
-              ),
-            },
-            body: { preset: "community" },
-          });
-          assertEquals(fixed.status, 400);
-          assertEquals(
-            (fixed.body as { code: string }).code,
-            "DOMAIN_TYPE_FIXED",
-          );
-          assertEquals(
-            await fixture("GET", `/domains/${slug}/members`, owner.token),
-            members,
-          );
-          assertEquals(
-            await fixture(
-              "GET",
-              `/domains/${slug}/problems/${problem.number}`,
-              owner.token,
-            ),
-            detail,
-          );
-          assertEquals(
-            await fixture(
-              "GET",
-              `/domains/${slug}/objective-submissions/${submissionId}`,
-              student.token,
-            ),
-            history,
-          );
-          await expect(
-            applicant.page.getByRole("combobox", {
-              name: "空间首页",
-              exact: true,
-            }),
-          ).toHaveCount(0);
-          await applicant.page.getByRole("textbox", {
-            name: "空间简介",
-            exact: true,
-          }).fill("修改简介保留固定教学域能力。");
-          await write(
-            applicant.page,
-            "PATCH",
-            `/domains/${slug}`,
-            () =>
-              applicant.page.getByRole("button", {
-                name: "保存基本设置",
-                exact: true,
-              }).click(),
-          );
-          await gotoPage(applicant.page, `/d/${slug}`);
-          await applicant.page.waitForURL((url) =>
-            url.pathname === `/d/${slug}`
-          );
-          await expect(
-            applicant.page.getByRole("heading", { name, exact: true }),
-          ).toBeVisible();
-        },
-      );
-      await step(
-        "匿名sitemap实时读取，Web下架本次公开题后不复用旧目录",
-        async () => {
-          published = await objective("main", admin, `公开目录题 ${suffix}`);
-          const anonymous = await manager.browser.newContext();
-          try {
-            const first = await anonymous.request.get(`${UI_URL}/sitemap.xml`);
-            assertEquals(first.status(), 200);
-            assertEquals(first.headers()["cache-control"], "no-store");
-            assertEquals(
-              (await first.text()).includes(
-                `/d/main/problems/${published.number}</loc>`,
-              ),
-              true,
-            );
-            await gotoPage(manager.page, "/d/main/problem-bindings");
-            await manager.page.getByPlaceholder("搜索资源名称", { exact: true })
-              .fill(`公开目录题 ${suffix}`);
-            await manager.page.getByRole("button", {
-              name: "搜索",
-              exact: true,
-            }).click();
-            const row = manager.page.getByRole("heading", {
-              name: new RegExp(`公开目录题 ${suffix}`),
-            }).locator("..").locator("..");
-            await row.getByRole("button", { name: "配置", exact: true })
-              .click();
-            await manager.page.getByPlaceholder(
-              "说明策略或上下架调整原因",
-            ).fill("公开目录撤销验收，仅下架本次新题。");
-            await manager.page.getByRole("checkbox", {
-              name: "暂停此题在本域的内容访问和新提交",
-              exact: true,
-            }).check();
-            await confirmed(
-              manager.page,
-              "POST",
-              `/domains/main/problems/${published.number}/state`,
-              () =>
-                manager.page.getByRole("button", {
-                  name: "保存展示与上下架",
-                  exact: true,
-                }).click(),
-            );
-            const next = await anonymous.request.get(`${UI_URL}/sitemap.xml`);
-            assertEquals(next.status(), 200);
-            assertEquals(
-              (await next.text()).includes(
-                `/d/main/problems/${published.number}</loc>`,
-              ),
-              false,
-            );
-            await gotoPage(manager.page, "/admin/instance/access");
+          "/admin/system/settings",
+          admin,
+        )).data.find((row) => row.key === key)!;
+        await fixture(
+          "PUT",
+          `/admin/system/settings/${key}`,
+          admin,
+          { value: settings.find((row) => row.key === key)!.effective_value },
+          current.updated_at
+            ? { "If-Match": `"${current.updated_at}"` }
+            : undefined,
+        );
+      }
+      const step = async (label: string, fn: () => Promise<void>) =>
+        assertEquals(await t.step(label, fn), true, label);
+      try {
+        await login(
+          manager.page,
+          Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com",
+          "E2eAdminChangedPass1",
+          true,
+        );
+        await login(applicant.page, owner.username, TEST_PASSWORD);
+        await login(learner.page, student.username, TEST_PASSWORD);
+        await step(
+          "平台Web改为申请审核，普通用户Web提交两份创建申请",
+          async () => {
+            await gotoPage(manager.page, "/admin/instance/creation");
             await select(
               manager.page,
-              "实例访问范围",
-              "仅已登录账号",
+              "空间创建审批政策",
+              "用户申请审核",
             );
             await write(
               manager.page,
               "PATCH",
-              "/admin/instance/settings/access",
+              "/admin/instance/settings/creation",
               () =>
                 manager.page.getByRole("button", {
                   name: "保存政策",
                   exact: true,
                 }).click(),
             );
-            const denied = await anonymous.request.get(`${UI_URL}/sitemap.xml`);
-            assertEquals(denied.ok(), false);
-            assertEquals(denied.headers()["cache-control"], "no-store");
-            assertEquals(
-              (await denied.text()).includes("/d/main/problems/"),
-              false,
+            await gotoPage(applicant.page, "/workspaces");
+            for (
+              const [target, title] of [[slug, name], [
+                rejectedSlug,
+                rejectedName,
+              ]]
+            ) {
+              await applicant.page.getByRole("button", {
+                name: "申请创建",
+                exact: true,
+              }).click();
+              await applicant.page.getByRole("textbox", {
+                name: "空间名称",
+                exact: true,
+              }).fill(title);
+              await applicant.page.getByRole("textbox", {
+                name: "空间网址标识",
+                exact: true,
+              }).fill(target);
+              await select(applicant.page, "域类型", "教学");
+              await applicant.page.getByRole("textbox", {
+                name: "创建申请理由",
+                exact: true,
+              }).fill("用于独立治理与教学验收。");
+              await write(
+                applicant.page,
+                "POST",
+                "/domain-creation-requests",
+                () =>
+                  applicant.page.getByRole("button", {
+                    name: "提交申请",
+                    exact: true,
+                  }).click(),
+                201,
+              );
+              await expect(
+                applicant.page.getByRole("dialog", { name: "申请创建空间" }),
+              ).toBeHidden();
+            }
+          },
+        );
+        await step(
+          "平台Web批准与拒绝明确申请，负责人是普通申请人",
+          async () => {
+            await gotoPage(manager.page, "/admin/instance/requests");
+            const section = manager.page.locator("main");
+            const rows =
+              (await fixture<{ data: Array<{ id: string; slug: string }> }>(
+                "GET",
+                "/admin/instance/domain-creation-requests?status=pending",
+                admin,
+              )).data;
+            for (
+              const [target, title, approved] of [[slug, name, true], [
+                rejectedSlug,
+                rejectedName,
+                false,
+              ]] as const
+            ) {
+              const row = section.getByRole("heading", {
+                name: new RegExp(title),
+              })
+                .locator("..").locator("..");
+              await expect(row).toContainText(owner.username);
+              await confirmed(
+                manager.page,
+                "POST",
+                `/admin/instance/domain-creation-requests/${
+                  rows.find((row) => row.slug === target)!.id
+                }/review`,
+                () =>
+                  row.getByRole("button", {
+                    name: approved ? "批准创建" : "拒绝申请",
+                    exact: true,
+                  }).click(),
+              );
+            }
+            const domain = (await fixture<{ data: Domain }>(
+              "GET",
+              `/domains/${slug}`,
+              owner.token,
+            )).data;
+            assertEquals(domain.owner_id, owner.id);
+            assertEquals(domain.is_member, true);
+            const rejected = await api(
+              "GET",
+              `/api/v1/domains/${rejectedSlug}`,
+              {
+                token: admin,
+              },
             );
-          } finally {
-            await anonymous.close();
-          }
-        },
-      );
-      failed = false;
-    } finally {
-      try {
+            assertEquals(rejected.status, 404);
+            await select(manager.page, "创建申请状态", "已拒绝");
+            await expect(
+              section.getByRole("heading", { name: new RegExp(rejectedName) }),
+            ).toBeVisible();
+          },
+        );
+        await step(
+          "普通域成员完成真实交卷，保存成员、源题和提交历史依据",
+          async () => {
+            const invitation = await fixture<{ data: { token: string } }>(
+              "POST",
+              `/domains/${slug}/invitations`,
+              owner.token,
+              { email: student.email },
+            );
+            await fixture("POST", "/domain-invitations/accept", student.token, {
+              token: invitation.data.token,
+            });
+            problem = await objective(slug, owner.token, `保留原题 ${suffix}`);
+            await gotoPage(
+              learner.page,
+              `/d/${slug}/problems/${problem.number}`,
+            );
+            await learner.page.getByRole("checkbox", {
+              name: "正确选项",
+              exact: true,
+            }).check();
+            const response = await confirmed(
+              learner.page,
+              "POST",
+              `/domains/${slug}/problems/${problem.number}/objective-submissions`,
+              () =>
+                learner.page.getByRole("button", { name: "交卷", exact: true })
+                  .click(),
+              201,
+            );
+            assertEquals(response.body.data.score, 100);
+            submissionId = response.body.data.submission_id;
+            await expect(
+              learner.page.getByText("本次成绩：100 分", { exact: true }),
+            ).toBeVisible();
+          },
+        );
+        await step(
+          "平台Web暂停与恢复同一域，普通用户即时失去并重新获得进入权",
+          async () => {
+            await gotoPage(manager.page, "/admin/instance/domains");
+            await manager.page.getByRole("textbox", {
+              name: "搜索治理空间",
+              exact: true,
+            }).fill(slug);
+            await manager.page.getByRole("button", {
+              name: "搜索",
+              exact: true,
+            }).click();
+            const row = manager.page.getByRole("row").filter({ hasText: name });
+            await row.getByRole("button", { name: "更多操作" }).click();
+            await confirmed(
+              manager.page,
+              "POST",
+              `/domains/${slug}/status`,
+              () =>
+                manager.page.getByRole("menuitem", {
+                  name: "暂停访问",
+                  exact: true,
+                })
+                  .click(),
+            );
+            const blocked = await learner.page.request.get(
+              `${UI_URL}/api/v1/domains/${slug}`,
+            );
+            assertEquals(blocked.status(), 404);
+            await gotoPage(
+              learner.page,
+              `/d/${slug}/problems/${problem.number}`,
+            );
+            await expect(
+              learner.page.getByText("空间不存在", { exact: true }),
+            ).toBeVisible();
+            await row.getByRole("button", { name: "更多操作" }).click();
+            await confirmed(
+              manager.page,
+              "POST",
+              `/domains/${slug}/status`,
+              () =>
+                manager.page.getByRole("menuitem", {
+                  name: "恢复使用",
+                  exact: true,
+                })
+                  .click(),
+            );
+            assertEquals(
+              (await learner.page.request.get(
+                `${UI_URL}/api/v1/domains/${slug}`,
+              ))
+                .status(),
+              200,
+            );
+          },
+        );
+        await step(
+          "两标签页的额度修改产生真实409，旧表单保留输入并明确提示",
+          async () => {
+            const other = await manager.context.newPage();
+            try {
+              for (const page of [manager.page, other]) {
+                await gotoPage(page, `/d/${slug}/settings/limits`);
+                await select(page, "成员额度模式", "设置本域上限");
+              }
+              await manager.page.getByRole("spinbutton", {
+                name: "成员上限",
+                exact: true,
+              }).fill("40");
+              await other.getByRole("spinbutton", {
+                name: "成员上限",
+                exact: true,
+              }).fill("30");
+              await expect(
+                manager.page.getByRole("button", {
+                  name: "保存配额配置",
+                  exact: true,
+                }),
+              )
+                .toBeEnabled();
+              await expect(
+                other.getByRole("button", {
+                  name: "保存配额配置",
+                  exact: true,
+                }),
+              )
+                .toBeEnabled();
+              const first = await write(
+                manager.page,
+                "PATCH",
+                `/domains/${slug}/limits`,
+                () =>
+                  manager.page.getByRole("button", {
+                    name: "保存配额配置",
+                    exact: true,
+                  }).click(),
+              );
+              const conflict = await write(
+                other,
+                "PATCH",
+                `/domains/${slug}/limits`,
+                () =>
+                  other.getByRole("button", {
+                    name: "保存配额配置",
+                    exact: true,
+                  })
+                    .click(),
+                409,
+              );
+              assertEquals(
+                conflict.request.headers()["if-match"],
+                first.request.headers()["if-match"],
+              );
+              await expect(
+                other.locator('p[role="alert"]').filter({
+                  hasText: "工作空间配置已变化，请重新读取",
+                }),
+              ).toBeVisible();
+              await expect(
+                other.getByRole("spinbutton", {
+                  name: "成员上限",
+                  exact: true,
+                }),
+              ).toHaveValue("30");
+              const limits = await fixture<
+                { data: { configured: { members: number } } }
+              >("GET", `/domains/${slug}/limits`, admin);
+              assertEquals(limits.data.configured.members, 40);
+            } finally {
+              await other.close();
+            }
+          },
+        );
+        await step(
+          "域类型和能力固定，设置修改保留成员、原题、答案与成绩",
+          async () => {
+            const members = await fixture(
+              "GET",
+              `/domains/${slug}/members`,
+              owner.token,
+            );
+            const detail = await fixture(
+              "GET",
+              `/domains/${slug}/problems/${problem.number}`,
+              owner.token,
+            );
+            const history = await fixture(
+              "GET",
+              `/domains/${slug}/objective-submissions/${submissionId}`,
+              student.token,
+            );
+            await gotoPage(applicant.page, `/d/${slug}/settings`);
+            await expect(
+              applicant.page.getByText(/创建后(?:固定|不可更改)/, {
+                exact: false,
+              }),
+            )
+              .toBeVisible();
+            await expect(
+              applicant.page.getByRole("button", {
+                name: "预览差异",
+                exact: true,
+              }),
+            ).toHaveCount(0);
+            const fixed = await api("PATCH", `/api/v1/domains/${slug}`, {
+              token: owner.token,
+              headers: {
+                "If-Match": String(
+                  (await fixture<{ data: Domain }>(
+                    "GET",
+                    `/domains/${slug}`,
+                    owner.token,
+                  )).data.revision,
+                ),
+              },
+              body: { preset: "community" },
+            });
+            assertEquals(fixed.status, 400);
+            assertEquals(
+              (fixed.body as { code: string }).code,
+              "DOMAIN_TYPE_FIXED",
+            );
+            assertEquals(
+              await fixture("GET", `/domains/${slug}/members`, owner.token),
+              members,
+            );
+            assertEquals(
+              await fixture(
+                "GET",
+                `/domains/${slug}/problems/${problem.number}`,
+                owner.token,
+              ),
+              detail,
+            );
+            assertEquals(
+              await fixture(
+                "GET",
+                `/domains/${slug}/objective-submissions/${submissionId}`,
+                student.token,
+              ),
+              history,
+            );
+            await expect(
+              applicant.page.getByRole("combobox", {
+                name: "空间首页",
+                exact: true,
+              }),
+            ).toHaveCount(0);
+            await applicant.page.getByRole("textbox", {
+              name: "空间简介",
+              exact: true,
+            }).fill("修改简介保留固定教学域能力。");
+            await write(
+              applicant.page,
+              "PATCH",
+              `/domains/${slug}`,
+              () =>
+                applicant.page.getByRole("button", {
+                  name: "保存基本设置",
+                  exact: true,
+                }).click(),
+            );
+            await gotoPage(applicant.page, `/d/${slug}`);
+            await applicant.page.waitForURL((url) =>
+              url.pathname === `/d/${slug}`
+            );
+            await expect(
+              applicant.page.getByRole("heading", { name, exact: true }),
+            ).toBeVisible();
+          },
+        );
+        await step(
+          "匿名sitemap实时读取，Web下架本次公开题后不复用旧目录",
+          async () => {
+            published = await objective("main", admin, `公开目录题 ${suffix}`);
+            const anonymous = await journey.newSession("anonymous");
+            try {
+              const first = await anonymous.context.request.get(
+                `${UI_URL}/sitemap.xml`,
+              );
+              assertEquals(first.status(), 200);
+              assertEquals(first.headers()["cache-control"], "no-store");
+              assertEquals(
+                (await first.text()).includes(
+                  `/d/main/problems/${published.number}</loc>`,
+                ),
+                true,
+              );
+              await gotoPage(manager.page, "/d/main/problem-bindings");
+              await manager.page.getByPlaceholder("搜索资源名称", {
+                exact: true,
+              })
+                .fill(`公开目录题 ${suffix}`);
+              await manager.page.getByRole("button", {
+                name: "搜索",
+                exact: true,
+              }).click();
+              const row = manager.page.getByRole("heading", {
+                name: new RegExp(`公开目录题 ${suffix}`),
+              }).locator("..").locator("..");
+              await row.getByRole("button", { name: "配置", exact: true })
+                .click();
+              await manager.page.getByPlaceholder(
+                "说明策略或上下架调整原因",
+              ).fill("公开目录撤销验收，仅下架本次新题。");
+              await manager.page.getByRole("checkbox", {
+                name: "暂停此题在本域的内容访问和新提交",
+                exact: true,
+              }).check();
+              await confirmed(
+                manager.page,
+                "POST",
+                `/domains/main/problems/${published.number}/state`,
+                () =>
+                  manager.page.getByRole("button", {
+                    name: "保存展示与上下架",
+                    exact: true,
+                  }).click(),
+              );
+              const next = await anonymous.context.request.get(
+                `${UI_URL}/sitemap.xml`,
+              );
+              assertEquals(next.status(), 200);
+              assertEquals(
+                (await next.text()).includes(
+                  `/d/main/problems/${published.number}</loc>`,
+                ),
+                false,
+              );
+              await gotoPage(manager.page, "/admin/instance/access");
+              await select(
+                manager.page,
+                "实例访问范围",
+                "仅已登录账号",
+              );
+              await write(
+                manager.page,
+                "PATCH",
+                "/admin/instance/settings/access",
+                () =>
+                  manager.page.getByRole("button", {
+                    name: "保存政策",
+                    exact: true,
+                  }).click(),
+              );
+              const denied = await anonymous.context.request.get(
+                `${UI_URL}/sitemap.xml`,
+              );
+              assertEquals(denied.ok(), false);
+              assertEquals(denied.headers()["cache-control"], "no-store");
+              assertEquals(
+                (await denied.text()).includes("/d/main/problems/"),
+                false,
+              );
+            } finally {
+              await journey.closeSession(anonymous);
+            }
+          },
+        );
+      } finally {
         await restoreSetting("instance_access");
         await restoreSetting("domain_creation_policy");
         const currentMain =
@@ -720,23 +752,7 @@ Deno.test({
             `恢复${key}`,
           );
         }
-      } finally {
-        await teardownBrowser(
-          manager,
-          failed,
-          `workspace-governance-admin-${suffix}`,
-        );
-        await teardownBrowser(
-          applicant,
-          failed,
-          `workspace-governance-owner-${suffix}`,
-        );
-        await teardownBrowser(
-          learner,
-          failed,
-          `workspace-governance-student-${suffix}`,
-        );
       }
-    }
+    });
   },
 });

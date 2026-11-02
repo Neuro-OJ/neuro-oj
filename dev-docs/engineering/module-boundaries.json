@@ -281,5 +281,254 @@
     "businessCannotImportReadModels": true,
     "runtimeCannotImportBusiness": true,
     "crossModuleServiceImportDiagnostic": true
+  },
+  "moduleDependencies": {
+    "access": [
+      "application",
+      "assets",
+      "communication",
+      "education",
+      "platform",
+      "problems"
+    ],
+    "application": [
+      "access",
+      "assets",
+      "contests",
+      "education",
+      "evaluations",
+      "platform",
+      "problems",
+      "read-models",
+      "runtime"
+    ],
+    "assets": [
+      "access",
+      "platform"
+    ],
+    "communication": [
+      "access",
+      "application",
+      "contests",
+      "platform",
+      "problems"
+    ],
+    "contests": [
+      "access",
+      "application",
+      "communication",
+      "education",
+      "evaluations",
+      "platform",
+      "problems"
+    ],
+    "education": [
+      "access",
+      "application",
+      "assets",
+      "communication",
+      "contests",
+      "evaluations",
+      "platform",
+      "problems",
+      "runtime"
+    ],
+    "evaluations": [
+      "access",
+      "application",
+      "assets",
+      "contests",
+      "education",
+      "platform",
+      "problems",
+      "read-models",
+      "runtime"
+    ],
+    "http": [
+      "access",
+      "application",
+      "communication",
+      "contests",
+      "education",
+      "evaluations",
+      "platform",
+      "problems",
+      "read-models",
+      "runtime"
+    ],
+    "platform": [
+      "access",
+      "application",
+      "communication",
+      "education",
+      "evaluations",
+      "problems"
+    ],
+    "problems": [
+      "access",
+      "application",
+      "assets",
+      "contests",
+      "education",
+      "evaluations",
+      "platform"
+    ],
+    "read-models": [
+      "access",
+      "communication",
+      "contests",
+      "education",
+      "evaluations",
+      "platform",
+      "problems"
+    ],
+    "runtime": [
+      "access"
+    ]
+  },
+  "e2eApiDomains": [
+    "identity",
+    "catalog",
+    "submission",
+    "contest",
+    "system",
+    "community",
+    "objective",
+    "admin",
+    "rate-limit"
+  ],
+  "e2eCiMapping": {
+    "access": {
+      "domains": [
+        "identity",
+        "admin",
+        "rate-limit"
+      ]
+    },
+    "problems": {
+      "domains": [
+        "catalog",
+        "objective"
+      ]
+    },
+    "evaluations": {
+      "domains": [
+        "submission",
+        "objective"
+      ]
+    },
+    "contests": {
+      "domains": [
+        "contest"
+      ]
+    },
+    "education": {
+      "domains": [],
+      "browser": true,
+      "crossDomain": true
+    },
+    "communication": {
+      "domains": [
+        "community"
+      ]
+    },
+    "assets": {
+      "domains": [
+        "catalog",
+        "submission"
+      ]
+    },
+    "platform": {
+      "domains": [
+        "system",
+        "admin",
+        "rate-limit"
+      ]
+    },
+    "read-models": {
+      "domains": [],
+      "browser": true,
+      "crossDomain": true
+    },
+    "application": {
+      "domains": [],
+      "allApiDomains": true
+    },
+    "http": {
+      "domains": [],
+      "allApiDomains": true
+    },
+    "runtime": {
+      "domains": [],
+      "allApiDomains": true
+    }
+  },
+  "ciSelection": {
+    "coreFullPrefixes": [
+      "noj-core/tests/",
+      "noj-core/src/shared/",
+      "noj-core/src/routes/",
+      "noj-core/drizzle/",
+      "noj-core/scripts/",
+      "noj-core/data/",
+      ".github/workflows/",
+      ".github/actions/",
+      "noj-core/Dockerfile"
+    ],
+    "coreFullFiles": [
+      "noj-core/src/app.ts",
+      "noj-core/src/main.ts",
+      "noj-core/src/mod.ts",
+      "noj-core/deno.json",
+      "noj-core/deno.lock",
+      "noj-core/drizzle.config.ts",
+      "noj-core/package.json",
+      "dev-docs/engineering/module-boundaries.json",
+      "dev-docs/engineering/test-duration-baseline.json",
+      "noj-core/.dockerignore",
+      "noj-core/.env.example",
+      "noj-core/.gitignore"
+    ],
+    "e2eInfraPrefixes": [
+      "noj-tests/scripts/",
+      "noj-tests/fixtures/",
+      "noj-tests/e2e/support-package/",
+      "scripts/",
+      ".github/actions/",
+      ".github/workflows/",
+      "noj-judge/",
+      "noj-llm-gateway/"
+    ],
+    "e2eInfraGlobs": [
+      "noj-tests/e2e/*.ts",
+      "noj-tests/e2e/staging/**"
+    ],
+    "e2eInfraFiles": [
+      "noj-tests/deno.json",
+      "noj-tests/deno.lock",
+      "noj-tests/run-e2e.sh",
+      "docker-compose.e2e.yml",
+      "docker-compose.e2e-s3.yml",
+      "env.e2e.template"
+    ],
+    "browserPrefixes": [
+      "noj-ui/"
+    ],
+    "logicOnlyPrefixes": [
+      "noj-tests/tests/"
+    ],
+    "docPrefixes": [
+      "dev-docs/",
+      "noj-docs/",
+      ".agents/",
+      "openspec/"
+    ],
+    "docSuffixes": [
+      ".md"
+    ],
+    "ignoredPrefixes": [
+      "noj-cli/",
+      "noj-lmcc-extension/"
+    ]
   }
 }

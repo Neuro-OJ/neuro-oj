@@ -1,7 +1,8 @@
 /**
  * 全链路评测管道 E2E 测试。
  *
- * 需要 noj-judge-worker 在运行（完整 Docker 沙箱评测栈），否则跳过。
+ * 需要 noj-judge-worker 在运行（完整 Docker 沙箱评测栈）：启动器的 Judge canary
+ * 会在执行前确认 worker 真的领取并完成一次评测，缺失时整个运行直接失败。
  */
 
 import {
@@ -9,9 +10,9 @@ import {
   e2eTest,
   getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   registerUser,
+  requireJudgeCanary,
   submitCode,
   TEST_PASSWORD,
   waitForServer,
@@ -19,7 +20,6 @@ import {
 
 let token = "";
 let PROBLEM_ID = "";
-let judgeOk = false;
 
 e2eTest("[e2e/pipeline] Setup", async () => {
   if (!isE2E) return;
@@ -33,12 +33,12 @@ e2eTest("[e2e/pipeline] Setup", async () => {
   console.log("  → 用户已注册");
   // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
   PROBLEM_ID = await getProblemIdByNumber(1001);
-  judgeOk = await isJudgeAvailable();
-  if (!judgeOk) console.log("  ⚠ judge worker 不可用，管道测试将跳过");
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复提交探测任务。
+  await requireJudgeCanary();
 });
 
 e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   console.log("  → 提交 ID: " + id.slice(0, 8));
   const result = await pollSubmission(token, id);
@@ -49,7 +49,7 @@ e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
 });
 
 e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
   const result = await pollSubmission(token, id);
   if (result.status !== "finished" || result.score >= 10000) {
@@ -58,7 +58,7 @@ e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
 });
 
 e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -71,7 +71,7 @@ e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
 });
 
 e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   const result = await pollSubmission(token, id);
   if (result.status !== "finished") throw new Error("状态非 finished");
@@ -80,7 +80,6 @@ e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
 
 e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
   if (!isE2E) return;
-  if (!judgeOk) return;
   try {
     const password = Deno.env.get("E2E_REDIS_PASSWORD");
     const cmd = new Deno.Command("docker", {
@@ -109,7 +108,7 @@ e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
 });
 
 e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -125,7 +124,7 @@ e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
 });
 
 e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -138,7 +137,7 @@ e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
 });
 
 e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,

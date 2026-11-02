@@ -119,11 +119,18 @@ Deno.test("教学邮件：固定正文仅提供定位，不从事件或资源带
   Deno.env.set("APP_URL", "https://noj.example/");
   try {
     const message = educationEmailContent("school", "assignment-id");
-    assert(
-      message.html.includes(
-        "https://noj.example/d/school/assignments/assignment-id",
-      ),
-    );
+    const link = [...message.html.matchAll(/href="([^"]+)"/g)]
+      .map((match) => match[1]!)
+      .find((href) => {
+        try {
+          const url = new URL(href);
+          return url.origin === "https://noj.example" &&
+            url.pathname === "/d/school/assignments/assignment-id";
+        } catch {
+          return false;
+        }
+      });
+    assert(link, "邮件正文必须包含指向教学作业的站内链接");
     assertEquals(message.subject, "Neuro OJ 教学通知");
   } finally {
     if (previous === undefined) Deno.env.delete("APP_URL");

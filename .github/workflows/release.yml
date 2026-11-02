@@ -373,6 +373,34 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # ===========================================================================
+  # 候选发布功能门禁（P7）：在 Release 目标提交上复用 CI / E2E 全量工作流。
+  # 两个工作流对 workflow_call 事件按全量执行；失败即阻止 publish-release。
+  # ===========================================================================
+  functional-gate:
+    name: 候选发布全量功能检查
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  e2e-gate:
+    name: 候选发布全量 E2E
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
+
+  # ===========================================================================
+  # 候选发布性能门禁（P7）：在该 Release 目标提交上调用每日性能工作流。
+  # 性能结果只作为发布前置证据；普通 PR 由 test-performance 的每日运行承担。
+  # ===========================================================================
+  performance-gate:
+    name: 候选发布性能门禁
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
+    uses: ./.github/workflows/test-performance.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit
+
   verify-release:
     name: 验证正式 Release 镜像
     if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
@@ -471,7 +499,13 @@ jobs:
   publish-release:
     name: 资产就绪后转正 Release
     if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
-    needs: [verify-release, publish-cli]
+    needs: [
+      verify-release,
+      publish-cli,
+      performance-gate,
+      functional-gate,
+      e2e-gate,
+    ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

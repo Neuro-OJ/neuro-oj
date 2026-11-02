@@ -22,11 +22,55 @@ export interface ModuleTestTarget {
   legacyDomains: string[];
 }
 
+/** 一个目标模块对应的 E2E 选择映射（P5-B）。 */
+export interface E2eCiMapping {
+  /** 该模块变更需要执行的 API E2E 域。 */
+  domains?: string[];
+  /** 为 true 时选择全部 API E2E 域（application/http/runtime 等组合层）。 */
+  allApiDomains?: boolean;
+  /** 需要附加 Browser E2E。 */
+  browser?: boolean;
+  /** 需要附加 cross-domain E2E。 */
+  crossDomain?: boolean;
+}
+
+/** CI 影响范围选择器的路径分类配置（单一事实源）。 */
+export interface CiSelectionConfig {
+  /** 命中即"全量 Core"的路径前缀。 */
+  coreFullPrefixes: string[];
+  /** 命中即"全量 Core"的具体文件。 */
+  coreFullFiles: string[];
+  /** 命中即"全部相关 E2E"的路径前缀。 */
+  e2eInfraPrefixes: string[];
+  /** 命中即"全部相关 E2E"的 glob（支持 `*` / `**`）。 */
+  e2eInfraGlobs: string[];
+  /** 命中即"全部相关 E2E"的具体文件。 */
+  e2eInfraFiles: string[];
+  /** 只影响 Browser E2E 的路径前缀。 */
+  browserPrefixes: string[];
+  /** 只是零依赖单元测试、不需要 E2E 的路径前缀。 */
+  logicOnlyPrefixes: string[];
+  /** 文档路径前缀（不触发测试）。 */
+  docPrefixes: string[];
+  /** 文档后缀（不触发测试）。 */
+  docSuffixes: string[];
+  /** 由自身 CI job 覆盖、不需 Core/E2E 的路径前缀。 */
+  ignoredPrefixes: string[];
+}
+
 export interface ModuleTestMetadata {
   targetModules: ModuleTestTarget[];
   legacyDomainToModule: Record<string, string>;
   legacyTestTargets: Record<string, string[]>;
   testCiMapping: Record<string, ModuleTestMapping>;
+  /** 模块 → 其生产代码直接 import 的目标模块（P5-B 反向依赖闭包）。 */
+  moduleDependencies: Record<string, string[]>;
+  /** 全部 API E2E 域（与 noj-tests/e2e 目录一致，由 verify-domain-ci 校验）。 */
+  e2eApiDomains: string[];
+  /** 目标模块 → E2E 选择映射。 */
+  e2eCiMapping: Record<string, E2eCiMapping>;
+  /** 路径分类配置。 */
+  ciSelection: CiSelectionConfig;
 }
 
 export const MODULE_TEST_METADATA = metadata as ModuleTestMetadata;
@@ -42,6 +86,18 @@ export const BUSINESS_MODULE_NAMES = MODULE_TEST_METADATA.targetModules
 export const LEGACY_DOMAIN_NAMES = Object.keys(
   MODULE_TEST_METADATA.legacyDomainToModule,
 );
+
+/** 模块 → 直接依赖的目标模块。 */
+export const MODULE_DEPENDENCIES = MODULE_TEST_METADATA.moduleDependencies;
+
+/** 全部 API E2E 域（不含 cross-domain / browser）。 */
+export const E2E_API_DOMAINS = MODULE_TEST_METADATA.e2eApiDomains;
+
+/** 目标模块 → E2E 选择映射。 */
+export const E2E_CI_MAPPING = MODULE_TEST_METADATA.e2eCiMapping;
+
+/** 影响范围选择器的路径分类配置。 */
+export const CI_SELECTION = MODULE_TEST_METADATA.ciSelection;
 
 function coreRelativeRoot(root: string): string {
   return root.replace(/^noj-core\//, "");
@@ -121,4 +177,92 @@ export function allModuleTestRoots(): string[] {
 /** 返回当前 12 个 target module 的测试根，不含已登记的 legacy roots。 */
 export function allTargetModuleTestRoots(): string[] {
   return MODULE_TEST_METADATA.targetModules.flatMap(targetTestRoots);
+}
+
+/**
+ * 把相对路径映射到目标模块。
+ *
+ * 同时识别迁移后的 `src/modules/<module>` 与迁移前的 `src/domains/<legacy>`
+ * 路径：删除/重命名的 diff 会出现旧路径，只按新目录匹配会让它们在 PR 上静默
+ * 失去影响范围。
+ *
+ * @param path - 仓库相对路径（可带 `noj-core/` 前缀）
+ * @returns 目标模块名；不属于任何模块时返回 undefined
+ */
+export function moduleForCorePath(path: string): string | undefined {
+  const relativePath = path.replace(/^noj-core\//, "");
+  for (const module of MODULE_TEST_METADATA.targetModules) {
+    const root = coreRelativeRoot(module.root);
+    if (relativePath === root || relativePath.startsWith(`${root}/`)) {
+      return module.name;
+    }
+  }
+  const legacy = /^src\/domains\/([^/]+)(?:\/|$)/.exec(relativePath);
+  if (legacy) {
+    return MODULE_TEST_METADATA.legacyDomainToModule[legacy[1]!];
+  }
+  return undefined;
+}
+
+/** 路径是否是测试文件（`tests/` 目录或 `*.test.ts` / `*_test.ts`）。 */
+export function isTestFilePath(path: string): boolean {
+  return /(?:^|\/)tests?\//.test(path) || /(?:_test|\.test)\.ts$/.test(path);
+}
+
+/**
+ * 反向依赖闭包：返回所有（直接或间接）依赖 seeds 的模块。
+ *
+ * @param seeds - 直接变更的模块
+ * @param edges - 模块依赖图（默认使用元数据声明）
+ */
+export function reverseDependencyClosure(
+  seeds: readonly string[],
+  edges: Record<string, string[]> = MODULE_DEPENDENCIES,
+): string[] {
+  const reverse = new Map<string, Set<string>>();
+  for (const [module, deps] of Object.entries(edges)) {
+    for (const dep of deps) {
+      if (!reverse.has(dep)) reverse.set(dep, new Set());
+      reverse.get(dep)!.add(module);
+    }
+  }
+  const result = new Set<string>();
+  const queue = [...seeds];
+  while (queue.length > 0) {
+    const current = queue.pop()!;
+    for (const dependent of reverse.get(current) ?? []) {
+      if (result.has(dependent) || seeds.includes(dependent)) continue;
+      result.add(dependent);
+      queue.push(dependent);
+    }
+  }
+  return [...result].sort();
+}
+
+/**
+ * 极小的 glob 匹配（只支持选择器需要的 `*` 与 `**`）。
+ *
+ * 刻意不引入第三方依赖；行为与 paths-filter 的常用子集一致。
+ */
+export function matchesGlob(path: string, pattern: string): boolean {
+  let regex = "^";
+  for (let i = 0; i < pattern.length; i += 1) {
+    const char = pattern[i]!;
+    if (char === "*") {
+      if (pattern[i + 1] === "*") {
+        if (pattern[i + 2] === "/") {
+          regex += "(?:.*/)?";
+          i += 2;
+        } else {
+          regex += ".*";
+          i += 1;
+        }
+        continue;
+      }
+      regex += "[^/]*";
+      continue;
+    }
+    regex += char.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`${regex}$`).test(path);
 }

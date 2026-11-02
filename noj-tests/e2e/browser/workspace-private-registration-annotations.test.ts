@@ -2,16 +2,15 @@
 /** 私有学校邀请注册与不可变代码批注；注册、评测和批注均经过真实页面。 */
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
+import { createPublishedCodingProblem } from "../../fixtures/coding-problem.ts";
 import { domainAnswerKey } from "../../../noj-ui/utils/domain-problems.ts";
 import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
 import { api, getAdminToken, registerUser, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage as navigatePage,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 
 type Page = import("npm:playwright@1.62.1").Page;
@@ -231,19 +230,15 @@ Deno.test({
       teacherToken,
       { email: studentEmail },
     );
-    const sourceId = await createCodingProblemFixture();
-    const source = await fixture<{ data: { number: number } }>(
-      "GET",
-      `/api/v1/problems/${sourceId}`,
-      admin,
-    );
+    // 已发布不可变题目：显式拿到题目/版本/引用/域，在同一 journey 内复用。
+    const source = await createPublishedCodingProblem();
     const binding = await fixture<{
       data: { binding: { id: string }; reference: { display_ref: string } };
     }>(
       "POST",
       `${domainPath}/problem-bindings`,
       admin,
-      { source_ref: `main:${source.data.number}` },
+      { source_ref: source.reference },
     );
     const reference = binding.data.reference.display_ref;
     const problem = await fixture<
@@ -280,470 +275,522 @@ Deno.test({
           : undefined,
       );
     }
-    const teacher = await launchBrowser(), student = await launchBrowser();
-    let failed = true,
-      studentId = "",
-      assignmentId = "",
-      firstId = "",
-      secondId = "";
-    async function step(name: string, action: () => Promise<void>) {
-      assertEquals(await t.step(name, action), true, name);
-    }
-    try {
-      for (const [key, value] of Object.entries(policyValues)) {
-        await setPolicy(key, value);
-      }
-      await step(
-        "新学生凭班级邀请在Web注册、验证邮箱并进入唯一学校",
-        async () => {
-          await gotoPage(
-            student.page,
-            `/register#invitation=${studentInvite.data.token}`,
-          );
-          await expect(student.page.getByPlaceholder("请输入邮箱地址"))
-            .toHaveValue(studentEmail);
-          await expect(student.page.getByPlaceholder("请输入邮箱地址"))
-            .toBeDisabled();
-          await student.page.getByPlaceholder("3-30 位字母、数字或下划线").fill(
-            studentName,
-          );
-          await student.page.getByPlaceholder(
-            "至少 8 位，需包含大小写字母和数字",
-          ).fill(TEST_PASSWORD);
-          await student.page.getByPlaceholder("再次输入密码").fill(
-            TEST_PASSWORD,
-          );
-          await student.page.getByRole("checkbox", {
-            name: "同意服务条款与隐私政策",
-          }).check();
-          const registered = await write(
-            student.page,
-            "POST",
-            "/api/v1/auth/register",
-            () =>
-              student.page.getByRole("button", { name: "注册", exact: true })
-                .click(),
-          );
-          await student.page.waitForURL((url) =>
-            url.pathname === "/verify-email" &&
-            url.searchParams.get("registered") === "1"
-          );
-          assertEquals(
-            new URL(student.page.url()).searchParams.get("redirect"),
-            `/d/${slug}`,
-          );
-          // E2E 提供实际一次性令牌，打开与邮箱验证链接相同的页面，不直接调用验证 API。
-          const verification = registered.data
-            .email_verification_token as string;
-          assertEquals(typeof verification, "string");
-          await gotoPage(
-            student.page,
-            `/verify-email?token=${encodeURIComponent(verification)}&redirect=${
-              encodeURIComponent(`/d/${slug}`)
-            }`,
-          );
-          await expect(student.page.getByText("邮箱验证成功", { exact: false }))
-            .toBeVisible();
-          await student.page.getByRole("link", {
-            name: "进入空间",
-            exact: true,
-          }).click();
-          await student.page.waitForURL((url) => url.pathname === `/d/${slug}`);
-          const identity = await consent(student.page);
-          studentId = identity.id;
-          assertEquals(identity.username, studentName);
-          assertEquals(identity.is_admin, false);
-          const spaces = await student.page.request.get(
-            `${UI_URL}/api/v1/me/domains`,
-          );
-          assertEquals(spaces.status(), 200);
-          assertEquals(
-            new Set(
-              (await spaces.json()).data.map((space: { slug: string }) =>
-                space.slug
-              ),
-            ),
-            new Set([slug, "main"]),
-          );
-          await expect(student.page.getByTestId("domain-identity")).toHaveText(
-            `${studentName}@${slug}`,
-          );
-          await expect(
-            student.page.getByRole("button", { name: "切换空间", exact: true }),
-          ).toHaveCount(0);
-          const room = await student.page.request.get(
-            `${UI_URL}${domainPath}/classrooms/${classroomId}`,
-          );
-          assertEquals(room.status(), 200);
-          assertEquals((await room.json()).data.membership.role, "student");
-          await student.page.getByRole("button", {
-            name: "用户菜单",
-            exact: true,
-          }).click();
-          await student.page.getByRole("menuitem", {
-            name: "登出",
-            exact: true,
-          }).click();
-          await student.page.getByRole("button", {
-            name: "确认登出",
-            exact: true,
-          }).click();
-          await expect(student.page.locator('a[href^="/login"]').first())
-            .toBeVisible();
-          await login(student.page, studentName);
-          await student.page.waitForURL((url) => url.pathname === `/d/${slug}`);
-          await expect(student.page.getByTestId("domain-identity")).toHaveText(
-            `${studentName}@${slug}`,
-          );
-          await expect(
-            student.page.getByRole("button", { name: "切换空间", exact: true }),
-          ).toHaveCount(0);
-        },
-      );
-      await step(
-        "普通教师准备作业，新学生通过页面提交错误代码并获得真实零分",
-        async () => {
-          const draft = await fixture<
-            { data: { id: string; revision: number } }
-          >(
-            "POST",
-            `${domainPath}/classrooms/${classroomId}/assignments`,
-            teacherToken,
-            {
-              title: `原代码反馈 ${suffix}`,
-              deadline_at: new Date(Date.now() + 3_600_000).toISOString(),
-              items: [{
-                binding_id: binding.data.binding.id,
-                requirement: "accepted",
-              }],
+    await withBrowserJourney(
+      "workspace-private-registration-annotations",
+      async (journey) => {
+        const teacher = await journey.newSession("teacher"),
+          student = await journey.newSession("student");
+        let studentId = "",
+          assignmentId = "",
+          firstId = "",
+          secondId = "";
+        async function step(name: string, action: () => Promise<void>) {
+          assertEquals(await t.step(name, action), true, name);
+        }
+        try {
+          for (const [key, value] of Object.entries(policyValues)) {
+            await setPolicy(key, value);
+          }
+          await step(
+            "新学生凭班级邀请在Web注册、验证邮箱并进入唯一学校",
+            async () => {
+              await gotoPage(
+                student.page,
+                `/register#invitation=${studentInvite.data.token}`,
+              );
+              await expect(student.page.getByPlaceholder("请输入邮箱地址"))
+                .toHaveValue(studentEmail);
+              await expect(student.page.getByPlaceholder("请输入邮箱地址"))
+                .toBeDisabled();
+              await student.page.getByPlaceholder("3-30 位字母、数字或下划线")
+                .fill(
+                  studentName,
+                );
+              await student.page.getByPlaceholder(
+                "至少 8 位，需包含大小写字母和数字",
+              ).fill(TEST_PASSWORD);
+              await student.page.getByPlaceholder("再次输入密码").fill(
+                TEST_PASSWORD,
+              );
+              await student.page.getByRole("checkbox", {
+                name: "同意服务条款与隐私政策",
+              }).check();
+              const registered = await write(
+                student.page,
+                "POST",
+                "/api/v1/auth/register",
+                () =>
+                  student.page.getByRole("button", {
+                    name: "注册",
+                    exact: true,
+                  })
+                    .click(),
+              );
+              await student.page.waitForURL((url) =>
+                url.pathname === "/verify-email" &&
+                url.searchParams.get("registered") === "1"
+              );
+              assertEquals(
+                new URL(student.page.url()).searchParams.get("redirect"),
+                `/d/${slug}`,
+              );
+              // E2E 提供实际一次性令牌，打开与邮箱验证链接相同的页面，不直接调用验证 API。
+              const verification = registered.data
+                .email_verification_token as string;
+              assertEquals(typeof verification, "string");
+              await gotoPage(
+                student.page,
+                `/verify-email?token=${
+                  encodeURIComponent(verification)
+                }&redirect=${encodeURIComponent(`/d/${slug}`)}`,
+              );
+              await expect(
+                student.page.getByText("邮箱验证成功", { exact: false }),
+              )
+                .toBeVisible();
+              await student.page.getByRole("link", {
+                name: "进入空间",
+                exact: true,
+              }).click();
+              await student.page.waitForURL((url) =>
+                url.pathname === `/d/${slug}`
+              );
+              const identity = await consent(student.page);
+              studentId = identity.id;
+              assertEquals(identity.username, studentName);
+              assertEquals(identity.is_admin, false);
+              const spaces = await student.page.request.get(
+                `${UI_URL}/api/v1/me/domains`,
+              );
+              assertEquals(spaces.status(), 200);
+              assertEquals(
+                new Set(
+                  (await spaces.json()).data.map((space: { slug: string }) =>
+                    space.slug
+                  ),
+                ),
+                new Set([slug, "main"]),
+              );
+              await expect(student.page.getByTestId("domain-identity"))
+                .toHaveText(
+                  `${studentName}@${slug}`,
+                );
+              await expect(
+                student.page.getByRole("button", {
+                  name: "切换空间",
+                  exact: true,
+                }),
+              ).toHaveCount(0);
+              const room = await student.page.request.get(
+                `${UI_URL}${domainPath}/classrooms/${classroomId}`,
+              );
+              assertEquals(room.status(), 200);
+              assertEquals((await room.json()).data.membership.role, "student");
+              await student.page.getByRole("button", {
+                name: "用户菜单",
+                exact: true,
+              }).click();
+              await student.page.getByRole("menuitem", {
+                name: "登出",
+                exact: true,
+              }).click();
+              await student.page.getByRole("button", {
+                name: "确认登出",
+                exact: true,
+              }).click();
+              await expect(student.page.locator('a[href^="/login"]').first())
+                .toBeVisible();
+              await login(student.page, studentName);
+              await student.page.waitForURL((url) =>
+                url.pathname === `/d/${slug}`
+              );
+              await expect(student.page.getByTestId("domain-identity"))
+                .toHaveText(
+                  `${studentName}@${slug}`,
+                );
+              await expect(
+                student.page.getByRole("button", {
+                  name: "切换空间",
+                  exact: true,
+                }),
+              ).toHaveCount(0);
             },
           );
-          assignmentId = draft.data.id;
-          await fixture(
-            "POST",
-            `${domainPath}/assignments/${assignmentId}/publish`,
-            teacherToken,
-            {},
-            {
-              "If-Match": String(draft.data.revision),
-              "Idempotency-Key": crypto.randomUUID(),
+          await step(
+            "普通教师准备作业，新学生通过页面提交错误代码并获得真实零分",
+            async () => {
+              const draft = await fixture<
+                { data: { id: string; revision: number } }
+              >(
+                "POST",
+                `${domainPath}/classrooms/${classroomId}/assignments`,
+                teacherToken,
+                {
+                  title: `原代码反馈 ${suffix}`,
+                  deadline_at: new Date(Date.now() + 3_600_000).toISOString(),
+                  items: [{
+                    binding_id: binding.data.binding.id,
+                    requirement: "accepted",
+                  }],
+                },
+              );
+              assignmentId = draft.data.id;
+              await fixture(
+                "POST",
+                `${domainPath}/assignments/${assignmentId}/publish`,
+                teacherToken,
+                {},
+                {
+                  "If-Match": String(draft.data.revision),
+                  "Idempotency-Key": crypto.randomUUID(),
+                },
+              );
+              firstId = await submit(
+                student.page,
+                slug,
+                reference,
+                studentId,
+                problem,
+                wrong,
+                0,
+              );
+              const panel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                firstId,
+              );
+              await expect(
+                panel.getByRole("button", { name: "保存行批注", exact: true }),
+              ).toHaveCount(0);
             },
           );
-          firstId = await submit(
-            student.page,
-            slug,
-            reference,
-            studentId,
-            problem,
-            wrong,
-            0,
+          await step(
+            "教师查看原代码、撰写批注，学生在原提交页面读取",
+            async () => {
+              await login(teacher.page, teacherName);
+              await gotoPage(
+                teacher.page,
+                `/d/${slug}/assignments/${assignmentId}`,
+              );
+              await consent(teacher.page);
+              await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
+                .getByRole("button", {
+                  name: `${studentName} ${reference} 0 · 未达标`,
+                  exact: true,
+                }).click();
+              const panel = teacher.page.getByRole("dialog", {
+                name: / · /,
+              });
+              // 模拟其他页面请求完成后发布同一账号的新资料，不能被误判为切换账号。
+              const identity = await teacher.page.request.get(
+                `${UI_URL}/api/v1/auth/me`,
+              );
+              assertEquals(identity.status(), 200);
+              const refreshedUserId = await teacher.page.evaluate((current) => {
+                const root = document.querySelector("#__nuxt") as Element & {
+                  __vue_app__: {
+                    $nuxt: { payload: { state: Record<string, unknown> } };
+                  };
+                };
+                const state = root.__vue_app__.$nuxt.payload.state;
+                const previous = state["$sauth:user"] as { id: string };
+                state["$sauth:user"] = current;
+                return previous.id;
+              }, (await identity.json()).data);
+              assertEquals(refreshedUserId, teacherId);
+              await panel.locator("div.divide-y > button").filter({
+                hasText: /^0 分/,
+              }).click();
+              await expect(panel.getByRole("list", { name: "原提交代码" }))
+                .toContainText("return '0'");
+              await panel.getByRole("spinbutton", { name: "批注起始行" }).fill(
+                "1",
+              );
+              await panel.getByRole("spinbutton", { name: "批注结束行" }).fill(
+                "2",
+              );
+              await panel.getByRole("textbox", {
+                name: "行批注正文",
+                exact: true,
+              })
+                .fill(originalNote);
+              const path =
+                `${domainPath}/classrooms/${classroomId}/submissions/submission/${firstId}/annotations`;
+              const note = await write(
+                teacher.page,
+                "POST",
+                path,
+                () =>
+                  panel.getByRole("button", { name: "保存行批注", exact: true })
+                    .click(),
+              );
+              assertEquals(note.data.submission_id, firstId);
+              assertEquals(note.data.start_line, 1);
+              assertEquals(note.data.end_line, 2);
+              assertEquals(note.data.author_id, teacherId);
+              await expect(panel.getByText(originalNote, { exact: true }))
+                .toBeVisible();
+              const studentPanel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                firstId,
+              );
+              await expect(
+                studentPanel.getByText(originalNote, { exact: true }),
+              )
+                .toBeVisible();
+            },
           );
-          const panel = await openStudentReview(
-            student.page,
-            slug,
-            assignmentId,
-            firstId,
+          await step(
+            "教师修改并撤回批注，学生重读可见范围同步更新",
+            async () => {
+              const panel = teacher.page.getByRole("dialog", {
+                name: / · /,
+              });
+              await panel.getByRole("button", { name: "修改", exact: true })
+                .click();
+              await panel.getByRole("textbox", { name: "修改行批注正文" }).fill(
+                editedNote,
+              );
+              const annotationsPath =
+                `${domainPath}/classrooms/${classroomId}/submissions/submission/${firstId}/annotations`;
+              const update = teacher.page.waitForResponse((response) =>
+                response.request().method() === "PATCH" &&
+                new URL(response.url()).pathname.startsWith(
+                  `${annotationsPath}/`,
+                )
+              );
+              await panel.getByRole("button", { name: "保存修改", exact: true })
+                .click();
+              assertEquals((await update).status(), 200);
+              await expect(panel.getByText(editedNote, { exact: true }))
+                .toBeVisible();
+              let studentPanel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                firstId,
+              );
+              await expect(studentPanel.getByText(editedNote, { exact: true }))
+                .toBeVisible();
+              await expect(
+                studentPanel.getByText(originalNote, { exact: true }),
+              )
+                .toHaveCount(0);
+              await panel.getByRole("button", { name: "撤回", exact: true })
+                .click();
+              const withdrawal = teacher.page.waitForResponse((response) =>
+                response.request().method() === "PATCH" &&
+                new URL(response.url()).pathname.startsWith(
+                  `${annotationsPath}/`,
+                )
+              );
+              await teacher.page.getByRole("dialog", {
+                name: "撤回行批注",
+                exact: true,
+              }).getByRole("button", { name: "确认", exact: true }).click();
+              assertEquals((await withdrawal).status(), 200);
+              await expect(panel.getByText(editedNote, { exact: true }))
+                .toHaveCount(
+                  0,
+                );
+              studentPanel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                firstId,
+              );
+              await expect(studentPanel.getByText(editedNote, { exact: true }))
+                .toHaveCount(0);
+              await panel.getByRole("textbox", {
+                name: "行批注正文",
+                exact: true,
+              })
+                .fill(retainedNote);
+              await write(
+                teacher.page,
+                "POST",
+                annotationsPath,
+                () =>
+                  panel.getByRole("button", { name: "保存行批注", exact: true })
+                    .click(),
+              );
+              studentPanel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                firstId,
+              );
+              await expect(
+                studentPanel.getByText(retainedNote, { exact: true }),
+              )
+                .toBeVisible();
+            },
           );
-          await expect(
-            panel.getByRole("button", { name: "保存行批注", exact: true }),
-          ).toHaveCount(0);
-        },
-      );
-      await step("教师查看原代码、撰写批注，学生在原提交页面读取", async () => {
-        await login(teacher.page, teacherName);
-        await gotoPage(teacher.page, `/d/${slug}/assignments/${assignmentId}`);
-        await consent(teacher.page);
-        await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
-          .getByRole("button", {
-            name: `${studentName} ${reference} 0 · 未达标`,
-            exact: true,
-          }).click();
-        const panel = teacher.page.getByRole("dialog", {
-          name: / · /,
-        });
-        // 模拟其他页面请求完成后发布同一账号的新资料，不能被误判为切换账号。
-        const identity = await teacher.page.request.get(
-          `${UI_URL}/api/v1/auth/me`,
-        );
-        assertEquals(identity.status(), 200);
-        const refreshedUserId = await teacher.page.evaluate((current) => {
-          const root = document.querySelector("#__nuxt") as Element & {
-            __vue_app__: {
-              $nuxt: { payload: { state: Record<string, unknown> } };
-            };
-          };
-          const state = root.__vue_app__.$nuxt.payload.state;
-          const previous = state["$sauth:user"] as { id: string };
-          state["$sauth:user"] = current;
-          return previous.id;
-        }, (await identity.json()).data);
-        assertEquals(refreshedUserId, teacherId);
-        await panel.locator("div.divide-y > button").filter({
-          hasText: /^0 分/,
-        }).click();
-        await expect(panel.getByRole("list", { name: "原提交代码" }))
-          .toContainText("return '0'");
-        await panel.getByRole("spinbutton", { name: "批注起始行" }).fill("1");
-        await panel.getByRole("spinbutton", { name: "批注结束行" }).fill("2");
-        await panel.getByRole("textbox", { name: "行批注正文", exact: true })
-          .fill(originalNote);
-        const path =
-          `${domainPath}/classrooms/${classroomId}/submissions/submission/${firstId}/annotations`;
-        const note = await write(
-          teacher.page,
-          "POST",
-          path,
-          () =>
-            panel.getByRole("button", { name: "保存行批注", exact: true })
-              .click(),
-        );
-        assertEquals(note.data.submission_id, firstId);
-        assertEquals(note.data.start_line, 1);
-        assertEquals(note.data.end_line, 2);
-        assertEquals(note.data.author_id, teacherId);
-        await expect(panel.getByText(originalNote, { exact: true }))
-          .toBeVisible();
-        const studentPanel = await openStudentReview(
-          student.page,
-          slug,
-          assignmentId,
-          firstId,
-        );
-        await expect(studentPanel.getByText(originalNote, { exact: true }))
-          .toBeVisible();
-      });
-      await step("教师修改并撤回批注，学生重读可见范围同步更新", async () => {
-        const panel = teacher.page.getByRole("dialog", {
-          name: / · /,
-        });
-        await panel.getByRole("button", { name: "修改", exact: true }).click();
-        await panel.getByRole("textbox", { name: "修改行批注正文" }).fill(
-          editedNote,
-        );
-        const annotationsPath =
-          `${domainPath}/classrooms/${classroomId}/submissions/submission/${firstId}/annotations`;
-        const update = teacher.page.waitForResponse((response) =>
-          response.request().method() === "PATCH" &&
-          new URL(response.url()).pathname.startsWith(`${annotationsPath}/`)
-        );
-        await panel.getByRole("button", { name: "保存修改", exact: true })
-          .click();
-        assertEquals((await update).status(), 200);
-        await expect(panel.getByText(editedNote, { exact: true }))
-          .toBeVisible();
-        let studentPanel = await openStudentReview(
-          student.page,
-          slug,
-          assignmentId,
-          firstId,
-        );
-        await expect(studentPanel.getByText(editedNote, { exact: true }))
-          .toBeVisible();
-        await expect(studentPanel.getByText(originalNote, { exact: true }))
-          .toHaveCount(0);
-        await panel.getByRole("button", { name: "撤回", exact: true }).click();
-        const withdrawal = teacher.page.waitForResponse((response) =>
-          response.request().method() === "PATCH" &&
-          new URL(response.url()).pathname.startsWith(`${annotationsPath}/`)
-        );
-        await teacher.page.getByRole("dialog", {
-          name: "撤回行批注",
-          exact: true,
-        }).getByRole("button", { name: "确认", exact: true }).click();
-        assertEquals((await withdrawal).status(), 200);
-        await expect(panel.getByText(editedNote, { exact: true })).toHaveCount(
-          0,
-        );
-        studentPanel = await openStudentReview(
-          student.page,
-          slug,
-          assignmentId,
-          firstId,
-        );
-        await expect(studentPanel.getByText(editedNote, { exact: true }))
-          .toHaveCount(0);
-        await panel.getByRole("textbox", { name: "行批注正文", exact: true })
-          .fill(retainedNote);
-        await write(
-          teacher.page,
-          "POST",
-          annotationsPath,
-          () =>
-            panel.getByRole("button", { name: "保存行批注", exact: true })
-              .click(),
-        );
-        studentPanel = await openStudentReview(
-          student.page,
-          slug,
-          assignmentId,
-          firstId,
-        );
-        await expect(studentPanel.getByText(retainedNote, { exact: true }))
-          .toBeVisible();
-      });
-      await step(
-        "新代码经Judge获得满分，不继承旧批注，原提交仍保留反馈",
-        async () => {
-          secondId = await submit(
-            student.page,
-            slug,
-            reference,
-            studentId,
-            problem,
-            correct,
-            10,
+          await step(
+            "新代码经Judge获得满分，不继承旧批注，原提交仍保留反馈",
+            async () => {
+              secondId = await submit(
+                student.page,
+                slug,
+                reference,
+                studentId,
+                problem,
+                correct,
+                10,
+              );
+              assertNotEquals(secondId, firstId);
+              const panel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                secondId,
+              );
+              await expect(panel.getByRole("list", { name: "原提交代码" }))
+                .toContainText("sum(map(int, input_str.split()))");
+              await expect(panel.getByText(retainedNote, { exact: true }))
+                .toHaveCount(0);
+              await expect(panel.locator("article")).toHaveCount(0);
+              await gotoPage(
+                teacher.page,
+                `/d/${slug}/classrooms/${classroomId}/students/${studentId}`,
+              );
+              await teacher.page.locator("div.divide-y > button").filter({
+                hasText: reference,
+              }).filter({
+                has: teacher.page.getByText(/(?:^| · )0 分$/),
+              }).click();
+              const original = teacher.page.getByRole("dialog", {
+                name: "原提交与教学批注",
+              });
+              await expect(
+                original.getByText(`原提交 ${firstId} · 批注保留在这份代码上`, {
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(original.getByText(retainedNote, { exact: true }))
+                .toBeVisible();
+            },
           );
-          assertNotEquals(secondId, firstId);
-          const panel = await openStudentReview(
-            student.page,
-            slug,
-            assignmentId,
-            secondId,
+          await step(
+            "教师通过Web归档班级，双方重读旧作业成绩和原代码批注",
+            async () => {
+              await gotoPage(
+                teacher.page,
+                `/d/${slug}/assignments/${assignmentId}`,
+              );
+              await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
+                .getByRole("button", {
+                  name: `${studentName} ${reference} 10 · 已达标`,
+                  exact: true,
+                }).click();
+              let panel = teacher.page.getByRole("dialog", {
+                name: / · /,
+              });
+              await panel.locator("div.divide-y > button").filter({
+                hasText: /10 分/,
+              }).click();
+              await expect(
+                panel.getByText(`原提交 ${secondId} · 批注保留在这份代码上`, {
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await panel.getByRole("textbox", {
+                name: "行批注正文",
+                exact: true,
+              })
+                .fill(archiveNote);
+              await write(
+                teacher.page,
+                "POST",
+                `${domainPath}/classrooms/${classroomId}/submissions/submission/${secondId}/annotations`,
+                () =>
+                  panel.getByRole("button", { name: "保存行批注", exact: true })
+                    .click(),
+              );
+              await gotoPage(
+                teacher.page,
+                `/d/${slug}/classrooms/${classroomId}/settings`,
+              );
+              await teacher.page.getByRole("button", {
+                name: "归档此班级并保留历史",
+                exact: true,
+              }).click();
+              const archived = await write(
+                teacher.page,
+                "POST",
+                `${domainPath}/classrooms/${classroomId}/archive`,
+                () =>
+                  teacher.page.getByRole("button", {
+                    name: "确认",
+                    exact: true,
+                  })
+                    .click(),
+              );
+              assertEquals(archived.data.status, "archived");
+              await expect(
+                teacher.page.getByText(
+                  "当前只能读取班级设置，无权修改配置",
+                  { exact: true },
+                ),
+              ).toBeVisible();
+              const ownPanel = await openStudentReview(
+                student.page,
+                slug,
+                assignmentId,
+                secondId,
+              );
+              await expect(ownPanel.getByText(archiveNote, { exact: true }))
+                .toBeVisible();
+              await expect(ownPanel.getByText("10 · 已达标", { exact: true }))
+                .toBeVisible();
+              await gotoPage(
+                teacher.page,
+                `/d/${slug}/assignments/${assignmentId}`,
+              );
+              await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
+                .getByRole("button", {
+                  name: `${studentName} ${reference} 10 · 已达标`,
+                  exact: true,
+                }).click();
+              panel = teacher.page.getByRole("dialog", { name: / · / });
+              await panel.locator("div.divide-y > button").filter({
+                hasText: /10 分/,
+              }).click();
+              await expect(panel.getByText(archiveNote, { exact: true }))
+                .toBeVisible();
+              await expect(
+                panel.getByRole("button", { name: "保存行批注", exact: true }),
+              ).toHaveCount(0);
+              await expect(
+                panel.getByRole("button", { name: "修改", exact: true }),
+              )
+                .toHaveCount(0);
+            },
           );
-          await expect(panel.getByRole("list", { name: "原提交代码" }))
-            .toContainText("sum(map(int, input_str.split()))");
-          await expect(panel.getByText(retainedNote, { exact: true }))
-            .toHaveCount(0);
-          await expect(panel.locator("article")).toHaveCount(0);
-          await gotoPage(
-            teacher.page,
-            `/d/${slug}/classrooms/${classroomId}/students/${studentId}`,
-          );
-          await teacher.page.locator("div.divide-y > button").filter({
-            hasText: reference,
-          }).filter({
-            has: teacher.page.getByText(/(?:^| · )0 分$/),
-          }).click();
-          const original = teacher.page.getByRole("dialog", {
-            name: "原提交与教学批注",
-          });
-          await expect(
-            original.getByText(`原提交 ${firstId} · 批注保留在这份代码上`, {
-              exact: true,
-            }),
-          ).toBeVisible();
-          await expect(original.getByText(retainedNote, { exact: true }))
-            .toBeVisible();
-        },
-      );
-      await step(
-        "教师通过Web归档班级，双方重读旧作业成绩和原代码批注",
-        async () => {
-          await gotoPage(
-            teacher.page,
-            `/d/${slug}/assignments/${assignmentId}`,
-          );
-          await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
-            .getByRole("button", {
-              name: `${studentName} ${reference} 10 · 已达标`,
-              exact: true,
-            }).click();
-          let panel = teacher.page.getByRole("dialog", {
-            name: / · /,
-          });
-          await panel.locator("div.divide-y > button").filter({
-            hasText: /10 分/,
-          }).click();
-          await expect(
-            panel.getByText(`原提交 ${secondId} · 批注保留在这份代码上`, {
-              exact: true,
-            }),
-          ).toBeVisible();
-          await panel.getByRole("textbox", { name: "行批注正文", exact: true })
-            .fill(archiveNote);
-          await write(
-            teacher.page,
-            "POST",
-            `${domainPath}/classrooms/${classroomId}/submissions/submission/${secondId}/annotations`,
-            () =>
-              panel.getByRole("button", { name: "保存行批注", exact: true })
-                .click(),
-          );
-          await gotoPage(
-            teacher.page,
-            `/d/${slug}/classrooms/${classroomId}/settings`,
-          );
-          await teacher.page.getByRole("button", {
-            name: "归档此班级并保留历史",
-            exact: true,
-          }).click();
-          const archived = await write(
-            teacher.page,
-            "POST",
-            `${domainPath}/classrooms/${classroomId}/archive`,
-            () =>
-              teacher.page.getByRole("button", { name: "确认", exact: true })
-                .click(),
-          );
-          assertEquals(archived.data.status, "archived");
-          await expect(
-            teacher.page.getByText(
-              "当前只能读取班级设置，无权修改配置",
-              { exact: true },
-            ),
-          ).toBeVisible();
-          const ownPanel = await openStudentReview(
-            student.page,
-            slug,
-            assignmentId,
-            secondId,
-          );
-          await expect(ownPanel.getByText(archiveNote, { exact: true }))
-            .toBeVisible();
-          await expect(ownPanel.getByText("10 · 已达标", { exact: true }))
-            .toBeVisible();
-          await gotoPage(
-            teacher.page,
-            `/d/${slug}/assignments/${assignmentId}`,
-          );
-          await teacher.page.getByRole("table", { name: "学生成绩矩阵" })
-            .getByRole("button", {
-              name: `${studentName} ${reference} 10 · 已达标`,
-              exact: true,
-            }).click();
-          panel = teacher.page.getByRole("dialog", { name: / · / });
-          await panel.locator("div.divide-y > button").filter({
-            hasText: /10 分/,
-          }).click();
-          await expect(panel.getByText(archiveNote, { exact: true }))
-            .toBeVisible();
-          await expect(
-            panel.getByRole("button", { name: "保存行批注", exact: true }),
-          ).toHaveCount(0);
-          await expect(panel.getByRole("button", { name: "修改", exact: true }))
-            .toHaveCount(0);
-        },
-      );
-      failed = false;
-    } finally {
-      for (const key of Object.keys(policyValues)) {
-        await setPolicy(
-          key,
-          settings.find((setting) => setting.key === key)!.effective_value,
-        );
-      }
-      const restored = (await fixture<{ data: Setting[] }>(
-        "GET",
-        "/api/v1/admin/system/settings",
-        admin,
-      )).data;
-      for (const key of Object.keys(policyValues)) {
-        assertEquals(
-          restored.find((setting) => setting.key === key)!.effective_value,
-          settings.find((setting) => setting.key === key)!.effective_value,
-          `恢复实例政策 ${key}`,
-        );
-      }
-      await teardownBrowser(
-        teacher,
-        failed,
-        `private-annotations-teacher-${suffix}`,
-      );
-      await teardownBrowser(
-        student,
-        failed,
-        `private-registration-student-${suffix}`,
-      );
-    }
+        } finally {
+          for (const key of Object.keys(policyValues)) {
+            await setPolicy(
+              key,
+              settings.find((setting) => setting.key === key)!.effective_value,
+            );
+          }
+          const restored = (await fixture<{ data: Setting[] }>(
+            "GET",
+            "/api/v1/admin/system/settings",
+            admin,
+          )).data;
+          for (const key of Object.keys(policyValues)) {
+            assertEquals(
+              restored.find((setting) => setting.key === key)!.effective_value,
+              settings.find((setting) => setting.key === key)!.effective_value,
+              `恢复实例政策 ${key}`,
+            );
+          }
+        }
+      },
+    );
   },
 });

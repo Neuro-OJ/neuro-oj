@@ -339,7 +339,7 @@ Deno.test("T16 writeConfigVersion：原子写且权限 600、其它键与注释�
     assertEquals(
       await Deno.readTextFile(envFile),
       versionConfigText(
-        ENV_TEXT.replace(/v0\.9\.5/g, "v0.9.5"),
+        ENV_TEXT,
         "v0.10.0",
       ),
     );
