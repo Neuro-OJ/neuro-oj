@@ -29,12 +29,13 @@
 
 ### 数据模型
 
-| 表                 | 用途                                                                                                                   |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `roles`            | 角色定义（`is_default`/`is_system` 标记；`is_admin` 列已由迁移 0032 删除，管理员判定改为权限集含 `admin:full_access`） |
-| `permissions`      | 权限定义（`resource:action` 格式，预置 52 条、跨 12 个资源域）                                                         |
-| `role_permissions` | 角色-权限多对多关联                                                                                                    |
-| `user_roles`       | 用户-角色多对多关联                                                                                                    |
+| 事实                    | 用途                                                                 |
+| ----------------------- | -------------------------------------------------------------------- |
+| `users.role`           | 平台角色：`user` / `admin`，单值列 + CHECK                        |
+| `domain_memberships.role` | 域内角色：`member` / `educator` / `admin`，单值列 + CHECK      |
+| `domains.owner_id`     | 域负责人，优先于成员角色                                             |
+
+能力映射为静态表（`shared/access/roles.ts`），不再有 `roles/permissions` 等 RBAC 表。
 
 ### 权限检查层次
 
