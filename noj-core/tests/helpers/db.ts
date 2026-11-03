@@ -399,7 +399,7 @@ export interface ResetDbForTestOptions {
 }
 
 export async function resetDbForTest(
-  options: ResetDbForTestOptions = {},
+  _options: ResetDbForTestOptions = {},
 ): Promise<void> {
   // 次数计数：报告用它区分"reset 变少"与"单次 reset 变快"。
   countPhase(RESET_PHASE.invocations, 1);
@@ -409,14 +409,7 @@ export async function resetDbForTest(
   );
   await measurePhase(RESET_PHASE.truncate, () => clearResetTables());
   await seedTestDatabaseContent();
-  if (options.refreshRankings) {
-    await measurePhase(RESET_PHASE.rankingsRefresh, async () => {
-      const { refreshRankingsView } = await import(
-        "../../src/modules/read-models/queries/services/rankings.ts"
-      );
-      await refreshRankingsView({ throwOnError: true });
-    });
-  }
+  // 榜单读取已改为内联查询，旧的物化视图刷新不再需要执行。
 }
 
 /**

@@ -5,7 +5,6 @@ export {
 export type {
   RankingRow,
   RankingsPage,
-  RefreshRankingsOptions,
 } from "./services/rankings.ts";
 export {
   _resetStatsCacheForTest,
