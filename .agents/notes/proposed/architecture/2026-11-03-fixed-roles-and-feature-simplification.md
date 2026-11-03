@@ -58,10 +58,10 @@ Status: proposed
 | P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；注册/OAuth 固定 user；旧 token 伪造 admin 展示角色不影响实际权限（测试覆盖）；封禁/注销共用管理员锁待接 |
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
 | P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；全仓夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 83、platform 254、read-models 86 全绿；education 2 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
-| P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
+| P7 | 域配置去重 | 进行中 | 类型已拆 Stored/Effective；PATCH 出现 features/homepage 即 400 DOMAIN_TYPE_FIXED；schema 仍按 Effective 持久化，读取推导待统一 |
 | P8 | 跨域只复制、删除共享 | 进行中 | 共享列表端点与题目共享命令已删；绑定读取强制 kind=owned，共享绑定在管理路径返回 400 DOMAIN_SHARING_DISABLED；训练共享仍复用旧实现 |
-| P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 后端已删除 moment 类型/配置/统计/个人页聚合与训练比较服务+路由；首页随机三题与 RandomProblems/TrainingComparison/TrainingComparison util 已从前端移除；社区 moment 相关 UI 待清 |
-| P10 | 邀请模式合并 | 进行中 | 后端只接受 email/general，once 返回 400；通用邀请 max_uses=1 表达一次性；迁移 0134 收紧 mode CHECK；邀请管理 UI 仍待改为表单转换 |
+| P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端类型/配置/统计/聚合/搜索删除；迁移 0134；UI 社区、个人主页、管理配置、举报标签、测试 mock 全部清零；训练比较与随机三题已删 |
+| P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
 | P12 | CLI 旧库预检与 Bash 清理 | 待办 | `db check-upgrade`、删 deploy/*.sh |
 | 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 待办 | 逐项证据；未验收项必须显式标注 |
@@ -107,6 +107,9 @@ Status: proposed
 - 2026-11-03（第四轮）：删除创建者特权判定。题目/题单管理统一要求域
   `problem:write_any`/`training:write_any`；客观题答案只对 `access.mode === "admin"`
   或实时域权限开放，`owner` 只读模式不再解锁答案。
+- 2026-11-03（第八轮）：P9/P10 UI 收尾——社区首页/详情/类型、个人主页、管理端社区配置、
+  举报标签与 BFF 测试 mock 移除全部 moment；邀请管理移除 once 按钮、分支、标签与加入页展示。
+  PATCH 域配置对 features/homepage 一律 400 `DOMAIN_TYPE_FIXED`。
 - 2026-11-03（第七轮）：请求级权限恢复为"仅平台角色"，删除 main 域能力合并——域成员不再
   通过 `assertPermission` 获得 `training:write_any` 等平台能力（修复普通用户可 PATCH
   管理端题单的越权）；域内判定继续由 workspace access 显式完成。题库绑定读取强制
