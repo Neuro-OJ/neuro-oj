@@ -195,10 +195,9 @@ cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/ga
 > 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如
 > `--help`、 单元测试），不再是部署入口。
 
-> **过渡期**：`scripts/deploy/deploy.sh` 与 `restore-drill.sh`
-> 仍在仓库中，但已加弃用 闸门（每次执行需输入 `y` 确认；自动化可用
-> `NOJ_ACCEPT_DEPRECATED=1` 跳过）。 新流程请使用
-> `noj-cli`；这两个脚本将在后续版本删除。
+> **Bash 部署脚本已删除**：`scripts/deploy/deploy.sh`、`restore-drill.sh`、
+> `backup.sh` 与弃用闸门均已移除；生产部署、备份与恢复演练统一使用
+> `noj-cli`（见 `noj-cli --help`）。
 
 ### 5.3 手动启动
 
