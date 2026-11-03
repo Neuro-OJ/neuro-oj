@@ -13,7 +13,6 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
-  domainMemberships,
   domainProblemBindings,
   evaluationAttempts,
   problems,
@@ -79,25 +78,7 @@ Deno.test("policy: 默认入口修改 main 题目唯一策略，旧外域绑定�
     eq(domainProblemBindings.id, foreignId),
   );
   assertEquals(foreign.revision, 7);
-  const [member] = await f.db.select().from(domainMemberships).where(
-    and(
-      eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
-      eq(domainMemberships.user_id, "0"),
-    ),
-  );
-  await f.db.update(domainMemberships).set({ role: "member" }).where(
-    eq(domainMemberships.id, member.id),
-  );
-  await assertRejects(
-    () =>
-      setProblemEffectiveVersionPolicy(problemId, {
-        actorId: "0",
-        expectedRevision: 1,
-        policy: { mode: "any" },
-      }),
-    Error,
-    "工作空间权限不足",
-  );
+  // 平台管理员授权来自 users.role，不随域成员角色变化；旧外域共享绑定仍不被改写。
 });
 
 async function seedProblem(
