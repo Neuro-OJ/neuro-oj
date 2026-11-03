@@ -371,13 +371,19 @@ Deno.test({
         await assertLedgerMatches(legacyClient, beforeUpgrade);
         await insertHistoricalRows(legacyClient);
 
-        await new PgDialect().migrate(
-          migrations,
-          migrationSession(legacyClient),
-          MIGRATION_CONFIG,
+        // 旧授权模型库必须被拒绝：迁移在锁内抛错，ledger 与历史数据保持原样。
+        const upgradeError = await assertRejects(() =>
+          new PgDialect().migrate(
+            migrations,
+            migrationSession(legacyClient),
+            MIGRATION_CONFIG,
+          )
         );
-        await assertCurrentSchemaAndUsers(legacyClient, legacyDatabase);
-        await assertLedgerMatches(legacyClient, migrations);
+        assert(
+          String(upgradeError).includes("此版本仅支持全新初始化"),
+          "旧库升级必须被明确拒绝",
+        );
+        await assertLedgerMatches(legacyClient, beforeUpgrade);
 
         const users = await legacyClient`
           SELECT id, username, email FROM users
