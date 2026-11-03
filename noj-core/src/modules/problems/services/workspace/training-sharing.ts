@@ -286,34 +286,4 @@ export async function importDomainTraining(
   }
 }
 
-/** 本域题单共享设置及稳定目标来源；未设置时返回 revision 0。 */
-export async function readDomainTrainingSharing(
-  slug: string,
-  id: string,
-  actorId: string,
-) {
-  const workspace = await loadWorkspace(slug, actorId), db = getDb();
-  const [training] = await db.select({ id: trainings.id }).from(trainings)
-    .where(
-      and(eq(trainings.domain_id, workspace.domain.id), eq(trainings.id, id)),
-    );
-  if (!training) throw new NotFoundError("题单不在此域");
-  assertWorkspacePermission(workspace.context, "training:read_any");
-  const [policy] = await db.select().from(trainingShareSettings).where(
-    eq(trainingShareSettings.training_id, id),
-  );
-  const target_domains = await db.select({
-    id: domains.id,
-    slug: domains.slug,
-    name: domains.name,
-  }).from(trainingShareTargets).innerJoin(
-    domains,
-    eq(domains.id, trainingShareTargets.domain_id),
-  ).where(eq(trainingShareTargets.training_id, id)).orderBy(domains.slug);
-  return {
-    enabled: policy?.enabled ?? false,
-    scope: policy?.scope ?? "all",
-    revision: policy?.revision ?? 0,
-    target_domains,
-  };
-}
+
