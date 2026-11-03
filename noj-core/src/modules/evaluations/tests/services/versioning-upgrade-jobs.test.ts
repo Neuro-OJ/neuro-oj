@@ -203,19 +203,8 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   assertEquals(practiceItem.target_version_id, "up-p3-v2");
 
   // 竞赛上下文 → 必须先固定最新版 v2，并要求 v2 == 竞赛固定版 v1；
-  // 两者不一致 → 条目 skipped + CONTEST_VERSION_MISMATCH（不落错版本，也不改练习）
-  await db.update(contests).set({ created_by: "up-user-b" }).where(
-    eq(contests.id, "up-c3"),
-  );
-  await assertRejects(
-    () =>
-      acceptUpgradeJob("up-user-a", {
-        submissions: [{ kind: "submission", id: "up-s-contest" }],
-        context: "source_contest",
-      }, "up-non-organizer"),
-    Error,
-    "仅比赛组织者可以操作",
-  );
+  // 两者不一致 → 条目 skipped + CONTEST_VERSION_MISMATCH（不落错版本，也不改练习）。
+  // 域 educator/admin 具备全域重测能力，不再按比赛组织者身份拒绝。
   await db.update(contests).set({ created_by: "up-user-a" }).where(
     eq(contests.id, "up-c3"),
   );
