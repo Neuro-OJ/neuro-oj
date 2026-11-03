@@ -59,7 +59,7 @@ Status: proposed
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
 | P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；全仓夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 83、platform 254、read-models 86 全绿；education 2 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
 | P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
-| P8 | 跨域独立复制 | 待办 | problem-copy / training-copy / copy-sources；删共享 |
+| P8 | 跨域只复制、删除共享 | 进行中 | 已删除 `/domains/:slug/shared-resources` 端点与题目共享应用层命令；共享服务文件暂留（训练共享仍依赖 `resolveSharingTargetSlugs`）。下一步：训练共享迁到 copy、绑定解析强制同域、删除 can_share/is_shared |
 | P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 后端已删除 moment 类型/配置/统计/个人页聚合与训练比较服务+路由；首页随机三题与 RandomProblems/TrainingComparison/TrainingComparison util 已从前端移除；社区 moment 相关 UI 待清 |
 | P10 | 邀请模式合并 | 进行中 | 后端只接受 email/general，once 返回 400；通用邀请 max_uses=1 表达一次性；迁移 0134 收紧 mode CHECK；邀请管理 UI 仍待改为表单转换 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
@@ -107,6 +107,8 @@ Status: proposed
 - 2026-11-03（第四轮）：删除创建者特权判定。题目/题单管理统一要求域
   `problem:write_any`/`training:write_any`；客观题答案只对 `access.mode === "admin"`
   或实时域权限开放，`owner` 只读模式不再解锁答案。
+- 2026-11-03（第六轮）：移除跨域共享列表端点与应用层题目共享命令，P8 开头；
+  训练共享仍复用旧实现，后续迁到独立复制服务后删除。
 - 2026-11-03（第五轮）：生成迁移 `0134_narrow_dazzler`：社区帖子类型/上下文 CHECK 收紧为
   solution/discussion，邀请 mode CHECK 收紧为 email/general。删除 moment 的服务、配置、
   个人页聚合与搜索统计分支；删除训练比较服务/路由/导出及前端组件、工具、调用；删除首页

@@ -114,7 +114,6 @@ export {
   setDomainProblemBindingPolicyCommand,
   setDomainProblemBindingPolicyCommandTx,
   setDomainProblemBindingStateCommand,
-  setDomainProblemSharingCommand,
   setDomainTrainingSharingCommand,
   updateObjectiveQuestionCommand,
   updateProblemCommand,

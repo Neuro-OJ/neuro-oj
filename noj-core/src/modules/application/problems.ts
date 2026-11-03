@@ -46,7 +46,6 @@ import {
 import { importDomainProblemBundle } from "../problems/services/workspace/problem-bundle-import.ts";
 import { importDomainProblemDraftBundle } from "../problems/services/workspace/problem-bundle-edit.ts";
 import { loadEditableDomainProblem } from "../problems/services/workspace/problem-edit.ts";
-import { setDomainProblemSharing } from "../problems/services/workspace/problem-sharing.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -307,18 +306,6 @@ export function setDomainProblemBindingStateCommand(
     expectedRevision,
     input,
   );
-}
-
-/** 修改题目跨域共享政策；共享授权必须绑定当前 UserActor。 */
-export function setDomainProblemSharingCommand(
-  actor: UserActor,
-  slug: string,
-  reference: string,
-  input: Parameters<typeof setDomainProblemSharing>[2] extends string
-    ? Parameters<typeof setDomainProblemSharing>[3]
-    : never,
-) {
-  return setDomainProblemSharing(slug, reference, actor.userId, input);
 }
 
 /** 默认域题单写用例统一由 UserActor 进入。 */
