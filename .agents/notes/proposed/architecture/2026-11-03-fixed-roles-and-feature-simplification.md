@@ -63,7 +63,7 @@ Status: proposed
 | P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端、UI、管理配置、举报标签、BFF mock 与 noj-docs 用户文档全部移除 moment；训练比较与随机三题已删 |
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 完成 | 旧视图刷新/检查/标记全删；前端直用 useAsyncData，UI 单测 345 通过 |
-| P12 | CLI 旧库预检与 Bash 清理 | 进行中 | 5 个旧 Bash 部署脚本（deploy/restore-drill/backup/弃用闸门）与 gate-list 调用已删除；CLI `db check-upgrade` 预检待实现 |
+| P12 | CLI 旧库预检与 Bash 清理 | 进行中 | 旧 Bash 与闸门引用已清；Core `db check-upgrade` + CLI 排空前预检已接线，CLI 生产测试 528 通过；待核查发布文件暂存切换顺序与 4.2/5.4 验收 |
 | 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 待办 | 逐项证据；未验收项必须显式标注 |
 
 已确认的阶段性事实：
