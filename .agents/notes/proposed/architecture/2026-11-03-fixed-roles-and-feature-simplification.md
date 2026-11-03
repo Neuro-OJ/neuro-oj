@@ -57,7 +57,7 @@ Status: proposed
 | P3 | schema、迁移、旧库拦截 | 完成 | 迁移 `0132`（角色列 + 审计动作）与 `0133`（显式依赖顺序删除 roles/permissions/role_permissions/user_roles/domain_member_roles/community_board_role_grants，不用 CASCADE）；旧库门禁 + SQL 数据保护实测三态符合预期 |
 | P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；注册/OAuth 固定 user；旧 token 伪造 admin 展示角色不影响实际权限（测试覆盖）；封禁/注销共用管理员锁待接 |
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
-| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；全仓夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 83、platform 254、read-models 86 全绿；education 2 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
+| P6 | 初始化、种子与夹具 | 完成 | RBAC 种子服务已删除；夹具迁移到单值角色；access 396、identity 396、problems 353、contests 126、communication 84、platform 254、read-models 80、education 144、evaluations 472、shared 457 全绿 |
 | P7 | 域配置去重 | 进行中 | 类型已拆 Stored/Effective；PATCH 出现 features/homepage 即 400 DOMAIN_TYPE_FIXED；schema 仍按 Effective 持久化，读取推导待统一 |
 | P8 | 跨域只复制、删除共享 | 进行中 | 共享端点/读取/写入/应用命令与 barrel 导出全部关闭，绑定强制 owned，can_share/is_shared 清零；共享表与 education 用例待删 |
 | P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端、UI、管理配置、举报标签、BFF mock 与 noj-docs 用户文档全部移除 moment；训练比较与随机三题已删 |
