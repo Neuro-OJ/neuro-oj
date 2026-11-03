@@ -49,7 +49,6 @@ Deno.test("域社区题号：引用题解显示来源题号，普通讨论无题
     number: 1001,
     qualified_ref: `${f.target.slug}:1001`,
     display_ref: "1001",
-    is_shared: false,
   });
   assertEquals("problem_identity" in data, false);
   const discussion = await jsonRequest(

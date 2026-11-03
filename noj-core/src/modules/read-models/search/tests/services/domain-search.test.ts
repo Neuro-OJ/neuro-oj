@@ -173,16 +173,11 @@ Deno.test("域搜索：独立副本按本域查询，下架影响本域，源共
     number: 997001,
     qualified_ref: "school-query-a:997001",
     display_ref: "997001",
-    is_shared: false,
   });
   const local = await search(DEFAULT_DOMAIN_ID, actor);
   assertEquals(
     (local.items[0].metadata.reference as Record<string, unknown>).display_ref,
     "997001",
-  );
-  assertEquals(
-    (local.items[0].metadata.reference as Record<string, unknown>).is_shared,
-    false,
   );
   assertEquals((await search("unknown-domain", actor)).items.length, 0);
   await db.update(domainProblemBindings).set({
