@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
-import { domainMemberships, domains } from "../../../../../shared/db/schema.ts";
+import { domainMemberships, domains, users } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import { signToken } from "../../../../access/identity/index.ts";
@@ -44,8 +44,9 @@ async function fixture() {
     eq(domainMemberships.id, membership.id),
   );
   const token = await signToken({ sub: f.student, role: "user" });
-  // 平台治理端点需要平台管理员；root UID=0 是固定平台 admin。
-  const adminToken = await signToken({ sub: "0", role: "admin" });
+  // 平台治理端点需要可登录的平台管理员；root UID=0 被 authMiddleware 拒绝。
+  await f.db.update(users).set({ role: "admin" }).where(eq(users.id, f.b));
+  const adminToken = await signToken({ sub: f.b, role: "admin" });
   const board = await withDefaultCommunity(
     "0",
     { write: true, moderator: true },
