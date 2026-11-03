@@ -81,7 +81,7 @@ authMiddleware → 注入 isAdmin
 | user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
 | tag                  | read/manage                                                                                                                                 | 标签操作                      |
 | contest              | create/manage/anti_cheat_read/participate                                                                                                   | 竞赛                          |
-| community            | read/create_solution/create_discussion/create_moment/comment/report                                                                         | 社区内容与互动                |
+| community            | read/create_solution/create_discussion/comment/report                                                                         | 社区内容与互动                |
 | community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
 | community_board      | manage                                                                                                                                      | 社区板块                      |
 | training             | create/read/read_any/write_any/delete_any/publish/pin                                                                  | 题单                          |
