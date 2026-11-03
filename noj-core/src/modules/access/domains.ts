@@ -19,6 +19,7 @@ import {
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
 import type { DomainConfiguration, DomainPreset } from "./types.ts";
 import type { StoredDomainConfiguration } from "../../shared/workspace/types.ts";
+import { storedDomainConfiguration } from "../../shared/workspace/capabilities.ts";
 import type { SystemActor, UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import { type AccessAuditMeta, workspaceAuditTx } from "./audit.ts";
@@ -41,7 +42,6 @@ import {
 } from "./workspace/services/instance.ts";
 import {
   combineDomainLimits,
-  constrainDomainConfiguration,
 } from "../../shared/workspace/resource-policy.ts";
 
 export interface DomainWriteMeta extends AccessAuditMeta {}
@@ -128,9 +128,8 @@ export async function createDomainTx(
     description: input.description ?? "",
     owner_id: user.userId,
     preset: input.preset,
-    configuration: constrainDomainConfiguration(
+    configuration: storedDomainConfiguration(
       presetConfiguration(input.preset),
-      resourcePolicy.modules,
     ),
     created_at: now,
     updated_at: now,
@@ -204,7 +203,7 @@ export async function ensureDefaultWorkspaceTx(
     name: "Neuro OJ",
     owner_id: ownerId,
     preset: "community",
-    configuration: presetConfiguration("community"),
+    configuration: storedDomainConfiguration(presetConfiguration("community")),
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing({ target: domains.slug }).returning();

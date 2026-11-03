@@ -25,6 +25,17 @@ export function domainTypeConfiguration(
   };
 }
 
+/** 只保留数据库应持久化的可变事实，派生能力不落库。 */
+export function storedDomainConfiguration(
+  config: DomainConfiguration,
+): StoredDomainConfiguration {
+  return {
+    access: config.access,
+    discoverable: config.discoverable,
+    join_policy: config.join_policy,
+  };
+}
+
 /** 访问与加入政策可修改；能力和首页由类型确定，旧 custom 等待人工转换。 */
 export function effectiveDomainConfiguration(
   preset: StoredDomainPreset,
