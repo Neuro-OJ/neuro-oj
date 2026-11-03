@@ -67,7 +67,6 @@ import {
 } from "../problems/services/workspace/trainings.ts";
 import {
   importDomainTraining,
-  setDomainTrainingSharing,
 } from "../problems/services/workspace/training-sharing.ts";
 import {
   saveOiDraft,
@@ -369,15 +368,6 @@ export function saveDomainTrainingCommand(
   target?: Parameters<typeof saveDomainTraining>[3],
 ) {
   return saveDomainTraining(slug, actor.userId, input, target);
-}
-
-export function setDomainTrainingSharingCommand(
-  actor: UserActor,
-  slug: string,
-  reference: string,
-  input: Parameters<typeof setDomainTrainingSharing>[3],
-) {
-  return setDomainTrainingSharing(slug, reference, actor.userId, input);
 }
 
 export function importDomainTrainingCommand(
