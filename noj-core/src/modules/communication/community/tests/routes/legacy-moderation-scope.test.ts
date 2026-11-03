@@ -44,6 +44,8 @@ async function fixture() {
     eq(domainMemberships.id, membership.id),
   );
   const token = await signToken({ sub: f.student, role: "user" });
+  // 平台治理端点需要平台管理员；root UID=0 是固定平台 admin。
+  const adminToken = await signToken({ sub: "0", role: "admin" });
   const board = await withDefaultCommunity(
     "0",
     { write: true, moderator: true },
@@ -86,7 +88,7 @@ async function fixture() {
   const [main] = await f.db.select().from(domains).where(
     eq(domains.id, DEFAULT_DOMAIN_ID),
   );
-  return { ...f, app, token, main, report, privateReport };
+  return { ...f, app, token, adminToken, main, report, privateReport };
 }
 
 Deno.test({
@@ -129,7 +131,7 @@ Deno.test({
       configuration: { ...f.main.configuration, access: "members" },
     }).where(eq(domains.id, f.main.id));
     const reports = await jsonRequest(f.app, `${base}/reports`, {
-      token: f.token,
+      token: f.adminToken,
     });
     assertEquals(reports.status, 200);
     assertEquals(
@@ -142,13 +144,13 @@ Deno.test({
       (await jsonRequest(
         f.app,
         `${base}/reports/${f.privateReport.id}/dismissed`,
-        { token: f.token, method: "POST", body: { resolution: "cross" } },
+        { token: f.adminToken, method: "POST", body: { resolution: "cross" } },
       )).status,
       404,
     );
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/resolved`, {
-        token: f.token,
+        token: f.adminToken,
         method: "POST",
         body: { resolution: "main action" },
       })).status,
@@ -174,13 +176,13 @@ Deno.test({
       "0",
     );
     const response = await jsonRequest(f.app, `${base}/reports`, {
-      token: f.token,
+      token: f.adminToken,
     });
     assertEquals(response.status, 403);
     assertEquals((await response.json()).code, "DOMAIN_MODULE_DISABLED");
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
-        token: f.token,
+        token: f.adminToken,
         method: "POST",
         body: { resolution: "disabled" },
       })).status,
