@@ -195,10 +195,7 @@ export async function resolveDomainProblemInWorkspace(
     contestAccess &&
     (!contestAccess.allowed || options.write && !contestAccess.running)
   ) throw new NotFoundError("此赛题不可作答");
-  if (
-    row.binding.kind !==
-      (row.source.id === workspace.domain.id ? "owned" : "shared")
-  ) {
+  if (row.binding.kind !== "owned") {
     throw new AppError(
       "题库绑定来源不一致",
       503,

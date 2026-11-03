@@ -35,7 +35,6 @@ import {
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
-  assertCurrentProblemShare,
   legacyWorkspaceFromAccess,
   resolveDomainProblem,
 } from "./problem-binding-access.ts";
@@ -327,12 +326,10 @@ export async function setDomainProblemBindingState(
     if (binding.revision !== expectedRevision) {
       throw new ConflictError("题库配置已变化，请重新读取");
     }
-    if (binding.kind === "shared" && !input.disabled) {
-      await assertCurrentProblemShare(
-        currentProblem,
-        resource.source,
-        workspace.domain.id,
-        tx,
+    if (binding.kind === "shared") {
+      throw new BadRequestError(
+        "跨域共享已停用，请复制到当前域后再管理",
+        "DOMAIN_SHARING_DISABLED",
       );
     }
     const now = new Date().toISOString();

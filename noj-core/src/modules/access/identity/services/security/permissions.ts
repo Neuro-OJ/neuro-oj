@@ -16,20 +16,13 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "../../../../../shared/base/errors.ts";
-import {
-  domainMemberships,
-  domains,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { users } from "../../../../../shared/db/schema.ts";
 import {
   type CapabilityName,
-  domainRoleCapabilities,
   isPlatformRole,
   type PlatformRole,
   platformRoleCapabilities,
-  resolveEffectiveDomainRole,
 } from "../../../../../shared/access/roles.ts";
-import { DEFAULT_DOMAIN_SLUG } from "../../../../../shared/workspace/types.ts";
 
 type Executor = DbRoot | DbTx;
 
@@ -109,37 +102,6 @@ export async function getAdminUserIds(
   return new Set(rows.map((row) => row.id));
 }
 
-/**
- * 旧路由守卫（社区治理、题单管理、竞赛查重等）以 main 域为默认工作空间：
- * 请求能力集合 = 平台角色能力 ∪ 当前账号在 main 的有效域角色能力。
- *
- * 域内路由若显式携带其他域上下文，仍必须走 workspace access 的显式判定，
- * 不能把这里的结果当成跨域授权。
- */
-async function resolveMainDomainCapabilities(
-  userId: string | undefined,
-): Promise<ReadonlySet<CapabilityName>> {
-  if (!userId) return new Set();
-  const [row] = await getDb().select({
-    owner_id: domains.owner_id,
-    role: domainMemberships.role,
-  }).from(domains).leftJoin(
-    domainMemberships,
-    and(
-      eq(domainMemberships.domain_id, domains.id),
-      eq(domainMemberships.user_id, userId),
-      eq(domainMemberships.status, "active"),
-    ),
-  ).where(eq(domains.slug, DEFAULT_DOMAIN_SLUG)).limit(1);
-  if (!row) return new Set();
-  const role = resolveEffectiveDomainRole(
-    userId,
-    { owner_id: row.owner_id },
-    row.role ? { role: row.role } : null,
-  );
-  return domainRoleCapabilities(role);
-}
-
 /** 读取（并缓存）当前请求的平台角色。 */
 export async function resolvePlatformRole(
   c: Context,
@@ -170,10 +132,7 @@ export async function resolvePermissions(
   const platform = role
     ? platformRoleCapabilities(role)
     : new Set<CapabilityName>();
-  const domain = await resolveMainDomainCapabilities(
-    c.get("userId") as string | undefined,
-  );
-  const capabilities = new Set<CapabilityName>([...platform, ...domain]);
+  const capabilities = new Set<CapabilityName>(platform);
   c.set("userPerms", capabilities as never);
   return capabilities;
 }
