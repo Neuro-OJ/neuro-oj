@@ -51,7 +51,7 @@ Status: proposed
 
 | 阶段 | 内容 | 状态 | 关键产物与验证 |
 | --- | --- | --- | --- |
-| P0 | 基线、分支、签名检查 | 进行中 | 主题 bookmark 已建；RC 集成 PR 未完成（发布前置） |
+| P0 | 基线、分支、签名检查 | 完成 | 主题 bookmark 已推送；RC 集成草稿 PR #717（base rc/v0.11）已创建；合并与发布仍需人工评审 |
 | P1 | 冻结对外合同 | 待办 | 端点/DTO/错误语义清单，前后端共用 |
 | P2 | 固定角色与静态能力映射 | 完成 | `shared/access/roles.ts` + `tests/shared/access-roles.test.ts`（10 项表驱动断言通过） |
 | P3 | schema、迁移、旧库拦截 | 完成 | 迁移 `0132`（角色列 + 审计动作）与 `0133`（显式依赖顺序删除 roles/permissions/role_permissions/user_roles/domain_member_roles/community_board_role_grants，不用 CASCADE）；旧库门禁 + SQL 数据保护实测三态符合预期 |
