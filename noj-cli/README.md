@@ -191,7 +191,7 @@ checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。
 cd noj-cli
 deno task check           # fmt + lint + 类型检查
 deno task test            # 全部 TS 测试
-deno task test:production # 生产侧（prod/）+ 弃用闸门测试
+deno task test:production # 生产侧（prod/）测试
 deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 ```
 
@@ -221,10 +221,6 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 - `src/runtime/`：命令执行、二进制下载、日志文件
 - `src/util/`：参数、颜色、随机密钥、文件工具
 
-## 过渡期说明
+## 生产入口
 
-`scripts/deploy/deploy.sh` 与 `restore-drill.sh`
-仍在仓库中，但**已废弃**：每次执行 会打印警告并要求输入 `y` 确认（自动化可用
-`NOJ_ACCEPT_DEPRECATED=1` 跳过；非 TTY
-且未设置该变量时**明确报错**而非挂起）。请改用
-`noj-cli`；这两个脚本将在后续版本删除。
+生产部署、备份、恢复与演练统一使用 `noj-cli`；仓库不再保留 Bash 部署入口或弃用闸门。
