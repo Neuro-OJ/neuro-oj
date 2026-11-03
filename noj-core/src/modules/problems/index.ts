@@ -313,7 +313,6 @@ export {
   parseDomainProblemReference,
 } from "./services/workspace/problem-reference.ts";
 export {
-  assertCurrentProblemShare,
   legacyWorkspaceFromAccess,
   resolveDomainProblem,
   resolveDomainProblemInWorkspace,
