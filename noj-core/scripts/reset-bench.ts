@@ -19,7 +19,6 @@
  * 参数：
  * - `--repeat <n>`：正式采样次数（默认 30），不计预热。
  * - `--warmup <n>`：采样前的预热次数（默认 2），不计入统计。
- * - `--refresh-rankings`：每次 reset 都刷新榜单物化视图（默认只做普通 reset）。
  * - `--label <text>`：输出中的采样标识（如 before / after）。
  * - `--json <path>`：把结果写入文件，便于两次采样对照归档。
  * - `--no-profile`：即使显式开启也关闭阶段计时（默认开启，便于归因剩余成本）。
@@ -93,7 +92,6 @@ function parseArgs(args: string[]): BenchOptions {
   const known = new Set([
     "--repeat",
     "--warmup",
-    "--refresh-rankings",
     "--label",
     "--json",
     "--no-profile",
