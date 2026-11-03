@@ -59,7 +59,6 @@ export interface ProblemReference {
   number: number;
   qualified_ref: string;
   display_ref: string;
-  is_shared: boolean;
 }
 /** 跨域资源配额：null 表示不额外限制，0 表示禁止。 */
 export interface DomainLimits {

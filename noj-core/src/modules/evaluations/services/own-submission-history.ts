@@ -154,7 +154,6 @@ function projectHistory(
       number: row.number,
       qualified_ref: qualified,
       display_ref: isShared ? qualified : String(row.number),
-      is_shared: false,
     },
     resource_available: row.resource_available,
     contest_id: row.contest_id,

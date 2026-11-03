@@ -127,8 +127,7 @@ export async function readDomainTraining(
       display_ref: item.source.id === resource.domain.id
         ? String(item.problem.number)
         : qualified,
-      is_shared: false,
-      position: item.position,
+            position: item.position,
     });
   }
   return {
@@ -143,8 +142,7 @@ export async function readDomainTraining(
     state: resource.training.state,
     can_edit: resource.platformAdmin ||
       resource.context.domainPermissions.has("training:write_any"),
-    is_shared: false,
-    items,
+        items,
   };
 }
 
@@ -230,7 +228,6 @@ export async function listDomainTrainings(
         public_id: training.public_id,
         source_domain_id: source.id,
         source_domain_slug: source.slug,
-        is_shared: false,
         title: training.title,
         description: training.description,
         revision: training.revision,
