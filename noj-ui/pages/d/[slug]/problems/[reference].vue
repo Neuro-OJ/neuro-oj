@@ -43,7 +43,7 @@ const publicStats = computed<PublicProblemStats | null>(() => {
 const inlineAnswer = computed(() => data.value?.content.kind === 'objective' || ['artifact', 'prediction'].includes(data.value?.content.submission_mode ?? ''));
 const solveTo = computed(() => data.value ? { path: workspaceSolvePath(slug.value!, data.value.reference.display_ref), query: route.query } : undefined);
 const editorLabel = computed(() => data.value?.content.submission_mode === 'ui' ? '打开界面' : '开始编码');
-const editTo = computed(() => data.value?.can_edit && !data.value.reference.is_shared ? `/d/${slug.value}/editor/${data.value.reference.number}` : null);
+const editTo = computed(() => data.value?.can_edit ? `/d/${slug.value}/editor/${data.value.reference.number}` : null);
 watch([() => slug.value, () => reference.value, () => user.value?.id], () => {
   statementExpanded.value = true;
 });

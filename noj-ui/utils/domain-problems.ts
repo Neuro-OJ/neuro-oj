@@ -6,7 +6,6 @@ export interface DomainProblemReference {
   number: number;
   qualified_ref: string;
   display_ref: string;
-  is_shared: boolean;
 }
 export interface DomainProblemSummary {
   contest_protection?: Array<

@@ -16,7 +16,6 @@ export interface DomainTrainingDetail {
   description: string;
   revision: number;
   visibility: DomainTrainingInput['visibility'];
-  is_shared: boolean;
   can_edit: boolean;
   items: Array<
     DomainProblemReference & {
