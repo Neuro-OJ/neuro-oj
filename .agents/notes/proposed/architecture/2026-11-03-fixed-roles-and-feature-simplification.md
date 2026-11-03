@@ -62,7 +62,7 @@ Status: proposed
 | P8 | 跨域只复制、删除共享 | 进行中 | 共享端点/读取/写入/应用命令与 barrel 导出全部关闭，绑定强制 owned，can_share/is_shared 清零；共享表与 education 用例待删 |
 | P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端、UI、管理配置、举报标签、BFF mock 与 noj-docs 用户文档全部移除 moment；训练比较与随机三题已删 |
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
-| P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
+| P11 | 旧榜单与前端空壳 | 进行中 | 已删保存路径刷新调用与专属测试；待删 rankings.ts 旧函数、导出、前端 useViewAsyncData |
 | P12 | CLI 旧库预检与 Bash 清理 | 进行中 | 5 个旧 Bash 部署脚本（deploy/restore-drill/backup/弃用闸门）与 gate-list 调用已删除；CLI `db check-upgrade` 预检待实现 |
 | 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 待办 | 逐项证据；未验收项必须显式标注 |
 
