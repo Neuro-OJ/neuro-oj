@@ -17,8 +17,8 @@ import {
   listDomainProblems,
   resolveDomainProblem,
   setDomainProblemBindingState,
-  setDomainProblemSharing,
 } from "../../../problems/index.ts";
+import { setDomainProblemSharing } from "../../../problems/services/workspace/problem-sharing.ts";
 import { recomputeSubmissionProjection } from "../../../evaluations/index.ts";
 import {
   createAssignment,

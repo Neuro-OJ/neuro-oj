@@ -340,10 +340,6 @@ export {
 export { saveDomainTraining } from "./services/workspace/trainings.ts";
 export type { DomainTrainingInput } from "./services/workspace/trainings.ts";
 export {
-  resolveSharingTargetSlugs,
-  setDomainProblemSharing,
-} from "./services/workspace/problem-sharing.ts";
-export {
   listDomainProblems,
   listDomainProblemVersions,
   readDomainProblem,
