@@ -64,7 +64,7 @@ Status: implemented
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 完成 | 旧视图刷新/检查/标记全删；前端直用 useAsyncData，UI 单测 345 通过 |
 | P12 | CLI 旧库预检与 Bash 清理 | 完成 | 旧 Bash 与闸门引用已清；Core `db check-upgrade` + CLI 排空前预检；发布文件暂存后切换；CLI 826/528、UI 345/422、核心域与 shared 全绿 |
-| 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 部分完成 | 自动化证据：core access 396 / identity 396 / evaluations 472 / education 144 / communication 84 / problems 351 / contests 126 / platform 254 / read-models 80 / application 13 / assets 37 / http 37 / shared 457；UI 345 + components 422 + check + build；CLI 826 + production 528 + check；noj-tests logic 60。T22 由 CLI 预检/暂存测试覆盖；T23 恢复演练、T24 Native/WASM、T21 真实浏览器多身份切换、5.4 人工旅程仍未执行 |
+| 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 部分完成 | 自动化证据：core access 396 / identity 396 / evaluations 472 / education 144 / communication 84 / problems 351 / contests 126 / platform 254 / read-models 80 / application 13 / assets 37 / http 37 / shared 457；UI 345 + components 422 + check + build；CLI 826 + production 528 + check；noj-tests logic 60；judge 656（46 skipped，含 Native/WASM 单元与契约）。T22 由 CLI 预检/暂存测试覆盖，T24 由 judge 套件覆盖；T23 恢复演练、T21 真实浏览器多身份切换、5.4 人工旅程仍未执行 |
 
 已确认的阶段性事实：
 
