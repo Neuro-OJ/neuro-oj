@@ -230,7 +230,6 @@ Deno.test("access roles: 角色写入只接受单值并拒绝 owner 与数组", 
   for (
     const invalid of [
       "owner",
-      "educator",
       "moderator",
       ["member"],
       null,
@@ -246,7 +245,7 @@ Deno.test("access roles: 运行时角色集合与类型守卫一致", () => {
   assertEquals([...DOMAIN_MEMBER_ROLES], ["member", "educator", "admin"]);
   assertEquals([...PLATFORM_ROLES], ["user", "admin"]);
   assert(isDomainRole("owner"));
-  assert(!isDomainRole("educator"));
+  assert(isDomainRole("educator"));
   assert(!isDomainRole("moderator"));
   assert(isDomainMemberRole("educator"));
   assert(!isDomainMemberRole("owner"));
