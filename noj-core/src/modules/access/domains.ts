@@ -23,6 +23,7 @@ import {
   effectiveDomainConfiguration,
   storedDomainConfiguration,
 } from "../../shared/workspace/capabilities.ts";
+import { constrainDomainConfiguration } from "../../shared/workspace/resource-policy.ts";
 import type { SystemActor, UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import { type AccessAuditMeta, workspaceAuditTx } from "./audit.ts";
@@ -159,9 +160,9 @@ export async function createDomainTx(
   }, options.meta);
   return {
     ...domain,
-    configuration: effectiveDomainConfiguration(
-      domain.preset,
-      domain.configuration,
+    configuration: constrainDomainConfiguration(
+      effectiveDomainConfiguration(domain.preset, domain.configuration),
+      resourcePolicy.modules,
     ),
   };
 }
