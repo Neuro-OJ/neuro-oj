@@ -148,7 +148,6 @@ export type Capability = typeof CAPABILITIES[number];
 export const LEGACY_CAPABILITIES = [
   "problem:write_own",
   "problem:delete_own",
-  "problem:share",
   "training:write_own",
   "training:delete_own",
 ] as const;

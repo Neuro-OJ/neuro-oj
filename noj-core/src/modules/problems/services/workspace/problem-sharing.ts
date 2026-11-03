@@ -84,7 +84,7 @@ export async function setDomainProblemSharing(
       write: true,
       lock: true,
     });
-    assertAccessWorkspacePermission(context, "problem:share");
+    assertAccessWorkspacePermission(context, "problem:write_any");
     const targets = input.targetDomainSlugs !== undefined
       ? await resolveSharingTargetSlugs(
         input.targetDomainSlugs,
@@ -218,7 +218,7 @@ export async function readDomainProblemSharing(
     ),
   );
   if (!problem) throw new NotFoundError("源题不存在");
-  assertLegacyWorkspacePermission(workspace.context, "problem:share");
+  assertLegacyWorkspacePermission(workspace.context, "problem:read_any");
   const [policy] = await db.select().from(problemShareSettings).where(
     eq(problemShareSettings.problem_id, problem.id),
   );
