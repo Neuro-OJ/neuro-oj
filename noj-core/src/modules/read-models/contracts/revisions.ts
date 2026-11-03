@@ -8,7 +8,7 @@
  * 三个函数都只接收真实 `DbTx`、只写 read-models 拥有的表、不自开根事务，
  * 也不回退到默认根连接。
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import { queryProjectionRevisions } from "../../../shared/db/schema.ts";
 
@@ -108,23 +108,3 @@ export async function readQueryProjectionRevisionsTx(
   return out;
 }
 
-/**
- * 标记某作用域已被刷新到指定数据版本。
- *
- * 只有读模型刷新链可以调用；`materialized_revision` 不得超过 `data_revision`
- * （数据库 check 约束会拒绝非法值），因此这里先比较再写。
- */
-export async function markQueryProjectionMaterializedTx(
-  tx: DbTx,
-  scopeKey: string,
-  dataRevision: number,
-  materializedAt: string,
-): Promise<void> {
-  await tx.update(queryProjectionRevisions).set({
-    materialized_revision: dataRevision,
-    materialized_at: materializedAt,
-  }).where(and(
-    eq(queryProjectionRevisions.scope_key, scopeKey),
-    sql`${queryProjectionRevisions.data_revision} >= ${dataRevision}`,
-  ));
-}
