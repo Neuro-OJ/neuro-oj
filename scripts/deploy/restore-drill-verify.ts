@@ -1,13 +1,13 @@
 /**
  * 恢复演练业务验收脚本。
  *
- * 由 scripts/deploy/restore-drill.sh 在隔离恢复出的 core 容器内执行
+ * 由 noj-cli `backup restore` / `backup drill` 在隔离恢复出的 core 容器内执行
  * （`docker compose run core deno run -A /opt/verify.ts ...`），面向真实
  * HTTP API 验证恢复后的业务链路：登录、题目读取；未跳过 Judge 时还会验证附件
  * 下载与真实评测。
  *
  * 输出：每个步骤一行 JSON（{"step","status","detail"}），最后一行输出
- * {"step":"summary","status":...,"passed":bool,"steps":[...]}，由外层脚本
+ * {"step":"summary","status":...,"passed":bool,"steps":[...]}，由 noj-cli
  * 汇总写入演练报告。任何 required 步骤失败时进程以非零退出。
  *
  * 凭据与评测镜像名通过环境变量传入（DRILL_*），不写入命令行参数。
