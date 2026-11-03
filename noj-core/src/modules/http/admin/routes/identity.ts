@@ -2,9 +2,8 @@
  * Admin identity 子域路由。
  *
  * 挂载前缀：/api/v1/admin/identity（由 domains/admin/index.ts 以 /identity 挂载）。
- * 合并原 identity 域三个管理路由文件：
+ * 合并原 identity 域两个管理路由文件：
  * - users（用户管理）
- * - roles/permissions（RBAC 管理）
  * - blacklist（IP 黑名单管理）
  *
  * 审计分层：
@@ -12,7 +11,7 @@
  *   ip_ban.create / ip_ban.delete）以 service 为唯一审计源，路由层不再重复写。
  * - 路由层 withAudit 仅补充原本未在 service 审计的写操作
  *   （users.role_change / users.create / users.import / users.reset_password /
- *   users.unlock_login / roles.create / roles.update / roles.delete）。
+ *   users.unlock_login）。
  * - 管理员开号与重置密码的审计绝不缓存含密码的请求体。
  */
 import { MAX_SAFE_PAGE } from "../../../../shared/http/pagination.ts";
@@ -39,14 +38,7 @@ import {
   resolveUserId,
   unbanUser,
 } from "../../../access/identity/services/users.ts";
-import {
-  createRole,
-  deleteRole,
-  listPermissions,
-  listRoles,
-  updateRole,
-  updateUserRoles,
-} from "../../../access/identity/services/admin-roles.ts";
+import { setPlatformRole } from "../../../access/identity/services/admin-platform-role.ts";
 import { adminDeleteAccount } from "../../../access/identity/services/account-deletion.ts";
 import {
   addIpBan,
@@ -196,43 +188,48 @@ router.get("/users", async (c) => {
 });
 
 /**
- * 管理员修改用户角色分配。
+ * 管理员修改用户平台角色（单值）。
  * PATCH /api/v1/admin/identity/users/:id/role
+ * body: { role: "user" | "admin" }
  *
- * **BREAKING**: 旧格式 `{ "role": "admin"|"user" }` 不再接受。
- * 新格式: `{ "role_ids": ["<uuid>", ...] }`
+ * 拒绝修改自己/root、数组与未知角色；降权在事务级管理员锁内确认仍有
+ * 可用管理员，两个管理员并发互相降权不会同时成功。
  */
 router.patch(
   "/users/:id/role",
   auditRoute(
     {
       action: "users.role_change",
-      target: (c) => ({ type: "user", id: c.req.param("id")! }),
+      target: (c) => ({
+        type: "user",
+        id: getAuditBody<{ id: string }>(c)?.id ?? c.req.param("id")!,
+      }),
       buildDetail: (c) => {
-        const body = getAuditBody<{ role_ids: string[] }>(c);
+        const body = getAuditBody<
+          { id: string; role: string; previous_role: string }
+        >(c);
         return {
           action: "users.role_change",
-          from: "unknown",
-          to: body?.role_ids?.join(",") ?? "",
+          from: body?.previous_role ?? "",
+          to: body?.role ?? "",
         };
       },
     },
     async (c) => {
-      const body = await parseJsonBody<{ role_ids: string[] }>(c);
-      setAuditBody(c, body);
-
-      if (!body.role_ids || !Array.isArray(body.role_ids)) {
-        throw new ValidationError("缺少必填字段：role_ids（UUID 数组）");
-      }
-
       const targetUserId = await resolveUserId(c.req.param("id")! as string);
-      await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
-
-      // 返回更新结果
-      return c.json(
-        { data: { id: targetUserId, role_ids: body.role_ids } },
-        200,
+      const body = await parseJsonBody<{ role?: unknown }>(c);
+      assertObjectBody(body);
+      const result = await setPlatformRole(
+        c.get("userId"),
+        targetUserId,
+        body.role,
       );
+      setAuditBody(c, {
+        id: result.id,
+        role: result.role,
+        previous_role: result.previous_role,
+      });
+      return c.json({ data: { id: result.id, role: result.role } }, 200);
     },
   ),
 );
@@ -365,131 +362,6 @@ router.delete("/users/:id", async (c) => {
   const targetUserId = await resolveUserId(c.req.param("id")! as string);
   await adminDeleteAccount(targetUserId, c.get("actor"));
   return c.body(null, 204);
-});
-
-/**
- * 管理员获取角色列表。
- * GET /api/v1/admin/identity/roles
- */
-router.get("/roles", async (c) => {
-  const result = await listRoles();
-  return c.json({ data: result });
-});
-
-/**
- * 管理员创建角色。
- * POST /api/v1/admin/identity/roles
- * body: { name, description?, parent_id?, permission_ids? }
- */
-router.post(
-  "/roles",
-  auditRoute(
-    {
-      action: "roles.create",
-      target: (c) => ({
-        type: "role",
-        id: getAuditBody<{ id?: string }>(c)?.id ?? "",
-      }),
-      buildDetail: (c) => {
-        const body = getAuditBody<{
-          name?: string;
-          permission_ids?: string[];
-        }>(c);
-        return {
-          action: "roles.create",
-          name: body?.name ?? "",
-          permission_ids: body?.permission_ids,
-        };
-      },
-    },
-    async (c) => {
-      const body = await parseJsonBody<{
-        name: string;
-        description?: string;
-        parent_id?: string;
-        permission_ids?: string[];
-      }>(c);
-      setAuditBody(c, body);
-      const result = await createRole(body);
-      setAuditBody(c, { ...body, id: result.id });
-      return c.json({ data: result }, 201);
-    },
-  ),
-);
-
-/**
- * 管理员编辑角色。
- * PUT /api/v1/admin/identity/roles/:id
- * body: { name?, description?, parent_id?, permission_ids? }
- */
-router.put(
-  "/roles/:id",
-  adminVersionMiddleware(async (c) => {
-    const id = c.req.param("id")! as string;
-    return (await listRoles()).find((r) => r.id === id)?.updated_at;
-  }),
-  auditRoute(
-    {
-      action: "roles.update",
-      target: (c) => ({ type: "role", id: c.req.param("id")! }),
-      buildDetail: (c) => {
-        const body = getAuditBody<{ name?: string }>(c);
-        return {
-          action: "roles.update",
-          id: c.req.param("id")!,
-          name: body?.name,
-        };
-      },
-    },
-    async (c) => {
-      const id = c.req.param("id")! as string;
-      const body = await parseJsonBody<{
-        name?: string;
-        description?: string;
-        parent_id?: string | null;
-        permission_ids?: string[];
-      }>(c);
-      setAuditBody(c, body);
-      const result = await updateRole(id, body);
-      return c.json({ data: result });
-    },
-  ),
-);
-
-/**
- * 管理员删除角色。
- * DELETE /api/v1/admin/identity/roles/:id
- */
-router.delete(
-  "/roles/:id",
-  adminVersionMiddleware(async (c) => {
-    const id = c.req.param("id")! as string;
-    return (await listRoles()).find((r) => r.id === id)?.updated_at;
-  }),
-  auditRoute(
-    {
-      action: "roles.delete",
-      target: (c) => ({ type: "role", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "roles.delete",
-        id: c.req.param("id")!,
-      }),
-    },
-    async (c) => {
-      const id = c.req.param("id")! as string;
-      await deleteRole(id);
-      return c.body(null, 204);
-    },
-  ),
-);
-
-/**
- * 管理员获取权限列表（按 resource 分组）。
- * GET /api/v1/admin/identity/permissions
- */
-router.get("/permissions", async (c) => {
-  const result = await listPermissions();
-  return c.json({ data: result });
 });
 
 /**

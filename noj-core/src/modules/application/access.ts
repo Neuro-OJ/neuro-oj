@@ -32,10 +32,10 @@ import {
   joinDomainTx,
   removeDomainMemberTx,
   reviewJoinRequestTx,
-  setMemberRolesTx,
+  setMemberRoleTx,
   transferDomainTx,
 } from "../access/members.ts";
-import type { DomainPreset, DomainRole } from "../../shared/workspace/types.ts";
+import type { DomainPreset } from "../../shared/workspace/types.ts";
 import {
   accessClassroomInvitationBoundary,
   accessDomainChangeBoundary,
@@ -150,16 +150,16 @@ export function reviewJoinRequestCommand(
   );
 }
 
-export function setMemberRolesCommand(
+export function setMemberRoleCommand(
   actor: UserActor,
   slug: string,
   userId: string,
-  roles: readonly DomainRole[],
+  role: unknown,
   meta: AccessWriteMeta = {},
 ) {
   const db: DbRoot = getDb();
   return db.transaction((tx) =>
-    setMemberRolesTx(tx, actor, slug, userId, roles, meta)
+    setMemberRoleTx(tx, actor, slug, userId, role, meta)
   );
 }
 

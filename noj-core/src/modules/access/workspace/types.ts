@@ -2,7 +2,6 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 import type {
   DomainConfiguration,
   DomainPreset,
-  DomainRole,
 } from "../../../shared/workspace/types.ts";
 import { domainTypeConfiguration } from "../../../shared/workspace/capabilities.ts";
 
@@ -13,14 +12,7 @@ export function presetConfiguration(preset: DomainPreset): DomainConfiguration {
 
 // 访问策略与工作空间门面使用同一角色事实源。
 export { domainPermissions } from "../types.ts";
-
-/** 校验内置角色，拒绝平台权限或任意自定义角色。 */
-export function isDomainRole(value: unknown): value is DomainRole {
-  return typeof value === "string" &&
-    ["owner", "admin", "editor", "educator", "moderator", "member"].includes(
-      value,
-    );
-}
+export { isDomainRole } from "../../../shared/access/roles.ts";
 /** slug 创建后固定；不能包含题号分隔符或路径。 */
 export function validateDomainSlug(value: unknown): asserts value is string {
   if (

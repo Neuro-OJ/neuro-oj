@@ -5,7 +5,7 @@ export const WORKSPACE_AUDIT_ACTIONS = [
   "domain.status",
   "domain.join",
   "domain.join_review",
-  "domain.member_roles",
+  "domain.member_role",
   "domain.member_remove",
   "domain.transfer",
   "domain.invite_create",

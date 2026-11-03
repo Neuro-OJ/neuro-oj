@@ -4,7 +4,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../security/password.ts";
-import { isUserAdmin } from "../security/permissions.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
   BadRequestError,
@@ -61,5 +60,5 @@ export async function setPassword(
     user_id: userId,
   });
   const updated = { ...user, password_hash: "set", updated_at: now };
-  return toUserResponse(updated, { isAdmin: await isUserAdmin(userId) });
+  return toUserResponse(updated);
 }

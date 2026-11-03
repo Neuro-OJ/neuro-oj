@@ -10,7 +10,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import {
-  domainMemberRoles,
   domainMemberships,
   domains,
   userBans,
@@ -22,7 +21,6 @@ import {
   ServiceUnavailableError,
   UnauthorizedError,
 } from "../../shared/base/errors.ts";
-import { unwrapRows } from "../../shared/base/sql-rows.ts";
 import { getSetting } from "../platform/contracts/cross-module/services_system-settings.ts";
 import { effectiveDomainConfiguration } from "../../shared/workspace/capabilities.ts";
 import {
@@ -31,7 +29,16 @@ import {
   requireUserActor,
   type UserActor,
 } from "./contracts/actor.ts";
-import { domainPermissions } from "./types.ts";
+import {
+  type CapabilityName,
+  type DomainMemberRole,
+  type DomainRole,
+  domainRoleCapabilities,
+  isPlatformRole,
+  type PlatformRole,
+  platformRoleCapabilities,
+  resolveEffectiveDomainRole,
+} from "../../shared/access/roles.ts";
 
 export type AccessActor = UserActor | GuestActor;
 
@@ -46,8 +53,12 @@ export interface WorkspaceAccessContext {
   readonly domainId: string;
   readonly domainSlug: string;
   readonly actor: AccessActor;
-  readonly platformPermissions: ReadonlySet<string>;
-  readonly domainPermissions: ReadonlySet<string>;
+  /** 平台角色；匿名请求为 null。 */
+  readonly platformRole: PlatformRole | null;
+  /** 有效域角色；无活跃成员关系为 null，不默认成 member。 */
+  readonly domainRole: DomainRole | null;
+  readonly platformPermissions: ReadonlySet<CapabilityName>;
+  readonly domainPermissions: ReadonlySet<CapabilityName>;
   readonly domainRevision: number;
   readonly platformAdmin: boolean;
 }
@@ -59,8 +70,6 @@ export interface WorkspaceAccessResult {
   readonly platformAdmin: boolean;
 }
 
-const ADMIN_FULL_ACCESS = "admin:full_access";
-
 function instanceAccessPolicy(): "public" | "authenticated" {
   const value = getSetting("instance_access")?.value ?? "public";
   if (value !== "public" && value !== "authenticated") {
@@ -69,14 +78,19 @@ function instanceAccessPolicy(): "public" | "authenticated" {
   return value;
 }
 
-async function assertActiveAccount(
+/** 在当前连接上校验账号状态并返回平台角色（DB 是唯一事实源）。 */
+async function loadActivePlatformRole(
   actor: UserActor,
   db: AccessReadDb,
-): Promise<void> {
-  const [account] = await db.select({ id: users.id }).from(users).where(
+): Promise<PlatformRole> {
+  const [account] = await db.select({ role: users.role }).from(users).where(
     and(eq(users.id, actor.userId), isNull(users.deleted_at)),
   );
   if (!account) throw new UnauthorizedError("账号不存在或已注销");
+  if (!isPlatformRole(account.role)) {
+    // 数据库 CHECK 应阻止非法值；这里 fail-closed，避免未知角色被当成管理员。
+    throw new ServiceUnavailableError("账号平台角色无效，请联系管理员修复");
+  }
   const [ban] = await db.select({ until: userBans.banned_until }).from(
     userBans,
   ).where(and(
@@ -87,31 +101,7 @@ async function assertActiveAccount(
   if (ban && (!ban.until || Date.parse(ban.until) > Date.now())) {
     throw new ForbiddenError("账号已被封禁", "USER_BANNED");
   }
-}
-
-/** 在当前连接上读取平台 RBAC 权限，避免跨请求缓存成员资格。 */
-async function getPlatformPermissions(
-  actor: UserActor,
-  db: AccessReadDb,
-): Promise<Set<string>> {
-  const result = await db.execute<{ perm: string }>(sql`
-    WITH RECURSIVE resolved AS (
-      SELECT r.id, r.parent_id
-      FROM roles r
-      JOIN user_roles ur ON ur.role_id = r.id
-      WHERE ur.user_id = ${actor.userId}
-      UNION ALL
-      SELECT r.id, r.parent_id
-      FROM roles r
-      JOIN resolved rr ON r.id = rr.parent_id
-    )
-    SELECT DISTINCT p.resource || ':' || p.action AS perm
-    FROM resolved rr
-    JOIN role_permissions rp ON rp.role_id = rr.id
-    JOIN permissions p ON p.id = rp.permission_id
-  `);
-  const rows = unwrapRows<{ perm: string }>(result as never);
-  return new Set(rows.map((row) => row.perm));
+  return account.role;
 }
 
 function assertDomainAccess(domain: typeof domains.$inferSelect): void {
@@ -132,7 +122,13 @@ async function loadWorkspaceWithDb(
   if (instanceAccessPolicy() === "authenticated" && actor.kind === "guest") {
     throw new UnauthorizedError("此实例需要登录");
   }
-  if (isUserActor(actor)) await assertActiveAccount(actor, db);
+  const platformRole = isUserActor(actor)
+    ? await loadActivePlatformRole(actor, db)
+    : null;
+  const platformPermissions = platformRole
+    ? platformRoleCapabilities(platformRole)
+    : new Set<CapabilityName>();
+  const platformAdmin = platformRole === "admin";
   const query = db.select().from(domains).where(eq(domains.slug, slug));
   const [rawDomain] = options.lock
     ? await query.for(options.lock === "share" ? "share" : "update")
@@ -145,10 +141,6 @@ async function loadWorkspaceWithDb(
       rawDomain.configuration,
     ),
   };
-  const platformPermissions = isUserActor(actor)
-    ? await getPlatformPermissions(actor, db)
-    : new Set<string>();
-  const platformAdmin = platformPermissions.has(ADMIN_FULL_ACCESS);
   assertDomainAccess(domain);
   if (domain.status === "suspended" && !platformAdmin) {
     throw new NotFoundError("工作空间不可用");
@@ -166,16 +158,19 @@ async function loadWorkspaceWithDb(
   if (options.write && domain.status !== "active") {
     throw new ForbiddenError("工作空间只读或停用", "DOMAIN_READ_ONLY");
   }
-  const roles = membership
-    ? await db.select({ role: domainMemberRoles.role }).from(domainMemberRoles)
-      .where(eq(domainMemberRoles.membership_id, membership.id))
-    : [];
+  const domainRole = actor.kind === "user" && membership
+    ? resolveEffectiveDomainRole(actor.userId, domain, {
+      role: membership.role as DomainMemberRole,
+    })
+    : null;
   const context: WorkspaceAccessContext = {
     domainId: domain.id,
     domainSlug: domain.slug,
     actor,
+    platformRole,
+    domainRole,
     platformPermissions,
-    domainPermissions: domainPermissions(roles.map((row) => row.role)),
+    domainPermissions: domainRoleCapabilities(domainRole),
     domainRevision: domain.revision,
     platformAdmin,
   };
@@ -226,12 +221,11 @@ export function domainReadableWhere(
 /** 业务授权只接受解析后的 access context，不接受 role 字符串。 */
 export function assertWorkspacePermission(
   context: WorkspaceAccessContext,
-  permission: string,
+  permission: CapabilityName,
 ): void {
   if (
     context.actor.kind !== "user" ||
-    !context.platformPermissions.has(ADMIN_FULL_ACCESS) &&
-      !context.domainPermissions.has(permission)
+    (!context.platformAdmin && !context.domainPermissions.has(permission))
   ) throw new ForbiddenError("工作空间权限不足", "DOMAIN_PERMISSION_DENIED");
 }
 

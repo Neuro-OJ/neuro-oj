@@ -1,16 +1,27 @@
 /** 工作空间业务公开门面。 */
 export {
   domainPermissions,
-  isDomainRole,
   presetConfiguration,
   validateDomainConfiguration,
   validateDomainSlug,
 } from "./types.ts";
 export {
+  DOMAIN_MEMBER_ROLES,
+  DOMAIN_ROLES,
+  isDomainMemberRole,
+  isDomainRole,
+  isPlatformRole,
+  parseDomainMemberRole,
+  parsePlatformRole,
+} from "../../../shared/access/roles.ts";
+export type {
+  DomainMemberRole,
+  PlatformRole,
+} from "../../../shared/access/roles.ts";
+export {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
   DOMAIN_PRESETS,
-  DOMAIN_ROLES,
 } from "../../../shared/workspace/types.ts";
 export type {
   DomainConfiguration,

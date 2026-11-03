@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, tsvector } from "./common.ts";
+import type { PlatformRole } from "../../access/roles.ts";
 
 /**
  * 用户表。
@@ -31,6 +32,13 @@ export const users = pgTable(
     password_hash: text("password_hash"),
     /** 凭据变更时原子递增，用于撤销该用户此前签发的全部会话。 */
     session_version: integer("session_version").notNull().default(0),
+    /**
+     * 平台角色：单值，只有 user / admin。
+     *
+     * 这是平台管理能力的唯一持久化事实；JWT 中的 role 仅供客户端展示，
+     * 任何业务授权都必须重新读取本列。
+     */
+    role: text("role").$type<PlatformRole>().notNull().default("user"),
     /** 个人简介（Markdown 格式） */
     bio: text("bio").notNull().default(""),
     /**
@@ -62,6 +70,10 @@ export const users = pgTable(
     searchVectorIdx: index("idx_users_search_vector").using(
       "gin",
       table.searchVector,
+    ),
+    roleCheck: check(
+      "users_role_check",
+      sql`${table.role} IN ('user', 'admin')`,
     ),
   }),
 );

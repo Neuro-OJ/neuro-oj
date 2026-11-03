@@ -55,8 +55,7 @@ import {
   evaluateProblemAccessWithContestId,
 } from "../services/problem-access-check.ts";
 import {
-  ADMIN_FULL_ACCESS,
-  resolvePermissions,
+  isCurrentUserAdmin,
 } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import type { ProblemListQuery } from "../types/problems.ts";
 import { getSupportPackageBytes } from "../services/support-package.ts";
@@ -113,9 +112,7 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   if (ownerId) query.owner_id = ownerId;
 
   const viewerId = c.get("userId") as string | undefined;
-  const isAdmin = viewerId
-    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
-    : false;
+  const isAdmin = viewerId ? await isCurrentUserAdmin(c) : false;
 
   const result = await listProblems(query, {
     userId: viewerId,
@@ -197,9 +194,7 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId") as string | undefined;
-  const isAdmin = userId
-    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
-    : false;
+  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
 
   // 统一题目访问解析：无权限一律 404，防存在性探测。
   const problem = await resolveProblem(id, { userId, isAdmin });
@@ -362,9 +357,7 @@ async function assertProblemReadable(
   problem: Awaited<ReturnType<typeof resolveProblem>>,
 ): Promise<void> {
   const userId = c.get("userId") as string | undefined;
-  const isAdmin = userId
-    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
-    : false;
+  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
   const { result: access } = await evaluateProblemAccess(problem, {
     viewerId: userId ?? null,
     isAdmin,
@@ -500,7 +493,7 @@ router.get("/:id/versions/:versionId", optionalAuthMiddleware, async (c) => {
 router.get("/:id/support-package", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId");
-  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
+  const isAdmin = await isCurrentUserAdmin(c);
 
   const problem = await resolveProblem(id);
   // 公开赛保密：被加入未结束公开赛的题目对非 owner/管理员按"不存在"处理（404），
@@ -556,7 +549,7 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId") as string;
-  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
+  const isAdmin = await isCurrentUserAdmin(c);
   const problem = await resolveProblem(id);
   const { result } = await evaluateProblemAccessWithContestId(problem, {
     viewerId: userId,
@@ -606,9 +599,7 @@ router.get("/:id/template", authMiddleware, async (c) => {
 router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId") as string | undefined;
-  const isAdmin = userId
-    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
-    : false;
+  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
 
   // 与 /:id 一致：无权限一律 404，避免成为私有题/保密题的存在性预言机
   const problem = await resolveProblem(id, { userId, isAdmin });
@@ -663,9 +654,7 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   // 竞赛页可携带 contest_id 传入竞赛上下文放行。
   // 竞赛上下文校验收敛在 objective 域服务内，catalog 域不反向依赖 contest 域。
   const viewerId = userId ?? null;
-  const isAdmin = userId
-    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
-    : false;
+  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
   const contestId = c.req.query("contest_id");
   const result = await listPaperQuestionsWithAccess(paperId, {
     viewerId,

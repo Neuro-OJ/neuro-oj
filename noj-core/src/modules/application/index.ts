@@ -14,7 +14,7 @@ export {
   revokeClassroomInvitationCommand,
   revokeDomainInvitationCommand,
   setDomainStatusCommand,
-  setMemberRolesCommand,
+  setMemberRoleCommand,
   transferDomainCommand,
   updateDomainCommand,
 } from "./access.ts";

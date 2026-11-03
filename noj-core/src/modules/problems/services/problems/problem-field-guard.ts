@@ -32,7 +32,10 @@ import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   checkPermission,
   getUserPermissions,
+  isCurrentUserAdmin,
+  isUserAdmin,
 } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import type { CapabilityName } from "../../../../shared/access/roles.ts";
 import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -53,16 +56,15 @@ export async function assertLlmProblemPermission(
 ): Promise<void> {
   if (type === "P") return;
   const allowed = c
-    ? await checkPermission(c, "admin:full_access")
-    : (userId ?? ROOT_USER_ID) === ROOT_USER_ID ||
-      (await getUserPermissions(userId!)).has("admin:full_access");
+    ? await isCurrentUserAdmin(c)
+    : (userId ?? ROOT_USER_ID) === ROOT_USER_ID || await isUserAdmin(userId!);
   if (!allowed) {
     throw new ForbiddenError("仅管理员可为 U 型题配置 LLM", "FORBIDDEN");
   }
 }
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
-export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
+export const SENSITIVE_FIELD_PERMISSIONS: Record<string, CapabilityName> = {
   "evaluator.command": "problem:field_evaluator_command",
   "evaluator.network": "problem:field_evaluator_network",
 };
@@ -156,9 +158,7 @@ export async function assertSensitiveFieldPermissions(
       (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
     ) {
       const permissions = await getUserPermissions(userId!);
-      if (
-        !permissions.has("admin:full_access") && !permissions.has(permission)
-      ) {
+      if (!permissions.has(permission)) {
         throw new ForbiddenError(
           `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
           "FORBIDDEN",

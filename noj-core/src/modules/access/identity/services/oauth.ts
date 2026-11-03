@@ -20,7 +20,6 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { isUserAdmin } from "./security/permissions.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
 import { recordConsentsForRegistration } from "../../../platform/contracts/cross-module/services_legal_consent.ts";
@@ -614,7 +613,7 @@ async function issueOAuthSession(
     login: "oauth",
   });
   return {
-    user: toUserResponse(user, { isAdmin: await isUserAdmin(userId) }),
+    user: toUserResponse(user),
     token,
   };
 }

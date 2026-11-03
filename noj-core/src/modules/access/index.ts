@@ -25,13 +25,19 @@ export type {
 export {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
+  DOMAIN_MEMBER_ROLES,
   DOMAIN_PRESETS,
   domainPermissions,
+  isDomainMemberRole,
   isDomainRole,
+  isPlatformRole,
+  parseDomainMemberRole,
+  parsePlatformRole,
   presetConfiguration,
   validateDomainConfiguration,
   validateDomainSlug,
 } from "./types.ts";
+export type { DomainMemberRole, PlatformRole } from "./types.ts";
 
 export type {
   AccessActor,
@@ -102,8 +108,8 @@ export {
   retireAccountWorkspaceMembershipsTx,
   reviewJoinRequest,
   reviewJoinRequestTx,
-  setMemberRoles,
-  setMemberRolesTx,
+  setMemberRole,
+  setMemberRoleTx,
   transferDomain,
   transferDomainTx,
 } from "./members.ts";

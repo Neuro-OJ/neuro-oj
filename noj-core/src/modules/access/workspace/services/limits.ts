@@ -16,8 +16,9 @@ import {
   combineDomainLimits,
   validateDomainLimits,
 } from "../../../../shared/workspace/resource-policy.ts";
-import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
-import { workspaceAudit } from "./domains.ts";
+import { assertWorkspacePermission, loadWorkspaceTx } from "../../policy.ts";
+import { requireUserActor, type UserActor } from "../../contracts/actor.ts";
+import { workspaceAuditTx } from "../../audit.ts";
 import { getInstanceResourcePolicy } from "./instance.ts";
 import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 
@@ -49,10 +50,11 @@ export async function getDomainEffectiveLimits(
 /** 域管理员只能降低自己的有效额度；提高须平台治理权限。 */
 export async function updateDomainLimits(
   slug: string,
-  actorId: string,
+  actor: UserActor,
   expectedRevision: number | null,
   input: DomainLimits,
 ) {
+  const user = requireUserActor(actor);
   if (
     expectedRevision === null || !Number.isInteger(expectedRevision) ||
     expectedRevision < 0
@@ -65,10 +67,11 @@ export async function updateDomainLimits(
     );
   }
   return await getDb().transaction(async (tx) => {
-    const { domain, context, platformAdmin } = await loadWorkspace(
+    const { domain, context, platformAdmin } = await loadWorkspaceTx(
+      tx,
       slug,
-      actorId,
-      { executor: tx, write: true, lock: true },
+      user,
+      { write: true, lock: true },
     );
     assertWorkspacePermission(context, "domain:limits");
     if (domain.revision !== expectedRevision) {
@@ -98,7 +101,7 @@ export async function updateDomainLimits(
       revision,
       updated_at: new Date().toISOString(),
     }).where(eq(domains.id, domain.id));
-    await workspaceAudit(tx, actorId, domain.id, "domain.update", {
+    await workspaceAuditTx(tx, user, domain.id, "domain.update", {
       operation: "limits",
       configured: input,
       effective: desired,

@@ -17,6 +17,7 @@ import type {
   DomainStatus,
   StoredDomainPreset,
 } from "../../workspace/types.ts";
+import type { DomainMemberRole } from "../../access/roles.ts";
 
 /** 产品工作空间；固定类型决定能力，成员角色决定操作权限。 */
 export const domains = pgTable("domains", {
@@ -63,6 +64,11 @@ export const domainMemberships = pgTable("domain_memberships", {
   status: text("status").$type<"active" | "removed">().notNull().default(
     "active",
   ),
+  /**
+   * 单值成员角色；负责人（owner）不写入本列，由 domains.owner_id 推导。
+   * 加入、恢复成员均写回 member，不恢复离开前的身份。
+   */
+  role: text("role").$type<DomainMemberRole>().notNull().default("member"),
   joined_at: text("joined_at").notNull(),
   left_at: text("left_at"),
 }, (t) => ({
@@ -77,6 +83,10 @@ export const domainMemberships = pgTable("domain_memberships", {
   statusCheck: check(
     "domain_memberships_status_check",
     sql`${t.status} IN ('active', 'removed')`,
+  ),
+  roleCheck: check(
+    "domain_memberships_role_check",
+    sql`${t.role} IN ('member', 'educator', 'admin')`,
   ),
   userStatusIdx: index("idx_domain_memberships_user_status").on(
     t.user_id,

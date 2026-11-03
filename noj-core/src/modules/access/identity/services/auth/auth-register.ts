@@ -83,14 +83,15 @@ export function toUserResponse(
   row: typeof users.$inferSelect,
   options?: {
     activeBan?: { reason: string; banned_until: string | null } | null;
-    isAdmin?: boolean;
   },
 ): UserResponse {
+  const role = row.role === "admin" ? "admin" : "user";
   return {
     id: row.id,
     username: row.username,
     email: row.email,
-    is_admin: options?.isAdmin ?? false,
+    role,
+    is_admin: role === "admin",
     has_local_password: row.password_hash !== null,
     must_change_password: row.must_change_password,
     email_verified: row.email_verified,
@@ -264,6 +265,7 @@ export async function registerUser(
     id,
     username: input.username,
     email: input.email,
+    role: "user",
     is_admin: false,
     has_local_password: true,
     must_change_password: false,

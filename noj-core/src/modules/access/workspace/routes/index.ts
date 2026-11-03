@@ -24,23 +24,23 @@ import {
 import type {
   DomainLimits,
   DomainPreset,
-  DomainRole,
 } from "../../../../shared/workspace/types.ts";
 import {
   getDomainEffectiveLimits,
   updateDomainLimits,
 } from "../services/limits.ts";
 import {
+  type AccessActor,
   assertWorkspacePermission,
   loadWorkspace,
-} from "../services/access.ts";
-import { listDomains } from "../services/domains.ts";
+} from "../../policy.ts";
+import { listDomains } from "../../domains.ts";
 import { getInstancePolicy } from "../services/instance.ts";
-import { listDomainInvitations } from "../services/invitations.ts";
+import { listDomainInvitations } from "../../invitations.ts";
 import {
   listDomainJoinRequests,
   listDomainMembersPage,
-} from "../services/members.ts";
+} from "../../members.ts";
 import {
   requestDomainCreation,
   reviewDomainCreation,
@@ -67,11 +67,16 @@ import {
   reviewJoinRequestCommand,
   revokeDomainInvitationCommand,
   setDomainStatusCommand,
-  setMemberRolesCommand,
+  setMemberRoleCommand,
   transferDomainCommand,
   updateDomainCommand,
 } from "../../../application/access.ts";
-import { requireUserActor, type UserActor } from "../../contracts/actor.ts";
+import {
+  guestActor,
+  requireUserActor,
+  type UserActor,
+  userActorFromAuthenticatedId,
+} from "../../contracts/actor.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -80,6 +85,13 @@ function authenticatedActor(c: Context<OptionalAuthEnv>): UserActor {
   const actor = c.get("actor");
   if (!actor) throw new UnauthorizedError("未提供认证身份");
   return requireUserActor(actor);
+}
+/** 读路径的显式 access actor：认证用户或匿名访客，不能从客户端字段构造。 */
+function requestActor(c: Context<OptionalAuthEnv>): AccessActor {
+  const actor = c.get("actor");
+  if (actor && actor.kind !== "system") return actor;
+  const userId = c.var.userId;
+  return userId ? userActorFromAuthenticatedId(userId) : guestActor();
 }
 // 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
 for (
@@ -152,12 +164,18 @@ router.patch(
 router.get(
   "/domains",
   optionalAuthMiddleware,
-  async (c) => c.json({ data: await listDomains(c.var.userId ?? null) }),
+  async (c) =>
+    c.json({
+      data: await listDomains(
+        c.var.userId ? requestActor(c) as UserActor : null,
+      ),
+    }),
 );
 router.get(
   "/me/domains",
   authMiddleware,
-  async (c) => c.json({ data: await listDomains(c.var.userId!, true) }),
+  async (c) =>
+    c.json({ data: await listDomains(requestActor(c) as UserActor, true) }),
 );
 router.post("/domains", authMiddleware, async (c) => {
   const input = await body(c);
@@ -247,7 +265,7 @@ router.post("/auth/domain-invitation", async (c) => {
 router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   const { domain, context, membership, platformAdmin } = await loadWorkspace(
     c.req.param("slug")!,
-    c.var.userId ?? null,
+    requestActor(c),
   );
   return c.json({
     data: {
@@ -259,14 +277,14 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
       permissions: [...context.domainPermissions],
       is_member: !!membership,
       platform_admin: platformAdmin,
-      actor_id: context.actorId,
+      actor_id: context.actor.kind === "user" ? context.actor.userId : null,
     },
   });
 });
 router.get("/domains/:slug/limits", authMiddleware, async (c) => {
   const { domain, context } = await loadWorkspace(
     c.req.param("slug")!,
-    c.var.userId!,
+    requestActor(c),
   );
   assertWorkspacePermission(context, "domain:limits");
   return c.json({
@@ -282,7 +300,7 @@ router.patch("/domains/:slug/limits", authMiddleware, async (c) => {
   return c.json({
     data: await updateDomainLimits(
       c.req.param("slug")!,
-      c.var.userId!,
+      authenticatedActor(c),
       revisionHeader(c.req.header("If-Match")),
       input as unknown as DomainLimits,
     ),
@@ -331,7 +349,10 @@ router.post("/domains/:slug/join", authMiddleware, async (c) => {
 });
 router.get("/domains/:slug/join-requests", authMiddleware, async (c) => {
   return c.json({
-    data: await listDomainJoinRequests(c.req.param("slug")!, c.var.userId!),
+    data: await listDomainJoinRequests(
+      requestActor(c) as UserActor,
+      c.req.param("slug")!,
+    ),
   });
 });
 router.post(
@@ -362,8 +383,8 @@ router.get(
       defaultPerPage: 25,
     });
     const result = await listDomainMembersPage(
+      requestActor(c) as UserActor,
       c.req.param("slug")!,
-      c.var.userId!,
       {
         offset,
         perPage,
@@ -379,16 +400,16 @@ router.get(
   },
 );
 router.put(
-  "/domains/:slug/members/:userId/roles",
+  "/domains/:slug/members/:userId/role",
   authMiddleware,
   async (c) => {
     const input = await body(c);
     return c.json({
-      data: await setMemberRolesCommand(
+      data: await setMemberRoleCommand(
         authenticatedActor(c),
         c.req.param("slug")!,
         c.req.param("userId")!,
-        input.roles as DomainRole[],
+        input.role,
       ),
     });
   },
@@ -431,8 +452,8 @@ router.post("/domains/:slug/invitations", authMiddleware, async (c) => {
 router.get("/domains/:slug/invitations", authMiddleware, async (c) => {
   const pagination = parsePagination(c, { defaultPerPage: 25 });
   const result = await listDomainInvitations(
+    requestActor(c) as UserActor,
     c.req.param("slug")!,
-    c.var.userId!,
     pagination,
   );
   return c.json({
@@ -461,7 +482,7 @@ router.put("/me/workspace-preference", authMiddleware, async (c) => {
   if (typeof input.slug !== "string") {
     throw new BadRequestError("工作空间标识非法");
   }
-  const { domain } = await loadWorkspace(input.slug, c.var.userId!);
+  const { domain } = await loadWorkspace(input.slug, requestActor(c));
   await getDb().insert(userWorkspacePreferences).values({
     user_id: c.var.userId!,
     last_domain_id: domain.id,

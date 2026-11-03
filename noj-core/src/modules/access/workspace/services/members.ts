@@ -255,7 +255,7 @@ export async function setMemberRoles(
     await tx.insert(domainMemberRoles).values(
       [...new Set(roles)].map((role) => ({ membership_id: member.id, role })),
     );
-    await workspaceAudit(tx, actorId, domain.id, "domain.member_roles", {
+    await workspaceAudit(tx, actorId, domain.id, "domain.member_role", {
       user_id: userId,
       roles,
     });

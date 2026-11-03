@@ -1,4 +1,4 @@
-/** access 模块的工作空间访问策略类型与本地角色解析。 */
+/** access 模块的工作空间访问策略类型与固定能力映射。 */
 import { BadRequestError } from "../../shared/base/errors.ts";
 import type {
   DomainConfiguration,
@@ -7,6 +7,7 @@ import type {
   DomainRole,
 } from "../../shared/workspace/types.ts";
 import { domainTypeConfiguration } from "../../shared/workspace/capabilities.ts";
+import { domainRoleCapabilities } from "../../shared/access/roles.ts";
 
 export type { DomainConfiguration, DomainLimits, DomainPreset, DomainRole };
 export {
@@ -14,102 +15,28 @@ export {
   DEFAULT_DOMAIN_SLUG,
   DOMAIN_PRESETS,
 } from "../../shared/workspace/types.ts";
+export {
+  DOMAIN_MEMBER_ROLES,
+  DOMAIN_ROLES,
+  type DomainMemberRole,
+  isDomainMemberRole,
+  isDomainRole,
+  isPlatformRole,
+  parseDomainMemberRole,
+  parsePlatformRole,
+  type PlatformRole,
+} from "../../shared/access/roles.ts";
 
-const MEMBER_PERMISSIONS = [
-  "problem:read",
-  "submission:create",
-  "submission:read_own",
-  "contest:participate",
-  "training:read",
-  "community:read",
-  "community:create",
-  "community:comment",
-] as const;
-const EDITOR_PERMISSIONS = [
-  "problem:create",
-  "problem:write_own",
-  "problem:publish",
-  "training:create",
-  "training:publish",
-  "training:import",
-  "problem:import",
-  "training:write_own",
-  "training:delete_own",
-  "contest:create",
-  "contest:manage_own",
-] as const;
-const ADMIN_PERMISSIONS = [
-  "domain:settings",
-  "domain:members",
-  "domain:invitations",
-  "domain:archive",
-  "problem:write_any",
-  "problem:delete_any",
-  "problem:share",
-  "problem:policy",
-  "submission:read_all",
-  "submission:rejudge",
-  "training:write_any",
-  "training:delete_any",
-  "training:share",
-  "contest:manage",
-  "classroom:manage_any",
-  "llm:manage",
-  "domain:limits",
-  "community:moderate",
-] as const;
+/** 有效域角色的只读能力集合；无成员关系得到空集。 */
+export function domainPermissions(
+  role: DomainRole | null,
+): ReadonlySet<string> {
+  return domainRoleCapabilities(role);
+}
 
 /** 初始化域配置；域类型能力由共享 capability 契约决定。 */
 export function presetConfiguration(preset: DomainPreset): DomainConfiguration {
   return domainTypeConfiguration(preset);
-}
-
-/** 只生成域内权限；平台 user_roles 不在此继承。 */
-export function domainPermissions(
-  roles: readonly DomainRole[],
-): ReadonlySet<string> {
-  const permissions = new Set<string>();
-  for (const role of roles) {
-    for (const permission of MEMBER_PERMISSIONS) permissions.add(permission);
-    if (role === "editor" || role === "admin" || role === "owner") {
-      for (const permission of EDITOR_PERMISSIONS) permissions.add(permission);
-    }
-    if (role === "educator" || role === "admin" || role === "owner") {
-      permissions.add("classroom:create");
-      permissions.add("training:import");
-      permissions.add("problem:import");
-      // 教练协作管理全域教学资源，不继承成员治理和敏感配置权限。
-      for (const permission of EDITOR_PERMISSIONS) permissions.add(permission);
-      for (
-        const permission of [
-          "classroom:manage_any",
-          "problem:write_any",
-          "problem:delete_any",
-          "problem:policy",
-          "training:write_any",
-          "training:delete_any",
-          "contest:manage",
-        ]
-      ) permissions.add(permission);
-    }
-    if (role === "moderator") permissions.add("community:moderate");
-    if (role === "admin" || role === "owner") {
-      for (const permission of ADMIN_PERMISSIONS) permissions.add(permission);
-    }
-    if (role === "owner") permissions.add("domain:transfer");
-  }
-  return permissions;
-}
-
-export function isDomainRole(value: unknown): value is DomainRole {
-  return typeof value === "string" && [
-    "owner",
-    "admin",
-    "editor",
-    "educator",
-    "moderator",
-    "member",
-  ].includes(value);
 }
 
 export function validateDomainSlug(value: unknown): asserts value is string {

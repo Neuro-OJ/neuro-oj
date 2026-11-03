@@ -23,9 +23,8 @@ import { hashPassword } from "../../../../access/contracts/cross-module/identity
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import {
-  ADMIN_FULL_ACCESS,
   getAdminUserIds,
-  getUserPermissions,
+  isUserAdmin,
 } from "../../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 
 /**
@@ -217,9 +216,8 @@ export async function ensureAdminFromEnv(): Promise<void> {
   }
 
   const user = existing[0];
-  // 幂等判断：已通过 RBAC 拥有 admin:full_access 权限则跳过
-  const perms = await getUserPermissions(user.id);
-  if (perms.has(ADMIN_FULL_ACCESS)) {
+  // 幂等判断：用户平台角色已是 admin 则跳过
+  if (await isUserAdmin(user.id)) {
     console.log(`  用户 ${adminEmail} 已是管理员，无需提升`);
     return;
   }

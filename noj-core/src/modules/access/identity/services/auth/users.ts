@@ -3,17 +3,14 @@ import {
   eq,
   gte,
   ilike,
-  inArray,
   isNull,
   lte,
-  notInArray,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
-import { userBans, userRoles, users } from "../../../../../shared/db/schema.ts";
-import { getAdminUserIds, isUserAdmin } from "../security/permissions.ts";
+import { userBans, users } from "../../../../../shared/db/schema.ts";
 import { UnauthorizedError } from "../../../../../shared/base/errors.ts";
 import type { UserResponse } from "../../types/auth.ts";
 import { toUserResponse } from "./auth-register.ts";
@@ -38,10 +35,7 @@ export async function getUserProfile(
     throw new UnauthorizedError("用户不存在");
   }
 
-  // is_admin 实时计算（权限集含 admin:full_access，含继承链）
-  const isAdmin = await isUserAdmin(userId);
-
-  return toUserResponse(existing[0], { isAdmin });
+  return toUserResponse(existing[0]);
 }
 
 /**
@@ -82,14 +76,9 @@ export async function listUsers(
   // 排除 root 系统用户（id='0'）
   conditions.push(sql`${users.id} <> '0'`);
 
-  // 按管理员状态筛选（admin:full_access 权限，含继承链）
+  // 按平台角色筛选（单值 users.role）
   if (opts.isAdmin !== undefined) {
-    const adminIds = await getAdminUserIds();
-    if (opts.isAdmin) {
-      conditions.push(inArray(users.id, [...adminIds]));
-    } else {
-      conditions.push(notInArray(users.id, [...adminIds]));
-    }
+    conditions.push(eq(users.role, opts.isAdmin ? "admin" : "user"));
   }
 
   // 按关键词搜索（username 或 email ILIKE 模糊匹配）
@@ -115,6 +104,7 @@ export async function listUsers(
         id: users.id,
         username: users.username,
         email: users.email,
+        role: users.role,
         must_change_password: users.must_change_password,
         email_verified: users.email_verified,
         password_hash: users.password_hash,
@@ -144,20 +134,6 @@ export async function listUsers(
       .where(where),
   ]);
 
-  const roleRows = rows.length === 0 ? [] : await db
-    .select({ user_id: userRoles.user_id, role_id: userRoles.role_id })
-    .from(userRoles)
-    .where(inArray(userRoles.user_id, rows.map((row) => row.id)));
-  const roleIdsByUser = new Map<string, string[]>();
-  for (const roleRow of roleRows) {
-    const roleIds = roleIdsByUser.get(roleRow.user_id) ?? [];
-    roleIds.push(roleRow.role_id);
-    roleIdsByUser.set(roleRow.user_id, roleIds);
-  }
-
-  // 本页用户的管理员状态（admin:full_access 权限，含继承链）
-  const allAdminIds = await getAdminUserIds();
-
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
 
@@ -166,8 +142,8 @@ export async function listUsers(
     id: row.id,
     username: row.username,
     email: row.email,
-    role_ids: roleIdsByUser.get(row.id) ?? [],
-    is_admin: allAdminIds.has(row.id),
+    role: row.deleted_at ? "user" : row.role,
+    is_admin: !row.deleted_at && row.role === "admin",
     has_local_password: row.password_hash !== null,
     must_change_password: row.must_change_password,
     email_verified: row.email_verified,

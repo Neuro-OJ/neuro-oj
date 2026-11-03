@@ -1,156 +1,176 @@
 /**
- * RBAC 权限检查模块。
+ * 平台角色与能力检查。
  *
- * 核心函数：
- * - getUserPermissions(userId) — 递归 CTE 查询用户所有权限（含角色继承链），返回 Set<string>
- * - checkPermission(c, permission) — admin:full_access 通配放行 → Set.has()
- * - assertPermission(c, permission) — 同上但无权限时抛 ForbiddenError
- * - resolvePermissions(c) — 请求级缓存
- * - requireAdmin() — 实时权限查询的管理员中间件
- * - requirePermission(permission) — 通用权限中间件
+ * 唯一授权事实是 `users.role`（单值 user/admin）。本模块只做三件事：
+ * - 读取平台角色（按请求缓存，一请求一次 DB 查询）；
+ * - 把角色映射成只读能力集合（`shared/access/roles.ts` 的静态映射）；
+ * - 提供路由守卫与 handler 内的断言函数。
  *
- * 管理员语义：用户权限集（含继承链）包含 `admin:full_access` 权限即视为管理员，
- * 对任意权限检查直接放行。JWT 不携带 is_admin claim，判定实时查询。
+ * JWT 中的 role 仅供客户端展示；本模块任何函数都不读取 token 角色。
  */
-
-import { sql } from "drizzle-orm";
-import { Context, MiddlewareHandler, Next } from "hono";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import type { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../../../../shared/db/executor.ts";
-import { ForbiddenError } from "../../../../../shared/base/errors.ts";
-import { unwrapRows } from "../../../../../shared/base/sql-rows.ts";
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from "../../../../../shared/base/errors.ts";
+import { users } from "../../../../../shared/db/schema.ts";
+import {
+  type CapabilityName,
+  isPlatformRole,
+  type PlatformRole,
+  platformRoleCapabilities,
+} from "../../../../../shared/access/roles.ts";
 
-/** 全权限通行证权限（resource:action） */
-export const ADMIN_FULL_ACCESS = "admin:full_access";
+type Executor = DbRoot | DbTx;
 
-// ── 数据库查询（只有这个函数访问 DB）──────────────────────
+/** 一次请求内缓存平台角色，避免同一请求重复查询。 */
+const PLATFORM_ROLE_CACHE = Symbol.for("noj.platformRole");
 
+interface RoleCacheCarrier {
+  [PLATFORM_ROLE_CACHE]?: PlatformRole;
+}
+
+const ROOT_USER_ID = "0";
+
+/**
+ * 读取当前账号的平台角色。
+ *
+ * 账号不存在、已注销或角色值非法时返回 null（fail-closed），调用方按无权限处理。
+ */
+export async function findPlatformRole(
+  userId: string,
+  executor?: Executor,
+): Promise<PlatformRole | null> {
+  const db = executor ?? getDb();
+  const [row] = await db.select({ role: users.role }).from(users).where(
+    and(eq(users.id, userId), isNull(users.deleted_at)),
+  ).limit(1);
+  if (!row) return null;
+  return isPlatformRole(row.role) ? row.role : null;
+}
+
+/** 单用户是否平台管理员；账号不存在时返回 false。 */
+export async function isUserAdmin(
+  userId: string,
+  executor?: Executor,
+): Promise<boolean> {
+  return (await findPlatformRole(userId, executor)) === "admin";
+}
+
+/**
+ * 用户的能力集合（平台维度）。
+ *
+ * 保留旧函数名以缩小调用面迁移；语义已改为“平台角色静态能力”，不再查角色表。
+ */
 export async function getUserPermissions(
   userId: string,
-  executor?: DbRoot | DbTx,
-): Promise<Set<string>> {
-  const db = executor ?? getDb();
-
-  const result = await db.execute<{ perm: string }>(sql`
-    WITH RECURSIVE resolved AS (
-      SELECT r.id, r.parent_id
-      FROM roles r
-      JOIN user_roles ur ON ur.role_id = r.id
-      WHERE ur.user_id = ${userId}
-      UNION ALL
-      SELECT r.id, r.parent_id
-      FROM roles r
-      JOIN resolved rr ON r.id = rr.parent_id
-    )
-    SELECT DISTINCT p.resource || ':' || p.action AS perm
-    FROM resolved rr
-    JOIN role_permissions rp ON rp.role_id = rr.id
-    JOIN permissions p ON p.id = rp.permission_id
-  `);
-
-  const rows = unwrapRows<{ perm: string }>(result as never);
-  return new Set(rows.map((r) => r.perm));
+  executor?: Executor,
+): Promise<ReadonlySet<CapabilityName>> {
+  const role = await findPlatformRole(userId, executor);
+  return role ? platformRoleCapabilities(role) : new Set();
 }
 
 /**
- * 单用户管理员判定（含角色继承链）：权限集是否包含 admin:full_access。
- */
-export async function isUserAdmin(userId: string): Promise<boolean> {
-  const perms = await getUserPermissions(userId);
-  return perms.has(ADMIN_FULL_ACCESS);
-}
-
-/**
- * 查询所有拥有 admin:full_access 权限（含角色继承链）的用户 id 集合。
- * 供 admin 列表展示 / is_admin 筛选 / 封禁保护等批量场景使用，避免 N+1。
+ * 批量查询平台管理员 ID。
+ *
+ * 排除 root 系统账号、已注销用户与处于有效平台封禁中的账号：这些账号不计入
+ * “可用管理员”统计，最后一个管理员保护依赖同一口径。
  */
 export async function getAdminUserIds(
-  executor?: DbRoot | DbTx,
+  executor?: Executor,
 ): Promise<Set<string>> {
   const db = executor ?? getDb();
-
-  const result = await db.execute<{ user_id: string }>(sql`
-    WITH RECURSIVE resolved AS (
-      SELECT ur.user_id, r.id, r.parent_id
-      FROM roles r
-      JOIN user_roles ur ON ur.role_id = r.id
-      UNION ALL
-      SELECT rr.user_id, r.id, r.parent_id
-      FROM roles r
-      JOIN resolved rr ON r.id = rr.parent_id
-    )
-    SELECT DISTINCT rr.user_id
-    FROM resolved rr
-    JOIN role_permissions rp ON rp.role_id = rr.id
-    JOIN permissions p ON p.id = rp.permission_id
-    WHERE p.resource = 'admin' AND p.action = 'full_access'
-  `);
-
-  const rows = unwrapRows<{ user_id: string }>(result as never);
-  return new Set(rows.map((r) => r.user_id));
+  const rows = await db.select({ id: users.id }).from(users).where(
+    and(
+      eq(users.role, "admin"),
+      isNull(users.deleted_at),
+      ne(users.id, ROOT_USER_ID),
+      sql`NOT EXISTS (
+        SELECT 1 FROM user_bans admin_ban
+        WHERE admin_ban.user_id = ${users.id}
+          AND admin_ban.scope = 'platform'
+          AND admin_ban.unbanned_at IS NULL
+          AND (admin_ban.banned_until IS NULL OR admin_ban.banned_until > ${
+        new Date().toISOString()
+      })
+      )`,
+    ),
+  );
+  return new Set(rows.map((row) => row.id));
 }
 
-// ── 请求级缓存 ────────────────────────────────────────────
-
-export async function resolvePermissions(c: Context): Promise<Set<string>> {
-  // 匿名（optionalAuthMiddleware 未登录）时权限集为空，避免 undefined userId 查询报错
-  const userId = c.var.userId as string | undefined;
-  if (!userId) return new Set();
-
-  let perms = c.get("userPerms") as Set<string> | undefined;
-  if (perms) return perms;
-
-  perms = await getUserPermissions(userId);
-  c.set("userPerms", perms);
-  return perms;
+/** 读取（并缓存）当前请求的平台角色。 */
+export async function resolvePlatformRole(
+  c: Context,
+): Promise<PlatformRole | null> {
+  const cached = (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE];
+  if (cached) return cached;
+  const userId = c.get("userId") as string | undefined;
+  if (!userId) return null;
+  const role = await findPlatformRole(userId);
+  if (role) (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE] = role;
+  return role;
 }
 
-// ── 工具函数（handler / service 内部使用）──────────────────
+/** 当前请求用户是否平台管理员（请求级缓存）。 */
+export async function isCurrentUserAdmin(c: Context): Promise<boolean> {
+  return (await resolvePlatformRole(c)) === "admin";
+}
 
+/** 当前请求用户的能力集合（请求级缓存）。 */
+export async function resolvePermissions(
+  c: Context,
+): Promise<ReadonlySet<CapabilityName>> {
+  const cached = c.get("userPerms") as
+    | ReadonlySet<CapabilityName>
+    | undefined;
+  if (cached) return cached;
+  const role = await resolvePlatformRole(c);
+  const capabilities = role
+    ? platformRoleCapabilities(role)
+    : new Set<CapabilityName>();
+  c.set("userPerms", capabilities as never);
+  return capabilities;
+}
+
+/** handler 内条件判断：是否具备某能力。 */
 export async function checkPermission(
   c: Context,
-  permission: string,
+  permission: CapabilityName,
 ): Promise<boolean> {
-  const perms = await resolvePermissions(c);
-  return perms.has(ADMIN_FULL_ACCESS) || perms.has(permission);
+  return (await resolvePermissions(c)).has(permission);
 }
 
+/** handler 内断言：无能力时抛 403。 */
 export async function assertPermission(
   c: Context,
-  permission: string,
+  permission: CapabilityName,
 ): Promise<void> {
   if (!(await checkPermission(c, permission))) {
     throw new ForbiddenError("权限不足");
   }
 }
 
-// ── 中间件 ────────────────────────────────────────────────
-
-/**
- * 管理路由中间件：基于实时权限查询判断（请求级缓存，一请求只查一次 DB）。
- * 替代原基于 JWT is_admin claim 的 fast path。
- */
+/** 管理路由中间件：平台角色必须为 admin。 */
 export function requireAdmin(): MiddlewareHandler {
   return async (c: Context, next: Next) => {
-    const perms = await resolvePermissions(c);
-    if (!perms.has(ADMIN_FULL_ACCESS)) {
+    if (!c.get("userId")) throw new UnauthorizedError("未提供认证令牌");
+    if ((await resolvePlatformRole(c)) !== "admin") {
       throw new ForbiddenError("需要管理员权限");
     }
     await next();
   };
 }
 
-/**
- * 通用权限中间件工厂函数。
- * - 权限集含 admin:full_access → 直接放行（通配）
- * - 否则 → 检查 Set.has(permission)
- *
- * 同一请求内多次 requirePermission 调用共享 resolvePermissions 的请求级缓存。
- */
-export function requirePermission(permission: string): MiddlewareHandler {
+/** 通用能力中间件：平台角色能力集合必须包含该能力。 */
+export function requirePermission(
+  permission: CapabilityName,
+): MiddlewareHandler {
   return async (c: Context, next: Next) => {
-    const perms = await resolvePermissions(c);
-    if (!perms.has(ADMIN_FULL_ACCESS) && !perms.has(permission)) {
+    if (!(await checkPermission(c, permission))) {
       throw new ForbiddenError("权限不足");
     }
     await next();
