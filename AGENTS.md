@@ -56,7 +56,7 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 
 | 模块               | 运行时                             | 职责                                                                 |
 | ------------------ | ---------------------------------- | -------------------------------------------------------------------- |
-| noj-core           | Deno 2 + Hono                      | RESTful API、JWT + RBAC、业务 CRUD、Redis MQ Producer/Consumer、审计 |
+| noj-core           | Deno 2 + Hono                      | RESTful API、JWT + 固定角色授权、业务 CRUD、Redis MQ Producer/Consumer、审计 |
 | noj-ui             | Nuxt 4 + Vue 3                     | Web 前端、Nitro 代理注入 JWT Cookie                                  |
 | noj-judge          | Rust + Tokio                       | Docker 沙箱评测、双容器 Evaluator + Solution                         |
 | noj-llm-gateway    | Deno + Hono                        | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计      |
