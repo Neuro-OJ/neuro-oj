@@ -19,7 +19,6 @@ export {
   inspectRankingView,
   loadDomainQueryScope,
   PUBLIC_DEFAULT_QUERY_SCOPE,
-  refreshRankingsView,
   submissionQueryVisibility,
 } from "./queries/index.ts";
 export type {
