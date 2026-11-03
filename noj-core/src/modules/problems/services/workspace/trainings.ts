@@ -10,8 +10,6 @@ import {
   domainTrainingBindings,
   trainingProblems,
   trainings,
-  trainingShareSettings,
-  trainingShareTargets,
 } from "../../../../shared/db/schema.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
@@ -173,12 +171,6 @@ export async function deleteDomainTraining(
     }
     await tx.delete(trainingProblems).where(
       eq(trainingProblems.training_id, trainingId),
-    );
-    await tx.delete(trainingShareTargets).where(
-      eq(trainingShareTargets.training_id, trainingId),
-    );
-    await tx.delete(trainingShareSettings).where(
-      eq(trainingShareSettings.training_id, trainingId),
     );
     await tx.delete(trainings).where(eq(trainings.id, trainingId));
     await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {

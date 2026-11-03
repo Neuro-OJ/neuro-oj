@@ -14,7 +14,6 @@ import {
   problemVersions,
   trainingProblems,
   trainings,
-  trainingShareSettings,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
@@ -205,9 +204,6 @@ export async function listDomainTrainings(
           eq(domainTrainingBindings.training_id, trainings.id),
           eq(domainTrainingBindings.domain_id, workspace.domain.id),
         ),
-      ).leftJoin(
-        trainingShareSettings,
-        eq(trainingShareSettings.training_id, trainings.id),
       ).where(condition);
   const [[total], rows] = await Promise.all([
     db.select({ total: count() }).from(
