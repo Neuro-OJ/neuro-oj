@@ -48,8 +48,8 @@ authMiddleware → 注入 isAdmin
     ├─ requireAdmin()          纯 JWT fast path，零 DB 查询
     │   └─ 用于 /api/v1/admin/* 路由组
     │
-    ├─ requirePermission("x")  中间件（isAdmin fast path | DB）
-    │   └─ 用于非 admin 路由的精确权限拦截
+    ├─ requirePermission("x")  平台能力守卫（isAdmin fast path | 角色能力表）
+    │   └─ 只用于平台级端点；域内权限一律走 assertWorkspacePermission
     │
     └─ 社区管理（routes/community.ts）：
         requireCommunityModeration 守卫（admin 或 community_moderation:review）
