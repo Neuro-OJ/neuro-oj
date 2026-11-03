@@ -60,7 +60,7 @@ Status: proposed
 | P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；全仓夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 83、platform 254、read-models 86 全绿；education 2 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
 | P7 | 域配置去重 | 进行中 | 类型已拆 Stored/Effective；PATCH 出现 features/homepage 即 400 DOMAIN_TYPE_FIXED；schema 仍按 Effective 持久化，读取推导待统一 |
 | P8 | 跨域只复制、删除共享 | 进行中 | 共享列表端点、题目/题单共享读取、共享开启全部移除或禁用；绑定强制 owned、is_shared/can_share 恒 false；共享表与 education 用例待删 |
-| P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端类型/配置/统计/聚合/搜索删除；迁移 0134；UI 社区、个人主页、管理配置、举报标签、测试 mock 全部清零；训练比较与随机三题已删 |
+| P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端、UI、管理配置、举报标签、BFF mock 与 noj-docs 用户文档全部移除 moment；训练比较与随机三题已删 |
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
 | P12 | CLI 旧库预检与 Bash 清理 | 进行中 | 5 个旧 Bash 部署脚本（deploy/restore-drill/backup/弃用闸门）与 gate-list 调用已删除；CLI `db check-upgrade` 预检待实现 |
