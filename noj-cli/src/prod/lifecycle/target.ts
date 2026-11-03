@@ -80,6 +80,7 @@ export type ResolveTargetConfigResult =
 export async function resolveTargetConfig(
   prepared: TargetEnvSource,
   stagedEnvFile?: string,
+  stagedComposeFile?: string,
 ): Promise<ResolveTargetConfigResult> {
   const envFile = stagedEnvFile ?? prepared.envFile;
   let env: EnvValues;
@@ -112,7 +113,7 @@ export async function resolveTargetConfig(
       version,
       judge,
       composeOptions: {
-        composeFile: prepared.composeFile,
+        composeFile: stagedComposeFile ?? prepared.composeFile,
         envFile,
         judge,
       },

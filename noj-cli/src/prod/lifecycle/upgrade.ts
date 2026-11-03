@@ -6,7 +6,7 @@
  */
 import { join } from "@std/path";
 import { downloadReleaseFiles, downloadReleaseSet } from "../bootstrap.ts";
-import { composePull, composeRun } from "../compose.ts";
+import { composePull, composeRun, PROD_COMPOSE_FILE } from "../compose.ts";
 import { recordDeploymentMetadata, verifyImageSignatures } from "../config.ts";
 import { resolveLatestReleaseTag } from "../release.ts";
 import {
@@ -100,12 +100,16 @@ async function loadTargetReleaseSet(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   target: ResolvedTargetConfig,
+  stagedFilesDir?: string,
 ): Promise<ReleaseSet | null> {
   if (opts.releaseSet !== undefined) {
     return validateReleaseSet(opts.releaseSet, target.version);
   }
   if (opts.syncFiles !== undefined) return null;
-  return await readReleaseSet(join(ctx.dir, RELEASE_SET_ASSET), target.version);
+  return await readReleaseSet(
+    join(stagedFilesDir ?? ctx.dir, RELEASE_SET_ASSET),
+    target.version,
+  );
 }
 
 /** 只读预检旧库能否升级；失败时旧应用仍在运行，不进入排空。 */
@@ -172,6 +176,8 @@ export interface UpgradeOutcome {
   backupPath: string | null;
   drainExitError?: string | null;
   checkpointPath?: string;
+  /** 只读预检已通过；调用方可在后续失败时仍发布暂存文件。 */
+  precheckPassed?: boolean;
 }
 
 /** 升级编排：发布集、备份、验签、排空、迁移、启动和 checkpoint 顺序固定。 */
@@ -179,11 +185,18 @@ export async function upgradeWith(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   stagedEnvFile?: string,
+  stagedFilesDir?: string,
 ): Promise<UpgradeOutcome> {
   const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) return { error: prepared.error, backupPath: null };
 
-  const plan = await resolveTargetConfig(prepared, stagedEnvFile);
+  const plan = await resolveTargetConfig(
+    prepared,
+    stagedEnvFile,
+    stagedFilesDir === undefined
+      ? undefined
+      : join(stagedFilesDir, PROD_COMPOSE_FILE),
+  );
   if (!plan.ok) {
     ctx.error(plan.error);
     return { error: plan.error, backupPath: null };
@@ -192,13 +205,19 @@ export async function upgradeWith(
 
   let releaseSet: ReleaseSet | null;
   try {
-    releaseSet = await loadTargetReleaseSet(opts, ctx, target);
+    releaseSet = await loadTargetReleaseSet(
+      opts,
+      ctx,
+      target,
+      stagedFilesDir,
+    );
   } catch (error) {
     const message = (error as Error).message;
     ctx.error(message);
     return { error: message, backupPath: null };
   }
 
+  let precheckPassed = false;
   const checkpointPath = opts.upgradeStatePath ?? upgradeStatePath(ctx.dir);
   let checkpoint: UpgradeState;
   try {
@@ -250,7 +269,7 @@ export async function upgradeWith(
       );
     }
     ctx.error(error);
-    return { error, backupPath, checkpointPath };
+    return { error, backupPath, checkpointPath, precheckPassed };
   };
 
   const passphrase = await ensureCommandPassphrase({
@@ -322,6 +341,7 @@ export async function upgradeWith(
   if (precheckError !== null) {
     return await checkpointFailure(precheckError, backup.path);
   }
+  precheckPassed = true;
 
   await checkpointAdvance("draining");
   const drainError = await drainBeforeUpgrade(opts, target, ctx);
@@ -378,5 +398,6 @@ export async function upgradeWith(
     backupPath: backup.path,
     drainExitError,
     checkpointPath,
+    precheckPassed,
   };
 }

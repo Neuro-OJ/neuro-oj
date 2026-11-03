@@ -1541,28 +1541,76 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     if (staged !== null) await Deno.remove(staged).catch(() => {});
   };
 
-  // ---- 4. 同步部署文件（--files-only 语义）----
+  // ---- 4. 同步部署文件到暂存目录（预检通过后才切换）----
   emitHuman(`同步生产部署文件：${to}\n`, ctx.io);
+  let stagedFiles: string | null = null;
   try {
-    await runUpdateSync(opts, {
-      dir: ctx.dir,
-      ref: to,
-      repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
-    });
+    if (opts.syncFiles !== undefined) {
+      await runUpdateSync(opts, {
+        dir: ctx.dir,
+        ref: to,
+        repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
+      });
+    } else {
+      stagedFiles = join(ctx.dir, `.update-staging-${crypto.randomUUID()}`);
+      await Deno.mkdir(stagedFiles, { recursive: true });
+      await runUpdateSync(opts, {
+        dir: stagedFiles,
+        ref: to,
+        repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
+      });
+    }
   } catch (err) {
+    if (stagedFiles !== null) {
+      await Deno.remove(stagedFiles, { recursive: true }).catch(() => {});
+    }
     await discardStaged();
     return fail(from, to, (err as Error).message);
   }
 
-  // ---- 5. 升级序列：解析目标配置 → 备份 → pull → 验签 → wait → metadata ----
-  const upgraded = await upgradeWith(opts, ctx, staged ?? undefined);
+  const discardStagedFiles = async (): Promise<void> => {
+    if (stagedFiles !== null) {
+      await Deno.remove(stagedFiles, { recursive: true }).catch(() => {});
+    }
+  };
+
+  // ---- 5. 升级序列：解析目标配置 → 备份 → pull → 验签 → 预检 → wait ----
+  const upgraded = await upgradeWith(
+    opts,
+    ctx,
+    staged ?? undefined,
+    stagedFiles ?? undefined,
+  );
   if (upgraded.error !== null) {
+    // 预检已通过时仍发布目标文件，保证后续重试与当前运行栈一致。
+    if (upgraded.precheckPassed && stagedFiles !== null) {
+      for await (const entry of Deno.readDir(stagedFiles)) {
+        if (entry.isFile) {
+          await Deno.copyFile(
+            join(stagedFiles, entry.name),
+            join(ctx.dir, entry.name),
+          );
+        }
+      }
+    }
+    await discardStagedFiles();
     await discardStaged();
     const result = fail(from, to, upgraded.error);
-    result.filesSynced = true;
+    result.filesSynced = upgraded.precheckPassed === true;
     result.backupPath = upgraded.backupPath;
     return result;
   }
+  if (stagedFiles !== null) {
+    for await (const entry of Deno.readDir(stagedFiles)) {
+      if (entry.isFile) {
+        await Deno.copyFile(
+          join(stagedFiles, entry.name),
+          join(ctx.dir, entry.name),
+        );
+      }
+    }
+  }
+  await discardStagedFiles();
 
   const updateCheckpoint = async (
     phase: UpgradeState["phase"],
