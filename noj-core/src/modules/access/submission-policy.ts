@@ -54,7 +54,6 @@ function availableBindingWhere(
 ): SQL {
   return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
     JOIN problems p ON p.id = b.problem_id JOIN domains src ON src.id = p.domain_id
-    LEFT JOIN problem_share_settings share ON share.problem_id = p.id
     WHERE ${selector} AND b.domain_id = ${domainId}
       AND ${bindingAvailabilityCondition()})`;
 }

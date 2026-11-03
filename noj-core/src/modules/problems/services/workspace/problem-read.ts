@@ -16,7 +16,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   problemTags,
   problemVersions,
   tags,
@@ -177,10 +176,7 @@ export async function listDomainProblems(
           ),
         ),
       )
-      .leftJoin(
-        problemShareSettings,
-        eq(problemShareSettings.problem_id, problems.id),
-      ).where(where);
+      .where(where);
   const candidates = join().as("authorized_domain_problems");
   const accessible = join(authorized).as("accessible_domain_problems");
   const [[total], rows, availableTags] = await Promise.all([
