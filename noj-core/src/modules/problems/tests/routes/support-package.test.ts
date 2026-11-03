@@ -14,7 +14,6 @@ import {
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { eq, sql } from "drizzle-orm";
 import {
   bindPublishedProblemForTest,
@@ -43,7 +42,6 @@ async function createTestUser(id: string): Promise<void> {
     updated_at: now,
   });
   // NOJ-102：owner 权限现在走实时 RBAC，测试用户需挂载默认 user 角色。
-  await ensureRbacSeeds();
   const [userRole] = await db.select({ id: roles.id }).from(roles).where(
     eq(roles.name, "user"),
   ).limit(1);

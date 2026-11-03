@@ -50,7 +50,8 @@ import {
   isProblemInUnendedPublicContest,
 } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { withDefaultCommunity } from "../services/community/domain-community.ts";
 import type { CommunityScope } from "../services/community/community-scope.ts";
 
@@ -61,7 +62,7 @@ const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
   const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
   if (!accountRoute) {
-    await ensureDefaultWorkspace();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
     await withDefaultCommunity(c.var.userId ?? null, {
       write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
       moderator: !!c.var.userId && await isModerator(c),

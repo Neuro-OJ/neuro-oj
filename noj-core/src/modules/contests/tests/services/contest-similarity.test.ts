@@ -23,7 +23,6 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import {
@@ -38,7 +37,6 @@ import {
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 await resetDbForTest();
 // 路由用例需要 admin:full_access 与 contest:anti_cheat_read 权限种子。
-await ensureRbacSeeds();
 
 /** 冒泡排序解法（原始写法）。 */
 const BUBBLE_SOLUTION = `def solve(n, nums):

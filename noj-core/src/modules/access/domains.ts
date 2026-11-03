@@ -4,7 +4,6 @@ import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import {
   domainLimits,
-  domainMemberRoles,
   domainMemberships,
   domainResourceCounters,
   domains,
@@ -33,7 +32,7 @@ import {
 } from "./types.ts";
 import {
   getAdminUserIds,
-  getUserPermissions,
+  isUserAdmin,
 } from "./identity/services/security/permissions.ts";
 import {
   getInstanceAccessPolicy,
@@ -87,8 +86,7 @@ export async function createDomainTx(
     and(eq(users.id, user.userId), isNull(users.deleted_at)),
   ).for("update");
   if (!account) throw new NotFoundError("负责人账号不可用");
-  const permissions = await getUserPermissions(user.userId, tx);
-  const platformAdmin = permissions.has("admin:full_access");
+  const platformAdmin = await isUserAdmin(user.userId, tx);
   const policy = getInstanceAccessPolicy();
   if (
     !platformAdmin && !options.approved &&
@@ -137,15 +135,13 @@ export async function createDomainTx(
     updated_at: now,
   }).onConflictDoNothing({ target: domains.slug }).returning();
   if (!domain) throw new ConflictError("工作空间标识已存在");
-  const [membership] = await tx.insert(domainMemberships).values({
+  await tx.insert(domainMemberships).values({
     id: crypto.randomUUID(),
     domain_id: domain.id,
     user_id: user.userId,
+    // 负责人由 domains.owner_id 推导；成员角色列只存基础角色 admin。
+    role: "admin",
     joined_at: now,
-  }).returning();
-  await tx.insert(domainMemberRoles).values({
-    membership_id: membership.id,
-    role: "owner",
   });
   await tx.insert(domainLimits).values({ domain_id: domain.id, ...limits });
   await tx.insert(domainResourceCounters).values(
@@ -217,27 +213,21 @@ export async function ensureDefaultWorkspaceTx(
       eq(domains.slug, DEFAULT_DOMAIN_SLUG),
     ).for("update");
     if (!current || current.owner_id !== ROOT_USER_ID) return;
-    const [owner] = await tx.insert(domainMemberships).values({
+    await tx.insert(domainMemberships).values({
       id: crypto.randomUUID(),
       domain_id: current.id,
       user_id: ownerId,
+      role: "admin",
       joined_at: now,
     }).onConflictDoUpdate({
       target: [domainMemberships.domain_id, domainMemberships.user_id],
-      set: { status: "active", left_at: null },
-    }).returning();
-    await tx.insert(domainMemberRoles).values({
-      membership_id: owner.id,
-      role: "owner",
-    }).onConflictDoNothing();
+      set: { status: "active", role: "admin", left_at: null },
+    });
     const [root] = await tx.select().from(domainMemberships).where(and(
       eq(domainMemberships.domain_id, current.id),
       eq(domainMemberships.user_id, ROOT_USER_ID),
     ));
     if (root) {
-      await tx.delete(domainMemberRoles).where(
-        eq(domainMemberRoles.membership_id, root.id),
-      );
       await tx.update(domainMemberships).set({
         status: "removed",
         left_at: now,
@@ -279,15 +269,13 @@ export async function ensureDefaultWorkspaceTx(
     ne(users.id, ROOT_USER_ID),
   ));
   for (const account of accounts) {
-    const [member] = await tx.insert(domainMemberships).values({
+    await tx.insert(domainMemberships).values({
       id: crypto.randomUUID(),
       domain_id: inserted.id,
       user_id: account.id,
+      // 负责人由 owner_id 推导；其余账号一律 member，避免默认提权。
+      role: account.id === ownerId ? "admin" : "member",
       joined_at: now,
-    }).returning();
-    await tx.insert(domainMemberRoles).values({
-      membership_id: member.id,
-      role: account.id === ownerId ? "owner" : "member",
     });
   }
   await tx.insert(domainResourceCounters).values(
@@ -305,6 +293,24 @@ export async function ensureDefaultWorkspace(
 ): Promise<void> {
   const db: DbRoot = getDb();
   await db.transaction((tx) => ensureDefaultWorkspaceTx(tx, actor, meta));
+}
+
+/**
+ * 在调用方已有执行器上初始化默认域。
+ *
+ * 根连接回退到独立事务；已是 DbTx 时沿用当前事务，避免在已持锁的写用例里
+ * 另开事务。身份必须由调用方显式传入 SystemActor。
+ */
+export async function ensureDefaultWorkspaceOn(
+  executor: DbRoot | DbTx,
+  actor: SystemActor,
+  meta: DomainWriteMeta = {},
+): Promise<void> {
+  if (executor === getDb()) {
+    await ensureDefaultWorkspace(actor, meta);
+    return;
+  }
+  await ensureDefaultWorkspaceTx(executor as DbTx, actor, meta);
 }
 
 export async function updateDomainTx(

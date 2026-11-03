@@ -16,7 +16,6 @@ import {
   setMemberRoles,
 } from "../../../../access/workspace/index.ts";
 import {
-  ensureRbacSeeds,
   initSystemSettings,
   updateSetting,
 } from "../../../../platform/system/index.ts";
@@ -25,7 +24,6 @@ import { createBoard, createPost, withDomainCommunity } from "../../index.ts";
 
 export async function domainFixture(prefix: string) {
   await resetDbForTest();
-  await ensureRbacSeeds();
   await initSystemSettings();
   for (
     const [key, value] of [

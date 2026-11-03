@@ -12,7 +12,6 @@ export {
   createPost,
   createReport,
   createSanction,
-  deleteBoardRoleGrant,
   deleteComment,
   featureForType,
   getCommunityConfig,
@@ -24,7 +23,6 @@ export {
   getReportDetail,
   getReportTarget,
   hasAcceptedSolution,
-  listBoardRoleGrants,
   listBoards,
   listComments,
   listNotifications,
@@ -47,7 +45,6 @@ export {
   setPostOfficial,
   togglePostFlag,
   updateBoard,
-  updateBoardRoleGrant,
   updateComment,
   updatePost,
 } from "./services/community/community.ts";

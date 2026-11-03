@@ -13,7 +13,8 @@ import {
 } from "../../../shared/sse/server-helpers.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../access/domains.ts";
+import { createSystemActor } from "../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { getDomainSubmission } from "../services/domain-submission-read.ts";
 import { getDomainSelfTest } from "../services/domain-self-test-read.ts";
@@ -49,7 +50,7 @@ async function currentSubmission(
   reference: string,
 ) {
   if (slug) return await getDomainSubmission(slug, reference, c.var.userId);
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
   const stableId = await resolveSubmissionId(reference);
   const [record] = await getDb().select({ domain_id: submissions.domain_id })
@@ -165,7 +166,9 @@ domainSubmissionSse.get(
 /** 队列连接时校准当前状态，后续推送重新验证域访问，只返回定位信号。 */
 async function queueEvents(c: Context<AuthEnv>, instance = false) {
   const slug = c.req.param("slug") ?? DEFAULT_DOMAIN_SLUG;
-  if (!instance && !c.req.param("slug")) await ensureDefaultWorkspace();
+  if (!instance && !c.req.param("slug")) {
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  }
   const authorize = () =>
     instance
       ? assertActiveInstanceAccount(c.var.userId)

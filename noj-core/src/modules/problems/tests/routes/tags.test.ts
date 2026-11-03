@@ -21,7 +21,6 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 
 // 模块级 bootstrap：确保表已创建（测试数据库 模式）
 await resetDbForTest();
@@ -162,7 +161,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const db = getDb();
-    await ensureRbacSeeds();
 
     // 1. 创建自定义角色并授予 tag:manage
     const roleId = `tag-manager-role-${ts}`;

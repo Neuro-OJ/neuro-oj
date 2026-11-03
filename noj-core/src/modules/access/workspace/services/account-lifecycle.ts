@@ -10,7 +10,7 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { workspaceAudit } from "./domains.ts";
+import { workspaceAudit } from "../../audit.ts";
 import { retireDomainEducationMemberships } from "../../../education/contracts/cross-module/services_account-lifecycle.ts";
 import { assertInstanceAccountNotBanned } from "../../identity/services/security/account-access.ts";
 

@@ -30,7 +30,6 @@ import {
 } from "../src/modules/access/identity/index.ts";
 import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
-import { ensureRbacSeeds } from "../src/modules/platform/system/index.ts";
 import { initProblem } from "./problems-init.ts";
 import { runMaintain } from "./maintain.ts";
 import {
@@ -185,11 +184,10 @@ async function importProblemPackages(
   }
 }
 
-/** 系统基础数据：root + RBAC + 默认工作空间 + LLM 默认项 + 镜像白名单 + 标签（幂等）。 */
+/** 系统基础数据：root + 默认工作空间 + LLM 默认项 + 镜像白名单 + 标签（幂等）。 */
 async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
-  await ensureRbacSeeds();
   await sealExistingSiteAdminInitialization();
   await ensureDefaultWorkspace();
   await seedDomainLlmDefaults();
@@ -254,7 +252,6 @@ const dbCmd = new Command()
   )
   .action(async () => {
     await ensureRootUser();
-    await ensureRbacSeeds();
     await ensureDefaultWorkspace();
     console.log(JSON.stringify(await backfillDefaultCatalog()));
   })

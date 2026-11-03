@@ -4,7 +4,6 @@ import {
   communityPosts,
   domains,
   problems,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -25,7 +24,6 @@ import {
   assertCommunityEnabled,
   getCommunityConfig,
 } from "./community-config.ts";
-import { listBoardRoleGrants } from "./community-boards.ts";
 import {
   assertNotContestSilenced,
   featureForType,
@@ -103,28 +101,6 @@ async function ensureSolutionAccepted(
 }
 
 /**
- * 判断用户是否可在指定板块发帖：无角色授权时默认允许，否则需拥有可发帖的角色授权。
- * @param userId 用户 UUID。
- * @param boardId 板块 UUID。
- * @returns 是否允许发帖。
- */
-async function canPostToBoard(
-  userId: string,
-  boardId: string,
-  scope?: CommunityScope,
-): Promise<boolean> {
-  const db = communityDb(scope);
-  const grants = await listBoardRoleGrants(boardId, scope);
-  if (grants.length === 0) return true;
-  const roleRows = await db.select({ role_id: userRoles.role_id }).from(
-    userRoles,
-  )
-    .where(eq(userRoles.user_id, userId));
-  const roleIds = new Set(roleRows.map((row) => row.role_id));
-  return grants.some((grant) => grant.can_post && roleIds.has(grant.role_id));
-}
-
-/**
  * 创建社区帖子（题解 / 讨论 / 短动态）。
  * 校验内容长度、标题规则、题解门槛、板块权限与发布频率限制，并按发布状态生成动态事件。
  * @param authorId 作者用户 UUID。
@@ -193,12 +169,6 @@ export async function createPost(
         throw new ForbiddenError("板块已归档");
       }
       throw new ValidationError("板块不存在或已归档");
-    }
-    if (
-      (!scope || scope.slug === DEFAULT_DOMAIN_SLUG) && !moderator &&
-      !await canPostToBoard(authorId, input.board_id, scope)
-    ) {
-      throw new ForbiddenError("你没有在该板块发帖的权限");
     }
     if (input.problem_id) {
       const resolvedProblemId = await resolveProblemId(input.problem_id);

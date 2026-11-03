@@ -6,7 +6,6 @@ import {
   rolePermissions,
   roles,
 } from "../../../../shared/db/schema.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 
 await resetDbForTest();
 
@@ -16,7 +15,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const db = getDb();
-    await ensureRbacSeeds();
 
     const trainingDefs = await db
       .select()

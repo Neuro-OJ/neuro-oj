@@ -74,15 +74,6 @@ export type {
   UpdateJudgeImageInput,
 } from "./services/judge-images.ts";
 export {
-  ensureAdminRolePermissions,
-  ensurePermissions,
-  ensureRbacSeeds,
-  ensureSensitiveFieldDefaultPermissions,
-  ensureSystemRoles,
-  ensureUserRolePermissions,
-  migrateExistingUsers,
-} from "./services/seed/seed-rbac.ts";
-export {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
   ensureE2EPwChangeUser,

@@ -18,7 +18,6 @@ import {
 import { createPost, listPosts, setPostOfficial } from "../../index.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -32,7 +31,6 @@ const problemId = "official-problem";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();

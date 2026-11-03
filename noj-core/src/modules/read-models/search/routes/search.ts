@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -54,7 +55,9 @@ const handler = async (c: Context<Env>) => {
       (typeParam ? [typeParam] : []);
   const accountOnly = !slug && requestedTypes.length > 0 &&
     requestedTypes.every((type) => ["user", "announcement"].includes(type));
-  if (!slug && !accountOnly) await ensureDefaultWorkspace();
+  if (!slug && !accountOnly) {
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  }
   const access = accountOnly
     ? null
     : await loadWorkspace(slug ?? "main", c.var.userId ?? null);

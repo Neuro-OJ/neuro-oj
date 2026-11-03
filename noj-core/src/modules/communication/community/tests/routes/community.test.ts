@@ -19,7 +19,6 @@ import {
   initSystemSettings,
   updateSetting,
 } from "../../../../platform/system/index.ts";
-import { ensureRbacSeeds } from "../../../../platform/system/index.ts";
 import {
   enterTestContext,
   leaveTestContext,
@@ -78,7 +77,6 @@ const responderId = "community-route-responder";
 async function setup(): Promise<void> {
   await resetDbForTest();
   // resetDbForTest 会 TRUNCATE roles/community_boards，重新 seed 以保证 FK 与默认板块
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();

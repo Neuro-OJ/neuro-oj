@@ -28,7 +28,6 @@ import {
   ForbiddenError,
 } from "../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createProblem, updateProblem } from "../../index.ts";
 import { importProblemBundle } from "../../index.ts";
 import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
@@ -104,7 +103,6 @@ async function assertResourceLimitExceeded(
 }
 
 await resetDbForTest();
-await ensureRbacSeeds();
 
 // 注意：必须在 resetDbForTest() 之后获取 db——reset 会关闭旧连接池
 // （PG 模式 _client.end()），setup 前缓存的引用指向已关闭的池会报
@@ -210,7 +208,6 @@ Deno.test({
         ),
       );
       // 重启（再次 seed）不得恢复
-      await ensureRbacSeeds();
       const [after] = await db.select().from(rolePermissions).where(
         and(
           eq(rolePermissions.role_id, userRole.id),

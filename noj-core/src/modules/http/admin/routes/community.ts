@@ -29,11 +29,9 @@ import {
   changePostStatus,
   createBoard,
   createSanction,
-  deleteBoardRoleGrant,
   getLatestActiveBanId,
   getReportBanScope,
   getReportTarget,
-  listBoardRoleGrants,
   listPendingComments,
   listReports,
   listSanctions,
@@ -44,7 +42,6 @@ import {
   revokeSanction,
   togglePostFlag,
   updateBoard,
-  updateBoardRoleGrant,
 } from "../../../communication/community/services/community/community.ts";
 import { resolveUserId } from "../../../access/identity/services/users/users-id.ts";
 import { parseQueryLimit } from "../../../communication/community/services/community/query-limit.ts";
@@ -206,92 +203,6 @@ router.patch(
       { type: "community_board", id: boardId },
     );
     return c.json({ data });
-  },
-);
-/**
- * GET /admin/boards/:boardId/role-grants — 列出板块的角色授权。
- * 权限：community_board:manage。
- * 响应：{ data: 角色授权列表 }。
- */
-router.get(
-  "/boards/:boardId/role-grants",
-  async (c) => {
-    await assertPermission(c, "community_board:manage");
-    return c.json({
-      data: await listBoardRoleGrants(
-        c.req.param("boardId"),
-        c.var.communityScope,
-      ),
-    });
-  },
-);
-/**
- * PUT /admin/boards/:boardId/role-grants/:roleId — 更新（或创建）板块角色授权。
- * 权限：community_board:manage。body：{ can_read?, can_post?, can_moderate? }。
- * 响应：{ data: 更新后的角色授权 }。
- */
-router.put(
-  "/boards/:boardId/role-grants/:roleId",
-  adminVersionMiddleware(async (c) => {
-    const boardId = c.req.param("boardId");
-    return (await listBoards(true, c.var.communityScope)).find((b) =>
-      b.id === boardId
-    )?.updated_at;
-  }),
-  async (c) => {
-    await assertPermission(c, "community_board:manage");
-    const body = await parseJsonBody<{
-      can_read?: boolean;
-      can_post?: boolean;
-      can_moderate?: boolean;
-    }>(c);
-    const boardId = c.req.param("boardId");
-    const roleId = c.req.param("roleId");
-    const data = await updateBoardRoleGrant(
-      boardId,
-      roleId,
-      body,
-      c.var.communityScope,
-    );
-    await adminAudit(
-      "community.board_role_grant_update",
-      {
-        action: "community.board_role_grant_update",
-        board_id: boardId,
-        role_id: roleId,
-      },
-      { type: "community_board", id: boardId },
-    );
-    return c.json({ data });
-  },
-);
-/**
- * DELETE /admin/boards/:boardId/role-grants/:roleId — 删除板块角色授权。
- * 权限：community_board:manage。响应：204。
- */
-router.delete(
-  "/boards/:boardId/role-grants/:roleId",
-  adminVersionMiddleware(async (c) => {
-    const boardId = c.req.param("boardId");
-    return (await listBoards(true, c.var.communityScope)).find((b) =>
-      b.id === boardId
-    )?.updated_at;
-  }),
-  async (c) => {
-    await assertPermission(c, "community_board:manage");
-    const boardId = c.req.param("boardId");
-    const roleId = c.req.param("roleId");
-    await deleteBoardRoleGrant(boardId, roleId, c.var.communityScope);
-    await adminAudit(
-      "community.board_role_grant_delete",
-      {
-        action: "community.board_role_grant_delete",
-        board_id: boardId,
-        role_id: roleId,
-      },
-      { type: "community_board", id: boardId },
-    );
-    return c.body(null, 204);
   },
 );
 /**

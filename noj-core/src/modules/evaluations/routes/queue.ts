@@ -5,7 +5,8 @@ import { getQueueOverview } from "../services/queue.ts";
 import { assertActiveInstanceAccount } from "../../access/contracts/cross-module/identity_services_security_account-access.ts";
 import { getUserPermissions } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../access/domains.ts";
+import { createSystemActor } from "../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 
 const router = new Hono<AuthEnv>();
@@ -50,7 +51,7 @@ domainQueueRouter.get("/instance/queue", authMiddleware, async (c) => {
  *   普通用户只会看到自己的自测题目/得分，管理员才看全站。
  */
 router.get("/", authMiddleware, async (c) => {
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
   const isAdmin = workspace.platformAdmin;
   // viewerUserId：非管理员的自测记录按用户隔离（审计 VULN-11）

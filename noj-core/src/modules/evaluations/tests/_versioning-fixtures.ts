@@ -2,7 +2,7 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  domainMemberRoles,
+  domainMemberships,
   domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
@@ -18,28 +18,27 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../access/workspace/index.ts";
-import type { DomainRole } from "../../../shared/workspace/types.ts";
+import type { DomainMemberRole } from "../../../shared/access/roles.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
 import { backfillDefaultCatalog } from "../../problems/index.ts";
 
 /** 旧 main 服务夹具显式提供域角色，生产代码不继承平台旧业务权限。 */
 export async function authorizeLegacyJobActorForTest(
   userId = "0",
-  role: DomainRole = "editor",
+  role: DomainMemberRole = "member",
 ) {
   const db = getDb();
   await ensureDefaultWorkspace();
+  // 单值角色写在成员行上；root 作为夹具操作者始终保留 admin 基础角色。
   const administrator = await addDomainMember(db, DEFAULT_DOMAIN_ID, "0", true);
-  await db.insert(domainMemberRoles).values({
-    membership_id: administrator.id,
-    role: "admin",
-  }).onConflictDoNothing();
+  await db.update(domainMemberships).set({ role: "admin" }).where(
+    eq(domainMemberships.id, administrator.id),
+  );
   if (userId !== "0") {
     const member = await addDomainMember(db, DEFAULT_DOMAIN_ID, userId, true);
-    await db.insert(domainMemberRoles).values({
-      membership_id: member.id,
-      role,
-    }).onConflictDoNothing();
+    await db.update(domainMemberships).set({ role }).where(
+      eq(domainMemberships.id, member.id),
+    );
   }
 }
 

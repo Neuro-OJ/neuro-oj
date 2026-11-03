@@ -15,9 +15,11 @@ import {
   DOMAIN_PRESETS,
   type DomainPreset,
 } from "../../../../shared/workspace/types.ts";
-import { getUserPermissions } from "../../identity/services/security/permissions.ts";
+import { isUserAdmin } from "../../identity/services/security/permissions.ts";
+import { userActorFromAuthenticatedId } from "../../contracts/actor.ts";
+import { workspaceAuditTx } from "../../audit.ts";
+import { createDomainTx } from "../../domains.ts";
 import { validateDomainSlug } from "../types.ts";
-import { createDomain, workspaceAudit } from "./domains.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 
 /** 申请创建与申请加入分开；同一用户同一标识的待审申请幂等复用。 */
@@ -72,7 +74,7 @@ export async function reviewDomainCreation(
   approved: boolean,
 ) {
   return await getDb().transaction(async (tx) => {
-    if (!(await getUserPermissions(actorId, tx)).has("admin:full_access")) {
+    if (!(await isUserAdmin(actorId, tx))) {
       throw new ForbiddenError("需要平台管理权限");
     }
     const [request] = await tx.select().from(domainCreationRequests).where(
@@ -87,14 +89,15 @@ export async function reviewDomainCreation(
       );
     }
     const domain = approved
-      ? await createDomain(
+      ? await createDomainTx(
+        tx,
+        userActorFromAuthenticatedId(request.applicant_id),
         {
           slug: request.slug,
           name: request.name,
           preset: request.preset as DomainPreset,
         },
-        request.applicant_id,
-        { executor: tx, approved: true },
+        { approved: true },
       )
       : null;
     const [updated] = await tx.update(domainCreationRequests).set({
@@ -103,12 +106,20 @@ export async function reviewDomainCreation(
       reviewed_by: actorId,
       reviewed_at: new Date().toISOString(),
     }).where(eq(domainCreationRequests.id, requestId)).returning();
-    await workspaceAudit(tx, actorId, domain?.id ?? null, "domain.update", {
-      operation: "creation_request_review",
-      approved,
-      applicant_id: request.applicant_id,
-      requested_slug: request.slug,
-    }, { type: "domain_creation_request", id: request.id });
+    await workspaceAuditTx(
+      tx,
+      userActorFromAuthenticatedId(actorId),
+      domain?.id ?? null,
+      "domain.update",
+      {
+        operation: "creation_request_review",
+        approved,
+        applicant_id: request.applicant_id,
+        requested_slug: request.slug,
+      },
+      {},
+      { type: "domain_creation_request", id: request.id },
+    );
     return updated;
   });
 }

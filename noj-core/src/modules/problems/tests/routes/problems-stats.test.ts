@@ -10,7 +10,6 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _resetProblemStatsCacheForTest } from "../../services/problems/problems-stats.ts";
 
 // 测试进程通常没有本地 Redis；短路 JWT 撤销检查，避免 authMiddleware 503。
@@ -18,7 +17,6 @@ Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 const app = createApp();
 
 /** 建一个普通用户并返回其 id 与 token（用于 owner / 非 owner 两种场景）。 */

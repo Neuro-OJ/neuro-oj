@@ -10,7 +10,6 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -19,7 +18,6 @@ import {
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 /**
  * 无域题单的**只读**契约。

@@ -894,9 +894,8 @@ async function seedDrillAdmin(
     `VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',`,
     `        '${DRILL_BCRYPT_HASH}', '${stamp}', '${stamp}')`,
     "ON CONFLICT (id) DO NOTHING;",
-    "INSERT INTO user_roles (user_id, role_id)",
-    "SELECT 'drill-admin-user', id FROM roles WHERE name = 'admin'",
-    "ON CONFLICT DO NOTHING;",
+    // 授权事实只有 users.role；角色/权限关联表已随本次重构删除。
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
   ].join("\n");
   const code = await feedTextToCompose(
     ctx,

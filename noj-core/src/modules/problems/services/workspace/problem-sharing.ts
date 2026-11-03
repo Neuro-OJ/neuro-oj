@@ -271,9 +271,9 @@ export async function listSharedDomainResources(
       eq(domainProblemBindings.kind, "owned"),
       isNull(domainProblemBindings.disabled_at),
       sql`(${workspace.platformAdmin} OR EXISTS (
-        SELECT 1 FROM domain_memberships m JOIN domain_member_roles r ON r.membership_id=m.id
+        SELECT 1 FROM domain_memberships m
         WHERE m.domain_id=${domains.id} AND m.user_id=${actorId} AND m.status='active'
-          AND (r.role IN ('owner','admin','educator') OR (r.role='editor' AND ${problems.owner_id}=${actorId}))
+          AND m.role IN ('admin','educator')
       ))`,
       query.keyword
         ? ilike(
@@ -332,9 +332,9 @@ export async function listSharedDomainResources(
     sourceCondition,
     eq(trainings.state, "published"),
     sql`(${workspace.platformAdmin} OR EXISTS (
-      SELECT 1 FROM domain_memberships m JOIN domain_member_roles r ON r.membership_id=m.id
+      SELECT 1 FROM domain_memberships m
       WHERE m.domain_id=${domains.id} AND m.user_id=${actorId} AND m.status='active'
-        AND (r.role IN ('owner','admin','educator') OR (r.role='editor' AND ${trainings.created_by}=${actorId}))
+        AND m.role IN ('admin','educator')
     ))`,
     query.keyword ? ilike(trainings.title, `%${query.keyword}%`) : undefined,
   );

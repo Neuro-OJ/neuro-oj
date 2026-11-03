@@ -17,14 +17,7 @@ export {
   assertCommunityWritable,
   getCommunityConfig,
 } from "./community-config.ts";
-export {
-  createBoard,
-  deleteBoardRoleGrant,
-  listBoardRoleGrants,
-  listBoards,
-  updateBoard,
-  updateBoardRoleGrant,
-} from "./community-boards.ts";
+export { createBoard, listBoards, updateBoard } from "./community-boards.ts";
 export {
   assertNotContestSilenced,
   featureForType,

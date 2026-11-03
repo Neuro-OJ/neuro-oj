@@ -24,7 +24,6 @@ import {
 import { getUserProfileAggregate } from "../../../../read-models/queries/index.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -41,7 +40,6 @@ let contestId = "";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();

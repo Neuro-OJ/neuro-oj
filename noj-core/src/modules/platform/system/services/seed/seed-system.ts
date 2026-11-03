@@ -2,9 +2,11 @@
  * 系统初始化数据（原 scripts/seed.ts 拆分）。
  *
  * 供 CLI（scripts/noj.ts）子命令复用：
- * - `init system`：root 用户 + RBAC 预置 + 镜像白名单 + 标签
+ * - `init system`：root 用户 + 镜像白名单 + 标签
  * - `bootstrap admin`：管理员引导
  * - `dev-setup`：额外填充 dev 专用数据（E2E 守卫用户）
+ *
+ * 授权事实只有 `users.role`；不再写入任何角色/权限关联表。
  *
  * 全部幂等（ON CONFLICT DO NOTHING / 存在性检查）。
  */
@@ -12,15 +14,8 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
-import {
-  judgeImages,
-  roles,
-  tags,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { judgeImages, tags, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../../access/contracts/cross-module/identity_services_security_password.ts";
-import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import {
   getAdminUserIds,
@@ -28,34 +23,15 @@ import {
 } from "../../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 
 /**
- * 为管理员用户写入 RBAC 关联（issue #186）。
+ * 把既有账号提升为平台管理员（单值写入 `users.role`）。
  *
- * RBAC 落地后（#171）管理权限由 `admin:full_access` 权限（role_permissions）
- * + `user_roles` 关联表决定。bootstrap:admin 创建用户时必须同时写入
- * `user_roles` 关联（admin 角色），否则用户不具备管理员权限。
- *
- * 幂等：先确保系统角色存在（兼容 bootstrap 早于 init system 的执行顺序），
- * 再以 ON CONFLICT DO NOTHING 写入 user_roles。
+ * 幂等：写入同一角色不会产生额外副作用；不再创建角色行或关联记录。
  */
-async function ensureAdminRoleAssignment(userId: string): Promise<void> {
-  const db = getDb();
-  // 确保 admin 角色存在（独立执行 bootstrap:admin 时 roles 可能尚未 seed）
-  await ensureSystemRoles();
-
-  const [adminRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.name, "admin"))
-    .limit(1);
-  if (!adminRole) {
-    console.warn("  admin 角色不存在，无法写入 user_roles 关联");
-    return;
-  }
-
-  await db.insert(userRoles).values({
-    user_id: userId,
-    role_id: adminRole.id,
-  }).onConflictDoNothing();
+async function promoteToPlatformAdmin(userId: string): Promise<void> {
+  await getDb().update(users).set({
+    role: "admin",
+    updated_at: new Date().toISOString(),
+  }).where(eq(users.id, userId));
 }
 
 /**
@@ -203,10 +179,10 @@ export async function ensureAdminFromEnv(): Promise<void> {
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
       must_change_password: shouldForcePasswordChange(),
+      role: "admin",
       created_at: now,
       updated_at: now,
     });
-    await ensureAdminRoleAssignment(id);
     await enqueueSearchIndexTask("user", id, "upsert");
     const guard = shouldForcePasswordChange()
       ? "已强制首次改密"
@@ -222,7 +198,7 @@ export async function ensureAdminFromEnv(): Promise<void> {
     return;
   }
 
-  await ensureAdminRoleAssignment(user.id);
+  await promoteToPlatformAdmin(user.id);
   console.log(`  已提升用户 ${adminEmail} 为管理员`);
 }
 
@@ -245,7 +221,7 @@ function generateStrongPassword(): string {
 /**
  * 引导管理员兜底（issue #75）。
  *
- * 当系统中不存在任何可登录管理员（权限集含 admin:full_access 且 id!='0'）时，
+ * 当系统中不存在任何可登录管理员（users.role='admin' 且 id!='0'）时，
  * 自动创建一个临时管理员（username=admin / email=admin@noj.local /
  * 24 字符随机密码，must_change_password=true），凭据打印到终端。
  * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
@@ -258,7 +234,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   const db = getDb();
 
-  // 存在可登录管理员（admin:full_access 权限，含继承链，排除 root）则跳过
+  // 存在可登录管理员（users.role='admin'，排除 root）则跳过
   const adminIds = await getAdminUserIds();
   const hasLoginableAdmin = [...adminIds].some((id) => id !== ROOT_USER_ID);
   if (hasLoginableAdmin) {
@@ -278,10 +254,10 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     email,
     password_hash: await hashPassword(password),
     must_change_password: shouldForcePasswordChange(),
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
-  await ensureAdminRoleAssignment(id);
 
   console.log("");
   console.log("-".repeat(72));

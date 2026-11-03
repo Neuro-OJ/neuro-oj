@@ -16,7 +16,6 @@ import {
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createDomain } from "../../../access/workspace/index.ts";
 
 // 测试进程通常没有本地 Redis；直接短路 JWT 撤销检查，避免 authMiddleware 503。
@@ -24,7 +23,6 @@ Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 Deno.test({
   name: "默认域管理入口：其他域比赛 ID 不能用于详情、修改、删除或列表",

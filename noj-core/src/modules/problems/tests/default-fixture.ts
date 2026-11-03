@@ -3,7 +3,6 @@ import { decodeJwt } from "jose";
 import { getDb } from "../../../shared/db/connection.ts";
 import { resetDbForTest as resetDatabase } from "../../../../tests/helpers/db.ts";
 import {
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   problems,
@@ -64,10 +63,10 @@ export async function resetDbForTest(): Promise<void> {
   await grantDefaultCatalogRole("0", "admin");
 }
 
-/** 显式赋予测试账号 member / editor / admin，避免把普通用户自动升级。 */
+/** 显式赋予测试账号 member / educator / admin，避免把普通用户自动升级。 */
 export async function grantDefaultCatalogRole(
   userId: string,
-  role: "member" | "editor" | "admin",
+  role: "member" | "educator" | "admin",
 ) {
   const db = getDb();
   const [existing] = await db.select().from(domainMemberships).where(
@@ -76,25 +75,24 @@ export async function grantDefaultCatalogRole(
       eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
     ),
   );
-  const membershipId = existing?.id ?? crypto.randomUUID();
   if (!existing) {
     await db.insert(domainMemberships).values({
-      id: membershipId,
+      id: crypto.randomUUID(),
       domain_id: DEFAULT_DOMAIN_ID,
       user_id: userId,
+      role,
       joined_at: new Date().toISOString(),
     });
+    return;
   }
-  await db.insert(domainMemberRoles).values({
-    membership_id: membershipId,
-    role,
-  })
-    .onConflictDoNothing();
+  await db.update(domainMemberships).set({ role }).where(
+    eq(domainMemberships.id, existing.id),
+  );
 }
 
 /** 建立具有指定默认域角色的测试凭据。 */
 export async function createDefaultCatalogToken(
-  role: "member" | "editor" | "admin",
+  role: "member" | "educator" | "admin",
 ) {
   const token = await createUserToken(role === "admin" ? "admin" : "user");
   await grantDefaultCatalogRole(decodeJwt(token).sub!, role);
@@ -111,9 +109,6 @@ export async function removeDefaultCatalogMembership(userId: string) {
     ),
   );
   if (!membership) return;
-  await db.delete(domainMemberRoles).where(
-    eq(domainMemberRoles.membership_id, membership.id),
-  );
   await db.delete(domainMemberships).where(
     eq(domainMemberships.id, membership.id),
   );

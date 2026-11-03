@@ -56,11 +56,11 @@ Status: proposed
 | P2 | 固定角色与静态能力映射 | 完成 | `shared/access/roles.ts` + `tests/shared/access-roles.test.ts`（10 项表驱动断言通过） |
 | P3 | schema、迁移、旧库拦截 | 进行中 | `users.role`/`domain_memberships.role` 列与 CHECK 已建模；迁移、旧库双层拦截、约束下线未完 |
 | P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；封禁/注销共用管理员锁待接 |
-| P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；HTTP 路由改显式 Actor；旧 workspace 重复实现待删 |
-| P6 | 初始化、种子与夹具 | 待办 | 删 RBAC 种子；root/first-admin/注册单值角色 |
+| P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；HTTP 路由改显式 Actor；workspace 重复实现已删（成员/域/邀请/注册），仅保留测试向适配层 |
+| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；root/first-admin/管理员开号/CLI 演练直接写 users.role；测试 helper 已迁移，测试用例适配未完 |
 | P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
 | P8 | 跨域独立复制 | 待办 | problem-copy / training-copy / copy-sources；删共享 |
-| P9 | 删除 moment、时间窗、随机推荐 | 待办 | 400/404 语义；首页无随机请求 |
+| P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 板块自定义角色授权（服务/端点/审计动作）已删除；moment 与随机推荐待处理 |
 | P10 | 邀请模式合并 | 待办 | email/general；once 由 max_uses=1 表达 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
 | P12 | CLI 旧库预检与 Bash 清理 | 待办 | `db check-upgrade`、删 deploy/*.sh |
@@ -85,9 +85,21 @@ Status: proposed
 - 2026-11-03：访问域路由改用 `access/policy.ts` 的显式 Actor 入口，读路径构造
   Guest/User Actor；`workspace/services` 中 members/domains/invitations 的重复
   实现尚未删除，仍是下一轮 P5 的收尾项。
-- 验证（2026-11-03）：`deno test tests/shared/access-roles.test.ts` 10 passed；
-  生产源码 `deno check` 0 错误；改动文件 `deno fmt`/`deno lint` 通过；
-  测试夹具与历史 RBAC 用例尚未迁移，完整 `deno task test:domain access` 未运行。
+- 2026-11-03（第二轮）：删除 `workspace/services/{members,domains,invitations,registration}.ts`
+  四份重复实现；默认域初始化改为显式 `SystemActor`（新增 `ensureDefaultWorkspaceOn`）；
+  跨模块域审计走 `workspaceAudit` 适配器（内部构造 UserActor 后委托
+  `workspaceAuditTx`）；教育 SQL、通知与题库共享收权改读
+  `domain_memberships.role`。`workspace/index.ts` 只保留测试向 slug-first 适配层。
+- 2026-11-03（第二轮）：删除 `seed-rbac.ts` 与 RBAC 种子调用；管理员开号、首次
+  管理员初始化、`bootstrap admin`、CLI 恢复演练均单值写 `users.role`；
+  删除已无意义的 RBAC 测试（rbac.test.ts、seed-rbac.test.ts）并把 legal 管理
+  用例改为平台 admin 账号。
+- 2026-11-03（第二轮）：删除板块自定义角色授权：服务函数、三个管理端点、
+  `canPostToBoard` 授权分支与审计动作；数据库表删除留待迁移。
+- 验证（2026-11-03 第二轮）：生产源码 `deno check` 0 错误；改动文件
+  `deno fmt`/`deno lint` 通过；核心测试夹具（default/versioning/education/
+  community）已迁移到单值角色。测试用例仍有 workspace 适配层签名差异与
+  editor 语义残留，`deno task test:domain access` 尚未通过，不声称测试验收。
 
 ## Alternatives considered
 

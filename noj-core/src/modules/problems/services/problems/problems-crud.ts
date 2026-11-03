@@ -117,10 +117,9 @@ import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
-import {
-  ensureDefaultWorkspace,
-  workspaceAudit,
-} from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspaceOn } from "../../../access/domains.ts";
+import { workspaceAudit } from "../../../access/audit.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 
 /**
  * 创建题目。
@@ -286,7 +285,9 @@ export async function createProblem(
   if (!workspaceSlug) {
     const [defaultDomain] = await db.select({ id: domains.id }).from(domains)
       .where(eq(domains.slug, DEFAULT_DOMAIN_SLUG));
-    if (!defaultDomain) await ensureDefaultWorkspace();
+    if (!defaultDomain) {
+      await ensureDefaultWorkspaceOn(db, createSystemActor("bootstrap"));
+    }
   }
   const now = new Date().toISOString();
   await db.transaction(async (tx) => {

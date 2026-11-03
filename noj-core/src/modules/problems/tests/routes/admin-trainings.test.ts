@@ -13,12 +13,10 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createTraining } from "../../services/trainings.ts";
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 Deno.test({
   name: "admin trainings routes: 列表、发布、置顶、删除",

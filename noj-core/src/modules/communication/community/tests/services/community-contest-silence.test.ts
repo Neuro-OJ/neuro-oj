@@ -32,7 +32,6 @@ import { createContest } from "../../../../contests/index.ts";
 import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -51,7 +50,6 @@ let commentId = "";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();

@@ -15,7 +15,6 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _dispatchToLocalListenersForTest } from "../../../../shared/sse/event-bus.ts";
 import {
   INSTANCE_QUEUE_CHANNEL,
@@ -26,7 +25,6 @@ const app = createApp();
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 // ─── 提交状态 SSE（需认证） ────────────────────────────────
 

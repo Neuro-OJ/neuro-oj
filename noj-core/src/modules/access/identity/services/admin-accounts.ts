@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { roles, userRoles, users } from "../../../../shared/db/schema.ts";
+import { users } from "../../../../shared/db/schema.ts";
+import { parsePlatformRole } from "../../../../shared/access/roles.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -51,7 +52,7 @@ function temporaryPassword(username: string, email: string): string {
 /**
  * 管理员单建和批量导入共用的原子开号流程。
  * 先完整校验，再计算哈希；并发唯一约束冲突也使整个事务回滚。
- * role 接受角色 ID 或名称，缺省与公开注册一样分配 user。
+ * role 只接受单值 user/admin；缺省与公开注册一样分配 user。
  */
 export async function createAdminAccounts(
   input: unknown,
@@ -60,9 +61,8 @@ export async function createAdminAccounts(
   if (!Array.isArray(input) || input.length < 1 || input.length > 500) {
     throw new BadRequestError("users 必须为包含 1-500 行的数组");
   }
-  if (role !== undefined && (typeof role !== "string" || !role)) {
-    throw new BadRequestError("role 必须为角色 ID 或名称");
-  }
+  // 角色是单值平台角色；数组、未知值或旧角色 ID 一律 400。
+  const platformRole = role === undefined ? "user" : parsePlatformRole(role);
   const errors: AccountRowError[] = [];
   const names = new Map<string, number>();
   const emails = new Map<string, number>();
@@ -135,15 +135,6 @@ export async function createAdminAccounts(
   }
   if (errors.length) invalidRows(errors.sort((a, b) => a.row - b.row));
 
-  // 提前拒绝不可分配的角色，避免对无效请求执行整批密码哈希。
-  const roleValue = typeof role === "string" ? role : "user";
-  const [assignedRole] = await db.select({ id: roles.id, name: roles.name })
-    .from(roles)
-    .where(or(eq(roles.id, roleValue), eq(roles.name, roleValue))).limit(1);
-  if (!assignedRole || assignedRole.name === "root") {
-    throw new BadRequestError("角色不存在或不可分配");
-  }
-
   // 必须在写入前完成所有密码哈希，避免长时间占用数据库事务。
   const now = new Date().toISOString();
   const inserts: (typeof users.$inferInsert)[] = [];
@@ -155,18 +146,12 @@ export async function createAdminAccounts(
       password_hash: await hashTemporaryPassword(user.password),
       must_change_password: true,
       email_verified: true,
+      role: platformRole,
       created_at: now,
       updated_at: now,
     });
   }
   await db.transaction(async (tx) => {
-    // 锁住已校验角色，防止哈希期间角色被删除或改名为 root。
-    const [currentRole] = await tx.select({ id: roles.id, name: roles.name })
-      .from(roles)
-      .where(eq(roles.id, assignedRole.id)).limit(1).for("share");
-    if (!currentRole || currentRole.name === "root") {
-      throw new BadRequestError("角色不存在或不可分配");
-    }
     const inserted = await tx.insert(users).values(inserts)
       .onConflictDoNothing().returning({ id: users.id });
     if (inserted.length !== prepared.length) {
@@ -180,13 +165,6 @@ export async function createAdminAccounts(
         ),
       );
     }
-    await tx.insert(userRoles).values(
-      prepared.map((item) => ({
-        user_id: item.id,
-        role_id: assignedRole.id,
-        created_at: now,
-      })),
-    );
     for (const item of prepared) {
       await enqueueSearchIndexTaskTx(tx, "user", item.id, "upsert", item.id);
     }
