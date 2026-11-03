@@ -69,7 +69,7 @@ async function fixture(kind: "join" | "invitation" | "approval") {
   }
   if (kind === "approval") {
     await updateDomain(domain.slug, owner, domain.revision, {
-      configuration: { ...domain.configuration, join_policy: "approval" },
+      configuration: { join_policy: "approval" },
     });
     const joined = await joinDomain(domain.slug, target, "申请加入");
     if (!("request" in joined) || !joined.request) {
