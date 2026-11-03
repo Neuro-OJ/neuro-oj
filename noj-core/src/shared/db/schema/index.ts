@@ -49,8 +49,6 @@ export {
   problemBindingHistory,
   problemShareSettings,
   problemShareTargets,
-  trainingShareSettings,
-  trainingShareTargets,
 } from "./catalog-workspace.ts";
 
 // evaluations

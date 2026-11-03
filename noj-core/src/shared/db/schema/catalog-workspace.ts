@@ -133,32 +133,6 @@ export const problemShareTargets = pgTable("problem_share_targets", {
   domain_id: text("domain_id").notNull().references(() => domains.id),
 }, (t) => ({ pk: primaryKey({ columns: [t.problem_id, t.domain_id] }) }));
 
-/** 公开题单单独声明是否可引用；不赋予其中源题的授权。 */
-export const trainingShareSettings = pgTable("training_share_settings", {
-  training_id: text("training_id").primaryKey().references(() => trainings.id),
-  enabled: boolean("enabled").notNull().default(false),
-  scope: text("scope").$type<"all" | "selected">().notNull().default("all"),
-  revision: integer("revision").notNull().default(0),
-  updated_by: text("updated_by").notNull().references(() => users.id),
-  updated_at: text("updated_at").notNull(),
-}, (t) => ({
-  scopeCheck: check(
-    "training_share_settings_scope_check",
-    sql`${t.scope} IN ('all', 'selected')`,
-  ),
-  revisionCheck: check(
-    "training_share_settings_revision_check",
-    sql`${t.revision} >= 0`,
-  ),
-}));
-/** 题单定向引用授权。 */
-export const trainingShareTargets = pgTable("training_share_targets", {
-  training_id: text("training_id").notNull().references(() =>
-    trainingShareSettings.training_id
-  ),
-  domain_id: text("domain_id").notNull().references(() => domains.id),
-}, (t) => ({ pk: primaryKey({ columns: [t.training_id, t.domain_id] }) }));
-
 /** 目标域引用源题单，不复制源题或支持包。 */
 export const domainTrainingBindings = pgTable("domain_training_bindings", {
   id: text("id").primaryKey(),

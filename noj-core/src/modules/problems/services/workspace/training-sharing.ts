@@ -5,153 +5,24 @@ import {
   type PreparedProblemCopy,
 } from "./problem-copy.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import {
-  AppError,
   BadRequestError,
   ConflictError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { resolveSharingTargetSlugs } from "./problem-sharing.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domains,
   problems,
   trainingProblems,
   trainings,
-  trainingShareSettings,
-  trainingShareTargets,
 } from "../../../../shared/db/schema.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
-
-/** 题单分享独立于题目分享，修改使用 revision 并保存域治理审计。 */
-export async function setDomainTrainingSharing(
-  slug: string,
-  id: string,
-  actorId: string,
-  input: {
-    expectedRevision: number | null;
-    enabled: boolean;
-    scope: "all" | "selected";
-    targetDomainIds?: string[];
-    targetDomainSlugs?: string[];
-  },
-) {
-  // 跨域共享已停用：只允许关闭历史共享，不能再开启或改目标域。
-  if (input.enabled) {
-    throw new BadRequestError(
-      "跨域共享已停用，请复制题单到目标域",
-      "DOMAIN_SHARING_DISABLED",
-    );
-  }
-  if (
-    input.expectedRevision === null ||
-    !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0
-  ) {
-    throw new AppError("需要共享政策 revision", 428, "REVISION_REQUIRED");
-  }
-  if (
-    typeof input.enabled !== "boolean" ||
-    !["all", "selected"].includes(input.scope) ||
-    input.targetDomainIds !== undefined &&
-      input.targetDomainSlugs !== undefined ||
-    !Array.isArray(input.targetDomainSlugs ?? input.targetDomainIds ?? []) ||
-    (input.targetDomainSlugs ?? input.targetDomainIds ?? []).length > 500 ||
-    (input.targetDomainSlugs ?? input.targetDomainIds ?? []).some((id) =>
-      typeof id !== "string" || !id
-    )
-  ) throw new BadRequestError("共享配置非法");
-  const configuredTargets = input.targetDomainSlugs ?? input.targetDomainIds ??
-    [];
-  if (
-    input.scope === "all" && configuredTargets.length ||
-    input.enabled && input.scope === "selected" && !configuredTargets.length
-  ) {
-    throw new BadRequestError("全部域不填写目标，定向共享必须填写目标域");
-  }
-  return await getDb().transaction(async (tx) => {
-    const access = await loadWorkspace(slug, actorId, {
-      executor: tx,
-      write: true,
-      lock: true,
-    });
-    assertWorkspacePermission(access.context, "training:write_any");
-    const targets = input.targetDomainSlugs !== undefined
-      ? await resolveSharingTargetSlugs(
-        input.targetDomainSlugs,
-        actorId,
-        access.platformAdmin,
-        tx,
-      )
-      : [...new Set(input.targetDomainIds ?? [])];
-    const [training] = await tx.select().from(trainings).where(
-      and(eq(trainings.id, id), eq(trainings.domain_id, access.domain.id)),
-    ).for("update");
-    if (!training) throw new NotFoundError("题单不在此域");
-    if (
-      input.enabled &&
-      (training.visibility !== "public" ||
-        access.domain.configuration.access !== "public")
-    ) {
-      throw new BadRequestError("只有公开域内公开题单可以共享");
-    }
-    if (targets.includes(access.domain.id)) {
-      throw new BadRequestError("不能向源域自身授予引用");
-    }
-    if (targets.length) {
-      const rows = await tx.select({ id: domains.id }).from(domains).where(
-        inArray(domains.id, targets),
-      );
-      if (rows.length !== targets.length) {
-        throw new BadRequestError("目标域不存在");
-      }
-    }
-    const now = new Date().toISOString();
-    await tx.insert(trainingShareSettings).values({
-      training_id: id,
-      updated_by: actorId,
-      updated_at: now,
-    }).onConflictDoNothing();
-    const [existing] = await tx.select().from(trainingShareSettings).where(
-      eq(trainingShareSettings.training_id, id),
-    ).for("update");
-    if (existing.revision !== input.expectedRevision) {
-      throw new ConflictError("共享政策已变化，请重新读取");
-    }
-    await tx.delete(trainingShareTargets).where(
-      eq(trainingShareTargets.training_id, id),
-    );
-    if (targets.length) {
-      await tx.insert(trainingShareTargets).values(
-        targets.map((domain_id) => ({ training_id: id, domain_id })),
-      );
-    }
-    const [updated] = await tx.update(trainingShareSettings).set({
-      enabled: input.enabled,
-      scope: input.scope,
-      revision: existing.revision + 1,
-      updated_by: actorId,
-      updated_at: now,
-    }).where(eq(trainingShareSettings.training_id, id)).returning();
-    await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
-      operation: "training.share",
-      training_id: id,
-      ...input,
-    });
-    const target_domains = targets.length
-      ? await tx.select({
-        id: domains.id,
-        slug: domains.slug,
-        name: domains.name,
-      }).from(domains).where(inArray(domains.id, targets)).orderBy(domains.slug)
-      : [];
-    return { ...updated, target_domains };
-  });
-}
 
 /** 跨域题单导入复制有序集合和独立题目，整个集合在一个事务中发布。 */
 export async function importDomainTraining(
@@ -285,5 +156,3 @@ export async function importDomainTraining(
     throw error;
   }
 }
-
-
