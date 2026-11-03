@@ -396,7 +396,7 @@ cd dist
 
 ### admin 守卫
 
-- 检查 `noj:session` Cookie 中的 `is_admin` 字段（RBAC：权限集含 `admin:full_access`，登录/`/auth/me` 时实时计算）
+- 检查 `noj:session` Cookie 中的 `is_admin` 字段（由 `users.role === "admin"` 计算，登录/`/auth/me` 时下发）
 - 非管理员 → `navigateTo("/")`（静默重定向，无错误提示）
 - SSR 阶段同样执行守卫
 
