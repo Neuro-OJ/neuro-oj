@@ -138,24 +138,8 @@ export const CAPABILITIES = [
 /** 能力名类型。 */
 export type Capability = typeof CAPABILITIES[number];
 
-/**
- * 过渡期仍被旧代码引用的能力名。
- *
- * 它们**永不被授予**任何角色：创建者特权（write_own/delete_own）、共享能力
- * （problem:share）都随本次重构删除。保留联合类型只是为了让
- * 尚未迁移的调用点在类型检查中可见，而不是继续生效。
- */
-export const LEGACY_CAPABILITIES = [
-  "problem:write_own",
-  "problem:delete_own",
-  "training:write_own",
-  "training:delete_own",
-] as const;
-/** 过渡期旧能力名类型。 */
-export type LegacyCapability = typeof LEGACY_CAPABILITIES[number];
-
-/** 业务代码可传入的能力名（含待删除的过渡名）。 */
-export type CapabilityName = Capability | LegacyCapability;
+/** 业务代码可传入的能力名。 */
+export type CapabilityName = Capability;
 
 const MEMBER_CAPABILITIES: readonly CapabilityName[] = [
   "problem:read",

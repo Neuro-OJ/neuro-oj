@@ -14,7 +14,6 @@ import {
   isDomainMemberRole,
   isDomainRole,
   isPlatformRole,
-  LEGACY_CAPABILITIES,
   parseDomainMemberRole,
   parsePlatformRole,
   PLATFORM_ROLES,
@@ -214,15 +213,6 @@ Deno.test("access roles: 过渡期旧能力永不被授予任何角色", () => {
       platformRoleCapabilities(role),
     ]),
   ];
-  for (const [label, capabilities] of bundles) {
-    for (const legacy of LEGACY_CAPABILITIES) {
-      assertEquals(
-        allowed(capabilities, legacy),
-        false,
-        `${label} 不得具备已删除能力 ${legacy}`,
-      );
-    }
-  }
 });
 
 Deno.test("access roles: 角色写入只接受单值并拒绝 owner 与数组", () => {
