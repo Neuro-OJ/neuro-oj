@@ -23,9 +23,10 @@
 | 消息队列 | Redis (ioredis)             |
 | 认证     | JWT (jose) + bcryptjs       |
 
-## RBAC 权限系统
+## 固定角色权限系统
 
-项目使用基于角色访问控制（RBAC）替代硬编码 `userRole === "admin"` 字符串比较。
+平台角色只有 `user` / `admin` 两档，域内角色只有 `member` / `educator` /
+`admin` 三档；能力映射是 `shared/access/roles.ts` 里的静态表，没有可编辑的角色/权限表。
 
 ### 数据模型
 
