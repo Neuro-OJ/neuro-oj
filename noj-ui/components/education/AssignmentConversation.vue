@@ -32,24 +32,21 @@ useUnsavedChanges(() => !!(feedbackBody.value.trim() || question.value.trim()));
 const feedbackKey = ref(crypto.randomUUID()),
   questionKey = ref(crypto.randomUUID());
 const base = computed(() => educationCacheKey(props.slug, actor.value?.id ?? null, props.assignmentId));
-const feedback = await useViewAsyncData(
-  'feedback',
+const feedback = await useAsyncData(
   () => `${base.value}:feedback:${feedbackPage.value}:${props.isStudent}:${props.canFeedback}`,
   () =>
     props.isStudent || props.canFeedback
       ? education.feedback(props.slug, props.assignmentId, feedbackPage.value)
       : Promise.resolve(null),
 );
-const help = await useViewAsyncData(
-  'help',
+const help = await useAsyncData(
   () => `${base.value}:help:${helpPage.value}:${props.isStudent}:${props.canHelp}`,
   () =>
     props.isStudent || props.canHelp
       ? education.help(props.slug, props.assignmentId, helpPage.value)
       : Promise.resolve(null),
 );
-const focusedFeedback = await useViewAsyncData(
-  'focusedFeedback',
+const focusedFeedback = await useAsyncData(
   () => `${base.value}:feedback-detail:${props.feedbackId ?? ''}:${props.isStudent}:${props.canFeedback}`,
   () =>
     props.feedbackId && (props.isStudent || props.canFeedback)

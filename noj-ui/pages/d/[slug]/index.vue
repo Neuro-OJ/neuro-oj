@@ -23,8 +23,7 @@ const workspace = useWorkspaceApi(), { toast } = useToast();
 const joining = ref(false), reason = ref('');
 const homeKey = computed(() => `domain-home:${slug.value}:${user.value?.id ?? null}`);
 const homeCache = useState<{ key: string; data: BffEnvelope } | null>('domain-home-cache', () => null);
-const { data: view, error: viewError, status: viewStatus, refresh: refreshView } = await useViewAsyncData(
-  'home',
+const { data: view, error: viewError, status: viewStatus, refresh: refreshView } = await useAsyncData(
   homeKey,
   async () => {
     if (homeCache.value?.key === homeKey.value) return homeCache.value.data;
