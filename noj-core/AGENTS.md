@@ -126,7 +126,7 @@ noj-core/
 │   │   └── search-events.ts # 搜索索引共享类型（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
-│   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
+│   │   ├── identity/      # 注册登录、JWT/平台角色、用户、OAuth、TFA、封禁
 │   │   ├── catalog/       # 题目、标签、题包、题单
 │   │   ├── workspace/     # 产品工作空间、成员、角色、邀请及实例政策（见模块 README）
 │   │   ├── education/     # 班级、作业、教学权限及学情（见模块 README）
@@ -241,7 +241,7 @@ deno task db:generate
 # 开发环境一键初始化（幂等：迁移 + 系统数据 + 管理员引导 + 题目包构建与导入 + E2E 用户）
 deno task dev-setup
 
-# 仅初始化系统基础数据（root/RBAC/镜像白名单/标签）
+# 仅初始化系统基础数据（root/镜像白名单/标签）
 deno task init:system
 
 # 构建支持包
