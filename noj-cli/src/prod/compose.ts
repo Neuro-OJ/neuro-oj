@@ -46,7 +46,7 @@ export interface ProdService {
 /**
  * 生产 `docker-compose.prod.yml` 的**权威服务集**（顺序即文件中的声明顺序）。
  *
- * 与文件逐服务核对，不得遗漏：`migrate`、`gateway-migrate`、`core`、`ui`、`judge`（profile
+ * 与文件逐服务核对，不得遗漏：`migrate`、`check-upgrade`、`gateway-migrate`、`core`、`ui`、`judge`（profile
  * judge）、`llm-gateway`、`nginx`、`prometheus`（profile monitoring）、
  * `alertmanager`（profile monitoring）、`postgres`、`redis`、`minio`、
  * `minio-init`。
@@ -57,6 +57,7 @@ export interface ProdService {
  */
 export const PROD_SERVICES: readonly ProdService[] = [
   { name: "migrate" },
+  { name: "check-upgrade" },
   { name: "gateway-migrate" },
   { name: "core" },
   { name: "ui" },
