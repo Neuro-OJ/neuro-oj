@@ -63,7 +63,7 @@ Status: proposed
 | P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端类型/配置/统计/聚合/搜索删除；迁移 0134；UI 社区、个人主页、管理配置、举报标签、测试 mock 全部清零；训练比较与随机三题已删 |
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
-| P12 | CLI 旧库预检与 Bash 清理 | 待办 | `db check-upgrade`、删 deploy/*.sh |
+| P12 | CLI 旧库预检与 Bash 清理 | 进行中 | 5 个旧 Bash 部署脚本（deploy/restore-drill/backup/弃用闸门）与 gate-list 调用已删除；CLI `db check-upgrade` 预检待实现 |
 | 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 待办 | 逐项证据；未验收项必须显式标注 |
 
 已确认的阶段性事实：
