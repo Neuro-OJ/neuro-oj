@@ -214,8 +214,7 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 
 1. `JWT_SECRET` 强度与占位值校验（≥32 字符，失败退出）
 2. `TFA_ENCRYPTION_KEY` 校验（必须独立于 `JWT_SECRET`，失败退出）
-3. 数据库迁移、root 系统用户、RBAC
-   种子、系统设置注册表与缓存初始化（均为致命步骤）
+3. 数据库迁移、root 系统用户、系统设置注册表与缓存初始化（均为致命步骤）
 4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket
    检查（非致命）
 5. 连接 Redis（失败 → degraded，HTTP 仍启动）
