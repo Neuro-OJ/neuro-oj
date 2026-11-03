@@ -79,7 +79,7 @@ export async function setDomainTrainingSharing(
       write: true,
       lock: true,
     });
-    assertWorkspacePermission(access.context, "training:share");
+    assertWorkspacePermission(access.context, "training:write_any");
     const targets = input.targetDomainSlugs !== undefined
       ? await resolveSharingTargetSlugs(
         input.targetDomainSlugs,
@@ -298,7 +298,7 @@ export async function readDomainTrainingSharing(
       and(eq(trainings.domain_id, workspace.domain.id), eq(trainings.id, id)),
     );
   if (!training) throw new NotFoundError("题单不在此域");
-  assertWorkspacePermission(workspace.context, "training:share");
+  assertWorkspacePermission(workspace.context, "training:read_any");
   const [policy] = await db.select().from(trainingShareSettings).where(
     eq(trainingShareSettings.training_id, id),
   );
