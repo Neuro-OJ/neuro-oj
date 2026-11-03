@@ -64,13 +64,12 @@ authMiddleware → 注入 isAdmin
 
 | 函数                         | 位置                                                    | 用途                                          |
 | ---------------------------- | ------------------------------------------------------- | --------------------------------------------- |
-| `getUserPermissions(userId)` | `src/domains/identity/services/security/permissions.ts` | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
-| `resolvePermissions(c)`      | 同上                                                    | 请求级缓存封装                                |
-| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，service 层条件判断              |
-| `assertPermission(c, perm)`  | 同上                                                    | 无权限时抛 ForbiddenError                     |
-| `requireAdmin()`             | 同上                                                    | 中间件，纯 JWT fast path                      |
-| `requirePermission(perm)`    | 同上                                                    | 中间件工厂函数                                |
-| `ensureRbacSeeds()`          | `src/domains/system/services/seed/seed-rbac.ts`         | 全量幂等初始化                                |
+| `resolvePlatformRole(c)`     | `src/modules/access/identity/services/security/permissions.ts` | 读取 `users.role`，请求级缓存                |
+| `resolvePermissions(c)`      | 同上                                                    | 平台角色能力集合                              |
+| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，仅平台能力                      |
+| `assertPermission(c, perm)`  | 同上                                                    | 无平台能力时抛 ForbiddenError                 |
+| `requireAdmin()`             | 同上                                                    | 中间件，仅平台管理员                          |
+| `assertWorkspacePermission`  | `src/modules/access/workspace/services/access.ts`      | 域内授权唯一入口                              |
 
 ### Permissions
 
