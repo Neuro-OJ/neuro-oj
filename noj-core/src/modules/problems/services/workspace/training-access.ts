@@ -241,9 +241,8 @@ export async function listDomainTrainings(
         can_edit: owned &&
           (all ||
             workspace.context.domainPermissions.has("training:write_any")),
-        can_share: owned &&
-          (workspace.platformAdmin ||
-            workspace.context.domainPermissions.has("training:share")),
+        // 跨域共享已停用：只能复制到目标域，列表永远不提供共享入口。
+        can_share: false,
       };
     }),
   };
