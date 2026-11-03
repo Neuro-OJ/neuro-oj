@@ -91,14 +91,12 @@ authMiddleware → 注入 isAdmin
 
 ### 迁移策略
 
-- `users.role` 列**已删除**（RBAC 迁移后不再使用）；JWT 的 `role` claim 由
-  `user_roles` + `permissions` 实时计算得出，管理员判定为权限集中含
-  `admin:full_access`
-- 旧服务函数保留 `userRole` 参数作为 fallback，新增 `c?: Context` 参数启用 RBAC
-- `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到
-  `assertPermission()`
-- `getSubmission` 使用 `c.var.isAdmin` 替代 `viewerRole === "admin"`
-- 路由层通过 `c.var.isAdmin ?? c.var.userRole === "admin"` 双兼容
+- JWT 的 `role` claim 与管理员判定都来自 `users.role`（`user` / `admin`）。
+- 请求级权限只取平台角色能力；域内权限一律走 `loadWorkspace` /
+  `assertWorkspacePermission`，不能用 `checkPermission` 代替域授权。
+- 域角色由 `domain_memberships.role`（`member`/`educator`/`admin`）与
+  `domains.owner_id` 推导，负责人优先。
+- 旧 `userRole` 参数与双兼容分支已删除，路由不再比较字符串角色。
 
 ## 目录结构
 
