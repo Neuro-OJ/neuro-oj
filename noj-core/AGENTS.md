@@ -403,8 +403,7 @@ docker compose down     # 停止
 2. **TFA_ENCRYPTION_KEY 校验** — 必须配置且独立于 `JWT_SECRET`，否则拒绝启动
 3. **数据库迁移** — 失败为致命错误，终止启动
 4. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
-5. **RBAC 种子、管理员初始化状态、系统设置注册表校验与缓存初始化** —
-   均为致命步骤
+5. **管理员初始化状态、系统设置注册表校验与缓存初始化** — 均为致命步骤
 6. **邮件服务就绪检查** —
    非致命：未就绪时记录告警，邮箱验证/密码找回不可用且公开注册被禁止
    （仅允许站点引导阶段的首次注册）
@@ -758,7 +757,7 @@ Retry-After: 25
 
 | 命令                                                          | 行为                                                                                                                                     |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                  |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                  |
 | `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`                          |
 | `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                                       |
 | `scripts/noj.ts problems import [--publish]`                  | 导入题目包；**`--publish` 显式发布为版本**（不发布时题目只有草稿，普通访问者读不到、也无法按版本提交）；`dev-setup` 内部即用 `--publish` |
