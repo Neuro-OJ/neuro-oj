@@ -155,7 +155,7 @@ Deno.test({
   },
 });
 Deno.test({
-  name: "域提交教师读取：当前同班学生可读，离职与离班撤权且历史另走作业依据",
+  name: "域提交教师读取：同班学生可读，降为 member 撤权，educator 全域可读",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -259,8 +259,9 @@ Deno.test({
         created.id,
         f.outsider,
       );
-      assertEquals(formerStudent.code, undefined);
-      assertEquals(formerStudent.can_view_source, false);
+      // educator 是域级角色：离班不撤销全域提交查看（计划角色矩阵）。
+      assertEquals(formerStudent.code, "print('student')");
+      assertEquals(formerStudent.can_view_source, true);
     });
   },
 });
