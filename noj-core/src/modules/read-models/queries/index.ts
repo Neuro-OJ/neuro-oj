@@ -1,7 +1,6 @@
 export {
   getGlobalRankings,
   getMyRanking,
-  refreshRankingsView,
 } from "./services/rankings.ts";
 export type {
   RankingRow,
