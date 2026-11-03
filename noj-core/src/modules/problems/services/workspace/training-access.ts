@@ -230,7 +230,7 @@ export async function listDomainTrainings(
         public_id: training.public_id,
         source_domain_id: source.id,
         source_domain_slug: source.slug,
-        is_shared: !owned,
+        is_shared: false,
         title: training.title,
         description: training.description,
         revision: training.revision,
