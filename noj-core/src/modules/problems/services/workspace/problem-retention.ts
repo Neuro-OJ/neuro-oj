@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
-  domainProblemBindings,
   objectiveSubmissions,
   problems,
   problemVersions,
@@ -17,10 +16,6 @@ export async function assertProblemHasNoRetainedReferences(
   const [version] = await executor.select({ id: problemVersions.id }).from(
     problemVersions,
   ).where(eq(problemVersions.problem_id, problemId)).limit(1);
-  const [binding] = await executor.select({ id: domainProblemBindings.id })
-    .from(domainProblemBindings).where(
-      eq(domainProblemBindings.problem_id, problemId),
-    ).limit(1);
   const [submission] = await executor.select({ id: submissions.id }).from(
     submissions,
   ).where(eq(submissions.problem_id, problemId)).limit(1);
@@ -28,7 +23,7 @@ export async function assertProblemHasNoRetainedReferences(
     .from(objectiveSubmissions).where(
       eq(objectiveSubmissions.paper_id, problemId),
     ).limit(1);
-  if (version || binding || submission || objective) {
+  if (version || submission || objective) {
     throw new AppError(
       "题目已有版本、题库引用或提交记录，不能物理删除；请保留历史并停用资源",
       409,
