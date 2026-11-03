@@ -122,18 +122,10 @@ export async function createPost(
   const content = input.content.trim();
   let bindingId: string | null = null;
   if (!content) throw new ValidationError("内容不能为空");
-  if (
-    content.length >
-      (input.type === "moment"
-        ? config.moment_max_length
-        : config.post_max_length)
-  ) throw new ValidationError("内容超过长度限制");
-  if (input.type === "moment" && title) {
-    throw new ValidationError("短动态不能包含标题");
+  if (content.length > config.post_max_length) {
+    throw new ValidationError("内容超过长度限制");
   }
-  if (input.type !== "moment" && !title) {
-    throw new ValidationError("标题不能为空");
-  }
+  if (!title) throw new ValidationError("标题不能为空");
   if (input.type === "solution") {
     if (!input.problem_id) throw new ValidationError("题解必须关联题目");
     const bound = await resolveCommunityProblem(
@@ -186,7 +178,7 @@ export async function createPost(
   // 非审核员一律禁止发布相关题解/讨论。判据复用 contest 域单一真相源
   // `isProblemInUnendedPublicContest`，与列表/详情读取门控同口径。
   // moderator（审核员）免门控，用于赛后归档与官方说明。
-  if (!moderator && input.type !== "moment" && input.problem_id) {
+  if (!moderator && input.problem_id) {
     if (
       await isProblemInUnendedPublicContest(
         input.problem_id,
@@ -247,7 +239,7 @@ export async function createPost(
     content,
     // 官方标记：仅**题解**且题目 owner 或审核员的声明被信任。
     // 必须限定 type === "solution"（2026-09-14 评审）：此前只校验 isProblemOwner，
-    // 而 discussion/moment 不会规范化 problem_id，客户端夹带任意 public 题的 id
+    // 而 discussion 不校验题目归属，客户端夹带任意 public 题的 id
     // 即可让 isProblemOwner 为真；又因 listPosts 无条件按 is_official 置顶排序，
     // 这类帖子会**置顶社区列表**，绕过 setPostOfficial 的"仅题解可标记"规则。
     is_official: input.is_official === true && input.type === "solution" &&
@@ -406,10 +398,9 @@ export async function updatePost(
   if (!content) throw new ValidationError("内容不能为空");
   // 编辑同样受长度限制约束，避免绕过 createPost 的校验
   const config = getCommunityConfig();
-  const maxLength = current.post.type === "moment"
-    ? config.moment_max_length
-    : config.post_max_length;
-  if (content.length > maxLength) throw new ValidationError("内容超过长度限制");
+  if (content.length > config.post_max_length) {
+    throw new ValidationError("内容超过长度限制");
+  }
   if (title && title.length > 200) throw new ValidationError("标题过长");
   const db = communityDb(scope);
   const rows = await db.update(communityPosts).set({

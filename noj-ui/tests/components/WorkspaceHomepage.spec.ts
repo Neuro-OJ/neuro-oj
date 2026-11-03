@@ -63,7 +63,6 @@ const mountHome = () =>
         WorkspaceHero: { props: ['title'], template: '<section data-testid="workspace-hero">{{ title }}</section>' },
         HomepageCheckIn: true,
         AnnouncementSection: true,
-        RandomProblems: true,
         LatestSubmissions: true,
       },
     },

@@ -42,7 +42,7 @@ export async function assertNotContestSilenced(
     await hasUnendedPublicContest(communityDomainId(scope), communityDb(scope))
   ) {
     throw new ForbiddenError(
-      "比赛期间当前域暂停公开发布讨论、动态、题解与评论，参赛提问请使用赛中答疑",
+      "比赛期间当前域暂停公开发布讨论、题解与评论，参赛提问请使用赛中答疑",
       "CONTEST_SILENCE",
     );
   }
@@ -50,15 +50,11 @@ export async function assertNotContestSilenced(
 
 /**
  * 根据帖子类型返回对应的功能开关配置项。
- * @param type 帖子类型：solution / discussion / moment。
+ * @param type 帖子类型：solution / discussion。
  * @returns 对应的 CommunityConfig 功能开关键。
  */
 export function featureForType(type: CommunityPostType): keyof CommunityConfig {
-  return type === "solution"
-    ? "solutions_enabled"
-    : type === "discussion"
-    ? "discussions_enabled"
-    : "moments_enabled";
+  return type === "solution" ? "solutions_enabled" : "discussions_enabled";
 }
 
 /**

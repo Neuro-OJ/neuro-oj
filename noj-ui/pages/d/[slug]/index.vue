@@ -41,7 +41,6 @@ const section = <T>(name: keyof BffEnvelope['sections']) => view.value?.sections
 const announcements = computed(() => (section<{ data: AnnouncementSummary[] }>('announcements')?.data ?? undefined));
 const dashboard = computed(() => section<{ data: EducationDashboardData }>('dashboard'));
 const activity = computed(() => section<HomeActivity>('activity'));
-const randomProblems = computed(() => section<DomainProblemSummary[]>('randomProblems'));
 async function join() {
   if (!domain.value || joining.value) return;
   joining.value = true;
@@ -117,11 +116,8 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
       <DomainHomeContent :initial-data="dashboard" />
     </div>
 
-    <!-- 推荐与最新评测 -->
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <RandomProblems :domain-slug="domain.slug" :initial-data="randomProblems" />
-      <LatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
-    </div>
+    <!-- 最新评测 -->
+    <LatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
   </div>
   </AsyncContent>
 </template>

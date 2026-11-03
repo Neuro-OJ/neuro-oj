@@ -57,11 +57,11 @@ Status: proposed
 | P3 | schema、迁移、旧库拦截 | 完成 | 迁移 `0132`（角色列 + 审计动作）与 `0133`（显式依赖顺序删除 roles/permissions/role_permissions/user_roles/domain_member_roles/community_board_role_grants，不用 CASCADE）；旧库门禁 + SQL 数据保护实测三态符合预期 |
 | P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；注册/OAuth 固定 user；旧 token 伪造 admin 展示角色不影响实际权限（测试覆盖）；封禁/注销共用管理员锁待接 |
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
-| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；root/first-admin/管理员开号/CLI 演练直接写 users.role；全仓测试夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 87、platform 254、read-models 86 全绿；education 4 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
+| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；全仓夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 83、platform 254、read-models 86 全绿；education 2 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
 | P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
 | P8 | 跨域独立复制 | 待办 | problem-copy / training-copy / copy-sources；删共享 |
-| P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 板块自定义角色授权（服务/端点/审计动作）已删除；moment 与随机推荐待处理 |
-| P10 | 邀请模式合并 | 待办 | email/general；once 由 max_uses=1 表达 |
+| P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 后端已删除 moment 类型/配置/统计/个人页聚合与训练比较服务+路由；首页随机三题与 RandomProblems/TrainingComparison/TrainingComparison util 已从前端移除；社区 moment 相关 UI 待清 |
+| P10 | 邀请模式合并 | 进行中 | 后端只接受 email/general，once 返回 400；通用邀请 max_uses=1 表达一次性；迁移 0134 收紧 mode CHECK；邀请管理 UI 仍待改为表单转换 |
 | P11 | 旧榜单与前端空壳 | 待办 | 删 refreshRankingsView；useAsyncData 直用 |
 | P12 | CLI 旧库预检与 Bash 清理 | 待办 | `db check-upgrade`、删 deploy/*.sh |
 | 验收 | 计划 4.2 T01–T24 与 5.4 人工旅程 | 待办 | 逐项证据；未验收项必须显式标注 |
@@ -107,6 +107,10 @@ Status: proposed
 - 2026-11-03（第四轮）：删除创建者特权判定。题目/题单管理统一要求域
   `problem:write_any`/`training:write_any`；客观题答案只对 `access.mode === "admin"`
   或实时域权限开放，`owner` 只读模式不再解锁答案。
+- 2026-11-03（第五轮）：生成迁移 `0134_narrow_dazzler`：社区帖子类型/上下文 CHECK 收紧为
+  solution/discussion，邀请 mode CHECK 收紧为 email/general。删除 moment 的服务、配置、
+  个人页聚合与搜索统计分支；删除训练比较服务/路由/导出及前端组件、工具、调用；删除首页
+  随机三题 BFF 段与组件。邀请后端拒绝 once，一次性由通用邀请 max_uses=1 表达。
 - 2026-11-03（第四轮）：请求级能力解析合并 main 域有效角色（社区治理、题单、竞赛查重等
   旧守卫不再只认平台角色）；域级服务仍走显式 workspace 判定，避免把默认域能力当跨域授权。
 - 2026-11-03（第三轮）：access 域测试完成迁移并通过——

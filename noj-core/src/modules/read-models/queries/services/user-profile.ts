@@ -5,7 +5,6 @@ import type { UserProfileResponse } from "./user-profile-types.ts";
 import {
   queryProfileCommunityStats,
   queryProfileCreatedProblems,
-  queryProfileMoments,
   queryProfileSolutions,
   queryProfileStats,
   queryProfileUser,
@@ -48,7 +47,6 @@ export async function getUserProfileAggregate(
     recentRows,
     communityStats,
     solutions,
-    moments,
     createdProblems,
   ] = await Promise.all([
     queryProfileUser(db, userId),
@@ -59,7 +57,6 @@ export async function getUserProfileAggregate(
     queryRecentSubmissions(db, userId, viewer),
     queryProfileCommunityStats(db, userId, moderator),
     queryProfileSolutions(db, userId, moderator),
-    queryProfileMoments(db, userId),
     queryProfileCreatedProblems(db, userId, viewer),
   ]);
 
@@ -132,7 +129,6 @@ export async function getUserProfileAggregate(
     recent_submissions: recentSubmissions,
     community_stats: {
       solution_count: Number(communityStats?.solution_count ?? 0),
-      moment_count: Number(communityStats?.moment_count ?? 0),
     },
     solutions: solutions.map(
       (item: { id: string; title: string | null; created_at: string }) => ({
@@ -140,6 +136,5 @@ export async function getUserProfileAggregate(
         title: item.title ?? "",
       }),
     ),
-    moments,
   };
 }

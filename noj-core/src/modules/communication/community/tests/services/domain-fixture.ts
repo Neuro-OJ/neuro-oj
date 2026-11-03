@@ -28,7 +28,6 @@ export async function domainFixture(prefix: string) {
   for (
     const [key, value] of [
       ["community_enabled", true],
-      ["community_moments_enabled", true],
       ["community_new_user_review_hours", 0],
       ["community_post_interval_seconds", 0],
     ] as const

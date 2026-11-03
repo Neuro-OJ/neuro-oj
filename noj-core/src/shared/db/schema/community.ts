@@ -124,7 +124,7 @@ export const communityPosts = pgTable(
     ),
     typeCheck: check(
       "community_posts_type_check",
-      sql`${table.type} IN ('solution', 'discussion', 'moment')`,
+      sql`${table.type} IN ('solution', 'discussion')`,
     ),
     bindingRequiredCheck: check(
       "community_posts_binding_required_check",
@@ -140,7 +140,6 @@ export const communityPosts = pgTable(
       sql`(
         (${table.type} = 'solution' AND ${table.problem_id} IS NOT NULL AND ${table.board_id} IS NULL AND ${table.title} IS NOT NULL)
         OR (${table.type} = 'discussion' AND ${table.board_id} IS NOT NULL AND ${table.problem_id} IS NULL AND ${table.title} IS NOT NULL)
-        OR (${table.type} = 'moment' AND ${table.problem_id} IS NULL AND ${table.board_id} IS NULL AND ${table.title} IS NULL)
       )`,
     ),
     authorIdx: index("idx_community_posts_author").on(

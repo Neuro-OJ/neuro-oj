@@ -275,23 +275,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "solution-gating: 门控不影响讨论与动态",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // discussion/moment 不受门控影响
-    const moment = await createPost(ownerId, {
-      type: "moment",
-      content: "一条动态",
-    }, true);
-    assertEquals(moment.type, "moment");
-    const counts = await countPostsByType();
-    assertEquals(counts.moment, 1);
-  },
-});
-
-Deno.test({
   name: "solution-gating: 门控覆盖列表、详情与计数三条读路径",
   sanitizeResources: false,
   sanitizeOps: false,

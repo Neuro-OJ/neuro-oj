@@ -64,7 +64,6 @@ export async function listPosts(
     const config = getCommunityConfig();
     if (config.solutions_enabled) enabledTypes.push("solution");
     if (config.discussions_enabled) enabledTypes.push("discussion");
-    if (config.moments_enabled) enabledTypes.push("moment");
     if (enabledTypes.length > 0) {
       conditions.push(inArray(communityPosts.type, enabledTypes));
     } else {
@@ -211,11 +210,9 @@ export async function countPostsByType(scope?: CommunityScope): Promise<
   const enabledTypes: CommunityPostType[] = [];
   if (config.solutions_enabled) enabledTypes.push("solution");
   if (config.discussions_enabled) enabledTypes.push("discussion");
-  if (config.moments_enabled) enabledTypes.push("moment");
   const result: Record<CommunityPostType, number> = {
     solution: 0,
     discussion: 0,
-    moment: 0,
   };
   // 全部模块关闭时直接返回全零，避免空 IN 列表的 SQL 错误
   if (enabledTypes.length === 0) return result;

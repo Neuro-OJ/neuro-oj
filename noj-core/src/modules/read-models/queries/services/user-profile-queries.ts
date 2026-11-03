@@ -15,7 +15,6 @@ import type {
   ProfileCommunityStatsRow,
   ProfileCreatedProblemRow,
   ProfileCreatedProblemView,
-  ProfileMomentRow,
   ProfileRecentSubmissionRow,
   ProfileSolutionRow,
   ProfileSolvedProblemRow,
@@ -283,9 +282,6 @@ export function queryProfileCommunityStats(
     solution_count: sql<
       number
     >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
-    moment_count: sql<
-      number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published' AND ${publicCommunityCondition()})::int`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
@@ -332,26 +328,6 @@ export function queryProfileSolutions(
   })
     .from(communityPosts).where(
       and(...conditions),
-    ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
-}
-
-/** 7. 最近 10 条已发布短动态。 */
-export function queryProfileMoments(
-  db: Db,
-  userId: string,
-): Promise<ProfileMomentRow[]> {
-  return db.select({
-    id: communityPosts.id,
-    content: communityPosts.content,
-    created_at: communityPosts.created_at,
-  })
-    .from(communityPosts).where(
-      and(
-        eq(communityPosts.author_id, userId),
-        eq(communityPosts.type, "moment"),
-        eq(communityPosts.status, "published"),
-        publicCommunityCondition(),
-      ),
     ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
 }
 

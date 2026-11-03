@@ -63,7 +63,7 @@ Deno.test("多种邀请：通用码与链接共享人数，重复兑换不重复
   await consumeDomainInvitation(invite.token, a);
 });
 
-Deno.test("多种邀请：一次性不绑定邮箱，容量失败不消费，撤销与到期立即拒绝", async () => {
+Deno.test("多种邀请：一次性用通用邀请 1 次表达，容量失败不消费，撤销与到期立即拒绝", async () => {
   await resetDbForTest();
   const owner = await account(true),
     user = await account(),
@@ -74,7 +74,8 @@ Deno.test("多种邀请：一次性不绑定邮箱，容量失败不消费，撤
     preset: "team",
   }, owner);
   const invite = await createDomainInvitation(domain.slug, owner, {
-    mode: "once",
+    mode: "general",
+    max_uses: 1,
   });
   await getDb().update(domainLimits).set({ members: 1 }).where(
     eq(domainLimits.domain_id, domain.id),
@@ -101,7 +102,7 @@ Deno.test("多种邀请：一次性不绑定邮箱，容量失败不消费，撤
     NotFoundError,
   );
   const expired = await createDomainInvitation(domain.slug, owner, {
-    mode: "once",
+    mode: "general",
   });
   await getDb().update(domainInvitations).set({
     expires_at: "2000-01-01T00:00:00Z",
@@ -116,6 +117,14 @@ Deno.test("多种邀请：一次性不绑定邮箱，容量失败不消费，撤
         mode: "general",
         max_uses: 0,
       }),
+    BadRequestError,
+  );
+  // 旧"一次性"模式已删除：请求必须显式走通用邀请 + max_uses=1。
+  await assertRejects(
+    () =>
+      createDomainInvitation(domain.slug, owner, {
+        mode: "once",
+      } as unknown as { mode: "email" | "general" }),
     BadRequestError,
   );
 });

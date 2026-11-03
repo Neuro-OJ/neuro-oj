@@ -16,7 +16,6 @@ export type BffSectionName =
   | 'communityConfig'
   | 'accountNotifications'
   | 'announcements'
-  | 'randomProblems'
   | 'activity'
   | 'checkin'
   | 'dashboard'

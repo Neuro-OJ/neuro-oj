@@ -1,5 +1,4 @@
 import { useApi } from '~/composables/useApi';
-import type { TrainingComparisonData, TrainingComparisonWindows } from '~/utils/education-comparison';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
 import type {
   AssignmentRemediationInput,
@@ -63,11 +62,6 @@ export function useEducationApi() {
       api.get<{ data: TeachingPage<TeachingAttempt> & { resource_available: boolean } }>(
         `${classroom(slug, classId)}/submissions/${kind}/${encodeURIComponent(id)}/attempts`,
         { query: { page }, silent: true },
-      ),
-    trainingComparison: (slug: string, assignmentId: string, userId: string, windows: TrainingComparisonWindows) =>
-      api.get<{ data: TrainingComparisonData }>(
-        `${task(slug, assignmentId)}/students/${encodeURIComponent(userId)}/training-comparison`,
-        { query: { ...windows }, silent: true },
       ),
     studentSubmissions: (
       slug: string,

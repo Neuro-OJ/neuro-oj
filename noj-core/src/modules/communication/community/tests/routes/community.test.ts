@@ -326,29 +326,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 关闭动态模块后动态列表返回 FEATURE_DISABLED",
+  name: "community route: moment 类型已删除，筛选返回 400",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext({
-      actorId: "0",
-      actorIp: "127.0.0.1",
-      actorRole: "admin",
-    });
-    try {
-      await updateSetting("community_moments_enabled", false, "0");
-    } finally {
-      leaveTestContext();
-    }
     const app = createApp();
     const response = await jsonRequest(
       app,
       "/api/v1/community/posts?type=moment",
     );
-    assertEquals(response.status, 403);
-    const body = await response.json();
-    assertEquals(body.code, "FEATURE_DISABLED");
+    assertEquals(response.status, 400);
   },
 });
 
@@ -386,7 +374,7 @@ Deno.test({
     });
     assertEquals(counts.status, 200);
     assertEquals(await counts.json(), {
-      data: { solution: 1, discussion: 1, moment: 0 },
+      data: { solution: 1, discussion: 1 },
     });
   },
 });

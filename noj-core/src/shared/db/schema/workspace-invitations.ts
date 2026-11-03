@@ -29,7 +29,7 @@ export const domainInvitations = pgTable(
     classroom_id: text("classroom_id"),
     token_hash: text("token_hash").notNull().unique(),
     code_hash: text("code_hash").unique(),
-    mode: text("mode").$type<"email" | "general" | "once">().notNull().default(
+    mode: text("mode").$type<"email" | "general">().notNull().default(
       "email",
     ),
     email: text("email"),
@@ -45,7 +45,7 @@ export const domainInvitations = pgTable(
     domainIdx: index("idx_domain_invitations_domain").on(t.domain_id),
     modeCheck: check(
       "domain_invitations_mode_check",
-      sql`${t.mode} IN ('email','general','once')`,
+      sql`${t.mode} IN ('email','general')`,
     ),
     usesCheck: check(
       "domain_invitations_uses_check",

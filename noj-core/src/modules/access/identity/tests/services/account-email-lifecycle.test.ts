@@ -16,6 +16,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
+  communityBoards,
   communityPosts,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -194,11 +195,21 @@ Deno.test("账户注销：密码确认后身份匿名化且不可再次登录", 
   const userId = await seedUser(true);
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const [board] = await getDb().insert(communityBoards).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    slug: "lifecycle-board",
+    name: "注销测试板块",
+    created_at: now,
+    updated_at: now,
+  }).returning();
   await getDb().insert(communityPosts).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: postId,
-    type: "moment",
+    type: "discussion",
     author_id: userId,
+    board_id: board.id,
+    title: "应被保留的公开内容",
     content: "应被保留的公开内容",
     status: "published",
     published_at: now,
