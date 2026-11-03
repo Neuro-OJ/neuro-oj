@@ -28,16 +28,14 @@ const { open: reportModal } = useReportModal()
 const { api } = useApi()
 const { userBanned } = useBanStatus()
 
-const ENABLED_TYPES: PostType[] = ["discussion", "solution", "moment"]
+const ENABLED_TYPES: PostType[] = ["discussion", "solution"]
 const typeFlag: Record<PostType, keyof CommunityConfig> = {
   discussion: "discussions_enabled",
   solution: "solutions_enabled",
-  moment: "moments_enabled",
 }
 const typeLabel: Record<PostType, string> = {
   discussion: "讨论",
   solution: "题解",
-  moment: "动态",
 }
 
 const activeType = ref<PostType>("discussion")
@@ -88,9 +86,7 @@ const canCreateCurrentType = computed(() => {
   if (config.value.contest_silence) return false
   const permission = activeType.value === "discussion"
     ? "discussion"
-    : activeType.value === "solution"
-    ? "solution"
-    : "moment"
+    : activeType.value
   return config.value.permissions[permission] === true
 })
 
@@ -104,9 +100,7 @@ const enabledTypes = computed<PostType[]>(() =>
 )
 
 const postMaxLength = computed(() =>
-  activeType.value === "moment"
-    ? config.value?.moment_max_length ?? 500
-    : config.value?.post_max_length ?? 20000,
+  config.value?.post_max_length ?? 20000
 )
 
 function syncUrl() {
@@ -310,7 +304,7 @@ async function publish() {
       return
     }
     const body: Record<string, string> = { type: activeType.value, content: content.value }
-    if (activeType.value !== "moment") body.title = title.value
+    body.title = title.value
     if (activeType.value === "discussion") body.board_id = boardId.value
     if (activeType.value === "solution") {
       const pid = problemId.value || problemQuery.value.trim()
@@ -458,7 +452,7 @@ onMounted(() => {
             {{ previewMode ? "编辑" : "预览" }}
           </UButton>
         </div>
-        <input v-if="activeType !== 'moment'" v-model="title" class="mb-3 w-full rounded border border-border px-3 py-2" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required>
+        <input v-model="title" class="mb-3 w-full rounded border border-border px-3 py-2" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required>
         <div v-if="activeType === 'solution'" class="relative mb-3">
           <input v-model="problemQuery" class="w-full rounded border border-border px-3 py-2" placeholder="搜索题目（输入至少 2 个字符）或直接填题目 ID" @focus="searchProblemIdChanged" @input="searchProblems" @blur="delayCloseProblemDropdown">
           <span v-if="problemQuery" class="absolute right-2 top-2 cursor-pointer text-xs text-text-secondary hover:text-primary" @mousedown.prevent="clearProblemSelection">清除</span>
