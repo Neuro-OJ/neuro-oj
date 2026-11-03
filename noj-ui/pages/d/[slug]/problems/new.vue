@@ -28,7 +28,7 @@ const snapshot = () => JSON.stringify({ title: title.value, description: descrip
 const savedSnapshot = ref(snapshot());
 useUnsavedChanges(() => snapshot() !== savedSnapshot.value);
 const writable = computed(() =>
-  domain.value?.status === 'active' && (can('problem:write_own') || can('problem:write_any'))
+  domain.value?.status === 'active' && (can('problem:write_any'))
 );
 async function create() {
   if (!writable.value || saving.value || (kind.value === 'ai' && (!evaluatorImage.value || !solutionImage.value))) {
