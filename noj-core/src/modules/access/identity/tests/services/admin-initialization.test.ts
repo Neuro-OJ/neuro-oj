@@ -160,6 +160,11 @@ test("完成后删除管理员仍不能重新初始化", async () => {
     email: "owner@example.com",
   });
   await transferDomain("main", user.id, successor.id);
+  // 最后管理员保护禁止唯一管理员自助注销；本用例关注“注销后不能重新初始化”，
+  // 因此先补一个可用管理员再注销原管理员。
+  await db.update(users).set({ role: "admin" }).where(
+    eq(users.id, successor.id),
+  );
   await deleteOwnAccount(
     userActorFromAuthenticatedId(user.id),
     input.password,

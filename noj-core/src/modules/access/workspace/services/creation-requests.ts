@@ -82,12 +82,6 @@ export async function reviewDomainCreation(
     ).for("update");
     if (!request) throw new NotFoundError("申请不存在");
     if (request.status !== "pending") throw new ConflictError("申请已经处理");
-    if (approved && request.preset === "custom") {
-      throw new BadRequestError(
-        "旧自定义域申请须先重新选择域类型",
-        "DOMAIN_TYPE_REQUIRED",
-      );
-    }
     const domain = approved
       ? await createDomainTx(
         tx,

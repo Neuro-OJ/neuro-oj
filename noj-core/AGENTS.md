@@ -25,18 +25,19 @@
 
 ## 固定角色权限系统
 
-平台角色只有 `user` / `admin` 两档，域内角色只有 `member` / `educator` /
-`admin` 三档；能力映射是 `shared/access/roles.ts` 里的静态表，没有可编辑的角色/权限表。
+平台角色只有 `user` / `admin` 两档，域内角色只有 `member` / `educator` / `admin`
+三档；能力映射是 `shared/access/roles.ts` 里的静态表，没有可编辑的角色/权限表。
 
 ### 数据模型
 
-| 事实                    | 用途                                                                 |
-| ----------------------- | -------------------------------------------------------------------- |
-| `users.role`           | 平台角色：`user` / `admin`，单值列 + CHECK                        |
-| `domain_memberships.role` | 域内角色：`member` / `educator` / `admin`，单值列 + CHECK      |
-| `domains.owner_id`     | 域负责人，优先于成员角色                                             |
+| 事实                      | 用途                                                      |
+| ------------------------- | --------------------------------------------------------- |
+| `users.role`              | 平台角色：`user` / `admin`，单值列 + CHECK                |
+| `domain_memberships.role` | 域内角色：`member` / `educator` / `admin`，单值列 + CHECK |
+| `domains.owner_id`        | 域负责人，优先于成员角色                                  |
 
-能力映射为静态表（`shared/access/roles.ts`），不再有 `roles/permissions` 等 RBAC 表。
+能力映射为静态表（`shared/access/roles.ts`），不再有 `roles/permissions` 等 RBAC
+表。
 
 ### 权限检查层次
 
@@ -63,31 +64,31 @@ authMiddleware → 注入 isAdmin
 
 ### 关键函数
 
-| 函数                         | 位置                                                    | 用途                                          |
-| ---------------------------- | ------------------------------------------------------- | --------------------------------------------- |
-| `resolvePlatformRole(c)`     | `src/modules/access/identity/services/security/permissions.ts` | 读取 `users.role`，请求级缓存                |
-| `resolvePermissions(c)`      | 同上                                                    | 平台角色能力集合                              |
-| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，仅平台能力                      |
-| `assertPermission(c, perm)`  | 同上                                                    | 无平台能力时抛 ForbiddenError                 |
-| `requireAdmin()`             | 同上                                                    | 中间件，仅平台管理员                          |
-| `assertWorkspacePermission`  | `src/modules/access/workspace/services/access.ts`      | 域内授权唯一入口                              |
+| 函数                        | 位置                                                           | 用途                          |
+| --------------------------- | -------------------------------------------------------------- | ----------------------------- |
+| `resolvePlatformRole(c)`    | `src/modules/access/identity/services/security/permissions.ts` | 读取 `users.role`，请求级缓存 |
+| `resolvePermissions(c)`     | 同上                                                           | 平台角色能力集合              |
+| `checkPermission(c, perm)`  | 同上                                                           | 返回 boolean，仅平台能力      |
+| `assertPermission(c, perm)` | 同上                                                           | 无平台能力时抛 ForbiddenError |
+| `requireAdmin()`            | 同上                                                           | 中间件，仅平台管理员          |
+| `assertWorkspacePermission` | `src/modules/access/workspace/services/access.ts`              | 域内授权唯一入口              |
 
 ### Permissions
 
-| `resource`           | `action`                                                                                                                                    | 说明                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| admin                | full_access                                                                                                                                 | 管理员全权限（隐式拥有全部）  |
+| `resource`           | `action`                                                                                            | 说明                          |
+| -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------- |
+| admin                | full_access                                                                                         | 管理员全权限（隐式拥有全部）  |
 | problem              | create/read/write_any/delete_any/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
-| submission           | create/read_own/read_all/rejudge                                                                                                            | 提交操作                      |
-| user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
-| tag                  | read/manage                                                                                                                                 | 标签操作                      |
-| contest              | create/manage/anti_cheat_read/participate                                                                                                   | 竞赛                          |
-| community            | read/create_solution/create_discussion/comment/report                                                                         | 社区内容与互动                |
-| community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
-| community_board      | manage                                                                                                                                      | 社区板块                      |
-| training             | create/read/read_any/write_any/delete_any/publish/pin                                                                  | 题单                          |
-| announcement         | manage                                                                                                                                      | 公告                          |
-| system               | settings/judge_images/audit_logs/ip_bans                                                                                                    | 系统管理                      |
+| submission           | create/read_own/read_all/rejudge                                                                    | 提交操作                      |
+| user                 | read_profile/search/manage                                                                          | 用户操作                      |
+| tag                  | read/manage                                                                                         | 标签操作                      |
+| contest              | create/manage/anti_cheat_read/participate                                                           | 竞赛                          |
+| community            | read/create_solution/create_discussion/comment/report                                               | 社区内容与互动                |
+| community_moderation | review/hide/lock/sanction                                                                           | 社区治理                      |
+| community_board      | manage                                                                                              | 社区板块                      |
+| training             | create/read/read_any/write_any/delete_any/publish/pin                                               | 题单                          |
+| announcement         | manage                                                                                              | 公告                          |
+| system               | settings/judge_images/audit_logs/ip_bans                                                            | 系统管理                      |
 
 ### 迁移策略
 
@@ -438,7 +439,8 @@ docker compose down     # 停止
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
-> - **角色**：`users.role` / `domain_memberships.role` / `domains.owner_id`（无 RBAC 关联表）
+> - **角色**：`users.role` / `domain_memberships.role` / `domains.owner_id`（无
+>   RBAC 关联表）
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
 >   `community_reports` / `community_moderation_actions` / `community_sanctions`
 >   / `community_notifications` 等 12 张（`community_activity_events` 已随
@@ -757,7 +759,7 @@ Retry-After: 25
 
 | 命令                                                          | 行为                                                                                                                                     |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                  |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                       |
 | `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`                          |
 | `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                                       |
 | `scripts/noj.ts problems import [--publish]`                  | 导入题目包；**`--publish` 显式发布为版本**（不发布时题目只有草稿，普通访问者读不到、也无法按版本提交）；`dev-setup` 内部即用 `--publish` |

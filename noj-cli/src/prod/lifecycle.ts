@@ -162,7 +162,6 @@ import {
   wizardNeedsInteractiveInput,
 } from "./config.ts";
 import {
-  commitConfigVersion,
   configuredVersion,
   DEFAULT_UPDATE_REPOSITORY,
   normalizedVersion,
@@ -807,6 +806,7 @@ export function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
 function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
   return {
     composeFile: env.composeFile,
+    projectDirectory: env.dir,
     envFile: env.envFile,
     judge: env.judge,
   };
@@ -1582,36 +1582,15 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     stagedFiles ?? undefined,
   );
   if (upgraded.error !== null) {
-    // 预检已通过时仍发布目标文件，保证后续重试与当前运行栈一致。
-    if (upgraded.precheckPassed && stagedFiles !== null) {
-      for await (const entry of Deno.readDir(stagedFiles)) {
-        if (entry.isFile) {
-          await Deno.copyFile(
-            join(stagedFiles, entry.name),
-            join(ctx.dir, entry.name),
-          );
-        }
-      }
-    }
+    // 候选文件只在升级序列内部“排空后、迁移前”提交；失败分支不再发布任何
+    // 目标文件，避免出现“新 compose + 旧版本环境配置”的组合。
     await discardStagedFiles();
     await discardStaged();
     const result = fail(from, to, upgraded.error);
-    result.filesSynced = upgraded.precheckPassed === true;
+    result.filesSynced = upgraded.filesCommitted === true;
     result.backupPath = upgraded.backupPath;
     return result;
   }
-  if (stagedFiles !== null) {
-    for await (const entry of Deno.readDir(stagedFiles)) {
-      if (entry.isFile) {
-        await Deno.copyFile(
-          join(stagedFiles, entry.name),
-          join(ctx.dir, entry.name),
-        );
-      }
-    }
-  }
-  await discardStagedFiles();
-
   const updateCheckpoint = async (
     phase: UpgradeState["phase"],
     error?: string,
@@ -1632,30 +1611,20 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     }
   };
 
-  // ---- 6. 仅升级成功后提交暂存配置（bash :428-432）----
-  if (staged !== null) {
-    try {
-      await commitConfigVersion(staged, envFile);
-    } catch (err) {
-      // 服务已升级但配置未提交：必须显式报告半完成状态（不吞错）。
-      const result = fail(from, to, (err as Error).message);
-      result.filesSynced = true;
-      result.backupPath = upgraded.backupPath;
-      await updateCheckpoint("failed", result.error ?? "提交目标配置失败");
-      return result;
-    }
-  }
-
+  // 暂存配置已在升级序列内“排空后、迁移前”提交；这里只处理退出维护失败。
   // 退出维护失败：服务已升级但仍在维护模式——显式报告半完成（不得静默）
   if (upgraded.drainExitError != null) {
     const result = fail(from, to, upgraded.drainExitError);
-    result.filesSynced = true;
+    result.filesSynced = upgraded.filesCommitted === true;
     result.backupPath = upgraded.backupPath;
     await updateCheckpoint("failed", upgraded.drainExitError);
     return result;
   }
 
+  // 只有文件、配置、服务健康与退出维护全部成功，才标记完成并清理暂存文件。
   await updateCheckpoint("completed");
+  await discardStagedFiles();
+  await discardStaged();
 
   ctx.status("success", latest ? updateSuccessHint(to) : "生产服务已升级");
   return finish({

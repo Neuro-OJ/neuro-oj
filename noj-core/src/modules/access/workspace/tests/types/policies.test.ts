@@ -37,7 +37,6 @@ Deno.test("工作空间：三种类型均有社区和排行，仅教学类型提
   assertEquals(effective.features.assignment, false);
   assertEquals(effective.features.community, true);
   assertEquals(presetConfiguration("team").features.classroom, false);
-  assertEquals(effectiveDomainConfiguration("custom", config), config);
 });
 Deno.test("工作空间：拒绝路径、跨域分隔符和错误模块依赖", () => {
   for (

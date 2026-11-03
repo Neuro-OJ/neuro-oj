@@ -18,6 +18,7 @@ export const UPGRADE_PHASES = [
   "pulled",
   "verified",
   "draining",
+  "committing",
   "migrating",
   "started",
   "completed",
@@ -25,6 +26,12 @@ export const UPGRADE_PHASES = [
 ] as const;
 
 export type UpgradePhase = (typeof UPGRADE_PHASES)[number];
+
+/** 候选发布文件摘要；恢复时据此确认暂存文件未被替换。 */
+export interface UpgradeCandidateFile {
+  name: string;
+  sha256: string;
+}
 
 export interface UpgradeState {
   schema_version: typeof UPGRADE_STATE_SCHEMA_VERSION;
@@ -36,6 +43,12 @@ export interface UpgradeState {
   release_set_release: string | null;
   error: string | null;
   updated_at: string;
+  /** 本次候选发布文件（安装目录内文件名 + SHA-256）；旧 checkpoint 缺省为空。 */
+  files: UpgradeCandidateFile[];
+  /** 候选文件暂存目录；缺失表示本次升级没有暂存文件集。 */
+  files_staged_dir: string | null;
+  /** 是否已经开始执行数据库迁移；一旦为 true，失败后不得自动回退旧程序。 */
+  migration_started: boolean;
 }
 
 const PHASE_INDEX = new Map<UpgradePhase, number>(
@@ -66,6 +79,9 @@ export function createUpgradeState(input: {
     release_set_release: input.releaseSetRelease ?? null,
     error: null,
     updated_at: (input.now ?? new Date()).toISOString(),
+    files: [],
+    files_staged_dir: null,
+    migration_started: false,
   };
 }
 
@@ -74,7 +90,15 @@ export function advanceUpgradeState(
   state: UpgradeState,
   phase: UpgradePhase,
   patch: Partial<
-    Pick<UpgradeState, "backup_path" | "release_set_release" | "error">
+    Pick<
+      UpgradeState,
+      | "backup_path"
+      | "release_set_release"
+      | "error"
+      | "files"
+      | "files_staged_dir"
+      | "migration_started"
+    >
   > = {},
   now = new Date(),
 ): UpgradeState {
@@ -108,6 +132,13 @@ export function advanceUpgradeState(
     error: patch.error === undefined
       ? (phase === "failed" ? state.error : null)
       : patch.error,
+    files: patch.files === undefined ? state.files : patch.files,
+    files_staged_dir: patch.files_staged_dir === undefined
+      ? state.files_staged_dir
+      : patch.files_staged_dir,
+    migration_started: patch.migration_started === undefined
+      ? state.migration_started
+      : patch.migration_started,
     updated_at: now.toISOString(),
   };
 }
@@ -158,6 +189,41 @@ export function validateUpgradeState(value: unknown): UpgradeState {
   if (Number.isNaN(Date.parse(updatedAt))) {
     throw new Error("升级 checkpoint updated_at 非法");
   }
+  // 旧 checkpoint 没有下列字段：缺省视为“无候选文件、未开始迁移”，
+  // 恢复逻辑据此要求显式说明而不是猜测阶段。
+  const files: UpgradeCandidateFile[] = [];
+  const filesValue = root.files;
+  if (filesValue !== undefined && filesValue !== null) {
+    if (!Array.isArray(filesValue)) {
+      throw new Error("升级 checkpoint files 必须是数组");
+    }
+    for (const entry of filesValue) {
+      const item = record(entry, "files 条目");
+      const name = stringValue(item.name, "files.name");
+      const sha256 = stringValue(item.sha256, "files.sha256");
+      if (name === "" || name.includes("/") || name.includes("\\") || name.startsWith(".")) {
+        throw new Error(`升级 checkpoint 文件名非法：${name}`);
+      }
+      if (!/^[0-9a-f]{64}$/.test(sha256)) {
+        throw new Error(`升级 checkpoint 文件摘要非法：${name}`);
+      }
+      files.push({ name, sha256 });
+    }
+  }
+  const stagedDirValue = root.files_staged_dir;
+  if (
+    stagedDirValue !== undefined && stagedDirValue !== null &&
+    typeof stagedDirValue !== "string"
+  ) {
+    throw new Error("升级 checkpoint files_staged_dir 非法");
+  }
+  const migrationStartedValue = root.migration_started;
+  if (
+    migrationStartedValue !== undefined &&
+    typeof migrationStartedValue !== "boolean"
+  ) {
+    throw new Error("升级 checkpoint migration_started 非法");
+  }
   return {
     schema_version: UPGRADE_STATE_SCHEMA_VERSION,
     run_id: runId,
@@ -168,6 +234,9 @@ export function validateUpgradeState(value: unknown): UpgradeState {
     release_set_release: releaseSetRelease as string | null,
     error: error as string | null,
     updated_at: updatedAt,
+    files,
+    files_staged_dir: (stagedDirValue as string | null | undefined) ?? null,
+    migration_started: migrationStartedValue === true,
   };
 }
 

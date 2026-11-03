@@ -71,7 +71,7 @@ Deno.test({
         set: { problems: 1 },
       });
     await assertRejects(() =>
-      importDomainTraining(target.domain.slug, trainingId, target.owner)
+      copyDomainTraining(target.domain.slug, trainingId, target.owner)
     );
     assertEquals(
       (await db.select().from(problems).where(
@@ -88,7 +88,7 @@ Deno.test({
     await db.update(domainLimits).set({ problems: 5 }).where(
       eq(domainLimits.domain_id, target.domain.id),
     );
-    const copied = await importDomainTraining(
+    const copied = await copyDomainTraining(
       target.domain.slug,
       trainingId,
       target.owner,
@@ -114,7 +114,7 @@ Deno.test({
     );
   },
 });
-import { importDomainTraining } from "../../../problems/services/workspace/training-sharing.ts";
+import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
 import { readDomainTraining } from "../../../problems/services/workspace/training-access.ts";
 
 Deno.test({

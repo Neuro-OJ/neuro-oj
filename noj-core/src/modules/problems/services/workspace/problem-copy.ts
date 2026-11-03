@@ -20,6 +20,7 @@ import {
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
 import {
   assertStorageObjectBindable,
   compensateUploadedObject,
@@ -180,6 +181,9 @@ export async function commitDomainProblemCopy(
   tx: DbTx,
   prepared: PreparedProblemCopy,
 ) {
+  // 锁顺序固定为“账号先于域”：成员治理、账号注销与创建路径都先锁账号行，
+  // 复制若先锁域再经创建服务锁账号会形成反向等待。多个域按 ID 排序。
+  await lockActiveWorkspaceAccount(tx, prepared.actorId);
   await tx.select({ id: domains.id }).from(domains).where(
     inArray(domains.slug, [prepared.sourceSlug, prepared.targetSlug]),
   ).orderBy(asc(domains.id)).for("update");

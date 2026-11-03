@@ -1,21 +1,29 @@
 /**
- * 授权模型切换的旧库门禁。
+ * 授权模型切换的旧库门禁与迁移 ledger 校验。
  *
- * 本版本只支持全新初始化：既有业务库必须被明确拒绝，而不是通过列默认值
- * 把旧管理员悄悄降级为普通用户。检查在迁移锁内、调用 Drizzle migrator
- * 之前执行，因此失败时不会施加任何 DDL。
+ * 本版本只支持全新初始化：既有旧授权模型库必须被明确拒绝，而不是通过列
+ * 默认值把旧管理员悄悄降级为普通用户。检查在迁移锁内、调用 Drizzle
+ * migrator 之前执行，因此失败时不会施加任何 DDL。
+ *
+ * 两种校验模式：
+ * - `startup`（HTTP 启动）：ledger 必须与打包迁移集完全一致；
+ * - `pre-migration`（`db migrate` / `db check-upgrade`）：允许 ledger 是
+ *   打包迁移集的合法已应用前缀，但必须逐条核对 hash、时间戳与顺序。
  *
  * 判定口径：
- * - 没有迁移 ledger 且没有 NOJ 业务表 → 允许（空库全新建库）。
- * - ledger 已包含切换迁移 → 允许（重复执行或后续正常迁移）。
- * - ledger 停留在切换迁移之前 → 拒绝（旧授权模型无法无损转换）。
- * - 有 NOJ 表但缺 ledger、未知迁移或历史漂移 → 拒绝。
+ * - 没有 ledger 且没有 NOJ 业务表 → 允许（空库全新建库）。
+ * - ledger 是合法前缀且已包含切换迁移 → 允许（重复执行或后续正常迁移）。
+ * - ledger 是合法前缀但停留在切换迁移之前 → 拒绝（旧授权模型无法无损转换）。
+ * - ledger 存在发布集之外的记录、缺中间记录、同条数漂移、未知历史 → 拒绝。
  * - 查询失败 → 拒绝，不把无法判断当成空库。
  */
 import { sql } from "drizzle-orm";
 import { getDb } from "./connection.ts";
 import { resolveMigrationsDirectory } from "./migrate.ts";
-import { resolve } from "jsr:@std/path@^1";
+import {
+  type ExpectedMigration,
+  readExpectedMigrations,
+} from "./schema-compat.ts";
 
 /**
  * 引入单值平台/域角色并改写审计动作的迁移 tag。
@@ -32,42 +40,26 @@ export class LegacyDatabaseError extends Error {
   }
 }
 
-interface JournalEntry {
-  tag?: unknown;
+/** 校验模式：启动期要求完全一致，迁移前允许合法前缀。 */
+export type MigrationValidationMode = "startup" | "pre-migration";
+
+/** ledger 行；id 顺序即 journal 应用顺序。 */
+export interface MigrationLedgerRow {
+  hash: string;
+  createdAt: string;
 }
 
-interface JournalDocument {
-  entries?: JournalEntry[];
-}
-
-/** 读取打包 journal，返回切换迁移的 0 基下标；找不到即配置错误。 */
-export async function resolveSwitchMigrationIndex(
-  migrationsDir = resolveMigrationsDirectory(),
-): Promise<number> {
-  const path = resolve(migrationsDir, "meta", "_journal.json");
-  let document: JournalDocument;
-  try {
-    document = JSON.parse(await Deno.readTextFile(path)) as JournalDocument;
-  } catch (error) {
-    throw new LegacyDatabaseError(
-      `读取迁移 journal 失败（${path}），无法判断数据库兼容性；迁移已终止`,
-      { cause: error },
-    );
-  }
-  const entries = document.entries;
-  if (!Array.isArray(entries) || entries.length === 0) {
-    throw new LegacyDatabaseError(`迁移 journal 无有效 entries（${path}）`);
-  }
-  const index = entries.findIndex((entry) =>
-    entry?.tag === AUTHORIZATION_SWITCH_MIGRATION_TAG
-  );
-  if (index < 0) {
-    throw new LegacyDatabaseError(
-      `迁移 journal 未包含授权切换迁移 ${AUTHORIZATION_SWITCH_MIGRATION_TAG}`,
-    );
-  }
-  return index;
-}
+/** 业务表清单：用于识别“有结构但没有 ledger”的旧库。 */
+const NOJ_BUSINESS_TABLES = [
+  "users",
+  "domains",
+  "problems",
+  "submissions",
+  "system_settings",
+  "domain_memberships",
+  "domain_creation_requests",
+  "audit_logs",
+] as const;
 
 interface ScalarRow {
   value?: unknown;
@@ -78,11 +70,81 @@ async function scalar(query: ReturnType<typeof sql>): Promise<number> {
   return Number(rows[0]?.value ?? 0);
 }
 
+/**
+ * 纯校验：比较打包迁移集与实际 ledger。
+ *
+ * 返回错误信息，合法时返回 null。逐条比较 hash 与 created_at，因此“条数相同
+ * 但历史漂移”也会被拒绝；未知记录、缺中间记录同样拒绝。
+ */
+export function validateMigrationLedger(
+  expected: ExpectedMigration[],
+  actual: MigrationLedgerRow[],
+  mode: MigrationValidationMode,
+): string | null {
+  if (expected.length === 0) {
+    return "打包迁移集为空，无法判断数据库兼容性";
+  }
+  if (actual.length > expected.length) {
+    return `数据库迁移 ledger 存在发布集之外的记录（期望最多 ${expected.length} 条，实际 ${actual.length} 条）`;
+  }
+  for (let index = 0; index < actual.length; index++) {
+    const wanted = expected[index]!;
+    const found = actual[index]!;
+    if (wanted.hash !== found.hash || wanted.createdAt !== found.createdAt) {
+      return `数据库迁移 ledger 第 ${
+        index + 1
+      } 条不匹配（${wanted.tag}）：期望 hash=${wanted.hash}, created_at=${wanted.createdAt}；实际 hash=${found.hash}, created_at=${found.createdAt}`;
+    }
+  }
+  if (mode === "startup" && actual.length !== expected.length) {
+    return `数据库迁移 ledger 尚未执行最新迁移（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
+  }
+  return null;
+}
+
+/** 读取 ledger；表不存在时返回空数组。 */
+async function readLedger(): Promise<MigrationLedgerRow[]> {
+  const rows = await getDb().execute(sql`
+    SELECT migration_ledger.hash,
+      migration_ledger.created_at::text AS created_at
+    FROM drizzle.__drizzle_migrations AS migration_ledger
+    ORDER BY migration_ledger.id ASC
+  `) as unknown as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    hash: String(row.hash ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
 /** 在迁移锁内执行只读门禁；任何判断失败都抛错而不是放行。 */
-export async function assertDatabaseSupportsAuthorizationSwitch(): Promise<
-  void
-> {
-  const switchIndex = await resolveSwitchMigrationIndex();
+export async function assertDatabaseSupportsAuthorizationSwitch(
+  options: {
+    mode?: MigrationValidationMode;
+    migrationsDir?: string;
+  } = {},
+): Promise<void> {
+  const mode = options.mode ?? "pre-migration";
+  let expected: ExpectedMigration[];
+  try {
+    expected = await readExpectedMigrations(
+      options.migrationsDir ?? resolveMigrationsDirectory(),
+    );
+  } catch (error) {
+    throw new LegacyDatabaseError(
+      `读取打包迁移 journal/SQL 失败：${
+        error instanceof Error ? error.message : String(error)
+      }；迁移已终止`,
+      { cause: error },
+    );
+  }
+  const switchIndex = expected.findIndex((entry) =>
+    entry.tag === AUTHORIZATION_SWITCH_MIGRATION_TAG
+  );
+  if (switchIndex < 0) {
+    throw new LegacyDatabaseError(
+      `迁移 journal 未包含授权切换迁移 ${AUTHORIZATION_SWITCH_MIGRATION_TAG}`,
+    );
+  }
 
   let ledgerExists: boolean;
   let nojTableCount: number;
@@ -94,10 +156,9 @@ export async function assertDatabaseSupportsAuthorizationSwitch(): Promise<
       SELECT count(*)::int AS value
       FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name IN (
-          'users', 'domains', 'problems', 'submissions',
-          'system_settings', 'domain_memberships', 'user_roles'
-        )
+        AND table_name IN (${
+      sql.join(NOJ_BUSINESS_TABLES.map((name) => sql`${name}`), sql`, `)
+    })
     `);
   } catch (error) {
     throw new LegacyDatabaseError(
@@ -114,11 +175,9 @@ export async function assertDatabaseSupportsAuthorizationSwitch(): Promise<
     );
   }
 
-  let applied: number;
+  let actual: MigrationLedgerRow[];
   try {
-    applied = await scalar(sql`
-      SELECT count(*)::int AS value FROM drizzle.__drizzle_migrations
-    `);
+    actual = await readLedger();
   } catch (error) {
     throw new LegacyDatabaseError(
       "读取迁移 ledger 失败，拒绝继续迁移（不把无法判断当成空库）",
@@ -126,17 +185,27 @@ export async function assertDatabaseSupportsAuthorizationSwitch(): Promise<
     );
   }
 
-  if (applied === 0) {
+  if (actual.length === 0) {
     // 有 ledger 表但没有记录：等同旧库漂移，除非确实没有任何业务表。
     if (nojTableCount === 0) return;
     throw new LegacyDatabaseError(
       "迁移 ledger 为空但存在 NOJ 业务表：历史漂移，此版本仅支持全新初始化",
     );
   }
-  if (applied > switchIndex) return;
-  throw new LegacyDatabaseError(
-    "检测到旧授权模型数据库（ledger 停留在授权切换迁移之前）：" +
-      "此版本仅支持全新初始化，不提供旧角色/成员授权的数据转换。" +
-      "请导出备份后使用新数据库重新安装，或回退到上一版本",
-  );
+
+  const mismatch = validateMigrationLedger(expected, actual, mode);
+  if (mismatch) {
+    throw new LegacyDatabaseError(
+      `${mismatch}。迁移已终止，未执行任何 DDL；此版本仅支持全新初始化，` +
+        "请核对发布集与数据库迁移历史后重试",
+    );
+  }
+
+  if (actual.length <= switchIndex) {
+    throw new LegacyDatabaseError(
+      "检测到旧授权模型数据库（ledger 停留在授权切换迁移之前）：" +
+        "此版本仅支持全新初始化，不提供旧角色/成员授权的数据转换。" +
+        "请导出备份后使用新数据库重新安装，或回退到上一版本",
+    );
+  }
 }

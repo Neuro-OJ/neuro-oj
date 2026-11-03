@@ -382,6 +382,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     );
     assertEquals(dockerArgs[0], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -393,6 +395,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     ]);
     assertEquals(dockerArgs[1], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -405,6 +409,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     // 逐字跑 bash 的两段 up（--wait-timeout 180 --remove-orphans + nginx 刷新）。
     assertEquals(dockerArgs[2], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -420,6 +426,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     ]);
     assertEquals(dockerArgs[3], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -1776,6 +1784,8 @@ Deno.test("start：stopped → wait_for_stack 两段 up（参数逐元素精确�
     assertEquals(ups, [
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         envFile,
         "-f",
@@ -1789,6 +1799,8 @@ Deno.test("start：stopped → wait_for_stack 两段 up（参数逐元素精确�
       ],
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         envFile,
         "-f",
@@ -1850,6 +1862,8 @@ Deno.test("stop：running → compose stop，且绝不使用 down/-v（数据卷
     assert(stopCall !== undefined, "running 时必须执行 compose stop");
     assertEquals(stopCall.args, [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       join(dir, ENV_FILE),
       "-f",
@@ -2742,6 +2756,8 @@ Deno.test("logs core：服务名透传，且 --no-color 排在服务名之前、
       logsCall(runs),
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         join(dir, ENV_FILE),
         "-f",
@@ -4514,7 +4530,8 @@ Deno.test("update：升级时 prepare_and_check 与 install 同源（六步前�
     const config = events.findIndex((e) => e.detail.includes("config --quiet"));
     assert(config >= 0, "必须跑 compose config 前置校验");
     // 参数形状由 T10 唯一保证：--env-file / -f 齐全，judge 关闭时不带 profile
-    assertStringIncludes(events[config]!.detail, "compose --env-file");
+    assertStringIncludes(events[config]!.detail, "compose --project-directory");
+    assertStringIncludes(events[config]!.detail, "--env-file");
     assertStringIncludes(events[config]!.detail, "-f");
     assertEquals(events[config]!.detail.includes("--profile judge"), false);
   } finally {

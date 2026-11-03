@@ -34,6 +34,8 @@ export function targetVersionMissingHint(envFile: string): string {
  * `prepareLifecycle` 提供）：compose 文件路径、默认生效 env 文件及其键值。
  */
 export interface TargetEnvSource {
+  /** 归一化安装目录；compose 的 `--project-directory` 固定使用它。 */
+  dir: string;
   /** compose 文件路径（前置校验已确认存在）。 */
   composeFile: string;
   /** 默认生效 env 文件（通常为 `.env.prod`）。 */
@@ -114,6 +116,8 @@ export async function resolveTargetConfig(
       judge,
       composeOptions: {
         composeFile: stagedComposeFile ?? prepared.composeFile,
+        // 即使 `-f` 指向暂存文件，项目目录也固定为安装目录，保证相对挂载稳定。
+        projectDirectory: prepared.dir,
         envFile,
         judge,
       },

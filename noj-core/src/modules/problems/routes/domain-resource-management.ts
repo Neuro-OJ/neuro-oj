@@ -13,6 +13,7 @@ import {
   parseJsonBody,
 } from "../../../shared/http/request.ts";
 import { listDomainProblemBindings } from "../services/workspace/problem-bindings.ts";
+import { listDomainCopySources } from "../services/workspace/copy-sources.ts";
 import type { EffectiveVersionPolicy } from "../../../shared/versioning/types.ts";
 
 /** 域资源管理接口只返回来源标识及授权配置，不返回源题评测数据。 */
@@ -30,6 +31,28 @@ function revision(header: string | undefined) {
   }
   return Number(match[1]);
 }
+domainResourceManagementRouter.get(
+  `${prefix}/copy-sources`,
+  authMiddleware,
+  async (c) => {
+    const kind = c.req.query("kind");
+    if (kind !== "problem" && kind !== "training") {
+      throw new BadRequestError("kind 必须是 problem 或 training");
+    }
+    const { page, perPage } = parsePagination(c, { perPageField: "limit" });
+    return c.json(
+      await listDomainCopySources({
+        slug: c.req.param("slug")!,
+        actorId: c.var.userId,
+        kind,
+        page,
+        limit: perPage,
+        sourceSlug: c.req.query("source_slug"),
+        keyword: c.req.query("keyword"),
+      }),
+    );
+  },
+);
 domainResourceManagementRouter.get(
   `${prefix}/problem-bindings`,
   authMiddleware,

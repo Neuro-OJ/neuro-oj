@@ -23,9 +23,10 @@ import {
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
 
-/** 跨域题单导入复制有序集合和独立题目，整个集合在一个事务中发布。 */
-export async function importDomainTraining(
+/** 跨域题单复制：独立复制有序集合和题目，整个集合在一个事务中发布。 */
+export async function copyDomainTraining(
   slug: string,
   trainingId: string,
   actorId: string,
@@ -43,16 +44,11 @@ export async function importDomainTraining(
   if (source.training.state !== "published") {
     throw new BadRequestError("只能复制已发布题单");
   }
+  // 源域要求管理题单的能力；创建者身份不再额外授予或取消权限。
   const sourceAccess = await loadWorkspace(source.domain.slug, actorId, {
     write: true,
   });
-  assertWorkspacePermission(
-    sourceAccess.context,
-    sourceAccess.context.domainPermissions.has("training:write_any") ||
-      source.training.created_by !== actorId
-      ? "training:write_any"
-      : "training:write_any",
-  );
+  assertWorkspacePermission(sourceAccess.context, "training:write_any");
   const items = await db.select({
     problem: problems,
     position: trainingProblems.position,
@@ -82,6 +78,9 @@ export async function importDomainTraining(
       }
     }
     return await db.transaction(async (tx) => {
+      // 与题目复制一致：账号锁先于域锁，多个域按 ID 排序，避免与成员治理
+      // 和账号注销形成反向等待。
+      await lockActiveWorkspaceAccount(tx, actorId);
       await tx.select({ id: domains.id }).from(domains).where(
         inArray(domains.id, [source.domain.id, target.domain.id]),
       ).orderBy(asc(domains.id)).for("update");
@@ -101,13 +100,7 @@ export async function importDomainTraining(
       if (!current || current.revision !== source.training.revision) {
         throw new ConflictError("源题单已变化，请重新复制");
       }
-      assertWorkspacePermission(
-        currentSource.context,
-        currentSource.context.domainPermissions.has("training:write_any") ||
-          current.created_by !== actorId
-          ? "training:write_any"
-          : "training:write_any",
-      );
+      assertWorkspacePermission(currentSource.context, "training:write_any");
       const ids = new Map<string, string>();
       for (const [id, prepared] of copies) {
         ids.set(

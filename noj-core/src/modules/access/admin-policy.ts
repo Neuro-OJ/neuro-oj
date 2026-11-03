@@ -10,7 +10,7 @@
  */
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { DbTx } from "../../shared/db/executor.ts";
-import { users } from "../../shared/db/schema.ts";
+import { userBans, users } from "../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
 import {
   BadRequestError,
@@ -65,6 +65,56 @@ export async function countAvailableAdminsTx(
   return Number(row?.count ?? 0);
 }
 
+/**
+ * 事务内断言“至少还有一个可用管理员”，否则抛 409 LAST_ADMIN。
+ *
+ * 所有可能减少可用管理员的写入口（降权、平台封禁、注销）都必须在取得
+ * 管理员变更锁之后调用它，不能用事务外的普通 SELECT 计数代替。
+ */
+export async function assertAvailableAdminRemainsTx(
+  tx: DbTx,
+  excludeUserId: string,
+): Promise<void> {
+  const remaining = await countAvailableAdminsTx(tx, excludeUserId);
+  if (remaining < 1) {
+    throw new ConflictError("至少保留一个可用管理员", "LAST_ADMIN");
+  }
+}
+
+/**
+ * 事务内断言操作者当前仍是可用的平台管理员。
+ *
+ * 调用方必须已经持有管理员变更锁：降权、封禁、注销都会改变这一判定，
+ * 只有锁内重读才能保证已通过 HTTP 前置检查的请求不会用旧身份继续写入。
+ */
+export async function assertActiveAdminActorTx(
+  tx: DbTx,
+  actorId: string,
+): Promise<void> {
+  // root 是系统账号：不可登录、不可删除、不可封禁，作为受控系统操作者放行；
+  // 它不计入“可用管理员”数量（见 countAvailableAdminsTx）。
+  if (actorId === ROOT_USER_ID) return;
+  const [account] = await tx.select({
+    role: users.role,
+    deleted_at: users.deleted_at,
+  }).from(users).where(eq(users.id, actorId)).limit(1);
+  if (!account || account.deleted_at || account.role !== "admin") {
+    throw new ForbiddenError("需要管理员权限");
+  }
+  const now = new Date().toISOString();
+  const [ban] = await tx.select({ id: userBans.id }).from(userBans).where(
+    and(
+      eq(userBans.user_id, actorId),
+      eq(userBans.scope, "platform"),
+      isNull(userBans.unbanned_at),
+      sql`(${userBans.banned_until} IS NULL OR ${userBans.banned_until} > ${now})`,
+    ),
+  ).limit(1);
+  if (ban) {
+    throw new ForbiddenError("当前账号处于平台封禁中");
+  }
+}
+
 /** 平台角色变更结果；包含旧值供审计记录真实的 from/to。 */
 export interface PlatformRoleChangeResult {
   id: string;
@@ -95,9 +145,7 @@ export async function setPlatformRoleTx(
   }
 
   await lockAdminMutationsTx(tx);
-  if (!(await actorIsAdminTx(tx, params.actorId))) {
-    throw new ForbiddenError("需要管理员权限");
-  }
+  await assertActiveAdminActorTx(tx, params.actorId);
 
   const [target] = await tx.select({
     id: users.id,
@@ -114,10 +162,7 @@ export async function setPlatformRoleTx(
     return { id: target.id, role, previous_role: previousRole };
   }
   if (previousRole === "admin" && role === "user") {
-    const remaining = await countAvailableAdminsTx(tx, target.id);
-    if (remaining < 1) {
-      throw new ConflictError("至少保留一个可用管理员", "LAST_ADMIN");
-    }
+    await assertAvailableAdminRemainsTx(tx, target.id);
   }
   await tx.update(users).set({
     role,

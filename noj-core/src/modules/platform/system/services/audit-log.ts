@@ -21,6 +21,7 @@ export type {
   AuditLogListFilter,
 } from "../../types/audit-log.ts";
 import type { AuditAction, AuditDetail } from "../../types/audit-log.ts";
+import type { DbTx } from "../../../../shared/db/executor.ts";
 
 function contextActor(): Actor | null {
   const context = getRequestContext();
@@ -32,6 +33,7 @@ export async function logAudit(
   action: AuditAction,
   detail: AuditDetail,
   target?: { type: string; id: string },
+  tx?: DbTx,
 ): Promise<void> {
   try {
     const context = getRequestContext();
@@ -44,6 +46,7 @@ export async function logAudit(
       action,
       detail,
       target,
+      tx,
     );
   } catch (error) {
     if (

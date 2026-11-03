@@ -66,8 +66,8 @@ import {
   saveDomainTraining,
 } from "../problems/services/workspace/trainings.ts";
 import {
-  importDomainTraining,
-} from "../problems/services/workspace/training-sharing.ts";
+  copyDomainTraining,
+} from "../problems/services/workspace/training-copy.ts";
 import {
   saveOiDraft,
   type SaveOiDraftResult,
@@ -370,12 +370,12 @@ export function saveDomainTrainingCommand(
   return saveDomainTraining(slug, actor.userId, input, target);
 }
 
-export function importDomainTrainingCommand(
+export function copyDomainTrainingCommand(
   actor: UserActor,
   slug: string,
   trainingId: string,
 ) {
-  return importDomainTraining(slug, trainingId, actor.userId);
+  return copyDomainTraining(slug, trainingId, actor.userId);
 }
 
 /** 标签管理命令保留显式操作者；审计观测仍由 HTTP composition 注入。 */

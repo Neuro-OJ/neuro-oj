@@ -16,7 +16,7 @@ import {
   readDomainTraining,
   saveDomainTraining,
 } from "../../../problems/index.ts";
-import { importDomainTraining } from "../../../problems/services/workspace/training-sharing.ts";
+import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
 import {
   createAssignment,
   getAssignment,
@@ -40,7 +40,7 @@ async function fixture() {
     visibility: "private",
     problems: [String(problem.number)],
   });
-  const copied = await importDomainTraining(
+  const copied = await copyDomainTraining(
     f.school.slug,
     training.id,
     f.owner,
@@ -125,7 +125,7 @@ Deno.test("题单复制：学生无创建发布权限，失败不留下副本；
     eq(problems.domain_id, f.school.id),
   );
   await assertRejects(
-    () => importDomainTraining(f.school.slug, f.sourceTraining.id, f.student),
+    () => copyDomainTraining(f.school.slug, f.sourceTraining.id, f.student),
     ForbiddenError,
   );
   assertEquals(

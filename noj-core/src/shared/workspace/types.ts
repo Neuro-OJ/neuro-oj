@@ -15,8 +15,8 @@ export type DomainStatus = "active" | "archived" | "suspended";
 export const DOMAIN_PRESETS = ["community", "education", "team"] as const;
 /** 新建域及创建申请只接受三种类型。 */
 export type DomainPreset = typeof DOMAIN_PRESETS[number];
-/** 存量自定义域保留读取，转换须由管理员明确决定。 */
-export type StoredDomainPreset = DomainPreset | "custom";
+/** 数据库列沿用的类型别名；与 `DomainPreset` 完全一致，不再保留自定义类型。 */
+export type StoredDomainPreset = DomainPreset;
 /** 由域类型决定、受实例政策约束的能力。 */
 export interface DomainFeatures {
   community: boolean;

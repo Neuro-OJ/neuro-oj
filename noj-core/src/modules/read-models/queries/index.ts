@@ -1,11 +1,5 @@
-export {
-  getGlobalRankings,
-  getMyRanking,
-} from "./services/rankings.ts";
-export type {
-  RankingRow,
-  RankingsPage,
-} from "./services/rankings.ts";
+export { getGlobalRankings, getMyRanking } from "./services/rankings.ts";
+export type { RankingRow, RankingsPage } from "./services/rankings.ts";
 export {
   _resetStatsCacheForTest,
   applyNewResult,

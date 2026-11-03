@@ -2,7 +2,11 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
-import { domainMemberships, domains, users } from "../../../../../shared/db/schema.ts";
+import {
+  domainMemberships,
+  domains,
+  users,
+} from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import { signToken } from "../../../../access/identity/index.ts";

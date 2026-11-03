@@ -150,7 +150,7 @@ Deno.test({
       await createSubmission(userC, problem1, "fail");
       await createSubmission(userC, problem2, "error");
 
-          const result = await getGlobalRankings({ page: 1, limit: 100 });
+      const result = await getGlobalRankings({ page: 1, limit: 100 });
       const aRow = result.data.find((r) => r.user_id === userA);
       const bRow = result.data.find((r) => r.user_id === userB);
       const cRow = result.data.find((r) => r.user_id === userC);
@@ -198,7 +198,7 @@ Deno.test({
       await createSubmission(userE, problem2, "fail");
       await createSubmission(userE, problem2, "fail");
 
-          const result = await getGlobalRankings({ page: 1, limit: 100 });
+      const result = await getGlobalRankings({ page: 1, limit: 100 });
       const dRow = result.data.find((r) => r.user_id === userD);
       const eRow = result.data.find((r) => r.user_id === userE);
 
@@ -223,7 +223,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 不创建 root 用户的提交（root 已由 00_migrate_test 创建）
-      const result = await getGlobalRankings({ page: 1, limit: 100 });
+    const result = await getGlobalRankings({ page: 1, limit: 100 });
     const rootRow = result.data.find((r) => r.user_id === "0");
     assertEquals(rootRow, undefined, "root 用户不应出现在榜单中");
   },
@@ -239,7 +239,7 @@ Deno.test({
 
     try {
       await createSubmission(userF, problem1, "pass");
-          const result = await getMyRanking(userF);
+      const result = await getMyRanking(userF);
       assertExists(result);
       assertEquals(result!.user_id, userF);
       assertEquals(result!.solved_count, 1);
@@ -264,7 +264,7 @@ Deno.test({
     try {
       // 仅 fail/error，无通过
       await createSubmission(userG, problem1, "fail");
-          const result = await getMyRanking(userG);
+      const result = await getMyRanking(userG);
       assertEquals(result, null);
     } finally {
       await cleanupUser(userG);
@@ -283,7 +283,7 @@ Deno.test({
 
     try {
       await createSubmission(userH, problem1, "pass");
-          const page1 = await getGlobalRankings({ page: 1, limit: 50 });
+      const page1 = await getGlobalRankings({ page: 1, limit: 50 });
       const page2 = await getGlobalRankings({ page: 2, limit: 50 });
 
       // page1 含 userH，page2 仍可能含 userH（如果 global rank ≤ 50）
@@ -309,7 +309,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-      const result = await getGlobalRankings({ page: 1, limit: 500 });
+    const result = await getGlobalRankings({ page: 1, limit: 500 });
     // 验证 limit=500 调用不抛错（service 层内部截断到 100）
     assertEquals(result.data.length <= 100, true);
   },
@@ -371,7 +371,7 @@ Deno.test({
         "pass",
         includedContestId,
       );
-    
+
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const row = result.data.find((item) => item.user_id === userId);
       assertExists(row);

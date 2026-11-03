@@ -31,12 +31,14 @@ async function freshSetup() {
   await db.delete(users).where(eq(users.id, ADMIN2_ID));
   await db.delete(users).where(eq(users.id, TARGET_ID));
 
-  // 插入两个管理员（第二个确保 ban 操作不触发"最后一个 admin"保护）
+  // 插入两个管理员（第二个确保 ban 操作不触发"最后一个 admin"保护）。
+  // 操作者身份由锁内重读 users.role 判定，因此这里必须写入真实平台角色。
   await db.insert(users).values({
     id: ADMIN_ID,
     username: `ban-admin-${TS}`,
     email: `ban-admin-${TS}@test.local`,
     password_hash: "x",
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -45,6 +47,7 @@ async function freshSetup() {
     username: `ban-admin2-${TS}`,
     email: `ban-admin2-${TS}@test.local`,
     password_hash: "x",
+    role: "admin",
     created_at: now,
     updated_at: now,
   });

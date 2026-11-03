@@ -84,6 +84,7 @@ export {
 export type { ComposeEvaluationAdmissionInput } from "./evaluations.ts";
 export {
   addTrainingProblemCommand,
+  copyDomainTrainingCommand,
   createDomainProblemCommand,
   createObjectiveQuestionCommand,
   createProblemCommand,
@@ -98,7 +99,6 @@ export {
   importDomainProblemBundleCommand,
   importDomainProblemCommand,
   importDomainProblemDraftBundleCommand,
-  importDomainTrainingCommand,
   importProblemBundleCommand,
   mergeTagsCommand,
   publishDomainProblemVersionCommand,

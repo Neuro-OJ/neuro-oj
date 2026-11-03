@@ -68,12 +68,10 @@ const handler = async (c: Context<Env>) => {
   const config = getCommunityConfig();
   const instancePolicy = await getInstanceResourcePolicy();
   const communityEnabled = instancePolicy.modules.community &&
-    (access === null
-      ? false
-      : effectiveDomainConfiguration(
-        access.domain.preset,
-        access.domain.configuration,
-      ).features.community === true) &&
+    (access === null ? false : effectiveDomainConfiguration(
+      access.domain.preset,
+      access.domain.configuration,
+    ).features.community === true) &&
     config.enabled &&
     (config.solutions_enabled || config.discussions_enabled);
   const ctx = {

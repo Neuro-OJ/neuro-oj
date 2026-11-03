@@ -157,4 +157,3 @@ Deno.test("绑定沿革：版本和绑定必须同题，历史绑定阻止级联
   );
   assertEquals((await getDb().select().from(problemBindingHistory)).length, 1);
 });
-

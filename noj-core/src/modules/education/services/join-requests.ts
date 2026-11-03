@@ -61,9 +61,9 @@ async function joinTarget(
   }
   const enabled = write ||
     effectiveDomainConfiguration(
-      workspace.domain.preset,
-      workspace.domain.configuration,
-    ).features.classroom === true &&
+            workspace.domain.preset,
+            workspace.domain.configuration,
+          ).features.classroom === true &&
       (await getInstanceResourcePolicy(executor)).modules.classroom;
   const canApply = classroom.status === "active" &&
     workspace.domain.status === "active" &&

@@ -44,9 +44,7 @@ import {
   getInstanceAccessPolicy,
   getInstanceResourcePolicy,
 } from "./workspace/services/instance.ts";
-import {
-  combineDomainLimits,
-} from "../../shared/workspace/resource-policy.ts";
+import { combineDomainLimits } from "../../shared/workspace/resource-policy.ts";
 
 export interface DomainWriteMeta extends AccessAuditMeta {}
 
@@ -365,7 +363,9 @@ export async function updateDomainTx(
   if (patch.configuration) {
     // 能力和首页是派生值，不接受任何写入（即使写入值与推导值相同），
     // 避免客户端把"可写"误当成契约。
-    if ("features" in patch.configuration || "homepage" in patch.configuration) {
+    if (
+      "features" in patch.configuration || "homepage" in patch.configuration
+    ) {
       throw new BadRequestError(
         "域能力和首页由固定类型决定，不接受配置写入",
         "DOMAIN_TYPE_FIXED",

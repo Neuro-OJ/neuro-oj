@@ -27,7 +27,8 @@ export const domains = pgTable("domains", {
   status: text("status").$type<DomainStatus>().notNull().default("active"),
   owner_id: text("owner_id").notNull().references(() => users.id),
   preset: text("preset").$type<StoredDomainPreset>().notNull(),
-  configuration: jsonb("configuration").$type<StoredDomainConfiguration>().notNull(),
+  configuration: jsonb("configuration").$type<StoredDomainConfiguration>()
+    .notNull(),
   revision: integer("revision").notNull().default(0),
   next_problem_number: integer("next_problem_number").notNull().default(1001),
   created_at: text("created_at").notNull(),
@@ -43,7 +44,7 @@ export const domains = pgTable("domains", {
   ),
   presetCheck: check(
     "domains_preset_check",
-    sql`${t.preset} IN ('community', 'education', 'team', 'custom')`,
+    sql`${t.preset} IN ('community', 'education', 'team')`,
   ),
   revisionCheck: check(
     "domains_revision_check",

@@ -126,7 +126,7 @@ export async function readDomainTraining(
       display_ref: item.source.id === resource.domain.id
         ? String(item.problem.number)
         : qualified,
-            position: item.position,
+      position: item.position,
     });
   }
   return {
@@ -141,7 +141,7 @@ export async function readDomainTraining(
     state: resource.training.state,
     can_edit: resource.platformAdmin ||
       resource.context.domainPermissions.has("training:write_any"),
-        items,
+    items,
   };
 }
 
@@ -233,7 +233,7 @@ export async function listDomainTrainings(
           (all ||
             workspace.context.domainPermissions.has("training:write_any")),
         // 跨域共享已停用：只能复制到目标域，列表永远不提供共享入口。
-          };
+      };
     }),
   };
 }
