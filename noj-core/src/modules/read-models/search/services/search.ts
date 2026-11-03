@@ -46,8 +46,7 @@ function safeMetadata(ctx: SearchPermissionContext) {
   SELECT jsonb_build_object(
    'problem_id',current_problem.id,'source_domain_id',${sourceId},'source_domain_slug',${sourceSlug},
    'number',current_problem.number,'qualified_ref',${qualifiedRef},
-   'display_ref',CASE WHEN ${sourceId}=${domainId} THEN current_problem.number::text ELSE ${qualifiedRef} END,
-   'is_shared',${sourceId}<>${domainId})
+   'display_ref',CASE WHEN ${sourceId}=${domainId} THEN current_problem.number::text ELSE ${qualifiedRef} END)
   FROM problems current_problem LEFT JOIN domains source_domain ON source_domain.id=current_problem.domain_id
   WHERE current_problem.id=search_entries.entity_id))
  ELSE metadata END`;
