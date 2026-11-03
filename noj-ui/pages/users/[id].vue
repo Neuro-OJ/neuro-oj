@@ -61,9 +61,8 @@ interface UserProfile {
     difficulty: string
     created_at: string
   }[]
-  community_stats: { solution_count: number; moment_count: number }
+  community_stats: { solution_count: number }
   solutions: { id: string; public_id?: string; title: string; created_at: string }[]
-  moments: { id: string; public_id?: string; content: string; created_at: string }[]
 }
 
 interface ProfileResponse {
@@ -273,12 +272,11 @@ function formatDate(iso: string): string {
         </div>
       </div>
 
-      <!-- 我的创作：题解 + 动态 -->
+      <!-- 我的创作：题解 -->
       <div class="rounded-xl border border-border bg-white px-5 py-4">
         <h3 class="text-sm font-semibold text-text">我的创作</h3>
         <div class="mt-3 flex items-center gap-8">
           <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
-          <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">动态</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
         </div>
       </div>
 
@@ -338,7 +336,7 @@ function formatDate(iso: string): string {
         </template>
       </section>
 
-      <section v-if="profile.solutions.length || profile.moments.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <section v-if="profile.solutions.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-messages-square" class="text-primary size-4.5" />
@@ -348,9 +346,6 @@ function formatDate(iso: string): string {
         <div class="divide-y divide-border">
           <NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="publicUrl('post', solution.public_id || solution.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
             <UIcon name="i-lucide-lightbulb" class="size-4 shrink-0" />题解 · {{ solution.title }}
-          </NuxtLink>
-          <NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="publicUrl('post', moment.public_id || moment.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
-            <UIcon name="i-lucide-pen-line" class="size-4 shrink-0" /><span class="line-clamp-1">动态 · {{ moment.content }}</span>
           </NuxtLink>
         </div>
       </section>
