@@ -39,7 +39,6 @@ import {
 interface BenchOptions {
   repeat: number;
   warmup: number;
-  refreshRankings: boolean;
   label: string;
   jsonPath?: string;
   profile: boolean;
@@ -114,7 +113,6 @@ function parseArgs(args: string[]): BenchOptions {
   return {
     repeat: readPositiveInt(args, "--repeat", 30),
     warmup: readPositiveInt(args, "--warmup", 2),
-    refreshRankings: args.includes("--refresh-rankings"),
     label: readString(args, "--label", "bench")!,
     jsonPath: readString(args, "--json"),
     profile: !args.includes("--no-profile"),
@@ -274,7 +272,6 @@ async function main(): Promise<void> {
     const phases = options.profile ? await aggregatePhases(timingDir) : [];
     const result = {
       label: options.label,
-      refreshRankings: options.refreshRankings,
       repeat: options.repeat,
       warmup: options.warmup,
       deno: Deno.version.deno,

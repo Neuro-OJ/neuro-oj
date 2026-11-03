@@ -142,7 +142,6 @@ const RESET_PHASE = {
   root: "core.reset.root",
   workspace: "core.reset.workspace",
   images: "core.reset.images",
-  rankingsRefresh: "core.reset.rankings-refresh",
   invocations: "core.reset.invocations",
 } as const;
 
