@@ -2,7 +2,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   classroomMemberships,
-  domainMemberRoles,
   domainMemberships,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -34,13 +33,8 @@ Deno.test("CSV 分页：初始认证通过后全站封禁，下一页仍即时�
       id: user.membershipId,
       domain_id: f.school.id,
       user_id: user.id,
-      joined_at: now,
-    })),
-  );
-  await f.db.insert(domainMemberRoles).values(
-    extra.map((user) => ({
-      membership_id: user.membershipId,
       role: "member" as const,
+      joined_at: now,
     })),
   );
   await f.db.insert(classroomMemberships).values(

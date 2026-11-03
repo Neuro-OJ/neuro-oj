@@ -8,21 +8,12 @@
  * 依赖 独立测试数据库 + JWT_SECRET（helper 自动 seed RBAC）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
 import {
   createUserToken,
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import {
-  permissions,
-  rolePermissions,
-  roles,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
 
 const ts = Date.now();
 
@@ -267,110 +258,6 @@ Deno.test({
     );
     const active = await activeRes.json();
     assertEquals(active.meta.total, 0);
-  },
-});
-
-Deno.test({
-  name:
-    "announcements route: 仅 announcement:manage 用户（无 full_access）可通过管理端点",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await createUserToken("admin"); // 触发 ensureRbacSeeds
-
-    const db = getDb();
-    // 查 announcement:manage 权限 id
-    const [perm] = await db.select().from(permissions).where(
-      and(
-        eq(permissions.resource, "announcement"),
-        eq(permissions.action, "manage"),
-      ),
-    );
-    if (!perm) throw new Error("announcement:manage 权限未 seed");
-
-    // 创建仅含 announcement:manage 的自定义角色（无 admin:full_access）
-    const roleId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await db.insert(roles).values({
-      id: roleId,
-      name: `ann_operator_${Date.now()}`,
-      description: "公告运营角色（测试）",
-      is_system: false,
-      is_default: false,
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(rolePermissions).values({
-      role_id: roleId,
-      permission_id: perm.id,
-    });
-
-    // 创建用户并关联该角色（无 admin 角色 → 无 admin:full_access）
-    const userId = crypto.randomUUID();
-    await db.insert(users).values({
-      id: userId,
-      username: `ann_op_user_${Date.now()}`,
-      email: `${userId}@test.local`,
-      password_hash: "x",
-      must_change_password: false,
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(userRoles).values({ user_id: userId, role_id: roleId });
-
-    const { signToken } = await import(
-      "../../../access/identity/index.ts"
-    );
-    const token = await signToken({ sub: userId, role: "user" });
-
-    const app = createApp();
-    const res = await app.request("/api/v1/admin/system/announcements", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title: `运营公告-${ts}`, content: "正文" }),
-    });
-    assertEquals(res.status, 201);
-
-    // 管理列表同样放行
-    const listRes = await app.request("/api/v1/admin/system/announcements", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    assertEquals(listRes.status, 200);
-  },
-});
-
-Deno.test({
-  name: "announcements route: RBAC seed 含 announcement:manage 且 admin 拥有",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await createUserToken("admin"); // 触发 ensureRbacSeeds
-
-    const db = getDb();
-    const perm = await db.select().from(permissions).where(
-      and(
-        eq(permissions.resource, "announcement"),
-        eq(permissions.action, "manage"),
-      ),
-    );
-    assertEquals(perm.length, 1);
-
-    // admin 角色显式拥有该权限
-    const adminRole = await db.select().from(roles)
-      .where(eq(roles.name, "admin")).limit(1);
-    assertEquals(adminRole.length, 1);
-    const grants = await db.select().from(rolePermissions).where(
-      and(
-        eq(rolePermissions.role_id, adminRole[0].id),
-        eq(rolePermissions.permission_id, perm[0].id),
-      ),
-    );
-    assertEquals(grants.length, 1);
   },
 });
 

@@ -48,7 +48,7 @@ async function makeUser(tag: string): Promise<string> {
 }
 
 async function makePaper(ownerId: string): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "educator");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
     domain_id: "00000000-0000-4000-8000-000000000001",
@@ -233,7 +233,15 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   });
   assertEquals(contestRead.version_id, v1.version_id);
   assertEquals(contestRead.questions.map((q) => q.id), [q1.key]);
-  // 源题编辑者身份不能替代比赛组织身份获取答案或新草稿。
+  // 源题编辑者身份不能替代比赛组织身份获取答案或新草稿：
+  // 先把作者降为普通成员，验证权限实时读取、无请求级缓存残留。
+  const { domainMemberships } = await import(
+    "../../../../shared/db/schema.ts"
+  );
+  await db.update(domainMemberships).set({ role: "member" }).where(and(
+    eq(domainMemberships.user_id, owner),
+    eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
+  ));
   await db.insert(contestParticipants).values({
     contest_id: contestId,
     user_id: owner,
@@ -315,15 +323,15 @@ Deno.test("客观题答案权限：源题作者角色撤销即时裁剪，匿名
     isAdmin: false,
   });
   assertEquals(editorRead.questions[0].answer, ["A"]);
-  const { domainMemberships, domainMemberRoles } = await import(
+  const { domainMemberships } = await import(
     "../../../../shared/db/schema.ts"
   );
   const [membership] = await db.select().from(domainMemberships).where(and(
     eq(domainMemberships.user_id, owner),
     eq(domainMemberships.domain_id, "00000000-0000-4000-8000-000000000001"),
   ));
-  await db.delete(domainMemberRoles).where(
-    eq(domainMemberRoles.membership_id, membership.id),
+  await db.update(domainMemberships).set({ role: "member" }).where(
+    eq(domainMemberships.id, membership.id),
   );
   const ordinaryRead = await listPaperQuestionsWithAccess(paperId, {
     viewerId: owner,

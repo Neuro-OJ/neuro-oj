@@ -54,10 +54,10 @@ Status: proposed
 | P0 | 基线、分支、签名检查 | 进行中 | 主题 bookmark 已建；RC 集成 PR 未完成（发布前置） |
 | P1 | 冻结对外合同 | 待办 | 端点/DTO/错误语义清单，前后端共用 |
 | P2 | 固定角色与静态能力映射 | 完成 | `shared/access/roles.ts` + `tests/shared/access-roles.test.ts`（10 项表驱动断言通过） |
-| P3 | schema、迁移、旧库拦截 | 进行中 | 迁移 `0132_eager_gamma_corps` 已生成并通过空库验证；迁移锁内旧库门禁 + SQL 数据保护已实现并实测拒绝旧库；RBAC/板块授权等表删除与约束下线待办 |
+| P3 | schema、迁移、旧库拦截 | 完成 | 迁移 `0132`（角色列 + 审计动作）与 `0133`（显式依赖顺序删除 roles/permissions/role_permissions/user_roles/domain_member_roles/community_board_role_grants，不用 CASCADE）；旧库门禁 + SQL 数据保护实测三态符合预期 |
 | P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；注册/OAuth 固定 user；旧 token 伪造 admin 展示角色不影响实际权限（测试覆盖）；封禁/注销共用管理员锁待接 |
-| P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；HTTP 路由改显式 Actor；workspace 重复实现已删（成员/域/邀请/注册），仅保留测试向适配层 |
-| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；root/first-admin/管理员开号/CLI 演练直接写 users.role；测试 helper 已迁移，测试用例适配未完 |
+| P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
+| P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；root/first-admin/管理员开号/CLI 演练直接写 users.role；全仓测试夹具迁移到单值角色；access 396、problems 353、identity 396、contests 126、communication 87、platform 254、read-models 86 全绿；education 4 项（跨域共享，随 P8 删除）与 evaluations 3 项（策略/升级边界）待处理 |
 | P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
 | P8 | 跨域独立复制 | 待办 | problem-copy / training-copy / copy-sources；删共享 |
 | P9 | 删除 moment、时间窗、随机推荐 | 进行中 | 板块自定义角色授权（服务/端点/审计动作）已删除；moment 与随机推荐待处理 |
@@ -102,6 +102,13 @@ Status: proposed
   旧库一律拒绝；迁移 SQL 最前部再对 users/domains/domain_memberships 的非空数据
   做事务内保护。实测三种情形：空库 ALLOWED；ledger 落后于切换迁移 REJECTED；
   有业务表但缺 ledger REJECTED，SQL 保护在破坏性 DDL 前回滚。
+- 2026-11-03（第四轮）：生成 `0133_spotty_the_order` 删除 RBAC 与板块授权表，按依赖顺序去掉
+  `CASCADE`；同步删除权限定义文件、审计动作与后台筛选选项，全仓测试与生产代码不再引用这些表。
+- 2026-11-03（第四轮）：删除创建者特权判定。题目/题单管理统一要求域
+  `problem:write_any`/`training:write_any`；客观题答案只对 `access.mode === "admin"`
+  或实时域权限开放，`owner` 只读模式不再解锁答案。
+- 2026-11-03（第四轮）：请求级能力解析合并 main 域有效角色（社区治理、题单、竞赛查重等
+  旧守卫不再只认平台角色）；域级服务仍走显式 workspace 判定，避免把默认域能力当跨域授权。
 - 2026-11-03（第三轮）：access 域测试完成迁移并通过——
   `deno task test:domain access` 结果为 396 passed / 0 failed；覆盖角色单值写入、
   旧 token 展示角色无效、最后管理员保护、成员角色/负责人交接、板块授权接口移除。

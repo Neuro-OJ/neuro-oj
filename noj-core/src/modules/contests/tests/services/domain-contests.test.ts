@@ -557,7 +557,7 @@ Deno.test({
       outsider = await account();
     await join(a.domain.slug, a.owner, student);
     await join(a.domain.slug, a.owner, editor);
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["editor"]);
+    await setMemberRoles(a.domain.slug, a.owner, editor, ["educator"]);
     const p = await item(a.domain.id, a.owner);
     const contest = await createDomainContest(a.domain.slug, editor, {
       ...input(p.id),

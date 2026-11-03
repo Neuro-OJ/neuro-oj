@@ -8,12 +8,7 @@ import { decodeJwt } from "jose";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  problems,
-  roles,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import {
   bindPublishedProblemForTest,
@@ -41,14 +36,7 @@ async function createTestUser(id: string): Promise<void> {
     created_at: now,
     updated_at: now,
   });
-  // NOJ-102：owner 权限现在走实时 RBAC，测试用户需挂载默认 user 角色。
-  const [userRole] = await db.select({ id: roles.id }).from(roles).where(
-    eq(roles.name, "user"),
-  ).limit(1);
-  if (userRole) {
-    await db.insert(userRoles).values({ user_id: id, role_id: userRole.id })
-      .onConflictDoNothing();
-  }
+  // 平台角色默认为 user；所有者判定读取用户行，无需额外授权表。
 }
 
 /**
@@ -68,7 +56,7 @@ async function createTestProblem(
       await createTestUser(ownerId);
     }
   }
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "educator");
   const now = new Date().toISOString();
   await db.insert(problems).values({
     domain_id: "00000000-0000-4000-8000-000000000001",

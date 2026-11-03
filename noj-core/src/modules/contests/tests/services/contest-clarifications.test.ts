@@ -11,7 +11,6 @@ import {
   contests,
   domains,
   problems,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -99,10 +98,9 @@ async function createContestWithWindow(
 }
 
 async function makeAdmin(userId: string): Promise<void> {
-  await getDb().insert(userRoles).values({
-    user_id: userId,
-    role_id: "admin",
-  });
+  await getDb().update(users).set({ role: "admin" }).where(
+    eq(users.id, userId),
+  );
 }
 
 async function countClarificationNotifications(

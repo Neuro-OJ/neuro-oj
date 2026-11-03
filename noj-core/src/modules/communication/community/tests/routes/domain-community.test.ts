@@ -86,7 +86,7 @@ Deno.test({
       })).status,
       403,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["moderator"]);
+    await setMemberRoles(f.target.slug, f.b, f.student, ["educator"]);
     assertEquals(
       (await jsonRequest(application, `${target}/manage/boards`, {
         token: student,

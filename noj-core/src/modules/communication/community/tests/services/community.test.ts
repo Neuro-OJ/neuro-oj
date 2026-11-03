@@ -10,7 +10,6 @@ import {
   communityReports,
   communitySanctions,
   problems,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -34,7 +33,6 @@ import {
   listPendingComments,
   listPosts,
   resolveReport,
-  updateBoardRoleGrant,
   updatePost,
 } from "../../index.ts";
 import {
@@ -124,43 +122,6 @@ Deno.test({
       ValidationError,
       "仅支持回复一级评论",
     );
-  },
-});
-
-Deno.test({
-  name: "community service: 板块角色授权限制发帖",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const board = await createBoard({
-      slug: "restricted-board",
-      name: "受限板块",
-    });
-    await updateBoardRoleGrant(board.id, "user", { can_post: false });
-    await assertRejects(
-      () =>
-        createPost(actorId, {
-          type: "discussion",
-          board_id: board.id,
-          title: "无权讨论",
-          content: "不应创建",
-        }),
-      ForbiddenError,
-      "你没有在该板块发帖的权限",
-    );
-    await getDb().insert(userRoles).values({
-      user_id: actorId,
-      role_id: "user",
-    });
-    await updateBoardRoleGrant(board.id, "user", { can_post: true });
-    const post = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "授权讨论",
-      content: "可以创建",
-    });
-    assertEquals(post.status, "published");
   },
 });
 

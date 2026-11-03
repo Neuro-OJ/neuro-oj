@@ -253,7 +253,7 @@ export async function listProblems(
   const canManageAny = workspace.platformAdmin ||
     workspace.context.domainPermissions.has("problem:write_any");
   const canManageOwn = workspace.context.domainPermissions.has(
-    "problem:write_own",
+    "problem:write_any",
   );
   if (!canManageAny) {
     conditions.push(
@@ -331,8 +331,7 @@ export async function listProblems(
         description: r.is_contest_hidden ? "" : r.problem.description,
         samples: r.is_contest_hidden ? [] : r.problem.samples,
       }, {
-        isOwnerOrAdmin: !r.authoring_restricted && (canManageAny ||
-          (canManageOwn && viewer.userId === r.problem.owner_id)),
+        isOwnerOrAdmin: !r.authoring_restricted && canManageAny,
       }, r.is_contest_hidden === true),
       owner_username: r.owner_username ?? "未知",
       owner_avatar_url: r.owner_avatar_url ?? null,
@@ -594,9 +593,7 @@ async function canManageProblemProjection(
   if (!domain) return false;
   const workspace = await loadWorkspace(domain.slug, viewer.userId ?? null);
   return (workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("problem:write_any") ||
-    (viewer.userId === row.owner_id &&
-      workspace.context.domainPermissions.has("problem:write_own"))) &&
+    workspace.context.domainPermissions.has("problem:write_any")) &&
     !await problemAuthoringRestrictedByContest(workspace, row.id, getDb());
 }
 

@@ -9,7 +9,6 @@ import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import {
   assignmentProgress,
   classroomMemberships,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   evaluationAttempts,
@@ -54,17 +53,12 @@ Deno.test({
         id: membershipId,
         domain_id: f.school.id,
         user_id: id,
+        role: "member" as const,
         joined_at: now,
       });
     }
     await f.db.insert(users).values(extraUsers);
     await f.db.insert(domainMemberships).values(memberships);
-    await f.db.insert(domainMemberRoles).values(
-      memberships.map((m) => ({
-        membership_id: m.id,
-        role: "member" as const,
-      })),
-    );
     await f.db.insert(classroomMemberships).values(
       extraUsers.map((user) => ({
         id: crypto.randomUUID(),

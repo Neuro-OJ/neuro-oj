@@ -314,14 +314,7 @@ export async function setDomainProblemBindingState(
       ));
     if (!resource) throw new NotFoundError("域题库中不存在此题");
     if (resource.binding.kind === "owned") {
-      assertLegacyWorkspacePermission(
-        workspace.context,
-        workspace.context.domainPermissions.has("problem:write_any")
-          ? "problem:write_any"
-          : resource.problem.owner_id === actorId
-          ? "problem:write_own"
-          : "problem:write_any",
-      );
+      assertLegacyWorkspacePermission(workspace.context, "problem:write_any");
     } else {
       assertLegacyWorkspacePermission(workspace.context, "problem:policy");
     }
@@ -402,7 +395,7 @@ export async function listDomainProblemBindings(
     !workspace.platformAdmin &&
     ![
       "problem:import",
-      "problem:write_own",
+      "problem:write_any",
       "problem:write_any",
       "problem:policy",
     ].some((permission) => permissions.has(permission))
@@ -476,9 +469,7 @@ export async function listDomainProblemBindings(
       const status = statuses.get(row.binding.id);
       const owned = row.binding.kind === "owned";
       const canEdit = owned &&
-        (workspace.platformAdmin || permissions.has("problem:write_any") ||
-          row.problem.owner_id === actorId &&
-            permissions.has("problem:write_own"));
+        (workspace.platformAdmin || permissions.has("problem:write_any"));
       return {
         reference: domainProblemReference(
           { ...row.problem, domain_id: row.source.id },

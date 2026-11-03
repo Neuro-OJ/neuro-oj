@@ -34,9 +34,7 @@ export async function resolveDomainTraining(
   if (shared) throw new NotFoundError("请先将题单独立复制到当前域");
   if (
     row.training.state !== "published" && !workspace.platformAdmin &&
-    !workspace.context.domainPermissions.has("training:write_any") &&
-    !(row.training.created_by === actorId &&
-      workspace.context.domainPermissions.has("training:write_own"))
+    !workspace.context.domainPermissions.has("training:write_any")
   ) {
     throw new NotFoundError("题单尚未发布");
   }
@@ -145,9 +143,7 @@ export async function readDomainTraining(
     state: resource.training.state,
     can_edit: !resource.shared &&
       (resource.platformAdmin ||
-        resource.context.domainPermissions.has("training:write_any") ||
-        resource.training.created_by === actorId &&
-          resource.context.domainPermissions.has("training:write_own")),
+        resource.context.domainPermissions.has("training:write_any")),
     can_share: false,
     is_shared: resource.shared,
     items,
@@ -196,7 +192,7 @@ export async function listDomainTrainings(
     eq(trainings.domain_id, workspace.domain.id),
     all ? undefined : or(
       eq(trainings.state, "published"),
-      actorId && workspace.context.domainPermissions.has("training:write_own")
+      actorId && workspace.context.domainPermissions.has("training:write_any")
         ? eq(trainings.created_by, actorId)
         : undefined,
     ),
@@ -244,8 +240,7 @@ export async function listDomainTrainings(
         state: training.state,
         can_edit: owned &&
           (all ||
-            training.created_by === actorId &&
-              workspace.context.domainPermissions.has("training:write_own")),
+            workspace.context.domainPermissions.has("training:write_any")),
         can_share: owned &&
           (workspace.platformAdmin ||
             workspace.context.domainPermissions.has("training:share")),

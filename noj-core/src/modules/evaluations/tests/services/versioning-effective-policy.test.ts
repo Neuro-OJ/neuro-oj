@@ -13,7 +13,6 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   evaluationAttempts,
@@ -86,13 +85,9 @@ Deno.test("policy: 默认入口修改 main 题目唯一策略，旧外域绑定�
       eq(domainMemberships.user_id, "0"),
     ),
   );
-  await f.db.delete(domainMemberRoles).where(
-    eq(domainMemberRoles.membership_id, member.id),
+  await f.db.update(domainMemberships).set({ role: "member" }).where(
+    eq(domainMemberships.id, member.id),
   );
-  await f.db.insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "member",
-  });
   await assertRejects(
     () =>
       setProblemEffectiveVersionPolicy(problemId, {

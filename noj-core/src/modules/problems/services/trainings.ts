@@ -471,7 +471,7 @@ export async function deleteTraining(
 // ── 题单题目管理与进度聚合 ──────────────────────────────
 
 /**
- * 断言操作者当前拥有 main 题单的 write_own/write_any，并返回题单行。
+ * 断言操作者在 main 域拥有题单管理能力（educator/admin），并返回题单行。
  *
  * @param trainingId 题单内部 UUID
  * @param actorId 操作者用户 id
@@ -494,10 +494,7 @@ async function assertWritable(
     ),
   );
   if (!row) throw new NotFoundError("题单不存在");
-  assertWorkspacePermission(
-    workspace.context,
-    row.created_by === actorId ? "training:write_own" : "training:write_any",
-  );
+  assertWorkspacePermission(workspace.context, "training:write_any");
   return row;
 }
 

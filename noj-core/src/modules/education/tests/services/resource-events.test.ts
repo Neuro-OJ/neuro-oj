@@ -38,10 +38,7 @@ Deno.test("版本与策略事件：消费者延迟仍补齐每一次变化，旧
     f.input,
   );
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, [
-    "educator",
-    "editor",
-  ]);
+  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["educator"]);
   const v2 = crypto.randomUUID(), now = new Date().toISOString();
   await f.db.transaction(async (tx) => {
     await tx.insert(problemVersions).values({

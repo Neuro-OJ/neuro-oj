@@ -3,7 +3,12 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import { contests, problems, users } from "../../../../../shared/db/schema.ts";
+import {
+  contests,
+  domainMemberships,
+  problems,
+  users,
+} from "../../../../../shared/db/schema.ts";
 import {
   communityComments,
   communityPosts,
@@ -31,7 +36,6 @@ import {
 } from "../../../../platform/system/index.ts";
 import { publishAllProblemsForTest } from "../../../../../../tests/helper.ts";
 import { addDomainMember } from "../../../../access/workspace/index.ts";
-import { domainMemberRoles } from "../../../../../shared/db/schema.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -52,10 +56,9 @@ async function setup(): Promise<void> {
     updated_at: now,
   });
   const membership = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, ownerId);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: membership.id,
-    role: "editor",
-  });
+  await getDb().update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, membership.id),
+  );
   await getDb().insert(problems).values([
     {
       domain_id: DEFAULT_DOMAIN_ID,

@@ -19,7 +19,7 @@ import {
   problemVersions,
   submissions,
   submissionVersionResults,
-  userRoles,
+  users,
 } from "../../../../shared/db/schema.ts";
 import {
   importDomainProblem,
@@ -336,7 +336,9 @@ Deno.test("训练比较：明确半开窗、同域候选和权威通过，缺失
     "training.comparison.read",
   );
   assertEquals((audit.detail as { student_id: string }).student_id, f.student);
-  await f.db.delete(userRoles).where(eq(userRoles.user_id, admin.sub));
+  await f.db.update(users).set({ role: "user" }).where(
+    eq(users.id, admin.sub),
+  );
   await assertRejects(
     () =>
       getTrainingComparison(

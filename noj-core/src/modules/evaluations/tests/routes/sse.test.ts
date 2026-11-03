@@ -10,7 +10,6 @@ import {
   problems,
   sseEvents,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
@@ -90,8 +89,7 @@ Deno.test({
         updated_at: now,
       },
     ]);
-    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
-    await db.insert(userRoles).values({ user_id: ownerId, role_id: "user" });
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(problems).values({
       domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
@@ -165,7 +163,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     const domainChannel = queueEventChannel(DEFAULT_DOMAIN_ID);
     // 重现打开页面时积累的历史通知；它们全部指向同一份当前队列。
     await db.insert(sseEvents).values(

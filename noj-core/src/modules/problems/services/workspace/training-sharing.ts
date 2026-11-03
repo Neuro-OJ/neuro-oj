@@ -173,7 +173,7 @@ export async function importDomainTraining(
     sourceAccess.context.domainPermissions.has("training:write_any") ||
       source.training.created_by !== actorId
       ? "training:write_any"
-      : "training:write_own",
+      : "training:write_any",
   );
   const items = await db.select({
     problem: problems,
@@ -228,7 +228,7 @@ export async function importDomainTraining(
         currentSource.context.domainPermissions.has("training:write_any") ||
           current.created_by !== actorId
           ? "training:write_any"
-          : "training:write_own",
+          : "training:write_any",
       );
       const ids = new Map<string, string>();
       for (const [id, prepared] of copies) {

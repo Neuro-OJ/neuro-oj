@@ -13,7 +13,6 @@ export {
   domainJoinRequests,
   domainLimits,
   domainLlmSettings,
-  domainMemberRoles,
   domainMemberships,
   domainResourceCounters,
   domains,
@@ -27,12 +26,8 @@ export {
   checkIns,
   oauthAccounts,
   passwordResetTokens,
-  permissions,
-  rolePermissions,
-  roles,
   tfaRecoveryCodes,
   userBans,
-  userRoles,
   users,
 } from "./identity.ts";
 
@@ -110,7 +105,6 @@ export { submissionAnnotations } from "./submission-annotations.ts";
 // communication
 export {
   accountNotifications,
-  communityBoardRoleGrants,
   communityBoards,
   communityComments,
   communityModerationActions,

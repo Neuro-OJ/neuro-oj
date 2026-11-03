@@ -58,13 +58,7 @@ async function sourceForCopy(
   if (!source?.latest_version_id) {
     throw new NotFoundError("源题尚未发布或不存在");
   }
-  assertWorkspacePermission(
-    access.context,
-    access.context.domainPermissions.has("problem:write_any") ||
-      source.owner_id !== actorId
-      ? "problem:write_any"
-      : "problem:write_own",
-  );
+  assertWorkspacePermission(access.context, "problem:write_any");
   return { access, source };
 }
 

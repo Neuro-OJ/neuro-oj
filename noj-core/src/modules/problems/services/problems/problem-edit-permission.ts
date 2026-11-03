@@ -16,8 +16,8 @@ import { assertProblemAuthoringOutsideParticipation } from "../workspace/problem
  * 题目内容编辑权限（唯一判定入口）。
  *
  * 草稿读写、发布版本与既有 PUT 内容更新共用同一口径，避免"草稿接口是旁路"：
- * - 本域编辑者编辑本人资源需 `problem:write_own`；
- * - 编辑其他资源需源域 `problem:write_any`，平台治理使用真实实例权限。
+ * - 管理题目需要源域 `problem:write_any`（educator/admin），创建者身份不再授予编辑权；
+ * - 平台治理使用真实实例权限。
  *
  * 平台治理例外取自实时实例权限。
  *
@@ -44,13 +44,7 @@ export async function assertProblemEditPermission(
   const workspace = await loadWorkspace(domain.slug, actorId, {
     write: c === undefined || !["GET", "HEAD"].includes(c.req.method),
   });
-  assertWorkspacePermission(
-    workspace.context,
-    workspace.context.domainPermissions.has("problem:write_any") ||
-      source.owner_id !== actorId
-      ? "problem:write_any"
-      : "problem:write_own",
-  );
+  assertWorkspacePermission(workspace.context, "problem:write_any");
   await assertProblemAuthoringOutsideParticipation(workspace, source.id, db);
 }
 

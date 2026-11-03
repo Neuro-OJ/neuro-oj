@@ -4,12 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import {
-  contests,
-  problems,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import {
   initRedisForTest,
@@ -95,10 +90,7 @@ async function setupContestViaAdmin(): Promise<{
     created_at: now,
     updated_at: now,
   });
-  await db.insert(userRoles).values({
-    user_id: adminId,
-    role_id: "admin",
-  }).onConflictDoNothing();
+  await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
   const [nextNumber] = await db.select({
     value: sql<number>`coalesce(max(${problems.number}), 0) + 1`,
   }).from(problems).where(eq(problems.domain_id, DEFAULT_DOMAIN_ID));

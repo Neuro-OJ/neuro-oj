@@ -7,7 +7,6 @@ import {
   contestParticipants,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   problems,
@@ -32,8 +31,8 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await initRedisForTest();
-    const token = await createDefaultCatalogToken("editor");
-    const organizerToken = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("educator");
+    const organizerToken = await createDefaultCatalogToken("educator");
     const actor = decodeJwt(token).sub!,
       organizer = decodeJwt(organizerToken).sub!;
     const db = getDb(), now = new Date().toISOString();
@@ -161,10 +160,9 @@ Deno.test({
     const [membership] = await db.select().from(domainMemberships).where(
       eq(domainMemberships.user_id, organizer),
     );
-    await db.insert(domainMemberRoles).values({
-      membership_id: membership.id,
-      role: "admin",
-    });
+    await db.update(domainMemberships).set({ role: "admin" }).where(
+      eq(domainMemberships.id, membership.id),
+    );
     assertEquals(
       (await read(path, organizerToken)).content.questions[0].answer,
       [true],

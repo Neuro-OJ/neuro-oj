@@ -79,7 +79,7 @@ const handler = async (c: Context<Env>) => {
     member: !!access?.membership || isAdmin,
     communityModerator: isAdmin || permissions.has("community:moderate"),
     problemWriteAny: permissions.has("problem:write_any"),
-    problemWriteOwn: permissions.has("problem:write_own"),
+    problemWriteOwn: permissions.has("problem:write_any"),
     contestManageAny: permissions.has("contest:manage"),
     contestManageOwn: permissions.has("contest:manage_own"),
     submissionReadAll: permissions.has("submission:read_all"),

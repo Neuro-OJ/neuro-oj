@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
-  domainMemberRoles,
+  domainMemberships,
   domainProblemBindings,
   domains,
   objectiveSubmissions,
@@ -43,10 +43,9 @@ async function fixture() {
   });
   await ensureDefaultWorkspace();
   const member = await addDomainMember(db, DEFAULT_DOMAIN_ID, user);
-  await db.insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "editor",
-  });
+  await db.update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, member.id),
+  );
   const first = await createProblem(
     {
       title: "历史套卷",

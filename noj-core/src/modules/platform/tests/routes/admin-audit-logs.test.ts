@@ -3,7 +3,7 @@ import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { auditLogs, userRoles, users } from "../../../../shared/db/schema.ts";
+import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 
 // 模块级 bootstrap：确保 测试数据库 schema 已创建
@@ -26,13 +26,9 @@ async function setupFixtureData() {
     username: `audit_route_admin_${TS}`,
     email: `audit-route-admin-${TS}@example.com`,
     password_hash: "x",
+    role: "admin",
     created_at: now,
     updated_at: now,
-  }).onConflictDoNothing();
-  // 关联 admin 角色（admin:full_access 权限，权限判定实时查询）
-  await db.insert(userRoles).values({
-    user_id: ADMIN_USER_ID,
-    role_id: "admin",
   }).onConflictDoNothing();
 
   // 再插普通用户

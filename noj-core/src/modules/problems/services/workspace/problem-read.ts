@@ -88,11 +88,7 @@ export async function listDomainProblems(
   };
   const ownEditable = and(
     eq(binding.kind, "owned"),
-    canEdit
-      ? sql`true`
-      : actorId && workspace.context.domainPermissions.has("problem:write_own")
-      ? eq(problems.owner_id, actorId)
-      : sql`false`,
+    canEdit ? sql`true` : actorId ? eq(problems.owner_id, actorId) : sql`false`,
   );
   const algorithmVisible = or(
     ownEditable,
@@ -289,9 +285,7 @@ export async function readDomainProblem(
   });
   const canEdit = resolved.binding.kind === "owned" &&
     (resolved.platformAdmin ||
-      resolved.context.domainPermissions.has("problem:write_any") ||
-      actorId === resolved.problem.owner_id &&
-        resolved.context.domainPermissions.has("problem:write_own")) &&
+      resolved.context.domainPermissions.has("problem:write_any")) &&
     !await problemAuthoringRestrictedByContest(
       resolved,
       resolved.problem.id,

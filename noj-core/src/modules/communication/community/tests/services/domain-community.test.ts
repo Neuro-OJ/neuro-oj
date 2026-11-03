@@ -370,7 +370,7 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await domainFixture("community-moderation");
-    await setMemberRoles(f.target.slug, f.b, f.student, ["moderator"]);
+    await setMemberRoles(f.target.slug, f.b, f.student, ["educator"]);
     const sanction = await withDomainCommunity(f.target.slug, f.student, {
       write: true,
       permission: "community:moderate",

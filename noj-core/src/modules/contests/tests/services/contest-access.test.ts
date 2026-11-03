@@ -5,7 +5,6 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contests,
-  domainMemberRoles,
   domainMemberships,
   domains,
   problems,
@@ -88,10 +87,9 @@ async function createContestWithStatus(
   creatorId: string,
 ): Promise<string> {
   const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, creatorId);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "editor",
-  }).onConflictDoNothing();
+  await getDb().update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, member.id),
+  );
   const contest = await createContest({
     title: `竞赛访问测试 ${Date.now()}_${
       Math.random().toString(36).slice(2, 8)
@@ -183,20 +181,15 @@ Deno.test({
       assertEquals(before.organizer, true);
       assertEquals(before.allowed, true);
       const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, creator);
-      await getDb().delete(domainMemberRoles).where(
-        eq(domainMemberRoles.membership_id, member.id),
+      await getDb().update(domainMemberships).set({ role: "member" }).where(
+        eq(domainMemberships.id, member.id),
       );
-      await getDb().insert(domainMemberRoles).values({
-        membership_id: member.id,
-        role: "member",
-      });
       const revoked = await verifyContestAccess(creator, contest, problem);
       assertEquals(revoked.organizer, false);
       assertEquals(revoked.allowed, true);
-      await getDb().insert(domainMemberRoles).values({
-        membership_id: member.id,
-        role: "editor",
-      });
+      await getDb().update(domainMemberships).set({ role: "educator" }).where(
+        eq(domainMemberships.id, member.id),
+      );
     }
     const [main] = await getDb().select().from(domains).where(
       eq(domains.id, DEFAULT_DOMAIN_ID),

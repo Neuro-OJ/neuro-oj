@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contests,
+  domainMemberships,
   objectiveSubmissions,
   problems,
   problemVersions,
@@ -40,11 +41,19 @@ for (const id of ["up-user-a", "up-user-b"]) {
     created_at: now,
     updated_at: now,
   });
+  // 竞赛创建者需要 main 域 educator 身份才能作为组织者受理升级。
+  await getDb().insert(domainMemberships).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    user_id: id,
+    role: "educator",
+    joined_at: now,
+  });
 }
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
-  await authorizeLegacyJobActorForTest("up-user-a");
-  await authorizeLegacyJobActorForTest("up-user-b");
+  await authorizeLegacyJobActorForTest("up-user-a", "educator");
+  await authorizeLegacyJobActorForTest("up-user-b", "educator");
   const db = getDb();
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,

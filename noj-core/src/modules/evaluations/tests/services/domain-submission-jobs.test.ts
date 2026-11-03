@@ -344,7 +344,7 @@ Deno.test({
       AppError,
     );
     assertEquals(denied.statusCode, 403);
-    await setMemberRoles(f.a.slug, f.owner, f.student, ["editor"]);
+    await setMemberRoles(f.a.slug, f.owner, f.student, ["educator"]);
     await f.db.update(contests).set({ created_by: f.student }).where(
       eq(contests.id, contest),
     );

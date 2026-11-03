@@ -229,7 +229,7 @@ Deno.test("access roles: 角色写入只接受单值并拒绝 owner 与数组", 
   assertEquals(parsePlatformRole("user"), "user");
   assertEquals(parsePlatformRole("admin"), "admin");
   for (
-    const invalid of ["owner", "editor", ["admin"], null, undefined, 1, {}]
+    const invalid of ["owner", "educator", ["admin"], null, undefined, 1, {}]
   ) {
     assertThrows(() => parsePlatformRole(invalid), BadRequestError);
   }
@@ -240,7 +240,7 @@ Deno.test("access roles: 角色写入只接受单值并拒绝 owner 与数组", 
   for (
     const invalid of [
       "owner",
-      "editor",
+      "educator",
       "moderator",
       ["member"],
       null,
@@ -256,7 +256,7 @@ Deno.test("access roles: 运行时角色集合与类型守卫一致", () => {
   assertEquals([...DOMAIN_MEMBER_ROLES], ["member", "educator", "admin"]);
   assertEquals([...PLATFORM_ROLES], ["user", "admin"]);
   assert(isDomainRole("owner"));
-  assert(!isDomainRole("editor"));
+  assert(!isDomainRole("educator"));
   assert(!isDomainRole("moderator"));
   assert(isDomainMemberRole("educator"));
   assert(!isDomainMemberRole("owner"));

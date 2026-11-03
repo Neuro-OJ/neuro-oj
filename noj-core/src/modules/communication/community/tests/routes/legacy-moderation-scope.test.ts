@@ -1,14 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
-import {
-  domains,
-  permissions,
-  rolePermissions,
-  roles,
-  userRoles,
-} from "../../../../../shared/db/schema.ts";
+import { domainMemberships, domains } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import { signToken } from "../../../../access/identity/index.ts";
@@ -39,22 +33,16 @@ async function fixture() {
     }
     throw error;
   });
-  const roleId = crypto.randomUUID();
-  await f.db.insert(roles).values({
-    id: roleId,
-    name: roleId,
-    created_at: f.now,
-    updated_at: f.now,
-  });
-  const [permission] = await f.db.select().from(permissions).where(and(
-    eq(permissions.resource, "community_moderation"),
-    eq(permissions.action, "review"),
-  ));
-  await f.db.insert(rolePermissions).values({
-    role_id: roleId,
-    permission_id: permission.id,
-  });
-  await f.db.insert(userRoles).values({ user_id: f.student, role_id: roleId });
+  // 社区治理能力来自域角色；测试账号必须是有效成员且具备 educator 角色。
+  const membership = await addDomainMember(
+    f.db,
+    DEFAULT_DOMAIN_ID,
+    f.student,
+    true,
+  );
+  await f.db.update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, membership.id),
+  );
   const token = await signToken({ sub: f.student, role: "user" });
   const board = await withDefaultCommunity(
     "0",
@@ -107,12 +95,17 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await fixture();
+    // 该用例验证非成员：先移除 fixture 自动建立的成员关系。
+    await f.db.delete(domainMemberships).where(
+      eq(domainMemberships.user_id, f.student),
+    );
     await f.db.update(domains).set({
       configuration: { ...f.main.configuration, access: "members" },
     }).where(eq(domains.id, f.main.id));
+    // 非成员访问 members 可见性的 main 域：读与写都由域门禁拒绝。
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports`, { token: f.token })).status,
-      404,
+      403,
     );
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
@@ -120,7 +113,7 @@ Deno.test({
         method: "POST",
         body: { resolution: "reviewed" },
       })).status,
-      404,
+      403,
     );
   },
 });

@@ -20,7 +20,7 @@
  */
 
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
-import { eq, inArray, like } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { createPredictionSubmission, JUDGE_QUEUES } from "../../index.ts";
 import {
   deleteProblemFixtures,
@@ -34,7 +34,6 @@ import {
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
-  domainMemberRoles,
   domainMemberships,
   evaluationAttempts,
   problems,
@@ -139,14 +138,6 @@ async function deleteFixture(fixture: Fixture): Promise<void> {
     eq(submissions.problem_id, fixture.problemId),
   );
   await deleteProblemFixtures(eq(problems.id, fixture.problemId));
-  await db.delete(domainMemberRoles).where(
-    inArray(
-      domainMemberRoles.membership_id,
-      db.select({ id: domainMemberships.id }).from(domainMemberships).where(
-        eq(domainMemberships.user_id, fixture.userId),
-      ),
-    ),
-  );
   await db.delete(domainMemberships).where(
     eq(domainMemberships.user_id, fixture.userId),
   );

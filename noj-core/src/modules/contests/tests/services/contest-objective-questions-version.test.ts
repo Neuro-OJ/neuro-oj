@@ -23,7 +23,7 @@ import {
   contestParticipants,
   contestProblems,
   contests,
-  domainMemberRoles,
+  domainMemberships,
   domainProblemBindings,
   problems,
   problemVersions,
@@ -56,10 +56,9 @@ async function seedUser(prefix: string): Promise<string> {
     updated_at: now,
   });
   const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, id);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: member.id,
-    role: "editor",
-  });
+  await getDb().update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, member.id),
+  );
   return id;
 }
 
@@ -125,6 +124,10 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     const userId = await seedUser("cobj-user");
+    // 参赛者以普通成员身份读取：作者/管理者身份不应让竞赛作答响应带答案。
+    await db.update(domainMemberships).set({ role: "member" }).where(
+      eq(domainMemberships.user_id, userId),
+    );
     const paperId = crypto.randomUUID();
     const contestId = crypto.randomUUID();
     const contestPublicId = generatePublicId("ct");
@@ -159,7 +162,7 @@ Deno.test({
       // 邀请赛：不触发"未结束公开赛题目保密"，便于同时验证题库默认作答版本路径
       is_public: false,
       kind: "invite",
-      created_by: userId,
+      created_by: "0",
       created_at: now,
       updated_at: now,
     });

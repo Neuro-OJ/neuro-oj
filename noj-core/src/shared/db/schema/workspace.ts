@@ -13,7 +13,6 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import type {
   DomainConfiguration,
-  DomainRole,
   DomainStatus,
   StoredDomainPreset,
 } from "../../workspace/types.ts";
@@ -91,19 +90,6 @@ export const domainMemberships = pgTable("domain_memberships", {
   userStatusIdx: index("idx_domain_memberships_user_status").on(
     t.user_id,
     t.status,
-  ),
-}));
-/** 内置成员角色；负责人只能通过交接授予。 */
-export const domainMemberRoles = pgTable("domain_member_roles", {
-  membership_id: text("membership_id").notNull().references(() =>
-    domainMemberships.id
-  ),
-  role: text("role").$type<DomainRole>().notNull(),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.membership_id, t.role] }),
-  roleCheck: check(
-    "domain_member_roles_role_check",
-    sql`${t.role} IN ('owner', 'admin', 'editor', 'educator', 'moderator', 'member')`,
   ),
 }));
 /** 数值限额：null 表示不额外限制。 */

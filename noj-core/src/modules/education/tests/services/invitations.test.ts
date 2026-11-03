@@ -11,7 +11,6 @@ import {
   classroomMemberships,
   domainInvitations,
   domainLimits,
-  domainMemberRoles,
   domainMemberships,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -25,7 +24,7 @@ import {
   previewDomainInvitationCommand,
 } from "../../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
-import { enrollRegisteredAccountTxLegacy } from "../../../access/workspace/index.ts";
+import { enrollRegisteredAccountTx } from "../../../access/index.ts";
 import { assertInstanceRegistration } from "../../../access/index.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { registerUser } from "../../../access/identity/index.ts";
@@ -63,12 +62,7 @@ Deno.test("班级邀请：原子加入域基础成员和学生，令牌仅存哈
       eq(domainMemberships.domain_id, f.school.id),
     ),
   );
-  assertEquals(
-    (await f.db.select().from(domainMemberRoles).where(
-      eq(domainMemberRoles.membership_id, member.id),
-    )).map((r) => r.role),
-    ["member"],
-  );
+  assertEquals(member.role, "member");
   assertEquals(
     (await f.db.select().from(classroomMemberships).where(
       eq(classroomMemberships.user_id, student),
@@ -184,9 +178,14 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
   await assertRejects(
     () =>
       f.db.transaction((tx) =>
-        enrollRegisteredAccountTxLegacy(tx, f.student, coachInvite.token, {
-          invitationBoundary: registrationInvitationBoundary(),
-        })
+        enrollRegisteredAccountTx(
+          tx,
+          userActorFromAuthenticatedId(f.student),
+          coachInvite.token,
+          {
+            invitationBoundary: registrationInvitationBoundary(),
+          },
+        )
       ),
     ForbiddenError,
   );
@@ -197,9 +196,14 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
     `${student}@example.com`,
   );
   await f.db.transaction((tx) =>
-    enrollRegisteredAccountTxLegacy(tx, student, adminInvite.token, {
-      invitationBoundary: registrationInvitationBoundary(),
-    })
+    enrollRegisteredAccountTx(
+      tx,
+      userActorFromAuthenticatedId(student),
+      adminInvite.token,
+      {
+        invitationBoundary: registrationInvitationBoundary(),
+      },
+    )
   );
   assertEquals(
     (await f.db.select().from(classroomMemberships).where(

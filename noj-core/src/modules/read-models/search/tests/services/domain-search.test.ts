@@ -8,7 +8,6 @@ import {
   classrooms,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   domains,
@@ -301,11 +300,8 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
     id: "coach-domain",
     domain_id: domain,
     user_id: coach,
-    joined_at: now,
-  });
-  await db.insert(domainMemberRoles).values({
-    membership_id: "coach-domain",
     role: "educator",
+    joined_at: now,
   });
   await db.insert(classrooms).values({
     id: "search-class",
@@ -337,17 +333,16 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
       .length,
     0,
   );
-  await db.delete(domainMemberRoles).where(
-    eq(domainMemberRoles.membership_id, "coach-domain"),
+  await db.update(domainMemberships).set({ role: "member" }).where(
+    eq(domainMemberships.id, "coach-domain"),
   );
   assertEquals(
     (await search(domain, coach, "共享题", "submission")).items.length,
     0,
   );
-  await db.insert(domainMemberRoles).values({
-    membership_id: "coach-domain",
-    role: "educator",
-  });
+  await db.update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, "coach-domain"),
+  );
   await db.update(classroomMemberships).set({ status: "removed" }).where(
     eq(classroomMemberships.id, "search-student"),
   );

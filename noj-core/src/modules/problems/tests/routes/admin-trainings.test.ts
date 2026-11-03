@@ -1,16 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  auditLogs,
-  permissions,
-  rolePermissions,
-  roles,
-  trainings,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { auditLogs, trainings, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { createTraining } from "../../services/trainings.ts";
@@ -27,7 +19,6 @@ Deno.test({
     const adminId = crypto.randomUUID();
     const userId = crypto.randomUUID();
     const readerId = crypto.randomUUID();
-    const readerRoleId = crypto.randomUUID();
     const unique = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
     const app = createApp();
@@ -58,41 +49,9 @@ Deno.test({
         updated_at: now,
       },
     ]);
-    await db.insert(userRoles).values({
-      user_id: adminId,
-      role_id: "admin",
-    }).onConflictDoNothing();
-    await db.insert(userRoles).values({
-      user_id: userId,
-      role_id: "user",
-    }).onConflictDoNothing();
-    await db.insert(roles).values({
-      id: readerRoleId,
-      name: `training-reader-${unique}`,
-      description: "题单只读测试角色",
-      created_at: now,
-      updated_at: now,
-    });
-    const [readAnyPermission] = await db.select({ id: permissions.id })
-      .from(permissions)
-      .where(
-        and(
-          eq(permissions.resource, "training"),
-          eq(permissions.action, "read_any"),
-        ),
-      )
-      .limit(1);
-    await db.insert(rolePermissions).values({
-      role_id: readerRoleId,
-      permission_id: readAnyPermission.id,
-    });
-    await db.insert(userRoles).values({
-      user_id: readerId,
-      role_id: readerRoleId,
-    });
-    await grantDefaultCatalogRole(userId, "editor");
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
+    await grantDefaultCatalogRole(userId, "educator");
     const adminToken = await signToken({ sub: adminId, role: "admin" });
-    await grantDefaultCatalogRole(userId, "editor");
     const userToken = await signToken({ sub: userId, role: "user" });
     const readerToken = await signToken({ sub: readerId, role: "user" });
 

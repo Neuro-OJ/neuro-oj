@@ -70,9 +70,8 @@ export async function evaluateProblemAccess(
   if (binding?.disabled_at) {
     return { result: { allowed: false, mode: "denied" }, secrecy: [] };
   }
-  const canReadOwn =
-    workspace.context.domainPermissions.has("problem:write_own") &&
-    source.owner_id === ctx.viewerId;
+  // 所有者保留只读可见性（含私有/未发布题目）；编辑能力只看域角色。
+  const canReadOwn = source.owner_id === ctx.viewerId;
   const privileged = Boolean(ctx.isAdmin) || workspace.platformAdmin ||
     workspace.context.domainPermissions.has("problem:write_any");
   if (!source.latest_version_id && !privileged && !canReadOwn) {

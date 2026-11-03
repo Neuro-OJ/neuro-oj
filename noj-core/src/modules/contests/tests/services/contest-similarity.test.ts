@@ -6,6 +6,7 @@
  * 2. 查询服务（取数口径、分桶、规模上限）——需要数据库；
  * 3. 管理端路由（权限、参数校验、响应结构）——需要数据库。
  */
+import { eq } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -14,7 +15,6 @@ import {
   contests,
   problems,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -508,7 +508,7 @@ Deno.test({
         updated_at: now,
       },
     ]);
-    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(problems).values([
       {
         domain_id: DEFAULT_DOMAIN_ID,

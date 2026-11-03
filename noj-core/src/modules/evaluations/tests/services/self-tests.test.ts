@@ -8,14 +8,13 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
 
 import {
   contests,
-  domainMemberRoles,
   domainMemberships,
   problems,
   problemVersions,
@@ -147,7 +146,7 @@ await db.insert(problems).values([
   },
 ]);
 
-await authorizeLegacyJobActorForTest(USER_ID, "editor");
+await authorizeLegacyJobActorForTest(USER_ID, "educator");
 
 Deno.test({
   name: "self-tests service: 不支持的语言抛出 BadRequestError",
@@ -647,12 +646,6 @@ Deno.test({
     await db.delete(selfTests).where(eq(selfTests.user_id, USER_ID));
     await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await deleteProblemFixtures(eq(problems.id, OBJECTIVE_PROBLEM_ID));
-    await db.delete(domainMemberRoles).where(inArray(
-      domainMemberRoles.membership_id,
-      db.select({ id: domainMemberships.id }).from(domainMemberships).where(
-        eq(domainMemberships.user_id, USER_ID),
-      ),
-    ));
     await db.delete(domainMemberships).where(
       eq(domainMemberships.user_id, USER_ID),
     );

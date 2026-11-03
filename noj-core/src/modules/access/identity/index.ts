@@ -182,8 +182,6 @@ export type {
   Role,
   UserResponse,
 } from "./types/auth.ts";
-export { PERMISSION_DEFS } from "./types/permissions.ts";
-export type { PermissionName } from "./types/permissions.ts";
 
 export {
   initializeFirstAdmin,

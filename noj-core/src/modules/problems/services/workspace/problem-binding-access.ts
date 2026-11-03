@@ -208,9 +208,7 @@ export async function resolveDomainProblemInWorkspace(
   {
     if (!row.problem.latest_version_id) throw new NotFoundError("此题尚未发布");
     const editable = workspace.platformAdmin ||
-      workspace.context.domainPermissions.has("problem:write_any") ||
-      (actorId === row.problem.owner_id &&
-        workspace.context.domainPermissions.has("problem:write_own"));
+      workspace.context.domainPermissions.has("problem:write_any");
     const protection = await loadPublicContestSecrecy(
       row.problem.id,
       executor,
