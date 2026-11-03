@@ -18,7 +18,7 @@ API，不允许客户端任意指定上游路径。
 通知深链指定的初始内容。
 
 全局导航不再预取视图，也不向共享异步键写入私有快照。每个页面自己调用 BFF 并拥有
-`useAsyncData` 的 key、AbortSignal 和 首屏 DTO；历史名称 `useViewAsyncData` 只是 `useAsyncData` 的兼容包装。这样 SSR
+`useAsyncData` 的 key、AbortSignal 和首屏 DTO。这样 SSR
 结果由同一个页面数据键进入 Nuxt payload，水合不会把旧页面的响应注入新页面；刷新、 分页、筛选和 SSE
 事件继续调用原有细粒度接口。快照按完整 URL 与实际账号隔离，聚合 不提供数据库事务快照。
 

@@ -35,7 +35,6 @@ beforeEach(() => {
   vi.stubGlobal('useDialog', () => ({ dialog: { confirm: vi.fn() } }));
   vi.stubGlobal('usePolling', vi.fn());
   vi.stubGlobal('useAsyncData', () => ({ data: ref({ data: spaces }) }));
-  vi.stubGlobal('useViewAsyncData', () => ({ data: ref({ data: spaces }) }));
   vi.stubGlobal('navigateTo', navigate);
 });
 describe('头像菜单中的域导航', () => {
