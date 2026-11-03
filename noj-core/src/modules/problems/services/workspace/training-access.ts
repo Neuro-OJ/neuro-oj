@@ -127,7 +127,7 @@ export async function readDomainTraining(
       display_ref: item.source.id === resource.domain.id
         ? String(item.problem.number)
         : qualified,
-      is_shared: item.source.id !== resource.domain.id,
+      is_shared: false,
       position: item.position,
     });
   }
@@ -145,7 +145,7 @@ export async function readDomainTraining(
       (resource.platformAdmin ||
         resource.context.domainPermissions.has("training:write_any")),
     can_share: false,
-    is_shared: resource.shared,
+    is_shared: false,
     items,
   };
 }
