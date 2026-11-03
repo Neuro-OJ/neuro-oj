@@ -51,7 +51,6 @@ const error = ref("")
 const typeLabel: Record<string, string> = {
   discussion: "讨论",
   solution: "题解",
-  moment: "动态",
 }
 const statusLabel: Record<string, string> = {
   pending: "待审核",

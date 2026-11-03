@@ -181,7 +181,6 @@ const fixture = Deno.serve(
       return Response.json({
         data: {
           enabled: true,
-          moments_enabled: true,
           guest_read_enabled: true,
           permissions: {},
         },

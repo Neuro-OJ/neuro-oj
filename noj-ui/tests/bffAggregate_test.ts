@@ -34,7 +34,7 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
         data = { data: { id: 'a', classroom_id: 'c', published_at: '2026-10-18' } };
       } else if (pathname.endsWith('/problems')) data = { items: [], total: 0 };
       else if (pathname.endsWith('/community/config')) {
-        data = { data: { enabled: true, moments_enabled: true } };
+        data = { data: { enabled: true } };
       }
       return Promise.resolve(data as T);
     },
