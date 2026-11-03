@@ -41,6 +41,13 @@ export async function setDomainTrainingSharing(
     targetDomainSlugs?: string[];
   },
 ) {
+  // 跨域共享已停用：只允许关闭历史共享，不能再开启或改目标域。
+  if (input.enabled) {
+    throw new BadRequestError(
+      "跨域共享已停用，请复制题单到目标域",
+      "DOMAIN_SHARING_DISABLED",
+    );
+  }
   if (
     input.expectedRevision === null ||
     !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0
