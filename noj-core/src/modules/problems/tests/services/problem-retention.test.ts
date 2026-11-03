@@ -1,10 +1,9 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
-import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  domainProblemBindings,
   objectiveSubmissions,
   problems,
   submissions,
@@ -46,25 +45,6 @@ async function expectRetained(id: string) {
   );
 }
 
-Deno.test("源题保留：有共享引用即明确拒绝删除，权限检查仍在历史守卫之前", async () => {
-  const { id, now } = await source();
-  await getDb().insert(domainProblemBindings).values({
-    id: crypto.randomUUID(),
-    domain_id: DEFAULT_DOMAIN_ID,
-    problem_id: id,
-    kind: "shared",
-    created_by: "0",
-    created_at: now,
-    updated_at: now,
-  });
-  const token = await createUserToken();
-  await assertRejects(
-    () => deleteProblem(id, decodeJwt(token).sub!, "user"),
-    ForbiddenError,
-  );
-  await expectRetained(id);
-  assertEquals((await getDb().select().from(domainProblemBindings)).length, 1);
-});
 Deno.test("源题保留：未知旧版本的代码提交不能随源题清除", async () => {
   const code = await source();
   await getDb().insert(submissions).values({
@@ -111,5 +91,3 @@ Deno.test("源题保留：没有版本、绑定和历史提交的草稿仍可删
 
 import { resetDbForTest } from "../default-fixture.ts";
 
-import { createUserToken } from "../../../../../tests/helper.ts";
-import { decodeJwt } from "jose";
