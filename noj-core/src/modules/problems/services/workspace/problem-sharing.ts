@@ -199,45 +199,6 @@ export async function resolveSharingTargetSlugs(
   return rows.map((row) => row.id);
 }
 
-/** 共享政策读取也允许本域已下架题，便于管理员撤销与恢复授权。 */
-export async function readDomainProblemSharing(
-  slug: string,
-  reference: string,
-  actorId: string,
-) {
-  const parsed = parseDomainProblemReference(reference);
-  if (parsed.sourceSlug && parsed.sourceSlug !== slug) {
-    throw new NotFoundError("此题不属于源域");
-  }
-  const workspace = await loadLegacyWorkspace(slug, actorId);
-  const db = getDb();
-  const [problem] = await db.select({ id: problems.id }).from(problems).where(
-    and(
-      eq(problems.domain_id, workspace.domain.id),
-      eq(problems.number, parsed.number),
-    ),
-  );
-  if (!problem) throw new NotFoundError("源题不存在");
-  assertLegacyWorkspacePermission(workspace.context, "problem:read_any");
-  const [policy] = await db.select().from(problemShareSettings).where(
-    eq(problemShareSettings.problem_id, problem.id),
-  );
-  const targets = await db.select({
-    id: domains.id,
-    slug: domains.slug,
-    name: domains.name,
-  }).from(problemShareTargets).innerJoin(
-    domains,
-    eq(domains.id, problemShareTargets.domain_id),
-  ).where(eq(problemShareTargets.problem_id, problem.id)).orderBy(domains.slug);
-  return {
-    enabled: policy?.enabled ?? false,
-    scope: policy?.scope ?? "all",
-    revision: policy?.revision ?? 0,
-    target_domains: targets,
-  };
-}
-
 /** 公开来源发现只返回当前向使用域开放引用的条目；计数与分页同步执行授权过滤。 */
 export async function listSharedDomainResources(
   slug: string,
