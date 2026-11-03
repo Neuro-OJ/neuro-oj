@@ -76,7 +76,7 @@ authMiddleware → 注入 isAdmin
 | `resource`           | `action`                                                                                                                                    | 说明                          |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | admin                | full_access                                                                                                                                 | 管理员全权限（隐式拥有全部）  |
-| problem              | create/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
+| problem              | create/read/write_any/delete_any/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
 | submission           | create/read_own/read_all/rejudge                                                                                                            | 提交操作                      |
 | user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
 | tag                  | read/manage                                                                                                                                 | 标签操作                      |
@@ -84,7 +84,7 @@ authMiddleware → 注入 isAdmin
 | community            | read/create_solution/create_discussion/create_moment/comment/report                                                                         | 社区内容与互动                |
 | community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
 | community_board      | manage                                                                                                                                      | 社区板块                      |
-| training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                  | 题单                          |
+| training             | create/read/read_any/write_any/delete_any/publish/pin                                                                  | 题单                          |
 | announcement         | manage                                                                                                                                      | 公告                          |
 | system               | settings/judge_images/audit_logs/ip_bans                                                                                                    | 系统管理                      |
 
