@@ -209,9 +209,6 @@ useSeoMeta({ title: '接受空间邀请' });
         <p v-if="preview.mode === 'email'">
           邀请类型：<span class="text-text font-medium">指定邮箱（限 1 人）</span>
         </p>
-        <p v-else-if="preview.mode === 'once'">
-          邀请类型：<span class="text-text font-medium">一次性邀请（限 1 人）</span>
-        </p>
         <p v-else>
           邀请类型：<span class="text-text font-medium">通用邀请（已使用 {{ preview.used_count }} / {{ preview.max_uses ?? '不限人数' }}）</span>
         </p>

@@ -39,7 +39,7 @@ export interface WorkspaceMember {
 export interface WorkspaceInvitation {
   id: string;
   classroom_id?: string | null;
-  mode: 'email' | 'general' | 'once';
+  mode: 'email' | 'general';
   email: string | null;
   max_uses: number | null;
   used_count: number;
@@ -52,7 +52,7 @@ export interface WorkspaceInvitationCreated {
   id: string;
   token: string;
   code: string;
-  mode: 'email' | 'general' | 'once';
+  mode: 'email' | 'general';
   max_uses: number | null;
   expires_at: string;
 }
@@ -69,7 +69,7 @@ export interface WorkspaceInvitationPreview {
   domain_slug: string;
   domain_name: string;
   email: string | null;
-  mode: 'email' | 'general' | 'once';
+  mode: 'email' | 'general';
   max_uses: number | null;
   used_count: number;
   expires_at: string;
@@ -99,10 +99,9 @@ export const WORKSPACE_INVITATION_STATUS_LABELS: Record<WorkspaceInvitationStatu
   revoked: '已撤销',
 };
 
-export const WORKSPACE_INVITATION_MODE_LABELS: Record<'email' | 'general' | 'once', string> = {
+export const WORKSPACE_INVITATION_MODE_LABELS: Record<'email' | 'general', string> = {
   email: '指定邮箱',
   general: '通用',
-  once: '一次性',
 };
 export interface WorkspaceLimits {
   members: number | null;

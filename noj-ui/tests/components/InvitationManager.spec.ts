@@ -98,7 +98,7 @@ const sampleInvitations = [
   {
     id: 'inv-3',
     classroom_id: null,
-    mode: 'once',
+    mode: 'general',
     email: null,
     max_uses: 1,
     used_count: 1,
