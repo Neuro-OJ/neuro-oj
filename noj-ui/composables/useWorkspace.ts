@@ -22,8 +22,7 @@ export function provideWorkspaceContext() {
   const { api } = useApi();
   const event = import.meta.server ? useRequestEvent() : undefined;
   const key = computed(() => workspaceCacheKey(slug.value ?? '', actor.value?.id ?? null));
-  const state = useViewAsyncData<{ data: WorkspaceDetail | null }>(
-    'workspace',
+  const state = useAsyncData<{ data: WorkspaceDetail | null }>(
     key,
     async () => {
       if (!slug.value) return { data: null };

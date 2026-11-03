@@ -161,8 +161,7 @@ export interface NotificationRow {
 export function useCommunity() {
   const scope = useCommunityScope();
   const { api } = useApi();
-  const { data, status, refresh, error } = useViewAsyncData(
-    'communityConfig',
+  const { data, status, refresh, error } = useAsyncData(
     computed(() => `${scope.key.value}:config`),
     async () => {
       const request = scope.capture();

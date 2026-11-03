@@ -10,8 +10,7 @@ const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();
 const workspace = useOptionalWorkspace();
 const label = computed(() => domainIdentityLabel(user.value?.username ?? '', slug.value));
-const spaces = useViewAsyncData(
-  'userSpaces',
+const spaces = useAsyncData(
   () => workspaceCacheKey('', user.value?.id ?? null, 'user-menu-domains'),
   () => user.value ? workspaces.list(true) : Promise.resolve({ data: [] as WorkspaceSummary[] }),
 );
