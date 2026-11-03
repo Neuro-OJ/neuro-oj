@@ -108,6 +108,26 @@ async function loadTargetReleaseSet(
   return await readReleaseSet(join(ctx.dir, RELEASE_SET_ASSET), target.version);
 }
 
+/** 只读预检旧库能否升级；失败时旧应用仍在运行，不进入排空。 */
+async function runUpgradePrecheck(
+  opts: UpdateOptions,
+  ctx: LifecycleContext,
+  target: ResolvedTargetConfig,
+): Promise<string | null> {
+  const result = await composeRun(
+    opts.runner,
+    target.composeOptions,
+    "check-upgrade",
+  );
+  const text = composeOutputText(result);
+  if (text !== "") emitHuman(text, ctx.io);
+  if (!Array.isArray(result) && result.code !== 0) {
+    return "数据库升级预检失败：" +
+      (result.stderr.trim() || `docker compose 退出码 ${result.code}`);
+  }
+  return null;
+}
+
 /** 显式执行 Core → Gateway 一次性迁移，迁移成功后才启动目标栈。 */
 async function runUpdateMigrations(
   opts: UpdateOptions,
@@ -297,6 +317,11 @@ export async function upgradeWith(
     }
   }
   await checkpointAdvance("verified");
+
+  const precheckError = await runUpgradePrecheck(opts, ctx, target);
+  if (precheckError !== null) {
+    return await checkpointFailure(precheckError, backup.path);
+  }
 
   await checkpointAdvance("draining");
   const drainError = await drainBeforeUpgrade(opts, target, ctx);
