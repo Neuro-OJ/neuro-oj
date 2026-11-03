@@ -74,7 +74,7 @@ describe('明确的域首页不跳走', () => {
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();
     expect(view.find('[data-testid="workspace-hero"]').text()).toBe('学校');
-    expect(view.find('random-problems-stub').attributes('domain-slug')).toBe('school');
+    expect(view.find('domain-home-content-stub').exists()).toBe(true);
     view.unmount();
   });
   it('迟到的当前域上下文或加入后可引导，其他资源页导航不会被旧概览抢走', async () => {
