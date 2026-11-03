@@ -1,13 +1,11 @@
 export {
   getGlobalRankings,
   getMyRanking,
-  inspectRankingView,
   refreshRankingsView,
 } from "./services/rankings.ts";
 export type {
   RankingRow,
   RankingsPage,
-  RankingViewFreshness,
   RefreshRankingsOptions,
 } from "./services/rankings.ts";
 export {
