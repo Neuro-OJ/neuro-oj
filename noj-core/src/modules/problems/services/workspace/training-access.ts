@@ -141,9 +141,8 @@ export async function readDomainTraining(
     revision: resource.training.revision,
     visibility: resource.training.visibility,
     state: resource.training.state,
-    can_edit: !resource.shared &&
-      (resource.platformAdmin ||
-        resource.context.domainPermissions.has("training:write_any")),
+    can_edit: resource.platformAdmin ||
+      resource.context.domainPermissions.has("training:write_any"),
     can_share: false,
     is_shared: false,
     items,
