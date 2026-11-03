@@ -10,8 +10,6 @@ import {
   domainLimits,
   domainMemberships,
   domainResourceCounters,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import { adminDeleteAccount } from "../../../identity/index.ts";
@@ -44,15 +42,10 @@ async function account(admin = false) {
     id,
     username: id,
     email: `${id}@example.com`,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 
@@ -78,8 +71,12 @@ async function fixture(kind: "join" | "invitation" | "approval") {
     await updateDomain(domain.slug, owner, domain.revision, {
       configuration: { ...domain.configuration, join_policy: "approval" },
     });
-    const { request } = await joinDomain(domain.slug, target, "申请加入");
-    run = () => reviewJoinRequest(domain.slug, request!.id, owner, true);
+    const joined = await joinDomain(domain.slug, target, "申请加入");
+    if (!("request" in joined) || !joined.request) {
+      throw new Error("审批域加入应创建申请而不是成员");
+    }
+    const request = joined.request;
+    run = () => reviewJoinRequest(domain.slug, request.id, owner, true);
   }
   return { owner, target, domain, run };
 }

@@ -6,8 +6,6 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   domainResourceCounters,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
@@ -28,15 +26,10 @@ async function account(admin = false) {
     username: id,
     email: `${id}@example.com`,
     email_verified: true,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return {
     id,
     token: await signToken({ sub: id, role: admin ? "admin" : "user" }),

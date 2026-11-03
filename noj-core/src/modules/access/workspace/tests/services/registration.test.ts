@@ -6,8 +6,6 @@ import {
   domainInvitations,
   domainLimits,
   domainMemberships,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -38,15 +36,9 @@ Deno.test({
       id: operator,
       username: "operator",
       email: "operator@example.com",
+      role: "admin",
       created_at: now,
       updated_at: now,
-    });
-    const [admin] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({
-      user_id: operator,
-      role_id: admin.id,
     });
     await ensureDefaultWorkspace();
     await getDb().update(domainLimits).set({ members: 0 }).where(

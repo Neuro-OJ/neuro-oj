@@ -8,17 +8,17 @@ import {
 import { BadRequestError } from "../../../../../shared/base/errors.ts";
 import { effectiveDomainConfiguration } from "../../../../../shared/workspace/capabilities.ts";
 
-Deno.test("工作空间：管理员不能获得平台权限，角色组合只扩展当前域能力", () => {
-  const admin = domainPermissions(["admin"]);
+Deno.test("工作空间：域管理员不能获得平台权限，单角色决定域能力", () => {
+  const admin = domainPermissions("admin");
   assert(admin.has("llm:manage"));
   assert(!admin.has("admin:full_access"));
   assert(!admin.has("domain:transfer"));
-  assert(domainPermissions(["owner"]).has("domain:transfer"));
-  assert(!domainPermissions(["editor"]).has("submission:read_all"));
-  assert(domainPermissions(["educator"]).has("classroom:manage_any"));
-  assert(!domainPermissions(["educator"]).has("domain:invitations"));
-  assert(domainPermissions(["editor", "educator"]).has("classroom:create"));
-  assertEquals(domainPermissions([]).size, 0);
+  assert(domainPermissions("owner").has("domain:transfer"));
+  assert(!domainPermissions("member").has("submission:read_all"));
+  assert(domainPermissions("educator").has("classroom:manage_any"));
+  assert(!domainPermissions("educator").has("domain:invitations"));
+  // 无成员关系得到空能力集，不默认成 member。
+  assertEquals(domainPermissions(null).size, 0);
 });
 Deno.test("工作空间：三种类型均有社区和排行，仅教学类型提供教学，旧开关不改变能力", () => {
   for (const type of ["community", "education", "team"] as const) {

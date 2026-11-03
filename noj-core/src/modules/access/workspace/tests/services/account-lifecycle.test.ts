@@ -5,12 +5,9 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
-  domainMemberRoles,
   domainMemberships,
   domainResourceCounters,
   domains,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -36,15 +33,10 @@ async function account(admin = false) {
     username: id,
     email: `${id}@example.com`,
     password_hash: await hashPassword("Owner-2026-Ab1"),
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 
@@ -150,16 +142,16 @@ Deno.test("停用域交接：普通负责人不能写入，平台治理可转交
   );
   assertEquals(saved.owner_id, next);
   assertEquals(saved.status, "suspended");
-  const roles = await getDb().select({ role: domainMemberRoles.role }).from(
-    domainMemberRoles,
-  ).innerJoin(
-    domainMemberships,
-    eq(domainMemberships.id, domainMemberRoles.membership_id),
-  ).where(
+  // 负责人是单一事实：domains.owner_id 指向新负责人，成员角色列不存 owner。
+  const [ownerRow] = await getDb().select({
+    owner_id: domains.owner_id,
+  }).from(domains).where(eq(domains.id, domain.id));
+  assertEquals(ownerRow.owner_id, next);
+  const [membership] = await getDb().select().from(domainMemberships).where(
     and(
       eq(domainMemberships.domain_id, domain.id),
-      eq(domainMemberRoles.role, "owner"),
+      eq(domainMemberships.user_id, next),
     ),
   );
-  assertEquals(roles.length, 1);
+  assertEquals(membership.role, "admin");
 });

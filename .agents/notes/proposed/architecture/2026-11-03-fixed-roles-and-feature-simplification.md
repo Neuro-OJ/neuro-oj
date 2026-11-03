@@ -54,8 +54,8 @@ Status: proposed
 | P0 | 基线、分支、签名检查 | 进行中 | 主题 bookmark 已建；RC 集成 PR 未完成（发布前置） |
 | P1 | 冻结对外合同 | 待办 | 端点/DTO/错误语义清单，前后端共用 |
 | P2 | 固定角色与静态能力映射 | 完成 | `shared/access/roles.ts` + `tests/shared/access-roles.test.ts`（10 项表驱动断言通过） |
-| P3 | schema、迁移、旧库拦截 | 进行中 | `users.role`/`domain_memberships.role` 列与 CHECK 已建模；迁移、旧库双层拦截、约束下线未完 |
-| P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；封禁/注销共用管理员锁待接 |
+| P3 | schema、迁移、旧库拦截 | 进行中 | 迁移 `0132_eager_gamma_corps` 已生成并通过空库验证；迁移锁内旧库门禁 + SQL 数据保护已实现并实测拒绝旧库；RBAC/板块授权等表删除与约束下线待办 |
+| P4 | 认证与平台管理员 | 进行中 | 认证中间件与权限解析改读 `users.role`；角色 PATCH 单值化；用户 DTO 带 role/is_admin；注册/OAuth 固定 user；旧 token 伪造 admin 展示角色不影响实际权限（测试覆盖）；封禁/注销共用管理员锁待接 |
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；HTTP 路由改显式 Actor；workspace 重复实现已删（成员/域/邀请/注册），仅保留测试向适配层 |
 | P6 | 初始化、种子与夹具 | 进行中 | RBAC 种子服务已删除；root/first-admin/管理员开号/CLI 演练直接写 users.role；测试 helper 已迁移，测试用例适配未完 |
 | P7 | 域配置去重 | 待办 | Stored/Effective 配置分离；features/homepage 不可编辑 |
@@ -96,6 +96,15 @@ Status: proposed
   用例改为平台 admin 账号。
 - 2026-11-03（第二轮）：删除板块自定义角色授权：服务函数、三个管理端点、
   `canPostToBoard` 授权分支与审计动作；数据库表删除留待迁移。
+- 2026-11-03（第三轮）：生成迁移 `0132_eager_gamma_corps`（users.role /
+  domain_memberships.role + CHECK + 审计动作清单），并新增
+  `shared/db/migration-switch.ts`：迁移锁内、migrator 之前判断 ledger 与业务表，
+  旧库一律拒绝；迁移 SQL 最前部再对 users/domains/domain_memberships 的非空数据
+  做事务内保护。实测三种情形：空库 ALLOWED；ledger 落后于切换迁移 REJECTED；
+  有业务表但缺 ledger REJECTED，SQL 保护在破坏性 DDL 前回滚。
+- 2026-11-03（第三轮）：access 域测试完成迁移并通过——
+  `deno task test:domain access` 结果为 396 passed / 0 failed；覆盖角色单值写入、
+  旧 token 展示角色无效、最后管理员保护、成员角色/负责人交接、板块授权接口移除。
 - 验证（2026-11-03 第二轮）：生产源码 `deno check` 0 错误；改动文件
   `deno fmt`/`deno lint` 通过；核心测试夹具（default/versioning/education/
   community）已迁移到单值角色。测试用例仍有 workspace 适配层签名差异与

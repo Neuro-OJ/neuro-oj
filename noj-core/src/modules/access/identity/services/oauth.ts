@@ -8,9 +8,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import {
   oauthAccounts,
-  roles,
   systemSettings,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
@@ -560,17 +558,11 @@ async function createOAuthUser(
       username,
       email,
       password_hash: null,
+      // OAuth 新用户固定为普通用户；邮箱相同或已有账户不自动提权。
+      role: "user",
       created_at: now,
       updated_at: now,
     });
-    const [defaultRole] = await tx.select({ id: roles.id }).from(roles)
-      .where(eq(roles.is_default, true)).limit(1);
-    if (defaultRole) {
-      await tx.insert(userRoles).values({
-        user_id: userId,
-        role_id: defaultRole.id,
-      }).onConflictDoNothing();
-    }
     // PIPL：与用户插入同事务写入隐私政策/服务条款同意记录（原子）。
     await recordConsentsForRegistration(
       tx,
@@ -597,11 +589,7 @@ async function issueOAuthSession(
   const [user] = await db.select().from(users).where(eq(users.id, userId))
     .limit(1);
   if (!user || user.deleted_at) throw new NotFoundError("用户不存在");
-  const roleRows = await db.select({ name: roles.name }).from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.role_id)).where(
-      eq(userRoles.user_id, userId),
-    );
-  const role = roleRows.find((item) => item.name === "admin")?.name || "user";
+  const role = user.role === "admin" ? "admin" : "user";
   const token = await signToken({
     sub: userId,
     role,

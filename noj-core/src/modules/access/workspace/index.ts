@@ -33,6 +33,7 @@ import {
 } from "../invitations.ts";
 import { workspaceAudit, workspaceAuditTx } from "../audit.ts";
 import {
+  accessDomainChangeBoundary,
   accessMemberRemovalBoundary,
 } from "../../application/access-capabilities.ts";
 
@@ -168,7 +169,7 @@ export function setDomainStatus(
   revision: number,
   options: {
     onAccessPolicyChangedTx: (tx: DbTx, domainId: string) => Promise<void>;
-  },
+  } = accessDomainChangeBoundary,
 ) {
   return setDomainStatusForActor(
     userActorFromAuthenticatedId(actorId),
@@ -187,12 +188,13 @@ export function updateDomain(
   patch: {
     name?: string;
     description?: string;
-    configuration?:
-      import("../../../shared/workspace/types.ts").DomainConfiguration;
+    configuration?: Partial<
+      import("../../../shared/workspace/types.ts").DomainConfiguration
+    >;
   },
   options: {
     onAccessPolicyChangedTx: (tx: DbTx, domainId: string) => Promise<void>;
-  },
+  } = accessDomainChangeBoundary,
 ) {
   return updateDomainForActor(
     userActorFromAuthenticatedId(actorId),
@@ -200,6 +202,19 @@ export function updateDomain(
     revision,
     patch,
     options,
+  );
+}
+
+/** @deprecated 过渡适配：字符串 actor 的域限额写入。 */
+export function updateDomainLimits(
+  slug: string,
+  actorId: string,
+  expectedRevision: number | null,
+  input: import("../../../shared/workspace/types.ts").DomainLimits,
+) {
+  const actor = userActorFromAuthenticatedId(actorId);
+  return import("./services/limits.ts").then(({ updateDomainLimits: impl }) =>
+    impl(slug, actor, expectedRevision, input)
   );
 }
 
@@ -356,17 +371,31 @@ export async function createDomainInvitation(
   return impl(userActorFromAuthenticatedId(actorId), slug, input, options);
 }
 
-/** @deprecated 过渡适配：字符串 actor 的邀请兑换。 */
+/** @deprecated 过渡适配：字符串 actor 的邀请兑换；第三参数可传事务句柄。 */
 export async function consumeDomainInvitation(
   tokenOrCode: string,
   actorId: string,
-  options: {
-    classroomId?: string;
-    meta?: { ipAddress?: string; requestId?: string };
-  } = {},
+  third?:
+    | DbTx
+    | {
+      classroomId?: string;
+      meta?: { ipAddress?: string; requestId?: string };
+    },
 ) {
-  const { consumeDomainInvitation: impl } = await import("../invitations.ts");
-  return impl(userActorFromAuthenticatedId(actorId), tokenOrCode, options);
+  const { consumeDomainInvitation: impl, consumeDomainInvitationTx } =
+    await import("../invitations.ts");
+  const actor = userActorFromAuthenticatedId(actorId);
+  if (third && typeof (third as Partial<DbTx>).rollback === "function") {
+    return consumeDomainInvitationTx(third as DbTx, actor, tokenOrCode, {});
+  }
+  return impl(
+    actor,
+    tokenOrCode,
+    (third ?? {}) as {
+      classroomId?: string;
+      meta?: { ipAddress?: string; requestId?: string };
+    },
+  );
 }
 
 /** @deprecated 过渡适配：字符串 actor 的邀请撤销。 */

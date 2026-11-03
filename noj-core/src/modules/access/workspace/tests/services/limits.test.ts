@@ -12,9 +12,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   domainLimits,
-  roles,
   systemSettings,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -44,15 +42,10 @@ async function account(admin = false) {
     id,
     username: id,
     email: `${id}@example.com`,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 

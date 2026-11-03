@@ -17,8 +17,6 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   communityPosts,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import { AppError, ForbiddenError } from "../../../../../shared/base/errors.ts";
@@ -48,10 +46,9 @@ async function seedUser(verified = false) {
 
 async function seedAdmin(verified = true) {
   const userId = await seedUser(verified);
-  const [role] = await getDb().select({ id: roles.id }).from(roles).where(
-    eq(roles.name, "admin"),
+  await getDb().update(users).set({ role: "admin" }).where(
+    eq(users.id, userId),
   );
-  await getDb().insert(userRoles).values({ user_id: userId, role_id: role.id });
   return userId;
 }
 

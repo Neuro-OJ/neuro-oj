@@ -585,6 +585,8 @@ export async function listDomainMembersPage(
     data: members.map(({ deleted_at, ...row }) => ({
       ...row,
       username: deleted_at ? "已注销用户" : row.username,
+      // 已注销账号不向域管理员暴露旧邮箱。
+      email: deleted_at ? "" : row.email,
     })),
     total: total.count,
   };

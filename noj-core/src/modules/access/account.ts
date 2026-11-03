@@ -8,7 +8,6 @@ import {
   passwordResetTokens,
   tfaRecoveryCodes,
   userBans,
-  userRoles,
   users,
 } from "../../shared/db/schema.ts";
 import {
@@ -104,7 +103,6 @@ async function anonymizeUserTx(
   await tx.delete(tfaRecoveryCodes).where(
     eq(tfaRecoveryCodes.user_id, targetUserId),
   );
-  await tx.delete(userRoles).where(eq(userRoles.user_id, targetUserId));
   await tx.update(userBans).set({
     unbanned_at: now,
     unbanned_by: operationActor.userId,

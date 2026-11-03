@@ -1,12 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
-import {
-  roles,
-  systemSettings,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { systemSettings, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../security/password.ts";
 import { getEmailConfigStatus } from "../../../../platform/contracts/cross-module/system_services_email-status.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
@@ -203,25 +198,11 @@ export async function registerUser(
       email: input.email,
       password_hash: passwordHash,
       email_verified: false,
+      // 公开注册固定为普通用户；同邮箱/已有账户不会自动提权。
+      role: "user",
       created_at: now,
       updated_at: now,
     });
-
-    const roleName = "user";
-    const [role] = await tx
-      .select({ id: roles.id })
-      .from(roles)
-      .where(eq(roles.name, roleName))
-      .limit(1);
-
-    if (!role) {
-      throw new Error(`注册所需角色不存在：${roleName}`);
-    }
-
-    await tx.insert(userRoles).values({
-      user_id: id,
-      role_id: role.id,
-    }).onConflictDoNothing();
 
     // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
     await recordConsentsForRegistration(

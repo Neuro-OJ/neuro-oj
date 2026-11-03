@@ -5,8 +5,6 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import {
   auditLogs,
   passwordResetTokens,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -95,12 +93,7 @@ accountTest(
       assert(await comparePassword(data.password, user.password_hash!));
       // 临时密码使用较低 bcrypt 轮数（首次登录强制改密时按默认轮数重新哈希）
       assert(Number(user.password_hash!.split("$")[2]) <= 10);
-      const assigned = await getDb().select({ name: roles.name }).from(
-        userRoles,
-      ).innerJoin(roles, eq(userRoles.role_id, roles.id)).where(
-        eq(userRoles.user_id, data.id),
-      );
-      assertEquals(assigned.map((role) => role.name), ["user"]);
+      assertEquals(user.role, "user");
       const logs = await getDb().select().from(auditLogs).where(
         eq(auditLogs.target_id, data.id),
       );
@@ -137,13 +130,10 @@ accountTest(
 );
 
 accountTest(
-  "单建可指定邮箱、密码和角色 ID，批量返回逐行初始凭据且审计不含密码",
+  "单建可指定邮箱、密码和平台角色，批量返回逐行初始凭据且审计不含密码",
   async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "user"),
-    );
     const created = await jsonRequest(app, base, {
       method: "POST",
       token,
@@ -151,7 +141,7 @@ accountTest(
         username: "specified_user",
         email: "specified@example.com",
         password,
-        role: role.id,
+        role: "admin",
       },
     });
     assertEquals(created.status, 201);

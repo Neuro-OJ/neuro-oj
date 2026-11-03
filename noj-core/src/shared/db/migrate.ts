@@ -1,6 +1,7 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { getDb } from "./connection.ts";
+import { assertDatabaseSupportsAuthorizationSwitch } from "./migration-switch.ts";
 import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getLogger } from "@logtape/logtape";
 
@@ -240,7 +241,11 @@ export async function runMigrations(): Promise<void> {
       migrations_folder: migrationsFolder,
       migrations_schema: "drizzle",
     });
-    await withMigrationLock(undefined, () => migrate(db, { migrationsFolder }));
+    await withMigrationLock(undefined, async () => {
+      // 旧库门禁必须与迁移同处锁内、先于任何 DDL：旧授权模型无法无损转换。
+      await assertDatabaseSupportsAuthorizationSwitch();
+      await migrate(db, { migrationsFolder });
+    });
     logger.info("数据库迁移完成");
   } catch (err) {
     logger.error("数据库迁移失败", { err });
