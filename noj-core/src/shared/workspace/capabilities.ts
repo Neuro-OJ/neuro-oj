@@ -42,15 +42,17 @@ export function effectiveDomainConfiguration(
   stored: StoredDomainConfiguration,
 ): DomainConfiguration {
   if (preset === "custom") {
+    // 旧 custom 行可能仍带派生字段；保留它们，缺失时给出安全默认。
+    const legacy = stored as Partial<DomainConfiguration>;
     return {
       ...stored,
-      features: {
+      features: legacy.features ?? {
         community: false,
         classroom: false,
         assignment: false,
         analytics: false,
       },
-      homepage: "overview",
+      homepage: legacy.homepage ?? "overview",
     };
   }
   const fixed = domainTypeConfiguration(preset);

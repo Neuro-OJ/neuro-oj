@@ -19,7 +19,10 @@ import {
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
 import type { DomainConfiguration, DomainPreset } from "./types.ts";
 import type { StoredDomainConfiguration } from "../../shared/workspace/types.ts";
-import { storedDomainConfiguration } from "../../shared/workspace/capabilities.ts";
+import {
+  effectiveDomainConfiguration,
+  storedDomainConfiguration,
+} from "../../shared/workspace/capabilities.ts";
 import type { SystemActor, UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import { type AccessAuditMeta, workspaceAuditTx } from "./audit.ts";
@@ -154,7 +157,13 @@ export async function createDomainTx(
   await workspaceAuditTx(tx, user, domain.id, "domain.create", {
     preset: input.preset,
   }, options.meta);
-  return domain;
+  return {
+    ...domain,
+    configuration: effectiveDomainConfiguration(
+      domain.preset,
+      domain.configuration,
+    ),
+  };
 }
 
 export function createDomain(
