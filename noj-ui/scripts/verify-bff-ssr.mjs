@@ -274,7 +274,6 @@ const fixture = Deno.serve(
           id: "t",
           title: "题单首屏",
           description: "循序练习",
-          can_share: false,
           can_edit: false,
           items: Array.from(
             { length: 21 },

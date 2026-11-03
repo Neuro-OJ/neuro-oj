@@ -20,7 +20,6 @@ export function useDomainTrainings() {
               | 'visibility'
               | 'state'
               | 'can_edit'
-              | 'can_share'
               | 'revision'
             >
           >;

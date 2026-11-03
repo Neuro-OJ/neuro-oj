@@ -18,7 +18,6 @@ export interface DomainTrainingDetail {
   visibility: DomainTrainingInput['visibility'];
   is_shared: boolean;
   can_edit: boolean;
-  can_share: boolean;
   items: Array<
     DomainProblemReference & {
       binding_id: string | null;

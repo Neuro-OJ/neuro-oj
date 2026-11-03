@@ -24,7 +24,6 @@ export interface DomainProblemBinding {
   required_version_id: string | null;
   answer_version_id: string | null;
   can_edit: boolean;
-  can_share: boolean;
   can_manage_policy: boolean;
   can_change_state: boolean;
 }
