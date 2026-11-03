@@ -335,14 +335,11 @@ export {
 } from "./services/workspace/training-access.ts";
 export {
   importDomainTraining,
-  readDomainTrainingSharing,
   setDomainTrainingSharing,
 } from "./services/workspace/training-sharing.ts";
 export { saveDomainTraining } from "./services/workspace/trainings.ts";
 export type { DomainTrainingInput } from "./services/workspace/trainings.ts";
 export {
-  listSharedDomainResources,
-  readDomainProblemSharing,
   resolveSharingTargetSlugs,
   setDomainProblemSharing,
 } from "./services/workspace/problem-sharing.ts";
