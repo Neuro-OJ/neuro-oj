@@ -72,7 +72,6 @@ Deno.test("加入申请视图：按域隔离，注销后隐藏用户名且不能
   const { updateDomain } = await import("../../index.ts");
   await updateDomain(domain.slug, operator, domain.revision, {
     configuration: {
-      ...domain.configuration,
       discoverable: true,
       join_policy: "approval",
     },
