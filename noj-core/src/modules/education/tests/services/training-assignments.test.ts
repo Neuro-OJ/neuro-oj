@@ -13,10 +13,10 @@ import {
 } from "../../../../shared/base/errors.ts";
 import {
   importDomainProblem,
-  importDomainTraining,
   readDomainTraining,
   saveDomainTraining,
 } from "../../../problems/index.ts";
+import { importDomainTraining } from "../../../problems/services/workspace/training-sharing.ts";
 import {
   createAssignment,
   getAssignment,

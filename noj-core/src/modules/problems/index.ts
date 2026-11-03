@@ -333,10 +333,6 @@ export {
   readDomainTraining,
   resolveDomainTraining,
 } from "./services/workspace/training-access.ts";
-export {
-  importDomainTraining,
-  setDomainTrainingSharing,
-} from "./services/workspace/training-sharing.ts";
 export { saveDomainTraining } from "./services/workspace/trainings.ts";
 export type { DomainTrainingInput } from "./services/workspace/trainings.ts";
 export {
