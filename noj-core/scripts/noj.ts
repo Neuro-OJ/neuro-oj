@@ -242,6 +242,14 @@ async function runDevSetup(): Promise<void> {
 
 const dbCmd = new Command()
   .description("数据库操作")
+  .command("check-upgrade", "只读检查既有数据库能否升级到本版本")
+  .action(async () => {
+    const { assertDatabaseSupportsAuthorizationSwitch } = await import(
+      "../src/shared/db/migration-switch.ts"
+    );
+    await assertDatabaseSupportsAuthorizationSwitch();
+    console.log("数据库兼容性检查通过");
+  })
   .command("migrate", "执行数据库迁移")
   .action(() => {
     return runMigrations();
