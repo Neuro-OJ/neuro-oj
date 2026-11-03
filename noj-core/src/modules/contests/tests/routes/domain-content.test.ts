@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -7,7 +7,6 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   domainProblemBindings,
   problems,
-  problemShareSettings,
   problemVersions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -127,13 +126,6 @@ Deno.test({
         created_at: now,
         updated_at: now,
       });
-      await db.insert(problemShareSettings).values({
-        problem_id: id,
-        enabled: true,
-        scope: "all",
-        updated_by: owner,
-        updated_at: now,
-      });
       const copied = await importDomainProblem(
         target.slug,
         `${source.slug}:${1001 + index}`,
@@ -186,9 +178,6 @@ Deno.test({
     assertEquals(
       (await jsonRequest(application, `${path}/2/template`, { token })).status,
       404,
-    );
-    await db.update(problemShareSettings).set({ enabled: false }).where(
-      and(eq(problemShareSettings.problem_id, ids[0])),
     );
     assertEquals((await getContestProblems(contest.id, owner)).length, 2);
     assertEquals(

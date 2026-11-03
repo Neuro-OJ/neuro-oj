@@ -8,8 +8,6 @@ import {
   domains,
   problemBindingHistory,
   problems,
-  problemShareSettings,
-  problemShareTargets,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -160,29 +158,3 @@ Deno.test("绑定沿革：版本和绑定必须同题，历史绑定阻止级联
   assertEquals((await getDb().select().from(problemBindingHistory)).length, 1);
 });
 
-Deno.test("公开引用授权：默认不共享，定向目标使用外键及唯一键", async () => {
-  const { school, problem, now } = await seed();
-  await getDb().insert(problemShareSettings).values({
-    problem_id: problem,
-    updated_by: "0",
-    updated_at: now,
-  });
-  const [settings] = await getDb().select().from(problemShareSettings);
-  assertEquals(settings.enabled, false);
-  await getDb().insert(problemShareTargets).values({
-    problem_id: problem,
-    domain_id: school,
-  });
-  await constraintRejected((tx) =>
-    tx.insert(problemShareTargets).values({
-      problem_id: problem,
-      domain_id: school,
-    })
-  );
-  await constraintRejected((tx) =>
-    tx.insert(problemShareTargets).values({
-      problem_id: problem,
-      domain_id: "missing-domain",
-    })
-  );
-});

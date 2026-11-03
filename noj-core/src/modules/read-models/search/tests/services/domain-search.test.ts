@@ -12,7 +12,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   submissions,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -103,13 +102,6 @@ export async function fixture() {
     ),
   );
   await publishAllProblemsForTest();
-  await db.insert(problemShareSettings).values({
-    problem_id: "query-source",
-    enabled: true,
-    scope: "all",
-    updated_by: actor,
-    updated_at: now,
-  });
   await db.insert(submissions).values(
     [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
       (domain_id) => ({
@@ -186,9 +178,6 @@ Deno.test("域搜索：独立副本按本域查询，下架影响本域，源共
     .where(eq(domainProblemBindings.id, "binding-school-query-a"));
   assertEquals((await search("school-query-a", actor)).items.length, 0);
   assertEquals((await search("school-query-b", actor)).items.length, 1);
-  await db.update(problemShareSettings).set({ enabled: false }).where(
-    eq(problemShareSettings.problem_id, "query-source"),
-  );
   assertEquals((await search("school-query-b", actor)).items.length, 1);
   assertEquals(
     (await searchGrouped({
