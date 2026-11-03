@@ -234,9 +234,6 @@ export async function refreshRankingsView(
   }
 }
 
-/** 保留测试调用入口；榜单读取和刷新已不保存进程内缓存。 */
-export function _resetHasViewCacheForTest(): void {}
-
 /** 默认域兼容榜单始终采用当前授权事实，旧全域物化视图不用于对外读取。 */
 export async function getGlobalRankings(
   params: { page: number; limit?: number },

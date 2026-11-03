@@ -1,5 +1,4 @@
 export {
-  _resetHasViewCacheForTest,
   getGlobalRankings,
   getMyRanking,
   inspectRankingView,

@@ -1,7 +1,6 @@
 /** read-models 的组合入口；业务写入不得通过该入口反向调用读模型。 */
 export {
   _resetDashboardCacheForTest,
-  _resetHasViewCacheForTest,
   _resetStatsCacheForTest,
   applyNewResult,
   domainProblemProgressWhere,
