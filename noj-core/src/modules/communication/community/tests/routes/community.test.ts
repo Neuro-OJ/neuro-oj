@@ -933,7 +933,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 具备 moderation 权限的审核员可访问社区管理端点",
+  name: "community route: 域 educator 不能进入平台社区管理端点",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -958,14 +958,14 @@ Deno.test({
       "/api/v1/admin/community/comments/pending",
       { token: responderToken },
     );
-    assertEquals(response.status, 200);
-    // educator 同时具备 community_board:manage，可以创建板块。
+    // 平台 /admin 组只接受平台能力或平台管理员；域 educator 走域路由。
+    assertEquals(response.status, 403);
     const boardCreated = await jsonRequest(
       app,
       "/api/v1/admin/community/boards",
       { method: "POST", token: responderToken, body: { slug: "x", name: "X" } },
     );
-    assertEquals(boardCreated.status, 201);
+    assertEquals(boardCreated.status, 403);
   },
 });
 
