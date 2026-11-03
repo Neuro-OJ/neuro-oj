@@ -27,6 +27,10 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 
+/** Compose 已移除固定 container_name；CI 通过 E2E_REDIS_CONTAINER 注入 ID。 */
+const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ??
+  "noj-e2e-redis";
+
 const LOCK_THRESHOLD = Number(
   Deno.env.get("RATE_LIMIT_LOGIN_LOCK_THRESHOLD") ?? "10",
 );
@@ -83,7 +87,7 @@ e2eTest(
     const cmd = new Deno.Command("docker", {
       args: [
         "exec",
-        "noj-e2e-redis",
+        REDIS_CONTAINER,
         "redis-cli",
         "-n",
         "1",
@@ -94,7 +98,9 @@ e2eTest(
     });
     const { stdout, success } = await cmd.output();
     if (!success) {
-      throw new Error("docker exec noj-e2e-redis 失败，无法验证锁定标记");
+      throw new Error(
+        `docker exec ${REDIS_CONTAINER} 失败，无法验证锁定标记`,
+      );
     }
     const keys = new TextDecoder().decode(stdout).trim().split("\n").filter(
       Boolean,

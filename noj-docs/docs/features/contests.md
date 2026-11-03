@@ -196,5 +196,6 @@ Settlement）**阶段：
 2. **授权口径绑默认域**：旧读路径经 `resolveDefaultContestAccess` 固定 `main`，因此
    旧编辑器深链接只能收敛到 `main`，不能"顺手"改成域无关。
 
-决策记录见
-[`.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`](../../../.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md)。
+决策记录见仓库内
+`.agents/notes/implemented/architecture/2026-10-31-legacy-contest-api-retirement-assessment.md`
+（位于文档站构建目录之外，不做站内链接，避免 VitePress 死链构建失败）。

@@ -117,14 +117,14 @@ const PG_ADMIN_URL = Deno.env.get("DRILL_E2E_PG_ADMIN_URL") ??
   "postgres://e2e:e2e@127.0.0.1:5433/postgres";
 /** PG 容器名（psql 只存在于容器里）。 */
 const PG_CONTAINER = Deno.env.get("DRILL_E2E_PG_CONTAINER") ??
-  "noj-e2e-postgres";
+  Deno.env.get("E2E_POSTGRES_CONTAINER") ?? "noj-e2e-postgres";
 /** PG 用户。 */
 const PG_USER = Deno.env.get("DRILL_E2E_PG_USER") ?? "e2e";
 /** psql 建库/删库时使用的管理库名。 */
 const PG_ADMIN_DATABASE = "postgres";
 /** Redis 容器名（仅用于前置探测）。 */
 const REDIS_CONTAINER = Deno.env.get("DRILL_E2E_REDIS_CONTAINER") ??
-  "noj-e2e-redis";
+  Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis";
 /**
  * Redis 连接串。
  *

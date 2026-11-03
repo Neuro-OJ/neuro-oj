@@ -6,21 +6,19 @@
  */
 
 import {
-  api,
   apiDelete,
   apiGet,
   apiPatch,
   apiPost,
-  apiPut,
   domainProblemPath,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   publishProblemVersion,
+  requireJudgeCanary,
   setProblemState,
   submitCode,
   waitForServer,
@@ -169,9 +167,6 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
     );
   }
 
-  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
-  const revision = (draft.body as { data: { revision: number } }).data.revision;
-
   // 按标签筛选命中
   const listRes = await apiGet(
     `/api/v1/problems?tag=${tagId}`,
@@ -309,10 +304,8 @@ e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见",
 
 e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
   if (!isE2E) return;
-  if (!(await isJudgeAvailable())) {
-    console.log("  ⚠ 评测不可用，跳过 AC 门控场景");
-    return;
-  }
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+  await requireJudgeCanary();
 
   // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1001）则本场景同样跳过
   if (!gatingProblemId) {
@@ -336,8 +329,10 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
   );
   const result = await pollSubmission(token, submissionId, 45, 2000, true);
   if (result.status !== "finished" || result.score <= 0) {
-    console.log(`  ⚠ 评测结果 ${result.status}，跳过 AC 可见性断言`);
-    return;
+    // Judge 已由 canary 证明可用；这里拿不到 AC 就是真实回归，不能静默跳过。
+    throw new Error(
+      `期望 AC 以验证算法标签门控，实际 ${result.status}（score=${result.score}）`,
+    );
   }
 
   const res = await apiGet(`/api/v1/problems/${judgeProblemId}`, token);

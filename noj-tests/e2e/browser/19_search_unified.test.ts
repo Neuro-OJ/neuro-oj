@@ -3,7 +3,6 @@
 
 import { expect } from "npm:playwright@1.62.1/test";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import {
   api,
   BASE_URL,
@@ -12,11 +11,10 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 import {
-  BROWSER_E2E,
-  gotoPage,
-  launchBrowser,
-  teardownBrowser,
-} from "./browser.ts";
+  buildProblemBundle,
+  problemBundleForm,
+} from "../../fixtures/problem-bundle.ts";
+import { BROWSER_E2E, gotoPage, withBrowserJourney } from "./browser.ts";
 
 // 每轮创建独立公开题，避免其他 E2E 的进行中比赛使种子题依法保密。
 const QUERY = `uisearch${Date.now().toString(36)}`;
@@ -52,36 +50,30 @@ async function prepareSearchFixture(): Promise<void> {
     },
   );
   assertEquals(granted.status, 200);
-  const bytes = zipSync({
-    "problem.json": strToU8(JSON.stringify({
-      format_version: 2,
-      title: TITLE,
-      difficulty: "easy",
-      judge_type: "dual",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          time_limit_ms: 10000,
-          memory_limit_mb: 512,
+  const archive = buildProblemBundle({
+      "problem.json": JSON.stringify({
+        format_version: 2,
+        title: TITLE,
+        difficulty: "easy",
+        judge_type: "dual",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 10000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 5000,
+            memory_limit_mb: 256,
+          },
         },
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 5000,
-          memory_limit_mb: 256,
-        },
-      },
-    })),
-    "statement.md": strToU8("# 独立公开搜索题\n由当前域编辑者导入并显式发布。"),
-    "evaluate.py": strToU8(
-      "from noj_evaluator_sdk import result\nresult.accept(score=10)\n",
-    ),
-  });
-  const form = new FormData();
-  form.set(
-    "file",
-    new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
-    "search.zip",
-  );
+      }),
+      "statement.md": "# 独立公开搜索题\n由当前域编辑者导入并显式发布。",
+      "evaluate.py":
+        "from noj_evaluator_sdk import result\nresult.accept(score=10)\n",
+    }),
+    form = problemBundleForm(archive, "search.zip");
   const imported = await fetch(
     `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
     {
@@ -130,9 +122,8 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
-    const session = await launchBrowser();
-    let failed = true;
-    try {
+    await withBrowserJourney("domain-search-shortcut", async (journey) => {
+      const session = await journey.newSession("search-learner");
       await prepareSearchFixture();
       await gotoPage(session.page, "/");
       await session.page.waitForURL((url) => url.pathname === "/d/main");
@@ -160,10 +151,7 @@ Deno.test({
       await session.page.waitForURL((url) =>
         url.pathname === `/d/main/problems/${problemNumber}`
       );
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "domain-search-shortcut");
-    }
+    });
   },
 });
 Deno.test({
@@ -172,9 +160,8 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
-    const session = await launchBrowser();
-    let failed = true;
-    try {
+    await withBrowserJourney("domain-search-legacy", async (journey) => {
+      const session = await journey.newSession("search-learner");
       await gotoPage(session.page, `/search?q=${QUERY}&type=problem`);
       await session.page.waitForURL((url) => url.pathname === "/d/main/search");
       await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
@@ -186,10 +173,7 @@ Deno.test({
       await expect(
         session.page.getByRole("button", { name: "全部", exact: true }),
       ).toHaveCount(0);
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "domain-search-legacy");
-    }
+    });
   },
 });
 Deno.test({
@@ -198,9 +182,8 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
-    const session = await launchBrowser();
-    let failed = true;
-    try {
+    await withBrowserJourney("domain-search-url", async (journey) => {
+      const session = await journey.newSession("search-learner");
       await gotoPage(session.page, `/d/main/search?q=${QUERY}&type=problem`);
       await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
         .toBeVisible();
@@ -215,9 +198,6 @@ Deno.test({
       await session.page.goBack();
       await expect(session.page.getByRole("link", { name: new RegExp(TITLE) }))
         .toHaveAttribute("href", `/d/main/problems/${problemNumber}`);
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "domain-search-url");
-    }
+    });
   },
 });

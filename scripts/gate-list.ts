@@ -68,6 +68,12 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/coverage-report_test.ts",
   // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
   "scripts/test-baseline_test.ts",
+  // 测试性能基础设施（2026-11-03）：阶段计时与报告聚合是后续所有性能结论的
+  // 事实源，坏行/坏文件/缺失清单都必须有回归。
+  "scripts/lib/test-timing_test.ts",
+  "scripts/test-performance-report_test.ts",
+  // 本地 E2E 会话所有权：session/project/owner 不匹配必须拒绝清理。
+  "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
   "scripts/verify-export-jsdoc_test.ts",
   "scripts/verify-agent-note-format_test.ts",
@@ -94,6 +100,16 @@ export const REPO_GATES: Gate[] = [
   {
     label: "E2E 启动脚本闸门（项目名隔离 + SDK 构建失败传播）",
     args: ["bash", "scripts/e2e/check-setup.sh"],
+  },
+  // 协调服务是 LLM 治理用例的同步屏障：单线程服务器、nonce 去重或 release
+  // 幂等任一回归都会让 Browser 用例死锁/假通过，必须在仓库门禁里跑契约检查。
+  {
+    label: "E2E 评测屏障协调服务契约检查",
+    args: ["python3", "-B", "scripts/e2e/check_test_coordinator.py"],
+  },
+  {
+    label: "E2E LLM Mock 只读接口契约检查",
+    args: ["python3", "-B", "scripts/e2e/check_llm_mock.py"],
   },
   // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
   {

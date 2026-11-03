@@ -9,7 +9,7 @@
  * 全部幂等（ON CONFLICT DO NOTHING / 存在性检查）。
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import {
@@ -110,20 +110,24 @@ export async function seedJudgeImages(): Promise<void> {
     },
   ];
 
-  for (const img of images) {
-    await db.insert(judgeImages).values({
+  // 三条镜像一次批量 upsert（P3）：冲突时按 id 更新 kind/mode/description，
+  // 刻意不写 image —— 运维手工改过的镜像名不被种子覆盖。
+  await db.insert(judgeImages).values(
+    images.map((img) => ({
       ...img,
       created_at: now,
       updated_at: now,
-    }).onConflictDoUpdate({
-      target: judgeImages.id,
-      set: {
-        kind: img.kind,
-        mode: img.mode,
-        description: img.description,
-        updated_at: now,
-      },
-    });
+    })),
+  ).onConflictDoUpdate({
+    target: judgeImages.id,
+    set: {
+      kind: sql`excluded.kind`,
+      mode: sql`excluded.mode`,
+      description: sql`excluded.description`,
+      updated_at: sql`excluded.updated_at`,
+    },
+  });
+  for (const img of images) {
     console.log(`  已同步评测镜像: ${img.image} (kind=${img.kind})`);
   }
 }
@@ -291,6 +295,8 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   console.log("-".repeat(72));
   console.log(`  username: ${username}`);
   console.log(`  email:    ${email}`);
+  // 开发引导必须把一次性密码显示给本机操作者（仅本地 bootstrap 路径）。
+  // codeql[js/clear-text-logging]
   console.log(`  password: ${password}`);
   console.log("-".repeat(72));
   if (shouldForcePasswordChange()) {

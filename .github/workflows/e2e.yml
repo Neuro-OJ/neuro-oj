@@ -47,6 +47,9 @@ on:
       - ".github/actionlint.yaml"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
+  # 候选发布（release.yml）在固定 SHA 上复用全量 E2E；workflow_call 视为全量，
+  # 选择器对非 PR/main 事件直接扩大为全部 API + Browser + cross-domain。
+  workflow_call:
 
 # 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
 concurrency:
@@ -78,119 +81,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
-      e2e-domains: ${{ steps.domains.outputs.e2e-domains }}
+      e2e-domains: ${{ steps.selection.outputs.e2e-domains }}
+      e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # 选择器需要 base/head 完整历史（含重命名前后路径）
           fetch-depth: 0
-      - name: 按 Domain 路径过滤
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
-        id: filter
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
-          filters: |
-            e2e-identity:
-              - 'noj-tests/e2e/identity/**'
-              - 'noj-core/src/domains/identity/**'
-            e2e-catalog:
-              - 'noj-tests/e2e/catalog/**'
-              - 'noj-core/src/domains/catalog/**'
-            e2e-submission:
-              - 'noj-tests/e2e/submission/**'
-              - 'noj-core/src/domains/submission/**'
-            e2e-contest:
-              - 'noj-tests/e2e/contest/**'
-              - 'noj-core/src/domains/contest/**'
-              # 计分版本、客观题判卷和结果裁剪共同决定比赛行为。
-              - 'noj-core/src/domains/catalog/**'
-              - 'noj-core/src/domains/objective/**'
-              - 'noj-core/src/domains/submission/**'
-            e2e-system:
-              - 'noj-tests/e2e/system/**'
-              - 'noj-core/src/domains/system/**'
-            e2e-community:
-              - 'noj-tests/e2e/community/**'
-              - 'noj-core/src/domains/community/**'
-            e2e-objective:
-              - 'noj-tests/e2e/objective/**'
-              - 'noj-core/src/domains/objective/**'
-            e2e-admin:
-              - 'noj-tests/e2e/admin/**'
-              - 'noj-core/src/domains/admin/**'
-            e2e-rate-limit:
-              - 'noj-tests/e2e/rate-limit/**'
-              - 'noj-core/src/domains/identity/middleware/**'
-              - 'noj-core/src/shared/rate-limit/**'
-            e2e-cross-domain:
-              - 'noj-tests/e2e/cross-domain/**'
-              # 跨域 E2E 直接覆盖这些域，core 域改动必须触发跨域用例
-              - 'noj-core/src/domains/workspace/**'
-              - 'noj-core/src/domains/search/**'
-              - 'noj-core/src/domains/query/**'
-              - 'noj-core/src/domains/gateway/**'
-              - 'noj-core/src/domains/content-review/**'
-            e2e-browser:
-              - 'noj-tests/e2e/browser/**'
-              - 'noj-ui/**'
-            e2e-infra:
-              - 'noj-core/src/shared/**'
-              - 'noj-core/src/routes/**'
-              - 'noj-core/src/app.ts'
-              - 'noj-core/src/main.ts'
-              - 'noj-core/src/mod.ts'
-              - 'noj-core/drizzle/**'
-              - 'noj-core/tests/**'
-              - 'noj-judge/**'
-              - 'noj-llm-gateway/**'
-              - 'docker-compose.e2e.yml'
-              - 'docker-compose.e2e-s3.yml'
-              - 'env.e2e.template'
-              - 'scripts/**'
-              - 'noj-tests/scripts/**'
-              - 'noj-tests/fixtures/**'
-              - 'noj-tests/deno.json'
-              - 'noj-tests/deno.lock'
-              # e2e 根目录共享模块（helper.ts 被全部 39 个用例 import）
-              - 'noj-tests/e2e/*.ts'
-              - 'noj-tests/run-e2e.sh'
-              - 'noj-tests/e2e/support-package/**'
-              - '.github/actions/e2e-domain/**'
-              - '.github/workflows/e2e.yml'
-      - name: 计算受影响 e2e-domains
-        id: domains
+          deno-version-file: .dvmrc
+      # 统一选择器：Core 模块 → E2E 域映射、共享基础设施/锁文件 → 全部 API E2E、
+      # noj-ui → Browser、cross-domain 目录 → 跨域流水线。main push / 手动触发全量。
+      - name: 计算受影响 E2E 域
+        id: selection
         env:
-          E2E_IDENTITY: ${{ steps.filter.outputs.e2e-identity }}
-          E2E_CATALOG: ${{ steps.filter.outputs.e2e-catalog }}
-          E2E_SUBMISSION: ${{ steps.filter.outputs.e2e-submission }}
-          E2E_CONTEST: ${{ steps.filter.outputs.e2e-contest }}
-          E2E_SYSTEM: ${{ steps.filter.outputs.e2e-system }}
-          E2E_COMMUNITY: ${{ steps.filter.outputs.e2e-community }}
-          E2E_OBJECTIVE: ${{ steps.filter.outputs.e2e-objective }}
-          E2E_ADMIN: ${{ steps.filter.outputs.e2e-admin }}
-          E2E_RATE_LIMIT: ${{ steps.filter.outputs.e2e-rate-limit }}
-          E2E_CROSS_DOMAIN: ${{ steps.filter.outputs.e2e-cross-domain }}
-          E2E_BROWSER: ${{ steps.filter.outputs.e2e-browser }}
-          E2E_INFRA: ${{ steps.filter.outputs.e2e-infra }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GIT_REF: ${{ github.ref }}
         run: |
-          python3 - <<'PY'
-          import json, os
-          def flag(name):
-              return os.environ.get(name, '') == 'true'
-          all_e2e = ["identity","catalog","submission","contest","system","community","objective","admin","rate-limit"]
-          e2e_domains = []
-          if flag('E2E_INFRA'):
-              e2e_domains = all_e2e[:]
-          else:
-              for d in all_e2e:
-                  if flag(f'E2E_{d.upper().replace("-", "_")}'):
-                      e2e_domains.append(d)
-          if flag('E2E_CROSS_DOMAIN') or flag('E2E_INFRA'):
-              e2e_domains.append('cross-domain')
-          if flag('E2E_BROWSER') or flag('E2E_INFRA'):
-              e2e_domains.append('browser')
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"e2e-domains={json.dumps(e2e_domains)}\n")
-          PY
+          args=(--event "${EVENT_NAME}" --ref "${GIT_REF}")
+          if [ -n "${BASE_SHA}" ] && [ -n "${HEAD_SHA}" ]; then
+            args+=(--base "${BASE_SHA}" --head "${HEAD_SHA}")
+          fi
+          deno run --allow-read --allow-env --allow-write --allow-run=git \
+            scripts/select-core-ci.ts "${args[@]}"
 
   # UI 构建随 workflow 启动，与 changes / 沙箱并行，避免在 Domain 作业之间排队。
   # 单域 API PR 也执行一次预构建；浏览器 job 仍按原有路径过滤，只加载同次运行的产物。
@@ -378,20 +295,63 @@ jobs:
         with:
           domain: cross-domain
 
-  e2e-browser:
-    name: E2E Browser
+  # Browser 以测试文件为最小单元分三组（P6-A）。文件内部 journey 不拆开；
+  # 每组独立 Compose project/数据库/Redis/协调服务，禁止共用可变管理状态。
+  e2e-browser-shard:
+    name: E2E Browser (${{ matrix.shard }})
     needs: [changes, e2e-images, e2e-ui-build]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [browser1, browser2, browser3]
     env:
-      COMPOSE_PROJECT_NAME: noj-e2e-browser
+      COMPOSE_PROJECT_NAME: noj-e2e-browser-${{ matrix.shard }}
+      E2E_BROWSER_SHARD: ${{ matrix.shard }}
+      E2E_BROWSER_GROUPS: "3"
+      # 每组一个 evaluator 网络：即使同一 Docker daemon 上残留上一次运行的
+      # 同名默认网络，也不会把不同分片的 evaluator/协调服务串到一起。
+      E2E_EVALUATOR_NETWORK: noj-e2e-browser-${{ matrix.shard }}-evaluator
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: browser
           browser: "true"
+          shard: ${{ matrix.shard }}
+          groups: "3"
+
+  # 聚合 job 保留 "E2E Browser" 这个必需检查名称：有选中测试时三组必须全部成功；
+  # 未选中时显式记录原因；取消/失败/缺失都不能聚合为成功。
+  e2e-browser:
+    name: E2E Browser
+    needs: [changes, e2e-browser-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 聚合 Browser 分片结果
+        env:
+          BROWSER_SELECTED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e-browser == 'true' }}
+          SHARD_RESULT: ${{ needs.e2e-browser-shard.result }}
+        run: |
+          set -euo pipefail
+          echo "browser_selected=${BROWSER_SELECTED} shard_result=${SHARD_RESULT}"
+          if [ "${BROWSER_SELECTED}" != "true" ]; then
+            echo "未选择 Browser 测试：本次改动不触发 Browser E2E（显式记录，不视为已验证）。"
+            exit 0
+          fi
+          case "${SHARD_RESULT}" in
+            success)
+              echo "Browser 三个分片全部成功。"
+              ;;
+            *)
+              echo "::error::Browser 分片结果=${SHARD_RESULT}；选中分片失败/取消/缺失不能聚合为成功。"
+              exit 1
+              ;;
+          esac
 
   # 统一构建 E2E 评测栈镜像一次，以 artifact 分发给各 Domain job。
   # 此前每个 Domain job 各自构建同样的 5 个镜像（judge 的 Rust 依赖层单项 ~270s），

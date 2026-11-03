@@ -16,9 +16,8 @@ import {
 import {
   BROWSER_E2E,
   gotoPage as navigatePage,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 
 type Page = import("npm:playwright@1.62.1").Page;
@@ -226,24 +225,23 @@ Deno.test({
     const identity = await apiGet("/api/v1/auth/me", teacherToken);
     assertEquals(identity.status, 200);
     const teacherId = (identity.body as { data: { id: string } }).data.id;
-    const administrator = await launchBrowser(),
-      teacher = await launchBrowser(),
-      student = await launchBrowser();
-    let failed = true,
-      classroomId = "",
-      assignmentId = "",
-      objectiveSubmissionId = "",
-      number = 0,
-      otherNumber = 0;
-    const errors: string[] = [];
-    for (const session of [administrator, teacher, student]) {
-      session.page.on("pageerror", (error) => errors.push(error.message));
-    }
-    // 前序失败停止依赖步骤，并让 finally 保留本次浏览器诊断。
-    async function step(name: string, action: () => Promise<void>) {
-      assertEquals(await t.step(name, action), true, name);
-    }
-    try {
+    await withBrowserJourney("workspace-teaching-journeys", async (journey) => {
+      const administrator = await journey.newSession("administrator"),
+        teacher = await journey.newSession("teacher"),
+        student = await journey.newSession("student");
+      let classroomId = "",
+        assignmentId = "",
+        objectiveSubmissionId = "",
+        number = 0,
+        otherNumber = 0;
+      const errors: string[] = [];
+      for (const session of [administrator, teacher, student]) {
+        session.page.on("pageerror", (error) => errors.push(error.message));
+      }
+      // 前序失败停止依赖步骤，并由 withBrowserJourney 保留本次浏览器诊断。
+      async function step(name: string, action: () => Promise<void>) {
+        assertEquals(await t.step(name, action), true, name);
+      }
       await step(
         "管理员在 Web 创建私有教学域，准备普通教师与独立题目版本",
         async () => {
@@ -793,20 +791,6 @@ Deno.test({
         },
       );
       assertEquals(errors, []);
-      failed = false;
-    } finally {
-      for (
-        const [label, session] of [["administrator", administrator], [
-          "teacher",
-          teacher,
-        ], ["student", student]] as const
-      ) {
-        await teardownBrowser(
-          session,
-          failed,
-          `workspace-teaching-${label}-${suffix}`,
-        );
-      }
-    }
+    });
   },
 });

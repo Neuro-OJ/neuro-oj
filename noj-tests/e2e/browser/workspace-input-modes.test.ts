@@ -7,9 +7,8 @@ import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage as navigate,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 import {
   inputModeAccount,
@@ -137,18 +136,17 @@ Deno.test({
       b = `inputb-${suffix}`;
     const admin = await getAdminToken(),
       student = await inputModeAccount(suffix);
-    const session = await launchBrowser(),
-      second = await session.context.newPage();
-    let failed = true,
-      aId = "",
-      bId = "",
-      prediction: InputModeProblem,
-      ui: InputModeProblem;
-    let firstFormal = "", firstSelfTest = "";
-    async function step(name: string, action: () => Promise<void>) {
-      assertEquals(await t.step(name, action), true, name);
-    }
-    try {
+    await withBrowserJourney("workspace-input-modes", async (journey) => {
+      const session = await journey.newSession("student"),
+        second = await session.context.newPage();
+      let aId = "",
+        bId = "",
+        prediction: InputModeProblem,
+        ui: InputModeProblem;
+      let firstFormal = "", firstSelfTest = "";
+      async function step(name: string, action: () => Promise<void>) {
+        assertEquals(await t.step(name, action), true, name);
+      }
       await step(
         "准备独立公开源题、两个成员域和普通学生，发布合法v2输入模式题包",
         async () => {
@@ -376,9 +374,6 @@ Deno.test({
           );
         },
       );
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "workspace-input-modes");
-    }
+    });
   },
 });

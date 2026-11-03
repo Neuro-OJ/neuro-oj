@@ -27,12 +27,15 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import { domainAnswerKey } from "../../../noj-ui/utils/domain-problems.ts";
+import {
+  buildProblemBundle,
+  problemBundleForm,
+} from "../../fixtures/problem-bundle.ts";
+import { withBrowserJourney } from "./browser.ts";
 
 const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
-const ARTIFACT_DIR = "test-results/ui-browser";
 
 // ── 测试数据 ──────────────────────────────────────
 const ts = Date.now().toString(36);
@@ -72,8 +75,8 @@ async function prepareProblemFixture(): Promise<void> {
     },
   );
   assertEquals(granted.status, 200);
-  const bytes = zipSync({
-    "problem.json": strToU8(JSON.stringify({
+  const archive = buildProblemBundle({
+    "problem.json": JSON.stringify({
       format_version: 2,
       title: `uibrowser${ts} 独立加法题`,
       difficulty: "easy",
@@ -90,11 +93,10 @@ async function prepareProblemFixture(): Promise<void> {
           memory_limit_mb: 256,
         },
       },
-    })),
-    "statement.md": strToU8(
+    }),
+    "statement.md":
       "# A+B\nsolve(input_str) 接受两个整数，返回它们的和。满分10分。",
-    ),
-    "evaluate.py": strToU8(`from noj_evaluator_sdk import SolutionRunner, result
+    "evaluate.py": `from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     if runner.call("solve", "1 2") == "3":
@@ -103,14 +105,9 @@ try:
         result.wrong_answer(score=0)
 finally:
     runner.close()
-`),
+`,
   });
-  const form = new FormData();
-  form.set(
-    "file",
-    new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
-    "browser.zip",
-  );
+  const form = problemBundleForm(archive, "browser.zip");
   const imported = await fetch(
     `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
     {
@@ -135,60 +132,37 @@ finally:
   assertEquals(published.status, 200, JSON.stringify(published.body));
 }
 
-// ── 共享浏览器会话 ────────────────────────────────
-let browser: import("npm:playwright@1.62.1").Browser | null = null;
-let context: import("npm:playwright@1.62.1").BrowserContext | null = null;
-let page: import("npm:playwright@1.62.1").Page | null = null;
+// ── 当前用例的浏览器页面 ──────────────────────────
+/**
+ * 当前用例的活动页面。每个 Deno.test 各自启动一个 Chromium（withBrowserJourney），
+ * 用例之间不共享进程与上下文；这里只把本用例的页面交给操作辅助函数。
+ */
+let activePage: import("npm:playwright@1.62.1").Page | null = null;
 
-async function launch(): Promise<void> {
-  const { chromium } = await import("npm:playwright@1.62.1");
-  browser = await chromium.launch({ headless: true });
-  context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-  });
-  // 失败诊断产物：截图 + trace（issue #427「失败保留浏览器诊断产物」）
-  await context.tracing.start({
-    screenshots: true,
-    snapshots: true,
-    sources: true,
-  });
-  page = await context.newPage();
-  page.on("pageerror", (err) => {
-    console.error(`  [browser pageerror] ${err.message}`);
-  });
-}
-
-async function teardown(failed: boolean): Promise<void> {
-  if (!context || !browser) return;
-  try {
-    if (failed) {
-      await Deno.mkdir(ARTIFACT_DIR, { recursive: true });
-      await context.tracing.stop({ path: `${ARTIFACT_DIR}/trace-${ts}.zip` });
-      await page?.screenshot({
-        path: `${ARTIFACT_DIR}/failure-${ts}.png`,
-        fullPage: true,
-      });
-      console.log(`  → 失败诊断产物已保存到 ${ARTIFACT_DIR}/`);
-    } else {
-      await context.tracing.stop();
+/**
+ * 在独立 journey 中执行用例：每个用例一个 Chromium、一个上下文，
+ * 失败诊断与清理（含 trace/截图）统一由 withBrowserJourney 负责。
+ */
+async function inBrowser(
+  label: string,
+  actor: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  await withBrowserJourney(label, async (journey) => {
+    activePage = (await journey.newSession(actor)).page;
+    try {
+      await fn();
+    } finally {
+      activePage = null;
     }
-  } catch (e) {
-    console.error(
-      `  [teardown] 诊断产物保存失败: ${e instanceof Error ? e.message : e}`,
-    );
-  } finally {
-    await browser.close();
-    browser = null;
-    context = null;
-    page = null;
-  }
+  });
 }
 
 // ── 页面操作辅助 ──────────────────────────────────
 
 function mustPage(): import("npm:playwright@1.62.1").Page {
-  if (!page) throw new Error("browser 未启动");
-  return page;
+  if (!activePage) throw new Error("browser 未启动");
+  return activePage;
 }
 
 async function goto(
@@ -264,7 +238,7 @@ async function logoutViaUI(): Promise<void> {
  * 恢复路径与真实用户「刷新后继续上次代码」完全一致。
  */
 async function submitCodeViaUI(code: string): Promise<string> {
-  const p = page!;
+  const p = mustPage();
   const identity = await apiGet("/api/v1/auth/me", submitToken);
   const detail = await apiGet(
     `/api/v1/domains/main/problems/${problemNumber}`,
@@ -362,23 +336,18 @@ Deno.test("[ui/browser] 前置：浏览器会话启动", async () => {
     console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
     return;
   }
-  let failed = true;
-  try {
-    await launch();
+  // 前置用例同样走真实 Chromium 启动，验证浏览器可用；用例结束即清理。
+  await inBrowser("ui-flows-setup", "setup", async () => {
     const ui = await fetch(UI_URL);
     if (!ui.ok) throw new Error(`noj-ui 未就绪 (${UI_URL} → ${ui.status})`);
     await ui.body?.cancel();
     await prepareProblemFixture();
-    failed = false;
-  } finally {
-    if (failed) await teardown(true);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 1/4 注册 → 跳转邮箱验证页（sent=1）", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
+  await inBrowser("ui-flows-register", "registrant", async () => {
     await registerViaUI(USERNAME, EMAIL, TEST_PASSWORD);
     const p = mustPage();
     // 注册成功后自动登录并跳转 verify-email，携带 registered=1&sent=1
@@ -386,30 +355,20 @@ Deno.test("[ui/browser] 1/4 注册 → 跳转邮箱验证页（sent=1）", async
     await p.waitForURL(/\/verify-email\?registered=1&sent=1/, {
       timeout: 20_000,
     });
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 2/4 登录 → 退出", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
-    await launch();
+  await inBrowser("ui-flows-login-logout", "ui-user", async () => {
     await loginViaUI(USERNAME, TEST_PASSWORD);
     await logoutViaUI();
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
-    await launch();
+  await inBrowser("ui-flows-submit", "submitter", async () => {
     // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
     submitToken = await registerUser(
       SUBMIT_USER,
@@ -423,17 +382,12 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", a
     if (Number.parseFloat(score) !== 10) {
       throw new Error(`期望满分「10 分」，实际「${score}」`);
     }
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
-    await launch();
+  await inBrowser("ui-flows-wrong-answer", "submitter", async () => {
     submitToken = await registerUser(
       SUBMIT_USER,
       `${SUBMIT_USER}@test.com`,
@@ -445,17 +399,12 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
     if (Number.parseFloat(score) === 10) {
       throw new Error(`错误答案不应满分，实际「${score}」`);
     }
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 5/5 登录失败显示错误提示", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
-    await launch();
+  await inBrowser("ui-flows-login-failure", "anonymous", async () => {
     const p = await goto("/login");
     await p.getByPlaceholder("请输入用户名或邮箱").fill("nonexistent@test.com");
     await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
@@ -464,24 +413,16 @@ Deno.test("[ui/browser] 5/5 登录失败显示错误提示", async () => {
     await p.getByRole("button", { name: "登录", exact: true }).click();
     // 登录失败后 ToastBanner 以 role=status 展示错误
     await p.locator('[role="status"]').first().waitFor({ timeout: 10_000 });
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });
 
 Deno.test("[ui/browser] 6/6 不存在的题目呈现 404（不再退化为加载失败面板）", async () => {
   if (!BROWSER_E2E) return;
-  let failed = true;
-  try {
-    await launch();
+  await inBrowser("ui-flows-problem-404", "anonymous", async () => {
     const p = await goto("/editor/NOEXIST");
     // 2026-09-26：题目不存在（含"被公开赛保密而对当前用户不可见"，后端同返 404）
     // 统一呈现为 404 状态；非 404 的加载失败仍走 EditorWorkspace 的错误面板。
     await p.getByText("404", { exact: true }).waitFor({ timeout: 10_000 });
     await p.getByText("题目不存在").waitFor({ timeout: 10_000 });
-    failed = false;
-  } finally {
-    await teardown(failed);
-  }
+  });
 });

@@ -105,11 +105,21 @@ export function uniqueDrillProjectName(
   return `noj-drill-${stamp}-${suffix}`;
 }
 
+/** 均匀采样 0-253，避免对 256 取模带来的偏置。 */
+function randomDrillOctet(): number {
+  const buffer = new Uint8Array(1);
+  for (;;) {
+    crypto.getRandomValues(buffer);
+    if (buffer[0]! < 254) return buffer[0]!;
+  }
+}
+
 /** 默认演练子网的唯一生成器（CLI 每次真实运行都会调用）。 */
-export function uniqueDrillSubnet(
-  octet = crypto.getRandomValues(new Uint8Array(1))[0]!,
-): string {
-  return `172.29.${(octet % 254) + 1}.0/24`;
+export function uniqueDrillSubnet(octet = randomDrillOctet()): string {
+  if (!Number.isInteger(octet) || octet < 0 || octet > 253) {
+    throw new RangeError(`演练子网序号必须在 0-253：${octet}`);
+  }
+  return `172.29.${octet + 1}.0/24`;
 }
 
 /**

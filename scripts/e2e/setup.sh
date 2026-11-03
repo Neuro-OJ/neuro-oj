@@ -1,84 +1,138 @@
 #!/usr/bin/env bash
 #
-# E2E 环境启动脚本
-# 使用 Docker Compose 一键启动完整评测栈
+# E2E 环境启动脚本（P6-B：会话私有）
 #
-# 使用方法: source scripts/e2e/setup.sh   # 加载 E2E_* 环境变量
-#      或   bash scripts/e2e/setup.sh      # 仅启动（不导出变量）
+# 只能由 `deno run -A scripts/e2e/session.ts up --session <name>` 调用：
+# - 端口、项目名、网络名、DB 名全部由会话清单注入；
+# - 不再写全局 /tmp/noj-e2e-env.sh —— 清单与 session 私有 .env 是唯一事实源；
+# - 构建产物复用结论由 session.ts 判定后通过 E2E_*_ARTIFACT_REUSE 传入。
 #
-# 停止:     bash scripts/e2e/teardown.sh
+# 用法: bash scripts/e2e/setup.sh [--fresh]
+#   --fresh  先清卷重建容器，并强制重建构建产物（不复用缓存）
 
 source "$(dirname "$0")/lib.sh"
 
-# 独立 compose 项目名（本仓约定，务必保留）：
-# e2e 与 dev 的 compose 文件都含 postgres/redis/minio 服务，而两份文件**都没有顶层 `name:`**
-# → 默认项目名都取所在目录名（仓库根）→ 同为 `neuro-oj`。于是 `up` 会把 dev 的
-# noj-postgres/redis/minio 当成"本项目的同名服务"**认领并重建**为 noj-e2e-*
-# （2026-09-28 实测发生：dev 数据库/Redis/MinIO 被顶掉；`down -v` 更会删除项目内卷）。
-# CI 侧早已用 COMPOSE_PROJECT_NAME 隔离（.github/workflows/e2e.yml:57），**本地此前没有保护**。
-# 这里补上；需要与其它 stack 并存时可显式覆盖该变量。
-export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-noj-e2e-local}"
+FRESH=0
+for arg in "$@"; do
+  case "$arg" in
+    --fresh) FRESH=1 ;;
+    *)
+      fail "未知参数: $arg"
+      exit 2
+      ;;
+  esac
+done
 
-# ── E2E 配置 ──────────────────────────────────
-E2E_DB_URL="${E2E_DB_URL:-postgres://e2e:e2e@localhost:5433/e2e}"
-E2E_REDIS_URL="${E2E_REDIS_URL:-redis://localhost:6380/1}"
-E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
-E2E_CORE_URL="http://localhost:$E2E_CORE_PORT"
-E2E_JWT_SECRET="${E2E_JWT_SECRET:-e2e-test-secret}"
+# ── 会话上下文（由 session.ts 注入，缺失即失败）───────────────
+: "${NOJ_E2E_SESSION:?缺少 NOJ_E2E_SESSION：请用 deno run -A scripts/e2e/session.ts up --session <name>}"
+: "${COMPOSE_PROJECT_NAME:?缺少 COMPOSE_PROJECT_NAME：应在会话清单中}"
+: "${E2E_CORE_PORT:?缺少 E2E_CORE_PORT：应在会话清单中}"
+
+E2E_CORE_URL="${E2E_CORE_URL:-http://localhost:$E2E_CORE_PORT}"
 E2E_JUDGE_RESOURCE_POOLS="${E2E_JUDGE_RESOURCE_POOLS:-ai}"
+E2E_PACKAGES_ARTIFACT_REUSE="${E2E_PACKAGES_ARTIFACT_REUSE:-0}"
+E2E_UI_ARTIFACT_REUSE="${E2E_UI_ARTIFACT_REUSE:-0}"
+E2E_BUILD_UI="${E2E_BUILD_UI:-0}"
+E2E_SDK_REUSE="${E2E_SDK_REUSE:-0}"
+E2E_EVALUATOR_NETWORK="${E2E_EVALUATOR_NETWORK:-noj-eval-net}"
 SDK_IMAGE_BUILDER="${NOJ_E2E_SDK_IMAGE_BUILDER:-$ROOT_DIR/noj-judge/scripts/build-sdk-images.sh}"
-
-# 导出供子脚本使用
-export E2E_DB_URL E2E_REDIS_URL E2E_CORE_PORT E2E_CORE_URL
-export E2E_JUDGE_RESOURCE_POOLS
-export JWT_SECRET="$E2E_JWT_SECRET"
+COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" -p "$COMPOSE_PROJECT_NAME")
 
 echo ""
 echo -e "${BOLD}=========================================="
-echo " Neuro OJ — E2E 环境启动"
+echo " Neuro OJ — E2E 环境启动（session: $NOJ_E2E_SESSION）"
 echo -e "==========================================${NC}"
+echo "  project : $COMPOSE_PROJECT_NAME"
+echo "  network : $E2E_EVALUATOR_NETWORK"
+echo "  core    : :$E2E_CORE_PORT"
+echo ""
 
 # ══════════════════════════════════════════════
-# 1. 启动 Docker Compose 评测栈
+# 1. 前置检查
 # ══════════════════════════════════════════════
-step "1/3  Docker Compose 评测栈"
+step "1/4  前置检查"
 
-if [ -z "${CI:-}" ]; then
-  if ! docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then
-    fail "Docker 未运行，请先启动 Docker"
-    exit 1
-  fi
-  ok "Docker 运行中"
+if ! docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then
+  fail "Docker 未运行，请先启动 Docker"
+  exit 1
+fi
+ok "Docker 运行中"
 
+# ══════════════════════════════════════════════
+# 2. 构建产物（SDK 镜像 / 题目支持包 / UI）
+# ══════════════════════════════════════════════
+step "2/4  构建产物（命中缓存的跳过）"
+
+if [ "$E2E_SDK_REUSE" = "1" ]; then
+  ok "SDK 镜像：复用上次构建（BuildKit 缓存仍生效）"
+else
   info "刷新本地 SDK 镜像..."
   if ! "$SDK_IMAGE_BUILDER"; then
     fail "SDK 镜像构建失败，停止 E2E 启动"
     exit 1
   fi
   ok "SDK 镜像已从当前工作树构建"
+fi
 
-  if [[ ",$E2E_JUDGE_RESOURCE_POOLS," == *,oi-native,* ]]; then
-    if ! docker image inspect noj-oi-cpp:latest > /dev/null 2>&1; then
-      fail "OI Native 已启用但 noj-oi-cpp 镜像未构建，停止 E2E 启动"
+if [[ ",$E2E_JUDGE_RESOURCE_POOLS," == *,oi-native,* ]]; then
+  if ! docker image inspect noj-oi-cpp:latest > /dev/null 2>&1; then
+    fail "OI Native 已启用但 noj-oi-cpp 镜像未构建，停止 E2E 启动"
+    exit 1
+  fi
+  ok "OI Native C++ 运行时就绪"
+fi
+
+if [ "$E2E_PACKAGES_ARTIFACT_REUSE" = "1" ] && [ "$FRESH" != "1" ]; then
+  ok "题目支持包：复用已构建产物（输入未变化）"
+else
+  info "构建题目支持包 (data/packages)..."
+  if ! (cd "$ROOT_DIR/noj-core" && deno task problems:build > /tmp/"$NOJ_E2E_SESSION".packages.log 2>&1); then
+    fail "题目支持包构建失败：/tmp/$NOJ_E2E_SESSION.packages.log"
+    exit 1
+  fi
+  ok "题目支持包已构建"
+fi
+
+if [ "$E2E_BUILD_UI" = "1" ]; then
+  if [ "$E2E_UI_ARTIFACT_REUSE" = "1" ] && [ "$FRESH" != "1" ]; then
+    ok "UI 构建：复用已构建产物（输入未变化）"
+  else
+    info "构建 noj-ui（Nuxt build）..."
+    if ! (cd "$ROOT_DIR/noj-ui" && deno task build > /tmp/"$NOJ_E2E_SESSION".ui.log 2>&1); then
+      fail "UI 构建失败：/tmp/$NOJ_E2E_SESSION.ui.log"
       exit 1
     fi
-    ok "OI Native C++ 运行时就绪"
+    ok "UI 构建完成"
   fi
-
-  info "构建并启动服务..."
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d --build
-  ok "评测栈已启动"
 else
-  ok "CI 环境检测，跳过 Docker Compose（使用 GitHub Actions 服务容器）"
+  info "跳过 UI 构建（E2E_BUILD_UI=0；浏览器用例需要 --ui 或 NOJ_RUN_BROWSER_E2E=1）"
 fi
 
 # ══════════════════════════════════════════════
-# 2. 等待 noj-core 就绪
+# 3. 启动 Docker Compose 评测栈
 # ══════════════════════════════════════════════
-step "2/3  等待 noj-core 就绪"
+step "3/4  Docker Compose 评测栈"
+
+if [ "$FRESH" = "1" ]; then
+  info "--fresh：先清理本会话已有的容器与卷..."
+  "${COMPOSE[@]}" down -v --remove-orphans > /dev/null 2>&1 || true
+fi
+
+info "启动服务（project=$COMPOSE_PROJECT_NAME）..."
+if ! "${COMPOSE[@]}" up -d --build --remove-orphans; then
+  fail "docker compose up 失败；日志见下"
+  "${COMPOSE[@]}" logs --tail=50 noj-core || true
+  exit 1
+fi
+ok "评测栈已启动"
+
+# ══════════════════════════════════════════════
+# 4. 等待 noj-core 就绪
+# ══════════════════════════════════════════════
+step "4/4  等待 noj-core 就绪"
 
 info "等待 noj-core API (:$E2E_CORE_PORT)..."
-for i in $(seq 1 60); do
+for i in $(seq 1 90); do
   if curl -sf "http://localhost:$E2E_CORE_PORT/health" > /dev/null 2>&1; then
     ok "noj-core 就绪 (:$E2E_CORE_PORT)"
     break
@@ -88,46 +142,27 @@ done
 
 if ! curl -sf "http://localhost:$E2E_CORE_PORT/health" > /dev/null 2>&1; then
   fail "noj-core 启动超时"
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" logs --tail=50 noj-core
+  "${COMPOSE[@]}" logs --tail=50 noj-core || true
   exit 1
 fi
 
-# ══════════════════════════════════════════════
-# 3. 初始化 MinIO bucket
-# ══════════════════════════════════════════════
-step "3/3  初始化 MinIO"
-
-if [ -z "${CI:-}" ]; then
-  info "初始化 MinIO bucket..."
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d minio minio-init
-  ok "MinIO bucket 已初始化"
-else
-  ok "CI 环境检测，跳过 MinIO 初始化"
-fi
+info "初始化 MinIO bucket..."
+"${COMPOSE[@]}" up -d minio minio-init > /dev/null
+ok "MinIO bucket 已初始化"
 
 # ── 汇总 ──
 echo ""
 echo -e "${BOLD}=========================================="
-echo " E2E 环境就绪"
+echo " E2E 环境就绪（session: $NOJ_E2E_SESSION）"
 echo -e "==========================================${NC}"
 echo ""
-echo "  ${CYAN}PostgreSQL${NC}    $E2E_DB_URL"
-echo "  ${CYAN}Redis${NC}         $E2E_REDIS_URL"
+echo "  ${CYAN}PostgreSQL${NC}    ${E2E_DB_URL:-<由会话清单提供>}"
+echo "  ${CYAN}Redis${NC}         ${E2E_REDIS_URL:-<由会话清单提供>}"
 echo "  ${CYAN}noj-core${NC}      $E2E_CORE_URL"
 echo "  ${CYAN}Judge 池${NC}     $E2E_JUDGE_RESOURCE_POOLS"
-echo "  ${CYAN}MinIO${NC}         http://localhost:9002"
+echo "  ${CYAN}网络${NC}          $E2E_EVALUATOR_NETWORK"
 echo ""
-echo "  stop:    bash scripts/e2e/teardown.sh"
-echo "  test:    bash scripts/e2e/run-all.sh"
+echo "  env:     deno run -A scripts/e2e/session.ts env --session $NOJ_E2E_SESSION"
+echo "  stop:    deno run -A scripts/e2e/session.ts down --session $NOJ_E2E_SESSION"
+echo "  test:    bash scripts/e2e/run-all.sh --session $NOJ_E2E_SESSION"
 echo ""
-
-# 保存环境变量供其他脚本 source
-cat > /tmp/noj-e2e-env.sh << EOF
-E2E_DB_URL="$E2E_DB_URL"
-E2E_REDIS_URL="$E2E_REDIS_URL"
-E2E_CORE_URL="$E2E_CORE_URL"
-E2E_CORE_PORT="$E2E_CORE_PORT"
-E2E_JWT_SECRET="$E2E_JWT_SECRET"
-JWT_SECRET="$E2E_JWT_SECRET"
-export E2E_JUDGE_RESOURCE_POOLS="$E2E_JUDGE_RESOURCE_POOLS"
-EOF

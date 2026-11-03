@@ -1,37 +1,58 @@
 #!/usr/bin/env bash
 # ============================================================================
-# noj-core E2E 测试
+# noj-core E2E 测试（P6-B：会话私有）
 #
-# 依赖：已运行的 E2E 环境（由 setup.sh 启动）
-#   - PostgreSQL / Redis 容器
-#   - noj-core 在 :8099 运行
-#   - 数据库已 migrate + seed
+# 依赖：已启动的 E2E 会话（deno run -A scripts/e2e/session.ts up --session <name>）
 #
-# 环境变量（覆盖默认，若未设置则读取 /tmp/noj-e2e-env.sh）：
-#   E2E_CORE_URL  - noj-core 地址（默认 http://localhost:8099）
-#   E2E_CORE_PORT - 端口（默认 8099）
+# 用法：
+#   bash scripts/e2e/core.sh --session <name>
+#   bash scripts/e2e/core.sh                 # 使用当前环境变量（CI/已 eval 会话 env）
+#
+# 环境来源优先级：显式环境变量 > 会话私有 .env（noj-tests/test-results/e2e-sessions）
+# 不再读取全局 /tmp/noj-e2e-env.sh。
 # ============================================================================
 
 source "$(dirname "$0")/lib.sh"
 set -uo pipefail
 
-# 加载 E2E 环境（如果 setup.sh 有写入的话）
-[ -f /tmp/noj-e2e-env.sh ] && source /tmp/noj-e2e-env.sh
+SESSION=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session)
+      SESSION="${2:-}"
+      shift 2
+      ;;
+    *)
+      fail "未知参数: $1"
+      exit 2
+      ;;
+  esac
+done
 
-E2E_CORE_URL="${E2E_CORE_URL:-http://localhost:8099}"
-E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
+if [ -n "$SESSION" ]; then
+  ENV_FILE="$ROOT_DIR/noj-tests/test-results/e2e-sessions/$SESSION.env"
+  if [ ! -f "$ENV_FILE" ]; then
+    fail "找不到会话环境文件：$ENV_FILE（先用 session.ts up 启动）"
+    exit 2
+  fi
+  # shellcheck disable=SC1090
+  set -a
+  source "$ENV_FILE"
+  set +a
+  ok "已加载会话环境：$SESSION"
+fi
+
+E2E_CORE_URL="${E2E_CORE_URL:-http://localhost:${E2E_CORE_PORT:-8099}}"
 
 echo ""
 echo -e "${BOLD}━━━ noj-core E2E ━━━${NC}"
 info "noj-core: $E2E_CORE_URL"
 
-# 确保 core 在运行
 if ! curl -sf "$E2E_CORE_URL/health" > /dev/null 2>&1; then
-  fail "noj-core 未在运行，请先执行 bash scripts/e2e/setup.sh"
+  fail "noj-core 未在运行，请先执行 deno run -A scripts/e2e/session.ts up --session <name>"
   exit 1
 fi
 
-# 运行 noj-tests E2E 测试（全部迁移到 noj-tests 包）
 cd "$ROOT_DIR/noj-tests"
 
 echo ""
@@ -47,9 +68,6 @@ TEST_EXIT=$?
 if [ $TEST_EXIT -eq 0 ]; then
   echo ""
   echo -e "  ${GREEN}✓ noj-tests E2E: 通过${NC}"
-fi
-
-if [ $TEST_EXIT -eq 0 ]; then
   echo ""
   echo -e "${BOLD}✅  E2E 全部通过${NC}"
 else

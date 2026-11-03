@@ -13,12 +13,7 @@
  * 启用：NOJ_RUN_BROWSER_E2E=1 deno task test:browser
  */
 
-import {
-  BROWSER_E2E,
-  launchBrowser,
-  teardownBrowser,
-  UI_URL,
-} from "./browser.ts";
+import { BROWSER_E2E, UI_URL, withBrowserJourney } from "./browser.ts";
 import {
   api,
   apiGet,
@@ -176,10 +171,8 @@ Deno.test("[ui/browser] 通知：封禁通知点击进入详情页，且字面�
   );
   await seedBanNotification(BANNED_USER.username);
 
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    const { page } = session;
+  await withBrowserJourney("notifications", async (journey) => {
+    const { page } = await journey.newSession("banned-user");
 
     // 页面级 404 采集：`:id` 若吞掉 /notifications/events 或 通知列表，这里会看到 404
     const notFound: string[] = [];
@@ -222,10 +215,7 @@ Deno.test("[ui/browser] 通知：封禁通知点击进入详情页，且字面�
         }`,
       );
     }
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "notifications");
-  }
+  });
 });
 
 Deno.test("[ui/browser] 通知：详情页深链可达且未知 id 显示未找到", async () => {
@@ -239,10 +229,8 @@ Deno.test("[ui/browser] 通知：详情页深链可达且未知 id 显示未找�
     BANNED_USER.password,
   );
 
-  const session = await launchBrowser();
-  let failed = true;
-  try {
-    const { page } = session;
+  await withBrowserJourney("notification-detail", async (journey) => {
+    const { page } = await journey.newSession("banned-user");
 
     // 采集该请求的**状态码**：CI 跑的是构建产物（.output/server），
     // 曾因代理把上游状态码重置为 200 而让本页永远停在空白/加载态。
@@ -278,8 +266,5 @@ Deno.test("[ui/browser] 通知：详情页深链可达且未知 id 显示未找�
           `——若为 200，说明 Nitro 代理丢失了上游状态码（见 server/api/[...slug].ts）`,
       );
     }
-    failed = false;
-  } finally {
-    await teardownBrowser(session, failed, "notification-detail");
-  }
+  });
 });

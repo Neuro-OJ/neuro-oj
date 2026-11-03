@@ -224,7 +224,7 @@ export async function createUserToken(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const username = `test_${role}_${Date.now()}_${
-    Math.random().toString(36).slice(2, 8)
+    crypto.randomUUID().slice(0, 8)
   }`;
   await db.insert(users).values({
     id,

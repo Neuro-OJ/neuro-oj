@@ -15,9 +15,9 @@ import {
   getContestAnswerVersionId,
   getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   registerUser,
+  requireJudgeCanary,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -26,7 +26,6 @@ const testSuffix = Date.now().toString(36);
 let adminToken = "";
 let participantToken = "";
 let contestId = "";
-let judgeAvailable = false;
 let problemId = "";
 
 interface ContestData {
@@ -49,10 +48,8 @@ e2eTest("[e2e/contest] Setup", async () => {
   );
   // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
   problemId = await getProblemIdByNumber(1001);
-  judgeAvailable = await isJudgeAvailable();
-  if (!judgeAvailable) {
-    console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
-  }
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+  await requireJudgeCanary();
 });
 
 e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
@@ -110,8 +107,6 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
       `重复报名应返回 409，实际状态码: ${duplicateRegister.status}`,
     );
   }
-  if (!judgeAvailable) return;
-
   const versionId = await getContestAnswerVersionId(
     participantToken,
     contestId,
@@ -143,7 +138,7 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
 });
 
 e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
-  if (!isE2E || !judgeAvailable) return;
+  if (!isE2E) return;
   // 进行中（running）竞赛：非管理员仅能查看自己的排名（服务端设计，见
   // contest-ranking.ts getContestRanking：running 且非 admin 时 viewerId
   // 缺失返回 401、非参赛者返回 403，参赛者只见自身行）。因此这里用
@@ -172,7 +167,7 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
 });
 
 e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
-  if (!isE2E || !judgeAvailable) return;
+  if (!isE2E) return;
   const updateResult = await apiPut(
     `/api/v1/admin/contest/contests/${contestId}`,
     { end_time: new Date(Date.now() - 1000).toISOString() },

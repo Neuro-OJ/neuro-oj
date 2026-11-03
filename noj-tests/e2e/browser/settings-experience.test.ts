@@ -7,8 +7,7 @@ import {
   ARTIFACT_DIR,
   BROWSER_E2E,
   gotoPage,
-  launchBrowser,
-  teardownBrowser,
+  withBrowserJourney,
 } from "./browser.ts";
 
 Deno.test({
@@ -25,13 +24,11 @@ Deno.test({
       body: { slug, name: "设置与邀请浏览器验收", preset: "education" },
     });
     assertEquals(created.status, 201, JSON.stringify(created.body));
-    const session = await launchBrowser();
-    const { page } = session;
-    page.setDefaultTimeout(20_000);
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    let failed = true;
-    try {
+    await withBrowserJourney("settings-experience", async (journey) => {
+      const { page } = await journey.newSession("admin");
+      page.setDefaultTimeout(20_000);
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
       await gotoPage(page, "/login");
       await page.getByPlaceholder("请输入用户名或邮箱").fill("e2e_admin");
       await page.getByPlaceholder("至少 8 位，需包含大小写字母和数字")
@@ -357,9 +354,6 @@ Deno.test({
         }
       }
       assertEquals(errors, []);
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "settings-experience");
-    }
+    });
   },
 });

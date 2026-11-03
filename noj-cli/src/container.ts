@@ -128,9 +128,12 @@ export function buildComposeArgs(options: ComposeArgsOptions): string[] {
 
 /** 单个参数是否需要引号（shell 安全渲染用）。 */
 function quoteIfNeeded(arg: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg)
-    ? arg
-    : `"${arg.replace(/"/g, '\\"')}"`;
+  // 对含空格/特殊字符的参数使用双引号并完整转义，避免 shell 二次解释。
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(arg)) return arg;
+  // 双引号内必须同时转义反斜杠、双引号、美元符与反引号，避免 shell 二次解释。
+  const escaped = arg.replaceAll("\\", "\\\\").replaceAll('"', '\\"')
+    .replaceAll("$", "\\$").replaceAll("`", "\\`");
+  return `"${escaped}"`;
 }
 
 /** 渲染为可复制执行的一行命令（`--dry-run` 输出）。 */

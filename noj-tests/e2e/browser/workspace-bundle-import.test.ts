@@ -9,9 +9,8 @@ import { api as request, getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,
   gotoPage,
-  launchBrowser,
-  teardownBrowser,
   UI_URL,
+  withBrowserJourney,
 } from "./browser.ts";
 import {
   inputModeAccount,
@@ -42,10 +41,8 @@ Deno.test({
     await api("POST", `/domains/${slug}/transfer`, admin, {
       user_id: owner.id,
     });
-    const session = await launchBrowser();
-    let failed = true;
-    try {
-      const page = session.page;
+    await withBrowserJourney("domain-bundle-import", async (journey) => {
+      const page = (await journey.newSession("owner")).page;
       await gotoPage(page, "/login");
       await page.getByPlaceholder("请输入用户名或邮箱").fill(owner.email);
       await page.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
@@ -135,9 +132,6 @@ Deno.test({
           true,
         );
       }
-      failed = false;
-    } finally {
-      await teardownBrowser(session, failed, "domain-bundle-import");
-    }
+    });
   },
 });

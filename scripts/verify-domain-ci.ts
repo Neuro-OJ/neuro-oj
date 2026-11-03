@@ -3,7 +3,7 @@
  *
  * 覆盖：
  * 1. noj-core / noj-tests 的每个 domain 都有对应 job 与路径过滤；
- * 2. Core 任务由统一模块元数据选择，迁移前后均有真实完整分片覆盖；
+ * 2. Core 回归统一由完整分片 job 执行，不再保留重复 legacy domain job；
  * 3. `noj-tests/e2e/` 下没有未归域的文件，每个 Core 别名至少发现一个新/旧测试根；
  * 4. **每个受跟踪文件都至少被一个「会触发测试的」路径过滤命中**——这是本脚本的
  *    核心：避免只改共享 helper / deno.json / 脚本时 changes job 输出空数组，
@@ -13,10 +13,12 @@
  */
 import { fromFileUrl } from "jsr:@std/path@^1";
 import {
+  E2E_API_DOMAINS,
   LEGACY_DOMAIN_NAMES,
   MODULE_TEST_METADATA,
   testRootsForTarget,
 } from "./module-test-metadata.ts";
+import { classifyChangedPath } from "./select-core-ci.ts";
 
 const root = new URL("../", import.meta.url);
 const rootPath = fromFileUrl(root);
@@ -197,10 +199,6 @@ async function trackedFiles(): Promise<string[]> {
   return out;
 }
 
-function matchesAny(patterns: string[], file: string): boolean {
-  return patterns.some((p) => globToRegExp(p).test(file));
-}
-
 // ── 读取配置 ────────────────────────────────────────────────────────
 
 const ciText = await Deno.readTextFile(
@@ -227,21 +225,6 @@ if (legacyDomainRootExists) {
     }
   }
 }
-if (
-  !ci.jobs.has("core-test-sharded") ||
-  !ciText.includes("run: deno task test:parallel")
-) {
-  fail(
-    "新模块必须由 core-test-sharded 的正式完整分片任务覆盖，不能只执行共享分片",
-  );
-}
-if (
-  !ciText.includes(
-    "deno run --allow-read --allow-env --allow-write scripts/select-core-ci.ts",
-  )
-) {
-  fail("Core CI 必须由统一元数据选择任务，不得维护独立 all_core 列表");
-}
 for (const module of MODULE_TEST_METADATA.targetModules) {
   if (
     !MODULE_TEST_METADATA.testCiMapping[module.name]?.ciJobs.includes(
@@ -262,50 +245,68 @@ for await (const entry of Deno.readDir(new URL("noj-tests/e2e/", root))) {
 }
 e2eDomainDirs.sort();
 
-// ── 1. 每个 domain 都有 job 与过滤 ─────────────────────────────────
+// ── 1. Core 回归只由完整分片执行，禁止重复 legacy domain job ────────
 
 for (const domain of coreDomainDirs) {
-  if (!ci.jobs.has(`core-${domain}`)) {
-    fail(`ci.yml 缺少 core-${domain} job`);
+  if (ci.jobs.has(`core-${domain}`)) {
+    fail(
+      `ci.yml 仍保留重复的 legacy job core-${domain}；` +
+        "Core 回归统一由 core-test-sharded 执行，避免同一文件重复跑",
+    );
   }
-  if (!ci.filters.has(`core-${domain}`)) {
-    fail(`ci.yml 缺少 core-${domain} 路径过滤`);
-  }
-}
-if (!ci.jobs.has("core-shared")) fail("ci.yml 缺少 core-shared job");
-if (!ci.filters.has("core-shared")) fail("ci.yml 缺少 core-shared 路径过滤");
-
-for (const domain of e2eDomainDirs) {
-  if (SKIP_E2E_DIRS.has(domain)) continue;
-  if (!e2e.jobs.has(`e2e-${domain}`)) {
-    fail(`e2e.yml 缺少 e2e-${domain} job`);
-  }
-  if (!e2e.filters.has(`e2e-${domain}`)) {
-    fail(`e2e.yml 缺少 e2e-${domain} 路径过滤`);
+  if (!MODULE_TEST_METADATA.legacyDomainToModule[domain]) {
+    fail(`legacy 域 ${domain} 未登记到目标模块`);
   }
 }
-if (!e2e.jobs.has("e2e-browser")) fail("e2e.yml 缺少 e2e-browser job");
-if (!e2e.filters.has("e2e-infra")) fail("e2e.yml 缺少 e2e-infra 路径过滤");
+if (!ci.jobs.has("core-test-sharded")) {
+  fail("ci.yml 缺少 core-test-sharded：Core 全部回归必须由完整分片执行");
+}
+if (!ciText.includes("deno task test:parallel --shards 4 --jobs 2")) {
+  fail("core-test-sharded 必须以 4 片 2 并发执行全部 Core 测试");
+}
+if (ciText.includes("scripts/test-domain.sh")) {
+  fail(
+    "CI 不得用 test-domain.sh 重复执行完整分片已覆盖的测试（本地兼容入口保留即可）",
+  );
+}
+if (ci.jobs.has("core-shared")) {
+  fail("共享测试已并入完整分片，ci.yml 不得保留重复的 core-shared job");
+}
+if (!ciText.includes("scripts/select-core-ci.ts")) {
+  fail("Core CI 必须由统一选择器接收真实变更路径，不得维护过时的 domain 过滤");
+}
+try {
+  const denoConfig = JSON.parse(
+    await Deno.readTextFile(new URL("noj-core/deno.json", root)),
+  ) as { tasks?: Record<string, string> };
+  for (const task of ["test:domain", "test:shared", "test:parallel"]) {
+    if (!denoConfig.tasks?.[task]) {
+      fail(`本地兼容入口 deno task ${task} 不得删除`);
+    }
+  }
+} catch (error) {
+  fail(`无法读取 noj-core/deno.json 校验本地兼容入口：${String(error)}`);
+}
 
 // ── 2. workflow 内的 domain 列表与实际目录一致 ─────────────────────
 
-function pythonList(text: string, varName: string, file: string): string[] {
-  const m = new RegExp(`${varName} = \\[([^\\]]*)\\]`).exec(text);
-  if (!m) fail(`${file} 中找不到 ${varName} 列表`);
-  return m[1].split(",").map((s) => s.trim().replace(/^"|"$/g, ""))
-    .filter(Boolean).sort();
-}
-
-const e2eInWorkflow = pythonList(e2eText, "all_e2e", "e2e.yml");
 const e2eOnDisk = e2eDomainDirs.filter((d) =>
   !SKIP_E2E_DIRS.has(d) && d !== "cross-domain"
 );
-if (e2eInWorkflow.join(",") !== e2eOnDisk.join(",")) {
+if (JSON.stringify([...E2E_API_DOMAINS].sort()) !== JSON.stringify(e2eOnDisk)) {
   fail(
-    `e2e.yml all_e2e 列表与 noj-tests/e2e 目录不一致：\n  workflow: ${
-      e2eInWorkflow.join(", ")
-    }\n  磁盘:     ${e2eOnDisk.join(", ")}`,
+    `module-boundaries.json e2eApiDomains 与 noj-tests/e2e 目录不一致：\n` +
+      `  元数据: ${E2E_API_DOMAINS.join(", ")}\n  磁盘:   ${
+        e2eOnDisk.join(", ")
+      }`,
   );
+}
+if (!e2e.jobs.has("e2e-browser")) fail("e2e.yml 缺少 e2e-browser job");
+if (!e2e.jobs.has("e2e-cross-domain")) {
+  fail("e2e.yml 缺少 e2e-cross-domain job");
+}
+if (!e2eText.includes("scripts/select-core-ci.ts")) {
+  fail("e2e.yml 必须由统一选择器计算 E2E 域");
 }
 
 // ── 3. 目录结构检查 ────────────────────────────────────────────────
@@ -332,35 +333,25 @@ for (const domain of coreDomainDirs) {
   }
 }
 
-// ── 4. 每个受跟踪文件都必须有测试触发路径（核心检查） ──────────────
+// ── 4. 每个受跟踪文件都必须被选择器解释（核心检查） ────────────────
 
-const coreTestFilters = [...ci.filters.entries()]
-  .filter(([name]) =>
-    name === "core" || name === "core-shared" || name.startsWith("core-")
-  )
-  .flatMap(([, patterns]) => patterns);
-const e2eTestFilters = [...e2e.filters.entries()]
-  .filter(([name]) => name.startsWith("e2e-"))
-  .flatMap(([, patterns]) => patterns);
-
+// 触发面不再靠手抄 paths-filter：选择器必须能为每个受跟踪的 Core/E2E 文件
+// 给出明确分类（模块、共享基础设施、文档、自身 CI……），返回 unknown 即失败。
 const files = await trackedFiles();
 const uncovered: string[] = [];
 for (const file of files) {
-  const isCore = file.startsWith("noj-core/");
-  const isE2e = file.startsWith("noj-tests/");
-  if (!isCore && !isE2e) continue;
+  if (!file.startsWith("noj-core/") && !file.startsWith("noj-tests/")) continue;
   if (TEST_TRIGGER_ALLOWLIST.some((re) => re.test(file))) continue;
-  const patterns = isCore ? coreTestFilters : e2eTestFilters;
-  if (!matchesAny(patterns, file)) uncovered.push(file);
+  if (classifyChangedPath(file).kind === "unknown") uncovered.push(file);
 }
 if (uncovered.length > 0) {
   fail(
-    `以下文件不属于任何会触发测试的路径过滤，改动它们将零测试执行：\n  ${
+    `以下文件无法被 CI 选择器归属，改动它们会无解释地扩大到全量：\n  ${
       uncovered.slice(0, 40).join("\n  ")
     }${uncovered.length > 40 ? `\n  ...共 ${uncovered.length} 个` : ""}`,
   );
 }
 
 console.log(
-  `Domain CI 配置校验通过（core ${coreDomainDirs.length} 个域 / e2e ${e2eDomainDirs.length} 个目录，受跟踪文件 ${files.length} 个全部有测试触发路径）`,
+  `Domain CI 配置校验通过（core ${coreDomainDirs.length} 个域全部由完整分片覆盖 / e2e ${e2eDomainDirs.length} 个目录，受跟踪文件 ${files.length} 个全部可被选择器解释）`,
 );
