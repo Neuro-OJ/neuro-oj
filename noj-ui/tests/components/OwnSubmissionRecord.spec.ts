@@ -18,7 +18,6 @@ const entry = (): OwnSubmissionHistory => ({
     number: 1001,
     qualified_ref: 'main:1001',
     display_ref: 'main:1001',
-    
   },
   resource_available: false,
   contest_id: null,
