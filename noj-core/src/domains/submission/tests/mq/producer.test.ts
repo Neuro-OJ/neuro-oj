@@ -20,6 +20,11 @@ import {
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../index.ts";
 import type { RuntimeConfig } from "../../../catalog/types/runtime-config.ts";
+import {
+  claimJudgeTaskDispatch,
+  clearJudgeTaskMarker,
+  releaseJudgeTaskDispatch,
+} from "../../mq/task-marker.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 
@@ -118,6 +123,38 @@ Deno.test({
       assertEquals(parsed.code, "print(42)");
     } finally {
       /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
+      resetRedisForTest();
+      Deno.env.delete("REDIS_URL");
+      await fake.stop();
+    }
+  },
+});
+
+Deno.test({
+  name: "mq/producer: 入队与 run_id 派发标记一起写入，恢复不会重复派发",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    const runId = "producer-marker-run";
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+      await redis.ping();
+
+      await pushJudgeTask(makeTask({ run_id: runId }));
+      const claim = await claimJudgeTaskDispatch(runId);
+      assertEquals(claim, { status: "already", marker: "queued" });
+      assertEquals(fake.getMessages("noj:judge:queue:ai:medium").length, 1);
+
+      await clearJudgeTaskMarker(runId);
+      assertEquals(await claimJudgeTaskDispatch(runId), { status: "claimed" });
+      await releaseJudgeTaskDispatch(runId);
+      assertEquals(await claimJudgeTaskDispatch(runId), { status: "claimed" });
+      await clearJudgeTaskMarker(runId);
+    } finally {
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
       await fake.stop();

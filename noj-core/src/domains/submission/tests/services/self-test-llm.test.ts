@@ -17,6 +17,7 @@ import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { rebuildPendingTask } from "../../mq/pending-recovery.ts";
 import { recoverPendingSelfTests } from "../../mq/sweeper.ts";
+import { clearJudgeTaskMarker } from "../../mq/task-marker.ts";
 import {
   cancelSelfTest,
   createSelfTest,
@@ -220,6 +221,16 @@ Deno.test({
             { headers: { "Content-Type": "application/json" } },
           ),
         )) as typeof fetch;
+      // 模拟“任务已从 Redis 丢失后等待恢复”，避免此前首次派发的 marker
+      // 让恢复器正确地把它识别为已入队。
+      const [failedBeforeRecovery] = await db.select({
+        judge_run_id: selfTests.judge_run_id,
+      }).from(selfTests).where(eq(selfTests.id, failed.id));
+      if (!failedBeforeRecovery?.judge_run_id) {
+        throw new Error("自测恢复夹具缺少 judge_run_id");
+      }
+      await clearJudgeTaskMarker(failedBeforeRecovery.judge_run_id);
+      fake.clear();
       await recoverPendingSelfTests(Date.now());
       const [failedRow] = await db.select().from(selfTests).where(
         eq(selfTests.id, failed.id),

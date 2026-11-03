@@ -20,6 +20,7 @@ export interface RedisClient {
   rpush(...args: (string | number)[]): Promise<number>;
   publish(channel: string, message: string): Promise<number>;
   get(key: string): Promise<string | null>;
+  mget(...keys: string[]): Promise<(string | null)[]>;
   scan(
     cursor: string | number,
     ...args: (string | number)[]
@@ -57,6 +58,7 @@ export interface RedisClient {
     value: string,
     mode?: "EX" | "PX" | "NX" | "XX",
     ttl?: number,
+    condition?: "NX" | "XX",
   ): Promise<unknown>;
   pipeline(): RedisPipeline;
 }

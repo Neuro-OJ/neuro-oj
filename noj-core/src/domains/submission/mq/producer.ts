@@ -12,6 +12,10 @@ import { getLogger } from "@logtape/logtape";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { selfTests, submissions } from "../../../shared/db/schema.ts";
+import {
+  JUDGE_TASK_MARKER_TTL_SECONDS,
+  judgeTaskMarkerKey,
+} from "./task-marker.ts";
 
 const logger = getLogger(["noj", "submission"]);
 
@@ -41,12 +45,25 @@ const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
  */
 const QUEUE_CAPACITY_SCRIPT = `
 local current = 0
-for _, key in ipairs(KEYS) do current = current + redis.call("LLEN", key) end
+local queue_count = tonumber(ARGV[5])
+for index = 1, queue_count do
+  current = current + redis.call("LLEN", KEYS[index])
+end
 local max = tonumber(ARGV[1])
 if current >= max then
   return -1
 end
-return redis.call("LPUSH", KEYS[1], ARGV[2])
+local length = redis.call("LPUSH", KEYS[1], ARGV[2])
+if ARGV[3] ~= "" then
+  redis.call(
+    "SET",
+    KEYS[queue_count + 1],
+    "queued",
+    "EX",
+    ARGV[4]
+  )
+end
+return length
 `;
 
 /**
@@ -142,6 +159,10 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
       ),
   ];
   const capacity = JUDGE_QUEUE_CAPACITY[task.priority];
+  const markerKey = task.run_id ? judgeTaskMarkerKey(task.run_id) : null;
+  const scriptKeys = markerKey
+    ? [...capacityQueues, markerKey]
+    : capacityQueues;
   if (task.run_id) {
     const db = getDb();
     const initial = {
@@ -186,10 +207,13 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
   // NOJ-077：用单条 Lua 脚本原子完成容量检查和入队，拒绝而不是静默丢最老任务。
   const length = await redis.eval(
     QUEUE_CAPACITY_SCRIPT,
-    capacityQueues.length,
-    ...capacityQueues,
+    scriptKeys.length,
+    ...scriptKeys,
     capacity,
     message,
+    task.run_id ?? "",
+    JUDGE_TASK_MARKER_TTL_SECONDS,
+    capacityQueues.length,
   );
   if (length < 0) {
     throw new JudgeQueueError(
