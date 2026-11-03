@@ -38,7 +38,7 @@ import { getContestRanking } from "../../services/contest-ranking.ts";
 import { ConflictError } from "../../../../shared/base/errors.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 const baseTime = Date.now() - 3_600_000;
 const atMinutes = (minutes: number) =>

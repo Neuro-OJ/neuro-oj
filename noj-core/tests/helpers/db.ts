@@ -393,14 +393,7 @@ export async function seedTestDatabase(): Promise<void> {
  *
  * 不执行迁移；迁移由测试启动器在模板数据库中完成。普通测试只调用本函数。
  */
-export interface ResetDbForTestOptions {
-  /** 真实 PostgreSQL 中刷新榜单物化视图；用于需验证刷新路径的用例。 */
-  refreshRankings?: boolean;
-}
-
-export async function resetDbForTest(
-  _options: ResetDbForTestOptions = {},
-): Promise<void> {
+export async function resetDbForTest(): Promise<void> {
   // 次数计数：报告用它区分"reset 变少"与"单次 reset 变快"。
   countPhase(RESET_PHASE.invocations, 1);
   await measurePhase(

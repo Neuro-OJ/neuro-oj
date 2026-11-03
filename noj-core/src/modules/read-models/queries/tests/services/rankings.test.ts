@@ -18,7 +18,7 @@ import { getGlobalRankings, getMyRanking } from "../../index.ts";
 import { hashPassword } from "../../../../access/identity/index.ts";
 
 // 模块级 bootstrap：确保 测试数据库 schema 已创建
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 /**
  * 创建测试用户，返回 user_id。

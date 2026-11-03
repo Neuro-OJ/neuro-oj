@@ -97,7 +97,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest({ refreshRankings: true });
+    await resetDbForTest();
 
     const viewResult = await getDb().execute(
       sql`SELECT to_regclass('user_rankings') AS name`,

@@ -24,7 +24,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { deleteContest, updateContest } from "../../index.ts";
 
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 const now = new Date().toISOString();
 const atMinutes = (minutes: number) =>

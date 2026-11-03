@@ -261,17 +261,13 @@ async function main(): Promise<void> {
 
     await helper.setupSchemaForTest();
     for (let i = 0; i < options.warmup; i += 1) {
-      await helper.resetDbForTest({
-        refreshRankings: options.refreshRankings,
-      });
+      await helper.resetDbForTest();
     }
 
     const samples: number[] = [];
     for (let i = 0; i < options.repeat; i += 1) {
       const start = performance.now();
-      await helper.resetDbForTest({
-        refreshRankings: options.refreshRankings,
-      });
+      await helper.resetDbForTest();
       samples.push(performance.now() - start);
     }
 

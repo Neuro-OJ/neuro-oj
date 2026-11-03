@@ -37,7 +37,7 @@ import {
 } from "../../../access/workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 await ensureDefaultWorkspace();
 
 const now = new Date().toISOString();
