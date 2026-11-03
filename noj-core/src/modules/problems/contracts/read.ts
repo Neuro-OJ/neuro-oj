@@ -5,27 +5,10 @@
  * problems 自己的类型/表以及共享的访问事实，不导入 problems service 门面，
  * 因而不会把 contests ↔ problems 运行时环重新引入。
  */
-import {
-  and,
-  type AnyColumn,
-  eq,
-  isNull,
-  or,
-  type SQL,
-  sql,
-} from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DbRoot } from "../../../shared/db/executor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import {
-  contestProblems,
-  contests,
-  domainProblemBindings,
-  domains,
-  problems,
-  problemShareSettings,
-  problemShareTargets,
-  problemVersions,
-} from "../../../shared/db/schema.ts";
+import { problemVersions } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { ProblemReference } from "../../../shared/workspace/types.ts";
@@ -45,19 +28,6 @@ import {
   isValidSubmissionMode,
   type SubmissionMode,
 } from "../types/problems.ts";
-
-const CONTEST_TIME_ISO_REGEX_SQL =
-  "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
-
-/** 本地只读合同使用同一 fail-closed 时间口径，避免依赖 contests service。 */
-function unendedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
-  return sql`CASE
-    WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
-     AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
-    THEN ${endTimeExpr}::timestamptz > now()
-    ELSE true
-  END`;
-}
 
 /** 只读查询最小根连接能力；不暴露业务门面或 Executor 联合类型。 */
 type ReadExecutor = Pick<DbRoot, "select">;
@@ -115,56 +85,6 @@ export function domainProblemReference(
     qualified_ref: qualified,
     display_ref: shared ? qualified : String(problem.number),
   };
-}
-
-/** 复核源题当前共享授权；比赛保密也在此合同内 fail-closed。 */
-export async function assertCurrentProblemShare(
-  problem: typeof problems.$inferSelect,
-  source: typeof domains.$inferSelect,
-  targetDomainId: string,
-  executor: ReadExecutor = getDb(),
-): Promise<void> {
-  if (
-    source.status === "suspended" || source.configuration.access !== "public" ||
-    problem.visibility !== "public" || !problem.latest_version_id
-  ) throw new NotFoundError("源题不可引用或共享授权已撤销");
-  const [sourceBinding] = await executor.select({
-    id: domainProblemBindings.id,
-  })
-    .from(domainProblemBindings).where(and(
-      eq(domainProblemBindings.domain_id, source.id),
-      eq(domainProblemBindings.problem_id, problem.id),
-      eq(domainProblemBindings.kind, "owned"),
-      eq(domainProblemBindings.visibility, "public"),
-      isNull(domainProblemBindings.disabled_at),
-    ));
-  if (!sourceBinding) throw new NotFoundError("源题已下架或源域绑定不可用");
-  const [settings] = await executor.select().from(problemShareSettings).where(
-    eq(problemShareSettings.problem_id, problem.id),
-  );
-  if (!settings?.enabled) throw new NotFoundError("源题未开放引用");
-  if (settings.scope === "selected") {
-    const [grant] = await executor.select().from(problemShareTargets).where(and(
-      eq(problemShareTargets.problem_id, problem.id),
-      eq(problemShareTargets.domain_id, targetDomainId),
-    ));
-    if (!grant) throw new NotFoundError("源题未授权此工作空间引用");
-  }
-  const [secret] = await executor.select({ id: contests.id }).from(
-    contestProblems,
-  )
-    .innerJoin(contests, eq(contests.id, contestProblems.contest_id)).where(and(
-      eq(contestProblems.problem_id, problem.id),
-      or(
-        eq(contests.domain_id, source.id),
-        source.id === DEFAULT_DOMAIN_ID
-          ? isNull(contests.domain_id)
-          : undefined,
-      ),
-      eq(contests.kind, "public"),
-      unendedWindowCondition(contests.end_time),
-    )).limit(1);
-  if (secret) throw new NotFoundError("源题处于比赛保密窗口");
 }
 
 /** 版本内容投影；题目管理元数据不属于该合同。 */
