@@ -438,7 +438,7 @@ docker compose down     # 停止
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
-> - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
+> - **角色**：`users.role` / `domain_memberships.role` / `domains.owner_id`（无 RBAC 关联表）
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
 >   `community_reports` / `community_moderation_actions` / `community_sanctions`
 >   / `community_notifications` 等 12 张（`community_activity_events` 已随
