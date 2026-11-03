@@ -166,8 +166,8 @@ cd dist
 ## API 交互约定
 
 空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有（历史名称
-`useViewAsyncData` 仅是兼容包装），交互仍走原有细粒度 API。全局 `00-bff.global.ts`
-不再预取或写入共享快照；接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
+`useViewAsyncData` 仅是兼容包装），交互仍走原有细粒度 API。全局导航不再预取或写入共享快照；
+接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 
 产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用 `layouts/workspace.vue`
 提供的统一上下文。实现及当前限制见 [工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
