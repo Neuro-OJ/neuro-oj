@@ -82,7 +82,7 @@ describe('引用题单的使用域作答', () => {
         title: '源题单',
         description: '',
         can_edit: false,
-        is_shared: true,
+        
         source_domain_slug: 'main',
         items: [
           {

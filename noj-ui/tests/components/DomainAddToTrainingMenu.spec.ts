@@ -13,7 +13,7 @@ const problem = {
   number: 1001,
   qualified_ref: 'main:1001',
   display_ref: 'main:1001',
-  is_shared: true,
+  
 };
 
 beforeEach(() => {

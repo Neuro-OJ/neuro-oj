@@ -14,7 +14,7 @@ const detail: DomainProblemDetail = {
     number: 1001,
     qualified_ref: 'main:1001',
     display_ref: 'main:1001',
-    is_shared: true,
+    
   },
   binding_id: 'binding',
   policy_revision: 1,
