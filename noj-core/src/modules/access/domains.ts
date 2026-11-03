@@ -353,22 +353,11 @@ export async function updateDomainTx(
   }
   let configuration: DomainConfiguration | undefined;
   if (patch.configuration) {
-    const resourcePolicy = await getInstanceResourcePolicy(tx);
-    const fixed = constrainDomainConfiguration(
-      domain.configuration,
-      resourcePolicy.modules,
-    );
-    if (
-      patch.configuration.features &&
-        Object.keys(fixed.features).some((key) =>
-          patch.configuration!.features![key as keyof typeof fixed.features] !==
-            fixed.features[key as keyof typeof fixed.features]
-        ) ||
-      patch.configuration.homepage !== undefined &&
-        patch.configuration.homepage !== fixed.homepage
-    ) {
+    // 能力和首页是派生值，不接受任何写入（即使写入值与推导值相同），
+    // 避免客户端把"可写"误当成契约。
+    if ("features" in patch.configuration || "homepage" in patch.configuration) {
       throw new BadRequestError(
-        "域能力和首页由固定类型决定",
+        "域能力和首页由固定类型决定，不接受配置写入",
         "DOMAIN_TYPE_FIXED",
       );
     }
