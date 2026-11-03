@@ -19,8 +19,7 @@ interface RecentSubmission {
 type ActivityData = { data: { recent: RecentSubmission[]; total: Snapshot; today: Snapshot } };
 const props = defineProps<{ domainSlug: string; initialData?: ActivityData }>();
 const scope = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'latest-submissions'));
-const { data, status, error, refresh } = await useViewAsyncData(
-  'activity',
+const { data, status, error, refresh } = await useAsyncData(
   scope,
   () =>
     api.get<ActivityData>(
