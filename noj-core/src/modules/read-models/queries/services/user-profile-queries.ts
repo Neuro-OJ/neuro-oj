@@ -40,8 +40,7 @@ function publicCommunityCondition() {
   return sql`coalesce(${communityPosts.domain_id},${DEFAULT_DOMAIN_ID})=${DEFAULT_DOMAIN_ID}
     AND (${communityPosts.domain_id} IS NULL OR EXISTS (SELECT 1 FROM domains profile_domain
       WHERE profile_domain.id=${DEFAULT_DOMAIN_ID} AND profile_domain.status<>'suspended'
-        AND profile_domain.configuration->>'access'='public'
-        AND profile_domain.configuration->'features'->>'community'='true'))
+        AND profile_domain.configuration->>'access'='public'))
     AND (${communityPosts.problem_id} IS NULL OR ${communityPosts.domain_id} IS NULL
       OR ${
     domainProblemBindingAvailableWhere(
