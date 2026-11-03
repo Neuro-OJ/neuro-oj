@@ -59,7 +59,7 @@ Status: proposed
 | P5 | 域授权与成员生命周期 | 进行中 | 域策略单角色化；成员角色 PUT 单值；交接保持双方 admin；workspace 重复实现已删；创建者特权 `write_own/delete_own` 已从生产判定移除，题目/题单管理统一 `*_any`，所有者只读但不解锁答案 |
 | P6 | 初始化、种子与夹具 | 完成 | RBAC 种子服务已删除；夹具迁移到单值角色；access 396、identity 396、problems 353、contests 126、communication 84、platform 254、read-models 80、education 144、evaluations 472、shared 457 全绿 |
 | P7 | 域配置去重 | 进行中 | 类型已拆 Stored/Effective；PATCH 出现 features/homepage 即 400 DOMAIN_TYPE_FIXED；schema 仍按 Effective 持久化，读取推导待统一 |
-| P8 | 跨域只复制、删除共享 | 进行中 | 共享端点/读取/写入/应用命令与 barrel 导出全部关闭，绑定强制 owned，can_share/is_shared 清零；共享表与 education 用例待删 |
+| P8 | 跨域只复制、删除共享 | 完成 | 共享服务/表/原生 SQL/夹具全部删除；迁移 0135/0136 删四张共享表；problems 351、read-models 80、contests 126、communication 84、education 144 全绿 |
 | P9 | 删除 moment、时间窗、随机推荐 | 已完成 | 后端、UI、管理配置、举报标签、BFF mock 与 noj-docs 用户文档全部移除 moment；训练比较与随机三题已删 |
 | P10 | 邀请模式合并 | 已完成 | 后端仅 email/general，once→400；迁移 0134 收紧 CHECK；UI 模式类型/标签/按钮/加入页分支全部移除 |
 | P11 | 旧榜单与前端空壳 | 完成 | 旧视图刷新/检查/标记全删；前端直用 useAsyncData，UI 单测 345 通过 |
