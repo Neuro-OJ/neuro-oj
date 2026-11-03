@@ -1,11 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   domainProblemBindings,
   objectiveSubmissions,
   problems,
-  problemShareSettings,
   problemVersions,
   submissions,
 } from "../../../../shared/db/schema.ts";
@@ -20,10 +19,7 @@ export async function assertProblemHasNoRetainedReferences(
   ).where(eq(problemVersions.problem_id, problemId)).limit(1);
   const [binding] = await executor.select({ id: domainProblemBindings.id })
     .from(domainProblemBindings).where(
-      and(
-        eq(domainProblemBindings.problem_id, problemId),
-        eq(domainProblemBindings.kind, "shared"),
-      ),
+      eq(domainProblemBindings.problem_id, problemId),
     ).limit(1);
   const [submission] = await executor.select({ id: submissions.id }).from(
     submissions,
@@ -32,12 +28,7 @@ export async function assertProblemHasNoRetainedReferences(
     .from(objectiveSubmissions).where(
       eq(objectiveSubmissions.paper_id, problemId),
     ).limit(1);
-  const [sharing] = await executor.select({
-    id: problemShareSettings.problem_id,
-  }).from(problemShareSettings).where(
-    eq(problemShareSettings.problem_id, problemId),
-  ).limit(1);
-  if (version || binding || submission || objective || sharing) {
+  if (version || binding || submission || objective) {
     throw new AppError(
       "题目已有版本、题库引用或提交记录，不能物理删除；请保留历史并停用资源",
       409,

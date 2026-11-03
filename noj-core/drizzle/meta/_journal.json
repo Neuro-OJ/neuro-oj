@@ -946,6 +946,13 @@
       "when": 1793722486863,
       "tag": "0135_wandering_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1793722831286,
+      "tag": "0136_shallow_raider",
+      "breakpoints": true
     }
   ]
 }

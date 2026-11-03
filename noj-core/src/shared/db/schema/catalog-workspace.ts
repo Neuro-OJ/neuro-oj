@@ -107,32 +107,6 @@ export const problemBindingHistory = pgTable("problem_binding_history", {
   ),
 }));
 
-/** 公开题的引用授权独立于题目公开可读状态。 */
-export const problemShareSettings = pgTable("problem_share_settings", {
-  problem_id: text("problem_id").primaryKey().references(() => problems.id),
-  enabled: boolean("enabled").notNull().default(false),
-  scope: text("scope").$type<"all" | "selected">().notNull().default("all"),
-  revision: integer("revision").notNull().default(0),
-  updated_by: text("updated_by").notNull().references(() => users.id),
-  updated_at: text("updated_at").notNull(),
-}, (t) => ({
-  scopeCheck: check(
-    "problem_share_settings_scope_check",
-    sql`${t.scope} IN ('all', 'selected')`,
-  ),
-  revisionCheck: check(
-    "problem_share_settings_revision_check",
-    sql`${t.revision} >= 0`,
-  ),
-}));
-/** 以外键和唯一键约束定向授权目标，避免 JSON 中的失效域标识。 */
-export const problemShareTargets = pgTable("problem_share_targets", {
-  problem_id: text("problem_id").notNull().references(() =>
-    problemShareSettings.problem_id
-  ),
-  domain_id: text("domain_id").notNull().references(() => domains.id),
-}, (t) => ({ pk: primaryKey({ columns: [t.problem_id, t.domain_id] }) }));
-
 /** 目标域引用源题单，不复制源题或支持包。 */
 export const domainTrainingBindings = pgTable("domain_training_bindings", {
   id: text("id").primaryKey(),
