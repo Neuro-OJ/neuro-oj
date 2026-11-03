@@ -28,7 +28,6 @@ import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../read-models/queries/services/stats-cache.ts";
-import { refreshRankingsView } from "../read-models/queries/services/rankings.ts";
 import {
   assertEvaluationAdmission,
   type EvaluationAdmissionContext,
@@ -579,8 +578,6 @@ export async function saveEvaluationResultCommand(
     }
   }
 
-  // 结果已提交；刷新失败由 read-model 实现记录并回退内联查询，不回滚正式成绩。
-  await refreshRankingsView();
   return outcome;
 }
 
