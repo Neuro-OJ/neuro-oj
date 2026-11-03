@@ -5,7 +5,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   problemVersions,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -177,13 +176,6 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     visibility: "public",
     created_by: f.a,
     created_at: f.now,
-    updated_at: f.now,
-  });
-  await f.db.insert(problemShareSettings).values({
-    problem_id: id,
-    enabled: true,
-    scope: "all",
-    updated_by: f.a,
     updated_at: f.now,
   });
   const sourceInvite = await createDomainInvitation(
