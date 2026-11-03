@@ -328,7 +328,6 @@ export async function readDomainProblem(
     required_version_id: resolved.binding.required_version_id,
     answer_version_id: resolved.answerVersionId,
     visibility: resolved.binding.visibility,
-    can_share: false,
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,

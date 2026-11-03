@@ -485,7 +485,6 @@ export async function listDomainProblemBindings(
         required_version_id: row.problem.required_version_id,
         answer_version_id: status?.answer_version_id ?? null,
         can_edit: canEdit,
-        can_share: false,
         can_manage_policy: workspace.platformAdmin ||
           permissions.has("problem:policy"),
         can_change_state: canEdit ||
