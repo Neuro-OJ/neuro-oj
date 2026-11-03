@@ -12,8 +12,8 @@ import {
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import type {
-  DomainConfiguration,
   DomainStatus,
+  StoredDomainConfiguration,
   StoredDomainPreset,
 } from "../../workspace/types.ts";
 import type { DomainMemberRole } from "../../access/roles.ts";
@@ -27,7 +27,7 @@ export const domains = pgTable("domains", {
   status: text("status").$type<DomainStatus>().notNull().default("active"),
   owner_id: text("owner_id").notNull().references(() => users.id),
   preset: text("preset").$type<StoredDomainPreset>().notNull(),
-  configuration: jsonb("configuration").$type<DomainConfiguration>().notNull(),
+  configuration: jsonb("configuration").$type<StoredDomainConfiguration>().notNull(),
   revision: integer("revision").notNull().default(0),
   next_problem_number: integer("next_problem_number").notNull().default(1001),
   created_at: text("created_at").notNull(),

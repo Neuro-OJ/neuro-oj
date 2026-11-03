@@ -47,6 +47,7 @@ import {
 } from "../services/creation-requests.ts";
 import { DOMAIN_PRESETS } from "../../../../shared/workspace/types.ts";
 import { constrainDomainConfiguration } from "../../../../shared/workspace/resource-policy.ts";
+import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 import { getInstanceResourcePolicy } from "../services/instance.ts";
 import {
   listAdminDomains,
@@ -271,7 +272,7 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
     data: {
       ...domain,
       configuration: constrainDomainConfiguration(
-        domain.configuration,
+        effectiveDomainConfiguration(domain.preset, domain.configuration),
         (await getInstanceResourcePolicy()).modules,
       ),
       permissions: [...context.domainPermissions],

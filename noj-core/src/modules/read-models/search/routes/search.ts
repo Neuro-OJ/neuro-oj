@@ -1,5 +1,6 @@
 import { type Context, Hono } from "hono";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
 import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
@@ -67,7 +68,12 @@ const handler = async (c: Context<Env>) => {
   const config = getCommunityConfig();
   const instancePolicy = await getInstanceResourcePolicy();
   const communityEnabled = instancePolicy.modules.community &&
-    access?.domain.configuration.features.community === true &&
+    (access === null
+      ? false
+      : effectiveDomainConfiguration(
+        access.domain.preset,
+        access.domain.configuration,
+      ).features.community === true) &&
     config.enabled &&
     (config.solutions_enabled || config.discussions_enabled);
   const ctx = {

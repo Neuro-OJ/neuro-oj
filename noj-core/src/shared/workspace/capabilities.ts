@@ -1,6 +1,7 @@
 import type {
   DomainConfiguration,
   DomainPreset,
+  StoredDomainConfiguration,
   StoredDomainPreset,
 } from "./types.ts";
 
@@ -27,9 +28,20 @@ export function domainTypeConfiguration(
 /** 访问与加入政策可修改；能力和首页由类型确定，旧 custom 等待人工转换。 */
 export function effectiveDomainConfiguration(
   preset: StoredDomainPreset,
-  stored: DomainConfiguration,
+  stored: StoredDomainConfiguration,
 ): DomainConfiguration {
-  if (preset === "custom") return stored;
+  if (preset === "custom") {
+    return {
+      ...stored,
+      features: {
+        community: false,
+        classroom: false,
+        assignment: false,
+        analytics: false,
+      },
+      homepage: "overview",
+    };
+  }
   const fixed = domainTypeConfiguration(preset);
   return { ...stored, features: fixed.features, homepage: fixed.homepage };
 }

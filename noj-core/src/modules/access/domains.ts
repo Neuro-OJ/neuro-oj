@@ -18,6 +18,7 @@ import {
 } from "../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
 import type { DomainConfiguration, DomainPreset } from "./types.ts";
+import type { StoredDomainConfiguration } from "../../shared/workspace/types.ts";
 import type { SystemActor, UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import { type AccessAuditMeta, workspaceAuditTx } from "./audit.ts";
@@ -351,7 +352,7 @@ export async function updateDomainTx(
   if (domain.revision !== revision) {
     throw new ConflictError("配置已被其他管理员更新");
   }
-  let configuration: DomainConfiguration | undefined;
+  let configuration: StoredDomainConfiguration | undefined;
   if (patch.configuration) {
     // 能力和首页是派生值，不接受任何写入（即使写入值与推导值相同），
     // 避免客户端把"可写"误当成契约。
