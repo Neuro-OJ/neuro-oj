@@ -163,9 +163,9 @@
 | noj-tests/e2e/community/community.test.ts | 42 | early-return |
 | noj-tests/e2e/community/community.test.ts | 103 | early-return |
 | noj-tests/e2e/community/community.test.ts | 242 | early-return |
-| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 85 | early-return |
-| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 118 | early-return |
-| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 140 | early-return |
+| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 86 | early-return |
+| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 119 | early-return |
+| noj-tests/e2e/contest/anti_cheat_abnormal.test.ts | 141 | early-return |
 | noj-tests/e2e/contest/clarifications.test.ts | 47 | early-return |
 | noj-tests/e2e/contest/clarifications.test.ts | 69 | early-return |
 | noj-tests/e2e/contest/clarifications.test.ts | 116 | early-return |
@@ -229,9 +229,9 @@
 | noj-tests/e2e/identity/auth.test.ts | 21 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 35 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 48 | early-return |
-| noj-tests/e2e/identity/auth.test.ts | 59 | early-return |
-| noj-tests/e2e/identity/auth.test.ts | 79 | early-return |
-| noj-tests/e2e/identity/auth.test.ts | 90 | early-return |
+| noj-tests/e2e/identity/auth.test.ts | 60 | early-return |
+| noj-tests/e2e/identity/auth.test.ts | 80 | early-return |
+| noj-tests/e2e/identity/auth.test.ts | 91 | early-return |
 | noj-tests/e2e/identity/password_change_guard.test.ts | 41 | early-return |
 | noj-tests/e2e/identity/password_change_guard.test.ts | 52 | early-return |
 | noj-tests/e2e/identity/password_change_guard.test.ts | 59 | early-return |

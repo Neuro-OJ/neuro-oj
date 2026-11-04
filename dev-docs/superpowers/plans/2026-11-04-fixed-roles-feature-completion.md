@@ -185,7 +185,7 @@ deno task env:down --session fixed-roles-acceptance
 
 已通过的门禁（本地）：core `access` 400、`problems` 353、`contests`
 126、`education` 144、`evaluations` 472、`read-models` 80、`communication`
-84；CLI 828（4 ignored）； UI `check` / `test` 345 / `test:components`
+84；CLI 830（4 ignored）；UI `check` / `test` 345 / `test:components`
 422；`scripts/check-ci.ts` 全绿
 （含迁移安全、快照链、路由目录、静默跳过、单文件规模、合同重导出）；`fmt`/`lint`
 （改动文件）、Markdown 链接与 Agent Note 格式检查。
