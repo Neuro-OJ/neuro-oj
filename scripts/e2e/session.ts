@@ -295,6 +295,9 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     // compose 用同名变量创建数据库，避免与 E2E_DB_URL 指向不同库。
     E2E_DATABASE_NAME: sessionDatabaseName(manifest),
     E2E_REDIS_URL: `redis://127.0.0.1:${manifest.ports.redis}/1`,
+    // 部分 E2E 用 docker exec 直接向 Redis 发布事件帧；容器名必须指向本会话，
+    // 否则会写进默认 8099 开发栈的 Redis，出现"发不出去/收到别人的帧"。
+    E2E_REDIS_CONTAINER: `${manifest.composeProject}-redis-1`,
     E2E_CORE_URL: manifest.urls.core,
     // noj-tests 的 helper 以 E2E_BASE_URL 为唯一入口；不映射会静默回落到默认
     // 8099 的开发栈，让"新会话"跑出旧代码结果。
