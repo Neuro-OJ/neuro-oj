@@ -202,7 +202,8 @@ Deno.test("access roles: 域角色永远不获得平台管理员标识", () => {
   }
 });
 
-Deno.test("access roles: 过渡期旧能力永不被授予任何角色", () => {
+Deno.test("access roles: 角色能力只能是静态能力表里的名字", () => {
+  const known = new Set<string>(CAPABILITIES);
   const bundles: Array<[string, ReadonlySet<string>]> = [
     ...DOMAIN_ROLES.map((role): [string, ReadonlySet<string>] => [
       `domain:${role}`,
@@ -213,6 +214,14 @@ Deno.test("access roles: 过渡期旧能力永不被授予任何角色", () => {
       platformRoleCapabilities(role),
     ]),
   ];
+  for (const [name, capabilities] of bundles) {
+    for (const capability of capabilities) {
+      assert(
+        known.has(capability),
+        `${name} 含未登记能力 ${capability}`,
+      );
+    }
+  }
 });
 
 Deno.test("access roles: 角色写入只接受单值并拒绝 owner 与数组", () => {
