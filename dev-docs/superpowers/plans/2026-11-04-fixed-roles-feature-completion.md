@@ -183,12 +183,13 @@ deno task env:down --session fixed-roles-acceptance
 | 第 8 批 其余删除项与保留功能   | 部分 | 已完成：`cleanup-pre-workspace-data.ts` 不再刷新 `public.user_rankings`；生产代码残留扫描 `shared-resources`/`/sharing`/`role_ids`/`time_window`/`random-problems`/`user_rankings` 均为 0（仅注释说明拒绝语义）；签到与作业/比赛补题见 education 144、域榜单见 read-models 80、新增 `max_uses=1` 并发兑换与重复接受幂等测试（access 400）。待做：Native/WASM 实测                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 第 9 批 测试合同与发布等价验收 | 部分 | `8d72000c`：E2E 夹具改单值角色、RBAC 重写、公告治理改平台管理员。隔离会话 `fixed-roles-acceptance`（`--fresh` 重建镜像、`JUDGE_RESOURCE_POOLS=ai,oi-native`）实测：`identity` 34/0、`catalog` 32/0、`system` 35/0、`submission` 39/0（8 ignored）、`admin` 11/0、`objective` 1/0、`community` 3/0、`contest` 27/0、`cross-domain` 56/0（含真实 OI Native 提交与 storage-failure）。会话入口补齐 `E2E_BASE_URL`/`E2E_REDIS_CONTAINER`/`E2E_CORE_CONTAINER`/`E2E_MINIO_CONTAINER` 与 `E2E_JUDGE_RESOURCE_POOLS` 注入。浏览器旅程（`--ui --fresh` 构建 + 预览服务）：`workspace` 过滤 5 通过 / 2 失败——`workspace-llm-model-governance` 第 4 步 evaluator 屏障 45s 超时（LLM gate 夹具环境），`workspace-teaching-journeys` 已修：班级邀请不得绕过域准入，夹具先由管理员把学生邀请进域，教师再发班级邀请——该旅程 1/1（6 步）通过。`workspace-llm-model-governance` 仍失败：evaluator 屏障 45s 内 arrivals=0（judge 容器无 coordinator 注入，属本地会话环境缺口）。Production CLI E2E（真实 pg_dump/pg_restore/gpg/tar 往返，容器指向会话库）：4/4 通过。待做：WASM 四片（需 CI runner 重建固定 WASI SDK）、T23 业务级恢复演练（备份→隔离恢复→登录→发布→提交→评测）、LLM 治理用例环境补齐 |
 
-已通过的门禁（本地）：core `access` 400、`problems` 353、`contests`
-126、`education` 144、`evaluations` 472、`read-models` 80、`communication`
-84；CLI 830（4 ignored）；UI `check` / `test` 345 / `test:components`
-422；`scripts/check-ci.ts` 全绿
-（含迁移安全、快照链、路由目录、静默跳过、单文件规模、合同重导出）；`fmt`/`lint`
-（改动文件）、Markdown 链接与 Agent Note 格式检查。
+已通过的门禁（本地）：core `test:parallel --shards 4 --jobs 2` 677 通过 / 0 失败
+/ 6 ignored；分域 `access` 400、`problems` 353、`contests` 126、 `education`
+144、`evaluations` 472、`read-models` 80、`communication` 84； CLI 830（4
+ignored）；UI `check` / `test` 345 / `test:components` 422 / `build`；
+`scripts/check-ci.ts` 全绿（含迁移安全、快照链、路由目录、静默跳过、单文件规模、
+合同重导出、依赖审计）；`fmt`/`lint`（改动文件）、Markdown 链接与 Agent Note
+格式检查。
 
 ## 七、验收证据表（T01–T24）
 
