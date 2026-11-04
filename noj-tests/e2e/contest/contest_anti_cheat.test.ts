@@ -266,8 +266,8 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
   const roles = await apiPut(
     `/api/v1/domains/main/members/${
       (attackerIdentity.body as { data: { id: string } }).data.id
-    }/roles`,
-    { roles: ["editor"] },
+    }/role`,
+    { role: "educator" },
     adminToken,
   );
   if (roles.status !== 200) {

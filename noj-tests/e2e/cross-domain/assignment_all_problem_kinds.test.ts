@@ -376,10 +376,10 @@ Deno.test({
         await invite(root, owner.token, teacher);
         await request(
           "PUT",
-          `${root}/members/${teacher.id}/roles`,
+          `${root}/members/${teacher.id}/role`,
           owner.token,
           200,
-          { roles: ["educator", "editor"] },
+          { role: "educator" },
         );
         await request(
           "GET",

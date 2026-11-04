@@ -54,8 +54,8 @@ e2eTest("objective e2e: 域建卷→草稿→发布→作答即时判定", async
   ) {
     const me = await apiGet("/api/v1/auth/me", token);
     const id = (me.body as { data: { id: string } }).data.id;
-    const granted = await apiPut(`/api/v1/domains/main/members/${id}/roles`, {
-      roles: ["editor"],
+    const granted = await apiPut(`/api/v1/domains/main/members/${id}/role`, {
+      role: "educator",
     }, adminToken);
     if (granted.status !== 200) {
       throw new Error(`授予域角色失败: ${JSON.stringify(granted.body)}`);

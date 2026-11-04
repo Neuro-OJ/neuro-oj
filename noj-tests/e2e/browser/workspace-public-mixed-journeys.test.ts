@@ -244,8 +244,8 @@ Deno.test({
     for (const member of [actor, peer, host]) {
       await invite("/domains/main", admin, member);
     }
-    await fixture("PUT", `/domains/main/members/${host.id}/roles`, admin, {
-      roles: ["admin"],
+    await fixture("PUT", `/domains/main/members/${host.id}/role`, admin, {
+      role: "admin",
     });
     for (const slug of [schoolA, schoolB]) {
       await fixture("POST", "/domains", admin, {

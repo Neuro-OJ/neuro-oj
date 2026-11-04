@@ -284,9 +284,9 @@ Deno.test({
           await joinFixture(slug, teacherEmail, admin, teacherToken);
           await fixture(
             "PUT",
-            `/api/v1/domains/${slug}/members/${teacherId}/roles`,
+            `/api/v1/domains/${slug}/members/${teacherId}/role`,
             admin,
-            { roles: ["educator", "admin"] },
+            { role: "educator" },
           );
           number = await objectiveFixture(slug, admin, `教学客观题 ${suffix}`);
           await fixture("POST", "/api/v1/domains", admin, {

@@ -175,10 +175,10 @@ e2eTest(
     await invite(`/domains/${slugB}`, ownerB.token, mixed);
     await request(
       "PUT",
-      `/domains/${slugB}/members/${mixed.id}/roles`,
+      `/domains/${slugB}/members/${mixed.id}/role`,
       ownerB.token,
       200,
-      { roles: ["educator"] },
+      { role: "educator" },
     );
     const classB = await request<{ data: { id: string } }>(
       "POST",

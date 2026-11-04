@@ -115,10 +115,28 @@ Deno.test("[ui/browser] 管理后台：刷新 /admin/* 保持登录且列表渲�
       throw new Error("刷新 /admin/users 后表格没有数据行");
     }
 
-    // ── 3. 另一个走 AdminTable 的面板（角色管理）同样必须有数据 ──
-    const roleRows = await openAdminTable(page, "/admin/roles", "角色管理");
-    if (roleRows < 1) {
-      throw new Error(`角色表格没有数据行（rows=${roleRows}）`);
+    // ── 3. 自定义角色页面已删除：侧边栏不得再有入口 ──
+    if ((await page.getByRole("link", { name: "角色权限" }).count()) > 0) {
+      throw new Error("侧边栏仍存在已删除的角色权限入口");
+    }
+    const rolePage = await page.goto(
+      new URL("/admin/roles", page.url()).toString(),
+      { waitUntil: "domcontentloaded" },
+    );
+    if (rolePage && rolePage.status() === 200) {
+      const heading = await page.getByRole("heading", { name: "角色管理" })
+        .count();
+      if (heading > 0) throw new Error("/admin/roles 仍渲染角色管理页");
+    }
+
+    // ── 4. 另一个走 AdminTable 的面板（审计日志）同样必须有数据 ──
+    const auditRows = await openAdminTable(
+      page,
+      "/admin/audit-logs",
+      "审计日志",
+    );
+    if (auditRows < 1) {
+      throw new Error(`审计日志表格没有数据行（rows=${auditRows}）`);
     }
 
     if (pageErrors.length > 0) {

@@ -94,10 +94,10 @@ function actors(): Promise<Actors> {
     );
     await request(
       "PUT",
-      `/domains/main/members/${me.data.id}/roles`,
+      `/domains/main/members/${me.data.id}/role`,
       admin,
       200,
-      { roles: ["editor"] },
+      { role: "educator" },
     );
     const workspace = await request<
       { data: { platform_admin: boolean; permissions: string[] } }
