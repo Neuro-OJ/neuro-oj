@@ -3908,6 +3908,90 @@ Deno.test("update --recover：沿用 checkpoint 目标版本与暂存发布集�
   }
 });
 
+Deno.test("update --recover：迁移失败保留候选文件、备份与未完成 checkpoint", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-migrate");
+    await Deno.mkdir(staged, { recursive: true });
+    const candidateCompose = "services:\n  core:\n    image: noj-v096\n";
+    await Deno.writeTextFile(join(staged, COMPOSE), candidateCompose);
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-migrate-fail",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    const events: UpdateEvent[] = [];
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      migrate: () => Promise.reject(new Error("迁移失败：SQL 语法错误")),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "迁移失败");
+    // 迁移一旦开始就不再回退旧程序：候选文件已提交，旧文件组备份保留。
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), candidateCompose);
+    const backupDirs: string[] = [];
+    for await (const entry of Deno.readDir(dir)) {
+      if (entry.isDirectory && entry.name.startsWith(".upgrade-backup-")) {
+        backupDirs.push(entry.name);
+      }
+    }
+    assert(backupDirs.length > 0, "迁移失败后必须保留旧发布文件备份");
+    // 候选文件已提交到安装目录，暂存目录视为已消费并清理；checkpoint 不再指向它。
+    assertEquals(
+      await Deno.stat(staged).then(() => true, () => false),
+      false,
+    );
+    const state = await readUpgradeState(statePath);
+    assertEquals(state?.phase, "failed");
+    assertEquals(state?.migration_started, true);
+    assertEquals(state?.files_staged_dir, null);
+    assertEquals(state?.files.length, files.length);
+    assertStringIncludes(state?.error ?? "", "迁移失败");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("update：备份失败 → 退出码 1，且**零 pull / 零 up**", async () => {
   const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
   try {

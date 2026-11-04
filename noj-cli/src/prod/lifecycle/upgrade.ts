@@ -496,7 +496,12 @@ export async function upgradeWith(
   }
 
   // 迁移一旦开始，失败后不得自动回退旧程序：先落盘标记再执行迁移。
-  await checkpointAdvance("migrating", { migration_started: true });
+  // 候选文件已提交到安装目录，暂存目录不再需要保留；清空指针避免 --recover
+  // 误以为还能复用一份已被消费的暂存副本。
+  await checkpointAdvance("migrating", {
+    migration_started: true,
+    files_staged_dir: null,
+  });
   let migrationError: string | null;
   try {
     migrationError = await runUpdateMigrations(opts, ctx, target);
