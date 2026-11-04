@@ -15,18 +15,29 @@ moment、训练时间窗比较、首页随机推荐、跨域共享语义与旧 B
 中、验收未完成**。完整计划与固定合同见
 [`dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md`](../../../../dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md)。
 
-评审确认的缺口（按优先级）：
+评审确认的缺口与当前状态（2026-11-04 补齐）：
 
-- 管理员保护锁只接入角色变更；封禁分步写库、后台注销用另一套行锁、自助注销没有
-  最后管理员守卫。
-- 社区通知过滤仍读取已删除的 `configuration.features.community`。
-- 后台用户页、创建账号对话框与域成员页仍使用 `role_ids` / 复数 `/roles`。
-- 资源 composable 仍调用 `/shared-resources`、`/sharing`，后端缺 `/copy-sources`。
-- 题目复制先锁域、再经创建服务锁账号，锁顺序与成员治理相反。
-- 升级在预检通过后失败仍发布目标文件，暂存 compose 未固定项目目录。
-- 旧库预检只统计 ledger 条数，没有校验完整已应用前缀。
-- 绑定 schema 仍保留 `owned/shared` 与 `domain_training_bindings`；`custom` 域类型
-  仍保留兼容分支。
+- 管理员保护锁只接入角色变更 → **已关闭**：降权/封禁/后台注销/自助注销共用事务级
+  锁，双连接屏障测试证明互降权与互封禁各只成功一次。
+- 社区通知过滤读取已删除的 `configuration.features.community` → **已关闭**：可见域
+  集合由 `domainTypeConfiguration` 生成并叠加实例模块政策。
+- 后台用户页、创建账号对话框与域成员页仍使用 `role_ids` / 复数 `/roles` → **已关闭**：
+  单值角色合同 + 删除角色 CRUD 页面与导航。
+- 资源 composable 仍调用 `/shared-resources`、`/sharing`，后端缺 `/copy-sources` →
+  **已关闭**：新增来源目录与 `DomainCopyCatalog`。
+- 题目复制先锁域、再经创建服务锁账号 → **已关闭**：账号先于域，多域按 ID 排序。
+- 升级在预检通过后失败仍发布目标文件，暂存 compose 未固定项目目录 → **已关闭**：
+  候选文件排空后提交、失败整组回滚，`--project-directory` 贯穿，`--recover` 复用
+  同一候选集。
+- 旧库预检只统计 ledger 条数 → **已关闭**：`startup`/pre-migration` 双模式逐条比较
+  hash 与时间戳。
+- 绑定 schema 仍保留 `owned/shared` 与 `domain_training_bindings`，`custom` 兼容 →
+  **已关闭**：迁移 0137 删除 `kind`、建立同域复合外键、删除题单绑定表、收紧 preset
+  CHECK，并对异常数据中止。
+
+仍待完成：WASM 四片需专用 runner 重建固定 WASI SDK；T23 业务级恢复演练（备份→隔离
+恢复→登录→发布→提交→评测）；LLM 治理浏览器用例的 coordinator 注入。逐项证据见计划
+文件第七节「验收证据表」。
 
 ## Decision
 
