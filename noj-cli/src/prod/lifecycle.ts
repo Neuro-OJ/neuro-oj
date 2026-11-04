@@ -208,6 +208,7 @@ import {
 } from "./upgrade-state.ts";
 import type { UpgradeState } from "./upgrade-state.ts";
 import {
+  digestCandidateFiles,
   resolveLatestTarget,
   runUpdateSync,
   upgradeWith,
@@ -1440,6 +1441,34 @@ export const UPDATE_BACKUP_UNAVAILABLE_HINT =
   "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级";
 
 /**
+ * 未完成升级的暂存目录能否原样复用。
+ *
+ * 只有目录仍在、且当前文件摘要与 checkpoint 记录逐项一致才复用；否则返回
+ * `null`，由调用方重新下载候选发布文件。
+ */
+async function reusableCandidateDir(
+  state: UpgradeState | null,
+): Promise<string | null> {
+  if (state === null || state.files_staged_dir === null) return null;
+  const dir = state.files_staged_dir;
+  try {
+    const info = await Deno.stat(dir);
+    if (!info.isDirectory) return null;
+    const actual = await digestCandidateFiles(dir);
+    const expected = state.files;
+    if (actual.length !== expected.length) return null;
+    const intact = actual.every((file, index) => {
+      const reference = expected[index];
+      return reference !== undefined && file.name === reference.name &&
+        file.sha256 === reference.sha256;
+    });
+    return intact ? dir : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `update`（production.sh:345-436）：两种模式共用同一套升级序列。
  *
  * 编排（**顺序即断言**）：前置校验（零变更）→ `--latest` 解析并比较版本（相等即
@@ -1482,8 +1511,9 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   }
 
   const checkpointPath = opts.upgradeStatePath ?? upgradeStatePath(ctx.dir);
+  let previous: UpgradeState | null = null;
   try {
-    const previous = await readUpgradeState(checkpointPath);
+    previous = await readUpgradeState(checkpointPath);
     if (
       previous !== null && previous.phase !== "completed" &&
       opts.recover !== true
@@ -1497,6 +1527,9 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   } catch (err) {
     return fail(from, "", (err as Error).message);
   }
+  // 恢复同一候选发布集：目标版本与暂存目录都沿用 checkpoint 记录，避免
+  // “同一 run 前后两次升级到不同版本”或重新下载已校验文件。
+  const recovering = previous !== null && previous.phase !== "completed";
 
   // ---- 2. --latest：解析目标版本；相等即 no-op（零副作用）----
   let to: string;
@@ -1508,6 +1541,13 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     }
     emitHuman(`当前生产版本：${from}\n`, ctx.io);
     emitHuman(`最新稳定版本：${to}\n`, ctx.io);
+    if (recovering && previous !== null && previous.to !== to) {
+      emitHuman(
+        `沿用未完成升级的目标版本：${previous.to}（checkpoint 阶段 ${previous.phase}）\n`,
+        ctx.io,
+      );
+      to = previous.to;
+    }
     if (normalizedVersion(to) === normalizedVersion(from)) {
       ctx.status("success", UPDATE_UP_TO_DATE_HINT);
       return finish({
@@ -1524,12 +1564,15 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
       });
     }
   } else {
-    to = from;
+    // 恢复未完成升级时目标版本取自 checkpoint，而不是当前安装版本。
+    to = recovering && previous !== null ? previous.to : from;
   }
 
   // ---- 3. 前置校验与目标配置解析都在升级序列内；暂存配置只在 --latest 有新版时创建 ----
   let staged: string | null = null;
-  if (latest) {
+  // --latest 有新版，或 --recover 沿用了 checkpoint 里更高的目标版本时，都要先
+  // 暂存目标版本配置；否则恢复会拿旧 .env.prod 去匹配新发布集。
+  if (latest || (recovering && to !== from)) {
     try {
       staged = await stageConfigVersion(envFile, to);
     } catch (err) {
@@ -1544,6 +1587,11 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   // ---- 4. 同步部署文件到暂存目录（预检通过后才切换）----
   emitHuman(`同步生产部署文件：${to}\n`, ctx.io);
   let stagedFiles: string | null = null;
+  // --recover：上次暂存目录仍在且摘要与 checkpoint 一致时直接复用，
+  // 保证恢复的是同一候选发布集；任一不符则重新拉取并记录原因。
+  const reusableDir = recovering && opts.syncFiles === undefined
+    ? await reusableCandidateDir(previous)
+    : null;
   try {
     if (opts.syncFiles !== undefined) {
       await runUpdateSync(opts, {
@@ -1551,7 +1599,16 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
         ref: to,
         repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
       });
+    } else if (reusableDir !== null) {
+      stagedFiles = reusableDir;
+      emitHuman(`复用未完成升级的暂存发布文件：${reusableDir}\n`, ctx.io);
     } else {
+      if (recovering) {
+        emitHuman(
+          "上次暂存发布文件不可复用（缺失或摘要变化），重新拉取\n",
+          ctx.io,
+        );
+      }
       stagedFiles = join(ctx.dir, `.update-staging-${crypto.randomUUID()}`);
       await Deno.mkdir(stagedFiles, { recursive: true });
       await runUpdateSync(opts, {

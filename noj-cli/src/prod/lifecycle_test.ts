@@ -54,6 +54,14 @@ import {
   WAIT_FAILURE_HINT,
 } from "./lifecycle/steps.ts";
 import { configuredVersion } from "./release.ts";
+import {
+  advanceUpgradeState,
+  createUpgradeState,
+  readUpgradeState,
+  upgradeStatePath,
+  writeUpgradeState,
+} from "./upgrade-state.ts";
+import { digestCandidateFiles } from "./lifecycle/upgrade.ts";
 import type {
   DrainContext,
   DrainLifecycle,
@@ -3804,6 +3812,97 @@ Deno.test("update：默认按 NOJ_VERSION 升级，顺序为 同步 → 备份 �
     assert(nginx > wait, "nginx 刷新必须在健康等待之后");
     assert(config >= 0 && config < backup, "compose config 前置校验必须最早");
     assertStringIncludes(stdout.join(""), "同步生产部署文件：v0.9.5");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("update --recover：沿用 checkpoint 目标版本与暂存发布集，不重新下载", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-recover");
+    await Deno.mkdir(staged, { recursive: true });
+    await Deno.writeTextFile(join(staged, COMPOSE), COMPOSE_BODY);
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-recover",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    // 不带 --recover：明确拒绝，且不产生任何 compose 调用。
+    const blockedEvents: UpdateEvent[] = [];
+    const blocked = await update({
+      dir,
+      runner: makeUpdateRunner(blockedEvents),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {},
+      warn: () => {},
+      upgradeStatePath: statePath,
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+    assertEquals(blocked.exitCode, 1);
+    assertStringIncludes(blocked.error ?? "", "--recover");
+    assertEquals(blockedEvents.length, 0);
+
+    const events: UpdateEvent[] = [];
+    const { io, stdout } = captureRenderIO();
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(result.to, "v0.9.6");
+    assertEquals(result.filesSynced, true);
+    assertStringIncludes(stdout.join(""), "复用未完成升级的暂存发布文件");
+    // compose 一律指向复用后的暂存目录。
+    assert(
+      events.some((e) => e.kind === "run" && e.detail.includes(staged)),
+      "恢复必须使用 checkpoint 记录的暂存目录",
+    );
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    const finalState = await readUpgradeState(statePath);
+    assertEquals(finalState?.phase, "completed");
+    assertEquals(finalState?.to, "v0.9.6");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
