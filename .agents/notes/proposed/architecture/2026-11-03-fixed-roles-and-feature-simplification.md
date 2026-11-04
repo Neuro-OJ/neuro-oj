@@ -13,7 +13,7 @@ moment、训练时间窗比较、首页随机推荐、跨域共享语义与旧 B
 旧榜单链路删除、CLI 预检），并推送主题分支与草稿 PR #717。2026-11-04 的全面评审
 在提交 `b3ece1b2` 上发现仍有真实代码缺口，因此该记录回到 `proposed`：**实现补齐
 中、验收未完成**。完整计划与固定合同见
-[`dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md`](../../../dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md)。
+[`dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md`](../../../../dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md)。
 
 评审确认的缺口（按优先级）：
 
