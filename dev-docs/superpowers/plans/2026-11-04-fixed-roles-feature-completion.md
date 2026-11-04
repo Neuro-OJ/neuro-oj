@@ -10,38 +10,38 @@
 固定角色、独立复制、功能删除的主体实现已经存在，可以继续补齐，不需要推倒重做。
 但当前实现**尚不满足合并条件**，剩余工作包含真实代码缺口：
 
-| 优先级 | 发现 | 处理结论 |
-| --- | --- | --- |
-| P1 | 管理员保护锁只接入角色变更；封禁分步写库、管理员注销用另一套行锁、自助注销没有最后管理员守卫 | 统一事务与锁顺序 |
-| P1 | 社区通知过滤仍读 `configuration.features.community` | 由域类型 + 实例政策推导 |
-| P1 | 后台用户页/创建账号/域成员页仍用 `role_ids` 与复数 `/roles` | 完成单值角色前端合同 |
-| P1 | 资源 composable 仍调 `/shared-resources`、`/sharing`，后端缺 `/copy-sources` | 补来源目录并替换旧共享 UI |
-| P1 | 题目复制先锁域、再经创建服务锁账号 | 固定“账号先于域”，真实 PG 双连接验证 |
-| P1 | 升级在预检通过后失败仍发布目标文件；暂存 compose 未固定项目目录 | 修复升级状态机与恢复 |
-| P1 | 旧库预检只数 ledger 条数，未校验完整前缀 | 迁移前逐条校验 hash/时间戳/顺序 |
-| P2 | 绑定 schema 仍有 owned/shared 与 `domain_training_bindings` | 收敛到数据库约束与统一模型 |
-| P2 | `StoredDomainPreset` 仍保留 `custom` 兼容分支 | 只保留三种固定域类型 |
-| P2 | E2E 夹具仍创建自定义 RBAC、调用 `/roles`；SSR 断言仍要求已删除随机题块 | 更新验收合同 |
-| P2 | Agent Note 状态与证据口径不准确 | 重建按提交/场景/环境归属的证据 |
+| 优先级 | 发现                                                                                         | 处理结论                             |
+| ------ | -------------------------------------------------------------------------------------------- | ------------------------------------ |
+| P1     | 管理员保护锁只接入角色变更；封禁分步写库、管理员注销用另一套行锁、自助注销没有最后管理员守卫 | 统一事务与锁顺序                     |
+| P1     | 社区通知过滤仍读 `configuration.features.community`                                          | 由域类型 + 实例政策推导              |
+| P1     | 后台用户页/创建账号/域成员页仍用 `role_ids` 与复数 `/roles`                                  | 完成单值角色前端合同                 |
+| P1     | 资源 composable 仍调 `/shared-resources`、`/sharing`，后端缺 `/copy-sources`                 | 补来源目录并替换旧共享 UI            |
+| P1     | 题目复制先锁域、再经创建服务锁账号                                                           | 固定“账号先于域”，真实 PG 双连接验证 |
+| P1     | 升级在预检通过后失败仍发布目标文件；暂存 compose 未固定项目目录                              | 修复升级状态机与恢复                 |
+| P1     | 旧库预检只数 ledger 条数，未校验完整前缀                                                     | 迁移前逐条校验 hash/时间戳/顺序      |
+| P2     | 绑定 schema 仍有 owned/shared 与 `domain_training_bindings`                                  | 收敛到数据库约束与统一模型           |
+| P2     | `StoredDomainPreset` 仍保留 `custom` 兼容分支                                                | 只保留三种固定域类型                 |
+| P2     | E2E 夹具仍创建自定义 RBAC、调用 `/roles`；SSR 断言仍要求已删除随机题块                       | 更新验收合同                         |
+| P2     | Agent Note 状态与证据口径不准确                                                              | 重建按提交/场景/环境归属的证据       |
 
 ## 二、固定对外合同
 
-| 对象 | 合同 |
-| --- | --- |
-| 平台角色修改 | `PATCH /api/v1/admin/identity/users/:id/role`，请求 `{role:"user"|"admin"}` |
-| 域成员角色修改 | `PUT /api/v1/domains/:slug/members/:userId/role`，请求 `{role:"member"|"educator"|"admin"}` |
-| 负责人交接 | `POST /domains/:slug/transfer`；普通角色赋值不能获得 owner |
-| 用户/成员 DTO | 单值 `role`；`is_admin` 仅为派生展示字段 |
-| 域配置 | 只存 `access/discoverable/join_policy`；有效 `features/homepage` 由类型与实例政策推导 |
-| 复制来源目录 | `GET /api/v1/domains/:slug/copy-sources?kind=problem|training&page&limit&source_slug&keyword` |
-| 题目复制 | `POST /domains/:slug/problem-bindings`，请求 `source_ref`、可选 `version_id` |
-| 题单复制 | `POST /domains/:slug/training-bindings`，请求 `training_id`；行为是独立复制 |
-| 邀请 | 只接受 `email`/`general`；单次邀请使用 `general + max_uses=1` |
-| 删除接口 | 角色/权限 CRUD、板块角色授权、共享设置、旧共享目录与训练时间窗接口返回 404，不建兼容转发 |
+| 对象           | 合同                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| 平台角色修改   | `PATCH /api/v1/admin/identity/users/:id/role`，请求 `{role:"user"                        |
+| 域成员角色修改 | `PUT /api/v1/domains/:slug/members/:userId/role`，请求 `{role:"member"                   |
+| 负责人交接     | `POST /domains/:slug/transfer`；普通角色赋值不能获得 owner                               |
+| 用户/成员 DTO  | 单值 `role`；`is_admin` 仅为派生展示字段                                                 |
+| 域配置         | 只存 `access/discoverable/join_policy`；有效 `features/homepage` 由类型与实例政策推导    |
+| 复制来源目录   | `GET /api/v1/domains/:slug/copy-sources?kind=problem                                     |
+| 题目复制       | `POST /domains/:slug/problem-bindings`，请求 `source_ref`、可选 `version_id`             |
+| 题单复制       | `POST /domains/:slug/training-bindings`，请求 `training_id`；行为是独立复制              |
+| 邀请           | 只接受 `email`/`general`；单次邀请使用 `general + max_uses=1`                            |
+| 删除接口       | 角色/权限 CRUD、板块角色授权、共享设置、旧共享目录与训练时间窗接口返回 404，不建兼容转发 |
 
-错误语义：非法角色、数组角色、普通赋值 owner、`mode=once` → 400；权限不足 → 403；
-按既有隐藏规则不可见 → 404；revision、负责人状态、最后管理员冲突 → 409，其中
-最后管理员使用稳定错误码 `LAST_ADMIN`。
+错误语义：非法角色、数组角色、普通赋值 owner、`mode=once` → 400；权限不足 →
+403； 按既有隐藏规则不可见 → 404；revision、负责人状态、最后管理员冲突 →
+409，其中 最后管理员使用稳定错误码 `LAST_ADMIN`。
 
 ## 三、实施批次
 
@@ -49,7 +49,8 @@
 
 1. jj 工作副本、bookmark、PR head 与基线一致，GPG 可用。
 2. 本文件入库；Agent Note 链接本文件。
-3. 合同测试：平台单角色、域单角色、有效 owner、删除端点、配置三键、复制目录、邀请两模式。
+3. 合同测试：平台单角色、域单角色、有效
+   owner、删除端点、配置三键、复制目录、邀请两模式。
 4. 修复失效文档链接（`workspace-authorization-matrix.md` 等）。
 5. Agent Note 状态改为“实现补齐中、验收未完成”，移除错误现状描述。
 
@@ -58,19 +59,21 @@
 `access/admin-policy.ts` 提供唯一入口：
 
 - `lockAdminMutationsTx`（事务级 advisory lock）；
-- `assertActiveAdminActorTx`（锁内重读操作者角色/注销/平台封禁；root 视为系统账号）；
-- `countAvailableAdminsTx` / `assertAvailableAdminRemainsTx`（排除 root、已注销、有效平台封禁）。
+- `assertActiveAdminActorTx`（锁内重读操作者角色/注销/平台封禁；root
+  视为系统账号）；
+- `countAvailableAdminsTx` / `assertAvailableAdminRemainsTx`（排除
+  root、已注销、有效平台封禁）。
 
-降权、平台封禁、解封、后台注销、自助注销全部走同一把锁；锁顺序固定为
-管理员锁 → 账号行（按 ID 排序）→ 域行（按 ID 排序）→ 成员/资源。
+降权、平台封禁、解封、后台注销、自助注销全部走同一把锁；锁顺序固定为 管理员锁 →
+账号行（按 ID 排序）→ 域行（按 ID 排序）→ 成员/资源。
 封禁的会话版本、旧封禁关闭、新记录与审计同事务提交；缓存失效与通知在提交后执行。
 
 ### 第 3 批：域能力与授权读取
 
 - 删除 `StoredDomainPreset` 的 `custom` 与兼容分支；域 CHECK 收紧到三种类型。
 - `effectiveDomainConfiguration()` 纯推导；写入只接受三个存储字段。
-- 社区通知 SQL 从 `domainTypeConfiguration` 生成允许的 preset 集合并叠加实例模块政策，
-  不再读取已删除的 `configuration.features`。
+- 社区通知 SQL 从 `domainTypeConfiguration` 生成允许的 preset
+  集合并叠加实例模块政策， 不再读取已删除的 `configuration.features`。
 - 列表、未读数、详情、批量/单条已读、SSE 实时事件与重放共用同一可见性规则。
 
 ### 第 4 批：独立复制与来源目录
@@ -127,18 +130,18 @@ Production CLI E2E 覆盖恢复后的真实业务；WASM 四个分片实际运�
 
 ## 四、验收组
 
-| 验收组 | 完成条件 |
-| --- | --- |
+| 验收组               | 完成条件                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------- |
 | T01–T02 初始化与旧库 | 空库初始化、重复初始化、合法后续迁移；旧库/漂移/未知 ledger 在 DDL 前失败且状态不变 |
-| T03–T09 授权与并发 | 角色矩阵、旧 JWT 失权、负责人限制、最后管理员保护、锁顺序，真实数据库证据 |
-| T10–T13 独立复制 | 副本独立；失权/revision/文件失败回滚补偿；AI 别名与秘密边界 |
-| T14–T15 邀请 | 单次消费并发与重复接受幂等；班级邀请不绕过域准入 |
-| T16–T20 删减与保留 | 删除接口 404 且 UI 无入口；签到、两类补题、榜单与统计可用 |
-| T21 浏览器 | 多身份多域、提降权、交接、复制、迟到响应、登录退出 |
-| T22 升级 | 故障矩阵全覆盖；旧库预检早于排空；挂载目录正确；半提交可恢复 |
-| T23 恢复 | 业务数据 → 备份 → 隔离恢复 → 登录 → 发布题目 → 提交 → 实际评测完成 |
-| T24 隔离模式 | Native 与 WASM 均实际运行，记录资源池与镜像摘要 |
-| 新增回归 | 社区通知各路径一致；复制来源分页不泄漏；同域外键生效；升级中断一致性 |
+| T03–T09 授权与并发   | 角色矩阵、旧 JWT 失权、负责人限制、最后管理员保护、锁顺序，真实数据库证据           |
+| T10–T13 独立复制     | 副本独立；失权/revision/文件失败回滚补偿；AI 别名与秘密边界                         |
+| T14–T15 邀请         | 单次消费并发与重复接受幂等；班级邀请不绕过域准入                                    |
+| T16–T20 删减与保留   | 删除接口 404 且 UI 无入口；签到、两类补题、榜单与统计可用                           |
+| T21 浏览器           | 多身份多域、提降权、交接、复制、迟到响应、登录退出                                  |
+| T22 升级             | 故障矩阵全覆盖；旧库预检早于排空；挂载目录正确；半提交可恢复                        |
+| T23 恢复             | 业务数据 → 备份 → 隔离恢复 → 登录 → 发布题目 → 提交 → 实际评测完成                  |
+| T24 隔离模式         | Native 与 WASM 均实际运行，记录资源池与镜像摘要                                     |
+| 新增回归             | 社区通知各路径一致；复制来源分页不泄漏；同域外键生效；升级中断一致性                |
 
 ## 五、门禁命令
 
@@ -163,3 +166,23 @@ deno task test:domain cross-domain --session fixed-roles-acceptance
 deno task test:browser --session fixed-roles-acceptance --profile
 deno task env:down --session fixed-roles-acceptance
 ```
+
+## 六、当前进度（随提交更新）
+
+分支 `refactor/fixed-roles-and-feature-simplification`，基线 `b3ece1b2`。
+
+| 批次                           | 状态   | 证据                                                                                                                                                           |
+| ------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 第 1 批 基线与合同测试         | 部分   | `53e56f10`：复制来源目录合同（授权过滤、分页形状、排除自身、不返回答案）；删除的角色/权限接口 404；共享接口 404 见 `domain-resource-management.test.ts`        |
+| 第 2 批 统一管理员保护         | 完成   | `ac09e750`：`assertAvailableAdminRemainsTx`/`assertActiveAdminActorTx`，并发互降与并发封禁测试（access 399 通过）                                              |
+| 第 3 批 域能力与授权读取       | 完成   | `ac09e750`：`effectiveDomainConfiguration` 纯推导、实例模块策略过滤、通知可见域按 preset 过滤；`0a42f06e` 授权矩阵文档                                         |
+| 第 4 批 独立复制与来源目录     | 完成   | `ac09e750` 后端 `/copy-sources` 与 `copyDomainTraining`；`5630a959` 前端 `DomainCopyCatalog`                                                                   |
+| 第 5 批 追加迁移               | 未开始 | 待做：删除 `domain_problem_bindings.kind` 与 CHECK、同域复合外键、删除 `domain_training_bindings`、preset CHECK 收紧、迁移前异常检查                           |
+| 第 6 批 预检与 CLI 恢复        | 部分   | `ac09e750` ledger 双模式校验、compose `--project-directory`、候选文件提交与回滚；`e6d3aaaa` `--recover` 复用 checkpoint 目标版本与暂存发布集；故障矩阵测试待补 |
+| 第 7 批 前端合同               | 完成   | `5630a959`：后台单值角色、删除 `/admin/roles` 页面与入口、成员页单值 `/role`、复制目录替换共享组件；UI check/test/components 通过（422 组件测试）              |
+| 第 8 批 其余删除项与保留功能   | 部分   | 待做：旧榜单刷新残留、签到/两类补题/域榜单/Native+WASM 实测                                                                                                    |
+| 第 9 批 测试合同与发布等价验收 | 部分   | `8d72000c`：E2E 夹具改单值角色、RBAC 测试重写为固定角色矩阵、公告治理改平台管理员；待跑隔离会话、Production CLI E2E、WASM 四片与 5.4 旅程                      |
+
+已通过的门禁（本地）：core `access` 399、`problems` 352、`communication` 84；CLI
+827 （4 ignored）；UI `check` / `test` 345 / `test:components`
+422；`fmt`/`lint`（改动文件）、 Markdown 链接与 Agent Note 格式检查。
