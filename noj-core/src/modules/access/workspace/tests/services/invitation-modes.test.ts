@@ -128,3 +128,40 @@ Deno.test("多种邀请：一次性用通用邀请 1 次表达，容量失败不
     BadRequestError,
   );
 });
+
+Deno.test("多种邀请：max_uses=1 并发兑换只成功一次，重复接受同一用户幂等", async () => {
+  await resetDbForTest();
+  const owner = await account(true);
+  const first = await account(), second = await account();
+  const domain = await createDomain({
+    slug: "once-concurrent",
+    name: "并发一次性邀请",
+    preset: "team",
+  }, owner);
+  const invite = await createDomainInvitation(domain.slug, owner, {
+    mode: "general",
+    max_uses: 1,
+  });
+
+  // 两个用户同时兑换同一张单次邀请：数据库计数必须只前进一次。
+  const settled = await Promise.allSettled([
+    consumeDomainInvitation(invite.code, first),
+    consumeDomainInvitation(invite.code, second),
+  ]);
+  assertEquals(
+    settled.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  const [row] = await getDb().select().from(domainInvitations).where(
+    eq(domainInvitations.id, invite.id),
+  );
+  assertEquals(row.used_count, 1);
+
+  // 已兑换过的用户重复接受是幂等的，不额外消耗名额。
+  const winner = settled[0].status === "fulfilled" ? first : second;
+  await consumeDomainInvitation(invite.code, winner);
+  const [afterRepeat] = await getDb().select().from(domainInvitations).where(
+    eq(domainInvitations.id, invite.id),
+  );
+  assertEquals(afterRepeat.used_count, 1);
+});
