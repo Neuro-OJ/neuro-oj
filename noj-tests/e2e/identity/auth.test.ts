@@ -46,8 +46,9 @@ e2eTest("[e2e/auth] 3.1 非管理员 promote 被拒", async () => {
 
 e2eTest("[e2e/auth] 3.2 缺少 role 字段", async () => {
   if (!isE2E) return;
+  // 用真实用户 id 才能把"缺字段"与"用户不存在"分开：非法 id 先 404。
   const { status } = await apiPatch(
-    "/api/v1/admin/identity/users/some-id/role",
+    "/api/v1/admin/identity/users/" + regularUserId + "/role",
     {},
     adminToken,
   );

@@ -151,7 +151,8 @@ e2eTest(
     });
     await accept(email.code, students[1].token, 404);
     await accept(email.token, students[0].token);
-    const once = await createInvite(b, { mode: "once" });
+    // 旧 once 模式已删除：单次邀请用 general + max_uses=1 表达。
+    const once = await createInvite(b, { mode: "general", max_uses: 1 });
     await accept(once.code, students[1].token);
     await accept(once.token, students[1].token);
     await accept(once.code, students[2].token, 404);
@@ -208,7 +209,8 @@ e2eTest(
       200,
       { login: username, password: TEST_PASSWORD },
     );
-    const finalSlot = await createInvite(a, { mode: "once" });
+    // 单次名额同样用 general + max_uses=1 表达。
+    const finalSlot = await createInvite(a, { mode: "general", max_uses: 1 });
     const contenders = [students[2].token, login.data.token];
     const race = await Promise.all(
       contenders.map((token) =>

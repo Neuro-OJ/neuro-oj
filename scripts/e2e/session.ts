@@ -296,6 +296,9 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     E2E_DATABASE_NAME: sessionDatabaseName(manifest),
     E2E_REDIS_URL: `redis://127.0.0.1:${manifest.ports.redis}/1`,
     E2E_CORE_URL: manifest.urls.core,
+    // noj-tests 的 helper 以 E2E_BASE_URL 为唯一入口；不映射会静默回落到默认
+    // 8099 的开发栈，让"新会话"跑出旧代码结果。
+    E2E_BASE_URL: manifest.urls.core,
     E2E_CORE_PORT: String(manifest.ports.core),
     E2E_PG_PORT: String(manifest.ports.postgres),
     E2E_REDIS_PORT: String(manifest.ports.redis),

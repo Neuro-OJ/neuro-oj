@@ -89,7 +89,9 @@ export class BadRequestError extends AppError {
     code?: string,
     meta?: Record<string, unknown>,
   ) {
-    super(message, 400, code, meta);
+    // 400 的默认错误码必须是校验类而不是 INTERNAL_ERROR：客户端与日志都按
+    // code 区分"请求非法"和"服务端故障"。
+    super(message, 400, code ?? "VALIDATION_ERROR", meta);
     this.name = "BadRequestError";
   }
 }
