@@ -1,5 +1,8 @@
 /** 产品空间的客户端契约；权限仍由每次服务端请求判定。 */
-export type WorkspaceRole = 'owner' | 'admin' | 'editor' | 'educator' | 'moderator' | 'member';
+/** 有效域角色：负责人由 domains.owner_id 推导，其余来自单值成员角色。 */
+export type WorkspaceRole = 'owner' | 'admin' | 'educator' | 'member';
+/** 可持久化的域成员角色；owner 不能通过普通角色接口授予。 */
+export type WorkspaceMemberRole = 'admin' | 'educator' | 'member';
 export type WorkspacePreset = 'community' | 'education' | 'team';
 export interface WorkspaceConfiguration {
   access: 'public' | 'members';
@@ -33,8 +36,8 @@ export interface WorkspaceMember {
   username: string;
   email: string;
   status: 'active' | 'removed';
-  roles: WorkspaceRole[];
-  is_owner: boolean;
+  /** 单值成员角色；负责人另由域 owner_id 判定，不写入此列。 */
+  role: WorkspaceMemberRole;
 }
 export interface WorkspaceInvitation {
   id: string;
@@ -120,9 +123,7 @@ export interface WorkspaceLimitUsage {
 export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
   owner: '负责人',
   admin: '管理员',
-  editor: '资源编辑者',
   educator: '教学人员',
-  moderator: '社区管理员',
   member: '成员',
 };
 export const WORKSPACE_PRESETS = [

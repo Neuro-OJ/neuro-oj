@@ -137,7 +137,6 @@ const actionItems = [
   { label: "竞赛管理", to: "/admin/contests", icon: "i-lucide-trophy", desc: "安排赛事与封榜设置" },
   { label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone", desc: "发布系统通知或停机维护" },
   { label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server", desc: "接入与轮询大模型 Key" },
-  { label: "角色与权限", to: "/admin/roles", icon: "i-lucide-shield-check", desc: "RBAC 权限树与分配" },
   { label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings", desc: "核心参数与环境变量" },
 ]
 

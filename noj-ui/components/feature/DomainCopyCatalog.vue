@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SharedResourceOption } from '~/composables/useDomainResources';
+import type { CopySourceItem } from '~/composables/useDomainResources';
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ slug: string; kind: 'problem' | 'training' }>();
@@ -20,26 +20,32 @@ const { data, status, error, refresh } = await useAsyncData(
     workspaceCacheKey(
       props.slug,
       user.value?.id ?? null,
-      `shared-catalog:${props.kind}`,
+      `copy-catalog:${props.kind}`,
       JSON.stringify([source.value, keyword.value]),
       String(page.value),
     ),
-  () => api.discover(props.slug, props.kind, page.value, source.value, keyword.value),
+  () => api.copySources(props.slug, props.kind, page.value, source.value, keyword.value),
 );
 function search() {
   page.value = 1;
   source.value = enteredSource.value.trim();
   keyword.value = enteredKeyword.value.trim();
 }
-async function importResource(item: SharedResourceOption) {
+function itemKey(item: CopySourceItem) {
+  return item.kind === 'problem' ? item.problem_id : item.training_id;
+}
+async function importResource(item: CopySourceItem) {
   if (importing.value) return;
-  const scope = capture(), reference = props.kind === 'problem' ? item.reference!.qualified_ref : item.id!;
-  importing.value = reference;
+  const scope = capture(), key = itemKey(item);
+  importing.value = key;
   failure.value = '';
   try {
     let copiedTraining: string | undefined;
-    if (props.kind === 'problem') await api.importProblem(scope.slug, reference, item.version_id);
-    else copiedTraining = (await trainings.import(scope.slug, reference)).data.training_id;
+    if (item.kind === 'problem') {
+      await api.importProblem(scope.slug, item.reference, item.version_id);
+    } else {
+      copiedTraining = (await trainings.import(scope.slug, item.training_id)).data.training_id;
+    }
     if (!scope.isCurrent()) return;
     emit('imported');
     if (copiedTraining) await navigateTo(workspacePath(scope.slug, `trainings/${copiedTraining}`));
@@ -53,6 +59,9 @@ async function importResource(item: SharedResourceOption) {
 <template>
   <section class="space-y-4">
     <h3 class="font-semibold">查找有权复制的{{ kind === 'problem' ? '题目' : '题单' }}</h3>
+    <p class="text-xs text-text-muted">
+      复制会创建本域独立副本：源域后续修改、撤销或删除不影响副本，副本也不携带源提交与成绩。
+    </p>
     <div class="flex flex-wrap gap-3">
       <UInput v-model="enteredSource" placeholder="来源域标识，留空表示所有来源" />
       <UInput v-model="enteredKeyword" placeholder="资源名称" class="grow" @keydown.enter.prevent="search" />
@@ -60,13 +69,23 @@ async function importResource(item: SharedResourceOption) {
     </div>
     <UAlert v-if="failure" color="error" :title="failure" />
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.items.length ? 'data' : 'empty'"
-      :error="error ? extractApiError(error).message : undefined" empty-text="没有符合条件且具有源编辑权限的资源"
+      :error="error ? extractApiError(error).message : undefined" empty-text="没有符合条件且具有源管理权限的已发布资源"
       @retry="refresh()">
       <div class="max-h-80 divide-y divide-border overflow-auto">
-        <div v-for="item in data?.items" :key="item.reference?.problem_id ?? item.id"
+        <div v-for="item in data?.items" :key="itemKey(item)"
           class="flex items-center justify-between gap-3 py-3 text-sm">
-          <div><span v-if="item.reference" class="mr-2 font-mono">{{ item.reference.qualified_ref }}</span>{{ item.title }}<p v-if="kind === 'training'" class="mt-1 text-xs text-text-muted">来源 {{ item.source_domain_slug }}</p></div>
-          <UButton type="button" size="sm" :loading="importing === (item.reference?.qualified_ref ?? item.id)"
+          <div>
+            <template v-if="item.kind === 'problem'">
+              <span class="mr-2 font-mono">{{ item.reference }}</span>{{ item.title }}
+              <span class="ml-2 text-xs text-text-muted">{{ item.problem_kind === 'objective' ? '客观题' : item.problem_kind === 'oi' ? 'OI' : '双容器' }}</span>
+            </template>
+            <template v-else>
+              {{ item.title }}
+              <span class="ml-2 font-mono text-xs text-text-muted">{{ item.public_id }} · revision {{ item.revision }}</span>
+            </template>
+            <p class="mt-1 text-xs text-text-muted">来源 {{ item.source.name }}（{{ item.source.slug }}）</p>
+          </div>
+          <UButton type="button" size="sm" :loading="importing === itemKey(item)"
             :disabled="!!importing" @click="importResource(item)">复制到本域</UButton>
         </div>
       </div>

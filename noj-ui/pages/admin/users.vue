@@ -22,7 +22,8 @@ interface User {
   username: string;
   email: string;
   is_admin: boolean;
-  role_ids: string[];
+  /** 单值平台角色；is_admin 仅为派生展示字段。 */
+  role: 'user' | 'admin';
   /** user-ban-table：活跃封禁信息 */
   active_ban: {
     reason: string;
@@ -76,46 +77,23 @@ watch(isLoggedIn, (val) => {
   if (val) loadUsers();
 }, { immediate: true });
 
-// ─── 角色管理（RBAC PATCH：role_ids）───────
-interface Role {
-  id: string;
-  name: string;
-  is_admin: boolean;
-  is_system: boolean;
-  is_default: boolean;
-}
+// ─── 平台角色（单值 PATCH：role）───────
+const PLATFORM_ROLE_OPTIONS = [
+  { label: '普通用户（user）', value: 'user' },
+  { label: '管理员（admin）', value: 'admin' },
+] as const;
 
-const allRoles = ref<Role[]>([]);
 const targetUser = ref<User | null>(null);
 const showRoleModal = ref(false);
 const switchingRole = ref(false);
 const switchError = ref('');
-const selectedRoleIds = ref<string[]>([]);
-
-async function loadRoles() {
-  try {
-    const res = await api.get<{ data: Role[] }>('/api/v1/admin/identity/roles', { silent: true });
-    allRoles.value = res.data;
-  } catch {
-    // 角色加载失败不影响用户列表
-  }
-}
+const selectedRole = ref<'user' | 'admin'>('user');
 
 function confirmRoleSwitch(user: User) {
   targetUser.value = user;
   switchError.value = '';
-  selectedRoleIds.value = [...user.role_ids];
+  selectedRole.value = user.role === 'admin' ? 'admin' : 'user';
   showRoleModal.value = true;
-  void loadRoles();
-}
-
-function toggleRoleId(roleId: string) {
-  const idx = selectedRoleIds.value.indexOf(roleId);
-  if (idx >= 0) {
-    selectedRoleIds.value.splice(idx, 1);
-  } else {
-    selectedRoleIds.value.push(roleId);
-  }
 }
 
 async function handleRoleSwitch() {
@@ -123,8 +101,8 @@ async function handleRoleSwitch() {
   switchingRole.value = true;
   switchError.value = '';
   try {
-    await api.patch(`/api/v1/admin/identity/users/${targetUser.value.username}/role`, {
-      role_ids: selectedRoleIds.value,
+    await api.patch(`/api/v1/admin/identity/users/${targetUser.value.id}/role`, {
+      role: selectedRole.value,
     });
     showRoleModal.value = false;
     await reloadAfterMutation();
@@ -406,37 +384,17 @@ async function confirmDeleteUser(user: User) {
     </AdminTable>
   </div>
 
-  <!-- 角色管理抽屉 (RBAC role_ids) -->
+  <!-- 平台角色抽屉（单值 role） -->
   <AdminEditPanel
     :open="showRoleModal"
     :title="`修改用户角色 - ${targetUser?.username ?? ''}`"
     :loading="switchingRole"
-    save-text="保存角色配置"
+    save-text="保存角色"
     @close="showRoleModal = false"
     @save="handleRoleSwitch"
   >
-    <p class="text-xs text-text-secondary">为用户选择分配的 RBAC 角色：</p>
-    <div class="flex flex-col gap-2 max-h-[380px] overflow-y-auto">
-      <label
-        v-for="role in allRoles"
-        :key="role.id"
-        class="flex items-center gap-2.5 p-3 border border-border rounded-lg cursor-pointer hover:bg-primary-bg transition-colors"
-        :class="{ 'border-primary bg-primary-bg': selectedRoleIds.includes(role.id) }"
-      >
-        <input
-          type="checkbox"
-          :checked="selectedRoleIds.includes(role.id)"
-          class="accent-primary size-4 rounded"
-          @change="toggleRoleId(role.id)"
-        />
-        <div class="flex flex-col">
-          <span class="text-sm font-semibold text-text">{{ role.name }}</span>
-          <span v-if="role.is_admin" class="text-xs text-primary font-medium">管理员角色（隐式全权限）</span>
-          <span v-else-if="role.is_default" class="text-xs text-text-muted">默认普通角色</span>
-          <span v-else class="text-xs text-text-muted">自定义角色</span>
-        </div>
-      </label>
-    </div>
+    <p class="text-xs text-text-secondary">平台角色只有两档；域内角色在对应域的成员管理页调整。</p>
+    <USelect v-model="selectedRole" :items="[...PLATFORM_ROLE_OPTIONS]" class="w-full" aria-label="平台角色" />
     <p v-if="switchError" class="text-error-text text-xs">{{ switchError }}</p>
   </AdminEditPanel>
 

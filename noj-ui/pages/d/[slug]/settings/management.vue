@@ -126,7 +126,7 @@ useSeoMeta({ title: '交接与归档 - 域设置' });
           <div class="flex flex-wrap items-center gap-3 pt-1">
             <USelect
               v-model="newOwnerId"
-              :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && !m.is_owner && m.email).map(m => ({ value: m.user_id, label: `${m.username} (${m.email})` }))"
+              :items="(members.data.value?.data ?? []).filter(m => m.status === 'active' && m.user_id !== domain?.owner_id && m.email).map(m => ({ value: m.user_id, label: `${m.username} (${m.email})` }))"
               placeholder="选择接任负责人的成员"
               class="w-full sm:w-80"
               aria-label="新负责人"

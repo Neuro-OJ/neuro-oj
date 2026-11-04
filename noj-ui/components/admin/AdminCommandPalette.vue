@@ -47,7 +47,6 @@ const allItems: PaletteItem[] = [
 
   // 用户与安全
   { id: "users", label: "用户管理", to: "/admin/users", icon: "i-lucide-users", group: "用户与安全", keywords: ["yonghu", "user", "account", "member"] },
-  { id: "roles", label: "角色权限", to: "/admin/roles", icon: "i-lucide-shield-check", group: "用户与安全", keywords: ["jiaose", "role", "rbac", "permission"] },
   { id: "blacklist", label: "黑名单管理", to: "/admin/blacklist", icon: "i-lucide-ban", group: "用户与安全", keywords: ["heimingdan", "ban", "ip", "block"] },
   { id: "legal", label: "法律与合规", to: "/admin/legal", icon: "i-lucide-scale", group: "用户与安全", keywords: ["falv", "privacy", "terms", "compliance"] },
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
 import { WORKSPACE_ROLE_LABELS, workspaceCacheKey } from '~/utils/workspace';
-import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceRole } from '~/utils/workspace';
+import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceMemberRole, WorkspaceRole } from '~/utils/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -69,11 +69,13 @@ interface MemberRow extends Record<string, unknown> {
   username: string;
   email: string;
   status: 'active' | 'removed';
-  roles: WorkspaceRole[];
+  role: WorkspaceMemberRole;
   is_owner: boolean;
   raw: WorkspaceMember;
 }
 
+/** 负责人由域 owner_id 推导，不来自成员角色列。 */
+const ownerId = computed(() => context.domain.value?.owner_id ?? null);
 const memberRows = computed<MemberRow[]>(() =>
   (members.data.value?.data ?? []).map((m) => ({
     id: m.id,
@@ -81,18 +83,19 @@ const memberRows = computed<MemberRow[]>(() =>
     username: m.username,
     email: m.email,
     status: m.status,
-    roles: m.roles,
-    is_owner: m.is_owner,
+    role: m.role,
+    is_owner: ownerId.value === m.user_id,
     raw: m,
   }))
 );
 
 const rolesOpen = ref(false);
 const editingMember = ref<WorkspaceMember | null>(null);
-const editingRoles = ref<WorkspaceRole[]>([]);
-const roleOptions = Object.entries(WORKSPACE_ROLE_LABELS).filter(([value]) => value !== 'owner').map(
-  ([value, label]) => ({ value: value as WorkspaceRole, label })
-);
+const editingRole = ref<WorkspaceMemberRole>('member');
+const roleOptions = (['member', 'educator', 'admin'] as const).map((value) => ({
+  value,
+  label: WORKSPACE_ROLE_LABELS[value as WorkspaceRole],
+}));
 const busy = ref(false);
 
 watch([domainSlug, () => user.value?.id], () => {
@@ -101,7 +104,7 @@ watch([domainSlug, () => user.value?.id], () => {
   keyword.value = '';
   rolesOpen.value = false;
   editingMember.value = null;
-  editingRoles.value = [];
+  editingRole.value = 'member';
 });
 
 function onSearch() {
@@ -137,7 +140,7 @@ async function reviewRequest(request: WorkspaceJoinRequest, approved: boolean) {
 
 function editRoles(row: WorkspaceMember) {
   editingMember.value = row;
-  editingRoles.value = [...editingMember.value.roles];
+  editingRole.value = row.role;
   rolesOpen.value = true;
 }
 
@@ -147,8 +150,8 @@ async function saveRoles() {
   const action = captureAction();
   try {
     await api.put(
-      `/api/v1/domains/${action.slug}/members/${encodeURIComponent(editingMember.value.user_id)}/roles`,
-      { roles: editingRoles.value },
+      `/api/v1/domains/${action.slug}/members/${encodeURIComponent(editingMember.value.user_id)}/role`,
+      { role: editingRole.value },
     );
     if (!action.isCurrent()) return;
     rolesOpen.value = false;
@@ -276,7 +279,7 @@ useSeoMeta({ title: '成员管理 - 域设置' });
           :columns="[
             { key: 'username', label: '账号' },
             { key: 'email', label: '邮箱' },
-            { key: 'roles', label: '角色' },
+            { key: 'role', label: '角色' },
             { key: 'status', label: '状态' },
             { key: 'actions', label: '操作' }
           ]"
@@ -285,15 +288,21 @@ useSeoMeta({ title: '成员管理 - 域设置' });
           :error="members.error.value ? extractApiError(members.error.value).message : ''"
         >
           <template #cell="{ row, column }">
-            <div v-if="column.key === 'roles'" class="flex flex-wrap gap-1">
+            <div v-if="column.key === 'role'" class="flex flex-wrap gap-1">
               <UBadge
-                v-for="role in (row.roles as WorkspaceRole[])"
-                :key="role"
-                :color="role === 'owner' ? 'primary' : role === 'admin' ? 'info' : 'neutral'"
+                v-if="row.is_owner"
+                color="primary"
                 variant="subtle"
                 size="xs"
               >
-                {{ WORKSPACE_ROLE_LABELS[role] }}
+                {{ WORKSPACE_ROLE_LABELS.owner }}
+              </UBadge>
+              <UBadge
+                :color="row.role === 'admin' ? 'info' : 'neutral'"
+                variant="subtle"
+                size="xs"
+              >
+                {{ WORKSPACE_ROLE_LABELS[row.role as WorkspaceRole] }}
               </UBadge>
             </div>
             <span v-else-if="column.key === 'status'">
@@ -335,8 +344,9 @@ useSeoMeta({ title: '成员管理 - 域设置' });
         <template #body>
           <form class="space-y-4" @submit.prevent="saveRoles">
             <p class="text-sm text-text-secondary">{{ editingMember?.username }}</p>
-            <USelect v-model="editingRoles" multiple :items="roleOptions" class="w-full" aria-label="域内角色" />
-            <UButton type="submit" :loading="busy" :disabled="!editingRoles.length">保存角色</UButton>
+            <USelect v-model="editingRole" :items="roleOptions" class="w-full" aria-label="域内角色" />
+            <p class="text-xs text-text-muted">负责人通过“负责人交接”变更，不在此处赋值。</p>
+            <UButton type="submit" :loading="busy">保存角色</UButton>
           </form>
         </template>
       </UModal>

@@ -60,7 +60,7 @@ useSeoMeta({ title: '题单' });
         <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
         <div class="mt-5 border-t border-border pt-5">
           <ClientOnly>
-            <DomainSharedCatalog :slug="slug!" kind="training" @imported="refresh()" />
+            <DomainCopyCatalog :slug="slug!" kind="training" @imported="refresh()" />
           </ClientOnly>
         </div>
       </div>

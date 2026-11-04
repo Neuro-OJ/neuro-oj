@@ -10,10 +10,18 @@ const open = ref(false);
 const busy = ref(false);
 const error = ref('');
 const rowErrors = ref<{ row: number; reason: string }[]>([]);
-const form = reactive({ username: '', email: '', password: '', role: '__default__' });
+const form = reactive<{ username: string; email: string; password: string; role: '__default__' | 'admin' }>({
+  username: '',
+  email: '',
+  password: '',
+  role: '__default__',
+});
 const csv = ref('username,email,password\n');
-const roles = ref<{ id: string; name: string }[]>([]);
-const roleError = ref('');
+/** 平台角色只有两档：默认（user）与显式 admin。 */
+const ROLE_OPTIONS = [
+  { label: '默认普通用户（user）', value: '__default__' },
+  { label: '管理员（admin）', value: 'admin' },
+] as const;
 const errorSummary = ref<HTMLElement | null>(null);
 interface Credential {
   id: string;
@@ -36,20 +44,9 @@ async function start(nextMode: 'create' | 'import' | 'reset') {
   mode.value = nextMode;
   error.value = '';
   rowErrors.value = [];
-  roleError.value = '';
   Object.assign(form, { username: '', email: '', password: '', role: '__default__' });
   csv.value = 'username,email,password\n';
   open.value = true;
-  if (nextMode !== 'reset') {
-    try {
-      const response = await api.get<{ data: { id: string; name: string }[] }>('/api/v1/admin/identity/roles', {
-        silent: true,
-      });
-      roles.value = response.data.filter((role) => role.name !== 'root');
-    } catch {
-      roleError.value = '角色加载失败；仍可使用默认普通用户角色。';
-    }
-  }
 }
 
 watch(() => props.resetUser, (value) => {
@@ -172,10 +169,8 @@ function download() {
           <UInput v-model="form.password" type="password" autocomplete="new-password" class="w-full" :disabled="busy" />
         </UFormField>
         <UFormField v-if="mode !== 'reset'" label="角色" name="role"
-          :help="roleError || '默认与公开注册一致，使用普通用户角色。'">
-          <USelect v-model="form.role"
-            :items="[{ label: '默认普通用户（user）', value: '__default__' }, ...roles.map(role => ({ label: role.name, value: role.id }))]"
-            class="w-full" :disabled="busy" />
+          help="默认与公开注册一致，使用普通用户角色；域内角色在域成员管理页调整。">
+          <USelect v-model="form.role" :items="[...ROLE_OPTIONS]" class="w-full" :disabled="busy" />
         </UFormField>
         <p v-if="busy && mode === 'import'" role="status"
           class="text-sm text-text-secondary">正在校验并创建账号，请等待完成，大批量导入可能需要数分钟。</p>
