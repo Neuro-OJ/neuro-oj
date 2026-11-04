@@ -298,6 +298,10 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     // 部分 E2E 用 docker exec 直接向 Redis 发布事件帧；容器名必须指向本会话，
     // 否则会写进默认 8099 开发栈的 Redis，出现"发不出去/收到别人的帧"。
     E2E_REDIS_CONTAINER: `${manifest.composeProject}-redis-1`,
+    // 故障注入用例会 docker exec 进 core / minio 删除对象；缺映射会打到默认
+    // 8099 开发栈的容器，注入无效导致"应 5xx 实际 200"。
+    E2E_CORE_CONTAINER: `${manifest.composeProject}-noj-core-1`,
+    E2E_MINIO_CONTAINER: `${manifest.composeProject}-minio-1`,
     E2E_CORE_URL: manifest.urls.core,
     // noj-tests 的 helper 以 E2E_BASE_URL 为唯一入口；不映射会静默回落到默认
     // 8099 的开发栈，让"新会话"跑出旧代码结果。
@@ -887,6 +891,8 @@ export async function main(
           sessionDir: parsed.sessionDir,
           fresh: parsed.fresh,
           buildUi: parsed.ui,
+          // 资源池可从环境注入（CI 与本地都用同一入口开 native/WASM 池）。
+          resourcePools: Deno.env.get("E2E_JUDGE_RESOURCE_POOLS") ?? undefined,
         },
         deps,
       );

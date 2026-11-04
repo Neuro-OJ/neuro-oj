@@ -33,6 +33,8 @@ const ts = Date.now().toString(36);
 let adminToken = "";
 let ownerToken = "";
 let attackerToken = "";
+/** 普通成员：用于"非参赛者"隐私断言；educator 在固定角色下等同赛事组织者。 */
+let outsiderToken = "";
 let participantToken = "";
 let publicProblemId = "";
 let publicVersionId = "";
@@ -201,6 +203,26 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     TEST_PASSWORD,
   );
   participantToken = participant.token;
+  const outsider = await getOrCreateUser(
+    "anticheat_outsider_" + ts,
+    `anticheat_outsider_${ts}`,
+    `anticheat_outsider_${ts}@test.com`,
+    TEST_PASSWORD,
+  );
+  outsiderToken = outsider.token;
+  // 普通成员进入 main 域：member 只含参与能力，不会成为赛事组织者。
+  const inviteOutsider = await apiPost("/api/v1/domains/main/invitations", {
+    email: `anticheat_outsider_${ts}@test.com`,
+  }, adminToken);
+  if (inviteOutsider.status !== 201) {
+    throw new Error(`邀请普通成员失败 ${JSON.stringify(inviteOutsider)}`);
+  }
+  const acceptedOutsider = await apiPost("/api/v1/domain-invitations/accept", {
+    token: (inviteOutsider.body as { data: { token: string } }).data.token,
+  }, outsiderToken);
+  if (acceptedOutsider.status !== 200) {
+    throw new Error(`普通成员加入失败 ${JSON.stringify(acceptedOutsider)}`);
+  }
 
   publicProblemId = await getProblemIdByNumber(1001);
   privatePaperId = await createPrivatePaper(
@@ -513,7 +535,7 @@ e2eTest(
     // 若未来成员校验放宽为可连接但不推送，这里也会在事件收集后断言无 submission 事件。
     const eventsPromise = readSSEEventNames(
       `/api/v1/domains/main/contests/${sseContestId}/events`,
-      attackerToken,
+      outsiderToken,
       3000,
     );
     // 触发一次参赛者提交，验证非参赛者的流中不会出现 contest:submission:created
@@ -550,7 +572,7 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
   // 6.1 非参赛者查看竞赛提交详情：仅存在级定位，不包含成绩或判据。
   const detail = await apiGet(
     `/api/v1/submissions/${contestSubmissionId}`,
-    attackerToken,
+    outsiderToken,
   );
   if (detail.status !== 200) {
     throw new Error(
@@ -579,7 +601,7 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
   }
 
   // 6.2 非参赛者查看全局队列：竞赛提交必须隐藏
-  const queue = await apiGet("/api/v1/queue", attackerToken);
+  const queue = await apiGet("/api/v1/queue", outsiderToken);
   if (queue.status !== 200) {
     throw new Error(`全局队列应 200，实际 ${queue.status}`);
   }
