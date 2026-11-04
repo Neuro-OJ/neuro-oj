@@ -319,6 +319,9 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     E2E_MINIO_CONSOLE_PORT: String(manifest.ports.minioConsole),
     E2E_LLM_GATEWAY_PORT: String(manifest.ports.llmGateway),
     E2E_LLM_MOCK_PORT: String(manifest.ports.llmMock),
+    // LLM 治理用例从 mock 的只读记录入口核对上游实际收到的模型；缺映射会读到
+    // 默认 8002 的开发栈 mock，模型计数恒为 0。
+    E2E_LLM_MOCK_INSPECT_URL: `http://127.0.0.1:${manifest.ports.llmMock}/`,
     E2E_COORDINATOR_PORT: String(manifest.ports.coordinator),
     // 测试与 compose 使用的规范名（P2 协调服务）；下面两个旧名保留兼容。
     E2E_TEST_COORDINATOR_PORT: String(manifest.ports.coordinator),
