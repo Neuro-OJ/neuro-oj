@@ -475,9 +475,16 @@ try {
   }
   assert(ready, `生产构建未就绪，日志：${logPath}`);
   const html = await (await fetch(`${base}/d/school`)).text();
-  for (const text of ["空间首屏", "公告首屏", "题目首屏"]) {
+  for (const text of ["空间首屏", "公告首屏"]) {
     assert(html.includes(text), `SSR 缺少 ${text}`);
   }
+  // 首页随机三题已删除：题目首屏只在题库页出现。
+  assert(
+    !html.includes("题目首屏"),
+    "首页不应再出现题目首屏（随机推荐已删除）",
+  );
+  const problemsHtml = await (await fetch(`${base}/d/school/problems`)).text();
+  assert(problemsHtml.includes("题目首屏"), "题库页 SSR 缺少题目首屏");
   assert.equal((await fetch(`${base}/d/missing`)).status, 404);
   assert.equal((await fetch(`${base}/d/forbidden`)).status, 403);
   const unauthenticated = await fetch(`${base}/d/school/classrooms/c`, {

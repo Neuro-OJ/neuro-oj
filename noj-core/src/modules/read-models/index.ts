@@ -24,7 +24,6 @@ export type {
   DomainQueryScope,
   RankingRow,
   RankingsPage,
-  RefreshRankingsOptions,
   StatsSnapshot,
   UserProfileResponse,
 } from "./queries/index.ts";

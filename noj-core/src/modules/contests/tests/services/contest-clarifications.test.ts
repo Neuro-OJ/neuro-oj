@@ -9,7 +9,6 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   accountNotifications,
   contests,
-  domains,
   problems,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -24,6 +23,7 @@ import {
   replyToClarification,
 } from "../../index.ts";
 import { createContest, registerForContest } from "../../index.ts";
+import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
@@ -594,16 +594,18 @@ Deno.test({
     );
     const db = getDb(), app = createApp();
     const token = await signToken({ sub: student, role: "user" });
-    const [domain] = await db.select().from(domains).where(
-      eq(domains.id, DEFAULT_DOMAIN_ID),
-    );
     try {
-      await db.update(domains).set({
-        configuration: {
-          ...domain.configuration,
-          features: { ...domain.configuration.features, community: false },
-        },
-      }).where(eq(domains.id, DEFAULT_DOMAIN_ID));
+      // 域能力由固定类型推导，不能按域关闭社区；关闭走实例模块政策。
+      await updateSetting(
+        "instance_allowed_modules",
+        JSON.stringify({
+          community: false,
+          classroom: true,
+          assignment: true,
+          analytics: true,
+        }),
+        "0",
+      );
       const response = await jsonRequest(app, "/api/v1/notifications", {
         token,
       });
@@ -626,8 +628,8 @@ Deno.test({
         404,
       );
     } finally {
-      await db.update(domains).set({ configuration: domain.configuration })
-        .where(eq(domains.id, DEFAULT_DOMAIN_ID));
+      // 恢复实例模块政策，避免影响后续用例。
+      await resetSetting("instance_allowed_modules", "0");
     }
   },
 });
