@@ -191,6 +191,11 @@ ignored）；UI `check` / `test` 345 / `test:components` 422 / `build`；
 合同重导出、依赖审计）；`fmt`/`lint`（改动文件）、Markdown 链接与 Agent Note
 格式检查。
 
+CI（提交 `731c4d71`）：PR 检查 **42 成功 / 0 失败 / 6 跳过**（跳过项为
+judge、LMCC 等按路径过滤的任务）；同提交 `workflow_dispatch` 全量运行覆盖全部
+job，其中 `Judge WASI SDK` 与四个 `Judge WASI Acceptance` 分片全部
+success，`Judge Tests` 与 `Judge Check` 亦为 success。
+
 ## 七、验收证据表（T01–T24）
 
 证据全部来自本分支提交，命令与环境在「证据」列注明；本地会话为
