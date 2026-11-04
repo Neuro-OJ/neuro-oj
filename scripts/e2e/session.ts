@@ -239,8 +239,9 @@ export function sessionUrls(ports: SessionPorts): SessionManifest["urls"] {
   return {
     core: `http://localhost:${ports.core}`,
     coordinator: `http://127.0.0.1:${ports.coordinator}`,
-    // evaluator 在会话私有网络内按服务名访问协调服务。
-    evaluatorCoordinator: `http://test-coordinator:${ports.coordinator}`,
+    // evaluator 在会话私有网络内按服务名访问协调服务：容器内监听 8010，
+    // ports.coordinator 只是宿主机映射；用宿主端口会让评测容器连不上（arrivals=0）。
+    evaluatorCoordinator: "http://test-coordinator:8010",
   };
 }
 
