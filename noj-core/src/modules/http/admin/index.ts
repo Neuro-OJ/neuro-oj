@@ -2,7 +2,7 @@
  * 管理端路由组合入口（barrel）。
  *
  * 提供（挂载前缀 /api/v1/admin，见 app.ts）：
- * - /identity/users、/identity/roles、/identity/permissions、/identity/blacklist
+ * - /identity/users、/identity/blacklist（自定义角色/权限接口已删除，保持 404）
  * - /catalog/problems、/catalog/trainings
  * - /problems/:id/effective-version-policy、
  *   /contests/:contestId/problems/:problemId/{effective-version-policy,version}（版本策略）

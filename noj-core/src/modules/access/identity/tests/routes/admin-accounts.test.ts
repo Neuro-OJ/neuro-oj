@@ -42,6 +42,25 @@ function accountTest(name: string, fn: () => Promise<void>) {
   });
 }
 
+accountTest("已删除的自定义角色与权限接口返回 404", async () => {
+  const app = createApp();
+  const token = await createUserToken("admin");
+  const cases = [
+    ["GET", "/api/v1/admin/identity/roles"],
+    ["POST", "/api/v1/admin/identity/roles"],
+    ["GET", "/api/v1/admin/identity/permissions"],
+    ["PUT", "/api/v1/admin/identity/roles/any-id"],
+  ] as const;
+  for (const [method, path] of cases) {
+    const response = await jsonRequest(app, path, {
+      method,
+      token,
+      ...(method === "GET" ? {} : { body: { name: "legacy" } }),
+    });
+    assertEquals(response.status, 404, `${method} ${path} 必须返回 404`);
+  }
+});
+
 accountTest("三个接口拒绝非管理员及未登录请求", async () => {
   const app = createApp();
   const token = await createUserToken();
