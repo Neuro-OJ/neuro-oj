@@ -116,7 +116,11 @@ Deno.test({
         .getByRole("button", { name: "确认", exact: true })
         .click();
       await page.waitForURL(`**/d/${slug}/settings/invitations`);
-      await page.getByRole("button", { name: /一次性邀请/ }).click();
+      // 旧“一次性邀请”模式已删除：单次名额用「限制人数 = 1」表达。
+      await page.getByRole("radio", { name: /限制人数/ }).click();
+      // UInput type=number 的可访问角色是 spinbutton。
+      await page.getByRole("spinbutton", { name: "最大使用人数", exact: true })
+        .fill("1");
       const invitationResponse = page.waitForResponse((response) =>
         new URL(response.url()).pathname ===
           `/api/v1/domains/${slug}/invitations` &&
@@ -128,7 +132,8 @@ Deno.test({
       ]);
       assertEquals(invitation.status(), 201);
       const body = await invitation.json();
-      assertEquals(body.data.mode, "once");
+      assertEquals(body.data.mode, "general");
+      assertEquals(body.data.max_uses, 1);
       await expect(page.getByRole("textbox", { name: "生成的邀请短码" }))
         .toHaveValue(body.data.code);
       await gotoPage(page, "/join");
@@ -136,7 +141,7 @@ Deno.test({
         body.data.code,
       );
       await page.getByRole("button", { name: "查询邀请", exact: true }).click();
-      await expect(page.getByText("一次性邀请（限 1 人）", { exact: true }))
+      await expect(page.getByText("通用邀请（已使用 0 / 1）", { exact: true }))
         .toBeVisible();
 
       await gotoPage(page, `/d/${slug}/submissions`);

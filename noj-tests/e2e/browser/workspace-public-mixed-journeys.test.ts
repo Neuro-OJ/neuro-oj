@@ -257,14 +257,21 @@ Deno.test({
         {
           data: {
             revision: number;
-            configuration: { features: Record<string, boolean> };
+            configuration: {
+              access: string;
+              discoverable: boolean;
+              join_policy: string;
+              features: Record<string, boolean>;
+            };
           };
         }
       >("GET", `/domains/${slug}`, admin);
+      // 域能力与首页由固定类型推导，PATCH 只接受三个存储字段；教学域默认已含社区。
       await fixture("PATCH", `/domains/${slug}`, admin, {
         configuration: {
-          ...domain.data.configuration,
-          features: { ...domain.data.configuration.features, community: true },
+          access: domain.data.configuration.access,
+          discoverable: domain.data.configuration.discoverable,
+          join_policy: domain.data.configuration.join_policy,
         },
       }, { "If-Match": String(domain.data.revision) });
     }
