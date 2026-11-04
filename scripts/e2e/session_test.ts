@@ -97,9 +97,17 @@ Deno.test("e2e-session: 清单字段由 runId 派生且所有权可核对", () =
     evaluatorNetworkFor(manifest.runId),
   );
   assertEquals(manifest.ownerLabel, "noj.e2e.session=perf-a");
+  // evaluator 在会话私有网络内访问协调服务：必须用容器端口 8010，
+  // 用宿主映射端口会让评测容器连不上（屏障 arrivals 恒为 0）。
   assertEquals(
     manifest.urls.evaluatorCoordinator,
-    "http://test-coordinator:15408",
+    "http://test-coordinator:8010",
+  );
+  assertEquals(
+    manifest.urls.evaluatorCoordinator.includes(
+      String(manifest.ports.coordinator),
+    ),
+    false,
   );
   assertSessionOwnership(manifest, "perf-a");
   let mismatch: unknown;
