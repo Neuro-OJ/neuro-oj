@@ -48,14 +48,18 @@ e2eTest("objective e2e: 域建卷→草稿→发布→作答即时判定", async
     `objective_answerer_${suffix}@test.com`,
   );
 
-  // 域写权限：作者与答题者都进入 main 域并拿到编辑器角色（域入口要求 submission:create）
+  // 域写权限：作者拿到 educator（可写草稿），答题者保持普通成员——
+  // member 已含 submission:create，若也提成 educator 就测不出"非编辑者写草稿 403"。
   for (
-    const token of [owner.token, answerer.token]
+    const [token, role] of [[owner.token, "educator"], [
+      answerer.token,
+      "member",
+    ]] as const
   ) {
     const me = await apiGet("/api/v1/auth/me", token);
     const id = (me.body as { data: { id: string } }).data.id;
     const granted = await apiPut(`/api/v1/domains/main/members/${id}/role`, {
-      role: "educator",
+      role,
     }, adminToken);
     if (granted.status !== 200) {
       throw new Error(`授予域角色失败: ${JSON.stringify(granted.body)}`);
