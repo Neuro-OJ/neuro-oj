@@ -181,6 +181,10 @@ export const domainCreationRequests = pgTable("domain_creation_requests", {
     "domain_creation_requests_status_check",
     sql`${t.status} IN ('pending', 'approved', 'rejected')`,
   ),
+  presetCheck: check(
+    "domain_creation_requests_preset_check",
+    sql`${t.preset} IN ('community', 'education', 'team')`,
+  ),
   statusIdx: index("idx_domain_creation_requests_status").on(t.status),
 }));
 /** 导航偏好不授予访问权。 */

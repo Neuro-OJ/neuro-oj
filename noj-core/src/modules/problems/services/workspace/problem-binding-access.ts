@@ -1,7 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
-  AppError,
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
@@ -131,7 +130,7 @@ export async function resolveDomainProblemInWorkspace(
       ),
     );
   if (!row) throw new NotFoundError("域题库中不存在此题");
-  if (row.source.id !== workspace.domain.id || row.binding.kind !== "owned") {
+  if (row.source.id !== workspace.domain.id) {
     throw new NotFoundError("请先将题目独立复制到当前域");
   }
   const contestAccess = options.contestId
@@ -149,13 +148,6 @@ export async function resolveDomainProblemInWorkspace(
     contestAccess &&
     (!contestAccess.allowed || options.write && !contestAccess.running)
   ) throw new NotFoundError("此赛题不可作答");
-  if (row.binding.kind !== "owned") {
-    throw new AppError(
-      "题库绑定来源不一致",
-      503,
-      "PROBLEM_BINDING_INCONSISTENT",
-    );
-  }
   {
     if (!row.problem.latest_version_id) throw new NotFoundError("此题尚未发布");
     const editable = workspace.platformAdmin ||

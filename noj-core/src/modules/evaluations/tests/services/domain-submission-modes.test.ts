@@ -353,7 +353,6 @@ async function objectiveFixture() {
     id: crypto.randomUUID(),
     domain_id: f.a.id,
     problem_id: paper,
-    kind: "owned",
     visibility: "public",
     created_by: f.owner,
     created_at: now,

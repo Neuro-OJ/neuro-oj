@@ -45,35 +45,63 @@ async function seed() {
   });
   const problem = crypto.randomUUID();
   const other = crypto.randomUUID();
-  await getDb().insert(problems).values([problem, other].map((id, i) => ({
-    id,
-    domain_id: DEFAULT_DOMAIN_ID,
-    title: "公开源题",
-    description: "题面",
-    number: 90001 + i,
-    created_at: now,
-    updated_at: now,
-  })));
+  // 学校域自己的题目：绑定只能引用同域题目。
+  const schoolProblem = crypto.randomUUID();
+  await getDb().insert(problems).values([
+    ...[problem, other].map((id, i) => ({
+      id,
+      domain_id: DEFAULT_DOMAIN_ID,
+      title: "公开源题",
+      description: "题面",
+      number: 90001 + i,
+      created_at: now,
+      updated_at: now,
+    })),
+    {
+      id: schoolProblem,
+      domain_id: school,
+      title: "学校题目",
+      description: "题面",
+      number: 90001,
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
   const versions = [crypto.randomUUID(), crypto.randomUUID()];
-  await getDb().insert(problemVersions).values(
-    [problem, other].map((id, i) => ({
+  const schoolVersion = crypto.randomUUID();
+  await getDb().insert(problemVersions).values([
+    ...[problem, other].map((id, i) => ({
       id: versions[i],
       problem_id: id,
       version: 1,
       content: { kind: "ai" },
       published_at: now,
     })),
-  );
-  return { school, problem, other, versions, now };
+    {
+      id: schoolVersion,
+      problem_id: schoolProblem,
+      version: 1,
+      content: { kind: "ai" },
+      published_at: now,
+    },
+  ]);
+  return {
+    school,
+    problem,
+    other,
+    schoolProblem,
+    schoolVersion,
+    versions,
+    now,
+  };
 }
 
 Deno.test("域题库约束：同域唯一绑定、题目唯一策略和版本同题外键", async () => {
-  const { school, problem, versions, now } = await seed();
+  const { school, schoolProblem, problem, versions, now } = await seed();
   const owned = {
     id: crypto.randomUUID(),
     domain_id: DEFAULT_DOMAIN_ID,
     problem_id: problem,
-    kind: "owned" as const,
     created_by: "0",
     created_at: now,
     updated_at: now,
@@ -83,7 +111,7 @@ Deno.test("域题库约束：同域唯一绑定、题目唯一策略和版本同
     ...owned,
     id: crypto.randomUUID(),
     domain_id: school,
-    kind: "shared" as const,
+    problem_id: schoolProblem,
   };
   await getDb().insert(domainProblemBindings).values(shared);
   assertEquals((await getDb().select().from(domainProblemBindings)).length, 2);
@@ -113,13 +141,13 @@ Deno.test("域题库约束：同域唯一绑定、题目唯一策略和版本同
 });
 
 Deno.test("绑定沿革：版本和绑定必须同题，历史绑定阻止级联删除源题", async () => {
-  const { school, problem, other, versions, now } = await seed();
+  const { school, schoolProblem, schoolVersion, other, versions, now } =
+    await seed();
   const binding = crypto.randomUUID();
   await getDb().insert(domainProblemBindings).values({
     id: binding,
     domain_id: school,
-    problem_id: problem,
-    kind: "shared",
+    problem_id: schoolProblem,
     created_by: "0",
     created_at: now,
     updated_at: now,
@@ -127,10 +155,10 @@ Deno.test("绑定沿革：版本和绑定必须同题，历史绑定阻止级联
   const history = {
     id: crypto.randomUUID(),
     binding_id: binding,
-    problem_id: problem,
+    problem_id: schoolProblem,
     revision: 0,
     effective_version_mode: "any" as const,
-    answer_version_id: versions[0],
+    answer_version_id: schoolVersion,
     actor_id: "0",
     reason: "初始化",
     created_at: now,
@@ -153,7 +181,22 @@ Deno.test("绑定沿革：版本和绑定必须同题，历史绑定阻止级联
     })
   );
   await constraintRejected((tx) =>
-    tx.delete(problems).where(eq(problems.id, problem))
+    tx.delete(problems).where(eq(problems.id, schoolProblem))
   );
   assertEquals((await getDb().select().from(problemBindingHistory)).length, 1);
+});
+
+Deno.test("同域外键：绑定不能引用其他域的题目", async () => {
+  const { school, problem, now } = await seed();
+  await constraintRejected((tx) =>
+    tx.insert(domainProblemBindings).values({
+      id: crypto.randomUUID(),
+      domain_id: school,
+      problem_id: problem,
+      created_by: "0",
+      created_at: now,
+      updated_at: now,
+    })
+  );
+  assertEquals((await getDb().select().from(domainProblemBindings)).length, 0);
 });

@@ -77,7 +77,6 @@ Deno.test({
         id: binding,
         domain_id: f.a.id,
         problem_id: paper,
-        kind: "owned",
         visibility: "members",
         created_by: f.owner,
         created_at: now,

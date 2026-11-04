@@ -69,7 +69,7 @@ Deno.test({
     const [binding] = await db.select().from(domainProblemBindings).where(
       eq(domainProblemBindings.problem_id, first.id),
     );
-    assertEquals(binding.kind, "owned");
+    assertEquals(binding.domain_id, a.id);
     const [history] = await db.select().from(problemBindingHistory).where(
       eq(problemBindingHistory.binding_id, binding.id),
     );

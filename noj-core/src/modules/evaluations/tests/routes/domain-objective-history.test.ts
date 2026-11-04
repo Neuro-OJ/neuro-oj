@@ -84,7 +84,6 @@ Deno.test({
       id: "rate-paper-binding",
       domain_id: domain.id,
       problem_id: "rate-paper",
-      kind: "owned",
       visibility: "members",
       created_by: actor,
       created_at: now,

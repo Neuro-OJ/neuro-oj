@@ -57,7 +57,6 @@ export async function bindMainProblemForTest(problemId: string, actorId = "0") {
     id: `main-binding-${problemId}`,
     domain_id: DEFAULT_DOMAIN_ID,
     problem_id: problemId,
-    kind: "owned",
     visibility: "public",
     revision: problem.effective_policy_revision,
     created_by: actorId,

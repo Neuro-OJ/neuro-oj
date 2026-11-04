@@ -251,7 +251,6 @@ export async function bindPublishedProblemForTest(
     id: `owned-binding-${problem.id}`,
     domain_id: problem.domain_id,
     problem_id: problem.id,
-    kind: "owned",
     visibility: problem.visibility === "public" ? "public" : "members",
     revision: problem.effective_policy_revision,
     created_by: problem.owner_id ?? "0",

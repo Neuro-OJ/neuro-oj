@@ -68,7 +68,6 @@ export async function resolveDefaultExecutionContexts(
         and(
           eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
           eq(domainProblemBindings.problem_id, problems.id),
-          eq(domainProblemBindings.kind, "owned"),
         ),
       )
       .where(inArray(problems.id, ids.slice(offset, offset + 500)));

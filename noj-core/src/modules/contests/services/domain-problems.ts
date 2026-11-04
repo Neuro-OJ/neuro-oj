@@ -48,7 +48,7 @@ export async function resolveDomainContestProblems(
   const bindingIds = new Map<string, string>();
   for (const { binding, problem, source } of rows) {
     if (
-      binding.kind !== "owned" || source.id !== domainId ||
+      source.id !== domainId ||
       binding.disabled_at || source.status === "suspended" ||
       !problem.latest_version_id
     ) {

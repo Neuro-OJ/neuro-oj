@@ -61,7 +61,7 @@ Deno.test("资源管理 HTTP：复制产生独立本域身份、已发布 V1，�
   const saved = (await response.json()).data;
   assert(saved.binding.problem_id !== f.problemId);
   assertEquals(saved.binding.domain_id, f.other.id);
-  assertEquals(saved.binding.kind, "owned");
+  assertEquals(saved.binding.domain_id, f.other.id);
   const [copy] = await f.db.select().from(problems).where(
     eq(problems.id, saved.binding.problem_id),
   );

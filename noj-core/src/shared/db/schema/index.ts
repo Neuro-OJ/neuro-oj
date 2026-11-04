@@ -45,7 +45,6 @@ export {
 } from "./catalog.ts";
 export {
   domainProblemBindings,
-  domainTrainingBindings,
   problemBindingHistory,
 } from "./catalog-workspace.ts";
 

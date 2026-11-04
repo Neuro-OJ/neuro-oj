@@ -144,7 +144,6 @@ Deno.test({
       id: `${paperId}-binding`,
       domain_id: DEFAULT_DOMAIN_ID,
       problem_id: paperId,
-      kind: "owned",
       visibility: "public",
       created_by: "0",
       created_at: now,

@@ -28,10 +28,7 @@ import {
   upgradeStatePath,
   writeUpgradeState,
 } from "../upgrade-state.ts";
-import type {
-  UpgradeCandidateFile,
-  UpgradeState,
-} from "../upgrade-state.ts";
+import type { UpgradeCandidateFile, UpgradeState } from "../upgrade-state.ts";
 import { emitHuman } from "../../output/render.ts";
 import {
   composeOutputText,
@@ -473,7 +470,8 @@ export async function upgradeWith(
       await replaceFileAtomic(stagedEnvFile, envTarget);
       await Deno.chmod(envTarget, 0o600);
     }
-    filesCommitted = stagedFilesDir !== undefined || stagedEnvFile !== undefined;
+    filesCommitted = stagedFilesDir !== undefined ||
+      stagedEnvFile !== undefined;
   } catch (error) {
     let note = "；已恢复旧发布文件";
     if (stagedFilesDir !== undefined) {

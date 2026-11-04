@@ -9,7 +9,6 @@ import {
 import {
   domainProblemBindings,
   domains,
-  domainTrainingBindings,
   problems,
   problemVersions,
   trainingProblems,
@@ -99,7 +98,7 @@ export async function readDomainTraining(
       ? item.problem.required_version_id
       : item.problem.latest_version_id;
     const sourceAvailable = item.source.id === resource.domain.id &&
-      item.binding?.kind === "owned" &&
+      item.binding != null &&
       !item.binding.disabled_at &&
       Boolean(item.problem.latest_version_id) &&
       Boolean(
@@ -198,13 +197,7 @@ export async function listDomainTrainings(
       training: trainings,
       source: { id: domains.id, slug: domains.slug },
     }).from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
-      .leftJoin(
-        domainTrainingBindings,
-        and(
-          eq(domainTrainingBindings.training_id, trainings.id),
-          eq(domainTrainingBindings.domain_id, workspace.domain.id),
-        ),
-      ).where(condition);
+      .where(condition);
   const [[total], rows] = await Promise.all([
     db.select({ total: count() }).from(
       rowsQuery().as("authorized_domain_trainings"),

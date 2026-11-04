@@ -7,6 +7,7 @@ import {
   domainProblemBindings,
   domains,
   objectiveSubmissions,
+  problems,
   submissionJobItems,
   submissionJobs,
   submissions,
@@ -129,12 +130,23 @@ async function withLegacyExecutionColumns<T>(
 
 Deno.test("执行归属：源题相同也不能将其他域绑定写入默认域提交", async () => {
   const f = await fixture();
+  // 学校自己的题目与绑定：跨域共享绑定已被同域外键禁止。
+  const schoolProblem = crypto.randomUUID();
+  await f.db.insert(problems).values({
+    id: schoolProblem,
+    domain_id: f.other.id,
+    number: 1,
+    title: "学校题目",
+    description: "题面",
+    owner_id: f.user,
+    created_at: f.now,
+    updated_at: f.now,
+  });
   const shared = crypto.randomUUID();
   await f.db.insert(domainProblemBindings).values({
     id: shared,
     domain_id: f.other.id,
-    problem_id: f.first.id,
-    kind: "shared",
+    problem_id: schoolProblem,
     created_by: f.user,
     created_at: f.now,
     updated_at: f.now,

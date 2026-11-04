@@ -91,7 +91,6 @@ export async function bindCreatedDomainProblem(
     id: crypto.randomUUID(),
     domain_id: domainId,
     problem_id: problem.id,
-    kind: "owned",
     visibility: problem.visibility === "public" ? "public" : "members",
     created_by: actorId,
     created_at: problem.created_at,

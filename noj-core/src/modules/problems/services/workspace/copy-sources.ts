@@ -24,7 +24,7 @@ import {
   domainRoleCapabilities,
   isPlatformRole,
 } from "../../../../shared/access/roles.ts";
-import { findPlatformRole } from "../../../access/identity/services/security/permissions.ts";
+import { findPlatformRole } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,

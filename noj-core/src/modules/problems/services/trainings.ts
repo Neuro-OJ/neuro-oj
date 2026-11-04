@@ -29,7 +29,6 @@ import { submissionQueryVisibility } from "../../access/submission-policy.ts";
 import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  domainTrainingBindings,
   objectiveSubmissions,
   problems,
   submissions,
@@ -459,12 +458,7 @@ export async function deleteTraining(
 ): Promise<void> {
   const db = getDb();
   await assertWritable(id, actorId);
-  const [reference] = await db.select({ id: domainTrainingBindings.id }).from(
-    domainTrainingBindings,
-  ).where(eq(domainTrainingBindings.training_id, id));
-  if (reference) {
-    throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
-  }
+  // 跨域共享已删除：题单只属于自身域，删除不再有引用保护。
   await db.delete(trainings).where(eq(trainings.id, id));
 }
 

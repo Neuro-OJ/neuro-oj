@@ -46,7 +46,6 @@ export async function bindDefaultCatalogFixture(problemId: string) {
     id: crypto.randomUUID(),
     domain_id: DEFAULT_DOMAIN_ID,
     problem_id: problemId,
-    kind: "owned",
     visibility: problem.visibility === "public" ? "public" : "members",
     created_by: problem.owner_id ?? "0",
     created_at: now,

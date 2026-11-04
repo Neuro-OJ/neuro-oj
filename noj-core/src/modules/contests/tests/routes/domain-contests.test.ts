@@ -98,7 +98,6 @@ async function fixture(slug: string, running = false) {
     id: crypto.randomUUID(),
     domain_id: domain.id,
     problem_id: p,
-    kind: "owned",
     created_by: owner,
     created_at: now,
     updated_at: now,

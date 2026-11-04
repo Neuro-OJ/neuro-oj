@@ -17,6 +17,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { seedRunningContest } from "../../../../shared/testing/contest-fixtures.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 import {
   getProblemStatsDetail,
   getPublicProblemStats,
@@ -454,17 +455,19 @@ Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 ma
   const problemId = await seedProblem(940020);
   const student = await seedUser("school-student");
   const now = new Date().toISOString();
-  await getDb().insert(domainProblemBindings).values({
-    id: crypto.randomUUID(),
-    domain_id: school.id,
-    problem_id: problemId,
-    kind: "shared",
-    created_by: actor,
-    created_at: now,
-    updated_at: now,
+  // 学校只能在自己的副本上收提交；跨域共享绑定已被同域外键禁止。
+  const copy = await insertDomainProblemCopy(getDb(), {
+    sourceProblemId: problemId,
+    domainId: school.id,
+    number: 940021,
+    ownerId: actor,
+    now,
   });
-  await seedSubmission(problemId, student, 10000, {}, school.id);
-  await seedRunningContest({ problemIds: [problemId], domainId: school.id });
+  await seedSubmission(copy.problemId, student, 10000, {}, school.id);
+  await seedRunningContest({
+    problemIds: [copy.problemId],
+    domainId: school.id,
+  });
   const stats = await getPublicProblemStats(problemId);
   assertEquals(stats.submit_count, 0);
   assertEquals(stats.accepted_count, 0);

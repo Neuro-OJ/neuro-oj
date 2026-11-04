@@ -869,7 +869,6 @@ export async function updateProblem(
             domainProblemBindings.domain_id,
             problem.domain_id ?? DEFAULT_DOMAIN_ID,
           ),
-          eq(domainProblemBindings.kind, "owned"),
         )).returning();
         const actorId = c?.var.userId ?? userId ?? ROOT_USER_ID;
         for (const binding of changedBindings) {

@@ -149,5 +149,5 @@ Deno.test("题单复制：学生无创建发布权限，失败不留下副本；
   const [binding] = await f.db.select().from(domainProblemBindings).where(
     eq(domainProblemBindings.id, item.binding_id),
   );
-  assertEquals(binding.kind, "owned");
+  assertEquals(binding.problem_id.length > 0, true);
 });

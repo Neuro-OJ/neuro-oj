@@ -205,7 +205,6 @@ Deno.test({
         id: crypto.randomUUID(),
         domain_id: source.id,
         problem_id: id,
-        kind: "owned",
         visibility: "public",
         created_by: actor,
         created_at: now,

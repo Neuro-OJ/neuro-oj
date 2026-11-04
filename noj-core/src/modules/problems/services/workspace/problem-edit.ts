@@ -74,7 +74,6 @@ export async function loadEditableDomainProblem(
       and(
         eq(problems.domain_id, workspace.domain.id),
         eq(problems.number, parsed.number),
-        eq(domainProblemBindings.kind, "owned"),
         isNull(domainProblemBindings.disabled_at),
       ),
     );

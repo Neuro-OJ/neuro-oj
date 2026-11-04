@@ -27,7 +27,6 @@ export async function recordPublishedBindingChanges(
   ).where(
     and(
       eq(domainProblemBindings.problem_id, problemId),
-      eq(domainProblemBindings.kind, "owned"),
       eq(domainProblemBindings.domain_id, problems.domain_id),
       eq(problems.effective_version_mode, "any"),
     ),

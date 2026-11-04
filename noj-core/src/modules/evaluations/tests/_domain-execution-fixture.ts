@@ -148,7 +148,6 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
     id: crypto.randomUUID(),
     domain_id: a.id,
     problem_id: problemId,
-    kind: "owned",
     visibility: "public",
     created_by: owner,
     created_at: now,

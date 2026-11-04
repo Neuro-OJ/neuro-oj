@@ -53,7 +53,6 @@ export async function backfillDefaultCatalog(
       id: crypto.randomUUID(),
       domain_id: domain.id,
       problem_id: source.id,
-      kind: "owned",
       visibility: source.visibility === "public" ? "public" : "members",
       revision: source.effective_policy_revision,
       created_by: domain.owner_id,

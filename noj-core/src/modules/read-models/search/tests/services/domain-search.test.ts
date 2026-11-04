@@ -93,7 +93,6 @@ export async function fixture() {
         problem_id: domain_id === DEFAULT_DOMAIN_ID
           ? "query-source"
           : `query-source-${domain_id}`,
-        kind: "owned" as const,
         visibility: "public" as const,
         created_by: actor,
         created_at: now,

@@ -85,10 +85,11 @@ export async function listDomainProblems(
     domainId: workspace.domain.id,
     member: !!workspace.membership || workspace.platformAdmin,
   };
-  const ownEditable = and(
-    eq(binding.kind, "owned"),
-    canEdit ? sql`true` : actorId ? eq(problems.owner_id, actorId) : sql`false`,
-  );
+  const ownEditable = canEdit
+    ? sql`true`
+    : actorId
+    ? eq(problems.owner_id, actorId)
+    : sql`false`;
   const algorithmVisible = or(
     ownEditable,
     actorId
@@ -105,7 +106,6 @@ export async function listDomainProblems(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
     isNotNull(problems.latest_version_id),
-    eq(binding.kind, "owned"),
     eq(problems.domain_id, workspace.domain.id),
   );
   const visible = and(
@@ -279,9 +279,8 @@ export async function readDomainProblem(
   const resolved = await resolveDomainProblem(slug, reference, actorId, {
     versionId,
   });
-  const canEdit = resolved.binding.kind === "owned" &&
-    (resolved.platformAdmin ||
-      resolved.context.domainPermissions.has("problem:write_any")) &&
+  const canEdit = (resolved.platformAdmin ||
+    resolved.context.domainPermissions.has("problem:write_any")) &&
     !await problemAuthoringRestrictedByContest(
       resolved,
       resolved.problem.id,

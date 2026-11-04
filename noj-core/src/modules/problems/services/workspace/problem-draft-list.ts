@@ -22,7 +22,6 @@ export async function listEditableDomainProblemDrafts(
   const condition = and(
     eq(problems.domain_id, access.domain.id),
     eq(domainProblemBindings.domain_id, access.domain.id),
-    eq(domainProblemBindings.kind, "owned"),
     isNull(domainProblemBindings.disabled_at),
     // 草稿是出题工作区，只对 educator/admin 开放。
     canAuthor ? undefined : sql`false`,

@@ -2,18 +2,10 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { getDb } from "./connection.ts";
 import { assertDatabaseSupportsAuthorizationSwitch } from "./migration-switch.ts";
-import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getLogger } from "@logtape/logtape";
+import { resolveMigrationsDirectory } from "./migrations-path.ts";
 
 const logger = getLogger(["noj", "db"]);
-
-const __dirname = dirname(fromFileUrl(import.meta.url));
-
-/** 解析与生产迁移器相同的发布集迁移目录。 */
-export function resolveMigrationsDirectory(): string {
-  return Deno.env.get("NOJ_MIGRATIONS_DIR") ??
-    resolve(__dirname, "../../../drizzle");
-}
 
 /**
  * 迁移串行化用的 advisory lock 命名空间（int4 第一参数）。

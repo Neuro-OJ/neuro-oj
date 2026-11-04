@@ -7,7 +7,7 @@ function bindingAvailabilityCondition() {
   return sql`b.disabled_at IS NULL AND p.latest_version_id IS NOT NULL AND src.status <> 'suspended'
     AND EXISTS (SELECT 1 FROM problem_versions v WHERE v.problem_id = p.id
       AND v.id = CASE WHEN p.effective_version_mode = 'exact' THEN p.required_version_id ELSE p.latest_version_id END)
-    AND b.kind = 'owned' AND p.domain_id = b.domain_id`;
+    AND p.domain_id = b.domain_id`;
 }
 
 /** 分页、命中数和收藏在数据库过滤当前绑定授权，不依赖异步索引状态。 */

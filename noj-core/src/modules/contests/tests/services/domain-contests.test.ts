@@ -372,7 +372,6 @@ async function item(
     id: binding,
     domain_id: domainId,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: owner,
     created_at: now,
@@ -638,7 +637,7 @@ Deno.test({
     );
     const copiedId = copied.binding.problem_id;
     assert(copiedId !== p.id);
-    assertEquals(copied.binding.kind, "owned");
+    assertEquals(copied.binding.domain_id, target.domain.id);
     const contest = await createDomainContest(
       target.domain.slug,
       target.owner,

@@ -19,7 +19,7 @@
  */
 import { sql } from "drizzle-orm";
 import { getDb } from "./connection.ts";
-import { resolveMigrationsDirectory } from "./migrate.ts";
+import { resolveMigrationsDirectory } from "./migrations-path.ts";
 import {
   type ExpectedMigration,
   readExpectedMigrations,

@@ -201,7 +201,10 @@ export function validateUpgradeState(value: unknown): UpgradeState {
       const item = record(entry, "files 条目");
       const name = stringValue(item.name, "files.name");
       const sha256 = stringValue(item.sha256, "files.sha256");
-      if (name === "" || name.includes("/") || name.includes("\\") || name.startsWith(".")) {
+      if (
+        name === "" || name.includes("/") || name.includes("\\") ||
+        name.startsWith(".")
+      ) {
         throw new Error(`升级 checkpoint 文件名非法：${name}`);
       }
       if (!/^[0-9a-f]{64}$/.test(sha256)) {

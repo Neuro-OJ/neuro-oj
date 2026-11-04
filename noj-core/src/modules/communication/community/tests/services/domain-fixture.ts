@@ -172,7 +172,6 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     id: binding,
     domain_id: f.source.id,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: f.a,
     created_at: f.now,

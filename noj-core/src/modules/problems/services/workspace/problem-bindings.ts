@@ -19,7 +19,6 @@ import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import { loadWorkspaceTx } from "../../../access/policy.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { workspaceAuditTx } from "../../../access/audit.ts";
-import { recordProblemChangeTx } from "../../../education/contracts/events.ts";
 import { recordProblemEducationChange } from "./education-events.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import {
@@ -74,16 +73,8 @@ async function recordBinding(
     reason,
     created_at: new Date().toISOString(),
   });
-  // 源题（owned）状态变化会影响所有使用域的引用，必须让全部绑定陈旧；
-  // 共享引用（shared）只影响它自己的使用域。
-  if (binding.kind === "owned") {
-    await recordProblemEducationChange(tx, binding.problem_id);
-  } else {
-    await recordProblemChangeTx(tx, {
-      domainId: binding.domain_id,
-      problemId: binding.problem_id,
-    });
-  }
+  // 绑定只引用同域题目：源题状态变化即影响本域统计与教学视图。
+  await recordProblemEducationChange(tx, binding.problem_id);
   await workspaceAuditTx(
     tx,
     userActorFromAuthenticatedId(actorId),
@@ -312,11 +303,7 @@ export async function setDomainProblemBindingState(
           : eq(problems.domain_id, workspace.domain.id),
       ));
     if (!resource) throw new NotFoundError("域题库中不存在此题");
-    if (resource.binding.kind === "owned") {
-      assertLegacyWorkspacePermission(workspace.context, "problem:write_any");
-    } else {
-      assertLegacyWorkspacePermission(workspace.context, "problem:policy");
-    }
+    assertLegacyWorkspacePermission(workspace.context, "problem:write_any");
     const [currentProblem] = await tx.select().from(problems).where(
       eq(problems.id, resource.problem.id),
     ).for("update");
@@ -326,12 +313,6 @@ export async function setDomainProblemBindingState(
     if (binding.revision !== expectedRevision) {
       throw new ConflictError("题库配置已变化，请重新读取");
     }
-    if (binding.kind === "shared") {
-      throw new BadRequestError(
-        "跨域共享已停用，请复制到当前域后再管理",
-        "DOMAIN_SHARING_DISABLED",
-      );
-    }
     const now = new Date().toISOString();
     const [updated] = await tx.update(domainProblemBindings).set({
       disabled_at: input.disabled ? binding.disabled_at ?? now : null,
@@ -339,15 +320,13 @@ export async function setDomainProblemBindingState(
       revision: binding.revision + 1,
       updated_at: now,
     }).where(eq(domainProblemBindings.id, binding.id)).returning();
-    if (binding.kind === "owned") {
-      await tx.update(problems).set({
-        ...(input.visibility
-          ? { visibility: input.visibility === "public" ? "public" : "private" }
-          : {}),
-        effective_policy_revision: binding.revision + 1,
-        updated_at: now,
-      }).where(eq(problems.id, resource.problem.id));
-    }
+    await tx.update(problems).set({
+      ...(input.visibility
+        ? { visibility: input.visibility === "public" ? "public" : "private" }
+        : {}),
+      effective_policy_revision: binding.revision + 1,
+      updated_at: now,
+    }).where(eq(problems.id, resource.problem.id));
     await recordBinding(
       updated,
       currentProblem.required_version_id ?? currentProblem.latest_version_id,
@@ -408,10 +387,7 @@ export async function listDomainProblemBindings(
   );
   const condition = and(
     eq(domainProblemBindings.domain_id, workspace.domain.id),
-    manageAll ? undefined : or(
-      eq(domainProblemBindings.kind, "shared"),
-      eq(problems.owner_id, actorId),
-    ),
+    manageAll ? undefined : eq(problems.owner_id, actorId),
     query.keyword
       ? or(
         ilike(
@@ -419,7 +395,7 @@ export async function listDomainProblemBindings(
           `%${query.keyword}%`,
         ),
         and(
-          or(eq(domainProblemBindings.kind, "owned"), available),
+          available,
           ilike(problems.title, `%${query.keyword}%`),
         ),
       )
@@ -464,20 +440,18 @@ export async function listDomainProblemBindings(
     total: total.total,
     items: rows.map((row) => {
       const status = statuses.get(row.binding.id);
-      const owned = row.binding.kind === "owned";
-      const canEdit = owned &&
-        (workspace.platformAdmin || permissions.has("problem:write_any"));
+      const canEdit = workspace.platformAdmin ||
+        permissions.has("problem:write_any");
       return {
         reference: domainProblemReference(
           { ...row.problem, domain_id: row.source.id },
           row.source.slug,
           workspace.domain.id,
         ),
-        title: owned || status?.available ? row.problem.title : null,
+        title: status?.available ? row.problem.title : null,
         binding_id: row.binding.id,
         revision: row.binding.revision,
         policy_revision: row.binding.revision,
-        kind: row.binding.kind,
         visibility: row.binding.visibility,
         disabled_at: row.binding.disabled_at,
         resource_available: status?.available ?? false,
@@ -488,8 +462,7 @@ export async function listDomainProblemBindings(
         can_manage_policy: workspace.platformAdmin ||
           permissions.has("problem:policy"),
         can_change_state: canEdit ||
-          !owned &&
-            (workspace.platformAdmin || permissions.has("problem:policy")),
+          workspace.platformAdmin || permissions.has("problem:policy"),
       };
     }),
   };

@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./connection.ts";
 import { resolve } from "jsr:@std/path@^1";
-import { resolveMigrationsDirectory } from "./migrate.ts";
+import { resolveMigrationsDirectory } from "./migrations-path.ts";
 
 const MIGRATION_LEDGER = "drizzle.__drizzle_migrations";
 

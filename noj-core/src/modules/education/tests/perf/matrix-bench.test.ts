@@ -104,7 +104,6 @@ Deno.test({
         id: bindingId,
         domain_id: f.school.id,
         problem_id: id,
-        kind: "owned",
         visibility: "members",
         created_by: f.owner,
         created_at: now,

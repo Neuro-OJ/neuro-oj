@@ -1,16 +1,14 @@
 import {
-  boolean,
   check,
   foreignKey,
   index,
   integer,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { problems, problemVersions, trainings } from "./catalog.ts";
+import { problems, problemVersions } from "./catalog.ts";
 import { users } from "./identity.ts";
 import { domains } from "./workspace.ts";
 import type { EffectiveVersionMode } from "../../versioning/types.ts";
@@ -20,7 +18,6 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
   id: text("id").primaryKey(),
   domain_id: text("domain_id").notNull().references(() => domains.id),
   problem_id: text("problem_id").notNull().references(() => problems.id),
-  kind: text("kind").$type<"owned" | "shared">().notNull(),
   visibility: text("visibility").$type<"public" | "members">().notNull()
     .default("members"),
   revision: integer("revision").notNull().default(0),
@@ -41,10 +38,12 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
     t.id,
     t.problem_id,
   ),
-  kindCheck: check(
-    "domain_problem_bindings_kind_check",
-    sql`${t.kind} IN ('owned', 'shared')`,
-  ),
+  /** 绑定只能引用同域题目：跨域共享已由独立复制取代。 */
+  problemDomainFk: foreignKey({
+    name: "domain_problem_bindings_problem_domain_fk",
+    columns: [t.domain_id, t.problem_id],
+    foreignColumns: [problems.domain_id, problems.id],
+  }),
   visibilityCheck: check(
     "domain_problem_bindings_visibility_check",
     sql`${t.visibility} IN ('public', 'members')`,
@@ -105,20 +104,4 @@ export const problemBindingHistory = pgTable("problem_binding_history", {
     "problem_binding_history_revision_check",
     sql`${t.revision} >= 0`,
   ),
-}));
-
-/** 目标域引用源题单，不复制源题或支持包。 */
-export const domainTrainingBindings = pgTable("domain_training_bindings", {
-  id: text("id").primaryKey(),
-  domain_id: text("domain_id").notNull().references(() => domains.id),
-  training_id: text("training_id").notNull().references(() => trainings.id),
-  created_by: text("created_by").notNull().references(() => users.id),
-  created_at: text("created_at").notNull(),
-  disabled_at: text("disabled_at"),
-}, (t) => ({
-  identityUnique: unique("domain_training_bindings_identity_unique").on(
-    t.domain_id,
-    t.training_id,
-  ),
-  sourceIdx: index("idx_domain_training_bindings_source").on(t.training_id),
 }));

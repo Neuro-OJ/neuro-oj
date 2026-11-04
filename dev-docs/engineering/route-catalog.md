@@ -8,7 +8,6 @@
 | DELETE | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
 | DELETE | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
 | DELETE | `/blacklist/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
-| DELETE | `/boards/:boardId/role-grants/:roleId` | noj-core/src/modules/http/admin/routes/community.ts |
 | DELETE | `/comments/:commentId` | noj-core/src/modules/communication/community/routes/community.ts |
 | DELETE | `/contests/:id` | noj-core/src/modules/http/admin/routes/contest.ts |
 | DELETE | `/contests/:id/participants/:userId` | noj-core/src/modules/http/admin/routes/contest.ts |
@@ -19,7 +18,6 @@
 | DELETE | `/oauth/accounts/:id` | noj-core/src/modules/access/identity/routes/auth.ts |
 | DELETE | `/posts/:postId` | noj-core/src/modules/communication/community/routes/community.ts |
 | DELETE | `/queue/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
-| DELETE | `/roles/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
 | DELETE | `/sanctions/:sanctionId` | noj-core/src/modules/http/admin/routes/community.ts |
 | DELETE | `/settings/:key` | noj-core/src/modules/http/admin/routes/system.ts |
 | DELETE | `/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
@@ -64,7 +62,6 @@
 | GET | `/banner` | noj-core/src/modules/platform/system/routes/announcements.ts |
 | GET | `/blacklist` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/boards` | noj-core/src/modules/communication/community/routes/community.ts |
-| GET | `/boards/:boardId/role-grants` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/checkin` | noj-core/src/modules/read-models/queries/routes/rankings.ts |
 | GET | `/comments/pending` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/config` | noj-core/src/modules/communication/community/routes/community.ts |
@@ -98,7 +95,6 @@
 | GET | `/domains/:slug/assignments/:id/matrix.csv` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/progress` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/students/:userId/items/:itemId/submissions` | noj-core/src/modules/education/routes/assignments.ts |
-| GET | `/domains/:slug/assignments/:id/students/:userId/training-comparison` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/classrooms/:id/assignments` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/classrooms/:id/students/:userId/submissions` | noj-core/src/modules/education/routes/student-submissions.ts |
 | GET | `/domains/:slug/classrooms/:id/submissions/:kind/:submissionId` | noj-core/src/modules/education/routes/student-submissions.ts |
@@ -150,7 +146,6 @@
 | GET | `/oauth/accounts` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oauth/providers` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oi-cost-profile` | noj-core/src/modules/http/admin/routes/system.ts |
-| GET | `/permissions` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/posts` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/posts/:postId` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
@@ -164,7 +159,6 @@
 | GET | `/register-status` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/reports` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/reports/:reportId` | noj-core/src/modules/communication/community/routes/community.ts |
-| GET | `/roles` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/sanctions` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/self-tests/:id` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | GET | `/settings` | noj-core/src/modules/http/admin/routes/system.ts |
@@ -264,7 +258,6 @@
 | POST | `/reports/:reportId/:status` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/reports/:reportId/reopen` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/reset-password` | noj-core/src/modules/access/identity/routes/auth.ts |
-| POST | `/roles` | noj-core/src/modules/http/admin/routes/identity.ts |
 | POST | `/sanctions` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/set-password` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/settings/email/test-send` | noj-core/src/modules/http/admin/routes/system.ts |
@@ -279,7 +272,6 @@
 | POST | `/users/import` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PUT | `/:id` | noj-core/src/modules/problems/routes/tags.ts |
 | PUT | `/announcements/:id` | noj-core/src/modules/http/admin/routes/system.ts |
-| PUT | `/boards/:boardId/role-grants/:roleId` | noj-core/src/modules/http/admin/routes/community.ts |
 | PUT | `/contests/:contestId/problems/:problemId/effective-version-policy` | noj-core/src/modules/http/admin/routes/problem-versions.ts |
 | PUT | `/contests/:contestId/problems/:problemId/version` | noj-core/src/modules/http/admin/routes/problem-versions.ts |
 | PUT | `/contests/:id` | noj-core/src/modules/http/admin/routes/contest.ts |
@@ -288,6 +280,5 @@
 | PUT | `/llm/providers/:id` | noj-core/src/modules/http/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/modules/access/identity/routes/users.ts |
 | PUT | `/problems/:id/effective-version-policy` | noj-core/src/modules/http/admin/routes/problem-versions.ts |
-| PUT | `/roles/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PUT | `/settings/:key` | noj-core/src/modules/http/admin/routes/system.ts |
 | PUT | `/users/:id` | noj-core/src/modules/http/admin/routes/identity.ts |

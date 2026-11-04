@@ -133,14 +133,8 @@ import { downIsNoOp, prodState, transition, upIsNoOp } from "../core/state.ts";
 import type { DeployState } from "../core/state.ts";
 import { randomKey } from "../util/random.ts";
 import { nonInteractiveAdvice } from "./advice.ts";
-import {
-  emitHuman,
-  emitJson,
-  isJsonMode,
-  renderStatus,
-} from "../output/render.ts";
+import { emitHuman, emitJson } from "../output/render.ts";
 import type { RenderIO } from "../output/render.ts";
-import { createTheme } from "../output/theme.ts";
 import type { StatusKind } from "../output/theme.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";
@@ -196,6 +190,14 @@ import {
 } from "./lifecycle/path.ts";
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
+import {
+  emitFailure,
+  failed,
+  jsonPayload,
+  lifecycleContext,
+} from "./lifecycle/context.ts";
+import type { LifecycleContext } from "./lifecycle/context.ts";
+import { reusableCandidateDir } from "./lifecycle/update-recover.ts";
 import { resolveTargetConfig } from "./lifecycle/target.ts";
 import type { ResolvedTargetConfig } from "./lifecycle/target.ts";
 import type { DrainOptions } from "./lifecycle/drain.ts";
@@ -208,7 +210,6 @@ import {
 } from "./upgrade-state.ts";
 import type { UpgradeState } from "./upgrade-state.ts";
 import {
-  digestCandidateFiles,
   resolveLatestTarget,
   runUpdateSync,
   upgradeWith,
@@ -759,49 +760,8 @@ export interface StatusResult extends LifecycleBaseResult {
   psOutput: string;
 }
 
-/** 一次命令运行的上下文：目录 + 两个输出通道 + 状态行写出器。 */
-export interface LifecycleContext {
-  dir: string;
-  io: RenderIO;
-  jsonMode: boolean;
-  /** 写一行状态（T8 符号 + 语义色），JSON 模式自动改道 stderr。 */
-  status: (kind: StatusKind, text: string) => void;
-  /** 写一条失败诊断：**永远 stderr**（对照 bash `fail` 的 >&2）。 */
-  error: (text: string) => void;
-}
-
-/** 真实 stderr 写入（RenderIO 未注入 stderr 时的兜底）。 */
-function realStderr(text: string): void {
-  Deno.stderr.writeSync(new TextEncoder().encode(text));
-}
-
-/**
- * 写失败诊断到 stderr。
- *
- * bash `fail` 是 `printf ... >&2; exit 1`，而 T6 的 `emitHuman` 在人类模式写
- * **stdout**（只有 JSON 模式改道 stderr）——两者不能同时满足，故失败诊断显式
- * 走 stderr：这样重定向 `> out.txt` 时错误仍可见，`--json` 的 stdout 也不被污染。
- */
-function emitFailure(io: RenderIO, text: string): void {
-  (io.stderr ?? realStderr)(text);
-}
-
-/** 构造命令上下文：T6 的 JSON 模式与 T8 的 stream 成对判定。 */
-export function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
-  const jsonMode = isJsonMode(opts.args ?? []);
-  const io: RenderIO = { ...(opts.io ?? {}), jsonMode };
-  const stream = jsonMode ? "stderr" : "stdout";
-  const theme = createTheme(opts.color ?? "auto", stream);
-  return {
-    dir: validateTargetDir(opts.dir),
-    io,
-    jsonMode,
-    status: (kind, text) => {
-      renderStatus(kind, text, { color: opts.color, stream, io });
-    },
-    error: (text) => emitFailure(io, theme.status("error", text) + "\n"),
-  };
-}
+export { failed, jsonPayload, lifecycleContext };
+export type { LifecycleContext };
 
 /** 由已校验的环境构造 T10 compose 选项（judge → `--profile judge`）。 */
 function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
@@ -1083,21 +1043,6 @@ async function streamLogs(
   // compose 的告警/进度走 stderr：显式与 stdout 分流（评审建议）。
   const emit = (line: string) => emitHuman(line + "\n", ctx.io);
   return await runner.stream("docker", args, emit, { onStderr: emit });
-}
-
-/** 生命周期结果的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
-function jsonPayload(result: LifecycleBaseResult): Record<string, unknown> {
-  return {
-    dir: result.dir,
-    state: result.state,
-    noOp: result.noOp,
-    error: result.error,
-  };
-}
-
-/** 统一的运行失败结果（`error` 已写往人类通道）。 */
-export function failed(dir: string, error: string): LifecycleBaseResult {
-  return { dir, state: "error", noOp: false, exitCode: 1, error };
 }
 
 /**
@@ -1439,34 +1384,6 @@ export function updateSuccessHint(version: string): string {
 /** 升级前备份未接线时的失败文案（T17–T19 之前）。 */
 export const UPDATE_BACKUP_UNAVAILABLE_HINT =
   "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级";
-
-/**
- * 未完成升级的暂存目录能否原样复用。
- *
- * 只有目录仍在、且当前文件摘要与 checkpoint 记录逐项一致才复用；否则返回
- * `null`，由调用方重新下载候选发布文件。
- */
-async function reusableCandidateDir(
-  state: UpgradeState | null,
-): Promise<string | null> {
-  if (state === null || state.files_staged_dir === null) return null;
-  const dir = state.files_staged_dir;
-  try {
-    const info = await Deno.stat(dir);
-    if (!info.isDirectory) return null;
-    const actual = await digestCandidateFiles(dir);
-    const expected = state.files;
-    if (actual.length !== expected.length) return null;
-    const intact = actual.every((file, index) => {
-      const reference = expected[index];
-      return reference !== undefined && file.name === reference.name &&
-        file.sha256 === reference.sha256;
-    });
-    return intact ? dir : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * `update`（production.sh:345-436）：两种模式共用同一套升级序列。

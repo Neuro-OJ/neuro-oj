@@ -6,11 +6,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  domainTrainingBindings,
-  trainingProblems,
-  trainings,
-} from "../../../../shared/db/schema.ts";
+import { trainingProblems, trainings } from "../../../../shared/db/schema.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   assertWorkspacePermission,
@@ -162,13 +158,7 @@ export async function deleteDomainTraining(
     )).for("update");
     if (!training) throw new NotFoundError("题单不在此域");
     assertWorkspacePermission(workspace.context, "training:delete_any");
-    const [reference] = await tx.select({ id: domainTrainingBindings.id })
-      .from(domainTrainingBindings)
-      .where(eq(domainTrainingBindings.training_id, trainingId))
-      .limit(1);
-    if (reference) {
-      throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
-    }
+    // 题单按 trainings.domain_id 归属，不再有跨域引用需要保护。
     await tx.delete(trainingProblems).where(
       eq(trainingProblems.training_id, trainingId),
     );

@@ -23,6 +23,7 @@ import {
   resetDbForTest,
 } from "../default-fixture.ts";
 import type { ObjectiveProblemContent } from "../../types/problem-content.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
 Deno.test({
   name: "比赛维护权限: 源题编辑角色不受报名身份影响，普通比赛作答仍裁剪答案",
@@ -82,7 +83,6 @@ Deno.test({
       id: bindingId,
       domain_id: DEFAULT_DOMAIN_ID,
       problem_id: problemId,
-      kind: "owned",
       visibility: "public",
       created_by: actor,
       created_at: now,
@@ -188,24 +188,22 @@ Deno.test({
       name: "学校比赛",
       preset: "education",
     }, organizer);
-    const schoolBinding = crypto.randomUUID(),
-      schoolContest = crypto.randomUUID();
+    const schoolContest = crypto.randomUUID();
     await db.insert(domainMemberships).values({
       id: crypto.randomUUID(),
       domain_id: school.id,
       user_id: actor,
       joined_at: now,
     });
-    await db.insert(domainProblemBindings).values({
-      id: schoolBinding,
-      domain_id: school.id,
-      problem_id: problemId,
-      kind: "shared",
-      visibility: "members",
-      created_by: organizer,
-      created_at: now,
-      updated_at: now,
+    // 学校只能在自己的副本上办内部赛：跨域共享绑定已被同域外键禁止。
+    const schoolCopy = await insertDomainProblemCopy(db, {
+      sourceProblemId: problemId,
+      domainId: school.id,
+      number: 1001,
+      ownerId: organizer,
+      now,
     });
+    const schoolBinding = schoolCopy.bindingId;
     await db.insert(contests).values({
       id: schoolContest,
       domain_id: school.id,
@@ -220,12 +218,12 @@ Deno.test({
     });
     await db.insert(contestProblems).values({
       contest_id: schoolContest,
-      problem_id: problemId,
+      problem_id: schoolCopy.problemId,
       domain_id: school.id,
       domain_problem_binding_id: schoolBinding,
       label: "A",
       score: 10000,
-      pinned_version_id: versionId,
+      pinned_version_id: schoolCopy.versionId,
     });
     await db.insert(contestParticipants).values({
       contest_id: schoolContest,

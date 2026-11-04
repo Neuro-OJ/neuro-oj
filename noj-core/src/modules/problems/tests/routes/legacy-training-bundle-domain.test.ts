@@ -90,7 +90,6 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     id: crypto.randomUUID(),
     domain_id: source.id,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: actor,
     created_at: now,

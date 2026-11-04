@@ -33,6 +33,7 @@ import {
 } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 import { fixture as domainFixture } from "../_domain-execution-fixture.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 
@@ -52,17 +53,18 @@ Deno.test("policy: 默认入口修改 main 题目唯一策略，旧外域绑定�
     "默认域题目不存在",
   );
   const problemId = "main-isolated-policy";
-  const foreignId = crypto.randomUUID();
-  await f.db.insert(domainProblemBindings).values({
-    id: foreignId,
-    domain_id: f.a.id,
-    problem_id: problemId,
-    kind: "shared",
-    revision: 7,
-    created_by: f.owner,
-    created_at: now,
-    updated_at: now,
+  // 其他域只能持有自己的副本：这里给 A 域建副本并保留独立 revision。
+  const copy = await insertDomainProblemCopy(f.db, {
+    sourceProblemId: problemId,
+    domainId: f.a.id,
+    number: 992091,
+    ownerId: f.owner,
+    now,
   });
+  const foreignId = copy.bindingId;
+  await f.db.update(domainProblemBindings).set({ revision: 7 }).where(
+    eq(domainProblemBindings.id, foreignId),
+  );
   const changed = await setProblemEffectiveVersionPolicy(problemId, {
     actorId: "0",
     expectedRevision: 0,
@@ -78,7 +80,7 @@ Deno.test("policy: 默认入口修改 main 题目唯一策略，旧外域绑定�
     eq(domainProblemBindings.id, foreignId),
   );
   assertEquals(foreign.revision, 7);
-  // 平台管理员授权来自 users.role，不随域成员角色变化；旧外域共享绑定仍不被改写。
+  // 平台管理员策略只作用于默认域题目；域内副本保持自己的绑定与 revision。
 });
 
 async function seedProblem(

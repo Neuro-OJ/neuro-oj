@@ -95,7 +95,6 @@ export async function readDomainProblemSummaries(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
     isNotNull(problems.latest_version_id),
-    eq(binding.kind, "owned"),
     eq(problems.domain_id, workspace.domain.id),
   );
   const rows = await db.select({
