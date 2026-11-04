@@ -100,9 +100,11 @@
 | GET | `/domains/:slug/classrooms/:id/submissions/:kind/:submissionId` | noj-core/src/modules/education/routes/student-submissions.ts |
 | GET | `/domains/:slug/classrooms/:id/submissions/:kind/:submissionId/attempts` | noj-core/src/modules/education/routes/student-submissions.ts |
 | GET | `/domains/:slug/contests/:id/events` | noj-core/src/modules/contests/routes/sse.ts |
+| GET | `/domains/:slug/copy-sources` | noj-core/src/modules/problems/routes/domain-resource-management.ts |
 | GET | `/domains/:slug/education/events` | noj-core/src/modules/education/routes/notification-sse.ts |
 | GET | `/domains/:slug/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | GET | `/domains/:slug/objective-submissions/:id` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
+| GET | `/domains/:slug/problem-bindings` | noj-core/src/modules/problems/routes/domain-resource-management.ts |
 | GET | `/domains/:slug/problem-drafts` | noj-core/src/modules/problems/routes/domain-problems.ts |
 | GET | `/domains/:slug/problems/:reference/self-tests` | noj-core/src/modules/evaluations/routes/domain-submissions.ts |
 | GET | `/domains/:slug/queue` | noj-core/src/modules/evaluations/routes/queue.ts |
@@ -223,6 +225,7 @@
 | POST | `/domains/:slug/classrooms/:id/contest-remediation-preview` | noj-core/src/modules/education/routes/assignments.ts |
 | POST | `/domains/:slug/contests/:id/problems/:label/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | POST | `/domains/:slug/contests/:id/problems/:label/submissions` | noj-core/src/modules/evaluations/routes/domain-submissions.ts |
+| POST | `/domains/:slug/problem-bindings` | noj-core/src/modules/problems/routes/domain-resource-management.ts |
 | POST | `/domains/:slug/problem-summaries` | noj-core/src/modules/problems/routes/domain-problems.ts |
 | POST | `/domains/:slug/problems/:reference/objective-submissions` | noj-core/src/modules/evaluations/routes/domain-objective.ts |
 | POST | `/domains/:slug/problems/:reference/self-tests` | noj-core/src/modules/evaluations/routes/domain-submissions.ts |
@@ -275,6 +278,7 @@
 | PUT | `/contests/:contestId/problems/:problemId/effective-version-policy` | noj-core/src/modules/http/admin/routes/problem-versions.ts |
 | PUT | `/contests/:contestId/problems/:problemId/version` | noj-core/src/modules/http/admin/routes/problem-versions.ts |
 | PUT | `/contests/:id` | noj-core/src/modules/http/admin/routes/contest.ts |
+| PUT | `/domains/:slug/problems/:reference/policy` | noj-core/src/modules/problems/routes/domain-resource-management.ts |
 | PUT | `/judge-images/:id` | noj-core/src/modules/http/admin/routes/system.ts |
 | PUT | `/llm/model-aliases/:alias` | noj-core/src/modules/http/admin/routes/gateway.ts |
 | PUT | `/llm/providers/:id` | noj-core/src/modules/http/admin/routes/gateway.ts |

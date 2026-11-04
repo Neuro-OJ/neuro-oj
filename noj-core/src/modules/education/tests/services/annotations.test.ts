@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
@@ -250,7 +250,7 @@ Deno.test("行批注：错误域、同学、域教练授权、离班历史及教
       ),
     ForbiddenError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   await createSubmissionAnnotation(
     f.school.slug,
     f.classroom.id,
@@ -297,7 +297,7 @@ Deno.test("行批注：错误域、同学、域教练授权、离班历史及教
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       listSubmissionAnnotations(f.school.slug, f.classroom.id, f.id, f.teacher),

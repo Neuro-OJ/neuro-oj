@@ -233,6 +233,8 @@ export async function commitDomainProblemCopy(
     description: content.description,
     samples: content.samples,
     difficulty: prepared.difficulty,
+    // 副本是新域里的独立题目：题面可见性固定 public，跨域可见范围由绑定
+    // domain_problem_bindings.visibility（public/members）控制，不继承源域设置。
     visibility: "public",
     is_objective: content.kind === "objective",
     judge_type: content.kind === "oi" ? "oi" : "dual",

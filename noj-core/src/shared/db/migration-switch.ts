@@ -5,10 +5,10 @@
  * 默认值把旧管理员悄悄降级为普通用户。检查在迁移锁内、调用 Drizzle
  * migrator 之前执行，因此失败时不会施加任何 DDL。
  *
- * 两种校验模式：
- * - `startup`（HTTP 启动）：ledger 必须与打包迁移集完全一致；
- * - `pre-migration`（`db migrate` / `db check-upgrade`）：允许 ledger 是
- *   打包迁移集的合法已应用前缀，但必须逐条核对 hash、时间戳与顺序。
+ * 两种校验模式共用 `schema-compat.ts` 的 `validateMigrationLedger`：
+ * - `startup`（HTTP 启动，`assertSchemaCompatible`）：ledger 必须与打包集完全一致；
+ * - `pre-migration`（`db migrate` / `db check-upgrade`）：允许合法已应用前缀，
+ *   但必须逐条核对 hash、时间戳与顺序。
  *
  * 判定口径：
  * - 没有 ledger 且没有 NOJ 业务表 → 允许（空库全新建库）。
@@ -22,7 +22,9 @@ import { getDb } from "./connection.ts";
 import { resolveMigrationsDirectory } from "./migrations-path.ts";
 import {
   type ExpectedMigration,
+  type MigrationValidationMode,
   readExpectedMigrations,
+  validateMigrationLedger,
 } from "./schema-compat.ts";
 
 /**
@@ -40,11 +42,8 @@ export class LegacyDatabaseError extends Error {
   }
 }
 
-/** 校验模式：启动期要求完全一致，迁移前允许合法前缀。 */
-export type MigrationValidationMode = "startup" | "pre-migration";
-
 /** ledger 行；id 顺序即 journal 应用顺序。 */
-export interface MigrationLedgerRow {
+interface MigrationLedgerRow {
   hash: string;
   createdAt: string;
 }
@@ -68,38 +67,6 @@ interface ScalarRow {
 async function scalar(query: ReturnType<typeof sql>): Promise<number> {
   const rows = await getDb().execute(query) as unknown as ScalarRow[];
   return Number(rows[0]?.value ?? 0);
-}
-
-/**
- * 纯校验：比较打包迁移集与实际 ledger。
- *
- * 返回错误信息，合法时返回 null。逐条比较 hash 与 created_at，因此“条数相同
- * 但历史漂移”也会被拒绝；未知记录、缺中间记录同样拒绝。
- */
-export function validateMigrationLedger(
-  expected: ExpectedMigration[],
-  actual: MigrationLedgerRow[],
-  mode: MigrationValidationMode,
-): string | null {
-  if (expected.length === 0) {
-    return "打包迁移集为空，无法判断数据库兼容性";
-  }
-  if (actual.length > expected.length) {
-    return `数据库迁移 ledger 存在发布集之外的记录（期望最多 ${expected.length} 条，实际 ${actual.length} 条）`;
-  }
-  for (let index = 0; index < actual.length; index++) {
-    const wanted = expected[index]!;
-    const found = actual[index]!;
-    if (wanted.hash !== found.hash || wanted.createdAt !== found.createdAt) {
-      return `数据库迁移 ledger 第 ${
-        index + 1
-      } 条不匹配（${wanted.tag}）：期望 hash=${wanted.hash}, created_at=${wanted.createdAt}；实际 hash=${found.hash}, created_at=${found.createdAt}`;
-    }
-  }
-  if (mode === "startup" && actual.length !== expected.length) {
-    return `数据库迁移 ledger 尚未执行最新迁移（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
-  }
-  return null;
 }
 
 /** 读取 ledger；表不存在时返回空数组。 */

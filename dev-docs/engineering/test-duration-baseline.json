@@ -267,7 +267,6 @@
     "src/modules/platform/system/tests/services/observability.test.ts": 1,
     "src/modules/platform/system/tests/services/oi-cost-profile.test.ts": 2,
     "src/modules/platform/system/tests/services/search-events.test.ts": 84,
-    "src/modules/platform/system/tests/services/seed-rbac.test.ts": 594,
     "src/modules/platform/system/tests/services/seed-system.test.ts": 746,
     "src/modules/platform/tests/routes/admin-audit-logs.test.ts": 412,
     "src/modules/platform/tests/routes/admin-settings.test.ts": 1541,

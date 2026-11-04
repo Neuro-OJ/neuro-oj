@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -76,7 +76,7 @@ Deno.test("班级：同账号两域身份、错误域路径和学生只读自身
 
 Deno.test("教练：域级授权覆盖他人班级，撤权即时生效且不能任命教学人员", async () => {
   const f = await educationFixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const access = await loadClassroom(
     f.school.slug,
     f.classroom.id,
@@ -94,7 +94,7 @@ Deno.test("教练：域级授权覆盖他人班级，撤权即时生效且不能
     { role: "student" },
   );
   await assertRejects(
-    () => setMemberRoles(f.school.slug, f.assistant, f.student, ["educator"]),
+    () => setMemberRole(f.school.slug, f.assistant, f.student, "educator"),
     ForbiddenError,
   );
   await assertRejects(
@@ -109,7 +109,7 @@ Deno.test("教练：域级授权覆盖他人班级，撤权即时生效且不能
       ),
     BadRequestError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () => loadClassroom(f.school.slug, f.classroom.id, f.assistant),
     NotFoundError,
@@ -126,7 +126,7 @@ Deno.test("班级：教师撤职、学生离班保留历史并撤销当前访问
     0,
     { role: "student" },
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () => getClassroom(f.school.slug, f.classroom.id, f.teacher),
     NotFoundError,
@@ -274,7 +274,7 @@ Deno.test("班级约束：跨域成员和跨域比赛不能关联", async () => 
 
 Deno.test("教学撤权：重新入域不恢复旧的域教练权限", async () => {
   const f = await educationFixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   await removeDomainMember(f.school.slug, f.owner, f.assistant);
   const invite = await createDomainInvitation(
     f.school.slug,

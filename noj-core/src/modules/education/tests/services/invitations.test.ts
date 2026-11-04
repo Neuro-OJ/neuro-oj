@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { registrationInvitationBoundary } from "../../../application/index.ts";
@@ -121,7 +121,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
     () => previewDomainInvitation(invite.token),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const ta = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
@@ -138,7 +138,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
       ),
     ForbiddenError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(() => previewDomainInvitation(ta.token), NotFoundError);
   const archived = await createClassroomInvitation(
     f.school.slug,

@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
@@ -123,7 +123,7 @@ Deno.test("教学通知：持久事件和反馈同事务，重复领取不重复
 
 Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不能恢复求助访问", async () => {
   const f = await fixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const help = await createAssignmentHelp(
     f.school.slug,
     f.task.id,
@@ -138,7 +138,7 @@ Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不
   );
   assertEquals(assistant.total, 1);
   assertEquals(assistant.data[0].help_id, help.id);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.assistant)).total,
     0,

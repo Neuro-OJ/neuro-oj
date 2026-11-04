@@ -5,7 +5,7 @@ import { domains, users } from "../../../shared/db/schema.ts";
 import {
   addDomainMember,
   createDomain,
-  setMemberRoles,
+  setMemberRole,
 } from "../../access/workspace/index.ts";
 import { updateSetting } from "../../platform/system/index.ts";
 import { createClassroom } from "../index.ts";
@@ -56,7 +56,7 @@ export async function educationFixture() {
       }
     });
   }
-  await setMemberRoles(school.slug, owner, teacher, ["educator"]);
+  await setMemberRole(school.slug, owner, teacher, "educator");
   const classroom = await createClassroom(school.slug, teacher, {
     name: "一班",
     stage_tag: "基础",

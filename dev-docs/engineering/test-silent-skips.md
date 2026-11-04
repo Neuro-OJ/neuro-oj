@@ -210,8 +210,8 @@
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 111 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 127 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 140 | early-return |
-| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1149 | ignore |
-| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1158 | early-return |
+| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1148 | ignore |
+| noj-tests/e2e/cross-domain/restore_drill_contract.test.ts | 1157 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 31 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 43 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 88 | early-return |

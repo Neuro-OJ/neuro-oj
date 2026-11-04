@@ -14,7 +14,7 @@ import {
   listDomainJoinRequests,
   listDomainMembers,
   previewDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
 } from "../../index.ts";
 
 async function account(admin = false) {
@@ -41,7 +41,7 @@ Deno.test("域管理视图：成员角色批量返回，注销身份不暴露旧
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, member);
-  await setMemberRoles(domain.slug, operator, member, ["educator"]);
+  await setMemberRole(domain.slug, operator, member, "educator");
   const list = await listDomainMembers(domain.slug, operator);
   assertEquals(list.find((row) => row.user_id === member)?.role, "educator");
   assertEquals(list.find((row) => row.user_id === operator)?.role, "admin");
@@ -152,14 +152,14 @@ Deno.test("邀请视图：签发者撤权后预览和直接接受都立即拒绝
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, issuer);
-  await setMemberRoles(domain.slug, operator, issuer, ["admin"]);
+  await setMemberRole(domain.slug, operator, issuer, "admin");
   const invitation = await createDomainInvitation(
     domain.slug,
     issuer,
     `${recipient}@example.com`,
   );
   await previewDomainInvitation(invitation.token);
-  await setMemberRoles(domain.slug, operator, issuer, ["member"]);
+  await setMemberRole(domain.slug, operator, issuer, "member");
   await assertRejects(
     () => previewDomainInvitation(invitation.token),
     NotFoundError,

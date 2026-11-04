@@ -98,7 +98,6 @@ export interface DomainProblem {
     problem_id: string;
     display_ref: string;
     source_domain_slug: string;
-    is_shared: boolean;
   };
   title: string;
   kind: "oi" | "ai" | "objective";

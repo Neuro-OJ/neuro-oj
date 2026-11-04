@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { assertRejects } from "jsr:@std/assert@^1";
@@ -327,7 +327,7 @@ Deno.test({
     );
     await revocable.next(); // 表头
     await revocable.next(); // 已授权的第一页
-    await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+    await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
     await assertRejects(() => revocable.next(), NotFoundError);
   },
 });

@@ -28,7 +28,7 @@ import {
   createDomain,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../access/workspace/index.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
 
@@ -41,9 +41,12 @@ Deno.test({
     const source = await workspace("copy-training-source"),
       target = await workspace("copy-training-target");
     await join(source.domain.slug, source.owner, target.owner);
-    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+    await setMemberRole(
+      source.domain.slug,
+      source.owner,
+      target.owner,
       "admin",
-    ]);
+    );
     const first = await item(source.domain.id, source.owner, "objective", 1001),
       second = await item(source.domain.id, source.owner, "objective", 1002),
       trainingId = crypto.randomUUID(),
@@ -556,7 +559,7 @@ Deno.test({
       outsider = await account();
     await join(a.domain.slug, a.owner, student);
     await join(a.domain.slug, a.owner, editor);
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["educator"]);
+    await setMemberRole(a.domain.slug, a.owner, editor, "educator");
     const p = await item(a.domain.id, a.owner);
     const contest = await createDomainContest(a.domain.slug, editor, {
       ...input(p.id),
@@ -591,7 +594,7 @@ Deno.test({
         ]),
       Error,
     );
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["member"]);
+    await setMemberRole(a.domain.slug, a.owner, editor, "member");
     await assertRejects(
       () => getDomainContestSettlement(a.domain.slug, contest.id, editor),
       ForbiddenError,
@@ -625,9 +628,12 @@ Deno.test({
       ForbiddenError,
     );
     await join(source.domain.slug, source.owner, target.owner);
-    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+    await setMemberRole(
+      source.domain.slug,
+      source.owner,
+      target.owner,
       "admin",
-    ]);
+    );
     const copied = await importDomainProblem(
       target.domain.slug,
       `${source.domain.slug}:1001`,

@@ -92,11 +92,7 @@ export {
   consumeDomainSubmissionQuota,
   DOMAIN_SUBMISSION_QUOTA_SCRIPT,
 } from "./services/submission-limit.ts";
-export {
-  assertAccountHasNoOwnedDomain,
-  lockActiveWorkspaceAccount,
-  retireAccountWorkspaceMemberships,
-} from "./services/account-lifecycle.ts";
+export { lockActiveWorkspaceAccount } from "./services/account-lifecycle.ts";
 export {
   listAdminDomains,
   listDomainCreationRequests,
@@ -241,22 +237,6 @@ export function setMemberRole(
   userId: string,
   role: unknown,
 ) {
-  return setMemberRoleForActor(
-    userActorFromAuthenticatedId(actorId),
-    slug,
-    userId,
-    role,
-  );
-}
-
-/** @deprecated 过渡适配：旧数组调用只接受单元素。 */
-export function setMemberRoles(
-  slug: string,
-  actorId: string,
-  userId: string,
-  roles: readonly unknown[],
-) {
-  const role = roles.length === 1 ? roles[0] : roles;
   return setMemberRoleForActor(
     userActorFromAuthenticatedId(actorId),
     slug,

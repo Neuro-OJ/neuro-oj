@@ -12,7 +12,7 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import {
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../../access/workspace/index.ts";
 import { createDomainContest } from "../../../../contests/index.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
@@ -390,7 +390,7 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await domainFixture("community-moderation");
-    await setMemberRoles(f.target.slug, f.b, f.student, ["educator"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "educator");
     const sanction = await withDomainCommunity(f.target.slug, f.student, {
       write: true,
       permission: "community:moderate",
@@ -419,7 +419,7 @@ Deno.test({
       }, (s) => listReports("all", s))).length,
       0,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["member"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "member");
     await assertRejects(
       () =>
         withDomainCommunity(f.target.slug, f.student, {

@@ -30,7 +30,7 @@ import {
   requestDomainCreation,
   reviewDomainCreation,
   revokeDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
   transferDomain,
   updateDomain,
 } from "../../index.ts";
@@ -80,7 +80,7 @@ Deno.test({
       `${student}@example.com`,
     );
     await consumeDomainInvitation(invite.token, student);
-    await setMemberRoles(school.slug, operator, student, ["admin"]);
+    await setMemberRole(school.slug, operator, student, "admin");
     const access = await loadWorkspace(school.slug, student);
     assertWorkspacePermission(access.context, "domain:settings");
     assert(!access.context.platformPermissions.has("admin:full_access"));
@@ -107,7 +107,7 @@ Deno.test({
       `${other}@example.com`,
     );
     await consumeDomainInvitation(extra.token, other);
-    await setMemberRoles(school.slug, student, other, ["educator"]);
+    await setMemberRole(school.slug, student, other, "educator");
     await removeDomainMember(school.slug, student, other);
     await assertRejects(() => loadWorkspace(school.slug, other), NotFoundError);
     assertEquals((await listDomains(other, true)).length, 0);

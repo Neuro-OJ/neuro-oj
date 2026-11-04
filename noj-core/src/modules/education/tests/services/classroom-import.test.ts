@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import {
@@ -222,7 +222,7 @@ Deno.test("批量入班：学生不可枚举账号，域教练只能接收本域
       ),
     ForbiddenError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   await banUser(f.student, "目标封禁", null, "0");
   const blocked = await previewClassroomImport(
     f.school.slug,

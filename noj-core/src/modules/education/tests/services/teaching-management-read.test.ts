@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   createAssignment,
@@ -13,7 +13,7 @@ import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("教学管理读取：域教练读取全部学生，学生仅能读取自身成员记录", async () => {
   const f = await assignmentFixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const roster = await listClassroomMembers(
     f.school.slug,
     f.classroom.id,
@@ -27,7 +27,7 @@ Deno.test("教学管理读取：域教练读取全部学生，学生仅能读取
     ) => m.user_id),
     [f.student],
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () => listClassroomMembers(f.school.slug, f.classroom.id, f.assistant),
     NotFoundError,
@@ -48,7 +48,7 @@ Deno.test("教学管理读取：离班学生可读取历史班级但没有当前
   assertEquals(room.historical_student, true);
   assertEquals(room.capabilities, []);
   assertEquals(room.manages_domain, false);
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () => getClassroom(f.school.slug, f.classroom.id, f.teacher),
     NotFoundError,
@@ -61,7 +61,7 @@ Deno.test("教学管理读取：离班学生可读取历史班级但没有当前
 
 Deno.test("教学管理读取：域教练无需班级任职即可取得完整教学能力", async () => {
   const f = await assignmentFixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const room = await getClassroom(f.school.slug, f.classroom.id, f.assistant);
   assertEquals(room.membership, null);
   assertEquals(room.manages_domain, true);

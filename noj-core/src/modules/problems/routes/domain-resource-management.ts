@@ -32,7 +32,7 @@ function revision(header: string | undefined) {
   return Number(match[1]);
 }
 domainResourceManagementRouter.get(
-  `${prefix}/copy-sources`,
+  "/domains/:slug/copy-sources",
   authMiddleware,
   async (c) => {
     const kind = c.req.query("kind");
@@ -54,7 +54,7 @@ domainResourceManagementRouter.get(
   },
 );
 domainResourceManagementRouter.get(
-  `${prefix}/problem-bindings`,
+  "/domains/:slug/problem-bindings",
   authMiddleware,
   async (c) => {
     const { page, perPage } = parsePagination(c, { perPageField: "limit" });
@@ -68,7 +68,7 @@ domainResourceManagementRouter.get(
   },
 );
 domainResourceManagementRouter.post(
-  `${prefix}/problem-bindings`,
+  "/domains/:slug/problem-bindings",
   authMiddleware,
   async (c) => {
     const input = await parseJsonBody<
@@ -97,7 +97,7 @@ domainResourceManagementRouter.post(
   },
 );
 domainResourceManagementRouter.put(
-  `${prefix}/problems/:reference/policy`,
+  "/domains/:slug/problems/:reference/policy",
   authMiddleware,
   async (c) => {
     const input = await parseJsonBody<

@@ -7,7 +7,7 @@ import {
   submissions,
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { recomputeSubmissionProjection } from "../../../evaluations/index.ts";
 import {
   createAssignment,
@@ -117,7 +117,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -129,7 +129,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals(
     (await getClassroomStudentSubmission(
       f.school.slug,
@@ -140,7 +140,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -244,7 +244,7 @@ Deno.test("教学提交：域教练管理同域比赛，撤职即时失去进行
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -256,7 +256,7 @@ Deno.test("教学提交：域教练管理同域比赛，撤职即时失去进行
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "educator");
   assertEquals(
     (await listClassroomStudentSubmissions(
       f.school.slug,

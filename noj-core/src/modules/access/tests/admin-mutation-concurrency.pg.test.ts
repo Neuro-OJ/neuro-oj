@@ -143,7 +143,9 @@ Deno.test({
     const rejected = results.filter((result) => result.status === "rejected");
     assertEquals(fulfilled.length, 1);
     assertEquals(rejected.length, 1);
-    assert(String(rejected[0]!.reason).includes("至少保留一个可用管理员"));
+    const reason = rejected[0]!.reason as { status?: number; code?: string };
+    assertEquals(reason.status, 409);
+    assertEquals(reason.code, "LAST_ADMIN");
     assert(await availableAdmins() >= 1);
   },
 });

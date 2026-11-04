@@ -58,9 +58,6 @@ import {
   DEFAULT_RTO_MAX_MINUTES,
   DEFAULT_SOLUTION_IMAGE,
   DEFAULT_WAIT_TIMEOUT,
-  DRILL_ADMIN_EMAIL_DOMAIN,
-  DRILL_ADMIN_USER,
-  DRILL_BCRYPT_HASH,
   drillCleanupArgs,
   drillComposeArgs,
   isFile,
@@ -73,6 +70,7 @@ import {
   uniqueDrillSubnet,
   valueOr,
 } from "./plan.ts";
+import { renderSeedDrillAdminSql } from "./seed-admin-sql.ts";
 import {
   type ChecksInput,
   DRILL_METRICS_FILE,
@@ -887,16 +885,7 @@ async function seedDrillAdmin(
   const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
   const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
   const stamp = now().toISOString().replace(/\.\d{3}Z$/, ".000Z");
-  // email_verified 刻意不写：它是后续迁移新增的字段，新 schema 默认 true；
-  // 不显式写入才能同时恢复并验收迁移前的历史快照（bash 注释的同一理由）。
-  const sql = [
-    "INSERT INTO users (id, username, email, password_hash, created_at, updated_at)",
-    `VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',`,
-    `        '${DRILL_BCRYPT_HASH}', '${stamp}', '${stamp}')`,
-    "ON CONFLICT (id) DO NOTHING;",
-    // 授权事实只有 users.role；角色/权限关联表已随本次重构删除。
-    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
-  ].join("\n");
+  const sql = renderSeedDrillAdminSql(stamp);
   const code = await feedTextToCompose(
     ctx,
     runner,

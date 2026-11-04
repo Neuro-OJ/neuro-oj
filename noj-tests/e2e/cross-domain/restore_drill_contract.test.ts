@@ -432,7 +432,8 @@ async function dropDatabase(dbName: string): Promise<void> {
  * - id 固定 `drill-admin-user`，重复写入 `ON CONFLICT DO NOTHING` 幂等；
  * - **不显式写 `email_verified`**：新 schema 默认 true（迁移 0064），显式写死反而
  *   无法验收历史快照；
- * - 角色取 `roles.name = 'admin'`（由 `noj init system` 的 RBAC 种子创建）。
+ * - 授权事实只有 `users.role`：角色/权限关联表已随本次重构删除（迁移 0133），
+ *   因此必须与 `drill.ts` 的 `seedDrillAdmin()` 一样直接写用户行。
  */
 async function seedDrillAdmin(dbName: string): Promise<void> {
   const stamp = "2026-01-01T00:00:00.000Z";
@@ -441,9 +442,7 @@ async function seedDrillAdmin(dbName: string): Promise<void> {
     `VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',`,
     `        '${DRILL_BCRYPT_HASH}', '${stamp}', '${stamp}')`,
     "ON CONFLICT (id) DO NOTHING;",
-    "INSERT INTO user_roles (user_id, role_id)",
-    "SELECT 'drill-admin-user', id FROM roles WHERE name = 'admin'",
-    "ON CONFLICT DO NOTHING;",
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
   ].join("\n");
   await psqlDatabase(dbName, sql);
 }

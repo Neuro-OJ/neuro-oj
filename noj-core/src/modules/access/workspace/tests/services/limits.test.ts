@@ -30,7 +30,7 @@ import {
   getDomainEffectiveLimits,
   getInstancePolicy,
   joinDomain,
-  setMemberRoles,
+  setMemberRole,
   updateDomain,
   updateDomainLimits,
 } from "../../index.ts";
@@ -121,7 +121,7 @@ Deno.test("配额治理：管理员只能降低，平台可提高；revision、�
     `${manager}@example.com`,
   );
   await consumeDomainInvitation(invite.token, manager);
-  await setMemberRoles(domain.slug, platform, manager, ["admin"]);
+  await setMemberRole(domain.slug, platform, manager, "admin");
   // 成员角色修改不修改域配置 revision，当前仍为 0。
   const lowered = await updateDomainLimits(domain.slug, manager, 0, {
     ...unlimitedDomainLimits(),

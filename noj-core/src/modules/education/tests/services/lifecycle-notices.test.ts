@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
@@ -27,7 +27,7 @@ async function drain() {
 
 Deno.test("任务通知：发布同事务创建，学生与授权教学人员收到，新生补入只通知本人", async () => {
   const f = await assignmentFixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const task = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -55,7 +55,7 @@ Deno.test("任务通知：发布同事务创建，学生与授权教学人员收
     (await listEducationNotifications(f.school.slug, f.student)).total,
     1,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.assistant)).total,
     0,

@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
@@ -22,9 +22,9 @@ Deno.test("教师提交 SQL：同域当前域级教练，离班和撤权实时�
   assertEquals(await allowed(f.teacher, f.other.id), false);
   assertEquals(await allowed(f.student), false);
   assertEquals(await allowed(f.assistant), false);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals(await allowed(f.assistant), true);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   assertEquals(await allowed(f.assistant), false);
   await removeClassroomMember(
     f.school.slug,

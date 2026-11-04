@@ -29,14 +29,34 @@ moment、训练时间窗比较、首页随机推荐、跨域共享语义与旧 B
 - 升级在预检通过后失败仍发布目标文件，暂存 compose 未固定项目目录 → **已关闭**：
   候选文件排空后提交、失败整组回滚，`--project-directory` 贯穿，`--recover` 复用
   同一候选集。
-- 旧库预检只统计 ledger 条数 → **已关闭**：`startup`/pre-migration` 双模式逐条比较
-  hash 与时间戳。
+- 旧库预检只统计 ledger 条数 → **已关闭**：HTTP 启动（`startup`，要求完全一致）与
+  `db migrate`/`db check-upgrade`（`pre-migration`，允许合法前缀）共用
+  `schema-compat.ts` 的同一个 `validateMigrationLedger`，逐条比较 hash 与时间戳。
 - 绑定 schema 仍保留 `owned/shared` 与 `domain_training_bindings`，`custom` 兼容 →
   **已关闭**：迁移 0137 删除 `kind`、建立同域复合外键、删除题单绑定表、收紧 preset
   CHECK，并对异常数据中止。
 
-仍待完成：WASM 四片需专用 runner 重建固定 WASI SDK；T23 业务级恢复演练（备份→隔离
-恢复→登录→发布→提交→评测）；LLM 治理浏览器用例的 coordinator 注入。逐项证据见计划
+2026-11-04 独立评审（adversarial review）在 `755bc82c` 上又发现三类问题，均已关闭：
+
+- 恢复演练夹具仍写已删除的 `user_roles`/`roles` → **已关闭**：改为
+  `UPDATE users SET role='admin'`，并把 SQL 渲染抽成 `renderSeedDrillAdminSql`
+  纯函数加测试锁定，避免与 `drill.ts` 再次分叉。
+- 「失权 / 源身份变化 / 文件失败补偿」只有声称没有断言 → **已关闭**：新增
+  `workspace-copy-failure.test.ts`（prepare 后撤销目标域发布权限 → 提交被拒且零副本；
+  源身份变化 → 409 且补偿删除本次上传对象）。
+- `LAST_ADMIN` 只在实现与文案层面被引用 → **已关闭**：新增
+  `admin-last-admin-contract.test.ts` 钉住 409 + `code=LAST_ADMIN` 与真实
+  `createApp()` 的 HTTP 序列化，并发用例同时断言 `status`/`code`。
+- 死代码与门禁盲区 → **已关闭**：删除 `account-lifecycle.ts` 中无锁重复实现与
+  `setMemberRoles` 数组适配器（全部调用点改单值）；路由目录生成器此前漏掉模板串
+  路径，四条域资源路由改为字面量路径后进入目录（277 → 281）。
+
+此前记录的“仍待完成”三项也已关闭：WASM 四分片用固定 SDK `noj-wasi-sdk-34-v2`
+本地与 CI 全部通过；T23 完成备份→隔离恢复→登录→发布→提交→真实评测；LLM 治理
+浏览器用例的 coordinator 地址改回容器端口 8010。
+
+仍待完成（**存量问题，本次重构未引入**）：封禁关闭活跃记录时未按 `scope` 过滤；
+封禁/注销在提交后仍有可抛出的通知副作用（可能“已生效却返回 500”）。逐项证据见计划
 文件第七节「验收证据表」。
 
 ## Decision
