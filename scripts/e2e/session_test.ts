@@ -245,6 +245,8 @@ Deno.test("e2e-session: 环境文本 session 私有且包含全部资源", () =>
       "NOJ_E2E_SESSION",
       "COMPOSE_PROJECT_NAME",
       "E2E_DB_URL",
+      // 直接读 DATABASE_URL 的 E2E 必须拿到会话库，而不是模板里的开发库。
+      "DATABASE_URL",
       "E2E_REDIS_URL",
       "E2E_COORDINATOR_URL",
       "E2E_EVALUATOR_NETWORK",

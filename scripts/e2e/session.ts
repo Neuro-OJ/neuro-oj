@@ -293,6 +293,11 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     E2E_DB_URL: `postgres://e2e:e2e@127.0.0.1:${manifest.ports.postgres}/${
       sessionDatabaseName(manifest)
     }`,
+    // 部分 E2E 直接读 DATABASE_URL 做只读核对（如 LLM 治理的受理快照）；
+    // 不覆盖会连到 env.e2e.template 里的开发库，断言必然查不到行。
+    DATABASE_URL: `postgres://e2e:e2e@127.0.0.1:${manifest.ports.postgres}/${
+      sessionDatabaseName(manifest)
+    }`,
     // compose 用同名变量创建数据库，避免与 E2E_DB_URL 指向不同库。
     E2E_DATABASE_NAME: sessionDatabaseName(manifest),
     E2E_REDIS_URL: `redis://127.0.0.1:${manifest.ports.redis}/1`,
