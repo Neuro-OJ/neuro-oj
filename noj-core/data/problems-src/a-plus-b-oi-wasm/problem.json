@@ -1,0 +1,91 @@
+{
+  "format_version": 2,
+  "number": 1102,
+  "title": "A+B Problem（OI · WASM 后端）",
+  "difficulty": "easy",
+  "judge_type": "oi",
+  "tags": [
+    "入门",
+    "模拟"
+  ],
+  "samples": [
+    {
+      "id": "s1",
+      "input": "0 0\n",
+      "output": "0\n",
+      "explanation": "零加零等于零。"
+    },
+    {
+      "id": "s2",
+      "input": "-1000000000000000000 1000000000000000000\n",
+      "output": "0\n",
+      "explanation": "输入可能超出 32 位整数范围，但结果仍在 64 位有符号整数范围内。"
+    }
+  ],
+  "runtime_config": {
+    "scoring_version": 2,
+    "backend": "wasm",
+    "languages": [
+      "c",
+      "cc"
+    ],
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 256,
+    "checker": {
+      "type": "default"
+    },
+    "subtasks": [
+      {
+        "id": "sign",
+        "score": 30,
+        "cases": [
+          {
+            "id": "1",
+            "input": "testdata/1.in",
+            "output": "testdata/1.out"
+          },
+          {
+            "id": "2",
+            "input": "testdata/2.in",
+            "output": "testdata/2.out"
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "score": 30,
+        "cases": [
+          {
+            "id": "3",
+            "input": "testdata/3.in",
+            "output": "testdata/3.out"
+          },
+          {
+            "id": "4",
+            "input": "testdata/4.in",
+            "output": "testdata/4.out"
+          }
+        ]
+      },
+      {
+        "id": "large",
+        "score": 40,
+        "depends_on": [
+          "small"
+        ],
+        "cases": [
+          {
+            "id": "5",
+            "input": "testdata/5.in",
+            "output": "testdata/5.out"
+          },
+          {
+            "id": "6",
+            "input": "testdata/6.in",
+            "output": "testdata/6.out"
+          }
+        ]
+      }
+    ]
+  }
+}

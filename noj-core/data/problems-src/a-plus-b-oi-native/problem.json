@@ -1,0 +1,75 @@
+{
+  "format_version": 2,
+  "number": 1101,
+  "title": "A+B Problem（OI · 原生后端）",
+  "difficulty": "easy",
+  "judge_type": "oi",
+  "tags": [
+    "入门",
+    "模拟"
+  ],
+  "samples": [
+    {
+      "id": "s1",
+      "input": "1 2\n",
+      "output": "3\n",
+      "explanation": "1 + 2 = 3。"
+    },
+    {
+      "id": "s2",
+      "input": "-100 100\n",
+      "output": "0\n",
+      "explanation": "相反数之和为 0。"
+    }
+  ],
+  "runtime_config": {
+    "scoring_version": 2,
+    "backend": "native",
+    "languages": [
+      "c",
+      "cc"
+    ],
+    "time_limit_ms": 1000,
+    "memory_limit_mb": 256,
+    "checker": {
+      "type": "default"
+    },
+    "subtasks": [
+      {
+        "id": "basic",
+        "score": 30,
+        "cases": [
+          {
+            "id": "1",
+            "input": "testdata/1.in",
+            "output": "testdata/1.out"
+          },
+          {
+            "id": "2",
+            "input": "testdata/2.in",
+            "output": "testdata/2.out"
+          }
+        ]
+      },
+      {
+        "id": "large",
+        "score": 70,
+        "depends_on": [
+          "basic"
+        ],
+        "cases": [
+          {
+            "id": "3",
+            "input": "testdata/3.in",
+            "output": "testdata/3.out"
+          },
+          {
+            "id": "4",
+            "input": "testdata/4.in",
+            "output": "testdata/4.out"
+          }
+        ]
+      }
+    ]
+  }
+}
