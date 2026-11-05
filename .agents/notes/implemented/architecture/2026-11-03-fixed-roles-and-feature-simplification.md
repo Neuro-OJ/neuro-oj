@@ -69,7 +69,10 @@ moment、训练时间窗比较、首页随机推荐、跨域共享语义与旧 B
 存量问题（本次重构前即存在）也在此轮关闭：关闭活跃封禁按 `scope` 过滤（社区封禁
 不再解除生效中的平台封禁）；封禁通知与注销后置回调改为 best-effort
 （`runBestEffort`，主事务已提交后失败只记日志，不再“已生效却返回
-500”）；恢复演练 在 CI 通过 `NOJ_E2E_REQUIRE_DRILL=1` 强制失败而非静默 skip。
+500”）；恢复演练 在 CI 通过 `NOJ_E2E_REQUIRE_DRILL=1` 强制失败而非静默 skip，
+并在 `E2E Cross Domain`
+中真实执行（隔离库建库→login/problem_read/register_probe/ summary 全
+passed→删库）。
 
 逐项证据（命令、环境、结果位置）见计划文件第七节「验收证据表」。
 
