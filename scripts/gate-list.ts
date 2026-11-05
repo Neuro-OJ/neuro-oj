@@ -68,6 +68,8 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/coverage-report_test.ts",
   // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
   "scripts/test-baseline_test.ts",
+  // 耗时基线必须只指向现存测试文件：曾长期保留 5 个已删除条目，分片计划照旧"有依据"。
+  "scripts/test-duration-baseline_test.ts",
   // 测试性能基础设施（2026-11-03）：阶段计时与报告聚合是后续所有性能结论的
   // 事实源，坏行/坏文件/缺失清单都必须有回归。
   "scripts/lib/test-timing_test.ts",

@@ -35,6 +35,7 @@ import {
   prepareDomainProblemCopy,
   type PreparedProblemCopy,
 } from "../../services/workspace/problem-copy.ts";
+import { importDomainProblem } from "../../services/workspace/problem-bindings.ts";
 
 async function targetProblems(domainId: string) {
   return await getDb().select().from(problems).where(
@@ -102,5 +103,45 @@ Deno.test("域复制失败：源题身份变化抛 409，并补偿删除本次�
   const provider = await getStorageProvider();
   assertEquals((await provider.stat(uploaded.storageUrl)).exists, false);
   assertEquals((await getStorageObject(uploaded.storageUrl))?.state, "deleted");
+  assertEquals((await targetProblems(f.other.id)).length, 0);
+});
+
+Deno.test("域导入接线：提交失败时调用补偿并原样抛出", async () => {
+  const f = await assignmentFixture();
+  const prepared = await prepareDomainProblemCopy(
+    f.other.slug,
+    `${f.school.slug}:1001`,
+    f.owner,
+  );
+  const failure = new Error("提交阶段失败");
+  const compensated: PreparedProblemCopy[] = [];
+
+  await assertRejects(
+    () =>
+      importDomainProblem(
+        f.other.slug,
+        `${f.school.slug}:1001`,
+        f.owner,
+        undefined,
+        undefined,
+        {
+          commit: () => {
+            throw failure;
+          },
+          compensate: (copy) => {
+            compensated.push(copy);
+            return Promise.resolve();
+          },
+        },
+      ),
+    Error,
+    "提交阶段失败",
+  );
+
+  // 补偿必须拿到与提交相同的 prepared（同一份文件清单），且只调用一次。
+  assertEquals(compensated.length, 1);
+  assertEquals(compensated[0].sourceId, prepared.sourceId);
+  assertEquals(compensated[0].targetId, prepared.targetId);
+  assertEquals(compensated[0].objects, prepared.objects);
   assertEquals((await targetProblems(f.other.id)).length, 0);
 });

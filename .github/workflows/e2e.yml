@@ -287,6 +287,9 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-cross-domain
       E2E_JUDGE_RESOURCE_POOLS: ai,oi-native
+      # 演练契约（restore_drill_contract）是跨域验收项：容器解析失败必须红，
+      # 不能退化成一条 [skip] 的绿色用例。
+      NOJ_E2E_REQUIRE_DRILL: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 构建教学 OI Native C++ 运行时

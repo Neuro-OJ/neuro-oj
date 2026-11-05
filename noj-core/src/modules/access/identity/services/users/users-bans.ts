@@ -19,6 +19,7 @@ import { logAudit } from "../../../../platform/contracts/cross-module/system_ser
 import type { UserResponse } from "../../types/auth.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import { createNotification } from "../../../../communication/contracts/cross-module/community_services_notifications.ts";
+import { runBestEffort } from "../../../../../shared/base/best-effort.ts";
 import {
   assertActiveAdminActorTx,
   assertAvailableAdminRemainsTx,
@@ -128,11 +129,17 @@ export async function banUser(
       })
       .where(eq(users.id, targetUserId));
 
-    // 2. 关闭已有活跃封禁
+    // 2. 关闭同范围的已有活跃封禁。
+    // 必须带 scope 过滤：否则"社区封禁"会把仍在生效的"平台封禁"一并解封，
+    // 版主借此绕过平台处罚（解除封禁走 unbanUser，语义是解除该用户全部限制）。
     await tx.update(userBans)
       .set({ unbanned_at: now, updated_at: now })
       .where(
-        and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
+        and(
+          eq(userBans.user_id, targetUserId),
+          eq(userBans.scope, scope),
+          isNull(userBans.unbanned_at),
+        ),
       );
 
     // 3. 插入新封禁记录
@@ -163,20 +170,29 @@ export async function banUser(
 
   invalidateBanCache({ userId: targetUserId });
 
-  // 通知被封禁用户：封禁范围/理由/时间（撤销举报不删此通知，保留记录）
-  await createNotification(
-    targetUserId,
-    currentUserId,
-    "ban",
-    null,
-    null,
-    {
-      scope,
-      reason: reason ?? "",
-      banned_until: bannedUntil ?? null,
-      banned_at: now,
-      message: scope === "social" ? "你已被限制社区发布" : "你的账号已被封禁",
-    },
+  // 通知被封禁用户：封禁范围/理由/时间（撤销举报不删此通知，保留记录）。
+  // 封禁事实已在事务内提交，通知失败不能让接口返回 500：否则管理员重试时
+  // 目标已处于封禁态，会得到与真实状态矛盾的响应。
+  await runBestEffort(
+    "users.ban.notify",
+    () =>
+      createNotification(
+        targetUserId,
+        currentUserId,
+        "ban",
+        null,
+        null,
+        {
+          scope,
+          reason: reason ?? "",
+          banned_until: bannedUntil ?? null,
+          banned_at: now,
+          message: scope === "social"
+            ? "你已被限制社区发布"
+            : "你的账号已被封禁",
+        },
+      ),
+    { target_user_id: targetUserId, scope },
   );
 
   return toUserResponse(

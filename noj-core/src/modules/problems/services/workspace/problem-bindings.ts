@@ -92,6 +92,14 @@ async function recordBinding(
   );
 }
 
+/** 导入接线的可替换依赖；生产路径不传，测试用于观测补偿是否真的被调用。 */
+export interface ImportDomainProblemDeps {
+  /** 锁内提交；测试注入失败以验证 try/catch 的接线。 */
+  commit?: typeof commitDomainProblemCopy;
+  /** 失败补偿；默认按引用守卫删除本次上传。 */
+  compensate?: typeof compensateProblemCopy;
+}
+
 /** 跨域导入创建独立已发布副本；文件预检在事务外完成。 */
 export async function importDomainProblem(
   slug: string,
@@ -99,6 +107,7 @@ export async function importDomainProblem(
   actorId: string,
   executor?: Executor,
   versionId?: string,
+  deps: ImportDomainProblemDeps = {},
 ) {
   if (executor) {
     throw new BadRequestError("请先在目标域复制题目，再将本域题目加入作业");
@@ -109,16 +118,17 @@ export async function importDomainProblem(
     actorId,
     versionId,
   );
+  const commit = deps.commit ?? commitDomainProblemCopy;
+  const compensate = deps.compensate ?? compensateProblemCopy;
   try {
-    return await getDb().transaction((tx) =>
-      commitDomainProblemCopy(tx, prepared)
-    );
+    return await getDb().transaction((tx) => commit(tx, prepared));
   } catch (error) {
     // 补偿按引用守卫删除本次上传：内容寻址存储会把与源题逐字节相同的副本
     // 去重到同一 URL，此时对象仍被源版本引用，补偿保留对象（no-op）；
     // 只有非去重后端或内容不同的上传才会真正删除。删除语义见
-    // `workspace-copy-failure.test.ts` 的「唯一字节」用例。
-    await compensateProblemCopy(prepared);
+    // `workspace-copy-failure.test.ts` 的「唯一字节」用例；接线本身由
+    // 同文件注入 deps 的用例锁定。
+    await compensate(prepared);
     throw error;
   }
 }

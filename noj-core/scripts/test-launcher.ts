@@ -62,7 +62,6 @@ import {
   auditShardPlan,
   buildShardPlan,
   discoverTestFiles,
-  emptyBaseline,
   type FileDurationBaseline,
   loadFileDurationBaseline,
   type Shard,
@@ -511,17 +510,30 @@ function activateReporting(options: LauncherOptions, runId: string): string {
   return resolveReportDirectory(runId, baseEnvironment);
 }
 
+/**
+ * 读取文件耗时基线，并核对基线里的每个文件仍然存在。
+ *
+ * 2026-11-04 评审：原实现把读取失败降级为"全部按中位数估值"，又从不校验条目
+ * 指向的文件是否还在——已删除的测试会在基线里长期占位，分片计划看起来有依据，
+ * 实际用的是假数据。这里两者都直接失败，缺失路径一次列全。
+ */
 async function loadBaseline(): Promise<FileDurationBaseline> {
-  try {
-    return await loadFileDurationBaseline(DURATION_BASELINE_PATH);
-  } catch (error) {
-    console.warn(
-      `[test-launcher] 无法读取文件耗时基线（将全部按中位数估值）：${
-        error instanceof Error ? error.message : String(error)
+  const baseline = await loadFileDurationBaseline(DURATION_BASELINE_PATH);
+  const missing = Object.keys(baseline.files).filter((file) => {
+    try {
+      return !Deno.statSync(`${MODULE_ROOT}/${file}`).isFile;
+    } catch {
+      return true;
+    }
+  });
+  if (missing.length > 0) {
+    throw new Error(
+      `测试耗时基线包含 ${missing.length} 个不存在的测试文件（请同步更新 ${DURATION_BASELINE_PATH}）：${
+        missing.join(", ")
       }`,
     );
-    return emptyBaseline();
   }
+  return baseline;
 }
 
 /** 发现并规划分片；任何覆盖缺口都直接失败，不允许"少跑但显示绿"。 */

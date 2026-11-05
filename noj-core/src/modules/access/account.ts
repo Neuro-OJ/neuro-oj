@@ -17,6 +17,7 @@ import {
   UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
+import { runBestEffort } from "../../shared/base/best-effort.ts";
 import { comparePassword } from "./identity/services/security/password.ts";
 import {
   assertActiveAdminActorTx,
@@ -211,11 +212,18 @@ export async function deleteOwnAccount(
   const result = await db.transaction((tx) =>
     deleteOwnAccountTx(tx, user, passwordHash, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: user.userId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  // 账户事实已提交：头像清理/搜索索引等副作用失败只能记日志，
+  // 否则客户端收到 500 后重试，会撞上"用户不存在"，与真实状态矛盾。
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: user.userId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: user.userId },
+  );
 }
 
 /** 管理员注销指定用户；管理员资格在本事务中按实时权限解析。 */
@@ -234,11 +242,16 @@ export async function adminDeleteAccount(
   const result = await db.transaction((tx) =>
     adminDeleteAccountTx(tx, operationActor, targetUserId, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: targetUserId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: targetUserId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: targetUserId },
+  );
 }
 
 export { anonymizeUserTx };

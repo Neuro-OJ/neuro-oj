@@ -6,6 +6,7 @@
  * access 本地命令。HTTP 路由不得直接拼接这些跨模块步骤。
  */
 import type { DbRoot } from "../../shared/db/executor.ts";
+import { runBestEffort } from "../../shared/base/best-effort.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import type { UserActor } from "../access/contracts/actor.ts";
 import {
@@ -54,11 +55,16 @@ export async function deleteOwnAccountCommand(
   const result = await db.transaction((tx) =>
     deleteOwnAccountTx(tx, user, passwordHash, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: user.userId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: user.userId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: user.userId },
+  );
 }
 
 export async function adminDeleteAccountCommand(
@@ -70,11 +76,16 @@ export async function adminDeleteAccountCommand(
   const result = await db.transaction((tx) =>
     adminDeleteAccountTx(tx, actor, targetUserId, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: targetUserId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: targetUserId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: targetUserId },
+  );
 }
 
 export function createDomainCommand(

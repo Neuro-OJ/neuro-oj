@@ -2,6 +2,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { assertCommunityWritable } from "./community-config.ts";
 import { type CommunityScope, loadCommunityScope } from "./community-scope.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../../shared/workspace/types.ts";
+import { runBestEffort } from "../../../../../shared/base/best-effort.ts";
 
 /** 旧社区入口固定 main；旧平台社区权限只在该明确目标内继续生效。 */
 export async function withDefaultCommunity<T>(
@@ -20,7 +21,11 @@ export async function withDefaultCommunity<T>(
   const result = options.write
     ? await getDb().transaction(run)
     : await run(getDb());
-  for (const callback of result.afterCommit) callback();
+  // 事务已提交：后置回调（通知/索引）按注册顺序执行，单个失败不影响其余，
+  // 也不把已提交的写入报成失败。
+  for (const [index, callback] of result.afterCommit.entries()) {
+    await runBestEffort("community.after_commit", callback, { index });
+  }
   return result.value;
 }
 
@@ -47,6 +52,10 @@ export async function withDomainCommunity<T>(
   const result = options.write
     ? await getDb().transaction(run)
     : await run(getDb());
-  for (const callback of result.afterCommit) callback();
+  // 事务已提交：后置回调（通知/索引）按注册顺序执行，单个失败不影响其余，
+  // 也不把已提交的写入报成失败。
+  for (const [index, callback] of result.afterCommit.entries()) {
+    await runBestEffort("community.after_commit", callback, { index });
+  }
   return result.value;
 }
