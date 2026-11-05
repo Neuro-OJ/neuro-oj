@@ -67,22 +67,25 @@ function migrationDirFromModule(): string {
   return resolveMigrationsDirectory();
 }
 
+/** 唯一的 ledger 读取实现：启动检查与迁移前门禁共用。 */
+export async function readMigrationLedger(): Promise<ActualMigration[]> {
+  const rows = await getDb().execute(sql`
+    SELECT migration_ledger.id::text AS id,
+      migration_ledger.hash,
+      migration_ledger.created_at::text AS created_at
+    FROM ${sql.raw(MIGRATION_LEDGER)} AS migration_ledger
+    ORDER BY migration_ledger.id ASC
+  `) as unknown as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    hash: String(row.hash ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
 function defaultDeps(): SchemaCompatibilityDeps {
   return {
-    queryLedger: async () => {
-      const rows = await getDb().execute(sql`
-        SELECT migration_ledger.id::text AS id,
-          migration_ledger.hash,
-          migration_ledger.created_at::text AS created_at
-        FROM ${sql.raw(MIGRATION_LEDGER)} AS migration_ledger
-        ORDER BY migration_ledger.id ASC
-      `) as unknown as Array<Record<string, unknown>>;
-      return rows.map((row) => ({
-        id: String(row.id ?? ""),
-        hash: String(row.hash ?? ""),
-        createdAt: String(row.created_at ?? ""),
-      }));
-    },
+    queryLedger: readMigrationLedger,
     readText: (path) => Deno.readTextFile(path),
     listFiles: async (directory) => {
       const names: string[] = [];

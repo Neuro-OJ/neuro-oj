@@ -10,6 +10,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, ne } from "drizzle-orm";
 import { createApp } from "../../../app.ts";
+import { hashPassword } from "../identity/services/security/password.ts";
+import { signToken } from "../identity/index.ts";
+import { jsonRequest } from "../../../../tests/helper.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { ConflictError } from "../../../shared/base/errors.ts";
@@ -67,21 +70,40 @@ Deno.test({
 });
 
 Deno.test({
-  name: "管理员保护：LAST_ADMIN 经真实 HTTP onError 序列化为 409 + code",
+  name: "管理员保护：唯一可用管理员自助注销走真实端点返回 409 LAST_ADMIN",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const app = createApp();
-    // 注入与业务入口相同的异常，验证真实 app 的全局错误序列化合同。
-    app.patch("/__contract/last-admin", () => {
-      throw new ConflictError("至少保留一个可用管理员", "LAST_ADMIN");
+    await resetDbForTest();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const password = "AdminPass1234";
+    await getDb().insert(users).values({
+      id,
+      username: `solo_${id.slice(0, 8)}`,
+      email: `${id}@example.com`,
+      password_hash: await hashPassword(password),
+      role: "admin",
+      must_change_password: false,
+      email_verified: true,
+      created_at: now,
+      updated_at: now,
     });
-    const res = await app.request("/__contract/last-admin", {
-      method: "PATCH",
+    const token = await signToken({ sub: id, role: "admin" });
+    const app = createApp();
+    // 真实业务端点：自助注销会排除本人后统计可用管理员，唯一管理员必须被拒绝。
+    // 这里同时锁定 409 状态码、错误码与全局 onError 的 request_id 合同。
+    const res = await jsonRequest(app, "/api/v1/users/me/delete-account", {
+      method: "POST",
+      token,
+      body: { password },
     });
     assertEquals(res.status, 409);
     const body = await res.json() as { code?: string; request_id?: string };
     assertEquals(body.code, "LAST_ADMIN");
     assert(typeof body.request_id === "string" && body.request_id.length > 0);
+    const [still] = await getDb().select({ deleted_at: users.deleted_at })
+      .from(users).where(eq(users.id, id));
+    assertEquals(still!.deleted_at, null);
   },
 });

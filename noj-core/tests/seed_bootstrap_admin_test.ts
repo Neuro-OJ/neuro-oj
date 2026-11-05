@@ -70,7 +70,7 @@ async function countAdminRoleAssignments(userId: string): Promise<number> {
 }
 
 /**
- * 清理测试创建的用户（含 audit_logs 引用与 user_roles 级联）。
+ * 清理测试创建的用户（含 audit_logs 引用与用户行级联）。
  * 每个用例自清理，避免依赖下一个用例的 cleanNonRootAdmins。
  */
 async function cleanupUser(userId: string): Promise<void> {
@@ -206,7 +206,7 @@ Deno.test({
     if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
 
     try {
-      // 直接调用真实 seed 函数，验证 user_roles 关联被写入
+      // 直接调用真实 seed 函数，验证 users.role 被写入
       await ensureBootstrapAdmin();
 
       // 引导管理员 = 权限集含 admin:full_access 的非 root 用户

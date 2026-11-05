@@ -4,6 +4,12 @@
  * 复制分两段：锁外准备（读取源版本并上传文件）与锁内提交（重查权限、复核
  * 源身份并原子发布）。两段之间可能发生失权或源题被替换，此时必须
  * 1) 抛错且不留下半发布身份；2) 删除本次上传、且仅删除本次上传的对象。
+ *
+ * 关于「补偿」的可观测性：local/S3 存储是**内容寻址**的（URL 只由内容 SHA-256
+ * 决定，上传 key 被忽略）。副本与源题内容逐字节相同，因此副本上传会被去重到
+ * 源对象 URL；`compensateUploadedObject` 的引用守卫会保留仍被源版本引用的对象，
+ * 此时补偿是 no-op。删除语义因此由「唯一字节」用例（源身份变化）覆盖；
+ * `problem-bindings.ts` 的 try/catch 是面向非去重后端的保护。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -68,6 +74,7 @@ Deno.test("域复制失败：源题身份变化抛 409，并补偿删除本次�
     `${f.school.slug}:1001`,
     f.owner,
   );
+  // 唯一字节：避免内容寻址去重命中已有对象，确保补偿删除可观测。
   const uploaded = await uploadStorageObjectWithReservation({
     key: `domain-copy-failure-${crypto.randomUUID()}`,
     bytes: new TextEncoder().encode("package-bytes"),

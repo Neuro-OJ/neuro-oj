@@ -1483,7 +1483,21 @@ Deno.test("drill: seedDrillAdmin SQL 只写 users.role，不引用已删 RBAC �
   assertStringIncludes(sql, "INSERT INTO users");
   assertStringIncludes(sql, "UPDATE users SET role = 'admin'");
   assertStringIncludes(sql, "ON CONFLICT (id) DO NOTHING;");
-  assert(!sql.includes("user_roles"), "不得引用已删除的 user_roles");
-  assert(!sql.includes("FROM roles"), "不得引用已删除的 roles");
+  // 覆盖 user_roles 与 roles 两种形态：任何含 "roles" 的表名都不允许出现。
+  assert(!sql.includes("roles"), "不得引用已删除的 roles/user_roles");
   assert(!sql.includes("email_verified"), "不得显式写历史快照可能没有的列");
+});
+
+Deno.test("drill: e2e 恢复演练夹具与渲染器保持同一 SQL 形态", async () => {
+  const fixture = new URL(
+    "../../../../noj-tests/e2e/cross-domain/restore_drill_contract.test.ts",
+    import.meta.url,
+  );
+  const text = await Deno.readTextFile(fixture);
+  assertStringIncludes(
+    text,
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
+  );
+  assert(!text.includes("user_roles"), "e2e 夹具不得引用已删除的 user_roles");
+  assert(!text.includes("FROM roles"), "e2e 夹具不得引用已删除的 roles");
 });

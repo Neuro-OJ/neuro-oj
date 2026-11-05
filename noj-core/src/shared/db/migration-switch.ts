@@ -24,6 +24,7 @@ import {
   type ExpectedMigration,
   type MigrationValidationMode,
   readExpectedMigrations,
+  readMigrationLedger,
   validateMigrationLedger,
 } from "./schema-compat.ts";
 
@@ -69,18 +70,10 @@ async function scalar(query: ReturnType<typeof sql>): Promise<number> {
   return Number(rows[0]?.value ?? 0);
 }
 
-/** 读取 ledger；表不存在时返回空数组。 */
+/** 读取 ledger；表不存在时返回空数组。查询实现由 schema-compat 共享。 */
 async function readLedger(): Promise<MigrationLedgerRow[]> {
-  const rows = await getDb().execute(sql`
-    SELECT migration_ledger.hash,
-      migration_ledger.created_at::text AS created_at
-    FROM drizzle.__drizzle_migrations AS migration_ledger
-    ORDER BY migration_ledger.id ASC
-  `) as unknown as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    hash: String(row.hash ?? ""),
-    createdAt: String(row.created_at ?? ""),
-  }));
+  const rows = await readMigrationLedger();
+  return rows.map((row) => ({ hash: row.hash, createdAt: row.createdAt }));
 }
 
 /** 在迁移锁内执行只读门禁；任何判断失败都抛错而不是放行。 */

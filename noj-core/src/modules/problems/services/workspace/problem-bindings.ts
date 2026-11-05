@@ -114,6 +114,10 @@ export async function importDomainProblem(
       commitDomainProblemCopy(tx, prepared)
     );
   } catch (error) {
+    // 补偿按引用守卫删除本次上传：内容寻址存储会把与源题逐字节相同的副本
+    // 去重到同一 URL，此时对象仍被源版本引用，补偿保留对象（no-op）；
+    // 只有非去重后端或内容不同的上传才会真正删除。删除语义见
+    // `workspace-copy-failure.test.ts` 的「唯一字节」用例。
     await compensateProblemCopy(prepared);
     throw error;
   }
