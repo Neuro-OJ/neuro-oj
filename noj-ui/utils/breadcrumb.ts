@@ -145,8 +145,6 @@ const ROUTES: BreadcrumbRoute[] = [
       key: 'breadcrumb.submissionJob',
     }],
   },
-  { pattern: '/d/:slug/teaching', trail: [{ param: 'slug' }, { key: 'breadcrumb.teaching' }] },
-  { pattern: '/d/:slug/my-learning', trail: [{ param: 'slug' }, { key: 'breadcrumb.myLearning' }] },
   {
     pattern: '/d/:slug/classrooms/:classroomId/students',
     trail: [{ param: 'slug' }, { key: 'breadcrumb.classrooms', to: '/d/:slug/classrooms' }, { param: 'classroomId' }, {

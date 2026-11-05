@@ -60,6 +60,7 @@ watch(() => route.query.view, () => {
 });
 
 watch(currentView, (v) => {
+  if (taskPage.value !== 1) taskPage.value = 1;
   if (route.query.view !== v) {
     router.replace({ query: { ...route.query, view: v } });
   }
@@ -122,6 +123,22 @@ usePolling({
 });
 
 useEducationNotifications(() => refreshAll());
+
+// 任务分页：教学与学习共用页码，翻页只刷新当前视角
+const taskTotal = computed(() =>
+  currentView.value === 'teaching'
+    ? teachingData.value?.data.total ?? 0
+    : learningData.value?.data.total ?? 0
+);
+const taskPerPage = computed(() =>
+  currentView.value === 'teaching'
+    ? teachingData.value?.data.per_page ?? 20
+    : learningData.value?.data.per_page ?? 20
+);
+watch(taskPage, () => {
+  if (currentView.value === 'teaching') void refreshTeaching();
+  else if (currentView.value === 'learning') void refreshLearning();
+});
 
 // 教学指标统计计算
 const visibleTeachingTasks = computed(() => {
@@ -333,33 +350,34 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
       </div>
 
-      <!-- 教学任务列表控制栏 -->
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-layers" class="size-5 text-primary" />
-          <h2 class="font-semibold text-text text-base">班级教学任务列表</h2>
-          <span class="text-xs text-text-muted tabular-nums">({{ visibleTeachingTasks.length }} 项)</span>
-        </div>
-        <USelect
-          v-model="taskFilter"
-          :items="[
-            { label: '全部教学任务', value: 'all' },
-            { label: '仅看进行中', value: 'active' },
-            { label: '仅看需跟进学情', value: 'attention' },
-          ]"
-          aria-label="教学任务筛选"
-          class="w-44"
-        />
-      </div>
+      <section class="rounded-lg border border-border bg-bg-panel">
+        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-layers" class="size-5 text-primary" />
+            <h2 class="font-semibold text-text text-base">班级教学任务列表</h2>
+            <span class="text-xs text-text-muted tabular-nums">共 {{ visibleTeachingTasks.length }} 项</span>
+          </div>
+          <USelect
+            v-model="taskFilter"
+            :items="[
+              { label: '全部教学任务', value: 'all' },
+              { label: '仅看进行中', value: 'active' },
+              { label: '仅看需跟进学情', value: 'attention' },
+            ]"
+            aria-label="教学任务筛选"
+            class="w-44"
+          />
+        </header>
 
       <!-- 教学任务卡片网格 -->
       <AsyncContent
         :status="teachingError ? 'error' : teachingStatus === 'pending' ? 'loading' : visibleTeachingTasks.length ? 'data' : 'empty'"
         :error="teachingError ? extractApiError(teachingError).message : undefined"
         empty-text="当前没有符合条件的教学任务"
+        padding="none"
         @retry="refreshTeaching()"
       >
-        <div class="grid gap-6 md:grid-cols-2">
+        <div class="grid gap-6 p-5 md:grid-cols-2">
           <div
             v-for="task in visibleTeachingTasks"
             :key="task.id"
@@ -454,18 +472,27 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
-            <UIcon name="i-lucide-clipboard-check" class="size-10 text-text-muted mb-2" />
-            <p class="font-medium text-text">暂无正在进行的教学任务</p>
-            <p class="text-xs text-text-muted mt-1">进入具体的班级后，点击「创建作业」即可向学员布置训练任务。</p>
+          <div class="flex items-center justify-center gap-2 px-5 py-6 text-sm text-text-muted">
+            <UIcon name="i-lucide-clipboard-check" class="size-4" />
+            <span>当前没有符合条件的教学任务</span>
           </div>
         </template>
       </AsyncContent>
+
+        <footer
+          v-if="taskTotal > taskPerPage"
+          class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3"
+        >
+          <span class="text-xs text-text-muted tabular-nums">
+            共 <strong class="text-text font-semibold">{{ taskTotal }}</strong> 项，第 {{ taskPage }} / {{ Math.ceil(taskTotal / taskPerPage) }} 页
+          </span>
+          <UPagination v-model:page="taskPage" :total="taskTotal" :items-per-page="taskPerPage" :sibling-count="1" show-edges />
+        </footer>
+      </section>
     </div>
 
     <!-- 视角 2: 我的学习大盘 (Learning View) -->
     <div v-show="currentView === 'learning'" class="space-y-6">
-      <ClassroomContests :slug="slug!" />
       <!-- 个人学习指标卡 -->
       <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
         <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
@@ -507,13 +534,20 @@ useSeoMeta({ title: '班级研练中心' });
       </div>
 
       <!-- 学生作业卡片网格 -->
+      <section class="rounded-lg border border-border bg-bg-panel">
+        <header class="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
+          <UIcon name="i-lucide-book-open" class="size-5 text-primary" />
+          <h2 class="font-semibold text-text text-base">我的作业任务</h2>
+          <span class="text-xs text-text-muted tabular-nums">共 {{ visibleLearningTasks.length }} 项</span>
+        </header>
       <AsyncContent
         :status="learningError ? 'error' : learningStatus === 'pending' ? 'loading' : visibleLearningTasks.length ? 'data' : 'empty'"
         :error="learningError ? extractApiError(learningError).message : undefined"
         empty-text="当前没有分配给你的作业任务"
+        padding="none"
         @retry="refreshLearning()"
       >
-        <div class="grid gap-6 md:grid-cols-2">
+        <div class="grid gap-6 p-5 md:grid-cols-2">
           <div
             v-for="task in visibleLearningTasks"
             :key="task.id"
@@ -589,13 +623,25 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
-            <UIcon name="i-lucide-book-open" class="size-10 text-text-muted mb-2" />
-            <p class="font-medium text-text">暂无正在进行的作业</p>
-            <p class="text-xs text-text-muted mt-1">教练布置作业后将在此处实时推送显示。</p>
+          <div class="flex items-center justify-center gap-2 px-5 py-6 text-sm text-text-muted">
+            <UIcon name="i-lucide-book-open" class="size-4" />
+            <span>当前没有分配给你的作业任务</span>
           </div>
         </template>
       </AsyncContent>
+
+        <footer
+          v-if="taskTotal > taskPerPage"
+          class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3"
+        >
+          <span class="text-xs text-text-muted tabular-nums">
+            共 <strong class="text-text font-semibold">{{ taskTotal }}</strong> 项，第 {{ taskPage }} / {{ Math.ceil(taskTotal / taskPerPage) }} 页
+          </span>
+          <UPagination v-model:page="taskPage" :total="taskTotal" :items-per-page="taskPerPage" :sibling-count="1" show-edges />
+        </footer>
+      </section>
+
+      <ClassroomContests :slug="slug!" />
 
       <!-- 求助回复信箱卡片 -->
       <div v-if="(learningData?.data.help_requests.length ?? 0) > 0" class="rounded-lg border border-border bg-bg-panel p-4 space-y-3">
@@ -661,7 +707,7 @@ useSeoMeta({ title: '班级研练中心' });
         :empty-text="roomSearch || roomStageFilter !== 'all' ? '未找到符合条件的班级' : '你尚未加入任何班级'"
         @retry="refreshRooms()"
       >
-        <div class="grid gap-6 md:grid-cols-2">
+        <div class="grid gap-6 p-5 md:grid-cols-2">
           <div
             v-for="room in filteredRooms"
             :key="room.id"
