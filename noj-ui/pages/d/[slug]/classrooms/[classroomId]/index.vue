@@ -39,6 +39,19 @@ const activeTasksCount = computed(() => {
   return (tasks.data.value?.data ?? []).filter((t) => assignmentPhase(t) === '进行中').length;
 });
 
+/** 与 noj-core listAssignments 的 limit(50) 对齐；接口不带 total，满页时不能声称“共 N 份”。 */
+const ASSIGNMENT_PAGE_SIZE = 50;
+
+/**
+ * 满页时第 51 份起会让计数变小、翻页状态自相矛盾，因此满页或翻页后只报“本页 N 份”。
+ * 后端补上 total 后这里可直接换成 total。
+ */
+const assignmentsTruncated = computed(() =>
+  (tasks.data.value?.data.length ?? 0) >= ASSIGNMENT_PAGE_SIZE || page.value > 1
+);
+
+// 面包屑动态层用班级名回填，避免把 classroomId 的原始 UUID 暴露给用户。
+useBreadcrumbParams({ classroomId: () => room.data.value?.data.name });
 useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
 </script>
 
@@ -101,8 +114,9 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
           </div>
 
           <div class="text-xs text-text-muted tabular-nums">
-            作业总计 <strong class="text-text font-semibold">{{ tasks.data.value?.data.length ?? 0 }}</strong> 份
-            <span class="ml-1 text-primary">（{{ activeTasksCount }} 份进行中）</span>
+            <template v-if="assignmentsTruncated">本页</template><template v-else>共</template>
+            <strong class="text-text font-semibold">{{ tasks.data.value?.data.length ?? 0 }}</strong> 份作业
+            <span class="ml-1 text-success">（{{ activeTasksCount }} 份进行中）</span>
           </div>
         </div>
 
@@ -123,7 +137,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
           <UIcon name="i-lucide-clipboard-list" class="size-5 text-primary" />
           <h2 class="text-base font-semibold text-text">班级作业任务</h2>
           <span v-if="tasks.data.value?.data.length" class="text-xs text-text-muted tabular-nums">
-            (共 {{ tasks.data.value.data.length }} 份)
+            ({{ assignmentsTruncated ? '本页' : '共' }} {{ tasks.data.value.data.length }} 份)
           </span>
         </div>
       </div>

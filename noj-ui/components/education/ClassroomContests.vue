@@ -15,10 +15,38 @@ const { data, error, status, refresh } = await useAsyncData(key, () => api.list(
   classroom_id: props.classroomId,
   my_classrooms: !props.classroomId,
 }));
+
+/** 零态与失败折叠：没有可见竞赛或首屏加载失败时只留一行提示，不占掉作业列表的首屏。 */
+const showCompact = computed(() =>
+  error.value
+    ? (data.value?.data.length ?? 0) === 0
+    : status.value !== 'pending' && (data.value?.data.length ?? 0) === 0
+);
 </script>
 
 <template>
-  <section class="rounded-lg border border-border bg-bg-panel">
+  <section v-if="showCompact" class="rounded-lg border border-border bg-bg-panel px-5 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2 text-sm text-text-secondary">
+        <UIcon :name="error ? 'i-lucide-alert-circle' : 'i-lucide-trophy'" class="size-4 text-text-muted" />
+        <template v-if="error">
+          <span>班级关联竞赛加载失败</span>
+          <span class="text-xs text-text-muted">{{ extractApiError(error).message }}</span>
+        </template>
+        <template v-else>
+          <span>暂无班级关联竞赛</span>
+          <span class="text-xs text-text-muted">班级竞赛发布后会出现在这里</span>
+        </template>
+      </div>
+      <div class="flex items-center gap-3">
+        <UButton v-if="error" color="primary" variant="outline" size="sm" @click="refresh()">重试</UButton>
+        <NuxtLink :to="`/d/${slug}/contests`" class="text-xs font-medium text-primary hover:underline">
+          前往竞赛中心
+        </NuxtLink>
+      </div>
+    </div>
+  </section>
+  <section v-else class="rounded-lg border border-border bg-bg-panel">
     <div class="border-b border-border px-5 py-4">
       <div class="flex items-center gap-2">
         <UIcon name="i-lucide-trophy" class="size-5 text-primary" />

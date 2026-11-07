@@ -40,7 +40,7 @@ const suppressed = computed(
 </script>
 
 <template>
-  <header class="flex flex-wrap items-start justify-between gap-4">
+  <header class="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
     <div class="min-w-0 flex-1">
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <slot name="leading" />
@@ -81,11 +81,12 @@ const suppressed = computed(
       />
     </div>
 
-    <div class="flex flex-col items-end gap-3">
-      <div class="flex flex-wrap items-center justify-end gap-2">
+    <!-- 窄屏纵向堆叠：统计条单独成行，避免把标题列挤到逐字换行。 -->
+    <div class="flex w-full flex-col items-start gap-3 sm:w-auto sm:items-end">
+      <div class="flex flex-wrap items-center gap-2 sm:justify-end">
         <slot name="actions" />
       </div>
-      <dl class="flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5 text-xs text-text-secondary">
+      <dl class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-text-secondary sm:justify-end">
         <template v-if="suppressed">
           <div class="flex items-center gap-1">
             <UIcon name="i-lucide-trophy" class="size-3.5" />

@@ -30,6 +30,8 @@ const students = computed(() =>
   ) ?? []
 );
 
+// 面包屑动态层用班级名回填，避免把 classroomId 的原始 UUID 暴露给用户。
+useBreadcrumbParams({ classroomId: () => room.data.value?.data.name });
 useSeoMeta({ title: '班级学生训练目录' });
 </script>
 

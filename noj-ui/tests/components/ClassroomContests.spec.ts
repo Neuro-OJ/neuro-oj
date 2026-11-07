@@ -63,6 +63,16 @@ describe('班级关联竞赛入口', () => {
     expect(list).toHaveBeenLastCalledWith('school', 2, { classroom_id: undefined, my_classrooms: true });
     wrapper.unmount();
   });
+  it('没有关联竞赛时折叠为一行提示，仍保留竞赛中心入口', async () => {
+    list.mockResolvedValueOnce({ data: [], pagination: { total: 0, total_pages: 0 } });
+    const wrapper = await view('room');
+    expect(wrapper.text()).toContain('暂无班级关联竞赛');
+    expect(wrapper.text()).not.toContain('共 0 场');
+    expect(wrapper.findAll('a').map((a) => a.text())).toContain('前往竞赛中心');
+    expect(wrapper.findAll('a').find((a) => a.text() === '前往竞赛中心')!.attributes('href'))
+      .toBe('/d/school/contests');
+    wrapper.unmount();
+  });
   it('班级概览仅查询当前班级，不误用本人学生身份筛选教师视角', async () => {
     const wrapper = await view('room');
     expect(list).toHaveBeenCalledWith('school', 1, { classroom_id: 'room', my_classrooms: false });

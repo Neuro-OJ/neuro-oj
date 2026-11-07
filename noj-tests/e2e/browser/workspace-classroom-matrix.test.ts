@@ -132,7 +132,7 @@ async function submitObjective(
     url.pathname.startsWith(`/d/${slug}/problems/`)
   );
   assertEquals(new URL(page.url()).searchParams.get("assignment_id"), taskId);
-  await page.getByRole("checkbox", {
+  await page.getByRole("radio", {
     name: correct ? "正确选项" : "待改进选项",
     exact: true,
   }).check();
