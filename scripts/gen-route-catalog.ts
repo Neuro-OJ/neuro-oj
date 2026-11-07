@@ -69,7 +69,155 @@ export function collectRouteFiles(repositoryRoot = ROOT): string[] {
  * 仅满足第 2 条即可排除 `c.get("userId")` 这类上下文读取，两条叠加进一步降低误判。
  */
 const ROUTE_RE =
-  /\b([A-Za-z_$][\w$]*)\.(get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g;
+  /\b([A-Za-z_$][\w$]*)\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/g;
+
+/**
+ * 模板字面量路由（反引号路径）。
+ *
+ * 2026-11-04 评审补漏：旧正则把反引号也当路径引号，但路径以插值开头，被
+ * "路径必须以 / 开头"的过滤静默丢弃——四条域资源路由因此从未进入目录，
+ * --check 也一直判最新。这里单独解析插值，解析不了就报错，不再静默跳过。
+ * 插值来源支持三类：同文件 const 字符串（含引用其他 const 的模板）、
+ * for (const x of [字面量...]) 与 for (const [a, b] of [[字面量...]]) 循环变量。
+ */
+const TEMPLATE_ROUTE_RE =
+  /\b([A-Za-z_$][\w$]*)\.(get|post|put|patch|delete)\(\s*\x60([^\x60]*)\x60/g;
+
+/** 同文件 const 字符串或模板字面量声明，用于解析插值。 */
+const CONST_VALUE_RE =
+  /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|\x60([^\x60]*)\x60)/g;
+
+/** 字面量枚举循环：for (const x of [...]) 与 for (const [a, b] of [[...]])。 */
+const LITERAL_LOOP_RE =
+  /for\s*\(\s*const\s+(\[[^\]]*\]|[A-Za-z_$][\w$]*)\s+of\s+(\[[\s\S]*?\])\s*(?:as\s+const\s*)?\)/g;
+
+/** 取出字面量数组里的字符串（忽略数字、注释与嵌套括号）。 */
+function literalStrings(text: string): string[] {
+  return [...text.matchAll(/"([^"]*)"|'([^']*)'/g)].map((m) => m[1] ?? m[2]);
+}
+
+/** 解析字面量数组为一组元组：一维数组是单个元组，二维数组每个内层一项。 */
+function parseLiteralTuples(text: string): string[][] {
+  if (text.trimStart().startsWith("[[")) {
+    return [...text.matchAll(/\[([^\[\]]*)\]/g)].map((m) =>
+      literalStrings(m[1])
+    );
+  }
+  return [literalStrings(text)];
+}
+
+/** 同一标识符的多处绑定合并；路由目录取并集即可。 */
+function addBindings(
+  target: Map<string, string[]>,
+  name: string,
+  values: string[],
+): void {
+  const existing = target.get(name) ?? [];
+  for (const value of values) {
+    if (!existing.includes(value)) existing.push(value);
+  }
+  target.set(name, existing);
+}
+
+/** 收集可静态求值的 const 字符串，逐轮展开 const 之间的模板引用。 */
+function collectConstants(text: string): Map<string, string> {
+  const declared = new Map<string, string | undefined>();
+  for (const m of text.matchAll(CONST_VALUE_RE)) {
+    const name = m[1];
+    const value = m[2] ?? m[3] ?? m[4] ?? "";
+    if (declared.has(name) && declared.get(name) !== value) {
+      declared.set(name, undefined);
+    } else {
+      declared.set(name, value);
+    }
+  }
+
+  const resolved = new Map<string, string>();
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (const [name, value] of declared) {
+      if (value === undefined) continue;
+      const next = value.replace(
+        /\$\{([A-Za-z_$][\w$]*)\}/g,
+        (whole, dependency: string) => resolved.get(dependency) ?? whole,
+      );
+      if (next !== value) {
+        declared.set(name, next);
+        changed = true;
+      }
+      if (!next.includes(DOLLAR_BRACE)) resolved.set(name, next);
+    }
+    if (!changed) break;
+  }
+  return resolved;
+}
+
+/** 收集 for-of 字面量循环里的标识符取值。 */
+function collectLoopBindings(text: string): Map<string, string[]> {
+  const bindings = new Map<string, string[]>();
+  for (const m of text.matchAll(LITERAL_LOOP_RE)) {
+    const pattern = m[1];
+    const tuples = parseLiteralTuples(m[2]);
+    if (pattern.startsWith("[")) {
+      const names = pattern
+        .slice(1, -1)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      names.forEach((name, index) => {
+        addBindings(
+          bindings,
+          name,
+          tuples.map((tuple) => tuple[index]).filter((value) =>
+            value !== undefined
+          ),
+        );
+      });
+    } else {
+      addBindings(bindings, pattern, tuples.flat());
+    }
+  }
+  return bindings;
+}
+
+/** 模板里的插值标记，避免在源码里写出插值定界符。 */
+const DOLLAR_BRACE = "$" + "{";
+
+interface TemplateExpansion {
+  paths: string[];
+  unresolved: string[];
+}
+
+/** 展开模板路由的全部取值；返回未解析的标识符而不是静默丢弃。 */
+function expandTemplate(
+  raw: string,
+  constants: Map<string, string>,
+  loops: Map<string, string[]>,
+): TemplateExpansion {
+  const names = [
+    ...new Set(
+      [...raw.matchAll(/\$\{([A-Za-z_$][\w$]*)\}/g)].map((m) => m[1]),
+    ),
+  ];
+  const unresolved: string[] = [];
+  let paths = [raw];
+  for (const name of names) {
+    const values = loops.get(name) ??
+      (constants.has(name) ? [constants.get(name)!] : undefined);
+    if (!values) {
+      unresolved.push(name);
+      continue;
+    }
+    const placeholder = DOLLAR_BRACE + name + "}";
+    paths = paths.flatMap((path) =>
+      values.map((value) => path.split(placeholder).join(value))
+    );
+    if (paths.length > 32) {
+      throw new Error("路由模板枚举结果过多（上限 32）：" + raw);
+    }
+  }
+  return { paths, unresolved };
+}
 
 /**
  * 真实路由条数下限（防止解析规则与写法脱节后"生成空目录仍判最新"）。
@@ -80,16 +228,50 @@ const MIN_ROUTE_COUNT = 200;
 export function extractRoutes(file: string): RouteEntry[] {
   const text = Deno.readTextFileSync(file);
   const entries: RouteEntry[] = [];
+  const push = (method: string, path: string) => {
+    entries.push({
+      method: method.toUpperCase(),
+      path,
+      file: relative(ROOT, file),
+    });
+  };
+
   for (const m of text.matchAll(ROUTE_RE)) {
     const path = m[3];
     // 路径必须以 / 开头——非路径的第二参数（如 c.get("userId")）在此被排除
     if (!path.startsWith("/")) continue;
-    entries.push({
-      method: m[2].toUpperCase(),
-      path,
-      file: relative(ROOT, file),
-    });
+    push(m[2], path);
   }
+
+  const constants = collectConstants(text);
+  const loops = collectLoopBindings(text);
+  for (const m of text.matchAll(TEMPLATE_ROUTE_RE)) {
+    const raw = m[3];
+    // 只有看起来像路由的模板才值得报错；headers.get 之类的取键调用直接忽略。
+    const looksLikeRoute = raw.startsWith("/") || raw.startsWith(DOLLAR_BRACE);
+    const { paths, unresolved } = expandTemplate(raw, constants, loops);
+    if (unresolved.length > 0) {
+      if (looksLikeRoute) {
+        throw new Error(
+          "无法静态解析路由模板：" + raw + "（文件 " + relative(ROOT, file) +
+            "），未解析插值：" + unresolved.join(", ") +
+            "。请改用字面量路径，或把插值来源写成同文件的 const 字符串 / 字面量循环。",
+        );
+      }
+      continue;
+    }
+    for (const path of paths) {
+      if (path.includes(DOLLAR_BRACE)) {
+        throw new Error(
+          "路由模板含非标识符插值：" + raw + "（文件 " +
+            relative(ROOT, file) + "），请改用字面量路径。",
+        );
+      }
+      if (!path.startsWith("/")) continue;
+      push(m[2], path);
+    }
+  }
+
   return entries;
 }
 

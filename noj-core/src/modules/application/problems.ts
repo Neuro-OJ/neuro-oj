@@ -46,7 +46,6 @@ import {
 import { importDomainProblemBundle } from "../problems/services/workspace/problem-bundle-import.ts";
 import { importDomainProblemDraftBundle } from "../problems/services/workspace/problem-bundle-edit.ts";
 import { loadEditableDomainProblem } from "../problems/services/workspace/problem-edit.ts";
-import { setDomainProblemSharing } from "../problems/services/workspace/problem-sharing.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -67,9 +66,8 @@ import {
   saveDomainTraining,
 } from "../problems/services/workspace/trainings.ts";
 import {
-  importDomainTraining,
-  setDomainTrainingSharing,
-} from "../problems/services/workspace/training-sharing.ts";
+  copyDomainTraining,
+} from "../problems/services/workspace/training-copy.ts";
 import {
   saveOiDraft,
   type SaveOiDraftResult,
@@ -309,18 +307,6 @@ export function setDomainProblemBindingStateCommand(
   );
 }
 
-/** 修改题目跨域共享政策；共享授权必须绑定当前 UserActor。 */
-export function setDomainProblemSharingCommand(
-  actor: UserActor,
-  slug: string,
-  reference: string,
-  input: Parameters<typeof setDomainProblemSharing>[2] extends string
-    ? Parameters<typeof setDomainProblemSharing>[3]
-    : never,
-) {
-  return setDomainProblemSharing(slug, reference, actor.userId, input);
-}
-
 /** 默认域题单写用例统一由 UserActor 进入。 */
 export function createTrainingCommand(
   actor: UserActor,
@@ -384,21 +370,12 @@ export function saveDomainTrainingCommand(
   return saveDomainTraining(slug, actor.userId, input, target);
 }
 
-export function setDomainTrainingSharingCommand(
-  actor: UserActor,
-  slug: string,
-  reference: string,
-  input: Parameters<typeof setDomainTrainingSharing>[3],
-) {
-  return setDomainTrainingSharing(slug, reference, actor.userId, input);
-}
-
-export function importDomainTrainingCommand(
+export function copyDomainTrainingCommand(
   actor: UserActor,
   slug: string,
   trainingId: string,
 ) {
-  return importDomainTraining(slug, trainingId, actor.userId);
+  return copyDomainTraining(slug, trainingId, actor.userId);
 }
 
 /** 标签管理命令保留显式操作者；审计观测仍由 HTTP composition 注入。 */

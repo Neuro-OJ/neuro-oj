@@ -158,10 +158,5 @@ export type {
   ContestRemediationInput,
   ContestRemediationRule,
 } from "./services/contest-remediation.ts";
-export { getTrainingComparison } from "./services/training-comparison.ts";
-export type {
-  TrainingComparison,
-  TrainingComparisonInput,
-} from "./services/training-comparison.ts";
 export { resolveAssignmentSubmissionOrigin } from "./services/assignment-submission-origin.ts";
 export { registerEducationObservability } from "./observability.ts";

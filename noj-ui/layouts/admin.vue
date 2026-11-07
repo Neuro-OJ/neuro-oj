@@ -72,8 +72,7 @@ const navGroups: NavGroup[] = [
     label: '用户与安全',
     items: [
       { label: '用户管理', to: '/admin/users', icon: 'i-lucide-users' },
-      { label: '角色权限', to: '/admin/roles', icon: 'i-lucide-shield-check' },
-      { label: '黑名单管理', to: '/admin/blacklist', icon: 'i-lucide-ban' },
+          { label: '黑名单管理', to: '/admin/blacklist', icon: 'i-lucide-ban' },
       { label: '法律与合规', to: '/admin/legal', icon: 'i-lucide-scale' },
     ],
   },

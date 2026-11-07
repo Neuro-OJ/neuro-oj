@@ -115,9 +115,8 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
       ) && !event.user_id;
     // 教学人员身份属于域；班级成员表只承载学生名单。
     const teachers = sql`SELECT dm.user_id FROM domain_memberships dm
-      JOIN domain_member_roles dr ON dr.membership_id = dm.id
       WHERE dm.domain_id = ${event.domain_id} AND dm.status = 'active'
-        AND dr.role IN ('educator', 'admin', 'owner')`;
+        AND dm.role IN ('educator', 'admin')`;
     const selection = lifecycle
       ? sql`SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
         .assignment_id!}
@@ -236,9 +235,8 @@ export function educationNotificationVisibleWhere(
     sql`EXISTS (SELECT 1 FROM domain_memberships dm WHERE dm.domain_id = n.domain_id AND dm.user_id = ${actorId} AND dm.status = 'active')`;
   const governs =
     sql`${platformAdmin} OR EXISTS (SELECT 1 FROM domain_memberships dm
-    JOIN domain_member_roles dr ON dr.membership_id = dm.id
     WHERE dm.domain_id = n.domain_id AND dm.user_id = ${actorId} AND dm.status = 'active'
-      AND dr.role IN ('educator','admin','owner'))`;
+      AND dm.role IN ('educator','admin'))`;
   return sql`EXISTS (SELECT 1 FROM notifications n JOIN assignments a ON a.id = n.assignment_id AND a.domain_id = n.domain_id
     JOIN domains d ON d.id = n.domain_id WHERE n.id = ${accountNotifications.id}
       AND d.status <> 'suspended' AND (${platformAdmin} OR ${member})

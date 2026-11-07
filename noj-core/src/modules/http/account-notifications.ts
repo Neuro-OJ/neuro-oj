@@ -31,7 +31,7 @@ async function visible(actorId: string, domainId?: string) {
     eq(accountNotifications.recipient_id, actorId),
     domainId ? eq(accountNotifications.domain_id, domainId) : undefined,
     or(
-      communityNotificationVisibleWhere(actorId, admin),
+      await communityNotificationVisibleWhere(actorId, admin),
       educationNotificationVisibleWhere(actorId, admin),
       contestNotificationVisibleWhere(actorId, admin),
     ),

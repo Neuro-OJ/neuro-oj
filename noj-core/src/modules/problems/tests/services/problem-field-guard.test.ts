@@ -12,23 +12,16 @@
  * 真实 Hono Context（路由层）的权限路径见 tests/routes/problem-field-guard.test.ts。
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  permissions,
-  problems,
-  rolePermissions,
-  roles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { problems, users } from "../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   ForbiddenError,
 } from "../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createProblem, updateProblem } from "../../index.ts";
 import { importProblemBundle } from "../../index.ts";
 import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
@@ -104,138 +97,11 @@ async function assertResourceLimitExceeded(
 }
 
 await resetDbForTest();
-await ensureRbacSeeds();
 
 // 注意：必须在 resetDbForTest() 之后获取 db——reset 会关闭旧连接池
 // （PG 模式 _client.end()），setup 前缓存的引用指向已关闭的池会报
 // CONNECTION_ENDED
 const db = getDb();
-
-// ── seed 覆盖（任务 5.3）────────────────────────
-
-Deno.test({
-  name: "seed: 敏感字段权限项存在",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const rows = await db.select().from(permissions).where(
-      eq(permissions.resource, "problem"),
-    );
-    const actions = rows.map((r) => r.action);
-    assert(
-      actions.includes("field_evaluator_command"),
-      "应有 problem:field_evaluator_command",
-    );
-    assert(
-      actions.includes("field_evaluator_network"),
-      "应有 problem:field_evaluator_network",
-    );
-  },
-});
-
-Deno.test({
-  name: "seed: user 角色默认不拥有敏感字段权限（NOJ-062 安全默认）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const [userRole] = await db.select({ id: roles.id }).from(roles).where(
-      eq(roles.name, "user"),
-    ).limit(1);
-    const permRows = await db.select({
-      resource: permissions.resource,
-      action: permissions.action,
-    })
-      .from(rolePermissions)
-      .innerJoin(permissions, eq(rolePermissions.permission_id, permissions.id))
-      .where(eq(rolePermissions.role_id, userRole.id));
-    const perms = permRows.map((p) => `${p.resource}:${p.action}`);
-    assert(
-      !perms.includes("problem:field_evaluator_command"),
-      "user 角色默认不应有 command 权限",
-    );
-    assert(
-      !perms.includes("problem:field_evaluator_network"),
-      "user 角色默认不应有 network 权限",
-    );
-  },
-});
-
-Deno.test({
-  name: "seed: 管理员收紧后重复 ensureRbacSeeds 不恢复（一次性授权持久化）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const [userRole] = await db.select({ id: roles.id }).from(roles).where(
-      eq(roles.name, "user"),
-    ).limit(1);
-    const [cmdPerm] = await db.select({ id: permissions.id })
-      .from(permissions)
-      .where(
-        and(
-          eq(permissions.resource, "problem"),
-          eq(permissions.action, "field_evaluator_command"),
-        ),
-      )
-      .limit(1);
-    assert(userRole, "测试前置数据缺失：user 角色应由 RBAC seed 创建");
-    assert(
-      cmdPerm,
-      "测试前置数据缺失：problem:field_evaluator_command 权限应由 RBAC seed 创建",
-    );
-
-    // 先模拟一次管理员曾显式授予 command，再收紧。这样该测试不依赖
-    // 当前 seed 是否已经带有这条授权，同时最终恢复进入测试前的状态。
-    const [permissionBefore] = await db.select({
-      permission_id: rolePermissions.permission_id,
-    })
-      .from(rolePermissions)
-      .where(
-        and(
-          eq(rolePermissions.role_id, userRole.id),
-          eq(rolePermissions.permission_id, cmdPerm.id),
-        ),
-      )
-      .limit(1);
-    try {
-      await db.insert(rolePermissions).values({
-        role_id: userRole.id,
-        permission_id: cmdPerm.id,
-      }).onConflictDoNothing();
-
-      // 模拟管理员收紧：移除 user 角色的 command 授权
-      await db.delete(rolePermissions).where(
-        and(
-          eq(rolePermissions.role_id, userRole.id),
-          eq(rolePermissions.permission_id, cmdPerm.id),
-        ),
-      );
-      // 重启（再次 seed）不得恢复
-      await ensureRbacSeeds();
-      const [after] = await db.select().from(rolePermissions).where(
-        and(
-          eq(rolePermissions.role_id, userRole.id),
-          eq(rolePermissions.permission_id, cmdPerm.id),
-        ),
-      ).limit(1);
-      assertEquals(after, undefined, "收紧的授权不应被 seed 恢复");
-    } finally {
-      // 恢复进入测试前的状态，即使断言或 seed 在中途失败也不污染后续用例。
-      if (permissionBefore) {
-        await db.insert(rolePermissions).values({
-          role_id: userRole.id,
-          permission_id: cmdPerm.id,
-        }).onConflictDoNothing();
-      } else {
-        await db.delete(rolePermissions).where(
-          and(
-            eq(rolePermissions.role_id, userRole.id),
-            eq(rolePermissions.permission_id, cmdPerm.id),
-          ),
-        );
-      }
-    }
-  },
-});
 
 /** 确保测试用户存在（problems.owner_id 外键） */
 async function ensureCliUser(id: string): Promise<void> {
@@ -350,7 +216,7 @@ Deno.test({
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).onConflictDoNothing();
-    await grantDefaultCatalogRole("cli-owner-id", "editor");
+    await grantDefaultCatalogRole("cli-owner-id", "educator");
     const problem = await createProblem(
       {
         title: `待收紧 ${ts}`,
@@ -382,7 +248,7 @@ Deno.test({
   fn: async () => {
     // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
     await ensureCliUser("cli-user-id");
-    await grantDefaultCatalogRole("cli-user-id", "editor");
+    await grantDefaultCatalogRole("cli-user-id", "educator");
     const problem = await createProblem(
       {
         title: `CLI user 默认 ${ts}`,
@@ -403,7 +269,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await ensureCliUser("cli-user");
-    await grantDefaultCatalogRole("cli-user", "editor");
+    await grantDefaultCatalogRole("cli-user", "educator");
     const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
     const zip = makeBundleZip({
       title: `CLI user 导入 ${ts}`,
@@ -554,7 +420,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const actorToken = await createDefaultCatalogToken("editor");
+    const actorToken = await createDefaultCatalogToken("educator");
     const actorId = decodeJwt(actorToken).sub!;
     const zip = makeBundleZip({
       runtime_config: {

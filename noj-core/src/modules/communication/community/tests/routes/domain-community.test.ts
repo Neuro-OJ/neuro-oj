@@ -10,7 +10,7 @@ import { recordSseEvent } from "../../../../../shared/sse/sse-events.ts";
 import { signToken } from "../../../../access/identity/index.ts";
 import {
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../../access/workspace/index.ts";
 import { createComment, withDomainCommunity } from "../../index.ts";
 import { accountNotificationRouter } from "../../../../http/account-notifications.ts";
@@ -86,7 +86,7 @@ Deno.test({
       })).status,
       403,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["moderator"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "educator");
     assertEquals(
       (await jsonRequest(application, `${target}/manage/boards`, {
         token: student,
@@ -126,7 +126,7 @@ Deno.test({
       )).status,
       409,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["member"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "member");
     assertEquals(
       (await jsonRequest(application, `${target}/manage/boards`, {
         token: student,

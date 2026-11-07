@@ -49,7 +49,7 @@ const basePath = computed(() =>
 );
 
 // 表单状态
-const mode = ref<'general' | 'email' | 'once'>(props.existingMembersOnly ? 'email' : 'general');
+const mode = ref<'general' | 'email'>(props.existingMembersOnly ? 'email' : 'general');
 watch(() => props.existingMembersOnly, (restricted) => { if (restricted) mode.value = 'email'; });
 const email = ref('');
 const maxUsesOption = ref<'unlimited' | 'limit'>('unlimited');
@@ -139,7 +139,7 @@ async function createInvitation() {
   }
 
   const payload: {
-    mode: 'general' | 'email' | 'once';
+    mode: 'general' | 'email';
     email?: string;
     max_uses?: number | null;
     expires_at: string;
@@ -155,8 +155,6 @@ async function createInvitation() {
       return;
     }
     payload.email = trimmed;
-    payload.max_uses = 1;
-  } else if (mode.value === 'once') {
     payload.max_uses = 1;
   } else if (mode.value === 'general') {
     if (maxUsesOption.value === 'limit') {
@@ -383,21 +381,6 @@ onMounted(() => {
               >
                 <div class="font-medium text-text">指定邮箱</div>
                 <div class="mt-0.5 text-text-muted text-[11px]">需匹配受邀邮箱，限 1 人</div>
-              </button>
-              <button
-                v-if="!existingMembersOnly"
-                type="button"
-                :aria-pressed="mode === 'once'"
-                :class="[
-                  'rounded border px-3 py-2 text-left text-xs transition-colors',
-                  mode === 'once'
-                    ? 'border-primary bg-primary-bg/30 font-semibold text-primary'
-                    : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
-                ]"
-                @click="mode = 'once'"
-              >
-                <div class="font-medium text-text">一次性邀请</div>
-                <div class="mt-0.5 text-text-muted text-[11px]">无需邮箱，限 1 人兑换</div>
               </button>
             </div>
           </AdminFormField>

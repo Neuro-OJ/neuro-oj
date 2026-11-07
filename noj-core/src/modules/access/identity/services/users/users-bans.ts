@@ -18,8 +18,13 @@ import { invalidateBanCache } from "../security/banCache.ts";
 import { logAudit } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import type { UserResponse } from "../../types/auth.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
-import { getAdminUserIds, isUserAdmin } from "../security/permissions.ts";
 import { createNotification } from "../../../../communication/contracts/cross-module/community_services_notifications.ts";
+import { runBestEffort } from "../../../../../shared/base/best-effort.ts";
+import {
+  assertActiveAdminActorTx,
+  assertAvailableAdminRemainsTx,
+  lockAdminMutationsTx,
+} from "../../../admin-policy.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -29,29 +34,19 @@ import {
 /** users 表行类型 */
 type UserRow = typeof users.$inferSelect;
 
-/** 按 ID 查询用户，不存在则抛 NotFoundError。 */
-async function requireUser(targetUserId: string): Promise<UserRow> {
-  const existing = await getDb().select().from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-  if (existing.length === 0) {
-    throw new NotFoundError("用户不存在");
-  }
-  return existing[0];
-}
-
-/** 由 users 行构造 UserResponse（active_ban 由调用方提供，is_admin 实时计算）。 */
-async function toUserResponse(
+/** 由 users 行构造 UserResponse（active_ban 由调用方提供，角色取自 users.role）。 */
+function toUserResponse(
   user: UserRow,
   activeBan: UserResponse["active_ban"],
   now: string,
-): Promise<UserResponse> {
-  const isAdmin = await isUserAdmin(user.id);
+): UserResponse {
+  const role = user.role === "admin" ? "admin" : "user";
   return {
     id: user.id,
     username: user.username,
     email: user.email,
-    is_admin: isAdmin,
+    role,
+    is_admin: role === "admin",
     has_local_password: user.password_hash !== null,
     must_change_password: user.must_change_password,
     email_verified: user.email_verified,
@@ -107,77 +102,100 @@ export async function banUser(
   }
 
   const db = getDb();
-  const existing = await requireUser(targetUserId);
+  // 封禁、降权、注销共用同一把管理员变更锁：锁内重读操作者与目标状态，
+  // 会话版本、旧封禁关闭、新封禁记录和审计必须同事务提交。
+  const { existing, now } = await db.transaction(async (tx) => {
+    await lockAdminMutationsTx(tx);
+    await assertActiveAdminActorTx(tx, currentUserId);
 
-  // 防封禁最后一个 admin（admin:full_access 权限，含继承链，排除 root）
-  if (await isUserAdmin(existing.id)) {
-    const adminIds = await getAdminUserIds();
-    const adminCount = [...adminIds].filter((id) => id !== ROOT_USER_ID).length;
-    if (adminCount <= 1) {
-      throw new BadRequestError(
-        "系统当前仅有 1 个可登录管理员，不能封禁；如需调整请先创建新的管理员账户",
-      );
+    const [target] = await tx.select().from(users)
+      .where(eq(users.id, targetUserId))
+      .for("update");
+    if (!target || target.deleted_at) {
+      throw new NotFoundError("用户不存在");
     }
-  }
+    // 平台封禁会减少可用管理员；社区范围封禁不改变平台管理员可用数量。
+    if (scope === "platform" && target.role === "admin") {
+      await assertAvailableAdminRemainsTx(tx, targetUserId);
+    }
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  // 1. 关闭已有活跃封禁并递增 session_version 使所有已有会话与 JWT 即刻失效（AR-05）
-  await db.update(users)
-    .set({
-      session_version: sql`${users.session_version} + 1`,
+    // 1. 递增 session_version 使所有已有会话与 JWT 即刻失效（AR-05）
+    await tx.update(users)
+      .set({
+        session_version: sql`${users.session_version} + 1`,
+        updated_at: now,
+      })
+      .where(eq(users.id, targetUserId));
+
+    // 2. 关闭同范围的已有活跃封禁。
+    // 必须带 scope 过滤：否则"社区封禁"会把仍在生效的"平台封禁"一并解封，
+    // 版主借此绕过平台处罚（解除封禁走 unbanUser，语义是解除该用户全部限制）。
+    await tx.update(userBans)
+      .set({ unbanned_at: now, updated_at: now })
+      .where(
+        and(
+          eq(userBans.user_id, targetUserId),
+          eq(userBans.scope, scope),
+          isNull(userBans.unbanned_at),
+        ),
+      );
+
+    // 3. 插入新封禁记录
+    await tx.insert(userBans).values({
+      id: crypto.randomUUID(),
+      user_id: targetUserId,
+      reason: reason ?? "",
+      scope,
+      banned_until: bannedUntil ?? null,
+      banned_at: now,
       updated_at: now,
-    })
-    .where(eq(users.id, targetUserId));
+      banned_by: currentUserId,
+    });
 
-  await db.update(userBans)
-    .set({ unbanned_at: now, updated_at: now })
-    .where(
-      and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
+    await logAudit(
+      "users.ban",
+      {
+        action: "users.ban",
+        reason: reason ?? "",
+        until: bannedUntil ?? null,
+        scope,
+      },
+      { type: "users", id: targetUserId },
+      tx,
     );
-
-  // 2. 插入新封禁记录
-  const banId = crypto.randomUUID();
-  await db.insert(userBans).values({
-    id: banId,
-    user_id: targetUserId,
-    reason: reason ?? "",
-    scope,
-    banned_until: bannedUntil ?? null,
-    banned_at: now,
-    updated_at: now,
-    banned_by: currentUserId,
+    return { existing: target, now };
   });
 
   invalidateBanCache({ userId: targetUserId });
-  await logAudit(
-    "users.ban",
-    {
-      action: "users.ban",
-      reason: reason ?? "",
-      until: bannedUntil ?? null,
-      scope,
-    },
-    { type: "users", id: targetUserId },
+
+  // 通知被封禁用户：封禁范围/理由/时间（撤销举报不删此通知，保留记录）。
+  // 封禁事实已在事务内提交，通知失败不能让接口返回 500：否则管理员重试时
+  // 目标已处于封禁态，会得到与真实状态矛盾的响应。
+  await runBestEffort(
+    "users.ban.notify",
+    () =>
+      createNotification(
+        targetUserId,
+        currentUserId,
+        "ban",
+        null,
+        null,
+        {
+          scope,
+          reason: reason ?? "",
+          banned_until: bannedUntil ?? null,
+          banned_at: now,
+          message: scope === "social"
+            ? "你已被限制社区发布"
+            : "你的账号已被封禁",
+        },
+      ),
+    { target_user_id: targetUserId, scope },
   );
 
-  // 通知被封禁用户：封禁范围/理由/时间（撤销举报不删此通知，保留记录）
-  await createNotification(
-    targetUserId,
-    currentUserId,
-    "ban",
-    null,
-    null,
-    {
-      scope,
-      reason: reason ?? "",
-      banned_until: bannedUntil ?? null,
-      banned_at: now,
-      message: scope === "social" ? "你已被限制社区发布" : "你的账号已被封禁",
-    },
-  );
-
-  return await toUserResponse(
+  return toUserResponse(
     existing,
     {
       reason: reason ?? "",
@@ -199,23 +217,35 @@ export async function unbanUser(
   currentUserId: string,
 ): Promise<UserResponse> {
   const db = getDb();
-  const existing = await requireUser(targetUserId);
+  const { existing, now } = await db.transaction(async (tx) => {
+    await lockAdminMutationsTx(tx);
+    await assertActiveAdminActorTx(tx, currentUserId);
 
-  const now = new Date().toISOString();
-  await db.update(userBans)
-    .set({ unbanned_at: now, unbanned_by: currentUserId, updated_at: now })
-    .where(
-      and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
+    const [target] = await tx.select().from(users)
+      .where(eq(users.id, targetUserId))
+      .for("update");
+    if (!target || target.deleted_at) {
+      throw new NotFoundError("用户不存在");
+    }
+
+    const now = new Date().toISOString();
+    await tx.update(userBans)
+      .set({ unbanned_at: now, unbanned_by: currentUserId, updated_at: now })
+      .where(
+        and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
+      );
+
+    await logAudit(
+      "users.unban",
+      { action: "users.unban" },
+      { type: "users", id: targetUserId },
+      tx,
     );
+    return { existing: target, now };
+  });
 
   invalidateBanCache({ userId: targetUserId });
-  await logAudit(
-    "users.unban",
-    { action: "users.unban" },
-    { type: "users", id: targetUserId },
-  );
-
-  return await toUserResponse(existing, null, now);
+  return toUserResponse(existing, null, now);
 }
 
 /**

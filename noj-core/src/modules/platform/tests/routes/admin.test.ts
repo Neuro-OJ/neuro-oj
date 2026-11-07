@@ -7,14 +7,7 @@ import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import {
-  auditLogs,
-  permissions,
-  rolePermissions,
-  roles,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
 
@@ -67,44 +60,14 @@ Deno.test({
         username: "legal_admin",
         email: "legal_admin@example.test",
         password_hash: "",
+        // legal:manage 属于平台管理员静态能力，直接写单值平台角色。
+        role: "admin",
         created_at: now,
         updated_at: now,
       })
       .onConflictDoNothing();
 
-    // 建一个含 legal:manage 的角色并授予该用户
-    const { ensureRbacSeeds } = await import(
-      "../../system/services/seed/seed-rbac.ts"
-    );
-    await ensureRbacSeeds();
-    const { eq: eqOp } = await import("drizzle-orm");
-    const [perm] = await db
-      .select({ id: permissions.id })
-      .from(permissions)
-      .where(
-        eqOp(permissions.resource, "legal"),
-      )
-      .limit(1);
-    const permId = perm?.id ?? "";
-    const roleId = crypto.randomUUID();
-    await db.insert(roles).values({
-      id: roleId,
-      name: `legal-manager-${Date.now()}`,
-      description: "",
-      is_system: false,
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(rolePermissions).values({
-      role_id: roleId,
-      permission_id: permId,
-    });
-    await db.insert(userRoles).values({
-      user_id: userId,
-      role_id: roleId,
-    });
-
-    const token = await signToken({ sub: userId, role: "user" });
+    const token = await signToken({ sub: userId, role: "admin" });
     const app = createApp();
     const res = await app.request(
       "/api/v1/admin/legal/documents/privacy/versions",
@@ -143,37 +106,13 @@ Deno.test({
         username: "legal_audit_admin",
         email: "legal_audit_admin@example.test",
         password_hash: "",
+        role: "admin",
         created_at: now,
         updated_at: now,
       })
       .onConflictDoNothing();
 
-    const { ensureRbacSeeds } = await import(
-      "../../system/services/seed/seed-rbac.ts"
-    );
-    await ensureRbacSeeds();
-    const { eq: eqOp } = await import("drizzle-orm");
-    const [perm] = await db
-      .select({ id: permissions.id })
-      .from(permissions)
-      .where(eqOp(permissions.resource, "legal"))
-      .limit(1);
-    const roleId = crypto.randomUUID();
-    await db.insert(roles).values({
-      id: roleId,
-      name: `legal-audit-manager-${Date.now()}`,
-      description: "",
-      is_system: false,
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(rolePermissions).values({
-      role_id: roleId,
-      permission_id: perm?.id ?? "",
-    });
-    await db.insert(userRoles).values({ user_id: userId, role_id: roleId });
-
-    const token = await signToken({ sub: userId, role: "user" });
+    const token = await signToken({ sub: userId, role: "admin" });
     const app = createApp();
 
     // 1. 发布版本 → legal.publish_version

@@ -81,9 +81,8 @@ describe('引用题单的使用域作答', () => {
         id: 't1',
         title: '源题单',
         description: '',
-        can_share: false,
         can_edit: false,
-        is_shared: true,
+
         source_domain_slug: 'main',
         items: [
           {
@@ -120,7 +119,6 @@ describe('引用题单的使用域作答', () => {
       data: {
         id: 't1',
         title: '源题单',
-        can_share: false,
         can_edit: false,
         items: [{
           problem_id: 'p2',

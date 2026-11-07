@@ -6,6 +6,7 @@
  * access 本地命令。HTTP 路由不得直接拼接这些跨模块步骤。
  */
 import type { DbRoot } from "../../shared/db/executor.ts";
+import { runBestEffort } from "../../shared/base/best-effort.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import type { UserActor } from "../access/contracts/actor.ts";
 import {
@@ -32,10 +33,10 @@ import {
   joinDomainTx,
   removeDomainMemberTx,
   reviewJoinRequestTx,
-  setMemberRolesTx,
+  setMemberRoleTx,
   transferDomainTx,
 } from "../access/members.ts";
-import type { DomainPreset, DomainRole } from "../../shared/workspace/types.ts";
+import type { DomainPreset } from "../../shared/workspace/types.ts";
 import {
   accessClassroomInvitationBoundary,
   accessDomainChangeBoundary,
@@ -54,11 +55,16 @@ export async function deleteOwnAccountCommand(
   const result = await db.transaction((tx) =>
     deleteOwnAccountTx(tx, user, passwordHash, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: user.userId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: user.userId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: user.userId },
+  );
 }
 
 export async function adminDeleteAccountCommand(
@@ -70,11 +76,16 @@ export async function adminDeleteAccountCommand(
   const result = await db.transaction((tx) =>
     adminDeleteAccountTx(tx, actor, targetUserId, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: targetUserId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: targetUserId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: targetUserId },
+  );
 }
 
 export function createDomainCommand(
@@ -150,16 +161,16 @@ export function reviewJoinRequestCommand(
   );
 }
 
-export function setMemberRolesCommand(
+export function setMemberRoleCommand(
   actor: UserActor,
   slug: string,
   userId: string,
-  roles: readonly DomainRole[],
+  role: unknown,
   meta: AccessWriteMeta = {},
 ) {
   const db: DbRoot = getDb();
   return db.transaction((tx) =>
-    setMemberRolesTx(tx, actor, slug, userId, roles, meta)
+    setMemberRoleTx(tx, actor, slug, userId, role, meta)
   );
 }
 

@@ -303,7 +303,8 @@ export async function listPaperQuestionsWithAccess(
     throw new NotFoundError("题目不存在");
   }
 
-  const canManage = access.mode === "admin" || access.mode === "owner" ||
+  // owner 只读模式不等于管理权：答案与草稿必须由域角色（educator/admin）解锁。
+  const canManage = access.mode === "admin" ||
     (options.userId !== undefined &&
       await isPaperOwnerOrAdmin(
         paper,

@@ -14,7 +14,7 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import {
   importDomainProblem,
   setDomainProblemBindingPolicy,
@@ -202,7 +202,7 @@ Deno.test("域复制权限：目标可创建不足以导出来源，普通成员
     () => importDomainProblem(f.other.slug, `${f.school.slug}:1001`, f.student),
     ForbiddenError,
   );
-  await setMemberRoles(f.other.slug, f.owner, f.student, ["editor"]);
+  await setMemberRole(f.other.slug, f.owner, f.student, "educator");
   await assertRejects(
     () => importDomainProblem(f.other.slug, `${f.school.slug}:1001`, f.student),
     ForbiddenError,

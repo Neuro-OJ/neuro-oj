@@ -16,6 +16,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
+  communityBoards,
   communityComments,
   communityPosts,
   contests,
@@ -32,7 +33,6 @@ import { createContest } from "../../../../contests/index.ts";
 import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -51,7 +51,6 @@ let commentId = "";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();
@@ -92,12 +91,22 @@ async function setup(): Promise<void> {
   momentId = crypto.randomUUID();
   solutionId = crypto.randomUUID();
   commentId = crypto.randomUUID();
+  const board = await getDb().insert(communityBoards).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    slug: "silence-board",
+    name: "静默测试板块",
+    created_at: now,
+    updated_at: now,
+  }).returning();
   await getDb().insert(communityPosts).values([
     {
       domain_id: DEFAULT_DOMAIN_ID,
       id: momentId,
-      type: "moment",
+      type: "discussion",
       author_id: userId,
+      board_id: board[0].id,
+      title: "赛前讨论",
       content: "赛前动态",
       created_at: now,
       updated_at: now,

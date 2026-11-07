@@ -63,7 +63,7 @@ async function input<T>(c: Parameters<typeof parseJsonBody>[0]) {
   return value as T;
 }
 function type(value: string | undefined) {
-  if (value && !["solution", "discussion", "moment"].includes(value)) {
+  if (value && !["solution", "discussion"].includes(value)) {
     throw new BadRequestError("无效内容类型");
   }
   return value as CommunityPostType | undefined;
@@ -107,7 +107,6 @@ domainCommunityRouter.get(
         permissions: {
           solution: s.member,
           discussion: s.member,
-          moment: s.member,
           comment: s.member,
           report: s.member,
           moderate: s.moderator,

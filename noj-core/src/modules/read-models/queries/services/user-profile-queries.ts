@@ -15,7 +15,6 @@ import type {
   ProfileCommunityStatsRow,
   ProfileCreatedProblemRow,
   ProfileCreatedProblemView,
-  ProfileMomentRow,
   ProfileRecentSubmissionRow,
   ProfileSolutionRow,
   ProfileSolvedProblemRow,
@@ -41,8 +40,7 @@ function publicCommunityCondition() {
   return sql`coalesce(${communityPosts.domain_id},${DEFAULT_DOMAIN_ID})=${DEFAULT_DOMAIN_ID}
     AND (${communityPosts.domain_id} IS NULL OR EXISTS (SELECT 1 FROM domains profile_domain
       WHERE profile_domain.id=${DEFAULT_DOMAIN_ID} AND profile_domain.status<>'suspended'
-        AND profile_domain.configuration->>'access'='public'
-        AND profile_domain.configuration->'features'->>'community'='true'))
+        AND profile_domain.configuration->>'access'='public'))
     AND (${communityPosts.problem_id} IS NULL OR ${communityPosts.domain_id} IS NULL
       OR ${
     domainProblemBindingAvailableWhere(
@@ -283,9 +281,6 @@ export function queryProfileCommunityStats(
     solution_count: sql<
       number
     >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
-    moment_count: sql<
-      number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published' AND ${publicCommunityCondition()})::int`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
@@ -332,26 +327,6 @@ export function queryProfileSolutions(
   })
     .from(communityPosts).where(
       and(...conditions),
-    ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
-}
-
-/** 7. 最近 10 条已发布短动态。 */
-export function queryProfileMoments(
-  db: Db,
-  userId: string,
-): Promise<ProfileMomentRow[]> {
-  return db.select({
-    id: communityPosts.id,
-    content: communityPosts.content,
-    created_at: communityPosts.created_at,
-  })
-    .from(communityPosts).where(
-      and(
-        eq(communityPosts.author_id, userId),
-        eq(communityPosts.type, "moment"),
-        eq(communityPosts.status, "published"),
-        publicCommunityCondition(),
-      ),
     ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
 }
 

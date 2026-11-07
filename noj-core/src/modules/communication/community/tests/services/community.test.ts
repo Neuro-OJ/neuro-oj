@@ -10,7 +10,6 @@ import {
   communityReports,
   communitySanctions,
   problems,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -34,7 +33,6 @@ import {
   listPendingComments,
   listPosts,
   resolveReport,
-  updateBoardRoleGrant,
   updatePost,
 } from "../../index.ts";
 import {
@@ -48,7 +46,6 @@ import {
   initSystemSettings,
   updateSetting,
 } from "../../../../platform/system/index.ts";
-import { ensureRbacSeeds } from "../../../../platform/system/index.ts";
 import { publishBaselineVersionForTest } from "../../../../../../tests/helper.ts";
 
 const actorId = "community-test-user";
@@ -57,7 +54,6 @@ const observerId = "community-test-observer";
 async function setup(): Promise<void> {
   await resetDbForTest();
   // resetDbForTest 会 TRUNCATE roles/community_boards，重新 seed 以保证 FK 与默认板块
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();
@@ -94,7 +90,6 @@ async function setup(): Promise<void> {
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");
-    await updateSetting("community_moments_enabled", true, "0");
     await updateSetting("community_new_user_review_hours", 0, "0");
   } finally {
     leaveTestContext();
@@ -126,43 +121,6 @@ Deno.test({
       ValidationError,
       "仅支持回复一级评论",
     );
-  },
-});
-
-Deno.test({
-  name: "community service: 板块角色授权限制发帖",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const board = await createBoard({
-      slug: "restricted-board",
-      name: "受限板块",
-    });
-    await updateBoardRoleGrant(board.id, "user", { can_post: false });
-    await assertRejects(
-      () =>
-        createPost(actorId, {
-          type: "discussion",
-          board_id: board.id,
-          title: "无权讨论",
-          content: "不应创建",
-        }),
-      ForbiddenError,
-      "你没有在该板块发帖的权限",
-    );
-    await getDb().insert(userRoles).values({
-      user_id: actorId,
-      role_id: "user",
-    });
-    await updateBoardRoleGrant(board.id, "user", { can_post: true });
-    const post = await createPost(actorId, {
-      type: "discussion",
-      board_id: board.id,
-      title: "授权讨论",
-      content: "可以创建",
-    });
-    assertEquals(post.status, "published");
   },
 });
 
@@ -211,7 +169,6 @@ Deno.test({
 
       const knowledgeConfig = await applyCommunityPreset("0", "knowledge");
       assertEquals(knowledgeConfig.read_only, true);
-      assertEquals(knowledgeConfig.moments_enabled, false);
       assertEquals(knowledgeConfig.comments_enabled, false);
     } finally {
       leaveTestContext();
@@ -665,16 +622,17 @@ Deno.test({
   fn: async () => {
     await setup();
     const createdAt = new Date().toISOString();
+    const board = await createBoard({ slug: "cursor-board", name: "游标板块" });
     // 1 条官方 + 4 条普通，共 5 条；per_page=2 → 需翻 3 页
     await getDb().insert(communityPosts).values([
       {
         domain_id: DEFAULT_DOMAIN_ID,
         id: "cursor-official",
-        type: "moment" as const,
+        type: "discussion" as const,
         author_id: actorId,
         problem_id: null,
-        board_id: null,
-        title: null,
+        board_id: board.id,
+        title: "官方置顶讨论",
         content: "官方置顶动态",
         status: "published" as const,
         is_locked: false,
@@ -688,11 +646,11 @@ Deno.test({
       ...[1, 2, 3, 4].map((i) => ({
         domain_id: DEFAULT_DOMAIN_ID,
         id: `cursor-normal-${i}`,
-        type: "moment" as const,
+        type: "discussion" as const,
         author_id: actorId,
         problem_id: null,
-        board_id: null,
-        title: null,
+        board_id: board.id,
+        title: `普通讨论 ${i}`,
         content: `普通动态 ${i}`,
         status: "published" as const,
         is_locked: false,
@@ -709,7 +667,7 @@ Deno.test({
     let cursor: string | null = null;
     for (let page = 0; page < 5; page++) {
       const res = await listPosts({
-        type: "moment",
+        type: "discussion",
         limit: 2,
         cursor: cursor ?? undefined,
       });
@@ -745,12 +703,13 @@ Deno.test({
     const t0 = Date.parse("2026-01-10T12:00:00.000Z");
     const at = (minutesAgo: number) =>
       new Date(t0 - minutesAgo * 60_000).toISOString();
+    const board = await createBoard({ slug: "page-board", name: "翻页板块" });
     const base = {
-      type: "moment" as const,
+      type: "discussion" as const,
       author_id: actorId,
       problem_id: null,
-      board_id: null,
-      title: null,
+      board_id: board.id,
+      title: "翻页讨论",
       status: "published" as const,
       is_locked: false,
       moderation_reason: null,
@@ -810,7 +769,7 @@ Deno.test({
     let cursor: string | null = null;
     for (let page = 0; page < 6; page++) {
       const res = await listPosts({
-        type: "moment",
+        type: "discussion",
         limit: 2,
         cursor: cursor ?? undefined,
       });

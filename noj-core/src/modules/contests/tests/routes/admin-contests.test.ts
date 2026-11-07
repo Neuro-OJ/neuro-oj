@@ -4,19 +4,13 @@ import { eq, sql } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import {
-  contests,
-  problems,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import {
   initRedisForTest,
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { createDomain } from "../../../access/workspace/index.ts";
 
 // 测试进程通常没有本地 Redis；直接短路 JWT 撤销检查，避免 authMiddleware 503。
@@ -24,7 +18,6 @@ Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 Deno.test({
   name: "默认域管理入口：其他域比赛 ID 不能用于详情、修改、删除或列表",
@@ -97,10 +90,7 @@ async function setupContestViaAdmin(): Promise<{
     created_at: now,
     updated_at: now,
   });
-  await db.insert(userRoles).values({
-    user_id: adminId,
-    role_id: "admin",
-  }).onConflictDoNothing();
+  await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
   const [nextNumber] = await db.select({
     value: sql<number>`coalesce(max(${problems.number}), 0) + 1`,
   }).from(problems).where(eq(problems.domain_id, DEFAULT_DOMAIN_ID));

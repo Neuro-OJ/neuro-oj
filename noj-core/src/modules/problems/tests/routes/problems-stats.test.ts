@@ -6,11 +6,9 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domainProblemBindings,
   problems,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { _resetProblemStatsCacheForTest } from "../../services/problems/problems-stats.ts";
 
 // 测试进程通常没有本地 Redis；短路 JWT 撤销检查，避免 authMiddleware 503。
@@ -18,7 +16,6 @@ Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 const app = createApp();
 
 /** 建一个普通用户并返回其 id 与 token（用于 owner / 非 owner 两种场景）。 */
@@ -34,14 +31,12 @@ async function createUserWithToken(): Promise<{ id: string; token: string }> {
     created_at: now,
     updated_at: now,
   });
-  await db.insert(userRoles).values({ user_id: id, role_id: "user" })
-    .onConflictDoNothing();
   const token = await signToken({ sub: id, role: "user" });
   return { id, token };
 }
 
 async function seedProblem(ownerId: string, number: number): Promise<string> {
-  await grantDefaultCatalogRole(ownerId, "editor");
+  await grantDefaultCatalogRole(ownerId, "educator");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
@@ -145,7 +140,7 @@ Deno.test({
   fn: async () => {
     _resetProblemStatsCacheForTest();
     const { id: ownerId, token: ownerToken } = await createUserWithToken();
-    await grantDefaultCatalogRole(ownerId, "editor");
+    await grantDefaultCatalogRole(ownerId, "educator");
     const problemId = await seedProblem(ownerId, 950004);
     try {
       const res = await jsonRequest(
@@ -310,7 +305,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await grantDefaultCatalogRole(ownerId, "editor");
+    await grantDefaultCatalogRole(ownerId, "educator");
     try {
       const res = await jsonRequest(
         app,

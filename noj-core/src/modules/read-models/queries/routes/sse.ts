@@ -2,7 +2,8 @@ import { type Context, Hono } from "hono";
 import { optionalAuthMiddleware } from "../../../access/identity/middleware/auth.ts";
 import { type OptionalAuthEnv } from "../../../../shared/http/hono-env.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { Channels } from "../../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../../shared/sse/sse-stream.ts";
 import {
@@ -21,7 +22,9 @@ export const domainStatsSse = new Hono<OptionalAuthEnv>();
 const statsSse = new Hono<OptionalAuthEnv>();
 async function handler(c: Context<OptionalAuthEnv>) {
   const explicitSlug = c.req.param("slug"), slug = explicitSlug ?? "main";
-  if (!explicitSlug) await ensureDefaultWorkspace();
+  if (!explicitSlug) {
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  }
   const initialScope = await loadDomainQueryScope(slug, c.var.userId ?? null);
   const channel = initialScope.domainId === DEFAULT_DOMAIN_ID
     ? Channels.stats

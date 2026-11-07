@@ -93,7 +93,7 @@ try {
     await tx`DELETE FROM public.submissions WHERE contest_id IS NOT NULL OR problem_id IN (SELECT id FROM public.problems WHERE type = 'U')`;
     await tx`DELETE FROM public.contests`;
     await tx`DELETE FROM public.problems WHERE type = 'U'`;
-    await tx`REFRESH MATERIALIZED VIEW public.user_rankings`;
+    // 旧榜单刷新链已删除：域榜单按有效成绩实时读取，清理脚本不再刷新物化视图。
     const [after] = await tx<
       Array<{ u: number; p: number; contests: number; users: number }>
     >`

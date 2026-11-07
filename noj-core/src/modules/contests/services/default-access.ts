@@ -1,10 +1,10 @@
-import { getDb } from "../../../shared/db/connection.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
 } from "../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../access/domains.ts";
+import { createSystemActor } from "../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { findContestRow } from "./contest-row.ts";
 import { resolveContestId } from "./contests.ts";
@@ -14,8 +14,7 @@ export async function resolveDefaultContestAccess(
   reference: string,
   actorId: string | null,
 ) {
-  const db = getDb();
-  await ensureDefaultWorkspace(db);
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId);
   const id = await resolveContestId(reference);
   const row = await findContestRow(id);

@@ -2,12 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import {
-  domains,
-  roles,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { domains, users } from "../../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -19,7 +14,7 @@ import {
   createDomain,
   loadWorkspace,
   presetConfiguration,
-  setMemberRoles,
+  setMemberRole,
   updateDomain,
 } from "../../index.ts";
 import { loadDomainForJoining } from "../../services/access.ts";
@@ -32,13 +27,11 @@ async function owner() {
     id,
     username: id,
     email: `${id}@example.com`,
+    // 平台管理员由单值角色决定。
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
-  const [role] = await getDb().select().from(roles).where(
-    eq(roles.name, "admin"),
-  );
-  await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
   return id;
 }
 
@@ -98,7 +91,7 @@ Deno.test("加入及角色写入：只检查相应输入边界，不因首页错
   assertEquals((await loadDomainForJoining(domain.slug)).id, domain.id);
   await assertRejects(
     () =>
-      setMemberRoles(domain.slug, actor, actor, ["system:admin" as DomainRole]),
+      setMemberRole(domain.slug, actor, actor, "system:admin" as DomainRole),
     BadRequestError,
   );
   Object.assign(configuration, { join_policy: "broken" });

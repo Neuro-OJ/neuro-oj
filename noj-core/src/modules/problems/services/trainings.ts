@@ -29,7 +29,6 @@ import { submissionQueryVisibility } from "../../access/submission-policy.ts";
 import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  domainTrainingBindings,
   objectiveSubmissions,
   problems,
   submissions,
@@ -459,19 +458,14 @@ export async function deleteTraining(
 ): Promise<void> {
   const db = getDb();
   await assertWritable(id, actorId);
-  const [reference] = await db.select({ id: domainTrainingBindings.id }).from(
-    domainTrainingBindings,
-  ).where(eq(domainTrainingBindings.training_id, id));
-  if (reference) {
-    throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
-  }
+  // 跨域共享已删除：题单只属于自身域，删除不再有引用保护。
   await db.delete(trainings).where(eq(trainings.id, id));
 }
 
 // ── 题单题目管理与进度聚合 ──────────────────────────────
 
 /**
- * 断言操作者当前拥有 main 题单的 write_own/write_any，并返回题单行。
+ * 断言操作者在 main 域拥有题单管理能力（educator/admin），并返回题单行。
  *
  * @param trainingId 题单内部 UUID
  * @param actorId 操作者用户 id
@@ -494,10 +488,7 @@ async function assertWritable(
     ),
   );
   if (!row) throw new NotFoundError("题单不存在");
-  assertWorkspacePermission(
-    workspace.context,
-    row.created_by === actorId ? "training:write_own" : "training:write_any",
-  );
+  assertWorkspacePermission(workspace.context, "training:write_any");
   return row;
 }
 

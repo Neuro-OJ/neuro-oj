@@ -97,9 +97,17 @@ Deno.test("e2e-session: 清单字段由 runId 派生且所有权可核对", () =
     evaluatorNetworkFor(manifest.runId),
   );
   assertEquals(manifest.ownerLabel, "noj.e2e.session=perf-a");
+  // evaluator 在会话私有网络内访问协调服务：必须用容器端口 8010，
+  // 用宿主映射端口会让评测容器连不上（屏障 arrivals 恒为 0）。
   assertEquals(
     manifest.urls.evaluatorCoordinator,
-    "http://test-coordinator:15408",
+    "http://test-coordinator:8010",
+  );
+  assertEquals(
+    manifest.urls.evaluatorCoordinator.includes(
+      String(manifest.ports.coordinator),
+    ),
+    false,
   );
   assertSessionOwnership(manifest, "perf-a");
   let mismatch: unknown;
@@ -237,6 +245,9 @@ Deno.test("e2e-session: 环境文本 session 私有且包含全部资源", () =>
       "NOJ_E2E_SESSION",
       "COMPOSE_PROJECT_NAME",
       "E2E_DB_URL",
+      // 直接读 DATABASE_URL 的 E2E 必须拿到会话库，而不是模板里的开发库。
+      "DATABASE_URL",
+      "E2E_LLM_MOCK_INSPECT_URL",
       "E2E_REDIS_URL",
       "E2E_COORDINATOR_URL",
       "E2E_EVALUATOR_NETWORK",

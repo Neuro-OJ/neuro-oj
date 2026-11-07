@@ -56,7 +56,7 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 
 | 模块               | 运行时                             | 职责                                                                 |
 | ------------------ | ---------------------------------- | -------------------------------------------------------------------- |
-| noj-core           | Deno 2 + Hono                      | RESTful API、JWT + RBAC、业务 CRUD、Redis MQ Producer/Consumer、审计 |
+| noj-core           | Deno 2 + Hono                      | RESTful API、JWT + 固定角色授权、业务 CRUD、Redis MQ Producer/Consumer、审计 |
 | noj-ui             | Nuxt 4 + Vue 3                     | Web 前端、Nitro 代理注入 JWT Cookie                                  |
 | noj-judge          | Rust + Tokio                       | Docker 沙箱评测、双容器 Evaluator + Solution                         |
 | noj-llm-gateway    | Deno + Hono                        | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计      |
@@ -195,10 +195,9 @@ cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/ga
 > 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如
 > `--help`、 单元测试），不再是部署入口。
 
-> **过渡期**：`scripts/deploy/deploy.sh` 与 `restore-drill.sh`
-> 仍在仓库中，但已加弃用 闸门（每次执行需输入 `y` 确认；自动化可用
-> `NOJ_ACCEPT_DEPRECATED=1` 跳过）。 新流程请使用
-> `noj-cli`；这两个脚本将在后续版本删除。
+> **Bash 部署脚本已删除**：`scripts/deploy/deploy.sh`、`restore-drill.sh`、
+> `backup.sh` 与弃用闸门均已移除；生产部署、备份与恢复演练统一使用
+> `noj-cli`（见 `noj-cli --help`）。
 
 ### 5.3 手动启动
 
@@ -215,8 +214,7 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 
 1. `JWT_SECRET` 强度与占位值校验（≥32 字符，失败退出）
 2. `TFA_ENCRYPTION_KEY` 校验（必须独立于 `JWT_SECRET`，失败退出）
-3. 数据库迁移、root 系统用户、RBAC
-   种子、系统设置注册表与缓存初始化（均为致命步骤）
+3. 数据库迁移、root 系统用户、系统设置注册表与缓存初始化（均为致命步骤）
 4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket
    检查（非致命）
 5. 连接 Redis（失败 → degraded，HTTP 仍启动）

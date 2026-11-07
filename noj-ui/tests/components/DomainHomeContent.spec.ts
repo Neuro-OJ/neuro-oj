@@ -42,7 +42,10 @@ async function view() {
     global: {
       stubs: {
         UCard: { template: '<section><slot /></section>' },
-        UButton: { template: '<button><slot /></button>' },
+        UButton: {
+          props: ['to'],
+          template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
+        },
         UAlert: true,
         USelect: true,
         AsyncContent: { props: ['error', 'emptyText'], template: '<div>{{ error }}<slot /></div>' },
@@ -59,6 +62,8 @@ describe('域首页的实际内容', () => {
     expect(dashboard).toHaveBeenCalledWith('school', 'teaching', 1);
     expect(result.text()).toContain('本班作业');
     expect(result.find('a[href="/d/school/assignments/assignment"]').exists()).toBe(true);
+    const entry = result.findAll('a[data-to]').map((node) => node.attributes('data-to'));
+    expect(entry.some((to) => to?.includes('/d/school/classrooms') && to.includes('"view":"teaching"'))).toBe(true);
     result.unmount();
   });
   it('非教学域不显示教学区，也不读取教学接口', async () => {

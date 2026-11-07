@@ -12,7 +12,7 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import {
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../../access/workspace/index.ts";
 import { createDomainContest } from "../../../../contests/index.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
@@ -73,7 +73,17 @@ Deno.test({
       f.a,
       { write: true, permission: "community:create" },
       (s) =>
-        createPost(f.a, { type: "moment", content: "public moment" }, true, s),
+        createPost(
+          f.a,
+          {
+            type: "discussion",
+            board_id: f.boardA.id,
+            title: "public moment",
+            content: "public moment",
+          },
+          true,
+          s,
+        ),
     );
     const moment = await withDomainCommunity(f.target.slug, f.student, {
       write: true,
@@ -81,19 +91,24 @@ Deno.test({
     }, (s) =>
       createPost(
         f.student,
-        { type: "moment", content: "private student moment" },
+        {
+          type: "discussion",
+          board_id: f.boardB.id,
+          title: "private student moment",
+          content: "private student moment",
+        },
         false,
         s,
       ));
-    assertEquals(
-      (await withDomainCommunity(
-        f.target.slug,
-        f.student,
-        {},
-        (s) => listPosts({ viewerId: f.student, type: "moment", scope: s }),
-      )).data.map((r) => r.post.id),
-      [moment.id],
-    );
+    const visibleIds = (await withDomainCommunity(
+      f.target.slug,
+      f.student,
+      {},
+      (s) => listPosts({ viewerId: f.student, type: "discussion", scope: s }),
+    )).data.map((r) => r.post.id);
+    // 目标域内可见：fixture 的公开讨论与该学生自己新建的讨论。
+    assertEquals(visibleIds.includes(moment.id), true);
+    assertEquals(visibleIds.includes(f.postB.id), true);
     await removeDomainMember(f.target.slug, f.b, f.student);
     await assertRejects(
       () =>
@@ -317,7 +332,12 @@ Deno.test({
       (s) =>
         createPost(
           f.a,
-          { type: "moment", content: "source remains usable" },
+          {
+            type: "discussion",
+            board_id: f.boardA.id,
+            title: "source remains usable",
+            content: "source remains usable",
+          },
           false,
           s,
         ),
@@ -370,7 +390,7 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await domainFixture("community-moderation");
-    await setMemberRoles(f.target.slug, f.b, f.student, ["moderator"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "educator");
     const sanction = await withDomainCommunity(f.target.slug, f.student, {
       write: true,
       permission: "community:moderate",
@@ -399,7 +419,7 @@ Deno.test({
       }, (s) => listReports("all", s))).length,
       0,
     );
-    await setMemberRoles(f.target.slug, f.b, f.student, ["member"]);
+    await setMemberRole(f.target.slug, f.b, f.student, "member");
     await assertRejects(
       () =>
         withDomainCommunity(f.target.slug, f.student, {

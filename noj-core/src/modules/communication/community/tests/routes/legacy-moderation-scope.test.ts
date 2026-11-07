@@ -1,13 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import {
+  domainMemberships,
   domains,
-  permissions,
-  rolePermissions,
-  roles,
-  userRoles,
+  users,
 } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
@@ -39,23 +37,20 @@ async function fixture() {
     }
     throw error;
   });
-  const roleId = crypto.randomUUID();
-  await f.db.insert(roles).values({
-    id: roleId,
-    name: roleId,
-    created_at: f.now,
-    updated_at: f.now,
-  });
-  const [permission] = await f.db.select().from(permissions).where(and(
-    eq(permissions.resource, "community_moderation"),
-    eq(permissions.action, "review"),
-  ));
-  await f.db.insert(rolePermissions).values({
-    role_id: roleId,
-    permission_id: permission.id,
-  });
-  await f.db.insert(userRoles).values({ user_id: f.student, role_id: roleId });
+  // 社区治理能力来自域角色；测试账号必须是有效成员且具备 educator 角色。
+  const membership = await addDomainMember(
+    f.db,
+    DEFAULT_DOMAIN_ID,
+    f.student,
+    true,
+  );
+  await f.db.update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, membership.id),
+  );
   const token = await signToken({ sub: f.student, role: "user" });
+  // 平台治理端点需要可登录的平台管理员；root UID=0 被 authMiddleware 拒绝。
+  await f.db.update(users).set({ role: "admin" }).where(eq(users.id, f.b));
+  const adminToken = await signToken({ sub: f.b, role: "admin" });
   const board = await withDefaultCommunity(
     "0",
     { write: true, moderator: true },
@@ -98,7 +93,7 @@ async function fixture() {
   const [main] = await f.db.select().from(domains).where(
     eq(domains.id, DEFAULT_DOMAIN_ID),
   );
-  return { ...f, app, token, main, report, privateReport };
+  return { ...f, app, token, adminToken, main, report, privateReport };
 }
 
 Deno.test({
@@ -107,12 +102,17 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await fixture();
+    // 该用例验证非成员：先移除 fixture 自动建立的成员关系。
+    await f.db.delete(domainMemberships).where(
+      eq(domainMemberships.user_id, f.student),
+    );
     await f.db.update(domains).set({
       configuration: { ...f.main.configuration, access: "members" },
     }).where(eq(domains.id, f.main.id));
+    // 非成员访问 members 可见性的 main 域：读与写都由域门禁拒绝。
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports`, { token: f.token })).status,
-      404,
+      403,
     );
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
@@ -120,7 +120,7 @@ Deno.test({
         method: "POST",
         body: { resolution: "reviewed" },
       })).status,
-      404,
+      403,
     );
   },
 });
@@ -136,7 +136,7 @@ Deno.test({
       configuration: { ...f.main.configuration, access: "members" },
     }).where(eq(domains.id, f.main.id));
     const reports = await jsonRequest(f.app, `${base}/reports`, {
-      token: f.token,
+      token: f.adminToken,
     });
     assertEquals(reports.status, 200);
     assertEquals(
@@ -149,13 +149,13 @@ Deno.test({
       (await jsonRequest(
         f.app,
         `${base}/reports/${f.privateReport.id}/dismissed`,
-        { token: f.token, method: "POST", body: { resolution: "cross" } },
+        { token: f.adminToken, method: "POST", body: { resolution: "cross" } },
       )).status,
       404,
     );
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/resolved`, {
-        token: f.token,
+        token: f.adminToken,
         method: "POST",
         body: { resolution: "main action" },
       })).status,
@@ -181,13 +181,13 @@ Deno.test({
       "0",
     );
     const response = await jsonRequest(f.app, `${base}/reports`, {
-      token: f.token,
+      token: f.adminToken,
     });
     assertEquals(response.status, 403);
     assertEquals((await response.json()).code, "DOMAIN_MODULE_DISABLED");
     assertEquals(
       (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
-        token: f.token,
+        token: f.adminToken,
         method: "POST",
         body: { resolution: "disabled" },
       })).status,

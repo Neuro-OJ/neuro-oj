@@ -6,12 +6,7 @@ import { initRedisForTest } from "../../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import {
-  auditLogs,
-  ipBans,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { auditLogs, ipBans, users } from "../../../../../shared/db/schema.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 import { _resetBanlistForTest } from "../../index.ts";
@@ -30,23 +25,16 @@ async function freshSetup() {
   await db.delete(ipBans);
   await db.delete(users).where(eq(users.id, ADMIN_ID));
   const now = new Date().toISOString();
-  const { ensureRbacSeeds } = await import(
-    "../../../../platform/system/index.ts"
-  );
-  await ensureRbacSeeds(); // 幂等重建系统角色（reset 可能清空 roles 表）
   await db.insert(users).values({
     id: ADMIN_ID,
     username: `test-admin-${TEST_TS}`,
     email: `test-admin-${TEST_TS}@noj.local`,
     password_hash: "x",
+    // 平台角色单值写入用户行；权限判定实时读取 users.role。
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
-  // 关联 admin 角色（admin:full_access 权限，权限判定实时查询）
-  await db.insert(userRoles).values({
-    user_id: ADMIN_ID,
-    role_id: "admin",
-  }).onConflictDoNothing();
 }
 
 Deno.test({

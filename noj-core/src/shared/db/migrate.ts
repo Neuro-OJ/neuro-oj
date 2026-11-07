@@ -1,18 +1,11 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { getDb } from "./connection.ts";
-import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
+import { assertDatabaseSupportsAuthorizationSwitch } from "./migration-switch.ts";
 import { getLogger } from "@logtape/logtape";
+import { resolveMigrationsDirectory } from "./migrations-path.ts";
 
 const logger = getLogger(["noj", "db"]);
-
-const __dirname = dirname(fromFileUrl(import.meta.url));
-
-/** 解析与生产迁移器相同的发布集迁移目录。 */
-export function resolveMigrationsDirectory(): string {
-  return Deno.env.get("NOJ_MIGRATIONS_DIR") ??
-    resolve(__dirname, "../../../drizzle");
-}
 
 /**
  * 迁移串行化用的 advisory lock 命名空间（int4 第一参数）。
@@ -240,7 +233,11 @@ export async function runMigrations(): Promise<void> {
       migrations_folder: migrationsFolder,
       migrations_schema: "drizzle",
     });
-    await withMigrationLock(undefined, () => migrate(db, { migrationsFolder }));
+    await withMigrationLock(undefined, async () => {
+      // 旧库门禁必须与迁移同处锁内、先于任何 DDL：旧授权模型无法无损转换。
+      await assertDatabaseSupportsAuthorizationSwitch();
+      await migrate(db, { migrationsFolder });
+    });
     logger.info("数据库迁移完成");
   } catch (err) {
     logger.error("数据库迁移失败", { err });

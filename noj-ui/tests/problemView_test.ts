@@ -25,7 +25,6 @@ Deno.test('problemView: 域题目保留来源题号、作答版本与已裁剪�
       number: 1001,
       qualified_ref: 'main:1001',
       display_ref: 'main:1001',
-      is_shared: true,
     },
     binding_id: 'school-binding',
     policy_revision: 2,

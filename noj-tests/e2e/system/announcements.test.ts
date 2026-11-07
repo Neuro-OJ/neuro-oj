@@ -9,7 +9,6 @@
  */
 
 import {
-  api,
   apiDelete,
   apiGet,
   apiPatch,
@@ -276,49 +275,11 @@ e2eTest("[e2e/announcements] 4. SSE 广播 announcement:updated", async () => {
 });
 
 e2eTest(
-  "[e2e/announcements] 5. 仅 announcement:manage 用户可管理公告（细粒度 RBAC）",
+  "[e2e/announcements] 5. 公告管理只授予平台管理员",
   async () => {
     if (!isE2E) return;
-    // 验证 P0 修复：无 admin:full_access 但显式拥有 announcement:manage 的用户
-    // 可调用公告管理端点（spec: 持有 admin:full_access 通配放行或显式拥有该权限）。
-    // 1. 查 announcement:manage 权限 id（响应按 resource 分组）
-    const permRes = await apiGet(
-      "/api/v1/admin/identity/permissions",
-      adminToken,
-    );
-    const perms = permRes.body as {
-      data?: Record<string, Array<{ id: string; action: string }>>;
-    };
-    const annPerm = (perms.data?.announcement ?? []).find(
-      (p) => p.action === "manage",
-    );
-    if (!annPerm) throw new Error("缺少 announcement:manage 权限");
-
-    // 2. 查 user 角色 id（保留基础权限，避免影响测试用户其它行为）
-    const rolesRes = await apiGet("/api/v1/admin/identity/roles", adminToken);
-    const roles = rolesRes.body as {
-      data?: Array<{ id: string; name: string }>;
-    };
-    const userRole = (roles.data ?? []).find((r) => r.name === "user");
-    if (!userRole) throw new Error("缺少 user 角色");
-
-    // 3. 创建仅含 announcement:manage 的自定义角色（无 admin:full_access）
-    const roleName = `ann_operator_${ts}`;
-    const createRes = await apiPost(
-      "/api/v1/admin/identity/roles",
-      {
-        name: roleName,
-        description: "公告运营角色（E2E）",
-        permission_ids: [annPerm.id],
-      },
-      adminToken,
-    );
-    if (createRes.status !== 201) {
-      throw new Error(`创建角色失败: ${JSON.stringify(createRes.body)}`);
-    }
-    const roleId = (createRes.body as { data: { id: string } }).data.id;
-
-    // 4. 按 username 查测试用户 id
+    // 自定义 RBAC 已删除：公告治理只随平台 admin 角色授予，普通用户即使被
+    // 邀请进域也不能管理公告。
     const userRes = await apiGet(
       `/api/v1/admin/identity/users?keyword=ann_user_${ts}`,
       adminToken,
@@ -331,17 +292,24 @@ e2eTest(
     );
     if (!target) throw new Error("找不到测试用户 ann_user_" + ts);
 
-    // 5. 赋角色（user + ann_operator）
+    const denied = await apiPost(
+      "/api/v1/admin/system/announcements",
+      { title: `越权公告-${ts}`, content: "正文" },
+      userToken,
+    );
+    if (denied.status !== 403) {
+      throw new Error(`普通用户写公告应 403，实际 ${denied.status}`);
+    }
+
     const patchRes = await apiPatch(
       `/api/v1/admin/identity/users/${target.id}/role`,
-      { role_ids: [userRole.id, roleId] },
+      { role: "admin" },
       adminToken,
     );
     if (patchRes.status !== 200) {
-      throw new Error(`赋角色失败: ${JSON.stringify(patchRes.body)}`);
+      throw new Error(`提升管理员失败: ${JSON.stringify(patchRes.body)}`);
     }
 
-    // 6. 该用户（无 admin:full_access）调用管理端点 → 应放行 201
     const postRes = await apiPost(
       "/api/v1/admin/system/announcements",
       { title: `运营公告-${ts}`, content: "正文" },
@@ -349,20 +317,23 @@ e2eTest(
     );
     if (postRes.status !== 201) {
       throw new Error(
-        `细粒度授权用户写入应 201，实际 ${postRes.status}: ${
+        `管理员写入公告应 201，实际 ${postRes.status}: ${
           JSON.stringify(postRes.body)
         }`,
       );
     }
     const opAnnId = (postRes.body as { data: { id: string } }).data.id;
 
-    // 7. 清理：删除公告 + 角色
     await apiDelete(
       `/api/v1/admin/system/announcements/${opAnnId}`,
       adminToken,
     );
-    await apiDelete(`/api/v1/admin/identity/roles/${roleId}`, adminToken);
-    console.log("  ✓ 细粒度 announcement:manage 用户可管理公告");
+    await apiPatch(
+      `/api/v1/admin/identity/users/${target.id}/role`,
+      { role: "user" },
+      adminToken,
+    );
+    console.log("  ✓ 公告管理只授予平台管理员");
   },
 );
 

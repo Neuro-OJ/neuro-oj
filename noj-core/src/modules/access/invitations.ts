@@ -33,7 +33,7 @@ import { type AccessWriteMeta, addDomainMemberTx } from "./members.ts";
 import { canRegisterWithInvitation } from "./invitation-registration-policy.ts";
 
 export interface DomainInvitationInput {
-  mode?: "email" | "general" | "once";
+  mode?: "email" | "general";
   email?: string;
   expires_at?: string;
   max_uses?: number | null;
@@ -194,7 +194,7 @@ export function previewDomainInvitation(
 function validateInvitationInput(input: string | DomainInvitationInput) {
   const config = typeof input === "string" ? { email: input } : input;
   const mode = config.mode ?? "email";
-  if (!["email", "general", "once"].includes(mode)) {
+  if (!["email", "general"].includes(mode)) {
     throw new BadRequestError("邀请类型非法");
   }
   const email = mode === "email" ? config.email?.trim().toLowerCase() : null;
@@ -203,7 +203,7 @@ function validateInvitationInput(input: string | DomainInvitationInput) {
     (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
   ) throw new BadRequestError("邀请邮箱非法");
   if (mode !== "email" && config.email) {
-    throw new BadRequestError("通用及一次性邀请不绑定邮箱");
+    throw new BadRequestError("通用邀请不绑定邮箱");
   }
   const maxUses = mode === "general" ? config.max_uses ?? null : 1;
   if (
@@ -211,7 +211,9 @@ function validateInvitationInput(input: string | DomainInvitationInput) {
     (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 2147483647)
   ) throw new BadRequestError("使用人数须为正整数或不限人数");
   if (mode !== "general" && config.max_uses != null && config.max_uses !== 1) {
-    throw new BadRequestError("指定邮箱和一次性邀请仅限一人使用");
+    throw new BadRequestError(
+      "指定邮箱邀请仅限一人使用；一次性链接请用通用邀请 + 1 次",
+    );
   }
   const expiry = config.expires_at === undefined
     ? Date.now() + 7 * 86400000

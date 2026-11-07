@@ -19,7 +19,6 @@ import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import { loadWorkspaceTx } from "../../../access/policy.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { workspaceAuditTx } from "../../../access/audit.ts";
-import { recordProblemChangeTx } from "../../../education/contracts/events.ts";
 import { recordProblemEducationChange } from "./education-events.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import {
@@ -35,7 +34,6 @@ import {
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
-  assertCurrentProblemShare,
   legacyWorkspaceFromAccess,
   resolveDomainProblem,
 } from "./problem-binding-access.ts";
@@ -75,16 +73,8 @@ async function recordBinding(
     reason,
     created_at: new Date().toISOString(),
   });
-  // 源题（owned）状态变化会影响所有使用域的引用，必须让全部绑定陈旧；
-  // 共享引用（shared）只影响它自己的使用域。
-  if (binding.kind === "owned") {
-    await recordProblemEducationChange(tx, binding.problem_id);
-  } else {
-    await recordProblemChangeTx(tx, {
-      domainId: binding.domain_id,
-      problemId: binding.problem_id,
-    });
-  }
+  // 绑定只引用同域题目：源题状态变化即影响本域统计与教学视图。
+  await recordProblemEducationChange(tx, binding.problem_id);
   await workspaceAuditTx(
     tx,
     userActorFromAuthenticatedId(actorId),
@@ -102,6 +92,14 @@ async function recordBinding(
   );
 }
 
+/** 导入接线的可替换依赖；生产路径不传，测试用于观测补偿是否真的被调用。 */
+export interface ImportDomainProblemDeps {
+  /** 锁内提交；测试注入失败以验证 try/catch 的接线。 */
+  commit?: typeof commitDomainProblemCopy;
+  /** 失败补偿；默认按引用守卫删除本次上传。 */
+  compensate?: typeof compensateProblemCopy;
+}
+
 /** 跨域导入创建独立已发布副本；文件预检在事务外完成。 */
 export async function importDomainProblem(
   slug: string,
@@ -109,6 +107,7 @@ export async function importDomainProblem(
   actorId: string,
   executor?: Executor,
   versionId?: string,
+  deps: ImportDomainProblemDeps = {},
 ) {
   if (executor) {
     throw new BadRequestError("请先在目标域复制题目，再将本域题目加入作业");
@@ -119,12 +118,17 @@ export async function importDomainProblem(
     actorId,
     versionId,
   );
+  const commit = deps.commit ?? commitDomainProblemCopy;
+  const compensate = deps.compensate ?? compensateProblemCopy;
   try {
-    return await getDb().transaction((tx) =>
-      commitDomainProblemCopy(tx, prepared)
-    );
+    return await getDb().transaction((tx) => commit(tx, prepared));
   } catch (error) {
-    await compensateProblemCopy(prepared);
+    // 补偿按引用守卫删除本次上传：内容寻址存储会把与源题逐字节相同的副本
+    // 去重到同一 URL，此时对象仍被源版本引用，补偿保留对象（no-op）；
+    // 只有非去重后端或内容不同的上传才会真正删除。删除语义见
+    // `workspace-copy-failure.test.ts` 的「唯一字节」用例；接线本身由
+    // 同文件注入 deps 的用例锁定。
+    await compensate(prepared);
     throw error;
   }
 }
@@ -313,18 +317,7 @@ export async function setDomainProblemBindingState(
           : eq(problems.domain_id, workspace.domain.id),
       ));
     if (!resource) throw new NotFoundError("域题库中不存在此题");
-    if (resource.binding.kind === "owned") {
-      assertLegacyWorkspacePermission(
-        workspace.context,
-        workspace.context.domainPermissions.has("problem:write_any")
-          ? "problem:write_any"
-          : resource.problem.owner_id === actorId
-          ? "problem:write_own"
-          : "problem:write_any",
-      );
-    } else {
-      assertLegacyWorkspacePermission(workspace.context, "problem:policy");
-    }
+    assertLegacyWorkspacePermission(workspace.context, "problem:write_any");
     const [currentProblem] = await tx.select().from(problems).where(
       eq(problems.id, resource.problem.id),
     ).for("update");
@@ -334,14 +327,6 @@ export async function setDomainProblemBindingState(
     if (binding.revision !== expectedRevision) {
       throw new ConflictError("题库配置已变化，请重新读取");
     }
-    if (binding.kind === "shared" && !input.disabled) {
-      await assertCurrentProblemShare(
-        currentProblem,
-        resource.source,
-        workspace.domain.id,
-        tx,
-      );
-    }
     const now = new Date().toISOString();
     const [updated] = await tx.update(domainProblemBindings).set({
       disabled_at: input.disabled ? binding.disabled_at ?? now : null,
@@ -349,15 +334,13 @@ export async function setDomainProblemBindingState(
       revision: binding.revision + 1,
       updated_at: now,
     }).where(eq(domainProblemBindings.id, binding.id)).returning();
-    if (binding.kind === "owned") {
-      await tx.update(problems).set({
-        ...(input.visibility
-          ? { visibility: input.visibility === "public" ? "public" : "private" }
-          : {}),
-        effective_policy_revision: binding.revision + 1,
-        updated_at: now,
-      }).where(eq(problems.id, resource.problem.id));
-    }
+    await tx.update(problems).set({
+      ...(input.visibility
+        ? { visibility: input.visibility === "public" ? "public" : "private" }
+        : {}),
+      effective_policy_revision: binding.revision + 1,
+      updated_at: now,
+    }).where(eq(problems.id, resource.problem.id));
     await recordBinding(
       updated,
       currentProblem.required_version_id ?? currentProblem.latest_version_id,
@@ -402,7 +385,7 @@ export async function listDomainProblemBindings(
     !workspace.platformAdmin &&
     ![
       "problem:import",
-      "problem:write_own",
+      "problem:write_any",
       "problem:write_any",
       "problem:policy",
     ].some((permission) => permissions.has(permission))
@@ -418,10 +401,7 @@ export async function listDomainProblemBindings(
   );
   const condition = and(
     eq(domainProblemBindings.domain_id, workspace.domain.id),
-    manageAll ? undefined : or(
-      eq(domainProblemBindings.kind, "shared"),
-      eq(problems.owner_id, actorId),
-    ),
+    manageAll ? undefined : eq(problems.owner_id, actorId),
     query.keyword
       ? or(
         ilike(
@@ -429,7 +409,7 @@ export async function listDomainProblemBindings(
           `%${query.keyword}%`,
         ),
         and(
-          or(eq(domainProblemBindings.kind, "owned"), available),
+          available,
           ilike(problems.title, `%${query.keyword}%`),
         ),
       )
@@ -474,22 +454,18 @@ export async function listDomainProblemBindings(
     total: total.total,
     items: rows.map((row) => {
       const status = statuses.get(row.binding.id);
-      const owned = row.binding.kind === "owned";
-      const canEdit = owned &&
-        (workspace.platformAdmin || permissions.has("problem:write_any") ||
-          row.problem.owner_id === actorId &&
-            permissions.has("problem:write_own"));
+      const canEdit = workspace.platformAdmin ||
+        permissions.has("problem:write_any");
       return {
         reference: domainProblemReference(
           { ...row.problem, domain_id: row.source.id },
           row.source.slug,
           workspace.domain.id,
         ),
-        title: owned || status?.available ? row.problem.title : null,
+        title: status?.available ? row.problem.title : null,
         binding_id: row.binding.id,
         revision: row.binding.revision,
         policy_revision: row.binding.revision,
-        kind: row.binding.kind,
         visibility: row.binding.visibility,
         disabled_at: row.binding.disabled_at,
         resource_available: status?.available ?? false,
@@ -497,12 +473,10 @@ export async function listDomainProblemBindings(
         required_version_id: row.problem.required_version_id,
         answer_version_id: status?.answer_version_id ?? null,
         can_edit: canEdit,
-        can_share: false,
         can_manage_policy: workspace.platformAdmin ||
           permissions.has("problem:policy"),
         can_change_state: canEdit ||
-          !owned &&
-            (workspace.platformAdmin || permissions.has("problem:policy")),
+          workspace.platformAdmin || permissions.has("problem:policy"),
       };
     }),
   };

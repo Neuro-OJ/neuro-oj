@@ -60,7 +60,7 @@ useSeoMeta({ title: '题单' });
         <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
         <div class="mt-5 border-t border-border pt-5">
           <ClientOnly>
-            <DomainSharedCatalog :slug="slug!" kind="training" @imported="refresh()" />
+            <DomainCopyCatalog :slug="slug!" kind="training" @imported="refresh()" />
           </ClientOnly>
         </div>
       </div>
@@ -77,7 +77,7 @@ useSeoMeta({ title: '题单' });
           <h2 class="line-clamp-2 text-lg font-bold group-hover:text-primary">{{ item.title }}</h2>
           <p class="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{{ item.description || '暂无简介' }}</p>
           <div class="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-text-secondary">
-            <span>{{ item.is_shared ? `引用自 ${item.source_domain_slug}` : '本域题单' }}</span>
+            <span>本域题单</span>
             <span>{{ item.state === 'published' ? '已发布' : '草稿' }}</span>
           </div>
         </NuxtLink>

@@ -13,8 +13,7 @@ const enabled = computed(() =>
   !!user.value && !!domain.value?.configuration.features.assignment &&
   (domain.value.is_member || domain.value.platform_admin)
 );
-const tasks = await useViewAsyncData(
-  'dashboard',
+const tasks = await useAsyncData(
   () => `${key.value}:${mode.value}:${enabled.value}`,
   () => enabled.value ? api.dashboard(slug.value!, mode.value, 1) : Promise.resolve(null),
   { immediate: !props.initialData },
@@ -36,8 +35,8 @@ useEducationNotifications(async () => {
       <USelect v-model="mode" size="sm"
         :items="[{label:'我的学习',value:'my-learning'},{label:'教学任务',value:'teaching'}]"
         aria-label="首页教学视角" />
-      <UButton :to="workspacePath(slug!, mode)" variant="ghost" size="sm"
-        trailing-icon="i-lucide-arrow-right">{{ mode === 'teaching' ? '教学工作台' : '我的学习' }}</UButton>
+      <UButton :to="{ path: workspacePath(slug!, 'classrooms'), query: { view: mode } }" variant="ghost" size="sm"
+        trailing-icon="i-lucide-arrow-right">进入班级研练中心</UButton>
     </div>
     <AsyncContent
       :status="tasks.error.value ? 'error' : dashboard?.data.assignments.length ? 'data' : tasks.status.value === 'pending' ? 'loading' : 'empty'"

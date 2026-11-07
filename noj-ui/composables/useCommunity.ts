@@ -1,6 +1,6 @@
 import type { CommunityNotificationType } from '~/utils/communityNotifications';
 
-export type PostType = 'discussion' | 'solution' | 'moment';
+export type PostType = 'discussion' | 'solution';
 
 export type PostStatus = 'draft' | 'pending' | 'published' | 'hidden' | 'deleted';
 
@@ -10,13 +10,11 @@ export interface CommunityConfig {
   read_only: boolean;
   solutions_enabled: boolean;
   discussions_enabled: boolean;
-  moments_enabled: boolean;
   comments_enabled: boolean;
   external_images_enabled: boolean;
   solution_requires_accepted: boolean;
   new_user_review_hours?: number;
   post_max_length?: number;
-  moment_max_length?: number;
   comment_max_length?: number;
   post_interval_seconds?: number;
   permissions: Record<string, boolean>;
@@ -126,7 +124,6 @@ export interface CommentRow {
 export interface CommunityCounts {
   solution: number;
   discussion: number;
-  moment: number;
 }
 
 /** 社区通知行 */
@@ -164,8 +161,7 @@ export interface NotificationRow {
 export function useCommunity() {
   const scope = useCommunityScope();
   const { api } = useApi();
-  const { data, status, refresh, error } = useViewAsyncData(
-    'communityConfig',
+  const { data, status, refresh, error } = useAsyncData(
     computed(() => `${scope.key.value}:config`),
     async () => {
       const request = scope.capture();

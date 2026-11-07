@@ -9,7 +9,8 @@ import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspaceOn } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
 /** 在准备下载或 LLM 令牌前拒绝用旧入口执行其他域的源题。 */
@@ -43,7 +44,7 @@ export async function resolveDefaultExecutionContexts(
   actorId: string,
   executor: Executor,
 ) {
-  await ensureDefaultWorkspace(executor);
+  await ensureDefaultWorkspaceOn(executor, createSystemActor("bootstrap"));
   await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
     executor,
     write: true,
@@ -67,7 +68,6 @@ export async function resolveDefaultExecutionContexts(
         and(
           eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
           eq(domainProblemBindings.problem_id, problems.id),
-          eq(domainProblemBindings.kind, "owned"),
         ),
       )
       .where(inArray(problems.id, ids.slice(offset, offset + 500)));

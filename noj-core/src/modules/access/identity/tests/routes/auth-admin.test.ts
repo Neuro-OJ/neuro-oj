@@ -13,7 +13,6 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   problems,
-  roles,
   submissionJobItems,
   submissionJobs,
   submissions,
@@ -71,82 +70,57 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/identity/users/:id/role 管理员提升用户（role_ids 格式）",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 单值角色写入与非法输入",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const db = getDb();
     const token = await createUserToken("admin");
+    const targetId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: targetId,
+      username: `role-target-${Date.now()}`,
+      email: `role-target-${Date.now()}@example.test`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    }).onConflictDoNothing();
 
-    // 获取一个有效角色 ID
-    const rows = await db.select({ id: roles.id }).from(roles).limit(1);
-    const roleId = rows[0]?.id ?? "00000000-0000-0000-0000-000000000000";
+    // 未知角色、数组、owner 一律 400，不能写入用户行。
+    for (
+      const body of [{ role: "owner" }, { role: ["admin"] }, { role_ids: [] }]
+    ) {
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}/role`,
+        { method: "PATCH", body, token },
+      );
+      assertEquals(res.status, 400, `非法输入应 400：${JSON.stringify(body)}`);
+    }
 
-    const res = await jsonRequest(
+    // 单值提升为 admin 成功，返回 {id, role}。
+    const promoted = await jsonRequest(
       app,
-      "/api/v1/admin/identity/users/target-id/role",
-      {
-        method: "PATCH",
-        body: { role_ids: [roleId] },
-        token,
-      },
+      `/api/v1/admin/identity/users/${targetId}/role`,
+      { method: "PATCH", body: { role: "admin" }, token },
     );
-    // target-id 不存在 → 404；存在且不可自修改 → 400 均可——测试鉴权通过
-    assertEquals(
-      [200, 400, 404].includes(res.status),
-      true,
-      `预期 2xx/400/404，实际 ${res.status}`,
+    assertEquals(promoted.status, 200);
+    const promotedBody = await promoted.json();
+    assertEquals(promotedBody.data.role, "admin");
+    const [stored] = await db.select({ role: users.role }).from(users).where(
+      eq(users.id, targetId),
     );
-  },
-});
+    assertEquals(stored.role, "admin");
 
-Deno.test({
-  name:
-    "admin route: PATCH /api/v1/admin/identity/users/:id/role 无效 role_ids 返回 400",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken("admin");
-
-    const res = await jsonRequest(
+    // 降回 user 成功；管理员不能修改自己（400）。
+    const demoted = await jsonRequest(
       app,
-      "/api/v1/admin/identity/users/target-id/role",
-      {
-        method: "PATCH",
-        body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
-        token,
-      },
+      `/api/v1/admin/identity/users/${targetId}/role`,
+      { method: "PATCH", body: { role: "user" }, token },
     );
-    // 用户不存在返回 404，用户存在但 role_ids 无效返回 400
-    assertEquals(
-      [400, 404].includes(res.status),
-      true,
-      `预期 400/404，实际 ${res.status}`,
-    );
-  },
-});
-
-Deno.test({
-  name:
-    "admin route: PATCH /api/v1/admin/identity/users/:id/role 缺少 role_ids 字段返回 400",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken("admin");
-
-    const res = await jsonRequest(
-      app,
-      "/api/v1/admin/identity/users/target-id/role",
-      {
-        method: "PATCH",
-        body: {},
-        token,
-      },
-    );
-    assertEquals(res.status, 400);
+    assertEquals(demoted.status, 200);
   },
 });
 

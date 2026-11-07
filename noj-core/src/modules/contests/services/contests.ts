@@ -31,7 +31,8 @@ import {
 import { assertDefaultProblemSource } from "../../problems/contracts/cross-module/services_workspace_execution-context.ts";
 import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspaceTx } from "../../access/domains.ts";
+import { createSystemActor } from "../../runtime/system-actors.ts";
 import { findContestRow } from "./contest-row.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
@@ -455,7 +456,9 @@ export async function createContest(
   const db = options.executor ?? getDb();
 
   await db.transaction(async (tx) => {
-    if (!options.domainId) await ensureDefaultWorkspace(tx);
+    if (!options.domainId) {
+      await ensureDefaultWorkspaceTx(tx, createSystemActor("bootstrap"));
+    }
     const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
     const latestVersions = options.versions ??
       await assertContestProblemAddable(

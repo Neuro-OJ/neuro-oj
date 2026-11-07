@@ -1,5 +1,5 @@
 /** access 的账户注销本地事实；跨 assets/search/legal 副作用由 application 编排。 */
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import {
@@ -8,7 +8,6 @@ import {
   passwordResetTokens,
   tfaRecoveryCodes,
   userBans,
-  userRoles,
   users,
 } from "../../shared/db/schema.ts";
 import {
@@ -18,11 +17,13 @@ import {
   UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
+import { runBestEffort } from "../../shared/base/best-effort.ts";
 import { comparePassword } from "./identity/services/security/password.ts";
 import {
-  getAdminUserIds,
-  getUserPermissions,
-} from "./identity/services/security/permissions.ts";
+  assertActiveAdminActorTx,
+  assertAvailableAdminRemainsTx,
+  lockAdminMutationsTx,
+} from "./admin-policy.ts";
 import type { UserActor } from "./contracts/actor.ts";
 import { requireUserActor } from "./contracts/actor.ts";
 import {
@@ -104,7 +105,6 @@ async function anonymizeUserTx(
   await tx.delete(tfaRecoveryCodes).where(
     eq(tfaRecoveryCodes.user_id, targetUserId),
   );
-  await tx.delete(userRoles).where(eq(userRoles.user_id, targetUserId));
   await tx.update(userBans).set({
     unbanned_at: now,
     unbanned_by: operationActor.userId,
@@ -117,13 +117,24 @@ async function anonymizeUserTx(
 }
 
 /** 用户自助注销的本地事务步骤；application 负责开启外层事务。 */
-export function deleteOwnAccountTx(
+export async function deleteOwnAccountTx(
   tx: DbTx,
   actor: UserActor,
   expectedPasswordHash: string,
   options: AccountLifecycleBoundary & { meta?: AccessWriteMeta },
 ): Promise<{ username: string; avatarUrl: string | null }> {
   const user = requireUserActor(actor);
+  // 自助注销与后台注销、封禁、降权共用同一把管理员变更锁：唯一可用管理员
+  // 不能通过自助注销把实例变成无人可管。
+  await lockAdminMutationsTx(tx);
+  const [self] = await tx.select({
+    role: users.role,
+    deleted_at: users.deleted_at,
+  }).from(users).where(eq(users.id, user.userId)).for("update");
+  if (!self || self.deleted_at) throw new NotFoundError("用户不存在");
+  if (self.role === "admin") {
+    await assertAvailableAdminRemainsTx(tx, user.userId);
+  }
   return anonymizeUserTx(
     tx,
     user.userId,
@@ -167,45 +178,17 @@ export async function adminDeleteAccountTx(
       "管理员不能从后台注销自己，请使用个人设置中的注销入口",
     );
   }
-  // 先收集当前管理员集合，再按稳定 ID 顺序锁住 actor、target 和所有
-  // 管理员账号。两个管理员并发互删时必须在同一行锁队列中重新核对集合，
-  // 不能只依赖普通 SELECT 的快照计数。
-  const observedAdminIds = await getAdminUserIds(tx);
-  const lockIds = [
-    ...new Set([
-      ...observedAdminIds,
-      operationActor.userId,
-      targetUserId,
-    ]),
-  ].sort();
-  const lockedAccounts = await tx.select({
-    id: users.id,
-    deletedAt: users.deleted_at,
-  }).from(users).where(inArray(users.id, lockIds)).orderBy(users.id).for(
-    "update",
-  );
-  const activeAccounts = new Set(
-    lockedAccounts.filter((account) => !account.deletedAt).map((account) =>
-      account.id
-    ),
-  );
-  if (!activeAccounts.has(operationActor.userId)) {
-    throw new ForbiddenError("当前管理员账号已注销");
-  }
-  const permissions = await getUserPermissions(operationActor.userId, tx);
-  if (!permissions.has("admin:full_access")) {
-    throw new ForbiddenError("需要管理员权限");
-  }
-  // 账户行锁取得后重新读取角色集合；A 提交删除/角色变化后，B 不能继续
-  // 使用事务开始时的普通 SELECT 快照决定最后管理员保护。
-  const currentAdminIds = await getAdminUserIds(tx);
-  if (currentAdminIds.has(targetUserId)) {
-    const activeAdminCount = [...currentAdminIds].filter((id) =>
-      id !== ROOT_USER_ID && activeAccounts.has(id)
-    ).length;
-    if (activeAdminCount <= 1) {
-      throw new BadRequestError("不能注销最后一个可登录管理员");
-    }
+  // 与降权、封禁、自助注销共用同一把管理员变更锁：锁内重读操作者身份、
+  // 目标角色与可用管理员数量，两个管理员并发互删不会各自基于旧计数成功。
+  await lockAdminMutationsTx(tx);
+  await assertActiveAdminActorTx(tx, operationActor.userId);
+  const [target] = await tx.select({
+    role: users.role,
+    deleted_at: users.deleted_at,
+  }).from(users).where(eq(users.id, targetUserId)).for("update");
+  if (!target || target.deleted_at) throw new NotFoundError("用户不存在");
+  if (target.role === "admin") {
+    await assertAvailableAdminRemainsTx(tx, targetUserId);
   }
   return anonymizeUserTx(
     tx,
@@ -229,11 +212,18 @@ export async function deleteOwnAccount(
   const result = await db.transaction((tx) =>
     deleteOwnAccountTx(tx, user, passwordHash, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: user.userId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  // 账户事实已提交：头像清理/搜索索引等副作用失败只能记日志，
+  // 否则客户端收到 500 后重试，会撞上"用户不存在"，与真实状态矛盾。
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: user.userId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: user.userId },
+  );
 }
 
 /** 管理员注销指定用户；管理员资格在本事务中按实时权限解析。 */
@@ -252,11 +242,16 @@ export async function adminDeleteAccount(
   const result = await db.transaction((tx) =>
     adminDeleteAccountTx(tx, operationActor, targetUserId, options)
   );
-  await options.afterCommit({
-    type: "account_deleted",
-    userId: targetUserId,
-    previousAvatarUrl: result.avatarUrl,
-  });
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: targetUserId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: targetUserId },
+  );
 }
 
 export { anonymizeUserTx };

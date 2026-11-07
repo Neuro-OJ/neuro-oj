@@ -220,7 +220,7 @@ async function assertCurrentSchemaAndUsers(
   assertEquals(rows[0]?.ledger_table, "drizzle.__drizzle_migrations");
 }
 
-async function assertInvitationConstraints(client: PgClient): Promise<void> {
+async function _assertInvitationConstraints(client: PgClient): Promise<void> {
   const invalidMode = await assertRejects(() =>
     client`
     INSERT INTO domain_invitations
@@ -371,50 +371,36 @@ Deno.test({
         await assertLedgerMatches(legacyClient, beforeUpgrade);
         await insertHistoricalRows(legacyClient);
 
-        await new PgDialect().migrate(
-          migrations,
-          migrationSession(legacyClient),
-          MIGRATION_CONFIG,
+        // 旧授权模型库必须被拒绝：迁移在锁内抛错，ledger 与历史数据保持原样。
+        const upgradeError = await assertRejects(() =>
+          new PgDialect().migrate(
+            migrations,
+            migrationSession(legacyClient),
+            MIGRATION_CONFIG,
+          )
         );
-        await assertCurrentSchemaAndUsers(legacyClient, legacyDatabase);
-        await assertLedgerMatches(legacyClient, migrations);
+        assert(
+          String(upgradeError).includes("此版本仅支持全新初始化"),
+          "旧库升级必须被明确拒绝",
+        );
+        await assertLedgerMatches(legacyClient, beforeUpgrade);
 
+        // 升级被拒绝后仍停留在 0118 schema：只断言历史数据未被破坏。
         const users = await legacyClient`
-          SELECT id, username, email FROM users
+          SELECT id FROM users
           WHERE id IN (${ROOT_ID}, ${LEGACY_USER_ID}) ORDER BY id
         `;
         assertEquals(users.length, 2, "历史用户必须保留");
         const invitations = await legacyClient`
-          SELECT id, email, used_at, used_count, mode, max_uses
-          FROM domain_invitations
+          SELECT id, email, used_at FROM domain_invitations
           WHERE id IN (${PENDING_INVITATION_ID}, ${USED_INVITATION_ID})
           ORDER BY id
         `;
         assertEquals(invitations.length, 2, "历史邀请必须保留");
         assertEquals(invitations[0]?.email, "pending@example.test");
         assertEquals(invitations[0]?.used_at, null);
-        assertEquals(invitations[0]?.used_count, 0);
-        assertEquals(invitations[0]?.mode, "email");
-        assertEquals(invitations[0]?.max_uses, 1);
         assertEquals(invitations[1]?.email, "used@example.test");
         assertEquals(invitations[1]?.used_at, REDEEMED_AT);
-        assertEquals(
-          invitations[1]?.used_count,
-          1,
-          "used_at 必须回填 used_count=1",
-        );
-        assertEquals(invitations[1]?.mode, "email");
-        assertEquals(invitations[1]?.max_uses, 1);
-
-        await assertInvitationConstraints(legacyClient);
-        const redemption = await legacyClient`
-          SELECT invitation_id, user_id, redeemed_at
-          FROM domain_invitation_redemptions
-          WHERE invitation_id = ${USED_INVITATION_ID}
-            AND user_id = ${LEGACY_USER_ID}
-        `;
-        assertEquals(redemption.length, 1, "邀请兑换记录必须可写入并保留");
-        assertEquals(redemption[0]?.redeemed_at, REDEEMED_AT);
       } finally {
         await legacyClient.end({ timeout: 5 });
       }

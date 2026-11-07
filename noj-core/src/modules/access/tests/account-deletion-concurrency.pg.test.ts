@@ -5,12 +5,7 @@ import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { getDb } from "../../../shared/db/connection.ts";
 import * as schema from "../../../shared/db/schema.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
-import {
-  domainMemberships,
-  roles,
-  userRoles,
-  users,
-} from "../../../shared/db/schema.ts";
+import { domainMemberships, users } from "../../../shared/db/schema.ts";
 import { adminDeleteAccountTx } from "../account.ts";
 import { userActorFromAuthenticatedId } from "../contracts/actor.ts";
 
@@ -35,10 +30,9 @@ async function account(): Promise<string> {
 }
 
 async function makeAdmin(userId: string): Promise<void> {
-  const [role] = await getDb().select({ id: roles.id }).from(roles).where(
-    eq(roles.name, "admin"),
+  await getDb().update(users).set({ role: "admin" }).where(
+    eq(users.id, userId),
   );
-  await getDb().insert(userRoles).values({ user_id: userId, role_id: role.id });
 }
 
 async function waitBlocked(

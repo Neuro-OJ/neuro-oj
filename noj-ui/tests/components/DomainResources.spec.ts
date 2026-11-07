@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import DomainSharingForm from '~/components/feature/DomainSharingForm.vue';
 import DomainTrainingEditor from '~/components/feature/DomainTrainingEditor.vue';
 import type { DomainTrainingDetail } from '~/composables/useDomainTrainings';
 import { useDomainResources as resourcesApi } from '~/composables/useDomainResources';
@@ -36,34 +35,18 @@ beforeEach(() => {
   api.save.mockResolvedValue({ data: { id: 't1', revision: 4 } });
 });
 describe('域资源配置', () => {
-  it('限定共享发送目标slug并独立使用共享revision，冲突保留当前配置', async () => {
-    api.share.mockRejectedValue({ statusCode: 409, data: { error: '共享政策已变化' } });
-    const view = mount(DomainSharingForm, {
-      props: {
-        slug: 'school',
-        kind: 'problem',
-        reference: '1001',
-        writable: true,
-        initial: {
-          enabled: true,
-          scope: 'selected',
-          target_domains: [{ id: 'target', slug: 'school-two', name: '学校二' }],
-          revision: 7,
-        },
-      },
-      global: { stubs },
+  it('复制来源目录使用 /copy-sources 并携带分页与过滤参数', async () => {
+    const get = vi.fn().mockResolvedValue({ items: [], page: 2, limit: 20, total: 0 });
+    vi.stubGlobal('useApi', () => ({ api: { get } }));
+    const resources = resourcesApi();
+    await resources.copySources('school', 'training', 2, 'main', 'dp');
+    expect(get).toHaveBeenCalledWith('/api/v1/domains/school/copy-sources', {
+      query: { kind: 'training', page: 2, limit: 20, source_slug: 'main', keyword: 'dp' },
+      silent: true,
     });
-    await view.find('input').setValue('school-three');
-    await view.findAll('button').find((button) => button.text() === '添加目标域')!.trigger('click');
-    await view.findAll('button').find((button) => button.text() === '保存共享政策')!.trigger('click');
-    await flushPromises();
-    expect(api.share).toHaveBeenCalledWith('school', 'problem', '1001', {
-      enabled: true,
-      scope: 'selected',
-      target_domain_slugs: ['school-two', 'school-three'],
-    }, 7);
-    expect(view.text()).toContain('当前共享配置保留');
-    expect(view.text()).toContain('school-three');
+    // 旧共享接口已删除：组合式函数不再暴露 sharing/share。
+    expect('sharing' in resources).toBe(false);
+    expect('share' in resources).toBe(false);
   });
   it('编辑题单保留发布状态、本域题号及原revision，冲突保留题单输入', async () => {
     api.save.mockRejectedValue({ statusCode: 409, data: { error: '题单已变化' } });

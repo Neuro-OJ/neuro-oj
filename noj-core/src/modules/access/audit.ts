@@ -5,8 +5,12 @@
  * 原子合同写入，不直接 `insert(auditLogs)`。身份和请求元数据显式传入，
  * 不从 Hono Context/ALS 猜测。
  */
-import type { DbTx } from "../../shared/db/executor.ts";
-import type { SystemActor, UserActor } from "./contracts/actor.ts";
+import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
+import {
+  type SystemActor,
+  type UserActor,
+  userActorFromAuthenticatedId,
+} from "./contracts/actor.ts";
 import type { WorkspaceAuditAction } from "../../shared/workspace/audit.ts";
 import { appendAuditLogTx } from "../platform/contracts/audit.ts";
 import { accessAuditEntry } from "./audit-entries.ts";
@@ -52,4 +56,29 @@ export async function workspaceAuditTx(
     detail: entry.detail,
     meta,
   });
+}
+
+/**
+ * 过渡适配：仍以账号 ID 表达操作者的跨模块域审计入口。
+ *
+ * 业务事实仍是唯一实现（委托 workspaceAuditTx）；这里只在边界把已认证 ID
+ * 收紧成显式 UserActor。新代码应直接调用 workspaceAuditTx 并传 Actor。
+ */
+export async function workspaceAudit(
+  executor: DbRoot | DbTx,
+  actorId: string,
+  domainId: string | null,
+  action: WorkspaceAuditAction,
+  detail: Record<string, unknown> = {},
+  target?: { type: string; id: string },
+): Promise<void> {
+  const actor = userActorFromAuthenticatedId(actorId);
+  const run = (tx: DbTx) =>
+    workspaceAuditTx(tx, actor, domainId, action, detail, {}, target);
+  // DbTx 暴露 rollback；DbRoot 没有。带锁/在事务中的调用必须沿用当前事务。
+  if (typeof (executor as Partial<DbTx>).rollback === "function") {
+    await run(executor as DbTx);
+    return;
+  }
+  await (executor as DbRoot).transaction((tx) => run(tx));
 }

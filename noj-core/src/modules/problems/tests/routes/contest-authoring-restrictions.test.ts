@@ -7,7 +7,6 @@ import {
   contestParticipants,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   problems,
@@ -24,6 +23,7 @@ import {
   resetDbForTest,
 } from "../default-fixture.ts";
 import type { ObjectiveProblemContent } from "../../types/problem-content.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
 Deno.test({
   name: "比赛维护权限: 源题编辑角色不受报名身份影响，普通比赛作答仍裁剪答案",
@@ -32,8 +32,8 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await initRedisForTest();
-    const token = await createDefaultCatalogToken("editor");
-    const organizerToken = await createDefaultCatalogToken("editor");
+    const token = await createDefaultCatalogToken("educator");
+    const organizerToken = await createDefaultCatalogToken("educator");
     const actor = decodeJwt(token).sub!,
       organizer = decodeJwt(organizerToken).sub!;
     const db = getDb(), now = new Date().toISOString();
@@ -83,7 +83,6 @@ Deno.test({
       id: bindingId,
       domain_id: DEFAULT_DOMAIN_ID,
       problem_id: problemId,
-      kind: "owned",
       visibility: "public",
       created_by: actor,
       created_at: now,
@@ -161,10 +160,9 @@ Deno.test({
     const [membership] = await db.select().from(domainMemberships).where(
       eq(domainMemberships.user_id, organizer),
     );
-    await db.insert(domainMemberRoles).values({
-      membership_id: membership.id,
-      role: "admin",
-    });
+    await db.update(domainMemberships).set({ role: "admin" }).where(
+      eq(domainMemberships.id, membership.id),
+    );
     assertEquals(
       (await read(path, organizerToken)).content.questions[0].answer,
       [true],
@@ -190,24 +188,22 @@ Deno.test({
       name: "学校比赛",
       preset: "education",
     }, organizer);
-    const schoolBinding = crypto.randomUUID(),
-      schoolContest = crypto.randomUUID();
+    const schoolContest = crypto.randomUUID();
     await db.insert(domainMemberships).values({
       id: crypto.randomUUID(),
       domain_id: school.id,
       user_id: actor,
       joined_at: now,
     });
-    await db.insert(domainProblemBindings).values({
-      id: schoolBinding,
-      domain_id: school.id,
-      problem_id: problemId,
-      kind: "shared",
-      visibility: "members",
-      created_by: organizer,
-      created_at: now,
-      updated_at: now,
+    // 学校只能在自己的副本上办内部赛：跨域共享绑定已被同域外键禁止。
+    const schoolCopy = await insertDomainProblemCopy(db, {
+      sourceProblemId: problemId,
+      domainId: school.id,
+      number: 1001,
+      ownerId: organizer,
+      now,
     });
+    const schoolBinding = schoolCopy.bindingId;
     await db.insert(contests).values({
       id: schoolContest,
       domain_id: school.id,
@@ -222,12 +218,12 @@ Deno.test({
     });
     await db.insert(contestProblems).values({
       contest_id: schoolContest,
-      problem_id: problemId,
+      problem_id: schoolCopy.problemId,
       domain_id: school.id,
       domain_problem_binding_id: schoolBinding,
       label: "A",
       score: 10000,
-      pinned_version_id: versionId,
+      pinned_version_id: schoolCopy.versionId,
     });
     await db.insert(contestParticipants).values({
       contest_id: schoolContest,

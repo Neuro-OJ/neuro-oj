@@ -43,7 +43,7 @@ const publicStats = computed<PublicProblemStats | null>(() => {
 const inlineAnswer = computed(() => data.value?.content.kind === 'objective' || ['artifact', 'prediction'].includes(data.value?.content.submission_mode ?? ''));
 const solveTo = computed(() => data.value ? { path: workspaceSolvePath(slug.value!, data.value.reference.display_ref), query: route.query } : undefined);
 const editorLabel = computed(() => data.value?.content.submission_mode === 'ui' ? '打开界面' : '开始编码');
-const editTo = computed(() => data.value?.can_edit && !data.value.reference.is_shared ? `/d/${slug.value}/editor/${data.value.reference.number}` : null);
+const editTo = computed(() => data.value?.can_edit ? `/d/${slug.value}/editor/${data.value.reference.number}` : null);
 watch([() => slug.value, () => reference.value, () => user.value?.id], () => {
   statementExpanded.value = true;
 });
@@ -64,7 +64,7 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
         <div class="min-w-0 space-y-6 lg:col-span-8">
           <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false">
             <template #actions>
-              <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_own') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
+              <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
               <UButton v-if="!inlineAnswer && data.can_practice !== false" :to="solveTo" size="lg" :icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'">{{ editorLabel }}</UButton>
               <UButton v-else-if="data.can_practice !== false" to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
             </template>

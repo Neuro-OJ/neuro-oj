@@ -46,7 +46,7 @@ export interface ProdService {
 /**
  * 生产 `docker-compose.prod.yml` 的**权威服务集**（顺序即文件中的声明顺序）。
  *
- * 与文件逐服务核对，不得遗漏：`migrate`、`gateway-migrate`、`core`、`ui`、`judge`（profile
+ * 与文件逐服务核对，不得遗漏：`migrate`、`check-upgrade`、`gateway-migrate`、`core`、`ui`、`judge`（profile
  * judge）、`llm-gateway`、`nginx`、`prometheus`（profile monitoring）、
  * `alertmanager`（profile monitoring）、`postgres`、`redis`、`minio`、
  * `minio-init`。
@@ -57,6 +57,7 @@ export interface ProdService {
  */
 export const PROD_SERVICES: readonly ProdService[] = [
   { name: "migrate" },
+  { name: "check-upgrade" },
   { name: "gateway-migrate" },
   { name: "core" },
   { name: "ui" },
@@ -81,6 +82,13 @@ export const PROD_ENV_FILE = ".env.prod";
 export interface ComposeArgsOptions {
   /** `-f` 指向的 compose 文件路径。 */
   composeFile: string;
+  /**
+   * compose 项目目录（`--project-directory`）。
+   *
+   * 即使 `-f` 指向暂存目录里的候选文件，项目目录也必须固定为安装目录，
+   * 否则 compose 的相对挂载（nginx 配置、备份目录等）会跟随暂存路径解析。
+   */
+  projectDirectory?: string;
   /** `--env-file` 指向的环境文件路径。 */
   envFile: string;
   /** 是否启用 `--profile judge`。 */
@@ -99,13 +107,16 @@ export interface ComposeArgsOptions {
  * 且 judge 排在 monitoring 之前（与 `deploy.sh:run_compose` 的插入顺序一致）。
  */
 export function composeArgs(options: ComposeArgsOptions): string[] {
-  const args = [
-    "compose",
+  const args = ["compose"];
+  if (options.projectDirectory !== undefined) {
+    args.push("--project-directory", options.projectDirectory);
+  }
+  args.push(
     "--env-file",
     options.envFile,
     "-f",
     options.composeFile,
-  ];
+  );
   if (options.judge === true) args.push("--profile", "judge");
   if (options.monitoring === true) args.push("--profile", "monitoring");
   args.push(...options.command);
@@ -119,6 +130,8 @@ export function composeArgs(options: ComposeArgsOptions): string[] {
  */
 export interface ComposeOptions {
   composeFile: string;
+  /** 项目目录；升级时固定为安装目录，避免暂存路径影响相对挂载。 */
+  projectDirectory?: string;
   envFile: string;
   /** 是否启用 `--profile judge`。 */
   judge?: boolean;

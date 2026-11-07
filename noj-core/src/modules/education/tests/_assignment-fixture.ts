@@ -69,7 +69,6 @@ export async function assignmentFixture() {
     id: bindingId,
     domain_id: f.school.id,
     problem_id: problemId,
-    kind: "owned",
     visibility: "members",
     created_by: f.owner,
     created_at: now,

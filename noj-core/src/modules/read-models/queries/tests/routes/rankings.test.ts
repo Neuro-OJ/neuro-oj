@@ -10,7 +10,7 @@ import { signToken } from "../../../../access/identity/index.ts";
 import { eq } from "drizzle-orm";
 
 // 模块级 bootstrap：确保 测试数据库 schema 已创建
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 /**
  * 注册最小 onError，与 src/app.ts 等价（处理 AppError → statusCode + body）。

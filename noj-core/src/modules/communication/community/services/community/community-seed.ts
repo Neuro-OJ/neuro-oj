@@ -3,7 +3,8 @@
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { communityBoards } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../../access/domains.ts";
+import { createSystemActor } from "../../../../runtime/system-actors.ts";
 
 const DEFAULT_BOARDS = [
   {
@@ -25,7 +26,7 @@ const DEFAULT_BOARDS = [
  */
 export async function ensureCommunitySeeds(): Promise<void> {
   const db = getDb();
-  await ensureDefaultWorkspace(db);
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   const now = new Date().toISOString();
   for (const board of DEFAULT_BOARDS) {
     await db.insert(communityBoards).values({

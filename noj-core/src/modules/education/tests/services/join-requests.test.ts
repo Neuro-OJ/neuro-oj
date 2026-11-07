@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -174,7 +174,7 @@ Deno.test("班级申请：成员管理域教练可审核学生，反馈能力不
     f.student,
     "申请",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () =>
       reviewClassroomJoin(
@@ -188,7 +188,7 @@ Deno.test("班级申请：成员管理域教练可审核学生，反馈能力不
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals(
     (await reviewClassroomJoin(
       f.school.slug,

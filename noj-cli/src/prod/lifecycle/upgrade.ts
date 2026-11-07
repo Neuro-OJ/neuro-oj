@@ -4,9 +4,15 @@
  * 与生命周期命令共享 `lifecycle.ts` 的目标配置和前置校验，但将升级的发布集、
  * checkpoint、迁移和排空逻辑单独放置，避免生命周期入口继续膨胀。
  */
-import { join } from "@std/path";
+import { basename, dirname, join } from "@std/path";
 import { downloadReleaseFiles, downloadReleaseSet } from "../bootstrap.ts";
-import { composePull, composeRun } from "../compose.ts";
+import {
+  composePull,
+  composeRun,
+  PROD_COMPOSE_FILE,
+  PROD_ENV_FILE,
+} from "../compose.ts";
+import { sha256Hex } from "../../util/hash.ts";
 import { recordDeploymentMetadata, verifyImageSignatures } from "../config.ts";
 import { resolveLatestReleaseTag } from "../release.ts";
 import {
@@ -22,7 +28,7 @@ import {
   upgradeStatePath,
   writeUpgradeState,
 } from "../upgrade-state.ts";
-import type { UpgradeState } from "../upgrade-state.ts";
+import type { UpgradeCandidateFile, UpgradeState } from "../upgrade-state.ts";
 import { emitHuman } from "../../output/render.ts";
 import {
   composeOutputText,
@@ -100,12 +106,36 @@ async function loadTargetReleaseSet(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   target: ResolvedTargetConfig,
+  stagedFilesDir?: string,
 ): Promise<ReleaseSet | null> {
   if (opts.releaseSet !== undefined) {
     return validateReleaseSet(opts.releaseSet, target.version);
   }
   if (opts.syncFiles !== undefined) return null;
-  return await readReleaseSet(join(ctx.dir, RELEASE_SET_ASSET), target.version);
+  return await readReleaseSet(
+    join(stagedFilesDir ?? ctx.dir, RELEASE_SET_ASSET),
+    target.version,
+  );
+}
+
+/** 只读预检旧库能否升级；失败时旧应用仍在运行，不进入排空。 */
+async function runUpgradePrecheck(
+  opts: UpdateOptions,
+  ctx: LifecycleContext,
+  target: ResolvedTargetConfig,
+): Promise<string | null> {
+  const result = await composeRun(
+    opts.runner,
+    target.composeOptions,
+    "check-upgrade",
+  );
+  const text = composeOutputText(result);
+  if (text !== "") emitHuman(text, ctx.io);
+  if (!Array.isArray(result) && result.code !== 0) {
+    return "数据库升级预检失败：" +
+      (result.stderr.trim() || `docker compose 退出码 ${result.code}`);
+  }
+  return null;
 }
 
 /** 显式执行 Core → Gateway 一次性迁移，迁移成功后才启动目标栈。 */
@@ -152,6 +182,78 @@ export interface UpgradeOutcome {
   backupPath: string | null;
   drainExitError?: string | null;
   checkpointPath?: string;
+  /** 候选发布文件与环境配置已在排空后、迁移前提交到安装目录。 */
+  filesCommitted?: boolean;
+}
+
+/** 计算暂存目录内候选发布文件摘要；忽略隐藏的临时文件与子目录。 */
+export async function digestCandidateFiles(
+  dir: string,
+): Promise<UpgradeCandidateFile[]> {
+  const files: UpgradeCandidateFile[] = [];
+  for await (const entry of Deno.readDir(dir)) {
+    if (!entry.isFile || entry.name.startsWith(".")) continue;
+    const bytes = await Deno.readFile(join(dir, entry.name));
+    files.push({ name: entry.name, sha256: await sha256Hex(bytes) });
+  }
+  return files.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** 原子写入单个文件：先写同目录临时文件再 rename，避免半截内容。 */
+async function replaceFileAtomic(
+  source: string,
+  target: string,
+): Promise<void> {
+  const tmp = join(
+    dirname(target),
+    `.${basename(target)}.tmp-${crypto.randomUUID()}`,
+  );
+  try {
+    await Deno.copyFile(source, tmp);
+    await Deno.rename(tmp, target);
+  } catch (error) {
+    await Deno.remove(tmp).catch(() => {});
+    throw error;
+  }
+}
+
+/** 逐个原子替换安装目录内的候选文件，并把旧文件备份到独立目录。 */
+async function commitCandidateFiles(
+  installDir: string,
+  stagedDir: string,
+  files: UpgradeCandidateFile[],
+  backupDir: string,
+): Promise<void> {
+  await Deno.mkdir(backupDir, { recursive: true });
+  for (const file of files) {
+    const target = join(installDir, file.name);
+    try {
+      await Deno.copyFile(target, join(backupDir, file.name));
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+    await replaceFileAtomic(join(stagedDir, file.name), target);
+  }
+}
+
+/** 恢复整组旧文件；备份缺失表示该文件原本不存在，删除新文件即可。 */
+async function restoreCandidateFiles(
+  installDir: string,
+  backupDir: string,
+  files: UpgradeCandidateFile[],
+): Promise<void> {
+  for (const file of files) {
+    const target = join(installDir, file.name);
+    try {
+      await replaceFileAtomic(join(backupDir, file.name), target);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        await Deno.remove(target).catch(() => {});
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 /** 升级编排：发布集、备份、验签、排空、迁移、启动和 checkpoint 顺序固定。 */
@@ -159,11 +261,18 @@ export async function upgradeWith(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   stagedEnvFile?: string,
+  stagedFilesDir?: string,
 ): Promise<UpgradeOutcome> {
   const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) return { error: prepared.error, backupPath: null };
 
-  const plan = await resolveTargetConfig(prepared, stagedEnvFile);
+  const plan = await resolveTargetConfig(
+    prepared,
+    stagedEnvFile,
+    stagedFilesDir === undefined
+      ? undefined
+      : join(stagedFilesDir, PROD_COMPOSE_FILE),
+  );
   if (!plan.ok) {
     ctx.error(plan.error);
     return { error: plan.error, backupPath: null };
@@ -172,7 +281,12 @@ export async function upgradeWith(
 
   let releaseSet: ReleaseSet | null;
   try {
-    releaseSet = await loadTargetReleaseSet(opts, ctx, target);
+    releaseSet = await loadTargetReleaseSet(
+      opts,
+      ctx,
+      target,
+      stagedFilesDir,
+    );
   } catch (error) {
     const message = (error as Error).message;
     ctx.error(message);
@@ -180,6 +294,7 @@ export async function upgradeWith(
   }
 
   const checkpointPath = opts.upgradeStatePath ?? upgradeStatePath(ctx.dir);
+  let filesCommitted = false;
   let checkpoint: UpgradeState;
   try {
     checkpoint = createUpgradeState({
@@ -199,7 +314,15 @@ export async function upgradeWith(
   const checkpointAdvance = async (
     phase: UpgradeState["phase"],
     patch: Partial<
-      Pick<UpgradeState, "backup_path" | "release_set_release" | "error">
+      Pick<
+        UpgradeState,
+        | "backup_path"
+        | "release_set_release"
+        | "error"
+        | "files"
+        | "files_staged_dir"
+        | "migration_started"
+      >
     > = {},
   ): Promise<void> => {
     checkpoint = advanceUpgradeState(
@@ -230,7 +353,7 @@ export async function upgradeWith(
       );
     }
     ctx.error(error);
-    return { error, backupPath, checkpointPath };
+    return { error, backupPath, checkpointPath, filesCommitted };
   };
 
   const passphrase = await ensureCommandPassphrase({
@@ -298,13 +421,87 @@ export async function upgradeWith(
   }
   await checkpointAdvance("verified");
 
+  const precheckError = await runUpgradePrecheck(opts, ctx, target);
+  if (precheckError !== null) {
+    return await checkpointFailure(precheckError, backup.path);
+  }
+
   await checkpointAdvance("draining");
   const drainError = await drainBeforeUpgrade(opts, target, ctx);
   if (drainError !== null) {
     return await checkpointFailure(drainError, backup.path);
   }
 
-  await checkpointAdvance("migrating");
+  // 排空之后、迁移之前提交候选文件与环境配置：此阶段失败时迁移尚未开始，
+  // 可以整组恢复旧文件并退出维护模式；一旦开始迁移就不再自动回退。
+  await checkpointAdvance("committing");
+  let candidateFiles: UpgradeCandidateFile[] = [];
+  try {
+    candidateFiles = stagedFilesDir === undefined
+      ? []
+      : await digestCandidateFiles(stagedFilesDir);
+  } catch (error) {
+    const drainExit = await drainAfterUpgrade(opts, target, ctx);
+    return await checkpointFailure(
+      `读取候选发布文件失败：${(error as Error).message}` +
+        (drainExit === null ? "" : `；${drainExit}`),
+      backup.path,
+    );
+  }
+  await checkpointAdvance("committing", {
+    files: candidateFiles,
+    files_staged_dir: stagedFilesDir ?? null,
+  });
+  const candidateBackupDir = join(
+    ctx.dir,
+    `.upgrade-backup-${checkpoint.run_id}`,
+  );
+  try {
+    if (stagedFilesDir !== undefined) {
+      await commitCandidateFiles(
+        ctx.dir,
+        stagedFilesDir,
+        candidateFiles,
+        candidateBackupDir,
+      );
+    }
+    if (stagedEnvFile !== undefined) {
+      const envTarget = join(ctx.dir, PROD_ENV_FILE);
+      await replaceFileAtomic(stagedEnvFile, envTarget);
+      await Deno.chmod(envTarget, 0o600);
+    }
+    filesCommitted = stagedFilesDir !== undefined ||
+      stagedEnvFile !== undefined;
+  } catch (error) {
+    let note = "；已恢复旧发布文件";
+    if (stagedFilesDir !== undefined) {
+      try {
+        await restoreCandidateFiles(
+          ctx.dir,
+          candidateBackupDir,
+          candidateFiles,
+        );
+      } catch (restoreError) {
+        note = `；恢复旧发布文件失败：${
+          (restoreError as Error).message
+        }（旧文件备份在 ${candidateBackupDir}）`;
+      }
+    }
+    const drainExit = await drainAfterUpgrade(opts, target, ctx);
+    return await checkpointFailure(
+      `提交候选发布文件失败：${(error as Error).message}${note}` +
+        (drainExit === null ? "" : `；${drainExit}`),
+      backup.path,
+    );
+  }
+
+  // 迁移一旦开始，失败后不得自动回退旧程序：先落盘标记再执行迁移。
+  // 候选文件已提交到安装目录，暂存目录不再需要保留；清空指针避免 --recover
+  // 误以为还能复用一份已被消费的暂存副本。
+  await checkpointAdvance("migrating", {
+    migration_started: true,
+    files_staged_dir: null,
+  });
   let migrationError: string | null;
   try {
     migrationError = await runUpdateMigrations(opts, ctx, target);
@@ -348,10 +545,15 @@ export async function upgradeWith(
   if (drainExitError !== null) {
     await checkpointFailure(drainExitError, backup.path);
   }
+  // 只有文件、配置、服务健康与退出维护全部成功才清理旧文件备份。
+  if (filesCommitted) {
+    await Deno.remove(candidateBackupDir, { recursive: true }).catch(() => {});
+  }
   return {
     error: null,
     backupPath: backup.path,
     drainExitError,
     checkpointPath,
+    filesCommitted,
   };
 }

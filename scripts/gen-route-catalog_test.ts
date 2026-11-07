@@ -5,7 +5,7 @@
  * 上下文读取当成路由，365 行目录里 112 行是伪造条目，而 `--check` 只比对
  * "文件与生成结果一致"，从不校验生成结果是否正确。
  */
-import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import {
   collectRouteFiles,
   extractRoutes,
@@ -114,4 +114,39 @@ Deno.test("gen-route-catalog: 模块迁移后仍发现真实路由并排除测�
   } finally {
     Deno.removeSync(root, { recursive: true });
   }
+});
+
+Deno.test("gen-route-catalog: const 模板插值解析为真实路径", () => {
+  withTempFile(
+    [
+      `const prefix = "/domains/:slug";`,
+      "router.get(\`\${prefix}/copy-sources\`, handler);",
+      "router.post(\`\${prefix}/problem-bindings\`, handler);",
+    ].join("\n"),
+    (path) => {
+      assertEquals(
+        extractRoutes(path).map((r) => `${r.method} ${r.path}`),
+        [
+          "GET /domains/:slug/copy-sources",
+          "POST /domains/:slug/problem-bindings",
+        ],
+      );
+    },
+  );
+});
+
+Deno.test("gen-route-catalog: 不可解析的模板路由报错而不是静默丢弃", () => {
+  withTempFile(
+    "router.get(\`\${dynamicPrefix}/copy-sources\`, handler);",
+    (path) => {
+      assertThrows(() => extractRoutes(path), Error, "无法静态解析路由模板");
+    },
+  );
+});
+
+Deno.test("gen-route-catalog: 非路由模板调用被忽略", () => {
+  withTempFile(
+    ['const key = "user";', "cache.get(\`\${key}:profile\`);"].join("\n"),
+    (path) => assertEquals(extractRoutes(path).length, 0),
+  );
 });

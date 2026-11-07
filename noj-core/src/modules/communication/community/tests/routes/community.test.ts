@@ -1,6 +1,6 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { createApp } from "../../../../../app.ts";
@@ -8,18 +8,16 @@ import { signToken } from "../../../../access/identity/index.ts";
 import {
   communityBoards,
   contests,
-  permissions,
+  domainMemberships,
   problems,
-  rolePermissions,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
+import { addDomainMember } from "../../../../access/workspace/index.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
 } from "../../../../platform/system/index.ts";
-import { ensureRbacSeeds } from "../../../../platform/system/index.ts";
 import {
   enterTestContext,
   leaveTestContext,
@@ -78,7 +76,6 @@ const responderId = "community-route-responder";
 async function setup(): Promise<void> {
   await resetDbForTest();
   // resetDbForTest 会 TRUNCATE roles/community_boards，重新 seed 以保证 FK 与默认板块
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();
@@ -102,10 +99,35 @@ async function setup(): Promise<void> {
       updated_at: now,
     },
   ]);
-  await getDb().insert(userRoles).values([
-    { user_id: authorId, role_id: "user" },
-    { user_id: responderId, role_id: "user" },
+  // 社区写入要求 main 域的活跃成员身份。
+  await getDb().insert(domainMemberships).values([
+    {
+      id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
+      user_id: authorId,
+      role: "member",
+      joined_at: now,
+    },
+    {
+      id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
+      user_id: responderId,
+      role: "member",
+      joined_at: now,
+    },
   ]);
+  // 默认板块不再由 reset 种子提供；路由测试需要至少一个可发帖板块。
+  const [existingBoard] = await getDb().select().from(communityBoards).limit(1);
+  if (!existingBoard) {
+    await getDb().insert(communityBoards).values({
+      id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
+      slug: "general",
+      name: "综合讨论",
+      created_at: now,
+      updated_at: now,
+    });
+  }
   await getDb().insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: "community-search-problem",
@@ -304,29 +326,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 关闭动态模块后动态列表返回 FEATURE_DISABLED",
+  name: "community route: moment 类型已删除，筛选返回 400",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext({
-      actorId: "0",
-      actorIp: "127.0.0.1",
-      actorRole: "admin",
-    });
-    try {
-      await updateSetting("community_moments_enabled", false, "0");
-    } finally {
-      leaveTestContext();
-    }
     const app = createApp();
     const response = await jsonRequest(
       app,
       "/api/v1/community/posts?type=moment",
     );
-    assertEquals(response.status, 403);
-    const body = await response.json();
-    assertEquals(body.code, "FEATURE_DISABLED");
+    assertEquals(response.status, 400);
   },
 });
 
@@ -364,7 +374,7 @@ Deno.test({
     });
     assertEquals(counts.status, 200);
     assertEquals(await counts.json(), {
-      data: { solution: 1, discussion: 1, moment: 0 },
+      data: { solution: 1, discussion: 1 },
     });
   },
 });
@@ -923,27 +933,22 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 具备 moderation 权限的审核员可访问社区管理端点",
+  name: "community route: 域 educator 不能进入平台社区管理端点",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
     const app = createApp();
-    // 给 responder 所在 user 角色授予 community_moderation:review
-    const permRows = await getDb().select({ id: permissions.id }).from(
-      permissions,
-    ).where(
-      and(
-        eq(permissions.resource, "community_moderation"),
-        eq(permissions.action, "review"),
-      ),
-    ).limit(1);
-    if (permRows[0]) {
-      await getDb().insert(rolePermissions).values({
-        role_id: "user",
-        permission_id: permRows[0].id,
-      }).onConflictDoNothing();
-    }
+    // 社区管理能力来自域角色 educator；板块管理属于 admin/owner。
+    const membership = await addDomainMember(
+      getDb(),
+      DEFAULT_DOMAIN_ID,
+      responderId,
+      true,
+    );
+    await getDb().update(domainMemberships).set({ role: "educator" }).where(
+      eq(domainMemberships.id, membership.id),
+    );
     const responderToken = await signToken({
       sub: responderId,
       role: "user",
@@ -953,14 +958,14 @@ Deno.test({
       "/api/v1/admin/community/comments/pending",
       { token: responderToken },
     );
-    assertEquals(response.status, 200);
-    // 板块管理仍需 community_board:manage（审核员无此权限 → 403）
-    const boardForbidden = await jsonRequest(
+    // 平台 /admin 组只接受平台能力或平台管理员；域 educator 走域路由。
+    assertEquals(response.status, 403);
+    const boardCreated = await jsonRequest(
       app,
       "/api/v1/admin/community/boards",
       { method: "POST", token: responderToken, body: { slug: "x", name: "X" } },
     );
-    assertEquals(boardForbidden.status, 403);
+    assertEquals(boardCreated.status, 403);
   },
 });
 

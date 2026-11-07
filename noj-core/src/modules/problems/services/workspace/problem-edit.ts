@@ -74,16 +74,13 @@ export async function loadEditableDomainProblem(
       and(
         eq(problems.domain_id, workspace.domain.id),
         eq(problems.number, parsed.number),
-        eq(domainProblemBindings.kind, "owned"),
         isNull(domainProblemBindings.disabled_at),
       ),
     );
   if (!row) throw new NotFoundError("本域题目不存在");
   if (
     !workspace.platformAdmin &&
-    !workspace.context.domainPermissions.has("problem:write_any") &&
-    !(row.problem.owner_id === actor.userId &&
-      workspace.context.domainPermissions.has("problem:write_own"))
+    !workspace.context.domainPermissions.has("problem:write_any")
   ) {
     throw new ForbiddenError("无权编辑此域题目", "DOMAIN_PERMISSION_DENIED");
   }

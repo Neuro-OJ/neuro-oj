@@ -133,14 +133,8 @@ import { downIsNoOp, prodState, transition, upIsNoOp } from "../core/state.ts";
 import type { DeployState } from "../core/state.ts";
 import { randomKey } from "../util/random.ts";
 import { nonInteractiveAdvice } from "./advice.ts";
-import {
-  emitHuman,
-  emitJson,
-  isJsonMode,
-  renderStatus,
-} from "../output/render.ts";
+import { emitHuman, emitJson } from "../output/render.ts";
 import type { RenderIO } from "../output/render.ts";
-import { createTheme } from "../output/theme.ts";
 import type { StatusKind } from "../output/theme.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";
@@ -162,7 +156,6 @@ import {
   wizardNeedsInteractiveInput,
 } from "./config.ts";
 import {
-  commitConfigVersion,
   configuredVersion,
   DEFAULT_UPDATE_REPOSITORY,
   normalizedVersion,
@@ -197,6 +190,14 @@ import {
 } from "./lifecycle/path.ts";
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
+import {
+  emitFailure,
+  failed,
+  jsonPayload,
+  lifecycleContext,
+} from "./lifecycle/context.ts";
+import type { LifecycleContext } from "./lifecycle/context.ts";
+import { reusableCandidateDir } from "./lifecycle/update-recover.ts";
 import { resolveTargetConfig } from "./lifecycle/target.ts";
 import type { ResolvedTargetConfig } from "./lifecycle/target.ts";
 import type { DrainOptions } from "./lifecycle/drain.ts";
@@ -759,54 +760,14 @@ export interface StatusResult extends LifecycleBaseResult {
   psOutput: string;
 }
 
-/** 一次命令运行的上下文：目录 + 两个输出通道 + 状态行写出器。 */
-export interface LifecycleContext {
-  dir: string;
-  io: RenderIO;
-  jsonMode: boolean;
-  /** 写一行状态（T8 符号 + 语义色），JSON 模式自动改道 stderr。 */
-  status: (kind: StatusKind, text: string) => void;
-  /** 写一条失败诊断：**永远 stderr**（对照 bash `fail` 的 >&2）。 */
-  error: (text: string) => void;
-}
-
-/** 真实 stderr 写入（RenderIO 未注入 stderr 时的兜底）。 */
-function realStderr(text: string): void {
-  Deno.stderr.writeSync(new TextEncoder().encode(text));
-}
-
-/**
- * 写失败诊断到 stderr。
- *
- * bash `fail` 是 `printf ... >&2; exit 1`，而 T6 的 `emitHuman` 在人类模式写
- * **stdout**（只有 JSON 模式改道 stderr）——两者不能同时满足，故失败诊断显式
- * 走 stderr：这样重定向 `> out.txt` 时错误仍可见，`--json` 的 stdout 也不被污染。
- */
-function emitFailure(io: RenderIO, text: string): void {
-  (io.stderr ?? realStderr)(text);
-}
-
-/** 构造命令上下文：T6 的 JSON 模式与 T8 的 stream 成对判定。 */
-export function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
-  const jsonMode = isJsonMode(opts.args ?? []);
-  const io: RenderIO = { ...(opts.io ?? {}), jsonMode };
-  const stream = jsonMode ? "stderr" : "stdout";
-  const theme = createTheme(opts.color ?? "auto", stream);
-  return {
-    dir: validateTargetDir(opts.dir),
-    io,
-    jsonMode,
-    status: (kind, text) => {
-      renderStatus(kind, text, { color: opts.color, stream, io });
-    },
-    error: (text) => emitFailure(io, theme.status("error", text) + "\n"),
-  };
-}
+export { failed, jsonPayload, lifecycleContext };
+export type { LifecycleContext };
 
 /** 由已校验的环境构造 T10 compose 选项（judge → `--profile judge`）。 */
 function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
   return {
     composeFile: env.composeFile,
+    projectDirectory: env.dir,
     envFile: env.envFile,
     judge: env.judge,
   };
@@ -1082,21 +1043,6 @@ async function streamLogs(
   // compose 的告警/进度走 stderr：显式与 stdout 分流（评审建议）。
   const emit = (line: string) => emitHuman(line + "\n", ctx.io);
   return await runner.stream("docker", args, emit, { onStderr: emit });
-}
-
-/** 生命周期结果的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
-function jsonPayload(result: LifecycleBaseResult): Record<string, unknown> {
-  return {
-    dir: result.dir,
-    state: result.state,
-    noOp: result.noOp,
-    error: result.error,
-  };
-}
-
-/** 统一的运行失败结果（`error` 已写往人类通道）。 */
-export function failed(dir: string, error: string): LifecycleBaseResult {
-  return { dir, state: "error", noOp: false, exitCode: 1, error };
 }
 
 /**
@@ -1482,8 +1428,9 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   }
 
   const checkpointPath = opts.upgradeStatePath ?? upgradeStatePath(ctx.dir);
+  let previous: UpgradeState | null = null;
   try {
-    const previous = await readUpgradeState(checkpointPath);
+    previous = await readUpgradeState(checkpointPath);
     if (
       previous !== null && previous.phase !== "completed" &&
       opts.recover !== true
@@ -1497,6 +1444,9 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   } catch (err) {
     return fail(from, "", (err as Error).message);
   }
+  // 恢复同一候选发布集：目标版本与暂存目录都沿用 checkpoint 记录，避免
+  // “同一 run 前后两次升级到不同版本”或重新下载已校验文件。
+  const recovering = previous !== null && previous.phase !== "completed";
 
   // ---- 2. --latest：解析目标版本；相等即 no-op（零副作用）----
   let to: string;
@@ -1508,6 +1458,13 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     }
     emitHuman(`当前生产版本：${from}\n`, ctx.io);
     emitHuman(`最新稳定版本：${to}\n`, ctx.io);
+    if (recovering && previous !== null && previous.to !== to) {
+      emitHuman(
+        `沿用未完成升级的目标版本：${previous.to}（checkpoint 阶段 ${previous.phase}）\n`,
+        ctx.io,
+      );
+      to = previous.to;
+    }
     if (normalizedVersion(to) === normalizedVersion(from)) {
       ctx.status("success", UPDATE_UP_TO_DATE_HINT);
       return finish({
@@ -1524,12 +1481,15 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
       });
     }
   } else {
-    to = from;
+    // 恢复未完成升级时目标版本取自 checkpoint，而不是当前安装版本。
+    to = recovering && previous !== null ? previous.to : from;
   }
 
   // ---- 3. 前置校验与目标配置解析都在升级序列内；暂存配置只在 --latest 有新版时创建 ----
   let staged: string | null = null;
-  if (latest) {
+  // --latest 有新版，或 --recover 沿用了 checkpoint 里更高的目标版本时，都要先
+  // 暂存目标版本配置；否则恢复会拿旧 .env.prod 去匹配新发布集。
+  if (latest || (recovering && to !== from)) {
     try {
       staged = await stageConfigVersion(envFile, to);
     } catch (err) {
@@ -1541,29 +1501,70 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     if (staged !== null) await Deno.remove(staged).catch(() => {});
   };
 
-  // ---- 4. 同步部署文件（--files-only 语义）----
+  // ---- 4. 同步部署文件到暂存目录（预检通过后才切换）----
   emitHuman(`同步生产部署文件：${to}\n`, ctx.io);
+  let stagedFiles: string | null = null;
+  // --recover：上次暂存目录仍在且摘要与 checkpoint 一致时直接复用，
+  // 保证恢复的是同一候选发布集；任一不符则重新拉取并记录原因。
+  const reusableDir = recovering && opts.syncFiles === undefined
+    ? await reusableCandidateDir(previous)
+    : null;
   try {
-    await runUpdateSync(opts, {
-      dir: ctx.dir,
-      ref: to,
-      repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
-    });
+    if (opts.syncFiles !== undefined) {
+      await runUpdateSync(opts, {
+        dir: ctx.dir,
+        ref: to,
+        repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
+      });
+    } else if (reusableDir !== null) {
+      stagedFiles = reusableDir;
+      emitHuman(`复用未完成升级的暂存发布文件：${reusableDir}\n`, ctx.io);
+    } else {
+      if (recovering) {
+        emitHuman(
+          "上次暂存发布文件不可复用（缺失或摘要变化），重新拉取\n",
+          ctx.io,
+        );
+      }
+      stagedFiles = join(ctx.dir, `.update-staging-${crypto.randomUUID()}`);
+      await Deno.mkdir(stagedFiles, { recursive: true });
+      await runUpdateSync(opts, {
+        dir: stagedFiles,
+        ref: to,
+        repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
+      });
+    }
   } catch (err) {
+    if (stagedFiles !== null) {
+      await Deno.remove(stagedFiles, { recursive: true }).catch(() => {});
+    }
     await discardStaged();
     return fail(from, to, (err as Error).message);
   }
 
-  // ---- 5. 升级序列：解析目标配置 → 备份 → pull → 验签 → wait → metadata ----
-  const upgraded = await upgradeWith(opts, ctx, staged ?? undefined);
+  const discardStagedFiles = async (): Promise<void> => {
+    if (stagedFiles !== null) {
+      await Deno.remove(stagedFiles, { recursive: true }).catch(() => {});
+    }
+  };
+
+  // ---- 5. 升级序列：解析目标配置 → 备份 → pull → 验签 → 预检 → wait ----
+  const upgraded = await upgradeWith(
+    opts,
+    ctx,
+    staged ?? undefined,
+    stagedFiles ?? undefined,
+  );
   if (upgraded.error !== null) {
+    // 候选文件只在升级序列内部“排空后、迁移前”提交；失败分支不再发布任何
+    // 目标文件，避免出现“新 compose + 旧版本环境配置”的组合。
+    await discardStagedFiles();
     await discardStaged();
     const result = fail(from, to, upgraded.error);
-    result.filesSynced = true;
+    result.filesSynced = upgraded.filesCommitted === true;
     result.backupPath = upgraded.backupPath;
     return result;
   }
-
   const updateCheckpoint = async (
     phase: UpgradeState["phase"],
     error?: string,
@@ -1584,30 +1585,20 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
     }
   };
 
-  // ---- 6. 仅升级成功后提交暂存配置（bash :428-432）----
-  if (staged !== null) {
-    try {
-      await commitConfigVersion(staged, envFile);
-    } catch (err) {
-      // 服务已升级但配置未提交：必须显式报告半完成状态（不吞错）。
-      const result = fail(from, to, (err as Error).message);
-      result.filesSynced = true;
-      result.backupPath = upgraded.backupPath;
-      await updateCheckpoint("failed", result.error ?? "提交目标配置失败");
-      return result;
-    }
-  }
-
+  // 暂存配置已在升级序列内“排空后、迁移前”提交；这里只处理退出维护失败。
   // 退出维护失败：服务已升级但仍在维护模式——显式报告半完成（不得静默）
   if (upgraded.drainExitError != null) {
     const result = fail(from, to, upgraded.drainExitError);
-    result.filesSynced = true;
+    result.filesSynced = upgraded.filesCommitted === true;
     result.backupPath = upgraded.backupPath;
     await updateCheckpoint("failed", upgraded.drainExitError);
     return result;
   }
 
+  // 只有文件、配置、服务健康与退出维护全部成功，才标记完成并清理暂存文件。
   await updateCheckpoint("completed");
+  await discardStagedFiles();
+  await discardStaged();
 
   ctx.status("success", latest ? updateSuccessHint(to) : "生产服务已升级");
   return finish({

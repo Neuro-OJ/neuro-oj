@@ -268,6 +268,8 @@ export async function prepareAndCheck(
   // （T16 补：T10 的 composeConfig 此前缺该旗标，属 parity 缺口）。
   const composeOptions: ComposeOptions = {
     composeFile,
+    // 项目目录固定为安装目录：相对挂载不随调用时的工作目录变化。
+    projectDirectory: dir,
     envFile,
     judge: report.judgeEnabled,
   };

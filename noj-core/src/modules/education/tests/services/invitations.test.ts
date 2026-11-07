@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { registrationInvitationBoundary } from "../../../application/index.ts";
@@ -11,7 +11,6 @@ import {
   classroomMemberships,
   domainInvitations,
   domainLimits,
-  domainMemberRoles,
   domainMemberships,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -25,7 +24,7 @@ import {
   previewDomainInvitationCommand,
 } from "../../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
-import { enrollRegisteredAccountTxLegacy } from "../../../access/workspace/index.ts";
+import { enrollRegisteredAccountTx } from "../../../access/index.ts";
 import { assertInstanceRegistration } from "../../../access/index.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { registerUser } from "../../../access/identity/index.ts";
@@ -63,12 +62,7 @@ Deno.test("班级邀请：原子加入域基础成员和学生，令牌仅存哈
       eq(domainMemberships.domain_id, f.school.id),
     ),
   );
-  assertEquals(
-    (await f.db.select().from(domainMemberRoles).where(
-      eq(domainMemberRoles.membership_id, member.id),
-    )).map((r) => r.role),
-    ["member"],
-  );
+  assertEquals(member.role, "member");
   assertEquals(
     (await f.db.select().from(classroomMemberships).where(
       eq(classroomMemberships.user_id, student),
@@ -127,7 +121,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
     () => previewDomainInvitation(invite.token),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const ta = await createClassroomInvitation(
     f.school.slug,
     f.classroom.id,
@@ -144,7 +138,7 @@ Deno.test("班级邀请：成员额度失败回滚两层加入和消费；撤权
       ),
     ForbiddenError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(() => previewDomainInvitation(ta.token), NotFoundError);
   const archived = await createClassroomInvitation(
     f.school.slug,
@@ -184,9 +178,14 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
   await assertRejects(
     () =>
       f.db.transaction((tx) =>
-        enrollRegisteredAccountTxLegacy(tx, f.student, coachInvite.token, {
-          invitationBoundary: registrationInvitationBoundary(),
-        })
+        enrollRegisteredAccountTx(
+          tx,
+          userActorFromAuthenticatedId(f.student),
+          coachInvite.token,
+          {
+            invitationBoundary: registrationInvitationBoundary(),
+          },
+        )
       ),
     ForbiddenError,
   );
@@ -197,9 +196,14 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
     `${student}@example.com`,
   );
   await f.db.transaction((tx) =>
-    enrollRegisteredAccountTxLegacy(tx, student, adminInvite.token, {
-      invitationBoundary: registrationInvitationBoundary(),
-    })
+    enrollRegisteredAccountTx(
+      tx,
+      userActorFromAuthenticatedId(student),
+      adminInvite.token,
+      {
+        invitationBoundary: registrationInvitationBoundary(),
+      },
+    )
   );
   assertEquals(
     (await f.db.select().from(classroomMemberships).where(

@@ -4,8 +4,7 @@ import { extractApiError } from '~/utils/apiError';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
 const props = defineProps<{ domainSlug: string; initialData?: AnnouncementSummary[] }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);
-const { data, status, error, refresh } = await useViewAsyncData(
-  'announcements',
+const { data, status, error, refresh } = await useAsyncData(
   () => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-announcements'),
   () => api.list(1, 5),
   { immediate: !props.initialData },

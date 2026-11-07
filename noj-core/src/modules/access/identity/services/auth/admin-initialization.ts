@@ -1,12 +1,7 @@
-import { eq, ne } from "drizzle-orm";
+import { ne } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
-import {
-  roles,
-  systemSettings,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { systemSettings, users } from "../../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import {
   BadRequestError,
@@ -35,7 +30,7 @@ export async function sealExistingSiteAdminInitialization(): Promise<void> {
 
 /**
  * 仅供服务器本机 CLI 调用的一次性管理员初始化，不挂载 HTTP 路由。
- * 数据库唯一键将并发初始化与公开注册串行化；用户、角色和关闭标记原子提交。
+ * 数据库唯一键将并发初始化与公开注册串行化；用户、平台角色和关闭标记原子提交。
  * 已有用户时只提交关闭标记，不创建或提升用户。密码不写入日志。
  */
 export async function initializeFirstAdmin(
@@ -63,11 +58,6 @@ export async function initializeFirstAdmin(
     const [existing] = await tx.select({ id: users.id }).from(users)
       .where(ne(users.id, ROOT_USER_ID)).limit(1);
     if (existing) return false;
-    const [adminRole] = await tx.select({ id: roles.id }).from(roles)
-      .where(eq(roles.name, "admin")).limit(1);
-    if (!adminRole) {
-      throw new BadRequestError("请先执行 init system 初始化系统角色");
-    }
     const id = crypto.randomUUID();
     await tx.insert(users).values({
       id,
@@ -76,10 +66,11 @@ export async function initializeFirstAdmin(
       password_hash: passwordHash,
       email_verified: false,
       must_change_password: true,
+      // 首次管理员直接写平台角色，不再依赖可编辑角色表。
+      role: "admin",
       created_at: now,
       updated_at: now,
     });
-    await tx.insert(userRoles).values({ user_id: id, role_id: adminRole.id });
     await ensureDefaultWorkspaceTx(tx, systemActor);
     createdUserId = id;
     return true;

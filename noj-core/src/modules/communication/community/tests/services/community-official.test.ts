@@ -11,14 +11,10 @@ import {
   users,
 } from "../../../../../shared/db/schema.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
-import {
-  ForbiddenError,
-  ValidationError,
-} from "../../../../../shared/base/errors.ts";
+import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import { createPost, listPosts, setPostOfficial } from "../../index.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -32,7 +28,6 @@ const problemId = "official-problem";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();
@@ -111,23 +106,6 @@ Deno.test({
       .from(communityPosts)
       .where(eq(communityPosts.id, post.id));
     assertEquals(row2?.is_official, false);
-  },
-});
-
-Deno.test({
-  name: "official: 官方标记仅适用于题解类型",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    const moment = await createPost(otherId, {
-      type: "moment",
-      content: "一条动态",
-    }, true);
-    await assertRejects(
-      () => setPostOfficial(moment.id, ownerId, false, true),
-      ValidationError,
-    );
   },
 });
 
@@ -223,42 +201,3 @@ Deno.test({
  * `is_official` 置顶排序，这类帖子会置顶社区列表，绕过 `setPostOfficial` 的
  * "仅题解可标记"规则。
  */
-Deno.test({
-  name: "official: 非题解夹带 problem_id 不能获得官方标记（防置顶绕过）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // owner 发 moment，夹带自己拥有的公开题 id 并自称官方。
-    // moment 不校验 problem_id，故客户端可任意夹带——正是攻击面所在。
-    const moment = await createPost(ownerId, {
-      type: "moment",
-      content: "动态夹带题目 id",
-      problem_id: problemId,
-      is_official: true,
-    }, false);
-    assertEquals(moment.is_official, false);
-    // 非题解不得持久化题目关联（否则会被当作"某题的官方内容"参与置顶）
-    assertEquals(moment.problem_id, null);
-
-    // 即便审核员发 moment 也不应被标记：该标记只属于题解这一语义
-    const moderatorMoment = await createPost(ownerId, {
-      type: "moment",
-      content: "审核员的动态",
-      problem_id: problemId,
-      is_official: true,
-    }, true);
-    assertEquals(moderatorMoment.is_official, false);
-
-    // 确认这类帖子不会因 is_official 排到列表最前（排序键 is_official 优先）
-    const listed = await listPosts({ type: "moment" });
-    assertEquals(listed.data.length > 0, true);
-    assertEquals(
-      listed.data.every((row) => row.post.is_official === false),
-      true,
-    );
-
-    // 对照见上一条用例「创建时声明官方——owner 被信任，普通用户被忽略」：
-    // 那里已用满足通过门槛的夹具验证题解路径未被误伤。
-  },
-});

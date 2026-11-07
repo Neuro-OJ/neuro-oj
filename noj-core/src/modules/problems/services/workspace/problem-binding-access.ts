@@ -1,7 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
-  AppError,
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
@@ -12,8 +11,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
-  problemShareTargets,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -55,50 +52,6 @@ export function legacyWorkspaceFromAccess(
       domainRevision: result.context.domainRevision,
     },
   };
-}
-
-/** 跨域引用实时读取当前源授权；目标域管理员也不能绕过撤销。 */
-export async function assertCurrentProblemShare(
-  problem: typeof problems.$inferSelect,
-  source: typeof domains.$inferSelect,
-  targetDomainId: string,
-  executor: Executor = getDb(),
-) {
-  if (
-    source.status === "suspended" || source.configuration.access !== "public" ||
-    problem.visibility !== "public" || !problem.latest_version_id
-  ) {
-    throw new NotFoundError("源题不可引用或共享授权已撤销");
-  }
-  const [sourceBinding] = await executor.select({
-    id: domainProblemBindings.id,
-  })
-    .from(domainProblemBindings).where(and(
-      eq(domainProblemBindings.domain_id, source.id),
-      eq(domainProblemBindings.problem_id, problem.id),
-      eq(domainProblemBindings.kind, "owned"),
-      eq(domainProblemBindings.visibility, "public"),
-      isNull(domainProblemBindings.disabled_at),
-    ));
-  if (!sourceBinding) throw new NotFoundError("源题已下架或源域绑定不可用");
-  const [settings] = await executor.select().from(problemShareSettings).where(
-    eq(problemShareSettings.problem_id, problem.id),
-  );
-  if (!settings?.enabled) throw new NotFoundError("源题未开放引用");
-  if (settings.scope === "selected") {
-    const [grant] = await executor.select().from(problemShareTargets).where(
-      and(
-        eq(problemShareTargets.problem_id, problem.id),
-        eq(problemShareTargets.domain_id, targetDomainId),
-      ),
-    );
-    if (!grant) throw new NotFoundError("源题未授权此工作空间引用");
-  }
-  if (
-    (await loadPublicContestSecrecy(problem.id, executor, source.id)).length
-  ) {
-    throw new NotFoundError("源题处于比赛保密窗口");
-  }
 }
 
 /** 内部资源事实解析；返回值不得直接作为公开 API DTO，内容仍须统一裁剪。 */
@@ -177,7 +130,7 @@ export async function resolveDomainProblemInWorkspace(
       ),
     );
   if (!row) throw new NotFoundError("域题库中不存在此题");
-  if (row.source.id !== workspace.domain.id || row.binding.kind !== "owned") {
+  if (row.source.id !== workspace.domain.id) {
     throw new NotFoundError("请先将题目独立复制到当前域");
   }
   const contestAccess = options.contestId
@@ -195,22 +148,10 @@ export async function resolveDomainProblemInWorkspace(
     contestAccess &&
     (!contestAccess.allowed || options.write && !contestAccess.running)
   ) throw new NotFoundError("此赛题不可作答");
-  if (
-    row.binding.kind !==
-      (row.source.id === workspace.domain.id ? "owned" : "shared")
-  ) {
-    throw new AppError(
-      "题库绑定来源不一致",
-      503,
-      "PROBLEM_BINDING_INCONSISTENT",
-    );
-  }
   {
     if (!row.problem.latest_version_id) throw new NotFoundError("此题尚未发布");
     const editable = workspace.platformAdmin ||
-      workspace.context.domainPermissions.has("problem:write_any") ||
-      (actorId === row.problem.owner_id &&
-        workspace.context.domainPermissions.has("problem:write_own"));
+      workspace.context.domainPermissions.has("problem:write_any");
     const protection = await loadPublicContestSecrecy(
       row.problem.id,
       executor,

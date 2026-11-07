@@ -17,15 +17,14 @@ export async function listEditableDomainProblemDrafts(
   limit = 20,
 ) {
   const access = await loadWorkspace(slug, actorId), db = getDb();
-  const any = access.platformAdmin ||
+  const canAuthor = access.platformAdmin ||
     access.context.domainPermissions.has("problem:write_any");
-  const own = access.context.domainPermissions.has("problem:write_own");
   const condition = and(
     eq(problems.domain_id, access.domain.id),
     eq(domainProblemBindings.domain_id, access.domain.id),
-    eq(domainProblemBindings.kind, "owned"),
     isNull(domainProblemBindings.disabled_at),
-    any ? undefined : own ? eq(problems.owner_id, actorId) : sql`false`,
+    // 草稿是出题工作区，只对 educator/admin 开放。
+    canAuthor ? undefined : sql`false`,
   );
   const [totals, rows] = await Promise.all([
     db.select({ total: count() }).from(problems).innerJoin(

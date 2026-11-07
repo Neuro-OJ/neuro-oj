@@ -41,7 +41,7 @@ import type {
   AttemptState,
 } from "../../../../../shared/versioning/types.ts";
 
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 const now = new Date().toISOString();
 const FULL_SCORE = 10000;

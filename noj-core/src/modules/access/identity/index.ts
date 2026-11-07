@@ -95,15 +95,16 @@ export type {
   CheckinStats,
 } from "./services/checkin.ts";
 export {
-  ADMIN_FULL_ACCESS,
   assertPermission,
   checkPermission,
+  findPlatformRole,
   getAdminUserIds,
   getUserPermissions,
   isUserAdmin,
   requireAdmin,
   requirePermission,
   resolvePermissions,
+  resolvePlatformRole,
 } from "./services/security/permissions.ts";
 export {
   assertActiveInstanceAccount,
@@ -181,8 +182,6 @@ export type {
   Role,
   UserResponse,
 } from "./types/auth.ts";
-export { PERMISSION_DEFS } from "./types/permissions.ts";
-export type { PermissionName } from "./types/permissions.ts";
 
 export {
   initializeFirstAdmin,

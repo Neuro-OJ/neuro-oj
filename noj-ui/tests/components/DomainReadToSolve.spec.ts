@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 async function view(kind = 'oi', mode = 'code') {
   read.mockResolvedValue({
-    reference: { problem_id: 'p', number: 1001, display_ref: 'main:1001', is_shared: true },
+    reference: { problem_id: 'p', number: 1001, display_ref: 'main:1001' },
     version_id: 'v1',
     version: 1,
     effective_version_mode: 'any',

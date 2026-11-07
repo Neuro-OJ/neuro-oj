@@ -14,7 +14,7 @@ export {
   revokeClassroomInvitationCommand,
   revokeDomainInvitationCommand,
   setDomainStatusCommand,
-  setMemberRolesCommand,
+  setMemberRoleCommand,
   transferDomainCommand,
   updateDomainCommand,
 } from "./access.ts";
@@ -84,6 +84,7 @@ export {
 export type { ComposeEvaluationAdmissionInput } from "./evaluations.ts";
 export {
   addTrainingProblemCommand,
+  copyDomainTrainingCommand,
   createDomainProblemCommand,
   createObjectiveQuestionCommand,
   createProblemCommand,
@@ -98,7 +99,6 @@ export {
   importDomainProblemBundleCommand,
   importDomainProblemCommand,
   importDomainProblemDraftBundleCommand,
-  importDomainTrainingCommand,
   importProblemBundleCommand,
   mergeTagsCommand,
   publishDomainProblemVersionCommand,
@@ -114,8 +114,6 @@ export {
   setDomainProblemBindingPolicyCommand,
   setDomainProblemBindingPolicyCommandTx,
   setDomainProblemBindingStateCommand,
-  setDomainProblemSharingCommand,
-  setDomainTrainingSharingCommand,
   updateObjectiveQuestionCommand,
   updateProblemCommand,
   updateTagCommand,

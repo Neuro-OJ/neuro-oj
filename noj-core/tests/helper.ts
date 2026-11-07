@@ -185,10 +185,9 @@ export async function initRedisForTest(): Promise<void> {
 /**
  * 创建真实存在的测试用户并返回其 JWT。
  *
- * 权限判定（requireAdmin / checkPermission）实时查询 DB，JWT 仅含 sub/role，
- * 因此 token 的 sub 必须对应一个真实用户且关联了相应角色：
- * - `"admin"`：关联 admin 角色（其 admin:full_access 权限由 ensureRbacSeeds 预置）
- * - `"user"`：关联 user 角色（默认权限集）
+ * 权限判定（requireAdmin / checkPermission）实时查询 DB `users.role`，
+ * JWT 仅含 sub/role：token 的 sub 必须对应一个真实用户，平台角色直接写在
+ * 用户行上（admin 或 user），不存在可编辑角色表。
  *
  * 动态 import 避免本模块顶层引入 DB 依赖（helper 保持零副作用导入）。
  */
@@ -198,29 +197,11 @@ export async function createUserToken(
   const { getDb } = await import(
     "../src/shared/db/connection.ts"
   );
-  const { users, userRoles } = await import("../src/shared/db/schema.ts");
+  const { users } = await import("../src/shared/db/schema.ts");
   const { signToken } = await import(
     "../src/modules/access/identity/services/security/jwt.ts"
   );
-  const { ensureRbacSeeds } = await import(
-    "../src/modules/platform/system/index.ts"
-  );
   const db = getDb();
-  // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）。
-  // deno test 并行执行文件时，其他文件的 resetDbForTest 可能在本函数执行
-  // 期间并发 TRUNCATE roles 表 → user_roles 插入 FK 失败。此处捕获 FK 错误
-  // 并重试一次（重试前重新 seed），消除并行竞态窗口。
-  async function insertWithRetry(): Promise<void> {
-    try {
-      await db.insert(userRoles).values({ user_id: id, role_id: role })
-        .onConflictDoNothing();
-    } catch (err) {
-      if (!String(err).includes("user_roles_role_id_fkey")) throw err;
-      await ensureRbacSeeds();
-      await db.insert(userRoles).values({ user_id: id, role_id: role })
-        .onConflictDoNothing();
-    }
-  }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const username = `test_${role}_${Date.now()}_${
@@ -232,10 +213,11 @@ export async function createUserToken(
     email: `${id}@test.local`,
     password_hash: "x",
     must_change_password: false,
+    // 平台角色单值写入用户行；不再有关联表或 FK 重试。
+    role,
     created_at: now,
     updated_at: now,
   });
-  await insertWithRetry();
   return await signToken({ sub: id, role });
 }
 
@@ -269,7 +251,6 @@ export async function bindPublishedProblemForTest(
     id: `owned-binding-${problem.id}`,
     domain_id: problem.domain_id,
     problem_id: problem.id,
-    kind: "owned",
     visibility: problem.visibility === "public" ? "public" : "members",
     revision: problem.effective_policy_revision,
     created_by: problem.owner_id ?? "0",

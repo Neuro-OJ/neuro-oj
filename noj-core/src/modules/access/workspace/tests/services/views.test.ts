@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import { roles, userRoles, users } from "../../../../../shared/db/schema.ts";
+import { users } from "../../../../../shared/db/schema.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
 import {
   consumeDomainInvitation,
@@ -14,7 +14,7 @@ import {
   listDomainJoinRequests,
   listDomainMembers,
   previewDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
 } from "../../index.ts";
 
 async function account(admin = false) {
@@ -24,15 +24,10 @@ async function account(admin = false) {
     id,
     username: id,
     email: `${id}@example.com`,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 
@@ -46,13 +41,10 @@ Deno.test("域管理视图：成员角色批量返回，注销身份不暴露旧
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, member);
-  await setMemberRoles(domain.slug, operator, member, ["editor", "educator"]);
+  await setMemberRole(domain.slug, operator, member, "educator");
   const list = await listDomainMembers(domain.slug, operator);
-  assertEquals(list.find((row) => row.user_id === member)?.roles.sort(), [
-    "editor",
-    "educator",
-  ]);
-  assertEquals(list.find((row) => row.user_id === operator)?.is_owner, true);
+  assertEquals(list.find((row) => row.user_id === member)?.role, "educator");
+  assertEquals(list.find((row) => row.user_id === operator)?.role, "admin");
   await getDb().update(users).set({ deleted_at: new Date().toISOString() })
     .where(eq(users.id, member));
   const deleted = (await listDomainMembers(domain.slug, operator)).find((row) =>
@@ -80,7 +72,6 @@ Deno.test("加入申请视图：按域隔离，注销后隐藏用户名且不能
   const { updateDomain } = await import("../../index.ts");
   await updateDomain(domain.slug, operator, domain.revision, {
     configuration: {
-      ...domain.configuration,
       discoverable: true,
       join_policy: "approval",
     },
@@ -161,14 +152,14 @@ Deno.test("邀请视图：签发者撤权后预览和直接接受都立即拒绝
     preset: "community",
   }, operator);
   await joinDomain(domain.slug, issuer);
-  await setMemberRoles(domain.slug, operator, issuer, ["admin"]);
+  await setMemberRole(domain.slug, operator, issuer, "admin");
   const invitation = await createDomainInvitation(
     domain.slug,
     issuer,
     `${recipient}@example.com`,
   );
   await previewDomainInvitation(invitation.token);
-  await setMemberRoles(domain.slug, operator, issuer, ["member"]);
+  await setMemberRole(domain.slug, operator, issuer, "member");
   await assertRejects(
     () => previewDomainInvitation(invitation.token),
     NotFoundError,

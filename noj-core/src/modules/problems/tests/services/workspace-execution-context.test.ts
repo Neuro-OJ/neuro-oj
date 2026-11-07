@@ -24,7 +24,7 @@ Deno.test("默认执行归属：成功解析必须返回本域 owned 绑定，�
     eq(domainProblemBindings.id, context.domain_problem_binding_id),
   );
   assertEquals(context.domain_id, DEFAULT_DOMAIN_ID);
-  assertEquals([binding.problem_id, binding.kind], [problem.id, "owned"]);
+  assertEquals(binding.problem_id, problem.id);
   await db.update(domainProblemBindings).set({
     disabled_at: new Date().toISOString(),
   }).where(eq(domainProblemBindings.id, binding.id));
@@ -52,17 +52,4 @@ Deno.test("默认执行归属：题目缺 owned 绑定时拒绝，不自动补�
     NotFoundError,
   );
   assertEquals(await db.select().from(domainProblemBindings), []);
-  await db.insert(domainProblemBindings).values({
-    id: crypto.randomUUID(),
-    domain_id: DEFAULT_DOMAIN_ID,
-    problem_id: id,
-    kind: "shared",
-    created_by: "0",
-    created_at: now,
-    updated_at: now,
-  });
-  await assertRejects(
-    () => resolveDefaultExecutionContext(id, "0", db),
-    NotFoundError,
-  );
 });

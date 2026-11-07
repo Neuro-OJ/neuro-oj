@@ -175,10 +175,10 @@ e2eTest(
     await invite(`/domains/${slugB}`, ownerB.token, mixed);
     await request(
       "PUT",
-      `/domains/${slugB}/members/${mixed.id}/roles`,
+      `/domains/${slugB}/members/${mixed.id}/role`,
       ownerB.token,
       200,
-      { roles: ["educator"] },
+      { role: "educator" },
     );
     const classB = await request<{ data: { id: string } }>(
       "POST",
@@ -278,14 +278,14 @@ e2eTest(
         reference: {
           problem_id: string;
           display_ref: string;
-          is_shared: boolean;
         };
         can_edit: boolean;
         content: { questions: { answer: unknown[]; explanation: string }[] };
       }>("GET", `/domains/${slug}/problems/${copyRef}`, peer.token, 200);
       assertEquals(paper.reference.problem_id, copyProblemId);
       assertEquals(paper.reference.display_ref, copyRef);
-      assertEquals(paper.reference.is_shared, false);
+      // 共享模型已删除：引用 DTO 不再携带 is_shared。
+      assertEquals("is_shared" in paper.reference, false);
       assertEquals(paper.can_edit, false);
       assertEquals(paper.content.questions[0].answer, []);
       assertEquals(paper.content.questions[0].explanation, "");

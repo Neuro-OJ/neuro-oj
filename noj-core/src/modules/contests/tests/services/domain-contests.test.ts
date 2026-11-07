@@ -28,7 +28,7 @@ import {
   createDomain,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../access/workspace/index.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
 
@@ -41,9 +41,12 @@ Deno.test({
     const source = await workspace("copy-training-source"),
       target = await workspace("copy-training-target");
     await join(source.domain.slug, source.owner, target.owner);
-    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+    await setMemberRole(
+      source.domain.slug,
+      source.owner,
+      target.owner,
       "admin",
-    ]);
+    );
     const first = await item(source.domain.id, source.owner, "objective", 1001),
       second = await item(source.domain.id, source.owner, "objective", 1002),
       trainingId = crypto.randomUUID(),
@@ -71,7 +74,7 @@ Deno.test({
         set: { problems: 1 },
       });
     await assertRejects(() =>
-      importDomainTraining(target.domain.slug, trainingId, target.owner)
+      copyDomainTraining(target.domain.slug, trainingId, target.owner)
     );
     assertEquals(
       (await db.select().from(problems).where(
@@ -88,7 +91,7 @@ Deno.test({
     await db.update(domainLimits).set({ problems: 5 }).where(
       eq(domainLimits.domain_id, target.domain.id),
     );
-    const copied = await importDomainTraining(
+    const copied = await copyDomainTraining(
       target.domain.slug,
       trainingId,
       target.owner,
@@ -114,7 +117,7 @@ Deno.test({
     );
   },
 });
-import { importDomainTraining } from "../../../problems/services/workspace/training-sharing.ts";
+import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
 import { readDomainTraining } from "../../../problems/services/workspace/training-access.ts";
 
 Deno.test({
@@ -372,7 +375,6 @@ async function item(
     id: binding,
     domain_id: domainId,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: owner,
     created_at: now,
@@ -557,7 +559,7 @@ Deno.test({
       outsider = await account();
     await join(a.domain.slug, a.owner, student);
     await join(a.domain.slug, a.owner, editor);
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["editor"]);
+    await setMemberRole(a.domain.slug, a.owner, editor, "educator");
     const p = await item(a.domain.id, a.owner);
     const contest = await createDomainContest(a.domain.slug, editor, {
       ...input(p.id),
@@ -592,7 +594,7 @@ Deno.test({
         ]),
       Error,
     );
-    await setMemberRoles(a.domain.slug, a.owner, editor, ["member"]);
+    await setMemberRole(a.domain.slug, a.owner, editor, "member");
     await assertRejects(
       () => getDomainContestSettlement(a.domain.slug, contest.id, editor),
       ForbiddenError,
@@ -626,9 +628,12 @@ Deno.test({
       ForbiddenError,
     );
     await join(source.domain.slug, source.owner, target.owner);
-    await setMemberRoles(source.domain.slug, source.owner, target.owner, [
+    await setMemberRole(
+      source.domain.slug,
+      source.owner,
+      target.owner,
       "admin",
-    ]);
+    );
     const copied = await importDomainProblem(
       target.domain.slug,
       `${source.domain.slug}:1001`,
@@ -638,7 +643,7 @@ Deno.test({
     );
     const copiedId = copied.binding.problem_id;
     assert(copiedId !== p.id);
-    assertEquals(copied.binding.kind, "owned");
+    assertEquals(copied.binding.domain_id, target.domain.id);
     const contest = await createDomainContest(
       target.domain.slug,
       target.owner,

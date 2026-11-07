@@ -1,12 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
-import {
-  roles,
-  systemSettings,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { systemSettings, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../security/password.ts";
 import { getEmailConfigStatus } from "../../../../platform/contracts/cross-module/system_services_email-status.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
@@ -83,14 +78,15 @@ export function toUserResponse(
   row: typeof users.$inferSelect,
   options?: {
     activeBan?: { reason: string; banned_until: string | null } | null;
-    isAdmin?: boolean;
   },
 ): UserResponse {
+  const role = row.role === "admin" ? "admin" : "user";
   return {
     id: row.id,
     username: row.username,
     email: row.email,
-    is_admin: options?.isAdmin ?? false,
+    role,
+    is_admin: role === "admin",
     has_local_password: row.password_hash !== null,
     must_change_password: row.must_change_password,
     email_verified: row.email_verified,
@@ -202,25 +198,11 @@ export async function registerUser(
       email: input.email,
       password_hash: passwordHash,
       email_verified: false,
+      // 公开注册固定为普通用户；同邮箱/已有账户不会自动提权。
+      role: "user",
       created_at: now,
       updated_at: now,
     });
-
-    const roleName = "user";
-    const [role] = await tx
-      .select({ id: roles.id })
-      .from(roles)
-      .where(eq(roles.name, roleName))
-      .limit(1);
-
-    if (!role) {
-      throw new Error(`注册所需角色不存在：${roleName}`);
-    }
-
-    await tx.insert(userRoles).values({
-      user_id: id,
-      role_id: role.id,
-    }).onConflictDoNothing();
 
     // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
     await recordConsentsForRegistration(
@@ -264,6 +246,7 @@ export async function registerUser(
     id,
     username: input.username,
     email: input.email,
+    role: "user",
     is_admin: false,
     has_local_password: true,
     must_change_password: false,

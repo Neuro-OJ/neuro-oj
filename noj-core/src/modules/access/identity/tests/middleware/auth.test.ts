@@ -31,6 +31,8 @@ async function createActiveUser(role: "user" | "admin" = "user") {
     username: `auth_middleware_${id.slice(0, 8)}`,
     email: `auth_middleware_${id.slice(0, 8)}@example.com`,
     password_hash: "test-only",
+    // 平台角色以用户行为准；token 中的 role 仅供展示。
+    role,
     created_at: now,
     updated_at: now,
   });
@@ -146,6 +148,20 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.userId, id);
     assertEquals(body.userRole, "admin");
+  },
+});
+
+Deno.test({
+  name:
+    "middleware: token 展示角色不影响实际平台角色（降权后旧 token 立即失效）",
+  fn: async () => {
+    const app = createTestApp();
+    const { id } = await createActiveUser("user");
+    // 伪造一个展示角色为 admin 的 token：数据库仍是 user，授权必须以数据库为准。
+    const forged = await signToken({ sub: id, role: "admin" });
+    const res = await jsonRequest(app, "/protected", { token: forged });
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).userRole, "user");
   },
 });
 

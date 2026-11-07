@@ -1,6 +1,7 @@
 import type {
   DomainConfiguration,
   DomainPreset,
+  StoredDomainConfiguration,
   StoredDomainPreset,
 } from "./types.ts";
 
@@ -24,12 +25,26 @@ export function domainTypeConfiguration(
   };
 }
 
-/** 访问与加入政策可修改；能力和首页由类型确定，旧 custom 等待人工转换。 */
+/** 只保留数据库应持久化的可变事实，派生能力不落库。 */
+export function storedDomainConfiguration(
+  config: DomainConfiguration,
+): StoredDomainConfiguration {
+  return {
+    access: config.access,
+    discoverable: config.discoverable,
+    join_policy: config.join_policy,
+  };
+}
+
+/**
+ * 访问与加入政策可修改；能力和首页只由域类型推导。
+ *
+ * 数据库只保存三个存储字段，读取路径不接受客户端或旧行提供的派生能力。
+ */
 export function effectiveDomainConfiguration(
   preset: StoredDomainPreset,
-  stored: DomainConfiguration,
+  stored: StoredDomainConfiguration,
 ): DomainConfiguration {
-  if (preset === "custom") return stored;
   const fixed = domainTypeConfiguration(preset);
   return { ...stored, features: fixed.features, homepage: fixed.homepage };
 }

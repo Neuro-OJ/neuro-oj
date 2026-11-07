@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
-  ADMIN_FULL_ACCESS,
-  resolvePermissions,
+  isCurrentUserAdmin,
 } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
@@ -24,7 +23,7 @@ const router = new Hono<AuthEnv>();
 router.get("/:id/ui", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId") as string;
-  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
+  const isAdmin = await isCurrentUserAdmin(c);
   const problem = await resolveProblem(id);
   const { result } = await evaluateProblemAccessWithContestId(problem, {
     viewerId: userId,

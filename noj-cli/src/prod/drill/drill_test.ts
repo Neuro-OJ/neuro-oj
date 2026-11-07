@@ -42,6 +42,7 @@ import {
   uniqueDrillSubnet,
   valueOr,
 } from "./plan.ts";
+import { renderSeedDrillAdminSql } from "./seed-admin-sql.ts";
 import {
   formatHours,
   hoursSinceSnapshot,
@@ -1469,4 +1470,34 @@ Deno.test("T19 业务验收：全部请求命中域契约路径（旧无域写�
     calls.some((url) => url.includes("/publish")),
     "完整链路应包含显式发布",
   );
+});
+
+/**
+ * 演练管理员的授权写入必须只写 users.role。
+ *
+ * 固定角色重构删除了 roles / user_roles（迁移 0133），但 e2e 夹具曾长期
+ * 复制旧 SQL 并因此断链；这里把 SQL 形态钉死，两份实现再次分叉时直接失败。
+ */
+Deno.test("drill: seedDrillAdmin SQL 只写 users.role，不引用已删 RBAC 表", () => {
+  const sql = renderSeedDrillAdminSql("2026-01-01T00:00:00.000Z");
+  assertStringIncludes(sql, "INSERT INTO users");
+  assertStringIncludes(sql, "UPDATE users SET role = 'admin'");
+  assertStringIncludes(sql, "ON CONFLICT (id) DO NOTHING;");
+  // 覆盖 user_roles 与 roles 两种形态：任何含 "roles" 的表名都不允许出现。
+  assert(!sql.includes("roles"), "不得引用已删除的 roles/user_roles");
+  assert(!sql.includes("email_verified"), "不得显式写历史快照可能没有的列");
+});
+
+Deno.test("drill: e2e 恢复演练夹具与渲染器保持同一 SQL 形态", async () => {
+  const fixture = new URL(
+    "../../../../noj-tests/e2e/cross-domain/restore_drill_contract.test.ts",
+    import.meta.url,
+  );
+  const text = await Deno.readTextFile(fixture);
+  assertStringIncludes(
+    text,
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
+  );
+  assert(!text.includes("user_roles"), "e2e 夹具不得引用已删除的 user_roles");
+  assert(!text.includes("FROM roles"), "e2e 夹具不得引用已删除的 roles");
 });

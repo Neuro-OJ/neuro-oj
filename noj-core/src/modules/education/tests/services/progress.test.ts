@@ -20,6 +20,7 @@ import { recordEducationEvent } from "../../contracts/facts.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
 import { recomputeAssignmentProgress } from "../../services/progress-materializer.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
 async function fixture() {
   const f = await assignmentFixture();
@@ -52,9 +53,14 @@ async function submission(
     domainId?: string;
     bindingId?: string;
     contestId?: string;
+    /** 其他域的独立副本；缺省用作业源题。 */
+    problemId?: string;
+    versionId?: string;
   },
 ) {
-  const id = crypto.randomUUID(),
+  const problemId = input.problemId ?? f.problemId,
+    versionId = input.versionId ?? f.versionId,
+    id = crypto.randomUUID(),
     attemptId = crypto.randomUUID(),
     bucketId = crypto.randomUUID();
   await f.db.transaction(async (tx) => {
@@ -64,18 +70,18 @@ async function submission(
       domain_problem_binding_id: input.bindingId ?? f.bindingId,
       contest_id: input.contestId,
       user_id: f.student,
-      problem_id: f.problemId,
+      problem_id: problemId,
       language: "python",
       code: "print(1)",
-      submitted_version_id: f.versionId,
+      submitted_version_id: versionId,
       version_origin: "known",
       created_at: input.received ?? "2026-10-01T12:00:00.000Z",
     });
     await tx.insert(evaluationAttempts).values({
       id: attemptId,
       submission_id: id,
-      problem_id: f.problemId,
-      problem_version_id: f.versionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
       sequence: 0,
       source: "initial",
       state: input.pending ? "queued" : "finished",
@@ -91,15 +97,15 @@ async function submission(
     } else {await tx.insert(submissionVersionResults).values({
         id: bucketId,
         submission_id: id,
-        problem_id: f.problemId,
-        problem_version_id: f.versionId,
+        problem_id: problemId,
+        problem_version_id: versionId,
         current_attempt_id: attemptId,
         updated_at: new Date().toISOString(),
       });}
     await recordEducationEvent(tx, {
       domain_id: input.domainId ?? f.school.id,
       user_id: f.student,
-      problem_id: f.problemId,
+      problem_id: problemId,
       event_type: "submission.changed",
     });
   });
@@ -210,20 +216,20 @@ Deno.test("作业成绩：同域一次提交可计两份任务，其他域和赛
     credit_intervals: [{ start: f.published, end: null }],
   })
     .where(eq(assignmentRecipients.assignment_id, second.id));
-  const otherBinding = crypto.randomUUID();
-  await f.db.insert(domainProblemBindings).values({
-    id: otherBinding,
-    domain_id: f.other.id,
-    problem_id: f.problemId,
-    kind: "shared",
-    created_by: f.owner,
-    created_at: f.published,
-    updated_at: f.published,
+  // 其他域只能引用自己的副本：复制语义下不存在跨域共享绑定。
+  const copy = await insertDomainProblemCopy(f.db, {
+    sourceProblemId: f.problemId,
+    domainId: f.other.id,
+    number: 1001,
+    ownerId: f.owner,
+    now: f.published,
   });
   await submission(f, {
     score: 10000,
     domainId: f.other.id,
-    bindingId: otherBinding,
+    bindingId: copy.bindingId,
+    problemId: copy.problemId,
+    versionId: copy.versionId,
   });
   const contestId = crypto.randomUUID(), now = new Date().toISOString();
   await f.db.insert(contests).values({

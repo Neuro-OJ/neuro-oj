@@ -32,7 +32,7 @@ import {
   problems,
   problemVersions,
 } from "../db/schema.ts";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 /** 竞赛时间对（开始/结束）。 */
 export interface ContestTimes {
@@ -195,9 +195,13 @@ export async function seedRunningContest(options: {
       })),
     ).onConflictDoNothing();
     for (const problemId of options.problemIds) {
+      // 已有自己版本的题目（例如独立副本）保留原版本指针：基线 V1 因唯一键冲突
+      // 未被插入时，指向 baseline id 会违反 problems_latest_version_fk。
       await db.update(problems).set({
         latest_version_id: baselineVersionId(problemId),
-      }).where(eq(problems.id, problemId));
+      }).where(
+        and(eq(problems.id, problemId), isNull(problems.latest_version_id)),
+      );
     }
     const sources = await db.select().from(problems).where(
       inArray(problems.id, options.problemIds),
@@ -210,7 +214,6 @@ export async function seedRunningContest(options: {
         id: `fixture-binding-${problem.id}`,
         domain_id: DEFAULT_DOMAIN_ID,
         problem_id: problem.id,
-        kind: "owned" as const,
         visibility: problem.visibility === "public"
           ? "public" as const
           : "members" as const,
@@ -226,10 +229,16 @@ export async function seedRunningContest(options: {
     const bindingIds = new Map(
       bindings.map((binding) => [binding.problem_id, binding.id]),
     );
+    const latestVersions = new Map(
+      sources.map((problem) => [problem.id, problem.latest_version_id]),
+    );
     await db.insert(contestProblems).values(
       options.problemIds.map((problemId, index) => {
         const bindingId = bindingIds.get(problemId);
         if (!bindingId) throw new Error("竞赛夹具缺少使用域题库绑定");
+        // 已有自己版本的题目（独立副本）不能被钉到未插入的基线版本上。
+        const pinnedVersionId = latestVersions.get(problemId) ??
+          baselineVersionId(problemId);
         return {
           domain_id: domainId,
           domain_problem_binding_id: bindingId,
@@ -238,7 +247,7 @@ export async function seedRunningContest(options: {
           sort_order: index,
           label: String.fromCharCode(65 + index),
           score: 10000,
-          pinned_version_id: baselineVersionId(problemId),
+          pinned_version_id: pinnedVersionId,
         };
       }),
     );

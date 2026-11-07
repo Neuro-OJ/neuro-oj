@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./connection.ts";
 import { resolve } from "jsr:@std/path@^1";
-import { resolveMigrationsDirectory } from "./migrate.ts";
+import { resolveMigrationsDirectory } from "./migrations-path.ts";
 
 const MIGRATION_LEDGER = "drizzle.__drizzle_migrations";
 
@@ -67,22 +67,25 @@ function migrationDirFromModule(): string {
   return resolveMigrationsDirectory();
 }
 
+/** 唯一的 ledger 读取实现：启动检查与迁移前门禁共用。 */
+export async function readMigrationLedger(): Promise<ActualMigration[]> {
+  const rows = await getDb().execute(sql`
+    SELECT migration_ledger.id::text AS id,
+      migration_ledger.hash,
+      migration_ledger.created_at::text AS created_at
+    FROM ${sql.raw(MIGRATION_LEDGER)} AS migration_ledger
+    ORDER BY migration_ledger.id ASC
+  `) as unknown as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    hash: String(row.hash ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
 function defaultDeps(): SchemaCompatibilityDeps {
   return {
-    queryLedger: async () => {
-      const rows = await getDb().execute(sql`
-        SELECT migration_ledger.id::text AS id,
-          migration_ledger.hash,
-          migration_ledger.created_at::text AS created_at
-        FROM ${sql.raw(MIGRATION_LEDGER)} AS migration_ledger
-        ORDER BY migration_ledger.id ASC
-      `) as unknown as Array<Record<string, unknown>>;
-      return rows.map((row) => ({
-        id: String(row.id ?? ""),
-        hash: String(row.hash ?? ""),
-        createdAt: String(row.created_at ?? ""),
-      }));
-    },
+    queryLedger: readMigrationLedger,
     readText: (path) => Deno.readTextFile(path),
     listFiles: async (directory) => {
       const names: string[] = [];
@@ -206,17 +209,31 @@ export async function readExpectedMigrations(
   return expected;
 }
 
-function compareMigrationLedgers(
+/**
+ * 校验模式：`startup` 要求 ledger 与打包集完全一致（HTTP 启动）；
+ * `pre-migration` 允许合法已应用前缀（`db migrate` / `db check-upgrade`）。
+ */
+export type MigrationValidationMode = "startup" | "pre-migration";
+
+/**
+ * 唯一的 ledger 比较实现：逐条比较 hash 与 created_at，因此“条数相同但历史
+ * 漂移”也会被拒绝；未知记录、缺中间记录同样拒绝。
+ *
+ * HTTP 启动（`assertSchemaCompatible`）与迁移前门禁
+ * （`assertDatabaseSupportsAuthorizationSwitch`）共用本函数，避免两套口径分叉。
+ */
+export function validateMigrationLedger(
   expected: ExpectedMigration[],
-  actual: ActualMigration[],
+  actual: ReadonlyArray<{ hash: string; createdAt: string }>,
+  mode: MigrationValidationMode,
 ): string | null {
-  if (actual.length < expected.length) {
-    return `数据库迁移 ledger 缺少记录（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
+  if (expected.length === 0) {
+    return "打包迁移集为空，无法判断数据库兼容性";
   }
   if (actual.length > expected.length) {
-    return `数据库迁移 ledger 存在发布集之外的记录（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
+    return `数据库迁移 ledger 存在发布集之外的记录（期望最多 ${expected.length} 条，实际 ${actual.length} 条）`;
   }
-  for (let index = 0; index < expected.length; index++) {
+  for (let index = 0; index < actual.length; index++) {
     const wanted = expected[index]!;
     const found = actual[index]!;
     if (wanted.hash !== found.hash || wanted.createdAt !== found.createdAt) {
@@ -225,7 +242,17 @@ function compareMigrationLedgers(
         `实际 hash=${found.hash}, created_at=${found.createdAt}`;
     }
   }
+  if (mode === "startup" && actual.length !== expected.length) {
+    return `数据库迁移 ledger 缺少记录（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
+  }
   return null;
+}
+
+function compareMigrationLedgers(
+  expected: ExpectedMigration[],
+  actual: ActualMigration[],
+): string | null {
+  return validateMigrationLedger(expected, actual, "startup");
 }
 
 /** 执行只读 schema 检查；成功返回期望/实际 ledger，失败抛显式迁移错误。 */

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import {
+  copyDomainTrainingCommand,
   deleteDomainTrainingCommand,
-  importDomainTrainingCommand,
   saveDomainTrainingCommand,
 } from "../../application/problems.ts";
 import {
@@ -108,7 +108,7 @@ domainTrainingsRouter.post(
       typeof input.training_id !== "string" || !input.training_id
     ) throw new BadRequestError("需要源题单 ID");
     return c.json({
-      data: await importDomainTrainingCommand(
+      data: await copyDomainTrainingCommand(
         userActorFromAuthenticatedId(c.var.userId),
         c.req.param("slug")!,
         input.training_id,

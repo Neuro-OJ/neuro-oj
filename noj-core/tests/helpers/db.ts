@@ -12,14 +12,12 @@ import { runMigrations } from "../../src/shared/db/migrate.ts";
 import { judgeImages } from "../../src/shared/db/schema.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { ensureRootUser } from "../../src/modules/access/identity/index.ts";
-import {
-  ensureRbacSeeds,
-  seedJudgeImages,
-} from "../../src/modules/platform/system/index.ts";
+import { seedJudgeImages } from "../../src/modules/platform/system/index.ts";
 import {
   _resetSystemSettingsForTest,
 } from "../../src/modules/platform/system/services/system-settings.ts";
-import { ensureDefaultWorkspace } from "../../src/modules/access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../src/modules/access/domains.ts";
+import { createSystemActor } from "../../src/modules/runtime/system-actors.ts";
 import { countPhase, measurePhase } from "../../../scripts/lib/test-timing.ts";
 
 /** 测试数据库必须由启动器声明的环境标记。 */
@@ -142,10 +140,8 @@ const RESET_PHASE = {
   ownershipCheck: "core.reset.ownership-check",
   truncate: "core.reset.truncate",
   root: "core.reset.root",
-  rbac: "core.reset.rbac",
   workspace: "core.reset.workspace",
   images: "core.reset.images",
-  rankingsRefresh: "core.reset.rankings-refresh",
   invocations: "core.reset.invocations",
 } as const;
 
@@ -359,15 +355,17 @@ async function seedCompatJudgeImages(): Promise<void> {
 }
 
 /**
- * 恢复基础种子：root、RBAC、默认工作空间与评测镜像。
+ * 恢复基础种子：root、默认工作空间与评测镜像。
  *
  * 每一步单独计时，供性能报告归因；语义与逐条写入时完全一致。系统设置缓存
  * 仍走既有 reset 接口（_resetSystemSettingsForTest）。
  */
 async function seedTestDatabaseContent(): Promise<void> {
   await measurePhase(RESET_PHASE.root, () => ensureRootUser());
-  await measurePhase(RESET_PHASE.rbac, () => ensureRbacSeeds());
-  await measurePhase(RESET_PHASE.workspace, () => ensureDefaultWorkspace());
+  await measurePhase(
+    RESET_PHASE.workspace,
+    () => ensureDefaultWorkspace(createSystemActor("bootstrap")),
+  );
   await measurePhase(RESET_PHASE.images, async () => {
     await seedCompatJudgeImages();
     // 生产初始化仍使用完整镜像清单；在测试库补齐 AI 镜像不改变旧断言。
@@ -377,7 +375,7 @@ async function seedTestDatabaseContent(): Promise<void> {
 }
 
 /**
- * 写入测试基础种子：root、RBAC、默认工作空间与评测镜像。
+ * 写入测试基础种子：root、默认工作空间与评测镜像。
  *
  * 仅在测试数据库内调用；会同步清空 system-settings 进程内缓存。
  */
@@ -394,14 +392,7 @@ export async function seedTestDatabase(): Promise<void> {
  *
  * 不执行迁移；迁移由测试启动器在模板数据库中完成。普通测试只调用本函数。
  */
-export interface ResetDbForTestOptions {
-  /** 真实 PostgreSQL 中刷新榜单物化视图；用于需验证刷新路径的用例。 */
-  refreshRankings?: boolean;
-}
-
-export async function resetDbForTest(
-  options: ResetDbForTestOptions = {},
-): Promise<void> {
+export async function resetDbForTest(): Promise<void> {
   // 次数计数：报告用它区分"reset 变少"与"单次 reset 变快"。
   countPhase(RESET_PHASE.invocations, 1);
   await measurePhase(
@@ -410,14 +401,7 @@ export async function resetDbForTest(
   );
   await measurePhase(RESET_PHASE.truncate, () => clearResetTables());
   await seedTestDatabaseContent();
-  if (options.refreshRankings) {
-    await measurePhase(RESET_PHASE.rankingsRefresh, async () => {
-      const { refreshRankingsView } = await import(
-        "../../src/modules/read-models/queries/services/rankings.ts"
-      );
-      await refreshRankingsView({ throwOnError: true });
-    });
-  }
+  // 榜单读取已改为内联查询，旧的物化视图刷新不再需要执行。
 }
 
 /**

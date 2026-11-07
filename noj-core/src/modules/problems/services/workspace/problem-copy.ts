@@ -20,6 +20,7 @@ import {
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
 import {
   assertStorageObjectBindable,
   compensateUploadedObject,
@@ -58,13 +59,7 @@ async function sourceForCopy(
   if (!source?.latest_version_id) {
     throw new NotFoundError("源题尚未发布或不存在");
   }
-  assertWorkspacePermission(
-    access.context,
-    access.context.domainPermissions.has("problem:write_any") ||
-      source.owner_id !== actorId
-      ? "problem:write_any"
-      : "problem:write_own",
-  );
+  assertWorkspacePermission(access.context, "problem:write_any");
   return { access, source };
 }
 
@@ -186,6 +181,9 @@ export async function commitDomainProblemCopy(
   tx: DbTx,
   prepared: PreparedProblemCopy,
 ) {
+  // 锁顺序固定为“账号先于域”：成员治理、账号注销与创建路径都先锁账号行，
+  // 复制若先锁域再经创建服务锁账号会形成反向等待。多个域按 ID 排序。
+  await lockActiveWorkspaceAccount(tx, prepared.actorId);
   await tx.select({ id: domains.id }).from(domains).where(
     inArray(domains.slug, [prepared.sourceSlug, prepared.targetSlug]),
   ).orderBy(asc(domains.id)).for("update");
@@ -235,6 +233,8 @@ export async function commitDomainProblemCopy(
     description: content.description,
     samples: content.samples,
     difficulty: prepared.difficulty,
+    // 副本是新域里的独立题目：题面可见性固定 public，跨域可见范围由绑定
+    // domain_problem_bindings.visibility（public/members）控制，不继承源域设置。
     visibility: "public",
     is_objective: content.kind === "objective",
     judge_type: content.kind === "oi" ? "oi" : "dual",

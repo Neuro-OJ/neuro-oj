@@ -22,18 +22,15 @@ import {
 import {
   contestParticipants,
   contests,
+  domainMemberships,
   evaluationAttempts,
   judgeImages,
   objectiveSubmissions,
-  permissions,
   problems,
   problemVersions,
-  rolePermissions,
-  roles,
   submissionJobItems,
   submissionJobs,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
@@ -113,38 +110,6 @@ const dualConfig = {
   },
 };
 
-/** 建一条拥有 `admin:full_access` 的测试角色（测试数据库 模板不保证 RBAC 种子存在）。 */
-async function ensureAdminRole(): Promise<string> {
-  const roleId = `acc-role-admin-${ts}`;
-  const [existingPerm] = await db.select().from(permissions).where(
-    and(
-      eq(permissions.resource, "admin"),
-      eq(permissions.action, "full_access"),
-    ),
-  ).limit(1);
-  const permissionId = existingPerm?.id ?? `acc-perm-${ts}`;
-  if (!existingPerm) {
-    await db.insert(permissions).values({
-      id: permissionId,
-      resource: "admin",
-      action: "full_access",
-      description: "测试用",
-    }).onConflictDoNothing();
-  }
-  await db.insert(roles).values({
-    id: roleId,
-    name: `acc-admin-${ts}`,
-    description: "测试管理员",
-    created_at: now,
-    updated_at: now,
-  }).onConflictDoNothing();
-  await db.insert(rolePermissions).values({
-    role_id: roleId,
-    permission_id: permissionId,
-  }).onConflictDoNothing();
-  return roleId;
-}
-
 async function makeUser(
   tag: string,
   options: { admin?: boolean } = {},
@@ -155,15 +120,22 @@ async function makeUser(
     username: `acc-${tag}-${ts}`,
     email: `acc-${tag}-${ts}@test.noj`,
     password_hash: "hash",
+    role: options.admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (options.admin) {
-    const roleId = await ensureAdminRole();
-    await db.insert(userRoles).values({ user_id: id, role_id: roleId })
-      .onConflictDoNothing();
-  }
-  await authorizeLegacyJobActorForTest(id);
+  // 竞赛管理属于域能力：创建者需要 main 域的 educator 身份。
+  await db.insert(domainMemberships).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    user_id: id,
+    role: "educator",
+    joined_at: now,
+  });
+  await authorizeLegacyJobActorForTest(
+    id,
+    options.admin ? "admin" : "educator",
+  );
   return id;
 }
 

@@ -1,7 +1,6 @@
 export const COMMUNITY_POST_TYPES = [
   "solution",
   "discussion",
-  "moment",
 ] as const;
 export type CommunityPostType = (typeof COMMUNITY_POST_TYPES)[number];
 
@@ -47,13 +46,11 @@ export interface CommunityConfig {
   read_only: boolean;
   solutions_enabled: boolean;
   discussions_enabled: boolean;
-  moments_enabled: boolean;
   comments_enabled: boolean;
   external_images_enabled: boolean;
   solution_requires_accepted: boolean;
   new_user_review_hours: number;
   post_max_length: number;
-  moment_max_length: number;
   comment_max_length: number;
   post_interval_seconds: number;
 }

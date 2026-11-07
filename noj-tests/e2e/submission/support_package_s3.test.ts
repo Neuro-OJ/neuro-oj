@@ -94,16 +94,17 @@ function actors(): Promise<Actors> {
     );
     await request(
       "PUT",
-      `/domains/main/members/${me.data.id}/roles`,
+      `/domains/main/members/${me.data.id}/role`,
       admin,
       200,
-      { roles: ["editor"] },
+      { role: "educator" },
     );
     const workspace = await request<
       { data: { platform_admin: boolean; permissions: string[] } }
     >("GET", "/domains/main", owner, 200);
     assertEquals(workspace.data.platform_admin, false);
-    assert(workspace.data.permissions.includes("problem:write_own"));
+    // 固定角色模型下 educator 拿到全域内容写权限，不再有 *_own 过渡能力。
+    assert(workspace.data.permissions.includes("problem:write_any"));
     // 默认 evaluator command、不联网，不需要给作者平台敏感字段权限。
     return { admin, owner, ownerId: me.data.id, stranger };
   })();

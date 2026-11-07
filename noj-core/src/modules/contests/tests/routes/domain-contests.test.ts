@@ -16,7 +16,7 @@ import {
   createDomain,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../access/workspace/index.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import {
@@ -98,7 +98,6 @@ async function fixture(slug: string, running = false) {
     id: crypto.randomUUID(),
     domain_id: domain.id,
     problem_id: p,
-    kind: "owned",
     created_by: owner,
     created_at: now,
     updated_at: now,
@@ -299,7 +298,7 @@ Deno.test({
       assert(!replay.includes("earlier-private-id"));
       assert(!replay.includes("another-student"));
       assert(!replay.includes("secret"));
-      await setMemberRoles(f.domain.slug, f.owner, f.student, ["admin"]);
+      await setMemberRole(f.domain.slug, f.owner, f.student, "admin");
       const asOrganizer = reader.read();
       _dispatchToLocalListenersForTest(
         Channels.contestSubmission(f.contest.id),
@@ -314,7 +313,7 @@ Deno.test({
           "organizer-visible-id",
         ),
       );
-      await setMemberRoles(f.domain.slug, f.owner, f.student, ["member"]);
+      await setMemberRole(f.domain.slug, f.owner, f.student, "member");
       const downgraded = reader.read();
       _dispatchToLocalListenersForTest(
         Channels.contestSubmission(f.contest.id),

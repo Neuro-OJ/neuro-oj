@@ -27,10 +27,10 @@ export interface LoginInput {
   remember?: boolean;
 }
 
-/**
- * RBAC 角色类型。
- */
-export type Role = "admin" | "user";
+import type { PlatformRole } from "../../../../shared/access/roles.ts";
+
+/** 平台角色类型（单值）；由 users.role 提供。 */
+export type Role = PlatformRole;
 
 /**
  * 角色名称常量。
@@ -54,8 +54,8 @@ export interface UserResponse {
   id: string;
   username: string;
   email: string;
-  /** 管理员列表使用的已分配角色 ID，避免编辑时误覆盖现有角色。 */
-  role_ids?: string[];
+  /** 平台角色；只有 user / admin 两种取值。 */
+  role: PlatformRole;
   is_admin: boolean;
   /** 是否已设置本地密码；OAuth 新用户初始为 false */
   has_local_password: boolean;

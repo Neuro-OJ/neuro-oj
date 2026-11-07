@@ -88,7 +88,6 @@ export async function fixture() {
     id: `binding-${domain_id}`,
     domain_id,
     problem_id: problemId(domain_id),
-    kind: "owned" as const,
     visibility: "public" as const,
     created_by: actor,
     created_at: now,

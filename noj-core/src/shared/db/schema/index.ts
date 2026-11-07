@@ -13,7 +13,6 @@ export {
   domainJoinRequests,
   domainLimits,
   domainLlmSettings,
-  domainMemberRoles,
   domainMemberships,
   domainResourceCounters,
   domains,
@@ -27,12 +26,8 @@ export {
   checkIns,
   oauthAccounts,
   passwordResetTokens,
-  permissions,
-  rolePermissions,
-  roles,
   tfaRecoveryCodes,
   userBans,
-  userRoles,
   users,
 } from "./identity.ts";
 
@@ -50,12 +45,7 @@ export {
 } from "./catalog.ts";
 export {
   domainProblemBindings,
-  domainTrainingBindings,
   problemBindingHistory,
-  problemShareSettings,
-  problemShareTargets,
-  trainingShareSettings,
-  trainingShareTargets,
 } from "./catalog-workspace.ts";
 
 // evaluations
@@ -110,7 +100,6 @@ export { submissionAnnotations } from "./submission-annotations.ts";
 // communication
 export {
   accountNotifications,
-  communityBoardRoleGrants,
   communityBoards,
   communityComments,
   communityModerationActions,

@@ -73,7 +73,6 @@ const processScope = ref<"platform" | "social">("social")
 const typeLabel: Record<string, string> = {
   discussion: "讨论",
   solution: "题解",
-  moment: "动态",
 }
 
 async function load(tab: Tab) {

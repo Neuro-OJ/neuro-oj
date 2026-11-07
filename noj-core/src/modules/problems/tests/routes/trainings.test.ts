@@ -2,15 +2,9 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  problems,
-  trainings,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
+import { problems, trainings, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -19,7 +13,6 @@ import {
 
 await resetDbForTest();
 await initRedisForTest();
-await ensureRbacSeeds();
 
 /**
  * 无域题单的**只读**契约。
@@ -60,14 +53,7 @@ Deno.test({
         updated_at: now,
       },
     ]);
-    await db.insert(userRoles).values({
-      user_id: adminId,
-      role_id: "admin",
-    }).onConflictDoNothing();
-    await db.insert(userRoles).values({
-      user_id: userId,
-      role_id: "user",
-    }).onConflictDoNothing();
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(problems).values({
       domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
@@ -82,7 +68,7 @@ Deno.test({
       updated_at: now,
     });
 
-    await grantDefaultCatalogRole(userId, "editor");
+    await grantDefaultCatalogRole(userId, "educator");
     await publishDefaultCatalogFixture(problemId);
     const userToken = await signToken({ sub: userId, role: "user" });
     const adminToken = await signToken({ sub: adminId, role: "admin" });

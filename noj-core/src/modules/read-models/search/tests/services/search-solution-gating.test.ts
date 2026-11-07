@@ -14,7 +14,6 @@ import { createPost } from "../../../../communication/index.ts";
 import { createContest } from "../../../../contests/index.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -27,7 +26,6 @@ const problemId = "sg-problem";
 
 async function setup(): Promise<string> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();

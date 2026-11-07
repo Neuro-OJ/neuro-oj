@@ -8,12 +8,10 @@ import {
   classrooms,
   contestProblems,
   contests,
-  domainMemberRoles,
   domainMemberships,
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   submissions,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -95,7 +93,6 @@ export async function fixture() {
         problem_id: domain_id === DEFAULT_DOMAIN_ID
           ? "query-source"
           : `query-source-${domain_id}`,
-        kind: "owned" as const,
         visibility: "public" as const,
         created_by: actor,
         created_at: now,
@@ -104,13 +101,6 @@ export async function fixture() {
     ),
   );
   await publishAllProblemsForTest();
-  await db.insert(problemShareSettings).values({
-    problem_id: "query-source",
-    enabled: true,
-    scope: "all",
-    updated_by: actor,
-    updated_at: now,
-  });
   await db.insert(submissions).values(
     [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
       (domain_id) => ({
@@ -174,16 +164,11 @@ Deno.test("域搜索：独立副本按本域查询，下架影响本域，源共
     number: 997001,
     qualified_ref: "school-query-a:997001",
     display_ref: "997001",
-    is_shared: false,
   });
   const local = await search(DEFAULT_DOMAIN_ID, actor);
   assertEquals(
     (local.items[0].metadata.reference as Record<string, unknown>).display_ref,
     "997001",
-  );
-  assertEquals(
-    (local.items[0].metadata.reference as Record<string, unknown>).is_shared,
-    false,
   );
   assertEquals((await search("unknown-domain", actor)).items.length, 0);
   await db.update(domainProblemBindings).set({
@@ -192,9 +177,6 @@ Deno.test("域搜索：独立副本按本域查询，下架影响本域，源共
     .where(eq(domainProblemBindings.id, "binding-school-query-a"));
   assertEquals((await search("school-query-a", actor)).items.length, 0);
   assertEquals((await search("school-query-b", actor)).items.length, 1);
-  await db.update(problemShareSettings).set({ enabled: false }).where(
-    eq(problemShareSettings.problem_id, "query-source"),
-  );
   assertEquals((await search("school-query-b", actor)).items.length, 1);
   assertEquals(
     (await searchGrouped({
@@ -301,11 +283,8 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
     id: "coach-domain",
     domain_id: domain,
     user_id: coach,
-    joined_at: now,
-  });
-  await db.insert(domainMemberRoles).values({
-    membership_id: "coach-domain",
     role: "educator",
+    joined_at: now,
   });
   await db.insert(classrooms).values({
     id: "search-class",
@@ -337,17 +316,16 @@ Deno.test("域搜索教学权限：当前教练可搜学生同域提交，离职
       .length,
     0,
   );
-  await db.delete(domainMemberRoles).where(
-    eq(domainMemberRoles.membership_id, "coach-domain"),
+  await db.update(domainMemberships).set({ role: "member" }).where(
+    eq(domainMemberships.id, "coach-domain"),
   );
   assertEquals(
     (await search(domain, coach, "共享题", "submission")).items.length,
     0,
   );
-  await db.insert(domainMemberRoles).values({
-    membership_id: "coach-domain",
-    role: "educator",
-  });
+  await db.update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, "coach-domain"),
+  );
   await db.update(classroomMemberships).set({ status: "removed" }).where(
     eq(classroomMemberships.id, "search-student"),
   );

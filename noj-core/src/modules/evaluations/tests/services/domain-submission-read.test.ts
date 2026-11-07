@@ -14,7 +14,7 @@ import {
   consumeDomainInvitation,
   createDomainInvitation,
   removeDomainMember,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../access/workspace/index.ts";
 import {
   createDomainSubmission,
@@ -155,7 +155,7 @@ Deno.test({
   },
 });
 Deno.test({
-  name: "域提交教师读取：当前同班学生可读，离职与离班撤权且历史另走作业依据",
+  name: "域提交教师读取：同班学生可读，降为 member 撤权，educator 全域可读",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -185,7 +185,7 @@ Deno.test({
         appointed_at: now,
       },
     ]);
-    await setMemberRoles(f.a.slug, f.owner, f.outsider, ["educator"]);
+    await setMemberRole(f.a.slug, f.owner, f.outsider, "educator");
     await withQueue(async () => {
       const created = await createDomainSubmission(f.a.slug, f.ref, f.student, {
         language: "python3",
@@ -242,7 +242,7 @@ Deno.test({
         (await getDomainSubmission(f.a.slug, created.id, f.outsider)).code,
         "print('student')",
       );
-      await setMemberRoles(f.a.slug, f.owner, f.outsider, ["member"]);
+      await setMemberRole(f.a.slug, f.owner, f.outsider, "member");
       const formerTeacher = await getDomainSubmission(
         f.a.slug,
         created.id,
@@ -250,7 +250,7 @@ Deno.test({
       );
       assertEquals(formerTeacher.code, undefined);
       assertEquals(formerTeacher.can_view_source, false);
-      await setMemberRoles(f.a.slug, f.owner, f.outsider, ["educator"]);
+      await setMemberRole(f.a.slug, f.owner, f.outsider, "educator");
       await f.db.update(classroomMemberships).set({ status: "removed" }).where(
         eq(classroomMemberships.id, "submission-student"),
       );
@@ -259,8 +259,9 @@ Deno.test({
         created.id,
         f.outsider,
       );
-      assertEquals(formerStudent.code, undefined);
-      assertEquals(formerStudent.can_view_source, false);
+      // educator 是域级角色：离班不撤销全域提交查看（计划角色矩阵）。
+      assertEquals(formerStudent.code, "print('student')");
+      assertEquals(formerStudent.can_view_source, true);
     });
   },
 });

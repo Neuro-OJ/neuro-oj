@@ -23,18 +23,21 @@
 | 消息队列 | Redis (ioredis)             |
 | 认证     | JWT (jose) + bcryptjs       |
 
-## RBAC 权限系统
+## 固定角色权限系统
 
-项目使用基于角色访问控制（RBAC）替代硬编码 `userRole === "admin"` 字符串比较。
+平台角色只有 `user` / `admin` 两档，域内角色只有 `member` / `educator` / `admin`
+三档；能力映射是 `shared/access/roles.ts` 里的静态表，没有可编辑的角色/权限表。
 
 ### 数据模型
 
-| 表                 | 用途                                                                                                                   |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `roles`            | 角色定义（`is_default`/`is_system` 标记；`is_admin` 列已由迁移 0032 删除，管理员判定改为权限集含 `admin:full_access`） |
-| `permissions`      | 权限定义（`resource:action` 格式，预置 52 条、跨 12 个资源域）                                                         |
-| `role_permissions` | 角色-权限多对多关联                                                                                                    |
-| `user_roles`       | 用户-角色多对多关联                                                                                                    |
+| 事实                      | 用途                                                      |
+| ------------------------- | --------------------------------------------------------- |
+| `users.role`              | 平台角色：`user` / `admin`，单值列 + CHECK                |
+| `domain_memberships.role` | 域内角色：`member` / `educator` / `admin`，单值列 + CHECK |
+| `domains.owner_id`        | 域负责人，优先于成员角色                                  |
+
+能力映射为静态表（`shared/access/roles.ts`），不再有 `roles/permissions` 等 RBAC
+表。
 
 ### 权限检查层次
 
@@ -46,8 +49,8 @@ authMiddleware → 注入 isAdmin
     ├─ requireAdmin()          纯 JWT fast path，零 DB 查询
     │   └─ 用于 /api/v1/admin/* 路由组
     │
-    ├─ requirePermission("x")  中间件（isAdmin fast path | DB）
-    │   └─ 用于非 admin 路由的精确权限拦截
+    ├─ requirePermission("x")  平台能力守卫（isAdmin fast path | 角色能力表）
+    │   └─ 只用于平台级端点；域内权限一律走 assertWorkspacePermission
     │
     └─ 社区管理（routes/community.ts）：
         requireCommunityModeration 守卫（admin 或 community_moderation:review）
@@ -61,43 +64,40 @@ authMiddleware → 注入 isAdmin
 
 ### 关键函数
 
-| 函数                         | 位置                                                    | 用途                                          |
-| ---------------------------- | ------------------------------------------------------- | --------------------------------------------- |
-| `getUserPermissions(userId)` | `src/domains/identity/services/security/permissions.ts` | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
-| `resolvePermissions(c)`      | 同上                                                    | 请求级缓存封装                                |
-| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，service 层条件判断              |
-| `assertPermission(c, perm)`  | 同上                                                    | 无权限时抛 ForbiddenError                     |
-| `requireAdmin()`             | 同上                                                    | 中间件，纯 JWT fast path                      |
-| `requirePermission(perm)`    | 同上                                                    | 中间件工厂函数                                |
-| `ensureRbacSeeds()`          | `src/domains/system/services/seed/seed-rbac.ts`         | 全量幂等初始化                                |
+| 函数                        | 位置                                                           | 用途                          |
+| --------------------------- | -------------------------------------------------------------- | ----------------------------- |
+| `resolvePlatformRole(c)`    | `src/modules/access/identity/services/security/permissions.ts` | 读取 `users.role`，请求级缓存 |
+| `resolvePermissions(c)`     | 同上                                                           | 平台角色能力集合              |
+| `checkPermission(c, perm)`  | 同上                                                           | 返回 boolean，仅平台能力      |
+| `assertPermission(c, perm)` | 同上                                                           | 无平台能力时抛 ForbiddenError |
+| `requireAdmin()`            | 同上                                                           | 中间件，仅平台管理员          |
+| `assertWorkspacePermission` | `src/modules/access/workspace/services/access.ts`              | 域内授权唯一入口              |
 
 ### Permissions
 
-| `resource`           | `action`                                                                                                                                    | 说明                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| admin                | full_access                                                                                                                                 | 管理员全权限（隐式拥有全部）  |
-| problem              | create/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
-| submission           | create/read_own/read_all/rejudge                                                                                                            | 提交操作                      |
-| user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
-| tag                  | read/manage                                                                                                                                 | 标签操作                      |
-| contest              | create/manage/anti_cheat_read/participate                                                                                                   | 竞赛                          |
-| community            | read/create_solution/create_discussion/create_moment/comment/report                                                                         | 社区内容与互动                |
-| community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
-| community_board      | manage                                                                                                                                      | 社区板块                      |
-| training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                  | 题单                          |
-| announcement         | manage                                                                                                                                      | 公告                          |
-| system               | settings/judge_images/audit_logs/ip_bans                                                                                                    | 系统管理                      |
+| `resource`           | `action`                                                                                            | 说明                          |
+| -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------- |
+| admin                | full_access                                                                                         | 管理员全权限（隐式拥有全部）  |
+| problem              | create/read/write_any/delete_any/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
+| submission           | create/read_own/read_all/rejudge                                                                    | 提交操作                      |
+| user                 | read_profile/search/manage                                                                          | 用户操作                      |
+| tag                  | read/manage                                                                                         | 标签操作                      |
+| contest              | create/manage/anti_cheat_read/participate                                                           | 竞赛                          |
+| community            | read/create_solution/create_discussion/comment/report                                               | 社区内容与互动                |
+| community_moderation | review/hide/lock/sanction                                                                           | 社区治理                      |
+| community_board      | manage                                                                                              | 社区板块                      |
+| training             | create/read/read_any/write_any/delete_any/publish/pin                                               | 题单                          |
+| announcement         | manage                                                                                              | 公告                          |
+| system               | settings/judge_images/audit_logs/ip_bans                                                            | 系统管理                      |
 
 ### 迁移策略
 
-- `users.role` 列**已删除**（RBAC 迁移后不再使用）；JWT 的 `role` claim 由
-  `user_roles` + `permissions` 实时计算得出，管理员判定为权限集中含
-  `admin:full_access`
-- 旧服务函数保留 `userRole` 参数作为 fallback，新增 `c?: Context` 参数启用 RBAC
-- `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到
-  `assertPermission()`
-- `getSubmission` 使用 `c.var.isAdmin` 替代 `viewerRole === "admin"`
-- 路由层通过 `c.var.isAdmin ?? c.var.userRole === "admin"` 双兼容
+- JWT 的 `role` claim 与管理员判定都来自 `users.role`（`user` / `admin`）。
+- 请求级权限只取平台角色能力；域内权限一律走 `loadWorkspace` /
+  `assertWorkspacePermission`，不能用 `checkPermission` 代替域授权。
+- 域角色由 `domain_memberships.role`（`member`/`educator`/`admin`）与
+  `domains.owner_id` 推导，负责人优先。
+- 旧 `userRole` 参数与双兼容分支已删除，路由不再比较字符串角色。
 
 ## 目录结构
 
@@ -127,7 +127,7 @@ noj-core/
 │   │   └── search-events.ts # 搜索索引共享类型（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
-│   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
+│   │   ├── identity/      # 注册登录、JWT/平台角色、用户、OAuth、TFA、封禁
 │   │   ├── catalog/       # 题目、标签、题包、题单
 │   │   ├── workspace/     # 产品工作空间、成员、角色、邀请及实例政策（见模块 README）
 │   │   ├── education/     # 班级、作业、教学权限及学情（见模块 README）
@@ -242,7 +242,7 @@ deno task db:generate
 # 开发环境一键初始化（幂等：迁移 + 系统数据 + 管理员引导 + 题目包构建与导入 + E2E 用户）
 deno task dev-setup
 
-# 仅初始化系统基础数据（root/RBAC/镜像白名单/标签）
+# 仅初始化系统基础数据（root/镜像白名单/标签）
 deno task init:system
 
 # 构建支持包
@@ -404,8 +404,7 @@ docker compose down     # 停止
 2. **TFA_ENCRYPTION_KEY 校验** — 必须配置且独立于 `JWT_SECRET`，否则拒绝启动
 3. **数据库迁移** — 失败为致命错误，终止启动
 4. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
-5. **RBAC 种子、管理员初始化状态、系统设置注册表校验与缓存初始化** —
-   均为致命步骤
+5. **管理员初始化状态、系统设置注册表校验与缓存初始化** — 均为致命步骤
 6. **邮件服务就绪检查** —
    非致命：未就绪时记录告警，邮箱验证/密码找回不可用且公开注册被禁止
    （仅允许站点引导阶段的首次注册）
@@ -440,7 +439,8 @@ docker compose down     # 停止
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
-> - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
+> - **角色**：`users.role` / `domain_memberships.role` / `domains.owner_id`（无
+>   RBAC 关联表）
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
 >   `community_reports` / `community_moderation_actions` / `community_sanctions`
 >   / `community_notifications` 等 12 张（`community_activity_events` 已随
@@ -759,7 +759,7 @@ Retry-After: 25
 
 | 命令                                                          | 行为                                                                                                                                     |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                  |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                       |
 | `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`                          |
 | `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                                       |
 | `scripts/noj.ts problems import [--publish]`                  | 导入题目包；**`--publish` 显式发布为版本**（不发布时题目只有草稿，普通访问者读不到、也无法按版本提交）；`dev-setup` 内部即用 `--publish` |

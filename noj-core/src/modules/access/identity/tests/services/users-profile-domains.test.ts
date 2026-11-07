@@ -19,7 +19,6 @@ import { presetConfiguration } from "../../../workspace/index.ts";
 import {
   queryProfileCommunityStats,
   queryProfileCreatedProblems,
-  queryProfileMoments,
   queryProfileSolutions,
   queryProfileStats,
   queryRecentSubmissions,
@@ -75,17 +74,6 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
   });
   await db.insert(communityPosts).values([
     {
-      id: "profile-private-moment",
-      domain_id: "profile-school",
-      author_id: actor,
-      type: "moment",
-      title: null,
-      content: "秘密活动",
-      status: "published",
-      created_at: now,
-      updated_at: now,
-    },
-    {
       id: "profile-private-solution",
       domain_id: "profile-school",
       domain_problem_binding_id: await bindPublishedProblemForTest(
@@ -115,14 +103,9 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     assertEquals((await queryRecentSubmissions(db, actor, viewer)).length, 0);
   }
   assertEquals(
-    Number((await queryProfileCommunityStats(db, actor))!.moment_count),
-    0,
-  );
-  assertEquals(
     Number((await queryProfileCommunityStats(db, actor))!.solution_count),
     0,
   );
-  assertEquals((await queryProfileMoments(db, actor)).length, 0);
   assertEquals((await queryProfileSolutions(db, actor)).length, 0);
   // 主域已发布题的历史记录可见；域收紧访问政策后公开统计立即撤除。
   await db.insert(problems).values({

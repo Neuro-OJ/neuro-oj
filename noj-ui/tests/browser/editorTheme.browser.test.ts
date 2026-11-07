@@ -95,7 +95,6 @@ for (const width of [1440, 390]) {
                 number: 22,
                 qualified_ref: 'main:22',
                 display_ref: 'P22',
-                is_shared: false,
               },
               binding_id: 'binding-p22',
               policy_revision: 1,

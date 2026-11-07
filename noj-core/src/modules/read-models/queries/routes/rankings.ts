@@ -11,12 +11,13 @@ import {
   parsePagination,
 } from "../../../../shared/http/pagination.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
   c.header("Cache-Control", "no-store");
   await next();

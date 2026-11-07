@@ -5,7 +5,7 @@ import { workspaceSlugFromPath } from '~/utils/workspace';
 export function useNavigationDomain() {
   const route = useRouter().currentRoute;
   const workspaces = useWorkspaceApi();
-  const instance = useViewAsyncData('instanceNavigation', 'instance-navigation', () => workspaces.instance());
+  const instance = useAsyncData('instance-navigation', () => workspaces.instance());
   return computed(() =>
     workspaceSlugFromPath(route.value.path) ??
       workspaceSlugFromPath(safeAuthRedirect(route.value.query.redirect, '')) ??

@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => ({
   load: vi.fn(),
 }));
 const rows = [
-  { id: 'user-uuid', username: 'alice', role_ids: [], deleted_at: null },
-  { id: 'other-uuid', username: 'bob', role_ids: [], deleted_at: null },
-  { id: 'deleted-uuid', username: 'deleted', role_ids: [], deleted_at: '2026-10-31' },
+  { id: 'user-uuid', username: 'alice', role: 'user', deleted_at: null },
+  { id: 'other-uuid', username: 'bob', role: 'user', deleted_at: null },
+  { id: 'deleted-uuid', username: 'deleted', role: 'user', deleted_at: '2026-10-31' },
 ];
 
 vi.mock('~/composables/useToast', () => ({

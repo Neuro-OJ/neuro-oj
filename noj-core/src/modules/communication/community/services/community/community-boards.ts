@@ -1,8 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import {
-  communityBoardRoleGrants,
-  communityBoards,
-} from "../../../../../shared/db/schema.ts";
+import { communityBoards } from "../../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
 import {
@@ -92,79 +89,4 @@ export async function updateBoard(
   ).returning();
   if (!rows[0]) throw new NotFoundError("板块不存在");
   return rows[0];
-}
-
-/** 校验板块所属域，治理入口不能通过替换资源 ID 改变目标。 */
-async function requireBoard(boardId: string, scope?: CommunityScope) {
-  const [board] = await communityDb(scope).select({ id: communityBoards.id })
-    .from(communityBoards).where(and(
-      eq(communityBoards.id, boardId),
-      communityDomainWhere(communityBoards.domain_id, scope),
-    ));
-  if (!board) throw new NotFoundError("板块不存在");
-}
-
-/** 列出当前域板块的角色授权；有效的其他域板块 ID 也返回 404。 */
-export async function listBoardRoleGrants(
-  boardId: string,
-  scope?: CommunityScope,
-) {
-  const db = communityDb(scope);
-  await requireBoard(boardId, scope);
-  return db.select().from(communityBoardRoleGrants).where(
-    eq(communityBoardRoleGrants.board_id, boardId),
-  );
-}
-
-/**
- * 更新（或创建）板块的角色授权：已存在则按 (board_id, role_id) 更新，否则插入。
- * @param boardId 板块 UUID。
- * @param roleId 角色 UUID。
- * @param input 授权字段：can_read（可读）、can_post（可发帖）、can_moderate（可管理）。
- * @returns 更新后的角色授权记录。
- */
-export async function updateBoardRoleGrant(
-  boardId: string,
-  roleId: string,
-  input: { can_read?: boolean; can_post?: boolean; can_moderate?: boolean },
-  scope?: CommunityScope,
-) {
-  const db = communityDb(scope);
-  await requireBoard(boardId, scope);
-  await db.insert(communityBoardRoleGrants).values({
-    board_id: boardId,
-    role_id: roleId,
-    can_read: input.can_read ?? true,
-    can_post: input.can_post ?? false,
-    can_moderate: input.can_moderate ?? false,
-  }).onConflictDoUpdate({
-    target: [
-      communityBoardRoleGrants.board_id,
-      communityBoardRoleGrants.role_id,
-    ],
-    set: input,
-  });
-  const rows = await db.select().from(communityBoardRoleGrants).where(and(
-    eq(communityBoardRoleGrants.board_id, boardId),
-    eq(communityBoardRoleGrants.role_id, roleId),
-  )).limit(1);
-  return rows[0]!;
-}
-
-/**
- * 删除板块的角色授权记录。
- * @param boardId 板块 UUID。
- * @param roleId 角色 UUID。
- */
-export async function deleteBoardRoleGrant(
-  boardId: string,
-  roleId: string,
-  scope?: CommunityScope,
-) {
-  const db = communityDb(scope);
-  await requireBoard(boardId, scope);
-  await db.delete(communityBoardRoleGrants).where(and(
-    eq(communityBoardRoleGrants.board_id, boardId),
-    eq(communityBoardRoleGrants.role_id, roleId),
-  ));
 }

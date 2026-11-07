@@ -56,7 +56,9 @@ Deno.test('空间导航：匿名仅公开入口，关闭教学模块不显示新
       features: { ...base.configuration.features, classroom: false, assignment: false, analytics: false },
     },
   });
-  assert(!disabled.some((item) => ['classrooms', 'my-learning', 'teaching'].includes(item.section)));
+  assert(!disabled.some((item) => item.section === 'classrooms'));
+  // 已移除的独立教学页不得重新出现在导航中，教学入口只走班级研练中心。
+  assert(disabled.every((item) => !item.to.includes('/teaching') && !item.to.includes('/my-learning')));
   assert(disabled.some((item) => item.section === 'submissions'));
   assertEquals(disabled.find((item) => item.section === 'submissions')?.label, '提交');
   assert(disabled.some((item) => item.section === 'queue'));

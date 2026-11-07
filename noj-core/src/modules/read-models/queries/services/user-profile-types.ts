@@ -41,7 +41,6 @@ export interface UserProfileResponse {
   }[];
   community_stats: {
     solution_count: number;
-    moment_count: number;
   };
   /** 该用户创建的题目（跨域、按查看者可见性过滤；审计 F5）。 */
   created_problems: {
@@ -53,7 +52,6 @@ export interface UserProfileResponse {
     created_at: string;
   }[];
   solutions: { id: string; title: string; created_at: string }[];
-  moments: { id: string; content: string; created_at: string }[];
 }
 
 /** 用户基础信息行（users 表子集）。 */
@@ -98,20 +96,12 @@ export interface ProfileRecentSubmissionRow {
 /** 社区关注/内容统计行。 */
 export interface ProfileCommunityStatsRow {
   solution_count: number;
-  moment_count: number;
 }
 
 /** 已发布题解行。 */
 export interface ProfileSolutionRow {
   id: string;
   title: string | null;
-  created_at: string;
-}
-
-/** 已发布短动态行。 */
-export interface ProfileMomentRow {
-  id: string;
-  content: string;
   created_at: string;
 }
 

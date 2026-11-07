@@ -68,7 +68,7 @@ useSeoMeta({ title: '域题库资源管理' });
       <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
       <div class="mt-5 border-t border-border pt-5">
         <ClientOnly>
-          <DomainSharedCatalog :slug="slug!" kind="problem" @imported="refresh()" />
+          <DomainCopyCatalog :slug="slug!" kind="problem" @imported="refresh()" />
         </ClientOnly>
       </div>
     </UCard>
@@ -86,7 +86,7 @@ useSeoMeta({ title: '域题库资源管理' });
                 <h3
                   class="font-semibold"><span class="mr-2 font-mono">{{ item.reference.display_ref }}</span>{{ item.title ?? '源资源不可用' }}</h3>
                 <p
-                  class="mt-2 text-xs text-text-muted">{{ item.kind === 'owned' ? '本域源题' : `来源 ${item.reference.source_domain_slug}` }} · {{ item.effective_version_mode }} · {{ item.disabled_at ? '已下架' : item.resource_available ? '可用' : '资源不可用' }}</p>
+                  class="mt-2 text-xs text-text-muted">本域题目 · {{ item.effective_version_mode }} · {{ item.disabled_at ? '已下架' : item.resource_available ? '可用' : '资源不可用' }}</p>
               </div>
               <UButton variant="outline" size="sm" @click="selectedId = item.binding_id">配置</UButton>
             </div>
@@ -98,7 +98,7 @@ useSeoMeta({ title: '域题库资源管理' });
         </div>
         <UCard v-if="selected" :key="`${selected.binding_id}:${selected.revision}:${generation}`" class="space-y-5">
           <h2 class="font-semibold">{{ selected.reference.display_ref }} · 本域配置</h2>
-          <UButton v-if="selected.can_edit && selected.kind === 'owned'"
+          <UButton v-if="selected.can_edit"
             :to="`/d/${slug}/editor/${selected.reference.number}`" variant="outline">编辑源题草稿</UButton>
           <ClientOnly>
             <DomainProblemBindingEditor :slug="slug!" :initial="selected" :writable="domain?.status === 'active'"

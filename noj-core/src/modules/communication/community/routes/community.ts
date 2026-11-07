@@ -50,7 +50,8 @@ import {
   isProblemInUnendedPublicContest,
 } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { withDefaultCommunity } from "../services/community/domain-community.ts";
 import type { CommunityScope } from "../services/community/community-scope.ts";
 
@@ -61,7 +62,7 @@ const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
   const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
   if (!accountRoute) {
-    await ensureDefaultWorkspace();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
     await withDefaultCommunity(c.var.userId ?? null, {
       write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
       moderator: !!c.var.userId && await isModerator(c),
@@ -112,7 +113,7 @@ function requireGuestRead(
 /**
  * 断言当前用户具备创建指定类型帖子的权限。
  * @param c Hono 上下文。
- * @param type 帖子类型（solution / discussion / moment）。
+ * @param type 帖子类型（solution / discussion）。
  * @throws {ForbiddenError} 无对应创建权限时抛出。
  */
 async function requirePostPermission(
@@ -136,7 +137,6 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
     ? {
       solution: await checkPermission(c, "community:create_solution"),
       discussion: await checkPermission(c, "community:create_discussion"),
-      moment: await checkPermission(c, "community:create_moment"),
       comment: await checkPermission(c, "community:comment"),
       report: await checkPermission(c, "community:report"),
       moderate: await isModerator(c),
@@ -170,7 +170,7 @@ router.get("/boards", optionalAuthMiddleware, async (c) => {
 router.get("/posts", optionalAuthMiddleware, async (c) => {
   const type = c.req.query("type") as CommunityPostType | undefined;
   const query = c.req.query("q")?.trim();
-  if (type && !["solution", "discussion", "moment"].includes(type)) {
+  if (type && !["solution", "discussion"].includes(type)) {
     throw new BadRequestError("无效内容类型");
   }
   if (query && query.length > 100) {
@@ -181,8 +181,6 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       ? "solutions_enabled"
       : type === "discussion"
       ? "discussions_enabled"
-      : type === "moment"
-      ? "moments_enabled"
       : undefined,
   );
   requireGuestRead(c);
@@ -206,7 +204,7 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
 /**
  * GET /posts/counts — 获取各类型已发布帖子的数量统计。
  * 认证：可选。需社区开启且满足访客读守卫。
- * 响应：{ data: { solution, discussion, moment } }。
+ * 响应：{ data: { solution, discussion } }。
  */
 router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
@@ -286,15 +284,15 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
 });
 
 /**
- * POST /posts — 创建社区帖子（题解 / 讨论 / 短动态）。
+ * POST /posts — 创建社区帖子（题解 / 讨论）。
  * 认证：必填。body：CommunityPostInput（type、title、content、problem_id、board_id 等）。
  * 响应：201 { data: 新建帖子 }。
  */
 router.post("/posts", authMiddleware, async (c) => {
   const actorId = userId(c);
   const input = await parseJsonBody<CommunityPostInput>(c);
-  if (!input || !["solution", "discussion", "moment"].includes(input.type)) {
-    throw new BadRequestError("无效内容类型");
+  if (!input || !["solution", "discussion"].includes(input.type)) {
+    throw new BadRequestError("仅支持讨论与题解");
   }
   await requirePostPermission(c, input.type);
   await assertCommunityWritable(actorId, await isModerator(c), {

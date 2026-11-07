@@ -39,7 +39,7 @@ watch(keyword, () => {
             <div class="flex flex-wrap gap-2">
               <UButton :to="workspaceProblemPath('main', problem.reference.display_ref)"
                 variant="outline">域内详情与重测</UButton>
-              <UButton v-if="!problem.reference.is_shared" :to="`/d/main/editor/${problem.reference.number}`"
+              <UButton :to="`/d/main/editor/${problem.reference.number}`"
                 variant="outline">编辑与发布</UButton>
             </div>
           </div>

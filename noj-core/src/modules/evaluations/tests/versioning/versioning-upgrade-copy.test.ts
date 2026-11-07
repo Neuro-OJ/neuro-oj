@@ -109,7 +109,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
-  await authorizeLegacyJobActorForTest(id);
+  await authorizeLegacyJobActorForTest(id, "educator");
   return id;
 }
 

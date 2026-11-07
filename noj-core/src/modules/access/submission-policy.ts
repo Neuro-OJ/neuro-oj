@@ -44,7 +44,7 @@ function bindingAvailabilityCondition(): SQL {
   return sql`b.disabled_at IS NULL AND p.latest_version_id IS NOT NULL AND src.status <> 'suspended'
     AND EXISTS (SELECT 1 FROM problem_versions v WHERE v.problem_id = p.id
       AND v.id = CASE WHEN p.effective_version_mode = 'exact' THEN p.required_version_id ELSE p.latest_version_id END)
-    AND b.kind = 'owned' AND b.domain_id = p.domain_id`;
+    AND b.domain_id = p.domain_id`;
 }
 
 function availableBindingWhere(
@@ -54,7 +54,6 @@ function availableBindingWhere(
 ): SQL {
   return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
     JOIN problems p ON p.id = b.problem_id JOIN domains src ON src.id = p.domain_id
-    LEFT JOIN problem_share_settings share ON share.problem_id = p.id
     WHERE ${selector} AND b.domain_id = ${domainId}
       AND ${bindingAvailabilityCondition()})`;
 }

@@ -15,10 +15,7 @@ import {
   guestActor,
   userActorFromAuthenticatedId,
 } from "../../contracts/actor.ts";
-import {
-  ADMIN_FULL_ACCESS,
-  resolvePermissions,
-} from "../services/security/permissions.ts";
+import { isUserAdmin } from "../services/security/permissions.ts";
 import type {
   AuthEnv,
   OptionalAuthEnv,
@@ -58,6 +55,7 @@ async function getActiveAccount(userId: string) {
   const [account] = await getDb().select({
     emailVerified: users.email_verified,
     sessionVersion: users.session_version,
+    role: users.role,
   }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
     .limit(1);
   return account;
@@ -160,7 +158,8 @@ export async function optionalAuthMiddleware(
       return;
     }
     c.set("userId", payload.sub);
-    c.set("userRole", payload.role);
+    // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
+    c.set("userRole", account.role);
     c.set("actor", userActorFromAuthenticatedId(payload.sub));
     c.set("mustChangePassword", payload.must_change_password ?? false);
     c.set("emailVerified", account.emailVerified);
@@ -222,7 +221,8 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
   await checkBanStatus(c, payload.sub);
 
   c.set("userId", payload.sub);
-  c.set("userRole", payload.role);
+  // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
+  c.set("userRole", account.role);
   c.set("actor", userActorFromAuthenticatedId(payload.sub));
   c.set("mustChangePassword", payload.must_change_password ?? false);
   c.set("emailVerified", account.emailVerified);
@@ -278,8 +278,8 @@ export async function adminMiddleware(
   c: Context,
   next: Next,
 ): Promise<Response | void> {
-  const perms = await resolvePermissions(c);
-  if (!perms.has(ADMIN_FULL_ACCESS)) {
+  const userId = c.get("userId") as string | undefined;
+  if (!userId || !(await isUserAdmin(userId))) {
     throw new ForbiddenError("需要管理员权限");
   }
 

@@ -28,8 +28,6 @@ let userToken = "";
 let targetUserId = "";
 let problemId = "";
 let tagId = "";
-let adminRoleId = "";
-let userRoleId = "";
 const ts = Date.now().toString(36);
 
 async function targetAuditRecords(action: string, targetId: string) {
@@ -49,17 +47,7 @@ e2eTest("[e2e/audit-log] Setup", async () => {
   await waitForServer();
   adminToken = await getAdminToken();
 
-  // 获取 admin 角色 ID
-  const rolesRes = await apiGet("/api/v1/admin/identity/roles", adminToken);
-  const roles =
-    (rolesRes.body as { data: Array<{ id: string; name: string }> }).data ??
-      [];
-  const adminRole = roles.find((r) => r.name === "admin");
-  const userRole = roles.find((role) => role.name === "user");
-  if (!adminRole || !userRole) throw new Error("缺少平台内置admin/user角色");
-  adminRoleId = adminRole.id;
-  userRoleId = userRole.id;
-
+  // 平台角色是单值合同，不再需要查询角色 ID。
   // 注册普通用户（用于 role_change/ban/unban 操作）
   userToken = await registerUser(
     "audit_user_" + ts,
@@ -110,7 +98,7 @@ e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
   // 先提升为 admin，再降回 user 确保产生记录
   const upRes = await apiPatch(
     `/api/v1/admin/identity/users/${targetUserId}/role`,
-    { role_ids: [adminRoleId] },
+    { role: "admin" },
     adminToken,
   );
   if (upRes.status !== 200) {
@@ -121,7 +109,7 @@ e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
 
   const downRes = await apiPatch(
     `/api/v1/admin/identity/users/${targetUserId}/role`,
-    { role_ids: [userRoleId] },
+    { role: "user" },
     adminToken,
   );
   if (downRes.status !== 200) {

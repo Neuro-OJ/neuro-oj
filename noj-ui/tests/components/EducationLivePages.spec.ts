@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import AssignmentPage from '~/pages/d/[slug]/assignments/[assignmentId]/index.vue';
-import TeachingPage from '~/pages/d/[slug]/teaching.vue';
-import LearningPage from '~/pages/d/[slug]/my-learning.vue';
 const api = { assignment: vi.fn(), classroom: vi.fn(), matrix: vi.fn(), progress: vi.fn(), dashboard: vi.fn() };
 const route = { params: { assignmentId: 'task' }, query: {} as Record<string, string> };
 let events: Array<() => Promise<void>>;
@@ -71,7 +69,6 @@ async function page(component: typeof AssignmentPage) {
         AdminPageHeader: true,
         AsyncContent: { template: '<div><slot /></div>' },
         AssignmentMatrix: { name: 'AssignmentMatrix', template: '<div data-testid="matrix" />' },
-        TeachingDashboard: true,
         AssignmentConversation: true,
         AssignmentHistory: true,
         USlideover: true,
@@ -124,15 +121,5 @@ describe('教学页面的持久事件刷新', () => {
     expect(view.find('assignment-history-stub').exists()).toBe(false);
     expect(view.text()).not.toContain('版本与策略变化依据');
     view.unmount();
-  });
-  it('教师工作台和我的学习都在新事件后重读本域任务', async () => {
-    for (const [component, mode] of [[TeachingPage, 'teaching'], [LearningPage, 'my-learning']] as const) {
-      events = [];
-      const view = await page(component);
-      api.dashboard.mockClear();
-      await events[0]!();
-      expect(api.dashboard).toHaveBeenCalledWith('school', mode, 1);
-      view.unmount();
-    }
   });
 });

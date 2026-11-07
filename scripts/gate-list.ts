@@ -68,6 +68,8 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/coverage-report_test.ts",
   // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
   "scripts/test-baseline_test.ts",
+  // 耗时基线必须只指向现存测试文件：曾长期保留 5 个已删除条目，分片计划照旧"有依据"。
+  "scripts/test-duration-baseline_test.ts",
   // 测试性能基础设施（2026-11-03）：阶段计时与报告聚合是后续所有性能结论的
   // 事实源，坏行/坏文件/缺失清单都必须有回归。
   "scripts/lib/test-timing_test.ts",
@@ -196,9 +198,7 @@ export const REPO_GATES: Gate[] = [
   // T24：被删脚本的测试（test-deploy/test-backup/test-restore-drill/
   // test-monitoring 等）随之移除——它们测的是已删除的 bash 实现，
   // 其行为覆盖已由 noj-cli 的 TS 测试承接（prod/*_test.ts）。
-  // 取而代之的是**弃用闸门**测试：过渡期保留的 deploy.sh/restore-drill.sh
-  // 必须继续受 R2 闸门保护（警告 + y 确认 + 非 TTY 不挂起 + 零副作用）。
-  { args: ["bash", "scripts/deploy/test-deprecation-gate.sh"] },
+  // Bash 部署脚本与弃用闸门已删除，生产行为由 noj-cli 的 TS 测试覆盖。
   { args: ["deno", "test", "-A", ...GATE_SELF_TESTS] },
 ];
 

@@ -204,9 +204,9 @@ Deno.test({
           for (const actor of [teacher, pupils[39]]) {
             await fixture(
               "PUT",
-              `/domains/${slug}/members/${actor.id}/roles`,
+              `/domains/${slug}/members/${actor.id}/role`,
               admin,
-              { roles: ["educator"] },
+              { role: "educator" },
             );
           }
           const created = await fixture<{ data: { id: string } }>(
@@ -307,9 +307,9 @@ Deno.test({
         async () => {
           await fixture(
             "PUT",
-            `/domains/${slug}/members/${pupils[38].id}/roles`,
+            `/domains/${slug}/members/${pupils[38].id}/role`,
             admin,
-            { roles: ["educator"] },
+            { role: "educator" },
           );
           const problem = await classroomJourneyProblem(slug, admin, title);
           number = problem.number;
@@ -534,9 +534,9 @@ Deno.test({
           for (const actor of [teacher, pupils[38]]) {
             await fixture(
               "PUT",
-              `/domains/${slug}/members/${actor.id}/roles`,
+              `/domains/${slug}/members/${actor.id}/role`,
               admin,
-              { roles: ["member"] },
+              { role: "member" },
             );
           }
           await login(successor.page, pupils[39]);

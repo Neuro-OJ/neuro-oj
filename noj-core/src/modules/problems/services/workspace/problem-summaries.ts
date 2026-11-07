@@ -12,7 +12,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
@@ -96,7 +95,6 @@ export async function readDomainProblemSummaries(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
     isNotNull(problems.latest_version_id),
-    eq(binding.kind, "owned"),
     eq(problems.domain_id, workspace.domain.id),
   );
   const rows = await db.select({
@@ -122,10 +120,6 @@ export async function readDomainProblemSummaries(
             ELSE ${problems.latest_version_id} END`,
         ),
       ),
-    )
-    .leftJoin(
-      problemShareSettings,
-      eq(problemShareSettings.problem_id, problems.id),
     )
     .where(and(authorized, referenceWhere));
   const problemIds = rows.map((row) => row.problem_id);

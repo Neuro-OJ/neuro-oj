@@ -89,7 +89,6 @@ export async function lockOwnedProblemBindingTx(
     and(
       eq(domainProblemBindings.domain_id, domainId),
       eq(domainProblemBindings.problem_id, problemId),
-      eq(domainProblemBindings.kind, "owned"),
     ),
   ).for("update");
   return row ?? null;

@@ -30,8 +30,8 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   );
   const identity = await apiGet("/api/v1/auth/me", user.token);
   const userId = (identity.body as { data: { id: string } }).data.id;
-  const granted = await apiPut(`/api/v1/domains/main/members/${userId}/roles`, {
-    roles: ["editor"],
+  const granted = await apiPut(`/api/v1/domains/main/members/${userId}/role`, {
+    role: "educator",
   }, adminToken);
   if (granted.status !== 200) {
     throw new Error(`授予域资源编辑角色失败: ${JSON.stringify(granted.body)}`);

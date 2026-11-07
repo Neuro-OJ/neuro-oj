@@ -12,9 +12,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   domainLimits,
-  roles,
   systemSettings,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -32,7 +30,7 @@ import {
   getDomainEffectiveLimits,
   getInstancePolicy,
   joinDomain,
-  setMemberRoles,
+  setMemberRole,
   updateDomain,
   updateDomainLimits,
 } from "../../index.ts";
@@ -44,15 +42,10 @@ async function account(admin = false) {
     id,
     username: id,
     email: `${id}@example.com`,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 
@@ -128,7 +121,7 @@ Deno.test("配额治理：管理员只能降低，平台可提高；revision、�
     `${manager}@example.com`,
   );
   await consumeDomainInvitation(invite.token, manager);
-  await setMemberRoles(domain.slug, platform, manager, ["admin"]);
+  await setMemberRole(domain.slug, platform, manager, "admin");
   // 成员角色修改不修改域配置 revision，当前仍为 0。
   const lowered = await updateDomainLimits(domain.slug, manager, 0, {
     ...unlimitedDomainLimits(),

@@ -11,8 +11,8 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { manyToManyPk, publicIdColumn } from "./common.ts";
-import { roles, userBans, users } from "./identity.ts";
+import { publicIdColumn } from "./common.ts";
+import { userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { domains } from "./workspace.ts";
 import { domainProblemBindings } from "./catalog-workspace.ts";
@@ -51,26 +51,6 @@ export const communityBoards = pgTable(
       table.is_archived,
       table.sort_order,
     ),
-  }),
-);
-
-/** 板块级角色授权；没有授权记录时沿用全局社区 RBAC。 */
-export const communityBoardRoleGrants = pgTable(
-  "community_board_role_grants",
-  {
-    board_id: text("board_id").notNull().references(() => communityBoards.id, {
-      onDelete: "cascade",
-    }),
-    role_id: text("role_id").notNull().references(() => roles.id, {
-      onDelete: "cascade",
-    }),
-    can_read: boolean("can_read").notNull().default(true),
-    can_post: boolean("can_post").notNull().default(false),
-    can_moderate: boolean("can_moderate").notNull().default(false),
-  },
-  (table) => ({
-    ...manyToManyPk([table.board_id, table.role_id]),
-    roleIdx: index("idx_community_board_role_grants_role").on(table.role_id),
   }),
 );
 
@@ -144,7 +124,7 @@ export const communityPosts = pgTable(
     ),
     typeCheck: check(
       "community_posts_type_check",
-      sql`${table.type} IN ('solution', 'discussion', 'moment')`,
+      sql`${table.type} IN ('solution', 'discussion')`,
     ),
     bindingRequiredCheck: check(
       "community_posts_binding_required_check",
@@ -160,7 +140,6 @@ export const communityPosts = pgTable(
       sql`(
         (${table.type} = 'solution' AND ${table.problem_id} IS NOT NULL AND ${table.board_id} IS NULL AND ${table.title} IS NOT NULL)
         OR (${table.type} = 'discussion' AND ${table.board_id} IS NOT NULL AND ${table.problem_id} IS NULL AND ${table.title} IS NOT NULL)
-        OR (${table.type} = 'moment' AND ${table.problem_id} IS NULL AND ${table.board_id} IS NULL AND ${table.title} IS NULL)
       )`,
     ),
     authorIdx: index("idx_community_posts_author").on(

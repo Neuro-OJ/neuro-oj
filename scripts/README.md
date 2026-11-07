@@ -6,10 +6,9 @@ Neuro OJ 仓库根目录的脚本统一存放点。
 > `production.sh`、`backup-schedule.sh`、`judge-install.sh` 等自举/运维脚本
 > 已删除——能力全部迁入 `noj-cli`（纯 TS，见 `noj-cli/src/prod/`）。
 > 首次安装改为**手动下载 Release 二进制**后执行 `install`（不再有自举脚本）。
-> `deploy.sh` 与 `restore-drill.sh` 仍在过渡期保留，但已加**弃用闸门**。
+> 旧 Bash 部署、备份、演练与弃用闸门脚本均已删除。
 > 注意：`scripts/release/test-supply-chain.sh`、`scripts/staging/test-acceptance.sh`
-> 、`scripts/deploy/test-deprecation-gate.sh` 等**门禁/回归测试**脚本仍然保留
-> （被删除的是旧的自举与运维入口脚本，不含这些测试）。
+> 等**门禁/回归测试**脚本仍然保留（被删除的是旧的自举与运维入口脚本）。
 
 ## 安装、部署与运维入口
 
@@ -46,12 +45,7 @@ scripts/
 ├── check-*.ts / verify-*.ts / gen-*.ts  # 各专项静态门禁
 ├── coverage-report.ts     # 覆盖率报告与阈值门禁
 ├── silent-skip-report.ts  # 静默跳过棘轮
-├── deploy/                # 过渡期脚本 + 仓库级校验
-│   ├── deprecation-gate.sh      # R2 弃用闸门（被 deploy.sh/restore-drill.sh source）
-│   ├── deploy.sh                # 已废弃（过渡期保留，运行时需 y 确认）
-│   ├── restore-drill.sh         # 已废弃（同上）
-│   ├── backup.sh                # 上两者的依赖（随它们一起保留）
-│   ├── test-deprecation-gate.sh # 闸门行为回归
+├── deploy/                # 仓库级校验脚本
 │   ├── verify-build-server.ts
 │   ├── verify-compose-server.ts
 │   ├── restore-drill-verify.ts  # 演练验收辅助

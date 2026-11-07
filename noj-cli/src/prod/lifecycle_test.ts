@@ -54,6 +54,14 @@ import {
   WAIT_FAILURE_HINT,
 } from "./lifecycle/steps.ts";
 import { configuredVersion } from "./release.ts";
+import {
+  advanceUpgradeState,
+  createUpgradeState,
+  readUpgradeState,
+  upgradeStatePath,
+  writeUpgradeState,
+} from "./upgrade-state.ts";
+import { digestCandidateFiles } from "./lifecycle/upgrade.ts";
 import type {
   DrainContext,
   DrainLifecycle,
@@ -382,6 +390,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     );
     assertEquals(dockerArgs[0], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -393,6 +403,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     ]);
     assertEquals(dockerArgs[1], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -405,6 +417,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     // 逐字跑 bash 的两段 up（--wait-timeout 180 --remove-orphans + nginx 刷新）。
     assertEquals(dockerArgs[2], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -420,6 +434,8 @@ Deno.test("install 空目录：拉取资产 → 校验 → 生成 .env.prod → 
     ]);
     assertEquals(dockerArgs[3], [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       envFile,
       "-f",
@@ -1776,6 +1792,8 @@ Deno.test("start：stopped → wait_for_stack 两段 up（参数逐元素精确�
     assertEquals(ups, [
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         envFile,
         "-f",
@@ -1789,6 +1807,8 @@ Deno.test("start：stopped → wait_for_stack 两段 up（参数逐元素精确�
       ],
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         envFile,
         "-f",
@@ -1850,6 +1870,8 @@ Deno.test("stop：running → compose stop，且绝不使用 down/-v（数据卷
     assert(stopCall !== undefined, "running 时必须执行 compose stop");
     assertEquals(stopCall.args, [
       "compose",
+      "--project-directory",
+      dir,
       "--env-file",
       join(dir, ENV_FILE),
       "-f",
@@ -2742,6 +2764,8 @@ Deno.test("logs core：服务名透传，且 --no-color 排在服务名之前、
       logsCall(runs),
       [
         "compose",
+        "--project-directory",
+        dir,
         "--env-file",
         join(dir, ENV_FILE),
         "-f",
@@ -3793,6 +3817,353 @@ Deno.test("update：默认按 NOJ_VERSION 升级，顺序为 同步 → 备份 �
   }
 });
 
+Deno.test("update --recover：沿用 checkpoint 目标版本与暂存发布集，不重新下载", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-recover");
+    await Deno.mkdir(staged, { recursive: true });
+    await Deno.writeTextFile(join(staged, COMPOSE), COMPOSE_BODY);
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-recover",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    // 不带 --recover：明确拒绝，且不产生任何 compose 调用。
+    const blockedEvents: UpdateEvent[] = [];
+    const blocked = await update({
+      dir,
+      runner: makeUpdateRunner(blockedEvents),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {},
+      warn: () => {},
+      upgradeStatePath: statePath,
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+    assertEquals(blocked.exitCode, 1);
+    assertStringIncludes(blocked.error ?? "", "--recover");
+    assertEquals(blockedEvents.length, 0);
+
+    const events: UpdateEvent[] = [];
+    const { io, stdout } = captureRenderIO();
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(result.to, "v0.9.6");
+    assertEquals(result.filesSynced, true);
+    assertStringIncludes(stdout.join(""), "复用未完成升级的暂存发布文件");
+    // compose 一律指向复用后的暂存目录。
+    assert(
+      events.some((e) => e.kind === "run" && e.detail.includes(staged)),
+      "恢复必须使用 checkpoint 记录的暂存目录",
+    );
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    const finalState = await readUpgradeState(statePath);
+    assertEquals(finalState?.phase, "completed");
+    assertEquals(finalState?.to, "v0.9.6");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("update --recover：迁移失败保留候选文件、备份与未完成 checkpoint", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-migrate");
+    await Deno.mkdir(staged, { recursive: true });
+    const candidateCompose = "services:\n  core:\n    image: noj-v096\n";
+    await Deno.writeTextFile(join(staged, COMPOSE), candidateCompose);
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-migrate-fail",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    const events: UpdateEvent[] = [];
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      migrate: () => Promise.reject(new Error("迁移失败：SQL 语法错误")),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "迁移失败");
+    // 迁移一旦开始就不再回退旧程序：候选文件已提交，旧文件组备份保留。
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), candidateCompose);
+    const backupDirs: string[] = [];
+    for await (const entry of Deno.readDir(dir)) {
+      if (entry.isDirectory && entry.name.startsWith(".upgrade-backup-")) {
+        backupDirs.push(entry.name);
+      }
+    }
+    assert(backupDirs.length > 0, "迁移失败后必须保留旧发布文件备份");
+    // 候选文件已提交到安装目录，暂存目录视为已消费并清理；checkpoint 不再指向它。
+    assertEquals(
+      await Deno.stat(staged).then(() => true, () => false),
+      false,
+    );
+    const state = await readUpgradeState(statePath);
+    assertEquals(state?.phase, "failed");
+    assertEquals(state?.migration_started, true);
+    assertEquals(state?.files_staged_dir, null);
+    assertEquals(state?.files.length, files.length);
+    assertStringIncludes(state?.error ?? "", "迁移失败");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("update --recover：只读预检失败发生在排空前，候选文件不提交", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-precheck");
+    await Deno.mkdir(staged, { recursive: true });
+    await Deno.writeTextFile(
+      join(staged, COMPOSE),
+      "services:\n  core:\n    image: noj-v096\n",
+    );
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-precheck-fail",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    const events: UpdateEvent[] = [];
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(
+        events,
+        (args) =>
+          args.includes("check-upgrade")
+            ? { code: 1, stderr: "ledger 前缀漂移" }
+            : undefined,
+      ),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      drain: makeDrain(events),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "数据库升级预检失败");
+    assertStringIncludes(result.error ?? "", "ledger 前缀漂移");
+    // 旧配置与发布文件不变，也没有旧文件组备份。
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    for await (const entry of Deno.readDir(dir)) {
+      assert(
+        !entry.name.startsWith(".upgrade-backup-"),
+        "预检失败不得产生旧文件组备份",
+      );
+    }
+    // 排空与迁移都没有开始。
+    assertEquals(events.some((e) => e.kind === "drain"), false);
+    assertEquals(
+      events.some((e) => e.kind === "run" && e.detail.includes("up -d --wait")),
+      false,
+    );
+    const state = await readUpgradeState(statePath);
+    assertEquals(state?.phase, "failed");
+    assertEquals(state?.migration_started, false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("update --recover：排空失败不提交候选文件、不执行迁移", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const staged = join(dir, ".update-staging-drain");
+    await Deno.mkdir(staged, { recursive: true });
+    await Deno.writeTextFile(
+      join(staged, COMPOSE),
+      "services:\n  core:\n    image: noj-v096\n",
+    );
+    await Deno.writeTextFile(join(staged, ENV_EXAMPLE), EXAMPLE_BODY);
+    await Deno.writeFile(
+      join(staged, RELEASE_SET_FILE.target),
+      releaseSetBody("v0.9.6"),
+    );
+    const files = await digestCandidateFiles(staged);
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-drain-fail",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "draining",
+        { files, files_staged_dir: staged },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    const events: UpdateEvent[] = [];
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      recover: true,
+      fetcher: () => {
+        throw new Error("恢复必须复用暂存文件，不得下载");
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      drain: makeDrain(events, {
+        wait: { ok: false, code: "timeout", error: "排空超时" },
+      }),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "排空超时");
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    for await (const entry of Deno.readDir(dir)) {
+      assert(
+        !entry.name.startsWith(".upgrade-backup-"),
+        "排空失败不得产生旧文件组备份",
+      );
+    }
+    assertEquals(
+      events.some((e) => e.kind === "run" && e.detail.includes("up -d --wait")),
+      false,
+    );
+    const state = await readUpgradeState(statePath);
+    assertEquals(state?.phase, "failed");
+    assertEquals(state?.migration_started, false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("update：备份失败 → 退出码 1，且**零 pull / 零 up**", async () => {
   const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
   try {
@@ -4514,7 +4885,8 @@ Deno.test("update：升级时 prepare_and_check 与 install 同源（六步前�
     const config = events.findIndex((e) => e.detail.includes("config --quiet"));
     assert(config >= 0, "必须跑 compose config 前置校验");
     // 参数形状由 T10 唯一保证：--env-file / -f 齐全，judge 关闭时不带 profile
-    assertStringIncludes(events[config]!.detail, "compose --env-file");
+    assertStringIncludes(events[config]!.detail, "compose --project-directory");
+    assertStringIncludes(events[config]!.detail, "--env-file");
     assertStringIncludes(events[config]!.detail, "-f");
     assertEquals(events[config]!.detail.includes("--profile judge"), false);
   } finally {

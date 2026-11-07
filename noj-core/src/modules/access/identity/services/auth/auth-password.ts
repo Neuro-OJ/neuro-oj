@@ -21,7 +21,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { comparePassword, hashPassword } from "../security/password.ts";
-import { isUserAdmin } from "../security/permissions.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
   BadRequestError,
@@ -117,8 +116,8 @@ export async function changePassword(
     { user_id: userId },
   );
 
-  // 查询用户的 admin 状态（权限集含 admin:full_access，含继承）
-  const isAdmin = await isUserAdmin(user.id);
+  // 平台角色直接取自已读取的用户行；不查角色表。
+  const role = user.role === "admin" ? "admin" : "user";
 
   return {
     sessionVersion: updated.sessionVersion,
@@ -126,7 +125,8 @@ export async function changePassword(
       id: user.id,
       username: user.username,
       email: user.email,
-      is_admin: isAdmin,
+      role,
+      is_admin: role === "admin",
       has_local_password: true,
       must_change_password: false,
       email_verified: user.email_verified,

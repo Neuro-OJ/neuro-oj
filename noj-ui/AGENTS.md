@@ -48,7 +48,7 @@ noj-ui/
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── uiproblem/         # UiWorkspace / UiFrame（界面题：沙箱 iframe 渲染题包 ui.html，editor/[id].vue 按 submission_mode 选择）
-│   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / LatestSubmissions / search（SearchPalette / SearchResultItem）/ community（CommentCard）
+│   ├── feature/           # ProblemFilterBar / CheckInCard / StatsToggle / LatestSubmissions / search（SearchPalette / SearchResultItem）/ community（CommentCard）
 │   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
 │   ├── card/              # ProblemCard / SubmissionCard
@@ -165,9 +165,8 @@ cd dist
 
 ## API 交互约定
 
-空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有（历史名称
-`useViewAsyncData` 仅是兼容包装），交互仍走原有细粒度 API。全局 `00-bff.global.ts`
-不再预取或写入共享快照；接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
+空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有，交互仍走原有细粒度 API。全局导航不再预取或写入共享快照；
+接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 
 产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用 `layouts/workspace.vue`
 提供的统一上下文。实现及当前限制见 [工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
@@ -374,7 +373,7 @@ cd dist
 
 ### SSR 数据获取约定
 
-- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`（历史迁移代码可通过 `useViewAsyncData` 兼容包装），不得在
+- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`，不得在
   `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`；禁止依赖全局路由中间件提供共享 BFF 快照。
 - `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup
   上下文，异步回调内不得再次调用。
@@ -396,7 +395,7 @@ cd dist
 
 ### admin 守卫
 
-- 检查 `noj:session` Cookie 中的 `is_admin` 字段（RBAC：权限集含 `admin:full_access`，登录/`/auth/me` 时实时计算）
+- 检查 `noj:session` Cookie 中的 `is_admin` 字段（由 `users.role === "admin"` 计算，登录/`/auth/me` 时下发）
 - 非管理员 → `navigateTo("/")`（静默重定向，无错误提示）
 - SSR 阶段同样执行守卫
 

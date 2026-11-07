@@ -36,10 +36,6 @@
       "capability": "workspace_services_domains",
       "note": "纯转发层：能力名取自文件名。收敛目标＝按稳定能力+D­TO 组织少量合同（审计架构意见 4）"
     },
-    "noj-core/src/modules/access/contracts/cross-module/workspace_services_invitations.ts": {
-      "capability": "workspace_services_invitations",
-      "note": "纯转发层：能力名取自文件名。收敛目标＝按稳定能力+D­TO 组织少量合同（审计架构意见 4）"
-    },
     "noj-core/src/modules/access/contracts/cross-module/workspace_services_limits.ts": {
       "capability": "workspace_services_limits",
       "note": "纯转发层：能力名取自文件名。收敛目标＝按稳定能力+D­TO 组织少量合同（审计架构意见 4）"

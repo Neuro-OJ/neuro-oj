@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { effectiveDomainConfiguration } from "../../../shared/workspace/capabilities.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   classroomJoinRequests,
@@ -59,7 +60,10 @@ async function joinTarget(
     });
   }
   const enabled = write ||
-    workspace.domain.configuration.features.classroom === true &&
+    effectiveDomainConfiguration(
+            workspace.domain.preset,
+            workspace.domain.configuration,
+          ).features.classroom === true &&
       (await getInstanceResourcePolicy(executor)).modules.classroom;
   const canApply = classroom.status === "active" &&
     workspace.domain.status === "active" &&

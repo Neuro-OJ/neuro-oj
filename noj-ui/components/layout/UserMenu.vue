@@ -10,8 +10,7 @@ const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();
 const workspace = useOptionalWorkspace();
 const label = computed(() => domainIdentityLabel(user.value?.username ?? '', slug.value));
-const spaces = useViewAsyncData(
-  'userSpaces',
+const spaces = useAsyncData(
   () => workspaceCacheKey('', user.value?.id ?? null, 'user-menu-domains'),
   () => user.value ? workspaces.list(true) : Promise.resolve({ data: [] as WorkspaceSummary[] }),
 );
@@ -48,7 +47,7 @@ const items = computed(() => [
   [
     { label: '用户主页', icon: 'i-lucide-user-round', to: accountLink(userUrl(user.value?.username ?? '')) },
     { label: '提交', icon: 'i-lucide-file-code-2', to: workspacePath(slug.value, 'submissions') },
-    ...(user.value?.is_admin || workspace?.can('problem:write_own') || workspace?.can('problem:write_any')
+    ...(user.value?.is_admin || workspace?.can('problem:write_any')
       ? [{ label: '我的题目', icon: 'i-lucide-book-open', to: workspacePath(slug.value, 'problem-drafts') }]
       : []),
     { label: '通知', icon: 'i-lucide-bell', to: '/notifications' },

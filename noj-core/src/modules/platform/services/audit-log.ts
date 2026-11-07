@@ -8,6 +8,7 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Actor, UserActor } from "../../access/contracts/actor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { DbTx } from "../../../shared/db/executor.ts";
 import { auditLogs } from "../../../shared/db/schema.ts";
 import { getLogger } from "@logtape/logtape";
 import {
@@ -32,16 +33,23 @@ function actorId(actor: Actor | null): string | null {
   return actor?.kind === "user" ? actor.userId : null;
 }
 
-/** 显式记录平台审计；数据库失败只记录脱敏错误，业务调用方保留既有语义。 */
+/**
+ * 显式记录平台审计；数据库失败只记录脱敏错误，业务调用方保留既有语义。
+ *
+ * 传入 `tx` 时审计写入与业务事实同事务提交，供需要“审计与状态一致”的
+ * 敏感写入（封禁、解封等）使用。
+ */
 export async function recordAudit(
   actor: Actor | null,
   meta: AuditMeta,
   action: AuditAction,
   detail: AuditDetail,
   target?: { type: string; id: string },
+  tx?: DbTx,
 ): Promise<void> {
   try {
-    await getDb().insert(auditLogs).values({
+    const db = tx ?? getDb();
+    await db.insert(auditLogs).values({
       id: crypto.randomUUID(),
       admin_id: actorId(actor),
       action,

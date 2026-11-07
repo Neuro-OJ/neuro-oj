@@ -33,6 +33,5 @@ export function domainProblemReference(
     number: problem.number,
     qualified_ref: qualified,
     display_ref: shared ? qualified : String(problem.number),
-    is_shared: shared,
   };
 }

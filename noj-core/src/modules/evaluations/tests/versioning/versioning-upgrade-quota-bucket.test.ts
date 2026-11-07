@@ -20,15 +20,12 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestParticipants,
   contests,
+  domainMemberships,
   judgeImages,
   objectiveSubmissions,
-  permissions,
   problems,
   problemVersions,
-  rolePermissions,
-  roles,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -111,35 +108,10 @@ const dualConfig = {
   },
 };
 
-/** 建一个拥有 `admin:full_access` 的测试用户（用于"管理员代原用户升级"）。 */
+/** 平台管理员（用于"管理员代原用户升级"）。 */
 async function makeAdminUser(tag: string): Promise<string> {
-  const roleId = `qb-admin-role-${ts}`;
-  const [existingPerm] = await db.select().from(permissions).where(
-    eq(permissions.resource, "admin"),
-  ).limit(1);
-  const permissionId = existingPerm?.id ?? `qb-perm-${ts}`;
-  if (!existingPerm) {
-    await db.insert(permissions).values({
-      id: permissionId,
-      resource: "admin",
-      action: "full_access",
-      description: "测试用",
-    }).onConflictDoNothing();
-  }
-  await db.insert(roles).values({
-    id: roleId,
-    name: `qb-admin-${ts}`,
-    description: "测试管理员",
-    created_at: now,
-    updated_at: now,
-  }).onConflictDoNothing();
-  await db.insert(rolePermissions).values({
-    role_id: roleId,
-    permission_id: permissionId,
-  }).onConflictDoNothing();
   const userId = await makeUser(tag);
-  await db.insert(userRoles).values({ user_id: userId, role_id: roleId })
-    .onConflictDoNothing();
+  await db.update(users).set({ role: "admin" }).where(eq(users.id, userId));
   return userId;
 }
 
@@ -153,7 +125,14 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
-  await authorizeLegacyJobActorForTest(id);
+  await db.insert(domainMemberships).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    user_id: id,
+    role: "educator",
+    joined_at: now,
+  });
+  await authorizeLegacyJobActorForTest(id, "educator");
   return id;
 }
 

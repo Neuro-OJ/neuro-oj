@@ -4,13 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import {
-  domains,
-  permissions,
-  rolePermissions,
-  roles,
-  userRoles,
-} from "../../../../shared/db/schema.ts";
+import { domains, users } from "../../../../shared/db/schema.ts";
 import {
   createUserToken,
   initRedisForTest,
@@ -358,26 +352,10 @@ Deno.test({
       403,
     );
     const db = getDb();
-    const [permission] = await db.select().from(permissions).where(
-      eq(permissions.resource, "problem"),
-    ).then((rows) =>
-      rows.filter((row) => row.action === "field_evaluator_network")
+    // 评测字段命令/网络能力只属于平台管理员，不再可配置给自定义角色。
+    await db.update(users).set({ role: "admin" }).where(
+      eq(users.id, actor.sub),
     );
-    await db.insert(roles).values({
-      id: "domain-network-author",
-      name: "网络授权出题人",
-      description: "测试显式网络能力",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    await db.insert(rolePermissions).values({
-      role_id: "domain-network-author",
-      permission_id: permission.id,
-    });
-    await db.insert(userRoles).values({
-      user_id: actor.sub,
-      role_id: "domain-network-author",
-    });
     const created = await jsonRequest(app, prefix, {
       token,
       method: "POST",

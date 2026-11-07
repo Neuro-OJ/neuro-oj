@@ -61,7 +61,7 @@ useSeoMeta({ title: () => training.value?.title ?? '题单' });
       <div class="min-w-0">
         <NuxtLink :to="workspacePath(slug!, 'trainings')" class="mb-3 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />题单列表</NuxtLink>
         <h1 class="break-words text-2xl font-bold text-text">{{ training?.title ?? '题单' }}</h1>
-        <p v-if="data" class="mt-2 text-sm text-text-secondary tabular-nums">共 {{ data.data.total }} 题<span v-if="training?.is_shared"> · 引用自 {{ training.source_domain_slug }}</span></p>
+        <p v-if="data" class="mt-2 text-sm text-text-secondary tabular-nums">共 {{ data.data.total }} 题</p>
       </div>
       <UButton v-if="training?.can_edit && domain?.status === 'active'" :to="workspacePath(slug!, `trainings/${id}/edit`)" variant="outline">编辑题单</UButton>
     </header>

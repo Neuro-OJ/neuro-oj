@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -276,7 +276,7 @@ Deno.test("教学单元依据：接收者、发布时间、按时补做与离班
     NotFoundError,
   );
   await assertRejects(() => cell(f, f.student), ForbiddenError);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals((await cell(f, f.assistant)).data.length > 0, true);
 });
 

@@ -6,8 +6,7 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   auditLogs,
   domainResourceCounters,
-  roles,
-  userRoles,
+  domains,
   users,
 } from "../../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
@@ -28,15 +27,10 @@ async function account(admin = false) {
     username: id,
     email: `${id}@example.com`,
     email_verified: true,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return {
     id,
     token: await signToken({ sub: id, role: admin ? "admin" : "user" }),
@@ -90,6 +84,32 @@ Deno.test("实例治理 HTTP：平台目录能分页查私有暂停域，域负�
   assertEquals(filtered.data[0].owner_username, owner.id);
   assertEquals(filtered.data[0].revision, 1);
   assertEquals(filtered.data[0].configuration.access, "members");
+  // 派生能力由域类型生成：存储态只有三键，治理响应必须补齐 features/homepage。
+  // 反向移除 governance.ts 的 effectiveDomainConfiguration 派生后，这两条断言会红。
+  assertEquals(filtered.data[0].configuration.features, {
+    community: true,
+    classroom: true,
+    assignment: true,
+    analytics: true,
+  });
+  assertEquals(filtered.data[0].configuration.homepage, "teaching");
+  const [storedSchool] = await getDb().select({
+    configuration: domains.configuration,
+  }).from(domains).where(eq(domains.id, school.id));
+  assertEquals(
+    Object.hasOwn(storedSchool!.configuration as object, "features"),
+    false,
+  );
+  const activePage = await (await jsonRequest(
+    app,
+    "/api/v1/admin/instance/domains?status=active",
+    { token: platform.token },
+  )).json();
+  const teamDomain = activePage.data.find(
+    (row: { slug: string }) => row.slug === "governance-team",
+  );
+  assertEquals(teamDomain.configuration.features.classroom, false);
+  assertEquals(teamDomain.configuration.homepage, "training");
   const resumed = await jsonRequest(
     app,
     `/api/v1/domains/${school.slug}/status`,

@@ -440,9 +440,6 @@ async function cleanupFixedIds(): Promise<void> {
   );
   // 本文件使用真实独立事务；只清理自己的默认域成员夹具并校准容量计数。
   await db.execute(
-    sql`DELETE FROM domain_member_roles WHERE membership_id IN (SELECT id FROM domain_memberships WHERE user_id = ${ACTOR})`,
-  );
-  await db.execute(
     sql`DELETE FROM domain_memberships WHERE user_id = ${ACTOR}`,
   );
   await db.execute(

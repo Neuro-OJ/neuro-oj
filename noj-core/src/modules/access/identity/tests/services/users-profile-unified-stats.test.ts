@@ -24,7 +24,7 @@ import {
 } from "../../../../../shared/db/schema.ts";
 import { getUserProfileAggregate } from "../../../../read-models/queries/index.ts";
 
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 const now = new Date().toISOString();
 const FULL_SCORE = 10000;

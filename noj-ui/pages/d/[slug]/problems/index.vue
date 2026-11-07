@@ -48,10 +48,10 @@ const columns = computed(() => [
   })),
 ]);
 const manageItems = computed(() => [
-  ...(can('problem:write_own') || can('problem:write_any')
+  ...(can('problem:write_any')
     ? [{ label: '题目草稿', to: `/d/${slug.value}/problem-drafts`, icon: 'i-lucide-file-pen-line' }]
     : []),
-  ...(can('problem:policy') || can('problem:write_own') || can('problem:write_any')
+  ...(can('problem:policy') || can('problem:write_any')
     ? [{ label: '资源管理', to: `/d/${slug.value}/problem-bindings`, icon: 'i-lucide-library-big' }]
     : []),
 ]);
@@ -61,7 +61,7 @@ useSeoMeta({ title: '题库' });
   <div class="space-y-5">
     <LibraryPageHeader title="题库" :description="`${domain?.name ?? ''} · 算法与 AI 在线评测`" icon="i-lucide-book-open" :count="`共 ${data?.total ?? '—'} 道题`">
       <template #actions>
-        <UButton v-if="domain?.status==='active' && (can('problem:write_own') || can('problem:write_any'))"
+        <UButton v-if="domain?.status==='active' && (can('problem:write_any'))"
           :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
         <UDropdownMenu v-if="manageItems.length" :items="manageItems">
           <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>

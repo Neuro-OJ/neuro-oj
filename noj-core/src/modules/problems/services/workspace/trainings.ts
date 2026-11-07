@@ -6,13 +6,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import {
-  domainTrainingBindings,
-  trainingProblems,
-  trainings,
-  trainingShareSettings,
-  trainingShareTargets,
-} from "../../../../shared/db/schema.ts";
+import { trainingProblems, trainings } from "../../../../shared/db/schema.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   assertWorkspacePermission,
@@ -76,11 +70,7 @@ export async function saveDomainTraining(
     if (existing && !previous) throw new NotFoundError("题单不在此域");
     assertWorkspacePermission(
       access.context,
-      previous
-        ? previous.created_by === actorId
-          ? "training:write_own"
-          : "training:write_any"
-        : "training:create",
+      previous ? "training:write_any" : "training:create",
     );
     if (state === "published") {
       assertWorkspacePermission(access.context, "training:publish");
@@ -167,27 +157,10 @@ export async function deleteDomainTraining(
       eq(trainings.domain_id, workspace.domain.id),
     )).for("update");
     if (!training) throw new NotFoundError("题单不在此域");
-    assertWorkspacePermission(
-      workspace.context,
-      training.created_by === actorId
-        ? "training:delete_own"
-        : "training:delete_any",
-    );
-    const [reference] = await tx.select({ id: domainTrainingBindings.id })
-      .from(domainTrainingBindings)
-      .where(eq(domainTrainingBindings.training_id, trainingId))
-      .limit(1);
-    if (reference) {
-      throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
-    }
+    assertWorkspacePermission(workspace.context, "training:delete_any");
+    // 题单按 trainings.domain_id 归属，不再有跨域引用需要保护。
     await tx.delete(trainingProblems).where(
       eq(trainingProblems.training_id, trainingId),
-    );
-    await tx.delete(trainingShareTargets).where(
-      eq(trainingShareTargets.training_id, trainingId),
-    );
-    await tx.delete(trainingShareSettings).where(
-      eq(trainingShareSettings.training_id, trainingId),
     );
     await tx.delete(trainings).where(eq(trainings.id, trainingId));
     await workspaceAudit(tx, actorId, workspace.domain.id, "domain.update", {

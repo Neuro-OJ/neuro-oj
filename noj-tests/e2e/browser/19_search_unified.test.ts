@@ -43,10 +43,10 @@ async function prepareSearchFixture(): Promise<void> {
   const userId = (identity.body as { data: { id: string } }).data.id;
   const granted = await api(
     "PUT",
-    `/api/v1/domains/main/members/${userId}/roles`,
+    `/api/v1/domains/main/members/${userId}/role`,
     {
       token: admin,
-      body: { roles: ["editor"] },
+      body: { role: "educator" },
     },
   );
   assertEquals(granted.status, 200);

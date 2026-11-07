@@ -16,11 +16,9 @@ export function useDomainTrainings() {
               | 'title'
               | 'description'
               | 'source_domain_slug'
-              | 'is_shared'
               | 'visibility'
               | 'state'
               | 'can_edit'
-              | 'can_share'
               | 'revision'
             >
           >;

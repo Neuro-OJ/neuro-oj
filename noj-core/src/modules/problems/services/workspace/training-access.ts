@@ -9,12 +9,10 @@ import {
 import {
   domainProblemBindings,
   domains,
-  domainTrainingBindings,
   problems,
   problemVersions,
   trainingProblems,
   trainings,
-  trainingShareSettings,
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
@@ -34,9 +32,7 @@ export async function resolveDomainTraining(
   if (shared) throw new NotFoundError("请先将题单独立复制到当前域");
   if (
     row.training.state !== "published" && !workspace.platformAdmin &&
-    !workspace.context.domainPermissions.has("training:write_any") &&
-    !(row.training.created_by === actorId &&
-      workspace.context.domainPermissions.has("training:write_own"))
+    !workspace.context.domainPermissions.has("training:write_any")
   ) {
     throw new NotFoundError("题单尚未发布");
   }
@@ -102,7 +98,7 @@ export async function readDomainTraining(
       ? item.problem.required_version_id
       : item.problem.latest_version_id;
     const sourceAvailable = item.source.id === resource.domain.id &&
-      item.binding?.kind === "owned" &&
+      item.binding != null &&
       !item.binding.disabled_at &&
       Boolean(item.problem.latest_version_id) &&
       Boolean(
@@ -129,7 +125,6 @@ export async function readDomainTraining(
       display_ref: item.source.id === resource.domain.id
         ? String(item.problem.number)
         : qualified,
-      is_shared: item.source.id !== resource.domain.id,
       position: item.position,
     });
   }
@@ -143,13 +138,8 @@ export async function readDomainTraining(
     revision: resource.training.revision,
     visibility: resource.training.visibility,
     state: resource.training.state,
-    can_edit: !resource.shared &&
-      (resource.platformAdmin ||
-        resource.context.domainPermissions.has("training:write_any") ||
-        resource.training.created_by === actorId &&
-          resource.context.domainPermissions.has("training:write_own")),
-    can_share: false,
-    is_shared: resource.shared,
+    can_edit: resource.platformAdmin ||
+      resource.context.domainPermissions.has("training:write_any"),
     items,
   };
 }
@@ -196,7 +186,7 @@ export async function listDomainTrainings(
     eq(trainings.domain_id, workspace.domain.id),
     all ? undefined : or(
       eq(trainings.state, "published"),
-      actorId && workspace.context.domainPermissions.has("training:write_own")
+      actorId && workspace.context.domainPermissions.has("training:write_any")
         ? eq(trainings.created_by, actorId)
         : undefined,
     ),
@@ -207,16 +197,7 @@ export async function listDomainTrainings(
       training: trainings,
       source: { id: domains.id, slug: domains.slug },
     }).from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
-      .leftJoin(
-        domainTrainingBindings,
-        and(
-          eq(domainTrainingBindings.training_id, trainings.id),
-          eq(domainTrainingBindings.domain_id, workspace.domain.id),
-        ),
-      ).leftJoin(
-        trainingShareSettings,
-        eq(trainingShareSettings.training_id, trainings.id),
-      ).where(condition);
+      .where(condition);
   const [[total], rows] = await Promise.all([
     db.select({ total: count() }).from(
       rowsQuery().as("authorized_domain_trainings"),
@@ -236,7 +217,6 @@ export async function listDomainTrainings(
         public_id: training.public_id,
         source_domain_id: source.id,
         source_domain_slug: source.slug,
-        is_shared: !owned,
         title: training.title,
         description: training.description,
         revision: training.revision,
@@ -244,11 +224,8 @@ export async function listDomainTrainings(
         state: training.state,
         can_edit: owned &&
           (all ||
-            training.created_by === actorId &&
-              workspace.context.domainPermissions.has("training:write_own")),
-        can_share: owned &&
-          (workspace.platformAdmin ||
-            workspace.context.domainPermissions.has("training:share")),
+            workspace.context.domainPermissions.has("training:write_any")),
+        // 跨域共享已停用：只能复制到目标域，列表永远不提供共享入口。
       };
     }),
   };

@@ -44,7 +44,6 @@ export function getCommunityConfig(): CommunityConfig {
     read_only: settingBoolean("community_read_only"),
     solutions_enabled: settingBoolean("community_solutions_enabled"),
     discussions_enabled: settingBoolean("community_discussions_enabled"),
-    moments_enabled: settingBoolean("community_moments_enabled"),
     comments_enabled: settingBoolean("community_comments_enabled"),
     external_images_enabled: settingBoolean(
       "community_external_images_enabled",
@@ -54,7 +53,6 @@ export function getCommunityConfig(): CommunityConfig {
     ),
     new_user_review_hours: settingNumber("community_new_user_review_hours"),
     post_max_length: settingNumber("community_post_max_length"),
-    moment_max_length: settingNumber("community_moment_max_length"),
     comment_max_length: settingNumber("community_comment_max_length"),
     post_interval_seconds: settingNumber("community_post_interval_seconds"),
   };

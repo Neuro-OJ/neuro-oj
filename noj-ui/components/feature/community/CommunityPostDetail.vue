@@ -32,7 +32,6 @@ interface PostDetail {
 const typeLabel: Record<PostType, string> = {
   discussion: "讨论",
   solution: "题解",
-  moment: "动态",
 }
 
 const postId = computed(() => String(route.params.postId))
@@ -173,7 +172,7 @@ async function saveEditPost() {
   savingPost.value = true
   try {
     const body: Record<string, string | null> = { content: editContent.value }
-    if (post.value?.post.type !== "moment") body.title = editTitle.value.trim() || null
+    body.title = editTitle.value.trim() || null
     await api.patch(scope.apiPath(`posts/${postId.value}`), body)
     if (!scope.isCurrent()) return
     toast.success("内容已更新")
@@ -279,7 +278,7 @@ watch(initialData, (value) => {
         </div>
 
         <template v-if="editingPost">
-          <input v-if="post.post.type !== 'moment'" v-model="editTitle" class="mb-3 w-full rounded border border-border px-3 py-2" placeholder="标题" />
+          <input v-model="editTitle" class="mb-3 w-full rounded border border-border px-3 py-2" placeholder="标题" />
           <div class="mb-2 flex items-center justify-end">
             <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="editPreview = !editPreview">
               <UIcon name="i-lucide-eye" class="size-3.5" v-if="!editPreview"/>

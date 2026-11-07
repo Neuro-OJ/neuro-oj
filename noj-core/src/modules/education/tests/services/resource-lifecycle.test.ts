@@ -17,7 +17,6 @@ import {
   listDomainProblems,
   resolveDomainProblem,
   setDomainProblemBindingState,
-  setDomainProblemSharing,
 } from "../../../problems/index.ts";
 import { recomputeSubmissionProjection } from "../../../evaluations/index.ts";
 import {
@@ -40,12 +39,6 @@ Deno.test("资源下架：副本独立下架，保留学生代码及成绩；恢
     disabled: false,
     visibility: "public",
     reason: "公开源题",
-  });
-  await setDomainProblemSharing(f.school.slug, "1001", f.owner, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
   });
   const imported = await importDomainProblem(
     f.other.slug,
@@ -224,12 +217,6 @@ Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目�
       }),
     ConflictError,
   );
-  await setDomainProblemSharing(f.school.slug, "1001", f.owner, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
-  });
   const imported = await importDomainProblem(
     f.other.slug,
     "class-school:1001",
@@ -247,12 +234,6 @@ Deno.test("资源状态：错误域、普通成员、旧 revision 拒绝；目�
     (await resolveDomainProblem(f.school.slug, "1001", f.student)).problem.id,
     f.problemId,
   );
-  await setDomainProblemSharing(f.school.slug, "1001", f.owner, {
-    expectedRevision: 1,
-    enabled: false,
-    scope: "all",
-    targetDomainIds: [],
-  });
   const restored = await setDomainProblemBindingState(
     f.other.slug,
     localRef,

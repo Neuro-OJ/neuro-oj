@@ -1,13 +1,7 @@
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
-import {
-  roles,
-  userBans,
-  userRoles,
-  users,
-} from "../../../../../shared/db/schema.ts";
+import { userBans, users } from "../../../../../shared/db/schema.ts";
 import { comparePassword } from "../security/password.ts";
-import { isUserAdmin } from "../security/permissions.ts";
 import { signToken } from "../security/jwt.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { verifyTfaCodeForUser } from "../tfa.ts";
@@ -157,19 +151,10 @@ export async function loginUser(
     }
   }
 
-  // 查询用户角色（从 RBAC 表；role claim 仅用于展示/审计，权限判定实时查询权限集）
-  const roleRows = await db
-    .select({ name: roles.name })
-    .from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.role_id))
-    .where(eq(userRoles.user_id, user.id));
-
-  const jwtRole = roleRows.find((r) => r.name === "admin")?.name ??
-    roleRows.find((r) => r.name === "user")?.name ??
-    "user";
+  // 平台角色来自用户行；role claim 仅用于展示/审计，权限判定实时查询数据库。
+  const jwtRole = user.role === "admin" ? "admin" : "user";
 
   // 响应中的 is_admin 展示字段：权限集（含继承）是否含 admin:full_access
-  const isAdmin = await isUserAdmin(user.id);
 
   // 签发 JWT（不携带 is_admin claim，权限判定实时查询）
   // 勾选「记住我」时使用长有效期；仅接受严格的 true，防止字符串等被误判
@@ -193,7 +178,7 @@ export async function loginUser(
   );
 
   return {
-    user: toUserResponse(user, { activeBan: activeBan[0] ?? null, isAdmin }),
+    user: toUserResponse(user, { activeBan: activeBan[0] ?? null }),
     token,
   };
 }

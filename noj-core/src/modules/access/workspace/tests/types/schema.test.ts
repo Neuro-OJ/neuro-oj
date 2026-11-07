@@ -3,7 +3,6 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
-  domainMemberRoles,
   domainMemberships,
   domains,
   users,
@@ -42,9 +41,11 @@ Deno.test({
       id: crypto.randomUUID(),
       domain_id: domainId,
       user_id: owner,
+      role: "member" as const,
       joined_at: now,
     };
     await db.insert(domainMemberships).values(membership);
+    // 同一用户在同一域只能有一条成员记录。
     await assertRejects(() =>
       db.transaction((tx) =>
         tx.insert(domainMemberships).values({
@@ -53,25 +54,41 @@ Deno.test({
         })
       )
     );
+    // owner 不写入成员角色列；平台/任意字符串也不能变成域角色。
     await assertRejects(() =>
       db.transaction((tx) =>
         tx.execute(
-          sql`INSERT INTO domain_member_roles (membership_id, role) VALUES (${membership.id}, 'admin:full_access')`,
+          sql`UPDATE domain_memberships SET role = 'owner' WHERE id = ${membership.id}`,
         )
       )
     );
-    await db.insert(domainMemberRoles).values({
-      membership_id: membership.id,
-      role: "owner",
-    });
+    await assertRejects(() =>
+      db.transaction((tx) =>
+        tx.execute(
+          sql`UPDATE domain_memberships SET role = 'admin:full_access' WHERE id = ${membership.id}`,
+        )
+      )
+    );
+    // 平台角色同样只接受 user/admin。
+    await assertRejects(() =>
+      db.transaction((tx) =>
+        tx.execute(
+          sql`UPDATE users SET role = 'root' WHERE id = ${owner}`,
+        )
+      )
+    );
+    await db.update(domainMemberships).set({ role: "admin" }).where(
+      eq(domainMemberships.id, membership.id),
+    );
+    // 负责人仍受 domains.owner_id 外键保护，不能直接删除用户行。
     await assertRejects(() =>
       db.transaction((tx) => tx.delete(users).where(eq(users.id, owner)))
     );
     assertEquals(
-      (await db.select().from(domainMemberRoles).where(
-        eq(domainMemberRoles.membership_id, membership.id),
+      (await db.select().from(domainMemberships).where(
+        eq(domainMemberships.id, membership.id),
       ))[0].role,
-      "owner",
+      "admin",
     );
   },
 });

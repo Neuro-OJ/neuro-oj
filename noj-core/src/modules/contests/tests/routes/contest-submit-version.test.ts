@@ -23,7 +23,6 @@ import {
   problems,
   problemVersions,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
@@ -57,10 +56,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(userRoles).values({
-      user_id: adminId,
-      role_id: "admin",
-    }).onConflictDoNothing();
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
 
     await db.insert(problems).values({
       domain_id: DEFAULT_DOMAIN_ID,

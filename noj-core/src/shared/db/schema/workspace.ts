@@ -12,11 +12,11 @@ import {
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import type {
-  DomainConfiguration,
-  DomainRole,
   DomainStatus,
+  StoredDomainConfiguration,
   StoredDomainPreset,
 } from "../../workspace/types.ts";
+import type { DomainMemberRole } from "../../access/roles.ts";
 
 /** 产品工作空间；固定类型决定能力，成员角色决定操作权限。 */
 export const domains = pgTable("domains", {
@@ -27,7 +27,8 @@ export const domains = pgTable("domains", {
   status: text("status").$type<DomainStatus>().notNull().default("active"),
   owner_id: text("owner_id").notNull().references(() => users.id),
   preset: text("preset").$type<StoredDomainPreset>().notNull(),
-  configuration: jsonb("configuration").$type<DomainConfiguration>().notNull(),
+  configuration: jsonb("configuration").$type<StoredDomainConfiguration>()
+    .notNull(),
   revision: integer("revision").notNull().default(0),
   next_problem_number: integer("next_problem_number").notNull().default(1001),
   created_at: text("created_at").notNull(),
@@ -43,7 +44,7 @@ export const domains = pgTable("domains", {
   ),
   presetCheck: check(
     "domains_preset_check",
-    sql`${t.preset} IN ('community', 'education', 'team', 'custom')`,
+    sql`${t.preset} IN ('community', 'education', 'team')`,
   ),
   revisionCheck: check(
     "domains_revision_check",
@@ -63,6 +64,11 @@ export const domainMemberships = pgTable("domain_memberships", {
   status: text("status").$type<"active" | "removed">().notNull().default(
     "active",
   ),
+  /**
+   * 单值成员角色；负责人（owner）不写入本列，由 domains.owner_id 推导。
+   * 加入、恢复成员均写回 member，不恢复离开前的身份。
+   */
+  role: text("role").$type<DomainMemberRole>().notNull().default("member"),
   joined_at: text("joined_at").notNull(),
   left_at: text("left_at"),
 }, (t) => ({
@@ -78,22 +84,13 @@ export const domainMemberships = pgTable("domain_memberships", {
     "domain_memberships_status_check",
     sql`${t.status} IN ('active', 'removed')`,
   ),
+  roleCheck: check(
+    "domain_memberships_role_check",
+    sql`${t.role} IN ('member', 'educator', 'admin')`,
+  ),
   userStatusIdx: index("idx_domain_memberships_user_status").on(
     t.user_id,
     t.status,
-  ),
-}));
-/** 内置成员角色；负责人只能通过交接授予。 */
-export const domainMemberRoles = pgTable("domain_member_roles", {
-  membership_id: text("membership_id").notNull().references(() =>
-    domainMemberships.id
-  ),
-  role: text("role").$type<DomainRole>().notNull(),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.membership_id, t.role] }),
-  roleCheck: check(
-    "domain_member_roles_role_check",
-    sql`${t.role} IN ('owner', 'admin', 'editor', 'educator', 'moderator', 'member')`,
   ),
 }));
 /** 数值限额：null 表示不额外限制。 */
@@ -183,6 +180,10 @@ export const domainCreationRequests = pgTable("domain_creation_requests", {
   statusCheck: check(
     "domain_creation_requests_status_check",
     sql`${t.status} IN ('pending', 'approved', 'rejected')`,
+  ),
+  presetCheck: check(
+    "domain_creation_requests_preset_check",
+    sql`${t.preset} IN ('community', 'education', 'team')`,
   ),
   statusIdx: index("idx_domain_creation_requests_status").on(t.status),
 }));

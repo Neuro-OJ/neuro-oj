@@ -19,7 +19,6 @@
  * 参数：
  * - `--repeat <n>`：正式采样次数（默认 30），不计预热。
  * - `--warmup <n>`：采样前的预热次数（默认 2），不计入统计。
- * - `--refresh-rankings`：每次 reset 都刷新榜单物化视图（默认只做普通 reset）。
  * - `--label <text>`：输出中的采样标识（如 before / after）。
  * - `--json <path>`：把结果写入文件，便于两次采样对照归档。
  * - `--no-profile`：即使显式开启也关闭阶段计时（默认开启，便于归因剩余成本）。
@@ -39,7 +38,6 @@ import {
 interface BenchOptions {
   repeat: number;
   warmup: number;
-  refreshRankings: boolean;
   label: string;
   jsonPath?: string;
   profile: boolean;
@@ -94,7 +92,6 @@ function parseArgs(args: string[]): BenchOptions {
   const known = new Set([
     "--repeat",
     "--warmup",
-    "--refresh-rankings",
     "--label",
     "--json",
     "--no-profile",
@@ -114,7 +111,6 @@ function parseArgs(args: string[]): BenchOptions {
   return {
     repeat: readPositiveInt(args, "--repeat", 30),
     warmup: readPositiveInt(args, "--warmup", 2),
-    refreshRankings: args.includes("--refresh-rankings"),
     label: readString(args, "--label", "bench")!,
     jsonPath: readString(args, "--json"),
     profile: !args.includes("--no-profile"),
@@ -261,24 +257,19 @@ async function main(): Promise<void> {
 
     await helper.setupSchemaForTest();
     for (let i = 0; i < options.warmup; i += 1) {
-      await helper.resetDbForTest({
-        refreshRankings: options.refreshRankings,
-      });
+      await helper.resetDbForTest();
     }
 
     const samples: number[] = [];
     for (let i = 0; i < options.repeat; i += 1) {
       const start = performance.now();
-      await helper.resetDbForTest({
-        refreshRankings: options.refreshRankings,
-      });
+      await helper.resetDbForTest();
       samples.push(performance.now() - start);
     }
 
     const phases = options.profile ? await aggregatePhases(timingDir) : [];
     const result = {
       label: options.label,
-      refreshRankings: options.refreshRankings,
       repeat: options.repeat,
       warmup: options.warmup,
       deno: Deno.version.deno,

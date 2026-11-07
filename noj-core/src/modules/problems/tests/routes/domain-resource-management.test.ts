@@ -61,7 +61,7 @@ Deno.test("资源管理 HTTP：复制产生独立本域身份、已发布 V1，�
   const saved = (await response.json()).data;
   assert(saved.binding.problem_id !== f.problemId);
   assertEquals(saved.binding.domain_id, f.other.id);
-  assertEquals(saved.binding.kind, "owned");
+  assertEquals(saved.binding.domain_id, f.other.id);
   const [copy] = await f.db.select().from(problems).where(
     eq(problems.id, saved.binding.problem_id),
   );
@@ -124,4 +124,68 @@ Deno.test("资源管理 HTTP：复制要求目标创建发布及源编辑权限�
     { token: f.studentToken },
   );
   assertEquals(sourceReadable.status, 200);
+});
+
+Deno.test("复制来源目录 HTTP：按授权过滤、分页形状稳定且排除目标域自身", async () => {
+  const f = await fixture(), path = `${f.targetPath}/copy-sources`;
+  // 成员缺少目标域创建能力：先授权，不泄漏来源元数据。
+  const denied = await jsonRequest(f.app, `${path}?kind=problem`, {
+    token: f.studentToken,
+  });
+  assertEquals(denied.status, 403);
+
+  const invalid = await jsonRequest(f.app, `${path}?kind=contest`, {
+    token: f.ownerToken,
+  });
+  assertEquals(invalid.status, 400);
+
+  const listed = await jsonRequest(
+    f.app,
+    `${path}?kind=problem&page=1&limit=10`,
+    { token: f.ownerToken },
+  );
+  assertEquals(listed.status, 200, await listed.clone().text());
+  const body = await listed.json();
+  assertEquals([body.page, body.limit], [1, 10]);
+  assert(body.total >= 1);
+  const item = body.items.find((row: { problem_id: string }) =>
+    row.problem_id === f.problemId
+  );
+  assert(item, "来源题必须出现在目录中");
+  assertEquals(item.kind, "problem");
+  assertEquals(item.source.slug, f.school.slug);
+  assertEquals(item.reference, f.sourceRef);
+  assertEquals(item.version_id, f.versionId);
+  assert(item.problem_kind === "dual" || item.problem_kind === "oi");
+  // 不返回答案、评测配置或文件地址。
+  assertEquals("content" in item, false);
+  assertEquals("runtime_config" in item, false);
+
+  // 关键词与来源过滤都在 SQL 内完成，计数同步收敛。
+  const filtered = await jsonRequest(
+    f.app,
+    `${path}?kind=problem&keyword=${encodeURIComponent("不存在的标题")}`,
+    { token: f.ownerToken },
+  );
+  assertEquals((await filtered.json()).total, 0);
+
+  const trainings = await jsonRequest(f.app, `${path}?kind=training`, {
+    token: f.ownerToken,
+  });
+  assertEquals(trainings.status, 200);
+  assertEquals((await trainings.json()).items.length, 0);
+
+  // 复制完成后，目标域自己的副本不得再出现在“来源目录”里。
+  await jsonRequest(f.app, `${f.targetPath}/problem-bindings`, {
+    method: "POST",
+    token: f.ownerToken,
+    body: { source_ref: f.sourceRef },
+  });
+  const afterCopy = await jsonRequest(f.app, `${path}?kind=problem`, {
+    token: f.ownerToken,
+  });
+  const rows = (await afterCopy.json()).items as Array<
+    { source: { slug: string } }
+  >;
+  assertEquals(rows.some((row) => row.source.slug === f.other.slug), false);
 });

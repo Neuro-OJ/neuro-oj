@@ -13,10 +13,10 @@ import {
 } from "../../../../shared/base/errors.ts";
 import {
   importDomainProblem,
-  importDomainTraining,
   readDomainTraining,
   saveDomainTraining,
 } from "../../../problems/index.ts";
+import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
 import {
   createAssignment,
   getAssignment,
@@ -40,7 +40,7 @@ async function fixture() {
     visibility: "private",
     problems: [String(problem.number)],
   });
-  const copied = await importDomainTraining(
+  const copied = await copyDomainTraining(
     f.school.slug,
     training.id,
     f.owner,
@@ -125,7 +125,7 @@ Deno.test("题单复制：学生无创建发布权限，失败不留下副本；
     eq(problems.domain_id, f.school.id),
   );
   await assertRejects(
-    () => importDomainTraining(f.school.slug, f.sourceTraining.id, f.student),
+    () => copyDomainTraining(f.school.slug, f.sourceTraining.id, f.student),
     ForbiddenError,
   );
   assertEquals(
@@ -149,5 +149,5 @@ Deno.test("题单复制：学生无创建发布权限，失败不留下副本；
   const [binding] = await f.db.select().from(domainProblemBindings).where(
     eq(domainProblemBindings.id, item.binding_id),
   );
-  assertEquals(binding.kind, "owned");
+  assertEquals(binding.problem_id.length > 0, true);
 });

@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -149,7 +149,7 @@ Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，
 
 Deno.test("作业反馈：域教练反馈能力独立，编辑需前置版本及原作者，撤回保留历史", async () => {
   const f = await fixture();
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   const original = await createAssignmentFeedback(
     f.school.slug,
     f.task.id,
@@ -169,7 +169,7 @@ Deno.test("作业反馈：域教练反馈能力独立，编辑需前置版本及
       }),
     ForbiddenError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals(
     (await getAssignmentFeedback(
       f.school.slug,

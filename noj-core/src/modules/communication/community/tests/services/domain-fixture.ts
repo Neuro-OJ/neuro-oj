@@ -5,7 +5,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   problemVersions,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -13,10 +12,9 @@ import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
 } from "../../../../access/workspace/index.ts";
 import {
-  ensureRbacSeeds,
   initSystemSettings,
   updateSetting,
 } from "../../../../platform/system/index.ts";
@@ -25,12 +23,10 @@ import { createBoard, createPost, withDomainCommunity } from "../../index.ts";
 
 export async function domainFixture(prefix: string) {
   await resetDbForTest();
-  await ensureRbacSeeds();
   await initSystemSettings();
   for (
     const [key, value] of [
       ["community_enabled", true],
-      ["community_moments_enabled", true],
       ["community_new_user_review_hours", 0],
       ["community_post_interval_seconds", 0],
     ] as const
@@ -176,17 +172,9 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     id: binding,
     domain_id: f.source.id,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: f.a,
     created_at: f.now,
-    updated_at: f.now,
-  });
-  await f.db.insert(problemShareSettings).values({
-    problem_id: id,
-    enabled: true,
-    scope: "all",
-    updated_by: f.a,
     updated_at: f.now,
   });
   const sourceInvite = await createDomainInvitation(
@@ -195,7 +183,7 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     `${f.b}@example.com`,
   );
   await consumeDomainInvitation(sourceInvite.token, f.b);
-  await setMemberRoles(f.source.slug, f.a, f.b, ["admin"]);
+  await setMemberRole(f.source.slug, f.a, f.b, "admin");
   const imported = await importDomainProblem(
     f.target.slug,
     `${f.source.slug}:1001`,

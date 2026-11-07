@@ -19,9 +19,10 @@ import {
   setDomainProblemBindingPolicy,
 } from "../../../problems/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
 async function drain() {
   for (let i = 0; i < 20; i++) {
@@ -38,10 +39,7 @@ Deno.test("版本与策略事件：消费者延迟仍补齐每一次变化，旧
     f.input,
   );
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, [
-    "educator",
-    "editor",
-  ]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "educator");
   const v2 = crypto.randomUUID(), now = new Date().toISOString();
   await f.db.transaction(async (tx) => {
     await tx.insert(problemVersions).values({
@@ -83,16 +81,14 @@ Deno.test("版本与策略事件：消费者延迟仍补齐每一次变化，旧
   );
 });
 
-Deno.test("真实发布：源版本发布自动记录 any 作答切换，exact 绑定保持不变", async () => {
+Deno.test("真实发布：源版本发布自动记录 any 作答切换，其他域副本保持不变", async () => {
   const f = await assignmentFixture();
-  await f.db.insert(domainProblemBindings).values({
-    id: crypto.randomUUID(),
-    domain_id: f.other.id,
-    problem_id: f.problemId,
-    kind: "shared",
-    created_by: f.owner,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+  // 其他域持有独立副本：源题发布只推进本域绑定，副本 revision 不动。
+  await insertDomainProblemCopy(f.db, {
+    sourceProblemId: f.problemId,
+    domainId: f.other.id,
+    number: 1001,
+    ownerId: f.owner,
   });
   const draft = await saveProblemDraft(f.problemId, {
     expectedRevision: 0,

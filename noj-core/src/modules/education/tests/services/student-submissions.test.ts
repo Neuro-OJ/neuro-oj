@@ -2,13 +2,12 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   contests,
-  domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
   submissions,
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { recomputeSubmissionProjection } from "../../../evaluations/index.ts";
 import {
   createAssignment,
@@ -18,6 +17,7 @@ import {
   removeClassroomMember,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
 async function code(
   f: Awaited<ReturnType<typeof assignmentFixture>>,
@@ -29,35 +29,34 @@ async function code(
   } = {},
 ) {
   const id = crypto.randomUUID();
-  let bindingId = f.bindingId;
+  let bindingId: string = f.bindingId,
+    problemId: string = f.problemId,
+    versionId: string = f.versionId;
   if (options.domainId && options.domainId !== f.school.id) {
-    // 跨域原提交仍引用真实目标绑定；源共享现状不恢复教师的其他域读取资格。
-    bindingId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await f.db.insert(domainProblemBindings).values({
-      id: bindingId,
-      domain_id: options.domainId,
-      problem_id: f.problemId,
-      kind: "shared",
-      visibility: "members",
-      created_by: f.owner,
-      created_at: now,
-      updated_at: now,
+    // 其他域只能引用自己的副本：跨域共享绑定已被同域外键禁止。
+    const copy = await insertDomainProblemCopy(f.db, {
+      sourceProblemId: f.problemId,
+      domainId: options.domainId,
+      number: 1001,
+      ownerId: f.owner,
     });
+    bindingId = copy.bindingId;
+    problemId = copy.problemId;
+    versionId = copy.versionId;
   }
   await f.db.insert(submissions).values({
     id,
     domain_id: options.domainId ?? f.school.id,
     domain_problem_binding_id: bindingId,
     user_id: f.student,
-    problem_id: f.problemId,
+    problem_id: problemId,
     language: "python",
     code: "student source",
     artifact_storage_url: options.artifact
       ? "noj-storage://sensitive/file.zip"
       : null,
     contest_id: options.contestId,
-    submitted_version_id: f.versionId,
+    submitted_version_id: versionId,
     version_origin: "known",
     created_at: options.createdAt ?? new Date().toISOString(),
   });
@@ -118,7 +117,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -130,7 +129,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   assertEquals(
     (await getClassroomStudentSubmission(
       f.school.slug,
@@ -141,7 +140,7 @@ Deno.test("教学提交：教练全部同域提交、域教练源码授权、错
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -245,7 +244,7 @@ Deno.test("教学提交：域教练管理同域比赛，撤职即时失去进行
     )).code,
     "student source",
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "member");
   await assertRejects(
     () =>
       getClassroomStudentSubmission(
@@ -257,7 +256,7 @@ Deno.test("教学提交：域教练管理同域比赛，撤职即时失去进行
       ),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.teacher, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.teacher, "educator");
   assertEquals(
     (await listClassroomStudentSubmissions(
       f.school.slug,

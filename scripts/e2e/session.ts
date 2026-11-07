@@ -239,8 +239,9 @@ export function sessionUrls(ports: SessionPorts): SessionManifest["urls"] {
   return {
     core: `http://localhost:${ports.core}`,
     coordinator: `http://127.0.0.1:${ports.coordinator}`,
-    // evaluator 在会话私有网络内按服务名访问协调服务。
-    evaluatorCoordinator: `http://test-coordinator:${ports.coordinator}`,
+    // evaluator 在会话私有网络内按服务名访问协调服务：容器内监听 8010，
+    // ports.coordinator 只是宿主机映射；用宿主端口会让评测容器连不上（arrivals=0）。
+    evaluatorCoordinator: "http://test-coordinator:8010",
   };
 }
 
@@ -292,10 +293,25 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     E2E_DB_URL: `postgres://e2e:e2e@127.0.0.1:${manifest.ports.postgres}/${
       sessionDatabaseName(manifest)
     }`,
+    // 部分 E2E 直接读 DATABASE_URL 做只读核对（如 LLM 治理的受理快照）；
+    // 不覆盖会连到 env.e2e.template 里的开发库，断言必然查不到行。
+    DATABASE_URL: `postgres://e2e:e2e@127.0.0.1:${manifest.ports.postgres}/${
+      sessionDatabaseName(manifest)
+    }`,
     // compose 用同名变量创建数据库，避免与 E2E_DB_URL 指向不同库。
     E2E_DATABASE_NAME: sessionDatabaseName(manifest),
     E2E_REDIS_URL: `redis://127.0.0.1:${manifest.ports.redis}/1`,
+    // 部分 E2E 用 docker exec 直接向 Redis 发布事件帧；容器名必须指向本会话，
+    // 否则会写进默认 8099 开发栈的 Redis，出现"发不出去/收到别人的帧"。
+    E2E_REDIS_CONTAINER: `${manifest.composeProject}-redis-1`,
+    // 故障注入用例会 docker exec 进 core / minio 删除对象；缺映射会打到默认
+    // 8099 开发栈的容器，注入无效导致"应 5xx 实际 200"。
+    E2E_CORE_CONTAINER: `${manifest.composeProject}-noj-core-1`,
+    E2E_MINIO_CONTAINER: `${manifest.composeProject}-minio-1`,
     E2E_CORE_URL: manifest.urls.core,
+    // noj-tests 的 helper 以 E2E_BASE_URL 为唯一入口；不映射会静默回落到默认
+    // 8099 的开发栈，让"新会话"跑出旧代码结果。
+    E2E_BASE_URL: manifest.urls.core,
     E2E_CORE_PORT: String(manifest.ports.core),
     E2E_PG_PORT: String(manifest.ports.postgres),
     E2E_REDIS_PORT: String(manifest.ports.redis),
@@ -303,6 +319,9 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     E2E_MINIO_CONSOLE_PORT: String(manifest.ports.minioConsole),
     E2E_LLM_GATEWAY_PORT: String(manifest.ports.llmGateway),
     E2E_LLM_MOCK_PORT: String(manifest.ports.llmMock),
+    // LLM 治理用例从 mock 的只读记录入口核对上游实际收到的模型；缺映射会读到
+    // 默认 8002 的开发栈 mock，模型计数恒为 0。
+    E2E_LLM_MOCK_INSPECT_URL: `http://127.0.0.1:${manifest.ports.llmMock}/`,
     E2E_COORDINATOR_PORT: String(manifest.ports.coordinator),
     // 测试与 compose 使用的规范名（P2 协调服务）；下面两个旧名保留兼容。
     E2E_TEST_COORDINATOR_PORT: String(manifest.ports.coordinator),
@@ -881,6 +900,8 @@ export async function main(
           sessionDir: parsed.sessionDir,
           fresh: parsed.fresh,
           buildUi: parsed.ui,
+          // 资源池可从环境注入（CI 与本地都用同一入口开 native/WASM 池）。
+          resourcePools: Deno.env.get("E2E_JUDGE_RESOURCE_POOLS") ?? undefined,
         },
         deps,
       );

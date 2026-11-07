@@ -3,7 +3,12 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
-import { contests, problems, users } from "../../../../../shared/db/schema.ts";
+import {
+  contests,
+  domainMemberships,
+  problems,
+  users,
+} from "../../../../../shared/db/schema.ts";
 import {
   communityComments,
   communityPosts,
@@ -24,7 +29,6 @@ import {
 import { getUserProfileAggregate } from "../../../../read-models/queries/index.ts";
 import {
   _resetSystemSettingsForTest,
-  ensureRbacSeeds,
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
@@ -32,7 +36,6 @@ import {
 } from "../../../../platform/system/index.ts";
 import { publishAllProblemsForTest } from "../../../../../../tests/helper.ts";
 import { addDomainMember } from "../../../../access/workspace/index.ts";
-import { domainMemberRoles } from "../../../../../shared/db/schema.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -41,7 +44,6 @@ let contestId = "";
 
 async function setup(): Promise<void> {
   await resetDbForTest();
-  await ensureRbacSeeds();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   const now = new Date().toISOString();
@@ -54,10 +56,9 @@ async function setup(): Promise<void> {
     updated_at: now,
   });
   const membership = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, ownerId);
-  await getDb().insert(domainMemberRoles).values({
-    membership_id: membership.id,
-    role: "editor",
-  });
+  await getDb().update(domainMemberships).set({ role: "educator" }).where(
+    eq(domainMemberships.id, membership.id),
+  );
   await getDb().insert(problems).values([
     {
       domain_id: DEFAULT_DOMAIN_ID,
@@ -270,23 +271,6 @@ Deno.test({
     const counts = await countPostsByType();
     // 只有普通题的那条被计入
     assertEquals(counts.solution, 1);
-  },
-});
-
-Deno.test({
-  name: "solution-gating: 门控不影响讨论与动态",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await setup();
-    // discussion/moment 不受门控影响
-    const moment = await createPost(ownerId, {
-      type: "moment",
-      content: "一条动态",
-    }, true);
-    assertEquals(moment.type, "moment");
-    const counts = await countPostsByType();
-    assertEquals(counts.moment, 1);
   },
 });
 

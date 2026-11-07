@@ -8,8 +8,6 @@ import {
   domainLimits,
   domainMemberships,
   domains,
-  roles,
-  userRoles,
   users,
 } from "../../../../../shared/db/schema.ts";
 import {
@@ -32,7 +30,7 @@ import {
   requestDomainCreation,
   reviewDomainCreation,
   revokeDomainInvitation,
-  setMemberRoles,
+  setMemberRole,
   transferDomain,
   updateDomain,
 } from "../../index.ts";
@@ -46,15 +44,10 @@ async function account(admin = false) {
     id,
     username: id,
     email: `${id}@example.com`,
+    role: admin ? "admin" : "user",
     created_at: now,
     updated_at: now,
   });
-  if (admin) {
-    const [role] = await getDb().select().from(roles).where(
-      eq(roles.name, "admin"),
-    );
-    await getDb().insert(userRoles).values({ user_id: id, role_id: role.id });
-  }
   return id;
 }
 
@@ -87,7 +80,7 @@ Deno.test({
       `${student}@example.com`,
     );
     await consumeDomainInvitation(invite.token, student);
-    await setMemberRoles(school.slug, operator, student, ["admin"]);
+    await setMemberRole(school.slug, operator, student, "admin");
     const access = await loadWorkspace(school.slug, student);
     assertWorkspacePermission(access.context, "domain:settings");
     assert(!access.context.platformPermissions.has("admin:full_access"));
@@ -114,7 +107,7 @@ Deno.test({
       `${other}@example.com`,
     );
     await consumeDomainInvitation(extra.token, other);
-    await setMemberRoles(school.slug, student, other, ["editor"]);
+    await setMemberRole(school.slug, student, other, "educator");
     await removeDomainMember(school.slug, student, other);
     await assertRejects(() => loadWorkspace(school.slug, other), NotFoundError);
     assertEquals((await listDomains(other, true)).length, 0);

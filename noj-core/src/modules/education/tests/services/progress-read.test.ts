@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
@@ -170,7 +170,7 @@ Deno.test("矩阵：学生同班只读进度，域教练学情授权，数据不
     () => getMyAssignmentProgress(f.other.slug, f.task.id, f.student),
     NotFoundError,
   );
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const matrix = await getAssignmentMatrix(
     f.school.slug,
     f.task.id,
@@ -179,7 +179,7 @@ Deno.test("矩阵：学生同班只读进度，域教练学情授权，数据不
   assertEquals(matrix.total, 1);
   assertEquals(matrix.rows[0].cells[0].score, 7000);
   assertEquals(JSON.stringify(matrix).includes("secret"), false);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   await assertRejects(
     () => getAssignmentMatrix(f.school.slug, f.task.id, f.assistant),
     NotFoundError,

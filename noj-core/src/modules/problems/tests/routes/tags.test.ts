@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import {
@@ -9,19 +9,7 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { auditLogs } from "../../../../shared/db/schema.ts";
-import {
-  permissions,
-  problems,
-  problemTags,
-  rolePermissions,
-  roles,
-  tags,
-  userRoles,
-  users,
-} from "../../../../shared/db/schema.ts";
-import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
+import { problems, problemTags, tags } from "../../../../shared/db/schema.ts";
 
 // 模块级 bootstrap：确保表已创建（测试数据库 模式）
 await resetDbForTest();
@@ -153,96 +141,6 @@ Deno.test({
       token,
     });
     assertEquals(res.status, 400);
-  },
-});
-
-Deno.test({
-  name: "tags route: 自定义角色授予 tag:manage 后可写（RBAC 可配置）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    await ensureRbacSeeds();
-
-    // 1. 创建自定义角色并授予 tag:manage
-    const roleId = `tag-manager-role-${ts}`;
-    await db.insert(roles).values({
-      id: roleId,
-      name: `tag-manager-${ts}`,
-      description: "",
-      is_system: false,
-      is_default: false,
-      parent_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).onConflictDoNothing({ target: roles.id });
-
-    const permRows = await db
-      .select()
-      .from(permissions)
-      .where(
-        and(
-          eq(permissions.resource, "tag"),
-          eq(permissions.action, "manage"),
-        ),
-      )
-      .limit(1);
-    if (permRows.length === 0) return; // 权限未 seed（不应发生），跳过
-    await db.insert(rolePermissions).values({
-      role_id: roleId,
-      permission_id: permRows[0].id,
-    }).onConflictDoNothing();
-
-    // 2. 创建用户并关联自定义角色
-    const userId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await db.insert(users).values({
-      id: userId,
-      username: `tagop_${ts}`,
-      email: `tagop_${ts}@test.local`,
-      password_hash: "x",
-      must_change_password: false,
-      created_at: now,
-      updated_at: now,
-    }).onConflictDoNothing({ target: users.id });
-    await db.insert(userRoles).values({
-      user_id: userId,
-      role_id: roleId,
-    }).onConflictDoNothing();
-
-    // 3. 签发 token 调用写接口
-    const token = await signToken({ sub: userId, role: "user" });
-    const app = createApp();
-    const name = `角色标签-${ts}`;
-    const res = await jsonRequest(app, "/api/v1/tags", {
-      method: "POST",
-      body: { name, kind: "problem" },
-      token,
-    });
-    assertEquals(res.status, 201);
-
-    // C1 回归守卫：真实 HTTP 流程（runWithContext）必须写审计，且 actor 为调用者
-    const auditRows = await db
-      .select()
-      .from(auditLogs)
-      .where(eq(auditLogs.action, "tags.create"))
-      .limit(10);
-    assertEquals(
-      auditRows.some((r) => r.admin_id === userId),
-      true,
-      "真实 HTTP 流程应写入 tags.create 审计（RequestContext 注入）",
-    );
-
-    // 4. 清理（先删审计行：admin_id FK 阻止直接删用户）
-    await db.delete(auditLogs).where(eq(auditLogs.admin_id, userId));
-    await db.delete(problemTags);
-    await db.delete(tags).where(eq(tags.name, name));
-    await db.delete(userRoles).where(eq(userRoles.user_id, userId));
-    await db.delete(rolePermissions).where(
-      eq(rolePermissions.role_id, roleId),
-    );
-    await db.delete(users).where(eq(users.id, userId));
-    await db.delete(roles).where(eq(roles.id, roleId));
   },
 });
 

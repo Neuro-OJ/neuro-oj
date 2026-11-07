@@ -1,6 +1,8 @@
 import { type Context, Hono } from "hono";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
+import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -54,7 +56,9 @@ const handler = async (c: Context<Env>) => {
       (typeParam ? [typeParam] : []);
   const accountOnly = !slug && requestedTypes.length > 0 &&
     requestedTypes.every((type) => ["user", "announcement"].includes(type));
-  if (!slug && !accountOnly) await ensureDefaultWorkspace();
+  if (!slug && !accountOnly) {
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  }
   const access = accountOnly
     ? null
     : await loadWorkspace(slug ?? "main", c.var.userId ?? null);
@@ -64,7 +68,10 @@ const handler = async (c: Context<Env>) => {
   const config = getCommunityConfig();
   const instancePolicy = await getInstanceResourcePolicy();
   const communityEnabled = instancePolicy.modules.community &&
-    access?.domain.configuration.features.community === true &&
+    (access === null ? false : effectiveDomainConfiguration(
+      access.domain.preset,
+      access.domain.configuration,
+    ).features.community === true) &&
     config.enabled &&
     (config.solutions_enabled || config.discussions_enabled);
   const ctx = {
@@ -76,7 +83,7 @@ const handler = async (c: Context<Env>) => {
     member: !!access?.membership || isAdmin,
     communityModerator: isAdmin || permissions.has("community:moderate"),
     problemWriteAny: permissions.has("problem:write_any"),
-    problemWriteOwn: permissions.has("problem:write_own"),
+    problemWriteOwn: permissions.has("problem:write_any"),
     contestManageAny: permissions.has("contest:manage"),
     contestManageOwn: permissions.has("contest:manage_own"),
     submissionReadAll: permissions.has("submission:read_all"),

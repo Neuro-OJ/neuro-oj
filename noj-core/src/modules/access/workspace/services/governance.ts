@@ -14,6 +14,7 @@ import {
   buildPaginationMeta,
   type Pagination,
 } from "../../../../shared/http/pagination.ts";
+import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 import { assertActiveInstanceAccount } from "../../identity/services/security/account-access.ts";
 import { getUserPermissions } from "../../identity/services/security/permissions.ts";
 
@@ -74,8 +75,13 @@ export async function listAdminDomains(
     .orderBy(desc(domains.created_at), domains.id).limit(pagination.perPage)
     .offset(pagination.offset);
   return {
+    // 治理视图与普通域详情同口径：存储态只有三键，能力/首页由域类型派生。
     data: rows.map(({ owner_deleted_at, ...row }) => ({
       ...row,
+      configuration: effectiveDomainConfiguration(
+        row.preset,
+        row.configuration,
+      ),
       owner_username: owner_deleted_at ? "已注销用户" : row.owner_username,
     })),
     pagination: buildPaginationMeta(

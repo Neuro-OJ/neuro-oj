@@ -32,7 +32,6 @@ import {
   importDomainProblem,
   setDomainProblemBindingState,
 } from "../../services/workspace/problem-bindings.ts";
-import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
 import { importProblemBundle } from "../../services/problems/problem-bundle.ts";
 
 Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且不聚合其他域成绩", async () => {
@@ -91,17 +90,10 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     id: crypto.randomUUID(),
     domain_id: source.id,
     problem_id: id,
-    kind: "owned",
     visibility: "public",
     created_by: actor,
     created_at: now,
     updated_at: now,
-  });
-  await setDomainProblemSharing(source.slug, "1001", actor, {
-    expectedRevision: 0,
-    enabled: true,
-    scope: "all",
-    targetDomainIds: [],
   });
   const imported = await importDomainProblem(
     "main",
@@ -167,12 +159,6 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     })).status,
     404,
   );
-  await setDomainProblemSharing(source.slug, "1001", actor, {
-    expectedRevision: 1,
-    enabled: false,
-    scope: "all",
-    targetDomainIds: [],
-  });
   const unavailable = await jsonRequest(app, path + "/problems", { token });
   assertEquals((await unavailable.json()).data[0].title, "版本2");
   assertEquals(

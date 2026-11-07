@@ -16,7 +16,6 @@ import {
   domainProblemBindings,
   domains,
   problems,
-  problemShareSettings,
   problemTags,
   problemVersions,
   tags,
@@ -86,14 +85,11 @@ export async function listDomainProblems(
     domainId: workspace.domain.id,
     member: !!workspace.membership || workspace.platformAdmin,
   };
-  const ownEditable = and(
-    eq(binding.kind, "owned"),
-    canEdit
-      ? sql`true`
-      : actorId && workspace.context.domainPermissions.has("problem:write_own")
-      ? eq(problems.owner_id, actorId)
-      : sql`false`,
-  );
+  const ownEditable = canEdit
+    ? sql`true`
+    : actorId
+    ? eq(problems.owner_id, actorId)
+    : sql`false`;
   const algorithmVisible = or(
     ownEditable,
     actorId
@@ -110,7 +106,6 @@ export async function listDomainProblems(
     eq(binding.domain_id, workspace.domain.id),
     isNull(binding.disabled_at),
     isNotNull(problems.latest_version_id),
-    eq(binding.kind, "owned"),
     eq(problems.domain_id, workspace.domain.id),
   );
   const visible = and(
@@ -181,10 +176,7 @@ export async function listDomainProblems(
           ),
         ),
       )
-      .leftJoin(
-        problemShareSettings,
-        eq(problemShareSettings.problem_id, problems.id),
-      ).where(where);
+      .where(where);
   const candidates = join().as("authorized_domain_problems");
   const accessible = join(authorized).as("accessible_domain_problems");
   const [[total], rows, availableTags] = await Promise.all([
@@ -287,11 +279,8 @@ export async function readDomainProblem(
   const resolved = await resolveDomainProblem(slug, reference, actorId, {
     versionId,
   });
-  const canEdit = resolved.binding.kind === "owned" &&
-    (resolved.platformAdmin ||
-      resolved.context.domainPermissions.has("problem:write_any") ||
-      actorId === resolved.problem.owner_id &&
-        resolved.context.domainPermissions.has("problem:write_own")) &&
+  const canEdit = (resolved.platformAdmin ||
+    resolved.context.domainPermissions.has("problem:write_any")) &&
     !await problemAuthoringRestrictedByContest(
       resolved,
       resolved.problem.id,
@@ -334,7 +323,6 @@ export async function readDomainProblem(
     required_version_id: resolved.binding.required_version_id,
     answer_version_id: resolved.answerVersionId,
     visibility: resolved.binding.visibility,
-    can_share: false,
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,

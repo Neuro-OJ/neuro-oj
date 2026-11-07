@@ -14,15 +14,11 @@ import {
   submissions,
   users,
 } from "../../../../../shared/db/schema.ts";
-import {
-  getGlobalRankings,
-  getMyRanking,
-  refreshRankingsView,
-} from "../../index.ts";
+import { getGlobalRankings, getMyRanking } from "../../index.ts";
 import { hashPassword } from "../../../../access/identity/index.ts";
 
 // 模块级 bootstrap：确保 测试数据库 schema 已创建
-await resetDbForTest({ refreshRankings: true });
+await resetDbForTest();
 
 /**
  * 创建测试用户，返回 user_id。
@@ -154,7 +150,6 @@ Deno.test({
       await createSubmission(userC, problem1, "fail");
       await createSubmission(userC, problem2, "error");
 
-      await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const aRow = result.data.find((r) => r.user_id === userA);
       const bRow = result.data.find((r) => r.user_id === userB);
@@ -203,7 +198,6 @@ Deno.test({
       await createSubmission(userE, problem2, "fail");
       await createSubmission(userE, problem2, "fail");
 
-      await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const dRow = result.data.find((r) => r.user_id === userD);
       const eRow = result.data.find((r) => r.user_id === userE);
@@ -229,7 +223,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 不创建 root 用户的提交（root 已由 00_migrate_test 创建）
-    await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 100 });
     const rootRow = result.data.find((r) => r.user_id === "0");
     assertEquals(rootRow, undefined, "root 用户不应出现在榜单中");
@@ -246,7 +239,6 @@ Deno.test({
 
     try {
       await createSubmission(userF, problem1, "pass");
-      await refreshRankingsView();
       const result = await getMyRanking(userF);
       assertExists(result);
       assertEquals(result!.user_id, userF);
@@ -272,7 +264,6 @@ Deno.test({
     try {
       // 仅 fail/error，无通过
       await createSubmission(userG, problem1, "fail");
-      await refreshRankingsView();
       const result = await getMyRanking(userG);
       assertEquals(result, null);
     } finally {
@@ -292,7 +283,6 @@ Deno.test({
 
     try {
       await createSubmission(userH, problem1, "pass");
-      await refreshRankingsView();
       const page1 = await getGlobalRankings({ page: 1, limit: 50 });
       const page2 = await getGlobalRankings({ page: 2, limit: 50 });
 
@@ -319,7 +309,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 500 });
     // 验证 limit=500 调用不抛错（service 层内部截断到 100）
     assertEquals(result.data.length <= 100, true);
@@ -382,7 +371,6 @@ Deno.test({
         "pass",
         includedContestId,
       );
-      await refreshRankingsView();
 
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const row = result.data.find((item) => item.user_id === userId);

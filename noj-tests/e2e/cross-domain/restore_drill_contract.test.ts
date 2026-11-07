@@ -36,7 +36,8 @@
  *
  * 可覆盖的环境变量：`DRILL_E2E_PG_ADMIN_URL`、`DRILL_E2E_PG_CONTAINER`、
  * `DRILL_E2E_PG_USER`、`DRILL_E2E_REDIS_URL`、`DRILL_E2E_REDIS_CONTAINER`；
- * `DRILL_E2E_FORCE_DRILL_ADMIN=1` 可强制走“演练 SQL 管理员”分支（跳过 HTTP 注册）。
+ * `DRILL_E2E_FORCE_DRILL_ADMIN=1` 可强制走“演练 SQL 管理员”分支（跳过 HTTP 注册）；
+ * `NOJ_E2E_REQUIRE_DRILL=1` 把“前置条件缺失→跳过”改为“失败”（CI cross-domain 使用）。
  *
  * ## 隔离与清理
  *
@@ -148,6 +149,13 @@ const CORE_STOP_TIMEOUT_MS = 20_000;
  * 也用于邮件服务未配置（注册恒 403）的 CI 环境；默认 `false` 时优先 HTTP 注册。
  */
 const FORCE_DRILL_ADMIN = Deno.env.get("DRILL_E2E_FORCE_DRILL_ADMIN") === "1";
+/**
+ * 前置条件缺失时**失败**而不是跳过。
+ *
+ * CI 的 cross-domain job 设置 `NOJ_E2E_REQUIRE_DRILL=1`：演练契约是本分支的
+ * 验收项，容器解析/端口漂移不能退化成一条 `[skip]` 的绿色用例。
+ */
+const REQUIRE_DRILL = Deno.env.get("NOJ_E2E_REQUIRE_DRILL") === "1";
 
 // ── 每次运行独立的密钥（启动期校验要求 ≥32 字符且非占位值）────────────────────
 
@@ -432,7 +440,8 @@ async function dropDatabase(dbName: string): Promise<void> {
  * - id 固定 `drill-admin-user`，重复写入 `ON CONFLICT DO NOTHING` 幂等；
  * - **不显式写 `email_verified`**：新 schema 默认 true（迁移 0064），显式写死反而
  *   无法验收历史快照；
- * - 角色取 `roles.name = 'admin'`（由 `noj init system` 的 RBAC 种子创建）。
+ * - 授权事实只有 `users.role`：角色/权限关联表已随本次重构删除（迁移 0133），
+ *   因此必须与 `drill.ts` 的 `seedDrillAdmin()` 一样直接写用户行。
  */
 async function seedDrillAdmin(dbName: string): Promise<void> {
   const stamp = "2026-01-01T00:00:00.000Z";
@@ -441,9 +450,7 @@ async function seedDrillAdmin(dbName: string): Promise<void> {
     `VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',`,
     `        '${DRILL_BCRYPT_HASH}', '${stamp}', '${stamp}')`,
     "ON CONFLICT (id) DO NOTHING;",
-    "INSERT INTO user_roles (user_id, role_id)",
-    "SELECT 'drill-admin-user', id FROM roles WHERE name = 'admin'",
-    "ON CONFLICT DO NOTHING;",
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
   ].join("\n");
   await psqlDatabase(dbName, sql);
 }
@@ -1155,6 +1162,11 @@ Deno.test({
 
     const skipReason = await detectSkipReason();
     if (skipReason !== null) {
+      if (REQUIRE_DRILL) {
+        throw new Error(
+          `[require] NOJ_E2E_REQUIRE_DRILL=1 但演练前置条件不满足：${skipReason}`,
+        );
+      }
       console.log(`[skip] ${skipReason}；跳过真实 HTTP 契约演练`);
       return;
     }

@@ -121,6 +121,22 @@ services:
       - noj-net
     restart: "no"
 
+  # ── 升级预检：只读检查旧库能否切换到本版本 ─────────────────────
+  # 必须在停止旧应用与执行迁移之前运行；不写库、不初始化系统数据。
+  check-upgrade:
+    mem_limit: "${MIGRATE_MEM_LIMIT:-1g}"
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
+    entrypoint: ["/app/bin/noj", "db", "check-upgrade"]
+    environment:
+      <<: *core-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - noj-net
+    restart: "no"
+
   # ── Gateway 一次性初始化：迁移 + 默认配额 ─────────────────────────
   # Gateway HTTP 进程只读校验打包 journal/SQL 与数据库 ledger；所有 DDL 与默认
   # 配额写入必须由此显式步骤完成。升级时镜像变化会使该服务重新创建；恢复演练

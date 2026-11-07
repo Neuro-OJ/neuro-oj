@@ -9,7 +9,6 @@ import { signToken } from "../../../access/identity/index.ts";
 import { createDomain } from "../../../access/workspace/index.ts";
 import {
   createAnnouncement,
-  ensureRbacSeeds,
   initSystemSettings,
   runWithContext,
   updateAnnouncement,
@@ -24,7 +23,6 @@ await initRedisForTest();
 
 async function fixture() {
   await resetDbForTest();
-  await ensureRbacSeeds();
   await initSystemSettings();
   const db = getDb(), now = new Date().toISOString();
   const a = crypto.randomUUID(), b = crypto.randomUUID();

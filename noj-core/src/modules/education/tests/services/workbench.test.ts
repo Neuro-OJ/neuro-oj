@@ -1,4 +1,4 @@
-import { setMemberRoles } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../access/workspace/index.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { domainProblemBindings } from "../../../../shared/db/schema.ts";
@@ -89,7 +89,7 @@ Deno.test("教学聚合：域教练授权管理学情、作业与求助，撤权
   await createAssignmentHelp(f.school.slug, f.task.id, f.student, "help", {
     body: "求助",
   });
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["educator"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "educator");
   const authorized = await getEducationWorkbench(
     f.school.slug,
     f.assistant,
@@ -97,7 +97,7 @@ Deno.test("教学聚合：域教练授权管理学情、作业与求助，撤权
   );
   assertEquals(authorized.assignments[0].summary.total_students, 1);
   assertEquals(authorized.help_requests.length, 1);
-  await setMemberRoles(f.school.slug, f.owner, f.assistant, ["member"]);
+  await setMemberRole(f.school.slug, f.owner, f.assistant, "member");
   const revoked = await getEducationWorkbench(
     f.school.slug,
     f.assistant,

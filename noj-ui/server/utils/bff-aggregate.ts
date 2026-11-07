@@ -3,7 +3,6 @@ import type { AuthUser } from '../../utils/auth-user.ts';
 import type { WorkspaceDetail } from '../../utils/workspace.ts';
 import type { AssignmentDetail, ClassroomDetail } from '../../utils/education.ts';
 import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain-trainings.ts';
-import type { DomainProblemSummary } from '../../utils/domain-problems.ts';
 import { readProblemSummaries } from './bff-problem-summaries.ts';
 import { classroomCan } from '../../utils/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
@@ -76,19 +75,6 @@ export async function aggregateView(reader: CoreReader, input: {
       const reads: Promise<unknown>[] = [
         read('announcements', `${root}/announcements?page=1&per_page=5`),
         read('activity', `${root}/activity`),
-        optional('randomProblems', async () => {
-          const first = await reader.get<{ items: DomainProblemSummary[]; total: number }>(
-            `${root}/problems?page=1&limit=30&keyword=`,
-            { timeout: 2000 },
-          );
-          const page = Math.floor(Math.random() * Math.max(1, Math.ceil(first.total / 30))) + 1;
-          const selected = page === 1
-            ? first
-            : await reader.get<{ items: DomainProblemSummary[] }>(`${root}/problems?page=${page}&limit=30&keyword=`, {
-              timeout: 2000,
-            });
-          return selected.items.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-        }),
       ];
       if (viewer) reads.push(read('checkin', '/api/v1/checkin/today'));
       else put('checkin', { data: { checked_in: false, streak: 0 } });

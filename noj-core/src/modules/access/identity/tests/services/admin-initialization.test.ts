@@ -4,7 +4,6 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
   domains,
-  roles,
   systemSettings,
   users,
 } from "../../../../../shared/db/schema.ts";
@@ -161,6 +160,11 @@ test("完成后删除管理员仍不能重新初始化", async () => {
     email: "owner@example.com",
   });
   await transferDomain("main", user.id, successor.id);
+  // 最后管理员保护禁止唯一管理员自助注销；本用例关注“注销后不能重新初始化”，
+  // 因此先补一个可用管理员再注销原管理员。
+  await db.update(users).set({ role: "admin" }).where(
+    eq(users.id, successor.id),
+  );
   await deleteOwnAccount(
     userActorFromAuthenticatedId(user.id),
     input.password,
@@ -181,19 +185,15 @@ test("弱密码拒绝且不消耗初始化机会", async () => {
 
 test("创建失败时事务回滚关闭标记", async () => {
   const db = getDb();
-  // 模拟系统尚未完成 RBAC 初始化；避免删除角色关联所带来的外键干扰。
-  await db.update(roles).set({ name: "admin_unavailable" }).where(
-    eq(roles.name, "admin"),
+  // root 用户名 "root" 已存在：用户插入触发唯一约束失败，关闭标记必须随事务回滚。
+  await assertRejects(() =>
+    initializeFirstAdmin({ ...input, username: "root" })
   );
-  await assertRejects(() => initializeFirstAdmin(input), BadRequestError);
   assertEquals(
     (await db.select().from(systemSettings).where(
       eq(systemSettings.key, ADMIN_INITIALIZATION_KEY),
     )).length,
     0,
-  );
-  await db.update(roles).set({ name: "admin" }).where(
-    eq(roles.name, "admin_unavailable"),
   );
   await initializeFirstAdmin(input);
 });

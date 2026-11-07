@@ -31,12 +31,14 @@ async function freshSetup() {
   await db.delete(users).where(eq(users.id, ADMIN2_ID));
   await db.delete(users).where(eq(users.id, TARGET_ID));
 
-  // 插入两个管理员（第二个确保 ban 操作不触发"最后一个 admin"保护）
+  // 插入两个管理员（第二个确保 ban 操作不触发"最后一个 admin"保护）。
+  // 操作者身份由锁内重读 users.role 判定，因此这里必须写入真实平台角色。
   await db.insert(users).values({
     id: ADMIN_ID,
     username: `ban-admin-${TS}`,
     email: `ban-admin-${TS}@test.local`,
     password_hash: "x",
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -45,6 +47,7 @@ async function freshSetup() {
     username: `ban-admin2-${TS}`,
     email: `ban-admin2-${TS}@test.local`,
     password_hash: "x",
+    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -150,6 +153,66 @@ Deno.test({
       assertEquals(logs[0].target_id, TARGET_ID);
       assertEquals(logs[0].ip_address, "10.0.0.2");
       assertEquals(logs[0].detail, { action: "users.unban" });
+    } finally {
+      leaveTestContext();
+    }
+  },
+});
+
+Deno.test({
+  name: "user-ban scope: 社区封禁不解除平台封禁，解封解除全部",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+
+    enterTestContext({
+      actorId: ADMIN_ID,
+      actorIp: "10.0.0.3",
+      actorRole: "admin",
+    });
+    try {
+      await banUser(TARGET_ID, "平台封禁", null, ADMIN_ID, "platform");
+      await banUser(TARGET_ID, "社区封禁", null, ADMIN_ID, "social");
+
+      const rows = await db.select().from(userBans)
+        .where(eq(userBans.user_id, TARGET_ID));
+      const activeOf = (scope: string) =>
+        rows.filter((row) => row.scope === scope && row.unbanned_at === null);
+      assertEquals(
+        activeOf("platform").length,
+        1,
+        "社区封禁不得解除仍在生效的平台封禁",
+      );
+      assertEquals(activeOf("social").length, 1);
+
+      // 同范围重复封禁只保留最新一条活跃记录（旧记录被关闭）
+      await banUser(TARGET_ID, "社区封禁二", null, ADMIN_ID, "social");
+      const afterSecond = await db.select().from(userBans)
+        .where(eq(userBans.user_id, TARGET_ID));
+      assertEquals(
+        afterSecond.filter((row) =>
+          row.scope === "social" && row.unbanned_at === null
+        ).length,
+        1,
+      );
+      assertEquals(
+        afterSecond.filter((row) =>
+          row.scope === "platform" && row.unbanned_at === null
+        ).length,
+        1,
+      );
+
+      // 解封的语义是解除该用户全部限制（管理员手动解封）
+      await unbanUser(TARGET_ID, ADMIN_ID);
+      const afterUnban = await db.select().from(userBans)
+        .where(eq(userBans.user_id, TARGET_ID));
+      assertEquals(
+        afterUnban.every((row) => row.unbanned_at !== null),
+        true,
+        "解封应关闭所有范围的活跃封禁",
+      );
     } finally {
       leaveTestContext();
     }

@@ -40,7 +40,6 @@ Deno.test("域题号：引用显示来源号，本域仅显示数字，内部身
     number: 1001,
     qualified_ref: "main:1001",
     display_ref: "main:1001",
-    is_shared: true,
   });
   assertEquals(
     domainProblemReference(problem, "main", "main-id").display_ref,

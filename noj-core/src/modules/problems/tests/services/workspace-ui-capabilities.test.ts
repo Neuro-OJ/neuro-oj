@@ -25,7 +25,6 @@ import {
   importDomainProblem,
   setDomainProblemBindingPolicy,
 } from "../../services/workspace/problem-bindings.ts";
-import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 
 const encode = (value: string) => new TextEncoder().encode(value);
@@ -206,17 +205,10 @@ Deno.test({
         id: crypto.randomUUID(),
         domain_id: source.id,
         problem_id: id,
-        kind: "owned",
         visibility: "public",
         created_by: actor,
         created_at: now,
         updated_at: now,
-      });
-      await setDomainProblemSharing(source.slug, "1001", actor, {
-        expectedRevision: 0,
-        enabled: true,
-        scope: "all",
-        targetDomainIds: [],
       });
       const copied = await importDomainProblem(
         school.slug,
@@ -301,12 +293,6 @@ Deno.test({
         )).status,
         404,
       );
-      await setDomainProblemSharing(source.slug, "1001", actor, {
-        expectedRevision: 1,
-        enabled: false,
-        scope: "all",
-        targetDomainIds: [],
-      });
       assertEquals(
         (await jsonRequest(app, `${path}/ui`, { token: studentToken })).status,
         200,

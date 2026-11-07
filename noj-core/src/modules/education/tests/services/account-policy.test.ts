@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { assignments, userBans } from "../../../../shared/db/schema.ts";
 import { banUser } from "../../../access/identity/index.ts";
@@ -28,6 +28,12 @@ Deno.test("工作空间账号政策：全站封禁即时拒绝后台身份，社
     () => loadWorkspace("missing-school", f.teacher),
     ForbiddenError,
   );
+  // 范围隔离：社区封禁不得解除生效中的全站封禁，所以先手动解除全站封禁。
+  await f.db.update(userBans).set({ unbanned_at: new Date().toISOString() })
+    .where(and(
+      eq(userBans.user_id, f.teacher),
+      eq(userBans.scope, "platform"),
+    ));
   await banUser(f.teacher, "社区封禁", null, "0", "social");
   assertEquals(
     (await loadWorkspace(f.school.slug, f.teacher)).context.actorId,

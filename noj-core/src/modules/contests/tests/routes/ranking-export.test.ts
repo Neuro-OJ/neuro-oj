@@ -17,7 +17,6 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {
   contestRankingSnapshots,
   contests,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
@@ -46,11 +45,8 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    // 授予 admin 角色：管理端路由经 RBAC 校验，仅有 users 行不够
-    await db.insert(userRoles).values({
-      user_id: adminId,
-      role_id: "admin",
-    }).onConflictDoNothing();
+    // 平台角色写在用户行：管理端守卫实时读取 users.role。
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(contests).values({
       domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
@@ -296,10 +292,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(userRoles).values({
-      user_id: adminId,
-      role_id: "admin",
-    }).onConflictDoNothing();
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(contests).values({
       domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,

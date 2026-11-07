@@ -284,10 +284,13 @@ Deno.test({
           await joinFixture(slug, teacherEmail, admin, teacherToken);
           await fixture(
             "PUT",
-            `/api/v1/domains/${slug}/members/${teacherId}/roles`,
+            `/api/v1/domains/${slug}/members/${teacherId}/role`,
             admin,
-            { roles: ["educator", "admin"] },
+            { role: "educator" },
           );
+          // 班级邀请不能绕过域准入：学生先由管理员邀请进域成为成员，
+          // 教师（educator）随后才能用班级邀请把已有成员加入班级。
+          await joinFixture(slug, studentEmail, admin, studentToken);
           number = await objectiveFixture(slug, admin, `教学客观题 ${suffix}`);
           await fixture("POST", "/api/v1/domains", admin, {
             slug: otherSlug,

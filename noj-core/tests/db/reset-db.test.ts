@@ -12,20 +12,15 @@ import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { ROOT_USER_ID } from "../../src/shared/base/constants.ts";
 import {
   judgeImages,
-  permissions,
-  roles,
   systemSettings,
   tags,
   users,
 } from "../../src/shared/db/schema.ts";
-import { PERMISSION_DEFS } from "../../src/modules/access/identity/types/permissions.ts";
 import {
   getSetting,
   initSystemSettings,
 } from "../../src/modules/platform/system/services/system-settings.ts";
 import { resetDbForTest } from "../helpers/db.ts";
-
-const SENSITIVE_REVOKE_MARKER = "rbac_sensitive_field_permissions_revoked";
 
 /** 生成带唯一后缀的标签，便于断言"被清掉了"。 */
 async function insertMarkerTag(suffix: string): Promise<string> {
@@ -77,16 +72,12 @@ Deno.test({
     assertEquals(userRows[0].id, ROOT_USER_ID);
     assertEquals(await countTag(markerTag), 0, "reset 必须清空业务数据");
 
-    const roleRows = await db.select({ name: roles.name }).from(roles);
     assertEquals(
-      roleRows.map((row) => row.name).sort(),
-      ["admin", "user"],
-      "reset 后应恢复两条系统角色",
-    );
-    assertEquals(
-      (await db.select({ id: permissions.id }).from(permissions)).length,
-      PERMISSION_DEFS.length,
-      "reset 后应恢复全量权限定义",
+      (await db.select({ id: users.id }).from(users).where(
+        eq(users.id, ROOT_USER_ID),
+      )).length,
+      1,
+      "reset 后应恢复 root 系统用户",
     );
 
     const imageRows = await db.select({ id: judgeImages.id }).from(judgeImages);
@@ -98,12 +89,6 @@ Deno.test({
       "e0000000-0000-0000-0000-000000000003",
       "e0000000-0000-0000-0000-000000000004",
     ]);
-
-    const markerRows = await db
-      .select({ key: systemSettings.key })
-      .from(systemSettings)
-      .where(eq(systemSettings.key, SENSITIVE_REVOKE_MARKER));
-    assertEquals(markerRows.length, 1, "reset 后应恢复敏感权限撤销标记");
   },
 });
 
@@ -112,7 +97,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest({ refreshRankings: true });
+    await resetDbForTest();
 
     const viewResult = await getDb().execute(
       sql`SELECT to_regclass('user_rankings') AS name`,
@@ -217,9 +202,11 @@ Deno.test({
         "TRUNCATE 路径同样必须清空数据",
       );
       assertEquals(
-        (await getDb().select({ id: roles.id }).from(roles)).length,
-        2,
-        "TRUNCATE 路径同样必须恢复种子",
+        (await getDb().select({ id: users.id }).from(users).where(
+          eq(users.id, ROOT_USER_ID),
+        )).length,
+        1,
+        "TRUNCATE 路径同样必须恢复 root 用户",
       );
     } finally {
       if (previous === undefined) Deno.env.delete("NOJ_TEST_RESET_STRATEGY");

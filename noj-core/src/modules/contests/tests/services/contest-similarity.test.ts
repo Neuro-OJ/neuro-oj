@@ -6,6 +6,7 @@
  * 2. 查询服务（取数口径、分桶、规模上限）——需要数据库；
  * 3. 管理端路由（权限、参数校验、响应结构）——需要数据库。
  */
+import { eq } from "drizzle-orm";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -14,7 +15,6 @@ import {
   contests,
   problems,
   submissions,
-  userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -23,7 +23,6 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { ensureRbacSeeds } from "../../../platform/system/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import {
@@ -38,7 +37,6 @@ import {
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 await resetDbForTest();
 // 路由用例需要 admin:full_access 与 contest:anti_cheat_read 权限种子。
-await ensureRbacSeeds();
 
 /** 冒泡排序解法（原始写法）。 */
 const BUBBLE_SOLUTION = `def solve(n, nums):
@@ -510,7 +508,7 @@ Deno.test({
         updated_at: now,
       },
     ]);
-    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminId));
     await db.insert(problems).values([
       {
         domain_id: DEFAULT_DOMAIN_ID,
