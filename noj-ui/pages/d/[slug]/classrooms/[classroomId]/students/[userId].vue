@@ -25,6 +25,12 @@ const roster = await useAsyncData(
 
 const student = computed(() => roster.data.value?.data.find((member) => member.user_id === studentId.value));
 
+// 面包屑末两段动态层分别用班级名、学生用户名回填，避免把 classroomId / userId
+// 的原始 UUID 暴露给用户；花名册不可读（无 students:manage）时退化为固定文案。
+useBreadcrumbParams({
+  classroomId: () => room.data.value?.data.name,
+  userId: () => student.value?.username ?? '学生档案',
+});
 useSeoMeta({ title: () => student.value ? `${student.value.username} 的训练档案` : '学生训练档案' });
 </script>
 

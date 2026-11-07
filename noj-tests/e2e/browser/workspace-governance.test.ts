@@ -390,7 +390,7 @@ Deno.test({
               learner.page,
               `/d/${slug}/problems/${problem.number}`,
             );
-            await learner.page.getByRole("checkbox", {
+            await learner.page.getByRole("radio", {
               name: "正确选项",
               exact: true,
             }).check();

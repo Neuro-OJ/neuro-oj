@@ -186,6 +186,10 @@ const questionOptions = (question: AnswerQuestion) =>
     ? [{ key: true as const, text: '正确' }, { key: false as const, text: '错误' }]
     : question.options;
 
+function isPicked(question: AnswerQuestion, value: string | boolean) {
+  return (answers.value[questionKey(question)] ?? []).includes(value);
+}
+
 function toggle(question: AnswerQuestion, value: string | boolean) {
   const key = questionKey(question);
   const selected = answers.value[key] ?? [];
@@ -334,15 +338,31 @@ defineExpose({
         class="mb-5 border-b border-border pb-5 last:mb-0 last:border-b-0 last:pb-0">
         <p class="mb-2 text-xs text-text-muted">第 {{ index + 1 }} 题 · {{ questionLabel(question.type) }}</p>
         <MarkdownRenderer :content="question.prompt" />
-        <div class="mt-3 flex flex-col gap-2">
+        <div v-if="question.type === 'multiple'" class="mt-3 flex flex-col gap-2">
           <div v-for="option in questionOptions(question)" :key="String(option.key)" class="flex items-center gap-1.5">
             <span v-if="typeof option.key === 'string' && !option.text.startsWith(`${option.key}.`)" aria-hidden="true"
               class="text-sm font-medium text-text-secondary">{{ option.key }}.</span>
             <UCheckbox :label="option.text"
-              :model-value="(answers[questionKey(question)] ?? []).includes(option.key)" :disabled="!canWrite || submitting"
+              :model-value="isPicked(question, option.key)" :disabled="!canWrite || submitting"
               @update:model-value="toggle(question, option.key)" />
           </div>
         </div>
+        <!-- 单选与判断题用原生 radio：浏览器自带方向键切换与“互斥”语义，避免多选外观误导。 -->
+        <fieldset v-else class="mt-3 flex flex-col gap-2">
+          <legend class="sr-only">第 {{ index + 1 }} 题选项</legend>
+          <label v-for="option in questionOptions(question)" :key="String(option.key)"
+            class="flex items-center gap-2 text-sm"
+            :class="!canWrite || submitting ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'">
+            <input type="radio" :name="`${draftKey}-q-${index}`" class="size-4 shrink-0 accent-primary"
+              :value="String(option.key)" :checked="isPicked(question, option.key)" :disabled="!canWrite || submitting"
+              @change="toggle(question, option.key)">
+            <span class="flex items-center gap-1.5">
+              <span v-if="typeof option.key === 'string' && !option.text.startsWith(`${option.key}.`)" aria-hidden="true"
+                class="font-medium text-text-secondary">{{ option.key }}.</span>
+              <span>{{ option.text }}</span>
+            </span>
+          </label>
+        </fieldset>
       </div>
       <p v-if="context === 'contest'" class="text-xs text-text-muted">一次正式交卷；赛中不返回标准答案和逐题正确性。</p>
     </template>

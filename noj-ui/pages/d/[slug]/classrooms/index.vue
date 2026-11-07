@@ -74,7 +74,7 @@ const viewTabItems = computed(() => {
   }
   items.push({ label: '我的学习', value: 'learning', icon: 'i-lucide-book-open' });
   items.push({
-    label: `班级大厅 (${roomsData.value?.data.length ?? 0})`,
+    label: `班级大厅 (${roomsData.value?.data.length ?? 0}${classroomsCapped.value ? '+' : ''})`,
     value: 'rooms',
     icon: 'i-lucide-school',
   });
@@ -140,6 +140,18 @@ watch(taskPage, () => {
   else if (currentView.value === 'learning') void refreshLearning();
 });
 
+// 工作台接口的求助列表固定 LIMIT 20、班级列表固定 LIMIT 50 且都不带 total，
+// 指标卡必须说明统计范围，否则超过上限时会静默少数。
+const DASHBOARD_HELP_LIMIT = 20;
+const CLASSROOM_PAGE_SIZE = 50;
+const teachingHelpCapped = computed(() =>
+  (teachingData.value?.data.help_requests?.length ?? 0) >= DASHBOARD_HELP_LIMIT
+);
+const learningHelpCapped = computed(() =>
+  (learningData.value?.data.help_requests?.length ?? 0) >= DASHBOARD_HELP_LIMIT
+);
+const classroomsCapped = computed(() => (roomsData.value?.data.length ?? 0) >= CLASSROOM_PAGE_SIZE);
+
 // 教学指标统计计算
 const visibleTeachingTasks = computed(() => {
   const list = teachingData.value?.data.assignments ?? [];
@@ -173,6 +185,11 @@ const visibleLearningTasks = computed(() => {
 
 const learningActiveTasksCount = computed(() =>
   (learningData.value?.data.assignments ?? []).filter((task) => assignmentPhase(task) === '进行中').length
+);
+
+/** 只有“等待教练答复”的求助才需要学生动作，已回复的不该继续占指标位。 */
+const learningOpenHelpCount = computed(() =>
+  (learningData.value?.data.help_requests ?? []).filter((r) => r.state === 'open').length
 );
 
 // 班级检索与过滤计算
@@ -237,13 +254,15 @@ useSeoMeta({ title: '班级研练中心' });
           >
             教学通知
           </UButton>
-          <UButton
-            icon="i-lucide-refresh-cw"
-            variant="ghost"
-            color="neutral"
-            aria-label="刷新数据"
-            @click="refreshAll()"
-          />
+          <UTooltip text="刷新班级与作业数据">
+            <UButton
+              icon="i-lucide-refresh-cw"
+              variant="ghost"
+              color="neutral"
+              aria-label="刷新班级与作业数据"
+              @click="refreshAll()"
+            />
+          </UTooltip>
           <UButton
             v-if="can('classroom:create') && domain?.status === 'active' && domain.configuration.features.classroom"
             color="primary"
@@ -262,58 +281,65 @@ useSeoMeta({ title: '班级研练中心' });
     <!-- 视角 1: 教练带班中枢 (Teaching View) -->
     <div v-show="currentView === 'teaching'" class="space-y-6">
       <!-- 指标大盘卡片行 -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
-          <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
-            <UIcon name="i-lucide-clipboard-check" class="size-5" />
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary sm:size-10">
+            <UIcon name="i-lucide-clipboard-check" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">进行中教学任务</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ teachingActiveTasksCount }}
-              <span class="text-xs font-normal text-text-muted">/ {{ teachingData?.data.total ?? 0 }}</span>
+            <p class="text-xs leading-snug text-text-muted">进行中教学任务</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">
+              {{ teachingActiveTasksCount }} 项
             </p>
+            <p class="mt-1 text-[11px] leading-none text-text-muted tabular-nums">全域共 {{ teachingData?.data.total ?? 0 }} 项</p>
           </div>
         </div>
 
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
           <div
-            class="flex size-11 shrink-0 items-center justify-center rounded-lg"
-            :class="teachingAttentionCount > 0 ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'"
+            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
+            :class="teachingAttentionCount > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
           >
-            <UIcon name="i-lucide-alert-circle" class="size-5" />
+            <UIcon name="i-lucide-alert-circle" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">需关注学情预警</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ teachingAttentionCount }}
+            <p class="text-xs leading-snug text-text-muted">需关注学情</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">
+              {{ teachingAttentionCount }} 项
             </p>
+            <p class="mt-1 text-[11px] leading-none text-text-muted">本页任务中</p>
           </div>
         </div>
 
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
           <div
-            class="flex size-11 shrink-0 items-center justify-center rounded-lg"
+            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
             :class="teachingPendingHelp.length > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
           >
-            <UIcon name="i-lucide-message-circle-question" class="size-5" />
+            <UIcon name="i-lucide-message-circle-question" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">待答复学员求助</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ teachingPendingHelp.length }}
+            <p class="text-xs leading-snug text-text-muted">待答复学员求助</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">
+              {{ teachingPendingHelp.length }}{{ teachingHelpCapped ? '+' : '' }} 条
+            </p>
+            <p class="mt-1 text-[11px] leading-none text-text-muted tabular-nums">
+              {{ teachingHelpCapped ? '仅显示最近 20 条' : `共 ${teachingData?.data.help_requests?.length ?? 0} 条` }}
             </p>
           </div>
         </div>
 
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
-          <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-bg-sunken text-text-secondary">
-            <UIcon name="i-lucide-school" class="size-5" />
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-sunken text-text-secondary sm:size-10">
+            <UIcon name="i-lucide-school" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">管理班级总数</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ roomsData?.data.length ?? 0 }}
+            <p class="text-xs leading-snug text-text-muted">管理班级</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">
+              {{ roomsData?.data.length ?? 0 }}{{ classroomsCapped ? '+' : '' }} 个
+            </p>
+            <p class="mt-1 text-[11px] leading-none text-text-muted tabular-nums">
+              {{ classroomsCapped ? '仅显示最近 50 个' : `共 ${roomsData?.data.length ?? 0} 个` }}
             </p>
           </div>
         </div>
@@ -449,18 +475,15 @@ useSeoMeta({ title: '班级研练中心' });
             </div>
 
             <!-- 快捷动作底栏 -->
-            <div class="mt-4 pt-3.5 border-t border-border flex items-center justify-between gap-2">
-              <UButton
+            <div class="mt-4 flex items-center justify-between gap-2 border-t border-border pt-3.5">
+              <NuxtLink
                 :to="workspacePath(slug!, `classrooms/${task.classroom_id}`)"
-                variant="ghost"
-                color="neutral"
-                size="sm"
+                class="text-xs font-medium text-text-secondary transition-colors hover:text-primary hover:underline"
               >
-                进入班级
-              </UButton>
+                查看班级
+              </NuxtLink>
               <UButton
                 :to="workspacePath(slug!, `assignments/${task.id}`)"
-                variant="outline"
                 color="primary"
                 size="sm"
                 trailing-icon="i-lucide-arrow-right"
@@ -494,40 +517,32 @@ useSeoMeta({ title: '班级研练中心' });
     <!-- 视角 2: 我的学习大盘 (Learning View) -->
     <div v-show="currentView === 'learning'" class="space-y-6">
       <!-- 个人学习指标卡 -->
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
-          <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
-            <UIcon name="i-lucide-book-open" class="size-5" />
+      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary sm:size-10">
+            <UIcon name="i-lucide-book-open" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">进行中作业</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ learningActiveTasksCount }}
-              <span class="text-xs font-normal text-text-muted">/ {{ learningData?.data.total ?? 0 }}</span>
-            </p>
+            <p class="text-xs leading-snug text-text-muted">进行中作业</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">{{ learningActiveTasksCount }} 项</p>
+            <p class="mt-1 text-[11px] leading-none text-text-muted tabular-nums">共 {{ learningData?.data.total ?? 0 }} 项</p>
           </div>
         </div>
 
-        <div class="rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
-          <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-success-bg text-success">
-            <UIcon name="i-lucide-check-circle-2" class="size-5" />
+        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+          <div
+            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
+            :class="learningOpenHelpCount > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
+          >
+            <UIcon name="i-lucide-message-circle-question" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">当前页作业总数</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ visibleLearningTasks.length }}
+            <p class="text-xs leading-snug text-text-muted">待教练答复求助</p>
+            <p class="mt-1 text-lg font-bold leading-none text-text tabular-nums sm:text-xl">
+              {{ learningOpenHelpCount }}{{ learningHelpCapped ? '+' : '' }} 条
             </p>
-          </div>
-        </div>
-
-        <div class="col-span-2 md:col-span-1 rounded-lg border border-border bg-bg-panel p-4 flex items-center gap-3.5">
-          <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-bg-sunken text-text-secondary">
-            <UIcon name="i-lucide-message-circle-question" class="size-5" />
-          </div>
-          <div class="min-w-0">
-            <p class="text-xs text-text-muted truncate">求助与教练答复</p>
-            <p class="text-xl font-bold text-text tabular-nums mt-0.5">
-              {{ learningData?.data.help_requests.length ?? 0 }}
+            <p class="mt-1 text-[11px] leading-none text-text-muted tabular-nums">
+              {{ learningHelpCapped ? '仅显示最近 20 条' : `共 ${learningData?.data.help_requests?.length ?? 0} 条` }}
             </p>
           </div>
         </div>
@@ -538,7 +553,9 @@ useSeoMeta({ title: '班级研练中心' });
         <header class="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
           <UIcon name="i-lucide-book-open" class="size-5 text-primary" />
           <h2 class="font-semibold text-text text-base">我的作业任务</h2>
-          <span class="text-xs text-text-muted tabular-nums">共 {{ visibleLearningTasks.length }} 项</span>
+          <span class="text-xs text-text-muted tabular-nums">
+            {{ taskFilter === 'all' ? `共 ${learningData?.data.total ?? 0} 项` : `本页筛选 ${visibleLearningTasks.length} 项` }}
+          </span>
         </header>
       <AsyncContent
         :status="learningError ? 'error' : learningStatus === 'pending' ? 'loading' : visibleLearningTasks.length ? 'data' : 'empty'"
@@ -599,7 +616,7 @@ useSeoMeta({ title: '班级研练中心' });
                 </div>
                 <div class="w-full bg-border/60 rounded-full h-1.5 overflow-hidden">
                   <div
-                    class="bg-primary h-full transition-all duration-300"
+                    class="bg-success h-full transition-all duration-300"
                     :style="{
                       width: `${Math.min(100, Math.round(((task.summary.achieved_cells ?? 0) / Math.max(1, task.summary.total_items)) * 100))}%`
                     }"
@@ -644,7 +661,7 @@ useSeoMeta({ title: '班级研练中心' });
       <ClassroomContests :slug="slug!" />
 
       <!-- 求助回复信箱卡片 -->
-      <div v-if="(learningData?.data.help_requests.length ?? 0) > 0" class="rounded-lg border border-border bg-bg-panel p-4 space-y-3">
+      <div v-if="(learningData?.data.help_requests?.length ?? 0) > 0" class="rounded-lg border border-border bg-bg-panel p-4 space-y-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-message-circle-question" class="size-5 text-primary" />
           <h3 class="font-semibold text-text text-sm">我的求助与教练回复</h3>
@@ -696,7 +713,9 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
 
         <div class="text-xs text-text-muted tabular-nums sm:text-right">
-          共 <strong class="text-text font-semibold">{{ filteredRooms.length }}</strong> 个班级
+          {{ classroomsCapped || roomSearch || roomStageFilter !== 'all' ? '本页' : '共' }}
+          <strong class="text-text font-semibold">{{ filteredRooms.length }}</strong> 个班级
+          <span v-if="classroomsCapped" class="ml-1">（仅显示最近 50 个）</span>
         </div>
       </div>
 

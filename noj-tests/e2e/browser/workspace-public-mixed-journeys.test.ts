@@ -121,7 +121,7 @@ async function handIn(
   choice: string,
   button = "交卷",
 ) {
-  await page.getByRole("checkbox", { name: choice, exact: true }).check();
+  await page.getByRole("radio", { name: choice, exact: true }).check();
   await page.getByRole("button", { name: button, exact: true }).click();
   return await write(
     page,

@@ -95,6 +95,8 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   error.value = '';
   saved.value = false;
 });
+// 面包屑动态层用班级名回填，避免把 classroomId 的原始 UUID 暴露给用户。
+useBreadcrumbParams({ classroomId: () => room.data.value?.data.name });
 useSeoMeta({ title: '班级设置' });
 </script>
 <template>
@@ -165,7 +167,7 @@ useSeoMeta({ title: '班级设置' });
             归档后停止发布新作业与成员变更。获授权的成员仍可查阅历史作业、提交和反馈。
           </p>
           <UButton
-            color="warning"
+            color="error"
             variant="outline"
             :disabled="saving"
             @click="lifecycle()"

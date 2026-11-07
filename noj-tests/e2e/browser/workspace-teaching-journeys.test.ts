@@ -447,7 +447,7 @@ Deno.test({
             "assignment_item_id",
           );
           assertEquals(typeof assignmentItemId, "string");
-          await student.page.getByRole("checkbox", {
+          await student.page.getByRole("radio", {
             name: "待改进选项",
             exact: true,
           }).check();
@@ -727,23 +727,23 @@ Deno.test({
         async () => {
           const second = await student.context.newPage();
           await gotoPage(student.page, `/d/${slug}/problems/${number}`);
-          await student.page.getByRole("checkbox", {
+          await student.page.getByRole("radio", {
             name: "正确选项",
             exact: true,
           }).check();
           await gotoPage(second, `/d/${otherSlug}/problems/${otherNumber}`);
-          await second.getByRole("checkbox", {
+          await second.getByRole("radio", {
             name: "待改进选项",
             exact: true,
           }).check();
           await expect(
-            student.page.getByRole("checkbox", {
+            student.page.getByRole("radio", {
               name: "正确选项",
               exact: true,
             }),
           ).toBeChecked();
           await expect(
-            second.getByRole("checkbox", { name: "正确选项", exact: true }),
+            second.getByRole("radio", { name: "正确选项", exact: true }),
           ).not.toBeChecked();
           await second.getByRole("button", { name: "交卷", exact: true })
             .click();
