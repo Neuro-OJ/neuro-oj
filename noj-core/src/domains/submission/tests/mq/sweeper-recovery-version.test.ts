@@ -18,7 +18,10 @@ import {
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { recoverPendingSubmissions } from "../../mq/sweeper.ts";
+import {
+  reconcileStaleJudgingSubmissions,
+  recoverPendingSubmissions,
+} from "../../mq/sweeper.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -28,6 +31,7 @@ import {
   LocalStorageProvider,
   setStorageProviderForTest,
 } from "../../../system/index.ts";
+import { judgeTaskMarkerKey } from "../../mq/task-marker.ts";
 import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });
@@ -112,7 +116,9 @@ async function seedProblem(
 }
 
 /** 在假 Redis 环境中执行一次恢复，返回主队列消息（JSON）。 */
-async function recoverAndReadMessages(): Promise<Record<string, unknown>[]> {
+async function recoverAndReadMessages(
+  recover: (now: number) => Promise<void> = recoverPendingSubmissions,
+): Promise<Record<string, unknown>[]> {
   const fake = startFakeRedis();
   const prevUrl = Deno.env.get("REDIS_URL") ?? null;
   try {
@@ -120,7 +126,7 @@ async function recoverAndReadMessages(): Promise<Record<string, unknown>[]> {
     Deno.env.set("REDIS_URL", fake.url);
     const redis = getRedis();
     await redis.connect();
-    await recoverPendingSubmissions(Date.now());
+    await recover(Date.now());
     const messages: Record<string, unknown>[] = [];
     for (
       const queue of [
@@ -497,5 +503,216 @@ Deno.test({
       eq(submissions.id, submissionId),
     );
     assertEquals(row.status, "error");
+  },
+});
+
+Deno.test({
+  name: "sweeper: 长时间 judging 且任务丢失时按活动尝试恢复",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const staleNow = new Date(Date.now() - 11 * 60_000).toISOString();
+    const { problemId, versionId, userId } = await seedProblem(
+      "judging-reconcile",
+      95600 + (ts % 500),
+      {
+        kind: "ai",
+        title: "恢复测试题 judging-reconcile",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+    );
+    const submissionId = `tst-sweep-sub-judging-${ts}`;
+    const attemptId = `tst-sweep-att-judging-${ts}`;
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      status: "judging",
+      language: "python3",
+      code: "print('judging')",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      judge_started_at: staleNow,
+      created_at: staleNow,
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: staleNow,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+      .where(eq(submissions.id, submissionId));
+
+    const messages = await recoverAndReadMessages(
+      reconcileStaleJudgingSubmissions,
+    );
+    const task = messages.find((m) => m.submission_id === submissionId);
+    assertEquals(task !== undefined, true);
+    assertEquals(task!.run_id, attemptId);
+    assertEquals(task!.problem_version_id, versionId);
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(row.status, "judging");
+    // 恢复不得重置开始时间，否则“最老 judging 年龄”指标会掩盖卡住的提交。
+    assertEquals(row.judge_started_at, staleNow);
+  },
+});
+
+Deno.test({
+  name:
+    "sweeper: 无标记但仍在 processing 中的 judging 任务不重复派发并补写标记",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const staleNow = new Date(Date.now() - 11 * 60_000).toISOString();
+    const { problemId, versionId, userId } = await seedProblem(
+      "judging-inflight",
+      95800 + (ts % 500),
+      {
+        kind: "ai",
+        title: "恢复测试题 judging-inflight",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+    );
+    const submissionId = `tst-sweep-sub-inflight-${ts}`;
+    const attemptId = `tst-sweep-att-inflight-${ts}`;
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      status: "judging",
+      language: "python3",
+      code: "print('inflight')",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      judge_started_at: staleNow,
+      created_at: staleNow,
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: staleNow,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+      .where(eq(submissions.id, submissionId));
+
+    let marker: string | null = null;
+    const messages = await recoverAndReadMessages(async (now) => {
+      // 模拟标记引入前入队、judge 仍在处理的任务。
+      const redis = getRedis();
+      await redis.lpush(
+        "noj:judge:queue:ai:medium:processing",
+        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
+      );
+      await reconcileStaleJudgingSubmissions(now);
+      marker = await redis.get(judgeTaskMarkerKey(attemptId));
+    });
+    assertEquals(
+      messages.find((m) => m.submission_id === submissionId),
+      undefined,
+    );
+    assertEquals(marker, "queued");
+  },
+});
+
+Deno.test({
+  name: "sweeper: 已入队 marker 只补齐状态，不重复派发任务",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { problemId, versionId, userId } = await seedProblem(
+      "already-dispatched",
+      95700 + (ts % 500),
+      {
+        kind: "ai",
+        title: "恢复测试题 already-dispatched",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+    );
+    const submissionId = `tst-sweep-sub-dispatched-${ts}`;
+    const attemptId = `tst-sweep-att-dispatched-${ts}`;
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      status: "pending",
+      language: "python3",
+      code: "print('dispatched')",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      created_at: oldNow,
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "queued",
+      created_at: oldNow,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+      .where(eq(submissions.id, submissionId));
+
+    const fake = startFakeRedis();
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+      await redis.lpush(
+        "noj:judge:queue:ai:medium",
+        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
+      );
+      await redis.set(
+        judgeTaskMarkerKey(attemptId),
+        "queued",
+        "EX",
+        3600,
+      );
+
+      await recoverPendingSubmissions(Date.now());
+      assertEquals(fake.getMessages("noj:judge:queue:ai:medium").length, 1);
+      const [row] = await db.select().from(submissions).where(
+        eq(submissions.id, submissionId),
+      );
+      assertEquals(row.status, "judging");
+    } finally {
+      resetRedisForTest();
+      await fake.stop();
+      if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
   },
 });

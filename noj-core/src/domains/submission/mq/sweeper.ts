@@ -1,19 +1,26 @@
 /**
  * 评测队列可靠性 sweeper（NOJ-067/NOJ-179）。
  *
- * 两个职责：
+ * 三个职责：
  * 1. processing 列表超时扫描：任务 10 分钟、结果 2 分钟仍未被确认时重投主队列；
  * 2. pending 提交恢复：创建/重测在「写 DB → 入队」之间崩溃留下的 pending
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
+ * 3. judging 提交对账：活动尝试超过完整 processing 超时仍无任务标记时补偿派发。
  */
 
 import { and, asc, eq, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
-import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
+import {
+  evaluationAttempts,
+  problems,
+  selfTests,
+  submissions,
+} from "../../../shared/db/schema.ts";
 import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
+import { observability as metrics } from "../../observability/write.ts";
 import {
   ALL_JUDGE_QUEUES,
   isRetryableJudgeQueueError,
@@ -33,6 +40,12 @@ import {
 import {
   runPendingTokenRevocations,
 } from "../services/versioning/job-worker.ts";
+import {
+  claimJudgeTaskDispatch,
+  findJudgeTaskMarkers,
+  markInFlightJudgeTasks,
+  releaseJudgeTaskDispatch,
+} from "./task-marker.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -40,6 +53,10 @@ const TASK_PROCESSING_TIMEOUT_MS = 10 * 60_000;
 const RESULT_PROCESSING_TIMEOUT_MS = 2 * 60_000;
 const PENDING_RECOVERY_MS = 2 * 60_000;
 const SWEEP_INTERVAL_MS = 30_000;
+/** 恢复查询单页行数。 */
+const RECOVERY_PAGE_SIZE = 200;
+/** judging 对账单轮最多扫描的行数（judging 行数受队列容量约束，此上限只防失控）。 */
+const RECONCILE_SCAN_MAX_ROWS = 5_000;
 
 /** 根据管理员配置的最大 evaluator 时限推导任务 processing 超时，避免长任务被提前重投。 */
 function taskProcessingTimeoutMs(): number {
@@ -181,6 +198,8 @@ interface PendingRecoveryActions<T extends PendingRecoveryRow> {
   onMissingRuntimeConfig(row: T): void | Promise<void>;
   /** 入队成功后更新行状态（可保留原始 judge_started_at）。 */
   onEnqueued(row: T): void | Promise<void>;
+  /** 已发现任务标记，说明任务已入队；只需补齐 DB 状态，不得再次入队。 */
+  onAlreadyEnqueued?(row: T): void | Promise<void>;
   /** 永久入队失败（消息超限等）时标记 error。 */
   onPermanentError(row: T, err: unknown): void | Promise<void>;
 }
@@ -213,6 +232,7 @@ async function selectPendingRecoveryRows(
   table: AnyPgTable,
   cols: PendingRecoveryTableColumns,
   where: SQL | undefined,
+  offset = 0,
 ): Promise<PendingRecoveryRow[]> {
   const db = getDb();
   const selectFields: Record<string, unknown> = {
@@ -249,8 +269,9 @@ async function selectPendingRecoveryRows(
     .from(table)
     .innerJoin(problems, eq(cols.problemId, problems.id))
     .where(where)
-    .orderBy(asc(cols.createdAt))
-    .limit(200));
+    .orderBy(asc(cols.createdAt), asc(cols.id))
+    .limit(RECOVERY_PAGE_SIZE)
+    .offset(offset));
   return rows as PendingRecoveryRow[];
 }
 
@@ -264,14 +285,83 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
+    const runId = row.active_attempt_id ?? row.judge_run_id;
+    let claimed = false;
+
+    // 先抢占短期派发标记：正常生产者在原子入队脚本中写 queued，恢复器写
+    // dispatching。这样可以覆盖“任务已入队、进程死在状态更新前”的窗口，
+    // 也能避免多副本 sweeper 同时重建同一条任务。
+    if (runId) {
+      try {
+        const claim = await claimJudgeTaskDispatch(runId);
+        if (claim.status === "already") {
+          if (claim.marker === "queued") {
+            try {
+              await actions.onAlreadyEnqueued?.(row);
+              metrics.inc("noj_submission_recovery_total", {
+                type: source,
+                result: "already_dispatched",
+              });
+            } catch (err) {
+              // 标记仍在 Redis 中，下一轮可以继续补齐 DB 状态；不能让一条坏行
+              // 中断本轮其余提交的恢复。
+              metrics.inc("noj_submission_recovery_total", {
+                type: source,
+                result: "deferred",
+              });
+              logger.error("已派发评测任务的状态补偿失败，等待下轮", {
+                label: actions.label,
+                [actions.idKey]: row.id,
+                err,
+              });
+            }
+          } else {
+            metrics.inc("noj_submission_recovery_total", {
+              type: source,
+              result: "dispatch_in_progress",
+            });
+          }
+          logger.info("恢复跳过已派发的 {label}", {
+            label: actions.label,
+            [actions.idKey]: row.id,
+            marker: claim.marker,
+          });
+          continue;
+        }
+        claimed = true;
+      } catch (err) {
+        metrics.inc("noj_submission_recovery_total", {
+          type: source,
+          result: "deferred",
+        });
+        logger.error("恢复无法确认评测任务派发标记，等待下轮", {
+          label: actions.label,
+          [actions.idKey]: row.id,
+          err,
+        });
+        continue;
+      }
+    }
+
     let task;
     try {
       task = await rebuildPendingTask(row, source);
     } catch (err) {
+      if (claimed && runId) {
+        await releaseJudgeTaskDispatch(runId).catch(() => {});
+      }
       // 缺失不可变版本/交付物或退役 Provider 是永久失败；基础设施暂时不可达继续等待。
       if (err instanceof AppError && err.statusCode < 500) {
         await actions.onPermanentError(row, err);
+        metrics.inc("noj_submission_recovery_total", {
+          type: source,
+          result: "permanent_error",
+        });
       } else {
+        metrics.inc("noj_submission_recovery_total", {
+          type: source,
+          result: "deferred",
+        });
         logger.error("pending 恢复暂时失败，等待下轮", {
           [actions.idKey]: row.id,
           err,
@@ -284,14 +374,25 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
     try {
       await pushJudgeTask(task);
       await actions.onEnqueued(row);
+      metrics.inc("noj_submission_recovery_total", {
+        type: source,
+        result: "requeued",
+      });
       logger.info("已恢复 pending {label}入队", {
         label: actions.label,
         [actions.idKey]: row.id,
       });
     } catch (err) {
+      if (claimed && runId) {
+        await releaseJudgeTaskDispatch(runId).catch(() => {});
+      }
       if (!isRetryableJudgeQueueError(err)) {
         // 永久错误（消息超限等）：标记 error，避免每轮 sweeper 无限重试。
         await actions.onPermanentError(row, err);
+        metrics.inc("noj_submission_recovery_total", {
+          type: source,
+          result: "permanent_error",
+        });
         logger.error("pending {label}因永久入队失败标记为 error", {
           label: actions.label,
           [actions.idKey]: row.id,
@@ -299,6 +400,10 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
         });
         continue;
       }
+      metrics.inc("noj_submission_recovery_total", {
+        type: source,
+        result: "deferred",
+      });
       logger.error("pending {label}恢复失败（等待下轮重试）", {
         label: actions.label,
         [actions.idKey]: row.id,
@@ -324,6 +429,8 @@ function submissionRecoveryColumns(): PendingRecoveryTableColumns {
     contestId: submissions.contest_id,
     activeAttemptId: submissions.active_attempt_id,
     artifactStorageUrl: submissions.artifact_storage_url,
+    judgeRunId: submissions.judge_run_id,
+    judgeStartedAt: submissions.judge_started_at,
   };
 }
 
@@ -332,10 +439,20 @@ const NO_OPEN_JOB_ITEM_FOR_ACTIVE_ATTEMPT =
   sql`NOT EXISTS (SELECT 1 FROM submission_job_items ji WHERE ji.attempt_id = ${submissions.active_attempt_id} AND ji.status IN ('pending', 'preparing', 'dispatched'))`;
 
 /** 正式提交 pending 恢复的入队/失败收尾动作。 */
-function submissionRecoveryActions(): PendingRecoveryActions<
+function submissionRecoveryActions(
+  expectedStatus: "pending" | "judging" = "pending",
+): PendingRecoveryActions<
   PendingRecoveryRow
 > {
   const db = getDb();
+  const markJudging = async (row: PendingRecoveryRow): Promise<void> => {
+    await db.update(submissions).set({
+      status: "judging",
+      judge_started_at: row.judge_started_at ?? new Date().toISOString(),
+    }).where(
+      and(eq(submissions.id, row.id), eq(submissions.status, expectedStatus)),
+    );
+  };
   return {
     idKey: "submission_id",
     label: "提交",
@@ -346,19 +463,18 @@ function submissionRecoveryActions(): PendingRecoveryActions<
           judge_finished_at: new Date().toISOString(),
         })
         .where(
-          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+          and(
+            eq(submissions.id, row.id),
+            eq(submissions.status, expectedStatus),
+          ),
         );
       logger.error("pending 提交缺少 runtime_config，标记为 error", {
         submission_id: row.id,
       });
     },
-    onEnqueued: async (row) => {
-      await db.update(submissions)
-        .set({ status: "judging" })
-        .where(
-          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
-        );
-    },
+    onEnqueued: markJudging,
+    // judging 对账没有状态需要补齐；任务仍在途时直接跳过，不改写开始时间。
+    onAlreadyEnqueued: expectedStatus === "pending" ? markJudging : undefined,
     onPermanentError: async (row, err) => {
       if (row.active_attempt_id) {
         // applyAttemptResult 在同一事务内登记吊销 outbox，提交后立即尝试执行。
@@ -379,7 +495,10 @@ function submissionRecoveryActions(): PendingRecoveryActions<
           status: "error",
           judge_finished_at: new Date().toISOString(),
         }).where(
-          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+          and(
+            eq(submissions.id, row.id),
+            eq(submissions.status, expectedStatus),
+          ),
         );
       }
     },
@@ -407,6 +526,80 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
     ),
   );
   await recoverPendingRows(rows, submissionRecoveryActions(), "submission");
+}
+
+/**
+ * 恢复已标记为 judging、但活动尝试长期没有完成的提交。
+ *
+ * 正常任务会在主队列或 processing 列表中被 marker 保持住；只有超过一次完整的
+ * Judge processing 超时仍没有 marker 的活动尝试才进入这里，避免把正常长任务重复
+ * 派发。恢复仍使用尝试绑定的版本与快照，不读取题目当前投影。
+ */
+export async function reconcileStaleJudgingSubmissions(
+  now: number,
+): Promise<void> {
+  const cutoff = new Date(now - taskProcessingTimeoutMs()).toISOString();
+  const where = and(
+    eq(submissions.status, "judging"),
+    sql`coalesce(${submissions.judge_started_at}, ${submissions.created_at}) <= ${cutoff}`,
+    sql`EXISTS (
+      SELECT 1
+      FROM ${evaluationAttempts} ea
+      WHERE ea.id = ${submissions.active_attempt_id}
+        AND ea.state IN ('queued', 'judging')
+        AND ea.created_at <= ${cutoff}
+    )`,
+    NO_OPEN_JOB_ITEM_FOR_ACTIVE_ATTEMPT,
+  );
+
+  // 积压时最老的行大多仍有标记；分页扫描并用 MGET 过滤，避免它们占满单页名额
+  // 让较新的真孤儿永远轮不到。
+  const candidates: PendingRecoveryRow[] = [];
+  for (let offset = 0; offset < RECONCILE_SCAN_MAX_ROWS;) {
+    const page = await selectPendingRecoveryRows(
+      submissions,
+      submissionRecoveryColumns(),
+      where,
+      offset,
+    );
+    const marked = await findJudgeTaskMarkers(
+      page.flatMap((row) =>
+        row.active_attempt_id ? [row.active_attempt_id] : []
+      ),
+    );
+    candidates.push(
+      ...page.filter((row) =>
+        row.active_attempt_id && !marked.has(row.active_attempt_id)
+      ),
+    );
+    offset += page.length;
+    if (page.length < RECOVERY_PAGE_SIZE) break;
+    if (offset >= RECONCILE_SCAN_MAX_ROWS) {
+      logger.warn("judging 对账扫描达到单轮上限，剩余行留待下轮", {
+        limit: RECONCILE_SCAN_MAX_ROWS,
+      });
+    }
+  }
+  if (candidates.length === 0) return;
+
+  // 无标记不等于孤儿：标记引入前或旧副本入队的任务仍可能在队列/processing/结果
+  // 队列中。复核列表内容并补写标记，只恢复确实不在途的尝试。
+  const inFlight = await markInFlightJudgeTasks(
+    [
+      ...ALL_JUDGE_QUEUES.flatMap((queue) => [queue, `${queue}:processing`]),
+      RESULT_QUEUE,
+      `${RESULT_QUEUE}:processing`,
+    ],
+    new Set(candidates.map((row) => row.active_attempt_id!)),
+  );
+  const orphans = candidates.filter((row) =>
+    !inFlight.has(row.active_attempt_id!)
+  );
+  await recoverPendingRows(
+    orphans,
+    submissionRecoveryActions("judging"),
+    "submission",
+  );
 }
 
 /**
@@ -483,6 +676,16 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
         .set({
           status: "judging",
           // 恢复时保留原始 judge_started_at；只有原本为空才补当前时间。
+          judge_started_at: row.judge_started_at ?? new Date().toISOString(),
+        })
+        .where(
+          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
+        );
+    },
+    onAlreadyEnqueued: async (row) => {
+      await db.update(selfTests)
+        .set({
+          status: "judging",
           judge_started_at: row.judge_started_at ?? new Date().toISOString(),
         })
         .where(
@@ -633,6 +836,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
       )
     ),
     recoverPendingSubmissions(now),
+    reconcileStaleJudgingSubmissions(now),
     recoverPendingSelfTests(now),
     // 终态吊销 outbox 的持久化补偿：Redis 恢复后把 pending 行推进到 done
     // （复审问题 2：终态已提交但吊销失败时必须最终一致，不依赖进程内重试）。

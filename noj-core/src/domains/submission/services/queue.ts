@@ -19,6 +19,7 @@ import {
   type JudgeQueuePool,
 } from "../../../shared/mq/judge-queues.ts";
 import { getLogger } from "@logtape/logtape";
+import { clearJudgeTaskMarker } from "../mq/task-marker.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { NotFoundError } from "./../../../shared/base/errors.ts";
@@ -355,6 +356,15 @@ export async function getPendingQueuePosition(
   return { position: null, queueLength: 0 };
 }
 
+function parseQueuedRunId(raw: string): string | null {
+  try {
+    const runId = JSON.parse(raw).run_id;
+    return typeof runId === "string" && runId ? runId : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 管理员移除尚未被 worker 领取的评测任务。 */
 export async function removePendingSubmission(id: string): Promise<void> {
   const db = getDb();
@@ -391,6 +401,19 @@ export async function removePendingSubmission(id: string): Promise<void> {
   }
   const removed = await redis.lrem(targetQueue, 1, raw);
   if (removed !== 1) throw new NotFoundError("待处理队列中不存在该提交");
+
+  // 任务已离开队列：清理派发标记，否则 pending 恢复会把它当成“已入队”补成
+  // judging，留下没有任务的提交直到标记 TTL 过期。
+  const runId = parseQueuedRunId(raw);
+  if (runId) {
+    await clearJudgeTaskMarker(runId).catch((err) => {
+      logger.warn("移出队列后清理派发标记失败，等待 TTL", {
+        submission_id: id,
+        run_id: runId,
+        err,
+      });
+    });
+  }
 
   if (submission.status === "judging") {
     await db.update(submissions).set({
