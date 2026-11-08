@@ -4,6 +4,7 @@ import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { communityApiPath } from '~/utils/community-workspace';
 import { extractApiError } from '~/utils/apiError';
 import { formatDateTime } from '~/utils/submissionFormat';
+import { canPublishSolution, needsAcceptedCheck, type SolutionConfig } from '~/utils/solutionEligibility';
 
 const props = defineProps<{ slug: string; problemId: string }>();
 const { user } = useAuth();
@@ -15,17 +16,41 @@ const { data, error, status, refresh } = await useAsyncData(
     query: { type: 'solution', problem_id: props.problemId, limit: 5 }, silent: true,
   }),
 );
+// 发布资格只影响按钮显隐，放到客户端读取，不阻塞题面首屏；失败时按不可发布处理。
+const { data: eligibility } = useAsyncData(
+  () => workspaceCacheKey(props.slug, user.value?.id ?? null, 'problem-solution-eligibility', props.problemId),
+  async () => {
+    if (!user.value) return null;
+    const config = (await api.get<{ data: SolutionConfig }>(communityApiPath(props.slug, 'config'), { silent: true })).data;
+    if (!needsAcceptedCheck(config)) return { config, accepted: null };
+    const result = await api.get<{ data: { accepted: boolean } }>(communityApiPath(props.slug, 'solutions/eligibility'), {
+      query: { problem_id: props.problemId }, silent: true,
+    });
+    return { config, accepted: result.data.accepted };
+  },
+  { server: false, lazy: true },
+);
+const canPublish = computed(() =>
+  canPublishSolution(eligibility.value?.config ?? null, eligibility.value?.accepted ?? null));
+/** 仅因尚未通过而不能发布时提示一次，其它原因（只读、赛时静默等）不在这里解释。 */
+const waitingForAccepted = computed(() => {
+  const value = eligibility.value;
+  return !!value && needsAcceptedCheck(value.config) && value.accepted === false &&
+    canPublishSolution(value.config, true);
+});
 </script>
 
 <template>
   <section id="solutions" class="scroll-mt-24 rounded-xl border border-border bg-bg-panel p-5 sm:p-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-base font-semibold text-text">题解与讨论</h2>
-        <p class="mt-1 text-sm text-text-secondary">查看本题的公开题解，或在通过后分享思路。</p>
+        <h2 class="text-base font-semibold text-text">题解</h2>
+        <p class="mt-1 text-sm text-text-secondary">
+          查看本题的公开题解<template v-if="waitingForAccepted">；<span class="text-warning-text">通过本题后可发布题解</span></template>。
+        </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <UButton v-if="user" :to="{ ...listTo, query: { ...listTo.query, compose: '1' } }" icon="i-lucide-book-open" size="sm">发布题解</UButton>
+        <UButton v-if="canPublish" :to="{ ...listTo, query: { ...listTo.query, compose: '1' } }" icon="i-lucide-book-open" size="sm">发布题解</UButton>
         <UButton :to="listTo" variant="outline" size="sm">查看全部</UButton>
       </div>
     </div>

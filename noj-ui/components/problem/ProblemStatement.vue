@@ -3,9 +3,11 @@
  * 题面展示组件（#511）。
  *
  * 同时服务两种形态：
- * - 独立题目页：`editable` + `editor-to`，工具条含「在编辑器打开」与「编辑」；
- * - 竞赛做题页：`editor-to` 为 null（受 `canUseEditor`/报名状态门控），
- *   仅保留复制/展开收起，避免出现越权的编辑器入口。
+ * - 独立题目页：工具条含复制、收起与「编辑」；
+ * - 竞赛做题页：仅保留复制与收起。
+ * 编辑器入口由调用方放在题目抬头，题面工具条不再重复提供（#685）。
+ * 折叠时只在正文底部给「展开完整题面」，工具条只在展开后提供「收起」，避免两个
+ * 「展开」并存。
  *
  * 展开/收起状态由调用方通过 `v-model:expanded` 持有，组件本身不保存状态。
  */
@@ -16,12 +18,6 @@ const props = withDefaults(defineProps<{
   title?: string
   /** 锚点 id，便于页内「题面」链接定位。 */
   anchor?: string
-  /** 「在编辑器打开」目标；null 时不渲染该入口。 */
-  editorTo?: import('vue-router').RouteLocationRaw | null
-  /** 「在编辑器打开」入口文案（提示词题改为「编写提示词」）。 */
-  editorLabel?: string
-  /** 「在编辑器打开」入口图标。 */
-  editorIcon?: string
   /** 「编辑」目标；null 时不渲染该入口。 */
   editTo?: string | null
   /** 是否可展开/收起（题面过短时隐藏该按钮）。 */
@@ -31,9 +27,6 @@ const props = withDefaults(defineProps<{
 }>(), {
   title: '题面',
   anchor: 'statement',
-  editorTo: null,
-  editorLabel: '在编辑器打开',
-  editorIcon: 'i-lucide-code-2',
   editTo: null,
   collapsible: true,
   copyable: true,
@@ -65,23 +58,15 @@ function copyStatement() {
           复制题面
         </button>
         <button
-          v-if="collapsible"
+          v-if="collapsible && expanded"
           type="button"
           class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
           :aria-expanded="expanded"
-          @click="expanded = !expanded"
+          @click="expanded = false"
         >
-          <UIcon :name="expanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3.5" />
-          {{ expanded ? '收起' : '展开' }}
+          <UIcon name="i-lucide-chevron-up" class="size-3.5" />
+          收起
         </button>
-        <NuxtLink
-          v-if="editorTo"
-          :to="editorTo"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary no-underline transition-colors hover:border-primary/40 hover:text-primary"
-        >
-          <UIcon :name="editorIcon" class="size-3.5" />
-          {{ editorLabel }}
-        </NuxtLink>
         <NuxtLink
           v-if="editTo"
           :to="editTo"
