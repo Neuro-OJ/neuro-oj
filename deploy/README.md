@@ -18,10 +18,9 @@
 | `X-Frame-Options` | 基础头 | 基础头 | 统一输出 | 可复用 |
 | `Referrer-Policy` / `Permissions-Policy` | 基础头 | 基础头 | 统一输出 | 可复用 |
 | 强制 `Content-Security-Policy` | — | 页面直连输出 | 统一输出 | 可复用 |
-| `Content-Security-Policy-Report-Only` | — | 页面直连输出 | 统一输出 | 可复用 |
 | `Strict-Transport-Security` | 不设置 | 不设置 | 不设置 | **仅此处设置** |
 
-应用会在直连部署中提供基础头和页面 CSP；经本配置的容器 Nginx 转发时会隐藏上游同名头，再由 Nginx 输出一份，避免重复 CSP 被浏览器合并。强制 CSP 保留现有兼容策略，Report-Only 使用更窄策略并上报到同源 `/api/csp-report`。报告端点仅接受小体积 JSON，不存储报告内容。
+应用会在直连部署中提供基础头和页面 CSP；经本配置的容器 Nginx 转发时会隐藏上游同名头，再由 Nginx 输出一份，避免重复 CSP 被浏览器合并。强制 CSP 保留现有兼容策略；Report-Only 策略及其报告端点已移除（报告收下即丢，无消费方）。
 
 HSTS 必须由真正终止 TLS 的外部边缘设置，且仅对 HTTPS 响应发送。例如宿主机 Nginx 的 HTTPS `server` 块可使用：
 
