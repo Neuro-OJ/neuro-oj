@@ -164,7 +164,7 @@ e2eTest("[e2e/self-test] 自测后正式提交历史不变化", async () => {
 
 e2eTest("[e2e/self-test] 队列概览展示自测条目", async () => {
   if (!isE2E) return;
-  const res = await apiGet("/api/v1/queue", token);
+  const res = await apiGet("/api/v1/instance/queue", token);
   if (res.status !== 200) {
     throw new Error(`获取队列失败: ${res.status}`);
   }

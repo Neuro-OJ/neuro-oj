@@ -42,7 +42,6 @@ import { domainSearchRouter } from "../read-models/search/routes/search.ts";
 import { domainLlmRouter } from "../platform/gateway/routes/domain-llm.ts";
 import { educationRouter } from "../education/routes/index.ts";
 import { instanceAccessMiddleware } from "../access/workspace/middleware/instance-access.ts";
-import submissionSse from "../evaluations/routes/sse.ts";
 import { AppError } from "../../shared/base/errors.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -249,7 +248,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   });
 
   // SSE 的认证限定在事件路径，避免影响其他公开入口。
-  app.route("/api/v1", submissionSse);
   app.route("/api/v1", accountNotificationRouter);
 
   return app;

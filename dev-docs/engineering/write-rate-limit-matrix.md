@@ -9,8 +9,9 @@
 - **通用中间件限流**：`noj-core/src/domains/system/middleware/rate-limit.ts`，进程内最小间隔限流（多实例各自计数）。
 - **Hardening
   限流（推荐）**：`noj-core/src/modules/platform/system/services/hardening-rate-limit.ts`，Redis
-  固定窗口，适合高价值/批量写操作。Redis 不可用时默认 fail-closed（503）；社区互动、签到、
-  教学写操作与创建题目显式传 `"allow"` 放行并记告警（见下文「Redis 故障策略」）。
+  固定窗口，适合高价值/批量写操作。Redis 不可用时默认
+  fail-closed（503）；社区互动、签到、 教学写操作与创建题目显式传 `"allow"`
+  放行并记告警（见下文「Redis 故障策略」）。
 - **服务层频率限制**：部分业务（社区发帖）在服务层按配置间隔限流，见
   `community-post-crud.ts`。
 
@@ -24,10 +25,10 @@
 | 重置密码                                   | `POST /auth/reset-password`                                                                | hardening IP + email                                          | 同上                                                            |
 | 修改密码                                   | `POST /auth/change-password`                                                               | 账号限流（loginThrottle）                                     | 独立命名空间                                                    |
 | TFA 确认/禁用                              | `POST /auth/tfa/*`                                                                         | 账号限流（loginThrottle）                                     | TFA_NAMESPACE                                                   |
-| 代码提交                                   | `POST /submissions`                                                                        | hardening IP+user                                             | IP 60s/7200；user 60s/120                                        |
-| 自测                                       | `POST /problems/:id/self-test`                                                             | hardening IP+user                                             | IP 60s/240；user 60s/4                                          |
-| 竞赛提交                                   | `POST /contests/:id/submit`                                                                | hardening IP+user                                             | IP 60s/7200；user 60s/120                                        |
-| 客观题提交                                 | `POST /problems/:id/submit`（objective）                                                   | hardening IP+user                                             | IP 60s/3600；user 60s/60                                         |
+| 代码提交                                   | `POST /submissions`                                                                        | hardening IP+user                                             | IP 60s/7200；user 60s/120                                       |
+| 自测                                       | `POST /domains/:slug/problems/:reference/self-tests`                                       | hardening IP+user                                             | IP 60s/240；user 60s/4                                          |
+| 竞赛提交                                   | `POST /contests/:id/submit`                                                                | hardening IP+user                                             | IP 60s/7200；user 60s/120                                       |
+| 客观题提交                                 | `POST /problems/:id/submit`（objective）                                                   | hardening IP+user                                             | IP 60s/3600；user 60s/60                                        |
 | 创建题目                                   | `POST /problems`                                                                           | hardening IP+user                                             | 60s/30                                                          |
 | 题目导入                                   | `POST /problems/import-bundle`                                                             | hardening IP+user                                             | 60s/10                                                          |
 | 举报                                       | `POST /reports`                                                                            | hardening user                                                | 60s/30                                                          |
@@ -38,21 +39,23 @@
 
 ## IP 维度与机房 NAT
 
-代码提交、竞赛提交、客观题提交与自测的 IP 阈值为「用户阈值 × `SHARED_IP_SEATS`（60）」。
-学校机房通常整间共用一个出口 IP，IP 维度只拦截明显的脚本刷量，单人上限由用户维度负责
-（#698 P0-1）。新增面向考生的写端点时沿用同一口径，不要让 IP 阈值等于用户阈值。
+代码提交、竞赛提交、客观题提交与自测的 IP 阈值为「用户阈值 ×
+`SHARED_IP_SEATS`（60）」。 学校机房通常整间共用一个出口 IP，IP
+维度只拦截明显的脚本刷量，单人上限由用户维度负责 （#698
+P0-1）。新增面向考生的写端点时沿用同一口径，不要让 IP 阈值等于用户阈值。
 
 ## Redis 故障策略
 
-`enforceRateLimit(key, cfg, message, onUnavailable)` 的 `onUnavailable` 默认 `"reject"`：
+`enforceRateLimit(key, cfg, message, onUnavailable)` 的 `onUnavailable` 默认
+`"reject"`：
 
-| 策略 | 适用端点 |
-| --- | --- |
-| `reject`（503） | 注册、找回/重置密码、验证邮件、邮件投递回执、代码/竞赛/客观题提交、自测、升级任务、题目导入 |
-| `allow`（放行并记 warn） | 举报、每日签到、教学写窗口、创建题目 |
+| 策略                     | 适用端点                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `reject`（503）          | 注册、找回/重置密码、验证邮件、邮件投递回执、代码/竞赛/客观题提交、自测、升级任务、题目导入 |
+| `allow`（放行并记 warn） | 举报、每日签到、教学写窗口、创建题目                                                        |
 
-判断标准：被绕过时是否会产生评测算力、邮件、存储或垃圾内容等实际代价。有代价用 `reject`，
-否则用 `allow`，避免 Redis 抖动时整站写入一起不可用（#698 P0-2）。
+判断标准：被绕过时是否会产生评测算力、邮件、存储或垃圾内容等实际代价。有代价用
+`reject`， 否则用 `allow`，避免 Redis 抖动时整站写入一起不可用（#698 P0-2）。
 
 ## 已知未覆盖/可接受
 
@@ -72,55 +75,61 @@
     （用户主页改调 `/domains/:slug/trainings?created_by=`），故其豁免条目已移除。
 - **内部维护/排空端点**（`system/routes/internal-drain.ts` 的 enter/exit）：只接受内部服务
   凭据（`NOJ_INTERNAL_SERVICE_TOKEN`，常量时间比较），由容器内
-  `/app/bin/noj maintain` 与 noj-cli 自动排空调用，不对浏览器或匿名开放；对其做用户向限流会
-  破坏 `wait` 轮询语义，故显式豁免（见 `scripts/check-write-rate-limits.ts` 的 ALLOWLIST）。
-- **域管理级写操作**（域社区治理 `/manage/*`、域 LLM 配置、域题库资源管理）：都要求域管理员级
-  权限（`community:moderate` / `llm:manage` / `problem:create` / `problem:policy`）并写域审计，
+  `/app/bin/noj maintain` 与 noj-cli
+  自动排空调用，不对浏览器或匿名开放；对其做用户向限流会 破坏 `wait`
+  轮询语义，故显式豁免（见 `scripts/check-write-rate-limits.ts` 的 ALLOWLIST）。
+- **域管理级写操作**（域社区治理 `/manage/*`、域 LLM
+  配置、域题库资源管理）：都要求域管理员级 权限（`community:moderate` /
+  `llm:manage` / `problem:create` / `problem:policy`）并写域审计，
   沿用管理豁免；逐文件依据登记在 ALLOWLIST。
   - `POST /domains/:slug/community/reports` 由父路由 `domain-community.ts` 的
     `enforceReportRateLimit` 覆盖（60s/30），不是无限制端点。
-- **仍待偿还的欠债（`pending`，保持可见）**：无。此前登记的两条已于 2026-10-31 补齐
-  （见下节），`check-write-rate-limits` 现在的输出是"待偿还欠债 0 个"。
+- **仍待偿还的欠债（`pending`，保持可见）**：无。此前登记的两条已于 2026-10-31
+  补齐 （见下节），`check-write-rate-limits` 现在的输出是"待偿还欠债 0 个"。
 
 ## 2026-10-31 偿还的两条欠债
 
-这两条是门禁此前唯一暴露出来、却一直挂着的 `pending`：都是真写端点，只是理由当时没写清。
+这两条是门禁此前唯一暴露出来、却一直挂着的
+`pending`：都是真写端点，只是理由当时没写清。
 
-| 操作 | 路由 | 限流方式 | 阈值 | 为什么是这个维度 |
-| --- | --- | --- | --- | --- |
-| 每日签到 | `POST /api/v1/checkin` | `enforceCheckinRateLimit(userId)` | 60s/10（账号） | 按天幂等**不等于**可以无限调用：重复请求仍会开事务写 `check_ins` 并重算连续天数。只按账号计数、**不按 IP**——机房/校园 NAT 下同班学生共用出口 IP，IP 窗口会让他们互相顶掉签到 |
-| 邮件投递回执 | `POST /api/v1/email-events/:provider` | `enforceEmailDeliveryEventRateLimit(c)` | 60s/120（来源 IP） | 该端点对公网开放（厂商回调），签名校验是第一道门；限流挡的是伪造/重放的高频请求在验签前后白白消耗连接与 DB。窗口放到 120 是因为厂商会批量追送回执 |
+| 操作         | 路由                                  | 限流方式                                | 阈值               | 为什么是这个维度                                                                                                                                                             |
+| ------------ | ------------------------------------- | --------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 每日签到     | `POST /api/v1/checkin`                | `enforceCheckinRateLimit(userId)`       | 60s/10（账号）     | 按天幂等**不等于**可以无限调用：重复请求仍会开事务写 `check_ins` 并重算连续天数。只按账号计数、**不按 IP**——机房/校园 NAT 下同班学生共用出口 IP，IP 窗口会让他们互相顶掉签到 |
+| 邮件投递回执 | `POST /api/v1/email-events/:provider` | `enforceEmailDeliveryEventRateLimit(c)` | 60s/120（来源 IP） | 该端点对公网开放（厂商回调），签名校验是第一道门；限流挡的是伪造/重放的高频请求在验签前后白白消耗连接与 DB。窗口放到 120 是因为厂商会批量追送回执                            |
 
 两条都补了 HTTP 层回归：预置窗口计数到上限前一次，断言"最后一次放行 + 超额 429 +
-带 `Retry-After`"，并断言被拒的请求**没有业务副作用**（签到不写 `check_ins`、回执不进入
+带 `Retry-After`"，并断言被拒的请求**没有业务副作用**（签到不写
+`check_ins`、回执不进入
 验签）。签名校验与限流的顺序明确写死：**限流不替代验签**。
 
 ## 2026-10-31 补齐的域内写端点
 
-`educationWriteRateLimit`（`education/routes/write-rate-limit.ts`）此前只装在 `assignments.ts`。
-下列 6 条写路由**完全没有限流**，而门禁也没发现——原因是门禁的写路由正则不认局部常量/模板
+`educationWriteRateLimit`（`education/routes/write-rate-limit.ts`）此前只装在
+`assignments.ts`。 下列 6
+条写路由**完全没有限流**，而门禁也没发现——原因是门禁的写路由正则不认局部常量/模板
 路径写法（见下节），这两个文件根本没进入检查。现已装上限流并补回归断言：
 
-| 操作 | 路由 | 限流方式 | 阈值 |
-| --- | --- | --- | --- |
-| 学生入班申请 | `POST /domains/:slug/classrooms/:id/join` | `educationWriteRateLimit` | 60s/120（域 slug + user） |
-| 入班申请审阅 | `POST .../join-requests/:requestId/review` | `educationWriteRateLimit` | 60s/120 |
-| 班级名单导入预览 | `POST .../imports/preview` | `educationWriteRateLimit` | 60s/120 |
-| 班级名单导入执行 | `POST .../imports/execute` | `educationWriteRateLimit` | 60s/120 |
-| 提交批注创建 | `POST .../submissions/submission/:submissionId/annotations` | `educationWriteRateLimit` | 60s/120 |
-| 提交批注更新 | `PATCH .../annotations/:annotationId` | `educationWriteRateLimit` | 60s/120 |
+| 操作             | 路由                                                        | 限流方式                  | 阈值                      |
+| ---------------- | ----------------------------------------------------------- | ------------------------- | ------------------------- |
+| 学生入班申请     | `POST /domains/:slug/classrooms/:id/join`                   | `educationWriteRateLimit` | 60s/120（域 slug + user） |
+| 入班申请审阅     | `POST .../join-requests/:requestId/review`                  | `educationWriteRateLimit` | 60s/120                   |
+| 班级名单导入预览 | `POST .../imports/preview`                                  | `educationWriteRateLimit` | 60s/120                   |
+| 班级名单导入执行 | `POST .../imports/execute`                                  | `educationWriteRateLimit` | 60s/120                   |
+| 提交批注创建     | `POST .../submissions/submission/:submissionId/annotations` | `educationWriteRateLimit` | 60s/120                   |
+| 提交批注更新     | `PATCH .../annotations/:annotationId`                       | `educationWriteRateLimit` | 60s/120                   |
 
 比赛侧另有两处，此前已在矩阵外被漏记：
 
-| 操作 | 路由 | 限流方式 | 阈值 |
-| --- | --- | --- | --- |
-| 比赛报名 | `POST /contests/:id/register`、`POST /domains/:slug/contests/:id/register` | `enforceContestRegisterRateLimit` | 见 `CONTEST_REGISTER_*` 配置 |
-| 竞赛答疑提问 | `POST /contests/:id/clarifications`、`POST /domains/:slug/contests/:id/clarifications` | 服务层 `checkRateLimit` | 60s/5（比赛 + 用户） |
+| 操作         | 路由                                                                                   | 限流方式                          | 阈值                         |
+| ------------ | -------------------------------------------------------------------------------------- | --------------------------------- | ---------------------------- |
+| 比赛报名     | `POST /contests/:id/register`、`POST /domains/:slug/contests/:id/register`             | `enforceContestRegisterRateLimit` | 见 `CONTEST_REGISTER_*` 配置 |
+| 竞赛答疑提问 | `POST /contests/:id/clarifications`、`POST /domains/:slug/contests/:id/clarifications` | 服务层 `checkRateLimit`           | 60s/5（比赛 + 用户）         |
 
 ## 门禁口径与已知盲区（2026-10-31）
 
-`scripts/check-write-rate-limits.ts` 是**文件级**判定：文件内出现任一限流证据即视为已覆盖。
-这个粒度是有意为之（逐 handler 解析容易误判），但它此前还有一个更严重的问题——**路径解析**：
+`scripts/check-write-rate-limits.ts`
+是**文件级**判定：文件内出现任一限流证据即视为已覆盖。 这个粒度是有意为之（逐
+handler 解析容易误判），但它此前还有一个更严重的问题——**路径解析**：
 
 ```ts
 const path = "/domains/:slug/contests";
@@ -128,10 +137,12 @@ router.post(path, ...);
 router.patch(`${path}/:id`, ...);
 ```
 
-正则只认字符串字面量路径，于是 `domain-contests.ts` 的 8 条写路由（含"创建比赛""批量加参赛
+正则只认字符串字面量路径，于是 `domain-contests.ts` 的 8
+条写路由（含"创建比赛""批量加参赛
 者""发布正式成绩"）**一条都没被解析**，文件因"没有写路由"直接跳过判定——不是判定太粗，是根本
-没进入检查。修正后写路由总数从 171 条升到 237 条；新暴露的 5 个文件已逐条处置（2 个补限流、
-3 个登记管理豁免），并补了「域比赛 8 条写路由必须全部被发现」的回归断言。
+没进入检查。修正后写路由总数从 171 条升到 237 条；新暴露的 5 个文件已逐条处置（2
+个补限流、 3 个登记管理豁免），并补了「域比赛 8
+条写路由必须全部被发现」的回归断言。
 
 文件级判定仍然成立：同一文件里"有一条限流"不代表每条都限流，因此**新增写端点时必须同时更新
 本矩阵**；门禁只负责拦住"整个文件没考虑限流"这一类漂移。
@@ -150,20 +161,21 @@ router.patch(`${path}/:id`, ...);
 
 登录、改密（`pwchange`）与 TFA 管理（`tfa`）的失败计数、锁定及既有内存退避，
 从单独账号调整为“账号标识 + 客户端 IP”。客户端 IP 统一取 `getClientIp(c)`，
-沿用可信代理解析。用户名/邮箱登录仍解析为用户 ID；已认证的改密/TFA 直接使用用户 ID。
-标识先小写归一化并进行 URI 编码（额外编码 `*`），Redis 键为
+沿用可信代理解析。用户名/邮箱登录仍解析为用户 ID；已认证的改密/TFA 直接使用用户
+ID。 标识先小写归一化并进行 URI 编码（额外编码 `*`），Redis 键为
 `<ns>fail:<user>:<ip>` / `<ns>lock:<user>:<ip>`，内存键为 `<ns>::<user>::<ip>`。
-同一 IP 的失败不会锁住其他 IP；认证成功仅清理当前命名空间下当前账号 + IP 的记录。
+同一 IP 的失败不会锁住其他 IP；认证成功仅清理当前命名空间下当前账号 + IP
+的记录。
 
 用户名在排行榜、个人主页公开，账号级长时间锁定可被恶意输错密码滥用为拒绝服务。
 新粒度把锁定范围限制到发起失败的客户端 IP，避免比赛期间受害者被他人锁在门外。
-默认阈值、失败计数 TTL、锁定时间、退避系数与配置名均保持不变。
-独立的 IP 窗口（30s/10 次）和账号窗口（30s/5 次）逻辑保持不变，
-账号窗口继续跨 IP 聚合，承担分布式撞库防护。
+默认阈值、失败计数 TTL、锁定时间、退避系数与配置名均保持不变。 独立的 IP
+窗口（30s/10 次）和账号窗口（30s/5 次）逻辑保持不变， 账号窗口继续跨 IP
+聚合，承担分布式撞库防护。
 
-`POST /api/v1/admin/identity/users/:id/unlock-login` 仅管理员可调用：通过 SCAN 分页
-清除该用户所有 IP、所有命名空间的失败/锁定键，覆盖 ID、用户名和旧 TFA 解析标识，
-并清理当前进程既有内存退避，记录 `users.unlock_login` 审计。
+`POST /api/v1/admin/identity/users/:id/unlock-login` 仅管理员可调用：通过 SCAN
+分页 清除该用户所有 IP、所有命名空间的失败/锁定键，覆盖 ID、用户名和旧 TFA
+解析标识， 并清理当前进程既有内存退避，记录 `users.unlock_login` 审计。
 该操作不清理窗口限流，不新增进程内状态；Redis 不可用时返回 503。
 多副本中其他进程的内存退避仍按原期限到期；已进入等待的请求继续原有等待。
 部署前的无 IP 旧键不再读取，按原 TTL 自然过期，不需要数据库迁移。

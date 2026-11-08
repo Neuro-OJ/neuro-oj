@@ -69,7 +69,6 @@ export {
   cancelSelfTest,
   createSelfTest,
   getSelfTest,
-  listMySelfTests,
   saveSelfTestResult,
 } from "./services/self-tests.ts";
 export type { DomainExecutionRequest } from "./services/workspace-execution.ts";
@@ -290,14 +289,8 @@ export type {
   SelfTestInput,
   SelfTestResponse,
   SelfTestStatus,
-  SelfTestSummary,
 } from "./types/self-tests.ts";
-export {
-  SELF_TEST_ID_PREFIX,
-  SELF_TEST_LIST_DEFAULT_LIMIT,
-  SELF_TEST_LIST_MAX_LIMIT,
-  SELF_TEST_STATUSES,
-} from "./types/self-tests.ts";
+export { SELF_TEST_ID_PREFIX, SELF_TEST_STATUSES } from "./types/self-tests.ts";
 
 export type {
   EvaluationAdmissionContext,

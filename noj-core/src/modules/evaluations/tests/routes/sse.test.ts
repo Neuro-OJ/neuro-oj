@@ -30,9 +30,12 @@ await initRedisForTest();
 Deno.test({
   name: "sse: GET /submissions/:id/events 未认证 401",
   fn: async () => {
-    const res = await app.request("/api/v1/submissions/invalid-id/events", {
-      signal: AbortSignal.timeout(200),
-    });
+    const res = await app.request(
+      "/api/v1/domains/main/submissions/invalid-id/events",
+      {
+        signal: AbortSignal.timeout(200),
+      },
+    );
     // 未认证应返回 401，不会创建 SSE 流
     assertEquals(res.status, 401);
   },
@@ -42,7 +45,7 @@ Deno.test({
   name: "sse: GET /submissions/:id/events 无效 id 非 401",
   fn: async () => {
     const res = await app.request(
-      "/api/v1/submissions/nonexistent/events",
+      "/api/v1/domains/main/submissions/nonexistent/events",
       {
         headers: {
           Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.dGVzdA.test",
@@ -50,7 +53,7 @@ Deno.test({
         signal: AbortSignal.timeout(200),
       },
     );
-    // 带 token 但 id 不存在 → 应由 getSubmission 返回 404
+    // 带 token 但 id 不存在 → 应由域内详情读取返回 404（身份校验失败时也可能是 401）
     // 注意：实际行为取决于 authMiddleware 是否验证通过
     // 此处只验证不会返回 500
     if (res.status >= 500) {
@@ -119,7 +122,7 @@ Deno.test({
       // 而不是依赖旧的 role 字段。
       const token = await signToken({ sub: adminId, role: "user" });
       const res = await app.request(
-        `/api/v1/submissions/${submissionId}/events`,
+        `/api/v1/domains/main/submissions/${submissionId}/events`,
         {
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(500),
@@ -140,7 +143,7 @@ Deno.test({
 Deno.test({
   name: "sse: GET /queue/events 未认证 401",
   fn: async () => {
-    const res = await app.request("/api/v1/queue/events", {
+    const res = await app.request("/api/v1/domains/main/queue/events", {
       signal: AbortSignal.timeout(200),
     });
     assertEquals(res.status, 401);
@@ -178,7 +181,6 @@ Deno.test({
     const token = await signToken({ sub: adminId, role: "admin" });
     for (
       const [path, channel] of [
-        ["/queue/events", domainChannel],
         ["/domains/main/queue/events", domainChannel],
         ["/instance/queue/events", INSTANCE_QUEUE_CHANNEL],
       ]

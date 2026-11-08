@@ -31,7 +31,6 @@
 | DELETE | `/settings/:key` | noj-core/src/modules/http/admin/routes/system.ts |
 | DELETE | `/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
 | DELETE | `/users/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
-| GET | `/` | noj-core/src/modules/evaluations/routes/queue.ts |
 | GET | `/` | noj-core/src/modules/evaluations/routes/submissions.ts |
 | GET | `/` | noj-core/src/modules/http/admin/routes/background-tasks.ts |
 | GET | `/` | noj-core/src/modules/platform/system/routes/announcements.ts |
@@ -188,7 +187,6 @@
 | GET | `/me` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/me` | noj-core/src/modules/read-models/queries/routes/rankings.ts |
 | GET | `/me/data-export` | noj-core/src/modules/access/identity/routes/users.ts |
-| GET | `/me/submissions` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/me/submissions/:kind/:id` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/me/submissions/submission/:id/artifact` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/oauth/:provider` | noj-core/src/modules/access/identity/routes/auth.ts |
@@ -201,15 +199,12 @@
 | GET | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/posts/counts` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/modules/http/admin/routes/catalog.ts |
-| GET | `/problems/:id/self-tests` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | GET | `/public/recent` | noj-core/src/modules/evaluations/routes/submissions.ts |
-| GET | `/queue/events` | noj-core/src/modules/evaluations/routes/sse.ts |
 | GET | `/queue/health` | noj-core/src/modules/http/admin/routes/submission.ts |
 | GET | `/register-status` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/reports` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/reports/:reportId` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/sanctions` | noj-core/src/modules/http/admin/routes/community.ts |
-| GET | `/self-tests/:id` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | GET | `/settings` | noj-core/src/modules/http/admin/routes/system.ts |
 | GET | `/settings/email/status` | noj-core/src/modules/http/admin/routes/system.ts |
 | GET | `/solutions/eligibility` | noj-core/src/modules/communication/community/routes/community.ts |
@@ -220,7 +215,6 @@
 | GET | `/submissions` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
 | GET | `/submissions/:id` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/submissions/:id/events` | noj-core/src/modules/evaluations/routes/sse.ts |
 | GET | `/submissions/stats/events` | noj-core/src/modules/read-models/queries/routes/sse.ts |
 | GET | `/today` | noj-core/src/modules/access/identity/routes/checkin.ts |
 | GET | `/today-stats` | noj-core/src/modules/evaluations/routes/submissions.ts |
@@ -337,7 +331,6 @@
 | POST | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/preset/:preset` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/problems/:id/rejudge` | noj-core/src/modules/http/admin/routes/submission.ts |
-| POST | `/problems/:id/self-test` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | POST | `/register` | noj-core/src/modules/access/identity/routes/auth.ts |
 | POST | `/reports` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/reports/:reportId/:status` | noj-core/src/modules/http/admin/routes/community.ts |

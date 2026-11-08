@@ -114,9 +114,7 @@ describe('本人原提交与成绩摘要', () => {
   it('统一本人 API 请求不注入目标账号或偏好 Domain', async () => {
     const get = vi.fn();
     vi.stubGlobal('useApi', () => ({ api: { get } }));
-    await useOwnSubmissions().list(2);
     await useOwnSubmissions().detail('objective', 'answer-one');
-    expect(get).toHaveBeenCalledWith('/api/v1/me/submissions', { query: { page: 2, per_page: 30 }, silent: true });
     expect(get).toHaveBeenCalledWith('/api/v1/me/submissions/objective/answer-one', { silent: true });
   });
   it('域客观历史按使用域和题目过滤，不假定全账号分页DTO', async () => {

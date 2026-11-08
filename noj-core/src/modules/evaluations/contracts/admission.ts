@@ -2,7 +2,7 @@
  * evaluations 受理事务内的最终授权复核。
  *
  * 受理链路分成两段：
- * 1. **锁外组合**（`application/evaluations.ts::composeEvaluationAdmissionContext`）：
+ * 1. **锁外组合**（`application/evaluations.ts::composeDomainEvaluationAdmissionPlan`）：
  *    解析题目、绑定、作答版本、竞赛/作业来源与策略 revision，产出一个不可变快照；
  * 2. **锁内复核**（本文件）：在真正写入的事务里重新取得域 → 题目 → 绑定锁，重读
  *    当前事实，确认快照仍然成立。

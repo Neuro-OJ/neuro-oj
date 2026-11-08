@@ -22,8 +22,7 @@ useSeoMeta({ title: '本人提交历史详情' });
 </script>
 <template>
   <div class="mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-6">
-    <div class="flex items-center justify-between gap-3">
-      <UButton to="/my/submissions" variant="ghost" icon="i-lucide-arrow-left">我的提交历史</UButton>
+    <div class="flex items-center justify-end gap-3">
       <UButton variant="outline" @click="refresh()">刷新结果</UButton>
     </div>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"

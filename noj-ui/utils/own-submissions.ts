@@ -43,10 +43,6 @@ export function ownHistoryProblemLink(entry: OwnSubmissionHistory) {
     ? workspaceProblemPath(entry.domain.slug, entry.reference.display_ref)
     : undefined;
 }
-/** 统一账号历史页面不依赖当前域，两个提交类型保留各自身份。 */
-export function ownHistoryDetailLink(entry: Pick<OwnSubmissionHistory, 'kind' | 'id'>) {
-  return `/my/submissions/${entry.kind}/${encodeURIComponent(entry.id)}`;
-}
 /** 原回答是用户选择，不将判断题布尔值显示成评测正确性。 */
 export function originalAnswerText(answer: unknown): string {
   if (Array.isArray(answer)) return answer.map(originalAnswerText).join('、') || '未作答';

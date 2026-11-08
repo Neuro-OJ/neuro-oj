@@ -175,7 +175,7 @@ e2eTest(
       );
     }
     // 审计 VULN-10：仅剔除 user_id 不足以阻断监听链——保留 submission_id 时，
-    // 参赛者可用它订阅 /api/v1/submissions/:id/events 实时监听他人评测完成。
+    // 参赛者可用它订阅 /api/v1/domains/:slug/submissions/:id/events 实时监听他人评测完成。
     // 故非管理员的事件帧同样不得包含 submission_id。
     if (submissionData.includes('"submission_id"')) {
       throw new Error(

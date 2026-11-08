@@ -6,7 +6,7 @@ import { publishQueueChange } from "./queue.ts";
  * 不参与统计/榜单/AC 活动。
  */
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems, selfTests } from "../../../shared/db/schema.ts";
 import {
@@ -15,7 +15,6 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { consumeDomainSubmissionQuota } from "../../access/contracts/cross-module/workspace_services_submission-limit.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
@@ -73,13 +72,10 @@ import {
 } from "../../problems/types/runtime-config.ts";
 import {
   SELF_TEST_ID_PREFIX,
-  SELF_TEST_LIST_DEFAULT_LIMIT,
-  SELF_TEST_LIST_MAX_LIMIT,
   type SelfTestDetail,
   type SelfTestInput,
   type SelfTestResponse,
   type SelfTestStatus,
-  type SelfTestSummary,
 } from "../types/self-tests.ts";
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
@@ -440,58 +436,6 @@ export async function createSelfTest(
 }
 
 /**
- * 列出当前用户在某题下的自测（按创建时间倒序）。
- *
- * 只返回本人记录；访问口径与创建自测一致——无权访问的题目一律 404
- * （被公开赛保密的题目同样 404，避免成为存在性预言机）。
- * 列表不含代码与输出，界面参数/代码由前端按需调用 `getSelfTest` 获取。
- */
-export async function listMySelfTests(
-  userId: string,
-  problemId: string,
-  limit = SELF_TEST_LIST_DEFAULT_LIMIT,
-  isAdmin = false,
-): Promise<SelfTestSummary[]> {
-  const db = getDb();
-  const [problem] = await db
-    .select()
-    .from(problems)
-    .where(eq(problems.id, problemId))
-    .limit(1);
-  if (!problem) {
-    throw new NotFoundError("题目不存在");
-  }
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-  });
-  if (!access.allowed) {
-    throw new NotFoundError("题目不存在");
-  }
-
-  const safeLimit = Math.min(
-    Math.max(Math.trunc(limit) || SELF_TEST_LIST_DEFAULT_LIMIT, 1),
-    SELF_TEST_LIST_MAX_LIMIT,
-  );
-  const rows = await db
-    .select({
-      id: selfTests.id,
-      language: selfTests.language,
-      status: selfTests.status,
-      result_status: selfTests.result_status,
-      score: selfTests.score,
-      created_at: selfTests.created_at,
-    })
-    .from(selfTests)
-    .where(
-      and(eq(selfTests.user_id, userId), eq(selfTests.problem_id, problemId)),
-    )
-    .orderBy(desc(selfTests.created_at))
-    .limit(safeLimit);
-  return rows.map((r) => ({ ...r, status: r.status as SelfTestStatus }));
-}
-
-/**
  * 根据 ID 查询自测详情。
  *
  * 权限：仅 owner 或 admin 可见；非 owner/admin 返回 404（不暴露自测存在）。
@@ -514,19 +458,17 @@ export async function getSelfTest(
   }
 
   const row = rows[0];
-  if (
-    domainAccess
-      ? row.domain_id !== domainAccess.domainId
-      : row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID
-  ) {
+  // 自测只经使用域入口读取；无域上下文时不能再回落到默认域。
+  if (!domainAccess) {
+    throw new NotFoundError("自测不存在");
+  }
+  if (row.domain_id !== domainAccess.domainId) {
     throw new NotFoundError("默认域不存在此自测");
   }
 
   // 权限：owner 或 admin 可读
   const isOwner = !!c.var.userId && row.user_id === c.var.userId;
-  const isAdmin = domainAccess
-    ? domainAccess.canReadDetails
-    : await checkPermission(c, "submission:read_all");
+  const isAdmin = domainAccess.canReadDetails;
   if (!isOwner && !isAdmin) {
     throw new NotFoundError("自测不存在");
   }

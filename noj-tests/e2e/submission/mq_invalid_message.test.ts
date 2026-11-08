@@ -95,7 +95,7 @@ e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", a
 
   // 3) 队列接口仍可用
   const adminToken = await getAdminToken();
-  const { status, body } = await apiGet("/api/v1/queue", adminToken);
+  const { status, body } = await apiGet("/api/v1/instance/queue", adminToken);
   if (status !== 200) {
     throw new Error(`队列接口应仍可用，实际 ${status}`);
   }

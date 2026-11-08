@@ -57,7 +57,6 @@ export {
   cancelDomainSubmissionJobCommand,
   composeDomainEvaluationAdmissionContext,
   composeDomainEvaluationAdmissionPlan,
-  composeEvaluationAdmissionContext,
   deleteSubmissionCommand,
   getEvaluationTodayStats,
   getEvaluationTotalStats,
@@ -78,10 +77,8 @@ export {
   submitDomainCodeCommand,
   submitDomainSelfTestCommand,
   submitObjectivePaperCommand,
-  submitSelfTestCommand,
   upgradeContestProblemPinnedVersionCommand,
 } from "./evaluations.ts";
-export type { ComposeEvaluationAdmissionInput } from "./evaluations.ts";
 export {
   copyDomainTrainingCommand,
   createDomainProblemCommand,
