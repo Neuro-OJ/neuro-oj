@@ -11,7 +11,7 @@ import postgres from "postgres";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { buildConnectionOptions } from "../../src/shared/db/options.ts";
 import * as schema from "../../src/shared/db/schema.ts";
-import type { Executor } from "../../src/shared/db/executor.ts";
+import type { DbTx, Executor } from "../../src/shared/db/executor.ts";
 
 /** 测试用连接参数：与主连接池一致的 JIT 设置，仅连接数不同。 */
 export function rawConnectionOptions() {
@@ -41,11 +41,11 @@ export function createRawDb() {
 
 /** 在**同一条原生连接**的**同一个真实事务**内执行回调。 */
 export async function withRawTransaction<T>(
-  fn: (tx: Executor) => Promise<T>,
+  fn: (tx: DbTx) => Promise<T>,
 ): Promise<T> {
   const { client, db } = createRawDb();
   try {
-    return await db.transaction(async (tx) => await fn(tx as Executor));
+    return await db.transaction(async (tx) => await fn(tx as DbTx));
   } finally {
     await client.end({ timeout: 5 });
   }

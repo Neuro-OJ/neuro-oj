@@ -11,7 +11,6 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import type { TeachingCapability } from "../../../shared/education-types.ts";
 import { assertDomainFeatureEnabled } from "../../access/contracts/cross-module/workspace_services_limits.ts";
 import { loadClassroom } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
@@ -46,10 +45,9 @@ export async function loadInteractionAccess(
   return { ...access, ...classroom, assignment };
 }
 
-/** 互动读取区分固定能力，学情或源码能力不隐含私人反馈和求助读取。 */
+/** 仅域管理者可读取全部私人互动，学情或源码能力不隐含私人反馈和求助读取。 */
 export function interactionStaff(
   access: Awaited<ReturnType<typeof loadInteractionAccess>>,
-  _capability: TeachingCapability,
 ) {
   return access.managesDomain;
 }

@@ -59,15 +59,14 @@ Deno.test({
       assert(one.pid !== two.pid);
       await blocker.unsafe("BEGIN");
       await blocker`SELECT domain_id FROM domain_resource_counters WHERE domain_id=${domain.id} AND resource='storage_bytes' FOR UPDATE`;
+      // 生产语义：根连接不直接当事务使用，由调用方在独立连接上开启真实事务。
+      const reserveOn = (root: DbRoot, bytes: number) =>
+        root.transaction((tx) =>
+          reserveDomainStorageUpload({ domainId: domain.id, bytes }, tx)
+        );
       pending = Promise.allSettled([
-        reserveDomainStorageUpload(
-          { domainId: domain.id, bytes: 8 },
-          drizzle(first, { schema }) as unknown as DbRoot,
-        ),
-        reserveDomainStorageUpload(
-          { domainId: domain.id, bytes: 8 },
-          drizzle(second, { schema }) as unknown as DbRoot,
-        ),
+        reserveOn(drizzle(first, { schema }) as unknown as DbRoot, 8),
+        reserveOn(drizzle(second, { schema }) as unknown as DbRoot, 8),
       ]);
       let blocked = false;
       for (let attempt = 0; attempt < 200; attempt++) {

@@ -122,7 +122,7 @@ async function feedFileToCompose(
 export async function restoreDataServices(
   ctx: DataRestoreContext,
 ): Promise<void> {
-  const { runner, dockerBin, staging, tempDir, log } = ctx;
+  const { staging, tempDir, log } = ctx;
   const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
   const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
 
@@ -264,6 +264,4 @@ export async function restoreDataServices(
     // 与 bash 一致：`|| true` —— 收尾失败不该把"数据已恢复成功"报成失败。
     await compose(ctx, ["stop", "postgres", "redis", "minio"]);
   }
-  void runner;
-  void dockerBin;
 }

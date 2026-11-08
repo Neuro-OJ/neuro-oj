@@ -34,14 +34,12 @@ export type {
   StorageUploadReservation,
 } from "./services/registry.ts";
 export {
-  attachDomainStorageUpload,
   attachDomainStorageUploadTx,
   getDomainOwnedStorageBytes,
   getDomainStorageUsage,
   growDomainStorageUpload,
   growDomainStorageUploadTx,
   releaseDomainStorageObject,
-  releaseDomainStorageObjectTx,
   releaseDomainStorageUpload,
   releaseDomainStorageUploadTx,
   reserveDomainStorageUpload,

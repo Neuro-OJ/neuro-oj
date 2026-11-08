@@ -103,8 +103,13 @@ Deno.test('U-1 源码：白名单已改为「URL 规范化 + origin/前缀」校
 
 Deno.test('U-2 源码：shouldInterceptAuth 已改为 pathname 比较', () => {
   assert(
-    PROXY_SRC.includes('toUrlPathname(event.path)'),
-    'shouldInterceptAuth 必须用 pathname 而非含 query 的 event.path',
+    PROXY_SRC.includes('shouldInterceptAuth(event, targetUrl.pathname)'),
+    'shouldInterceptAuth 必须用规范化后的 pathname 而非含 query 的 event.path',
+  );
+  assertEquals(
+    /shouldInterceptAuth\([^)]*event\.path/.test(PROXY_SRC),
+    false,
+    'shouldInterceptAuth 不得接收含 query 的 event.path（pathname 取自已解析的 targetUrl）',
   );
   assertEquals(
     /event\.path\.endsWith\('\/api\/v1\/auth/.test(PROXY_SRC),

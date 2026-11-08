@@ -15,7 +15,10 @@ import {
   setMemberRole,
 } from "../../../../access/workspace/index.ts";
 import { createDomainContest } from "../../../../contests/index.ts";
-import { updateSetting } from "../../../../platform/system/index.ts";
+import {
+  resetSetting,
+  updateSetting,
+} from "../../../../platform/system/index.ts";
 import {
   countPostsByType,
   createComment,
@@ -435,25 +438,30 @@ Deno.test({
         access: "members",
       },
     }).where(eq(domains.id, f.target.id));
-    await updateSetting(
-      "instance_allowed_modules",
-      JSON.stringify({
-        community: false,
-        classroom: true,
-        assignment: true,
-        analytics: true,
-      }),
-      "0",
-    );
-    await assertRejects(
-      () =>
-        withDomainCommunity(
-          f.target.slug,
-          f.student,
-          {},
-          (s) => listPosts({ scope: s }),
-        ),
-      ForbiddenError,
-    );
+    // 实例模块政策是测试库内共享状态：同分片的其它文件会读到它，必须恢复。
+    try {
+      await updateSetting(
+        "instance_allowed_modules",
+        JSON.stringify({
+          community: false,
+          classroom: true,
+          assignment: true,
+          analytics: true,
+        }),
+        "0",
+      );
+      await assertRejects(
+        () =>
+          withDomainCommunity(
+            f.target.slug,
+            f.student,
+            {},
+            (s) => listPosts({ scope: s }),
+          ),
+        ForbiddenError,
+      );
+    } finally {
+      await resetSetting("instance_allowed_modules", "0");
+    }
   },
 });

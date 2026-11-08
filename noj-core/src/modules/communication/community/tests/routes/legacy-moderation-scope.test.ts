@@ -20,7 +20,10 @@ import {
 } from "../../index.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 import { domainFixture } from "../services/domain-fixture.ts";
-import { updateSetting } from "../../../../platform/system/index.ts";
+import {
+  resetSetting,
+  updateSetting,
+} from "../../../../platform/system/index.ts";
 
 const base = "/api/v1/admin/community";
 
@@ -170,28 +173,33 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const f = await fixture();
-    await updateSetting(
-      "instance_allowed_modules",
-      JSON.stringify({
-        community: false,
-        classroom: true,
-        assignment: true,
-        analytics: true,
-      }),
-      "0",
-    );
-    const response = await jsonRequest(f.app, `${base}/reports`, {
-      token: f.adminToken,
-    });
-    assertEquals(response.status, 403);
-    assertEquals((await response.json()).code, "DOMAIN_MODULE_DISABLED");
-    assertEquals(
-      (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
+    // 实例模块政策是测试库内共享状态：同分片的其它文件会读到它，必须恢复。
+    try {
+      await updateSetting(
+        "instance_allowed_modules",
+        JSON.stringify({
+          community: false,
+          classroom: true,
+          assignment: true,
+          analytics: true,
+        }),
+        "0",
+      );
+      const response = await jsonRequest(f.app, `${base}/reports`, {
         token: f.adminToken,
-        method: "POST",
-        body: { resolution: "disabled" },
-      })).status,
-      403,
-    );
+      });
+      assertEquals(response.status, 403);
+      assertEquals((await response.json()).code, "DOMAIN_MODULE_DISABLED");
+      assertEquals(
+        (await jsonRequest(f.app, `${base}/reports/${f.report.id}/dismissed`, {
+          token: f.adminToken,
+          method: "POST",
+          body: { resolution: "disabled" },
+        })).status,
+        403,
+      );
+    } finally {
+      await resetSetting("instance_allowed_modules", "0");
+    }
   },
 });

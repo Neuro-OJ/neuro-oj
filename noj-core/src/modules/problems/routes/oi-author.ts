@@ -1,35 +1,17 @@
-import {
-  assertWorkspacePermission,
-  loadWorkspace,
-} from "../../access/policy.ts";
-import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
 import { Hono } from "hono";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
-import { parseOiArchive } from "../services/oi-archive.ts";
-import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
 import { authorizeOiData, validateOiDataPath } from "../services/oi-data.ts";
 import { getProblemDraft } from "../services/versioning/draft.ts";
 import {
   listDraftOiFiles,
   loadOiDataFromDraft,
 } from "../services/versioning/oi-draft.ts";
-import { enforceProblemImportRateLimit } from "../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const router = new Hono<AuthEnv>();
 router.use("*", authMiddleware);
-
-async function archive(file: unknown) {
-  if (
-    !(file instanceof File) || !file.name.toLowerCase().endsWith(".zip") ||
-    file.size > MAX_SUPPORT_PACKAGE_SIZE
-  ) {
-    throw new BadRequestError("请上传不超过 128 MiB 的 ZIP 题目包");
-  }
-  return parseOiArchive(new Uint8Array(await file.arrayBuffer()));
-}
 
 function preview(path: string, bytes: Uint8Array) {
   if (bytes.length > 1024 * 1024) {
@@ -47,42 +29,6 @@ function preview(path: string, bytes: Uint8Array) {
     return { path, size: bytes.length, text: null, truncated: false };
   }
 }
-
-router.post("/preview", async (c) => {
-  await enforceProblemImportRateLimit(c, c.get("userId"));
-  const actor = userActorFromAuthenticatedId(c.var.userId);
-  const form = await c.req.parseBody();
-  if (typeof form.problem_id === "string") {
-    await authorizeOiData(actor, form.problem_id);
-  } else {
-    assertWorkspacePermission(
-      (await loadWorkspace(DEFAULT_DOMAIN_SLUG, actor, { write: true }))
-        .context,
-      "problem:create",
-    );
-  }
-  const parsed = await archive(form.file);
-  if (parsed.manifest.judge_type !== "oi") {
-    throw new BadRequestError("需要 OI 题目包");
-  }
-  const path = typeof form.path === "string" ? form.path : undefined;
-  if (path) {
-    validateOiDataPath(path);
-    const bytes = parsed.entries[path];
-    if (!bytes) throw new NotFoundError("数据文件不存在");
-    return c.json({ data: preview(path, bytes) });
-  }
-  return c.json({
-    data: {
-      manifest: parsed.manifest,
-      description: parsed.statement ?? parsed.manifest.description,
-      files: Object.entries(parsed.entries).filter(([name]) =>
-        !name.endsWith("/")
-      ).map(([path, bytes]) => ({ path, size: bytes.length })),
-      warnings: [],
-    },
-  });
-});
 
 router.get("/:id/files", async (c) => {
   const { row } = await authorizeOiData(

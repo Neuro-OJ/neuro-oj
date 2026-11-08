@@ -181,26 +181,14 @@ function registerPmessageHandler(
       dispatchToLocalListeners(channel, message);
     }
   };
-  // ioredis 在某些 Deno 版本中可能使用 message 而非 pmessage，两者都注册以兼容。
-  const onMessage = (...args: unknown[]): void => {
-    if (!isActive()) return;
-    const [channel, message] = args;
-    if (typeof channel === "string" && typeof message === "string") {
-      dispatchToLocalListeners(channel, message);
-    }
-  };
+  // 连接只 PSUBSCRIBE（模式订阅），ioredis 只会触发 "pmessage"；"message"
+  // 仅用于普通 SUBSCRIBE，此处不存在，因此不再注册。
   redis.on("pmessage", onPmessage);
-  redis.on("message", onMessage);
   return () => {
     try {
       redis.off("pmessage", onPmessage);
     } catch {
       // 连接已关闭等场景下 off 失败可忽略。
-    }
-    try {
-      redis.off("message", onMessage);
-    } catch {
-      // 同上
     }
   };
 }

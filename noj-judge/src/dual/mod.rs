@@ -344,6 +344,8 @@ pub async fn evaluate_dual_with_cpu_limit(
     .await
     .context("创建 Solution 容器失败")?;
 
+    // `create_evaluator` / `create_solution` 成功返回时必然已写入容器 ID，
+    // `ok_or_else` 只是不可达的兜底；保留其为错误返回而非 panic。
     let evaluator_id = dual
         .evaluator_id
         .clone()

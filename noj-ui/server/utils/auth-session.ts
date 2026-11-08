@@ -7,8 +7,8 @@
 export interface AuthSessionUser {
   id: string;
   username: string;
-  /** 旧版 API 的展示字段；核心 UserResponse 当前不返回该字段。 */
-  role?: string;
+  /** 平台角色（user / admin）；核心 UserResponse 恒返回该字段。 */
+  role: string;
   email: string;
   /** 用户头像存储地址；null 表示用户明确没有自定义头像。 */
   avatar_url?: string | null;
@@ -53,6 +53,7 @@ export function parseAuthSession(data: unknown): AuthSession | null {
     typeof rawUser.id !== 'string' ||
     typeof rawUser.username !== 'string' ||
     typeof rawUser.email !== 'string' ||
+    typeof rawUser.role !== 'string' ||
     typeof rawUser.is_admin !== 'boolean' ||
     !isOptionalStringOrNull(rawUser.avatar_url) ||
     !isOptionalBoolean(rawUser.must_change_password) ||
@@ -63,16 +64,12 @@ export function parseAuthSession(data: unknown): AuthSession | null {
     return null;
   }
 
-  const rawRole = rawUser.role;
-  if (rawRole !== undefined && typeof rawRole !== 'string') return null;
-  const role = typeof rawRole === 'string' ? rawRole : undefined;
-
   return {
     token,
     user: {
       id: rawUser.id,
       username: rawUser.username,
-      ...(role === undefined ? {} : { role }),
+      role: rawUser.role,
       email: rawUser.email,
       ...(rawUser.avatar_url === undefined ? {} : { avatar_url: rawUser.avatar_url }),
       must_change_password: rawUser.must_change_password,

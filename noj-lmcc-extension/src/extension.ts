@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { ApiError, NeuroOjApi, normalizeServerUrl } from "./api";
+import { draftKey, draftKeysToClear } from "./drafts";
 import { pollSubmission } from "./polling";
 import { ProblemsTreeProvider } from "./problemsTree";
 import type {
@@ -86,7 +87,13 @@ async function openTemplate(context: vscode.ExtensionContext): Promise<void> {
   }
   const server = currentServerUrl,
     actor = context.globalState.get<User>(USER_KEY)?.id ?? "";
-  const key = `neuroOj.draft:${JSON.stringify([server, actor, domain.slug, selected.reference, selected.versionId, "python3"])}`;
+  const key = draftKey(
+    server,
+    actor,
+    domain.slug,
+    selected.reference,
+    selected.versionId,
+  );
   try {
     let content = context.globalState.get<string>(key);
     if (content === undefined) {
@@ -351,7 +358,16 @@ async function logout(context: vscode.ExtensionContext): Promise<void> {
 }
 
 async function clearSession(context: vscode.ExtensionContext): Promise<void> {
-  await context.secrets.delete(tokenKey(currentServerUrl));
+  const server = currentServerUrl;
+  const actor = context.globalState.get<User>(USER_KEY)?.id ?? "";
+  await context.secrets.delete(tokenKey(server));
+  for (const key of draftKeysToClear(
+    context.globalState.keys(),
+    server,
+    actor,
+  )) {
+    await context.globalState.update(key, undefined);
+  }
   await context.globalState.update(USER_KEY, undefined);
   api.setToken(undefined);
   tree.setMessage("请先登录 Neuro OJ");

@@ -6,7 +6,10 @@ import {
   findCommand,
   renderCommandList,
 } from "./commands.ts";
-import { dispatchableTopLevelNames, KNOWN_TOP } from "./cli.ts";
+import {
+  dispatchableTopLevelNames as declaredDispatchableNames,
+  KNOWN_TOP,
+} from "./cli.ts";
 import { PRODUCTION_COMMANDS } from "./production.ts";
 import { CONTAINER_COMMANDS } from "./container.ts";
 
@@ -15,6 +18,61 @@ function declaredAliases(): Set<string> {
   const out = new Set<string>();
   for (const c of COMMANDS) for (const a of c.aliases ?? []) out.add(a);
   return out;
+}
+
+/** 本测试文件所在目录（用于定位被测源码）。 */
+const SRC_DIR = new URL(".", import.meta.url);
+
+/**
+ * 从 `cli.ts` 的 `dispatchCommand` 源码中提取顶层命令名（防漂移门禁的事实源）。
+ *
+ * 这是**测试门禁**，只在本测试中读源码；生产代码不再运行时读自身源码
+ * （`deno compile` 后的单二进制里没有 src/cli.ts）。
+ *
+ * 提取两处既有判定，而不是另写一份字面量清单——后者会与 switch 一起漂移，
+ * 正是本任务要消灭的缺陷形态：
+ * 1. `dispatchCommand` 顶层 `switch (command)` 的 `case "..."` 标签
+ *    （4 空格缩进；内层 switch 缩进更深，不会被命中）；
+ * 2. `dispatchCommand` 内 `command === "..."` 的特判分支
+ *    （`problem`/`problems`；`backup drill` 的 `backup` 亦在此列）。
+ *
+ * 以 `dispatchCommand`（而非整个文件）为界，避免把 `run()` 的
+ * `--help`/`-v` 等旗标误收为命令名。锚点失效时抛错，
+ * 主门禁会立刻变红，不会静默通过。
+ */
+async function topLevelDispatchNames(): Promise<Set<string>> {
+  const source = await Deno.readTextFile(new URL("cli.ts", SRC_DIR));
+  // 锚点必须**行首匹配**：函数名也会出现在注释里，普通 indexOf 不可靠。
+  const startMatch = /^export async function dispatchCommand\(/m.exec(source);
+  const endMatch = /^export function removedCommandNotice\(/m.exec(source);
+  if (startMatch === null || endMatch === null) {
+    throw new Error(
+      "防漂移门禁锚点失效：无法在 cli.ts 中定位 dispatchCommand 正文" +
+        "（函数被改名/删除？同步修改本测试的锚点正则）",
+    );
+  }
+  const start = startMatch.index;
+  const end = endMatch.index;
+  if (end <= start) {
+    throw new Error("防漂移门禁锚点顺序异常：结束锚点位于起始锚点之前");
+  }
+  const body = source.slice(start, end);
+  const names = new Set<string>();
+  for (const m of body.matchAll(/^ {4}case "([^"]+)":/gm)) names.add(m[1]!);
+  for (const m of body.matchAll(/command === "([^"]+)"/g)) names.add(m[1]!);
+  return names;
+}
+
+/**
+ * dispatcher **实际可处理**的顶层命令集合（防漂移门禁的右侧）。
+ *
+ * 生产代码的声明式事实源 {@link declaredDispatchableNames}，加上从
+ * `dispatchCommand` 源码提取的名字（提取失败直接抛错，不静默返回空集）。
+ */
+async function dispatchableTopLevelNames(): Promise<Set<string>> {
+  const names = declaredDispatchableNames();
+  for (const name of await topLevelDispatchNames()) names.add(name);
+  return names;
 }
 
 /**

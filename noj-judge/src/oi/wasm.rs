@@ -179,7 +179,7 @@ pub async fn evaluate_wasm_with_progress(
 ) -> Result<JudgeResult> {
     let matches = super::standard::validate_profile(profile);
     let mut result = if let Err(error) = &matches {
-        let mut result = uniform_status_result(task, config, OiStatus::SystemError)?;
+        let mut result = uniform_status_result(task, OiStatus::SystemError)?;
         result.output = error.to_string();
         result
     } else {
@@ -339,17 +339,17 @@ async fn evaluate_wasm_inner(
                 .is_some() =>
         {
             tracing::error!(error = %format!("{error:#}"), "WASI 编译基础设施不可用");
-            return uniform_status_result(task, config, OiStatus::SystemError);
+            return uniform_status_result(task, OiStatus::SystemError);
         }
         Ok(Err(error)) => {
             tracing::warn!(error = %error, "WASI 用户程序编译失败");
-            let mut result = uniform_status_result(task, config, OiStatus::CompileError)?;
+            let mut result = uniform_status_result(task, OiStatus::CompileError)?;
             result.details["oi"]["compile_error"] = serde_json::json!(error.to_string());
             return Ok(result);
         }
         Err(error) => {
             tracing::error!(error = %error, "WASI 用户程序编译线程异常");
-            return uniform_status_result(task, config, OiStatus::SystemError);
+            return uniform_status_result(task, OiStatus::SystemError);
         }
     };
     let checker_compile_files_for_compile = checker_compile_files.clone();
@@ -358,7 +358,7 @@ async fn evaluate_wasm_inner(
             Ok(source) => source,
             Err(error) => {
                 tracing::error!(error = %error, "WASM testlib checker 不是 UTF-8 C++ 源码");
-                return uniform_status_result(task, config, OiStatus::SystemError);
+                return uniform_status_result(task, OiStatus::SystemError);
             }
         };
         let checker_compile_lease = compile_lease.clone();
@@ -377,11 +377,11 @@ async fn evaluate_wasm_inner(
             Ok(Ok(module)) => Some(module),
             Ok(Err(error)) => {
                 tracing::error!(error = %error, "WASI testlib checker 编译失败");
-                return uniform_status_result(task, config, OiStatus::SystemError);
+                return uniform_status_result(task, OiStatus::SystemError);
             }
             Err(error) => {
                 tracing::error!(error = %error, "WASI testlib checker 编译线程异常");
-                return uniform_status_result(task, config, OiStatus::SystemError);
+                return uniform_status_result(task, OiStatus::SystemError);
             }
         }
     } else {
@@ -480,7 +480,7 @@ async fn evaluate_wasm_inner(
                 Ok(result) => result,
                 Err(error) => {
                     tracing::error!(error = %error, "WASM 测试点执行失败");
-                    return uniform_status_result(task, config, OiStatus::SystemError);
+                    return uniform_status_result(task, OiStatus::SystemError);
                 }
             };
             results.extend(subtask_results);
@@ -963,11 +963,7 @@ fn read_limited_file(path: &Path) -> Result<(Option<Vec<u8>>, bool)> {
 }
 
 /// 编译失败没有执行任何测试点，不生成虚假的逐点 CE/SE。
-fn uniform_status_result(
-    task: &JudgeTask,
-    _config: &OiRuntimeConfig,
-    status: OiStatus,
-) -> Result<JudgeResult> {
+fn uniform_status_result(task: &JudgeTask, status: OiStatus) -> Result<JudgeResult> {
     Ok(OiEvaluation {
         status,
         score: 0,

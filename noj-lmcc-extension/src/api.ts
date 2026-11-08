@@ -5,7 +5,6 @@ import type {
   Domain,
   DomainProblem,
   Problem,
-  ProblemDetail,
   SubmissionDetail,
   User,
 } from "./types";
@@ -280,18 +279,6 @@ export class NeuroOjApi {
     );
   }
 
-  /**
-   * 读取题目详情（含作答版本元数据）。
-   *
-   * 选择题目时调用一次，把 `version_id` 固定进扩展状态；提交时原样发送。
-   */
-  async problem(problemId: string): Promise<ProblemDetail> {
-    const response = await this.request<{ data: ProblemDetail }>(
-      `/api/v1/problems/${encodeURIComponent(problemId)}`,
-    );
-    return response.data;
-  }
-
   async submitCode(
     slug: string,
     reference: string,
@@ -311,13 +298,6 @@ export class NeuroOjApi {
           version_id: versionId,
         },
       },
-    );
-    return response.data;
-  }
-
-  async submission(id: string): Promise<SubmissionDetail> {
-    const response = await this.request<{ data: SubmissionDetail }>(
-      `/api/v1/submissions/${encodeURIComponent(id)}`,
     );
     return response.data;
   }
