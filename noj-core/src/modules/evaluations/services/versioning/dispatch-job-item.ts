@@ -238,6 +238,18 @@ async function completeSourceContention(
 }
 
 /**
+ * 派发前的租约闸门。
+ *
+ * 心跳到期与"真正把任务推给 Judge / 创建升级副本"之间没有原子性：若租约在此
+ * 期间被其它 worker 接管，两个 worker 会各推一次评测（重复计费/重复升级）。
+ * 因此在**不可回退的外部写之前**用本闸门复查一次持有状态。
+ */
+interface LeaseGate {
+  /** 当前仍持有条目租约；否则抛 `JOB_LEASE_LOST`。 */
+  assertHeld(): Promise<void>;
+}
+
+/**
  * 派发单个已领取条目。
  *
  * @param owner 本 worker 实例标识（lease 归属）
@@ -258,6 +270,7 @@ export async function dispatchJobItem(
   // §5.7「执行期间续租」：单次派发含支持包下载、LLM token 签发与 MQ 推送等长 IO，
   // 仅在开始时续租一次会让 lease 中途过期，另一个 worker 遂重复领取同一条目。
   const heartbeat = startJobItemLeaseHeartbeat(item.id, owner);
+  const lease: LeaseGate = { assertHeld: () => heartbeat.assertHeld() };
   try {
     return await dispatchClaimedJobItem(
       item,
@@ -265,6 +278,7 @@ export async function dispatchJobItem(
       jobKind,
       upgradeContext,
       quotaConsumer,
+      lease,
     );
   } finally {
     heartbeat.stop();
@@ -278,7 +292,9 @@ async function dispatchClaimedJobItem(
   jobKind: "rejudge" | "upgrade",
   upgradeContext: JobUpgradeContext,
   quotaConsumer: UpgradeQuotaConsumer,
+  lease: LeaseGate,
 ): Promise<DispatchOutcome> {
+  const input = { lease };
   const source = await loadSource(item);
   if (!source) {
     await completeJobItem(item.id, {
@@ -374,6 +390,7 @@ async function dispatchClaimedJobItem(
         targetVersionId: item.target_version_id,
         owner,
         quotaConsumer,
+        lease: input.lease,
       });
     }
     // 闭包内无法保留 `item` 的可空收窄，先固化为非空局部量
@@ -506,6 +523,7 @@ async function dispatchClaimedJobItem(
       content,
       upgradeContext,
       quotaConsumer,
+      lease: input.lease,
     });
   }
 
@@ -524,6 +542,7 @@ async function dispatchClaimedJobItem(
     sourceKind: "rejudge",
     priority: "low",
     quotaConsumer,
+    lease: input.lease,
   });
 }
 
@@ -545,6 +564,7 @@ async function dispatchJudgeAttempt(input: {
   sourceKind: "rejudge" | "upgrade";
   priority: "low" | "medium";
   quotaConsumer: UpgradeQuotaConsumer;
+  lease: LeaseGate;
 }): Promise<DispatchOutcome> {
   const { item, owner, source, content } = input;
   const targetVersionId = item.target_version_id as string;
@@ -734,6 +754,16 @@ async function dispatchJudgeAttempt(input: {
 
   // 续租后再派发：长任务不会因 lease 过期被其他 worker 重复领取
   if (!await renewJobItemLease(item.id, owner)) return "deferred";
+  // 紧邻推送再复查一次心跳结论：续租成功但心跳已观察到丢失（被接管）时不能推，
+  // 否则持有者与本进程会各推一次评测。
+  try {
+    await input.lease.assertHeld();
+  } catch (err) {
+    if (err instanceof AppError && err.code === "JOB_LEASE_LOST") {
+      return "deferred";
+    }
+    throw err;
+  }
   try {
     await pushJudgeTask(task);
   } catch (err) {
@@ -790,10 +820,13 @@ async function dispatchObjectiveUpgrade(input: {
   targetVersionId: string;
   owner: string;
   quotaConsumer: UpgradeQuotaConsumer;
+  lease: LeaseGate;
 }): Promise<DispatchOutcome> {
   const { item, source, targetVersionId, owner } = input;
   const db = getDb();
   try {
+    // 创建升级副本（新提交 + 额度 + 重判）不可回退，必须在事务前确认仍持有租约。
+    await input.lease.assertHeld();
     await db.transaction(async (tx) => {
       const execution = await assertDomainJobExecution(
         item,
@@ -896,8 +929,9 @@ async function dispatchCodeUpgrade(input: {
   content: Exclude<ProblemContentV1, { kind: "objective" }>;
   upgradeContext: JobUpgradeContext;
   quotaConsumer: UpgradeQuotaConsumer;
+  lease: LeaseGate;
 }): Promise<DispatchOutcome> {
-  const { item, owner, source, content, upgradeContext } = input;
+  const { item, owner, source, content, upgradeContext, lease } = input;
   return await dispatchJudgeAttempt({
     item,
     owner,
@@ -916,6 +950,7 @@ async function dispatchCodeUpgrade(input: {
     upgradeContext,
     priority: "medium",
     quotaConsumer: input.quotaConsumer,
+    lease,
   });
 }
 

@@ -137,12 +137,26 @@ export async function resolvePermissions(
   return capabilities;
 }
 
-/** handler 内条件判断：是否具备某能力。 */
+/** 平台管理员通配能力：持有它的角色可通行所有 `requirePermission` 守卫。 */
+const ADMIN_FULL_ACCESS: CapabilityName = "admin:full_access";
+
+/**
+ * handler 内条件判断：是否具备某能力。
+ *
+ * **通配只在本函数生效**（与 `requirePermission` 守卫共用）：平台管理员通过
+ * `admin:full_access` 放行所有平台能力断言，这是 #717 之前的行为，被 #717
+ * 误删后导致管理端/旧入口 403。
+ *
+ * 域内能力（`community:moderate`、`domain:invitations` 等）**不能**靠本函数
+ * 判定：它们只存在于域有效角色上，必须走
+ * `assertWorkspacePermission` / `loadWorkspace()` 的域内口径。
+ */
 export async function checkPermission(
   c: Context,
   permission: CapabilityName,
 ): Promise<boolean> {
-  return (await resolvePermissions(c)).has(permission);
+  const permissions = await resolvePermissions(c);
+  return permissions.has(ADMIN_FULL_ACCESS) || permissions.has(permission);
 }
 
 /** handler 内断言：无能力时抛 403。 */

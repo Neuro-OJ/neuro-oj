@@ -21,6 +21,7 @@ import {
   submissionJobs,
 } from "../../../../shared/db/schema.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";
 import { lockProjectionHosts, lockProjectionSource } from "./projection.ts";
 import { applyAttemptResult } from "./result-write.ts";
@@ -157,6 +158,12 @@ export interface JobItemLeaseHeartbeat {
   stop(): void;
   /** 是否观察到一次续租失败（租约已丢失/条目已终态）。 */
   lost(): boolean;
+  /**
+   * 派发前的租约闸门：确认本进程当前仍持有该条目租约。
+   *
+   * @throws {AppError} `JOB_LEASE_LOST`：租约已被其它 worker 接管或条目已终态。
+   */
+  assertHeld(): Promise<void>;
 }
 
 /**
@@ -174,12 +181,19 @@ export function startJobItemLeaseHeartbeat(
 ): JobItemLeaseHeartbeat {
   let stopped = false;
   let lostLease = false;
-  const timer = setInterval(() => {
-    void renewJobItemLease(itemId, owner).then((renewed) => {
+  /** 进行中的续租；`assertHeld` 必须先等它落地，否则会读到过期结论。 */
+  let inflight: Promise<boolean> | null = null;
+  const renew = (): Promise<boolean> => {
+    const pending = renewJobItemLease(itemId, owner).catch(() => false);
+    inflight = pending;
+    void pending.then((renewed) => {
       if (!renewed) lostLease = true;
-    }).catch(() => {
-      lostLease = true;
+      if (inflight === pending) inflight = null;
     });
+    return pending;
+  };
+  const timer = setInterval(() => {
+    void renew();
   }, intervalMs);
   // 心跳不能阻止进程退出（关闭流程会显式 stop）。
   try {
@@ -195,6 +209,20 @@ export function startJobItemLeaseHeartbeat(
     },
     lost() {
       return lostLease;
+    },
+    async assertHeld() {
+      if (inflight) await inflight;
+      if (!lostLease) return;
+      // 心跳失败也可能只是瞬时抖动：补一次续租，成功即恢复持有。
+      if (await renew()) {
+        lostLease = false;
+        return;
+      }
+      throw new AppError(
+        "批任务条目租约已丢失，中止本次派发",
+        409,
+        "JOB_LEASE_LOST",
+      );
     },
   };
 }

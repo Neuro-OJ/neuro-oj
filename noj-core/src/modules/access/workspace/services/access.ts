@@ -5,7 +5,7 @@
  * 参数和 `Executor` 形状，供尚未迁移的域调用方逐步切换；新代码必须从
  * `modules/access` 使用显式 Actor 与 `DbRoot`/`DbTx` 合同。
  */
-import { type AnyColumn, type SQL, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -18,6 +18,8 @@ import {
   userActorFromAuthenticatedId,
 } from "../../contracts/actor.ts";
 import {
+  domainMemberWhere as policyDomainMemberWhere,
+  domainReadableWhere as policyDomainReadableWhere,
   loadDomainForJoiningTx,
   loadWorkspace as loadAccessWorkspace,
   loadWorkspaceTx,
@@ -51,26 +53,26 @@ function mapContext(
   };
 }
 
-/** 跨域目录在数据库分页前检查当前成员关系。 */
+/**
+ * 跨域目录在数据库分页前检查当前成员关系。
+ *
+ * 唯一实现在 `access/policy.ts`；这里只保留字符串 actor 的旧签名适配，
+ * 避免两份 SQL 漂移（成员状态取值、列名各改一处就会静默不一致）。
+ */
 export function domainMemberWhere(
   domainId: AnyColumn | SQL,
   actorId: string | null,
 ): SQL {
-  return sql`EXISTS (SELECT 1 FROM domain_memberships access_member WHERE access_member.domain_id=${domainId}
-    AND access_member.user_id=${actorId} AND access_member.status='active')`;
+  return policyDomainMemberWhere(domainId, actorFor(actorId));
 }
 
-/** 公共目录及本人可进入的私有域。 */
+/** 公共目录及本人可进入的私有域；实现转调 `access/policy.ts`。 */
 export function domainReadableWhere(
   domainId: AnyColumn | SQL,
   actorId: string | null,
   platformAdmin = false,
 ): SQL {
-  return sql`EXISTS (SELECT 1 FROM domains access_domain WHERE access_domain.id=${domainId} AND
-    (${platformAdmin} OR (access_domain.status<>'suspended' AND
-      (access_domain.configuration->>'access'='public' OR ${
-    domainMemberWhere(domainId, actorId)
-  }))))`;
+  return policyDomainReadableWhere(domainId, actorFor(actorId), platformAdmin);
 }
 
 /**

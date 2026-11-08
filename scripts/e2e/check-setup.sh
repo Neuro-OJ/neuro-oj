@@ -110,6 +110,11 @@ fi
 if grep -Fq 'E2E 环境就绪' <<< "$missing_output"; then
   fail_check "缺少会话上下文时 setup.sh 仍报告就绪"
 fi
+# bash 3.2（macOS 自带）会把「全角字符紧邻变量名」吞进变量名，导致 `set -u`
+# 下 unbound variable 假红；这里直接断言正确参数下不会出现该错误。
+if grep -Fq 'unbound variable' <<< "$missing_output"; then
+  fail_check "缺少会话上下文时 setup.sh 报 unbound variable（疑似全角字符吞变量名）"
+fi
 
 # ── 9. SDK 构建失败传播（需要 Docker）─────────────────────────────
 if docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then

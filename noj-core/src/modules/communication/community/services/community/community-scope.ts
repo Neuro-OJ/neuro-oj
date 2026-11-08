@@ -20,6 +20,18 @@ import {
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import { workspaceAudit } from "../../../../access/contracts/cross-module/workspace_services_domains.ts";
 
+/**
+ * 域社区能力（`shared/access/roles.ts` 的能力子集）。
+ *
+ * 社区读写一律按域内有效角色判定，凭据入口不允许传入字符串形式的任意能力名。
+ */
+export type CommunityCapability =
+  | "community:read"
+  | "community:create"
+  | "community:comment"
+  | "community:report"
+  | "community:moderate";
+
 /** 已授权的域社区请求事实；只在当前事务及调用链中传递，不写入 JWT。 */
 export interface CommunityScope {
   domainId: string;
@@ -35,7 +47,11 @@ export interface CommunityScope {
 export async function loadCommunityScope(
   slug: string,
   actorId: string | null,
-  options: { executor?: Executor; write?: boolean; permission?: string } = {},
+  options: {
+    executor?: Executor;
+    write?: boolean;
+    permission?: CommunityCapability;
+  } = {},
 ): Promise<CommunityScope> {
   const executor = options.executor ?? getDb();
   const access = await loadWorkspace(slug, actorId, {

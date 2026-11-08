@@ -20,6 +20,11 @@ export interface CommunityConfig {
   permissions: Record<string, boolean>;
   /** 赛时社区全局静默：存在未结束公开赛且当前用户非审核员时为 true，写入入口应禁用。 */
   contest_silence?: boolean;
+  /**
+   * 新用户预审：当前账号在 `new_user_review_hours` 窗口内，发出的帖子/评论会先进入
+   * pending 队列（只有自己与审核员可见），编辑区应提前提示。
+   */
+  under_review?: boolean;
 }
 
 /** 社区帖子（来自后端完整行） */

@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { parseJsonBody } from "../../../../shared/http/request.ts";
 import {
   enforceReportRateLimit,
@@ -10,9 +10,22 @@ import {
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
 import {
-  assertPermission,
-  checkPermission,
+  resolvePermissions,
 } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
+import {
+  assertWorkspacePermission,
+  loadWorkspace,
+} from "../../../access/contracts/cross-module/workspace_services_access.ts";
+import {
+  domainRoleCapabilities,
+  resolveEffectiveDomainRole,
+} from "../../../../shared/access/roles.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+} from "../../../../shared/workspace/types.ts";
+import { ensureDefaultWorkspace } from "../../../access/domains.ts";
+import { createSystemActor } from "../../../runtime/system-actors.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -39,6 +52,7 @@ import {
   listBoards,
   listComments,
   listPosts,
+  publicationStatus,
   resolvePostId,
   resolveProblemId,
   setPostOfficial,
@@ -49,25 +63,31 @@ import {
   hasUnendedPublicContest,
   isProblemInUnendedPublicContest,
 } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
 import { withDefaultCommunity } from "../services/community/domain-community.ts";
-import type { CommunityScope } from "../services/community/community-scope.ts";
+import type {
+  CommunityCapability,
+  CommunityScope,
+} from "../services/community/community-scope.ts";
 
 interface CommunityEnv extends OptionalAuthEnv {
-  Variables: OptionalAuthEnv["Variables"] & { communityScope: CommunityScope };
+  Variables: OptionalAuthEnv["Variables"] & {
+    communityScope: CommunityScope;
+    /** 请求级审核员判定，避免同一请求重复解析默认域角色。 */
+    communityModerator: boolean;
+  };
 }
 const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
   const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
   if (!accountRoute) {
     await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+    const moderator = !!c.var.userId && await isModerator(c);
     await withDefaultCommunity(c.var.userId ?? null, {
       write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
-      moderator: !!c.var.userId && await isModerator(c),
+      moderator,
     }, async (scope) => {
       c.set("communityScope", scope);
+      c.set("communityModerator", moderator);
       await next();
       // Hono 在 next 内转换异常为响应，事务仍需回滚原异常。
       if (c.error) throw c.error;
@@ -89,16 +109,71 @@ function userId(c: { get: (key: "userId") => string | undefined }): string {
   return id;
 }
 
+/** 请求级审核员标志（中间件已解析，undefined 视作非审核员）。 */
+function moderatorFlag(c: { get: (key: "communityModerator") => boolean }) {
+  return c.get("communityModerator") === true;
+}
+
 /**
- * 判断当前请求用户是否为社区审核员（具备 community_moderation:review 权限）。
+ * 判断当前请求用户是否为默认域社区审核员。
+ *
+ * 社区能力一律按**域内有效角色**计算（#717 起平台能力集合只剩平台角色，
+ * 不再携带域能力）：educator 及以上域角色具备 `community:moderate`。
+ * 平台管理员经 `admin:full_access` 通配放行。
  * @param c Hono 上下文。
  * @returns 是否为审核员。
  */
 async function isModerator(
-  c: Parameters<typeof checkPermission>[0],
+  c: Context,
 ): Promise<boolean> {
-  // admin:full_access 通配放行由 checkPermission 内部处理
-  return await checkPermission(c, "community_moderation:review");
+  const userId = c.get("userId");
+  if (!userId) return false;
+  if ((await resolvePermissions(c)).has("admin:full_access")) return true;
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
+  const role = resolveEffectiveDomainRole(
+    userId,
+    workspace.domain,
+    workspace.membership,
+  );
+  return domainRoleCapabilities(role).has("community:moderate");
+}
+
+/**
+ * 判断默认域社区写能力。
+ *
+ * 旧入口固定默认域，能力来自该域的有效角色；平台管理员经域内口径同样放行。
+ * @param c Hono 上下文。
+ * @param permission 社区写能力。
+ * @returns 是否具备该能力。
+ */
+async function hasDefaultCommunityPermission(
+  c: Context,
+  permission: CommunityCapability,
+): Promise<boolean> {
+  try {
+    const actorId = c.get("userId") as string | undefined;
+    const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId ?? null);
+    assertWorkspacePermission(workspace.context, permission);
+    return true;
+  } catch (error) {
+    if (error instanceof ForbiddenError) return false;
+    throw error;
+  }
+}
+
+/**
+ * 断言默认域社区写能力，失败按域内权限不足处理。
+ * @param c Hono 上下文。
+ * @param permission 社区写能力。
+ * @throws {ForbiddenError} 不具备该能力时抛出。
+ */
+async function assertDefaultCommunityPermission(
+  c: Context,
+  permission: CommunityCapability,
+): Promise<void> {
+  if (!(await hasDefaultCommunityPermission(c, permission))) {
+    throw new ForbiddenError("工作空间权限不足", "DOMAIN_PERMISSION_DENIED");
+  }
 }
 
 /** 访客读社区守卫：guest_read_enabled 关闭时未登录用户禁止访问 */
@@ -111,16 +186,12 @@ function requireGuestRead(
 }
 
 /**
- * 断言当前用户具备创建指定类型帖子的权限。
+ * 断言当前用户在默认域可创建社区内容。
  * @param c Hono 上下文。
- * @param type 帖子类型（solution / discussion）。
- * @throws {ForbiddenError} 无对应创建权限时抛出。
+ * @throws {ForbiddenError} 不具备 `community:create` 时抛出。
  */
-async function requirePostPermission(
-  c: Parameters<typeof assertPermission>[0],
-  type: CommunityPostType,
-): Promise<void> {
-  await assertPermission(c, `community:create_${type}`);
+async function requirePostPermission(c: Context): Promise<void> {
+  await assertDefaultCommunityPermission(c, "community:create");
 }
 
 /**
@@ -133,21 +204,33 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
   const config = getCommunityConfig();
   const loggedIn = !!c.get("userId");
   if (!config.enabled) return c.json({ data: { ...config, permissions: {} } });
+  const canWrite = loggedIn &&
+    await hasDefaultCommunityPermission(c, "community:create");
   const permissions = loggedIn
     ? {
-      solution: await checkPermission(c, "community:create_solution"),
-      discussion: await checkPermission(c, "community:create_discussion"),
-      comment: await checkPermission(c, "community:comment"),
-      report: await checkPermission(c, "community:report"),
-      moderate: await isModerator(c),
+      solution: canWrite,
+      discussion: canWrite,
+      comment: canWrite,
+      report: canWrite,
+      moderate: moderatorFlag(c),
     }
     : {};
   // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
   // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
-  const contestSilence = !(loggedIn && await isModerator(c)) &&
+  const contestSilence = !(loggedIn && moderatorFlag(c)) &&
     await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
+  // 新用户预审：告知前端"此人现在发的内容会进 pending 队列"，让编辑区在提交前
+  // 就给出提示（提交后也只会收到 status=pending，缺少预期会让用户以为发布失败）。
+  const underReview = loggedIn && config.new_user_review_hours > 0 &&
+    await publicationStatus(c.get("userId")!).catch(() => "published") ===
+      "pending";
   return c.json({
-    data: { ...config, permissions, contest_silence: contestSilence },
+    data: {
+      ...config,
+      permissions,
+      contest_silence: contestSilence,
+      under_review: underReview,
+    },
   });
 });
 
@@ -184,7 +267,7 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       : undefined,
   );
   requireGuestRead(c);
-  const moderator = c.get("userId") ? await isModerator(c) : false;
+  const moderator = moderatorFlag(c);
   return c.json(
     await listPosts({
       type,
@@ -230,7 +313,7 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
   // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
   // 审核员不受限（复核需要），与读路径门控口径一致；判据复用 contest 域单一真相源。
-  const moderator = await isModerator(c);
+  const moderator = moderatorFlag(c);
   const inUnendedPublicContest = await isProblemInUnendedPublicContest(
     problemId,
     DEFAULT_DOMAIN_ID,
@@ -241,7 +324,7 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
     await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
-    (await checkPermission(c, "community:create_solution")) &&
+    (await hasDefaultCommunityPermission(c, "community:create")) &&
     (accepted || moderator) &&
     !blockedByContest &&
     !blockedBySilence;
@@ -277,7 +360,7 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
     data: await getPost(
       postId,
       c.get("userId"),
-      c.get("userId") ? await isModerator(c) : false,
+      moderatorFlag(c),
       c.var.communityScope,
     ),
   });
@@ -294,14 +377,14 @@ router.post("/posts", authMiddleware, async (c) => {
   if (!input || !["solution", "discussion"].includes(input.type)) {
     throw new BadRequestError("仅支持讨论与题解");
   }
-  await requirePostPermission(c, input.type);
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await requirePostPermission(c);
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     scope: c.var.communityScope,
   });
   const post = await createPost(
     actorId,
     input,
-    await isModerator(c),
+    moderatorFlag(c),
     c.var.communityScope,
   );
   return c.json({ data: post }, 201);
@@ -315,7 +398,7 @@ router.post("/posts", authMiddleware, async (c) => {
 router.patch("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     scope: c.var.communityScope,
   });
   const input = await parseJsonBody<
@@ -325,7 +408,7 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
     data: await updatePost(
       postId,
       actorId,
-      await isModerator(c),
+      moderatorFlag(c),
       input,
       c.var.communityScope,
     ),
@@ -345,7 +428,7 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
 router.patch("/posts/:postId/official", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
-  const moderator = await isModerator(c);
+  const moderator = moderatorFlag(c);
   await assertCommunityWritable(actorId, moderator, {
     scope: c.var.communityScope,
   });
@@ -376,13 +459,13 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
   const post = await getPost(
     postId,
     actorId,
-    await isModerator(c),
+    moderatorFlag(c),
     c.var.communityScope,
   );
-  if (post.post.author_id !== actorId && !(await isModerator(c))) {
+  if (post.post.author_id !== actorId && !moderatorFlag(c)) {
     throw new ForbiddenError("无权删除该内容");
   }
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     allowSocialBan: true,
     scope: c.var.communityScope,
   });
@@ -412,7 +495,7 @@ router.get(
       data: await listComments(
         postId,
         c.get("userId"),
-        c.get("userId") ? await isModerator(c) : false,
+        moderatorFlag(c),
         c.var.communityScope,
       ),
     });
@@ -426,8 +509,8 @@ router.get(
 router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertPermission(c, "community:comment");
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await assertDefaultCommunityPermission(c, "community:comment");
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     scope: c.var.communityScope,
   });
   const body = await parseJsonBody<{ content?: string; parent_id?: string }>(c);
@@ -438,7 +521,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
       postId,
       body.content,
       body.parent_id,
-      await isModerator(c),
+      moderatorFlag(c),
       c.var.communityScope,
     ),
   }, 201);
@@ -451,7 +534,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
  */
 router.patch("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     scope: c.var.communityScope,
   });
   const body = await parseJsonBody<{ content?: string }>(c);
@@ -460,7 +543,7 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
     data: await updateComment(
       c.req.param("commentId") as string,
       actorId,
-      await isModerator(c),
+      moderatorFlag(c),
       body.content,
       c.var.communityScope,
     ),
@@ -473,7 +556,7 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
  */
 router.delete("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  await assertCommunityWritable(actorId, await isModerator(c), {
+  await assertCommunityWritable(actorId, moderatorFlag(c), {
     allowSocialBan: true,
     scope: c.var.communityScope,
   });
@@ -481,7 +564,7 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
     data: await deleteComment(
       c.req.param("commentId") as string,
       actorId,
-      await isModerator(c),
+      moderatorFlag(c),
       c.var.communityScope,
     ),
   });
@@ -495,9 +578,9 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
 router.post("/reports", authMiddleware, async (c) => {
   const actorId = userId(c);
   await enforceReportRateLimit(actorId);
-  await assertPermission(c, "community:report");
+  await assertDefaultCommunityPermission(c, "community:report");
   // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, moderatorFlag(c));
   const body = await parseJsonBody<
     {
       post_id?: string;
@@ -510,7 +593,7 @@ router.post("/reports", authMiddleware, async (c) => {
   const report = await createReport(
     actorId,
     { ...body, reason: body.reason },
-    await isModerator(c),
+    moderatorFlag(c),
   );
   // FC-05: 举报接口响应体中仅返回举报记录信息，严禁回显 content_snapshot 全文
   const { content_snapshot: _stripped, ...safeReport } = report;
@@ -523,7 +606,7 @@ router.post("/reports", authMiddleware, async (c) => {
  */
 router.get("/reports/:reportId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  const isMod = await isModerator(c);
+  const isMod = moderatorFlag(c);
   const detail = await getReportDetail(
     c.req.param("reportId") as string,
     actorId,
