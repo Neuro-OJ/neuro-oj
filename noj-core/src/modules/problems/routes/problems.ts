@@ -45,15 +45,8 @@ import {
 } from "../services/support-package.ts";
 import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
-import {
-  getProblemStatsDetail,
-  getPublicProblemStats,
-} from "../services/problems/problems-stats.ts";
 import { resolveProblem } from "../services/problem-resolve.ts";
-import {
-  evaluateProblemAccess,
-  evaluateProblemAccessWithContestId,
-} from "../services/problem-access-check.ts";
+import { evaluateProblemAccess } from "../services/problem-access-check.ts";
 import {
   isCurrentUserAdmin,
 } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -544,17 +537,17 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
  * 不再回退 submission_sample.py / submission.py。
  *
  * 可见性与题目详情同口径（此前本 handler **完全没有访问校验**，私有题的模板对任意
- * 登录用户可读）；竞赛模式编辑器携带 `?contest_id=` 时走竞赛上下文放行。
+ * 登录用户可读）。竞赛编辑器改用域竞赛模板端点
+ * `/api/v1/domains/:slug/contests/:id/problems/:label/template`，本端点不再接受 `?contest_id=`。
  */
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId") as string;
   const isAdmin = await isCurrentUserAdmin(c);
   const problem = await resolveProblem(id);
-  const { result } = await evaluateProblemAccessWithContestId(problem, {
+  const { result } = await evaluateProblemAccess(problem, {
     viewerId: userId,
     isAdmin,
-    contestId: c.req.query("contest_id"),
   });
   if (!result.allowed) {
     throw new NotFoundError("题目不存在");
@@ -583,55 +576,6 @@ router.get("/:id/template", authMiddleware, async (c) => {
       language: tpl.language,
     },
   });
-});
-
-/**
- * 题目公开统计：通过率对所有人可见；竞赛进行中的题目隐藏难度先验。
- *
- * **可见性校验与题目详情同口径**（2026-09-14 评审 C3）：此前本 handler 调用
- * `resolveProblem(id)` 时**未传 viewer**，因而完全不触发访问校验，导致
- * 私有题统计匿名可读，并可据 200/404 差异按 `display_id` 枚举私有题的存在性
- * （兄弟 handler `/:id` 明确注释"无权限一律 404，防存在性探测"）。
- *
- * 注册顺序注意：本路由必须先于 `/:id/stats` 注册，否则被后者吞掉。
- * GET /api/v1/problems/:id/stats/public
- */
-router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
-  const userId = c.get("userId") as string | undefined;
-  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
-
-  // 与 /:id 一致：无权限一律 404，避免成为私有题/保密题的存在性预言机
-  const problem = await resolveProblem(id, { userId, isAdmin });
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId ?? null,
-    isAdmin,
-  });
-  if (!access.allowed) {
-    throw new NotFoundError("题目不存在");
-  }
-
-  return c.json({ data: await getPublicProblemStats(problem.id) });
-});
-
-/**
- * 题目深度统计：评测状态分布与用例失败分布，仅题目 owner 与管理员可见。
- * GET /api/v1/problems/:id/stats
- */
-router.get("/:id/stats", authMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  const userId = c.get("userId") as string;
-  await assertProblemEditPermissionForActor(
-    problem,
-    userActorFromAuthenticatedId(userId),
-  );
-  // 窗口天数：非法值（非整数 / 越界）回退默认 90，避免异常入参放大查询范围
-  const rawWindow = Number(c.req.query("window_days") ?? 90);
-  const windowDays = Number.isInteger(rawWindow) && rawWindow > 0 &&
-      rawWindow <= 365
-    ? rawWindow
-    : 90;
-  return c.json({ data: await getProblemStatsDetail(problem.id, windowDays) });
 });
 
 // ── 客观题（并入 problems 体系，is_objective 标记）───────────────────────────

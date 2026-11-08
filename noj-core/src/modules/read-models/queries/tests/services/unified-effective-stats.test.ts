@@ -13,7 +13,7 @@ import {
  * - **#52**：实际提交数（total）与当前口径有效数（valid）分离，公开通过率分母为
  *   valid；仪表盘不再把"有最近尝试"当作已判定。
  *
- * 文件位置说明：`problems-stats.ts` / `dashboard.ts` 属本 workstream，但
+ * 文件位置说明：`dashboard.ts` 属本 workstream，但
  * `catalog/tests/**` 的写作用域归 catalog workstream，故这些跨服务口径断言放在
  * query 域测试目录（测试文件不受域边界门禁约束）。
  */
@@ -30,10 +30,6 @@ import {
   users,
 } from "../../../../../shared/db/schema.ts";
 import { getGlobalRankings } from "../../index.ts";
-import {
-  getProblemStatsDetail,
-  getPublicProblemStats,
-} from "../../../../problems/index.ts";
 import { getDashboardStats } from "../../services/dashboard.ts";
 import type { SubmissionStatus } from "../../../../evaluations/index.ts";
 import type {
@@ -141,142 +137,6 @@ async function seedCodeSubmission(
   }).where(eq(submissions.id, submissionId));
   return { submissionId, attemptId };
 }
-
-/**
- * 给已有提交追加一次重测/平台失败尝试，并把"最近尝试"指向它
- * （有效成绩指针保持旧正式判定不动——真实投影在重测期间就是这样）。
- */
-async function addLaterAttempt(
-  submissionId: string,
-  problemId: string,
-  options: {
-    sequence: number;
-    state: AttemptState;
-    resultKind: AttemptResultKind | null;
-    resultStatus: string | null;
-    score?: number | null;
-    accepted?: boolean;
-  },
-): Promise<string> {
-  const attemptId = crypto.randomUUID();
-  await getDb().insert(evaluationAttempts).values({
-    id: attemptId,
-    submission_id: submissionId,
-    problem_id: problemId,
-    sequence: options.sequence,
-    source: "rejudge",
-    state: options.state,
-    result_kind: options.resultKind,
-    result_status: options.resultStatus,
-    score: options.score ?? null,
-    accepted: options.accepted ?? false,
-    details: {},
-    created_at: now,
-    finished_at: options.state === "queued" || options.state === "judging"
-      ? null
-      : now,
-  });
-  await getDb().update(submissions).set({
-    active_attempt_id: options.state === "queued" ||
-        options.state === "judging"
-      ? attemptId
-      : null,
-    latest_attempt_id: attemptId,
-  }).where(eq(submissions.id, submissionId));
-  return attemptId;
-}
-
-Deno.test({
-  name:
-    "stats(#50/#52): 重测中与平台错误不使已有有效成绩消失，total 与 valid 分离",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    const userId = await seedUser("effective-stats");
-    const problemId = await seedProblem(941001);
-
-    try {
-      // ① 一次满分正式判定（唯一提交）
-      const { submissionId } = await seedCodeSubmission(problemId, userId, {
-        score: FULL_SCORE,
-        accepted: true,
-        valid: true,
-      });
-
-      let detail = await getProblemStatsDetail(problemId);
-      assertEquals(detail.submit_count, 1);
-      assertEquals(detail.valid_submissions, 1);
-      assertEquals(detail.accepted_count, 1);
-      assertEquals(detail.acceptance_rate, 1);
-
-      // ② 重测进行中：源状态 pending + 在途尝试，有效判定（投影与有效指针）保留
-      await addLaterAttempt(submissionId, problemId, {
-        sequence: 1,
-        state: "queued",
-        resultKind: null,
-        resultStatus: null,
-      });
-      await db.update(submissions).set({ status: "pending" }).where(
-        eq(submissions.id, submissionId),
-      );
-
-      detail = await getProblemStatsDetail(problemId);
-      assertEquals(detail.submit_count, 1);
-      assertEquals(detail.valid_submissions, 1);
-      assertEquals(detail.accepted_count, 1);
-      assertEquals(
-        detail.acceptance_rate,
-        1,
-        "重测中已有满分不得从通过率中消失",
-      );
-
-      // ③ 平台失败：源状态 error，已有有效成绩同样不得消失
-      await addLaterAttempt(submissionId, problemId, {
-        sequence: 2,
-        state: "error",
-        resultKind: "platform_error",
-        resultStatus: "error",
-      });
-      await db.update(submissions).set({ status: "error" }).where(
-        eq(submissions.id, submissionId),
-      );
-      detail = await getProblemStatsDetail(problemId);
-      assertEquals(detail.submit_count, 1);
-      assertEquals(detail.valid_submissions, 1);
-      assertEquals(detail.accepted_count, 1);
-      assertEquals(detail.acceptance_rate, 1);
-
-      // ④ 尚未判定的新提交：计入 total，不计入 valid 与通过率分母
-      await seedCodeSubmission(problemId, userId, {
-        score: 0,
-        accepted: false,
-        valid: false,
-        submissionStatus: "pending",
-        attemptState: "queued",
-        resultStatus: null,
-      });
-      detail = await getProblemStatsDetail(problemId);
-      assertEquals(detail.submit_count, 2);
-      assertEquals(detail.valid_submissions, 1);
-      assertEquals(detail.accepted_count, 1);
-      assertEquals(detail.acceptance_rate, 1);
-
-      const publicStats = await getPublicProblemStats(problemId);
-      assertEquals(publicStats.submit_count, 2);
-      assertEquals(publicStats.valid_submissions, 1);
-      assertEquals(publicStats.accepted_count, 1);
-      assertEquals(publicStats.acceptance_rate, 1);
-    } finally {
-      await db.delete(evaluationAttempts).where(
-        eq(evaluationAttempts.problem_id, problemId),
-      );
-      await db.delete(submissions).where(eq(submissions.problem_id, problemId));
-      await deleteProblemFixtures(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, userId));
-    }
-  },
-});
 
 Deno.test({
   name: "rankings(#50/#51): 重测中保留通过，客观题纳入统一聚合且按题目去重",

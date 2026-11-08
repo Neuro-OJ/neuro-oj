@@ -6,10 +6,7 @@ export type {
   ProblemAccessResult,
   ProblemSecrecyInfo,
 } from "./services/problem-access.ts";
-export {
-  evaluateProblemAccess,
-  evaluateProblemAccessWithContestId,
-} from "./services/problem-access-check.ts";
+export { evaluateProblemAccess } from "./services/problem-access-check.ts";
 export type {
   ProblemAccessEvaluation,
 } from "./services/problem-access-check.ts";
@@ -55,15 +52,6 @@ export {
   RESOURCE_LIMIT_SETTINGS,
   SENSITIVE_FIELD_PERMISSIONS,
 } from "./services/problems/problem-field-guard.ts";
-export {
-  getProblemStatsDetail,
-  getPublicProblemStats,
-  MAX_STATS_SAMPLE,
-  median,
-  type ProblemStatsDetail,
-  type PublicProblemStats,
-  STATS_CACHE_TTL_MS,
-} from "./services/problems/problems-stats.ts";
 export {
   createTag,
   deleteTag,

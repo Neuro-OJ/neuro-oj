@@ -1,5 +1,5 @@
 /**
- * 取数+判定入口 `evaluateProblemAccess*` 的 DB 级测试（2026-09-26）。
+ * 取数+判定入口 `evaluateProblemAccess` 的 DB 级测试（2026-09-26）。
  *
  * 重点覆盖"客观题套卷竞赛路径"依赖的那条豁免：题目虽被公开赛保密，但**持有有效
  * 竞赛上下文**（是该竞赛参赛者、题目属于该竞赛、窗口 running/ended）时仍放行——
@@ -11,10 +11,9 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
-import {
-  evaluateProblemAccess,
-  evaluateProblemAccessWithContestId,
-} from "../../services/problem-access-check.ts";
+import { evaluateProblemAccess } from "../../services/problem-access-check.ts";
+import { verifyContestAccess } from "../../../access/contest-policy.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   createContest,
   deleteContest,
@@ -155,10 +154,15 @@ Deno.test({
     const problem = { id: problemId, visibility: "public", owner_id: ownerId };
     try {
       await registerForContest(contestId, participantId);
-      const { result } = await evaluateProblemAccessWithContestId(problem, {
+      const contestAccess = await verifyContestAccess(
+        userActorFromAuthenticatedId(participantId),
+        contestId,
+        problemId,
+      );
+      const { result } = await evaluateProblemAccess(problem, {
         viewerId: participantId,
         isAdmin: false,
-        contestId,
+        contestAccess,
       });
       assertEquals(result, { allowed: true, mode: "contest" });
     } finally {
@@ -183,11 +187,17 @@ Deno.test({
     );
     const problem = { id: problemId, visibility: "public", owner_id: ownerId };
     try {
+      const contestAccess = await verifyContestAccess(
+        userActorFromAuthenticatedId(strangerId),
+        contestId,
+        problemId,
+      );
+      assertEquals(contestAccess.allowed, false);
       await assertRejects(() =>
-        evaluateProblemAccessWithContestId(problem, {
+        evaluateProblemAccess(problem, {
           viewerId: strangerId,
           isAdmin: false,
-          contestId,
+          contestAccess,
         })
       );
     } finally {
