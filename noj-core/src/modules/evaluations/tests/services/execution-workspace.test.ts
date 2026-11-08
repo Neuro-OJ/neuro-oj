@@ -60,7 +60,11 @@ async function fixture() {
   const [binding] = await db.select().from(domainProblemBindings).where(
     eq(domainProblemBindings.problem_id, first.id),
   );
-  await updateSetting("domain_creation_policy", "open", "0");
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId("0"),
+  );
   const other = await createDomain({
     slug: "execution-school",
     name: "学校",

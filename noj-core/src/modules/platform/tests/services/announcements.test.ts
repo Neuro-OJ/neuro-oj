@@ -5,7 +5,7 @@
  * 非 active 详情 404、审计日志、删除。
  *
  * 依赖测试启动器提供的独立 PostgreSQL 数据库。
- * 服务层经 getRequestContext() 取操作者，测试用 enterTestContext 注入。
+ * 服务层显式接收 UserActor；审计上下文不依赖 ALS。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { desc, eq } from "drizzle-orm";
@@ -20,7 +20,8 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../../../shared/base/errors.ts";
-import { enterTestContext, leaveTestContext } from "../../system/index.ts";
+import { leaveTestContext } from "../../system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -30,14 +31,15 @@ import {
   updateAnnouncement,
 } from "../../system/index.ts";
 
+const TEST_ACTOR = userActorFromAuthenticatedId("test-admin-uuid");
+
 const TEST_CTX = {
   actorId: "test-admin-uuid",
   actorIp: "192.168.1.100",
   actorRole: "admin",
 };
 
-/** 重置 DB + 清理 ALS + 插入测试用户（enterTestContext 需在测试 fn 内调用，
- * 经 async helper 中转时 enterWith 上下文不会传播回调用方） */
+/** 重置 DB + 清理 ALS + 插入测试用户。 */
 async function setup() {
   await resetDbForTest();
   leaveTestContext(); // 清理前序测试可能的 ALS 泄漏
@@ -59,11 +61,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
     const item = await createAnnouncement({
       title: "维护通知",
       content: "本周六凌晨系统维护",
-    });
+    }, TEST_ACTOR);
     assertEquals(item.is_pinned, false);
     assertEquals(item.is_active, true);
     assertEquals(item.created_by, TEST_CTX.actorId);
@@ -82,21 +83,28 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
     await assertRejects(
-      () => createAnnouncement({ title: "", content: "x" }),
+      () => createAnnouncement({ title: "", content: "x" }, TEST_ACTOR),
       ValidationError,
     );
     await assertRejects(
-      () => createAnnouncement({ title: "a".repeat(101), content: "x" }),
+      () =>
+        createAnnouncement(
+          { title: "a".repeat(101), content: "x" },
+          TEST_ACTOR,
+        ),
       ValidationError,
     );
     await assertRejects(
-      () => createAnnouncement({ title: "ok", content: "" }),
+      () => createAnnouncement({ title: "ok", content: "" }, TEST_ACTOR),
       ValidationError,
     );
     await assertRejects(
-      () => createAnnouncement({ title: "ok", content: "x".repeat(50001) }),
+      () =>
+        createAnnouncement(
+          { title: "ok", content: "x".repeat(50001) },
+          TEST_ACTOR,
+        ),
       ValidationError,
     );
   },
@@ -109,22 +117,24 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
     const longContent = "段落" + "x".repeat(200) + "尾部";
     // 置顶（较旧）
     await createAnnouncement({
       title: "置顶公告",
       content: longContent,
       is_pinned: true,
-    });
+    }, TEST_ACTOR);
     // 非置顶（较新）
-    await createAnnouncement({ title: "普通公告", content: "普通内容" });
+    await createAnnouncement(
+      { title: "普通公告", content: "普通内容" },
+      TEST_ACTOR,
+    );
     // 下架
     const inactive = await createAnnouncement({
       title: "已下架",
       content: "不可见",
       is_active: false,
-    });
+    }, TEST_ACTOR);
 
     const list = await listPublicAnnouncements(1, 20);
     assertEquals(list.meta.total, 2);
@@ -146,13 +156,15 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
-    const active = await createAnnouncement({ title: "在线", content: "全文" });
+    const active = await createAnnouncement(
+      { title: "在线", content: "全文" },
+      TEST_ACTOR,
+    );
     const inactive = await createAnnouncement({
       title: "下线",
       content: "x",
       is_active: false,
-    });
+    }, TEST_ACTOR);
 
     const detail = await getPublicAnnouncement(active.id);
     assertEquals(detail.content, "全文");
@@ -175,13 +187,15 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
-    const a = await createAnnouncement({ title: "A", content: "a" });
+    const a = await createAnnouncement(
+      { title: "A", content: "a" },
+      TEST_ACTOR,
+    );
     const b = await createAnnouncement({
       title: "B",
       content: "b",
       is_active: false,
-    });
+    }, TEST_ACTOR);
 
     // 全量：2 条，最新在前
     const all = await listAdminAnnouncements(1, 20);
@@ -194,7 +208,11 @@ Deno.test({
     assertEquals(activeOnly.data[0].id, a.id);
 
     // 部分更新：下架 A
-    const updated = await updateAnnouncement(a.id, { is_active: false });
+    const updated = await updateAnnouncement(
+      a.id,
+      { is_active: false },
+      TEST_ACTOR,
+    );
     assertEquals(updated.is_active, false);
     assertEquals(updated.title, "A");
 
@@ -203,7 +221,7 @@ Deno.test({
       () =>
         updateAnnouncement("00000000-0000-0000-0000-000000000000", {
           title: "x",
-        }),
+        }, TEST_ACTOR),
       NotFoundError,
     );
 
@@ -224,10 +242,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
-    const item = await createAnnouncement({ title: "待删", content: "x" });
+    const item = await createAnnouncement(
+      { title: "待删", content: "x" },
+      TEST_ACTOR,
+    );
 
-    await deleteAnnouncement(item.id);
+    await deleteAnnouncement(item.id, TEST_ACTOR);
 
     const db = getDb();
     const rows = await db.select().from(announcements)
@@ -240,7 +260,8 @@ Deno.test({
     assertEquals(logs.length, 1);
 
     await assertRejects(
-      () => deleteAnnouncement("00000000-0000-0000-0000-000000000000"),
+      () =>
+        deleteAnnouncement("00000000-0000-0000-0000-000000000000", TEST_ACTOR),
       NotFoundError,
     );
   },
@@ -252,10 +273,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    enterTestContext(TEST_CTX);
-    const item = await createAnnouncement({ title: "ok", content: "x" });
+    const item = await createAnnouncement(
+      { title: "ok", content: "x" },
+      TEST_ACTOR,
+    );
     await assertRejects(
-      () => updateAnnouncement(item.id, { title: "a".repeat(200) }),
+      () => updateAnnouncement(item.id, { title: "a".repeat(200) }, TEST_ACTOR),
       ValidationError,
     );
     // 校验失败不落库

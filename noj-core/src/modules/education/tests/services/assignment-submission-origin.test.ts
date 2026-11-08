@@ -16,6 +16,7 @@ import {
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 async function fixture(publish = true) {
   const f = await assignmentFixture();
@@ -175,7 +176,7 @@ Deno.test("作业受理来源：教学关闭不影响无来源练习，但带来
       assignment: false,
       analytics: true,
     }),
-    "0",
+    userActorFromAuthenticatedId("0"),
   );
   assertEquals(
     await f.db.transaction((tx) =>

@@ -1,8 +1,9 @@
 /**
  * 外部运行时接入契约。
  *
- * gateway/judge 按能力选择 HTTP 或 heartbeat 模式；Prometheus 直抓指标。
- * 地址可由 RUNTIME_LLM_GATEWAY_URL / RUNTIME_JUDGE_MODE 覆盖。
+ * gateway 走 HTTP 模式（Prometheus 直抓指标）；judge 是纯 Worker，没有 HTTP
+ * 端点，固定走 heartbeat 模式（由心跳聚合出指标）。
+ * gateway 地址可由 RUNTIME_LLM_GATEWAY_URL 覆盖。
  */
 
 export interface RuntimeDescriptor {
@@ -19,10 +20,6 @@ function gatewayBaseUrl(): string {
   return (Deno.env.get("RUNTIME_LLM_GATEWAY_URL") ??
     "http://noj-llm-gateway:8001")
     .replace(/\/+$/, "");
-}
-
-function judgeMode(): "http" | "heartbeat" {
-  return Deno.env.get("RUNTIME_JUDGE_MODE") === "http" ? "http" : "heartbeat";
 }
 
 export const RUNTIME_DESCRIPTORS: readonly RuntimeDescriptor[] = [
@@ -44,13 +41,7 @@ export const RUNTIME_DESCRIPTORS: readonly RuntimeDescriptor[] = [
   {
     name: "noj-judge",
     contractVersion: 1,
-    mode: judgeMode(),
-    healthUrl: judgeMode() === "http"
-      ? "http://noj-judge:8002/health/live"
-      : undefined,
-    metricsUrl: judgeMode() === "http"
-      ? "http://noj-judge:8002/metrics"
-      : undefined,
+    mode: "heartbeat",
     heartbeatKey: "noj:observability:judge:",
     requiredMetrics: [
       "noj_judge_workers",

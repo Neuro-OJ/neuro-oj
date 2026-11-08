@@ -16,7 +16,7 @@
 | noj-core/src/modules/access/identity/tests/routes/tfa.test.ts | 21 | env-guard |
 | noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 34 | env-guard |
 | noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 36 | env-guard |
-| noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts | 131 | env-guard |
+| noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts | 132 | env-guard |
 | noj-core/src/modules/read-models/search/tests/perf/search_bench.test.ts | 16 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
 | noj-core/tests/perf/community_search_bench.test.ts | 32 | ignore |
@@ -28,7 +28,7 @@
 | noj-core/tests/shared/storage/s3.test.ts | 122 | ignore |
 | noj-core/tests/shared/storage/s3.test.ts | 152 | ignore |
 | noj-core/tests/shared/storage/s3.test.ts | 173 | ignore |
-| noj-core/tests/smoke.test.ts | 37 | env-guard |
+| noj-core/tests/smoke.test.ts | 33 | env-guard |
 | noj-judge/tests/common/mod.rs | 326 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 28 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 32 | rust-env-guard |

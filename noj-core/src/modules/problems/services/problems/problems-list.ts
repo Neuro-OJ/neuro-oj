@@ -31,10 +31,6 @@ import {
   DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import {
-  problemAuthoringRestrictedByContest,
-  problemAuthoringRestrictionSql,
-} from "../workspace/problem-contest-authoring.ts";
 import { submissionQueryVisibility } from "../../../access/submission-policy.ts";
 import {
   domains,
@@ -295,11 +291,6 @@ export async function listProblems(
       problem: problems,
       owner_username: users.username,
       owner_avatar_url: users.avatar_url,
-      // 是否被尚未结束的公开赛收编：与过滤条件同一谓词，语言层面不会漂移
-      authoring_restricted: problemAuthoringRestrictionSql(
-        workspace,
-        problems.id,
-      ).as("authoring_restricted"),
       is_contest_hidden: sql<boolean>`${
         unendedPublicContestForProblem(problems.id, sql`${DEFAULT_DOMAIN_ID}`)
       }`
@@ -331,7 +322,7 @@ export async function listProblems(
         description: r.is_contest_hidden ? "" : r.problem.description,
         samples: r.is_contest_hidden ? [] : r.problem.samples,
       }, {
-        isOwnerOrAdmin: !r.authoring_restricted && canManageAny,
+        isOwnerOrAdmin: canManageAny,
       }, r.is_contest_hidden === true),
       owner_username: r.owner_username ?? "未知",
       owner_avatar_url: r.owner_avatar_url ?? null,
@@ -592,9 +583,8 @@ async function canManageProblemProjection(
     .where(eq(domains.id, row.domain_id ?? DEFAULT_DOMAIN_ID));
   if (!domain) return false;
   const workspace = await loadWorkspace(domain.slug, viewer.userId ?? null);
-  return (workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("problem:write_any")) &&
-    !await problemAuthoringRestrictedByContest(workspace, row.id, getDb());
+  return workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("problem:write_any");
 }
 
 /**

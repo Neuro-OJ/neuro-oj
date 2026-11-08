@@ -293,7 +293,7 @@ Deno.test({
     await updateSetting(
       "judge_max_evaluator_memory_limit_mb",
       512,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       await assertResourceLimitExceeded(
@@ -312,7 +312,10 @@ Deno.test({
           }),
       );
     } finally {
-      await resetSetting("judge_max_evaluator_memory_limit_mb", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_evaluator_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -325,7 +328,7 @@ Deno.test({
     await updateSetting(
       "judge_max_evaluator_memory_limit_mb",
       512,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       const problem = await createProblem({
@@ -342,7 +345,10 @@ Deno.test({
       });
       assertEquals(problem.title, `未超限 ${ts}`);
     } finally {
-      await resetSetting("judge_max_evaluator_memory_limit_mb", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_evaluator_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -365,7 +371,7 @@ Deno.test({
     await updateSetting(
       "judge_max_solution_call_timeout_ms",
       5000,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       await assertResourceLimitExceeded(
@@ -386,7 +392,10 @@ Deno.test({
           ),
       );
     } finally {
-      await resetSetting("judge_max_solution_call_timeout_ms", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_solution_call_timeout_ms",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -451,7 +460,7 @@ Deno.test({
     await updateSetting(
       "judge_max_evaluator_time_limit_ms",
       5000,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       const zip = makeBundleZip({
@@ -471,7 +480,10 @@ Deno.test({
           ),
       );
     } finally {
-      await resetSetting("judge_max_evaluator_time_limit_ms", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_evaluator_time_limit_ms",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -503,7 +515,7 @@ Deno.test({
     await updateSetting(
       "judge_max_solution_memory_limit_mb",
       256,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       const zip = makeBundleZip({
@@ -536,7 +548,10 @@ Deno.test({
         5000,
       );
     } finally {
-      await resetSetting("judge_max_solution_memory_limit_mb", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_solution_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -552,7 +567,7 @@ Deno.test({
     await updateSetting(
       "judge_max_prediction_workspace_mb",
       4096,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       await assertResourceLimitExceeded(
@@ -578,7 +593,10 @@ Deno.test({
           ),
       );
     } finally {
-      await resetSetting("judge_max_prediction_workspace_mb", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_prediction_workspace_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -591,7 +609,7 @@ Deno.test({
     await updateSetting(
       "judge_max_prediction_workspace_mb",
       4096,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       const created = await createProblem(
@@ -615,7 +633,10 @@ Deno.test({
       );
       assertEquals(created.submission_mode, "prediction");
     } finally {
-      await resetSetting("judge_max_prediction_workspace_mb", ROOT_USER_ID);
+      await resetSetting(
+        "judge_max_prediction_workspace_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
     }
   },
 });
@@ -647,3 +668,4 @@ import { grantDefaultCatalogRole } from "../default-fixture.ts";
 
 import { createDefaultCatalogToken } from "../default-fixture.ts";
 import { decodeJwt } from "jose";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";

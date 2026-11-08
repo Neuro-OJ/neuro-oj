@@ -1,4 +1,5 @@
 import { problemExecutionForTest } from "../../../../../../tests/helper.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -65,8 +66,16 @@ async function setup(): Promise<void> {
   await publishBaselineVersionForTest(problemId);
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
-    await updateSetting("community_enabled", true, "0");
-    await updateSetting("community_new_user_review_hours", 0, "0");
+    await updateSetting(
+      "community_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_new_user_review_hours",
+      0,
+      userActorFromAuthenticatedId("0"),
+    );
   } finally {
     leaveTestContext();
   }

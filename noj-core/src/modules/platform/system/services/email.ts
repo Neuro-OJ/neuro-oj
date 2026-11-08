@@ -15,7 +15,7 @@ import type {
   SendPasswordResetEmail,
 } from "./email-providers/types.ts";
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
-import { getSetting } from "./system-settings.ts";
+import { getSetting } from "../../services/system-settings.ts";
 import { isInvalidEmailAddress } from "../../../../shared/security/email-address.ts";
 import { getLogger } from "@logtape/logtape";
 

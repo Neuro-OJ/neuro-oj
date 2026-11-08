@@ -4,7 +4,7 @@ import {
   ServiceUnavailableError,
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
-import { getSetting } from "../services/system-settings.ts";
+import { getSetting } from "../../services/system-settings.ts";
 import {
   getEmailDeliveryAdapter,
   SignedFixtureEmailDeliveryAdapter,

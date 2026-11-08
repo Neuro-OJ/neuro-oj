@@ -22,10 +22,6 @@ import {
   initSystemSettings,
   resetEmailProvider,
 } from "../../../../platform/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../../../platform/system/index.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 
@@ -40,8 +36,6 @@ const initializeFirstAdmin = (
 /** 按 issue #426 场景重置设置缓存（provider 由 env 决定，bootstrap 作用域）。 */
 async function setupWithProvider(provider: "disabled" | "mock") {
   Deno.env.set("EMAIL_PROVIDER", provider);
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   _resetSystemSettingsForTest();
   await initSystemSettings();
   resetEmailProvider();

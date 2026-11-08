@@ -1,7 +1,8 @@
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { users } from "../../../../../shared/db/schema.ts";
-import { createAnnouncement } from "../../services/announcements.ts";
+import { createAnnouncement } from "../../../services/announcements.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { enterTestContext, leaveTestContext } from "../../index.ts";
 import { assertSearchEventPublished } from "../../../../../../tests/helper/search-events.ts";
 import { connectRedis } from "../../../../../shared/mq/connection.ts";
@@ -44,7 +45,7 @@ Deno.test({
       const announcement = await createAnnouncement({
         title: "事件公告",
         content: "内容",
-      });
+      }, userActorFromAuthenticatedId("test-admin-uuid"));
       await assertSearchEventPublished(
         "announcement",
         announcement.id,

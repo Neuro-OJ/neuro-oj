@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { zipSync } from "fflate";
 import { eq, sql } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -41,7 +42,11 @@ async function fixture() {
   await initRedisForTest();
   const token = await createUserToken("user"), actor = await verifyToken(token);
   await ensureDefaultWorkspace();
-  await updateSetting("domain_creation_policy", "open", "0");
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId("0"),
+  );
   await createDomain({
     slug: "author-school",
     name: "学校",

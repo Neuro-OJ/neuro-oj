@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { eq } from "drizzle-orm";
 import {
   AppError,
@@ -56,12 +57,12 @@ Deno.test("配额政策：新域复制默认值并受上限约束，默认域及
   await updateSetting(
     "domain_default_limits",
     JSON.stringify({ ...unlimitedDomainLimits(), members: 2, problems: 10 }),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   await updateSetting(
     "domain_limit_caps",
     JSON.stringify({ ...unlimitedDomainLimits(), problems: 5 }),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   const domain = await createDomain({
     slug: "limited-school",
@@ -79,7 +80,7 @@ Deno.test("配额政策：新域复制默认值并受上限约束，默认域及
   await updateSetting(
     "domain_default_limits",
     JSON.stringify({ ...unlimitedDomainLimits(), members: 100 }),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   assertEquals(
     (await getDomainEffectiveLimits(domain.id)).configured.members,
@@ -94,7 +95,7 @@ Deno.test("配额政策：新域复制默认值并受上限约束，默认域及
   await updateSetting(
     "domain_limit_caps",
     JSON.stringify({ ...unlimitedDomainLimits(), members: 1, problems: 3 }),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   assertEquals(
     (await getDomainEffectiveLimits(domain.id)).effective.members,
@@ -147,7 +148,7 @@ Deno.test("配额治理：管理员只能降低，平台可提高；revision、�
   await updateSetting(
     "domain_limit_caps",
     JSON.stringify({ ...unlimitedDomainLimits(), members: 4 }),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   await assertRejects(
     () =>
@@ -176,7 +177,7 @@ Deno.test("模块政策：受限 Preset、禁止重新启用及历史教学读�
   await updateSetting(
     "instance_allowed_modules",
     JSON.stringify(modules),
-    platform,
+    userActorFromAuthenticatedId(platform),
   );
   const domain = await createDomain({
     slug: "module-school",
@@ -221,12 +222,17 @@ Deno.test("结构化设置：错误格式不持久化；异常持久上限不会
       updateSetting(
         "domain_limit_caps",
         JSON.stringify({ ...unlimitedDomainLimits(), members: -1 }),
-        platform,
+        userActorFromAuthenticatedId(platform),
       ),
     ValidationError,
   );
   await assertRejects(
-    () => updateSetting("instance_allowed_modules", "{}", platform),
+    () =>
+      updateSetting(
+        "instance_allowed_modules",
+        "{}",
+        userActorFromAuthenticatedId(platform),
+      ),
     ValidationError,
   );
   const domain = await createDomain({

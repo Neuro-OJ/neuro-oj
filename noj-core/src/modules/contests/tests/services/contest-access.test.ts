@@ -1,4 +1,5 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -114,7 +115,11 @@ Deno.test({
   fn: async () => {
     const creator = await createUser("school-organizer");
     const student = await createUser("school-student");
-    await updateSetting("domain_creation_policy", "open", "0");
+    await updateSetting(
+      "domain_creation_policy",
+      "open",
+      userActorFromAuthenticatedId("0"),
+    );
     const school = await createDomain({
       slug: "organizer-school",
       name: "学校比赛",

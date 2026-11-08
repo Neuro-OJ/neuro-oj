@@ -45,7 +45,6 @@ x-core-env: &core-env
   # `http://noj-llm-gateway:8001`——那是开发编排的 container_name，生产 compose
   # 的服务名是 `llm-gateway`，不显式设置会指向不存在的 DNS 名。
   RUNTIME_LLM_GATEWAY_URL: http://llm-gateway:8001
-  RUNTIME_JUDGE_MODE: ${RUNTIME_JUDGE_MODE:-heartbeat}
   # 观测快照/探针参数（空值 → 代码默认）
   OBSERVABILITY_SNAPSHOT_TIMEOUT_MS: ${OBSERVABILITY_SNAPSHOT_TIMEOUT_MS:-}
   OBSERVABILITY_CACHE_TTL_MS: ${OBSERVABILITY_CACHE_TTL_MS:-}

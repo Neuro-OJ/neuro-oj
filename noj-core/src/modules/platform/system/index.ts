@@ -29,16 +29,16 @@ export {
   resetSetting,
   SECRET_MASK,
   updateSetting,
-} from "./services/system-settings.ts";
+} from "../services/system-settings.ts";
 export type {
   RuntimeEnvConflict,
   SettingValue,
   SystemSettingListItem,
-} from "./services/system-settings.ts";
+} from "../services/system-settings.ts";
 export {
   readInstanceSettings,
   saveInstanceSettings,
-} from "./services/instance-settings.ts";
+} from "../services/instance-settings.ts";
 export {
   createAnnouncement,
   deleteAnnouncement,
@@ -48,17 +48,17 @@ export {
   listPublicAnnouncements,
   resolveAnnouncementId,
   updateAnnouncement,
-} from "./services/announcements.ts";
+} from "../services/announcements.ts";
 export type {
   AdminAnnouncementItem,
   AnnouncementBanner,
   AnnouncementDetail,
   AnnouncementSummary,
-  ContentScope,
   CreateAnnouncementInput,
   PublicAnnouncementListResponse,
   UpdateAnnouncementInput,
-} from "./services/announcements.ts";
+} from "../services/announcements.ts";
+export type { ContentScope } from "../services/content-scope.ts";
 export {
   createJudgeImage,
   deleteJudgeImage,
@@ -67,13 +67,13 @@ export {
   updateJudgeImage,
   validateJudgeImage,
   validateJudgeImageWithKind,
-} from "./services/judge-images.ts";
+} from "../services/judge-images.ts";
 export type {
   CreateJudgeImageInput,
   JudgeImageKind,
   JudgeImageResponse,
   UpdateJudgeImageInput,
-} from "./services/judge-images.ts";
+} from "../types/judge-images.ts";
 export {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -169,12 +169,6 @@ export {
   maskEmail,
   normalizeEmailDeliveryEvent,
 } from "./services/email-delivery/service.ts";
-export {
-  _resetEnvSnapshotForTest,
-  getBootstrapEnvKeys,
-  getEnvSnapshotValue,
-  snapshotEnv,
-} from "./services/env-snapshot.ts";
 export {
   getActiveOiCostProfile,
   getOiCostProfileStatus,

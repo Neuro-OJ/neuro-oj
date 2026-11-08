@@ -36,7 +36,7 @@ import {
   resolveProblemTemplate,
 } from "../../../problems/services/support-package.ts";
 import { isOiRuntimeConfig } from "../../../problems/types/runtime-config.ts";
-import { validateJudgeImageWithKind } from "../../../platform/system/services/judge-images.ts";
+import { validateJudgeImageWithKind } from "../../../platform/services/judge-images.ts";
 import type { JudgeImageKind } from "../../../problems/types/problems.ts";
 import {
   deleteTraining,

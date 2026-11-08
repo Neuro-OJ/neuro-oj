@@ -7,6 +7,7 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../src/modules/access/contracts/actor.ts";
 import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 import {
@@ -14,24 +15,16 @@ import {
   initSystemSettings,
   updateSetting,
 } from "../../src/modules/platform/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../src/modules/platform/system/services/env-snapshot.ts";
 
 const INTERNAL_TOKEN = "test-maintenance-internal-token-0123456789";
 
-/** 设置内部凭据并返回恢复函数（含 env 快照重置）。 */
+/** 设置内部凭据并返回恢复函数。 */
 function useToken(token = INTERNAL_TOKEN): () => void {
   const previous = Deno.env.get("NOJ_INTERNAL_SERVICE_TOKEN");
   Deno.env.set("NOJ_INTERNAL_SERVICE_TOKEN", token);
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   return () => {
     if (previous === undefined) Deno.env.delete("NOJ_INTERNAL_SERVICE_TOKEN");
     else Deno.env.set("NOJ_INTERNAL_SERVICE_TOKEN", previous);
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
   };
 }
 
@@ -70,7 +63,11 @@ Deno.test({
     _resetSystemSettingsForTest();
     await initSystemSettings();
     try {
-      await updateSetting("maintenance_mode", false, "0");
+      await updateSetting(
+        "maintenance_mode",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
       const app = createApp();
       const login = await loginRequest(app);
       assertEquals(login.status !== 503, true);
@@ -81,7 +78,11 @@ Deno.test({
       const enter = await drainEnterRequest(app);
       assertEquals(enter.status, 200);
     } finally {
-      await updateSetting("maintenance_mode", false, "0").catch(() => {});
+      await updateSetting(
+        "maintenance_mode",
+        false,
+        userActorFromAuthenticatedId("0"),
+      ).catch(() => {});
       restoreToken();
     }
   },
@@ -98,7 +99,11 @@ Deno.test({
     _resetSystemSettingsForTest();
     await initSystemSettings();
     try {
-      await updateSetting("maintenance_mode", true, "0");
+      await updateSetting(
+        "maintenance_mode",
+        true,
+        userActorFromAuthenticatedId("0"),
+      );
       const app = createApp();
 
       const login = await loginRequest(app);
@@ -118,7 +123,11 @@ Deno.test({
       const unauthorized = await drainEnterRequest(app, "wrong-token");
       assertEquals(unauthorized.status, 401);
     } finally {
-      await updateSetting("maintenance_mode", false, "0").catch(() => {});
+      await updateSetting(
+        "maintenance_mode",
+        false,
+        userActorFromAuthenticatedId("0"),
+      ).catch(() => {});
       restoreToken();
     }
   },

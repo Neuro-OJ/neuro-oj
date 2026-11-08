@@ -31,6 +31,7 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 const now = new Date().toISOString();
 
@@ -276,7 +277,7 @@ Deno.test({
     await updateSetting(
       "judge_max_evaluator_memory_limit_mb",
       512,
-      ROOT_USER_ID,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
     );
     try {
       const { jobId, outcome } = await acceptAndDispatch(actor, submissionId);
@@ -295,7 +296,7 @@ Deno.test({
     } finally {
       await resetSetting(
         "judge_max_evaluator_memory_limit_mb",
-        ROOT_USER_ID,
+        userActorFromAuthenticatedId(ROOT_USER_ID),
       );
     }
   },

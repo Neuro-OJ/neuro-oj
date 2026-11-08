@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { Hono } from "hono";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -31,7 +32,11 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureDefaultWorkspace();
-    await updateSetting("domain_creation_policy", "open", "0");
+    await updateSetting(
+      "domain_creation_policy",
+      "open",
+      userActorFromAuthenticatedId("0"),
+    );
     await connectRedis();
     const token = await createUserToken(),
       actor = (await verifyToken(token)).sub;
@@ -137,7 +142,11 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureDefaultWorkspace();
-    await updateSetting("domain_creation_policy", "open", "0");
+    await updateSetting(
+      "domain_creation_policy",
+      "open",
+      userActorFromAuthenticatedId("0"),
+    );
     const token = await createUserToken(), otherToken = await createUserToken();
     const actor = (await verifyToken(token)).sub,
       other = (await verifyToken(otherToken)).sub;

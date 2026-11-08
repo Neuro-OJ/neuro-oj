@@ -9,6 +9,7 @@
  * - resetSetting 删除 DB 行
  * - 敏感字段掩码 maskSecret
  */
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   assert,
   assertEquals,
@@ -32,10 +33,6 @@ import {
   SECRET_MASK,
   updateSetting,
 } from "../../system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../services/env-snapshot.ts";
 import { ValidationError } from "../../../../shared/base/errors.ts";
 import {
   findDefinition,
@@ -70,8 +67,6 @@ async function withEnvironment(
 async function freshSetup() {
   await resetDbForTest();
   _resetSystemSettingsForTest();
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   await initSystemSettings();
 }
 
@@ -105,7 +100,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    // allow_register 未在 DB、未在 .env（测试数据库 模式快照为空），应回退 default=true
+    // allow_register 未在 DB、未在 .env，应回退 default=true
     const got = getSetting("allow_register");
     assertEquals(got?.source, "default");
     assertEquals(got?.value, true);
@@ -118,7 +113,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    await updateSetting("allow_register", false, "0");
+    await updateSetting(
+      "allow_register",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
     const got = getSetting("allow_register");
     assertEquals(got?.source, "db");
     assertEquals(got?.value, false);
@@ -132,7 +131,12 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     await assertRejects(
-      () => updateSetting("allow_register", "yes" as unknown as boolean, "0"),
+      () =>
+        updateSetting(
+          "allow_register",
+          "yes" as unknown as boolean,
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "必须是 boolean",
     );
@@ -147,12 +151,22 @@ Deno.test({
     await freshSetup();
     // email/storage/audit 划归 bootstrap 后不可经后台写
     await assertRejects(
-      () => updateSetting("storage_provider", "s3", "0"),
+      () =>
+        updateSetting(
+          "storage_provider",
+          "s3",
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "环境变量管理",
     );
     await assertRejects(
-      () => updateSetting("audit_log_retention_days", 30, "0"),
+      () =>
+        updateSetting(
+          "audit_log_retention_days",
+          30,
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "环境变量管理",
     );
@@ -165,7 +179,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    await updateSetting("rate_limit_login_ip_max", 20, "0");
+    await updateSetting(
+      "rate_limit_login_ip_max",
+      20,
+      userActorFromAuthenticatedId("0"),
+    );
     const got = getSetting("rate_limit_login_ip_max");
     assertEquals(got?.source, "db");
     assertEquals(got?.value, 20);
@@ -179,7 +197,12 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     await assertRejects(
-      () => updateSetting("rate_limit_login_ip_max", 10.5, "0"),
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          10.5,
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "必须是整数",
     );
@@ -197,7 +220,7 @@ Deno.test({
         updateSetting(
           "rate_limit_login_ip_max",
           "twenty" as unknown as number,
-          "0",
+          userActorFromAuthenticatedId("0"),
         ),
       ValidationError,
       "必须是整数",
@@ -213,7 +236,12 @@ Deno.test({
     await freshSetup();
     // rate_limit_login_ip_max 定义 min:1
     await assertRejects(
-      () => updateSetting("rate_limit_login_ip_max", 0, "0"),
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          0,
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "不能小于 1",
     );
@@ -228,7 +256,12 @@ Deno.test({
     await freshSetup();
     // rate_limit_login_acc_max 定义 max:100（runtime 项）
     await assertRejects(
-      () => updateSetting("rate_limit_login_acc_max", 999, "0"),
+      () =>
+        updateSetting(
+          "rate_limit_login_acc_max",
+          999,
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
       "不能大于 100",
     );
@@ -300,7 +333,8 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     await assertRejects(
-      () => updateSetting("hacker_key", "value", "0"),
+      () =>
+        updateSetting("hacker_key", "value", userActorFromAuthenticatedId("0")),
       ValidationError,
       "未注册",
     );
@@ -313,10 +347,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    await updateSetting("maintenance_mode", true, "0");
+    await updateSetting(
+      "maintenance_mode",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
     assertEquals(getSetting("maintenance_mode")?.source, "db");
 
-    await resetSetting("maintenance_mode", "0");
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
     // reset 后 source 不再是 db（应是 env 或 default）
     const got = getSetting("maintenance_mode");
     assertEquals(got?.source !== "db", true);
@@ -330,9 +368,9 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     // 第一次重置（DB 中无此行）
-    await resetSetting("maintenance_mode", "0");
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
     // 第二次重置
-    await resetSetting("maintenance_mode", "0");
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
     assertEquals(true, true);
   },
 });
@@ -346,7 +384,11 @@ Deno.test({
     // 安全约束：未注册 key（如内部标记 rbac_sensitive_field_permissions_seeded）
     // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
     await assertRejects(
-      () => resetSetting("totally_unregistered_key_xyz", "0"),
+      () =>
+        resetSetting(
+          "totally_unregistered_key_xyz",
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
     );
   },
@@ -437,7 +479,11 @@ Deno.test({
     // 写一个 is_secret=true 的非注册表 key（直接走 DB，绕过注册表 type 校验）
     // 这里改用 mock：通过 service 间接验证（注册表中 5 项均 is_secret=false）
     // 所以改用更新后 listSettings 检查 raw_value 未被掩码
-    await updateSetting("allow_register", false, "0");
+    await updateSetting(
+      "allow_register",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
     const items = await listSettings();
     const allowReg = items.find((i) => i.key === "allow_register");
     assertEquals(allowReg?.source, "db");
@@ -461,12 +507,10 @@ Deno.test({
     }
 
     await withEnvironment("REDIS_URL", redisUrl, async () => {
-      // 模拟运行时 .env 中有该 key：先 setenv 再重置并快照。
+      // 模拟运行时 .env 中有该 key：先 setenv 再重置设置缓存。
       // 使用启动器提供的本 run Redis，禁止回退到开发 Redis。
       await resetDbForTest();
       _resetSystemSettingsForTest();
-      _resetEnvSnapshotForTest();
-      snapshotEnv();
       await initSystemSettings();
 
       const items = await listSettings();
@@ -489,7 +533,11 @@ Deno.test({
   fn: async () => {
     await withEnvironment("ALLOW_REGISTER", "false", async () => {
       await freshSetup();
-      await updateSetting("allow_register", false, "0");
+      await updateSetting(
+        "allow_register",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
 
       const conflicts = listRuntimeEnvConflicts();
       assertEquals(
@@ -516,7 +564,11 @@ Deno.test({
   fn: async () => {
     await withEnvironment("ALLOW_REGISTER", undefined, async () => {
       await freshSetup();
-      await updateSetting("allow_register", false, "0");
+      await updateSetting(
+        "allow_register",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
 
       assertEquals(
         listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
@@ -622,7 +674,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
       updated_by: "0",
     });
-    await cleanupBootstrapRow("s3_bucket", "0");
+    await cleanupBootstrapRow("s3_bucket", userActorFromAuthenticatedId("0"));
     const rows = await db.select().from(systemSettings).where(
       eq(systemSettings.key, "s3_bucket"),
     );
@@ -637,7 +689,11 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     await assertRejects(
-      () => cleanupBootstrapRow("allow_register", "0"),
+      () =>
+        cleanupBootstrapRow(
+          "allow_register",
+          userActorFromAuthenticatedId("0"),
+        ),
       ValidationError,
     );
   },

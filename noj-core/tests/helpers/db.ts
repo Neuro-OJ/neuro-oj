@@ -15,7 +15,7 @@ import { ensureRootUser } from "../../src/modules/access/identity/index.ts";
 import { seedJudgeImages } from "../../src/modules/platform/system/index.ts";
 import {
   _resetSystemSettingsForTest,
-} from "../../src/modules/platform/system/services/system-settings.ts";
+} from "../../src/modules/platform/services/system-settings.ts";
 import { ensureDefaultWorkspace } from "../../src/modules/access/domains.ts";
 import { createSystemActor } from "../../src/modules/runtime/system-actors.ts";
 import { countPhase, measurePhase } from "../../../scripts/lib/test-timing.ts";

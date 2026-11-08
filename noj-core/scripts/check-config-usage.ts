@@ -61,7 +61,7 @@ export interface UsageFinding {
 const ENV_ACCESSORS = ["Deno.env.get", "envInt", "envBool"] as const;
 
 /**
- * 不算「消费」的文件：仅做注册表声明、校验、快照、模板，或通用 KV 编辑器。
+ * 不算「消费」的文件：仅做注册表声明、校验、模板，或通用 KV 编辑器。
  * 这些路径里的字符串出现不代表行为被配置驱动。
  */
 const NON_CONSUMER_PATTERNS: RegExp[] = [
@@ -72,7 +72,6 @@ const NON_CONSUMER_PATTERNS: RegExp[] = [
   /scripts\/check-env\.ts$/,
   /scripts\/check-config-usage\.ts$/,
   /scripts\/test-launcher(?:-[^/]+)?\.ts$/,
-  /domains\/system\/services\/env-snapshot\.ts$/,
   // 设置 KV 存储自身的实现与其**校验分支**（如 `key === "smtp_from"` 只做 email
   // 格式校验，不代表该键被消费）。审计口径明确把这类「能存/能校验」排除在消费之外，
   // 否则 smtp_from 这类死键会被自己的校验分支掩盖（实测漏报）。

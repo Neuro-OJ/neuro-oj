@@ -25,6 +25,7 @@ import {
 import { createContest, registerForContest } from "../../index.ts";
 import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 await resetDbForTest();
 
@@ -604,7 +605,7 @@ Deno.test({
           assignment: true,
           analytics: true,
         }),
-        "0",
+        userActorFromAuthenticatedId("0"),
       );
       const response = await jsonRequest(app, "/api/v1/notifications", {
         token,
@@ -629,7 +630,10 @@ Deno.test({
       );
     } finally {
       // 恢复实例模块政策，避免影响后续用例。
-      await resetSetting("instance_allowed_modules", "0");
+      await resetSetting(
+        "instance_allowed_modules",
+        userActorFromAuthenticatedId("0"),
+      );
     }
   },
 });

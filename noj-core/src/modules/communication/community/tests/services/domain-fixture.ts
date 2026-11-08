@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
@@ -30,7 +31,7 @@ export async function domainFixture(prefix: string) {
       ["community_new_user_review_hours", 0],
       ["community_post_interval_seconds", 0],
     ] as const
-  ) await updateSetting(key, value, "0");
+  ) await updateSetting(key, value, userActorFromAuthenticatedId("0"));
   const db = getDb(),
     now = new Date().toISOString(),
     a = crypto.randomUUID(),

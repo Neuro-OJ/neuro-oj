@@ -21,7 +21,6 @@ import type { UserActor } from "../../../access/contracts/actor.ts";
 import { publishProblemVersion } from "../versioning/publish.ts";
 import { preflightProblemDraft } from "../versioning/publish.ts";
 import { draftRevisionConflict } from "../versioning/draft.ts";
-import { assertProblemAuthoringOutsideParticipation } from "./problem-contest-authoring.ts";
 
 /** 发布预检先授权本域源题，再校验当前草稿依据，不发布或改写内容。 */
 export async function preflightDomainProblemVersion(
@@ -84,11 +83,6 @@ export async function loadEditableDomainProblem(
   ) {
     throw new ForbiddenError("无权编辑此域题目", "DOMAIN_PERMISSION_DENIED");
   }
-  await assertProblemAuthoringOutsideParticipation(
-    workspace,
-    row.problem.id,
-    executor,
-  );
   return { ...workspace, ...row };
 }
 

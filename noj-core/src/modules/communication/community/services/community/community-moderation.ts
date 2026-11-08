@@ -14,6 +14,7 @@ import {
   ValidationError,
 } from "../../../../../shared/base/errors.ts";
 import { logAudit } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,
@@ -808,7 +809,12 @@ export async function applyCommunityPreset(
   const db = getDb();
   await db.transaction(async (tx) => {
     for (const [key, value] of Object.entries(PRESETS[preset])) {
-      await updateSetting(key, value, actorId, tx);
+      await updateSetting(
+        key,
+        value,
+        userActorFromAuthenticatedId(actorId),
+        tx,
+      );
     }
   });
   await logAudit(

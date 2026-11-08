@@ -14,6 +14,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { getRedis } from "../../../../shared/mq/connection.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   _dispatchToLocalListenersForTest,
   Channels,
@@ -26,10 +27,10 @@ import {
   refreshSettingsCache,
   registerSettingsInvalidationListener,
   updateSetting,
-} from "../../system/services/system-settings.ts";
+} from "../../services/system-settings.ts";
 
 const RUNTIME_KEY = "legal_contact";
-const ACTOR_ID = "0";
+const ACTOR_ID = userActorFromAuthenticatedId("0");
 
 /** 轮询等待异步刷新生效（避免固定 sleep 造成的 flaky） */
 async function waitFor(

@@ -8,6 +8,7 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { Hono } from "hono";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -23,10 +24,6 @@ import type {
   DrainJudgeNode,
   DrainStatusDeps,
 } from "../../services/drain-status.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../services/env-snapshot.ts";
 
 const TOKEN = "test-internal-drain-token-0123456789";
 
@@ -51,17 +48,13 @@ function authHeaders(token = TOKEN): Record<string, string> {
   return { Authorization: `Bearer ${token}`, Accept: "application/json" };
 }
 
-/** 设置测试凭据并返回恢复函数（含 env 快照重置）。 */
+/** 设置测试凭据并返回恢复函数。 */
 function useToken(token = TOKEN): () => void {
   const previous = Deno.env.get("NOJ_INTERNAL_SERVICE_TOKEN");
   Deno.env.set("NOJ_INTERNAL_SERVICE_TOKEN", token);
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   return () => {
     if (previous === undefined) Deno.env.delete("NOJ_INTERNAL_SERVICE_TOKEN");
     else Deno.env.set("NOJ_INTERNAL_SERVICE_TOKEN", previous);
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
   };
 }
 
@@ -104,8 +97,6 @@ Deno.test({
   fn: async () => {
     const previous = Deno.env.get("NOJ_INTERNAL_SERVICE_TOKEN");
     Deno.env.delete("NOJ_INTERNAL_SERVICE_TOKEN");
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
     try {
       const app = makeApp();
       for (
@@ -139,8 +130,6 @@ Deno.test({
       } else {
         Deno.env.set("NOJ_INTERNAL_SERVICE_TOKEN", previous);
       }
-      _resetEnvSnapshotForTest();
-      snapshotEnv();
     }
   },
 });
@@ -205,7 +194,11 @@ Deno.test({
       assertEquals(offBody.data.blockers, ["maintenance_off"]);
     } finally {
       if (getSetting("maintenance_mode")?.value === true) {
-        await updateSetting("maintenance_mode", false, "0");
+        await updateSetting(
+          "maintenance_mode",
+          false,
+          userActorFromAuthenticatedId("0"),
+        );
       }
       restoreToken();
     }

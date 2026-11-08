@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -249,7 +250,11 @@ Deno.test({
         ),
       ForbiddenError,
     );
-    await updateSetting("domain_creation_policy", "approval", operator);
+    await updateSetting(
+      "domain_creation_policy",
+      "approval",
+      userActorFromAuthenticatedId(operator),
+    );
     const request = await requestDomainCreation(applicant, {
       slug: "new-school",
       name: "学校",

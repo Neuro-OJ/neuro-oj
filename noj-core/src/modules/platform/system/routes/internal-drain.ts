@@ -20,12 +20,13 @@ import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { AppError, UnauthorizedError } from "../../../../shared/base/errors.ts";
 import {
   type DrainStatusDeps,
   readDrainStatus,
 } from "../services/drain-status.ts";
-import { getSetting, updateSetting } from "../services/system-settings.ts";
+import { getSetting, updateSetting } from "../../services/system-settings.ts";
 
 /** 内部服务凭据的 bootstrap 配置键（未设置时 drain 端点不可用）。 */
 const INTERNAL_SERVICE_TOKEN_KEY = "NOJ_INTERNAL_SERVICE_TOKEN";
@@ -82,7 +83,11 @@ interface MaintenanceChange {
 async function setMaintenanceMode(target: boolean): Promise<MaintenanceChange> {
   const current = getSetting("maintenance_mode")?.value === true;
   if (current === target) return { maintenance: target, changed: false };
-  await updateSetting("maintenance_mode", target, ROOT_USER_ID);
+  await updateSetting(
+    "maintenance_mode",
+    target,
+    userActorFromAuthenticatedId(ROOT_USER_ID),
+  );
   return { maintenance: target, changed: true };
 }
 

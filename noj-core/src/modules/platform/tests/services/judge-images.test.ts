@@ -16,10 +16,13 @@ import {
   updateJudgeImage,
   validateJudgeImage,
 } from "../../system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   NotFoundError,
   ValidationError,
 } from "../../../../shared/base/errors.ts";
+
+const TEST_ACTOR = userActorFromAuthenticatedId("judge-images-test-admin");
 
 const ts = Date.now();
 
@@ -47,7 +50,7 @@ Deno.test({
       mode: "exact",
       kind: "evaluator",
       description: "测试用镜像",
-    });
+    }, TEST_ACTOR);
     assertEquals(item.image, `test-image-${ts}`);
     assertEquals(item.mode, "exact");
     assertEquals(item.description, "测试用镜像");
@@ -69,7 +72,7 @@ Deno.test({
           image: "test-image",
           mode: "regex" as "exact" | "all_versions",
           kind: "evaluator",
-        }),
+        }, TEST_ACTOR),
       ValidationError,
     );
   },
@@ -87,7 +90,7 @@ Deno.test({
           image: "",
           mode: "exact",
           kind: "evaluator",
-        }),
+        }, TEST_ACTOR),
       ValidationError,
     );
   },
@@ -105,12 +108,12 @@ Deno.test({
       mode: "exact",
       kind: "evaluator",
       description: "原始介绍",
-    });
+    }, TEST_ACTOR);
     // 再更新
     const updated = await updateJudgeImage(created.id, {
       description: "更新后的介绍",
       mode: "all_versions",
-    });
+    }, TEST_ACTOR);
     assertEquals(updated.description, "更新后的介绍");
     assertEquals(updated.mode, "all_versions");
     assertEquals(updated.image, `update-test-${ts}`);
@@ -124,7 +127,8 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await assertRejects(
-      () => updateJudgeImage("nonexistent-id", { description: "new" }),
+      () =>
+        updateJudgeImage("nonexistent-id", { description: "new" }, TEST_ACTOR),
       NotFoundError,
     );
   },
@@ -140,11 +144,11 @@ Deno.test({
       image: `delete-test-${ts}`,
       mode: "exact",
       kind: "evaluator",
-    });
-    await deleteJudgeImage(created.id);
+    }, TEST_ACTOR);
+    await deleteJudgeImage(created.id, TEST_ACTOR);
     // 删除后再次删除应抛 NotFound
     await assertRejects(
-      () => deleteJudgeImage(created.id),
+      () => deleteJudgeImage(created.id, TEST_ACTOR),
       NotFoundError,
     );
   },
@@ -186,7 +190,7 @@ Deno.test({
       mode: "all_versions",
       kind: "evaluator",
       description: "repo path test",
-    });
+    }, TEST_ACTOR);
 
     assertEquals(
       await validateJudgeImage("registry.local/team/noj-judge-python:latest"),

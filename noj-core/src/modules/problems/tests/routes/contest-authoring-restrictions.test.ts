@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { createApp } from "../../../../app.ts";
@@ -182,7 +183,11 @@ Deno.test({
       200,
     );
     // 同一公共源题被学校用于内部比赛，学校参赛身份不能限制源域编辑入口。
-    await updateSetting("domain_creation_policy", "open", "0");
+    await updateSetting(
+      "domain_creation_policy",
+      "open",
+      userActorFromAuthenticatedId("0"),
+    );
     const school = await createDomain({
       slug: "contest-target",
       name: "学校比赛",

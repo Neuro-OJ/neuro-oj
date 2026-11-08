@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { count, eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -54,7 +55,11 @@ Deno.test({
       operator,
       "student@example.com",
     );
-    await updateSetting("instance_registration_mode", "invite", operator);
+    await updateSetting(
+      "instance_registration_mode",
+      "invite",
+      userActorFromAuthenticatedId(operator),
+    );
     await assertRejects(
       () =>
         registerUser({
@@ -101,7 +106,11 @@ Deno.test({
       ))[0].used_at !== null,
       true,
     );
-    await updateSetting("instance_registration_mode", "admin_only", operator);
+    await updateSetting(
+      "instance_registration_mode",
+      "admin_only",
+      userActorFromAuthenticatedId(operator),
+    );
     await assertRejects(
       () =>
         registerUser({

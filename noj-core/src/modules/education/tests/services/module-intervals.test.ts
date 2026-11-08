@@ -14,6 +14,7 @@ import {
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 async function fixture() {
   const f = await assignmentFixture();
@@ -100,7 +101,7 @@ Deno.test("教学停用：实例区间与政策原子保存，重置政策恢复
       assignment: false,
       analytics: false,
     }),
-    "0",
+    userActorFromAuthenticatedId("0"),
   );
   await practice(f);
   await assertRejects(
@@ -110,7 +111,10 @@ Deno.test("教学停用：实例区间与政策原子保存，重置政策恢复
   const [interval] = await f.db.select().from(educationDisabledIntervals);
   assertEquals(interval.domain_id, null);
   assertEquals(interval.ended_at, null);
-  await resetSetting("instance_allowed_modules", "0");
+  await resetSetting(
+    "instance_allowed_modules",
+    userActorFromAuthenticatedId("0"),
+  );
   assertEquals(
     (await f.db.select().from(educationDisabledIntervals))[0].ended_at !== null,
     true,

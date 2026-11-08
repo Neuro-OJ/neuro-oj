@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -19,7 +20,11 @@ Deno.test({
     await resetDbForTest();
     const actor = (await verifyToken(await createUserToken())).sub;
     await ensureDefaultWorkspace();
-    await updateSetting("domain_creation_policy", "open", "0");
+    await updateSetting(
+      "domain_creation_policy",
+      "open",
+      userActorFromAuthenticatedId("0"),
+    );
     const a = await createDomain({
       slug: "rate-a",
       name: "A",

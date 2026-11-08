@@ -50,8 +50,6 @@
 | GET | `/:id/avatar` | noj-core/src/modules/access/identity/routes/users.ts |
 | GET | `/:id/draft` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/draft/preflight` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/:id/file` | noj-core/src/modules/problems/routes/oi-author.ts |
-| GET | `/:id/files` | noj-core/src/modules/problems/routes/oi-author.ts |
 | GET | `/:id/items` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
 | GET | `/:id/problems` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/:id/profile` | noj-core/src/modules/access/identity/routes/users.ts |
