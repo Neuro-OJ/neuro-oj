@@ -35,7 +35,10 @@ e2eTest("[e2e/queue] Setup", async () => {
 
 e2eTest("[e2e/queue] 7.1 公共队列概览结构", async () => {
   if (!isE2E) return;
-  const { status, body } = await apiGet("/api/v1/queue", adminToken);
+  const { status, body } = await apiGet(
+    "/api/v1/domains/main/queue",
+    adminToken,
+  );
   if (status !== 200) throw new Error("期望 200");
   const d = body as {
     pending: unknown[];
@@ -67,7 +70,7 @@ e2eTest("[e2e/queue] 7.2 提交后出现在队列中", async () => {
   if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   await retryE2E(async () => {
-    const { body } = await apiGet("/api/v1/queue", adminToken);
+    const { body } = await apiGet("/api/v1/domains/main/queue", adminToken);
     const q = body as { pending: { id: string }[]; judging: { id: string }[] };
     const ids = [...q.pending.map((x) => x.id), ...q.judging.map((x) => x.id)];
     if (!ids.includes(id)) throw new Error("提交未出现在队列");

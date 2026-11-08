@@ -286,10 +286,10 @@
 | noj-tests/e2e/submission/priority_queue.test.ts | 158 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 24 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 37 | early-return |
-| noj-tests/e2e/submission/queue.test.ts | 67 | early-return |
-| noj-tests/e2e/submission/queue.test.ts | 78 | early-return |
-| noj-tests/e2e/submission/queue.test.ts | 99 | early-return |
-| noj-tests/e2e/submission/queue.test.ts | 105 | early-return |
+| noj-tests/e2e/submission/queue.test.ts | 70 | early-return |
+| noj-tests/e2e/submission/queue.test.ts | 81 | early-return |
+| noj-tests/e2e/submission/queue.test.ts | 102 | early-return |
+| noj-tests/e2e/submission/queue.test.ts | 108 | early-return |
 | noj-tests/e2e/submission/rejudge.test.ts | 35 | early-return |
 | noj-tests/e2e/submission/rejudge.test.ts | 68 | early-return |
 | noj-tests/e2e/submission/rejudge.test.ts | 118 | early-return |

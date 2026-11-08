@@ -24,19 +24,6 @@ async function ensureReady() {
   }
 }
 
-// Queue 路由测试
-// 经设计评审后放开为登录用户可访问（无需管理员权限）。
-// 三个场景：无 token → 401 / 非管理员 → 200 / 管理员 → 200。
-
-Deno.test({
-  name: "queue route: GET /api/v1/queue 无 token 返回 401",
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/queue");
-    assertEquals(res.status, 401);
-  },
-});
-
 Deno.test({
   name:
     "queue route: GET /api/v1/admin/submission/queue/health 无 token 返回 401",
@@ -96,60 +83,6 @@ Deno.test({
     assertEquals(typeof body.result.queue_length, "number");
     assertEquals(typeof body.result.processing_length, "number");
     assertEquals(typeof body.result.dead_length, "number");
-  },
-});
-
-Deno.test({
-  name: "queue route: GET /api/v1/queue 非管理员返回 200",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await ensureReady();
-    if (!ready) return;
-
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/queue", { token });
-    assertEquals(res.status, 200);
-
-    const body = await res.json();
-    assertExists(body.pending);
-    assertExists(body.judging);
-    assertExists(body.recently_completed);
-    assertExists(body.stats);
-    assertEquals(Array.isArray(body.pending), true);
-    assertEquals(Array.isArray(body.judging), true);
-    assertEquals(Array.isArray(body.recently_completed), true);
-    assertEquals(typeof body.stats.pending_count, "number");
-    assertEquals(typeof body.stats.judging_count, "number");
-    assertEquals(typeof body.stats.completed_today, "number");
-  },
-});
-
-Deno.test({
-  name: "queue route: GET /api/v1/queue 管理员返回 200",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await ensureReady();
-    if (!ready) return;
-
-    const app = createApp();
-    const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/queue", { token });
-    assertEquals(res.status, 200);
-
-    const body = await res.json();
-    assertExists(body.pending);
-    assertExists(body.judging);
-    assertExists(body.recently_completed);
-    assertExists(body.stats);
-    assertEquals(Array.isArray(body.pending), true);
-    assertEquals(Array.isArray(body.judging), true);
-    assertEquals(Array.isArray(body.recently_completed), true);
-    assertEquals(typeof body.stats.pending_count, "number");
-    assertEquals(typeof body.stats.judging_count, "number");
-    assertEquals(typeof body.stats.completed_today, "number");
   },
 });
 

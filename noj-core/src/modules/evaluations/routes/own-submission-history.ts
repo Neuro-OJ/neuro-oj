@@ -2,14 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
-import {
-  buildPaginationMeta,
-  parsePagination,
-} from "../../../shared/http/pagination.ts";
-import {
-  getOwnSubmissionHistory,
-  listOwnSubmissionHistory,
-} from "../services/own-submission-history.ts";
+import { getOwnSubmissionHistory } from "../services/own-submission-history.ts";
 import { downloadOwnArtifact } from "../services/own-artifact.ts";
 /** 本人跨域历史独立于当前导航工作空间，不授予题面、数据或他人提交访问。 */
 export const ownSubmissionHistoryRouter = new Hono<AuthEnv>();
@@ -19,14 +12,6 @@ for (const path of ["/me/submissions", "/me/submissions/*"]) {
     await next();
   });
 }
-ownSubmissionHistoryRouter.get("/me/submissions", async (c) => {
-  const { page, perPage } = parsePagination(c, { maxPerPage: 100 });
-  const result = await listOwnSubmissionHistory(c.var.userId, page, perPage);
-  return c.json({
-    data: result.data,
-    pagination: buildPaginationMeta(page, perPage, result.total),
-  });
-});
 ownSubmissionHistoryRouter.get(
   "/me/submissions/submission/:id/artifact",
   async (c) => {

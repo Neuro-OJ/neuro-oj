@@ -6,7 +6,6 @@
  * 内部的锁、尝试、结果与投影函数只在 `DbTx` 上工作。
  */
 import { getDb } from "../../shared/db/connection.ts";
-import { AppError } from "../../shared/base/errors.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
 import type { SystemActor, UserActor } from "../access/contracts/actor.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../shared/workspace/types.ts";
@@ -15,13 +14,9 @@ import { assertContentWriteAccount } from "../access/contracts/cross-module/iden
 import {
   getContestPolicySnapshot,
   resolveContestId,
-  verifyContestAccess,
 } from "../access/contest-policy.ts";
 import { filterUnendedContestIds } from "../contests/services/problem-secrecy.ts";
 import { getProblemVersionSnapshot } from "../problems/contracts/read.ts";
-import { getPaperOrThrow } from "../problems/services/objective/objective-questions.ts";
-import { evaluateProblemAccess } from "../problems/services/problem-access-check.ts";
-import type { ProblemAccessInput } from "../problems/services/problem-access.ts";
 import { resolveAssignmentSubmissionOrigin } from "../education/services/assignment-submission-origin.ts";
 import {
   applyNewResult,
@@ -43,7 +38,6 @@ import {
   createDomainSelfTest,
   createDomainSubmission,
 } from "../evaluations/services/domain-submissions.ts";
-import { createSelfTest } from "../evaluations/services/self-tests.ts";
 import {
   type DomainExecutionRequest,
   resolveDomainExecution,
@@ -114,96 +108,10 @@ import {
 } from "../evaluations/services/versioning/effective-policy.ts";
 import type { EffectiveVersionPolicy } from "../../shared/versioning/types.ts";
 
-/**
- * 由 application 组合的一次受理上下文输入。
- *
- * 版本与比赛标识可能来自 HTTP 的公开引用；解析和授权在这里完成后，
- * evaluations 只接收不可变快照。assignment 由上层 application 组合，不能
- * 由提交 body 选择系统身份或绕过当前域授权。
- */
-export interface ComposeEvaluationAdmissionInput {
-  readonly problemId: string;
-  readonly versionId?: string;
-  readonly contestId?: string | null;
-  readonly assignment?: EvaluationAdmissionContext["assignment"];
-}
-
 /** HTTP 上传流消费前的统一版本字段校验。 */
 export function requireEvaluationVersion(versionId?: string): string {
   if (!versionId?.trim()) throw versionRequired();
   return versionId;
-}
-
-/**
- * 解析并冻结评价受理所需的题目、访问和比赛事实。
- *
- * 这个函数是 HTTP/CLI adapter 与 evaluations 之间的唯一快照组合入口；
- * evaluations 内部不再为寻找执行上下文回查 contests/education service。
- */
-export async function composeEvaluationAdmissionContext(
-  actor: UserActor,
-  input: ComposeEvaluationAdmissionInput,
-): Promise<EvaluationAdmissionContext> {
-  // 账号政策（审计 F2）：所有评测受理（提交/自测/客观题答卷）在组合快照前
-  // 统一校验邮箱验证状态；旧 `/submissions` 与域入口共用这一处。
-  await assertContentWriteAccount(actor.userId);
-  const paper = await getPaperOrThrow(input.problemId);
-  const problem: ProblemAccessInput = {
-    id: paper.id,
-    visibility: paper.visibility,
-    owner_id: paper.owner_id,
-  };
-  const contestId = input.contestId
-    ? await resolveContestId(input.contestId)
-    : null;
-  const contestAccess = contestId
-    ? await verifyContestAccess(actor, contestId, paper.id)
-    : null;
-  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actor);
-  const access = await evaluateProblemAccess(problem, {
-    viewerId: actor.userId,
-    isAdmin: workspace.platformAdmin ||
-      workspace.context.domainPermissions.has("problem:write_any"),
-    canReadOwn: paper.owner_id === actor.userId,
-    contestAccess,
-  });
-  // 先完成资源授权，再检查版本字段。否则无权访问者可以通过省略版本号
-  // 观测到版本受理协议（409 VERSION_REQUIRED），绕过题目保密/私有资源的
-  // 统一 403 口径。版本与比赛策略的细粒度冲突仍在下方快照校验中处理。
-  if (!access.result.allowed) {
-    throw new AppError(
-      "评测受理上下文不允许提交",
-      403,
-      "EVALUATION_ADMISSION_DENIED",
-    );
-  }
-  const versionId = requireEvaluationVersion(input.versionId);
-  const version = await getProblemVersionSnapshot(paper.id, versionId);
-  if (!version) {
-    throw new Error("评测受理版本不存在或未发布");
-  }
-  const contest = contestId
-    ? await getContestPolicySnapshot(contestId, paper.id)
-    : null;
-  if (contestId && !contest) {
-    throw new Error("评测受理比赛题目不存在");
-  }
-  return {
-    problem: version,
-    access: {
-      problemId: paper.id,
-      allowed: access.result.allowed,
-      canSubmit: access.result.allowed,
-      mode: access.result.mode === "admin" || access.result.mode === "owner"
-        ? "private"
-        : access.result.mode === "contest"
-        ? "public"
-        : access.result.mode,
-      sourceDomainId: paper.domain_id,
-    },
-    contest,
-    assignment: input.assignment ?? null,
-  };
 }
 
 /**
@@ -475,26 +383,6 @@ export function submitDomainSelfTestCommand(
     input.selfTest,
     false,
     plan,
-  );
-}
-
-/** 普通题库自测；授权和版本快照由 application 先组合。 */
-export function submitSelfTestCommand(
-  actor: UserActor,
-  context: EvaluationAdmissionContext,
-  problemId: string,
-  input: SelfTestInput,
-): Promise<Awaited<ReturnType<typeof createSelfTest>>> {
-  assertEvaluationAdmission(context, {
-    problemId,
-    versionId: input.version_id ?? "",
-    contestId: null,
-  });
-  return createSelfTest(
-    actor.userId,
-    problemId,
-    input,
-    context.access.mode === "private",
   );
 }
 

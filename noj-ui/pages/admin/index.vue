@@ -76,7 +76,7 @@ async function loadStats(silent = false) {
     api.get<{ pagination: { total: number } }>("/api/v1/admin/identity/users", { silent: true }),
     api.get<{ total: number }>("/api/v1/problems", { silent: true }),
     api.get<{ pagination: { total: number } }>("/api/v1/admin/submission/submissions", { silent: true }),
-    api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue", { silent: true }),
+    api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/instance/queue", { silent: true }),
     api.get<{ data: unknown[] }>("/api/v1/admin/community/reports?status=pending", { silent: true }),
     api.get<{ data: AuditLogSummary[] }>("/api/v1/admin/system/audit-logs?per_page=5", { silent: true }),
   ])

@@ -1,10 +1,6 @@
 import { type Context, Hono } from "hono";
 import { authMiddleware } from "../../access/identity/middleware/auth.ts";
 import { type AuthEnv } from "../../../shared/http/hono-env.ts";
-import { NotFoundError } from "../../../shared/base/errors.ts";
-import { eq } from "drizzle-orm";
-import { getDb } from "../../../shared/db/connection.ts";
-import { submissions } from "../../../shared/db/schema.ts";
 import { Channels } from "../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
@@ -12,9 +8,6 @@ import {
   subscribeToChannel,
 } from "../../../shared/sse/server-helpers.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
-import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
-import { ensureDefaultWorkspace } from "../../access/domains.ts";
-import { createSystemActor } from "../../runtime/system-actors.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { getDomainSubmission } from "../services/domain-submission-read.ts";
 import { getDomainSelfTest } from "../services/domain-self-test-read.ts";
@@ -23,16 +16,8 @@ import {
   INSTANCE_QUEUE_CHANNEL,
   queueEventChannel,
 } from "../services/queue.ts";
-import {
-  getSubmission,
-  resolveSubmissionId,
-} from "../services/submissions/submissions.ts";
 
-const sse = new Hono<AuthEnv>();
 export const domainSubmissionSse = new Hono<AuthEnv>();
-for (const path of ["/submissions/:id/events", "/queue/events"]) {
-  sse.use(path, authMiddleware);
-}
 for (
   const path of [
     "/domains/:slug/submissions/:id/events",
@@ -44,52 +29,13 @@ for (
   domainSubmissionSse.use(path, authMiddleware);
 }
 
-async function currentSubmission(
-  c: Context<AuthEnv>,
-  slug: string | undefined,
-  reference: string,
-) {
-  if (slug) return await getDomainSubmission(slug, reference, c.var.userId);
-  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId);
-  const stableId = await resolveSubmissionId(reference);
-  const [record] = await getDb().select({ domain_id: submissions.domain_id })
-    .from(submissions).where(eq(submissions.id, stableId));
-  if (record?.domain_id) {
-    return await getDomainSubmission(
-      DEFAULT_DOMAIN_SLUG,
-      stableId,
-      c.var.userId,
-    );
-  }
-  const detail = await getSubmission(
-    stableId,
-    c.var.userId,
-    undefined,
-    c,
-  );
-  const manager = workspace.platformAdmin ||
-    workspace.context.domainPermissions.has("submission:read_all");
-  if (detail.user_id !== c.var.userId && !manager) {
-    throw new NotFoundError("提交不存在");
-  }
-  return {
-    ...detail,
-    domain_id: workspace.domain.id,
-    resource_available: true,
-    result_visibility: "result_visibility" in detail
-      ? detail.result_visibility
-      : "cases",
-  };
-}
-
 /** SSE 只发送定位信号；源授权和比赛结果仍由重新读取的裁剪接口决定。 */
 async function submissionEvents(c: Context<AuthEnv>, selfTest = false) {
-  const slug = c.req.param("slug"), reference = c.req.param("id")!;
+  const slug = c.req.param("slug")!, reference = c.req.param("id")!;
   const read = () =>
     selfTest
-      ? getDomainSelfTest(slug!, reference, c.var.userId, c)
-      : currentSubmission(c, slug, reference);
+      ? getDomainSelfTest(slug, reference, c.var.userId, c)
+      : getDomainSubmission(slug, reference, c.var.userId);
   const initial = await read(), id = String(initial.id);
   const channel = Channels.submission(id),
     event = selfTest ? "self-test:updated" : "submission:updated";
@@ -153,7 +99,6 @@ async function submissionEvents(c: Context<AuthEnv>, selfTest = false) {
     }
   });
 }
-sse.get("/submissions/:id/events", (c) => submissionEvents(c));
 domainSubmissionSse.get(
   "/domains/:slug/submissions/:id/events",
   (c) => submissionEvents(c),
@@ -165,10 +110,7 @@ domainSubmissionSse.get(
 
 /** 队列连接时校准当前状态，后续推送重新验证域访问，只返回定位信号。 */
 async function queueEvents(c: Context<AuthEnv>, instance = false) {
-  const slug = c.req.param("slug") ?? DEFAULT_DOMAIN_SLUG;
-  if (!instance && !c.req.param("slug")) {
-    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-  }
+  const slug = c.req.param("slug")!;
   const authorize = () =>
     instance
       ? assertActiveInstanceAccount(c.var.userId)
@@ -208,7 +150,5 @@ async function queueEvents(c: Context<AuthEnv>, instance = false) {
     // 重放会让页面为同一当前状态连续发起最多 200 次 REST 请求。
   });
 }
-sse.get("/queue/events", (c) => queueEvents(c));
 domainSubmissionSse.get("/domains/:slug/queue/events", (c) => queueEvents(c));
 domainSubmissionSse.get("/instance/queue/events", (c) => queueEvents(c, true));
-export default sse;

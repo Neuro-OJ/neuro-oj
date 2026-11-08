@@ -165,7 +165,6 @@
     "src/modules/evaluations/tests/routes/domain-objective-history.test.ts": 1554,
     "src/modules/evaluations/tests/routes/domain-submission-sse.test.ts": 3903,
     "src/modules/evaluations/tests/routes/queue.test.ts": 300,
-    "src/modules/evaluations/tests/routes/self-tests.test.ts": 330,
     "src/modules/evaluations/tests/routes/sse.test.ts": 2450,
     "src/modules/evaluations/tests/routes/submissions.test.ts": 199,
     "src/modules/evaluations/tests/services/artifact-submissions.test.ts": 0,

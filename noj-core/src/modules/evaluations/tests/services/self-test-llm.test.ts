@@ -227,10 +227,14 @@ Deno.test({
         code: "def solve(): return 1",
         version_id: versionId,
       });
+      // 自测只经使用域入口取消：直接传入域访问上下文（默认域 + 可读详情）。
       const app = new Hono<{ Variables: { userId: string } }>();
       app.post("/cancel", async (c) => {
         c.set("userId", userId);
-        await cancelSelfTest(cancelled.id, c);
+        await cancelSelfTest(cancelled.id, c, {
+          domainId: DEFAULT_DOMAIN_ID,
+          canReadDetails: false,
+        });
         return c.json({ ok: true });
       });
       assertEquals(

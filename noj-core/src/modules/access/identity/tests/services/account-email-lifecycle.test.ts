@@ -125,7 +125,7 @@ Deno.test("邮箱验证：过期令牌被拒绝", async () => {
 // 2026-11-02 rc/v0.11 审计 F2：邮箱验证政策**不再**挂在认证中间件的 URL 前缀
 // 清单上（`/api/v1/submissions` 等），而是绑定到"内容写"能力本身：
 // `assertContentWriteAccount()` 由社区写闸口 `assertCommunityWritable()` 与评测
-// 受理（`composeEvaluationAdmissionContext` / `composeDomainEvaluationAdmissionPlan`）
+// 受理（`composeDomainEvaluationAdmissionPlan`）
 // 调用。因此这里断言两件事：中间件放行（它只负责身份与账号可用性，并继续下发
 // `emailVerified` 供 UI 提示）、能力函数拒绝并给出同一错误码。
 Deno.test("邮箱验证：政策绑定到内容写能力而非中间件路径清单（审计 F2）", async () => {

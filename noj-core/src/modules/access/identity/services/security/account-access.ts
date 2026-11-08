@@ -45,8 +45,7 @@ export async function assertInstanceAccountNotBanned(
  *
  * - 社区内容写：`assertCommunityWritable()`（旧 `/community` 与
  *   `/domains/:slug/community/*` 共用）；
- * - 评测受理：`composeEvaluationAdmissionContext()` /
- *   `composeDomainEvaluationAdmissionPlan()`（旧 `/submissions`、域提交、
+ * - 评测受理：`composeDomainEvaluationAdmissionPlan()`（域提交、
  *   代码/产物/客观题答卷、自测共用）。
  *
  * 判定只看账号事实（未验证邮箱 ⇒ 拒绝），不看请求路径、不看角色：管理员与旧入口

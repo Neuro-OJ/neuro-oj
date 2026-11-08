@@ -57,14 +57,12 @@ export interface QueueData {
  */
 export function useDomainQueue() {
   const { api } = useApi();
+  const load = (slug: string, scope: QueueScope) =>
+    scope === 'instance'
+      ? api.get<QueueData>('/api/v1/instance/queue', { silent: true })
+      : api.get<QueueData>(`/api/v1/domains/${encodeURIComponent(slug)}/queue`, { silent: true });
   return {
-    getQueue: (slug: string, scope: QueueScope = 'domain') =>
-      scope === 'instance'
-        ? api.get<QueueData>('/api/v1/instance/queue', { silent: true })
-        : api.get<QueueData>(`/api/v1/domains/${encodeURIComponent(slug)}/queue`, { silent: true }),
-    getDomainQueue: (slug: string) =>
-      api.get<QueueData>(`/api/v1/domains/${encodeURIComponent(slug)}/queue`, { silent: true }),
-    getInstanceQueue: () => api.get<QueueData>('/api/v1/instance/queue', { silent: true }),
+    getQueue: (slug: string, scope: QueueScope = 'domain') => load(slug, scope),
     sseUrl: (slug: string, scope: QueueScope = 'domain') =>
       scope === 'instance'
         ? '/api/v1/instance/queue/events'

@@ -240,7 +240,7 @@ e2eTest("[e2e/staging] 真实提交完成评测", async () => {
 e2eTest("[e2e/staging] 提交 SSE 可连接并收到事件", async () => {
   if (!isE2E) return;
   const payload = await readSseOnce(
-    `${BASE_URL}/api/v1/submissions/${submissionId}/events`,
+    `${BASE_URL}/api/v1/domains/main/submissions/${submissionId}/events`,
     adminToken,
   );
   if (!payload) throw new Error("SSE 连接未收到任何事件数据");

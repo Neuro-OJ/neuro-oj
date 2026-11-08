@@ -601,7 +601,7 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
   }
 
   // 6.2 非参赛者查看全局队列：竞赛提交必须隐藏
-  const queue = await apiGet("/api/v1/queue", outsiderToken);
+  const queue = await apiGet("/api/v1/instance/queue", outsiderToken);
   if (queue.status !== 200) {
     throw new Error(`全局队列应 200，实际 ${queue.status}`);
   }
