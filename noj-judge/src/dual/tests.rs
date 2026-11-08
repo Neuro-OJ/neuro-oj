@@ -25,7 +25,7 @@ impl EvalHarness {
             stderr_buf: String::new(),
             stdout_full: String::new(),
             result_payload: ResultPayload::new(),
-            tracker: InFlightTracker::new(2000),
+            tracker: InFlightTracker::new(2000, 0),
         }
     }
 }
@@ -42,7 +42,7 @@ impl SolHarness {
         Self {
             parser: LineParser::new(),
             solution_ready: true,
-            tracker: InFlightTracker::new(2000),
+            tracker: InFlightTracker::new(2000, 0),
         }
     }
 }
@@ -1114,4 +1114,20 @@ fn test_require_solution_rejects_absent_solution() {
     };
     let err = require_solution("sid-pred-guard", &rc).unwrap_err();
     assert!(err.to_string().contains("缺少 solution"), "err={}", err);
+}
+
+/// evaluator 帧可指定 timeout_ms，但不得超过 judge 硬上限（`JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS`）。
+#[test]
+fn test_call_frame_timeout_clamped_to_judge_max() {
+    let mut h = EvalHarness::new();
+    h.tracker = InFlightTracker::new(2000, 5000);
+    let frame = serde_json::json!({
+        "type": "call", "id": "big", "fn": "solve", "args": [], "timeout_ms": 3_600_000u64
+    });
+    let (id, ms) = h
+        .tracker
+        .on_call_frame(&frame, std::time::Instant::now())
+        .expect("有 id 的 call 帧应被追踪");
+    assert_eq!(id, "big");
+    assert_eq!(ms, 5000, "帧超时必须被 judge 硬上限截断");
 }

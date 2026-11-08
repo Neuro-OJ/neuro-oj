@@ -64,6 +64,8 @@ import {
   probeDocker,
   probeFreeBytes,
   readEnvValues,
+  renderDisableOutboundIntegrationsSql,
+  renderDrillOutboundEnvOverrides,
   renderDrillOverride,
   resolveReportPath,
   uniqueDrillProjectName,
@@ -318,7 +320,15 @@ export async function runDrill(
     restoreSeconds = Math.round((now().getTime() - restoreStart) / 1000);
 
     // ---- seed-admin + start-business ----
-    await seedDrillAdmin(ctx, runner, dockerBin, now);
+    await runDrillSql(
+      ctx,
+      runner,
+      dockerBin,
+      renderSeedDrillAdminSql(
+        now().toISOString().replace(/\.\d{3}Z$/, ".000Z"),
+      ),
+      "写入演练管理员失败",
+    );
     const judgeImages = await startBusinessServices(
       ctx,
       runner,
@@ -553,7 +563,10 @@ async function prepareDrillEnvironment(
       // （Compose 复用/重建会打在有活动端点的生产网络上）。两个变量必须同值：
       // 前者是 compose 声明的网络名，后者是 judge 接入 Evaluator 容器时用的名字。
       `NOJ_EVAL_NETWORK_NAME=${ctx.projectName}_noj-eval-net\n` +
-      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-eval-net\n`,
+      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-eval-net\n` +
+      // 出站集成禁用（邮件 / OAuth / webhook / LLM 上游）：追加在最后，
+      // Compose env_file「后者覆盖前者」，因此必然压过快照里的生产值。
+      renderDrillOutboundEnvOverrides(),
     { append: true },
   );
 
@@ -875,36 +888,29 @@ async function listFilesCount(dir: string): Promise<number> {
   return count;
 }
 
-/** `seed_drill_admin()`（bash :425-447）：向隔离库写入演练管理员。 */
-async function seedDrillAdmin(
+/** 在隔离库经 `psql -v ON_ERROR_STOP=1` 执行一段 SQL；非零退出即抛错。 */
+async function runDrillSql(
   ctx: DrillContext,
   runner: CommandRunner,
   dockerBin: string,
-  now: () => Date,
+  sql: string,
+  failureMessage: string,
 ): Promise<void> {
   const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
   const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
-  const stamp = now().toISOString().replace(/\.\d{3}Z$/, ".000Z");
-  const sql = renderSeedDrillAdminSql(stamp);
-  const code = await feedTextToCompose(
-    ctx,
-    runner,
-    dockerBin,
-    [
-      "exec",
-      "-T",
-      "postgres",
-      "psql",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      pgUser,
-      "-d",
-      pgDb,
-    ],
-    sql,
-  );
-  if (code !== 0) throw new Error("写入演练管理员失败");
+  const code = await feedTextToCompose(ctx, runner, dockerBin, [
+    "exec",
+    "-T",
+    "postgres",
+    "psql",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-U",
+    pgUser,
+    "-d",
+    pgDb,
+  ], sql);
+  if (code !== 0) throw new Error(failureMessage);
 }
 
 /** 把一段 SQL 文本作为 stdin 喂给 compose 子命令（经临时文件，不经命令行参数）。 */
@@ -944,6 +950,17 @@ async function startBusinessServices(
 
   log("✓ 执行 Gateway 迁移/默认配额初始化（一次性服务）");
   await start("gateway-migrate");
+
+  // 出站集成禁用必须在 core 之前：core 启动时从 DB 加载系统设置缓存，
+  // 之后再改 DB 不会生效（缓存未命中不回查）。
+  log("✓ 禁用出站集成（邮件 / webhook / OAuth / LLM 上游）");
+  await runDrillSql(
+    ctx,
+    runner,
+    dockerBin,
+    renderDisableOutboundIntegrationsSql(),
+    "禁用演练出站集成失败",
+  );
 
   log("✓ 启动隔离 Core HTTP 服务");
   await start("core");

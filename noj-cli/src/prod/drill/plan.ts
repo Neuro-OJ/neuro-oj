@@ -206,6 +206,120 @@ export const DRILL_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 export const DRILL_NETWORK_NAME = "noj-net";
 
 /**
+ * 演练环境文件里**强制禁用**的出站集成键（env 层）。
+ *
+ * 演练用快照里的 `.env.prod` 起 migrate/core/gateway，存储与网络虽然隔离，
+ * 但邮件、OAuth、告警 webhook 等出站配置仍沿用生产值——演练实例一旦触发
+ * （定时告警、管理员操作、业务验收流程）就会向真实用户发信或调用外部服务。
+ * 因此这些键在演练 env 末尾统一覆盖为「禁用/空值」，Compose 的 env_file
+ * 「后者覆盖前者」语义保证覆盖生效。
+ *
+ * 取值依据（以代码实际识别的禁用值为准）：
+ * - `EMAIL_PROVIDER=disabled`：`noj-core` 的 `email.ts` 将该值映射到
+ *   `email-providers/disabled.ts`；生产环境也允许 `disabled`，不会触发启动校验失败。
+ * - SMTP 类变量：`noj-core` 当前不读取（仅告警文档的手工场景），置空是防御性兜底。
+ * - `OAUTH_*` 置空：core 的 OAuth 必须「两项/三项齐全」才启用，空值即关闭。
+ * - `NOJ_LLM_GATEWAY_URL` 置空：不覆盖时 evaluator 会继承 compose 固化的
+ *   `http://llm-gateway:8001`，指向演练实例自己的 gateway（该 DB 与 Provider
+ *   密钥均来自快照），从而向真实上游 LLM 发起调用。
+ * - `ALERTMANAGER_*` 置空：Compose 变量插值不读 `--env-file`，但 Apprise 风格
+ *   的 `APPRISE_*` 与宿主已有的同名变量都会被子进程继承；在演练 env 里显式置空
+ *   是对「宿主 export 了生产 webhook 后把 env 传给 CLI」的兜底。
+ *   注意：`alertmanager.yml` 若在宿主机被渲染成**字面量** webhook URL，env 覆盖
+ *   无法清除，需要运维侧确认（见 Agent Note）。
+ * - 云厂商密钥置空：即便后续有人把 `EMAIL_PROVIDER` 改回生产值，也没有可用凭据。
+ *
+ * **DB 层**（`system_settings`、`llm_providers`）不在此处覆盖：快照恢复后由
+ * {@link renderDisableOutboundIntegrationsSql} 在隔离库里执行禁用 SQL。
+ */
+export const DRILL_OUTBOUND_ENV_OVERRIDES: Readonly<Record<string, string>> = {
+  // 邮件（DB-owned bootstrap，但 env 是启动兜底；见下方 SQL 说明）
+  EMAIL_PROVIDER: "disabled",
+  SMTP_HOST: "",
+  SMTP_PORT: "",
+  SMTP_USER: "",
+  SMTP_PASS: "",
+  SMTP_FROM: "",
+  EMAIL_WEBHOOK_SECRET: "",
+  ALIBABA_ACCESS_KEY_ID: "",
+  ALIBABA_ACCESS_KEY_SECRET: "",
+  ALIBABA_FROM_EMAIL: "",
+  TENCENT_SECRET_ID: "",
+  TENCENT_SECRET_KEY: "",
+  TENCENT_FROM_EMAIL: "",
+  // 第三方登录（core 要求齐全才启用，空值即关闭）
+  OAUTH_GITHUB_CLIENT_ID: "",
+  OAUTH_GITHUB_CLIENT_SECRET: "",
+  OAUTH_GITHUB_SECRET: "",
+  OAUTH_OIDC_ISSUER_URL: "",
+  OAUTH_OIDC_CLIENT_ID: "",
+  OAUTH_OIDC_CLIENT_SECRET: "",
+  // Evaluator → 外部 LLM 上游（经 gateway；置空后 gateway 调用直接失败）
+  NOJ_LLM_GATEWAY_URL: "",
+  NOJ_LLM_GATEWAY_TOKEN: "",
+  // LLM 题全局默认（env 兜底；DB 侧由 SQL 清空）
+  NOJ_LLM_DEFAULT_PROVIDER_ID: "",
+  NOJ_LLM_DEFAULT_MODEL: "",
+  // 告警 webhook / SMTP（alertmanager 变量插值）
+  ALERTMANAGER_WEBHOOK_URL: "",
+  ALERTMANAGER_EMAIL_TO: "",
+  ALERTMANAGER_SMTP_HOST: "",
+  ALERTMANAGER_SMTP_FROM: "",
+  ALERTMANAGER_SMTP_USER: "",
+  ALERTMANAGER_SMTP_PASS: "",
+};
+
+/** 渲染追加到演练 env 末尾的出站禁用段（`KEY=` 形式，空值）。 */
+export function renderDrillOutboundEnvOverrides(): string {
+  const lines = Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES).map(
+    ([key, value]) => `${key}=${value}`,
+  );
+  return `\n# ---- restore-drill 出站集成禁用（自动生成，勿提交） ----\n` +
+    `# 演练不得向真实用户发信、调用外部 webhook / OAuth / LLM 上游。\n` +
+    lines.join("\n") + "\n";
+}
+
+/**
+ * 渲染在隔离库执行的「出站集成禁用」SQL（在 core 启动**之前**执行）。
+ *
+ * 为什么需要：`email_provider` 是 bootstrap 配置（`settings-registry.ts`），
+ * 读取链为 `DB → env → 默认值`——快照恢复出的 `system_settings` 里若残留
+ * `email_provider=aliyun/tencent`，DB 值会**遮蔽**演练 env 里的 `disabled`；
+ * 云厂商密钥同理来自 DB。LLM Provider 的密钥与上游地址只存在于
+ * `llm_providers` 表，`enabled=false` 是其唯一禁用开关（gateway 对停用
+ * Provider 直接拒绝）。
+ *
+ * 取得快照里的「生产 webhook URL」做条件匹配是不必要的：这里直接把**全部**
+ * webhook/回调类键清空，演练从不依赖它们。未命中时不报错（键不存在即无副作用）。
+ */
+export function renderDisableOutboundIntegrationsSql(): string {
+  return [
+    "-- 恢复演练：禁用出站集成（邮件 / webhook / LLM 上游）",
+    // system_settings.value 按 JSON 编码存储（写入经 JSON.stringify），故用 '"…"'。
+    `UPDATE system_settings SET value = '"disabled"'`,
+    " WHERE key = 'email_provider';",
+    // 邮件凭据与回调：全部清空（即使 provider 被改回也不会发信）
+    `UPDATE system_settings SET value = '""'`,
+    " WHERE key IN (",
+    "   'alibaba_access_key_id', 'alibaba_access_key_secret',",
+    "   'alibaba_from_email', 'tencent_secret_id', 'tencent_secret_key',",
+    "   'tencent_from_email', 'email_webhook_secret'",
+    " );",
+    // webhook 类 setting（按命名 + URL 形态兜底，防新增键漏网）：
+    // 只命中「名字像 webhook 且值是 URL」的行，避免误清 data_policy 等纯文本。
+    // 值是 JSON 字符串（带引号），正则允许可选的前导引号。
+    `UPDATE system_settings SET value = '""'`,
+    " WHERE key ~* 'webhook|slack|discord|feishu|lark'",
+    `   AND value ~* '^[[:space:]]*"?[[:space:]]*(https?|ftps?|wss?)://';`,
+    // LLM 题默认 Provider / 模型（env 兜底已在 env 中清空，这里清 DB 值）
+    `UPDATE system_settings SET value = '""'`,
+    " WHERE key IN ('llm_default_provider_id', 'llm_default_model');",
+    // LLM Provider：密钥与上游地址只存在于 DB，停用是唯一禁用开关
+    "UPDATE llm_providers SET enabled = false WHERE enabled;",
+  ].join("\n");
+}
+
+/**
  * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` :321-339 的等价）。
  *
  * 覆盖两类隔离属性：把 `noj-net` 的子网改为演练子网，并用 Compose 的

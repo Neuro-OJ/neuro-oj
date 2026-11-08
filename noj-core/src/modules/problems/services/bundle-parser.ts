@@ -39,6 +39,85 @@ export const MAX_FILE_SIZE = 64 * 1024 * 1024;
 /** 对齐 judge 端 `MAX_TOTAL_SIZE`（512 MiB）。 */
 export const MAX_TOTAL_SIZE = 512 * 1024 * 1024;
 
+/**
+ * 按 ZIP 安全基线解压：条目数、单文件大小、总解压大小上限 + 路径穿越校验。
+ *
+ * `filter` 回调在中央目录阶段即拿到条目元数据，可尽早拒绝 zip 炸弹；但
+ * `originalSize` 是包内声明值、可被伪造，因此解压后再按实际
+ * `content.length` 复核一次（只统计实际解压出的条目）。所有上限违规抛
+ * `BadRequestError`（文案与 `parseBundleZip` 一致）。
+ *
+ * @param options.includeContents 为 false 时只做校验，不保留条目内容
+ * @param options.include 额外的条目选择器（返回 false 的条目不保留内容）
+ * @param options.onEntry 每个条目通过校验后回调（可按需收集路径）
+ */
+export function unzipWithLimits(
+  data: Uint8Array,
+  options: {
+    includeContents?: boolean;
+    include?: (name: string, size: number) => boolean;
+    onEntry?: (
+      name: string,
+      originalSize: number,
+      isDirectory: boolean,
+    ) => void;
+  } = {},
+): Record<string, Uint8Array> {
+  const { includeContents = true, include, onEntry } = options;
+  let count = 0;
+  let total = 0;
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(data, {
+      filter: (file) => {
+        assertSafeEntryPath(file.name);
+        count++;
+        if (count > MAX_ZIP_ENTRIES) {
+          throw new BadRequestError(`zip 条目数超过上限 ${MAX_ZIP_ENTRIES}`);
+        }
+        if (file.originalSize > MAX_FILE_SIZE) {
+          throw new BadRequestError(
+            `zip 条目超过单文件上限 ${
+              MAX_FILE_SIZE / 1024 / 1024
+            } MiB：${file.name}`,
+          );
+        }
+        total += file.originalSize;
+        if (total > MAX_TOTAL_SIZE) {
+          throw new BadRequestError(
+            `zip 总解压大小超过上限 ${MAX_TOTAL_SIZE / 1024 / 1024} MiB`,
+          );
+        }
+        const isDirectory = file.name.endsWith("/");
+        onEntry?.(file.name, file.originalSize, isDirectory);
+        return includeContents && !isDirectory &&
+          (!include || include(file.name, file.originalSize));
+      },
+    });
+  } catch (error) {
+    // filter 预检抛出的 BadRequestError 原样上抛；其余视为 zip 格式错误
+    if (error instanceof BadRequestError) throw error;
+    throw new BadRequestError("zip 解析失败：文件不是有效的 zip 格式");
+  }
+
+  // 声明大小可伪造，按实际解压字节复核
+  let actualTotal = 0;
+  for (const [name, content] of Object.entries(files)) {
+    if (content.length > MAX_FILE_SIZE) {
+      throw new BadRequestError(
+        `zip 条目超过单文件上限 ${MAX_FILE_SIZE / 1024 / 1024} MiB：${name}`,
+      );
+    }
+    actualTotal += content.length;
+    if (actualTotal > MAX_TOTAL_SIZE) {
+      throw new BadRequestError(
+        `zip 总解压大小超过上限 ${MAX_TOTAL_SIZE / 1024 / 1024} MiB`,
+      );
+    }
+  }
+  return files;
+}
+
 /** 读取 ZIP 文件，解压前验证路径与大小；选择器只解压需要预览的条目。 */
 export function readEvaluationEntries(
   data: Uint8Array,
@@ -325,14 +404,15 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
 export function inspectEvaluationPackage(
   data: Uint8Array,
 ): EvaluationPackageInspection {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(data);
-  } catch {
-    throw new BadRequestError("评测包不是有效的 zip 文件");
-  }
+  // 发布预检同样按安全基线限额解压，防止 zip 炸弹撑爆内存
+  const names: string[] = [];
+  unzipWithLimits(data, {
+    includeContents: false,
+    onEntry: (name, _size, isDirectory) => {
+      if (!isDirectory) names.push(name);
+    },
+  });
 
-  const names = Object.keys(files);
   const rootNames = new Set(names.filter((name) => !name.includes("/")));
   const referenceCandidates = [
     "reference_solution.py",

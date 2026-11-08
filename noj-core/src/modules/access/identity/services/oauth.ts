@@ -20,6 +20,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
+import { assertLoginNotBanned, getActiveUserBan } from "./auth/auth-login.ts";
 import { recordConsentsForRegistration } from "../../../platform/contracts/cross-module/services_legal_consent.ts";
 import { getInstanceAccessPolicy } from "../../workspace/services/instance.ts";
 import { enrollRegisteredAccountTx } from "../../registration.ts";
@@ -581,6 +582,7 @@ async function createOAuthUser(
  * @param userId 目标用户 ID
  * @returns 用户信息与 JWT token
  * @throws {NotFoundError} 用户不存在
+ * @throws {ForbiddenError} 账号处于生效中的平台封禁（USER_BANNED）
  */
 async function issueOAuthSession(
   userId: string,
@@ -589,6 +591,8 @@ async function issueOAuthSession(
   const [user] = await db.select().from(users).where(eq(users.id, userId))
     .limit(1);
   if (!user || user.deleted_at) throw new NotFoundError("用户不存在");
+  // 与密码登录同一封禁口径：生效中的平台封禁拒绝签发会话，且不记登录成功审计。
+  assertLoginNotBanned(await getActiveUserBan(userId));
   const role = user.role === "admin" ? "admin" : "user";
   const token = await signToken({
     sub: userId,

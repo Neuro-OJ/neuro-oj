@@ -36,6 +36,8 @@ import {
   drillComposeArgs,
   drillDirName,
   readEnvValues,
+  renderDisableOutboundIntegrationsSql,
+  renderDrillOutboundEnvOverrides,
   renderDrillOverride,
   resolveReportPath,
   uniqueDrillProjectName,
@@ -440,6 +442,56 @@ Deno.test("T19 隔离性：覆盖 YAML 清除 ports 映射并只改演练网络�
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
+Deno.test("T19 隔离性：演练 env 末尾禁用出站集成（邮件/OAuth/webhook/LLM 上游）", () => {
+  const env = renderDrillOutboundEnvOverrides();
+  assertStringIncludes(env, "EMAIL_PROVIDER=disabled");
+  for (
+    const key of [
+      "OAUTH_GITHUB_CLIENT_ID",
+      "OAUTH_GITHUB_CLIENT_SECRET",
+      "OAUTH_OIDC_CLIENT_SECRET",
+      "EMAIL_WEBHOOK_SECRET",
+      "ALIBABA_ACCESS_KEY_SECRET",
+      "TENCENT_SECRET_KEY",
+      "NOJ_LLM_GATEWAY_URL",
+      "NOJ_LLM_DEFAULT_PROVIDER_ID",
+      "ALERTMANAGER_WEBHOOK_URL",
+      "ALERTMANAGER_SMTP_HOST",
+    ]
+  ) {
+    assertStringIncludes(env, `\n${key}=\n`, `${key} 必须被置空`);
+  }
+  // 生产 webhook URL 不得出现在演练 env 中
+  const prodUrl = "https://hooks.example.com/production-abc123";
+  const snapshotEnv = [
+    "EMAIL_PROVIDER=aliyun",
+    `ALERTMANAGER_WEBHOOK_URL=${prodUrl}`,
+  ].join("\n");
+  // 追加段压过快照里的生产值（Compose env_file 后者覆盖前者），且不带 URL
+  assertStringIncludes(
+    `${snapshotEnv}\n${env}`,
+    "\nEMAIL_PROVIDER=disabled\n",
+  );
+  assert(
+    !env.includes(prodUrl),
+    "演练 env 不得携带生产 webhook URL",
+  );
+});
+
+Deno.test("T19 隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
+  const sql = renderDisableOutboundIntegrationsSql();
+  // system_settings.value 是 JSON 编码，禁用值必须带引号
+  assertStringIncludes(sql, `SET value = '"disabled"'`);
+  assert(!sql.includes("SET value = 'disabled'"), "不得写入非 JSON 编码的裸值");
+  assertStringIncludes(sql, "'email_provider'");
+  assertStringIncludes(sql, "'alibaba_access_key_secret'");
+  assertStringIncludes(sql, "'email_webhook_secret'");
+  assertStringIncludes(sql, "'llm_default_provider_id'");
+  assertStringIncludes(sql, "UPDATE llm_providers SET enabled = false");
+  // webhook 兜底只命中「键名像 webhook 且值是 URL」的行，避免误清纯文本设置
+  assertStringIncludes(sql, "WHERE key ~* 'webhook|slack|discord|feishu|lark'");
+});
+
 Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
   const root = await Deno.makeTempDir();
   const envFile = join(root, ".env.drill");
@@ -638,6 +690,22 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
       dirExists = false;
     }
     assertEquals(dirExists, false, "成功路径默认删除演练目录");
+
+    // 出站集成禁用必须在 core 启动之前执行（core 启动后 DB 改动不再进入
+    // 设置缓存）。SQL 正文经临时文件喂给 psql，喂入后即删除，因此只断言
+    // 「已执行」与「早于 core up」。
+    const outboundAt = calls.findIndex((c) =>
+      c.cmd === "sh" && c.args.includes("psql")
+    );
+    const coreUpAt = calls.findIndex((c) =>
+      c.args.includes("up") && c.args.includes("core")
+    );
+    assert(outboundAt >= 0, "必须执行出站集成禁用 SQL");
+    assert(coreUpAt >= 0, "必须启动隔离 core");
+    assert(
+      outboundAt < coreUpAt,
+      "出站集成禁用必须在 core 启动之前执行",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

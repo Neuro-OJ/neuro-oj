@@ -117,3 +117,102 @@ Deno.test('U-2 源码：shouldInterceptAuth 已改为 pathname 比较', () => {
     '两个被拦截的认证端点都必须用等值比较',
   );
 });
+
+// ── 内部端点不得经公网代理到达 noj-core ──────────────────────────────
+//
+// `/api/v1/internal/*`（排空、内部服务端点）只允许容器内网直连：CLI 经
+// `docker compose run core ...` 访问 `http://core:8000`，judge/gateway 走内网。
+// 公网请求经 nginx → Nitro 代理时必须在**规范化后的 pathname** 上直接 404，
+// 不得进入认证拦截 / SSE / 普通转发任一分支。
+
+/** 与 [...slug].ts 一致的 internal 判定规则（机制级复刻，源码级另行断言）。 */
+const INTERNAL_RE = /^\/api\/v1\/+internal(?:\/|$)/i;
+
+function blockedAsInternal(rawPath: string): boolean {
+  const pathname = new URL(rawPath, SENTINEL).pathname;
+  if (INTERNAL_RE.test(pathname)) return true;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return decoded !== pathname && INTERNAL_RE.test(decoded);
+}
+
+Deno.test('internal：内部端点及其变体一律判定为拦截', () => {
+  for (
+    const raw of [
+      '/api/v1/internal/drain/status',
+      '/api/v1/internal/llm/quota-caps',
+      '/api/v1/internal',
+      '/api/v1/internal/?x=1',
+      // 大小写变体：pathname 保留原始大小写，规则须不区分大小写
+      '/api/v1/Internal/drain/status',
+      // 百分号编码的 `i`：解码后命中
+      '/api/v1/%69nternal/x',
+      // 双斜杠：pathname 不归一化 `//`
+      '/api/v1//internal/x',
+    ]
+  ) {
+    assert(blockedAsInternal(raw), `${raw} 必须被 internal 规则拦截`);
+  }
+});
+
+Deno.test('internal 机制：大小写敏感说明 —— WHATWG URL 不改写路径大小写', () => {
+  assertEquals(
+    new URL('/api/v1/Internal/x', SENTINEL).pathname,
+    '/api/v1/Internal/x',
+    'pathname 保留原始大小写，因此必须用 /i 规则显式拦截',
+  );
+  assertEquals(
+    new URL('/api/v1/%69nternal/x', SENTINEL).pathname,
+    '/api/v1/%69nternal/x',
+    'new URL 不解码 %69，因此需要解码后再判定',
+  );
+  assertEquals(
+    new URL('/api/v1//internal/x', SENTINEL).pathname,
+    '/api/v1//internal/x',
+    'new URL 不折叠双斜杠，因此规则须用 /+ 匹配任意斜杠数',
+  );
+});
+
+Deno.test('internal 机制的误伤边界：合法 v1 路径与相似前缀不被拦截', () => {
+  for (
+    const raw of [
+      '/api/v1/problems',
+      '/api/v1/internalized/x',
+      '/api/v1/public/internal/x',
+    ]
+  ) {
+    assertEquals(blockedAsInternal(raw), false, `${raw} 不应被误伤`);
+  }
+});
+
+Deno.test('internal 源码：白名单校验后对规范化 pathname 做 internal 拦截', () => {
+  assert(
+    PROXY_SRC.includes('isInternalApiPath(targetUrl.pathname)'),
+    'internal 判定必须作用在规范化后的 pathname 上（防 %2f/大小写/双斜杠绕过）',
+  );
+  assert(
+    /const INTERNAL_API_PATH = \/\^\\\/api\\\/v1\\\/\+internal/.test(
+      PROXY_SRC,
+    ),
+    'internal 规则须容忍多个斜杠（/+）并位于 /api/v1/ 前缀之内',
+  );
+  assert(
+    PROXY_SRC.includes('decodeURIComponent(pathname)'),
+    'internal 规则须对编码形态（如 %69nternal）解码后再判定',
+  );
+  // 判定必须位于白名单 if 中且在 SSE / 普通转发调用之前执行
+  // （函数定义在文件上方，这里须匹配**调用点**，故带上 `await ` 前缀）
+  const guardAt = PROXY_SRC.indexOf('isInternalApiPath(targetUrl.pathname)');
+  assert(guardAt >= 0, '未找到 internal 拦截点');
+  for (const later of ['await proxySseRequest(', 'proxyRequest(event, target']) {
+    const idx = PROXY_SRC.indexOf(later);
+    assert(
+      idx > guardAt,
+      `${later} 必须位于 internal 拦截点之后（SSE 与普通分支都被覆盖）`,
+    );
+  }
+});

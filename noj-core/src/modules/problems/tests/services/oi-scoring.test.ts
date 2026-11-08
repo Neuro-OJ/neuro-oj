@@ -1,11 +1,17 @@
-import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { distributeOiPoints, oiCaseMaxScores } from "../../types/oi-scoring.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
 import { validateOiSelfTestCases } from "../../services/oi-self-test-package.ts";
 import { buildOiSelfTestPackage } from "../../services/oi-self-test-package.ts";
 import { decodeBase64 } from "@std/encoding/base64";
-import { unzipSync } from "fflate";
-import { sha256Hex } from "../../../assets/storage/mod.ts";
+import { unzipSync, zipSync } from "fflate";
+import {
+  LocalStorageProvider,
+  resetStorageProvider,
+  setStorageProviderForTest,
+  sha256Hex,
+} from "../../../assets/storage/mod.ts";
+import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { isAcceptedResult } from "../../../../shared/base/accepted-result.ts";
 
 Deno.test("OI 默认整数等分与显式分数一致，余数分给末尾", () => {
@@ -67,6 +73,80 @@ Deno.test("OI 满分 WA 不计为通过，零分 AC 仍通过；AI 保留正分�
     isAcceptedResult("error", 10000, { oi: { verdict: "AC" } }),
     false,
   );
+});
+
+Deno.test("OI 自测包读取额外文件时按 ZIP 安全基线限额解压", async () => {
+  const tempDir = await Deno.makeTempDir({ prefix: "noj-self-test-" });
+  const provider = new LocalStorageProvider(tempDir);
+  setStorageProviderForTest(provider);
+  const baseConfig = {
+    backend: "wasm" as const,
+    languages: ["cc"] as ("c" | "cc")[],
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+    checker: { type: "default" as const },
+    subtasks: [{
+      id: "all",
+      score: 100,
+      cases: [{ input: "hidden.in", output: "hidden.out" }],
+    }],
+  };
+  const cases = [{ id: "sample", input: "1\n" }];
+  try {
+    // 正常包仍可通过
+    const okZip = zipSync({
+      "lib.py": new TextEncoder().encode("print(1)"),
+      "unrelated.bin": new TextEncoder().encode("ignored"),
+    });
+    const okUrl = await provider.put("ok.zip", okZip);
+    const built = await buildOiSelfTestPackage(
+      { ...baseConfig, user_extra_files: ["lib.py"] },
+      okUrl,
+      cases,
+    );
+    assertEquals(Object.keys(built.runtime_config).length > 0, true);
+
+    // 条目数超限被拒（即使超限条目不在白名单内）
+    const manyFiles: Record<string, Uint8Array> = {
+      "lib.py": new TextEncoder().encode("print(1)"),
+    };
+    for (let i = 0; i <= 1000; i++) {
+      manyFiles[`f${i}.txt`] = new TextEncoder().encode("x");
+    }
+    const manyUrl = await provider.put("many.zip", zipSync(manyFiles));
+    await assertRejects(
+      () =>
+        buildOiSelfTestPackage(
+          { ...baseConfig, user_extra_files: ["lib.py"] },
+          manyUrl,
+          cases,
+        ),
+      BadRequestError,
+      "条目数",
+    );
+
+    // 单文件超限被拒（即使该条目不在白名单内）
+    const bigUrl = await provider.put(
+      "big.zip",
+      zipSync({
+        "lib.py": new TextEncoder().encode("print(1)"),
+        "big.bin": new Uint8Array(64 * 1024 * 1024 + 1),
+      }),
+    );
+    await assertRejects(
+      () =>
+        buildOiSelfTestPackage(
+          { ...baseConfig, user_extra_files: ["lib.py"] },
+          bigUrl,
+          cases,
+        ),
+      BadRequestError,
+      "单文件上限",
+    );
+  } finally {
+    resetStorageProvider();
+    await Deno.remove(tempDir, { recursive: true });
+  }
 });
 
 Deno.test("OI 自测包遵循原始 base64 下载协议，校验和覆盖实际 ZIP 内容", async () => {

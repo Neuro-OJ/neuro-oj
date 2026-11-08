@@ -190,7 +190,6 @@
 | GET | `/instance/queue` | noj-core/src/modules/evaluations/routes/queue.ts |
 | GET | `/instance/queue/events` | noj-core/src/modules/evaluations/routes/sse.ts |
 | GET | `/internal/drain/status` | noj-core/src/modules/platform/system/routes/internal-drain.ts |
-| GET | `/internal/llm/quota-caps` | noj-core/src/modules/platform/system/routes/internal-llm-policy.ts |
 | GET | `/judge-images` | noj-core/src/modules/http/admin/routes/system.ts |
 | GET | `/llm-model-aliases` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/llm/model-aliases` | noj-core/src/modules/http/admin/routes/gateway.ts |

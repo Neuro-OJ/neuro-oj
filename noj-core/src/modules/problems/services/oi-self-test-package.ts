@@ -1,6 +1,7 @@
-import { unzipSync, zipSync } from "fflate";
+import { zipSync } from "fflate";
 import { encodeBase64 } from "@std/encoding/base64";
 import { BadRequestError } from "../../../shared/base/errors.ts";
+import { unzipWithLimits } from "./bundle-parser.ts";
 import { buildBase64DownloadUrl, sha256Hex } from "../../assets/storage/mod.ts";
 import { getStorageProvider } from "../../assets/storage/mod.ts";
 import type { OiRuntimeConfig } from "../types/runtime-config.ts";
@@ -59,8 +60,9 @@ export async function buildOiSelfTestPackage(
   if (extra.length) {
     if (!storageUrl) throw new BadRequestError("题目缺少自测必需的额外文件");
     const storage = await getStorageProvider();
-    const archive = unzipSync(await storage.get(storageUrl), {
-      filter: (file) => extra.includes(file.name),
+    // 只解压白名单条目，同时按 ZIP 安全基线限额（条目数/单文件/总量）拒绝异常包
+    const archive = unzipWithLimits(await storage.get(storageUrl), {
+      include: (name) => extra.includes(name),
     });
     for (const path of extra) {
       if (!archive[path]) {

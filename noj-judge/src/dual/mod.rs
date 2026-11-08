@@ -426,6 +426,7 @@ pub async fn evaluate_dual_with_cpu_limit(
             solution_exec,
             runtime_config.evaluator.time_limit_ms,
             solution.call_timeout_ms,
+            max_solution_call_timeout_ms,
             task_rejudge_seq,
             startup_deadline,
         )
@@ -555,6 +556,7 @@ async fn run_dual_loop(
     solution_exec: ExecSession,
     evaluator_timeout_ms: u64,
     default_call_timeout_ms: u64,
+    max_call_timeout_ms: u64,
     rejudge_seq: Option<i64>,
     startup_deadline: Instant,
 ) -> Result<JudgeResult> {
@@ -579,8 +581,9 @@ async fn run_dual_loop(
 
     let mut result_payload = ResultPayload::new();
 
-    // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值）
-    let mut tracker = InFlightTracker::new(default_call_timeout_ms);
+    // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值；
+    // evaluator 帧里的 timeout_ms 受 judge 硬上限截断，防止绕过 clamp 挂住评测）
+    let mut tracker = InFlightTracker::new(default_call_timeout_ms, max_call_timeout_ms);
 
     // 是否向 evaluator 发送过 CallTimeout 错误帧（solution 调用超时）。
     // 仅 WaitingSide::Evaluator（evaluator 等 solution 的 call）置位；

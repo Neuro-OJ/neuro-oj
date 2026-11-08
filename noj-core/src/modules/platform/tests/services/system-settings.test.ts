@@ -9,7 +9,12 @@
  * - resetSetting 删除 DB 行
  * - 敏感字段掩码 maskSecret
  */
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertRejects,
+} from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -24,6 +29,7 @@ import {
   listSettings,
   maskSecret,
   resetSetting,
+  SECRET_MASK,
   updateSetting,
 } from "../../system/index.ts";
 import {
@@ -347,9 +353,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: maskSecret 长度 ≤ 6 整体掩码",
+  name: "system-settings service: maskSecret 未配置 / 空值返回空串",
   fn: () => {
-    assertEquals(maskSecret("abc"), "***");
     assertEquals(maskSecret(""), "");
     assertEquals(maskSecret(null), "");
     assertEquals(maskSecret(undefined), "");
@@ -357,11 +362,43 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: maskSecret 长度 > 6 保留首尾",
+  name: "system-settings service: maskSecret 已配置返回固定掩码，不回显首尾",
   fn: () => {
-    assertEquals(maskSecret("my-super-secret-key-12345"), "my-***345");
-    assertEquals(maskSecret("abcdefg"), "abc***efg");
-    assertEquals(maskSecret("abcdef"), "***");
+    // 短值和长值一律固定掩码
+    assertEquals(maskSecret("abc"), SECRET_MASK);
+    assertEquals(maskSecret("abcdef"), SECRET_MASK);
+    assertEquals(maskSecret("abcdefg"), SECRET_MASK);
+    assertEquals(maskSecret("my-super-secret-key-12345"), SECRET_MASK);
+    // 非字符串值先 JSON.stringify 再判断
+    assertEquals(maskSecret({ token: "x" }), SECRET_MASK);
+    assertEquals(maskSecret(""), "");
+  },
+});
+
+Deno.test({
+  name: "system-settings service: maskSecret 返回值不包含原文任何前缀/后缀",
+  fn: () => {
+    const samples = [
+      "LTAI5tAbCdEfGhIj",
+      "https://user:pass@example.com/path",
+      "s3cr3tAccessKey",
+      "a".repeat(64),
+      "xy",
+    ];
+    for (const secret of samples) {
+      const masked = maskSecret(secret);
+      assertEquals(masked, SECRET_MASK);
+      // 原文任意长度 ≥ 1 的子串都不得出现在掩码中
+      for (let len = 1; len <= secret.length; len++) {
+        for (let i = 0; i + len <= secret.length; i++) {
+          const piece = secret.slice(i, i + len);
+          assertFalse(
+            masked.includes(piece),
+            `掩码泄露了原文片段 ${JSON.stringify(piece)}`,
+          );
+        }
+      }
+    }
   },
 });
 

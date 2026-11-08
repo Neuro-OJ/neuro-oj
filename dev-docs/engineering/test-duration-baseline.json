@@ -255,7 +255,6 @@
     "src/modules/platform/system/tests/routes/admin-settings-email.test.ts": 1826,
     "src/modules/platform/system/tests/routes/email-delivery-rate-limit.test.ts": 36,
     "src/modules/platform/system/tests/routes/internal-drain.test.ts": 628,
-    "src/modules/platform/system/tests/routes/internal-llm-policy.test.ts": 613,
     "src/modules/platform/system/tests/services/drain-status.test.ts": 1,
     "src/modules/platform/system/tests/services/education-write-rate-limit.test.ts": 18,
     "src/modules/platform/system/tests/services/email-delivery.test.ts": 43,

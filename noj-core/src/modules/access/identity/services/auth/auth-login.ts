@@ -15,6 +15,56 @@ import { isBannedIp } from "../../../../../shared/security/cidr.ts";
 import { getBannedRanges } from "../banlist.ts";
 import { toUserResponse } from "./auth-register.ts";
 
+/** 用户最近一条活跃封禁记录（unbanned_at IS NULL）。 */
+export interface ActiveUserBan {
+  reason: string;
+  banned_until: string | null;
+  scope: string;
+}
+
+/**
+ * 查询用户最近一条活跃封禁记录；无活跃封禁返回 null。
+ * 密码登录与 OAuth 登录共用同一口径（取 banned_at 最新的一条）。
+ */
+export async function getActiveUserBan(
+  userId: string,
+): Promise<ActiveUserBan | null> {
+  const rows = await getDb().select({
+    reason: userBans.reason,
+    banned_until: userBans.banned_until,
+    scope: userBans.scope,
+  })
+    .from(userBans)
+    .where(and(eq(userBans.user_id, userId), isNull(userBans.unbanned_at)))
+    .orderBy(desc(userBans.banned_at))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * 判断活跃封禁是否正在阻止用户登录。
+ * 只拦 platform 封禁；social 封禁只限制社区发布，不影响登录。
+ * 截止时间已过的临时封禁视为失效。
+ */
+export function isLoginBlockedByBan(ban: ActiveUserBan | null): boolean {
+  if (!ban || ban.scope === "social") return false;
+  return !ban.banned_until || Date.parse(ban.banned_until) > Date.now();
+}
+
+/**
+ * 登录路径统一的封禁拦截：被封禁时抛 ForbiddenError(USER_BANNED)。
+ * 密码登录与 OAuth 登录共用，保证错误类型、错误码与 details 口径一致。
+ *
+ * @throws {ForbiddenError} 账号处于生效中的平台封禁
+ */
+export function assertLoginNotBanned(ban: ActiveUserBan | null): void {
+  if (!ban || !isLoginBlockedByBan(ban)) return;
+  throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+    reason: ban.reason,
+    until: ban.banned_until,
+  });
+}
+
 /**
  * 用户登录。
  * 通过用户名或邮箱查找用户，验证密码，签发 JWT。
@@ -101,33 +151,18 @@ export async function loginUser(
   }
 
   // 封禁检查（user-ban-table）：查 user_bans 活跃记录
-  const activeBan = await db.select({
-    reason: userBans.reason,
-    banned_until: userBans.banned_until,
-    scope: userBans.scope,
-  })
-    .from(userBans)
-    .where(and(eq(userBans.user_id, user.id), isNull(userBans.unbanned_at)))
-    .orderBy(desc(userBans.banned_at))
-    .limit(1);
-  if (activeBan.length > 0 && activeBan[0].scope !== "social") {
-    const stillBanned = !activeBan[0].banned_until ||
-      Date.parse(activeBan[0].banned_until) > Date.now();
-    if (stillBanned) {
-      await logAuthEvent(
-        user.id,
-        clientIp ?? "unknown",
-        "auth.login_failure",
-        {
-          reason: "user_banned",
-          login: input.login,
-        },
-      );
-      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
-        reason: activeBan[0].reason,
-        until: activeBan[0].banned_until,
-      });
-    }
+  const activeBan = await getActiveUserBan(user.id);
+  if (isLoginBlockedByBan(activeBan)) {
+    await logAuthEvent(
+      user.id,
+      clientIp ?? "unknown",
+      "auth.login_failure",
+      {
+        reason: "user_banned",
+        login: input.login,
+      },
+    );
+    assertLoginNotBanned(activeBan);
   }
 
   // TFA 二次验证：已启用用户必须提供 TOTP 或恢复码。
@@ -178,7 +213,7 @@ export async function loginUser(
   );
 
   return {
-    user: toUserResponse(user, { activeBan: activeBan[0] ?? null }),
+    user: toUserResponse(user, { activeBan }),
     token,
   };
 }
