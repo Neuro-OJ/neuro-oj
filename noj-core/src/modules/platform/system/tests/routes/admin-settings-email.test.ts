@@ -15,7 +15,7 @@
  * 且失败原因指向产品（注册被拒）而非测试污染，具有强误导性。
  *
  * 修复方式：统一经 `withProvider()` 进入，`finally` 中把 EMAIL_PROVIDER 还原为
- * 本文件触碰它之前的值（原本未设置则删除），并重刷 env 快照与系统设置缓存，
+ * 本文件触碰它之前的值（原本未设置则删除），并重刷系统设置缓存，
  * 保证不把状态留给同进程内后续文件。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
@@ -25,10 +25,6 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
 } from "../../index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../services/env-snapshot.ts";
 import { takeMockEmailsForTest } from "../../services/email-providers/mock.ts";
 import {
   createUserToken,
@@ -43,8 +39,6 @@ const originalEmailProvider = Deno.env.get("EMAIL_PROVIDER");
 
 async function setupWithProvider(provider: "mock" | "disabled") {
   Deno.env.set("EMAIL_PROVIDER", provider);
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   _resetSystemSettingsForTest();
   await initSystemSettings();
 }
@@ -68,8 +62,6 @@ async function withProvider(
     } else {
       Deno.env.set("EMAIL_PROVIDER", originalEmailProvider);
     }
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
     _resetSystemSettingsForTest();
     await initSystemSettings();
   }

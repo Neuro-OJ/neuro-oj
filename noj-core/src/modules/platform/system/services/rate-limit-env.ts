@@ -12,7 +12,7 @@
  */
 
 import type { Context } from "hono";
-import { getSetting } from "./system-settings.ts";
+import { getSetting } from "../../services/system-settings.ts";
 import { findDefinition } from "../../../../shared/config/settings-registry.ts";
 import {
   type CidrRange,

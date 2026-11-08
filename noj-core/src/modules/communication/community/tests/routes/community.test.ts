@@ -1,4 +1,5 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -146,7 +147,11 @@ async function setup(): Promise<void> {
     actorRole: "admin",
   });
   try {
-    await updateSetting("community_solution_requires_accepted", false, "0");
+    await updateSetting(
+      "community_solution_requires_accepted",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
   } finally {
     leaveTestContext();
   }
@@ -745,7 +750,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -838,7 +847,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -959,7 +972,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_post_interval_seconds", 3600, "0");
+      await updateSetting(
+        "community_post_interval_seconds",
+        3600,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }

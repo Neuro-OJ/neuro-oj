@@ -16,7 +16,6 @@ import { migratePoolJudgeQueues } from "../evaluations/mq/pool-judge-queue.ts";
 import { initEventSubscriber } from "../../shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "../../shared/sse/sse-events.ts";
 import { createSseStreamScope } from "../../shared/sse/sse-stream.ts";
-import { snapshotEnv } from "../platform/services/env-snapshot.ts";
 import { validateRegistry } from "../../shared/config/settings-registry.ts";
 import {
   startEducationEmailWorker,
@@ -234,10 +233,6 @@ export async function startCore() {
     // 初始化系统设置缓存（issue #99）
     // 从 system_settings 全量加载到内存 Map，失败时终止启动。
     await fatalStep("系统设置缓存初始化", () => initSystemSettings());
-    // 启动期 env 快照（issue #99）
-    // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
-    snapshotEnv();
-
     // issue #426：启动摘要中明确邮件服务就绪状态。
     // disabled 允许启动，但邮箱验证/密码找回不可用，公开注册会被禁止
     // （仅保留首个引导用户），必须在开放注册前完成邮件配置。

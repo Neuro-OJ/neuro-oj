@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { createApp } from "../../../../app.ts";
 import {
   createUserToken,
@@ -24,7 +25,11 @@ async function fixture() {
   const token = await createUserToken("user");
   const actor = await verifyToken(token);
   await ensureDefaultWorkspace();
-  await updateSetting("domain_creation_policy", "open", "0");
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId("0"),
+  );
   const domain = await createDomain({
     slug: "api-school",
     name: "学校",

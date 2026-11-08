@@ -1,4 +1,4 @@
-import { getSetting } from "../services/system-settings.ts";
+import { getSetting } from "../../services/system-settings.ts";
 import { Hono } from "hono";
 import announcements from "./announcements.ts";
 import domainContent from "./domain-content.ts";

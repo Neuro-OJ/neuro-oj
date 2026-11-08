@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { eq, inArray } from "drizzle-orm";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -17,13 +18,11 @@ import { comparePassword } from "../../services/security/password.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { validatePasswordStrength } from "../../services/auth/auth-register.ts";
 import {
-  _resetEnvSnapshotForTest,
   _resetSystemSettingsForTest,
   initSystemSettings,
   resetEmailProvider,
-  snapshotEnv,
 } from "../../../../platform/system/index.ts";
-import { updateSetting } from "../../../../platform/system/services/system-settings.ts";
+import { updateSetting } from "../../../../platform/services/system-settings.ts";
 import { createAdminAccounts } from "../../services/admin-accounts.ts";
 
 const base = "/api/v1/admin/identity/users";
@@ -81,13 +80,15 @@ accountTest(
   async () => {
     const previous = Deno.env.get("EMAIL_PROVIDER");
     Deno.env.set("EMAIL_PROVIDER", "disabled");
-    _resetEnvSnapshotForTest();
-    snapshotEnv();
     _resetSystemSettingsForTest();
     await initSystemSettings();
     resetEmailProvider();
     try {
-      await updateSetting("allow_register", false, "0");
+      await updateSetting(
+        "allow_register",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
       const app = createApp();
       const token = await createUserToken("admin");
       const response = await jsonRequest(app, base, {
@@ -140,8 +141,6 @@ accountTest(
     } finally {
       if (previous === undefined) Deno.env.delete("EMAIL_PROVIDER");
       else Deno.env.set("EMAIL_PROVIDER", previous);
-      _resetEnvSnapshotForTest();
-      snapshotEnv();
       _resetSystemSettingsForTest();
       resetEmailProvider();
     }

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import { domains, users } from "../../../shared/db/schema.ts";
@@ -27,7 +28,11 @@ export async function account() {
 export async function educationFixture() {
   await resetDbForTest();
   const db = getDb();
-  await updateSetting("domain_creation_policy", "open", "0");
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId("0"),
+  );
   const owner = await account(),
     teacher = await account(),
     assistant = await account(),

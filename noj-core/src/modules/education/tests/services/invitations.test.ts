@@ -173,8 +173,16 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
     f.teacher,
     `${f.student}@example.com`,
   );
-  await updateSetting("instance_registration_mode", "invite", "0");
-  await updateSetting("allow_domain_registration_invites", true, "0");
+  await updateSetting(
+    "instance_registration_mode",
+    "invite",
+    userActorFromAuthenticatedId("0"),
+  );
+  await updateSetting(
+    "allow_domain_registration_invites",
+    true,
+    userActorFromAuthenticatedId("0"),
+  );
   await assertRejects(
     () =>
       f.db.transaction((tx) =>
@@ -211,7 +219,11 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
     ))[0].role,
     "student",
   );
-  await updateSetting("instance_registration_mode", "admin_only", "0");
+  await updateSetting(
+    "instance_registration_mode",
+    "admin_only",
+    userActorFromAuthenticatedId("0"),
+  );
   const error = assertThrows(
     () => assertInstanceRegistration(coachInvite.token),
     AppError,
@@ -221,8 +233,16 @@ Deno.test("邀请注册：班级能力不等于开户能力，管理员开户政
 
 Deno.test("班级邀请注册：账号与两层成员同事务，额度失败不留下半注册账号", async () => {
   const f = await educationFixture(), key = crypto.randomUUID();
-  await updateSetting("instance_registration_mode", "invite", "0");
-  await updateSetting("allow_domain_registration_invites", true, "0");
+  await updateSetting(
+    "instance_registration_mode",
+    "invite",
+    userActorFromAuthenticatedId("0"),
+  );
+  await updateSetting(
+    "allow_domain_registration_invites",
+    true,
+    userActorFromAuthenticatedId("0"),
+  );
   const email = `${key}@example.com`;
   const invite = await createClassroomInvitation(
     f.school.slug,

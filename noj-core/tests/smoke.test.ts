@@ -24,10 +24,6 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
 } from "../src/modules/platform/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../src/modules/platform/system/services/env-snapshot.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
@@ -49,10 +45,8 @@ if (Deno.env.get("REDIS_URL")) {
 
 await resetDbForTest();
 
-// 初始化系统设置缓存 + env 快照，确保 DB-backed 设置项可正常读取。
+// 初始化系统设置缓存，确保 DB-backed 设置项可正常读取。
 _resetSystemSettingsForTest();
-_resetEnvSnapshotForTest();
-snapshotEnv();
 await initSystemSettings();
 
 // 切换为 test 模式，确保 RATE_LIMIT_ENABLED=false 生效（isRateLimitEnabled 仅在

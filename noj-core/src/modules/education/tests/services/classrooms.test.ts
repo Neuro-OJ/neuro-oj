@@ -31,6 +31,7 @@ import {
 } from "../../../access/workspace/index.ts";
 import { educationFixture } from "../_fixtures.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 Deno.test("班级：同账号两域身份、错误域路径和学生只读自身成员记录", async () => {
   const f = await educationFixture();
@@ -202,7 +203,7 @@ Deno.test("班级：revision、只读归档、关闭教学后仍能读取授权�
       assignment: false,
       analytics: true,
     }),
-    "0",
+    userActorFromAuthenticatedId("0"),
   );
   assertEquals(
     (await getClassroom(f.school.slug, f.classroom.id, f.teacher)).status,

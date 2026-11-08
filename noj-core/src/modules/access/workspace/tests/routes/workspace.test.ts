@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -136,7 +137,11 @@ Deno.test({
       })).status,
       200,
     );
-    await updateSetting("instance_access", "authenticated", "0");
+    await updateSetting(
+      "instance_access",
+      "authenticated",
+      userActorFromAuthenticatedId("0"),
+    );
     assertEquals((await jsonRequest(app, "/api/v1/problems")).status, 401);
     assertEquals((await jsonRequest(app, "/api/v1/instance")).status, 200);
     assertEquals(
@@ -165,7 +170,11 @@ Deno.test({
       domain.owner_id,
       "new-student@example.com",
     );
-    await updateSetting("instance_access", "authenticated", "0");
+    await updateSetting(
+      "instance_access",
+      "authenticated",
+      userActorFromAuthenticatedId("0"),
+    );
     const preview = await jsonRequest(app, "/api/v1/auth/domain-invitation", {
       method: "POST",
       body: { token: invitation.token },
@@ -261,7 +270,7 @@ Deno.test({
     await updateSetting(
       "domain_limit_caps",
       JSON.stringify(unlimitedDomainLimits()),
-      "0",
+      userActorFromAuthenticatedId("0"),
     );
     assertEquals((await jsonRequest(app, path, { token: admin })).status, 200);
   },

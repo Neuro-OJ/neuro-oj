@@ -40,8 +40,8 @@ import type {
   CreateAnnouncementInput,
   UpdateAnnouncementInput,
 } from "../../../platform/services/announcements.ts";
-import { listAuditLogs } from "../../../platform/system/services/audit-log.ts";
-import type { AuditAction } from "../../../platform/system/types/audit-log.ts";
+import { listAuditLogs } from "../../../platform/services/audit-log.ts";
+import type { AuditAction } from "../../../platform/types/audit-log.ts";
 import {
   clearEmailSuppression,
   listEmailSuppressions,

@@ -15,7 +15,7 @@ import type { SettingDefinition } from "./settings-registry.ts";
 
 /** bootstrap（env-owned）配置项元数据；顺序即对外暴露顺序。 */
 export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
-  // ══ bootstrap env-only 基础设施项（原 env-snapshot 白名单）══════
+  // ══ bootstrap env-only 基础设施项（启动期从 env 读取）══════
   // scope: bootstrap，envKey 即 env 事实源；后台只读展示（已设置才展示）。
   // ── database ───────────────────────────────────────────────
   {
@@ -284,15 +284,6 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     scope: "bootstrap",
     envKey: "RUNTIME_LLM_GATEWAY_URL",
-    category: "other",
-  },
-  {
-    key: "RUNTIME_JUDGE_MODE",
-    type: "string",
-    description: "Judge 观测模式（heartbeat/http）",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "RUNTIME_JUDGE_MODE",
     category: "other",
   },
   // ── 评测 / 存储 / 运行参数 ─────────────────────────────────

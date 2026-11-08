@@ -11,7 +11,7 @@
  * - aliyun / tencent：必需配置全部非空才视为就绪。
  */
 
-import { getSetting } from "./system-settings.ts";
+import { getSetting } from "../../services/system-settings.ts";
 import { EMAIL_PROVIDER_REQUIRED_SETTINGS } from "../../../../shared/config/production-config.ts";
 
 export interface EmailConfigStatus {

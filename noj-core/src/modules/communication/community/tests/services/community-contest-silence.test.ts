@@ -11,6 +11,7 @@
  * 审核员免静默，赛后自动恢复。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -81,8 +82,16 @@ async function setup(): Promise<void> {
   await publishAllProblemsForTest();
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
-    await updateSetting("community_enabled", true, "0");
-    await updateSetting("community_new_user_review_hours", 0, "0");
+    await updateSetting(
+      "community_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_new_user_review_hours",
+      0,
+      userActorFromAuthenticatedId("0"),
+    );
   } finally {
     leaveTestContext();
   }
@@ -289,7 +298,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_solution_requires_accepted", false, "0");
+      await updateSetting(
+        "community_solution_requires_accepted",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }

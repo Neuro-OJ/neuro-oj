@@ -17,7 +17,7 @@ import { logAudit } from "../../../platform/system/services/audit-log.ts";
 import type {
   AuditAction,
   AuditDetail,
-} from "../../../platform/system/types/audit-log.ts";
+} from "../../../platform/types/audit-log.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 
 const registry = new Map<string, AuditMeta>();

@@ -1,4 +1,5 @@
 import { getDb } from "../../../shared/db/connection.ts";
+import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import {
   domainProblemBindings,
@@ -51,7 +52,11 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
   const owner = await account(),
     student = await account(),
     outsider = await account();
-  await updateSetting("domain_creation_policy", "open", "0");
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId("0"),
+  );
   const source = await createDomain({
     slug: "submit-public",
     name: "公共源题",

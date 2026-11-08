@@ -24,6 +24,7 @@ import {
   updateAssignmentFeedback,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 
 async function fixture() {
   const f = await assignmentFixture();
@@ -284,7 +285,7 @@ Deno.test("作业反馈：离班及停用保持历史，作者注销有标识，
       assignment: false,
       analytics: true,
     }),
-    "0",
+    userActorFromAuthenticatedId("0"),
   );
   await assertRejects(
     () =>

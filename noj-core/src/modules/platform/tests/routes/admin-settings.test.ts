@@ -19,18 +19,12 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
 } from "../../system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../services/env-snapshot.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 
 async function freshSetup() {
   await resetDbForTest();
   await initRedisForTest();
   _resetSystemSettingsForTest();
-  _resetEnvSnapshotForTest();
-  snapshotEnv();
   await initSystemSettings();
 }
 

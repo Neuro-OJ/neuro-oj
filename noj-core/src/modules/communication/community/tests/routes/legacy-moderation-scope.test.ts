@@ -24,6 +24,7 @@ import {
   resetSetting,
   updateSetting,
 } from "../../../../platform/system/index.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 
 const base = "/api/v1/admin/community";
 
@@ -183,7 +184,7 @@ Deno.test({
           assignment: true,
           analytics: true,
         }),
-        "0",
+        userActorFromAuthenticatedId("0"),
       );
       const response = await jsonRequest(f.app, `${base}/reports`, {
         token: f.adminToken,
@@ -199,7 +200,10 @@ Deno.test({
         403,
       );
     } finally {
-      await resetSetting("instance_allowed_modules", "0");
+      await resetSetting(
+        "instance_allowed_modules",
+        userActorFromAuthenticatedId("0"),
+      );
     }
   },
 });

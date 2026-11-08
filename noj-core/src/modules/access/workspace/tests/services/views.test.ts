@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -107,7 +108,11 @@ Deno.test("邀请视图：预览不枚举账号，目录不返回令牌或哈希
     operator,
     `${member}@example.com`,
   );
-  await updateSetting("instance_registration_mode", "admin_only", operator);
+  await updateSetting(
+    "instance_registration_mode",
+    "admin_only",
+    userActorFromAuthenticatedId(operator),
+  );
   const preview = await previewDomainInvitation(invitation.token);
   assertEquals(preview.domain_slug, domain.slug);
   assertEquals(preview.can_register, false);

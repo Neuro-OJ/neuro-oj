@@ -9,6 +9,7 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -18,10 +19,6 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
-} from "../../../../platform/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
 } from "../../../../platform/system/index.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import {
@@ -35,7 +32,6 @@ await initRedisForTest();
 await resetDbForTest();
 
 // 必须先初始化系统设置（default 值入库），PR-2 修改才生效
-snapshotEnv();
 _resetSystemSettingsForTest();
 await initSystemSettings();
 
@@ -68,7 +64,11 @@ Deno.test({
     _resetSystemSettingsForTest();
     await initSystemSettings();
     // 关闭注册
-    await updateSetting("allow_register", false, "0");
+    await updateSetting(
+      "allow_register",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, {
       method: "POST",
@@ -83,7 +83,11 @@ Deno.test({
     assertEquals(body.code, "REGISTER_DISABLED");
 
     // 恢复
-    await updateSetting("allow_register", true, "0");
+    await updateSetting(
+      "allow_register",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
   },
 });
 
@@ -120,7 +124,11 @@ Deno.test({
     await initSystemSettings();
     // PR-2 评审修订：用 try/finally 包住设置与断言，**任何 assert 失败也会恢复 maintenance_mode**
     // 避免 DB 残留 true 导致后续 30+ 测试命中 maintenanceMode 中间件返 503
-    await updateSetting("maintenance_mode", true, "0");
+    await updateSetting(
+      "maintenance_mode",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
     try {
       const app = createApp();
       const res = await jsonRequest(app, `${BASE}/login`, {
@@ -136,7 +144,11 @@ Deno.test({
       assertEquals(healthRes.status, 200);
     } finally {
       // 任何 assert 失败 / 异常都执行：恢复 maintenance_mode=false
-      await updateSetting("maintenance_mode", false, "0");
+      await updateSetting(
+        "maintenance_mode",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
     }
   },
 });
@@ -446,6 +458,5 @@ Deno.test({
   sanitizeOps: false,
   fn: () => {
     _resetSystemSettingsForTest();
-    _resetEnvSnapshotForTest();
   },
 });

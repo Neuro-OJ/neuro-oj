@@ -486,6 +486,7 @@
       "dev-docs/engineering/module-boundaries.json",
       "dev-docs/engineering/test-duration-baseline.json",
       "noj-core/.dockerignore",
+      "noj-core/.env",
       "noj-core/.env.example",
       "noj-core/.gitignore"
     ],

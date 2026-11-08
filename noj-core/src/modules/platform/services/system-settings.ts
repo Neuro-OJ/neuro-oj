@@ -26,7 +26,6 @@ import { systemSettings } from "../../../shared/db/schema.ts";
 import { ValidationError } from "../../../shared/base/errors.ts";
 import { validateWorkspaceSetting } from "../../../shared/workspace/resource-policy.ts";
 import { type AuditMeta, recordAudit } from "./audit-log.ts";
-import { getEnvSnapshotValue } from "./env-snapshot.ts";
 import {
   Channels,
   onEvent,
@@ -380,7 +379,7 @@ async function loadAllIntoCache(): Promise<void> {
 
   const newCache = new Map<string, SettingValue>();
   for (const row of rows) {
-    // bootstrap（env-owned）项忽略 DB 旧值：不缓存，读取走 env 快照
+    // bootstrap（env-owned）项忽略 DB 旧值：不缓存，读取走 env
     if (isBootstrap(row.key)) continue;
 
     newCache.set(row.key, {
@@ -404,7 +403,7 @@ async function loadAllIntoCache(): Promise<void> {
  *   - DB 命中：source='db'，返回 DB 值
  *   - DB miss + env 命中：source='env'，返回 env 值
  *   - DB miss + env miss + default 存在：source='default'，返回 default
- * - bootstrap：env 快照 → default（不读 DB，DB 残留旧值忽略）；
+ * - bootstrap：env → default（不读 DB，DB 残留旧值忽略）；
  *   - env 命中：source='env'，返回 env 值（按 type 解析）
  *   - env miss + default 存在：source='default'
  *   - 都不存在：返回 null
@@ -412,7 +411,7 @@ async function loadAllIntoCache(): Promise<void> {
 export function getSetting(key: string): SettingValue | null {
   const def = findDefinition(key);
 
-  // bootstrap（env-owned）：跳过 DB 缓存，直接读 env 快照
+  // bootstrap（env-owned）：跳过 DB 缓存，直接读 env
   if (def?.scope === "bootstrap") {
     return getSettingFromEnv(def);
   }
@@ -430,7 +429,7 @@ export function getSetting(key: string): SettingValue | null {
   }
 
   // 非注册表 key：env 直接读
-  const envVal = getEnvSnapshotValue(key);
+  const envVal = Deno.env.get(key);
   if (envVal !== undefined) {
     return {
       value: envVal,
@@ -444,14 +443,12 @@ export function getSetting(key: string): SettingValue | null {
   return null;
 }
 
-/** 从 env 快照读取（按注册表 type 解析），env 未设置时返回 null */
+/** 从 env 读取（按注册表 type 解析），env 未设置时返回 null */
 function getSettingFromEnv(
   def: SettingDefinition,
 ): SettingValue | null {
   const envKey = def.scope === "bootstrap" ? def.envKey! : def.envFallback!;
-  // 优先走启动期快照（性能最优），快照中不存在时回退到实时 Deno.env.get
-  // （兼容测试/运维中环境变量在快照后设置或未进入快照白名单的场景）
-  const envValue = getEnvSnapshotValue(envKey) ?? Deno.env.get(envKey);
+  const envValue = Deno.env.get(envKey);
   if (envValue !== undefined && envValue !== "") {
     // 尝试按 type 解析
     let decoded: unknown = envValue;
@@ -489,7 +486,7 @@ function fallbackToDefault(def: SettingDefinition): SettingValue | null {
  * 敏感字段在 effective_value 位置返回掩码后的字符串。
  *
  * - runtime：getSetting()（DB → env 兜底 → default），必返回；
- * - bootstrap：env 快照（未设置时返回 null 值、source=default，后台显示"未配置"）。
+ * - bootstrap：直接读 env（未设置时返回 null 值、source=default，后台显示"未配置"）。
  */
 export async function listSettings(): Promise<SystemSettingListItem[]> {
   const items: SystemSettingListItem[] = [];
@@ -537,8 +534,8 @@ export async function listSettings(): Promise<SystemSettingListItem[]> {
       continue;
     }
 
-    // bootstrap：读 env 快照（envKey），未设置也返回（显示"未配置"）
-    const envVal = getEnvSnapshotValue(def.envKey!);
+    // bootstrap：读 env（envKey），未设置也返回（显示"未配置"）
+    const envVal = Deno.env.get(def.envKey!);
 
     // 后端脱敏：敏感值不在 API 响应中暴露完整内容
     let sanitized: unknown;

@@ -19,7 +19,7 @@ import {
 import {
   getSetting,
   initSystemSettings,
-} from "../../src/modules/platform/system/services/system-settings.ts";
+} from "../../src/modules/platform/services/system-settings.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 
 /** 生成带唯一后缀的标签，便于断言"被清掉了"。 */

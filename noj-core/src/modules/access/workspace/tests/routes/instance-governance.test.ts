@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { and, eq } from "drizzle-orm";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -41,7 +42,11 @@ Deno.test("实例治理 HTTP：平台目录能分页查私有暂停域，域负�
   await resetDbForTest();
   const platform = await account(true);
   const owner = await account();
-  await updateSetting("domain_creation_policy", "open", platform.id);
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId(platform.id),
+  );
   const school = await createDomain({
     slug: "governance-school",
     name: "治理学校",
@@ -142,7 +147,11 @@ Deno.test("创建审核 HTTP：按状态分页展示申请人，批准拒绝均�
   const platform = await account(true);
   const applicant = await account();
   const deleted = await account();
-  await updateSetting("domain_creation_policy", "approval", platform.id);
+  await updateSetting(
+    "domain_creation_policy",
+    "approval",
+    userActorFromAuthenticatedId(platform.id),
+  );
   const first = await requestDomainCreation(applicant.id, {
     slug: "approve-school",
     name: "批准学校",
@@ -242,7 +251,11 @@ Deno.test("域配额 HTTP：当前成员题库计数与上传预留可读，错�
   const platform = await account(true);
   const owner = await account();
   const stranger = await account();
-  await updateSetting("domain_creation_policy", "open", platform.id);
+  await updateSetting(
+    "domain_creation_policy",
+    "open",
+    userActorFromAuthenticatedId(platform.id),
+  );
   const school = await createDomain({
     slug: "quota-usage-school",
     name: "学校",

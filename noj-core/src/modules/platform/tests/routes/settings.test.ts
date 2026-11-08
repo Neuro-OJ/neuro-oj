@@ -5,6 +5,7 @@
  * （响应结构保持 { contact, deployment } 兼容）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createApp } from "../../../../app.ts";
 import { getBuildInfo } from "../../../../shared/base/build-info.ts";
@@ -43,14 +44,22 @@ Deno.test({
     await resetDbForTest();
     // 经 settings 服务写入（会刷新缓存）；直接插表不会命中 getSetting 的缓存。
     const { updateSetting } = await import(
-      "../../system/services/system-settings.ts"
+      "../../services/system-settings.ts"
     );
-    await updateSetting("legal_contact", "ops@example.test", "0");
-    await updateSetting("legal_operator_name", "示例社团", "0");
+    await updateSetting(
+      "legal_contact",
+      "ops@example.test",
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "legal_operator_name",
+      "示例社团",
+      userActorFromAuthenticatedId("0"),
+    );
     await updateSetting(
       "legal_deployment_notes",
       "数据存储于境内，保留期限 180 天。",
-      "0",
+      userActorFromAuthenticatedId("0"),
     );
 
     const app = createApp();
@@ -98,16 +107,32 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const { updateSetting } = await import(
-      "../../system/services/system-settings.ts"
+      "../../services/system-settings.ts"
     );
-    await updateSetting("legal_icp_number", "京ICP备00000000号", "0");
-    await updateSetting("legal_icp_url", "https://beian.miit.gov.cn/", "0");
-    await updateSetting("legal_operator_name", "示例社团", "0");
-    await updateSetting("legal_contact", "privacy@example.test", "0");
+    await updateSetting(
+      "legal_icp_number",
+      "京ICP备00000000号",
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "legal_icp_url",
+      "https://beian.miit.gov.cn/",
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "legal_operator_name",
+      "示例社团",
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "legal_contact",
+      "privacy@example.test",
+      userActorFromAuthenticatedId("0"),
+    );
     await updateSetting(
       "legal_third_parties",
       JSON.stringify([{ name: "LLM Provider", purpose: "评测" }]),
-      "0",
+      userActorFromAuthenticatedId("0"),
     );
 
     const app = createApp();

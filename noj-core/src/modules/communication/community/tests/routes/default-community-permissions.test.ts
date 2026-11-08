@@ -15,6 +15,7 @@
  * - 平台管理员经 `admin:full_access` 通配放行，`/config` 返回可写且 moderate。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { and, eq } from "drizzle-orm";
 import { createApp } from "../../../../../app.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -52,12 +53,35 @@ async function scopedApp() {
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     // 实例模块政策可能被同分片的其它文件关闭社区，先恢复默认（全部开放）。
-    await resetSetting("instance_allowed_modules", "0");
-    await updateSetting("community_enabled", true, "0");
-    await updateSetting("community_new_user_review_hours", 0, "0");
-    await updateSetting("community_post_interval_seconds", 0, "0");
-    await updateSetting("community_solutions_enabled", true, "0");
-    await updateSetting("community_discussions_enabled", true, "0");
+    await resetSetting(
+      "instance_allowed_modules",
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_new_user_review_hours",
+      0,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_post_interval_seconds",
+      0,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_solutions_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_discussions_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
   } finally {
     leaveTestContext();
   }

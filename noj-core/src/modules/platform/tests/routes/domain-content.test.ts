@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
@@ -53,7 +54,7 @@ async function fixture() {
         title: "运营边界 实例公告",
         content: "公共通知",
         banner_text: "实例横幅",
-      }),
+      }, userActorFromAuthenticatedId(a)),
   );
   return {
     db,
@@ -148,12 +149,19 @@ Deno.test("域运营管理：实例与本域公告互不可改", async () => {
   const notice = await runWithContext(
     { actorId: f.a, actorIp: "127.0.0.1", actorRole: "user" },
     () =>
-      createAnnouncement({ title: "本域", content: "正文" }, {
-        domainId: f.first.id,
-      }),
+      createAnnouncement(
+        { title: "本域", content: "正文" },
+        userActorFromAuthenticatedId(f.a),
+        { domainId: f.first.id },
+      ),
   );
   await assertRejects(
-    () => updateAnnouncement(notice.id, { title: "实例不能修改域内容" }),
+    () =>
+      updateAnnouncement(
+        notice.id,
+        { title: "实例不能修改域内容" },
+        userActorFromAuthenticatedId(f.a),
+      ),
     NotFoundError,
   );
   assertEquals(
@@ -175,10 +183,14 @@ Deno.test("域公告搜索：实例公告全域可见，其他域及实例默认
   const notice = await runWithContext(
     { actorId: f.a, actorIp: "127.0.0.1", actorRole: "user" },
     () =>
-      createAnnouncement({
-        title: "运营边界 本域搜索",
-        content: "私有教学通知",
-      }, { domainId: f.first.id }),
+      createAnnouncement(
+        {
+          title: "运营边界 本域搜索",
+          content: "私有教学通知",
+        },
+        userActorFromAuthenticatedId(f.a),
+        { domainId: f.first.id },
+      ),
   );
   for (const id of [notice.id, f.instanceNotice.id]) {
     await upsertSearchEntry((await buildAnnouncementEntry(id))!);

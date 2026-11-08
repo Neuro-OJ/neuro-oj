@@ -169,8 +169,8 @@ Participant
 `cases` 不表示允许测试输入、标准答案、隐藏输出、存储路径或任意原始 evaluator
 文本。 OI/IOI/ACM 视图使用字段允许列表；Kaggle 沿用其已实现的反馈裁剪。
 所有赛中客观题视图不返回标准答案、解析或逐题正确性，出题者参赛身份不能借题面／草稿入口恢复答案。
-参赛维护者的管理内容入口受 `CONTEST_AUTHORING_RESTRICTED`
-限制，具有该场组织权限的管理视图除外。
+参赛维护者的管理内容入口与普通维护者相同，仅由域编辑权限决定；
+报名参赛不会额外限制或放行。
 限制只作用于比赛的使用域，不因学校引用公开题而隐藏源域或其他学校的公开练习。
 
 相同使用域内进行中的赛题不能通过普通练习、自测、升级或作业入口获得隐藏反馈。
@@ -180,7 +180,6 @@ Participant
 实现依据：[比赛关系](../../noj-core/src/modules/contests/services/domain-access.ts)、
 [比赛题目／窗口](../../noj-core/src/modules/contests/services/contest-access.ts)、
 [结果裁剪](../../noj-core/src/modules/evaluations/services/submissions/submission-projection.ts)、
-[参赛出题者限制](../../noj-core/src/modules/problems/services/workspace/problem-contest-authoring.ts)、
 [教学成绩依据](../../noj-core/src/modules/contests/services/teaching-basis.ts)。
 
 ## 6. 撤销、离班、离域与旧治理入口
@@ -338,7 +337,6 @@ required_version_id、未开始进度无来源提交／尝试、整体作业反�
 | 模块停用                                                 | 403；通用 `DOMAIN_MODULE_DISABLED`，教学边界保留 `MODULE_DISABLED`                                                               |
 | 必需 revision 缺失                                       | 428 `REVISION_REQUIRED`；草稿等既有接口使用其现有专用契约                                                                        |
 | revision 冲突                                            | 409 `REVISION_CONFLICT`；草稿／哈希等继续使用专用冲突 code                                                                       |
-| 参赛维护者进入管理数据                                   | 403 `CONTEST_AUTHORING_RESTRICTED`                                                                                               |
 | LLM 未配置／额度突破                                     | 未配置 `DOMAIN_LLM_NOT_CONFIGURED`；caps `DOMAIN_LLM_QUOTA_CAP_EXCEEDED`；域管理员提升额度 `DOMAIN_LLM_QUOTA_INCREASE_FORBIDDEN` |
 | 持久策略或绑定不一致                                     | 503，保留脱敏诊断；不退化为公开访问或无限额度                                                                                    |
 

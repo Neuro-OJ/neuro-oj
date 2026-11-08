@@ -10,7 +10,7 @@
  */
 
 import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
-import { getSetting } from "../system-settings.ts";
+import { getSetting } from "../../../services/system-settings.ts";
 import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 import { encodeBase64 } from "@std/encoding/base64";
 

@@ -36,6 +36,7 @@ import {
   withDomainCommunity,
 } from "../../index.ts";
 import { domainFixture, sharedItem } from "./domain-fixture.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 
 Deno.test({
   name: "域社区：板块slug可复用、列表计数动态域过滤、旧入口与移除成员隔离",
@@ -448,7 +449,7 @@ Deno.test({
           assignment: true,
           analytics: true,
         }),
-        "0",
+        userActorFromAuthenticatedId("0"),
       );
       await assertRejects(
         () =>
@@ -461,7 +462,10 @@ Deno.test({
         ForbiddenError,
       );
     } finally {
-      await resetSetting("instance_allowed_modules", "0");
+      await resetSetting(
+        "instance_allowed_modules",
+        userActorFromAuthenticatedId("0"),
+      );
     }
   },
 });

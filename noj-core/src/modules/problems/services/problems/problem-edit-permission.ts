@@ -10,7 +10,6 @@ import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import { assertProblemAuthoringOutsideParticipation } from "../workspace/problem-contest-authoring.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。
@@ -45,7 +44,6 @@ export async function assertProblemEditPermission(
     write: c === undefined || !["GET", "HEAD"].includes(c.req.method),
   });
   assertWorkspacePermission(workspace.context, "problem:write_any");
-  await assertProblemAuthoringOutsideParticipation(workspace, source.id, db);
 }
 
 /** 应用用例专用授权入口；UserActor 是唯一用户身份来源。 */

@@ -39,7 +39,6 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 import { domainProblemReference } from "./problem-reference.ts";
-import { problemAuthoringRestrictedByContest } from "./problem-contest-authoring.ts";
 
 /** 域题库分页：授权、共享撤销及比赛保密都在分页和计数前过滤。 */
 export async function listDomainProblems(
@@ -279,13 +278,8 @@ export async function readDomainProblem(
   const resolved = await resolveDomainProblem(slug, reference, actorId, {
     versionId,
   });
-  const canEdit = (resolved.platformAdmin ||
-    resolved.context.domainPermissions.has("problem:write_any")) &&
-    !await problemAuthoringRestrictedByContest(
-      resolved,
-      resolved.problem.id,
-      getDb(),
-    );
+  const canEdit = resolved.platformAdmin ||
+    resolved.context.domainPermissions.has("problem:write_any");
   const content = resolved.version.content as ProblemContentV1;
   const protection = (await loadDomainProblemProtection(resolved.domain.id, [
     resolved.problem.id,

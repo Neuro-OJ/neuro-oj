@@ -1,4 +1,5 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
+import { userActorFromAuthenticatedId } from "../../../../access/contracts/actor.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../shared/db/connection.ts";
@@ -89,8 +90,16 @@ async function setup(): Promise<void> {
   await publishBaselineVersionForTest("community-test-problem");
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
-    await updateSetting("community_enabled", true, "0");
-    await updateSetting("community_new_user_review_hours", 0, "0");
+    await updateSetting(
+      "community_enabled",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    await updateSetting(
+      "community_new_user_review_hours",
+      0,
+      userActorFromAuthenticatedId("0"),
+    );
   } finally {
     leaveTestContext();
   }
@@ -254,7 +263,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -272,7 +285,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 0, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        0,
+        userActorFromAuthenticatedId("0"),
+      );
       await changeCommentStatus(
         pendingComment.id,
         "0",
@@ -328,7 +345,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -352,7 +373,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
       const pendingPost = await createPost(actorId, {
         type: "discussion",
         board_id: board.id,
@@ -441,7 +466,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_post_interval_seconds", 3600, "0");
+      await updateSetting(
+        "community_post_interval_seconds",
+        3600,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -469,8 +498,16 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_solution_requires_accepted", true, "0");
-      await updateSetting("community_post_interval_seconds", 0, "0");
+      await updateSetting(
+        "community_solution_requires_accepted",
+        true,
+        userActorFromAuthenticatedId("0"),
+      );
+      await updateSetting(
+        "community_post_interval_seconds",
+        0,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -518,7 +555,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_new_user_review_hours", 24, "0");
+      await updateSetting(
+        "community_new_user_review_hours",
+        24,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
@@ -537,7 +578,11 @@ Deno.test({
       actorRole: "admin",
     });
     try {
-      await updateSetting("community_discussions_enabled", false, "0");
+      await updateSetting(
+        "community_discussions_enabled",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
     } finally {
       leaveTestContext();
     }
