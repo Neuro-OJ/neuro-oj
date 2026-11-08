@@ -1,6 +1,10 @@
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { assertCommunityWritable } from "./community-config.ts";
-import { type CommunityScope, loadCommunityScope } from "./community-scope.ts";
+import {
+  type CommunityCapability,
+  type CommunityScope,
+  loadCommunityScope,
+} from "./community-scope.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../../shared/workspace/types.ts";
 import { runBestEffort } from "../../../../../shared/base/best-effort.ts";
 
@@ -33,7 +37,11 @@ export async function withDefaultCommunity<T>(
 export async function withDomainCommunity<T>(
   slug: string,
   actorId: string | null,
-  options: { write?: boolean; permission?: string; allowSocialBan?: boolean },
+  options: {
+    write?: boolean;
+    permission?: CommunityCapability;
+    allowSocialBan?: boolean;
+  },
   operation: (scope: CommunityScope) => Promise<T>,
 ): Promise<T> {
   const run = async (executor: CommunityScope["executor"]) => {

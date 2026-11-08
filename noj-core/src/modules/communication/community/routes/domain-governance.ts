@@ -34,7 +34,10 @@ import {
   togglePostFlag,
   updateBoard,
 } from "../services/community/community.ts";
-import type { CommunityScope } from "../services/community/community-scope.ts";
+import type {
+  CommunityCapability,
+  CommunityScope,
+} from "../services/community/community-scope.ts";
 const prefix = "/domains/:slug/community";
 /** 域社区治理只管理目标域内容及域禁言，不提供平台账号或私信管理能力。 */
 export const domainCommunityGovernanceRouter = new Hono<OptionalAuthEnv>();
@@ -56,7 +59,7 @@ function scope<T>(
   c: Context<OptionalAuthEnv>,
   write: boolean,
   operation: (s: CommunityScope) => Promise<T>,
-  permission = "community:moderate",
+  permission: CommunityCapability = "community:moderate",
 ) {
   return withDomainCommunity(c.req.param("slug")!, c.var.userId!, {
     write,

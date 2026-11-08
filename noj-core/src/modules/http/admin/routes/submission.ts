@@ -63,8 +63,9 @@ router.get("/submissions", async (c) => {
     );
   }
 
+  // 管理端取证列表：连"按结果/有效/通过筛选"也不受 OI 赛期遮蔽约束。
   const result = await listSubmissions({
-    platformAdmin: true,
+    platformAdmin: "forensics",
     userId,
     userSearch,
     problemId,

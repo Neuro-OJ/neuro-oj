@@ -157,7 +157,10 @@ export async function listSubmissions(
       ? eq(submissions.domain_id, params.domainId)
       : sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
   ];
-  if (!params.platformAdmin && (status || validOnly || acceptedOnly)) {
+  if (
+    params.platformAdmin !== "forensics" &&
+    (status || validOnly || acceptedOnly)
+  ) {
     // 结果筛选本身也会泄露 OI 判定，赛期不让隐藏结果参与筛选计数。
     conditions.push(
       sql`NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = ${submissions.contest_id}
@@ -307,7 +310,7 @@ export async function listSubmissions(
   const hasInProgress = rows.some((r) => !r.result_status);
   let pendingPosMap: Map<string, number> | null = null;
   let queueLength: number | null = null;
-  if (hasInProgress && params.platformAdmin) {
+  if (hasInProgress && params.platformAdmin === "live_status") {
     try {
       const snapshot = await getPendingQueueSnapshot();
       const pendingIds = snapshot.ids;
@@ -363,7 +366,7 @@ export async function listSubmissions(
     data: await projectContestSubmissionReads(
       data,
       userId ?? null,
-      params.platformAdmin,
+      params.platformAdmin === "live_status",
     ),
     total,
   };

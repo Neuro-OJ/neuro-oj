@@ -826,6 +826,85 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "community route: 预审期作者可见自己的待审帖，/config 下发 under_review",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_new_user_review_hours", 24, "0");
+    } finally {
+      leaveTestContext();
+    }
+    const app = createApp();
+    // authorId 是 30 天前创建的「老用户」，responderId 是刚注册的「新用户」，
+    // 只有后者的内容会进入预审。
+    const newUserToken = await signToken({ sub: responderId, role: "user" });
+    const oldUserToken = await signToken({ sub: authorId, role: "user" });
+
+    const board = (await getDb().select().from(communityBoards))[0];
+    const created = await jsonRequest(app, "/api/v1/community/posts", {
+      method: "POST",
+      token: newUserToken,
+      body: {
+        type: "discussion",
+        board_id: board?.id,
+        title: "预审可见性测试",
+        content: "正文",
+      },
+    });
+    assertEquals(created.status, 201);
+    const createdBody = (await created.json()).data as {
+      id: string;
+      status: string;
+    };
+    const postId = createdBody.id;
+    assertEquals(createdBody.status, "pending");
+    const listedIds = async (token?: string) => {
+      const response = await jsonRequest(
+        app,
+        "/api/v1/community/posts?type=discussion",
+        token ? { token } : {},
+      );
+      assertEquals(response.status, 200);
+      const items = (await response.json()).data as Array<{
+        post: { id: string };
+      }>;
+      return items.map((item) => item.post.id);
+    };
+
+    // 作者本人可见自己的待审帖：预审期发帖不能"提交成功却凭空消失"
+    assertEquals((await listedIds(newUserToken)).includes(postId), true);
+    // 其他用户（含老用户）看不到待审内容
+    assertEquals((await listedIds(oldUserToken)).includes(postId), false);
+
+    // /config 提前告知预审状态，前端据此提示"审核后公开"；老用户无需提示
+    const config = await jsonRequest(app, "/api/v1/community/config", {
+      token: newUserToken,
+    });
+    assertEquals(
+      ((await config.json()).data as { under_review?: boolean }).under_review,
+      true,
+    );
+    // 预审只由账号年龄决定：老用户不会被提示，也不会产生待审内容
+    const oldUserConfig = await jsonRequest(app, "/api/v1/community/config", {
+      token: oldUserToken,
+    });
+    assertEquals(
+      ((await oldUserConfig.json()).data as { under_review?: boolean })
+        .under_review,
+      false,
+    );
+  },
+});
+
+Deno.test({
   name: "community route: 题解发布资格端点返回模块开关、门槛与通过状态",
   sanitizeResources: false,
   sanitizeOps: false,

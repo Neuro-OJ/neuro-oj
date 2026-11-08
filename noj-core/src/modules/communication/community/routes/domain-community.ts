@@ -35,7 +35,10 @@ import type {
   CommunityPostInput,
   CommunityPostType,
 } from "../types/community.ts";
-import { resolveCommunityProblem } from "../services/community/community-scope.ts";
+import {
+  type CommunityCapability,
+  resolveCommunityProblem,
+} from "../services/community/community-scope.ts";
 import { domainCommunityGovernanceRouter } from "./domain-governance.ts";
 import { hasUnendedPublicContest } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import {
@@ -87,7 +90,7 @@ function read<T>(
 }
 function write<T>(
   c: C,
-  permission: string,
+  permission: CommunityCapability,
   operation: Parameters<typeof withDomainCommunity<T>>[3],
   allowSocialBan = false,
 ) {

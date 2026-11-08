@@ -96,7 +96,20 @@ export async function listPosts(
     ));
   }
   if (!options.moderator) {
-    conditions.push(eq(communityPosts.status, "published"));
+    // 非审核员仅可见已发布内容；作者本人可见自己的非删除内容（含新用户预审的
+    // pending 与被隐藏的 hidden），否则预审期发帖会在列表里凭空消失，
+    // 用户只能看到"已提交审核"却找不到自己的内容（与评论列表同一口径）。
+    conditions.push(
+      options.viewerId
+        ? or(
+          eq(communityPosts.status, "published"),
+          and(
+            eq(communityPosts.author_id, options.viewerId),
+            ne(communityPosts.status, "deleted"),
+          ),
+        ) ?? sql`false`
+        : eq(communityPosts.status, "published"),
+    );
   } else {
     // moderator 跳过 published 过滤以看到 pending/hidden（管理后台审核用），
     // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。

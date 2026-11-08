@@ -254,8 +254,15 @@ export interface SubmissionListItem {
 export interface ListSubmissionsParams {
   /** 已授权调用方解析的使用域；不能来自客户端任意覆盖值。 */
   domainId?: string;
-  /** 由认证调用方传入，不能来自查询参数。 */
-  platformAdmin?: boolean;
+  /**
+   * 管理端旁路口径（由认证调用方传入，不能来自查询参数）。
+   *
+   * - `live_status`：仅放开在途状态（队列位置/长度、赛期结果遮蔽）与结果筛选；
+   * - `forensics`：管理端取证列表，额外允许按 `status/valid/accepted` 筛选。
+   *
+   * 不传 = 普通用户口径。取值必须来自受管理员守卫保护的路由。
+   */
+  platformAdmin?: "live_status" | "forensics";
   userId?: string;
   contestId?: string;
   problemId?: string;

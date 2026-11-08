@@ -465,6 +465,9 @@ onMounted(() => {
         </div>
         <USelect v-if="activeType === 'discussion'" v-model="boardId" :items="boards.map((b) => ({ label: b.name, value: b.id }))" class="mb-3 w-full" :placeholder="boards.length ? '选择板块' : '暂无可用板块'" />
         <p v-if="boardError" class="mb-3 text-xs text-red-600">{{ boardError }}</p>
+        <p v-if="config?.under_review" class="mb-3 rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+          新账号内容需经审核后公开：提交后仅你与审核员可见，审核通过会出现在列表中。
+        </p>
         <template v-if="!previewMode">
           <textarea v-model="content" class="min-h-36 w-full rounded border border-border px-3 py-2" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
         </template>

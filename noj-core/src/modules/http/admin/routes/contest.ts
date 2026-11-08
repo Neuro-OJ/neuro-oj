@@ -377,7 +377,8 @@ router.get("/contests/:id/submissions", async (c) => {
     contestId,
     page,
     perPage,
-    platformAdmin: true,
+    // 管理端比赛视图：需要随时查看全部提交在途状态（队列位置），供运维排障。
+    platformAdmin: "live_status",
   });
   return c.json({
     data: result.data,

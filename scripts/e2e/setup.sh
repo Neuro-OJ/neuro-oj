@@ -40,7 +40,9 @@ COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" -p "$COMPOSE_PROJE
 
 echo ""
 echo -e "${BOLD}=========================================="
-echo " Neuro OJ — E2E 环境启动（session: $NOJ_E2E_SESSION）"
+# 变量名紧跟在全角「）」之后：bash 3.2 会把它当成变量名的一部分，展开为空，
+# 并在 `set -u` 下报 NOJ_E2E_SESSION: unbound variable（macOS 自带 bash）。
+echo " Neuro OJ — E2E 环境启动（session: ${NOJ_E2E_SESSION}）"
 echo -e "==========================================${NC}"
 echo "  project : $COMPOSE_PROJECT_NAME"
 echo "  network : $E2E_EVALUATOR_NETWORK"
