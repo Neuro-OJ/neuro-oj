@@ -8,7 +8,6 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
-  assignmentItemHistory,
   assignmentItems,
   assignmentRecipients,
   assignments,
@@ -124,7 +123,6 @@ Deno.test("作业：发布固定条目与名单、原子保存版本依据和事
   assertEquals(item.minimum_score, 6000);
   assertEquals(item.published_version_id, f.versionId);
   assertEquals(item.answer_version_id, f.versionId);
-  assertEquals((await f.db.select().from(assignmentItemHistory)).length, 1);
   assertEquals((await f.db.select().from(educationOutbox)).length, 2);
   const detail = await getAssignment(f.school.slug, draft.id, f.student);
   assertEquals("target_student_ids" in detail, false);
@@ -239,7 +237,6 @@ Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验
   assertEquals(failed.published_at, null);
   assertEquals(typeof failed.publish_error, "string");
   assertEquals((await f.db.select().from(assignmentRecipients)).length, 0);
-  assertEquals((await f.db.select().from(assignmentItemHistory)).length, 0);
   assertEquals((await f.db.select().from(educationOutbox)).length, 0);
   assertEquals(failed.items[0].published_version_id, null);
 });

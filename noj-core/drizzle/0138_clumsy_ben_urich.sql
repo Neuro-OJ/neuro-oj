@@ -1,0 +1,1 @@
+DROP TABLE "assignment_item_history" CASCADE;

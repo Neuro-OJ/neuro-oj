@@ -167,13 +167,11 @@ export async function processEducationEvent(event: ClaimedEducationEvent) {
         ? gt(assignmentRecipients.user_id, cursor.student_after)
         : undefined,
     )).orderBy(assignmentRecipients.user_id).limit(50);
-  const projection = await recomputeAssignmentProgress(
+  await recomputeAssignmentProgress(
     assignment.id,
     students.map((s) => s.user_id),
   );
-  const next: EducationCursor = projection?.history_pending
-    ? { assignment_id: assignment.id, student_after: cursor.student_after }
-    : students.length < 50
+  const next: EducationCursor = students.length < 50
     ? { assignment_after: assignment.id }
     : { assignment_id: assignment.id, student_after: students.at(-1)!.user_id };
   const rows = await db.update(educationOutbox).set({

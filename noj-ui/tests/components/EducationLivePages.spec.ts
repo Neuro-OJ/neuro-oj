@@ -70,7 +70,6 @@ async function page(component: typeof AssignmentPage) {
         AsyncContent: { template: '<div><slot /></div>' },
         AssignmentMatrix: { name: 'AssignmentMatrix', template: '<div data-testid="matrix" />' },
         AssignmentConversation: true,
-        AssignmentHistory: true,
         USlideover: true,
         ClientOnly: true,
       },
@@ -105,7 +104,7 @@ describe('教学页面的持久事件刷新', () => {
     expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
     view.unmount();
   });
-  it('学生可查看本人反馈，旧历史参数不恢复已移除的按钮', async () => {
+  it('学生可查看本人反馈，旧历史参数不恢复已移除的沿革视图', async () => {
     route.query = { history: '1' };
     api.classroom.mockResolvedValue({
       data: {

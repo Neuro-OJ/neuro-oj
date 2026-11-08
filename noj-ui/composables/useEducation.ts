@@ -8,7 +8,7 @@ import type {
   ContestRemediationPreview,
 } from '~/utils/education-remediation-preview';
 import type { AssignmentSubmissionEvidence, TeachingAttempt, TeachingSubmission } from '~/utils/education-submissions';
-import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
+import type { TeachingNotice } from '~/utils/education-notifications';
 import type {
   ClassroomImportPreview,
   ClassroomImportResult,
@@ -278,11 +278,6 @@ export function useEducationApi() {
       }),
     readNotification: (slug: string, id: string) =>
       api.post(`${root(slug)}/notifications/${encodeURIComponent(id)}/read`, {}),
-    history: (slug: string, id: string, page = 1) =>
-      api.get<{ data: TeachingPage<AssignmentHistoryEntry> }>(`${task(slug, id)}/history`, {
-        query: { page },
-        silent: true,
-      }),
     addFeedback: (slug: string, id: string, body: string, target: string | null, key: string) =>
       api.post(`${task(slug, id)}/feedback`, { body, target_user_id: target }, idempotent(key)),
     help: (slug: string, id: string, page = 1) =>

@@ -18,7 +18,6 @@ import {
   createAssignmentRemediation,
   previewAssignmentRemediation,
 } from "../services/assignment-remediation.ts";
-import { getAssignmentHistory } from "../services/history-read.ts";
 import { listAssignmentItemSubmissions } from "../services/submission-evidence.ts";
 import {
   type AssignmentCopyInput,
@@ -297,17 +296,6 @@ router.get(
     });
   },
 );
-router.get("/domains/:slug/assignments/:id/history", async (c) => {
-  const { page } = parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 });
-  return c.json({
-    data: await getAssignmentHistory(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      page,
-    ),
-  });
-});
 
 function matrixOptions(
   c: Context<AuthEnv>,

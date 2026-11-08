@@ -1,8 +1,6 @@
 import { setMemberRole } from "../../../access/workspace/index.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
-import { NotFoundError } from "../../../../shared/base/errors.ts";
-import { accountNotifications, users } from "../../../../shared/db/schema.ts";
+import { assertEquals } from "jsr:@std/assert@^1";
+import { accountNotifications } from "../../../../shared/db/schema.ts";
 import {
   setDomainProblemBindingPolicy,
   setDomainProblemBindingState,
@@ -10,7 +8,6 @@ import {
 import {
   changeAssignmentLifecycle,
   createAssignment,
-  getAssignmentHistory,
   getMyAssignmentProgress,
   listEducationNotifications,
   publishAssignment,
@@ -62,7 +59,7 @@ Deno.test("任务通知：发布同事务创建，学生与授权教学人员收
   );
 });
 
-Deno.test("任务通知：策略沿革一次投递，资源撤销／恢复有依据，重算与重试不重复通知", async () => {
+Deno.test("任务通知：策略变化一次投递，资源撤销／恢复各自通知，重算与重试不重复通知", async () => {
   const f = await assignmentFixture();
   const task = await createAssignment(
     f.school.slug,
@@ -93,18 +90,6 @@ Deno.test("任务通知：策略沿革一次投递，资源撤销／恢复有依
     ),
     true,
   );
-  const unavailable = await getAssignmentHistory(
-    f.school.slug,
-    task.id,
-    f.student,
-  );
-  assertEquals(
-    unavailable.data.some((h) =>
-      h.reason === "临时下架" || h.reason === "资源授权失效"
-    ),
-    true,
-  );
-  assertEquals(JSON.stringify(unavailable).includes('"content"'), false);
   const before = (await f.db.select().from(accountNotifications)).length;
   await getMyAssignmentProgress(f.school.slug, task.id, f.student);
   await drain();
@@ -117,15 +102,16 @@ Deno.test("任务通知：策略沿革一次投递，资源撤销／恢复有依
     reason: "恢复授权",
   });
   await drain();
+  // 恢复授权后再通知一次作业变化
   assertEquals(
-    (await getAssignmentHistory(f.school.slug, task.id, f.student)).data.some(
-      (h) => h.reason === "恢复授权",
-    ),
-    true,
+    (await listEducationNotifications(f.school.slug, f.student)).data.filter(
+      (n) => n.type === "assignment_changed",
+    ).length,
+    2,
   );
 });
 
-Deno.test("任务通知：延长截止和归档保留受控历史，错误域与账号注销不恢复通知访问", async () => {
+Deno.test("任务通知：延长截止和归档逐次通知", async () => {
   const f = await assignmentFixture(),
     task = await createAssignment(f.school.slug, f.classroom.id, f.teacher, {
       ...f.input,
@@ -142,19 +128,11 @@ Deno.test("任务通知：延长截止和归档保留受控历史，错误域与
     (await listEducationNotifications(f.school.slug, f.student)).total,
     2,
   );
-  await assertRejects(
-    () => getAssignmentHistory(f.other.slug, task.id, f.student),
-    NotFoundError,
-  );
   await removeClassroomMember(
     f.school.slug,
     f.classroom.id,
     f.teacher,
     f.student,
-    1,
-  );
-  assertEquals(
-    (await getAssignmentHistory(f.school.slug, task.id, f.student)).total,
     1,
   );
   await changeAssignmentLifecycle(f.school.slug, task.id, f.teacher, 2, {
@@ -165,13 +143,5 @@ Deno.test("任务通知：延长截止和归档保留受控历史，错误域与
   assertEquals(
     (await listEducationNotifications(f.school.slug, f.student)).total,
     3,
-  );
-  await f.db.update(users).set({ deleted_at: new Date().toISOString() }).where(
-    eq(users.id, f.teacher),
-  );
-  assertEquals(
-    (await getAssignmentHistory(f.school.slug, task.id, f.student)).data[0]
-      .actor_name,
-    "已注销账号",
   );
 });
