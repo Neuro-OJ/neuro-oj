@@ -56,8 +56,7 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
     <div v-if="data && problemView" class="space-y-5">
       <UAlert v-if="data.can_practice === false" title="当前为管理预览，普通练习与作业提交暂不可用。请从比赛入口正式参赛。" color="info" />
       <nav aria-label="题目导航" class="flex flex-wrap items-center gap-4 text-sm">
-        <NuxtLink :to="`/d/${slug}/problems`" class="text-text-secondary no-underline hover:text-primary">题库</NuxtLink>
-        <a href="#statement" class="text-text-secondary no-underline hover:text-primary">题面</a>
+        <NuxtLink :to="`/d/${slug}/problems`" class="inline-flex items-center gap-1 text-text-secondary no-underline hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-3.5" />题库</NuxtLink>
         <a v-if="domain?.configuration.features.community && data.content.kind !== 'objective'" href="#solutions" class="text-text-secondary no-underline hover:text-primary">题解</a>
       </nav>
       <div class="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-12">
@@ -69,9 +68,8 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
               <UButton v-else-if="data.can_practice !== false" to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
             </template>
           </ProblemHeader>
-          <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description"
-            :editor-to="!inlineAnswer && data.can_practice !== false ? solveTo : null" :editor-label="editorLabel"
-            :editor-icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'" :edit-to="editTo">
+          <!-- 编辑器入口只在抬头保留一个（与题面工具条重复，见 #685）。 -->
+          <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description" :edit-to="editTo">
             <template #toolbar>
               <DomainProblemVersionSelect :slug="slug!" :reference="reference" :selected="data.version_id" :version="data.version"
                 :current="data.answer_version_id" :mode="data.effective_version_mode" :required="data.required_version_id" @select="selectVersion" />

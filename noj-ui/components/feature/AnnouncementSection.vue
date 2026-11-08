@@ -10,7 +10,8 @@ const { data, status, error, refresh } = await useAsyncData(
   { immediate: !props.initialData },
 );
 usePolling({ intervalMs: 60000, immediate: false, fetcher: () => refresh() });
-const items = computed(() => props.initialData ?? data.value?.data ?? []);
+// 首屏数据只做初值：轮询刷新后以最新结果为准，否则新公告永远显示不出来。
+const items = computed(() => data.value?.data ?? props.initialData ?? []);
 const contentStatus = computed(() => error.value ? 'error' : items.value.length ? 'data' : status.value === 'pending' ? 'loading' : 'empty');
 </script>
 <template>

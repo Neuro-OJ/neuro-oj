@@ -28,7 +28,8 @@ const { data, status, error, refresh } = await useAsyncData(
     ),
   { immediate: !props.initialData },
 );
-const activity = computed(() => props.initialData ?? data.value);
+// 首屏数据只做初值：实时事件触发 refresh() 后必须以最新结果为准，否则列表停在首屏。
+const activity = computed(() => data.value ?? props.initialData);
 const events = useEventSource({
   url: `/api/v1/domains/${props.domainSlug}/submissions/stats/events`,
   scopeKey: scope,

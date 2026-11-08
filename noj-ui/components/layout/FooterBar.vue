@@ -40,35 +40,36 @@
                 <!-- 站内导航 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">站内导航</h4>
-                    <NuxtLink :to="workspacePath(domainSlug, 'problems')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
-                    <NuxtLink :to="workspacePath(domainSlug, 'contests')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
-                    <NuxtLink :to="workspacePath(domainSlug, 'community')" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
-                    <NuxtLink to="/data-policy" class="block text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
-                    <NuxtLink to="/legal/privacy" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
-                    <NuxtLink to="/legal/terms" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
-                    <NuxtLink to="/about" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'problems')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'contests')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'community')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
+                    <NuxtLink to="/data-policy" class="block w-fit text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
+                    <NuxtLink to="/legal/privacy" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
+                    <NuxtLink to="/legal/terms" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
+                    <NuxtLink to="/about" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
                 </div>
 
                 <!-- 开源 / 文档 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">开源 / 文档</h4>
-                    <a href="https://docs.noj.xyber-nova.space" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">文档站</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/issues" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">Issues</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">License</a>
+                    <a href="https://docs.noj.xyber-nova.space" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">文档站</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">License</a>
                 </div>
 
                 <!-- 社区联系 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">社区联系</h4>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/discussions" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Discussions</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/issues" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Issues</a>
-                    <a href="https://qm.qq.com/q/414014391" target="_blank" rel="noopener" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">QQ 群 414014391</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/discussions" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Discussions</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/issues" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Issues</a>
+                    <!-- 群号直接展示：此前把群号当 qm.qq.com 短链码，点击后是 404。 -->
+                    <p class="text-text-secondary text-sm mb-2 select-all tabular-nums">QQ 群 414014391</p>
                 </div>
             </div>
 
             <div class="mt-8 pt-4 border-t border-border text-xs text-text-muted text-center flex flex-col sm:flex-row items-center justify-center gap-1">
                 <span>&copy; {{ year }} Neuro OJ. 独立社区项目，与 CCF 及 LMCC 无官方关系。</span>
+                <span class="hidden sm:inline">·</span>
                 <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="text-text-muted hover:text-primary no-underline">AGPL-3.0</a>
                 <!-- 备案信息：未配置时不渲染（见 buildFilingLinks） -->
                 <template v-if="filingLinks.length > 0">

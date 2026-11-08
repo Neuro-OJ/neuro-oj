@@ -148,7 +148,6 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
         <NuxtLink :to="contestHome" class="inline-flex items-center gap-1 text-text-secondary no-underline hover:text-primary">
           <UIcon name="i-lucide-arrow-left" class="size-3.5" />返回比赛
         </NuxtLink>
-        <a href="#statement" class="text-text-secondary no-underline hover:text-primary">题面</a>
         <a v-if="inlineAnswer" href="#answer" class="text-text-secondary no-underline hover:text-primary">作答</a>
         <span v-if="position" class="ml-auto font-mono text-xs tabular-nums text-text-muted">
           第 {{ position.index }} / {{ position.total }} 题
@@ -187,10 +186,8 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
                 ? '比赛已结束，仅可查看题面'
                 : '仅在比赛受理时间内且已报名时可提交'" />
 
-          <ProblemStatement v-model:expanded="statementExpanded" :content="problemView.description"
-            :editor-to="!inlineAnswer && active ? solveTo : null" :editor-label="'在比赛编辑器打开'"
-            :editor-icon="contestProblem?.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'"
-            :edit-to="null">
+          <!-- 编辑器入口只在抬头保留一个（与题面工具条重复，见 #685）。 -->
+          <ProblemStatement v-model:expanded="statementExpanded" :content="problemView.description" :edit-to="null">
             <template #toolbar>
               <span class="rounded border border-border bg-bg-sunken px-2 py-1 text-xs tabular-nums text-text-muted">
                 固定版本 V{{ contestProblem?.version ?? '—' }}
