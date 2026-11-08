@@ -39,15 +39,16 @@ import {
 } from "./steps.ts";
 import { drainAfterUpgrade, drainBeforeUpgrade } from "./drain.ts";
 import { resolveTargetConfig } from "./target.ts";
-import { prepareLifecycle, probeCosign } from "../lifecycle.ts";
+import { prepareLifecycle } from "./services.ts";
+import { probeCosign } from "./install.ts";
 import type { ResolvedTargetConfig } from "./target.ts";
+import type { LifecycleContext } from "./context.ts";
 import type {
-  LifecycleContext,
   UpdateBackupContext,
   UpdateBackupResult,
   UpdateOptions,
   UpdateSyncContext,
-} from "../lifecycle.ts";
+} from "./update.ts";
 
 /** `--latest`：解析最新稳定 Release 的目标版本。 */
 export async function resolveLatestTarget(
