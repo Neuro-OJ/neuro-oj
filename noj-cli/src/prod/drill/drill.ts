@@ -65,7 +65,6 @@ import {
   probeFreeBytes,
   readEnvValues,
   renderDisableOutboundIntegrationsSql,
-  renderDrillOutboundEnvOverrides,
   renderDrillOverride,
   resolveReportPath,
   uniqueDrillProjectName,
@@ -563,10 +562,7 @@ async function prepareDrillEnvironment(
       // （Compose 复用/重建会打在有活动端点的生产网络上）。两个变量必须同值：
       // 前者是 compose 声明的网络名，后者是 judge 接入 Evaluator 容器时用的名字。
       `NOJ_EVAL_NETWORK_NAME=${ctx.projectName}_noj-eval-net\n` +
-      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-eval-net\n` +
-      // 出站集成禁用（邮件 / OAuth / webhook / LLM 上游）：追加在最后，
-      // Compose env_file「后者覆盖前者」，因此必然压过快照里的生产值。
-      renderDrillOutboundEnvOverrides(),
+      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-eval-net\n`,
     { append: true },
   );
 

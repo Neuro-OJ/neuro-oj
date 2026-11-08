@@ -32,12 +32,12 @@ import {
   assertSubnetCidr,
   DEFAULT_DRILL_PROJECT_NAME,
   DRILL_NETWORK_NAME,
+  DRILL_OUTBOUND_ENV_OVERRIDES,
   drillCleanupArgs,
   drillComposeArgs,
   drillDirName,
   readEnvValues,
   renderDisableOutboundIntegrationsSql,
-  renderDrillOutboundEnvOverrides,
   renderDrillOverride,
   resolveReportPath,
   uniqueDrillProjectName,
@@ -442,40 +442,23 @@ Deno.test("T19 隔离性：覆盖 YAML 清除 ports 映射并只改演练网络�
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
-Deno.test("T19 隔离性：演练 env 末尾禁用出站集成（邮件/OAuth/webhook/LLM 上游）", () => {
-  const env = renderDrillOutboundEnvOverrides();
-  assertStringIncludes(env, "EMAIL_PROVIDER=disabled");
+Deno.test("T19 隔离性：覆盖文件在 core.environment 中禁用出站集成", () => {
+  const yaml = renderDrillOverride("172.29.0.0/16");
+  assertStringIncludes(yaml, "services:\n  core:\n    environment:\n");
+  assertStringIncludes(yaml, `      EMAIL_PROVIDER: "disabled"\n`);
   for (
     const key of [
       "OAUTH_GITHUB_CLIENT_ID",
       "OAUTH_GITHUB_CLIENT_SECRET",
       "OAUTH_OIDC_CLIENT_SECRET",
-      "EMAIL_WEBHOOK_SECRET",
       "ALIBABA_ACCESS_KEY_SECRET",
       "TENCENT_SECRET_KEY",
       "NOJ_LLM_GATEWAY_URL",
       "NOJ_LLM_DEFAULT_PROVIDER_ID",
-      "ALERTMANAGER_WEBHOOK_URL",
-      "ALERTMANAGER_SMTP_HOST",
     ]
   ) {
-    assertStringIncludes(env, `\n${key}=\n`, `${key} 必须被置空`);
+    assertStringIncludes(yaml, `      ${key}: ""\n`, `${key} 必须被置空`);
   }
-  // 生产 webhook URL 不得出现在演练 env 中
-  const prodUrl = "https://hooks.example.com/production-abc123";
-  const snapshotEnv = [
-    "EMAIL_PROVIDER=aliyun",
-    `ALERTMANAGER_WEBHOOK_URL=${prodUrl}`,
-  ].join("\n");
-  // 追加段压过快照里的生产值（Compose env_file 后者覆盖前者），且不带 URL
-  assertStringIncludes(
-    `${snapshotEnv}\n${env}`,
-    "\nEMAIL_PROVIDER=disabled\n",
-  );
-  assert(
-    !env.includes(prodUrl),
-    "演练 env 不得携带生产 webhook URL",
-  );
 });
 
 Deno.test("T19 隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
@@ -497,9 +480,18 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
   const envFile = join(root, ".env.drill");
   const overrideFile = join(root, "compose.drill-override.yml");
   try {
+    // 模拟快照里的生产出站配置：覆盖文件必须在合并结果中压过它们
+    const snapshotEnv: Record<string, string> = {
+      ...REAL_COMPOSE_ENV,
+      EMAIL_PROVIDER: "aliyun",
+      ALIBABA_ACCESS_KEY_SECRET: "prod-alibaba-secret",
+      OAUTH_GITHUB_CLIENT_ID: "prod-github-client",
+      OAUTH_GITHUB_CLIENT_SECRET: "prod-github-secret",
+      NOJ_LLM_DEFAULT_PROVIDER_ID: "prod-provider",
+    };
     await Deno.writeTextFile(
       envFile,
-      Object.entries(REAL_COMPOSE_ENV).map(([key, value]) => `${key}=${value}`)
+      Object.entries(snapshotEnv).map(([key, value]) => `${key}=${value}`)
         .join(
           "\n",
         ) + "\n",
@@ -536,7 +528,10 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
       }`,
     );
     const config = JSON.parse(new TextDecoder().decode(result.stdout)) as {
-      services?: Record<string, { ports?: unknown[] }>;
+      services?: Record<
+        string,
+        { ports?: unknown[]; environment?: Record<string, string | null> }
+      >;
       networks?: Record<
         string,
         { name?: string; ipam?: { config?: Array<{ subnet?: string }> } }
@@ -549,6 +544,13 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
         [],
         `演练合并配置不得把 ${name} 的端口映射到宿主机`,
       );
+    }
+    // 出站集成：合并后 core 环境必须是禁用值（含 compose 中的字面量
+    // NOJ_LLM_GATEWAY_URL），且每个覆盖键都真实存在于生产 core 环境
+    const coreEnv = config.services?.core?.environment ?? {};
+    for (const [key, value] of Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)) {
+      assert(key in coreEnv, `${key} 不在生产 core 环境中，覆盖无意义`);
+      assertEquals(coreEnv[key], value, `演练 core 的 ${key} 必须被覆盖`);
     }
     assertEquals(
       config.networks?.[DRILL_NETWORK_NAME]?.ipam?.config?.[0]?.subnet,

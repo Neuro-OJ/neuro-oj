@@ -33,12 +33,15 @@ Status: implemented
    `/api/v1/internal`（不区分大小写、容忍多斜杠、解码后再判定）直接 404； nginx
    增加 `location ^~ /api/v1/internal/ { return 404; }`。CLI 排空经
    `docker compose run core maintain` 直连 `http://core:8000`，不受影响。
-2. 演练 env 末尾追加出站禁用段（`EMAIL_PROVIDER=disabled`、OAuth/云邮件凭据/
-   `NOJ_LLM_GATEWAY_URL`/告警 webhook 置空）；core 启动前在隔离库执行禁用 SQL：
-   `email_provider` 置 `"disabled"`、邮件凭据与 LLM 默认项置 `""`、键名像
-   webhook 且值为 URL
-   的设置清空、`llm_providers.enabled=false`。`system_settings.value` 为 JSON
-   编码， SQL 写入带引号的值（已在本地 PostgreSQL 实测）。
+2. 演练覆盖文件在 `services.core.environment` 中按键覆盖出站集成
+   （`EMAIL_PROVIDER=disabled`、云邮件凭据 / OAuth / `NOJ_LLM_GATEWAY_URL` / LLM
+   默认项置空）。生产 compose 没有 `env_file:`，容器环境全部来自
+   `environment:`（含字面量 `NOJ_LLM_GATEWAY_URL`），往 `--env-file` 追加同名键
+   对字面量与未引用的键无效，因此必须走覆盖文件；真实 `compose config` 测试校验
+   合并结果。core 启动前另在隔离库执行禁用 SQL：`llm_providers.enabled=false`、
+   LLM 默认项与键名像 webhook 且值为 URL 的设置清空，并清理邮件类 DB 残留。
+   `system_settings.value` 为 JSON 编码，SQL 写入带引号的值（已在本地 PostgreSQL
+   实测）。
 3. `bundle-parser.ts` 新增 `unzipWithLimits`（条目数 / 单文件 / 总量 +
    路径穿越，解压后按 实际字节复核），预检与自测包解压统一走它。
 4. inject.rs 三处 Docker 调用加 10s 超时（与 `container.rs` 一致）。
@@ -46,8 +49,10 @@ Status: implemented
    注册值与默认回退均按硬上限截断， 0 表示不限制（与 `clamp_runtime_config`
    语义一致）。
 6. 抽出 `getActiveUserBan` / `isLoginBlockedByBan` /
-   `assertLoginNotBanned`，密码登录与 OAuth 共用；OAuth 被拒时不写
-   `auth.login_success`。
+   `assertLoginNotBanned`，密码登录与 OAuth 共用。OAuth 的封禁检查放在建立
+   绑定等任何写入之前（link 与按邮箱自动绑定都不会留下绑定）；被拒时记
+   `auth.login_failure`（reason=user_banned）、不写 `auth.login_success`；
+   回调回传 `oauth_error=user_banned`，登录页提示联系管理员。
 7. `maskSecret` 已配置时返回固定 `********`，未配置仍返回空串；UI 只依赖
    `is_secret` 与 `effective_value !== null`，不依赖掩码格式。
 

@@ -1,6 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../../app.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
+import { getDb } from "../../../../../shared/db/connection.ts";
+import { userBans } from "../../../../../shared/db/schema.ts";
+import { resolveOAuthIdentity } from "../../index.ts";
 
 const originalEnv = new Map<string, string | undefined>();
 function configure() {
@@ -208,6 +211,94 @@ Deno.test({
         ? callback.headers.getSetCookie().join(";")
         : callback.headers.get("set-cookie") ?? "";
       // 未建号：不得签发任何会话 Cookie
+      assertEquals(cookies.includes("noj:token="), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restore();
+    }
+  },
+});
+
+Deno.test({
+  // 封禁不是"稍后重试"能解决的问题：回调必须回传 user_banned，且不签发会话
+  name: "oauth route: 平台封禁用户 OAuth 登录回传 user_banned",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    configure();
+    const originalFetch = globalThis.fetch;
+    try {
+      await resetDbForTest();
+      const created = await resolveOAuthIdentity(
+        "github",
+        {
+          providerUserId: "24680",
+          username: "banned_oauth_user",
+          email: "banned-oauth@example.com",
+          emailVerified: true,
+        },
+        "login",
+        undefined,
+        true,
+      );
+      const now = new Date().toISOString();
+      await getDb().insert(userBans).values({
+        id: crypto.randomUUID(),
+        user_id: created.user.id,
+        reason: "违规行为",
+        scope: "platform",
+        banned_until: null,
+        banned_at: now,
+        updated_at: now,
+      });
+
+      const app = createApp();
+      const start = await app.fetch(
+        new Request("http://localhost/api/v1/auth/oauth/github"),
+      );
+      const stateCookie = start.headers.get("set-cookie")?.split(";")[0] ?? "";
+      const state = new URL(start.headers.get("location")!).searchParams.get(
+        "state",
+      )!;
+
+      globalThis.fetch = ((input: Request | URL | string) => {
+        const url = String(input);
+        if (url.endsWith("/login/oauth/access_token")) {
+          return Promise.resolve(
+            Response.json({ access_token: "mock-access-token" }),
+          );
+        }
+        if (url.endsWith("/user/emails")) {
+          return Promise.resolve(Response.json([{
+            email: "banned-oauth@example.com",
+            primary: true,
+            verified: true,
+          }]));
+        }
+        if (url.endsWith("/user")) {
+          return Promise.resolve(
+            Response.json({ id: 24680, login: "banned_oauth_user" }),
+          );
+        }
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }) as typeof fetch;
+
+      const callback = await app.fetch(
+        new Request(
+          `http://localhost/api/v1/auth/oauth/github/callback?state=${
+            encodeURIComponent(state)
+          }&code=mock-code`,
+          { headers: { cookie: stateCookie } },
+        ),
+      );
+      assertEquals(callback.status, 302);
+      assertEquals(
+        callback.headers.get("location")?.includes("oauth_error=user_banned"),
+        true,
+      );
+      const cookies = typeof callback.headers.getSetCookie === "function"
+        ? callback.headers.getSetCookie().join(";")
+        : callback.headers.get("set-cookie") ?? "";
       assertEquals(cookies.includes("noj:token="), false);
     } finally {
       globalThis.fetch = originalFetch;

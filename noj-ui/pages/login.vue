@@ -283,6 +283,10 @@ onMounted(async () => {
     if (route.query.oauth_error === "legal_consent_required") {
       // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
       legalConsentRequired.value = true
+    } else if (route.query.oauth_error === "user_banned") {
+      // 与密码登录同口径（常驻封禁横幅）：封禁不是重试能解决的，提示联系管理员；
+      // 原因与期限不经 URL 传递
+      bannedMsg.value = "账号已被封禁，请联系管理员。"
     } else {
       setError(route.query.oauth_error === "state_invalid"
         ? "第三方登录请求已失效，请重新尝试"

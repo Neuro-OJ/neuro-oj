@@ -206,41 +206,43 @@ export const DRILL_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 export const DRILL_NETWORK_NAME = "noj-net";
 
 /**
- * 演练环境文件里**强制禁用**的出站集成键（env 层）。
+ * 演练 core 容器里**强制禁用**的出站集成环境变量。
  *
  * 演练用快照里的 `.env.prod` 起 migrate/core/gateway，存储与网络虽然隔离，
- * 但邮件、OAuth、告警 webhook 等出站配置仍沿用生产值——演练实例一旦触发
- * （定时告警、管理员操作、业务验收流程）就会向真实用户发信或调用外部服务。
- * 因此这些键在演练 env 末尾统一覆盖为「禁用/空值」，Compose 的 env_file
- * 「后者覆盖前者」语义保证覆盖生效。
+ * 但邮件、OAuth、LLM 上游等出站配置仍沿用生产值——演练实例一旦触发
+ * （管理员操作、业务验收流程、LLM 题评测）就会向真实用户发信或调用外部服务。
+ *
+ * **注入方式**：生产 compose 没有 `env_file:`，容器环境全部来自 `environment:`
+ * （`x-core-env` 锚点里的 `${VAR}` 插值或**字面量**，如
+ * `NOJ_LLM_GATEWAY_URL: http://llm-gateway:8001`）。往 `--env-file` 追加同名键
+ * 只影响插值，对字面量和 compose 未引用的键都无效。因此这些键写进演练覆盖文件
+ * 的 `services.core.environment`：Compose 多 `-f` 合并时 `environment` 按键覆盖，
+ * 字面量也能被压过（由真实 `compose config` 测试校验）。
+ *
+ * 只列 `x-core-env` 中实际存在的键；新增出站键时必须同时出现在生产 compose
+ * 的 core 环境里，否则覆盖没有意义（测试会对照合并结果校验）。
  *
  * 取值依据（以代码实际识别的禁用值为准）：
  * - `EMAIL_PROVIDER=disabled`：`noj-core` 的 `email.ts` 将该值映射到
- *   `email-providers/disabled.ts`；生产环境也允许 `disabled`，不会触发启动校验失败。
- * - SMTP 类变量：`noj-core` 当前不读取（仅告警文档的手工场景），置空是防御性兜底。
+ *   `email-providers/disabled.ts`；生产环境也允许 `disabled`。`email_provider`
+ *   及云厂商凭据是 bootstrap 配置（只读 env），env 层覆盖即生效。
+ * - 云厂商密钥置空：即便有人把 `EMAIL_PROVIDER` 改回生产值，也没有可用凭据。
  * - `OAUTH_*` 置空：core 的 OAuth 必须「两项/三项齐全」才启用，空值即关闭。
- * - `NOJ_LLM_GATEWAY_URL` 置空：不覆盖时 evaluator 会继承 compose 固化的
- *   `http://llm-gateway:8001`，指向演练实例自己的 gateway（该 DB 与 Provider
- *   密钥均来自快照），从而向真实上游 LLM 发起调用。
- * - `ALERTMANAGER_*` 置空：Compose 变量插值不读 `--env-file`，但 Apprise 风格
- *   的 `APPRISE_*` 与宿主已有的同名变量都会被子进程继承；在演练 env 里显式置空
- *   是对「宿主 export 了生产 webhook 后把 env 传给 CLI」的兜底。
- *   注意：`alertmanager.yml` 若在宿主机被渲染成**字面量** webhook URL，env 覆盖
- *   无法清除，需要运维侧确认（见 Agent Note）。
- * - 云厂商密钥置空：即便后续有人把 `EMAIL_PROVIDER` 改回生产值，也没有可用凭据。
+ * - `NOJ_LLM_GATEWAY_URL` 置空：core 签发 eval_token 时把它下发给 evaluator；
+ *   不覆盖则指向演练实例自己的 gateway（Provider 密钥来自快照），进而调用真实
+ *   上游 LLM。置空后 evaluator 的 LLM 调用直接失败（DB 侧另有
+ *   `llm_providers.enabled=false` 兜底）。
+ * - `NOJ_LLM_DEFAULT_*` 置空：LLM 题全局默认的 env 兜底（DB 侧由 SQL 清空）。
+ *
+ * 告警：`alertmanager.yml` 是宿主机配置文件，env 覆盖无法触及，需运维确认
+ * （见 Agent Note）。
  *
  * **DB 层**（`system_settings`、`llm_providers`）不在此处覆盖：快照恢复后由
  * {@link renderDisableOutboundIntegrationsSql} 在隔离库里执行禁用 SQL。
  */
 export const DRILL_OUTBOUND_ENV_OVERRIDES: Readonly<Record<string, string>> = {
-  // 邮件（DB-owned bootstrap，但 env 是启动兜底；见下方 SQL 说明）
+  // 邮件
   EMAIL_PROVIDER: "disabled",
-  SMTP_HOST: "",
-  SMTP_PORT: "",
-  SMTP_USER: "",
-  SMTP_PASS: "",
-  SMTP_FROM: "",
-  EMAIL_WEBHOOK_SECRET: "",
   ALIBABA_ACCESS_KEY_ID: "",
   ALIBABA_ACCESS_KEY_SECRET: "",
   ALIBABA_FROM_EMAIL: "",
@@ -250,47 +252,29 @@ export const DRILL_OUTBOUND_ENV_OVERRIDES: Readonly<Record<string, string>> = {
   // 第三方登录（core 要求齐全才启用，空值即关闭）
   OAUTH_GITHUB_CLIENT_ID: "",
   OAUTH_GITHUB_CLIENT_SECRET: "",
-  OAUTH_GITHUB_SECRET: "",
   OAUTH_OIDC_ISSUER_URL: "",
   OAUTH_OIDC_CLIENT_ID: "",
   OAUTH_OIDC_CLIENT_SECRET: "",
-  // Evaluator → 外部 LLM 上游（经 gateway；置空后 gateway 调用直接失败）
+  // Evaluator → 外部 LLM 上游（eval_token 下发的 gateway 地址）
   NOJ_LLM_GATEWAY_URL: "",
-  NOJ_LLM_GATEWAY_TOKEN: "",
   // LLM 题全局默认（env 兜底；DB 侧由 SQL 清空）
   NOJ_LLM_DEFAULT_PROVIDER_ID: "",
   NOJ_LLM_DEFAULT_MODEL: "",
-  // 告警 webhook / SMTP（alertmanager 变量插值）
-  ALERTMANAGER_WEBHOOK_URL: "",
-  ALERTMANAGER_EMAIL_TO: "",
-  ALERTMANAGER_SMTP_HOST: "",
-  ALERTMANAGER_SMTP_FROM: "",
-  ALERTMANAGER_SMTP_USER: "",
-  ALERTMANAGER_SMTP_PASS: "",
 };
-
-/** 渲染追加到演练 env 末尾的出站禁用段（`KEY=` 形式，空值）。 */
-export function renderDrillOutboundEnvOverrides(): string {
-  const lines = Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES).map(
-    ([key, value]) => `${key}=${value}`,
-  );
-  return `\n# ---- restore-drill 出站集成禁用（自动生成，勿提交） ----\n` +
-    `# 演练不得向真实用户发信、调用外部 webhook / OAuth / LLM 上游。\n` +
-    lines.join("\n") + "\n";
-}
 
 /**
  * 渲染在隔离库执行的「出站集成禁用」SQL（在 core 启动**之前**执行）。
  *
- * 为什么需要：`email_provider` 是 bootstrap 配置（`settings-registry.ts`），
- * 读取链为 `DB → env → 默认值`——快照恢复出的 `system_settings` 里若残留
- * `email_provider=aliyun/tencent`，DB 值会**遮蔽**演练 env 里的 `disabled`；
- * 云厂商密钥同理来自 DB。LLM Provider 的密钥与上游地址只存在于
+ * 为什么需要：LLM Provider 的密钥与上游地址只存在于
  * `llm_providers` 表，`enabled=false` 是其唯一禁用开关（gateway 对停用
  * Provider 直接拒绝）。
  *
  * 取得快照里的「生产 webhook URL」做条件匹配是不必要的：这里直接把**全部**
  * webhook/回调类键清空，演练从不依赖它们。未命中时不报错（键不存在即无副作用）。
+ *
+ * 邮件类键当前是 bootstrap 配置（只读 env，由
+ * {@link DRILL_OUTBOUND_ENV_OVERRIDES} 负责）；这里一并清空 DB 残留，是为了
+ * 防止它们日后改为 runtime 配置时 DB 值遮蔽 env。
  */
 export function renderDisableOutboundIntegrationsSql(): string {
   return [
@@ -322,9 +306,10 @@ export function renderDisableOutboundIntegrationsSql(): string {
 /**
  * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` :321-339 的等价）。
  *
- * 覆盖两类隔离属性：把 `noj-net` 的子网改为演练子网，并用 Compose 的
- * `!reset []` 清空生产服务继承的宿主机端口映射。后者必须写在合并后的配置里；
- * 仅仅让覆盖文件不出现 `ports:` 并不能移除生产文件的映射。
+ * 覆盖三类隔离属性：把 `noj-net` 的子网改为演练子网；用 Compose 的
+ * `!reset []` 清空生产服务继承的宿主机端口映射（必须写在合并后的配置里，
+ * 仅仅让覆盖文件不出现 `ports:` 并不能移除生产文件的映射）；以及在 core 的
+ * `environment` 中按键覆盖出站集成（见 {@link DRILL_OUTBOUND_ENV_OVERRIDES}）。
  *
  * ## 为什么不再声明 `verifier` 服务（评审发现）
  *
@@ -338,8 +323,15 @@ export function renderDisableOutboundIntegrationsSql(): string {
  * 被 CI/文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
  */
 export function renderDrillOverride(subnet: string): string {
-  return `# restore-drill 自动生成的隔离覆盖：独立子网且不继承生产宿主机端口。
+  // 值统一 JSON 编码（YAML 1.2 双引号字符串兼容），空值写作 ""。
+  const coreEnv = Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)
+    .map(([key, value]) => `      ${key}: ${JSON.stringify(value)}`)
+    .join("\n");
+  return `# restore-drill 自动生成的隔离覆盖：独立子网、不继承生产宿主机端口、禁用出站集成。
 services:
+  core:
+    environment:
+${coreEnv}
   nginx:
     ports: !reset []
   prometheus:

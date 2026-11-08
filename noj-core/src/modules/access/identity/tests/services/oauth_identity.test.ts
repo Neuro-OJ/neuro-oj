@@ -254,13 +254,13 @@ Deno.test({
       assertEquals(error.status, 403);
       assertEquals(error.meta, { reason: "违规行为", until: null });
 
-      // 在封禁前已建立的绑定关系也不能借此拿会话
+      // 被封禁用户发起绑定新第三方账号：拒绝，且不得留下绑定关系
       await assertRejects(
         () =>
           resolveOAuthIdentity(
             "github",
             {
-              providerUserId: "github-ban-1",
+              providerUserId: "github-ban-1-link",
               username: "oauth_ban_user",
               email: "github-ban-1@example.com",
               emailVerified: true,
@@ -270,16 +270,44 @@ Deno.test({
           ),
         ForbiddenError,
       );
+      // 新第三方身份按已验证邮箱命中被封禁用户：拒绝，且不得自动绑定
+      await assertRejects(
+        () =>
+          resolveOAuthIdentity("github", {
+            providerUserId: "github-ban-1-email",
+            username: "oauth_ban_user",
+            email: "github-ban-1@example.com",
+            emailVerified: true,
+          }, "login"),
+        ForbiddenError,
+      );
+      const bindings = await db.select({
+        provider_user_id: oauthAccounts.provider_user_id,
+      }).from(oauthAccounts).where(eq(oauthAccounts.user_id, created.user.id));
+      assertEquals(bindings.map((row) => row.provider_user_id), [
+        "github-ban-1",
+      ]);
 
-      // 建号时审计仅有一条首次登录成功的 login_success（同时含 domain.join）；
-      // 被封禁拒绝的两次尝试不得再写任何审计（含 login_failure / login_success）
+      // 建号时审计有一条首次登录成功的 login_success（同时含 domain.join）；
+      // 三次被拒绝的尝试与密码登录同口径各记一条 login_failure，不记 login_success
       const logs = await db.select().from(auditLogs).where(
         eq(auditLogs.admin_id, created.user.id),
       );
       assertEquals(logs.map((row) => row.action).sort(), [
+        "auth.login_failure",
+        "auth.login_failure",
+        "auth.login_failure",
         "auth.login_success",
         "domain.join",
       ]);
+      assertEquals(
+        logs.filter((row) => row.action === "auth.login_failure")
+          .every((row) =>
+            (row.detail as { reason?: string } | null)?.reason ===
+              "user_banned"
+          ),
+        true,
+      );
     } finally {
       restoreEnv();
     }
