@@ -141,7 +141,7 @@ const invitation = ref<WorkspaceInvitationPreview | null>(null)
 const isEmailLocked = computed(() =>
     invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' && invitation.value.email.length > 0
 )
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
 
@@ -297,7 +297,7 @@ async function handleRegister() {
             router.replace(destination.pathname + destination.search)
         }
     } catch (e: unknown) {
-        setError(extractApiError(e, locale.value).message)
+        setError(extractApiError(e).message)
     } finally {
         loading.value = false
     }

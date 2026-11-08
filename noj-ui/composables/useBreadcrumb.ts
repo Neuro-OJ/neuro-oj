@@ -6,8 +6,8 @@ import { resolveBreadcrumb } from '~/utils/breadcrumb';
  *
  * 与 issue 初稿的差异：**不引入全局中间件**。
  * 中间件的论证是「布局渲染早于页面 setup，靠页面写 state 会让 SSR 首帧为空」——
- * 该论证针对的是「页面在 setup 里写整条层级」，而层级本身是 `route.path` 与
- * `locale` 的纯函数，布局组件在 SSR 首帧就能直接算出，无需任何 state 或中间件。
+ * 该论证针对的是「页面在 setup 里写整条层级」，而层级本身是 `route.path` 的
+ * 纯函数，布局组件在 SSR 首帧就能直接算出，无需任何 state 或中间件。
  * 少一个中间件即少一处 SSR/客户端双跑的分歧点。
  *
  * 唯一需要页面参与的是**动态层的人类可读文案**：async 数据必然晚于布局渲染，
@@ -28,14 +28,13 @@ function overrideKey(path: string, param: string): string {
   return `${path}::${param}`;
 }
 
-/** 当前路径的面包屑层级（响应 locale 切换，无需重新导航）。 */
+/** 当前路径的面包屑层级。 */
 export function useBreadcrumbItems() {
   const route = useRoute();
-  const { locale } = useI18n();
   const overrides = useState<Record<string, string>>('breadcrumb:overrides', () => ({}));
 
   return computed<BreadcrumbItem[]>(() => {
-    const items = resolveBreadcrumb(route.path, locale.value);
+    const items = resolveBreadcrumb(route.path);
     if (items.length === 0) return items;
     return items.map((item): BreadcrumbItem => {
       if (!item.param) return item;

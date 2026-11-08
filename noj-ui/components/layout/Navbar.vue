@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { workspacePath } from '~/utils/workspace';
 import { workspaceNavigation } from '~/utils/workspace-navigation';
-const { user } = useAuth(), { t, isEnglish, setLocale } = useI18n();
+const { user } = useAuth();
 const route = useRoute(), slug = useNavigationDomain(), workspace = useOptionalWorkspace();
 const mobileOpen = ref(false), headerRef = ref<HTMLElement | null>(null);
 const navRef = ref<HTMLElement | null>(null), measureRef = ref<HTMLElement | null>(null), navWidth = ref(Infinity);
@@ -91,8 +91,6 @@ onMounted(() => {
         <UButton v-if="user" to="/notifications" color="neutral" variant="ghost" icon="i-lucide-bell" aria-label="通知" class="relative">
           <span v-if="unreadCount" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-text px-1 text-[10px] font-bold text-white tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </UButton>
-        <UButton color="neutral" variant="ghost" size="sm" :aria-label="t('common.language')"
-          @click="setLocale(isEnglish ? 'zh-CN' : 'en-US')">{{ isEnglish ? '中文' : 'EN' }}</UButton>
         <UserMenu />
       </div>
     </div>

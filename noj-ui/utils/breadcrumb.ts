@@ -6,7 +6,7 @@
  *   因此层级必须由「集中声明的路由表」推导，而不是每页手写；
  * - 纯逻辑放 utils 可被 `deno task test` 直接断言（本仓库既有约定，
  *   同 `utils/problemStats.ts`、`utils/problemView.ts`）；
- * - 解析本身是 `route.path` 与 `locale` 的纯函数，**不需要中间件**，
+ * - 解析本身是 `route.path` 的纯函数，**不需要中间件**，
  *   布局组件在 SSR 首帧即可算出（见 `composables/useBreadcrumb.ts` 的说明）。
  *
  * 覆盖范围：`layouts/default.vue` 下的内容页。**不含** `/admin/*`
@@ -14,7 +14,7 @@
  * （`layouts/auth.vue`，单点流程无层级语义）——未注册路径解析结果为空数组，
  * 组件据此不渲染。
  */
-import { DEFAULT_LOCALE, type Locale, messages } from './i18n.ts';
+import { messages } from './i18n.ts';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
 import { workspacePath, workspaceSlugFromPath } from './workspace.ts';
 
@@ -518,9 +518,9 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   return undefined;
 }
 
-/** 取 i18n 文案（复用既有 `messages` 表，避免重复维护词条）。 */
-function label(key: string, locale: Locale): string {
-  return messages[locale][key] ?? messages[DEFAULT_LOCALE][key] ?? key;
+/** 取中文文案（复用既有 `messages` 表，避免重复维护词条）。 */
+function label(key: string): string {
+  return messages[key] ?? key;
 }
 
 /**
@@ -531,7 +531,7 @@ function label(key: string, locale: Locale): string {
  * - 动态段先以路由参数占位（如 `1001`），页面拿到数据后可用
  *   `useBreadcrumbLabel` 精化为标题。
  */
-export function resolveBreadcrumb(path: string, locale: Locale = DEFAULT_LOCALE): BreadcrumbItem[] {
+export function resolveBreadcrumb(path: string): BreadcrumbItem[] {
   const match = matchBreadcrumbRoute(path);
   if (!match) return [];
 
@@ -542,7 +542,7 @@ export function resolveBreadcrumb(path: string, locale: Locale = DEFAULT_LOCALE)
   for (const entry of route.trail) {
     if ('key' in entry) {
       items.push({
-        label: label(entry.key, locale),
+        label: label(entry.key),
         to: entry.to?.replace(/:([A-Za-z0-9_]+)/g, (_, name: string) => encodeURIComponent(match.params[name] ?? '')),
       });
     } else {
