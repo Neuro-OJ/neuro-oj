@@ -70,27 +70,6 @@ export type {
   UpdateTagInput,
 } from "./services/tags.ts";
 export {
-  addTrainingProblem,
-  createTraining,
-  deleteTraining,
-  getTraining,
-  listAllTrainings,
-  listMyTrainings,
-  listPublicTrainings,
-  listTrainingProblems,
-  listTrainingsContainingProblem,
-  listUserTrainings,
-  removeTrainingProblem,
-  reorderTrainingProblems,
-  resolveTrainingId,
-  updateTraining,
-} from "./services/trainings.ts";
-export type {
-  ListTrainingsParams,
-  ListTrainingsResult,
-  UpdateTrainingOptions,
-} from "./services/trainings.ts";
-export {
   deleteSupportPackageForActor,
   deleteSupportPackageForActorTx,
   extractTemplateFromPackage,
@@ -193,13 +172,7 @@ export {
   isValidTrainingVisibility,
   TRAINING_VISIBILITIES,
 } from "./types/trainings.ts";
-export type {
-  CreateTrainingInput,
-  TrainingProblemResponse,
-  TrainingResponse,
-  TrainingVisibility,
-  UpdateTrainingInput,
-} from "./types/trainings.ts";
+export type { TrainingVisibility } from "./types/trainings.ts";
 export type { OiSubtask, OiTestCase } from "./types/runtime-config.ts";
 export {
   getBuiltinOiCostProfile,

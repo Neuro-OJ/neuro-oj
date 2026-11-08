@@ -2,6 +2,7 @@
 import { useRoute } from "vue-router"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl, workspaceProblemUrl } from "~/utils/publicIdentifiers"
+import { workspacePath } from "~/utils/workspace"
 import { contestHiddenRowClass } from "~/utils/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
@@ -145,20 +146,25 @@ interface TrainingProfile {
   id: string
   public_id?: string
   title: string
-  description: string
   visibility: 'private' | 'unlisted' | 'public'
-  is_pinned: boolean
+  state: 'draft' | 'published'
   created_by: string
-  created_at: string
   updated_at: string
-  problem_count: number
 }
 
-const { data: trainingsData } = useFetch<{ data: TrainingProfile[]; total: number }>(
-  `/api/v1/trainings?created_by=${userId}`,
-  { query: { page: 1, per_page: 100 } },
+// 题单只存在于域内：0.11 起旧无域 `/api/v1/trainings?created_by=` 已删除，
+// 这里读默认域 main 的题单目录，按创建者过滤（他人只见已发布题单）。
+// userId 是 URL 中的 username，先由 profile 解析出稳定用户 id 再按 id 过滤。
+const profileUserId = computed(() => profile.value?.user?.id)
+const { data: trainingsData } = useFetch<{ items: TrainingProfile[] }>(
+  '/api/v1/domains/main/trainings',
+  {
+    query: computed(() => ({ page: 1, limit: 100, created_by: profileUserId.value })),
+    immediate: false,
+    watch: [profileUserId],
+  },
 )
-const profileTrainings = computed(() => trainingsData.value?.data ?? [])
+const profileTrainings = computed(() => trainingsData.value?.items ?? [])
 
 // 当前登录用户是否在查看自己的主页。
 // userId 来自 URL（userUrl 生成 /users/{username}），故用 username 对比；
@@ -424,23 +430,23 @@ function formatDate(iso: string): string {
         </div>
       </div>
 
-      <!-- 我的题单 -->
+      <!-- 题单（默认域 main） -->
       <div v-if="profileTrainings.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-list-todo" class="text-primary size-4.5" />
-            我的题单
+            题单
           </h2>
         </div>
         <div class="divide-y divide-border">
           <NuxtLink
             v-for="training in profileTrainings"
             :key="training.id"
-            :to="publicUrl('training', training.public_id || training.id)"
+            :to="workspacePath('main', `trainings/${training.id}`)"
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg no-underline"
           >
             <span class="text-sm text-primary">{{ training.title }}</span>
-            <span class="text-xs text-text-muted">{{ training.problem_count }} 题</span>
+            <span class="text-xs text-text-muted">{{ training.state === 'published' ? '已发布' : '草稿' }}</span>
           </NuxtLink>
         </div>
       </div>

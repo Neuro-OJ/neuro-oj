@@ -96,8 +96,13 @@ export function apiPut(
   return api("PUT", path, { body, token, headers });
 }
 
-export function apiPatch(path: string, body: unknown, token?: string) {
-  return api("PATCH", path, { body, token });
+export function apiPatch(
+  path: string,
+  body: unknown,
+  token?: string,
+  headers?: Record<string, string>,
+) {
+  return api("PATCH", path, { body, token, headers });
 }
 
 export function apiDelete(

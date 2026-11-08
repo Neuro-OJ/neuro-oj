@@ -47,14 +47,6 @@ import { importDomainProblemBundle } from "../problems/services/workspace/proble
 import { importDomainProblemDraftBundle } from "../problems/services/workspace/problem-bundle-edit.ts";
 import { loadEditableDomainProblem } from "../problems/services/workspace/problem-edit.ts";
 import {
-  addTrainingProblem,
-  createTraining,
-  deleteTraining,
-  removeTrainingProblem,
-  reorderTrainingProblems,
-  updateTraining,
-} from "../problems/services/trainings.ts";
-import {
   createTag,
   deleteTag,
   mergeTags,
@@ -307,57 +299,12 @@ export function setDomainProblemBindingStateCommand(
   );
 }
 
-/** 默认域题单写用例统一由 UserActor 进入。 */
-export function createTrainingCommand(
-  actor: UserActor,
-  input: Parameters<typeof createTraining>[0],
-) {
-  return createTraining(input, actor.userId);
-}
-
-export function updateTrainingCommand(
-  actor: UserActor,
-  id: string,
-  input: Parameters<typeof updateTraining>[1],
-) {
-  return updateTraining(id, input, actor.userId);
-}
-
-export function deleteTrainingCommand(actor: UserActor, id: string) {
-  return deleteTraining(id, actor.userId);
-}
-
 export function deleteDomainTrainingCommand(
   actor: UserActor,
   slug: string,
   id: string,
 ) {
   return deleteDomainTraining(slug, actor.userId, id);
-}
-
-export function addTrainingProblemCommand(
-  actor: UserActor,
-  trainingId: string,
-  problemId: string,
-  position?: number,
-) {
-  return addTrainingProblem(trainingId, problemId, position, actor.userId);
-}
-
-export function reorderTrainingProblemsCommand(
-  actor: UserActor,
-  trainingId: string,
-  problems: Parameters<typeof reorderTrainingProblems>[1],
-) {
-  return reorderTrainingProblems(trainingId, problems, actor.userId);
-}
-
-export function removeTrainingProblemCommand(
-  actor: UserActor,
-  trainingId: string,
-  problemId: string,
-) {
-  return removeTrainingProblem(trainingId, problemId, actor.userId);
 }
 
 /** 域题单的创建/更新在同一 application 入口绑定身份。 */

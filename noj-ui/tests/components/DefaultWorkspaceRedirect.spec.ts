@@ -38,13 +38,16 @@ describe('旧业务入口的默认域兼容', () => {
     await expect(enter('/editor/restricted-uuid')).rejects.toBe(forbidden);
     expect(navigate).not.toHaveBeenCalled();
   });
-  it('U题旧地址不映射同号main题；题单公开ID先授权读取稳定ID', async () => {
+  it('U题旧地址不映射同号main题；题单公开ID直接交给域内题单页', async () => {
     await expect(enter('/problems/U1001')).rejects.toMatchObject({ statusCode: 404 });
     expect(get).not.toHaveBeenCalled();
-    get.mockResolvedValue({ data: { id: 'training-uuid' } });
-    await enter('/trainings/tr-old');
-    expect(get).toHaveBeenCalledWith('/api/v1/trainings/tr-old', { silent: true });
-    expect(navigate.mock.calls[0]![0].path).toBe('/d/main/trainings/training-uuid');
+    await enter('/trainings/tr-old', { tab: 'problems' });
+    // 无域 `/api/v1/trainings/:id` 已删除，中间件不再预解析，交由域内页面按 public_id 读取。
+    expect(get).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith({ path: '/d/main/trainings/tr-old', query: { tab: 'problems' }, hash: '' }, {
+      redirectCode: 301,
+      replace: true,
+    });
   });
   it('旧 UUID 的赛题保护拒绝保持 403，不退化为不存在或跳转其他域', async () => {
     get.mockRejectedValue({

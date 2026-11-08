@@ -83,19 +83,16 @@ export {
 } from "./evaluations.ts";
 export type { ComposeEvaluationAdmissionInput } from "./evaluations.ts";
 export {
-  addTrainingProblemCommand,
   copyDomainTrainingCommand,
   createDomainProblemCommand,
   createObjectiveQuestionCommand,
   createProblemCommand,
   createTagCommand,
-  createTrainingCommand,
   deleteDomainTrainingCommand,
   deleteObjectiveQuestionCommand,
   deleteProblemCommand,
   deleteSupportPackageCommand,
   deleteTagCommand,
-  deleteTrainingCommand,
   importDomainProblemBundleCommand,
   importDomainProblemCommand,
   importDomainProblemDraftBundleCommand,
@@ -104,8 +101,6 @@ export {
   publishDomainProblemVersionCommand,
   publishImportedProblemCommand,
   publishProblemVersionCommand,
-  removeTrainingProblemCommand,
-  reorderTrainingProblemsCommand,
   saveDomainOiDraftCommand,
   saveDomainProblemDraftCommand,
   saveDomainTrainingCommand,
@@ -117,7 +112,6 @@ export {
   updateObjectiveQuestionCommand,
   updateProblemCommand,
   updateTagCommand,
-  updateTrainingCommand,
 } from "./problems.ts";
 export type {
   CreateProblemCommandOptions,

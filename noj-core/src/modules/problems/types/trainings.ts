@@ -1,6 +1,8 @@
 /**
  * 题单（training）类型定义（issue #224）。
- * 第一版为扁平题单：trainings + training_problems，题目按 position 排序。
+ *
+ * 0.11 起题单只存在于域内（`/api/v1/domains/:slug/trainings`），旧的实例级
+ * `/api/v1/trainings` 读写入口已删除；这里只保留可见性枚举与校验函数。
  */
 
 export const TRAINING_VISIBILITIES = ["private", "unlisted", "public"] as const;
@@ -10,49 +12,4 @@ export function isValidTrainingVisibility(
   value: string,
 ): value is TrainingVisibility {
   return TRAINING_VISIBILITIES.includes(value as TrainingVisibility);
-}
-
-export interface CreateTrainingInput {
-  title: string;
-  state?: "draft" | "published";
-  description?: string;
-  visibility?: TrainingVisibility;
-}
-
-export interface UpdateTrainingInput {
-  state?: "draft" | "published";
-  title?: string;
-  description?: string;
-  visibility?: TrainingVisibility;
-  is_pinned?: boolean;
-}
-
-export interface TrainingResponse {
-  state: "draft" | "published";
-  id: string;
-  domain_id: string;
-  revision: number;
-  public_id: string;
-  title: string;
-  description: string;
-  visibility: TrainingVisibility;
-  is_pinned: boolean;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  problem_count: number;
-}
-
-export interface TrainingProblemResponse {
-  training_id: string;
-  problem_id: string;
-  position: number;
-  title: string;
-  description: string;
-  difficulty: string;
-  display_id: string;
-  is_objective: boolean;
-  accepted: boolean;
-  /** 是否被尚未结束的公开赛收编（仅特权用户可见的行会带 true，见 ProblemResponse） */
-  is_contest_hidden?: boolean;
 }
