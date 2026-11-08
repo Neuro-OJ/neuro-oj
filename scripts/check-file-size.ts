@@ -30,17 +30,13 @@ export const SIZE_BASELINE: Record<string, number> = {
   //   messages.ts 1102 + messages-conversation-actions.ts 414 + messages-shared.ts 71
   // - noj-core/src/shared/config/settings-registry.ts 1380 →
   //   settings-registry.ts 946 + settings-registry-bootstrap.ts 458
-  "noj-core/src/modules/contests/services/contest-similarity.ts": 1315,
-  // 2026-09-21：`noj-cli` 是纯 TS 重写后的正式模块，此前**不在 SCAN_ROOTS**，
-  // 其 3 个超阈值文件从未受棘轮约束（实测 lifecycle.ts 2097 行、cli.ts 1611 行、
-  // config.ts 1218 行，门禁只报 3 个核心/UI 文件）。补入扫描根后按现状登记基线，
-  // 只允许下调。与同轮对 `check-test-discovery` / `silent-skip-report` 的
-  // 「补 noj-cli」修复同一模式。
-  "noj-cli/src/prod/lifecycle.ts": 1966,
-  // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
-  // 以锁住成果（棘轮只允许下调）。
-  "noj-cli/src/cli.ts": 1476,
-  "noj-cli/src/prod/config.ts": 1218,
+  // 2026-11-08：rc/v0.11 大文件按职责拆分（原文件保留为门面，外部导入路径不变），
+  // 以下条目全部降到阈值以下并移除（棘轮只允许下调/删除）：
+  // - noj-core/.../contests/services/contest-similarity.ts 1315 → 门面 234 +
+  //   contest-similarity/{lexicon,normalize,fingerprint,detect}.ts
+  // - noj-cli/src/prod/lifecycle.ts 1966 → 门面 153 + prod/lifecycle/ 下各命令族
+  // - noj-cli/src/cli.ts 1476 → 177 + cli-commands/
+  // - noj-cli/src/prod/config.ts 1218 → 92 + prod/config/
 };
 
 const SCAN_ROOTS = [

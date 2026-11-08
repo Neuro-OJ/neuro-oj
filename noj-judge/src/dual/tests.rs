@@ -6,6 +6,7 @@
  * 让 `dual/mod.rs` 回到单文件规模棘轮（`scripts/check-file-size.ts`）允许的范围。
  */
 use super::pipe::forward_frame_with_timeout;
+use super::pipe::PipeWriteOutcome;
 use super::result::{build_judge_result, MSG_INVALID_SCORE};
 use super::*;
 

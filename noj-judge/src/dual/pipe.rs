@@ -34,7 +34,7 @@ pub(super) const PIPE_WRITE_TIMEOUT: Duration = Duration::from_secs(3);
 /// 不吞错误：真实写入失败（非 EPIPE 类）仍以 `Err` 返回；只有明确的
 /// 对端关闭/写入超时归为 [`PipeWriteOutcome::PeerGone`]，由调用方按协议收尾。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PipeWriteOutcome {
+pub(crate) enum PipeWriteOutcome {
     /// 帧已完整写入并 flush。
     Written,
     /// 对端 stdin 已死（EPIPE/连接重置）或写入超时；该方向不得再写。
@@ -42,7 +42,7 @@ pub(super) enum PipeWriteOutcome {
 }
 
 /// 判断写入错误是否表示「对端 stdin 已死」（EPIPE/连接重置）。
-pub(super) fn is_peer_closed_error(e: &std::io::Error) -> bool {
+pub(crate) fn is_peer_closed_error(e: &std::io::Error) -> bool {
     matches!(
         e.kind(),
         std::io::ErrorKind::BrokenPipe
@@ -56,7 +56,7 @@ pub(super) fn is_peer_closed_error(e: &std::io::Error) -> bool {
 /// 向等待方写调用级超时错误帧。
 ///
 /// 返回 [`PipeWriteOutcome`]：对端 stdin 已死时不视为致命错误，由调用方按协议收尾。
-pub(super) async fn write_timeout_frame(
+pub(crate) async fn write_timeout_frame(
     writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     id: &str,
 ) -> Result<PipeWriteOutcome> {
@@ -70,7 +70,7 @@ pub(super) async fn write_timeout_frame(
 }
 
 /// 转发一个 NDJSON 帧到对端 stdin（默认 3s 短超时）。
-pub(super) async fn forward_frame(
+pub(crate) async fn forward_frame(
     writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     frame: &Value,
 ) -> Result<PipeWriteOutcome> {
@@ -85,7 +85,7 @@ pub(super) async fn forward_frame(
 ///   调用方必须立即把该方向标记为结束并按协议转入异常收尾。
 ///
 /// 序列化失败等真实错误仍以 `Err` 返回（不吞错）。
-pub(super) async fn forward_frame_with_timeout(
+pub(crate) async fn forward_frame_with_timeout(
     writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     frame: &Value,
     timeout: Duration,

@@ -1831,8 +1831,9 @@ Deno.test("复审: restore --confirm 的日志通道在 --json 下改为 stderr�
   // 做法：读取源文件，确认 restore --confirm 分支的 log 回调包含 hasJson 分流。
   // 这是"接线级"断言（与 `verify 必须真的验签` 那类用例同一思路），
   // 比依赖深层流程到达更稳。
+  // 实现已拆到 `commands/backup.ts`（`cli.ts` 仅为门面），故读取实现文件。
   const src = await Deno.readTextFile(
-    new URL("./cli.ts", import.meta.url).pathname,
+    new URL("./commands/backup.ts", import.meta.url).pathname,
   );
   const idx = src.indexOf("restoreConfirmed({");
   assert(idx > 0, "应能找到 restoreConfirmed 调用点");
