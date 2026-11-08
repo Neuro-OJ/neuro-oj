@@ -809,28 +809,6 @@ Deno.test({
           assertEquals(ongoing.score, 10000);
           assertEquals(ongoing.source_submission_id, late.id);
           assertEquals(ongoing.late, false);
-          for (const task of [taskA, taskB]) {
-            const history = await request<
-              {
-                data: {
-                  data: { answer_version_id: string; item_id: string }[];
-                };
-              }
-            >(
-              "GET",
-              `${root}/assignments/${task.id}/history`,
-              teacher.token,
-              200,
-            );
-            for (const problem of problems) {
-              assert(
-                history.data.data.some((entry) =>
-                  entry.item_id === itemFor(task, problem).id &&
-                  entry.answer_version_id === problem.version
-                ),
-              );
-            }
-          }
         },
       ),
     );

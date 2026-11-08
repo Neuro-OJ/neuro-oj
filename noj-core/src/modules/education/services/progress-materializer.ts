@@ -1,7 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  assignmentItemHistory,
   assignmentItems,
   assignmentProgress,
   assignmentRecipients,
@@ -14,7 +13,6 @@ import {
   selectAssignmentProgress,
 } from "./progress-selection.ts";
 import { loadEducationCellRevisions } from "./progress-revisions.ts";
-import { appendAssignmentBindingHistory } from "./assignment-history.ts";
 import { recordEducationNotice } from "../contracts/facts.ts";
 
 /** 一次重算一页学生，按最新正式判定覆盖，不累加事件中的分数。 */
@@ -28,7 +26,6 @@ export async function recomputeAssignmentProgress(
       eq(assignments.id, assignmentId),
     ).for("update");
     if (!assignment?.published_at) return;
-    const history = await appendAssignmentBindingHistory(tx, assignmentId);
     const recipients = await tx.select().from(assignmentRecipients).where(and(
       eq(assignmentRecipients.assignment_id, assignmentId),
       inArray(assignmentRecipients.user_id, userIds),
@@ -81,12 +78,6 @@ export async function recomputeAssignmentProgress(
           policy_revision: resource.revision,
           resource_available: available,
         }).where(eq(assignmentItems.id, item.id));
-        const recorded = resource.revision !== item.policy_revision &&
-            resource.policy_actor_id !== null ||
-          history.changes.some((h) =>
-            h.item_id === item.id && h.revision === resource.revision &&
-            h.answer_version_id === resource.answer_version_id
-          );
         if (item.resource_available && !available) {
           await recordEducationNotice(tx, {
             domain_id: assignment.domain_id,
@@ -94,30 +85,12 @@ export async function recomputeAssignmentProgress(
             type: "resource_unavailable",
           });
         }
-        if (available && !recorded) {
+        // 版本、策略或可用性变化后通知一次；更新后条目与资源一致，重算/重试不会再进入本分支
+        if (available) {
           await recordEducationNotice(tx, {
             domain_id: assignment.domain_id,
             assignment_id: assignmentId,
             type: "assignment_changed",
-          });
-        }
-        if (!recorded) {
-          await tx.insert(assignmentItemHistory).values({
-            id: crypto.randomUUID(),
-            domain_id: assignment.domain_id,
-            item_id: item.id,
-            problem_id: item.problem_id,
-            answer_version_id: resource.answer_version_id,
-            policy_mode: resource.effective_version_mode,
-            required_version_id: resource.required_version_id,
-            policy_revision: resource.revision,
-            actor_id: item.policy_revision !== resource.revision
-              ? resource.policy_actor_id
-              : item.answer_version_id !== resource.answer_version_id
-              ? resource.version_actor_id
-              : null,
-            reason: available ? "题库策略或作答版本变化" : "资源授权失效",
-            created_at: now,
           });
         }
       }
@@ -171,6 +144,5 @@ export async function recomputeAssignmentProgress(
             sql`${assignmentProgress.projection_revision} <= excluded.projection_revision`,
         });
     }
-    return { history_pending: history.has_more };
   });
 }

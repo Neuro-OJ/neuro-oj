@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
-  assignmentItemHistory,
+  assignmentItems,
   domainProblemBindings,
   educationOutbox,
   problems,
@@ -30,7 +30,7 @@ async function drain() {
   }
 }
 
-Deno.test("版本与策略事件：消费者延迟仍补齐每一次变化，旧版本依据不改写", async () => {
+Deno.test("版本与策略事件：消费者延迟后重算仍落到最新绑定依据", async () => {
   const f = await assignmentFixture();
   const task = await createAssignment(
     f.school.slug,
@@ -63,22 +63,12 @@ Deno.test("版本与策略事件：消费者延迟仍补齐每一次变化，旧
     mode: "any",
   }, "恢复全部版本");
   await drain();
-  const history = await f.db.select().from(assignmentItemHistory);
-  const changes = history.filter((h) => h.binding_history_id !== null).sort((
-    a,
-    b,
-  ) => a.policy_revision - b.policy_revision);
-  assertEquals(changes.map((h) => h.policy_revision), [1, 2, 3]);
-  assertEquals(changes.map((h) => h.answer_version_id), [v2, f.versionId, v2]);
-  assertEquals(
-    history.find((h) => h.reason === "作业发布")?.answer_version_id,
-    f.versionId,
-  );
   await getMyAssignmentProgress(f.school.slug, task.id, f.student);
-  assertEquals(
-    (await f.db.select().from(assignmentItemHistory)).length,
-    history.length,
+  const [item] = await f.db.select().from(assignmentItems).where(
+    eq(assignmentItems.assignment_id, task.id),
   );
+  assertEquals(item.answer_version_id, v2);
+  assertEquals(item.policy_revision, 3);
 });
 
 Deno.test("真实发布：源版本发布自动记录 any 作答切换，其他域副本保持不变", async () => {

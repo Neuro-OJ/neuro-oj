@@ -119,7 +119,6 @@ export {
   processEducationEmail,
   processEducationEmailBatch,
 } from "./services/notification-email.ts";
-export { getAssignmentHistory } from "./services/history-read.ts";
 export { getEducationWorkbench } from "./services/workbench.ts";
 export type { EducationWorkbenchAssignment } from "./services/workbench.ts";
 export {

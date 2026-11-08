@@ -16,10 +16,7 @@ import { users } from "./identity.ts";
 import { domains } from "./workspace.ts";
 import { classroomMemberships, classrooms } from "./education.ts";
 import { problems, problemVersions, trainings } from "./catalog.ts";
-import {
-  domainProblemBindings,
-  problemBindingHistory,
-} from "./catalog-workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
 import { contests } from "./contest.ts";
 import type { AssignmentState } from "../../education-types.ts";
 
@@ -257,52 +254,6 @@ export const assignmentRecipients = pgTable("assignment_recipients", {
     t.user_id,
     t.assignment_id,
   ),
-}));
-
-/** 题库策略和默认作答版本变化沿革，不改写发布时依据。 */
-export const assignmentItemHistory = pgTable("assignment_item_history", {
-  id: text("id").primaryKey(),
-  domain_id: text("domain_id").notNull(),
-  item_id: text("item_id").notNull(),
-  binding_history_id: text("binding_history_id").references(() =>
-    problemBindingHistory.id
-  ),
-  problem_id: text("problem_id").notNull(),
-  answer_version_id: text("answer_version_id"),
-  policy_mode: text("policy_mode").notNull(),
-  required_version_id: text("required_version_id"),
-  policy_revision: integer("policy_revision").notNull(),
-  reason: text("reason").notNull(),
-  actor_id: text("actor_id").references(() => users.id),
-  created_at: text("created_at").notNull(),
-}, (t) => ({
-  bindingChangeUnique: unique("assignment_item_history_binding_change_unique")
-    .on(t.item_id, t.binding_history_id),
-  itemFk: foreignKey({
-    name: "assignment_item_history_item_domain_fk",
-    columns: [t.domain_id, t.item_id],
-    foreignColumns: [assignmentItems.domain_id, assignmentItems.id],
-  }),
-  sourceFk: foreignKey({
-    name: "assignment_item_history_item_problem_fk",
-    columns: [t.item_id, t.problem_id],
-    foreignColumns: [assignmentItems.id, assignmentItems.problem_id],
-  }),
-  policyCheck: check(
-    "assignment_item_history_policy_check",
-    sql`(${t.policy_mode} = 'any' AND ${t.required_version_id} IS NULL) OR
-      (${t.policy_mode} = 'exact' AND ${t.required_version_id} IS NOT NULL)`,
-  ),
-  answerFk: foreignKey({
-    name: "assignment_item_history_answer_version_fk",
-    columns: [t.problem_id, t.answer_version_id],
-    foreignColumns: [problemVersions.problem_id, problemVersions.id],
-  }),
-  requiredFk: foreignKey({
-    name: "assignment_item_history_required_version_fk",
-    columns: [t.problem_id, t.required_version_id],
-    foreignColumns: [problemVersions.problem_id, problemVersions.id],
-  }),
 }));
 
 /** 持久教学事件通过数据库租约消费，不依赖 Redis 通知可靠送达。 */

@@ -6,7 +6,6 @@ import {
   ConflictError,
 } from "../../../shared/base/errors.ts";
 import {
-  assignmentItemHistory,
   assignmentItems,
   assignmentRecipients,
   assignments,
@@ -99,19 +98,6 @@ export async function publishAssignment(
           await tx.update(assignmentItems).set(values).where(
             eq(assignmentItems.id, item.id),
           );
-          await tx.insert(assignmentItemHistory).values({
-            id: crypto.randomUUID(),
-            domain_id: assignment.domain_id,
-            item_id: item.id,
-            problem_id: item.problem_id,
-            answer_version_id: resource.version.id,
-            policy_mode: resource.binding.effective_version_mode,
-            required_version_id: resource.binding.required_version_id,
-            policy_revision: resource.binding.revision,
-            reason: "作业发布",
-            actor_id: actorId,
-            created_at: now,
-          });
         }
         const students = await assignmentStudents(
           tx,

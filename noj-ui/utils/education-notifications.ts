@@ -16,17 +16,6 @@ export interface TeachingNotice {
   created_at: string;
   read_at: string | null;
 }
-export interface AssignmentHistoryEntry {
-  id: string;
-  item_id: string;
-  display_ref: string;
-  answer_version: number | null;
-  policy_mode: 'any' | 'exact';
-  policy_revision: number;
-  reason: string;
-  actor_name: string;
-  created_at: string;
-}
 export const TEACHING_NOTICE_LABELS: Record<TeachingNoticeType, string> = {
   assignment: '收到作业',
   assignment_changed: '作业或题库口径发生变化',

@@ -99,7 +99,6 @@
 | GET | `/domains/:slug/assignments/:id/feedback/:feedbackId` | noj-core/src/modules/education/routes/interactions.ts |
 | GET | `/domains/:slug/assignments/:id/help-requests` | noj-core/src/modules/education/routes/interactions.ts |
 | GET | `/domains/:slug/assignments/:id/help-requests/:helpId` | noj-core/src/modules/education/routes/interactions.ts |
-| GET | `/domains/:slug/assignments/:id/history` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/matrix` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/matrix.csv` | noj-core/src/modules/education/routes/assignments.ts |
 | GET | `/domains/:slug/assignments/:id/progress` | noj-core/src/modules/education/routes/assignments.ts |

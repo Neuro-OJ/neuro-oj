@@ -81,7 +81,6 @@ export {
   classrooms,
 } from "./education.ts";
 export {
-  assignmentItemHistory,
   assignmentItems,
   assignmentRecipients,
   assignments,

@@ -1,7 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
-  assignmentItemHistory,
   assignmentItems,
   assignmentProgress,
   assignmentRecipients,
@@ -384,14 +383,4 @@ Deno.test("作业成绩：any 新版切换和 exact 策略沿革，正式通过�
   assertEquals(cell.status, "below_target");
   [item] = await f.db.select().from(assignmentItems);
   assertEquals(item.policy_revision, 1);
-  const history = await f.db.select().from(assignmentItemHistory);
-  assertEquals(
-    history.find((h) => h.policy_revision === 1)?.actor_id,
-    f.teacher,
-  );
-  assertEquals(
-    history.find((h) => h.answer_version_id === v2 && h.policy_mode === "any")
-      ?.actor_id,
-    f.owner,
-  );
 });
