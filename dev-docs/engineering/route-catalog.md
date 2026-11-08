@@ -54,12 +54,9 @@
 | GET | `/:id/problems` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/:id/profile` | noj-core/src/modules/access/identity/routes/users.ts |
 | GET | `/:id/questions` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/:id/stats` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/:id/stats/public` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/status` | noj-core/src/modules/evaluations/routes/submissions.ts |
 | GET | `/:id/support-package` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/template` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/:id/ui` | noj-core/src/modules/problems/routes/problem-ui.ts |
 | GET | `/:id/versions` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/versions/:versionId` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/announcements` | noj-core/src/modules/http/admin/routes/system.ts |

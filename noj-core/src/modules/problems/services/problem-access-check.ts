@@ -13,10 +13,6 @@ import {
 } from "../../../shared/workspace/types.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import {
-  guestActor,
-  userActorFromAuthenticatedId,
-} from "../../access/contracts/actor.ts";
-import {
   type ProblemAccessContext,
   type ProblemAccessInput,
   type ProblemAccessResult,
@@ -26,7 +22,6 @@ import {
   loadPublicContestSecrecy,
   type PublicContestSecrecyRef,
 } from "../../contests/contracts/read.ts";
-import { verifyContestAccess } from "../../access/contest-policy.ts";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
 
 /** 判定结果 + 触发保密的保密比赛列表（owner/管理员据此渲染保密提示）。 */
@@ -105,36 +100,4 @@ export async function evaluateProblemAccess(
     }),
     secrecy,
   };
-}
-
-/**
- * 便捷入口：可选携带请求里的 `?contest_id=` 竞赛上下文。
- *
- * 竞赛上下文校验收敛在本模块（catalog 服务层），路由层无需感知 contest 域——
- * 与 `GET /:id/questions` 委托 objective 域校验同一取向。
- *
- * @param problem 题目最小字段集。
- * @param ctx `contestId` 缺省/非法时按"无上下文"处理（保守：不因此放行）。
- * @returns 判定结果与触发保密的竞赛列表。
- */
-export async function evaluateProblemAccessWithContestId(
-  problem: ProblemAccessInput,
-  ctx: {
-    viewerId: string | null;
-    isAdmin: boolean;
-    contestId?: string | null;
-  },
-): Promise<ProblemAccessEvaluation> {
-  const contestAccess = ctx.contestId
-    ? await verifyContestAccess(
-      ctx.viewerId ? userActorFromAuthenticatedId(ctx.viewerId) : guestActor(),
-      ctx.contestId,
-      problem.id,
-    )
-    : null;
-  return await evaluateProblemAccess(problem, {
-    viewerId: ctx.viewerId,
-    isAdmin: ctx.isAdmin,
-    contestAccess,
-  });
 }

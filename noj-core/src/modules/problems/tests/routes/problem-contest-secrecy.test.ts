@@ -288,25 +288,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "保密规则: 公开统计接口对匿名 403（不留统计侧预言机）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const { problemId, contestId } = await setupRunningPublicContest();
-    try {
-      const res = await jsonRequest(
-        app,
-        `/api/v1/problems/${problemId}/stats/public`,
-      );
-      assertEquals(res.status, 403);
-    } finally {
-      await cleanup(contestId, problemId);
-    }
-  },
-});
-
-Deno.test({
   name: "保密规则: starter code 模板对非 owner 403（此前无访问校验）",
   sanitizeResources: false,
   sanitizeOps: false,
