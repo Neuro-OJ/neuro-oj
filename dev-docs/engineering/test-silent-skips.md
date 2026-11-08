@@ -225,7 +225,7 @@
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 152 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 249 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 288 | early-return |
-| noj-tests/e2e/helper.ts | 926 | ignore |
+| noj-tests/e2e/helper.ts | 931 | ignore |
 | noj-tests/e2e/identity/auth.test.ts | 21 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 35 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 48 | early-return |

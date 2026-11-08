@@ -16,18 +16,32 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
-/** 只读取本域题单；作者身份不能绕过域进入政策。 */
+/** 内部 UUID 形态；其余视为对外公开编号（`public_id`，旧链接使用）。 */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 只读取本域题单；作者身份不能绕过域进入政策。
+ *
+ * `trainingRef` 接受内部 UUID 或 `public_id`：旧实例级链接
+ * `/trainings/<public_id>` 由前端直接跳转到域内页面。
+ */
 export async function resolveDomainTraining(
   slug: string,
-  trainingId: string,
+  trainingRef: string,
   actorId: string | null,
   executor: Executor = getDb(),
 ) {
   const workspace = await loadWorkspace(slug, actorId, { executor });
   const [row] = await executor.select({ training: trainings, source: domains })
     .from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
-    .where(eq(trainings.id, trainingId));
+    .where(
+      UUID_PATTERN.test(trainingRef)
+        ? eq(trainings.id, trainingRef)
+        : eq(trainings.public_id, trainingRef),
+    );
   if (!row) throw new NotFoundError("题单不存在或不可访问");
+  const trainingId = row.training.id;
   const shared = row.source.id !== workspace.domain.id;
   if (shared) throw new NotFoundError("请先将题单独立复制到当前域");
   if (
@@ -177,7 +191,13 @@ export async function lockTrainingExpansion(
 export async function listDomainTrainings(
   slug: string,
   actorId: string | null,
-  query: { page: number; limit: number; keyword?: string },
+  query: {
+    page: number;
+    limit: number;
+    keyword?: string;
+    /** 按创建者过滤（用户主页「TA 的题单」）；他人只见已发布题单。 */
+    createdBy?: string;
+  },
 ) {
   const workspace = await loadWorkspace(slug, actorId), db = getDb();
   const all = workspace.platformAdmin ||
@@ -190,6 +210,7 @@ export async function listDomainTrainings(
         ? eq(trainings.created_by, actorId)
         : undefined,
     ),
+    query.createdBy ? eq(trainings.created_by, query.createdBy) : undefined,
     query.keyword ? ilike(trainings.title, `%${query.keyword}%`) : undefined,
   );
   const rowsQuery = () =>
@@ -222,6 +243,8 @@ export async function listDomainTrainings(
         revision: training.revision,
         visibility: training.visibility,
         state: training.state,
+        created_by: training.created_by,
+        updated_at: training.updated_at,
         can_edit: owned &&
           (all ||
             workspace.context.domainPermissions.has("training:write_any")),

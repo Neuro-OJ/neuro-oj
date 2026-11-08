@@ -16,15 +16,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: destination.path, query, hash: to.hash }, { redirectCode: 301, replace: true });
   }
   if ('trainingRef' in destination) {
-    const { api } = useApi();
-    const result = await api.get<{ data: { id: string } }>(
-      `/api/v1/trainings/${encodeURIComponent(destination.trainingRef)}`,
-      { silent: true },
-    );
-    return navigateTo({ path: `/d/main/trainings/${encodeURIComponent(result.data.id)}`, query, hash: to.hash }, {
-      redirectCode: 301,
-      replace: true,
-    });
+    // 旧链接的 public_id（tr-xxx）直接交给域内题单页，由它按域接口读取；无域
+    // `/api/v1/trainings/:id` 已删除，不再经兼容门面换取内部 UUID。
+    const path = `/d/main/trainings/${encodeURIComponent(destination.trainingRef)}`;
+    return navigateTo({ path, query, hash: to.hash }, { redirectCode: 301, replace: true });
   }
   let reference = defaultProblemReference(destination.problemRef);
   if (!reference && !/^U\d+$/.test(destination.problemRef)) {

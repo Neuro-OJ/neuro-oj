@@ -125,6 +125,7 @@ domainTrainingsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
       page,
       limit: perPage,
       keyword: c.req.query("keyword"),
+      createdBy: c.req.query("created_by"),
     }),
   );
 });

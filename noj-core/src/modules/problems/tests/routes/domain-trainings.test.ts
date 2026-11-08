@@ -38,6 +38,17 @@ Deno.test("域题单 API：创建和编辑验证域及角色、revision；私有
   const detail = await jsonRequest(app, path, { token: owner });
   assertEquals(detail.status, 200);
   assertEquals((await detail.json()).data.items[0].display_ref, "1001");
+  // 旧实例级链接 `/trainings/<public_id>` 直接跳到域内页面，域接口须接受 public_id
+  assertEquals(typeof training.public_id, "string");
+  const byPublicId = await jsonRequest(app, `${base}/${training.public_id}`, {
+    token: owner,
+  });
+  assertEquals(byPublicId.status, 200);
+  assertEquals((await byPublicId.json()).data.id, training.id);
+  assertEquals(
+    (await jsonRequest(app, `${base}/tr-not-exist`, { token: owner })).status,
+    404,
+  );
   assertEquals(
     (await jsonRequest(app, base, {
       method: "POST",

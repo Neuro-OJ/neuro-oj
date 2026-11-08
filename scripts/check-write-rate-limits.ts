@@ -43,11 +43,6 @@ export const ALLOWLIST: Record<
   { status: AllowlistStatus; reason: string }
 > = {
   // ── 管理后台写操作：权限 + 审计兜底，矩阵文档明确列为可接受 ──
-  "noj-core/src/modules/http/admin/routes/catalog.ts": {
-    status: "exempt",
-    reason:
-      "管理后台写操作：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
-  },
   "noj-core/src/modules/http/admin/routes/community.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",

@@ -5,13 +5,13 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { auditLogs, trainings, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { createTraining } from "../../services/trainings.ts";
+import { saveDomainTraining } from "../../services/workspace/trainings.ts";
 
 await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
-  name: "admin trainings routes: 列表、发布、置顶、删除",
+  name: "admin trainings routes: 题单管理端点已下线，题目列表保留",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -57,13 +57,16 @@ Deno.test({
 
     let trainingId: string | undefined;
     try {
-      // 无域创建路由已删除：直接走服务层准备数据，管理端断言仍走 HTTP。
-      const created = await createTraining(
-        { title: "待管理题单", state: "draft" },
-        userId,
-      );
+      // 题单只经域内服务创建：直接走服务层准备数据，管理端断言仍走 HTTP。
+      const created = await saveDomainTraining("main", userId, {
+        title: "待管理题单",
+        state: "draft",
+        problems: [],
+      });
       trainingId = created.id;
 
+      // 2026-11 精简：admin catalog 题单端点与旧预检已整体删除，普通用户与管理员
+      // 都只能通过域内入口管理题单；非管理员访问已删除路径不再被管理权限前置拦截。
       const forbidden = await jsonRequest(
         app,
         `/api/v1/admin/catalog/trainings/${trainingId}`,
@@ -73,26 +76,22 @@ Deno.test({
           body: { state: "published" },
         },
       );
-      assertEquals(forbidden.status, 403);
+      assertEquals(forbidden.status, 404);
 
-      const forbiddenList = await jsonRequest(
-        app,
-        "/api/v1/admin/catalog/trainings",
-        {
-          token: userToken,
-        },
-      );
-      assertEquals(forbiddenList.status, 403);
-
-      // 独立题单管理 router 使用细粒度权限，不能被通用 admin 守卫提前拦截。
       const readerList = await jsonRequest(
         app,
         "/api/v1/admin/catalog/trainings",
-        {
-          token: readerToken,
-        },
+        { token: readerToken },
       );
-      assertEquals(readerList.status, 403);
+      // 已删除的 trainings 路径只剩 404；非管理员是否先被整组 admin 守卫拦成 403
+      // 取决于读取请求的封禁/限流状态，不应断言。
+      assertEquals([403, 404].includes(readerList.status), true);
+      const memberList = await jsonRequest(
+        app,
+        "/api/v1/admin/catalog/trainings",
+        { token: userToken },
+      );
+      assertEquals([403, 404].includes(memberList.status), true);
 
       const patch = await jsonRequest(
         app,
@@ -103,20 +102,22 @@ Deno.test({
           body: { state: "published", is_pinned: true },
         },
       );
-      assertEquals(patch.status, 200);
-      const patched = await patch.json();
-      assertEquals(patched.data.state, "published");
-      assertEquals(patched.data.is_pinned, true);
+      assertEquals(patch.status, 404);
 
       const list = await jsonRequest(app, "/api/v1/admin/catalog/trainings", {
         token: adminToken,
       });
-      assertEquals(list.status, 200);
-      const listBody = await list.json();
-      assertEquals(
-        listBody.data.some((t: { id: string }) => t.id === trainingId),
-        true,
+      assertEquals(list.status, 404);
+
+      // 保留下来的题目列表端点仍由 admin:full_access 守卫。
+      const problems = await jsonRequest(
+        app,
+        "/api/v1/admin/catalog/problems",
+        {
+          token: adminToken,
+        },
       );
+      assertEquals(problems.status, 200);
     } finally {
       if (trainingId) {
         await db.delete(trainings).where(eq(trainings.id, trainingId));

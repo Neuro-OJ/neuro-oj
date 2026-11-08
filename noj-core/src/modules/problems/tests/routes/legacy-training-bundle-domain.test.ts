@@ -2,7 +2,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { zipSync } from "fflate";
-import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domainLimits,
@@ -14,20 +13,21 @@ import {
   submissions,
   trainings,
 } from "../../../../shared/db/schema.ts";
-import { AppError } from "../../../../shared/base/errors.ts";
+import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   createDomain,
   DEFAULT_DOMAIN_ID,
 } from "../../../access/workspace/index.ts";
-import {
-  bindPublishedProblemForTest,
-  jsonRequest,
-} from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
   createDefaultCatalogToken,
   resetDbForTest,
 } from "../default-fixture.ts";
 import { saveDomainTraining } from "../../services/workspace/trainings.ts";
+import {
+  readDomainTraining,
+} from "../../services/workspace/training-access.ts";
+import { listUserTrainings } from "../../services/trainings.ts";
 import {
   importDomainProblem,
   setDomainProblemBindingState,
@@ -124,47 +124,31 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     is_accepted: true,
     created_at: now,
   });
-  const app = createApp();
-  const path = `/api/v1/trainings/${training.id}`;
-  const read = await jsonRequest(app, path + "/problems", { token });
-  const first = (await read.json()).data[0];
-  assertEquals(first.title, "版本2");
-  assertEquals(first.display_id, localRef);
-  assertEquals(Object.hasOwn(first, "type"), false);
-  assertEquals(first.accepted, false);
-  assertEquals(imported.binding.problem_id === id, false);
-  const list = await jsonRequest(app, "/api/v1/trainings", { token });
+  const profile = await listUserTrainings(actor, actor, {
+    page: 1,
+    perPage: 100,
+  });
   assertEquals(
-    (await list.json()).data.some((row: { id: string }) =>
-      row.id === outside.id
-    ),
+    profile.data.some((row) => row.id === outside.id),
     false,
+    "按创建者列出 main 题单时不得混入其他域的题单",
   );
   assertEquals(
-    (await jsonRequest(app, `/api/v1/trainings/${outside.id}`, { token }))
-      .status,
-    404,
+    profile.data.some((row) => row.id === training.id),
+    true,
   );
+  const read = await readDomainTraining("main", training.id, actor);
+  const first = read.items[0]!;
+  assertEquals(first.resource_available, true);
+  assertEquals(first.display_ref, localRef);
   assertEquals(
-    (await jsonRequest(app, `/api/v1/trainings/${outside.public_id}`, {
-      token,
-    })).status,
-    404,
+    read.items[0]!.problem_id === id,
+    false,
+    "main 题单引用的是导入后的副本",
   );
-  assertEquals(
-    (await jsonRequest(app, `/api/v1/trainings/${outside.id}`, {
-      method: "PUT",
-      token,
-      body: { title: "越域" },
-    })).status,
-    404,
-  );
-  const unavailable = await jsonRequest(app, path + "/problems", { token });
-  assertEquals((await unavailable.json()).data[0].title, "版本2");
-  assertEquals(
-    (await jsonRequest(app, path, { token }).then((res) => res.json())).data
-      .problem_count,
-    1,
+  await assertRejects(
+    () => readDomainTraining("main", outside.id, actor),
+    NotFoundError,
   );
   await setDomainProblemBindingState(
     "main",
@@ -174,17 +158,24 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     { disabled: true, reason: "目标域独立下架" },
   );
   assertEquals(
-    (await (await jsonRequest(app, path + "/problems", { token })).json()).data,
-    [],
+    (await readDomainTraining("main", training.id, actor)).items[0]!
+      .resource_available,
+    false,
   );
+  // main 域被挂起后，非平台管理员不能经域内读取入口访问题单。
   await db.update(domains).set({ status: "suspended" }).where(
     eq(domains.id, DEFAULT_DOMAIN_ID),
   );
-  assertEquals(
-    (await jsonRequest(app, path, {
-      token: await createDefaultCatalogToken("member"),
-    })).status,
-    404,
+  await assertRejects(
+    async () =>
+      await readDomainTraining(
+        "main",
+        training.id,
+        await createDefaultCatalogToken("member").then((t) =>
+          decodeJwt(t).sub!
+        ),
+      ),
+    AppError,
   );
 });
 

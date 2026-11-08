@@ -30,7 +30,6 @@
 | DELETE | `/sanctions/:sanctionId` | noj-core/src/modules/http/admin/routes/community.ts |
 | DELETE | `/settings/:key` | noj-core/src/modules/http/admin/routes/system.ts |
 | DELETE | `/submissions/:id` | noj-core/src/modules/http/admin/routes/submission.ts |
-| DELETE | `/trainings/:id` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | DELETE | `/users/:id` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/` | noj-core/src/modules/evaluations/routes/queue.ts |
 | GET | `/` | noj-core/src/modules/evaluations/routes/submissions.ts |
@@ -38,7 +37,6 @@
 | GET | `/` | noj-core/src/modules/platform/system/routes/announcements.ts |
 | GET | `/` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/` | noj-core/src/modules/problems/routes/tags.ts |
-| GET | `/` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/` | noj-core/src/modules/read-models/queries/routes/rankings.ts |
 | GET | `/` | noj-core/src/modules/read-models/search/routes/search.ts |
 | GET | `/:id` | noj-core/src/modules/evaluations/routes/submissions.ts |
@@ -46,12 +44,10 @@
 | GET | `/:id` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
 | GET | `/:id` | noj-core/src/modules/platform/system/routes/announcements.ts |
 | GET | `/:id` | noj-core/src/modules/problems/routes/problems.ts |
-| GET | `/:id` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/:id/avatar` | noj-core/src/modules/access/identity/routes/users.ts |
 | GET | `/:id/draft` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/draft/preflight` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/items` | noj-core/src/modules/http/admin/routes/submission-jobs.ts |
-| GET | `/:id/problems` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/:id/profile` | noj-core/src/modules/access/identity/routes/users.ts |
 | GET | `/:id/questions` | noj-core/src/modules/problems/routes/problems.ts |
 | GET | `/:id/status` | noj-core/src/modules/evaluations/routes/submissions.ts |
@@ -69,7 +65,6 @@
 | GET | `/checkin` | noj-core/src/modules/read-models/queries/routes/rankings.ts |
 | GET | `/comments/pending` | noj-core/src/modules/http/admin/routes/community.ts |
 | GET | `/config` | noj-core/src/modules/communication/community/routes/community.ts |
-| GET | `/containing` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/contests` | noj-core/src/modules/http/admin/routes/contest.ts |
 | GET | `/contests/:id` | noj-core/src/modules/http/admin/routes/contest.ts |
 | GET | `/contests/:id/anti-cheat/similar-submissions` | noj-core/src/modules/http/admin/routes/contest.ts |
@@ -196,7 +191,6 @@
 | GET | `/me/submissions` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/me/submissions/:kind/:id` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
 | GET | `/me/submissions/submission/:id/artifact` | noj-core/src/modules/evaluations/routes/own-submission-history.ts |
-| GET | `/mine` | noj-core/src/modules/problems/routes/trainings.ts |
 | GET | `/oauth/:provider` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oauth/:provider/callback` | noj-core/src/modules/access/identity/routes/auth.ts |
 | GET | `/oauth/accounts` | noj-core/src/modules/access/identity/routes/auth.ts |
@@ -207,7 +201,6 @@
 | GET | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/posts/counts` | noj-core/src/modules/communication/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/modules/http/admin/routes/catalog.ts |
-| GET | `/problems/:id/preflight` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | GET | `/problems/:id/self-tests` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | GET | `/public/recent` | noj-core/src/modules/evaluations/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/modules/evaluations/routes/sse.ts |
@@ -232,7 +225,6 @@
 | GET | `/today` | noj-core/src/modules/access/identity/routes/checkin.ts |
 | GET | `/today-stats` | noj-core/src/modules/evaluations/routes/submissions.ts |
 | GET | `/total-stats` | noj-core/src/modules/evaluations/routes/submissions.ts |
-| GET | `/trainings` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | GET | `/users` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/users/:id/bans` | noj-core/src/modules/http/admin/routes/identity.ts |
 | GET | `/users/:userId/sanctions` | noj-core/src/modules/http/admin/routes/community.ts |
@@ -256,7 +248,6 @@
 | PATCH | `/domains/:slug/trainings/:id` | noj-core/src/modules/problems/routes/domain-trainings.ts |
 | PATCH | `/posts/:postId` | noj-core/src/modules/communication/community/routes/community.ts |
 | PATCH | `/posts/:postId/official` | noj-core/src/modules/communication/community/routes/community.ts |
-| PATCH | `/trainings/:id` | noj-core/src/modules/http/admin/routes/catalog.ts |
 | PATCH | `/users/:id/ban` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PATCH | `/users/:id/role` | noj-core/src/modules/http/admin/routes/identity.ts |
 | PATCH | `/users/:id/unban` | noj-core/src/modules/http/admin/routes/identity.ts |

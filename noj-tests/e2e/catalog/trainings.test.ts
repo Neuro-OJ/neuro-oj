@@ -97,7 +97,10 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   }
   const trainingId = (created.body as { data: { id: string } }).data.id;
 
-  const hidden = await apiGet(`/api/v1/trainings/${trainingId}`, other.token);
+  const hidden = await apiGet(
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    other.token,
+  );
   if (hidden.status !== 404) {
     throw new Error(`私有题单应对他人 404: ${hidden.status}`);
   }
@@ -110,33 +113,55 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   );
   await pollSubmission(user.token, subId);
   const problems = await apiGet(
-    `/api/v1/trainings/${trainingId}/problems`,
+    `/api/v1/domains/main/trainings/${trainingId}`,
     user.token,
   );
   if (problems.status !== 200) {
-    throw new Error(`取题单题目失败: ${problems.status}`);
+    throw new Error(`取题单详情失败: ${problems.status}`);
   }
-  const problemsData = (problems.body as {
-    data: Array<{ problem_id: string; accepted: boolean }>;
+  const problemsBody = (problems.body as {
+    data: {
+      items: Array<{
+        problem_id: string;
+        resource_available: boolean;
+        can_read: boolean;
+      }>;
+    };
   }).data;
+  const problemsData = problemsBody.items;
+  // 题单详情按域内授权逐题返回可读性与可用性；AC 进度改由提交页展示。
   const sample = problemsData.find((p) => p.problem_id === sampleProblemId);
-  if (!sample?.accepted) {
-    throw new Error("AC 后进度应为 true");
+  if (!sample || !sample.resource_available || !sample.can_read) {
+    throw new Error("样例题应在题单中可读可用");
   }
 
-  const patched = await apiPatch(
-    `/api/v1/admin/catalog/trainings/${trainingId}`,
-    { state: "published", is_pinned: true },
+  // 无域 `/api/v1/admin/catalog/trainings/:id` 已删除；发布改走域内 PATCH（If-Match）。
+  const detail = await apiGet(
+    `/api/v1/domains/main/trainings/${trainingId}`,
     adminToken,
+  );
+  const detailData = (detail.body as { data: { revision: number } }).data;
+  const patched = await apiPatch(
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    {
+      title: "E2E 题单",
+      description: "",
+      state: "published",
+      problems: [String(sourceNumber), "1001"],
+    },
+    adminToken,
+    { "If-Match": String(detailData.revision) },
   );
   if (patched.status !== 200) {
     throw new Error(`管理员设 published 失败: ${patched.status}`);
   }
 
-  const list = await apiGet("/api/v1/trainings");
-  const listData = (list.body as { data: { id: string }[] }).data;
+  const list = await apiGet(
+    `/api/v1/domains/main/trainings?keyword=${encodeURIComponent("E2E 题单")}`,
+  );
+  const listData = (list.body as { items: { id: string }[] }).items;
   if (!listData.some((t) => t.id === trainingId)) {
-    throw new Error("公开列表应包含该题单");
+    throw new Error("公开列表应包含已发布题单");
   }
 
   const deleted = await apiDelete(
@@ -151,11 +176,11 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   });
   if (withdrawn.status !== 200) throw new Error("更新源题可见性失败");
   const afterDelete = await apiGet(
-    `/api/v1/trainings/${trainingId}/problems`,
+    `/api/v1/domains/main/trainings/${trainingId}`,
   );
   const afterData = (afterDelete.body as {
-    data: Array<{ problem_id: string }>;
-  }).data;
+    data: { items: Array<{ problem_id: string }> };
+  }).data.items;
   if (!afterData.some((p) => p.problem_id === problemId)) {
     throw new Error("公开域已发布源题在题单中应保持可见");
   }
