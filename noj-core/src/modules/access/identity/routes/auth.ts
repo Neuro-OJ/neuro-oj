@@ -514,6 +514,10 @@ auth.get("/oauth/:provider/callback", async (c) => {
 
 /** 把回调异常映射为前端可读的 `oauth_error` 码（保留语义，不吞同意门槛）。 */
 function oauthErrorCode(error: unknown): string {
+  // 封禁不是"稍后重试"能解决的问题：保留语义码，前端提示联系管理员
+  if (error instanceof ForbiddenError && error.code === "USER_BANNED") {
+    return "user_banned";
+  }
   if (error instanceof BadRequestError) {
     if (error.code === "LEGAL_CONSENT_REQUIRED") {
       return "legal_consent_required";

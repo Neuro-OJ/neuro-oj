@@ -61,7 +61,7 @@ export interface SettingValue {
 export interface SystemSettingListItem {
   key: string;
   type: SettingType;
-  /** 掩码后的值（is_secret=true 时显示 abc***xyz） */
+  /** 掩码后的值（is_secret=true 时已配置为固定 `********`，未配置为空串） */
   effective_value: unknown;
   /** 原始 JSON 编码字符串（调试用，前端不展示明文） */
   raw_value: string;
@@ -216,18 +216,20 @@ export function notifySettingsChanged(key?: string): void {
 
 // ─── 敏感字段掩码 ───────────────────────────────────────────
 
+/** 敏感字段已配置时的固定掩码（不含任何原文字符） */
+export const SECRET_MASK = "********";
+
 /**
- * 敏感字段掩码：保留前 3 后 3 字符，中间 `***`。
- * - 长度 ≤ 6 的值整体掩码为 `***`
- * - 空字符串保持空（不算 secret）
- * - 非字符串值先 JSON.stringify 再掩码
+ * 敏感字段掩码：已配置返回固定掩码 `********`，**不回显任何原文字符**。
+ * 首尾回显（旧版 `abc***xyz`）会泄露密钥片段，且短密钥可被部分还原，已移除。
+ * - null / undefined / 空字符串返回空串（表示"未配置"，前端据此显示"未配置"）
+ * - 非字符串值先 JSON.stringify 再判断，避免字符串化的 `""` 被当作已配置
  */
 export function maskSecret(value: unknown): string {
   if (value === null || value === undefined) return "";
   const str = typeof value === "string" ? value : JSON.stringify(value);
   if (str.length === 0) return "";
-  if (str.length <= 6) return "***";
-  return `${str.slice(0, 3)}***${str.slice(-3)}`;
+  return SECRET_MASK;
 }
 
 /** SHA-256 哈希脱敏：计算值的 SHA-256 摘要，返回 `sha256$<前16位hex>` */

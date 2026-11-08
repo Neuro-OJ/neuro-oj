@@ -1,7 +1,8 @@
 //! 调用级超时追踪（judge 侧 RPC 超时实现，纯逻辑、零容器依赖）。
 //!
 //! 负责：
-//! - call / capability 帧的超时登记（按帧内 timeout_ms，缺省回退题目级默认）
+//! - call / capability 帧的超时登记（按帧内 timeout_ms，缺省回退题目级默认；
+//!   帧值受 judge 硬上限 `max_call_timeout_ms` 截断，0 表示不限制）
 //! - cap_reg 帧维护 capability → timeout_ms 映射
 //! - 响应帧按 id 命中判定（未命中 = 迟到/未知响应，应丢弃）
 //! - 已超时调用批量摘除（供调用方写 Timeout 错误帧）
@@ -33,25 +34,42 @@ pub struct InFlightTracker {
     inflight: HashMap<String, InFlightEntry>,
     cap_timeouts: HashMap<String, u64>,
     default_call_timeout_ms: u64,
+    /// judge 侧硬上限：evaluator 帧里的 timeout_ms 不能超过它（0 表示不限制）。
+    max_call_timeout_ms: u64,
 }
 
 impl InFlightTracker {
-    /// 以题目级默认超时创建追踪器。
-    pub fn new(default_call_timeout_ms: u64) -> Self {
+    /// 以题目级默认超时与 judge 硬上限创建追踪器。
+    ///
+    /// `max_call_timeout_ms` 对应 `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS`，0 表示不限制
+    /// （与 `clamp_runtime_config` 语义一致）：evaluator 由题目作者编写，不能在帧里
+    /// 用任意大的 `timeout_ms` 绕过硬上限把评测挂住。
+    pub fn new(default_call_timeout_ms: u64, max_call_timeout_ms: u64) -> Self {
         Self {
             inflight: HashMap::new(),
             cap_timeouts: HashMap::new(),
             default_call_timeout_ms,
+            max_call_timeout_ms,
         }
     }
 
-    /// 从帧中读取 timeout_ms（正整数才生效，否则回退默认）。
+    /// 取 judge 硬上限截断后的超时值（上限为 0 时原样返回）。
+    fn cap_timeout(&self, ms: u64) -> u64 {
+        if self.max_call_timeout_ms > 0 {
+            ms.min(self.max_call_timeout_ms)
+        } else {
+            ms
+        }
+    }
+
+    /// 从帧中读取 timeout_ms（正整数才生效，否则回退默认），再按硬上限截断。
     fn resolve_timeout(&self, frame: &Value) -> u64 {
-        frame
+        let requested = frame
             .get("timeout_ms")
             .and_then(Value::as_u64)
             .filter(|&t| t > 0)
-            .unwrap_or(self.default_call_timeout_ms)
+            .unwrap_or(self.default_call_timeout_ms);
+        self.cap_timeout(requested)
     }
 
     /// 处理 evaluator 的 call 帧：登记 deadline，返回 (call_id, 生效超时)。
@@ -78,6 +96,7 @@ impl InFlightTracker {
             .get("timeout_ms")
             .and_then(Value::as_u64)
             .filter(|&t| t > 0)
+            .map(|ms| self.cap_timeout(ms))
         {
             Some(ms) => {
                 self.cap_timeouts.insert(name.to_string(), ms);
@@ -92,11 +111,13 @@ impl InFlightTracker {
     pub fn on_capability_frame(&mut self, frame: &Value, now: Instant) -> Option<(String, u64)> {
         let id = frame.get("id").and_then(Value::as_str)?.to_string();
         let name = frame.get("name").and_then(Value::as_str).unwrap_or("");
-        let timeout_ms = self
-            .cap_timeouts
-            .get(name)
-            .copied()
-            .unwrap_or(self.default_call_timeout_ms);
+        // 注册时已按硬上限截断；缺省回退默认值同样截断（默认值可能来自题目帧或配置）。
+        let timeout_ms = self.cap_timeout(
+            self.cap_timeouts
+                .get(name)
+                .copied()
+                .unwrap_or(self.default_call_timeout_ms),
+        );
         self.inflight.insert(
             id.clone(),
             InFlightEntry {
@@ -158,7 +179,7 @@ mod tests {
     #[test]
     fn test_new_uses_default_timeout() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         let (id, ms) = t.on_call_frame(&call_frame("a", None), now).unwrap();
         assert_eq!(id, "a");
         assert_eq!(ms, 2000);
@@ -167,7 +188,7 @@ mod tests {
     #[test]
     fn test_call_frame_explicit_timeout_wins() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         let (_, ms) = t.on_call_frame(&call_frame("b", Some(500)), now).unwrap();
         assert_eq!(ms, 500);
     }
@@ -175,7 +196,7 @@ mod tests {
     #[test]
     fn test_call_frame_invalid_timeout_falls_back() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         let f = json!({"type": "call", "id": "c", "fn": "solve", "args": [], "timeout_ms": 0});
         let (_, ms) = t.on_call_frame(&f, now).unwrap();
         assert_eq!(ms, 2000);
@@ -187,7 +208,7 @@ mod tests {
     #[test]
     fn test_call_frame_missing_id_returns_none() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         let f = json!({"type": "call", "fn": "solve", "args": []});
         assert!(t.on_call_frame(&f, now).is_none());
     }
@@ -195,7 +216,7 @@ mod tests {
     #[test]
     fn test_capability_uses_registered_timeout() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_cap_reg_frame(&json!({"type": "cap_reg", "name": "ping", "timeout_ms": 9000}));
         let f = json!({"type": "capability", "id": "cap-1", "name": "ping", "args": []});
         let (_, ms) = t.on_capability_frame(&f, now).unwrap();
@@ -205,7 +226,7 @@ mod tests {
     #[test]
     fn test_capability_falls_back_when_not_registered() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         let f = json!({"type": "capability", "id": "cap-2", "name": "unknown", "args": []});
         let (_, ms) = t.on_capability_frame(&f, now).unwrap();
         assert_eq!(ms, 2000);
@@ -214,7 +235,7 @@ mod tests {
     #[test]
     fn test_cap_reg_re_registration_overwrites_and_none_deletes() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_cap_reg_frame(&json!({"type": "cap_reg", "name": "ping", "timeout_ms": 9000}));
         t.on_cap_reg_frame(&json!({"type": "cap_reg", "name": "ping", "timeout_ms": 1000}));
         let f = json!({"type": "capability", "id": "cap-3", "name": "ping", "args": []});
@@ -228,7 +249,7 @@ mod tests {
     #[test]
     fn test_resolve_response_hit_removes_and_returns_true() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_call_frame(&call_frame("r1", None), now).unwrap();
         assert!(t.resolve_response("r1"));
         assert!(!t.resolve_response("r1"), "已移除，二次命中应为 false");
@@ -236,14 +257,14 @@ mod tests {
 
     #[test]
     fn test_resolve_response_unknown_false() {
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         assert!(!t.resolve_response("ghost"));
     }
 
     #[test]
     fn test_expire_now_returns_expired_and_removes() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_call_frame(&call_frame("fast", Some(10)), now).unwrap();
         t.on_call_frame(&call_frame("slow", Some(10_000)), now)
             .unwrap();
@@ -263,7 +284,7 @@ mod tests {
     #[test]
     fn test_capability_expire_side_is_solution() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_cap_reg_frame(&json!({"type": "cap_reg", "name": "ping", "timeout_ms": 10}));
         let f = json!({"type": "capability", "id": "cap-x", "name": "ping", "args": []});
         t.on_capability_frame(&f, now).unwrap();
@@ -275,7 +296,7 @@ mod tests {
     #[test]
     fn test_next_deadline_min_and_empty() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         assert!(t.next_deadline().is_none());
         t.on_call_frame(&call_frame("x", Some(100)), now).unwrap();
         t.on_call_frame(&call_frame("y", Some(50)), now).unwrap();
@@ -284,9 +305,56 @@ mod tests {
     }
 
     #[test]
+    fn test_frame_timeout_capped_by_max() {
+        let now = Instant::now();
+        let mut t = InFlightTracker::new(2000, 5000);
+        let (_, ms) = t
+            .on_call_frame(&call_frame("big", Some(600_000)), now)
+            .unwrap();
+        assert_eq!(ms, 5000, "帧值超过硬上限必须被截断");
+        // 未超上限时原样生效
+        let (_, ms2) = t
+            .on_call_frame(&call_frame("small", Some(1000)), now)
+            .unwrap();
+        assert_eq!(ms2, 1000);
+    }
+
+    #[test]
+    fn test_capability_timeout_capped_by_max() {
+        let now = Instant::now();
+        let mut t = InFlightTracker::new(2000, 5000);
+        t.on_cap_reg_frame(&json!({"type": "cap_reg", "name": "slow", "timeout_ms": 600_000}));
+        let f = json!({"type": "capability", "id": "cap-big", "name": "slow", "args": []});
+        assert_eq!(t.on_capability_frame(&f, now).unwrap().1, 5000);
+    }
+
+    #[test]
+    fn test_zero_max_means_unlimited() {
+        let now = Instant::now();
+        let mut t = InFlightTracker::new(2000, 0);
+        let (_, ms) = t
+            .on_call_frame(&call_frame("big", Some(600_000)), now)
+            .unwrap();
+        assert_eq!(ms, 600_000, "上限为 0 表示不限制");
+    }
+
+    #[test]
+    fn test_missing_timeout_falls_back_to_default_then_capped() {
+        let now = Instant::now();
+        // 默认值本身超过上限时也要截断
+        let mut t = InFlightTracker::new(9000, 5000);
+        let (_, ms) = t.on_call_frame(&call_frame("no-ts", None), now).unwrap();
+        assert_eq!(ms, 5000);
+        // 默认值在上限内时使用默认值
+        let mut t2 = InFlightTracker::new(2000, 5000);
+        let (_, ms2) = t2.on_call_frame(&call_frame("no-ts-2", None), now).unwrap();
+        assert_eq!(ms2, 2000);
+    }
+
+    #[test]
     fn test_concurrent_calls_have_independent_deadlines() {
         let now = Instant::now();
-        let mut t = InFlightTracker::new(2000);
+        let mut t = InFlightTracker::new(2000, 0);
         t.on_call_frame(&call_frame("c1", Some(30)), now).unwrap();
         t.on_call_frame(&call_frame("c2", Some(200)), now).unwrap();
         // 30ms 时只有 c1 过期

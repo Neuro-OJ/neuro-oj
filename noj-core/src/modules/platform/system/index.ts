@@ -27,6 +27,7 @@ export {
   registerSettingsInvalidationListener,
   reloadSingleKey,
   resetSetting,
+  SECRET_MASK,
   updateSetting,
 } from "./services/system-settings.ts";
 export type {

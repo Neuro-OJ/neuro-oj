@@ -32,10 +32,12 @@ import {
   assertSubnetCidr,
   DEFAULT_DRILL_PROJECT_NAME,
   DRILL_NETWORK_NAME,
+  DRILL_OUTBOUND_ENV_OVERRIDES,
   drillCleanupArgs,
   drillComposeArgs,
   drillDirName,
   readEnvValues,
+  renderDisableOutboundIntegrationsSql,
   renderDrillOverride,
   resolveReportPath,
   uniqueDrillProjectName,
@@ -440,14 +442,56 @@ Deno.test("T19 隔离性：覆盖 YAML 清除 ports 映射并只改演练网络�
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
+Deno.test("T19 隔离性：覆盖文件在 core.environment 中禁用出站集成", () => {
+  const yaml = renderDrillOverride("172.29.0.0/16");
+  assertStringIncludes(yaml, "services:\n  core:\n    environment:\n");
+  assertStringIncludes(yaml, `      EMAIL_PROVIDER: "disabled"\n`);
+  for (
+    const key of [
+      "OAUTH_GITHUB_CLIENT_ID",
+      "OAUTH_GITHUB_CLIENT_SECRET",
+      "OAUTH_OIDC_CLIENT_SECRET",
+      "ALIBABA_ACCESS_KEY_SECRET",
+      "TENCENT_SECRET_KEY",
+      "NOJ_LLM_GATEWAY_URL",
+      "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    ]
+  ) {
+    assertStringIncludes(yaml, `      ${key}: ""\n`, `${key} 必须被置空`);
+  }
+});
+
+Deno.test("T19 隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
+  const sql = renderDisableOutboundIntegrationsSql();
+  // system_settings.value 是 JSON 编码，禁用值必须带引号
+  assertStringIncludes(sql, `SET value = '"disabled"'`);
+  assert(!sql.includes("SET value = 'disabled'"), "不得写入非 JSON 编码的裸值");
+  assertStringIncludes(sql, "'email_provider'");
+  assertStringIncludes(sql, "'alibaba_access_key_secret'");
+  assertStringIncludes(sql, "'email_webhook_secret'");
+  assertStringIncludes(sql, "'llm_default_provider_id'");
+  assertStringIncludes(sql, "UPDATE llm_providers SET enabled = false");
+  // webhook 兜底只命中「键名像 webhook 且值是 URL」的行，避免误清纯文本设置
+  assertStringIncludes(sql, "WHERE key ~* 'webhook|slack|discord|feishu|lark'");
+});
+
 Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
   const root = await Deno.makeTempDir();
   const envFile = join(root, ".env.drill");
   const overrideFile = join(root, "compose.drill-override.yml");
   try {
+    // 模拟快照里的生产出站配置：覆盖文件必须在合并结果中压过它们
+    const snapshotEnv: Record<string, string> = {
+      ...REAL_COMPOSE_ENV,
+      EMAIL_PROVIDER: "aliyun",
+      ALIBABA_ACCESS_KEY_SECRET: "prod-alibaba-secret",
+      OAUTH_GITHUB_CLIENT_ID: "prod-github-client",
+      OAUTH_GITHUB_CLIENT_SECRET: "prod-github-secret",
+      NOJ_LLM_DEFAULT_PROVIDER_ID: "prod-provider",
+    };
     await Deno.writeTextFile(
       envFile,
-      Object.entries(REAL_COMPOSE_ENV).map(([key, value]) => `${key}=${value}`)
+      Object.entries(snapshotEnv).map(([key, value]) => `${key}=${value}`)
         .join(
           "\n",
         ) + "\n",
@@ -484,7 +528,10 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
       }`,
     );
     const config = JSON.parse(new TextDecoder().decode(result.stdout)) as {
-      services?: Record<string, { ports?: unknown[] }>;
+      services?: Record<
+        string,
+        { ports?: unknown[]; environment?: Record<string, string | null> }
+      >;
       networks?: Record<
         string,
         { name?: string; ipam?: { config?: Array<{ subnet?: string }> } }
@@ -497,6 +544,13 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
         [],
         `演练合并配置不得把 ${name} 的端口映射到宿主机`,
       );
+    }
+    // 出站集成：合并后 core 环境必须是禁用值（含 compose 中的字面量
+    // NOJ_LLM_GATEWAY_URL），且每个覆盖键都真实存在于生产 core 环境
+    const coreEnv = config.services?.core?.environment ?? {};
+    for (const [key, value] of Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)) {
+      assert(key in coreEnv, `${key} 不在生产 core 环境中，覆盖无意义`);
+      assertEquals(coreEnv[key], value, `演练 core 的 ${key} 必须被覆盖`);
     }
     assertEquals(
       config.networks?.[DRILL_NETWORK_NAME]?.ipam?.config?.[0]?.subnet,
@@ -638,6 +692,22 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
       dirExists = false;
     }
     assertEquals(dirExists, false, "成功路径默认删除演练目录");
+
+    // 出站集成禁用必须在 core 启动之前执行（core 启动后 DB 改动不再进入
+    // 设置缓存）。SQL 正文经临时文件喂给 psql，喂入后即删除，因此只断言
+    // 「已执行」与「早于 core up」。
+    const outboundAt = calls.findIndex((c) =>
+      c.cmd === "sh" && c.args.includes("psql")
+    );
+    const coreUpAt = calls.findIndex((c) =>
+      c.args.includes("up") && c.args.includes("core")
+    );
+    assert(outboundAt >= 0, "必须执行出站集成禁用 SQL");
+    assert(coreUpAt >= 0, "必须启动隔离 core");
+    assert(
+      outboundAt < coreUpAt,
+      "出站集成禁用必须在 core 启动之前执行",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

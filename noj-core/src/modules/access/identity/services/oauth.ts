@@ -20,6 +20,11 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
+import {
+  assertLoginNotBanned,
+  getActiveUserBan,
+  isLoginBlockedByBan,
+} from "./auth/auth-login.ts";
 import { recordConsentsForRegistration } from "../../../platform/contracts/cross-module/services_legal_consent.ts";
 import { getInstanceAccessPolicy } from "../../workspace/services/instance.ts";
 import { enrollRegisteredAccountTx } from "../../registration.ts";
@@ -577,9 +582,27 @@ async function createOAuthUser(
 }
 
 /**
+ * OAuth 登录的封禁拦截，与密码登录同一口径：生效中的平台封禁记
+ * `auth.login_failure`（reason=user_banned）并抛 USER_BANNED。
+ *
+ * 必须在建立绑定等任何写入**之前**调用，避免被拒绝的登录留下持久副作用。
+ * @throws {ForbiddenError} 账号处于生效中的平台封禁（USER_BANNED）
+ */
+async function assertOAuthLoginNotBanned(userId: string): Promise<void> {
+  const ban = await getActiveUserBan(userId);
+  if (!isLoginBlockedByBan(ban)) return;
+  await logAuthEvent(userId, "oauth", "auth.login_failure", {
+    reason: "user_banned",
+    login: "oauth",
+  });
+  assertLoginNotBanned(ban);
+}
+
+/**
  * 为用户签发 OAuth 登录会话：查询用户、签发 JWT 并记录登录审计。
  * @param userId 目标用户 ID
  * @returns 用户信息与 JWT token
+ * 调用方必须已在任何写入之前调用 {@link assertOAuthLoginNotBanned}。
  * @throws {NotFoundError} 用户不存在
  */
 async function issueOAuthSession(
@@ -630,6 +653,7 @@ export async function resolveOAuthIdentity(
     if (linked && linked.user_id !== linkUserId) {
       throw new ConflictError("该第三方账号已绑定其他用户");
     }
+    await assertOAuthLoginNotBanned(linkUserId);
     if (!linked) {
       await db.insert(oauthAccounts).values({
         id: crypto.randomUUID(),
@@ -647,12 +671,15 @@ export async function resolveOAuthIdentity(
   }
 
   let userId = linked?.user_id;
+  if (userId) await assertOAuthLoginNotBanned(userId);
   if (!userId && identity.emailVerified && identity.email) {
     const [emailUser] = await db.select({ id: users.id }).from(users).where(
       and(eq(users.email, identity.email), isNull(users.deleted_at)),
     ).limit(1);
     userId = emailUser?.id;
     if (userId) {
+      // 自动按邮箱绑定前先拦封禁：被拒绝的登录不得留下绑定关系
+      await assertOAuthLoginNotBanned(userId);
       await db.insert(oauthAccounts).values({
         id: crypto.randomUUID(),
         provider,

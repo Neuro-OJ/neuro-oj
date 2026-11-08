@@ -37,6 +37,7 @@ export {
   refreshSettingsCache,
   registerSettingsInvalidationListener,
   reloadSingleKey,
+  SECRET_MASK,
 } from "../../services/system-settings.ts";
 
 /** 旧域适配器：把已经认证的旧字符串签名转换成 UserActor。 */

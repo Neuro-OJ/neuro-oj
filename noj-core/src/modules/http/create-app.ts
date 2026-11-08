@@ -23,7 +23,6 @@ import { queryRouter } from "../read-models/queries/routes/index.ts";
 import { searchRouter } from "../read-models/search/routes/index.ts";
 import { communityRouter } from "../communication/community/routes/index.ts";
 import { systemRouter } from "../platform/system/routes/index.ts";
-import { internalLlmPolicyRouter } from "../platform/system/routes/internal-llm-policy.ts";
 import { createInternalDrainRouter } from "../platform/system/routes/internal-drain.ts";
 import { legalRouter } from "../platform/legal/routes/index.ts";
 import { workspaceRouter } from "../access/workspace/routes/index.ts";
@@ -196,7 +195,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     // shared 层不依赖业务域：维护开关读取器由组合根注入（实时读取，不缓存）。
     createMaintenanceMode(() => getSetting("maintenance_mode")?.value === true),
   );
-  app.route("/api/v1", internalLlmPolicyRouter);
   // 内部排空端点：必须位于维护中间件之后（中间件放行 /api/v1/internal/*）。
   // system 域不得跨域 import submission/observability，读取实现由组合根注入。
   app.route(

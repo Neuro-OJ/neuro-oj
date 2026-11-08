@@ -261,6 +261,31 @@ Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
   });
 });
 
+Deno.test("inspectEvaluationPackage: 条目数超过上限被拒", () => {
+  const files: Record<string, string> = { "evaluate.py": "print('ok')" };
+  for (let i = 0; i <= MAX_ZIP_ENTRIES; i++) {
+    files[`f${i}.txt`] = "x";
+  }
+  const err = assertThrows(
+    () => inspectEvaluationPackage(makeZip(files)),
+    BadRequestError,
+  );
+  assertMatch(err.message, /条目数/);
+});
+
+Deno.test("inspectEvaluationPackage: 单文件超过 64 MiB 上限被拒", () => {
+  const big = new Uint8Array(64 * 1024 * 1024 + 1); // 全 0 → 压缩率高，打包耗时可控
+  const err = assertThrows(
+    () =>
+      inspectEvaluationPackage(makeZip({
+        "evaluate.py": "print('ok')",
+        "big.bin": big,
+      })),
+    BadRequestError,
+  );
+  assertMatch(err.message, /单文件上限/);
+});
+
 Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
   const parsed = parseBundleZip(makeZip({
     "problem.yaml": "title: A+B\npid: P1\n",

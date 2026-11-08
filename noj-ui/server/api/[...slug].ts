@@ -50,6 +50,34 @@ function toUrlPathname(pathOrUrl: string): string {
 }
 
 /**
+ * `/api/v1/internal/*` 是**仅容器内网**可访问的端点（排空、内部服务端点）：
+ * CLI 经 `docker compose run core ...` 直连 `http://core:8000`，judge/gateway 走内网。
+ * 公网请求经 nginx → Nitro 代理会抵达这些端点，因此代理层在规范化后的 pathname 上
+ * 直接 404，不转发给 noj-core。nginx 层另有 `^~ /api/v1/internal/` 兜底。
+ *
+ * 判定基于 `targetUrl.pathname`（WHATWG URL 规范化后）：
+ * - 大小写：pathname 保留原始大小写，故用 `/i` 同时拦下 `/api/v1/Internal/...`；
+ *   合法的 internal 端点均为全小写，不会误伤。
+ * - `//`：`new URL()` 保留双斜杠，故用 `/+` 匹配任意个斜杠。
+ * - `%69` 等编码：对首段做一次 `decodeURIComponent` 后再判定（解码失败即视为命中，
+ *   fail-closed），避免 `/api/v1/%69nternal/x` 落到 core 侧被解码后当成 internal。
+ */
+const INTERNAL_API_PATH = /^\/api\/v1\/+internal(?:\/|$)/i;
+
+function isInternalApiPath(pathname: string): boolean {
+  if (INTERNAL_API_PATH.test(pathname)) return true;
+  // 编码形态的 `internal` 段（如 `%69nternal`）：解码后仍是 `/api/v1/internal` 前缀即拦截。
+  // 解码失败（畸形百分号序列）时同样拒绝，不给"依赖上游解码差异"留假设。
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return decoded !== pathname && INTERNAL_API_PATH.test(decoded);
+}
+
+/**
  * 生产环境下 Cookie 必须设置 secure 标志（HTTPS-only）。
  * 以 NUXT_NOJ_ENV / NOJ_ENV 为准；未设置时才回退 NODE_ENV。
  * 临时 HTTP 模式通过 NUXT_ALLOW_INSECURE_HTTP 显式关闭 Secure Cookie，避免浏览器
@@ -186,7 +214,10 @@ export default defineEventHandler(async (event) => {
   if (
     target === null ||
     targetUrl.origin !== apiBaseOrigin ||
-    !targetUrl.pathname.startsWith('/api/v1/')
+    !targetUrl.pathname.startsWith('/api/v1/') ||
+    // 内部端点（排空/内部服务）只允许容器内网直连：规范化后命中即 404，
+    // 不进入下方任何分支（认证拦截、SSE、普通转发）。
+    isInternalApiPath(targetUrl.pathname)
   ) {
     return sendError(
       event,
