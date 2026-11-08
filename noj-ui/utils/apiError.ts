@@ -7,7 +7,7 @@
  */
 
 /** 提取结果：可直接用于 toast/表单错误展示 */
-import { DEFAULT_LOCALE, type Locale, translate, translateErrorCode } from './i18n.ts';
+import { translate, translateErrorCode } from './i18n.ts';
 
 export interface ApiErrorInfo {
   /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */
@@ -82,7 +82,7 @@ export function isVersionConflictError(err: unknown): boolean {
  * 4. 有 HTTP 状态码但无 error 字段 → 「请求失败（HTTP <status>）」
  * 5. 未知错误 → 「操作失败，请稍后重试」
  */
-export function extractApiError(err: unknown, locale: Locale = DEFAULT_LOCALE): ApiErrorInfo {
+export function extractApiError(err: unknown): ApiErrorInfo {
   const e = err as {
     data?: unknown;
     status?: number;
@@ -92,22 +92,12 @@ export function extractApiError(err: unknown, locale: Locale = DEFAULT_LOCALE): 
 
   const status = e?.status ?? e?.statusCode ?? e?.response?.status;
 
-  // 1. 后端错误响应：机器 code 优先映射为本地文案，避免把后端中文直接拼到英文界面。
+  // 1. 后端错误响应：优先使用后端给出的具体业务原因，缺失时按机器 code 映射中文文案。
   const data = e?.data;
   if (data !== null && typeof data === 'object') {
     const d = data as Record<string, unknown>;
     const code = typeof d.code === 'string' ? d.code : undefined;
-    const localized = translateErrorCode(code, locale);
-    // 中文界面保留后端提供的具体业务原因（例如“用户名已存在”）；英文界面
-    // 必须使用 code 映射，避免把中文自然语言直接带到英文 UI。
-    if (localized && locale === 'en-US') {
-      return {
-        message: localized,
-        code,
-        status,
-        requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
-      };
-    }
+    const localized = translateErrorCode(code);
     if (typeof d.error === 'string' && d.error.length > 0) {
       return {
         message: d.error,
@@ -122,11 +112,11 @@ export function extractApiError(err: unknown, locale: Locale = DEFAULT_LOCALE): 
   }
 
   // 2. 超时
-  if (isTimeoutError(err)) return { message: translate(locale, 'error.timeout'), status };
+  if (isTimeoutError(err)) return { message: translate('error.timeout'), status };
   // 3. 网络错误
-  if (isNetworkError(err)) return { message: translate(locale, 'error.network'), status };
+  if (isNetworkError(err)) return { message: translate('error.network'), status };
   // 4. 有状态码但响应体无 error 字段：给出结构化兜底而非裸状态码
-  if (typeof status === 'number') return { message: translate(locale, 'error.http', { status }), status };
+  if (typeof status === 'number') return { message: translate('error.http', { status }), status };
   // 5. 未知错误
-  return { message: translate(locale, 'error.unknown') };
+  return { message: translate('error.unknown') };
 }

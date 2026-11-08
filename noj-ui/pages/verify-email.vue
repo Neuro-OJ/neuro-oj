@@ -5,7 +5,7 @@ import { safeAuthRedirect } from "~/utils/authRedirect"
 definePageMeta({ layout: "auth" })
 const route = useRoute()
 const destination = computed(() => safeAuthRedirect(route.query.redirect))
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const auth = useAuth()
 const token = computed(() => typeof route.query.token === "string" ? route.query.token : "")
 const deliveryFailed = computed(() => route.query.sent === "0")
@@ -22,7 +22,7 @@ onMounted(async () => {
     await auth.verifyEmail(token.value)
     state.value = "success"
   } catch (cause: unknown) {
-    error.value = extractApiError(cause, locale.value).message
+    error.value = extractApiError(cause).message
     state.value = "error"
   }
 })
@@ -36,7 +36,7 @@ async function resendEmail() {
     resendResult.value = result.sent === false ? "failed" : "sent"
   } catch (cause: unknown) {
     resendResult.value = "failed"
-    error.value = extractApiError(cause, locale.value).message
+    error.value = extractApiError(cause).message
   } finally {
     resending.value = false
   }

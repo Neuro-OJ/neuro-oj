@@ -11,7 +11,7 @@ import { useBanStatus } from "~/composables/useBanStatus"
 
 const { fetch } = useBanStatus()
 const { isLoggedIn } = useAuth()
-const { locale, t } = useI18n()
+const { t } = useI18n()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
@@ -50,7 +50,7 @@ function resolvePageTitle(path: string): string {
 
 useHead({
   title: computed(() => resolvePageTitle(route.path)),
-  htmlAttrs: { lang: computed(() => locale.value) },
+  htmlAttrs: { lang: 'zh-CN' },
   meta: [
     { property: 'og:title', content: 'Neuro OJ' },
     { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },

@@ -15,7 +15,6 @@ describe('useApi', () => {
     localStorage.clear();
     toastError.mockClear();
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { authCookiePrefix: 'noj' } }));
-    vi.stubGlobal('useI18n', () => ({ locale: { value: 'zh-CN' } }));
     vi.stubGlobal('useRoute', () => ({ path: '/problems', fullPath: '/problems' }));
   });
 

@@ -12,7 +12,6 @@ const props = defineProps<{ problemId: string }>()
 
 const { api } = useApi()
 const { isLoggedIn } = useAuth()
-const { locale } = useI18n()
 
 const latest = ref<SubmissionListItem | null>(null)
 const loading = ref(false)
@@ -76,7 +75,7 @@ watch(
           class="text-xs font-semibold"
           :style="{ color: getStatusColor(latest.status, latest.result?.status) }"
         >
-          {{ getStatusLabel(latest.status, latest.result?.status, locale) }}
+          {{ getStatusLabel(latest.status, latest.result?.status) }}
         </span>
         <span class="text-xs text-text-muted">{{ latest.language }}</span>
       </span>

@@ -46,12 +46,6 @@ Deno.test('breadcrumb: 除末层外每层都有可点击目标', () => {
   }
 });
 
-Deno.test('breadcrumb: 英文语言输出英文层级', () => {
-  const items = resolveBreadcrumb('/problems/1001', 'en-US');
-  assertEquals(items[0].label, 'Problems');
-  assertEquals(resolveBreadcrumb('/contests', 'en-US')[0].label, 'Contests');
-});
-
 Deno.test('breadcrumb: 忽略查询串与尾斜杠', () => {
   assertEquals(resolveBreadcrumb('/problems/1001?tab=x').length, 2);
   assertEquals(resolveBreadcrumb('/problems/').length, 1);
@@ -74,14 +68,14 @@ Deno.test('breadcrumb: 静态段优先于动态段匹配', () => {
   assertEquals(matchBreadcrumbRoute('/trainings/mine')?.pattern, '/trainings/mine');
 });
 
-Deno.test('breadcrumb: 空间管理回跳保留当前域，动态名称和语言有独立层级', () => {
+Deno.test('breadcrumb: 空间管理回跳保留当前域，动态名称有独立层级', () => {
   const items = resolveBreadcrumb('/d/school-one/members');
   assertEquals(items.map((item) => item.label), ['空间', 'school-one', '成员']);
   assertEquals(items.map((item) => item.to), ['/workspaces', '/d/school-one', undefined]);
-  assertEquals(resolveBreadcrumb('/d/team-two/settings', 'en-US').map((item) => item.label), [
-    'Workspaces',
+  assertEquals(resolveBreadcrumb('/d/team-two/settings').map((item) => item.label), [
+    '空间',
     'team-two',
-    'Settings',
+    '设置',
   ]);
   assertEquals(resolveBreadcrumb('/d/ab/settings')[1].to, undefined);
 });

@@ -263,7 +263,7 @@ const router = useRouter()
 const auth = useAuth()
 const route = useRoute()
 const workspaces = useWorkspaceApi()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const { error, setError, clearError } = useFormError()
 
 const form = reactive({ login: "", password: "", code: "", remember: false })
@@ -460,7 +460,7 @@ async function handleLogin() {
       clearError()
       return;
     }
-    setError(extractApiError(e, locale.value).message)
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

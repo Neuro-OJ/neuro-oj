@@ -13,7 +13,7 @@ import type { ContestStatus, ContestType } from '~/utils/contest-types';
  * 类型定义统一在 `utils/contest-types.ts`，本文件不再重复导出。
  */
 export function useContestAdminLabels() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const typeLabels = computed<Record<ContestType, string>>(() => ({
     kaggle: t('contest.kaggle'),
     oi: 'OI',
@@ -36,10 +36,6 @@ export function useContestAdminLabels() {
     const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
     if (hours === 0 && minutes === 0) {
       return t('contest.durationLessThanMinute');
-    }
-    if (locale.value === 'en-US') {
-      return [hours > 0 ? `${hours}h` : '', minutes > 0 ? `${minutes}m` : '']
-        .filter(Boolean).join(' ');
     }
     return `${hours > 0 ? `${hours} 小时` : ''}${minutes > 0 ? ` ${minutes} 分钟` : ''}`.trim();
   }
