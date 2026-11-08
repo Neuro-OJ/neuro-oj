@@ -1,11 +1,12 @@
 /**
- * Problems CRUD：createProblem / updateProblem / deleteProblem（PR 拆分 PR-3）。
+ * Problems CRUD：createProblem / updateProblem / 题目删除事务步骤（PR 拆分 PR-3）。
  *
  * 设计要点：
  * - 创建题目、初始草稿、标签、本域绑定及编号同事务
  * - updateProblem 拒绝已撤除的分类，题号保持不可变
- * - deleteProblem 只清理 problems 拥有的表；评测行的在途检查与删除经
- *   evaluations 的合同由 application 编排（P3 §3.3）
+ * - 题目删除的事务步骤由本文件提供（prepareProblemDeletionTx /
+ *   deleteProblemOwnedRowsTx / finalizeDeletedProblem），评测行的在途检查与删除经
+ *   evaluations 的合同统一由 application 的 deleteProblemCommand 编排（P3 §3.3）
  *
  * 依赖：
  * - validateRuntimeConfig / types.ts：DTO 与 runtime 校验
@@ -17,10 +18,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx } from "../../../../shared/db/executor.ts";
 import { adjustDomainResourceCounterTx } from "../../../access/resource-counters.ts";
-import {
-  assertProblemEvaluationDeletionAllowedTx,
-  deleteProblemEvaluationRowsTx,
-} from "../../../evaluations/contracts/problem-deletion.ts";
+import { assertProblemEvaluationDeletionAllowedTx } from "../../../evaluations/contracts/problem-deletion.ts";
 import { recordProblemEducationChange } from "../workspace/education-events.ts";
 import {
   contestProblems,
@@ -1162,27 +1160,4 @@ export async function finalizeDeletedProblem(
   }
 
   await enqueueSearchIndexTask("problem", id, "delete");
-}
-
-/**
- * 迁移期兼容入口；HTTP/application 新路径使用 `deleteProblemCommand`。
- *
- * 它保留同样的**单一外层事务**语义：problems 删自身表、evaluations 清理评测行
- * 一起提交，避免旧调用方拿到"题目已删但 self_tests/submissions 仍存在"的半成品。
- * 新代码不得再使用本入口——application 编排会在提交后统一登记审计、投影与搜索。
- */
-export async function deleteProblem(
-  id: string,
-  userId?: string,
-  _userRole?: string,
-  c?: Context,
-): Promise<void> {
-  const actorId = c?.var.userId ?? userId ?? ROOT_USER_ID;
-  const result = await getDb().transaction(async (tx) => {
-    const deleted = await prepareProblemDeletionTx(id, actorId, tx);
-    await deleteProblemEvaluationRowsTx(tx, id);
-    await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
-    return deleted;
-  });
-  await finalizeDeletedProblem(id, result);
 }

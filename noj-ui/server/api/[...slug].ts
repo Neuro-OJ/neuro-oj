@@ -21,32 +21,19 @@ const FORWARDABLE_HEADERS = new Set([
  *   再走 /login 重登，对用户不友好。
  */
 function shouldInterceptAuth(
-  event: { path: string; method?: string },
+  event: { method?: string },
+  pathname: string,
 ): boolean {
   if (event.method !== 'POST') return false;
-  // 必须比较 **pathname**：h3 的 `event.path` 即 `req.url`，**含 query 字符串**，
+  // 必须比较**规范化后的 pathname**：h3 的 `event.path` 即 `req.url`，**含 query 字符串**，
   // 因此 `endsWith('/api/v1/auth/login')` 会被 `POST /api/v1/auth/login?x=1` 绕过。
   // 后果：登录/改密的 JWT **原样回给 JS**（破坏"JWT 只进 HttpOnly Cookie"的不变量），
   // 且该路径不设置 Cookie → 会话陈旧（2026-09-29 前端审计 U-2）。
-  const pathname = toUrlPathname(event.path);
+  // pathname 直接取自上方已成功 `new URL()` 解析的 `targetUrl`，无需再次解析。
   return (
     pathname === '/api/v1/auth/login' ||
     pathname === '/api/v1/auth/change-password'
   );
-}
-
-/**
- * 取 URL 的 pathname（用于**规范化比较**，避免 query/编码路径干扰判定）。
- *
- * 以哨兵 origin 解析相对路径；解析失败时退化为"首段问号截断"，绝不抛错。
- */
-function toUrlPathname(pathOrUrl: string): string {
-  try {
-    return new URL(pathOrUrl, 'http://noj.internal').pathname;
-  } catch {
-    const q = pathOrUrl.indexOf('?');
-    return q === -1 ? pathOrUrl : pathOrUrl.slice(0, q);
-  }
 }
 
 /**
@@ -232,7 +219,7 @@ export default defineEventHandler(async (event) => {
   // ── 拦截登录/改密成功响应，设置 Cookie ──
   // 改密（issue #75 撤销机制）成功后服务端签发新 token，旧 token 被撤销；
   // 前端不感知，由 Nitro 代理同步替换 Cookie，避免「改密后被踢回登录页」的体验。
-  if (shouldInterceptAuth(event)) {
+  if (shouldInterceptAuth(event, targetUrl.pathname)) {
     const body = await readBody(event);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -287,7 +274,9 @@ export default defineEventHandler(async (event) => {
           JSON.stringify({
             userId: user.id,
             username: user.username,
-            role: user.role ?? (user.is_admin ? 'admin' : 'user'),
+            // core 的 UserResponse 恒含 role（user/admin），login 与 change-password 都走
+            // toUserResponse 同口径；缺失时由 parseAuthSession 走失败路径，不在代理层推算。
+            role: user.role,
             email: user.email,
             avatar_url: user.avatar_url ?? null,
             must_change_password: user.must_change_password ?? false,

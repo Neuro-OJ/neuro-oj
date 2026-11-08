@@ -52,6 +52,22 @@ const lockKey = (u: string, ip: string, ns: string) =>
   `${safeNs(ns)}lock:${accountKey(u)}:${ip}`;
 
 /**
+ * 执行需要 Redis 的限流操作，并把任意 Redis 错误统一包装为
+ * ServiceUnavailableError（fail-closed，保留原始错误为 cause）。
+ *
+ * 包装只在此处发生一次：被包裹的 Redis 操作失败时把原始错误作为 cause 抛出；
+ * 若操作内部已抛出 ServiceUnavailableError，则原样透传。
+ */
+async function withRateLimitRedis<T>(op: () => Promise<T>): Promise<T> {
+  try {
+    return await op();
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) throw err;
+    throw new ServiceUnavailableError("登录限流服务暂时不可用", { cause: err });
+  }
+}
+
+/**
  * 记录一次登录失败，返回当前失败计数。
  * 失败次数达阈值时自动设置锁定标记。
  *
@@ -67,10 +83,10 @@ export async function recordLoginFailure(
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<number> {
   if (!isRateLimitEnabled()) return 0;
-  const threshold = settingInt("rate_limit_login_lock_threshold");
-  const lockSec = settingInt("rate_limit_login_lock_seconds");
 
-  try {
+  return await withRateLimitRedis(async () => {
+    const threshold = settingInt("rate_limit_login_lock_threshold");
+    const lockSec = settingInt("rate_limit_login_lock_seconds");
     const redis = getRedis();
     const count = await redis.incr(failKey(username, clientIp, namespace));
     if (count === 1) {
@@ -85,10 +101,7 @@ export async function recordLoginFailure(
       );
     }
     return count;
-  } catch (err) {
-    if (err instanceof ServiceUnavailableError) throw err;
-    throw new ServiceUnavailableError("登录限流服务暂时不可用");
-  }
+  });
 }
 
 /**
@@ -101,13 +114,10 @@ export async function isLoginLocked(
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<boolean> {
   if (!isRateLimitEnabled()) return false;
-  try {
+  return await withRateLimitRedis(async () => {
     return (await getRedis().exists(lockKey(username, clientIp, namespace))) ===
       1;
-  } catch (err) {
-    if (err instanceof ServiceUnavailableError) throw err;
-    throw new ServiceUnavailableError("登录限流服务暂时不可用");
-  }
+  });
 }
 
 /**
@@ -120,17 +130,15 @@ export async function clearLoginFailure(
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<void> {
   if (!isRateLimitEnabled()) return;
-  try {
+  await withRateLimitRedis(async () => {
     const redis = getRedis();
     await redis.del(
       failKey(username, clientIp, namespace),
       lockKey(username, clientIp, namespace),
     );
-    inMemoryBackoff.delete(backoffMapKey(username, clientIp, namespace));
-  } catch (err) {
-    if (err instanceof ServiceUnavailableError) throw err;
-    throw new ServiceUnavailableError("登录限流服务暂时不可用");
-  }
+  });
+  // 内存退避清理依赖 Redis 删除后的语义；Redis 已删除时才清本进程退避。
+  inMemoryBackoff.delete(backoffMapKey(username, clientIp, namespace));
 }
 
 // ── 退避（内存）────────────────────────────────────────

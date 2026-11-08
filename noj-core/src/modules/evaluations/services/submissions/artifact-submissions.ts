@@ -58,7 +58,7 @@ import {
 import { revalidateEvaluationAdmissionTx } from "../../contracts/admission.ts";
 import type { DomainEvaluationAdmissionPlan } from "../../contracts/admission.ts";
 import {
-  attachDomainStorageUpload,
+  attachDomainStorageUploadTx,
   growDomainStorageUpload,
   releaseDomainStorageUpload,
   reserveDomainStorageUpload,
@@ -423,7 +423,7 @@ export async function createUploadedSubmission(
         { storageUrl: artifactStorageUrl },
         tx,
       );
-      await attachDomainStorageUpload(
+      await attachDomainStorageUploadTx(
         uploadDomainId,
         reservationId,
         artifactStorageUrl,

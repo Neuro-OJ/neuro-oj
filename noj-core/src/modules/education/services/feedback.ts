@@ -84,7 +84,7 @@ export async function listAssignmentFeedback(
   page = 1,
 ) {
   const access = await loadInteractionAccess(slug, id, actorId);
-  const all = interactionStaff(access, "feedback:write");
+  const all = interactionStaff(access);
   if (!all) await assertInteractionRecipient(access, actorId);
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
     throw new BadRequestError("分页格式错误");
@@ -135,7 +135,7 @@ export async function getAssignmentFeedback(
   executor: Executor = getDb(),
 ) {
   const access = await loadInteractionAccess(slug, id, actorId, executor),
-    all = interactionStaff(access, "feedback:write");
+    all = interactionStaff(access);
   if (!all) await assertInteractionRecipient(access, actorId, executor);
   const target = alias(users, "feedback_target");
   const [row] = await executor.select({

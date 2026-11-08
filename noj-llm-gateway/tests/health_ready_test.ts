@@ -1,5 +1,5 @@
 // /health/ready 就绪探针测试：注入假 DB/Redis/worker，不建立真实连接、不启动真实定时器。
-import { assertEquals, assertFalse, assertThrows } from "jsr:@std/assert@^1";
+import { assertEquals, assertFalse } from "jsr:@std/assert@^1";
 import type { Hono } from "hono";
 import { createApp, createReadyProbe } from "../src/app.ts";
 import type { Db } from "../src/db.ts";
@@ -329,35 +329,6 @@ Deno.test("health/ready: 本地持久政策不可读时返回 503(policy)", asyn
     accounting: "ok",
   });
   assertEquals(body.detail, ["policy_unavailable"]);
-});
-
-Deno.test("createApp: 缺失必需 DB/Redis/worker 时拒绝组合", () => {
-  assertThrows(
-    () =>
-      createApp(testConfig, {
-        db: null,
-        redis: null,
-        accountingWorker: null,
-      } as never),
-    Error,
-    "必须",
-  );
-});
-
-Deno.test("createApp: accounting worker 缺少 done 时拒绝不可排空装配", () => {
-  assertThrows(
-    () =>
-      createApp(testConfig, {
-        db: createFakeDb().db,
-        redis: createFakeRedis().redis,
-        accountingWorker: {
-          stop() {},
-          getStatus: () => createWorkerStatus(),
-        },
-      } as never),
-    Error,
-    "缺少可等待的 done",
-  );
 });
 
 Deno.test("health/ready: 探针收到未配置 DB/Redis/worker 时标明未配置", async () => {

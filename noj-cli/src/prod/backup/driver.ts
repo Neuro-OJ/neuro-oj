@@ -121,18 +121,12 @@ export class CaptureError extends Error {
 /**
  * 真实 prod-raw driver：把字节搬运交给注入的 {@link CommandRunner}。
  *
- * `runner.spawn` 是**必需**能力（P2 的某些 fake 未实现）——缺失时明确抛错，
- * 绝不退化为 `run()` 的字符串路径（那正是本模块要根除的缺陷）。
+ * 绝不退化为 `run()` 的字符串路径（那正是本模块要根除的缺陷）。`spawn` 是
+ * `CommandRunner` 的**必需**成员，由类型检查保证存在，无需运行时守卫。
  */
 export function realRawDriver(runner: CommandRunner): RawDriver {
   return {
     async captureToFile(cmd, args, io) {
-      if (typeof runner.spawn !== "function") {
-        throw new Error(
-          "当前 CommandRunner 不支持 spawn，无法以文件重定向采集二进制" +
-            "（绝不可退化为 stdout 字符串捕获）",
-        );
-      }
       const opts: SpawnOpts = {
         cmd,
         args,
@@ -165,12 +159,6 @@ export function realRawDriver(runner: CommandRunner): RawDriver {
       // 输入侧用 `sh -c ... < "$src"`，输出侧仍走 spawn 的 stdoutFile——
       // 因此这里 spawn 的是 `sh`（而非目标命令），shell 内 `exec` 替换自身，
       // 子进程的 stdout 于是就是目标命令的 stdout，由内核写入 destFile。
-      if (typeof runner.spawn !== "function") {
-        throw new Error(
-          "当前 CommandRunner 不支持 spawn，无法以文件重定向采集二进制" +
-            "（绝不可退化为 stdout 字符串捕获）",
-        );
-      }
       const script = `src="$1"; shift; exec ${
         quoteForShell(cmd)
       } "$@" < "$src"`;

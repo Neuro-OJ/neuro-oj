@@ -44,7 +44,7 @@
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
+import type { DbTx, Executor } from "../../../shared/db/executor.ts";
 import {
   problemDraftObjects,
   problemVersionObjects,
@@ -80,9 +80,6 @@ export interface StorageReferenceReport {
   self_test_refs: number;
   total: number;
 }
-
-/** 迁移期旧调用可传入已经开启的真实事务；新原子入口使用 `*Tx`。 */
-type LegacyStorageExecutor = DbRoot | DbTx;
 
 /** 上传预约默认有效期（15 分钟）：够大文件上传，crash 残留又能自动失效。 */
 export const STORAGE_UPLOAD_RESERVATION_TTL_MS = 15 * 60 * 1000;
@@ -174,13 +171,16 @@ async function lockStorageObjectRow(
   return rows[0] as StorageObjectRecord | undefined;
 }
 
+/**
+ * 调用方显式传入真实事务（`DbTx`）时直接复用，不再嵌套开启；
+ * 未传入时开启一个新事务。
+ */
 async function inStorageTransaction<T>(
-  executor: LegacyStorageExecutor | undefined,
+  tx: DbTx | undefined,
   operation: (tx: DbTx) => Promise<T>,
 ): Promise<T> {
-  if (!executor) return await getDb().transaction(operation);
-  if ("transaction" in executor) return await executor.transaction(operation);
-  return await operation(executor);
+  if (!tx) return await getDb().transaction(operation);
+  return await operation(tx);
 }
 
 /**
@@ -210,10 +210,10 @@ export async function reserveStorageObjectUploadTx(
   return reservation;
 }
 
-/** 兼容旧调用；传入事务时不会偷偷开启嵌套事务。 */
+/** 未传事务时内部开启事务；传入事务时直接复用，不嵌套。 */
 export async function reserveStorageObjectUpload(
   input: { storageUrl: string; ttlMs?: number },
-  tx?: LegacyStorageExecutor,
+  tx?: DbTx,
 ): Promise<StorageUploadReservation> {
   return await inStorageTransaction(
     tx,
@@ -240,7 +240,7 @@ export async function reserveStorageObjectUploadForContent(
     /** 已知的内容 SHA-256（避免重复计算）；缺省时内部计算。 */
     sha256?: string | null;
   },
-  executor?: LegacyStorageExecutor,
+  executor?: DbTx,
 ): Promise<{ storageUrl: string; reservation: StorageUploadReservation }> {
   const storage = await getStorageProvider();
   if (!storage.urlForUpload) {
@@ -285,7 +285,7 @@ export async function uploadStorageObjectWithReservation(
     /** 调用方从已授权源题或提交定位，不读取上传表单中的域 ID。 */
     domainId?: string;
   },
-  executor?: LegacyStorageExecutor,
+  executor?: DbTx,
 ): Promise<{ storageUrl: string }> {
   const storage = await getStorageProvider();
   const contentSha256 = input.sha256 ?? await sha256Hex(input.bytes);
@@ -362,7 +362,7 @@ export async function uploadStorageObjectWithReservation(
  */
 export async function releaseStorageObjectUploadReservation(
   reservationId: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<void> {
   const db = executor ?? getDb();
   await db.delete(storageObjectReservations).where(
@@ -394,7 +394,12 @@ export async function registerReadyStorageObjectTx(
   tx: DbTx,
 ): Promise<void> {
   const existing = await lockStorageObjectRow(tx, input.storageUrl);
-  if (!existing) return;
+  // 不变量：`lockStorageObjectRow` 先 upsert 再 `FOR UPDATE`，登记行必然存在。
+  if (!existing) {
+    throw new Error(
+      `存储登记行锁未取得：${input.storageUrl}（不变量被破坏）`,
+    );
+  }
 
   // 消费本人预约：id、URL、未过期三者必须同时匹配，防止拿了别人的预约或过期
   // 预约来"证明"一次并不存在的物理上传。
@@ -425,7 +430,6 @@ export async function registerReadyStorageObjectTx(
   }).where(eq(storageObjects.storage_url, input.storageUrl));
 }
 
-/** 兼容旧调用；事务参数始终是实际的 `DbTx`。 */
 export async function registerReadyStorageObject(
   input: {
     storageUrl: string;
@@ -433,7 +437,7 @@ export async function registerReadyStorageObject(
     byteSize?: number | null;
     reservationId?: string;
   },
-  tx?: LegacyStorageExecutor,
+  tx?: DbTx,
 ): Promise<void> {
   await inStorageTransaction(
     tx,
@@ -493,14 +497,14 @@ export async function registerStreamedStorageObjectTx(
   }).where(eq(storageObjects.storage_url, input.storageUrl));
 }
 
-/** 兼容旧调用；传入事务时与业务引用处于同一事务。 */
+/** 未传事务时内部开启事务；传入事务时与业务引用处于同一事务。 */
 export async function registerStreamedStorageObject(
   input: {
     storageUrl: string;
     sha256?: string | null;
     byteSize?: number | null;
   },
-  tx?: LegacyStorageExecutor,
+  tx?: DbTx,
 ): Promise<void> {
   await inStorageTransaction(
     tx,
@@ -514,7 +518,7 @@ export async function registerStreamedStorageObject(
  */
 export async function registerLegacyStorageObject(
   storageUrl: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<void> {
   await registerStorageObject(
     { storageUrl, sha256: null, byteSize: null, state: "unknown" },
@@ -530,7 +534,7 @@ export async function registerStorageObject(
     byteSize: number | null;
     state: StorageObjectState;
   },
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<void> {
   const db = executor ?? getDb();
   await db.insert(storageObjects).values({
@@ -551,7 +555,7 @@ export async function registerStorageObject(
 /** 读取登记行；不存在返回 null。 */
 export async function getStorageObject(
   storageUrl: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<StorageObjectRecord | null> {
   const db = executor ?? getDb();
   const rows = await db.select().from(storageObjects).where(
@@ -569,7 +573,7 @@ export async function getStorageObject(
  */
 export async function assertStorageObjectBindable(
   storageUrl: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<void> {
   const db = executor ?? getDb();
   // 插入与加锁都在调用方绑定引用的同一事务里完成。先读后插会与删除争抢，
@@ -600,7 +604,7 @@ export async function assertStorageObjectBindable(
  */
 export async function verifyStorageObject(
   storageUrl: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<StorageObjectState> {
   const db = executor ?? getDb();
   const storage = await getStorageProvider();
@@ -622,7 +626,7 @@ export async function verifyStorageObject(
 /** 统计某对象仍被哪些业务引用。 */
 export async function collectStorageReferences(
   storageUrl: string,
-  executor?: LegacyStorageExecutor,
+  executor?: Executor,
 ): Promise<StorageReferenceReport> {
   const db = executor ?? getDb();
   const [draft] = await db.select({ count: sql<number>`count(*)::int` })
@@ -729,10 +733,10 @@ export async function deleteStorageObjectTx(
     : ({ outcome: "missing" } as const);
 }
 
-/** 兼容旧调用；物理删除仍在持有登记行锁的真实事务中完成。 */
+/** 未传事务时内部开启事务；物理删除仍在持有登记行锁的真实事务中完成。 */
 export async function deleteStorageObject(
   storageUrl: string,
-  tx?: LegacyStorageExecutor,
+  tx?: DbTx,
 ): Promise<StorageDeleteOutcome> {
   return await inStorageTransaction(
     tx,
@@ -759,7 +763,7 @@ export async function compensateUploadedObject(
     /** 本次上传自己的预约 id；上传失败时用于释放预约。 */
     reservationId?: string;
   },
-  executor?: LegacyStorageExecutor,
+  executor?: DbTx,
 ): Promise<StorageDeleteOutcome> {
   const record = await getStorageObject(input.storageUrl, executor);
   if (!record || (record.state !== "deleting" && record.state !== "deleted")) {

@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problemDraftObjects, problems } from "../../../../shared/db/schema.ts";
 import {
-  deleteSupportPackage,
+  deleteSupportPackageForActor,
   getDraftSupportPackageUrl,
   getSupportPackageBytes,
   resolveProblemTemplate,
@@ -169,7 +169,11 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
     actor: userActorFromAuthenticatedId("0"),
   });
 
-  await deleteSupportPackage("sp-p2", "0", "admin");
+  await deleteSupportPackageForActor(
+    "sp-p2",
+    userActorFromAuthenticatedId("0"),
+    3,
+  );
 
   // 草稿引用已移除，但历史版本仍引用 → 物理对象保留、下载仍可用
   assertEquals(await getDraftSupportPackageUrl("sp-p2"), null);
@@ -227,7 +231,11 @@ Deno.test("support package: 未发布题目删除时清理迁移期投影", asyn
   const url = await provider.put("spLegacy", bytes);
   await setSupportPackage("sp-p3", { storageUrl: url, byteSize: bytes.length });
 
-  await deleteSupportPackage("sp-p3", "0", "admin");
+  await deleteSupportPackageForActor(
+    "sp-p3",
+    userActorFromAuthenticatedId("0"),
+    (await getProblemDraft("sp-p3")).revision,
+  );
   const [row] = await getDb().select().from(problems).where(
     eq(problems.id, "sp-p3"),
   );

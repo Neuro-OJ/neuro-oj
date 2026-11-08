@@ -10,6 +10,7 @@ const validResponse = {
       id: 'user-1',
       username: 'alice',
       email: 'alice@example.com',
+      role: 'user',
       must_change_password: false,
       tfa_enabled: false,
       is_admin: false,
@@ -51,6 +52,23 @@ Deno.test('parseAuthSession: 缺少 is_admin 时返回 null', () => {
   const { is_admin: _isAdmin, ...user } = validResponse.data.user;
   assertEquals(
     parseAuthSession({ data: { token: 'jwt-token', user } }),
+    null,
+  );
+});
+
+Deno.test('parseAuthSession: 缺少 role 时返回 null（角色不再由代理推算）', () => {
+  const { role: _role, ...user } = validResponse.data.user;
+  assertEquals(
+    parseAuthSession({ data: { token: 'jwt-token', user } }),
+    null,
+  );
+});
+
+Deno.test('parseAuthSession: role 类型错误时返回 null', () => {
+  assertEquals(
+    parseAuthSession({
+      data: { token: 'jwt-token', user: { ...validResponse.data.user, role: 1 } },
+    }),
     null,
   );
 });

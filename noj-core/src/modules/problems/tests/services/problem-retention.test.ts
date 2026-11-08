@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { deleteProblemEvaluationRowsTx } from "../../../evaluations/contracts/problem-deletion.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   objectiveSubmissions,
@@ -12,7 +13,10 @@ import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../../access/workspace/index.ts";
-import { deleteProblem } from "../../services/problems/problems-crud.ts";
+import {
+  deleteProblemOwnedRowsTx,
+  prepareProblemDeletionTx,
+} from "../../services/problems/problems-crud.ts";
 
 async function source(objective = false) {
   await resetDbForTest();
@@ -32,9 +36,18 @@ async function source(objective = false) {
   return { id, now };
 }
 
+/** 按 application 编排的同一事务顺序删除题目（不登记审计/投影）。 */
+async function deleteInTx(id: string): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    const deleted = await prepareProblemDeletionTx(id, "0", tx);
+    await deleteProblemEvaluationRowsTx(tx, id);
+    await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
+  });
+}
+
 async function expectRetained(id: string) {
   const error = await assertRejects(
-    () => deleteProblem(id, "0", "admin"),
+    () => deleteInTx(id),
     AppError,
   );
   assertEquals(error.statusCode, 409);
@@ -82,7 +95,7 @@ Deno.test("源题保留：未知旧版本的客观题答案和成绩不能随源
 });
 Deno.test("源题保留：没有版本、绑定和历史提交的草稿仍可删除", async () => {
   const { id } = await source();
-  await deleteProblem(id, "0", "admin");
+  await deleteInTx(id);
   assertEquals(
     (await getDb().select().from(problems).where(eq(problems.id, id))).length,
     0,

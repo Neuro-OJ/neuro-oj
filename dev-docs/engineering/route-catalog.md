@@ -351,7 +351,6 @@
 | POST | `/posts/:postId/:status` | noj-core/src/modules/http/admin/routes/community.ts |
 | POST | `/posts/:postId/comments` | noj-core/src/modules/communication/community/routes/community.ts |
 | POST | `/preset/:preset` | noj-core/src/modules/http/admin/routes/community.ts |
-| POST | `/preview` | noj-core/src/modules/problems/routes/oi-author.ts |
 | POST | `/problems/:id/rejudge` | noj-core/src/modules/http/admin/routes/submission.ts |
 | POST | `/problems/:id/self-test` | noj-core/src/modules/evaluations/routes/self-tests.ts |
 | POST | `/register` | noj-core/src/modules/access/identity/routes/auth.ts |

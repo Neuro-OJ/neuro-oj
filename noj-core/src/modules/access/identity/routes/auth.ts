@@ -265,12 +265,16 @@ async function enforceAccountRateLimit(
   namespace?: string,
 ): Promise<string> {
   // 改密/TFA 已持有可信用户 ID，直接用于失败桶，避免再次按登录名解析成 unknown。
-  // 账号窗口仍调用原有 checkLoginAccountRateLimit，保持跨 IP 窗口语义不变。
+  // 登录端点在此解析一次账号 key 并复用给账号窗口限流，同一请求只查一次库。
   const accountKey =
     namespace === PWCHANGE_NAMESPACE || namespace === TFA_NAMESPACE
       ? account.toLowerCase()
       : await resolveLoginAccountKey(account);
-  const accResult = await checkLoginAccountRateLimit(account, namespace);
+  const accResult = await checkLoginAccountRateLimit(
+    account,
+    namespace,
+    accountKey,
+  );
   if (!accResult.allowed) {
     throwRateLimited(LOGIN_LIMITS.acc, accResult);
   }

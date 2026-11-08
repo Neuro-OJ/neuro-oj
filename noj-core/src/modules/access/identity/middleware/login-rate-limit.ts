@@ -14,8 +14,11 @@
 import type { Context, Next } from "hono";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import {
+  RateLimitedError,
+  ServiceUnavailableError,
+} from "../../../../shared/base/errors.ts";
 import { users } from "../../../../shared/db/schema.ts";
-import { RateLimitedError } from "../../../../shared/base/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,
@@ -80,15 +83,19 @@ export function loginIpRateLimit(namespace: string = "login") {
  *
  * namespace 参数（评审修复 M3）：与 loginIpRateLimit 对齐，确保
  * 改密失败只计入 pwchange 限流桶，不污染登录限流桶。
+ *
+ * @param accountKey 可选的已解析账号 key；调用方已调用过
+ *   `resolveLoginAccountKey` 时传入，避免同一请求重复查库
  */
 export async function checkLoginAccountRateLimit(
   login: string,
   namespace: string = "login",
+  accountKey?: string,
 ): Promise<RateLimitResult> {
   if (!isRateLimitEnabled()) {
     return { allowed: true, remaining: 0, resetAt: 0, retryAfter: 0 };
   }
-  const key = await resolveLoginAccountKey(login);
+  const key = accountKey ?? await resolveLoginAccountKey(login);
   return checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
 }
 
@@ -97,6 +104,9 @@ export async function checkLoginAccountRateLimit(
  * 用户名/邮箱登录指向同一账号时共享限流与锁定桶，
  * 避免攻击者用 `user@example.com` / `username` 交替绕过。
  * 不存在的账号回退到规范化 login（仍限流，但不泄露账号存在性）。
+ *
+ * 数据库异常时 fail-closed：抛 ServiceUnavailableError（503），不退回
+ * `unknown:<login>` 桶——否则攻击者可借 DB 抖动把自己的限流桶重置为全新计数。
  */
 export async function resolveLoginAccountKey(login: string): Promise<string> {
   const fallback = (login || "anonymous").toLowerCase().slice(0, 64);
@@ -108,8 +118,9 @@ export async function resolveLoginAccountKey(login: string): Promise<string> {
       .where(or(eq(users.username, login), eq(users.email, login)))
       .limit(1);
     return rows[0]?.id ?? `unknown:${fallback}`;
-  } catch {
-    return `unknown:${fallback}`;
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) throw err;
+    throw new ServiceUnavailableError("登录限流服务暂时不可用", { cause: err });
   }
 }
 /** 429 抛错器供路由层使用 */

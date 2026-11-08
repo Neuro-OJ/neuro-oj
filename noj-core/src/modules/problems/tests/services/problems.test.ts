@@ -3,7 +3,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import {
   createProblem,
-  deleteProblem,
   getProblem,
   getProblemDraft,
   listProblems,
@@ -24,7 +23,13 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { enterTestContext } from "../../../platform/system/index.ts";
+import {
+  deleteProblemOwnedRowsTx,
+  prepareProblemDeletionTx,
+} from "../../services/problems/problems-crud.ts";
+import { deleteProblemCommand } from "../../../application/index.ts";
+import { deleteProblemEvaluationRowsTx } from "../../../evaluations/contracts/problem-deletion.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   bindPublishedProblemForTest,
   publishBaselineVersionForTest,
@@ -385,6 +390,15 @@ Deno.test({
   },
 });
 
+/** 按 application 编排的同一事务顺序删除题目（不登记审计/投影）。 */
+async function deleteInTx(id: string): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    const deleted = await prepareProblemDeletionTx(id, "0", tx);
+    await deleteProblemEvaluationRowsTx(tx, id);
+    await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
+  });
+}
+
 Deno.test({
   name: "problems service: 删除题目",
   sanitizeResources: false,
@@ -397,7 +411,7 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
-    await deleteProblem(toDelete.id, "0");
+    await deleteInTx(toDelete.id);
     await assertRejects(
       () => getProblem(toDelete.id),
       NotFoundError,
@@ -413,7 +427,7 @@ Deno.test({
   fn: async () => {
     // 触发条件：该题被任意用户自测过一次后 owner/admin 删除题目。
     // 修复前：self_tests.problem_id → problems.id 为 ON DELETE no action，
-    // 且 deleteProblem 未清理 self_tests → PG 23503 → 全局 onError → 500，
+    // 且旧删除入口未清理 self_tests → PG 23503 → 全局 onError → 500，
     // 题目永久无法删除。
     const problem = await createProblem({
       title: `带自测的待删题目 ${ts}`,
@@ -438,7 +452,7 @@ Deno.test({
       created_at: now,
     });
 
-    await deleteProblem(problem.id, "0");
+    await deleteInTx(problem.id);
 
     // 题目与其自测记录都应被清理
     await assertRejects(() => getProblem(problem.id), NotFoundError);
@@ -451,7 +465,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems service: deleteProblem 写一条 problems.delete 审计",
+  name: "problems service: 删除题目写一条 problems.delete 审计",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -472,11 +486,7 @@ Deno.test({
 
     await grantDefaultCatalogRole(adminId, "admin");
     // 注入 admin actor context（logAudit 依赖 RequestContext）
-    enterTestContext({
-      actorId: adminId,
-      actorIp: "10.0.0.42",
-      actorRole: "admin",
-    });
+    // 审计操作者由 UserActor 显式绑定（不再经请求上下文注入）
 
     // 创建题目（admin 创建，owner=admin，避免权限检查失败）
     const toDelete = await createProblem(
@@ -494,7 +504,10 @@ Deno.test({
     await getDb().delete(auditLogs);
 
     // 执行：删除题目（admin 可删任意题）
-    await deleteProblem(toDelete.id, adminId, "admin");
+    await deleteProblemCommand(
+      userActorFromAuthenticatedId(adminId),
+      toDelete.id,
+    );
 
     // 验证：审计日志写入
     const rows = await getDb().select().from(auditLogs).where(
@@ -504,7 +517,7 @@ Deno.test({
     assertEquals(rows[0].target_type, "problem");
     assertEquals(rows[0].target_id, toDelete.id);
     assertEquals(rows[0].admin_id, adminId);
-    assertEquals(rows[0].ip_address, "10.0.0.42");
+    assertEquals(rows[0].ip_address, "system");
     const detail = rows[0].detail as {
       action: string;
       title: string;

@@ -262,7 +262,9 @@ async fn collect_output_limited(
                 (&mut captured.stdout, message)
             }
             LogOutput::StdErr { message } => (&mut captured.stderr, message),
-            LogOutput::StdIn { message } => (&mut captured.stderr, message),
+            // exec 未 attach stdin（`attach_stdin` 未开启），该分支不可达；
+            // 若将来开启 stdin，管道自身的回显也不属于被测程序输出，直接忽略。
+            LogOutput::StdIn { .. } => continue,
         };
         if total_output.saturating_add(message.len()) > maximum_output {
             captured.output_limited = true;

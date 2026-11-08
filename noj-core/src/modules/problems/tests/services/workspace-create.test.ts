@@ -15,10 +15,11 @@ import {
   createDomain,
   ensureDefaultWorkspace,
 } from "../../../access/workspace/index.ts";
+import { deleteProblemCommand } from "../../../application/index.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
   createDomainProblem,
   createProblem,
-  deleteProblem,
   getDefaultDomainProblemByNumber,
   listAllProblems,
 } from "../../index.ts";
@@ -102,7 +103,7 @@ Deno.test({
       { ...input, number: 1500 },
       id,
     );
-    await deleteProblem(first.id, id);
+    await deleteProblemCommand(userActorFromAuthenticatedId(id), first.id);
     assertEquals((await createDomainProblem(a.slug, input, id)).number, 1501);
   },
 });

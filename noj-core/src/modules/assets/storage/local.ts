@@ -371,11 +371,4 @@ export class LocalStorageProvider implements StorageProvider {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
   }
-
-  /**
-   * 将 Uint8Array 编码为标准 Base64
-   */
-  private uint8ArrayToBase64(data: Uint8Array): string {
-    return btoa(String.fromCharCode(...data));
-  }
 }

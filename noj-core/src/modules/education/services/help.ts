@@ -135,7 +135,7 @@ async function helpReader(
   executor: Executor = getDb(),
 ) {
   const access = await loadInteractionAccess(slug, id, actorId, executor),
-    all = interactionStaff(access, "help:manage");
+    all = interactionStaff(access);
   if (!all) await assertInteractionRecipient(access, actorId, executor);
   return { access, all };
 }
@@ -230,7 +230,7 @@ export async function replyAssignmentHelp(
   }
   return await getDb().transaction(async (tx) => {
     const access = await loadInteractionAccess(slug, id, actorId, tx, true),
-      staff = interactionStaff(access, "help:manage");
+      staff = interactionStaff(access);
     const [help] = await tx.select().from(assignmentHelpRequests).where(
       and(
         eq(assignmentHelpRequests.assignment_id, id),

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { AppError, ConflictError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
+import type { DbTx } from "../../../shared/db/executor.ts";
 import {
   domainStorageObjects,
   domainStorageUploads,
@@ -16,15 +16,17 @@ import {
 import { getDomainEffectiveLimits } from "./domain-limits.ts";
 
 const TTL_MS = 15 * 60 * 1000;
-type LegacyQuotaExecutor = DbRoot | DbTx;
 
+/**
+ * 调用方显式传入真实事务（`DbTx`）时直接复用，不再嵌套开启；
+ * 未传入时开启一个新事务。
+ */
 async function inQuotaTransaction<T>(
-  executor: LegacyQuotaExecutor | undefined,
+  tx: DbTx | undefined,
   operation: (tx: DbTx) => Promise<T>,
 ): Promise<T> {
-  if (!executor) return await getDb().transaction(operation);
-  if ("transaction" in executor) return await executor.transaction(operation);
-  return await operation(executor);
+  if (!tx) return await getDb().transaction(operation);
+  return await operation(tx);
 }
 
 function ownedReferences(domainId: string) {
@@ -200,7 +202,6 @@ export async function reserveDomainStorageUploadTx(
   return reservation;
 }
 
-/** 兼容旧调用；事务句柄只在调用方明确提供时复用。 */
 export async function reserveDomainStorageUpload(
   input: {
     domainId: string;
@@ -209,7 +210,7 @@ export async function reserveDomainStorageUpload(
     ttlMs?: number;
     storageUrl?: string;
   },
-  executor?: LegacyQuotaExecutor,
+  executor?: DbTx,
 ) {
   return await inQuotaTransaction(
     executor,
@@ -248,7 +249,7 @@ export async function growDomainStorageUpload(
   domainId: string,
   id: string,
   extraBytes: number,
-  executor?: LegacyQuotaExecutor,
+  executor?: DbTx,
 ) {
   return await inQuotaTransaction(
     executor,
@@ -338,7 +339,7 @@ export async function settleDomainStorageUpload(
   domainId: string,
   id: string,
   storageUrl: string,
-  executor?: LegacyQuotaExecutor,
+  executor?: DbTx,
 ) {
   return await inQuotaTransaction(
     executor,
@@ -375,7 +376,7 @@ export async function releaseDomainStorageUploadTx(
 export async function releaseDomainStorageUpload(
   domainId: string,
   id: string,
-  executor?: LegacyQuotaExecutor,
+  executor?: DbTx,
 ) {
   return await inQuotaTransaction(
     executor,
@@ -408,14 +409,6 @@ export async function releaseDomainStorageObject(
       );
     }
   }
-}
-
-/** 原子事务名称；旧名称保留给尚未迁移的调用者。 */
-export async function releaseDomainStorageObjectTx(
-  storageUrl: string,
-  tx: DbTx,
-) {
-  return await releaseDomainStorageObject(storageUrl, tx);
 }
 
 /** 运维核对计数与持久归属；不把源题的共享引用字节算入目标域。 */
@@ -452,18 +445,22 @@ export async function getDomainOwnedStorageBytes(
   return row?.bytes ?? null;
 }
 
-/** 流式上传拿到对象定位后，在绑定提交前持久记录，以便崩溃后核对。 */
-export async function attachDomainStorageUpload(
+/**
+ * 流式上传拿到对象定位后，在绑定提交前持久记录，以便崩溃后核对。
+ *
+ * 必须与业务引用写入处于同一事务：调用方传入真实 `DbTx`，本函数不开启事务。
+ */
+export async function attachDomainStorageUploadTx(
   domainId: string,
   id: string,
   storageUrl: string,
-  executor: DbTx,
+  tx: DbTx,
 ) {
-  await executor.select().from(storageObjects).where(
+  await tx.select().from(storageObjects).where(
     eq(storageObjects.storage_url, storageUrl),
   ).for("share");
-  await lockQuota(domainId, executor);
-  const [updated] = await executor.update(domainStorageUploads).set({
+  await lockQuota(domainId, tx);
+  const [updated] = await tx.update(domainStorageUploads).set({
     storage_url: storageUrl,
   }).where(and(
     eq(domainStorageUploads.id, id),
@@ -475,16 +472,6 @@ export async function attachDomainStorageUpload(
     throw new ConflictError("上传预约已失效", "STORAGE_RESERVATION_EXPIRED");
   }
   return updated;
-}
-
-/** 原子事务名称；调用方必须传入真实 `DbTx`。 */
-export async function attachDomainStorageUploadTx(
-  domainId: string,
-  id: string,
-  storageUrl: string,
-  tx: DbTx,
-) {
-  return await attachDomainStorageUpload(domainId, id, storageUrl, tx);
 }
 
 /** 运维消费者按有限批次核对带物理定位的崩溃遗留预约。 */

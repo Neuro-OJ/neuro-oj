@@ -21,7 +21,7 @@ import {
   getDomainOwnedStorageBytes,
   getDomainStorageUsage,
   growDomainStorageUploadTx,
-  releaseDomainStorageObjectTx,
+  releaseDomainStorageObject,
   releaseDomainStorageUploadTx,
   reserveDomainStorageUploadTx,
   settleDomainStorageUploadTx,
@@ -124,7 +124,7 @@ export function attachUploadCommandTx(
 /** 引用守卫确认物理删除后释放各所属域的实际占用。 */
 export function releaseObjectCommand(storageUrl: string) {
   return getDb().transaction((tx) =>
-    releaseDomainStorageObjectTx(storageUrl, tx)
+    releaseDomainStorageObject(storageUrl, tx)
   );
 }
 

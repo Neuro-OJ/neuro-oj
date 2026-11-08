@@ -203,11 +203,16 @@ function assertSafeEntryPath(name: string): void {
  * @throws {BadRequestError} 根级缺 problem.json / 根级缺 evaluate.py /
  *   ZIP 安全校验失败 / manifest 非法 JSON
  */
-/** 唯一外层目录可作为题包根；先验证原路径，避免隐藏路径穿越。 */
+/**
+ * 唯一外层目录可作为题包根。
+ *
+ * 路径安全由入口负责：`parseBundleZip` 与 `readEvaluationEntries` 都已对原始条目
+ * 执行 `assertSafeEntryPath`；这里只删除统一前缀，不会引入 `..`、绝对路径或 `\`，
+ * 因此不再重复校验。
+ */
 function normalizeBundleRoot(
   source: Record<string, Uint8Array>,
 ): Record<string, Uint8Array> {
-  for (const path of Object.keys(source)) assertSafeEntryPath(path);
   let files = source;
   while (
     !Object.hasOwn(files, "problem.json") &&

@@ -24,6 +24,7 @@ import {
   enterTestContext,
   initSystemSettings,
   leaveTestContext,
+  resetSetting,
   updateSetting,
 } from "../../../../platform/system/index.ts";
 import { signToken } from "../../../../access/identity/services/security/jwt.ts";
@@ -50,6 +51,8 @@ async function scopedApp() {
   await initSystemSettings();
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
+    // 实例模块政策可能被同分片的其它文件关闭社区，先恢复默认（全部开放）。
+    await resetSetting("instance_allowed_modules", "0");
     await updateSetting("community_enabled", true, "0");
     await updateSetting("community_new_user_review_hours", 0, "0");
     await updateSetting("community_post_interval_seconds", 0, "0");

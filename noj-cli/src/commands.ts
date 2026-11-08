@@ -8,7 +8,8 @@
  * `cli.ts` 的 `printHelp()` 改为渲染本模块。
  *
  * 防漂移门禁见 `commands_test.ts`：它把本模块声明的顶层命令与
- * `cli.ts:dispatchableTopLevelNames()`（从 dispatcher 自身逻辑提取）比对，
+ * `cli.ts:dispatchableTopLevelNames()`（声明式事实源；`dispatchCommand` 的
+ * `case` 名字由测试从源码提取后一并并入）比对，
  * 而非与第二份手写清单比对。
  */
 
@@ -337,7 +338,8 @@ export const COMMANDS: readonly CommandSpec[] = [
  * 顶层命令名集合（不含别名，也不含 `-` 开头的全局选项）。
  *
  * 这是防漂移门禁的左侧：`commands_test.ts` 断言它 ⊆
- * `cli.ts:dispatchableTopLevelNames()`（从 dispatcher 自身逻辑提取），
+ * `cli.ts:dispatchableTopLevelNames()` 加上测试从 `dispatchCommand` 源码
+ * 提取的 `case` 名字，
  * 因此新增 help 命令却未实现、或删除实现却未清理 help，都会立刻变红。
  */
 export function declaredTopLevelNames(): Set<string> {

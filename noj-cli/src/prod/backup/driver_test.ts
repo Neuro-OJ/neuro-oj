@@ -12,7 +12,7 @@
  * 这些用例不依赖 docker（只依赖 `sh`/`cat`），因此在任何 CI 环境都可跑。
  */
 
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import { realRunner } from "../../runtime/command.ts";
 import { makeTempDir } from "../../testing/helpers.ts";
@@ -154,27 +154,6 @@ Deno.test("T17 realRawDriver.captureToFile：非 0 退出码如实回传（不�
       destFile: dest,
     });
     assertEquals(code, 42, "退出码由调用方判定（captureToFile 只搬运）");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
-Deno.test("T17 realRawDriver：runner 缺 spawn 时明确抛错（绝不退化为字符串路径）", async () => {
-  const dir = await makeTempDir();
-  try {
-    const dest = join(dir, "out.bin");
-    await Deno.writeFile(dest, new Uint8Array());
-    // 故意去掉 spawn：模拟 P2 既有 fake 的能力缺口
-    const noSpawn = {
-      run: realRunner().run,
-      spawn: undefined as never,
-    };
-    const driver = realRawDriver(noSpawn);
-    await assertRejects(
-      () => driver.captureToFile("cat", [], { destFile: dest }),
-      Error,
-      "不支持 spawn",
-    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

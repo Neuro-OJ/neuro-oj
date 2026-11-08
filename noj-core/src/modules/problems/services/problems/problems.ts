@@ -7,7 +7,7 @@
  * - problems-list.ts：listProblems / listAllProblems / getProblem /
  *   getDefaultDomainProblemByNumber + attachTags
  * - problems-tags.ts：syncProblemTags
- * - problems-crud.ts：createProblem / updateProblem / deleteProblem
+ * - problems-crud.ts：createProblem / updateProblem / 题目删除事务步骤
  *
  * 本文件仅 re-export 以保持向后兼容（routes/admin.ts、routes/problems.ts、
  * tests/services/problems.test.ts、tests/routes/problems.test.ts 等既有
@@ -23,7 +23,6 @@ export {
   createDomainProblemForActor,
   createProblem,
   createProblemForActor,
-  deleteProblem,
   updateProblem,
   updateProblemForActor,
 } from "./problems-crud.ts";

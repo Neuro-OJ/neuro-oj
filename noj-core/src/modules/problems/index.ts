@@ -20,7 +20,6 @@ export {
   createDomainProblemForActor,
   createProblem,
   createProblemForActor,
-  deleteProblem,
   getDefaultDomainProblemByNumber,
   getProblem,
   listAllProblems,
@@ -104,7 +103,6 @@ export type {
   UpdateTrainingOptions,
 } from "./services/trainings.ts";
 export {
-  deleteSupportPackage,
   deleteSupportPackageForActor,
   deleteSupportPackageForActorTx,
   extractTemplateFromPackage,

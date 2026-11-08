@@ -582,44 +582,16 @@ export function validateProfileName(value?: string): ProfileName | undefined {
 }
 
 /**
- * 从本文件**自身的分发代码**中提取顶层命令名（防漂移门禁的事实源）。
- *
- * 提取两处既有判定，而不是另写一份字面量清单——后者会与 switch 一起漂移，
- * 正是本任务要消灭的缺陷形态：
- * 1. `dispatchCommand` 顶层 `switch (command)` 的 `case "..."` 标签
- *    （4 空格缩进；内层 switch 缩进更深，不会被命中）；
- * 2. `dispatchCommand` 内 `command === "..."` 的特判分支
- *    （`problem`/`problems`/`stack`；`backup drill` 的 `backup` 亦在此列）。
- *
- * 以 `dispatchCommand`（而非整个文件）为界，避免把 `run()` 的
- * `--help`/`-v` 等旗标误收为命令名。锚点失效时返回空集，
- * 主门禁会因声明落空而**立刻变红**，不会静默通过。
- */
-function topLevelDispatchNames(): Set<string> {
-  const source = Deno.readTextFileSync(new URL(import.meta.url));
-  // 锚点必须**行首匹配**：本函数自身源码里含有这两个签名的字符串字面量，
-  // 用普通 indexOf 会命中自己（实测 start/end 落在本函数内部，提取结果为空）。
-  const startMatch = /^export async function dispatchCommand\(/m.exec(source);
-  const endMatch = /^export function removedCommandNotice\(/m.exec(source);
-  if (startMatch === null || endMatch === null) return new Set();
-  const start = startMatch.index;
-  const end = endMatch.index;
-  if (end <= start) return new Set();
-  const body = source.slice(start, end);
-  const names = new Set<string>();
-  for (const m of body.matchAll(/^ {4}case "([^"]+)":/gm)) names.add(m[1]!);
-  for (const m of body.matchAll(/command === "([^"]+)"/g)) names.add(m[1]!);
-  return names;
-}
-
-/**
  * dispatcher **实际可处理**的顶层命令集合（防漂移门禁的右侧）。
  *
- * 由三处既有事实源合并，**不含**本门禁自带的命令清单：
+ * 由两处既有事实源合并，**不含**本门禁自带的命令清单：
  * 1. `PRODUCTION_COMMANDS`（`production.ts` 的声明）；
  * 2. `CONTAINER_COMMANDS` 的顶层名（`container.ts` 的 Tier 3 前缀路由，
- *    由 `run()` 在进入 `dispatchCommand` 之前拦下）；
- * 3. {@link topLevelDispatchNames} 从 `dispatchCommand` 自身源码提取的名字。
+ *    由 `run()` 在进入 `dispatchCommand` 之前拦下）。
+ *
+ * `dispatchCommand` 内 `switch` 的 `case` 名字由**测试**从 `cli.ts` 源码提取
+ * （见 `commands_test.ts`），生产代码不再在运行时读自身源码——`deno compile`
+ * 后的单二进制里没有源码文件。
  *
  * 若 help 声明了任何此处不存在的命令，`commands_test.ts` 的门禁即失败。
  */
@@ -629,7 +601,6 @@ export function dispatchableTopLevelNames(): Set<string> {
     const top = prefix[0];
     if (top !== undefined) names.add(top);
   }
-  for (const name of topLevelDispatchNames()) names.add(name);
   return names;
 }
 
@@ -1399,9 +1370,9 @@ export async function dispatchCommand(
  * - 直接给出**替代命令**（逐条可粘贴），而不是指向另一个同样模糊的名字；
  * - 调用方返回 {@link EXIT_USAGE}(2)：命令不存在是用法错误，不是运行失败(1)。
  *
- * 注意本函数名是 `topLevelDispatchNames()` 的**提取锚点**（T7 防漂移门禁按
- * 行首匹配它来界定 `dispatchCommand` 的正文）。改名必须同步改那个正则，
- * 否则门禁会以"声明落空"的方式变红——那是**有意的**保护。
+ * 注意本函数名是 `commands_test.ts` 提取 `dispatchCommand` 源码的**结束锚点**
+ * （T7 防漂移门禁按行首匹配它来界定 `dispatchCommand` 的正文）。改名必须同步
+ * 改那个正则，否则门禁会以"提取落空"的方式变红——那是**有意的**保护。
  */
 export function removedCommandNotice(
   legacy: string,

@@ -172,17 +172,6 @@ export function createReadyProbe(
  * @returns Hono 应用实例
  */
 export function createApp(config: GatewayConfig, deps: CreateAppDeps) {
-  if (!deps.db || !deps.redis || !deps.accountingWorker) {
-    throw new Error(
-      "createApp 必须由组合根显式注入 PostgreSQL、Redis 与 accounting worker",
-    );
-  }
-  if (
-    typeof deps.accountingWorker.stop !== "function" ||
-    typeof deps.accountingWorker.done?.then !== "function"
-  ) {
-    throw new Error("createApp 注入的 accounting worker 缺少可等待的 done");
-  }
   const app = new Hono();
 
   // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
@@ -203,7 +192,7 @@ export function createApp(config: GatewayConfig, deps: CreateAppDeps) {
   const readyProbe = createReadyProbe({
     db,
     redis,
-    accounting: worker ? () => worker.getStatus() : null,
+    accounting: () => worker.getStatus(),
   });
 
   app.get("/health", (c) => {

@@ -8,11 +8,13 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { deleteSupportPackage, getSupportPackageBytes } from "../../index.ts";
 import {
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../shared/base/errors.ts";
+  deleteSupportPackageForActor,
+  getSupportPackageBytes,
+} from "../../index.ts";
+import { getProblemDraft } from "../../services/versioning/draft.ts";
+import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
+import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   getStorageProvider,
   resetStorageProvider,
@@ -89,7 +91,7 @@ async function createTestProblem(
 }
 
 Deno.test({
-  name: "support-package service: deleteSupportPackage 删除成功",
+  name: "support-package service: deleteSupportPackageForActor 删除成功",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -109,7 +111,12 @@ Deno.test({
       .where(eq(problems.id, currentProblemId));
 
     // 再删除
-    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
+    const draft = await getProblemDraft(currentProblemId);
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      userActorFromAuthenticatedId(OWNER_ID),
+      draft.revision,
+    );
 
     // 验证 DB 已清空
     const db = getDb();
@@ -123,23 +130,34 @@ Deno.test({
 });
 
 Deno.test({
-  name: "support-package service: deleteSupportPackage 幂等：无文件时也成功",
+  name:
+    "support-package service: deleteSupportPackageForActor 幂等：无文件时也成功",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     resetStorageProvider();
     await createTestProblem();
+    const actor = userActorFromAuthenticatedId(OWNER_ID);
 
     // 删除不存在的支持包应幂等
-    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      actor,
+      (await getProblemDraft(currentProblemId)).revision,
+    );
     // 再次删除仍应成功
-    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      actor,
+      (await getProblemDraft(currentProblemId)).revision,
+    );
   },
 });
 
 Deno.test({
-  name: "support-package service: deleteSupportPackage 非 owner 返回 403",
+  name:
+    "support-package service: deleteSupportPackageForActor 非 owner 返回 403",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -148,24 +166,38 @@ Deno.test({
     await createTestProblem();
 
     await createTestUser("other-user");
+    const draft = await getProblemDraft(currentProblemId);
     await assertRejects(
-      () => deleteSupportPackage(currentProblemId, "other-user", "user"),
+      () =>
+        deleteSupportPackageForActor(
+          currentProblemId,
+          userActorFromAuthenticatedId("other-user"),
+          draft.revision,
+        ),
       ForbiddenError,
     );
   },
 });
 
 Deno.test({
-  name: "support-package service: deleteSupportPackage 不存在的题目返回 404",
+  name:
+    "support-package service: deleteSupportPackageForActor 不存在的题目返回 404",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     resetStorageProvider();
-    await assertRejects(
-      () => deleteSupportPackage("nonexistent", ADMIN_ID, "admin"),
-      NotFoundError,
+    // 走新入口后不存在题目的错误由 loadProblemIdentity 抛出（404 AppError）
+    const error = await assertRejects(
+      () =>
+        deleteSupportPackageForActor(
+          "nonexistent",
+          userActorFromAuthenticatedId(ADMIN_ID),
+          0,
+        ),
+      AppError,
     );
+    assertEquals(error.statusCode, 404);
   },
 });
 

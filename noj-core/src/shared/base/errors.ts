@@ -26,8 +26,9 @@ export class AppError extends Error {
     statusCode: number,
     code?: string,
     meta?: Record<string, unknown>,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "AppError";
     this.statusCode = statusCode;
     this.code = code ?? "INTERNAL_ERROR";
@@ -122,8 +123,8 @@ export class ForbiddenError extends AppError {
  * 当前由限流相关 Redis 调用在连接失败时抛出（issue #73 fail-closed）。
  */
 export class ServiceUnavailableError extends AppError {
-  constructor(message: string) {
-    super(message, 503, "SERVICE_UNAVAILABLE");
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, 503, "SERVICE_UNAVAILABLE", undefined, options);
     this.name = "ServiceUnavailableError";
   }
 }

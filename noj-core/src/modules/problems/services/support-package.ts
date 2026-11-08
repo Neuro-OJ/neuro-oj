@@ -34,7 +34,6 @@ import type { Context } from "hono";
 import type { UserActor } from "../../access/contracts/actor.ts";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import {
-  draftRevisionRequired,
   getProblemDraft,
   listDraftObjects,
   loadProblemIdentity,
@@ -230,16 +229,11 @@ async function checkSupportPackagePermission(
   userId?: string,
   userRole?: string,
   problem?: { id?: string; domain_id?: string | null; owner_id: string },
-  c?: Context,
 ): Promise<void> {
-  const [source] = problem
-    ? []
-    : await getDb().select().from(problems).where(eq(problems.id, problemId))
-      .limit(1);
-  const identity = problem ?? source;
+  const identity = problem;
   if (!identity) throw new NotFoundError("题目不存在");
   await assertProblemEditPermission(
-    c,
+    undefined,
     { ...identity, id: problemId },
     userId,
     userRole,
@@ -319,78 +313,6 @@ export async function finalizeDeletedSupportPackage(
 }
 
 /**
- * 删除支持包。
- *
- * 通过 StorageProvider 删除已存储的数据，
- * 并将数据库中的 `support_package_storage_url` 设为 null。
- * 幂等操作。
- *
- * @param problem - 可选的预获取题目信息（type, owner_id），避免重复查询
- * @throws {NotFoundError} 题目不存在
- * @throws {ForbiddenError} 无权操作
- */
-export async function deleteSupportPackage(
-  problemId: string,
-  userId?: string,
-  userRole?: string,
-  problem?: { id?: string; domain_id?: string | null; owner_id: string },
-  c?: Context,
-): Promise<void> {
-  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
-
-  const identity = await loadProblemIdentity(problemId);
-  const draft = await getProblemDraft(problemId, identity);
-  const raw = c?.req.header("if-match");
-  if (c && raw === undefined) throw draftRevisionRequired();
-  const expectedRevision = raw === undefined
-    ? draft.revision
-    : Number(raw.replace(/^"|"$/g, ""));
-  const objects = await listDraftObjects(problemId);
-  const removed = objects.filter((ref) => ref.role === "support_package");
-  await saveProblemDraftWithObjects(problemId, {
-    content: draft.content,
-    expectedRevision,
-    actorId: c?.get("userId") ?? userId,
-    context: c,
-    objects: objects.filter((ref) => ref.role !== "support_package"),
-  });
-
-  // 未发布题目（尚无已发布版本）的题目投影是**唯一**读取来源之一：删包时必须同步
-  // 清空，否则 `resolveSupportPackageRef` 会从投影兜底返回刚被删除的对象（下载端点
-  // 继续交付已删文件）。已发布题目的投影由发布服务维护、历史版本仍引用旧包，
-  // 因此不能在这里改写。
-  if (!identity.latest_version_id) {
-    const [current] = await getDb().select({
-      url: problems.support_package_storage_url,
-    }).from(problems).where(eq(problems.id, problemId)).limit(1);
-    if (current?.url) {
-      await getDb().update(problems).set({
-        support_package_storage_url: null,
-        updated_at: new Date().toISOString(),
-      }).where(eq(problems.id, problemId));
-    }
-  }
-
-  // 3) 物理删除统一经过引用守卫：仍被历史版本引用的对象不会被删掉
-  for (const { storage_url: url } of removed) {
-    if (!url) continue;
-    try {
-      const outcome = await deleteStorageObject(url);
-      if (outcome.outcome === "referenced") {
-        logger.info("支持包仍被历史版本引用，保留对象", {
-          problem_id: problemId,
-          storage_url: url,
-          references: outcome.references.total,
-        });
-      }
-    } catch (err) {
-      logger.error("删除支持包失败", { storage_url: url, err });
-      // 删除失败不阻塞引用清理
-    }
-  }
-}
-
-/**
  * 获取支持包原始字节。
  *
  * 通过 StorageProvider 读取支持包数据。
@@ -402,7 +324,7 @@ export async function getSupportPackageBytes(
   problemId: string,
   userId?: string,
   userRole?: string,
-  c?: Context,
+  _c?: Context,
   options: { versionId?: string } = {},
 ): Promise<Uint8Array | null> {
   const db = getDb();
@@ -422,7 +344,7 @@ export async function getSupportPackageBytes(
     throw new NotFoundError("题目不存在");
   }
 
-  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
+  await checkSupportPackagePermission(problemId, userId, userRole, problem);
 
   const ref = await resolveSupportPackageRef(problemId, {
     versionId: options.versionId,

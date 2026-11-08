@@ -30,6 +30,9 @@ import {
   parseDomainDraftBundle,
 } from "./problem-bundle-edit.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 
 /** 域内指定题号导入更新已有草稿，否则新建；内容、对象与绑定在同一创建事务。 */
 export async function importDomainProblemBundle(
@@ -150,11 +153,21 @@ export async function importDomainProblemBundle(
       warnings: parsed.warnings,
     };
   } catch (error) {
-    await Promise.allSettled(
+    // 补偿失败不能覆盖原始错误（它才是导入失败的根因），但必须留下可追踪的
+    // storage_url，避免上传对象成为无人知晓的孤儿。
+    const results = await Promise.allSettled(
       objects.map((object) =>
         compensateUploadedObject({ storageUrl: object.storage_url })
       ),
     );
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logger.warn("导入失败后补偿上传对象失败，需人工清理", {
+          storage_url: objects[index].storage_url,
+          err: result.reason,
+        });
+      }
+    });
     throw error;
   }
 }

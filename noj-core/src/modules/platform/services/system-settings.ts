@@ -162,7 +162,7 @@ export function registerSettingsInvalidationListener(): ManagedTask {
       payload = null;
     }
     const reload = refreshSettingsCache(payload?.key).then(() => {
-      logger.info("收到设置变更通知，已刷新本地设置缓存", {
+      logger.debug("收到设置变更通知，已刷新本地设置缓存", {
         key: payload?.key ?? "(全部)",
       });
     }).catch((err) => {
@@ -266,16 +266,16 @@ const URL_CREDENTIAL_KEYS = new Set(["DATABASE_URL", "REDIS_URL"]);
 
 // ─── 类型校验 ───────────────────────────────────────────────
 
-/** 严格 type 校验：值必须匹配注册表 type，否则抛 ValidationError */
+/**
+ * 严格 type 校验：值必须匹配注册表 type，否则返回失败信息。
+ *
+ * `def` 由调用方从注册表取出（调用方已校验存在性），避免重复查找。
+ */
 function validateValueType(
-  key: string,
+  def: SettingDefinition,
   value: unknown,
 ): { ok: true; raw: string } | { ok: false; message: string } {
-  const def = findDefinition(key);
-  if (!def) {
-    return { ok: false, message: `未注册的设置项: ${key}` };
-  }
-
+  const { key } = def;
   switch (def.type) {
     case "boolean": {
       if (typeof value !== "boolean") {
@@ -341,8 +341,11 @@ function validateValueType(
       }
       return { ok: true, raw: JSON.stringify(value) };
     }
-    default:
-      return { ok: false, message: `${key} 类型定义错误: ${def.type}` };
+    default: {
+      // SettingType 为闭合 union：新增类型必须在此补齐分支，否则编译失败。
+      const _exhaustive: never = def.type;
+      throw new Error(`未处理的设置类型: ${String(_exhaustive)}`);
+    }
   }
 }
 
@@ -359,6 +362,15 @@ export async function initSystemSettings(): Promise<void> {
   await loadAllIntoCache();
 }
 
+/** 解码 DB 行中的 JSON 值；数据损坏（非法 JSON）时回退为字符串原值 */
+function decodeRowValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 /**
  * 从 DB 全量重建设置缓存（原子替换；跨副本整体失效与初始化共用）。
  */
@@ -371,15 +383,8 @@ async function loadAllIntoCache(): Promise<void> {
     // bootstrap（env-owned）项忽略 DB 旧值：不缓存，读取走 env 快照
     if (isBootstrap(row.key)) continue;
 
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(row.value);
-    } catch {
-      // DB 数据损坏，回退为字符串原值
-      decoded = row.value;
-    }
     newCache.set(row.key, {
-      value: decoded,
+      value: decodeRowValue(row.value),
       raw: row.value,
       source: "db",
       updatedAt: row.updated_at,
@@ -631,7 +636,12 @@ export async function updateSetting(
     );
   }
 
-  const validation = validateValueType(key, value);
+  // 注册表为常量：此处取出的 def 直接复用于后续写入与返回，不再重复查找。
+  const def = findDefinition(key);
+  if (!def) {
+    throw new ValidationError(`未注册的设置项: ${key}`);
+  }
+  const validation = validateValueType(def, value);
   if (!validation.ok) {
     throw new ValidationError(validation.message);
   }
@@ -649,7 +659,7 @@ export async function updateSetting(
       // 同一设置行串行化停用及恢复，区间与实际政策共同提交。
       await writer.insert(systemSettings).values({
         key,
-        value: oldSetting?.raw ?? JSON.stringify(findDefinition(key)!.default),
+        value: oldSetting?.raw ?? JSON.stringify(def.default),
         updated_at: now,
         updated_by: actor.userId,
       }).onConflictDoNothing();
@@ -664,8 +674,8 @@ export async function updateSetting(
       .values({
         key,
         value: validation.raw,
-        description: findDefinition(key)?.description ?? "",
-        is_secret: findDefinition(key)?.is_secret ?? false,
+        description: def.description,
+        is_secret: def.is_secret,
         updated_at: now,
         updated_by: actor.userId,
       })
@@ -694,10 +704,6 @@ export async function updateSetting(
 
   // 事务模式：缓存刷新与审计由调用方在提交后统一处理
   if (tx) {
-    const def = findDefinition(key);
-    if (!def) {
-      throw new ValidationError(`未注册的设置项: ${key}`);
-    }
     return {
       key: def.key,
       type: def.type,
@@ -719,10 +725,6 @@ export async function updateSetting(
   notifySettingsChanged(key);
 
   // 审计日志：记录设置变更（issue #101）
-  const def = findDefinition(key);
-  if (!def) {
-    throw new ValidationError(`未注册的设置项: ${key}`);
-  }
   const fromValue = def.is_secret ? maskSecret(fromRaw) : fromRaw;
   const toValue = def.is_secret ? maskSecret(value) : value;
   await recordAudit(
@@ -839,14 +841,8 @@ export async function reloadSingleKey(key: string): Promise<void> {
   }
 
   const row = rows[0];
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(row.value);
-  } catch {
-    decoded = row.value;
-  }
   cache.set(key, {
-    value: decoded,
+    value: decodeRowValue(row.value),
     raw: row.value,
     source: "db",
     updatedAt: row.updated_at,

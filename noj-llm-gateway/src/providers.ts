@@ -4,6 +4,7 @@
 import type { Db } from "./db.ts";
 import { decryptSecret, encryptSecret } from "./crypto.ts";
 import { assertResolvesPublic, type ResolveFn } from "./upstream-guard.ts";
+import { logger } from "./logger.ts";
 
 export interface ProviderInput {
   name: string;
@@ -105,6 +106,31 @@ export function normalizeRateLimit(value: unknown): number {
   return n;
 }
 
+/** 解密失败的掩码：与「Key 过短」的 `****` 区分，便于运维定位密钥轮换/损坏。 */
+const DECRYPT_FAILED_MASK = "****(decrypt_failed)";
+
+/**
+ * 解密 Provider Key；失败时记 warn（只带 provider id，绝不输出密文/明文）
+ * 并返回 null，由调用方决定降级为可区分掩码，不阻断列表/更新。
+ */
+async function tryDecryptSecret(
+  encrypted: string,
+  storeKey: string,
+  providerId: string,
+): Promise<string | null> {
+  try {
+    return await decryptSecret(encrypted, storeKey);
+  } catch {
+    logger.warn(
+      "Provider Key 解密失败，请检查 NOJ_LLM_STORE_KEY 轮换或密文损坏: {provider_id}",
+      {
+        provider_id: providerId,
+      },
+    );
+    return null;
+  }
+}
+
 /** 列出全部 Provider；解密失败时返回不可用的掩码，不阻断列表。 */
 export async function listProviders(
   db: Db,
@@ -116,13 +142,17 @@ export async function listProviders(
   >`SELECT * FROM llm_providers WHERE domain_id = ${domainId} ORDER BY created_at DESC`;
   const views: ProviderView[] = [];
   for (const row of rows) {
-    let apiKey = "";
-    try {
-      apiKey = await decryptSecret(row.encrypted_api_key, storeKey);
-    } catch {
-      // 密钥轮换/损坏时至少不阻断列表；掩码显示不可用
-    }
-    views.push(toView(row, apiKey));
+    // 密钥轮换/损坏时至少不阻断列表；掩码显示为解密失败
+    const apiKey = await tryDecryptSecret(
+      row.encrypted_api_key,
+      storeKey,
+      row.id,
+    );
+    views.push(
+      apiKey === null
+        ? { ...toView(row, ""), api_key_masked: DECRYPT_FAILED_MASK }
+        : toView(row, apiKey),
+    );
   }
   return views;
 }
@@ -262,9 +292,12 @@ export async function updateProvider(
   );
   const row = rows[0];
   if (!row) throw new Error("revision_conflict");
+  // 未改 Key 时回显原 Key 的掩码；解密失败降级为可区分掩码，不阻断更新。
   const apiKey = input.api_key ??
-    (await decryptSecret(row.encrypted_api_key, storeKey).catch(() => ""));
-  return toView(row, apiKey);
+    await tryDecryptSecret(row.encrypted_api_key, storeKey, row.id);
+  return apiKey === null
+    ? { ...toView(row, ""), api_key_masked: DECRYPT_FAILED_MASK }
+    : toView(row, apiKey);
 }
 
 /** 停用 Provider；历史尝试的配置依据保留。 */
