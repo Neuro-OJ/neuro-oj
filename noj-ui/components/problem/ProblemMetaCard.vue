@@ -7,7 +7,7 @@ import type { PublicProblemStats } from '~/utils/problemStats'
 /**
  * 题目信息卡片（#511，右栏）：编号 / 难度 / 提供者 / 标签 / 通过率。
  *
- * 通过率复用 `useProblemStats().fetchPublic` 的公开统计；赛期后端抑制时
+ * 通过率使用父组件传入的公开统计（`PublicProblemStats`，来自域内题目详情接口）；赛期后端抑制时
  * `submit_count`/`accepted_count`/`acceptance_rate` 三者同为空，
  * 这里用占位文案表达，**不用仍返回的 `attempt_count` 顶替**（防算术还原）。
  */

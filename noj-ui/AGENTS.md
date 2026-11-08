@@ -49,9 +49,9 @@ noj-ui/
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── uiproblem/         # UiWorkspace / UiFrame（界面题：沙箱 iframe 渲染题包 ui.html，editor/[id].vue 按 submission_mode 选择）
 │   ├── feature/           # ProblemFilterBar / CheckInCard / StatsToggle / LatestSubmissions / search（SearchPalette / SearchResultItem）/ community（CommentCard）
-│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
-│   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
-│   ├── card/              # ProblemCard / SubmissionCard
+│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle（仅 SubmissionCard 使用）
+│   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
+│   ├── card/              # SubmissionCard
 │   ├── form/              # TextInput / PasswordField
 │   ├── auth/              # AuthFormCard
 │   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminConfirmDialog / AdminStatusBadge / AdminDetailDrawer 等统一管理组件
@@ -165,8 +165,8 @@ cd dist
 
 ## API 交互约定
 
-空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有，交互仍走原有细粒度 API。全局导航不再预取或写入共享快照；
-接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
+空间首页、班级概览、作业详情和题单详情使用 Nitro 视图 BFF，初始数据由页面自己的 `useAsyncData` 持有，交互仍走原有细粒度
+API。全局导航不再预取或写入共享快照； 接口、缓存与故障边界见 [视图 BFF 与 SSR](docs/bff.md)。其他页面继续使用通用代理。
 
 产品工作空间新增 `/workspaces`、`/d/:slug`、成员 / 设置及邀请页面，使用 `layouts/workspace.vue`
 提供的统一上下文。实现及当前限制见 [工作空间前端](docs/workspace.md)。域只能来自 URL，不以 JWT、Cookie 或导航偏好
@@ -218,29 +218,26 @@ cd dist
 
 ### 安全模型
 
-| 机制           | 说明                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| JWT 存储       | HTTP-only Cookie（`noj:token`），JS 不可读，防 XSS 窃取                                      |
-| Session Cookie | `noj:session`，`httpOnly: false`，仅用于 UI 快速判断登录态（**不可信任**，后端执行实际鉴权） |
-| CSRF 防护      | `sameSite: "lax"` 提供基础防护                                                               |
-| 速率限制       | **未实现**（无 IP 封禁 / CAPTCHA）                                                           |
-| 错误信息       | 后端错误信息直接显示给用户（`e.data?.error`）                                                |
-| 管理路由       | `/admin/*` 路径在客户端 bundle 中可见，非管理员静默重定向到 `/`                              |
+| 机制           | 说明                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| JWT 存储       | HTTP-only Cookie（`noj:token`），JS 不可读，防 XSS 窃取                                                                     |
+| Session Cookie | `noj:session`，`httpOnly: false`，仅用于 UI 快速判断登录态（**不可信任**，后端执行实际鉴权）                                |
+| CSRF 防护      | `sameSite: "lax"` 提供基础防护                                                                                              |
+| 速率限制       | **未实现**（无 IP 封禁 / CAPTCHA）                                                                                          |
+| 错误信息       | 后端错误信息直接显示给用户（`e.data?.error`）                                                                               |
+| 管理路由       | `/admin/*` 路径在客户端 bundle 中可见，非管理员静默重定向到 `/`                                                             |
 | 富文本净化     | 服务端用**解析型** `sanitize-html`（政策见 `utils/sanitize-policy.ts`），客户端用 DOMPurify；**禁止用正则净化服务端富文本** |
 
 ### 富文本净化的硬规则（2026-11-02 rc/v0.11 审计 F1）
 
-1. **不得用正则承担服务端 HTML 净化的安全职责**。实体解码交给 HTML 解析器：
-   `javascript&#58alert(1)` / `javascript&#x3Aalert(1)` 这类省略分号的数字实体，
-   正则解码器要么漏解、要么解码时机早于协议判定，两者都会产出可执行的
+1. **不得用正则承担服务端 HTML 净化的安全职责**。实体解码交给 HTML 解析器： `javascript&#58alert(1)` /
+   `javascript&#x3Aalert(1)` 这类省略分号的数字实体， 正则解码器要么漏解、要么解码时机早于协议判定，两者都会产出可执行的
    `javascript:` 链接（审计已在实际链路复现）。
-2. 新增富文本入口（Markdown、评论、题面、公告、邮件正文等）必须复用
-   `utils/sanitize-policy.ts` 的政策；服务端与客户端行为差异只能在 `imagePolicy` /
-   `afterSanitizeAttributes` 这一层，不得各写一套标签白名单。
+2. 新增富文本入口（Markdown、评论、题面、公告、邮件正文等）必须复用 `utils/sanitize-policy.ts`
+   的政策；服务端与客户端行为差异只能在 `imagePolicy` / `afterSanitizeAttributes` 这一层，不得各写一套标签白名单。
 3. 净化失败一律**降级纯文本**（fail-closed），不得输出未净化的 HTML。
-4. 载荷回归语料只有一份：`tests/fixtures/xss-corpus.ts`；新增绕过手法必须同时
-   加进语料，并跑「Deno 单测 + 组件测试 + `deno task test:bff:ssr`（真实 Chromium
-   首屏/点击/水合）」三层证据。
+4. 载荷回归语料只有一份：`tests/fixtures/xss-corpus.ts`；新增绕过手法必须同时 加进语料，并跑「Deno 单测 + 组件测试 +
+   `deno task test:bff:ssr`（真实 Chromium 首屏/点击/水合）」三层证据。
 
 ## 样式规范
 
@@ -373,13 +370,12 @@ cd dist
 
 ### SSR 数据获取约定
 
-- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`，不得在
-  `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`；禁止依赖全局路由中间件提供共享 BFF 快照。
+- 页面初始数据 MUST 使用页面自己的 `useAsyncData`/`useFetch`，不得在 `<script setup>` 顶层 `await api.get(...)` 写入普通
+  `ref`；禁止依赖全局路由中间件提供共享 BFF 快照。
 - `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup
   上下文，异步回调内不得再次调用。
 - 非关键数据（社区配置、首页公告等）SSR 失败 MUST 降级为空态/默认值，不得导致整页 502。
-- `ssr: false`
-  边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、我的题目、设置、队列、竞赛排名、社区通知/举报详情使用
+- `ssr: false` 边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、我的题目、设置、队列、竞赛排名、社区通知/举报详情使用
   `ssr: false`；内容/SEO 页保持 SSR。
 
 ## 中间件
@@ -409,15 +405,15 @@ cd dist
 
 ## 关键组件说明
 
-| 组件                                     | 说明                                                                                                                                                                                            |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MonacoEditor.vue`                       | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选                                                                                                  |
-| `MarkdownRenderer.vue`                   | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS                                                                                                                         |
-| `MarkdownEditor.vue`                     | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它  |
-| `CodingProblemEditor.vue`                | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
-| `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情）                                                                                                                                               |
-| `AsyncContent.vue`                       | 异步内容容器，统一处理 loading / empty / error 状态                                                                                                                                             |
-| `TableSkeleton.vue`                      | 表格骨架屏加载态                                                                                                                                                                                |
+| 组件                      | 说明                                                                                                                                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MonacoEditor.vue`        | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选                                                                                                  |
+| `MarkdownRenderer.vue`    | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS                                                                                                                         |
+| `MarkdownEditor.vue`      | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它  |
+| `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
+| `SubmissionCard.vue`      | 提交卡片（状态标签着色，点击跳转详情）                                                                                                                                                          |
+| `AsyncContent.vue`        | 异步内容容器，统一处理 loading / empty / error 状态                                                                                                                                             |
+| `TableSkeleton.vue`       | 表格骨架屏加载态                                                                                                                                                                                |
 
 ## 认证守卫
 
