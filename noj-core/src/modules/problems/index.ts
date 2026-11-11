@@ -168,11 +168,6 @@ export type {
   ObjectiveQuestionBundleInput,
   ProblemBundleManifest,
 } from "./types/problem-bundle.ts";
-export {
-  isValidTrainingVisibility,
-  TRAINING_VISIBILITIES,
-} from "./types/trainings.ts";
-export type { TrainingVisibility } from "./types/trainings.ts";
 export type { OiSubtask, OiTestCase } from "./types/runtime-config.ts";
 export {
   getBuiltinOiCostProfile,
@@ -286,14 +281,6 @@ export {
   setDomainProblemBindingStateForActor,
 } from "./services/workspace/problem-bindings.ts";
 export {
-  listDomainTrainings,
-  lockTrainingExpansion,
-  readDomainTraining,
-  resolveDomainTraining,
-} from "./services/workspace/training-access.ts";
-export { saveDomainTraining } from "./services/workspace/trainings.ts";
-export type { DomainTrainingInput } from "./services/workspace/trainings.ts";
-export {
   listDomainProblems,
   listDomainProblemVersions,
   readDomainProblem,
@@ -396,3 +383,11 @@ export type {
   SubmitObjectiveResult,
   UpdateQuestionInput,
 } from "./types/objective.ts";
+
+// 迁移期：供 src/features/trainings 复制题单时复用题目复制（见 core 重构提案）。
+export {
+  commitDomainProblemCopy,
+  compensateProblemCopy,
+  prepareDomainProblemCopy,
+} from "./services/workspace/problem-copy.ts";
+export type { PreparedProblemCopy } from "./services/workspace/problem-copy.ts";

@@ -28,6 +28,7 @@ import {
 } from "../education/contracts/outbox-migration.ts";
 import { startTaskWorker } from "../runtime/tasks/worker.ts";
 import { createBackgroundHandlers } from "./background-handlers.ts";
+import { FEATURES } from "../../features.ts";
 import { startSearchTaskRetentionTask } from "./search-tasks.ts";
 import { getStorageProvider } from "../assets/storage/mod.ts";
 import { startDomainStorageReconciliation } from "../assets/services/domain-reconciliation.ts";
@@ -369,6 +370,12 @@ export async function startCore() {
     backgroundTasks.add(startEducationEmailWorker());
     backgroundTasks.add(startEducationPublishingWorker());
     backgroundTasks.add(startDomainStorageReconciliation());
+    // 功能自声明的常驻 worker：登记进同一任务组，关闭时逆序停止。
+    for (const feature of FEATURES) {
+      for (const startWorker of feature.workers ?? []) {
+        backgroundTasks.add(startWorker());
+      }
+    }
 
     // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
     backgroundTasks.add(initEventSubscriber());

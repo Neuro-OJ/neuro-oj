@@ -1,7 +1,7 @@
 /**
  * P3 模块结构诊断器。
  *
- * 这份检查和 check-domains.ts 的边界不同：它按真实文件解析运行时 import，
+ * 这份检查按真实文件解析运行时 import（而非静态的目录/导入规则），
  * 把 `import type`、全是 `type` 的具名导入以及 `export type` 从运行时图中排除，
  * 但保留混合导入、导出门面和字面量 dynamic import。这样把一个文件改名为
  * `*.types.ts`、或把运行时代码藏进 type 文件，都不会绕过 SCC 检查。
@@ -228,7 +228,7 @@ function normalizedRelativePath(value: string): string {
   return toPosix(value).replace(/^\.\//, "");
 }
 
-function importCandidates(specifierPath: string): string[] {
+export function importCandidates(specifierPath: string): string[] {
   const normalized = normalizedRelativePath(specifierPath);
   const candidates = [normalized];
   const extension = normalized.match(/\.[^/.]+$/)?.[0];
@@ -754,7 +754,7 @@ export async function validateTestCiManifest(
   return errors;
 }
 
-async function collectProductionFiles(root: string): Promise<string[]> {
+export async function collectProductionFiles(root: string): Promise<string[]> {
   const sourceRoot = resolve(root, "noj-core/src");
   const files: string[] = [];
   async function walk(directory: string): Promise<void> {

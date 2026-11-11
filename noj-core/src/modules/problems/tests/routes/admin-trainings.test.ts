@@ -5,7 +5,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { auditLogs, trainings, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import { saveDomainTraining } from "../../services/workspace/trainings.ts";
+import { saveDomainTraining } from "../../../../features/trainings/index.ts";
 
 await resetDbForTest();
 await initRedisForTest();

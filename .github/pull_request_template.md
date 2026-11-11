@@ -58,7 +58,7 @@ Closes #
 - [ ] 提交信息符合 Conventional Commits（`<type>(<scope>): 中文描述`）
 - [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] 相关文档已同步（AGENTS / CLAUDE / docs / noj-docs）
-- [ ] 注释/导出 JSDoc 与实现一致（`deno task check:jsdoc` 通过）
+- [ ] 注释与实现一致
 - [ ] 新增/修改行为有对应测试
 - [ ] GPG 签名可用
 

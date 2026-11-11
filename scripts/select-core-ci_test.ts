@@ -97,6 +97,12 @@ Deno.test("选择器: 路径分类覆盖迁移后模块、测试文件与共享�
     ["noj-core/AGENTS.md", "docs", {}],
     ["noj-cli/src/main.ts", "ignored", {}],
     ["noj-core/src/modules/unknown/new-file.ts", "unknown", {}],
+    // 功能切片（refactor-core-feature-slices 2.5）：一律归为全量 Core。
+    ["noj-core/src/features/demo/service.ts", "core-full", {}],
+    ["noj-core/src/features/demo/demo.test.ts", "core-full", {}],
+    ["noj-core/src/features.ts", "core-full", {}],
+    ["noj-core/src/shared/feature.ts", "core-full", {}],
+    ["noj-core/src/features", "core-full", {}],
   ];
   for (const [path, kind, extra] of cases) {
     const classification = classifyChangedPath(path);
@@ -179,6 +185,25 @@ Deno.test("选择器: shared/迁移/启动器/模块映射 → 全量 Core + 全
       [...E2E_API_DOMAINS, "cross-domain", "browser"],
       `${path} 的 E2E 选择应覆盖全部域`,
     );
+  }
+});
+
+Deno.test("选择器: 功能切片改动触发全量 Core 回归", () => {
+  for (
+    const path of [
+      "noj-core/src/features/demo/service.ts",
+      "noj-core/src/features/demo/demo.test.ts",
+      "noj-core/src/features.ts",
+      "noj-core/src/shared/feature.ts",
+    ]
+  ) {
+    const selection = selectFromPaths(changed(path));
+    assertEquals(selection.coreFull, true, `${path} 必须触发全量 Core`);
+    assert(
+      selection.reasons.some((reason) => reason.includes("全量 Core")),
+      `${path} 必须写明全量 Core 的原因`,
+    );
+    assertEquals(selection.e2e.allApi, true, `${path} 必须触发全部 API E2E`);
   }
 });
 

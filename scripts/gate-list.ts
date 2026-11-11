@@ -29,9 +29,10 @@ export interface Gate {
 
 /** 门禁自测文件（`deno test` 一次跑完，避免启动多次 Deno）。 */
 export const GATE_SELF_TESTS: string[] = [
-  "scripts/check-domains_test.ts",
   // P3 结构门禁自测：解析器负例与生产严格结构门禁共同执行。
   "scripts/check-module-boundaries_test.ts",
+  // 功能边界门禁自测（core 重构阶段 2.4）。
+  "scripts/check-feature-boundaries_test.ts",
   "scripts/select-core-ci_test.ts",
   "scripts/check-metrics_test.ts",
   "scripts/check-runtime-contract_test.ts",
@@ -41,7 +42,6 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-dashboards_test.ts",
   "scripts/check-migration-safety_test.ts",
   "scripts/check-migration-snapshot-chain_test.ts",
-  "scripts/verify-capability-seams_test.ts",
   "scripts/verify-compile-safe-imports_test.ts",
   "scripts/gen-route-catalog_test.ts",
   "scripts/silent-skip-report_test.ts",
@@ -51,7 +51,6 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-legacy-api-removed_test.ts",
   "scripts/check-dependency-audit_test.ts",
   "scripts/check-upload-limits_test.ts",
-  "scripts/check-contract-reexports_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
   "scripts/check-version-consistency_test.ts",
@@ -77,7 +76,6 @@ export const GATE_SELF_TESTS: string[] = [
   // 本地 E2E 会话所有权：session/project/owner 不匹配必须拒绝清理。
   "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
-  "scripts/verify-export-jsdoc_test.ts",
   "scripts/verify-agent-note-format_test.ts",
 ];
 
@@ -89,8 +87,6 @@ export const GATE_SELF_TESTS: string[] = [
 export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/verify-agent-note-format.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-md-links.ts"] },
-  { args: ["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"] },
-  { args: ["deno", "run", "-A", "scripts/verify-capability-seams.ts"] },
   // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制，
   // 编译期不报错、源码运行与单元测试全绿，只在生产容器里抛 Module not found
   //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
@@ -136,9 +132,6 @@ export const REPO_GATES: Gate[] = [
       "scripts/deploy/verify-compose-server_test.ts",
     ],
   },
-  { args: ["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"] },
-  { args: ["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"] },
-  { args: ["deno", "run", "-A", "scripts/check-domains.ts"] },
   {
     label: "P3 模块边界严格门禁",
     args: [
@@ -149,6 +142,9 @@ export const REPO_GATES: Gate[] = [
       "--strict",
     ],
   },
+  // 功能边界（core 重构阶段 2.4）：功能只经对方 index.ts 互相引用、底座不依赖功能、
+  // 功能不深入旧模块内部、功能间无运行时循环。
+  { args: ["deno", "run", "-A", "scripts/check-feature-boundaries.ts"] },
   // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
   // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   { args: ["deno", "run", "-A", "scripts/check-migration-safety.ts"] },
@@ -176,7 +172,6 @@ export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/check-legacy-api-removed.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-dependency-audit.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-upload-limits.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-contract-reexports.ts"] },
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },

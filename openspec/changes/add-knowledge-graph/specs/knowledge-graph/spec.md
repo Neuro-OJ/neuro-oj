@@ -24,10 +24,28 @@
 
 ### Requirement: Every published problem is mapped to knowledge nodes
 
-系统 SHALL
-为每道已发布题目维护恰好一个主知识点与至多三个次要知识点，并记录来源（AI
-或人工）、置信度及依据的题目版本。人工确认的挂载 SHALL 优先于 AI 结果且不被 AI
-覆盖。
+每道已发布题目 SHALL 处于「已归类」或「未归类」两种状态之一。已归类题目 SHALL
+恰好有一个主知识点与至多三个次要知识点，并记录来源（AI
+或人工）、置信度、审核状态及依据的题目版本；审核状态为「待确认」的挂载计为已归类，界面标注「待确认」。人工确认的挂载
+SHALL 优先于 AI 结果且不被 AI 覆盖。
+
+未归类（没有主知识点）SHALL 仅在以下情况出现：AI
+打标未启用或未配置模型且无人工挂载；打标任务排队中或失败；AI
+结果被驳回且尚未人工补挂。未归类题目 SHALL NOT
+进入节点阶梯、推荐、掌握度计算与难度分档统计，并 SHALL
+列入覆盖度面板的「未归类」清单。补齐条件：出题人或平台管理员人工挂载后立即变为已归类；平台启用打标模型后，系统
+SHALL 为全部未归类题目投递打标任务。
+
+#### Scenario: Unclassified problem is excluded until mapped
+
+- **WHEN** 题目已发布但没有主知识点
+- **THEN**
+  题目照常可作答，但不出现在任何节点阶梯、推荐与掌握度统计中，并出现在覆盖度面板「未归类」清单；人工挂载主知识点后立即进入对应节点阶梯
+
+#### Scenario: Enabling the tagging model backfills unclassified problems
+
+- **WHEN** 平台管理员启用并配置打标模型
+- **THEN** 系统为全部未归类题目投递打标任务，已有人工挂载的题目不受影响
 
 #### Scenario: New version triggers AI tagging
 
@@ -61,7 +79,8 @@ core 发起的系统级模型调用 SHALL 通过 LLM
 #### Scenario: Tagging is skipped when no platform model is configured
 
 - **WHEN** 平台未配置打标模型别名
-- **THEN** 打标任务成功结束且不产生挂载，覆盖度面板提示未配置
+- **THEN**
+  打标任务成功结束且不产生挂载，题目保持未归类，覆盖度面板提示未配置并列出未归类题目
 
 ### Requirement: Problem difficulty is calibrated from data
 

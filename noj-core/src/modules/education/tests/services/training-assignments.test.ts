@@ -11,12 +11,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
+import { importDomainProblem } from "../../../problems/index.ts";
 import {
-  importDomainProblem,
+  copyDomainTraining,
   readDomainTraining,
   saveDomainTraining,
-} from "../../../problems/index.ts";
-import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
+} from "../../../../features/trainings/index.ts";
 import {
   createAssignment,
   getAssignment,

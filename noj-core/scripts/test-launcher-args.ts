@@ -10,6 +10,7 @@
  * - `--profile`：开启 P0 阶段计时，转换为 `NOJ_TEST_PROFILE=1` 并写入报告目录；
  * - `--dry-run`：只输出选择与资源计划，不读取 `TEST_*`、不创建任何外部资源。
  */
+import { resolve } from "node:path";
 import { parseJobArgs, parseShardArgs } from "./test-parallel-args.ts";
 import {
   DEFAULT_JOB_COUNT,
@@ -56,6 +57,74 @@ export const TEST_TARGET_NAMES = [
   ...TARGET_MODULE_NAMES,
   ...LEGACY_DOMAIN_NAMES,
 ] as const;
+
+/** 功能切片目录（相对 noj-core 模块根）：`src/features/<name>/`。 */
+export const FEATURE_ROOT = "src/features";
+
+/** noj-core 模块根（丢弃末尾斜杠），供功能目录探测使用。 */
+// 用文件系统路径而非 URL.pathname：后者保留百分号编码，含空格/中文的工作区路径会探测失败。
+export const CORE_ROOT = resolve(import.meta.dirname!, "..");
+
+/**
+ * 功能名允许的形态：小写字母/数字开头的 kebab-case 段。
+ *
+ * 拒绝 `..`、`/`、绝对路径等：入参会直接拼进目录路径，必须防止越界读取。
+ */
+const FEATURE_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** 功能切片目录是否存在。 */
+export function featureDirectoryExists(
+  name: string,
+  coreRoot: string = CORE_ROOT,
+): boolean {
+  if (!FEATURE_NAME_PATTERN.test(name)) return false;
+  try {
+    return Deno.statSync(`${coreRoot}/${FEATURE_ROOT}/${name}`).isDirectory;
+  } catch {
+    return false;
+  }
+}
+
+/** 已存在的功能目录名（升序），用于帮助/错误信息与名称校验。 */
+export function featureDirectoryNames(
+  coreRoot: string = CORE_ROOT,
+): string[] {
+  const names: string[] = [];
+  try {
+    for (const entry of Deno.readDirSync(`${coreRoot}/${FEATURE_ROOT}`)) {
+      if (entry.isDirectory && FEATURE_NAME_PATTERN.test(entry.name)) {
+        names.push(entry.name);
+      }
+    }
+  } catch {
+    // 迁移期 `src/features/` 尚不存在：没有任何功能目录。
+  }
+  return names.sort();
+}
+
+/** `test:domain` 可接受的全部名称：已存在的功能目录在前，其后是旧模块与 legacy 别名。 */
+export function domainTargetNames(coreRoot: string = CORE_ROOT): string[] {
+  return [
+    ...new Set([
+      ...featureDirectoryNames(coreRoot),
+      ...TEST_TARGET_NAMES,
+    ]),
+  ];
+}
+
+/**
+ * `test:domain <name>` 是否能解析到测试根。
+ *
+ * 功能目录优先于旧模块（同名时旧模块仍可经由 legacy 别名或 `deno task
+ * test:parallel` 的全量发现覆盖）；旧模块与 legacy 别名行为不变。
+ */
+export function resolveDomainTarget(
+  name: string,
+  coreRoot: string = CORE_ROOT,
+): boolean {
+  return featureDirectoryExists(name, coreRoot) ||
+    resolveModuleTestTarget(name) !== undefined;
+}
 
 /** 允许透传给 Deno test 的 reporter。 */
 const TEST_REPORTERS = new Set([
@@ -154,6 +223,24 @@ export function parseSafeTestArgs(args: readonly string[]): string[] {
 }
 
 /**
+ * `test:domain <name>` 的测试根。
+ *
+ * 功能切片优先：`src/features/<name>/` 存在时整目录交给 `deno test`，其下任意
+ * 层级、任意子目录的 `*.test.ts` / `*_test.ts` 都会被发现——新增功能不需要在
+ * 任何地方登记测试路径。名称与旧模块冲突时同样以功能目录为准。否则回落到旧
+ * 模块映射（`module-test-metadata.ts`，随最后一个旧模块迁出删除）。
+ */
+export function testRootsForDomain(
+  name: string,
+  coreRoot: string = CORE_ROOT,
+): string[] {
+  if (featureDirectoryExists(name, coreRoot)) {
+    return [`${FEATURE_ROOT}/${name}`];
+  }
+  return testRootsForTarget(name);
+}
+
+/**
  * Deno 对不存在的目录会直接失败；迁移期模块根可能尚未创建，因此在执行前
  * 只保留真实存在的目录，同时把缺失根明确打印出来。新模块测试目录一旦创建，
  * 下一次同一正式 task 会自动发现它，不能靠静默的旧 domain 列表漏跑。
@@ -224,9 +311,9 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
   let domain: string | undefined;
   if (mode === "domain") {
     domain = rest.shift();
-    if (!domain || !resolveModuleTestTarget(domain)) {
+    if (!domain || !resolveDomainTarget(domain)) {
       throw new Error(
-        `必须指定有效模块或 legacy domain：${TEST_TARGET_NAMES.join("、")}`,
+        `必须指定有效模块或 legacy domain：${domainTargetNames().join("、")}`,
       );
     }
   }
@@ -299,11 +386,7 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
 
 /** 报告目录：`--profile` 的计时与分片计划都落在这里（已被 .gitignore 覆盖）。 */
 export function reportDirectory(runId: string): string {
-  const moduleRoot = new URL("../", import.meta.url).pathname.replace(
-    /\/$/,
-    "",
-  );
-  return `${moduleRoot}/.test-cache/performance/${runId}`;
+  return `${CORE_ROOT}/.test-cache/performance/${runId}`;
 }
 
 /**
@@ -314,13 +397,14 @@ export function reportDirectory(runId: string): string {
  */
 export function pathsFor(
   options: Pick<LauncherOptions, "mode" | "domain">,
+  coreRoot: string = CORE_ROOT,
 ): string[] {
   switch (options.mode) {
     case "domain":
       return [
         "tests/00_migrate_test.ts",
         "tests/seed_bootstrap_admin_test.ts",
-        ...testRootsForTarget(options.domain!),
+        ...testRootsForDomain(options.domain!, coreRoot),
       ];
     case "shared":
       return [
@@ -351,7 +435,8 @@ export function pathsFor(
     case "test":
     case "pg":
     case "watch":
-      return ["tests", ...allTargetModuleTestRoots()];
+      // 功能切片整目录发现：新增 `src/features/<name>/**/*_test.ts` 无需登记。
+      return ["tests", FEATURE_ROOT, ...allTargetModuleTestRoots()];
     case "parallel":
       return [];
   }

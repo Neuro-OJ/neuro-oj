@@ -19,7 +19,7 @@ import {
 import { assertDomainFeatureEnabled } from "../../access/contracts/cross-module/workspace_services_limits.ts";
 import { workspaceAudit } from "../../access/contracts/cross-module/workspace_services_domains.ts";
 import { domainProblemReference } from "../../problems/contracts/cross-module/services_workspace_problem-reference.ts";
-import { readDomainTraining } from "../../problems/contracts/cross-module/services_workspace_training-access.ts";
+import { readDomainTraining } from "../../../features/trainings/index.ts";
 import { resolveDomainProblemInWorkspace } from "../../problems/contracts/cross-module/services_workspace_problem-binding-access.ts";
 import {
   assertClassroomCapability,

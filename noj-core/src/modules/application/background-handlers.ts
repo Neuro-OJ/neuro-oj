@@ -13,6 +13,11 @@ import type {
   TaskType,
 } from "../runtime/tasks/contracts.ts";
 import { TASK_TYPES } from "../runtime/tasks/contracts.ts";
+import {
+  collectFeatureTasks,
+  type FeatureDefinition,
+} from "../../shared/feature.ts";
+import { FEATURES } from "../../features.ts";
 import { handleSearchIndexTask } from "./search-handlers.ts";
 import { handleEvaluationDispatchTask } from "./dispatch-handlers.ts";
 import { handleEducationTask } from "./education-handlers.ts";
@@ -23,7 +28,9 @@ import { handleEducationTask } from "./education-handlers.ts";
  * 尚未接入的处理器必须显式实现为"记失败"，不能返回成功——否则任务会被标记
  * 完成而事实没有生效。
  */
-export function createBackgroundHandlers(): TaskHandlerMap {
+export function createBackgroundHandlers(
+  features: readonly FeatureDefinition[] = FEATURES,
+): TaskHandlerMap {
   const handlers: Record<TaskType, TaskHandler> = {
     "search.index": (task) =>
       handleSearchIndexTask(
@@ -43,7 +50,11 @@ export function createBackgroundHandlers(): TaskHandlerMap {
     "notification.email": () =>
       Promise.reject(new Error("notification.email 处理器尚未接入")),
   };
-  return handlers as unknown as TaskHandlerMap;
+  // 功能自声明的任务：冲突或重复在此处启动期失败。
+  return {
+    ...handlers,
+    ...collectFeatureTasks(features, TASK_TYPES),
+  } as unknown as TaskHandlerMap;
 }
 
 /** 校验 handler 表覆盖全部任务类型；返回缺失类型列表。 */

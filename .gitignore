@@ -119,3 +119,10 @@ dev-docs/review-snapshots/
 
 # --- 安全扫描本地产物（security.yml 与 CONTRIBUTING.md 的本地复现命令） ---
 .security/
+
+# 蜂群模式任务批次（本地开发辅助）
+.swarm/
+
+# 路由/事件目录：按需本地生成，不提交
+/dev-docs/engineering/route-catalog.md
+/dev-docs/engineering/event-catalog.md

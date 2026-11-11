@@ -5,11 +5,11 @@
 
 ## ADDED Requirements
 
-### Requirement: Core source is organized as kernel and features
+### Requirement: Core source is organized as shared kernel and features
 
-noj-core 源码 SHALL 分为 `kernel/` 与 `features/` 两层。每个功能 SHALL
-位于独立的 `features/<name>/` 目录，包含其路由、服务、表结构、测试与简短说明，并
-SHALL 仅通过该目录的 `index.ts` 对外暴露。
+noj-core 源码 SHALL 分为 `shared/` 与 `features/` 两层。每个功能 SHALL
+位于独立的 `features/<name>/` 目录，包含其路由、服务、测试与简短说明，并 SHALL
+仅通过该目录的 `index.ts` 对外暴露。
 
 #### Scenario: Adding a new feature stays local
 
@@ -29,7 +29,7 @@ SHALL 仅通过该目录的 `index.ts` 对外暴露。
 
 ### Requirement: Dependency rules are enforced by a single check
 
-功能 SHALL 只引用 `kernel/` 与其他功能的 `index.ts`；`kernel/` SHALL NOT
+功能 SHALL 只引用 `shared/` 与其他功能的 `index.ts`；`shared/` SHALL NOT
 引用任何功能；功能之间 SHALL NOT 存在循环依赖。CI SHALL
 通过单一检查脚本强制这些规则，并在违规时给出可直接执行的修复提示。
 
@@ -40,7 +40,7 @@ SHALL 仅通过该目录的 `index.ts` 对外暴露。
 
 #### Scenario: Kernel importing a feature fails CI
 
-- **WHEN** `kernel/` 中的文件引用了 `features/` 下的任何文件
+- **WHEN** `shared/` 中的文件引用了 `features/` 下的任何文件
 - **THEN** 检查失败并指出违规的 import
 
 ### Requirement: Domain tests are discovered by directory

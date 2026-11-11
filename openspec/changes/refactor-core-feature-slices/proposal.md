@@ -24,16 +24,16 @@ noj-core 当前按「大团队长期协作」标准搭建：12 个业务/基础�
 
 ## What Changes
 
-- noj-core 源码收敛为 **`kernel/` + `features/`** 两层：
-  - `kernel/`：所有功能共用、很少变化的底座（由 `shared/`
+- noj-core 源码收敛为 **`shared/` + `features/`** 两层：
+  - `shared/`：所有功能共用、很少变化的底座（由 `shared/`
     及运行时、观测、存储、配置、鉴权基础迁入）；
-  - `features/<name>/`：一个功能的路由、服务、表结构、测试与简短说明放在同一目录，
-    只通过 `index.ts` 对外暴露。
+  - `features/<name>/`：一个功能的路由、服务、测试与简短说明放在同一目录（表定义仍在
+    `shared/db/schema/`）， 只通过 `index.ts` 对外暴露。
 - 每个功能在 `index.ts` 中用 `defineFeature()` **自声明**路由、后台任务、常驻
   worker 与观测注册； `features.ts` 为一行一个功能的清单，`createApp` /
   `create-system` 遍历清单装配。
-- 依赖规则收敛为三条，由一个新的小型检查脚本强制：功能只能引用 `kernel/`
-  与其他功能的 `index.ts`；`kernel/` 不得引用功能；功能间不得循环依赖。
+- 依赖规则收敛为三条，由一个新的小型检查脚本强制：功能只能引用 `shared/`
+  与其他功能的 `index.ts`；`shared/` 不得引用功能；功能间不得循环依赖。
 - `test:domain` 改为按 `features/<name>/` 目录自动识别，不再依赖手工登记。
 - 逐步删除：`application/`
   编排层、跨模块合同转出文件、`module-boundaries.json`、

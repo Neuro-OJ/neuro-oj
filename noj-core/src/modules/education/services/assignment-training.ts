@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentItems, assignments } from "../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { readDomainTraining } from "../../problems/contracts/cross-module/services_workspace_training-access.ts";
+import { readDomainTraining } from "../../../features/trainings/index.ts";
 
 /** 发布事务内展开本域题单并固定顺序；任意题失效则整体回滚。 */
 export async function expandAssignmentTraining(

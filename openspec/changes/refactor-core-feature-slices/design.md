@@ -26,7 +26,7 @@ modules/
 
 - 新增一个普通功能（含表、路由、一个后台任务、测试）时，改动文件 ≤ 6
   个，且不触碰任何手工登记表。
-- AI 编码助手修改某功能时，只需阅读该功能目录与 `kernel/` 的相关文件。
+- AI 编码助手修改某功能时，只需阅读该功能目录与 `shared/` 的相关文件。
 - 依赖规则少而明确，违规时检查脚本给出可直接执行的修复提示。
 - 全程集成分支（当前为 `rc/v0.11`）可部署、API 与行为不变、测试全绿。
 
@@ -39,24 +39,29 @@ modules/
 
 ## Decisions
 
-### 1. 目标结构：`kernel/` + `features/`
+### 1. 目标结构：`shared/` + `features/`
+
+> 底座目录沿用现有 `shared/`，不改名为 `kernel/`（2026-11-11 决定：改名需改 789
+> 个文件、2283 行 import，收益只是名称）。下文「底座」均指 `shared/`。
 
 ```text
 noj-core/src/
-├── kernel/                 # 底座：db、mq、http、config、errors、auth/actor、tasks 运行时、
+├── shared/                 # 底座：db、mq、http、config、errors、auth/actor、tasks 运行时、
 │                           # observability、storage、sse、rate-limit、llm 客户端
 ├── features/
 │   └── <name>/
 │       ├── index.ts        # 唯一对外出口：export const feature = defineFeature({...}) + 公开函数/类型
 │       ├── routes.ts       # 可拆为 routes/*.ts
 │       ├── service.ts      # 可拆为多个 *.ts，按需而非按层
-│       ├── schema.ts       # 本功能拥有的表（drizzle 支持多文件 schema）
 │       ├── *_test.ts
 │       └── README.md       # 一屏以内：职责、关键约束、对外函数
 ├── features.ts             # 功能清单，一行一个
 ├── app.ts                  # createApp：中间件 + 遍历 features 挂载路由
-└── main.ts                 # 启动：kernel 初始化 + 遍历 features 启动任务与 worker
+└── main.ts                 # 启动：底座初始化 + 遍历 features 启动任务与 worker
 ```
+
+表定义保留在 `shared/db/schema/`（2026-11-11 阶段 3
+决定）：表常被其他功能外键引用、迁移统一生成，且把表放进功能目录会让底座反向依赖功能。
 
 功能内部**不强制分层**：小功能一个 `service.ts` 即可，大功能按子主题拆文件。
 `contracts/ types/ services/` 这类按层目录不再作为约定。
@@ -92,15 +97,15 @@ export const FEATURES = [
 
 - `createApp` 遍历 `FEATURES` 挂载路由与观测；`main` 遍历启动 worker
   并汇总任务处理器。
-- 任务类型由各功能 `tasks` 的键推导，`kernel/tasks` 启动时校验无重名，取代集中的
-  `TASK_TYPES`。
+- 任务类型由各功能 `tasks` 的键推导，`runtime/tasks`
+  启动时校验无重名，取代集中的 `TASK_TYPES`。
 - 路由挂载顺序、中间件顺序与现状逐项对齐，由现有路由测试保证行为不变。
 
 ### 3. 依赖规则（替代现有边界门禁）
 
 1. `features/A/**` 只能 import
-   `kernel/**`、`features/A/**`、`features/B/index.ts`；
-2. `kernel/**` 不得 import `features/**`；
+   `shared/**`、`features/A/**`、`features/B/index.ts`；
+2. `shared/**` 不得 import `features/**`；
 3. 功能之间的 import 图不得有环。
 
 新脚本 `scripts/check-feature-boundaries.ts` 约 100 行，基于 import
@@ -132,9 +137,10 @@ export const FEATURES = [
 | `community` / `notifications`                  | communication/*                                               |
 | `search` / `stats`                             | read-models/search、read-models/queries                       |
 | `announcements` / `legal` / `settings` / `llm` | platform/*                                                    |
-| `storage-governance`                           | assets/*（存储适配器本身进入 kernel）                         |
+| `storage-governance`                           | assets/*（存储适配器本身进入 shared）                         |
 
-`kernel/` 来源：`shared/**`、`runtime/tasks`、`platform/observability`
+底座
+`shared/`（即提案中的「kernel」，**保留原目录名不改名**）后续需迁入：`runtime/tasks`、`platform/observability`
 基础设施、 `assets/storage` 适配器、`platform/gateway`
 客户端、系统设置读取、actor/capability 解析。
 
@@ -180,8 +186,7 @@ export const FEATURES = [
    对齐**：本提案评审定稿；记录基线（新增一个普通功能需改动的文件清单）。
 2. **阶段 1 先砍开销，不搬代码**：合并跨模块转出为模块级出口；按第 6
    节精简门禁；精简 AGENTS.md。
-3. **阶段 2 骨架**：`shared/` → `kernel/` 机械改名；引入
-   `defineFeature`、`features.ts`、清单装配
+3. **阶段 2 骨架**：引入 `defineFeature`、`features.ts`、清单装配
    （与旧装配并存）；新边界脚本与测试识别上线。
 4. **阶段 3 试点**：题单迁入 `features/trainings/`，删除其在
    `application/`、合同层与登记表中的残留； 按指标验收后定为官方样例。

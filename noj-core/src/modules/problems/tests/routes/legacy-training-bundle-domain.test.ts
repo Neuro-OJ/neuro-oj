@@ -23,11 +23,10 @@ import {
   createDefaultCatalogToken,
   resetDbForTest,
 } from "../default-fixture.ts";
-import { saveDomainTraining } from "../../services/workspace/trainings.ts";
 import {
   readDomainTraining,
-} from "../../services/workspace/training-access.ts";
-import { listUserTrainings } from "../../services/trainings.ts";
+  saveDomainTraining,
+} from "../../../../features/trainings/index.ts";
 import {
   importDomainProblem,
   setDomainProblemBindingState,
@@ -124,19 +123,6 @@ Deno.test("旧题单入口固定 main，独立副本不受来源撤销影响且�
     is_accepted: true,
     created_at: now,
   });
-  const profile = await listUserTrainings(actor, actor, {
-    page: 1,
-    perPage: 100,
-  });
-  assertEquals(
-    profile.data.some((row) => row.id === outside.id),
-    false,
-    "按创建者列出 main 题单时不得混入其他域的题单",
-  );
-  assertEquals(
-    profile.data.some((row) => row.id === training.id),
-    true,
-  );
   const read = await readDomainTraining("main", training.id, actor);
   const first = read.items[0]!;
   assertEquals(first.resource_available, true);

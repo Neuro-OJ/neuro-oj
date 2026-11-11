@@ -18,6 +18,7 @@ import {
   backgroundTasks,
 } from "../../../shared/db/schema.ts";
 import {
+  type AnyTaskType,
   type ClaimedTask,
   type EnqueueTaskInput,
   type EnqueueTaskResult,
@@ -27,7 +28,6 @@ import {
   type TaskHealth,
   type TaskPayload,
   type TaskRescheduleResult,
-  type TaskType,
 } from "./contracts.ts";
 import { computeRetryDecision } from "./retry-policy.ts";
 
@@ -168,7 +168,7 @@ export async function claimTasks(
       if (!row || !row.lease_token) return [];
       return [{
         id: row.id,
-        taskType: row.task_type as TaskType,
+        taskType: row.task_type as AnyTaskType,
         targetKind: row.target_kind as ClaimedTask["targetKind"],
         targetId: row.target_id,
         dedupeKey: row.dedupe_key,
