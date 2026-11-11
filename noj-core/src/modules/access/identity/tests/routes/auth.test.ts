@@ -28,7 +28,7 @@ import {
   hashResetToken,
 } from "../../services/security/resetToken.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
-import { publishVersion } from "../../../../platform/index.ts";
+import { publishVersion } from "../../../../../features/legal/index.ts";
 
 // 独立测试数据库始终可用，无需检测
 const hasRedis = !!Deno.env.get("REDIS_URL");

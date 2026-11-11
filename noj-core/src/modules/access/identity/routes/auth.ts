@@ -51,7 +51,7 @@ import { parseJsonBody } from "../../../../shared/http/request.ts";
 import { registrationInvitationBoundary } from "../../../application/access.ts";
 import { getUserPermissions } from "../services/security/permissions.ts";
 import { signToken, verifyToken } from "../services/security/jwt.ts";
-import { getLegalStatus } from "../../../platform/contracts/cross-module/services_legal_consent.ts";
+import { getLegalStatus } from "../../../../features/legal/index.ts";
 import {
   revocationTtl,
   revokeJti,

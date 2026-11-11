@@ -1,7 +1,11 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, problemTags } from "../../../../shared/db/schema.ts";
-import { createTag, mergeTags } from "../../index.ts";
+import {
+  createTag,
+  mergeTags,
+  type TagWriteContext,
+} from "../../../../features/tags/index.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
 import { connectRedis } from "../../../../shared/mq/connection.ts";
@@ -15,6 +19,11 @@ try {
 }
 
 await resetDbForTest();
+
+const tagCtx: TagWriteContext = {
+  actor: { kind: "system", purpose: "background_task" } as const,
+  auditMeta: { ipAddress: "127.0.0.1" },
+};
 
 const VALID_RUNTIME_CONFIG = {
   evaluator: {
@@ -55,11 +64,11 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     const ts = Date.now();
-    const source = await createTag({
+    const source = await createTag(tagCtx, {
       name: `事件合并源-${ts}`,
       kind: "algorithm",
     });
-    const target = await createTag({
+    const target = await createTag(tagCtx, {
       name: `事件合并目标-${ts}`,
       kind: "algorithm",
     });
@@ -96,7 +105,7 @@ Deno.test({
       { problem_id: problemB, tag_id: source.id },
       { problem_id: problemB, tag_id: target.id },
     ]);
-    await mergeTags(source.id, target.id);
+    await mergeTags(tagCtx, source.id, target.id);
     await assertSearchEventPublished("problem", problemA, "upsert");
     await assertSearchEventPublished("problem", problemB, "upsert");
   },

@@ -8,9 +8,15 @@
  * openspec/changes/refactor-core-feature-slices/design.md。
  */
 import type { FeatureDefinition } from "./shared/feature.ts";
+import * as checkin from "./features/checkin/index.ts";
+import * as legal from "./features/legal/index.ts";
+import * as tags from "./features/tags/index.ts";
 import * as trainings from "./features/trainings/index.ts";
 
 /** 已迁入 `features/` 结构的功能（迁移期与旧 `modules/` 并存）。 */
 export const FEATURES: readonly FeatureDefinition[] = [
   trainings.feature,
+  legal.feature,
+  tags.feature,
+  checkin.feature,
 ];

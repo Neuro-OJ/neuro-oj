@@ -80,7 +80,7 @@ export const ALLOWLIST: Record<
       "管理后台版本策略/固定版本：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
   },
   // ── 题单/标签 CRUD：权限受限、频率低，矩阵文档列为可接受 ──
-  "noj-core/src/modules/problems/routes/tags.ts": {
+  "noj-core/src/features/tags/routes.ts": {
     status: "exempt",
     reason: "标签 CRUD：tag:manage 权限受限（矩阵文档「已知未覆盖」）",
   },

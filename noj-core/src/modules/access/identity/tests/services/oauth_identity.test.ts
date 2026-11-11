@@ -143,7 +143,7 @@ Deno.test({
         updated_at: now,
       }).onConflictDoNothing();
       const { publishVersion, LEGAL_KINDS } = await import(
-        "../../../../platform/index.ts"
+        "../../../../../features/legal/index.ts"
       );
       for (const kind of LEGAL_KINDS) {
         await publishVersion(

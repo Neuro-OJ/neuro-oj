@@ -82,42 +82,11 @@ export type {
   JudgeImageResponse,
   UpdateJudgeImageInput,
 } from "./types/judge-images.ts";
+
+// 迁移期：供 src/features/* 使用签到写窗口限流（原经 cross-module 合同）。
 export {
-  getConsentedVersions,
-  getLegalStatus,
-  getUserConsent,
-  recordConsent,
-  recordConsentsForRegistration,
-} from "./services/legal/consent.ts";
-export {
-  createDataRequest,
-  DATA_REQUEST_KINDS,
-  DATA_REQUEST_STATUSES,
-  DATA_REQUEST_TARGETS,
-  listAllDataRequests,
-  listUserDataRequests,
-  updateDataRequestStatus,
-} from "./services/legal/data-requests.ts";
-export type {
-  DataRequestKind,
-  DataRequestRow,
-  DataRequestStatus,
-  DataRequestTarget,
-} from "./services/legal/data-requests.ts";
-export {
-  getCurrentDocument,
-  getRequiredConsentInfo,
-  getRequiredConsentVersion,
-  hashContent,
-  listVersions,
-  normalizeContent,
-  publishVersion,
-} from "./services/legal/documents.ts";
-export { isLegalKind, LEGAL_KINDS } from "./legal/types.ts";
-export type {
-  LegalConsentStatus,
-  LegalDocumentSnapshot,
-  LegalKind,
-  LegalVersionSummary,
-  UserConsentSnapshot,
-} from "./legal/types.ts";
+  enforceCheckinRateLimit,
+  enforceRateLimit,
+} from "./system/services/hardening-rate-limit.ts";
+// 迁移期：供 src/features/* 使用（客户端 IP 遵循 TRUSTED_PROXIES，审计与限流须用它而非直接读请求头）。
+export { getClientIp } from "./system/services/rate-limit-env.ts";

@@ -4,7 +4,7 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../../access/identity/middleware/auth.ts";
-import { getCheckinLeaderboard } from "../../../access/contracts/cross-module/identity_services_checkin.ts";
+import { getCheckinLeaderboard } from "../../../../features/checkin/index.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
 import {
   buildPaginationMeta,

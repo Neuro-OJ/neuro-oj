@@ -83,16 +83,13 @@ export {
   createDomainProblemCommand,
   createObjectiveQuestionCommand,
   createProblemCommand,
-  createTagCommand,
   deleteObjectiveQuestionCommand,
   deleteProblemCommand,
   deleteSupportPackageCommand,
-  deleteTagCommand,
   importDomainProblemBundleCommand,
   importDomainProblemCommand,
   importDomainProblemDraftBundleCommand,
   importProblemBundleCommand,
-  mergeTagsCommand,
   publishDomainProblemVersionCommand,
   publishImportedProblemCommand,
   publishProblemVersionCommand,
@@ -105,7 +102,6 @@ export {
   setDomainProblemBindingStateCommand,
   updateObjectiveQuestionCommand,
   updateProblemCommand,
-  updateTagCommand,
 } from "./problems.ts";
 export type {
   CreateProblemCommandOptions,
@@ -118,7 +114,6 @@ export { getUserProfilePage } from "./user-profile.ts";
 export type { UserProfileResponse } from "./user-profile.ts";
 export {
   cleanupSucceededSearchTasks,
-  enqueueSearchIndexTask,
   enqueueSearchIndexTaskTx,
   SEARCH_TASK_RETENTION_DAYS,
   startSearchTaskRetentionTask,

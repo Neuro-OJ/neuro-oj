@@ -21,7 +21,7 @@ import {
   draftRevisionRequired,
 } from "../versioning/draft.ts";
 import { stripMetadataEntries } from "../bundle-parser.ts";
-import { getTagIdsByNames } from "../tags.ts";
+import { getTagIdsByNames } from "../../../../features/tags/index.ts";
 import { isOiRuntimeConfig } from "../../types/runtime-config.ts";
 import type { SubmissionMode } from "../../types/problems.ts";
 import { readDomainProblemDraft } from "./problem-edit.ts";

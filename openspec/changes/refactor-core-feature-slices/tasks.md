@@ -39,8 +39,9 @@
 
 ## 4. 按需迁移
 
-- [ ] 4.1 根 `AGENTS.md` 写明「新功能一律进 `features/`；改旧模块时顺手迁移」
+- [x] 4.1 根 `AGENTS.md` 写明「新功能一律进 `features/`；改旧模块时顺手迁移」
 - [ ] 4.2 各旧模块改到即迁，每次迁移同步删除其编排代码、合同文件与登记项
+      （2026-11-11：legal、tags、checkin 已迁移）
 - [ ] 4.3 最后一个旧模块迁出后，删除
       `modules/`、`application/`、`module-boundaries.json`、`module-test-metadata.ts`
       与旧边界门禁

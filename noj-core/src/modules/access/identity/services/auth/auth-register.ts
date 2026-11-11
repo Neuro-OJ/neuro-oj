@@ -5,7 +5,7 @@ import { systemSettings, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../security/password.ts";
 import { getEmailConfigStatus } from "../../../../platform/contracts/cross-module/system_services_email-status.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
-import { recordConsentsForRegistration } from "../../../../platform/contracts/cross-module/services_legal_consent.ts";
+import { recordConsentsForRegistration } from "../../../../../features/legal/index.ts";
 import {
   BadRequestError,
   ConflictError,

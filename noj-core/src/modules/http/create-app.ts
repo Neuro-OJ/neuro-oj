@@ -24,7 +24,6 @@ import { searchRouter } from "../read-models/search/routes/index.ts";
 import { communityRouter } from "../communication/community/routes/index.ts";
 import { systemRouter } from "../platform/system/routes/index.ts";
 import { createInternalDrainRouter } from "../platform/system/routes/internal-drain.ts";
-import { legalRouter } from "../platform/legal/routes/index.ts";
 import { workspaceRouter } from "../access/workspace/routes/index.ts";
 import { domainProblemsRouter } from "../problems/routes/domain-problems.ts";
 import { domainResourceManagementRouter } from "../problems/routes/domain-resource-management.ts";
@@ -230,7 +229,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   app.route("/api/v1", searchRouter);
   app.route("/api/v1", communityRouter);
   app.route("/api/v1", systemRouter);
-  app.route("/api/v1", legalRouter);
   app.route("/api/v1", workspaceRouter);
   app.route("/api/v1", domainProblemsRouter);
   app.route("/api/v1", domainResourceManagementRouter);

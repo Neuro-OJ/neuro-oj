@@ -165,3 +165,9 @@ export {
   authMiddleware,
   optionalAuthMiddleware,
 } from "./identity/middleware/auth.ts";
+
+// 迁移期：供 src/features/tags 使用
+export { requirePermission } from "./identity/services/security/permissions.ts";
+
+// 迁移期：供 src/features/checkin 使用
+export { resolveUserId } from "./identity/services/users/users-id.ts";
