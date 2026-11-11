@@ -28,6 +28,8 @@ export function collectRouteFiles(repositoryRoot = ROOT): string[] {
   const roots = [
     resolve(repositoryRoot, "noj-core/src/routes"),
     resolve(repositoryRoot, "noj-core/src/domains"),
+    // 功能切片：`src/features/<name>/routes.ts` 或 `routes/` 目录（core 重构阶段 3）。
+    resolve(repositoryRoot, "noj-core/src/features"),
     ...MODULE_TEST_METADATA.targetModules.map((module) =>
       resolve(repositoryRoot, module.root)
     ),
@@ -43,8 +45,10 @@ export function collectRouteFiles(repositoryRoot = ROOT): string[] {
           queue.push(full);
         } else if (
           entry.isFile && entry.name.endsWith(".ts") &&
-          full.includes("/routes/") && !full.includes("/tests/") &&
-          !full.endsWith("/index.ts")
+          (full.includes("/routes/") ||
+            (full.includes("/src/features/") && entry.name === "routes.ts")) &&
+          !full.includes("/tests/") && !full.endsWith("/index.ts") &&
+          !entry.name.endsWith(".test.ts") && !entry.name.endsWith("_test.ts")
         ) {
           files.add(full);
         }

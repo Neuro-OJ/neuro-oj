@@ -1,11 +1,8 @@
-import { loadDomainProblemProtection } from "../../../access/contest-policy.ts";
+import { loadDomainProblemProtection } from "../../modules/access/index.ts";
 import { and, asc, count, eq, ilike, inArray, or } from "drizzle-orm";
-import { getDb } from "../../../../shared/db/connection.ts";
-import type { Executor } from "../../../../shared/db/executor.ts";
-import {
-  ConflictError,
-  NotFoundError,
-} from "../../../../shared/base/errors.ts";
+import { getDb } from "../../shared/db/connection.ts";
+import type { Executor } from "../../shared/db/executor.ts";
+import { ConflictError, NotFoundError } from "../../shared/base/errors.ts";
 import {
   domainProblemBindings,
   domains,
@@ -13,8 +10,8 @@ import {
   problemVersions,
   trainingProblems,
   trainings,
-} from "../../../../shared/db/schema.ts";
-import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
+} from "../../shared/db/schema.ts";
+import { loadWorkspace } from "../../modules/access/contracts/cross-module/workspace_services_access.ts";
 
 /** 内部 UUID 形态；其余视为对外公开编号（`public_id`，旧链接使用）。 */
 const UUID_PATTERN =

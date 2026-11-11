@@ -466,6 +466,7 @@
   "ciSelection": {
     "coreFullPrefixes": [
       "noj-core/tests/",
+      "noj-core/src/features/",
       "noj-core/src/shared/",
       "noj-core/src/routes/",
       "noj-core/drizzle/",
@@ -477,6 +478,7 @@
     ],
     "coreFullFiles": [
       "noj-core/src/app.ts",
+      "noj-core/src/features.ts",
       "noj-core/src/main.ts",
       "noj-core/src/mod.ts",
       "noj-core/deno.json",

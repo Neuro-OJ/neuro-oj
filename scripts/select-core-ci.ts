@@ -93,6 +93,19 @@ export const FIXED_CONTRACTS = [
   "cd noj-core && deno task check:contracts",
 ] as const;
 
+/**
+ * 是否是 core 功能切片路径：`src/features/<name>/**` 或 `src/features.ts`。
+ *
+ * 迁移期间 `noj-core/src/**` 下同时存在 `modules/` 与 `features/`；功能目录的
+ * 改动一律按「全量 Core」处理，避免为每个新功能维护 CI job 或选择器条目。
+ */
+export function isCoreFeatureSlicePath(path: string): boolean {
+  const relativePath = path.replace(/^noj-core\//, "");
+  return relativePath === "src/features.ts" ||
+    relativePath === "src/features" ||
+    relativePath.startsWith("src/features/");
+}
+
 function matchesPrefix(path: string, prefixes: readonly string[]): boolean {
   return prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
 }
@@ -140,6 +153,13 @@ export function classifyChangedPath(path: string): PathClassification {
     return { kind: "unknown" };
   }
   if (path.startsWith("noj-core/") || path.startsWith("src/")) {
+    // 功能切片（`src/features/<name>/`、`src/features.ts`）刻意在最前面归为
+    // 「全量 Core」：新功能不需要在 CI 里登记选择器，也不会被下面的旧模块
+    // 映射抢走。这里显式判断而不只依赖元数据前缀，迁移期的元数据改动不影响
+    // 该保证。
+    if (isCoreFeatureSlicePath(path)) {
+      return { kind: "core-full" };
+    }
     if (matchesPrefix(path, selection.coreFullPrefixes)) {
       return { kind: "core-full" };
     }

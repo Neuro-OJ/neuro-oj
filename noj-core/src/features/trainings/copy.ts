@@ -3,27 +3,27 @@ import {
   compensateProblemCopy,
   prepareDomainProblemCopy,
   type PreparedProblemCopy,
-} from "./problem-copy.ts";
-import { generatePublicId } from "../../../../shared/security/public-id.ts";
+} from "../../modules/problems/index.ts";
+import { generatePublicId } from "../../shared/security/public-id.ts";
 import { asc, eq, inArray } from "drizzle-orm";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../../shared/base/errors.ts";
-import { getDb } from "../../../../shared/db/connection.ts";
+} from "../../shared/base/errors.ts";
+import { getDb } from "../../shared/db/connection.ts";
 import {
   domains,
   problems,
   trainingProblems,
   trainings,
-} from "../../../../shared/db/schema.ts";
+} from "../../shared/db/schema.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-} from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
-import { lockActiveWorkspaceAccount } from "../../../access/contracts/cross-module/workspace_services_account-lifecycle.ts";
+} from "../../modules/access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../modules/access/contracts/cross-module/workspace_services_domains.ts";
+import { lockActiveWorkspaceAccount } from "../../modules/access/contracts/cross-module/workspace_services_account-lifecycle.ts";
 
 /** 跨域题单复制：独立复制有序集合和题目，整个集合在一个事务中发布。 */
 export async function copyDomainTraining(

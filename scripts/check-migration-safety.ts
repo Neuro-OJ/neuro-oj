@@ -11,8 +11,7 @@
  * 采用三步式（加可空列 → 回填 → SET NOT NULL）。
  *
  * 自检：如果扫描不到任何迁移文件、或一条 `ALTER TABLE ... ADD COLUMN` 都没解析到，
- * 则判定门禁自身失效并**失败**——防止"脚本存在、路径失效、永远报绿"这类假绿灯
- * （同类缺陷见 scripts/verify-capability-seams.ts 的历史问题）。
+ * 则判定门禁自身失效并**失败**——防止"脚本存在、路径失效、永远报绿"这类假绿灯。
  */
 
 export interface UnsafeAddColumn {

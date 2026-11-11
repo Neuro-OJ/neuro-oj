@@ -1,34 +1,33 @@
 import { Hono } from "hono";
-import { userActorFromAuthenticatedId } from "../../access/contracts/actor.ts";
-import {
-  copyDomainTrainingCommand,
-  deleteDomainTrainingCommand,
-  saveDomainTrainingCommand,
-} from "../../application/problems.ts";
+import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../access/identity/middleware/auth.ts";
-import { type AuthEnv } from "../../../shared/http/hono-env.ts";
-import { parsePagination } from "../../../shared/http/pagination.ts";
-import { BadRequestError } from "../../../shared/base/errors.ts";
+} from "../../modules/access/index.ts";
+import { type AuthEnv } from "../../shared/http/hono-env.ts";
+import { parsePagination } from "../../shared/http/pagination.ts";
+import { BadRequestError } from "../../shared/base/errors.ts";
+import { assertObjectBody, parseJsonBody } from "../../shared/http/request.ts";
 import {
-  assertObjectBody,
-  parseJsonBody,
-} from "../../../shared/http/request.ts";
-import { type DomainTrainingInput } from "../services/workspace/trainings.ts";
-import {
-  listDomainTrainings,
-  readDomainTraining,
-} from "../services/workspace/training-access.ts";
+  deleteDomainTraining,
+  type DomainTrainingInput,
+  saveDomainTraining,
+} from "./service.ts";
+import { copyDomainTraining } from "./copy.ts";
+import { listDomainTrainings, readDomainTraining } from "./access.ts";
 
 /** 显式域题单入口，引用与原题授权在读取和写入时检查。 */
 export const domainTrainingsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/trainings";
-domainTrainingsRouter.use("/domains/:slug/*", async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  await next();
-});
+// 只作用于本功能路径：功能路由挂在清单末尾，过宽的通配会波及后续路由。
+for (
+  const path of [prefix, `${prefix}/*`, "/domains/:slug/training-bindings"]
+) {
+  domainTrainingsRouter.use(path, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+}
 function revision(header: string | undefined) {
   if (header === undefined) return null;
   const match = /^"?([0-9]+)"?$/.exec(header);
@@ -41,9 +40,9 @@ domainTrainingsRouter.post(prefix, authMiddleware, async (c) => {
   const input = await parseJsonBody<DomainTrainingInput>(c);
   assertObjectBody(input);
   return c.json({
-    data: await saveDomainTrainingCommand(
-      userActorFromAuthenticatedId(c.var.userId),
+    data: await saveDomainTraining(
       c.req.param("slug")!,
+      userActorFromAuthenticatedId(c.var.userId).userId,
       input,
     ),
   }, 201);
@@ -64,9 +63,9 @@ domainTrainingsRouter.patch(`${prefix}/:id`, authMiddleware, async (c) => {
   const input = await parseJsonBody<DomainTrainingInput>(c);
   assertObjectBody(input);
   return c.json({
-    data: await saveDomainTrainingCommand(
-      userActorFromAuthenticatedId(c.var.userId),
+    data: await saveDomainTraining(
       c.req.param("slug")!,
+      userActorFromAuthenticatedId(c.var.userId).userId,
       input,
       {
         id: c.req.param("id")!,
@@ -79,9 +78,9 @@ domainTrainingsRouter.put(`${prefix}/:id`, authMiddleware, async (c) => {
   const input = await parseJsonBody<DomainTrainingInput>(c);
   assertObjectBody(input);
   return c.json({
-    data: await saveDomainTrainingCommand(
-      userActorFromAuthenticatedId(c.var.userId),
+    data: await saveDomainTraining(
       c.req.param("slug")!,
+      userActorFromAuthenticatedId(c.var.userId).userId,
       input,
       {
         id: c.req.param("id")!,
@@ -91,9 +90,9 @@ domainTrainingsRouter.put(`${prefix}/:id`, authMiddleware, async (c) => {
   });
 });
 domainTrainingsRouter.delete(`${prefix}/:id`, authMiddleware, async (c) => {
-  await deleteDomainTrainingCommand(
-    userActorFromAuthenticatedId(c.var.userId),
+  await deleteDomainTraining(
     c.req.param("slug")!,
+    userActorFromAuthenticatedId(c.var.userId).userId,
     c.req.param("id")!,
   );
   return c.body(null, 204);
@@ -108,10 +107,10 @@ domainTrainingsRouter.post(
       typeof input.training_id !== "string" || !input.training_id
     ) throw new BadRequestError("需要源题单 ID");
     return c.json({
-      data: await copyDomainTrainingCommand(
-        userActorFromAuthenticatedId(c.var.userId),
+      data: await copyDomainTraining(
         c.req.param("slug")!,
         input.training_id,
+        userActorFromAuthenticatedId(c.var.userId).userId,
       ),
     }, 201);
   },

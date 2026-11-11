@@ -117,8 +117,8 @@ Deno.test({
     );
   },
 });
-import { copyDomainTraining } from "../../../problems/services/workspace/training-copy.ts";
-import { readDomainTraining } from "../../../problems/services/workspace/training-access.ts";
+import { copyDomainTraining } from "../../../../features/trainings/index.ts";
+import { readDomainTraining } from "../../../../features/trainings/index.ts";
 
 Deno.test({
   name: "域赛题保护：赛前全版本、元数据、管理预览、重叠比赛与自动解除",

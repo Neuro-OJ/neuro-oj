@@ -19,6 +19,15 @@ export const TASK_TYPES = [
 
 export type TaskType = (typeof TASK_TYPES)[number];
 
+/**
+ * 功能自声明的任务类型（`<feature>.<action>`）。由 `src/features/*` 通过
+ * `defineFeature({ tasks })` 声明，启动时汇总并校验不与内置类型冲突。
+ */
+export type FeatureTaskType = `${string}.${string}`;
+
+/** 内置或功能声明的任意任务类型。 */
+export type AnyTaskType = TaskType | FeatureTaskType;
+
 /** 目标归属；不同目标分别登记，互不阻塞。 */
 export const TASK_TARGET_KINDS = [
   "submission",
@@ -29,6 +38,11 @@ export const TASK_TARGET_KINDS = [
 ] as const;
 
 export type TaskTargetKind = (typeof TASK_TARGET_KINDS)[number];
+
+/** 任务目标：内置目标类别，或功能自定义的目标类别（如 `training`）。 */
+export type AnyTaskTargetKind =
+  | TaskTargetKind
+  | (string & Record<never, never>);
 
 /** 任务可恢复依据：只保存资源 ID、attempt ID、revision、分页游标等。 */
 export interface TaskPayload {
@@ -51,8 +65,8 @@ export function isTaskRescheduleResult(
 
 /** 入队输入。 */
 export interface EnqueueTaskInput {
-  readonly taskType: TaskType;
-  readonly targetKind: TaskTargetKind;
+  readonly taskType: AnyTaskType;
+  readonly targetKind: AnyTaskTargetKind;
   readonly targetId: string;
   /** 业务去重键；空串表示该目标同类型只保留一条活跃任务。 */
   readonly dedupeKey?: string;
@@ -71,8 +85,8 @@ export interface EnqueueTaskResult {
 /** 领取到的任务（含租约 token）。 */
 export interface ClaimedTask {
   readonly id: string;
-  readonly taskType: TaskType;
-  readonly targetKind: TaskTargetKind;
+  readonly taskType: AnyTaskType;
+  readonly targetKind: AnyTaskTargetKind;
   readonly targetId: string;
   readonly dedupeKey: string;
   readonly payloadVersion: number;
@@ -123,5 +137,5 @@ export type TaskHandler = (
 
 /** 按任务类型注册的 handler 集合；缺失类型必须在启动时显式失败。 */
 export type TaskHandlerMap = Readonly<
-  Record<TaskType, TaskHandler>
+  Record<TaskType, TaskHandler> & Partial<Record<FeatureTaskType, TaskHandler>>
 >;

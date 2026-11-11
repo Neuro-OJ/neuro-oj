@@ -327,10 +327,6 @@ jobs:
         # 用 find+xargs 是因为 87 个 .ts 文件 shell glob 展开会超 E2BIG (os error 7)。
         run: find src -name '*.ts' -print0 | xargs -0 deno check
 
-      - name: 导出 JSDoc 覆盖率检查
-        working-directory: noj-core
-        run: deno task check:jsdoc
-
       - name: 纯逻辑与测试入口契约
         working-directory: noj-core
         run: deno task test:logic
@@ -442,12 +438,8 @@ jobs:
           TEST_REDIS_URL: redis://localhost:6379/15
         run: deno task test
 
-      - name: 导出 JSDoc 覆盖率检查
-        working-directory: noj-llm-gateway
-        run: deno task check:jsdoc
-
   # ===========================================================================
-  # 仓库级门禁（Agent Note / Markdown 链接 / 导出 JSDoc）
+  # 仓库级门禁（Agent Note / Markdown 链接等，清单见 scripts/gate-list.ts）
   # ===========================================================================
   root-gates:
     name: Root Gates

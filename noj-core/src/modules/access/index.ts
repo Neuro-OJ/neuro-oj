@@ -85,6 +85,7 @@ export {
   getContestPolicySnapshot,
   isProblemInRunningContest,
   isProblemInUnendedPublicContest,
+  loadDomainProblemProtection,
   loadPublicContestSecrecy,
   resolveContestId,
   runningWindowCondition,
@@ -158,3 +159,9 @@ export {
   assertInstanceRegistration,
   enrollRegisteredAccountTx,
 } from "./registration.ts";
+
+// 迁移期：供 src/features/* 经模块出口使用鉴权中间件（见 core 重构提案）。
+export {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "./identity/middleware/auth.ts";

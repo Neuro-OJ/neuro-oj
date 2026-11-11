@@ -80,12 +80,10 @@ export {
   upgradeContestProblemPinnedVersionCommand,
 } from "./evaluations.ts";
 export {
-  copyDomainTrainingCommand,
   createDomainProblemCommand,
   createObjectiveQuestionCommand,
   createProblemCommand,
   createTagCommand,
-  deleteDomainTrainingCommand,
   deleteObjectiveQuestionCommand,
   deleteProblemCommand,
   deleteSupportPackageCommand,
@@ -100,7 +98,6 @@ export {
   publishProblemVersionCommand,
   saveDomainOiDraftCommand,
   saveDomainProblemDraftCommand,
-  saveDomainTrainingCommand,
   saveOiDraftCommand,
   saveProblemDraftCommand,
   setDomainProblemBindingPolicyCommand,

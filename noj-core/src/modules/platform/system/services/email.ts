@@ -46,7 +46,6 @@ interface EmailProviderModule {
  * 与单元测试全绿（2026-09-25 实测：`noj-server:0.10.1-alpha.2` 发送邮件/邮箱验证
  * 全部 500，日志见 `Module not found .../email-providers/aliyun.ts`）。
  * 回归门禁：`scripts/verify-compile-safe-imports.ts`。
- * 装配点白名单：`scripts/verify-capability-seams.ts`（静态/动态导入都算引用）。
  */
 const PROVIDER_LOADERS: Record<
   string,

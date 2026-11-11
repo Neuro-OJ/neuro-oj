@@ -290,7 +290,7 @@
     "src/modules/problems/tests/routes/domain-problem-versioning.test.ts": 954,
     "src/modules/problems/tests/routes/domain-problems.test.ts": 990,
     "src/modules/problems/tests/routes/domain-resource-management.test.ts": 1839,
-    "src/modules/problems/tests/routes/domain-trainings.test.ts": 294,
+    "src/features/trainings/routes.test.ts": 294,
     "src/modules/problems/tests/routes/legacy-training-bundle-domain.test.ts": 988,
     "src/modules/problems/tests/routes/problem-contest-secrecy.test.ts": 775,
     "src/modules/problems/tests/routes/problems.test.ts": 350,

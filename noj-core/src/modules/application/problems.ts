@@ -53,14 +53,6 @@ import {
   updateTag,
 } from "../problems/services/tags.ts";
 import {
-  deleteDomainTraining,
-  type DomainTrainingInput,
-  saveDomainTraining,
-} from "../problems/services/workspace/trainings.ts";
-import {
-  copyDomainTraining,
-} from "../problems/services/workspace/training-copy.ts";
-import {
   saveOiDraft,
   type SaveOiDraftResult,
 } from "../problems/services/versioning/oi-draft.ts";
@@ -297,32 +289,6 @@ export function setDomainProblemBindingStateCommand(
     expectedRevision,
     input,
   );
-}
-
-export function deleteDomainTrainingCommand(
-  actor: UserActor,
-  slug: string,
-  id: string,
-) {
-  return deleteDomainTraining(slug, actor.userId, id);
-}
-
-/** 域题单的创建/更新在同一 application 入口绑定身份。 */
-export function saveDomainTrainingCommand(
-  actor: UserActor,
-  slug: string,
-  input: DomainTrainingInput,
-  target?: Parameters<typeof saveDomainTraining>[3],
-) {
-  return saveDomainTraining(slug, actor.userId, input, target);
-}
-
-export function copyDomainTrainingCommand(
-  actor: UserActor,
-  slug: string,
-  trainingId: string,
-) {
-  return copyDomainTraining(slug, trainingId, actor.userId);
 }
 
 /** 标签管理命令保留显式操作者；审计观测仍由 HTTP composition 注入。 */

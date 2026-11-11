@@ -378,7 +378,7 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
 - **来源**：`scripts/gen-route-catalog.ts` 扫描 `noj-core/src/routes/*.ts`（当前已不存在）
   与 `noj-core/src/domains/*/routes/*.ts`（不含 `routes/index.ts` 组合文件），用**锚定接收者**
   的正则（`router.get(...)`/`app.post(...)`）提取；生成物为
-  [API 路由目录](route-catalog.md)（"请勿手改"）。
+  API 路由目录（`route-catalog.md`，已删除）（"请勿手改"）。
 - **校验**：`scripts/gen-route-catalog.ts --check` 为 REPO_GATES 之一（`scripts/gate-list.ts:108`）。
 - **规模（实测）**：**64 个路由文件 / 355 条路由**。
 - **HTTP 方法分布**：GET 183、POST 107、DELETE 28、PUT 22、PATCH 15。
@@ -390,7 +390,7 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
 ### 7.2 事件面：SSE 事件目录
 
 - **来源**：`scripts/gen-event-catalog.ts` 从 `noj-core/src/shared/sse/event-bus.ts`
-  提取频道名并扫描 `src/**` 的发布位置，生成 [SSE 事件目录](event-catalog.md)；
+  提取频道名并扫描 `src/**` 的发布位置，生成 SSE 事件目录（`event-catalog.md`，已删除）；
   `--check` 为 REPO_GATES 之一（`scripts/gate-list.ts:107`）。
 - **规模（实测）**：**9 个频道**：`submission`、`queue`、`user`、`education`、
   `contestRanking`、`contestSubmission`、`stats`、`announcements`、`settings`。
@@ -456,7 +456,7 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
 - 配置分层：runtime（DB-owned，可热改）与 bootstrap（env-owned，启动期定型）的划分与读取链
   见 [配置分层](config-layering.md)；本文 §6.4 的 `JUDGE_QUEUE`/`JUDGE_QUEUE_LAYOUT`/
   `AUDIT_LOG_RETENTION_DAYS` 为 bootstrap 项，其余任务周期是代码内常量。
-- Capability Seam 现状见 [Capability Seam](capability-seams.md)（存储/邮件/LLM/搜索）；
+- Capability Seam 现状见 Capability Seam（`capability-seams.md`，已删除）（存储/邮件/LLM/搜索）；
   注意该文档仍引用旧路径 `src/lib/storage/types.ts`，当前实际实现位于
   `domains/system/services/storage/`（`types.ts`/`factory.ts`/`local.ts`/`s3.ts`），
   一致性由 `scripts/verify-capability-seams.ts` 门禁守护——列为本轮"待验证"项（§8.1）。
@@ -534,8 +534,8 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
   `noj-llm-gateway/src/app.ts`、`noj-llm-gateway/src/accounting.ts`、
   `noj-llm-gateway/src/usage.ts`、`noj-judge/src/main.rs`
 - 门禁与生成物：`scripts/gate-list.ts`、`scripts/gen-route-catalog.ts`、
-  `scripts/gen-event-catalog.ts`、[API 路由目录](route-catalog.md)、
-  [SSE 事件目录](event-catalog.md)、[测试体系](testing.md)
+  `scripts/gen-event-catalog.ts`、API 路由目录（`route-catalog.md`，已删除）、
+  SSE 事件目录（`event-catalog.md`，已删除）、[测试体系](testing.md)
 - 既有所有权文档：[域边界与所有权](domain-boundaries.md)、[配置分层](config-layering.md)、
-  [Capability Seam](capability-seams.md)、
+  Capability Seam（`capability-seams.md`，已删除）、
   [系统架构评审（2026-09-12）](architecture-review-2026-09-12.md)

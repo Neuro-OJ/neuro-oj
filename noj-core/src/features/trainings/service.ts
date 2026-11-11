@@ -4,16 +4,16 @@ import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../../shared/base/errors.ts";
-import { getDb } from "../../../../shared/db/connection.ts";
-import { trainingProblems, trainings } from "../../../../shared/db/schema.ts";
-import { generatePublicId } from "../../../../shared/security/public-id.ts";
+} from "../../shared/base/errors.ts";
+import { getDb } from "../../shared/db/connection.ts";
+import { trainingProblems, trainings } from "../../shared/db/schema.ts";
+import { generatePublicId } from "../../shared/security/public-id.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
-} from "../../../access/contracts/cross-module/workspace_services_access.ts";
-import { workspaceAudit } from "../../../access/contracts/cross-module/workspace_services_domains.ts";
-import { resolveDomainProblem } from "./problem-binding-access.ts";
+} from "../../modules/access/contracts/cross-module/workspace_services_access.ts";
+import { workspaceAudit } from "../../modules/access/contracts/cross-module/workspace_services_domains.ts";
+import { resolveDomainProblem } from "../../modules/problems/index.ts";
 
 /** 域题单只编排本域题目；跨域复用先复制为独立资源。 */
 export interface DomainTrainingInput {

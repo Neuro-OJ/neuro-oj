@@ -76,10 +76,8 @@ Deno.test("gen-route-catalog: 生成结果按方法/路径/文件排序", () => 
   ]);
 });
 
-Deno.test("gen-route-catalog: 真实仓库目录中不存在伪造路径", async () => {
-  const content = await Deno.readTextFile(
-    new URL("../dev-docs/engineering/route-catalog.md", import.meta.url),
-  );
+Deno.test("gen-route-catalog: 真实仓库目录中不存在伪造路径", () => {
+  const content = generate(collectRouteFiles().flatMap(extractRoutes));
   const rows = content.split("\n").filter((l) =>
     /^\| (GET|POST|PUT|PATCH|DELETE) \|/.test(l)
   );
@@ -149,4 +147,20 @@ Deno.test("gen-route-catalog: 非路由模板调用被忽略", () => {
     ['const key = "user";', "cache.get(\`\${key}:profile\`);"].join("\n"),
     (path) => assertEquals(extractRoutes(path).length, 0),
   );
+});
+
+Deno.test("gen-route-catalog: 发现功能切片 routes.ts 并排除功能内测试", () => {
+  const root = Deno.makeTempDirSync({ prefix: "route-feature-discovery-" });
+  const base = `${root}/noj-core/src/features/demo`;
+  try {
+    Deno.mkdirSync(base, { recursive: true });
+    const route = 'r.get("/demo/ping", (c) => c.text("ok"));\n';
+    Deno.writeTextFileSync(`${base}/routes.ts`, route);
+    Deno.writeTextFileSync(`${base}/routes.test.ts`, route);
+    Deno.writeTextFileSync(`${base}/service.ts`, "export const x = 1;\n");
+    const files = collectRouteFiles(root).map((f) => f.slice(root.length + 1));
+    assertEquals(files, ["noj-core/src/features/demo/routes.ts"]);
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
 });

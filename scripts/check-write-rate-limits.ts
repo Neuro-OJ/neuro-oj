@@ -84,7 +84,7 @@ export const ALLOWLIST: Record<
     status: "exempt",
     reason: "标签 CRUD：tag:manage 权限受限（矩阵文档「已知未覆盖」）",
   },
-  "noj-core/src/modules/problems/routes/domain-trainings.ts": {
+  "noj-core/src/features/trainings/routes.ts": {
     status: "exempt",
     reason:
       "域题单 CRUD：本域资源管理权限与审计，沿用题单低频管理豁免；不接受普通成员内容写入",

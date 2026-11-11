@@ -24,7 +24,7 @@ import {
   assignmentStudents,
 } from "./assignments.ts";
 import { educationOperation } from "./operations.ts";
-import { lockTrainingExpansion } from "../../problems/contracts/cross-module/services_workspace_training-access.ts";
+import { lockTrainingExpansion } from "../../../features/trainings/index.ts";
 import { expandAssignmentTraining } from "./assignment-training.ts";
 
 /** 发布一次性校验所有题目、版本、授权与名单，任意失败都回滚整个发布。 */

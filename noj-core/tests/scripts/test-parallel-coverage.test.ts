@@ -19,12 +19,14 @@ import {
   discoverTestFiles,
   emptyBaseline,
   FALLBACK_FILE_DURATION_MS,
+  FEATURE_TEST_ROOT,
   isPerfExcluded,
   loadFileDurationBaseline,
   median,
   MIGRATION_TEST_FILE,
   normalizeTestPath,
   partitionTestFiles,
+  SHARED_TEST_ROOTS,
 } from "../../scripts/test-parallel-shards.ts";
 
 const CORE_ROOT = new URL("../../", import.meta.url).pathname.replace(
@@ -66,6 +68,8 @@ async function collectTestFilesFromDisk(): Promise<string[]> {
       const relative = normalizeTestPath(absolute.slice(CORE_ROOT.length + 1));
       if (
         relative.startsWith("tests/") ||
+        // 功能切片：`src/features/<name>/` 下任意层级都是测试根。
+        /^src\/features\//.test(relative) ||
         // 模块测试根可以是嵌套的：`src/modules/access/identity/tests`。
         /^src\/modules\/(?:[^/]+\/)*tests\//.test(relative)
       ) {
@@ -348,6 +352,33 @@ Deno.test("shards: 新增/删除/重命名后覆盖守卫发现正确集合", as
       "tests/00_migrate_test.ts",
       "tests/renamed.test.ts",
     ]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("shards: 默认发现覆盖 src/features/** 下任意层级的测试", async () => {
+  // 功能切片：新增 `src/features/<name>/` 后不需要登记测试路径，并行分片与
+  // 全量入口都必须自动发现它（含嵌套子目录、两种文件名约定）。
+  const root = await Deno.makeTempDir({ prefix: "noj-shard-features-" });
+  try {
+    await Deno.mkdir(`${root}/src/features/demo/sub`, { recursive: true });
+    await Deno.mkdir(`${root}/tests`, { recursive: true });
+    await Deno.writeTextFile(`${root}/tests/00_migrate_test.ts`, "");
+    await Deno.writeTextFile(`${root}/src/features/demo/demo.test.ts`, "");
+    await Deno.writeTextFile(`${root}/src/features/demo/sub/x_test.ts`, "");
+    await Deno.writeTextFile(`${root}/src/features/demo/helper.ts`, "");
+
+    const discovery = await discoverTestFiles(root, [
+      ...SHARED_TEST_ROOTS,
+      FEATURE_TEST_ROOT,
+    ]);
+    assertEquals(discovery.files, [
+      "src/features/demo/demo.test.ts",
+      "src/features/demo/sub/x_test.ts",
+      "tests/00_migrate_test.ts",
+    ]);
+    assertEquals(discovery.missingRoots, []);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

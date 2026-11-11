@@ -27,7 +27,6 @@ import { createInternalDrainRouter } from "../platform/system/routes/internal-dr
 import { legalRouter } from "../platform/legal/routes/index.ts";
 import { workspaceRouter } from "../access/workspace/routes/index.ts";
 import { domainProblemsRouter } from "../problems/routes/domain-problems.ts";
-import { domainTrainingsRouter } from "../problems/routes/domain-trainings.ts";
 import { domainResourceManagementRouter } from "../problems/routes/domain-resource-management.ts";
 import { domainSubmissionsRouter } from "../evaluations/routes/domain-submissions.ts";
 import { domainSubmissionJobsRouter } from "../evaluations/routes/domain-submission-jobs.ts";
@@ -59,11 +58,15 @@ import { getRedis } from "../../shared/mq/connection.ts";
 import type { SseStreamScope } from "../../shared/sse/sse-stream.ts";
 import { registerRuntimeObservability } from "../runtime/index.ts";
 import { registerEducationObservability } from "../education/index.ts";
+import type { FeatureDefinition } from "../../shared/feature.ts";
+import { FEATURES } from "../../features.ts";
 
 /** 应用装配选项；外部运行资源由入口创建并传入。 */
 export interface CreateAppOptions {
   /** 本次 Core 装配拥有的 SSE 流 scope；生产入口显式注入。 */
   sseStreamScope?: SseStreamScope;
+  /** 功能清单；缺省为 `src/features.ts` 的 FEATURES，测试可注入。 */
+  features?: readonly FeatureDefinition[];
 }
 
 /** 创建并配置 Hono 应用实例。 */
@@ -78,6 +81,10 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   registerJudgeHeartbeatProvider(observabilityRegistry);
   registerRuntimeObservability(observabilityRegistry);
   registerEducationObservability(observabilityRegistry);
+  const features = options.features ?? FEATURES;
+  for (const feature of features) {
+    feature.observability?.(observabilityRegistry);
+  }
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);
@@ -226,7 +233,6 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   app.route("/api/v1", legalRouter);
   app.route("/api/v1", workspaceRouter);
   app.route("/api/v1", domainProblemsRouter);
-  app.route("/api/v1", domainTrainingsRouter);
   app.route("/api/v1", domainResourceManagementRouter);
   app.route("/api/v1", domainSubmissionsRouter);
   app.route("/api/v1", domainSubmissionJobsRouter);
@@ -240,6 +246,10 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   app.route("/api/v1", domainSearchRouter);
   app.route("/api/v1", domainLlmRouter);
   app.route("/api/v1", educationRouter);
+  // 功能清单路由：挂在旧模块路由之后、admin 之前，不改变既有路由优先级。
+  for (const feature of features) {
+    if (feature.router) app.route("/api/v1", feature.router);
+  }
   app.route("/api/v1/admin", admin);
   // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {

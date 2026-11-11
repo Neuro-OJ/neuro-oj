@@ -68,12 +68,15 @@ P0-1）。新增面向考生的写端点时沿用同一口径，不要让 IP 阈
     `admin/routes/submission.ts` 内，同样由 admin 权限兜底。
 - **账号层通知已读、活动可见性**：幂等且低频，暂不限流；教学通知已读属于上述域内共享写窗口。
 - **题单/标签 CRUD**：权限受限、频率低，暂用服务层/权限兜底。
-  - 显式域题单 `catalog/routes/domain-trainings.ts`
+  - 显式域题单 `features/trainings/routes.ts`
     同样只允许本域资源管理人员创建，记录域审计，沿用该管理豁免；它没有学生求助或评论类内容写入。
-  - 无域题单路由（`catalog/routes/trainings.ts` 的 `POST/PUT/DELETE /trainings`）已在 0.11
-    随 `/api/v1/trainings` 写接口一并删除；2026-11 精简中该文件剩余的只读端点也已整体删除
-    （用户主页改调 `/domains/:slug/trainings?created_by=`），故其豁免条目已移除。
-- **内部维护/排空端点**（`system/routes/internal-drain.ts` 的 enter/exit）：只接受内部服务
+  - 无域题单路由（`catalog/routes/trainings.ts` 的
+    `POST/PUT/DELETE /trainings`）已在 0.11 随 `/api/v1/trainings`
+    写接口一并删除；2026-11 精简中该文件剩余的只读端点也已整体删除
+    （用户主页改调
+    `/domains/:slug/trainings?created_by=`），故其豁免条目已移除。
+- **内部维护/排空端点**（`system/routes/internal-drain.ts` 的
+  enter/exit）：只接受内部服务
   凭据（`NOJ_INTERNAL_SERVICE_TOKEN`，常量时间比较），由容器内
   `/app/bin/noj maintain` 与 noj-cli
   自动排空调用，不对浏览器或匿名开放；对其做用户向限流会 破坏 `wait`

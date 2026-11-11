@@ -13,6 +13,12 @@
  */
 import { allTargetModuleTestRoots } from "../../scripts/module-test-metadata.ts";
 
+/**
+ * 功能切片目录（相对 noj-core）：`src/features/<name>/` 下任意层级的
+ * `*.test.ts` / `*_test.ts` 都自动进入并行分片，无需登记测试路径。
+ */
+export const FEATURE_TEST_ROOT = "src/features";
+
 /** 默认分片数：4 片覆盖当前约 440 个 Core 测试文件。 */
 export const DEFAULT_SHARD_COUNT = 4;
 /** 默认同时运行的分片数；每片都要独立 DB/Redis/存储，不能盲目放大。 */
@@ -169,6 +175,7 @@ export async function discoverTestFiles(
   rootDir: string,
   roots: readonly string[] = [
     ...SHARED_TEST_ROOTS,
+    FEATURE_TEST_ROOT,
     ...allTargetModuleTestRoots(),
   ],
 ): Promise<TestFileDiscovery> {

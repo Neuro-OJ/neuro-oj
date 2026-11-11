@@ -22,13 +22,19 @@ import {
 import { buildManifest, junitPathFor } from "../../scripts/test-launcher.ts";
 import {
   applyShardEnvironment,
+  domainTargetNames,
   existingTestPaths,
+  FEATURE_ROOT,
+  featureDirectoryExists,
+  featureDirectoryNames,
   parseLauncherArgs,
   parseSafeTestArgs,
   pathsFor,
   profileEnvironment,
+  resolveDomainTarget,
   resolveReportDirectory,
   TEST_TARGET_NAMES,
+  testRootsForDomain,
 } from "../../scripts/test-launcher-args.ts";
 import {
   LEGACY_DOMAIN_NAMES,
@@ -198,6 +204,78 @@ Deno.test("test-launcher: 目标模块只发现已迁移的测试根", () => {
       !targetRoots.some((root) => root.includes("legacy-")),
     "目标模块入口不得重新发现已删除的 legacy 测试根",
   );
+});
+
+Deno.test("test-launcher: 功能切片目录自动成为 domain 入口", async () => {
+  const root = await Deno.makeTempDir({ prefix: "noj-launcher-features-" });
+  try {
+    // 临时构建 `src/features/demo/{x.test.ts, sub/y_test.ts}` 与 `src/features.ts`。
+    await Deno.mkdir(`${root}/src/features/demo/sub`, { recursive: true });
+    await Deno.writeTextFile(
+      `${root}/src/features/demo/x.test.ts`,
+      'Deno.test("x", () => {});',
+    );
+    await Deno.writeTextFile(
+      `${root}/src/features/demo/sub/y_test.ts`,
+      'Deno.test("y", () => {});',
+    );
+    await Deno.writeTextFile(`${root}/src/features.ts`, "");
+    // 与旧模块同名：功能目录优先，且不会把旧模块测试根混进来。
+    await Deno.mkdir(`${root}/src/features/problems`, { recursive: true });
+
+    assert(
+      featureDirectoryExists("demo", root),
+      "功能目录必须被识别为 domain 目标",
+    );
+    assertEquals(resolveDomainTarget("demo", root), true);
+    assertEquals(featureDirectoryNames(root), ["demo", "problems"]);
+    assert(
+      domainTargetNames(root).includes("demo"),
+      "帮助/错误信息的可选名称必须包含功能目录",
+    );
+    assertEquals(
+      pathsFor({ mode: "domain", domain: "demo" }, root),
+      [
+        "tests/00_migrate_test.ts",
+        "tests/seed_bootstrap_admin_test.ts",
+        "src/features/demo",
+      ],
+      "domain 入口解析为功能目录，并保留迁移/种子前置文件",
+    );
+    assertEquals(
+      pathsFor({ mode: "domain", domain: "problems" }, root),
+      [
+        "tests/00_migrate_test.ts",
+        "tests/seed_bootstrap_admin_test.ts",
+        "src/features/problems",
+      ],
+      "功能名与旧模块名冲突时以功能目录优先",
+    );
+    // 参数解析本身仍按真实仓库根校验名称，避免临时根被当成正式入口。
+    assertThrows(
+      () => parseLauncherArgs(["domain", "demo"]),
+      Error,
+      "必须指定有效模块或 legacy domain",
+    );
+    for (const invalid of ["../demo", "a/b", "Demo", ".hidden"]) {
+      assertEquals(
+        featureDirectoryExists(invalid, root),
+        false,
+        `非法功能名不得拼进路径：${invalid}`,
+      );
+      assertEquals(resolveDomainTarget(invalid, root), false);
+    }
+    assertEquals(
+      testRootsForDomain("problems", root),
+      ["src/features/problems"],
+    );
+    // 旧模块映射不受功能目录探测影响。
+    assert(
+      testRootsForDomain("identity", root).includes("src/modules/access/tests"),
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("test-launcher: 每次 run 的数据库名和 storage 根目录唯一可界定", () => {
@@ -471,6 +549,18 @@ Deno.test("test-launcher: 显式测试文件路径必须与磁盘一致（防静
   );
 });
 
+Deno.test("test-launcher: 全量入口自动发现 src/features/**", () => {
+  // 与并行分片一致：功能目录不需要登记，全量入口直接以整目录发现测试。
+  for (const mode of ["test", "pg", "watch"] as const) {
+    const paths = pathsFor({ mode });
+    assert(
+      paths.includes(FEATURE_ROOT),
+      `${mode} 入口必须以 ${FEATURE_ROOT} 为测试根`,
+    );
+    assert(paths.includes("tests"), `${mode} 入口必须保留共享 tests 根`);
+  }
+});
+
 Deno.test("test-launcher: 缺失的显式测试文件直接失败，缺目录仅警告", async () => {
   const root = await Deno.makeTempDir({ prefix: "noj-launcher-missing-" });
   try {
@@ -703,4 +793,21 @@ Deno.test("test-launcher: NOJ_TEST_RUN_ID 允许连字符但数据库前缀仍�
     Error,
     "只能包含字母、数字、下划线和连字符",
   );
+});
+
+Deno.test("test-launcher: 默认根路径能发现真实功能目录 trainings", () => {
+  assertEquals(featureDirectoryExists("trainings"), true);
+  assertEquals(testRootsForDomain("trainings"), ["src/features/trainings"]);
+});
+
+Deno.test("test-launcher: 含空格与中文的工作区路径仍能探测功能目录", () => {
+  const root = Deno.makeTempDirSync({ prefix: "含 空格 工作区-" });
+  try {
+    Deno.mkdirSync(`${root}/src/features/demo`, { recursive: true });
+    Deno.writeTextFileSync(`${root}/src/features/demo/x.test.ts`, "");
+    assertEquals(featureDirectoryExists("demo", root), true);
+    assertEquals(testRootsForDomain("demo", root), ["src/features/demo"]);
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
 });
