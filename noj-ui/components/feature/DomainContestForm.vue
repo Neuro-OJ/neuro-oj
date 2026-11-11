@@ -2,7 +2,7 @@
 import type { DomainContest } from '~/composables/useDomainContests';
 import type { ContestPayload, ContestType } from '~/utils/contest-types';
 import type { DomainProblemSummary } from '~/utils/domain-problems';
-import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestDefaults } from '~/utils/domain-contests';
+import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestConfig, domainContestDefaults } from '~/utils/domain-contests';
 import { extractApiError } from '~/utils/apiError';
 const props = defineProps<{ slug: string; existing?: DomainContest }>();
 const api = useDomainContests();
@@ -96,14 +96,14 @@ async function save() {
     end_time: new Date(end.value).toISOString(),
     type: type.value,
     secrecy_enabled: secrecy.value,
-    affect_global_ranking: false,
+    affect_global_ranking: props.existing?.affect_global_ranking ?? false,
     ranking_visibility: visibility.value,
     freeze_duration_seconds: freezeMinutes.value * 60,
-    config: type.value === 'acm'
-      ? { penalty_minutes: penalty.value }
-      : type.value === 'kaggle'
-      ? { scoreboard_scope: scoreboard.value }
-      : {},
+    config: domainContestConfig(
+      type.value,
+      { penalty_minutes: penalty.value, scoreboard_scope: scoreboard.value },
+      props.existing?.config,
+    ),
     problems: selected.value.map((entry, sort_order) => ({
       problem_id: entry.problem.reference.problem_id,
       sort_order,

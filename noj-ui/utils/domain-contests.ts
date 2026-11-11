@@ -3,6 +3,7 @@ type RankingVisibility = 'public' | 'participants' | 'hidden';
 interface ContestConfig {
   penalty_minutes?: number;
   scoreboard_scope?: 'self' | 'full';
+  submission_limits?: Record<string, number>;
 }
 export const DOMAIN_CONTEST_TYPES = [
   { value: 'kaggle', label: 'Kaggle', description: 'AI 题和客观题；AI 每题最高分，客观题原分直接相加。' },
@@ -20,6 +21,25 @@ export function domainContestDefaults(
     ranking_visibility: type === 'oi' ? 'hidden' : 'participants',
     freeze_duration_seconds: type === 'acm' ? 3600 : 0,
   };
+}
+/**
+ * 组装域内竞赛表单提交的 `config`。
+ *
+ * 表单只编辑罚时与榜单范围；后端会整体替换 `config`，因此必须带上已有的
+ * `submission_limits`（由管理后台设置），否则在域内编辑一次就会清空提交次数限制。
+ */
+export function domainContestConfig(
+  type: ContestType,
+  fields: { penalty_minutes: number; scoreboard_scope: 'self' | 'full' },
+  existing?: ContestConfig,
+): ContestConfig {
+  const config: ContestConfig = type === 'acm'
+    ? { penalty_minutes: fields.penalty_minutes }
+    : type === 'kaggle'
+    ? { scoreboard_scope: fields.scoreboard_scope }
+    : {};
+  if (existing?.submission_limits) config.submission_limits = { ...existing.submission_limits };
+  return config;
 }
 export function domainContestAllows(type: ContestType, kind: 'ai' | 'oi' | 'objective') {
   return type === 'kaggle' ? kind !== 'oi' : type === 'oi' ? kind !== 'ai' : kind === 'oi';
