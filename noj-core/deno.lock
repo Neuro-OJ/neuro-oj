@@ -30,6 +30,7 @@
     "jsr:@std/streams@^1.0.9": "1.2.0",
     "jsr:@std/testing@1": "1.0.19",
     "jsr:@std/text@^1.0.19": "1.0.19",
+    "jsr:@std/yaml@1": "1.3.0",
     "npm:@alicloud/dm20151123@*": "1.10.2",
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
     "npm:@alicloud/green20180509@1": "1.0.1",
@@ -177,6 +178,9 @@
     },
     "@std/text@1.0.19": {
       "integrity": "003a0e032d360e8c3a4e0410fb792c77a66bd6553fee9d60c6ec1bce30d29223"
+    },
+    "@std/yaml@1.3.0": {
+      "integrity": "b250103854378b8b36cbff0fe95aec017d3d9ce86b489c67605180c602fb4922"
     }
   },
   "npm": {

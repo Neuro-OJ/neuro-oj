@@ -152,6 +152,9 @@ export const REPO_GATES: Gate[] = [
   // CREATE TABLE，空库测试通过而**存量部署必失败**（2026-09-14 实测：search_entries
   // 自 0076 起从快照链消失，0082 因此生成了重复建表语句）。
   { args: ["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"] },
+  // 知识图谱官方内容包：加载并校验 data/knowledge-graph（ID 唯一、无悬挂、无环、考纲已声明）；
+  // 官方包随版本发布，内容损坏必须在 CI 拦截，而不是等到实例初始化时才发现。
+  { args: ["deno", "run", "-A", "scripts/check-knowledge-pack.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-metrics.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-runtime-contract.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-runbooks.ts"] },

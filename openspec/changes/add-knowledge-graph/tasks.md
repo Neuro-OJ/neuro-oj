@@ -7,21 +7,21 @@
 
 ## 1. P0 图谱基座（`src/features/knowledge/`）
 
-- [ ] 1.1 新建 `src/features/knowledge/`（照 `features/trainings` 样例）并在
+- [x] 1.1 新建 `src/features/knowledge/`（照 `features/trainings` 样例）并在
       `src/features.ts` 登记；`knowledge.enabled` 等配置项登记到 settings
       registry
-- [ ] 1.2 `src/shared/db/schema/knowledge.ts`：`knowledge_packs` /
+- [x] 1.2 `src/shared/db/schema/knowledge.ts`：`knowledge_packs` /
       `knowledge_nodes` / `knowledge_edges` 表与迁移
-- [ ] 1.3 内容包加载与校验（唯一、悬挂、无环、`extends` 冲突、deprecated
+- [x] 1.3 内容包加载与校验（唯一、悬挂、无环、`extends` 冲突、deprecated
       替代合法），官方包校验接入 CI；单元测试覆盖各类非法包
-- [ ] 1.4 幂等导入 `scripts/noj.ts knowledge import [--pack <dir>]`，接入
+- [x] 1.4 幂等导入 `scripts/noj.ts knowledge import [--pack <dir>]`，接入
       `dev-setup` 与生产 `init`，`noj-cli`
       提供对应命令；验证重复导入无变化、替换包时旧节点 deprecated、`replaced_by`
       迁移
-- [ ] 1.5 只读 API（节点、边、领域分组、当前包版本）与进程内只读缓存，登记到
+- [x] 1.5 只读 API（节点、边、领域分组、当前包版本）与进程内只读缓存，登记到
       domain-boundaries；总开关关闭时返回未启用
-- [ ] 1.6 noj-ui 图谱浏览页（按领域分组 + 前置关系可视化）
-- [ ] 1.7 按「新增功能 ≤6 个手动改动文件」指标复盘功能切片结构，记录在 Agent
+- [ ] 1.6 noj-ui 图谱浏览页（按领域分组 + 前置关系可视化）——暂缓（2026-11-13）
+- [x] 1.7 按「新增功能 ≤6 个手动改动文件」指标复盘功能切片结构，记录在 Agent
       Note
 
 ## 2. P1 挂载、审核与 AI 打标（默认关闭）
@@ -37,7 +37,13 @@
 - [ ] 2.5 发布流程经 `modules/runtime` 出口投递 `knowledge.tag`（不 import
       功能代码）；验证草稿保存不触发、内容未变不重复调用、未开启时不投递
 - [ ] 2.6 审核队列 API（接受 / 修改 / 驳回）；开启 AI
-      时回填全部未归类题目（限速与进度查询）
+      时回填全部未归类题目（限速与进度查询），回填前展示预计题数 / token /
+      费用并经确认
+- [ ] 2.6a 成本控制：网关按 `purpose` 的月度 token /
+      金额预算与超额暂停（含测试）；提示词「固定在前、题面在后」以命中缓存，候选仅
+      id+name，输入字符上限与输出 `max_tokens`；预算类错误不重试；登记
+      `knowledge_ai_monthly_budget` 等配置；后台展示打标累计
+      token、费用与剩余预算
 - [ ] 2.7 noj-ui 审核队列；题目页展示知识点（「待确认」标记、保密隐藏）
 
 ## 3. P2 难度、阶梯与讲解

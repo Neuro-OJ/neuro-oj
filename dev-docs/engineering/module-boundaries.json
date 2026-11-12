@@ -151,6 +151,7 @@
       "email.ts": "platform",
       "evaluation-records.ts": "evaluations",
       "identity.ts": "access",
+      "knowledge.ts": "platform",
       "legal.ts": "platform",
       "objective.ts": "evaluations",
       "query.ts": "read-models",

@@ -27,6 +27,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   community: '社区',
   judge: '评测资源限制',
   llm: 'LLM',
+  knowledge: '知识图谱',
   other: '其他',
 };
 

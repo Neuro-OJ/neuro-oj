@@ -120,6 +120,31 @@ NOT 持有或直接使用 Provider Key。
 - **WHEN** AI 打标已开启但未配置打标模型别名
 - **THEN** 打标任务成功结束且不产生挂载，题目保持未归类，覆盖度面板提示未配置
 
+### Requirement: AI tagging cost is bounded and visible
+
+AI 打标的模型调用成本 SHALL 可预期、可封顶、可查看：系统 SHALL
+为打标用途设置月度 token / 金额预算并在超额时暂停调用；SHALL
+限制单次调用的输入规模（候选知识点仅含 ID
+与名称、题面等输入有长度上限、输出长度受限）；题目内容未变化或已有人工挂载时
+SHALL NOT 调用模型；存量回填前 SHALL
+向实例管理员展示预计调用量与费用并经确认后才执行。
+
+#### Scenario: Monthly budget exhausted
+
+- **WHEN** 本计费周期打标用途的用量达到预算上限
+- **THEN**
+  后续打标任务不再调用模型，以「预算暂停」状态延后，题目保持未归类，后台显示预算已用尽；预算调高或进入下一周期后自动恢复
+
+#### Scenario: Backfill requires a cost estimate
+
+- **WHEN** 实例管理员开启 AI 打标且存在未归类的存量题目
+- **THEN** 系统先展示待打标题数、预计 token 与费用，管理员确认后才投递回填任务
+
+#### Scenario: Unchanged content is not re-tagged
+
+- **WHEN** 题目发布的新版本与上次打标时的内容 hash 相同
+- **THEN** 不调用模型，沿用已有挂载
+
 ### Requirement: Problem difficulty is calibrated from data
 
 系统 SHALL 为每道题维护 0–100 的连续难度分：以 AI 先验冷启动（无 AI
