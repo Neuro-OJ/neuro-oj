@@ -1,0 +1,67 @@
+# 编程与工具（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: prog
+name: 编程与工具
+nodes:
+  - id: prog.python-basics
+    name: Python 基础语法（变量、控制流、函数）
+    summary: 掌握变量、条件分支、循环与函数定义等 Python 核心语法，能独立编写并调试完成简单任务的小程序
+    syllabus: [noai, ioai, lmcc]
+  - id: prog.python-data-structures
+    name: Python 数据结构（列表、字典、集合、字符串）
+    summary: 熟练使用列表、字典、集合与字符串组织数据，能用切片、推导式和内置方法完成常见的数据存取与统计
+    syllabus: [noai, ioai]
+    requires: [prog.python-basics]
+  - id: prog.python-oop
+    name: 面向对象与模块化（类、对象、包导入）
+    summary: 理解类与对象、封装和继承，能用模块与包组织多个文件，写出结构清晰、可复用的 Python 项目代码
+    syllabus: [noai]
+    requires: [prog.python-basics]
+  - id: prog.algorithms-basics
+    name: 基础算法与复杂度（排序、查找、递归）
+    summary: 理解常见排序与查找算法、递归思想和时间复杂度的大 O 估计，能判断程序在数据规模变大时是否可行
+    syllabus: [noai]
+    requires: [prog.python-basics]
+  - id: prog.numpy
+    name: NumPy 数组与向量化计算
+    summary: 使用 NumPy 多维数组的创建、切片、变形与广播进行向量化运算，用少量代码高效处理大规模数值数据
+    syllabus: [ioai, noai]
+    requires: [prog.python-data-structures]
+  - id: prog.pandas
+    name: Pandas 表格数据处理
+    summary: 用 DataFrame 读取、筛选、分组聚合与拼接表格数据，完成数据探索、特征整理和简单统计分析
+    syllabus: [ioai, noai]
+    requires: [prog.numpy]
+  - id: prog.visualization
+    name: 数据可视化（Matplotlib、Seaborn）
+    summary: 使用 Matplotlib 与 Seaborn 绘制折线图、散点图、直方图与热力图，直观展示数据分布和模型训练结果
+    syllabus: [ioai, noai]
+    requires: [prog.pandas]
+  - id: prog.sklearn
+    name: scikit-learn 建模流程
+    summary: 掌握 scikit-learn 统一的 fit/predict 接口，串联预处理、划分、训练与评估，快速搭建经典机器学习基线模型
+    syllabus: [ioai, noai]
+    requires: [prog.pandas]
+  - id: prog.pytorch-tensors
+    name: PyTorch 张量操作
+    summary: 掌握 PyTorch 张量的创建、形状变换、广播与自动求导，能在 GPU 上进行张量计算并构建可微分的计算图
+    syllabus: [ioai, noai, lmcc]
+    requires: [prog.numpy]
+  - id: prog.pytorch-training
+    name: PyTorch 训练循环与 GPU 训练
+    summary: 用 Dataset、DataLoader 和优化器编写完整的训练与验证循环，能把模型和数据迁移到 GPU 上高效训练并保存检查点
+    syllabus: [ioai, noai, lmcc]
+    requires: [prog.pytorch-tensors]
+  - id: prog.hf-transformers
+    name: Hugging Face Transformers 推理与分词器
+    summary: 用 Transformers 库加载预训练模型与分词器，完成文本编码、模型推理和简单微调，快速复用开源大模型能力
+    syllabus: [lmcc, ioai]
+    requires: [prog.pytorch-training]
+  - id: prog.llm-api
+    name: 调用大模型 API
+    summary: 通过 HTTP 请求调用大模型接口，构造对话消息、处理流式输出与错误重试，把模型能力接入自己的程序
+    syllabus: [lmcc, ioai]
+    requires: [prog.python-basics]
+  - id: prog.dev-environment
+    name: 开发环境（Jupyter、Linux 命令、Git、SSH、GPU 监控）
+    summary: 熟悉 Jupyter 交互式开发、常用 Linux 命令、Git 版本管理和 SSH 远程连接，能在 GPU 服务器上独立开展实验
+    syllabus: [ioai]

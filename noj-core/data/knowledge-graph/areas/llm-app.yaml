@@ -1,0 +1,84 @@
+# 提示、推理与智能体（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: llm-app
+name: 提示、推理与智能体
+nodes:
+  - id: llm-app.prompt-engineering
+    name: 提示工程
+    summary: 研究如何组织指令与上下文，让大模型稳定产出符合期望的回答，是使用大模型解决实际问题的基础技能
+    syllabus: [lmcc, ioai]
+    requires: [llm.definition, prog.llm-api]
+  - id: llm-app.prompt-design
+    name: 人工提示设计与系统提示
+    summary: 掌握角色设定、任务描述、格式约束与分隔符等手工提示技巧，并能用系统提示统一规定助手的身份与行为边界
+    syllabus: [lmcc]
+    requires: [llm-app.prompt-engineering, llm-infer.chat-template]
+  - id: llm-app.in-context-learning
+    name: 上下文学习（少样本）
+    summary: 通过在提示中给出若干示例让模型在推理时“现学现用”，无需更新参数即可完成新任务，需理解示例数量与顺序的影响
+    syllabus: [lmcc]
+    requires: [llm-app.prompt-engineering, llm.emergent-abilities]
+  - id: llm-app.chain-of-thought
+    name: 思维链提示
+    summary: 引导模型先写出中间推理步骤再给出答案，可显著提升算术、常识与多步推理任务的表现，也可用于检查推理过程
+    syllabus: [lmcc]
+    requires: [llm-app.in-context-learning]
+  - id: llm-app.vector-retrieval
+    name: 向量检索与重排
+    summary: 把文本编码为向量后按相似度检索相关片段，并用重排模型精排结果，为问答与检索系统提供有依据的上下文
+    syllabus: [lmcc]
+    requires: [nlp.sentence-embeddings]
+  - id: llm-app.rag
+    name: 检索增强生成（RAG）
+    summary: 在生成前检索外部知识库并把相关文档拼入提示，使模型能回答知识库内的问题并减少编造，是常见的落地架构
+    syllabus: [lmcc]
+    requires: [llm-app.vector-retrieval, llm-app.prompt-design]
+  - id: llm-app.reasoning-concepts
+    name: 认知推理与测试时扩展
+    summary: 理解模型推理的慢思考与快思考之别，以及增加测试时计算（更长的思考、多次采样）换取更高准确率的基本思路
+    syllabus: [lmcc]
+    requires: [llm-app.chain-of-thought]
+  - id: llm-app.long-cot-sft
+    name: 长思维链蒸馏
+    summary: 用强模型生成的详细推理过程作为训练数据，对较小模型做监督微调，使其具备较长的逐步思考能力
+    syllabus: [lmcc]
+    requires: [llm-app.reasoning-concepts, llm-train.instruction-tuning]
+  - id: llm-app.rl-reasoning
+    name: 强化学习推理训练（结果奖励、过程奖励）
+    summary: 用答案正确性等结果奖励或步骤级过程奖励驱动强化学习，使模型学会自行探索更长的推理路径并提升解题正确率
+    syllabus: [lmcc]
+    requires: [llm-app.reasoning-concepts, llm-train.rlhf]
+  - id: llm-app.search-reasoning
+    name: 搜索推理（自一致性、思维树）
+    summary: 采样多条推理路径后投票或用树搜索展开与回溯来寻找最优解，把推理过程当作可搜索的空间来提升复杂问题表现
+    syllabus: [lmcc]
+    requires: [llm-app.reasoning-concepts, llm-infer.sampling-strategies]
+  - id: llm-app.agent-profile
+    name: 智能体角色设定
+    summary: 为智能体定义身份、目标、能力边界与输出规范，使其在多轮交互中保持稳定一致的行为风格与责任范围
+    syllabus: [lmcc]
+    requires: [llm-app.prompt-design]
+  - id: llm-app.agent-memory
+    name: 智能体记忆机制
+    summary: 通过短期对话缓冲、长期向量存储与摘要压缩等手段保存和检索历史信息，让智能体具备跨轮次、跨会话的记忆能力
+    syllabus: [lmcc]
+    requires: [llm-app.vector-retrieval, llm.long-context]
+  - id: llm-app.tool-use
+    name: 工具使用与函数调用
+    summary: 让模型输出结构化的调用请求以使用检索、计算器、代码执行等外部工具，并解析返回结果继续推理，是智能体行动的关键
+    syllabus: [lmcc]
+    requires: [llm-infer.structured-output, llm-app.prompt-design]
+  - id: llm-app.agent-applications
+    name: 智能体应用搭建
+    summary: 把角色设定、记忆与工具调用组合成可运行的智能体，按“观察—思考—行动”循环完成文档问答、数据分析等实际任务
+    syllabus: [lmcc]
+    requires: [llm-app.agent-memory, llm-app.tool-use, llm-app.agent-profile]
+  - id: llm-app.multi-agent
+    name: 多智能体协作
+    summary: 让多个分工不同的智能体通过消息传递、评审或辩论协同完成任务，需设计好通信协议与任务分配以防冲突与重复劳动
+    syllabus: [lmcc]
+    requires: [llm-app.agent-applications]
+  - id: llm-app.agent-environment
+    name: 交互环境与世界模型
+    summary: 研究智能体如何在模拟或真实环境中感知状态、执行动作并根据反馈修正计划，即通过交互学习环境规律并据此决策
+    syllabus: [lmcc]
+    requires: [llm-app.agent-applications, rl.agent-environment]

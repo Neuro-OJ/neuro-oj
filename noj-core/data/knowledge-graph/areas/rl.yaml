@@ -1,0 +1,69 @@
+# 强化学习（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: rl
+name: 强化学习
+nodes:
+  - id: rl.agent-environment
+    name: 智能体与环境交互（状态、动作、奖励、回合）
+    summary: 理解智能体通过动作与环境交互、接收状态与奖励的循环，能搭建或使用简单环境并记录轨迹
+    syllabus: [ioai]
+    requires: [ai.ml-paradigms, prog.python-oop]
+  - id: rl.mdp
+    name: 马尔可夫决策过程
+    summary: 用状态、动作、转移概率与奖励描述序贯决策问题，理解马尔可夫性质并能写出环境的状态转移
+    syllabus: [ioai]
+    requires: [rl.agent-environment, math.probability]
+  - id: rl.return-discount
+    name: 回报与折扣因子
+    summary: 掌握累积回报的定义与折扣因子的作用，理解它如何权衡近期与远期收益并影响最优行为
+    syllabus: [ioai]
+    requires: [rl.agent-environment]
+  - id: rl.policy
+    name: 策略
+    summary: 理解策略是从状态到动作的映射，区分确定性策略与随机策略，能实现并比较简单的策略规则
+    syllabus: [ioai]
+    requires: [rl.mdp]
+  - id: rl.value-functions
+    name: 价值函数（V、Q）
+    summary: 理解状态价值与动作价值衡量长期回报期望的含义，能写出贝尔曼期望方程并手工计算小例子的价值
+    syllabus: [ioai]
+    requires: [rl.return-discount, rl.policy]
+  - id: rl.dynamic-programming
+    name: 动态规划求解 MDP
+    summary: 掌握策略评估与策略迭代、价值迭代的更新公式，能在已知模型的小型 MDP 上求出最优策略
+    syllabus: [ioai]
+    requires: [rl.value-functions]
+  - id: rl.monte-carlo
+    name: 蒙特卡洛方法
+    summary: 通过采样完整回合估计价值，理解首次访问与每次访问的平均思想，能在无模型环境中评估策略
+    syllabus: [ioai]
+    requires: [rl.value-functions, math.statistics]
+  - id: rl.td-learning
+    name: 时序差分学习
+    summary: 用一步奖励加下一状态估计构造 TD 误差，理解 TD 与蒙特卡洛、动态规划的区别及 TD(0) 更新
+    syllabus: [ioai]
+    requires: [rl.monte-carlo, rl.dynamic-programming]
+  - id: rl.exploration
+    name: 探索与利用（ε-greedy）
+    summary: 理解探索与利用的权衡，掌握 ε-greedy 与衰减策略，能让智能体在尝试新动作与利用已有经验间平衡
+    syllabus: [ioai]
+    requires: [rl.policy]
+  - id: rl.q-learning
+    name: Q-learning
+    summary: 掌握离策略 Q-learning 的更新规则，能在表格型环境中学习最优动作价值并据此得到贪心策略
+    syllabus: [ioai]
+    requires: [rl.td-learning, rl.exploration]
+  - id: rl.function-approximation
+    name: 函数逼近
+    summary: 理解用参数化函数代替 Q 表来泛化到未见状态，掌握半梯度下降更新与线性逼近的稳定性问题
+    syllabus: [ioai]
+    requires: [rl.q-learning, ml.linear-regression]
+  - id: rl.dqn
+    name: 深度 Q 网络
+    summary: 用神经网络拟合动作价值，掌握经验回放与目标网络两大稳定技巧，能在简单游戏中训练 DQN 智能体
+    syllabus: [ioai]
+    requires: [rl.function-approximation, dl.mlp]
+  - id: rl.policy-gradient
+    name: 策略梯度与 REINFORCE
+    summary: 理解直接对策略参数求梯度以最大化期望回报的思想，能实现 REINFORCE 并用基线降低方差
+    syllabus: [ioai, lmcc]
+    requires: [rl.value-functions, dl.backpropagation]

@@ -1,0 +1,59 @@
+# 大模型基础与架构（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: llm
+name: 大模型基础与架构
+nodes:
+  - id: llm.history
+    name: 语言模型发展历程
+    summary: 梳理从统计语言模型、神经网络语言模型到预训练大模型的演进脉络，理解今天的大模型由哪些技术积累而来
+    syllabus: [lmcc]
+    requires: [nlp.language-modeling]
+  - id: llm.definition
+    name: 大语言模型的定义与特点
+    summary: 明确大语言模型在规模、通用性、训练方式上与普通语言模型的区别，能说清参数量、数据量与能力之间的关系
+    syllabus: [lmcc]
+    requires: [nlp.language-modeling]
+  - id: llm.tokenizers
+    name: 子词分词（BPE、WordPiece）
+    summary: 掌握子词切分的基本思想与合并规则，能理解词表大小和切分方式如何影响上下文长度与模型表现
+    syllabus: [lmcc, ioai]
+    requires: [data.tokenization]
+  - id: llm.scaling-laws
+    name: 扩展法则
+    summary: 理解损失随参数量、数据量和计算量增长的幂律关系，能据此估算在固定算力下如何配置模型与数据
+    syllabus: [lmcc]
+    requires: [llm.definition]
+  - id: llm.emergent-abilities
+    name: 涌现能力（上下文学习、指令遵循、逐步推理）
+    summary: 认识大模型规模增大后出现的上下文学习、指令遵循与逐步推理等现象，并了解相关评测与争议
+    syllabus: [lmcc]
+    requires: [llm.definition]
+  - id: llm.architectures
+    name: 主流架构（编码器-解码器、因果解码器、前缀解码器）
+    summary: 比较三类大模型架构的注意力可见范围与适用场景，能根据生成式或理解式任务选择合适的结构
+    syllabus: [lmcc, ioai]
+    requires: [dl.transformer]
+  - id: llm.positional-encoding
+    name: 位置编码（绝对位置、RoPE、ALiBi）
+    summary: 理解模型如何感知词序，掌握 RoPE 与 ALiBi 的编码思路及它们对外推和长文本处理的影响
+    syllabus: [lmcc]
+    requires: [llm.architectures]
+  - id: llm.transformer-config
+    name: 模型详细配置（归一化位置、激活函数选择）
+    summary: 了解大模型在归一化位置、激活函数、偏置项等细节上的设计取舍，能读懂并开始搭建一份模型配置
+    syllabus: [lmcc]
+    requires: [llm.architectures]
+  - id: llm.moe
+    name: 混合专家（MoE）
+    summary: 理解稀疏专家路由如何在不线性增加计算量的前提下扩大参数量，并能分析负载均衡与通信开销
+    syllabus: [lmcc]
+    requires: [llm.transformer-config]
+  - id: llm.long-context
+    name: 长上下文技术
+    summary: 了解扩展上下文窗口的主要手段及其代价，能分析长文本下训练数据配比、位置外推与显存之间的关系
+    syllabus: [lmcc]
+    requires: [llm.positional-encoding]
+  - id: llm.efficient-attention
+    name: 高效注意力（MQA、GQA、MLA）
+    summary: 掌握多头共享键值以及低秩压缩注意力的设计，能权衡推理显存占用与模型效果之间的取舍
+    syllabus: [lmcc]
+    requires: [llm-infer.kv-cache]
