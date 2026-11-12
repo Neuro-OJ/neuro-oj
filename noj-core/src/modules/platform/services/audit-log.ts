@@ -104,15 +104,6 @@ export async function logAuthEvent(
   await recordAuthAudit(actor, clientIp, action, detail);
 }
 
-/** 仅供尚未切换 HTTP adapter 的平台子服务过渡；新调用必须使用 recordAudit。 */
-export async function logAudit(
-  action: AuditAction,
-  detail: AuditDetail,
-  target?: { type: string; id: string },
-): Promise<void> {
-  await recordAudit(null, { ipAddress: "system" }, action, detail, target);
-}
-
 export async function listAuditLogs(
   filter: AuditLogListFilter,
 ): Promise<{
