@@ -1,97 +1,135 @@
 ## Purpose
 
-为 Neuro OJ 提供平台统一维护的 AI
-知识图谱，使每道题目自动关联知识点与难度，学习者可按知识点从易到难系统练习并查看掌握情况。
+为 Neuro OJ 提供可评审、可版本化的 AI
+竞赛知识图谱：题目关联知识点与难度，学习者按知识点从易到难系统练习并查看掌握情况，教练按知识点查看班级掌握分布并布置作业。
 
 ## ADDED Requirements
 
-### Requirement: Platform maintains a single versioned knowledge graph
+### Requirement: Instance uses one versioned knowledge graph content pack
 
-系统 SHALL
-以仓库内图谱源文件作为唯一真相源，导入为平台级知识点节点与前置边。图谱 SHALL
-为有向无环图，节点 ID 稳定且不复用。工作空间 SHALL NOT 创建、修改或删除节点。
+实例 SHALL 在任一时刻只启用一个图谱内容包。官方内容包 SHALL
+随仓库发布并作为默认值；实例管理员 SHALL 能导入自定义内容包整体替换，或导入声明
+`extends` 的扩展包在被扩展包之上追加节点与前置边。图谱 SHALL 为有向无环图，节点
+ID 稳定且不复用。工作空间（域）SHALL NOT 创建、修改或删除节点。
+
+#### Scenario: Official pack is the default
+
+- **WHEN** 新实例完成初始化
+- **THEN** 官方内容包被导入并生效，记录其 `id@version`
 
 #### Scenario: Invalid graph is rejected before import
 
-- **WHEN** 图谱源文件存在重复 ID、悬挂的前置引用或环
-- **THEN** 图谱校验失败并指出具体节点，导入不执行，CI 失败
+- **WHEN** 内容包存在重复 ID、悬挂的前置引用或环
+- **THEN** 校验失败并指出具体节点，导入不执行；官方包的此类错误使 CI 失败
 
-#### Scenario: Deprecated node migrates existing mappings
+#### Scenario: Extension pack cannot modify base nodes
 
-- **WHEN** 节点被标记为 deprecated 并指定 replaced_by
-- **THEN** 导入后原节点上的题目挂载迁移到替代节点，原节点不再出现在图谱浏览与 AI
-  候选集中
+- **WHEN** 扩展包定义的节点 ID 与被扩展包中的节点冲突
+- **THEN** 导入失败并指出冲突节点，当前生效的图谱不变
 
-### Requirement: Every published problem is mapped to knowledge nodes
+#### Scenario: Replacing a pack keeps existing mappings recoverable
+
+- **WHEN** 实例导入新内容包，旧包中的某些节点在新包中不存在
+- **THEN** 这些节点被标记为
+  deprecated（不删除），其上的题目挂载保留但不展示，并列入「失效挂载」清单；指定了
+  `replaced_by` 的节点挂载自动迁移到替代节点
+
+### Requirement: The feature can be disabled per instance
+
+实例 SHALL 提供知识图谱总开关。关闭时 SHALL 隐藏全部知识点相关界面与
+API，相关后台任务 SHALL 直接成功结束且不产生副作用；重新开启后数据保持完整。
+
+#### Scenario: Disabled instance hides everything
+
+- **WHEN** 实例管理员关闭知识图谱功能
+- **THEN** 图谱页、节点页、题目页知识点、覆盖度面板与班级热力图均不可访问，相关
+  API 返回未启用错误，其余功能不受影响
+
+### Requirement: Every published problem is classified or explicitly unclassified
 
 每道已发布题目 SHALL 处于「已归类」或「未归类」两种状态之一。已归类题目 SHALL
 恰好有一个主知识点与至多三个次要知识点，并记录来源（AI
-或人工）、置信度、审核状态及依据的题目版本；审核状态为「待确认」的挂载计为已归类，界面标注「待确认」。人工确认的挂载
-SHALL 优先于 AI 结果且不被 AI 覆盖。
+或人工）、置信度、审核状态及依据的题目版本；审核状态为「待确认」的挂载计为已归类，界面标注「待确认」。人工挂载
+SHALL 优先于 AI 结果且不被 AI 覆盖。具备题目编辑权限的出题人与实例管理员 SHALL
+能人工挂载与修改知识点，不依赖 AI。
 
 未归类（没有主知识点）SHALL 仅在以下情况出现：AI
-打标未启用或未配置模型且无人工挂载；打标任务排队中或失败；AI
+打标未开启或未配置模型且无人工挂载；打标任务排队中或失败；AI
 结果被驳回且尚未人工补挂。未归类题目 SHALL NOT
 进入节点阶梯、推荐、掌握度计算与难度分档统计，并 SHALL
-列入覆盖度面板的「未归类」清单。补齐条件：出题人或平台管理员人工挂载后立即变为已归类；平台启用打标模型后，系统
-SHALL 为全部未归类题目投递打标任务。
+列入覆盖度面板的「未归类」清单。
+
+#### Scenario: Manual mapping works without AI
+
+- **WHEN** 实例未开启 AI 打标，出题人在题目编辑页为题目选择主知识点
+- **THEN** 题目立即变为已归类（来源为人工），进入对应节点阶梯
 
 #### Scenario: Unclassified problem is excluded until mapped
 
 - **WHEN** 题目已发布但没有主知识点
 - **THEN**
-  题目照常可作答，但不出现在任何节点阶梯、推荐与掌握度统计中，并出现在覆盖度面板「未归类」清单；人工挂载主知识点后立即进入对应节点阶梯
-
-#### Scenario: Enabling the tagging model backfills unclassified problems
-
-- **WHEN** 平台管理员启用并配置打标模型
-- **THEN** 系统为全部未归类题目投递打标任务，已有人工挂载的题目不受影响
-
-#### Scenario: New version triggers AI tagging
-
-- **WHEN** 题目发布了内容变化的新版本且平台已配置打标模型
-- **THEN** 系统投递打标任务，模型仅能从现有 active
-  节点中选择，结果通过校验后写入挂载
-
-#### Scenario: Low-confidence result requires review
-
-- **WHEN** AI 打标置信度低于系统阈值，或输出未通过校验
-- **THEN**
-  挂载进入平台审核队列，界面标注「待确认」，平台管理员可接受、修改或驳回
+  题目照常可作答，但不出现在任何节点阶梯、推荐与掌握度统计中，并出现在覆盖度面板「未归类」清单
 
 #### Scenario: Human mapping is preserved
 
-- **WHEN** 题目已有人工确认的挂载，AI 对新版本给出不同结果
+- **WHEN** 题目已有人工挂载，AI 对新版本给出不同结果
 - **THEN** 人工挂载保持生效，AI 结果仅作为建议差异进入审核队列
+
+### Requirement: AI tagging is opt-in and keeps problem content private
+
+AI 打标 SHALL 默认关闭，仅在实例管理员显式开启且配置打标模型后运行。模型 SHALL
+只能从当前生效图谱的 active 节点中选择。发送给模型的内容 SHALL
+仅限题型、标题、题面、公开样例、评测模式与评测器/参考解截断摘要。打标模型 SHALL
+可配置为任意 OpenAI 兼容地址（含内网本地模型）。
+
+#### Scenario: AI tagging is off by default
+
+- **WHEN** 新实例未修改配置时发布题目
+- **THEN** 不投递打标调用，题目保持未归类直至人工挂载
+
+#### Scenario: New version triggers AI tagging when enabled
+
+- **WHEN** AI 打标已开启且模型已配置，题目发布了内容变化的新版本
+- **THEN**
+  系统投递打标任务，结果通过校验后按置信度写入挂载（不低于阈值直接生效，否则标记待确认）
+
+#### Scenario: Enabling AI tagging backfills unclassified problems
+
+- **WHEN** 实例管理员开启 AI 打标并配置模型
+- **THEN** 系统为全部未归类题目投递打标任务，已有人工挂载的题目不受影响
+
+#### Scenario: Low-confidence or invalid output requires review
+
+- **WHEN** AI 打标置信度低于阈值，或输出未通过校验
+- **THEN**
+  挂载进入审核队列，实例管理员可接受、修改或驳回；校验失败时题目保持未归类
 
 #### Scenario: Hidden data is never sent to the model
 
 - **WHEN** 系统为题目构造打标请求
-- **THEN**
-  请求仅包含题面、公开样例、题型与评测器/参考解摘要，不包含隐藏测试数据或任何用户提交
+- **THEN** 请求不包含隐藏测试数据或任何用户提交
 
 ### Requirement: Platform LLM calls go through the gateway
 
 core 发起的系统级模型调用 SHALL 通过 LLM
-网关的内部平台调用端点完成，计入独立的平台额度并写审计；core SHALL NOT
-持有或直接使用 Provider Key。
+网关的内部平台调用端点完成，携带用途标识，计入独立的平台额度并写审计；core SHALL
+NOT 持有或直接使用 Provider Key。
 
-#### Scenario: Tagging is skipped when no platform model is configured
+#### Scenario: Tagging is skipped when no model is configured
 
-- **WHEN** 平台未配置打标模型别名
-- **THEN**
-  打标任务成功结束且不产生挂载，题目保持未归类，覆盖度面板提示未配置并列出未归类题目
+- **WHEN** AI 打标已开启但未配置打标模型别名
+- **THEN** 打标任务成功结束且不产生挂载，题目保持未归类，覆盖度面板提示未配置
 
 ### Requirement: Problem difficulty is calibrated from data
 
-系统 SHALL 为每道题维护 0–100 的连续难度分：以 AI
-先验冷启动，并随尝试人数增加按提交达标数据校准。现有三档难度 SHALL
-由连续难度分派生展示。
+系统 SHALL 为每道题维护 0–100 的连续难度分：以 AI 先验冷启动（无 AI
+时以出题人三档难度映射为先验），并随尝试人数增加按提交达标数据校准。现有三档难度
+SHALL 由连续难度分派生展示。
 
 #### Scenario: Prior dominates with few attempts
 
 - **WHEN** 题目尝试人数远小于先验强度
-- **THEN** 校准难度接近 AI 先验
+- **THEN** 校准难度接近先验
 
 #### Scenario: Data dominates with many attempts
 
@@ -120,10 +158,37 @@ core 发起的系统级模型调用 SHALL 通过 LLM
 - **WHEN** 用户打开前置未掌握的节点
 - **THEN** 系统提示建议先学习的前置节点，但不阻止用户作答
 
+### Requirement: Knowledge nodes may link an explanation document
+
+节点 SHALL 可选地关联内容包中的一篇讲解文档；存在时节点页 SHALL
+渲染该讲解并在末尾引导到阶梯第一题，不存在时节点页 SHALL 正常显示且不报错。
+
+#### Scenario: Node without explanation
+
+- **WHEN** 用户打开未关联讲解的节点
+- **THEN** 节点页显示节点简介与题目阶梯，不显示讲解区块
+
+### Requirement: Coaches see class mastery and assign by knowledge node
+
+班级的教学人员 SHALL 能查看班级成员 × 知识点的掌握状态矩阵，并 SHALL
+能按知识点与题数从阶梯中挑选本域可访问的题目生成作业题目列表。非该班级教学人员
+SHALL NOT 查看该班级矩阵。
+
+#### Scenario: Heatmap is restricted to teaching staff
+
+- **WHEN** 非该班级教学人员请求班级掌握矩阵
+- **THEN** 请求被拒绝
+
+#### Scenario: Assignment generated by knowledge node
+
+- **WHEN** 教练选择某知识点并指定题数布置作业
+- **THEN**
+  系统按难度从易到难挑选本域可访问、非保密保护的题目，生成普通作业的题目列表
+
 ### Requirement: Contest-protected problems are excluded
 
 处于进行中比赛或比赛保密保护期的题目 SHALL NOT 展示知识点，SHALL NOT
-出现在节点阶梯、推荐、掌握度计算与覆盖度统计中。
+出现在节点阶梯、推荐、作业挑题、掌握度计算与覆盖度统计中。
 
 #### Scenario: Protection ends
 
@@ -133,7 +198,7 @@ core 发起的系统级模型调用 SHALL 通过 LLM
 ### Requirement: Coverage gaps are visible to maintainers
 
 系统 SHALL
-为平台管理员提供覆盖度面板，列出题量不足、难度断层、待审核比例过高的知识点。
+为实例管理员与出题人提供覆盖度面板，列出题量不足、难度断层、未归类题目、待确认挂载与失效挂载。
 
 #### Scenario: Node lacks hard problems
 
