@@ -9,7 +9,7 @@ const mockUser = ref<{ username: string; is_admin: boolean; avatar_url?: string 
   avatar_url: null,
 });
 const mockFetchUser = vi.fn();
-const mockRoute = ref({ path: '/admin/contests' });
+const mockRoute = ref({ path: '/admin/users' });
 const mockRuntimeConfig = {
   public: {
     buildInfo: {
@@ -39,13 +39,13 @@ const stubs = {
 
 describe('AdminTopbar 全局管理顶栏', () => {
   it('正确解析当前路由的面包屑文案', () => {
-    mockRoute.value = { path: '/admin/contests' };
+    mockRoute.value = { path: '/admin/users' };
     const wrapper = mount(AdminTopbar, {
       props: { sidebarOpen: true, isMobile: false },
       global: { stubs },
     });
-    expect(wrapper.text()).toContain('题务教务');
-    expect(wrapper.text()).toContain('竞赛管理');
+    expect(wrapper.text()).toContain('用户与安全');
+    expect(wrapper.text()).toContain('用户管理');
   });
 
   it('展示环境指示芯片，并通过 UserIdentity 渲染管理员头像', () => {

@@ -133,10 +133,10 @@ async function handleRefresh() {
 }
 
 const actionItems = [
-  { label: "新建编程题", to: "/admin/problem-new", icon: "i-lucide-plus-circle", desc: "创建算法题或工程题" },
-  { label: "竞赛管理", to: "/admin/contests", icon: "i-lucide-trophy", desc: "安排赛事与封榜设置" },
+  { label: "新建编程题", to: "/d/main/problems/new", icon: "i-lucide-plus-circle", desc: "在 main 空间创建算法题或工程题" },
+  { label: "主空间 · 比赛", to: "/d/main/contests", icon: "i-lucide-trophy", desc: "安排赛事与封榜设置" },
   { label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone", desc: "发布系统通知或停机维护" },
-  { label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server", desc: "接入与轮询大模型 Key" },
+  { label: "主空间 · LLM", to: "/d/main/llm", icon: "i-lucide-server", desc: "接入与轮询大模型 Key（main 空间）" },
   { label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings", desc: "核心参数与环境变量" },
 ]
 
@@ -211,7 +211,7 @@ function formatRelativeTime(dateStr: string): string {
         </NuxtLink>
         <NuxtLink
           v-if="queueStats && queueStats.pending_count > 10"
-          to="/admin/submissions"
+          to="/d/main/queue"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100/50 transition-colors no-underline"
         >
           查看评测队列
@@ -275,7 +275,7 @@ function formatRelativeTime(dateStr: string): string {
               </div>
               <h2 class="text-base font-bold text-text">评测执行与队列态势</h2>
             </div>
-            <NuxtLink to="/admin/submissions" class="text-xs text-primary hover:underline inline-flex items-center gap-1">
+            <NuxtLink to="/d/main/submissions" class="text-xs text-primary hover:underline inline-flex items-center gap-1">
               实时提交流
               <UIcon name="i-lucide-chevron-right" class="size-3.5" />
             </NuxtLink>

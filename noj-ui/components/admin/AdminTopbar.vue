@@ -54,15 +54,8 @@ interface RouteMetaMap {
 
 const ROUTE_MAP: Record<string, RouteMetaMap> = {
   "/admin": { group: "概览监控", label: "仪表盘" },
-  "/admin/problems": { group: "题务教务", label: "题目管理" },
-  "/admin/problem-new": { group: "题务教务", label: "创建题目" },
-  "/admin/tags": { group: "题务教务", label: "标签管理" },
-  "/admin/contests": { group: "题务教务", label: "竞赛管理" },
-  "/admin/trainings": { group: "题务教务", label: "题单管理" },
-  "/admin/submissions": { group: "评测与算力", label: "提交记录" },
+  "/admin/tags": { group: "公共分类", label: "标签管理" },
   "/admin/judge-images": { group: "评测与算力", label: "评测镜像" },
-  "/admin/llm/providers": { group: "评测与算力", label: "LLM Provider" },
-  "/admin/llm/usage": { group: "评测与算力", label: "LLM 用量统计" },
   "/admin/llm/quotas": { group: "评测与算力", label: "LLM 配额" },
   "/admin/community": { group: "社区与风控", label: "社区管理" },
   "/admin/reports": { group: "社区与风控", label: "举报中心" },

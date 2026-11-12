@@ -27,17 +27,18 @@ const allItems: PaletteItem[] = [
   // 概览监控
   { id: "dash", label: "仪表盘", to: "/admin", icon: "i-lucide-layout-dashboard", group: "概览监控", keywords: ["yibiaopan", "home", "stats", "queue", "zhibiao"] },
 
-  // 题务教务
-  { id: "prob", label: "题目管理", to: "/admin/problems", icon: "i-lucide-book-open", group: "题务教务", keywords: ["timu", "problem", "create", "testcase"] },
-  { id: "tags", label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags", group: "题务教务", keywords: ["biaoqian", "tag", "category"] },
-  { id: "contests", label: "竞赛管理", to: "/admin/contests", icon: "i-lucide-trophy", group: "题务教务", keywords: ["jingsai", "contest", "match", "bisai"] },
-  { id: "trainings", label: "题单管理", to: "/admin/trainings", icon: "i-lucide-list-todo", group: "题务教务", keywords: ["tidan", "training", "roadmap"] },
+  // 公共分类
+  { id: "tags", label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags", group: "公共分类", keywords: ["biaoqian", "tag", "category"] },
+
+  // 主空间（旧 /admin 题务教务入口的最终落点）
+  { id: "prob", label: "主空间 · 题库资源", to: "/d/main/problem-bindings", icon: "i-lucide-book-open", group: "主空间", keywords: ["timu", "problem", "binding", "testcase"] },
+  { id: "contests", label: "主空间 · 比赛", to: "/d/main/contests", icon: "i-lucide-trophy", group: "主空间", keywords: ["jingsai", "contest", "match", "bisai"] },
+  { id: "trainings", label: "主空间 · 题单", to: "/d/main/trainings", icon: "i-lucide-list-todo", group: "主空间", keywords: ["tidan", "training", "roadmap"] },
+  { id: "subs", label: "主空间 · 提交记录", to: "/d/main/submissions", icon: "i-lucide-files", group: "主空间", keywords: ["tijiao", "submission", "judge", "rejudge"] },
+  { id: "llm", label: "主空间 · LLM", to: "/d/main/llm", icon: "i-lucide-server", group: "主空间", keywords: ["llm", "ai", "model", "apikey", "gateway", "token", "usage", "xiaohao"] },
 
   // 评测与算力
-  { id: "subs", label: "提交记录", to: "/admin/submissions", icon: "i-lucide-files", group: "评测与算力", keywords: ["tijiao", "submission", "judge", "rejudge"] },
   { id: "images", label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container", group: "评测与算力", keywords: ["jingxiang", "docker", "image", "sandbox"] },
-  { id: "providers", label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server", group: "评测与算力", keywords: ["llm", "ai", "model", "apikey", "gateway"] },
-  { id: "llmusage", label: "LLM 用量统计", to: "/admin/llm/usage", icon: "i-lucide-bar-chart-3", group: "评测与算力", keywords: ["token", "cost", "usage", "xiaohao"] },
   { id: "llmquotas", label: "LLM 配额", to: "/admin/llm/quotas", icon: "i-lucide-gauge", group: "评测与算力", keywords: ["llm", "quota", "limit", "peie", "xianliang"] },
 
   // 社区与风控
