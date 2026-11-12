@@ -45,7 +45,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { unendedPublicContestForProblem } from "../../../access/contest-policy.ts";
-import type { TagKind } from "../tags.ts";
+import type { TagKind } from "../../../../features/tags/index.ts";
 import {
   DIFFICULTIES,
   getJudgeBackend,

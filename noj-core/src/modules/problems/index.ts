@@ -53,23 +53,6 @@ export {
   SENSITIVE_FIELD_PERMISSIONS,
 } from "./services/problems/problem-field-guard.ts";
 export {
-  createTag,
-  deleteTag,
-  getTag,
-  getTagIdsByNames,
-  isValidTagKind,
-  listTags,
-  mergeTags,
-  TAG_KINDS,
-  updateTag,
-} from "./services/tags.ts";
-export type {
-  CreateTagInput,
-  TagKind,
-  TagResponse,
-  UpdateTagInput,
-} from "./services/tags.ts";
-export {
   deleteSupportPackageForActor,
   deleteSupportPackageForActorTx,
   extractTemplateFromPackage,

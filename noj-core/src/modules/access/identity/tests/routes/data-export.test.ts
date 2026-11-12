@@ -11,7 +11,10 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { submissions, users } from "../../../../../shared/db/schema.ts";
 import { problems } from "../../../../../shared/db/schema.ts";
-import { publishVersion, recordConsent } from "../../../../platform/index.ts";
+import {
+  publishVersion,
+  recordConsent,
+} from "../../../../../features/legal/index.ts";
 import { createApp } from "../../../../../app.ts";
 import { signToken } from "../../services/security/jwt.ts";
 

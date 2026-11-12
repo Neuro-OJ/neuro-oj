@@ -25,7 +25,7 @@ import {
   getActiveUserBan,
   isLoginBlockedByBan,
 } from "./auth/auth-login.ts";
-import { recordConsentsForRegistration } from "../../../platform/contracts/cross-module/services_legal_consent.ts";
+import { recordConsentsForRegistration } from "../../../../features/legal/index.ts";
 import { getInstanceAccessPolicy } from "../../workspace/services/instance.ts";
 import { enrollRegisteredAccountTx } from "../../registration.ts";
 import { userActorFromAuthenticatedId } from "../../contracts/actor.ts";

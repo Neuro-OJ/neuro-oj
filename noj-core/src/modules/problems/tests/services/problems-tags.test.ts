@@ -35,12 +35,21 @@ import {
   getProblem,
   getProblemDraft,
 } from "../../index.ts";
-import { createTag } from "../../index.ts";
+import {
+  createTag,
+  type TagWriteContext,
+} from "../../../../features/tags/index.ts";
 
 await resetDbForTest();
 await initRedisForTest();
 
 const ts = Date.now();
+
+/** 标签写上下文：标签写操作审计 admin_id 有外键，这里用系统用户。 */
+const tagCtx: TagWriteContext = {
+  actor: { kind: "system", purpose: "background_task" } as const,
+  auditMeta: { ipAddress: "127.0.0.1" },
+};
 
 /** 建一道 P 型编程题（runtime_config 可空，服务层不校验 DB 层）。 */
 async function createTestProblem(): Promise<string> {
@@ -100,7 +109,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const algoTag = await createTag({
+    const algoTag = await createTag(tagCtx, {
       name: `门控算法-${ts}`,
       kind: "algorithm",
     });
@@ -113,7 +122,7 @@ Deno.test({
     );
 
     // 客观题 + 题目标签允许
-    const probTag = await createTag({
+    const probTag = await createTag(tagCtx, {
       name: `门控主题-${ts}`,
       kind: "problem",
     });
@@ -140,8 +149,14 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const tagA = await createTag({ name: `替换A-${ts}`, kind: "problem" });
-    const tagB = await createTag({ name: `替换B-${ts}`, kind: "problem" });
+    const tagA = await createTag(tagCtx, {
+      name: `替换A-${ts}`,
+      kind: "problem",
+    });
+    const tagB = await createTag(tagCtx, {
+      name: `替换B-${ts}`,
+      kind: "problem",
+    });
     const problemId = await createTestProblem();
 
     await syncProblemTags(problemId, [tagA.id]);
@@ -166,8 +181,14 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const algoTag = await createTag({ name: `门控A-${ts}`, kind: "algorithm" });
-    const probTag = await createTag({ name: `门控P-${ts}`, kind: "problem" });
+    const algoTag = await createTag(tagCtx, {
+      name: `门控A-${ts}`,
+      kind: "algorithm",
+    });
+    const probTag = await createTag(tagCtx, {
+      name: `门控P-${ts}`,
+      kind: "problem",
+    });
     const problemId = await createTestProblem();
     await syncProblemTags(problemId, [algoTag.id, probTag.id]);
 
@@ -193,7 +214,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const algoTag = await createTag({
+    const algoTag = await createTag(tagCtx, {
       name: `门控A2-${ts}`,
       kind: "algorithm",
     });
@@ -220,7 +241,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const algoTag = await createTag({
+    const algoTag = await createTag(tagCtx, {
       name: `门控A3-${ts}`,
       kind: "algorithm",
     });
@@ -267,7 +288,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const algoTag = await createTag({
+    const algoTag = await createTag(tagCtx, {
       name: `门控A4-${ts}`,
       kind: "algorithm",
     });
@@ -323,7 +344,10 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const probTag = await createTag({ name: `门控P5-${ts}`, kind: "problem" });
+    const probTag = await createTag(tagCtx, {
+      name: `门控P5-${ts}`,
+      kind: "problem",
+    });
     const problemId = await createTestProblem();
     await syncProblemTags(problemId, [probTag.id]);
 
@@ -347,11 +371,11 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     const problemId = await createTestProblem();
-    const topic = await createTag({
+    const topic = await createTag(tagCtx, {
       name: `门控OI主题-${ts}`,
       kind: "problem",
     });
-    const algorithm = await createTag({
+    const algorithm = await createTag(tagCtx, {
       name: `门控OI算法-${ts}`,
       kind: "algorithm",
     });

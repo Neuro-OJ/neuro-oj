@@ -81,20 +81,6 @@ export type {
   Pagination,
 } from "./services/banlist.ts";
 export {
-  checkIn,
-  getCheckinHistory,
-  getCheckinLeaderboard,
-  getCheckinStats,
-  getTodayCheckIn,
-} from "./services/checkin.ts";
-export type {
-  CheckinHistory,
-  CheckinLeaderboard,
-  CheckinLeaderboardRow,
-  CheckInResponse,
-  CheckinStats,
-} from "./services/checkin.ts";
-export {
   assertPermission,
   checkPermission,
   findPlatformRole,

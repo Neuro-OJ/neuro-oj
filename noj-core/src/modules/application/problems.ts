@@ -47,12 +47,6 @@ import { importDomainProblemBundle } from "../problems/services/workspace/proble
 import { importDomainProblemDraftBundle } from "../problems/services/workspace/problem-bundle-edit.ts";
 import { loadEditableDomainProblem } from "../problems/services/workspace/problem-edit.ts";
 import {
-  createTag,
-  deleteTag,
-  mergeTags,
-  updateTag,
-} from "../problems/services/tags.ts";
-import {
   saveOiDraft,
   type SaveOiDraftResult,
 } from "../problems/services/versioning/oi-draft.ts";
@@ -289,34 +283,6 @@ export function setDomainProblemBindingStateCommand(
     expectedRevision,
     input,
   );
-}
-
-/** 标签管理命令保留显式操作者；审计观测仍由 HTTP composition 注入。 */
-export function createTagCommand(
-  _actor: UserActor,
-  input: Parameters<typeof createTag>[0],
-) {
-  return createTag(input);
-}
-
-export function updateTagCommand(
-  _actor: UserActor,
-  id: string,
-  input: Parameters<typeof updateTag>[1],
-) {
-  return updateTag(id, input);
-}
-
-export function deleteTagCommand(_actor: UserActor, id: string) {
-  return deleteTag(id);
-}
-
-export function mergeTagsCommand(
-  _actor: UserActor,
-  sourceId: string,
-  targetId: string,
-) {
-  return mergeTags(sourceId, targetId);
 }
 
 /** 保存共享草稿；HTTP 适配层只负责解析 If-Match，业务只接收 UserActor。 */
