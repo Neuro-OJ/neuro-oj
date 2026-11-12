@@ -42,7 +42,8 @@ noj-ui/
 │   ├── community/         # 社区（板块 / 帖子 / 动态流）
 │   ├── search.vue / settings.vue / about.vue / users/ / my/
 │   ├── editor/            # 题目编辑器
-│   ├── admin/             # 管理后台（管理员，ssr: false）
+│   ├── admin/             # 实例级管理后台（管理员，ssr: false）；题务/教务/提交/LLM Provider 类旧入口
+│   │                      # 只保留 utils/default-workspace.ts 的 301 映射（保护旧书签），页面已删除
 │   └── ...
 ├── components/            # 可复用 Vue 组件（按功能分目录）
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
@@ -54,7 +55,7 @@ noj-ui/
 │   ├── card/              # SubmissionCard
 │   ├── form/              # TextInput / PasswordField
 │   ├── auth/              # AuthFormCard
-│   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminConfirmDialog / AdminStatusBadge / AdminDetailDrawer 等统一管理组件
+│   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminDetailDrawer / AdminCommandPalette / AdminTopbar 等统一管理组件
 │   └── BanBanner.vue      # 封禁横幅
 ├── composables/           # 组合式函数（33 个）
 │   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）
