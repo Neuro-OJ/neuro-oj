@@ -1,5 +1,6 @@
-import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
+import { and, eq, sql } from "drizzle-orm";
+import { decodeJwt } from "jose";
 import { initRedisForTest } from "../../../../tests/helper.ts";
 import { createApp } from "../../../app.ts";
 import { resetDbForTest } from "../../../modules/problems/tests/default-fixture.ts";
@@ -10,7 +11,12 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../tests/helper.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import { problems, problemTags, tags } from "../../../shared/db/schema.ts";
+import {
+  auditLogs,
+  problems,
+  problemTags,
+  tags,
+} from "../../../shared/db/schema.ts";
 
 // 模块级 bootstrap：确保表已创建（测试数据库 模式）
 await resetDbForTest();
@@ -89,8 +95,18 @@ Deno.test({
     assertEquals(body.data.name, name);
     assertEquals(body.data.kind, "algorithm");
 
-    // 清理
+    // 审计记录真实操作的管理员与客户端 IP（回归：#735 曾误记为系统身份）
     const db = getDb();
+    const [audit] = await db.select().from(auditLogs).where(
+      and(
+        eq(auditLogs.action, "tags.create"),
+        sql`${auditLogs.detail}->>'name' = ${name}`,
+      ),
+    );
+    assertEquals(audit?.admin_id, decodeJwt(token).sub);
+    assertNotEquals(audit?.ip_address, "system");
+
+    // 清理
     await db.delete(tags).where(eq(tags.name, name));
   },
 });

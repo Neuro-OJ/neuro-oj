@@ -1,5 +1,10 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../../modules/access/index.ts";
+import type { Context } from "hono";
+import {
+  authMiddleware,
+  userActorFromAuthenticatedId,
+} from "../../modules/access/index.ts";
+import { getClientIp } from "../../modules/platform/index.ts";
 import { requirePermission } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
 import { type AuthEnv } from "../../shared/http/hono-env.ts";
 import { parseJsonBody } from "../../shared/http/request.ts";
@@ -17,16 +22,15 @@ import {
 } from "./service.ts";
 
 /**
- * 标签审计上下文：保持迁移前行为——原实现调用 `logAudit`，以系统身份（actor=null，
- * IP "system"）记录，不读取请求主体。
- *
- * 已知问题（另行修复，不在本次结构迁移中改变行为）：默认审计列表排除系统账号，
- * 标签管理操作因此不可见；修复时应改为记录真实管理员，IP 必须用 `getClientIp`。
+ * 从请求构造标签审计上下文：操作人为已认证用户，IP 用 `getClientIp`
+ * （遵循 TRUSTED_PROXIES，不能直接读可伪造的 `X-Forwarded-For`）。
  */
-export const TAG_AUDIT_CONTEXT: TagWriteContext = {
-  actor: null,
-  auditMeta: { ipAddress: "system" },
-};
+export function tagWriteContext(c: Context<AuthEnv>): TagWriteContext {
+  return {
+    actor: userActorFromAuthenticatedId(c.var.userId),
+    auditMeta: { ipAddress: getClientIp(c) },
+  };
+}
 
 /** 标签管理路由，挂在 `/api/v1` 下（原 `catalogRouter.route("/tags", …)`）。 */
 export const tagsRouter = new Hono<AuthEnv>();
@@ -54,7 +58,7 @@ tagsRouter.post(
     if (!body.name || !body.kind) {
       throw new ValidationError("缺少必填字段：name, kind");
     }
-    const tag = await createTag(TAG_AUDIT_CONTEXT, body);
+    const tag = await createTag(tagWriteContext(c), body);
     return c.json({ data: tag }, 201);
   },
 );
@@ -69,7 +73,7 @@ tagsRouter.put(
   requirePermission("tag:manage"),
   async (c) => {
     const body = await parseJsonBody<UpdateTagInput>(c);
-    const tag = await updateTag(TAG_AUDIT_CONTEXT, c.req.param("id"), body);
+    const tag = await updateTag(tagWriteContext(c), c.req.param("id"), body);
     return c.json({ data: tag });
   },
 );
@@ -83,7 +87,7 @@ tagsRouter.delete(
   authMiddleware,
   requirePermission("tag:manage"),
   async (c) => {
-    await deleteTag(TAG_AUDIT_CONTEXT, c.req.param("id"));
+    await deleteTag(tagWriteContext(c), c.req.param("id"));
     return c.body(null, 204);
   },
 );
@@ -101,7 +105,7 @@ tagsRouter.post(
     if (!body.target_id) {
       throw new ValidationError("缺少必填字段：target_id");
     }
-    await mergeTags(TAG_AUDIT_CONTEXT, c.req.param("id"), body.target_id);
+    await mergeTags(tagWriteContext(c), c.req.param("id"), body.target_id);
     return c.body(null, 204);
   },
 );
