@@ -75,7 +75,11 @@ export interface SettingDefinition {
   /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
   choices?: readonly string[];
   /** 结构化文本的格式约束，在写入设置时校验。 */
-  valueSchema?: "domain_limits" | "domain_features" | "domain_llm_quota_caps";
+  valueSchema?:
+    | "domain_limits"
+    | "domain_features"
+    | "domain_llm_quota_caps"
+    | "knowledge_offpeak_window";
 }
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
@@ -858,7 +862,70 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "knowledge",
     scope: "runtime",
   },
-  // AI 打标、及格线、掌握题数等配置随使用它们的阶段（P1–P3）登记；只登记不消费的
+  // AI 打标（P1，`features/knowledge/tagging.ts` 读取）；默认关闭，须实例管理员
+  // 显式开启并在网关配置别名 `platform.tagger`。以下三项只登记打标实际读取的键。
+  {
+    key: "knowledge_ai_tagging_enabled",
+    type: "boolean",
+    default: false,
+    description:
+      "知识图谱 AI 打标开关（关闭时不调用模型，题目只能人工挂载知识点）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_TAGGING_ENABLED",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_auto_accept_threshold",
+    type: "integer",
+    default: 75,
+    description:
+      "AI 打标置信度自动生效阈值（0–100）：不低于此值的挂载直接生效（auto），否则进入人工审核（pending）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AUTO_ACCEPT_THRESHOLD",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_monthly_token_budget",
+    type: "integer",
+    default: 2000000,
+    description:
+      "AI 打标每月 token 预算（输入+输出 token 合计，按自然月）：用量达到预算后打标任务暂停到下个自然月；0 表示暂停所有调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_MONTHLY_TOKEN_BUDGET",
+    category: "knowledge",
+    min: 0,
+    scope: "runtime",
+  },
+  // 低峰时段（任务 E）：AI 打标不要求实时完成，默认只在北京时间低峰时段调用
+  // 模型以降低成本（`features/knowledge/offpeak.ts` 读取）。
+  {
+    key: "knowledge_ai_offpeak_only",
+    type: "boolean",
+    default: true,
+    description:
+      "AI 打标仅在低峰时段调用模型（北京时间每日时段，见 knowledge_ai_offpeak_window）；关闭后任何时刻都可调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_ONLY",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_offpeak_window",
+    type: "string",
+    default: "00:30-08:30",
+    description:
+      "AI 打标低峰时段（北京时间 Asia/Shanghai，UTC+8），格式 HH:MM-HH:MM，允许跨零点（如 22:00-06:00）；开始时刻算在内、结束时刻不算在内",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_WINDOW",
+    category: "knowledge",
+    valueSchema: "knowledge_offpeak_window",
+    scope: "runtime",
+  },
+  // 及格线、掌握题数等配置随使用它们的阶段（P2–P3）登记；只登记不消费的
   // runtime 键会被 check-config-usage 判为死键。
 
   // ── other ─────────────────────────────────────────────────

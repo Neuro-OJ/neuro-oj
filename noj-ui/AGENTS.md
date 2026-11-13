@@ -56,9 +56,11 @@ noj-ui/
 │   ├── form/              # TextInput / PasswordField
 │   ├── auth/              # AuthFormCard
 │   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminDetailDrawer / AdminCommandPalette / AdminTopbar 等统一管理组件
+│   ├── knowledge/         # KnowledgePicker（知识点选择器，编辑页与审核页共用）/ KnowledgeTags（详情页标签）/ KnowledgeEditorPanel（编辑页区块）
 │   └── BanBanner.vue      # 封禁横幅
 ├── composables/           # 组合式函数（33 个）
 │   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）
+│   ├── useKnowledge.ts    # 知识图谱 P1（题目挂载、管理端用量/回填/审核；404 KNOWLEDGE_DISABLED 整块隐藏）
 │   ├── useAuth.ts         # 认证状态管理
 │   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）

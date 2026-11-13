@@ -79,3 +79,22 @@ export type {
   LlmModelAliasInput,
   ResolvedLlmModels,
 } from "./services/llm-model-aliases.ts";
+// 迁移期：供 src/features/knowledge 使用（平台身份模型调用与按用途用量查询）。
+export {
+  KNOWLEDGE_TAG_MODEL_ALIAS,
+  mapPlatformCompletionError,
+  PLATFORM_MAX_OUTPUT_TOKENS,
+  PLATFORM_PURPOSES,
+  platformCompletion,
+  PlatformCompletionError,
+  queryPlatformUsage,
+} from "./services/platform-completions.ts";
+export type {
+  PlatformChatMessage,
+  PlatformCompletionErrorCode,
+  PlatformCompletionInput,
+  PlatformCompletionResult,
+  PlatformCompletionUsage,
+  PlatformPurpose,
+  PlatformUsageSummary,
+} from "./services/platform-completions.ts";

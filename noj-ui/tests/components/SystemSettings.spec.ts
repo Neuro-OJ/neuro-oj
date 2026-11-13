@@ -58,6 +58,8 @@ beforeEach(() => {
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
+  // 设置页支持 ?category= 深链（知识图谱用量卡跳转）
+  vi.stubGlobal('useRoute', () => ({ query: {} }));
   vi.stubGlobal('useRequireLogin', vi.fn());
   vi.stubGlobal('useAuth', () => ({ isLoggedIn: ref(true) }));
   vi.stubGlobal('useApi', () => ({ api }));

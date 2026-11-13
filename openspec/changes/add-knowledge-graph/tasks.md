@@ -26,25 +26,25 @@
 
 ## 2. P1 挂载、审核与 AI 打标（默认关闭）
 
-- [ ] 2.1 `problem_knowledge`、`knowledge_tag_runs` 表与迁移
-- [ ] 2.2 人工挂载 API 与题目编辑页入口（出题人编辑权限 /
+- [x] 2.1 `problem_knowledge`、`knowledge_tag_runs` 表与迁移
+- [x] 2.2 人工挂载 API 与题目编辑页入口（出题人编辑权限 /
       实例管理员）；人工优先规则
-- [ ] 2.3 网关新增 `POST /internal/platform-completions`、`purpose`
+- [x] 2.3 网关新增 `POST /internal/platform-completions`、`purpose`
       白名单、平台额度主体与审计；网关测试覆盖鉴权与计费；运维文档给出本地模型（Ollama
       / vLLM）配置示例
-- [ ] 2.4 `knowledge.tag` 任务：输入白名单、JSON Schema 校验、重试、内容 hash
+- [x] 2.4 `knowledge.tag` 任务：输入白名单、JSON Schema 校验、重试、内容 hash
       去重；mock 网关测试成功、低置信、非法输出、未配置、未开启
-- [ ] 2.5 发布流程经 `modules/runtime` 出口投递 `knowledge.tag`（不 import
+- [x] 2.5 发布流程经 `modules/runtime` 出口投递 `knowledge.tag`（不 import
       功能代码）；验证草稿保存不触发、内容未变不重复调用、未开启时不投递
-- [ ] 2.6 审核队列 API（接受 / 修改 / 驳回）；开启 AI
+- [x] 2.6 审核队列 API（接受 / 修改 / 驳回）；开启 AI
       时回填全部未归类题目（限速与进度查询），回填前展示预计题数 / token /
       费用并经确认
-- [ ] 2.6a 成本控制：网关按 `purpose` 的月度 token /
+- [x] 2.6a 成本控制：网关按 `purpose` 的月度 token /
       金额预算与超额暂停（含测试）；提示词「固定在前、题面在后」以命中缓存，候选仅
       id+name，输入字符上限与输出 `max_tokens`；预算类错误不重试；登记
       `knowledge_ai_monthly_budget` 等配置；后台展示打标累计
       token、费用与剩余预算
-- [ ] 2.7 noj-ui 审核队列；题目页展示知识点（「待确认」标记、保密隐藏）
+- [x] 2.7 noj-ui 审核队列；题目页展示知识点（「待确认」标记、保密隐藏）
 
 ## 3. P2 难度、阶梯与讲解
 

@@ -102,6 +102,35 @@ Provider 上游地址（Base URL）的出站限制：
 - 修改别名映射只影响新建评测尝试。每次新重测也重新解析并冻结当时配置；已经创建的尝试保持其冻结映射。
 - 别名修改和删除使用 revision 检查。删除后依赖该名称的新提交须等管理员重新配置。
 
+### 知识图谱打标的平台模型别名 `platform.tagger`
+
+知识图谱 AI 打标以**平台身份**调用模型（不签发 eval_token，不占用学生评测额度），
+走网关的 `POST /internal/platform-completions`，用途固定为 `knowledge.tag`。
+运营者需为每个使用域额外配置一个别名：
+
+| 项       | 值                    |
+| -------- | --------------------- |
+| 别名     | `platform.tagger`     |
+| Provider | 该域的 Provider       |
+| 真实模型 | 能稳定输出 JSON 的模型 |
+
+未配置时打标接口返回 400（网关侧 `MODEL_ALIAS_NOT_CONFIGURED`），不影响其它 LLM
+能力。别名可指向内网 OpenAI 兼容服务（Ollama / vLLM），此时需把其主机加入
+`NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`（网关出站白名单），例如：
+
+```bash
+# 网关 .env
+NOJ_LLM_UPSTREAM_ALLOWED_HOSTS=vllm.internal,ollama.internal:11434
+```
+
+并在管理端为 Provider 填写 `http://ollama.internal:11434/v1`（vLLM 类似
+`http://vllm.internal:8000/v1`），真实模型填服务端模型名（如 `qwen2.5:7b`、
+`Qwen/Qwen2.5-7B-Instruct`）。网关仍按 Provider 单价估算成本，`cost_per_1k_tokens`
+填 0 表示内网自托管不计费。
+
+用量查询：`GET /internal/platform-usage?purpose=knowledge.tag&since=<ISO>` 返回该用途
+自 `since` 起的累计 token、请求数与成本，供月度预算检查与后台展示。
+
 ### Provider 速率上限与排队
 
 上游服务按账号限制每分钟请求数（RPM）与 token 数（TPM）。配置本域 Provider

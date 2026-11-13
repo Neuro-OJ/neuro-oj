@@ -191,6 +191,8 @@ onBeforeRouteLeave(async () =>
       <UCard v-else>
         <DomainAiRuntime v-model="form" :published="!!draft.base_version_id || publishedVersion !== null" />
       </UCard>
+      <!-- 知识点不属于题目草稿/版本，单独保存；无编辑权限或功能关闭时内部自隐藏。 -->
+      <KnowledgeEditorPanel :problem-id="draft.problem_id" :writable="writable" />
     </fieldset>
     <div
       class="flex flex-wrap items-center gap-3"><UButton :loading="busy === 'save'" :disabled="!writable || !!busy || fileBusy || questionEditing || !form.title.trim()" @click="save">保存草稿</UButton><UButton v-if="canPublish" variant="outline" :loading="busy === 'preflight'" :disabled="!writable || !!busy || fileBusy || dirty || fileDirty || questionEditing" @click="preflight">发布预检</UButton><span class="text-xs text-text-muted">{{ dirty || fileDirty || questionEditing ? '有未保存修改' : '草稿已保存' }}</span></div>

@@ -152,4 +152,6 @@ export {
   knowledgeEdges,
   knowledgeNodes,
   knowledgePacks,
+  knowledgeTagRuns,
+  problemKnowledge,
 } from "./knowledge.ts";

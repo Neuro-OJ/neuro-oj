@@ -5,6 +5,7 @@ import type { AssignmentSubmissionOrigin } from '~/utils/education';
 import { toDomainProblemView } from '~/utils/problemView';
 import type { PublicProblemStats } from '~/utils/problemStats';
 import { contestProtectionFromError } from '~/utils/contestProtection';
+import type { ProblemKnowledgeView } from '~/utils/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'problem', breadcrumbWidth: '1280px' });
 const route = useRoute();
@@ -26,6 +27,24 @@ watch(error, (failure) => {
   const contests = contestProtectionFromError(failure);
   if (contests) showError({ statusCode: 403, statusMessage: '赛题正在保护中', data: { slug: slug.value, contests } });
 });
+// 知识点：非关键数据，404/功能关闭时静默隐藏（不影响做题页）。
+const knowledge = useKnowledge();
+const knowledgeView = ref<ProblemKnowledgeView | null>(null);
+watch(
+  () => [slug.value, data.value?.reference.problem_id] as const,
+  async ([currentSlug, problemId]) => {
+    if (!currentSlug || !problemId) {
+      knowledgeView.value = null;
+      return;
+    }
+    try {
+      knowledgeView.value = await knowledge.loadProblem(problemId);
+    } catch {
+      knowledgeView.value = null;
+    }
+  },
+  { immediate: true },
+);
 const router = useRouter();
 function selectVersion(version_id: string) { void router.push({ query: { ...route.query, version_id } }); }
 const statementExpanded = ref(true);
@@ -61,6 +80,7 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
       </nav>
       <div class="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-12">
         <div class="min-w-0 space-y-6 lg:col-span-8">
+          <KnowledgeTags v-if="data.reference.problem_id" :view="knowledgeView" />
           <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false">
             <template #actions>
               <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />

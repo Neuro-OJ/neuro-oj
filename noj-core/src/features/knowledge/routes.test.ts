@@ -7,15 +7,53 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../app.ts";
-import { jsonRequest } from "../../../tests/helper.ts";
+import { initRedisForTest, jsonRequest } from "../../../tests/helper.ts";
 import { resetDbForTest } from "../../../tests/helpers/db.ts";
-import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
 import { updateSetting } from "../../modules/platform/index.ts";
 import { importPack } from "./import.ts";
 import { resolveOfficialPackDir } from "./pack.ts";
 import { invalidateKnowledgeGraphCache } from "./graph.ts";
+import { applyAiMapping } from "./mappings.ts";
+import { eq } from "drizzle-orm";
+import { getDb } from "../../shared/db/connection.ts";
+import {
+  knowledgeNodes,
+  problemKnowledge,
+  problems,
+  users,
+} from "../../shared/db/schema.ts";
+import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
+import { _resetBanCacheForTest } from "../../modules/access/identity/services/security/banCache.ts";
+import { signToken as signLiveToken } from "../../modules/access/identity/services/security/jwt.ts";
+
+/**
+ * 签发测试用 token。
+ *
+ * `jwt.ts` 的 `signToken` 会实时查询用户表取 `session_version`；夹具顺序在
+ * 同文件里跨越多次 `resetDbForTest()`，缓存的账号快照可能属于已清空的库。
+ * 这里先清空进程内用户缓存，保证签发时读到当前库的账号。
+ */
+async function signToken(payload: { sub: string; role: string }) {
+  return await signLiveToken(payload, {
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  });
+}
+
+/** 拿到新 token 后清空身份缓存，下一次请求才会读到当前库的账号。 */
+async function tokenFor(sub: string, role: string): Promise<string> {
+  const token = await signToken({ sub, role });
+  _resetBanCacheForTest();
+  return token;
+}
+import {
+  addDomainMember,
+  createDomain,
+  setMemberRole,
+} from "../../modules/access/workspace/index.ts";
 
 await resetDbForTest();
+// 认证中间件校验 JTI 撤销（Redis）；与路由测试统一在模块顶层初始化。
+await initRedisForTest();
 
 const admin = () => userActorFromAuthenticatedId("0");
 
@@ -181,5 +219,247 @@ Deno.test({
     invalidateKnowledgeGraphCache();
     const fresh = await jsonRequest(app, "/api/v1/knowledge/graph");
     assertEquals((await fresh.json()).data.nodes.length, 181);
+  },
+});
+
+// ── P1：题目挂载与审核路由 ─────────────────────────────────────────────
+
+/** 路由测试夹具：一个域、出题人（educator）、普通成员、一道题与知识节点。 */
+async function mappingFixture() {
+  await resetDbForTest();
+  invalidateKnowledgeGraphCache();
+  await setEnabled(true);
+  await updateSetting("domain_creation_policy", "open", admin());
+  const now = new Date().toISOString();
+  const makeUser = async () => {
+    const id = crypto.randomUUID();
+    await getDb().insert(users).values({
+      id,
+      username: id,
+      email: `${id}@example.com`,
+      created_at: now,
+      updated_at: now,
+    });
+    return id;
+  };
+  const owner = await makeUser();
+  // 第一个账号建域后提升为平台管理员，充当实例管理员。
+  await getDb().update(users).set({ role: "admin" }).where(
+    eq(users.id, owner),
+  );
+  const author = await makeUser();
+  const member = await makeUser();
+  const school = await createDomain({
+    slug: "kg-api",
+    name: "知识图谱 API",
+    preset: "education",
+  }, owner);
+  await addDomainMember(getDb(), school.id, author);
+  await addDomainMember(getDb(), school.id, member);
+  await setMemberRole(school.slug, owner, author, "educator");
+  // 角色提升发生在建域之后，清空进程内用户/封禁缓存后再首次签发 token，
+  // 否则认证中间件会读到上个用例缓存的旧账号快照。
+  _resetBanCacheForTest();
+  await importPack(resolveOfficialPackDir());
+  _resetBanCacheForTest();
+  const nodeIds = (await getDb().select({ id: knowledgeNodes.id })
+    .from(knowledgeNodes).limit(5)).map((row) => row.id);
+  const problemId = crypto.randomUUID();
+  await getDb().insert(problems).values({
+    id: problemId,
+    domain_id: school.id,
+    number: 1,
+    title: "挂载题",
+    description: "题面",
+    owner_id: author,
+    created_at: now,
+    updated_at: now,
+  });
+  return { owner, author, member, problemId, nodeIds, school };
+}
+
+Deno.test({
+  name: "knowledge api: 题目挂载读/写权限与参数校验",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await mappingFixture();
+    const app = createApp();
+    const authorToken = await tokenFor(f.author, "user");
+    const memberToken = await signToken({ sub: f.member, role: "user" });
+    const path = `/api/v1/knowledge/problems/${f.problemId}`;
+
+    // 未挂载：未登录可读，未归类。
+    const empty = await jsonRequest(app, path);
+    assertEquals(empty.status, 200);
+    assertEquals((await empty.json()).data.state, "unclassified");
+
+    // 未登录写 → 401；非法 problemId → 400。
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PUT",
+        body: { primary: f.nodeIds[0] },
+      })).status,
+      401,
+    );
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/knowledge/problems/not-a-uuid", {
+        method: "PUT",
+        token: authorToken,
+        body: { primary: f.nodeIds[0] },
+      })).status,
+      400,
+    );
+
+    // 普通成员 → 403。
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PUT",
+        token: memberToken,
+        body: { primary: f.nodeIds[0] },
+      })).status,
+      403,
+    );
+
+    // 校验错误 → 400（secondary 含 primary）。
+    assertEquals(
+      (await jsonRequest(app, path, {
+        method: "PUT",
+        token: authorToken,
+        body: { primary: f.nodeIds[0], secondary: [f.nodeIds[0]] },
+      })).status,
+      400,
+    );
+
+    // 出题人挂载成功。
+    const written = await jsonRequest(app, path, {
+      method: "PUT",
+      token: authorToken,
+      body: { primary: f.nodeIds[0], secondary: [f.nodeIds[1]] },
+    });
+    assertEquals(written.status, 200);
+    const data = (await written.json()).data;
+    assertEquals(data.state, "classified");
+    assertEquals(data.primary.node_id, f.nodeIds[0]);
+    assertEquals(data.primary.source, "human");
+    assertEquals(data.secondary.length, 1);
+
+    // 非 UUID → 400；合法 UUID 但不存在 → 404（单独断言于服务层测试）。
+    assertEquals(
+      (await jsonRequest(
+        app,
+        `/api/v1/knowledge/problems/${crypto.randomUUID()}x`,
+      ))
+        .status,
+      400,
+    );
+  },
+});
+
+Deno.test({
+  name: "knowledge api: 审核队列仅实例管理员；accept/reject 生效",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await mappingFixture();
+    const app = createApp();
+    const authorToken = await tokenFor(f.author, "user");
+    const adminToken = await tokenFor(f.owner, "admin");
+    await applyAiMapping(f.problemId, null, {
+      primary: f.nodeIds[0],
+      secondary: [f.nodeIds[1]],
+      confidence: 0.2,
+    }, 0.75);
+
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/admin/knowledge/reviews")).status,
+      401,
+    );
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/admin/knowledge/reviews", {
+        token: authorToken,
+      })).status,
+      403,
+    );
+    const queue = await jsonRequest(app, "/api/v1/admin/knowledge/reviews", {
+      token: adminToken,
+    });
+    assertEquals(queue.status, 200);
+    const listed = (await queue.json()).data;
+    assertEquals(listed.total, 1);
+    assertEquals(listed.items[0].problem_id, f.problemId);
+
+    const accepted = await jsonRequest(
+      app,
+      `/api/v1/admin/knowledge/reviews/${f.problemId}`,
+      { method: "POST", token: adminToken, body: { decision: "accept" } },
+    );
+    assertEquals(accepted.status, 200);
+    assertEquals(
+      (await accepted.json()).data.primary.review_status,
+      "confirmed",
+    );
+
+    // 重新打标为 pending 后修改：等同人工挂载。
+    await applyAiMapping(f.problemId, null, {
+      primary: f.nodeIds[0],
+      confidence: 0.1,
+    }, 0.75);
+    const edited = await jsonRequest(
+      app,
+      `/api/v1/admin/knowledge/reviews/${f.problemId}`,
+      {
+        method: "POST",
+        token: adminToken,
+        body: { primary: f.nodeIds[2], secondary: [] },
+      },
+    );
+    assertEquals(edited.status, 200);
+    assertEquals((await edited.json()).data.primary.node_id, f.nodeIds[2]);
+
+    // 驳回 → 未归类：清掉人工挂载后重新打标为 pending，再驳回。
+    await getDb().delete(problemKnowledge).where(
+      eq(problemKnowledge.problem_id, f.problemId),
+    );
+    await applyAiMapping(f.problemId, null, {
+      primary: f.nodeIds[0],
+      confidence: 0.1,
+    }, 0.75);
+    const rejected = await jsonRequest(
+      app,
+      `/api/v1/admin/knowledge/reviews/${f.problemId}`,
+      { method: "POST", token: adminToken, body: { decision: "reject" } },
+    );
+    assertEquals(rejected.status, 200);
+    assertEquals((await rejected.json()).data.state, "unclassified");
+  },
+});
+
+Deno.test({
+  name: "knowledge api: 总开关关闭时挂载与审核接口 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await mappingFixture();
+    const app = createApp();
+    const adminToken = await tokenFor(f.owner, "admin");
+    await setEnabled(false);
+    try {
+      const read = await jsonRequest(
+        app,
+        `/api/v1/knowledge/problems/${f.problemId}`,
+      );
+      assertEquals(read.status, 404);
+      assertEquals((await read.json()).code, "KNOWLEDGE_DISABLED");
+      const queue = await jsonRequest(
+        app,
+        "/api/v1/admin/knowledge/reviews",
+        { token: adminToken },
+      );
+      assertEquals(queue.status, 404);
+      assertEquals((await queue.json()).code, "KNOWLEDGE_DISABLED");
+    } finally {
+      await setEnabled(true);
+    }
   },
 });

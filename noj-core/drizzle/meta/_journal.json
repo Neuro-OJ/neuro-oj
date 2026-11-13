@@ -974,6 +974,20 @@
       "when": 1794495458144,
       "tag": "0139_curvy_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1794577630706,
+      "tag": "0140_charming_ravenous",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1794577701807,
+      "tag": "0141_optimal_legion",
+      "breakpoints": true
     }
   ]
 }

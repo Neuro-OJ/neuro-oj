@@ -86,6 +86,19 @@ deno task db:generate # 使用时间戳前缀生成下一份增量迁移
   `model`**， 缺失返回 400 `model_required`）
 - `GET /internal/usage` — 用量查询（支持
   submission/user/problem/provider/status/时间范围/分页）
+- `POST /internal/platform-completions` — 平台身份模型调用（知识图谱打标等）：
+  body
+  `{ purpose, model_alias, messages, max_tokens, temperature?, response_format? }`，
+  `purpose` 白名单第一版仅 `knowledge.tag`（其它 400 `invalid_purpose`），
+  `max_tokens` 必填且 ≤1024（越界 400 `invalid_max_tokens`）。别名未配置返回 404
+  `MODEL_ALIAS_NOT_CONFIGURED`；上游 429 返回 429 `RATE_LIMITED`，Provider
+  排队超时 返回 429 `PROVIDER_RATE_LIMITED`。成功返回
+  `{ content, model, usage: { input_tokens, output_tokens, cached_input_tokens }, cost, request_id }`。
+  记账主体 `principal_type='platform'`、`principal_id=<purpose>`，不保存 prompt
+  原文， 不占用学生评测额度。
+- `GET /internal/platform-usage?purpose=<p>&since=<ISO>` — 该用途自 `since`
+  起的累计 `input_tokens` / `output_tokens` / `requests` / `cost`（按
+  `principal_type='platform'` 与 `created_at >= since` 过滤）。
 - `GET /internal/quotas` — 配额列表
 - `POST /internal/quotas` — 新增或更新配额
 
