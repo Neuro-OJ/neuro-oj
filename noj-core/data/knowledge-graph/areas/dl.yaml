@@ -1,0 +1,114 @@
+# 神经网络与深度学习（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: dl
+name: 神经网络与深度学习
+nodes:
+  - id: dl.perceptron
+    name: 感知机
+    summary: 最早的线性二分类神经元模型，通过加权求和与阈值判断输出类别，是理解神经网络单元的起点
+    syllabus: [ioai, noai]
+    requires: [ml.logistic-regression]
+  - id: dl.activation-functions
+    name: 激活函数（ReLU、Sigmoid、Tanh、GELU）
+    summary: 为神经元引入非线性的函数，决定网络能拟合多复杂的映射，并影响梯度传播与训练稳定性
+    syllabus: [ioai, noai, lmcc]
+    requires: [dl.perceptron]
+  - id: dl.loss-functions
+    name: 损失函数（MSE、MAE、交叉熵）
+    summary: 用数值衡量预测与真实标签差距的目标函数，选对损失才能让梯度指向正确的优化方向
+    syllabus: [ioai, noai, lmcc]
+    requires: [ml.logistic-regression]
+  - id: dl.gradient-descent
+    name: 梯度下降
+    summary: 沿损失函数负梯度方向反复更新参数以降低误差的基本训练算法，是所有深度优化方法的原型
+    syllabus: [ioai, noai]
+    requires: [dl.loss-functions]
+  - id: dl.backpropagation
+    name: 反向传播
+    summary: 利用链式法则自输出层向输入层逐层计算参数梯度，是训练多层神经网络的核心步骤
+    syllabus: [ioai, noai]
+    requires: [dl.gradient-descent, dl.mlp]
+  - id: dl.mlp
+    name: 多层感知机
+    summary: 由多层全连接神经元堆叠而成的网络，配合非线性激活可逼近复杂函数，是深度学习的基础结构
+    syllabus: [ioai, noai]
+    requires: [dl.activation-functions]
+  - id: dl.sgd-minibatch
+    name: 随机梯度下降与小批量
+    summary: 每次只用一小批样本估计梯度来更新参数，在计算效率与梯度稳定性之间取得平衡的实用训练方式
+    syllabus: [ioai, noai, lmcc]
+    requires: [dl.gradient-descent, data.split]
+  - id: dl.optimizers
+    name: 优化器（动量、Adam、AdamW）
+    summary: 在梯度基础上加入动量或自适应步长的参数更新算法，能加快收敛并缓解不同参数尺度带来的问题
+    syllabus: [ioai, lmcc]
+    requires: [dl.sgd-minibatch]
+  - id: dl.learning-rate
+    name: 学习率、预热、衰减与收敛
+    summary: 控制每步参数更新幅度的关键超参数，配合预热与衰减策略可显著改善训练收敛与最终效果
+    syllabus: [ioai, lmcc]
+    requires: [dl.optimizers]
+  - id: dl.regularization
+    name: 深度学习正则化（Dropout、早停、权重衰减）
+    summary: 通过随机失活、提前停止或惩罚大权重来抑制过拟合，让网络在未见数据上保持泛化能力
+    syllabus: [ioai, noai]
+    requires: [dl.mlp, dl.loss-functions]
+  - id: dl.weight-init
+    name: 权重初始化
+    summary: 训练开始前为参数选取合适初值的方法，恰当的尺度可避免梯度消失或爆炸并让深层网络顺利训练
+    syllabus: [ioai]
+    requires: [dl.backpropagation]
+  - id: dl.normalization-layers
+    name: 归一化层（BatchNorm、LayerNorm、RMSNorm）
+    summary: 在层内对激活值做标准化以稳定数据分布，能加速训练并降低对初始化与学习率的敏感度
+    syllabus: [ioai, lmcc]
+    requires: [dl.mlp, math.statistics]
+  - id: dl.embeddings
+    name: 嵌入表示（文本、图像、音频）
+    summary: 把离散的类别或高维信号映射为可学习的稠密向量，使相似对象在空间中彼此靠近并供网络使用
+    syllabus: [ioai, noai, lmcc]
+    requires: [dl.mlp]
+  - id: dl.pooling
+    name: 池化
+    summary: 对局部特征做下采样汇总的常用操作，可减少计算量、扩大感受野并带来一定平移不变性
+    syllabus: [ioai, noai]
+    requires: [cv.convolution]
+  - id: dl.rnn
+    name: 循环神经网络（RNN、LSTM、GRU）
+    summary: 带隐藏状态并按时间步复用参数的序列模型，门控结构使其能学习较长的时序依赖
+    syllabus: [noai]
+    requires: [dl.mlp, data.sequence-padding]
+  - id: dl.attention
+    name: 注意力机制（QKV 与 softmax）
+    summary: 用查询与键的相似度计算权重并对值加权求和，使模型能按需聚合序列中任意位置的信息
+    syllabus: [ioai, noai, lmcc]
+    requires: [dl.embeddings]
+  - id: dl.transformer
+    name: Transformer 架构
+    summary: 完全基于注意力与前馈层搭建的并行序列模型，是当今主流语言模型与多模态模型的骨架
+    syllabus: [ioai, noai, lmcc]
+    requires: [dl.attention, dl.normalization-layers]
+  - id: dl.autoencoder
+    name: 自编码器
+    summary: 由编码器压缩与解码器重建组成的无监督网络，可学习低维表示并用于去噪与异常检测
+    syllabus: [ioai]
+    requires: [dl.mlp, dl.loss-functions]
+  - id: dl.transfer-learning
+    name: 迁移学习与预训练模型复用
+    summary: 把在大规模数据上训练好的模型权重迁移到新任务，用少量数据即可获得良好效果的思路
+    syllabus: [ioai, noai]
+    requires: [dl.backpropagation]
+  - id: dl.fine-tuning
+    name: 全量微调
+    summary: 在预训练权重基础上用目标任务数据更新全部参数，使模型行为贴合新数据集的完整做法
+    syllabus: [ioai, lmcc]
+    requires: [dl.transfer-learning, dl.learning-rate]
+  - id: dl.peft
+    name: 参数高效微调概述
+    summary: 冻结主干只训练少量新增或选定参数，从而以较低显存与存储成本完成模型适配的方法类别
+    syllabus: [ioai, lmcc]
+    requires: [dl.fine-tuning]
+  - id: dl.self-supervised
+    name: 自监督学习
+    summary: 从数据本身构造预测目标来训练表示而不依赖人工标签，是现代预训练模型的主要训练范式
+    syllabus: [ioai, lmcc]
+    requires: [dl.autoencoder]

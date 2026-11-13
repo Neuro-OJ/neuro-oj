@@ -1,0 +1,79 @@
+# 数据科学与模型评估（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: data
+name: 数据科学与模型评估
+nodes:
+  - id: data.preprocessing
+    name: 数据清洗与缺失值处理
+    summary: 处理重复值、异常值与缺失数据，可用删除、均值或中位数填充、模型插补等手段保证数据质量
+    syllabus: [ioai, noai]
+    requires: [prog.pandas, math.statistics]
+  - id: data.normalization
+    name: 归一化与标准化
+    summary: 把特征缩放到统一量纲，如最小最大缩放到区间内或减均值除标准差，避免尺度差异干扰模型
+    syllabus: [ioai, noai]
+    requires: [prog.numpy, math.statistics]
+  - id: data.split
+    name: 数据集划分（训练、验证、测试）
+    summary: 按比例把数据分为训练、验证与测试集，必要时分层抽样，使模型评估结果可靠且不泄露信息
+    syllabus: [ioai, noai, lmcc]
+    requires: [prog.sklearn, ai.ml-workflow]
+  - id: data.feature-engineering
+    name: 特征工程（独热编码、统计特征、滑动窗口）
+    summary: 从原始数据构造更有表达力的输入特征，包括类别独热编码、统计聚合与时间序列滑动窗口
+    syllabus: [ioai, noai]
+    requires: [data.preprocessing, data.normalization]
+  - id: data.augmentation
+    name: 数据增强基础
+    summary: 通过对样本施加保持标签的变换扩充训练数据，如翻转裁剪、噪声扰动，提升模型的泛化能力
+    syllabus: [ioai]
+    requires: [data.split]
+  - id: data.sequence-padding
+    name: 变长序列填充与批处理
+    summary: 将长度不一的序列截断或填充到统一长度并组成批次，配合掩码让模型正确忽略填充位置
+    syllabus: [ioai, lmcc]
+    requires: [data.tokenization, prog.pytorch-tensors]
+  - id: data.tokenization
+    name: 文本与音频分词
+    summary: 把文本切分为词或子词、把音频切分为帧或声学单元，再映射为模型可处理的整数编号序列
+    syllabus: [ioai, lmcc, noai]
+    requires: [prog.python-data-structures]
+  - id: data.image-patching
+    name: 图像切块
+    summary: 把图像划分为不重叠或重叠的小块并展平为向量序列，为视觉模型提供统一尺寸的输入单元
+    syllabus: [ioai]
+    requires: [prog.pytorch-tensors, data.normalization]
+  - id: data.eda
+    name: 探索性数据分析
+    summary: 借助统计量与图表审视数据分布、缺失和变量间关系，为后续特征构造与建模提供方向
+    syllabus: [noai, ioai]
+    requires: [prog.visualization]
+  - id: data.classification-metrics
+    name: 分类指标（准确率、精确率、召回率、F1）
+    summary: 从不同角度衡量分类结果正确性的指标，需结合类别分布选择合适的指标评价模型表现
+    syllabus: [ioai, noai, lmcc]
+    requires: [data.split, math.statistics]
+  - id: data.confusion-roc
+    name: 混淆矩阵与 ROC/AUC
+    summary: 用混淆矩阵细分各类预测情况，并通过改变阈值绘制 ROC 曲线、计算 AUC 评估排序能力
+    syllabus: [ioai, noai, lmcc]
+    requires: [data.classification-metrics]
+  - id: data.regression-metrics
+    name: 回归指标（MSE、MAE、R²）
+    summary: 衡量连续值预测误差的常用指标，反映误差的平方、绝对量级以及模型对目标方差的解释程度
+    syllabus: [ioai, noai]
+    requires: [data.split, math.statistics]
+  - id: data.overfitting
+    name: 欠拟合与过拟合
+    summary: 分析模型复杂度与数据量不匹配时训练与验证误差的差异，并据此调整模型容量与正则强度
+    syllabus: [ioai, noai, lmcc]
+    requires: [data.split]
+  - id: data.cross-validation
+    name: 交叉验证
+    summary: 把数据轮换划分为多折训练与验证，多次评估取平均，得到更稳定的模型性能估计
+    syllabus: [ioai, noai, lmcc]
+    requires: [data.classification-metrics]
+  - id: data.hyperparameter-tuning
+    name: 超参数调优
+    summary: 在验证集上搜索模型的学习率、正则强度等超参数，常用网格搜索、随机搜索与贝叶斯优化
+    syllabus: [ioai, noai]
+    requires: [data.cross-validation, data.overfitting]

@@ -1,0 +1,41 @@
+# 数学基础（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: math
+name: 数学基础
+nodes:
+  - id: math.linear-algebra
+    name: 向量与矩阵运算
+    summary: 掌握向量内积、矩阵乘法、转置与逆等运算及其几何含义，能看懂并把神经网络中的线性变换写成矩阵形式
+    syllabus: [noai, ioai]
+  - id: math.calculus
+    name: 导数、偏导与链式法则
+    summary: 理解导数与偏导数的含义并熟练运用链式法则求复合函数的梯度，为理解反向传播和优化算法打基础
+    syllabus: [noai, ioai]
+  - id: math.gradient
+    name: 梯度与优化直觉
+    summary: 理解梯度指向函数增长最快的方向，能借助梯度解释沿负梯度方向迭代寻优的直观原理与收敛条件
+    syllabus: [noai, ioai]
+    requires: [math.calculus, math.linear-algebra]
+  - id: math.probability
+    name: 概率基础与条件概率
+    summary: 掌握随机事件、概率公理、条件概率、全概率与贝叶斯公式，能计算常见的随机现象并理解独立性
+    syllabus: [noai, ioai, lmcc]
+  - id: math.statistics
+    name: 描述统计与常见分布
+    summary: 会用均值、方差、分位数等指标描述数据，理解正态、二项、伯努利等常见分布及其在建模中的作用
+    syllabus: [noai, ioai]
+    requires: [math.probability]
+  - id: math.mle
+    name: 极大似然估计
+    summary: 理解似然函数的意义，能用极大似然估计推导模型参数，并从概率角度解释交叉熵损失为何合理
+    syllabus: [lmcc, noai]
+    requires: [math.statistics, math.calculus]
+  - id: math.information-theory
+    name: 熵、交叉熵与 KL 散度
+    summary: 理解信息熵、交叉熵与 KL 散度衡量不确定性和分布差异的含义，能解释分类损失与语言模型困惑度的来源
+    syllabus: [lmcc, ioai]
+    requires: [math.probability]
+  - id: math.similarity
+    name: 距离与相似度（欧氏、余弦）
+    summary: 掌握欧氏距离、曼哈顿距离与余弦相似度等度量方式，能用它们比较向量与样本，支撑近邻检索和聚类任务
+    syllabus: [ioai, lmcc, noai]
+    requires: [math.linear-algebra]

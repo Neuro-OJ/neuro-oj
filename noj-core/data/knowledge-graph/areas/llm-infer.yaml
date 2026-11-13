@@ -1,0 +1,54 @@
+# 大模型解码与部署（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: llm-infer
+name: 大模型解码与部署
+nodes:
+  - id: llm-infer.probability-sampling
+    name: 模型输出概率与采样
+    summary: 理解模型每步输出的是词表上的概率分布，能由概率分布抽取下一个词元并解释随机性的来源
+    syllabus: [lmcc]
+    requires: [llm-train.pretraining-objectives]
+  - id: llm-infer.greedy-beam
+    name: 贪心搜索与束搜索
+    summary: 掌握逐步取最大概率与保留多条的搜索方式，能比较多条路径打分对结果质量和计算开销的影响
+    syllabus: [lmcc, ioai]
+    requires: [llm-infer.probability-sampling]
+  - id: llm-infer.sampling-strategies
+    name: 采样策略（温度、top-k、top-p）
+    summary: 学会用温度缩放与截断候选集合控制生成多样性与稳定性，能针对对话、创作或解题任务调节参数
+    syllabus: [lmcc, ioai]
+    requires: [llm-infer.probability-sampling]
+  - id: llm-infer.chat-template
+    name: 对话模板与批量生成
+    summary: 理解对话标记如何把多轮消息拼成输入以匹配训练格式，并掌握批量生成时的对齐与截断处理
+    syllabus: [lmcc]
+    requires: [prog.hf-transformers, llm.definition]
+  - id: llm-infer.structured-output
+    name: 结构化输出与答案抽取
+    summary: 能够约束模型按指定格式输出并从中稳定抽取字段，使生成结果可以直接交给程序做自动评测与处理
+    syllabus: [lmcc]
+    requires: [llm-infer.chat-template, llm-infer.sampling-strategies]
+  - id: llm-infer.kv-cache
+    name: KV 缓存与推理开销
+    summary: 理解解码时缓存历史键值以减少重复计算的作用，能估算缓存显存并分析预填充与逐词生成的耗时构成
+    syllabus: [lmcc]
+    requires: [llm.architectures]
+  - id: llm-infer.decoding-acceleration
+    name: 解码加速（推测解码、PagedAttention、vLLM）
+    summary: 了解用小模型草稿验证、分页管理缓存与批量调度来提升吞吐的方法，能分析生成速度的主要瓶颈
+    syllabus: [lmcc]
+    requires: [llm-infer.kv-cache]
+  - id: llm-infer.quantization
+    name: 量化部署
+    summary: 掌握把权重与激活从高精度压缩到低精度的基本原理与常见方案，能在显存受限时权衡精度损失与速度收益
+    syllabus: [lmcc]
+    requires: [llm-train.mixed-precision]
+  - id: llm-infer.compression
+    name: 模型压缩（蒸馏、剪枝）
+    summary: 理解用大模型指导小模型学习与裁剪冗余结构来缩小模型的做法，能比较它与量化和微调在成本上的差异
+    syllabus: [lmcc]
+    requires: [llm-infer.quantization, dl.transfer-learning]
+  - id: llm-infer.resource-management
+    name: 推理资源管理
+    summary: 能从显存、吞吐与延迟的角度规划模型部署，估计并发请求数与批量大小的合理范围并设计监控指标
+    syllabus: [lmcc]
+    requires: [llm-infer.decoding-acceleration, llm-infer.quantization]

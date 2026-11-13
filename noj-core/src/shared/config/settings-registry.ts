@@ -22,6 +22,7 @@
  * - cors: 跨域
  * - storage: 对象存储（bootstrap 启动期配置）
  * - judge: 评测资源限制
+ * - knowledge: 知识图谱
  * - other: 其他
  */
 
@@ -45,6 +46,7 @@ export type SettingCategory =
   | "judge"
   | "llm"
   | "legal"
+  | "knowledge"
   | "other";
 
 /** 配置项元数据（统一注册表条目） */
@@ -841,6 +843,23 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     min: 0,
     scope: "runtime",
   },
+
+  // ── knowledge（知识图谱，2026-11-12）───────────────────────
+  // 只读图接口每次请求经 getSetting() 读取开关；配置变更由既有设置失效通道
+  // 广播各副本重载，无需额外适配。
+  {
+    key: "knowledge_enabled",
+    type: "boolean",
+    default: true,
+    description:
+      "知识图谱总开关（关闭后 /api/v1/knowledge/* 只读接口返回 404 KNOWLEDGE_DISABLED）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_ENABLED",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  // AI 打标、及格线、掌握题数等配置随使用它们的阶段（P1–P3）登记；只登记不消费的
+  // runtime 键会被 check-config-usage 判为死键。
 
   // ── other ─────────────────────────────────────────────────
   {

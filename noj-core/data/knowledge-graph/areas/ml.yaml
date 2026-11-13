@@ -1,0 +1,64 @@
+# 经典机器学习（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: ml
+name: 经典机器学习
+nodes:
+  - id: ml.linear-regression
+    name: 线性回归
+    summary: 用特征的线性组合拟合连续目标值，通过最小化平方误差求参数，并可用闭式解或梯度下降求解
+    syllabus: [ioai, noai, lmcc]
+    requires: [math.gradient, ai.ml-workflow]
+  - id: ml.logistic-regression
+    name: 逻辑回归
+    summary: 在线性打分上套用 Sigmoid 函数输出类别概率，用交叉熵损失训练，是二分类的基础模型
+    syllabus: [ioai, noai, lmcc]
+    requires: [ml.linear-regression, math.information-theory]
+  - id: ml.regularization
+    name: L1/L2 正则化
+    summary: 在损失中加入参数范数惩罚以抑制过拟合，L2 使权重收缩，L1 还能产生稀疏解用于特征选择
+    syllabus: [ioai, noai]
+    requires: [ml.logistic-regression, data.overfitting]
+  - id: ml.knn
+    name: K 近邻
+    summary: 依据距离度量找出样本的最近邻，用邻居的投票或均值做预测，无需训练即可直接分类与回归
+    syllabus: [ioai, noai]
+    requires: [math.similarity, ai.ml-paradigms]
+  - id: ml.decision-tree
+    name: 决策树
+    summary: 递归选择划分特征把样本空间切分为纯度高的小区域，可解释性强，是集成树模型的基本单元
+    syllabus: [ioai, noai, lmcc]
+    requires: [math.information-theory, ai.ml-paradigms]
+  - id: ml.svm
+    name: 支持向量机
+    summary: 寻找最大间隔分离超平面，并借助核函数把线性分类扩展到非线性场景的分类模型
+    syllabus: [ioai, noai]
+    requires: [ml.logistic-regression]
+  - id: ml.naive-bayes
+    name: 朴素贝叶斯
+    summary: 基于贝叶斯公式并假设特征条件独立，用训练数据估计先验与类条件概率完成快速分类
+    syllabus: [noai, lmcc]
+    requires: [math.probability]
+  - id: ml.ensemble
+    name: 集成学习（Bagging、随机森林、梯度提升）
+    summary: 组合多个基学习器的预测以降低方差或偏差，涵盖 Bagging、随机森林与梯度提升等主流方法
+    syllabus: [ioai, noai]
+    requires: [ml.decision-tree, data.overfitting]
+  - id: ml.kmeans
+    name: K 均值聚类
+    summary: 迭代执行样本分配与中心更新，最小化簇内平方误差，把无标签数据划分为 K 个簇
+    syllabus: [ioai, noai]
+    requires: [math.similarity, ai.ml-paradigms]
+  - id: ml.clustering-advanced
+    name: 其他聚类（DBSCAN、层次聚类、谱聚类）
+    summary: 通过密度可达、层次合并或图拉普拉斯特征分解发现簇，可处理任意形状簇且无需预设簇数
+    syllabus: [ioai]
+    requires: [ml.kmeans]
+  - id: ml.pca
+    name: 主成分分析
+    summary: 对中心化数据做协方差矩阵的特征分解，沿方差最大的正交方向投影以实现降维与去相关
+    syllabus: [ioai, noai]
+    requires: [math.linear-algebra, data.normalization]
+  - id: ml.manifold-visualization
+    name: 降维可视化（t-SNE、UMAP）
+    summary: 保留样本局部邻域关系的非线性降维方法，常用于把高维数据映射到二维平面观察结构
+    syllabus: [ioai]
+    requires: [ml.pca]

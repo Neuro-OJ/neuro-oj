@@ -48,6 +48,11 @@ import {
 import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
 import { reindexAll } from "../src/modules/read-models/search/index.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
+import {
+  importPack,
+  type ImportPackResult,
+  resolveOfficialPackDir,
+} from "../src/features/knowledge/index.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");
@@ -184,6 +189,33 @@ async function importProblemPackages(
   }
 }
 
+/**
+ * 导入知识图谱内容包（幂等，单事务）。
+ *
+ * 缺省官方包；扩展包会自动同时写入被扩展包。校验失败抛错——官方包随版本
+ * 发布，校验失败说明发布物损坏，不应静默跳过。
+ */
+async function runKnowledgeImport(
+  packDir = resolveOfficialPackDir(),
+): Promise<ImportPackResult> {
+  const stats = await importPack(packDir);
+  return stats;
+}
+
+/** 一行导入统计。 */
+function formatKnowledgeStats(stats: ImportPackResult): string {
+  const parts = [
+    `包 ${stats.packId}@${stats.version}`,
+    `领域 ${stats.areas}`,
+    `节点 ${stats.nodes}`,
+    `边 ${stats.edges}`,
+    `新增节点 ${stats.nodes_inserted}`,
+    `更新节点 ${stats.nodes_updated}`,
+    `废弃节点 ${stats.nodes_deprecated}`,
+  ];
+  return parts.join("，");
+}
+
 /** 系统基础数据：root + 默认工作空间 + LLM 默认项 + 镜像白名单 + 标签（幂等）。 */
 async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
@@ -195,6 +227,8 @@ async function runInitSystem(): Promise<void> {
   await seedJudgeImages();
   console.log("初始化种子标签...");
   await seedTags();
+  console.log("导入知识图谱官方内容包...");
+  console.log(`  ${formatKnowledgeStats(await runKnowledgeImport())}`);
   // 注：LLM 默认配额由 noj-llm-gateway 启动时幂等 seed
   // 注：题目-标签关联由 problems import 按 manifest.tags 完成
   console.log("系统基础数据初始化完成");
@@ -372,6 +406,16 @@ const problemsCmd = new Command()
     });
   });
 
+const knowledgeCmd = new Command()
+  .description("知识图谱操作")
+  .command("import", "导入知识图谱内容包（幂等；缺省官方包）")
+  .option("--pack <dir:string>", "内容包目录", {
+    default: resolveOfficialPackDir(),
+  })
+  .action(async (opts: { pack: string }) => {
+    console.log(formatKnowledgeStats(await runKnowledgeImport(opts.pack)));
+  });
+
 const searchCmd = new Command()
   .description("搜索索引操作")
   .command("reindex", "全量重建搜索索引")
@@ -456,6 +500,7 @@ try {
     // #514：命令名统一到单数 `problem`；`problems` 保留为别名过渡，
     // 避免破坏既有脚本（deno task problems:build 等仍可用）。
     .command("problem", problemsCmd)
+    .command("knowledge", knowledgeCmd)
     .command("search", searchCmd)
     .command("maintain", maintainCmd)
     .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")

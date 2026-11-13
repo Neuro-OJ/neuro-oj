@@ -145,3 +145,11 @@ export {
 } from "./background-tasks.ts";
 
 export { educationNotificationEmails } from "./notification-delivery.ts";
+
+// knowledge
+export {
+  knowledgeAreas,
+  knowledgeEdges,
+  knowledgeNodes,
+  knowledgePacks,
+} from "./knowledge.ts";
