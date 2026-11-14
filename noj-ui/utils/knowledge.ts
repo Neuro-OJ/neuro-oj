@@ -491,3 +491,128 @@ export function parsePassRatioOverride(raw: string): { value: number | null; err
   if (value > 100) return { value: null, error: '请填写 0–100 的整数百分比' };
   return { value };
 }
+
+// ─── P4：班级教练视角（掌握矩阵 / 按知识点挑题） ───────────
+
+/** 班级掌握矩阵中的学生（`students[]`）。 */
+export interface ClassroomMasteryStudent {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+}
+
+/** 单节点在班级内的掌握计数（三项之和 = 学生数）。 */
+export interface ClassroomMasteryCounts {
+  mastered: number;
+  learning: number;
+  none: number;
+}
+
+/** 掌握矩阵节点（`areas[].nodes[]`）。 */
+export interface ClassroomMasteryNode {
+  id: string;
+  name: string;
+  problem_count: number;
+  counts: ClassroomMasteryCounts;
+}
+
+/** 掌握矩阵领域（`areas[]`）。 */
+export interface ClassroomMasteryArea {
+  id: string;
+  name: string;
+  nodes: ClassroomMasteryNode[];
+}
+
+/** 班级掌握矩阵（`GET /domains/:slug/classrooms/:id/knowledge-mastery` 的 `data`）。 */
+export interface ClassroomMasteryView {
+  classroom_id: string;
+  students: ClassroomMasteryStudent[];
+  areas: ClassroomMasteryArea[];
+  /** 稀疏：`{ <user_id>: { <node_id>: 'learning' | 'mastered' } }`，`none` 省略。 */
+  cells: Record<string, Record<string, Exclude<MasteryState, 'none'>>>;
+}
+
+/** 按知识点挑题的一道候选题（`items[]`）。 */
+export interface KnowledgePickItem {
+  problem_id: string;
+  number: number | null;
+  /** 作业编辑器引用：本域题为题号，跨域共享题为「来源域:题号」；无题号为 null。 */
+  display_ref: string | null;
+  title: string;
+  /** 校准难度 0–100。 */
+  difficulty: number;
+  tier: DifficultyTier;
+}
+
+/** 按知识点挑题结果（`GET /domains/:slug/classrooms/:id/knowledge-pick` 的 `data`）。 */
+export interface KnowledgePickView {
+  node_id: string;
+  node_name: string;
+  items: KnowledgePickItem[];
+}
+
+/** 学生显示名：优先 `display_name`，回退 `username`。 */
+export function masteryStudentLabel(student: Pick<ClassroomMasteryStudent, 'username' | 'display_name'>): string {
+  const name = student.display_name?.trim();
+  return name ? name : student.username;
+}
+
+/** 单元格掌握状态（稀疏 `cells` 缺省视为 `none`）。 */
+export function masteryCellState(
+  view: ClassroomMasteryView | null,
+  userId: string,
+  nodeId: string,
+): MasteryState {
+  return view?.cells?.[userId]?.[nodeId] ?? 'none';
+}
+
+/** 单元格提示文案：`已掌握` / `学习中` / `未开始`。 */
+export function masteryCellTitle(studentLabel: string, nodeName: string, state: MasteryState): string {
+  return `${studentLabel} · ${nodeName}：${masteryStateLabel(state)}`;
+}
+
+/** 节点是否有学生在学（已掌握 + 学习中 > 0）。 */
+export function nodeHasLearners(node: Pick<ClassroomMasteryNode, 'counts'>): boolean {
+  return node.counts.mastered + node.counts.learning > 0;
+}
+
+/**
+ * 矩阵显示用领域列表：可选「只看有学生在学的知识点」，过滤后空领域不出现。
+ */
+export function filterMasteryAreas(
+  areas: ClassroomMasteryArea[],
+  onlyLearning: boolean,
+): ClassroomMasteryArea[] {
+  if (!onlyLearning) return areas;
+  return areas
+    .map((area) => ({ ...area, nodes: area.nodes.filter(nodeHasLearners) }))
+    .filter((area) => area.nodes.length > 0);
+}
+
+/** 矩阵列统计文案：`已掌握 3 / 学习中 2`。 */
+export function masteryCountsText(counts: ClassroomMasteryCounts): string {
+  return `已掌握 ${counts.mastered} / 学习中 ${counts.learning}`;
+}
+
+/** 知识点详情页路径（`/d/<slug>/knowledge/<nodeId>`）。 */
+export function knowledgeNodePath(slug: string, nodeId: string): string {
+  return `/d/${encodeURIComponent(slug)}/knowledge/${encodeURIComponent(nodeId)}`;
+}
+
+/** 挑题数量允许范围。 */
+export const KNOWLEDGE_PICK_MIN = 1;
+export const KNOWLEDGE_PICK_MAX = 20;
+export const KNOWLEDGE_PICK_DEFAULT = 5;
+
+/** 题数输入解析：非整数或越界 → `{ error }`，界面据此禁用预览。 */
+export function parsePickCount(raw: string | number): { value: number | null; error?: string } {
+  const text = String(raw).trim();
+  if (!/^\d+$/.test(text)) {
+    return { value: null, error: `题目数量需为 ${KNOWLEDGE_PICK_MIN}–${KNOWLEDGE_PICK_MAX} 的整数` };
+  }
+  const value = Number(text);
+  if (value < KNOWLEDGE_PICK_MIN || value > KNOWLEDGE_PICK_MAX) {
+    return { value: null, error: `题目数量需为 ${KNOWLEDGE_PICK_MIN}–${KNOWLEDGE_PICK_MAX} 的整数` };
+  }
+  return { value };
+}

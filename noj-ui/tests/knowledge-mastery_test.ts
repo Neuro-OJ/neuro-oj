@@ -2,10 +2,19 @@
 // deno-lint-ignore no-import-prefix
 import { assert, assertEquals } from 'jsr:@std/assert@^1';
 import {
+  type ClassroomMasteryArea,
   coverageNodeHasProblem,
+  filterMasteryAreas,
+  knowledgeNodePath,
+  masteryCellState,
+  masteryCellTitle,
+  masteryCountsText,
   masteryPercent,
   masteryStateColor,
   masteryStateLabel,
+  masteryStudentLabel,
+  nodeHasLearners,
+  parsePickCount,
   recommendationReasonText,
 } from '../utils/knowledge.ts';
 
@@ -57,4 +66,34 @@ Deno.test('覆盖度：题量不足或难度断层视为有问题的节点', () 
   assert(!coverageNodeHasProblem(base));
   assert(coverageNodeHasProblem({ ...base, insufficient_problems: true }));
   assert(coverageNodeHasProblem({ ...base, difficulty_gap: true }));
+});
+
+Deno.test('P4 掌握矩阵：稀疏 cells 缺省为未开始，状态文案与筛选', () => {
+  const areas: ClassroomMasteryArea[] = [{
+    id: 'ml',
+    name: '机器学习基础',
+    nodes: [
+      { id: 'ml.lr', name: '线性回归', problem_count: 4, counts: { mastered: 1, learning: 1, none: 1 } },
+      { id: 'ml.svm', name: '支持向量机', problem_count: 2, counts: { mastered: 0, learning: 0, none: 3 } },
+    ],
+  }];
+  const view = { classroom_id: 'c', students: [], areas, cells: { u1: { 'ml.lr': 'mastered' as const } } };
+  assertEquals(masteryCellState(view, 'u1', 'ml.lr'), 'mastered');
+  assertEquals(masteryCellState(view, 'u1', 'ml.svm'), 'none');
+  assertEquals(masteryCellTitle('学生甲', '线性回归', 'learning'), '学生甲 · 线性回归：学习中');
+  assertEquals(masteryCountsText({ mastered: 3, learning: 2, none: 5 }), '已掌握 3 / 学习中 2');
+  assertEquals(nodeHasLearners(areas[0]!.nodes[0]!), true);
+  assertEquals(filterMasteryAreas(areas, true)[0]!.nodes.map((node) => node.id), ['ml.lr']);
+  assertEquals(filterMasteryAreas(areas, false)[0]!.nodes.length, 2);
+  assertEquals(masteryStudentLabel({ username: 'stu01', display_name: '小明' }), '小明');
+  assertEquals(masteryStudentLabel({ username: 'stu01', display_name: null }), 'stu01');
+  assertEquals(knowledgeNodePath('school', 'ml.lr'), '/d/school/knowledge/ml.lr');
+});
+
+Deno.test('P4 挑题数量：默认 5，1–20 整数，越界报错', () => {
+  assertEquals(parsePickCount(5).value, 5);
+  assertEquals(parsePickCount('20').value, 20);
+  assertEquals(parsePickCount(0).error !== undefined, true);
+  assertEquals(parsePickCount(21).error !== undefined, true);
+  assertEquals(parsePickCount('2.5').error !== undefined, true);
 });
