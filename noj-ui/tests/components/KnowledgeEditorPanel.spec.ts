@@ -98,7 +98,8 @@ describe('KnowledgeEditorPanel', () => {
     await flushPromises();
     await button(wrapper, '保存知识点').trigger('click');
     await flushPromises();
-    expect(api.saveProblem).toHaveBeenCalledWith('p1', { primary: 'ds.array', secondary: [] });
+    // 未读到难度（无 difficulty 字段）时不附带 pass_ratio_override，避免误清除覆盖。
+    expect(api.saveProblem).toHaveBeenCalledWith('p1', { primary: 'ds.array', secondary: [] }, {});
     expect(wrapper.text()).toContain('已确认 · 来源人工');
     expect(wrapper.text()).toContain('知识点已保存');
   });

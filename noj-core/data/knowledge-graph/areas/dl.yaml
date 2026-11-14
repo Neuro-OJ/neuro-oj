@@ -27,11 +27,13 @@ nodes:
     summary: 利用链式法则自输出层向输入层逐层计算参数梯度，是训练多层神经网络的核心步骤
     syllabus: [ioai, noai]
     requires: [dl.gradient-descent, dl.mlp]
+    doc: docs/dl.backpropagation.md
   - id: dl.mlp
     name: 多层感知机
     summary: 由多层全连接神经元堆叠而成的网络，配合非线性激活可逼近复杂函数，是深度学习的基础结构
     syllabus: [ioai, noai]
     requires: [dl.activation-functions]
+    doc: docs/dl.mlp.md
   - id: dl.sgd-minibatch
     name: 随机梯度下降与小批量
     summary: 每次只用一小批样本估计梯度来更新参数，在计算效率与梯度稳定性之间取得平衡的实用训练方式
@@ -82,6 +84,7 @@ nodes:
     summary: 用查询与键的相似度计算权重并对值加权求和，使模型能按需聚合序列中任意位置的信息
     syllabus: [ioai, noai, lmcc]
     requires: [dl.embeddings]
+    doc: docs/dl.attention.md
   - id: dl.transformer
     name: Transformer 架构
     summary: 完全基于注意力与前馈层搭建的并行序列模型，是当今主流语言模型与多模态模型的骨架

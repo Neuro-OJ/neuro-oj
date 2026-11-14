@@ -2,9 +2,11 @@
  * 知识图谱只读 HTTP API（挂在 `/api/v1`）。
  *
  * - `GET /knowledge/graph`：整图（激活包 + active 领域/节点/前置）；
- * - `GET /knowledge/nodes/:id`：单点详情（requires / dependents）。
- * - `GET /knowledge/problems/:problemId`：题目归类（可选鉴权）；
- * - `PUT /knowledge/problems/:problemId`：人工挂载（题目编辑权限）。
+ * - `GET /knowledge/nodes/:id`：单点详情（requires / dependents / 讲解 markdown）；
+ * - `GET /knowledge/nodes/:id/ladder?domain=<slug>`：节点题目阶梯 + 下一题；
+ * - `GET /knowledge/problems/:problemId`：题目归类 + 难度（可选鉴权）；
+ * - `GET /knowledge/problems/:problemId/next`：题目页下一题；
+ * - `PUT /knowledge/problems/:problemId`：人工挂载与及格线覆盖（题目编辑权限）。
  * - `GET|POST /admin/knowledge/reviews...`：审核队列（实例管理员）。
  * - `GET /admin/knowledge/tagging/usage|estimate` 与
  *   `POST /admin/knowledge/tagging/backfill`：AI 打标用量/预估/回填（实例管理员）。
@@ -31,6 +33,7 @@ import {
 } from "../../modules/platform/index.ts";
 import {
   AppError,
+  BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from "../../shared/base/errors.ts";
@@ -38,6 +41,14 @@ import type { AuthEnv } from "../../shared/http/hono-env.ts";
 import { parsePagination } from "../../shared/http/pagination.ts";
 import { parseJsonBody } from "../../shared/http/request.ts";
 import { readKnowledgeGraph, readKnowledgeNode } from "./graph.ts";
+import {
+  loadNodeProblemCounts,
+  readNextForProblem,
+  readNodeLadder,
+  readProblemDifficulty,
+  resolveAccessibleDomain,
+} from "./difficulty.ts";
+import { setPassRatioOverride } from "./pass-ratio.ts";
 import {
   backfillKnowledgeTags,
   estimateBackfill,
@@ -69,9 +80,34 @@ function assertEnabled(): void {
   }
 }
 
+/**
+ * 整图（`?domain=<slug>` 可选）：给定时每个节点附 `problem_count`
+ * （该域当前用户可访问的已发布题目数，供「只显示有题的知识点」）。
+ */
 knowledgeRouter.get("/knowledge/graph", optionalAuthMiddleware, async (c) => {
   assertEnabled();
-  return c.json({ data: await readKnowledgeGraph() });
+  const graph = await readKnowledgeGraph();
+  const slug = c.req.query("domain");
+  if (!slug) return c.json({ data: graph });
+  const userId = c.get("userId") ?? null;
+  const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+  const domain = await resolveAccessibleDomain(slug, viewer);
+  if (!domain) throw new NotFoundError("工作空间不存在");
+  const counts = await loadNodeProblemCounts(
+    graph.nodes.map((node) => node.id),
+    domain.id,
+    viewer,
+    { is_admin: await isViewerAdmin(userId) },
+  );
+  return c.json({
+    data: {
+      ...graph,
+      nodes: graph.nodes.map((node) => ({
+        ...node,
+        problem_count: counts.get(node.id) ?? 0,
+      })),
+    },
+  });
 });
 
 knowledgeRouter.get(
@@ -80,6 +116,45 @@ knowledgeRouter.get(
   async (c) => {
     assertEnabled();
     return c.json({ data: await readKnowledgeNode(c.req.param("id")!) });
+  },
+);
+
+/**
+ * 节点题目阶梯（`?domain=<slug>`）：该节点为主知识点的已发布、可访问题目，
+ * 按校准难度升序；`next` 为下一题推荐。未登录时 `passed` 为 null、`next`
+ * 取第一题；域不可访问 → 404。
+ */
+knowledgeRouter.get(
+  "/knowledge/nodes/:id/ladder",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const slug = c.req.query("domain");
+    if (!slug) throw new BadRequestError("缺少 domain 参数");
+    const userId = c.get("userId") ?? null;
+    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+    const ladder = await readNodeLadder(
+      c.req.param("id")!,
+      slug,
+      viewer,
+      { is_admin: await isViewerAdmin(userId) },
+    );
+    if (!ladder) throw new NotFoundError("知识点或工作空间不存在");
+    return c.json({ data: ladder });
+  },
+);
+
+/** 题目页「下一题」：该题主知识点阶梯中难度更高、用户未达标的第一题。 */
+knowledgeRouter.get(
+  "/knowledge/problems/:problemId/next",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const problemId = parseProblemId(c.req.param("problemId"));
+    const userId = c.get("userId") ?? null;
+    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+    const next = await readNextForProblem(problemId, viewer);
+    return c.json({ data: next });
   },
 );
 
@@ -98,16 +173,36 @@ function viewerOf(c: { get: (key: "userId") => string | undefined }) {
   return { userId: c.get("userId") ?? null };
 }
 
+/** 查看者是否实例管理员（阶梯可达性口径用；未登录为 false）。 */
+async function isViewerAdmin(userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    return await isUserAdmin(userId);
+  } catch {
+    return false;
+  }
+}
+
 knowledgeRouter.get(
   "/knowledge/problems/:problemId",
   optionalAuthMiddleware,
   async (c) => {
     assertEnabled();
     const problemId = parseProblemId(c.req.param("problemId"));
-    const view = await readProblemKnowledge(problemId, viewerOf(c));
+    // 实例管理员可见保护期题目的挂载（与题目管理口径一致）。
+    const isAdminViewer = await isViewerAdmin(c.get("userId") ?? null);
+    const view = await readProblemKnowledge(problemId, {
+      ...viewerOf(c),
+      is_admin: isAdminViewer,
+    });
     // 保护期内的题目对非编辑者与「不存在」不可区分。
     if (!view) throw new NotFoundError("题目不存在");
-    return c.json({ data: view });
+    return c.json({
+      data: {
+        ...view,
+        difficulty: await readProblemDifficulty(problemId),
+      },
+    });
   },
 );
 
@@ -123,17 +218,29 @@ knowledgeRouter.put(
       { windowSec: 60, max: 30 },
     );
     const body = await parseJsonBody<
-      { primary?: unknown; secondary?: unknown }
+      { primary?: unknown; secondary?: unknown; pass_ratio_override?: unknown }
     >(
       c,
     );
+    const actor = userActorFromAuthenticatedId(c.get("userId")!);
+    // 出题人按题覆盖及格线：与挂载分开校验/落库，缺省不改动。
+    if ("pass_ratio_override" in body) {
+      await setPassRatioOverride(actor, problemId, body.pass_ratio_override, {
+        ipAddress: getClientIp(c),
+      });
+    }
     const view = await setProblemKnowledgeManually(
-      userActorFromAuthenticatedId(c.get("userId")!),
+      actor,
       problemId,
       body,
       { ipAddress: getClientIp(c) },
     );
-    return c.json({ data: view });
+    return c.json({
+      data: {
+        ...view,
+        difficulty: await readProblemDifficulty(problemId),
+      },
+    });
   },
 );
 

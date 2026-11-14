@@ -4,22 +4,27 @@
 为题目挂载知识点、节点阶梯与掌握度提供数据基础。用户文档与完整设计见
 [openspec/changes/add-knowledge-graph/](../../../../openspec/changes/add-knowledge-graph/)。
 
-| 文件               | 职责                                                                                     |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| `index.ts`         | 唯一对外出口：`feature` 声明（含只读路由）与知识图谱能力导出                             |
-| `pack.ts`          | `loadPackFromDir` / `validatePack` / `resolveOfficialPackDir`                            |
-| `import.ts`        | `importPack(dir)`：单事务幂等导入，统计新增/更新/废弃节点与边                            |
-| `graph.ts`         | 只读图视图 + 进程内 TTL 缓存（10 分钟）与 `invalidateKnowledgeGraphCache()`              |
-| `mappings.ts`      | 题目挂载：读取、人工挂载、审核、`applyAiMapping`（AI 结果落库）、比赛保护过滤            |
-| `tagging.ts`       | AI 打标：`knowledge.tag` 任务、提示词与截断、预算暂停、回填预估与管理 API 支撑           |
-| `offpeak.ts`       | 低峰时段纯函数：`isWithinWindow` / `nextWindowStart`（UTC+8）、设置读取与视图            |
-| `routes.ts`        | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核                            |
-| `mappings.test.ts` | 服务测试（权限、校验、整体替换、AI 不覆盖人工、审核流、保护期、废弃节点）                |
-| `pack.test.ts`     | 纯函数测试（临时目录构造非法包 + 真实官方包 14 领域 / 181 节点）                         |
-| `import.test.ts`   | 导入测试（真实 PostgreSQL：首导、幂等、替换废弃、扩展、失败不写库）                      |
-| `routes.test.ts`   | API 测试（整图/详情/开关关闭/空库/缓存失效）                                             |
-| `tagging.test.ts`  | 打标测试（开关/hash/人工挂载/预算/别名未配置/重试/阈值/提示词稳定性/回填/鉴权/低峰顺延） |
-| `offpeak.test.ts`  | 低峰时段纯函数测试（时段内外、跨零点、边界、下次开始、非法回退默认）                     |
+| 文件                      | 职责                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `index.ts`                | 唯一对外出口：`feature` 声明（含只读路由）与知识图谱能力导出                             |
+| `pack.ts`                 | `loadPackFromDir` / `validatePack` / `resolveOfficialPackDir`                            |
+| `import.ts`               | `importPack(dir)`：单事务幂等导入，统计新增/更新/废弃节点与边                            |
+| `graph.ts`                | 只读图视图 + 进程内 TTL 缓存（10 分钟）与 `invalidateKnowledgeGraphCache()`              |
+| `mappings.ts`             | 题目挂载：读取、人工挂载、审核、`applyAiMapping`（AI 结果落库）、比赛保护过滤            |
+| `tagging.ts`              | AI 打标：`knowledge.tag` 任务、提示词与截断、预算暂停、回填预估与管理 API 支撑           |
+| `offpeak.ts`              | 低峰时段纯函数：`isWithinWindow` / `nextWindowStart`（UTC+8）、设置读取与视图            |
+| `difficulty.ts`           | P2 难度：达标判定、校准公式、每日重算 worker、阶梯与「下一题」                           |
+| `pass-ratio.ts`           | 出题人按题覆盖及格线（`pass_ratio_override`），题目编辑权限 + 审计                       |
+| `objective-full-score.ts` | 客观题套卷满分（作答版本小题数 × 100，`evaluation_attempts` 记分口径）                   |
+| `routes.ts`               | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核                            |
+| `mappings.test.ts`        | 服务测试（权限、校验、整体替换、AI 不覆盖人工、审核流、保护期、废弃节点）                |
+| `pack.test.ts`            | 纯函数测试（临时目录构造非法包 + 真实官方包 14 领域 / 181 节点）                         |
+| `import.test.ts`          | 导入测试（真实 PostgreSQL：首导、幂等、替换废弃、扩展、失败不写库）                      |
+| `routes.test.ts`          | API 测试（整图/详情/开关关闭/空库/缓存失效）                                             |
+| `tagging.test.ts`         | 打标测试（开关/hash/人工挂载/预算/别名未配置/重试/阈值/提示词稳定性/回填/鉴权/低峰顺延） |
+| `offpeak.test.ts`         | 低峰时段纯函数测试（时段内外、跨零点、边界、下次开始、非法回退默认）                     |
+| `difficulty.test.ts`      | 校准公式/达标判定/阶梯排序与保护过滤/下一题/重算互斥/API 端到端                          |
+| `doc.test.ts`             | 讲解文档读取与目录穿越防护                                                               |
 
 ## API（只读，挂在 `/api/v1`）
 
@@ -85,6 +90,7 @@
 | `knowledge_ai_monthly_token_budget` | integer / 2000000      | 每月 token 预算（输入+输出合计，按自然月）；0 = 暂停所有调用              |
 | `knowledge_ai_offpeak_only`         | boolean / true         | 仅在低峰时段调用模型（env 兜底 `KNOWLEDGE_AI_OFFPEAK_ONLY`）              |
 | `knowledge_ai_offpeak_window`       | string / `00:30-08:30` | 低峰时段 `HH:MM-HH:MM`（北京时间），允许跨零点；写入按 `valueSchema` 校验 |
+| `knowledge_pass_ratio`              | integer / 60（0–100）  | 「达标」默认及格线百分数（非客观题；客观题恒为满分，可按题覆盖）          |
 
 缓存：图数据在进程内缓存 10 分钟（已登记于
 `dev-docs/engineering/domain-boundaries.md` 多副本约束表）；导入新包后同进程立即
@@ -162,6 +168,47 @@
 - `POST /admin/knowledge/tagging/backfill`（限流 3/min/用户）：body 须带
   `confirm: true` 与预估返回的 `expected_count`；实际数偏差超过 10% → 409
   要求重新预估；保护期题目不投递；按题目去重投递，写审计。
+
+## 难度与阶梯（P2）
+
+- **达标**（`difficulty.ts`）：有效得分 ≥ 题目及格线。有效成绩只取练习有效成绩
+  （`submissions.effective_attempt_id` /
+  `objective_submissions.effective_attempt_id`）
+  与**已结束**比赛的成绩，进行中比赛不计。客观题套卷及格线 = 满分（作答版本
+  小题数 × 100）；其余题型 = `pass_ratio_override ?? knowledge_pass_ratio` ×
+  10000。复用于 P3 掌握度。
+- **校准**：`prior` 取出题人三档映射（easy 25 / medium 50 / hard 75；P1 未把 AI
+  难度落库，后续可改为读打标结果）；`d_data = (1 − 达标人数 / 尝试人数) × 100`
+  （尝试人数 =
+  有有效成绩的去重用户数）；`calibrated = round((k·prior +
+  n·d_data)/(k+n))`，k
+  = 20。`tier = <34 easy / <67 medium / 其余 hard`； 无 `problem_difficulty`
+  行时回退出题人三档。`recalibrateProblem(problemId)` 供 单题重算与测试。
+- **每日重算**：`index.ts` 经 `defineFeature({ workers })` 注册
+  `startDifficultyRecalibrateWorker`（`startPeriodicTask`，24h，启动后不立即
+  执行）。多副本互斥用事务级
+  `pg_try_advisory_xact_lock`（`runExclusiveRecalibration`），
+  拿不到锁的副本本轮直接跳过；只重算已发布且有挂载或有提交的题目，keyset 分批
+  200 题（`RECALIBRATE_BATCH_SIZE`）。总开关关闭时本轮不访问数据。
+- **讲解**：`GET /knowledge/nodes/:id` 的 `doc` 为内容包 `docs/` 下 markdown
+  原文（`readDocMarkdown`，拒绝 `..`、绝对路径与反斜杠；缺失为 null）。
+- **阶梯**：`GET /knowledge/nodes/:id/ladder?domain=<slug>` →
+  `{ node_id, domain, items: [{ problem_id, number, title, domain, difficulty,
+  tier, sample_size, passed }], next }`；只含该节点为**主动知识点**、已发布、
+  域绑定可用、非进行中比赛 / 保密保护期的题目，按 calibrated 升序（无校准行用
+  先验）。`next` = 难度 ≥ 用户已达标最高难度的第一道未达标题（未登录 = 第一题，
+  全部达标 = null）。
+- **题目页下一题**：`GET /knowledge/problems/:problemId/next` → 该题主知识点阶梯
+  中难度高于本题、用户未达标的第一题（无则 null）。
+- **只显示有题的知识点**：`GET /knowledge/graph?domain=<slug>` 给每个节点附
+  `problem_count`（与该域阶梯同口径，逐节点查询；实例规模小时够用）。
+- `GET/PUT /knowledge/problems/:problemId` 返回
+  `difficulty: { score, tier,
+  sample_size, pass_ratio_override }`；PUT 可带
+  `pass_ratio_override` （0–100 整数或 null 清除），与挂载同权限，审计
+  `knowledge.difficulty.pass_ratio`。
+- 表 `problem_difficulty`：`problem_id` 主键（FK `problems` 级联）、`prior` /
+  `calibrated` 0–100、`sample_size`、`pass_ratio_override` 可空、`updated_at`。
 
 测试：`cd noj-core && deno task test:domain knowledge`；发布投递用例在
 `modules/problems/tests/services/knowledge-tag-task.test.ts`（`test:domain problems`）。

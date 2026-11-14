@@ -927,6 +927,20 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   },
   // 及格线、掌握题数等配置随使用它们的阶段（P2–P3）登记；只登记不消费的
   // runtime 键会被 check-config-usage 判为死键。
+  // 达标判定（P2，`features/knowledge/difficulty.ts` 读取）：非客观题默认及格线。
+  {
+    key: "knowledge_pass_ratio",
+    type: "integer",
+    default: 60,
+    description:
+      "知识图谱「达标」默认及格线（百分数 0–100）：非客观题有效得分不低于满分的此比例即达标；客观题套卷恒为满分达标，出题人可按题覆盖",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_PASS_RATIO",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
 
   // ── other ─────────────────────────────────────────────────
   {

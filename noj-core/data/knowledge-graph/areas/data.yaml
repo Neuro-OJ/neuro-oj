@@ -17,6 +17,7 @@ nodes:
     summary: 按比例把数据分为训练、验证与测试集，必要时分层抽样，使模型评估结果可靠且不泄露信息
     syllabus: [ioai, noai, lmcc]
     requires: [prog.sklearn, ai.ml-workflow]
+    doc: docs/data.split.md
   - id: data.feature-engineering
     name: 特征工程（独热编码、统计特征、滑动窗口）
     summary: 从原始数据构造更有表达力的输入特征，包括类别独热编码、统计聚合与时间序列滑动窗口
@@ -52,6 +53,7 @@ nodes:
     summary: 从不同角度衡量分类结果正确性的指标，需结合类别分布选择合适的指标评价模型表现
     syllabus: [ioai, noai, lmcc]
     requires: [data.split, math.statistics]
+    doc: docs/data.classification-metrics.md
   - id: data.confusion-roc
     name: 混淆矩阵与 ROC/AUC
     summary: 用混淆矩阵细分各类预测情况，并通过改变阈值绘制 ROC 曲线、计算 AUC 评估排序能力
@@ -67,6 +69,7 @@ nodes:
     summary: 分析模型复杂度与数据量不匹配时训练与验证误差的差异，并据此调整模型容量与正则强度
     syllabus: [ioai, noai, lmcc]
     requires: [data.split]
+    doc: docs/data.overfitting.md
   - id: data.cross-validation
     name: 交叉验证
     summary: 把数据轮换划分为多折训练与验证，多次评估取平均，得到更稳定的模型性能估计

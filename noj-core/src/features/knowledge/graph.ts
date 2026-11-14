@@ -19,6 +19,7 @@ import {
   knowledgeNodes,
   knowledgePacks,
 } from "../../shared/db/schema.ts";
+import { readDocMarkdown } from "./pack.ts";
 
 /** 缓存 TTL（毫秒）。 */
 export const KNOWLEDGE_GRAPH_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -142,7 +143,12 @@ export async function readKnowledgeGraph(): Promise<KnowledgeGraphView> {
   }
 }
 
-/** 读取节点详情；不存在或已废弃抛 404。requires/dependents 只含 active 节点。 */
+/**
+ * 读取节点详情；不存在或已废弃抛 404。requires/dependents 只含 active 节点。
+ *
+ * `doc` 为讲解文档 markdown 原文（`doc_path` 指向内容包 docs 目录下的文件）；
+ * 无声明或文件缺失时为 null。
+ */
 export async function readKnowledgeNode(
   id: string,
 ): Promise<KnowledgeNodeView> {
@@ -181,7 +187,7 @@ export async function readKnowledgeNode(
     name: row.name,
     summary: row.summary,
     syllabus: [...row.syllabus],
-    doc: row.doc_path,
+    doc: await readDocMarkdown(row.doc_path),
     requires: keepActive(inEdges.map((edge) => edge.from_id)),
     dependents: keepActive(outEdges.map((edge) => edge.to_id)),
   };

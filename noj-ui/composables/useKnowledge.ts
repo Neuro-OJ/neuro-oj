@@ -14,6 +14,9 @@ import {
   isBackfillDrift,
   isKnowledgeDisabled,
   type KnowledgeGraph,
+  type KnowledgeLadder,
+  type KnowledgeLadderItem,
+  type KnowledgeNodeView,
   type KnowledgeSelection,
   type PendingReviewPage,
   type ProblemKnowledgeView,
@@ -83,12 +86,84 @@ export function useKnowledge() {
     return task;
   }
 
-  /** 保存人工挂载（整体替换）。 */
-  async function saveProblem(problemId: string, value: KnowledgeSelection): Promise<ProblemKnowledgeView | null> {
+  /** 读知识点详情（`doc` 讲解 / 前置 / 后续）；功能关闭 → null，其他错误抛出。 */
+  async function loadNode(nodeId: string): Promise<KnowledgeNodeView | null> {
     try {
+      const res = await api.get<{ data: KnowledgeNodeView }>(
+        `/api/v1/knowledge/nodes/${encodeURIComponent(nodeId)}`,
+        { silent: true },
+      );
+      return res.data;
+    } catch (err) {
+      if (markDisabled(err)) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * 读节点题目阶梯（含 `next`）。节点或域不可访问（404）与功能关闭都返回 null，
+   * 由页面展示「暂无题目 / 整块隐藏」。
+   */
+  function loadLadder(nodeId: string, domain: string): Promise<KnowledgeLadder | null> {
+    const key = `ladder:${nodeId}:${domain}`;
+    const running = inflight.get(key);
+    if (running) return running as Promise<KnowledgeLadder | null>;
+    const task = (async () => {
+      try {
+        const res = await api.get<{ data: KnowledgeLadder }>(
+          `/api/v1/knowledge/nodes/${encodeURIComponent(nodeId)}/ladder`,
+          { params: { domain }, silent: true },
+        );
+        return res.data;
+      } catch (err) {
+        if (markDisabled(err)) return null;
+        const status = (err as { status?: number } | null)?.status;
+        if (status === 404) return null;
+        throw err;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, task);
+    return task;
+  }
+
+  /**
+   * 题目页「同类下一题」：该题主知识点阶梯中更高难度的下一题。
+   *
+   * 这是题面页的装饰性入口，任何失败（未归类、无更高难度、功能关闭、网络错误）
+   * 都返回 null 让按钮不渲染，不影响做题主流程。
+   */
+  async function loadNextForProblem(problemId: string): Promise<KnowledgeLadderItem | null> {
+    try {
+      const res = await api.get<{ data: KnowledgeLadderItem | null }>(
+        `/api/v1/knowledge/problems/${encodeURIComponent(problemId)}/next`,
+        { silent: true },
+      );
+      return res.data;
+    } catch (err) {
+      markDisabled(err);
+      return null;
+    }
+  }
+
+  /**
+   * 保存人工挂载（整体替换）。
+   *
+   * `pass_ratio_override` 只在显式传入时提交（判 null 视为清除覆盖）；
+   * 不传则后端不改动难度设置。
+   */
+  async function saveProblem(
+    problemId: string,
+    value: KnowledgeSelection,
+    options: { passRatioOverride?: number | null } = {},
+  ): Promise<ProblemKnowledgeView | null> {
+    try {
+      const body: Record<string, unknown> = { primary: value.primary, secondary: value.secondary };
+      if (options.passRatioOverride !== undefined) body.pass_ratio_override = options.passRatioOverride;
       const res = await api.put<{ data: ProblemKnowledgeView }>(
         `/api/v1/knowledge/problems/${encodeURIComponent(problemId)}`,
-        { primary: value.primary, secondary: value.secondary },
+        body,
       );
       return res.data;
     } catch (err) {
@@ -181,6 +256,9 @@ export function useKnowledge() {
     graph: graph as Ref<KnowledgeGraph | null>,
     loadGraph,
     loadProblem,
+    loadNode,
+    loadLadder,
+    loadNextForProblem,
     saveProblem,
     loadUsage,
     estimateBackfill,

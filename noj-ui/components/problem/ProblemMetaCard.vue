@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<{
   problem: ProblemView
   stats?: PublicProblemStats | null
   problemsTo?: string
+  /** 知识图谱校准难度档位（P2）；有值时优先于出题人自报难度。 */
+  calibratedTier?: 'easy' | 'medium' | 'hard' | null
 }>(), { problemsTo: '/problems' })
 
 const router = useRouter()
@@ -48,8 +50,11 @@ const acceptanceText = computed(() => {
         <dd class="min-w-0 break-words text-right font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>
       </div>
       <div class="flex items-center justify-between gap-3">
-        <dt class="text-text-secondary">难度</dt>
-        <dd><DifficultyBadge :difficulty="problem.difficulty" /></dd>
+        <dt class="text-text-secondary">难度<span v-if="calibratedTier" class="ml-1 text-xs text-text-muted">校准</span></dt>
+        <dd>
+          <DifficultyBadge v-if="calibratedTier || problem.difficulty" :difficulty="calibratedTier ?? problem.difficulty" />
+          <span v-else class="text-text-secondary">—</span>
+        </dd>
       </div>
       <div v-if="problem.owner_username" class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">提供者</dt>

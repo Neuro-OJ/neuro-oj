@@ -62,6 +62,8 @@ export interface ProblemKnowledgeView {
 /** 读接口的查看者：`userId` 为空表示未登录。 */
 export interface KnowledgeViewer {
   userId: string | null;
+  /** 查看者是否实例管理员（可见全部挂载；缺省按普通用户处理）。 */
+  is_admin?: boolean;
 }
 
 const UUID_PATTERN =
@@ -256,12 +258,13 @@ export async function readProblemKnowledge(
   const row = await requireProblem(problemId);
   // 保护期内只有编辑者（与平台管理员）能看到知识点（design.md 第 11 节）。
   if (await isProtected(row)) {
-    const allowed = viewer.userId
-      ? await canEditProblem(row, {
-        kind: "user",
-        userId: viewer.userId,
-      } as UserActor)
-      : false;
+    const allowed = viewer.is_admin === true ||
+      (viewer.userId
+        ? await canEditProblem(row, {
+          kind: "user",
+          userId: viewer.userId,
+        } as UserActor)
+        : false);
     if (!allowed) return null;
   }
   const rows = (await loadMappingRows([problemId])).map(toEntry);
