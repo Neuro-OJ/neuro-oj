@@ -396,7 +396,7 @@ async fn test_handle_eval_chunk_still_forwards_call_frames() {
     assert!(text.contains("\"type\":\"call\""));
     assert!(!text.contains("plain text"), "普通文本不应转发");
     // call 帧已被追踪：响应可命中
-    assert!(tracker.resolve_response("x"));
+    assert!(tracker.resolve_response("x", Instant::now()));
 }
 
 #[tokio::test]
@@ -524,7 +524,10 @@ async fn test_eval_call_frame_tracked_and_forwarded() {
     assert!(text.contains("\"timeout_ms\":500"), "帧应原样透传");
 
     // in-flight 已登记：响应命中可转发
-    assert!(tracker.resolve_response("c1"), "c1 应被追踪");
+    assert!(
+        tracker.resolve_response("c1", Instant::now()),
+        "c1 应被追踪"
+    );
 }
 
 #[tokio::test]

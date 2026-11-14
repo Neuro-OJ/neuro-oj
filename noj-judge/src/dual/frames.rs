@@ -100,7 +100,7 @@ pub(crate) async fn handle_eval_chunk(
                     Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                         // capability 响应帧：命中则转发给 solution，迟到/未知丢弃
                         if let Some(id) = v.get("id").and_then(Value::as_str) {
-                            if tracker.resolve_response(id) {
+                            if tracker.resolve_response(id, Instant::now()) {
                                 if forward_frame(sol_input, &v).await? == PipeWriteOutcome::PeerGone
                                 {
                                     return Ok(false);
@@ -178,7 +178,7 @@ pub(crate) async fn handle_sol_chunk(
                 Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                     // call 响应帧（evaluator 等待）：命中则转发，迟到/未知丢弃
                     if let Some(id) = v.get("id").and_then(Value::as_str) {
-                        if tracker.resolve_response(id) {
+                        if tracker.resolve_response(id, Instant::now()) {
                             if forward_frame(eval_input, &v).await? == PipeWriteOutcome::PeerGone {
                                 return Ok(false);
                             }

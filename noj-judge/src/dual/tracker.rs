@@ -6,6 +6,9 @@
 //! - cap_reg 帧维护 capability → timeout_ms 映射
 //! - 响应帧按 id 命中判定（未命中 = 迟到/未知响应，应丢弃）
 //! - 已超时调用批量摘除（供调用方写 Timeout 错误帧）
+//! - 统计 Solution 忙碌时长：任一 evaluator → solution 调用 in-flight 的区间并集，
+//!   作为双容器评测上报给做题人的 `time_ms`（不含容器创建/销毁、评测脚本自身与
+//!   LLM 调用等与选手代码无关的开销）
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -36,6 +39,12 @@ pub struct InFlightTracker {
     default_call_timeout_ms: u64,
     /// judge 侧硬上限：evaluator 帧里的 timeout_ms 不能超过它（0 表示不限制）。
     max_call_timeout_ms: u64,
+    /// 已结束的 Solution 忙碌区间累计时长。
+    solution_busy: Duration,
+    /// 当前忙碌区间起点（有 evaluator 等待中的调用时为 Some）。
+    busy_since: Option<Instant>,
+    /// 是否登记过 evaluator → solution 调用（从未调用时不上报耗时）。
+    solution_called: bool,
 }
 
 impl InFlightTracker {
@@ -50,7 +59,41 @@ impl InFlightTracker {
             cap_timeouts: HashMap::new(),
             default_call_timeout_ms,
             max_call_timeout_ms,
+            solution_busy: Duration::ZERO,
+            busy_since: None,
+            solution_called: false,
         }
+    }
+
+    /// 是否仍有 evaluator 等待 solution 的调用。
+    fn has_evaluator_waiting(&self) -> bool {
+        self.inflight
+            .values()
+            .any(|e| e.waiting == WaitingSide::Evaluator)
+    }
+
+    /// evaluator 调用全部结束时关闭当前忙碌区间。
+    fn close_busy_if_idle(&mut self, now: Instant) {
+        if self.has_evaluator_waiting() {
+            return;
+        }
+        if let Some(since) = self.busy_since.take() {
+            self.solution_busy += now.saturating_duration_since(since);
+        }
+    }
+
+    /// Solution 忙碌总时长（毫秒）：所有 evaluator → solution 调用 in-flight 区间的并集，
+    /// 并发调用不重复计时；调用中 solution 反向等待 capability 的时间计入其中。
+    /// 从未发生调用时返回 None（如启动失败、评测脚本未调用选手代码）。
+    pub fn solution_time_ms(&self, now: Instant) -> Option<u64> {
+        if !self.solution_called {
+            return None;
+        }
+        let open = self
+            .busy_since
+            .map(|since| now.saturating_duration_since(since))
+            .unwrap_or_default();
+        Some((self.solution_busy + open).as_millis() as u64)
     }
 
     /// 取 judge 硬上限截断后的超时值（上限为 0 时原样返回）。
@@ -77,6 +120,10 @@ impl InFlightTracker {
     pub fn on_call_frame(&mut self, frame: &Value, now: Instant) -> Option<(String, u64)> {
         let id = frame.get("id").and_then(Value::as_str)?.to_string();
         let timeout_ms = self.resolve_timeout(frame);
+        self.solution_called = true;
+        if self.busy_since.is_none() {
+            self.busy_since = Some(now);
+        }
         self.inflight.insert(
             id.clone(),
             InFlightEntry {
@@ -129,8 +176,12 @@ impl InFlightTracker {
     }
 
     /// 响应帧按 id 判定：命中（尚在 in-flight）→ 移除并返回 true（转发）；否则 false（丢弃）。
-    pub fn resolve_response(&mut self, id: &str) -> bool {
-        self.inflight.remove(id).is_some()
+    pub fn resolve_response(&mut self, id: &str, now: Instant) -> bool {
+        let hit = self.inflight.remove(id).is_some();
+        if hit {
+            self.close_busy_if_idle(now);
+        }
+        hit
     }
 
     /// 摘除所有已超时调用，返回 (id, 等待方向) 列表。
@@ -145,6 +196,9 @@ impl InFlightTracker {
         for (id, e) in expired {
             self.inflight.remove(&id);
             out.push((id, e.waiting));
+        }
+        if !out.is_empty() {
+            self.close_busy_if_idle(now);
         }
         out
     }
@@ -251,14 +305,17 @@ mod tests {
         let now = Instant::now();
         let mut t = InFlightTracker::new(2000, 0);
         t.on_call_frame(&call_frame("r1", None), now).unwrap();
-        assert!(t.resolve_response("r1"));
-        assert!(!t.resolve_response("r1"), "已移除，二次命中应为 false");
+        assert!(t.resolve_response("r1", Instant::now()));
+        assert!(
+            !t.resolve_response("r1", Instant::now()),
+            "已移除，二次命中应为 false"
+        );
     }
 
     #[test]
     fn test_resolve_response_unknown_false() {
         let mut t = InFlightTracker::new(2000, 0);
-        assert!(!t.resolve_response("ghost"));
+        assert!(!t.resolve_response("ghost", Instant::now()));
     }
 
     #[test]
@@ -362,6 +419,63 @@ mod tests {
         assert_eq!(e1.len(), 1);
         assert_eq!(e1[0].0, "c1");
         // c2 仍可正常命中
-        assert!(t.resolve_response("c2"));
+        assert!(t.resolve_response("c2", Instant::now()));
+    }
+
+    // ── Solution 忙碌时长 ──
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    #[test]
+    fn test_solution_time_none_without_calls() {
+        let t = InFlightTracker::new(5000, 0);
+        assert_eq!(t.solution_time_ms(Instant::now()), None);
+    }
+
+    #[test]
+    fn test_solution_time_sums_sequential_calls() {
+        let base = Instant::now();
+        let mut t = InFlightTracker::new(5000, 0);
+        t.on_call_frame(&call_frame("c1", None), base);
+        assert!(t.resolve_response("c1", base + ms(30)));
+        // 两次调用之间 evaluator 自身耗时（如调用 LLM）不计入
+        t.on_call_frame(&call_frame("c2", None), base + ms(1000));
+        assert!(t.resolve_response("c2", base + ms(1020)));
+        assert_eq!(t.solution_time_ms(base + ms(9000)), Some(50));
+    }
+
+    #[test]
+    fn test_solution_time_counts_overlapping_calls_once() {
+        let base = Instant::now();
+        let mut t = InFlightTracker::new(5000, 0);
+        t.on_call_frame(&call_frame("c1", None), base);
+        t.on_call_frame(&call_frame("c2", None), base + ms(10));
+        assert!(t.resolve_response("c1", base + ms(40)));
+        assert!(t.resolve_response("c2", base + ms(60)));
+        assert_eq!(t.solution_time_ms(base + ms(100)), Some(60));
+    }
+
+    #[test]
+    fn test_solution_time_includes_open_and_expired_calls() {
+        let base = Instant::now();
+        let mut t = InFlightTracker::new(100, 0);
+        t.on_call_frame(&call_frame("c1", None), base);
+        // 进行中的调用按当前时刻计入
+        assert_eq!(t.solution_time_ms(base + ms(40)), Some(40));
+        // 超时摘除后区间关闭，之后不再增长
+        assert_eq!(t.expire_now(base + ms(100)).len(), 1);
+        assert_eq!(t.solution_time_ms(base + ms(500)), Some(100));
+    }
+
+    #[test]
+    fn test_capability_alone_does_not_count_as_solution_time() {
+        let base = Instant::now();
+        let mut t = InFlightTracker::new(5000, 0);
+        let f = json!({"type": "capability", "id": "cap-1", "name": "ping", "args": []});
+        t.on_capability_frame(&f, base);
+        assert!(t.resolve_response("cap-1", base + ms(50)));
+        assert_eq!(t.solution_time_ms(base + ms(100)), None);
     }
 }

@@ -203,9 +203,10 @@ cargo fmt
   └─ 9. 结果取得后立即收尾 → 显式 `dual.destroy()` 强制清理两个容器（编排循环不发 `shutdown` 帧、也不关闭 Solution stdin）
 ```
 
-当前实现回填 `time_ms`（从评测开始到 `dual.destroy()`
-清理完成的墙上时钟总耗时，含清理）； `memory_kb` 通过销毁前读取一次 Docker stats
-尽力回填：
+当前实现回填 `time_ms` 为 **Solution 忙碌时长**：`InFlightTracker` 统计所有
+evaluator → solution 调用 in-flight 区间的并集（不含容器创建/销毁、注入、
+评测脚本自身与 LLM 调用；从未调用时为 `null`），整段墙钟时间只写入
+`wall_time_ms` 日志；`memory_kb` 通过销毁前读取一次 Docker stats 尽力回填：
 
 - cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
 - cgroups v2 无 `max_usage` 时回退到 `usage`（近似值）；
