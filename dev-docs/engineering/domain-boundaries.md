@@ -146,6 +146,7 @@ BFF 公开站点元信息沿用 Redis 的 30 秒 TTL 缓存，不使用分布式
 | `shared/sse/sse-stream.ts`                                   | 应用实例拥有的 SSE 连接注册表                                                         | 每个副本关闭自己的流，客户端重连后重新授权                 | 单副本专用的连接生命周期；Core 装配显式注入 scope                                                                              |
 | `features/knowledge/graph.ts`                                | 只读知识图谱缓存（领域 + active 节点 + 前置边，10 分钟 TTL，数据源 `knowledge_*` 表） | 导入新内容包后各副本最多 10 分钟内仍返回旧图               | TTL 兜底；同进程 `importPack` 成功后主动 `invalidateKnowledgeGraphCache()`（导入通常在迁移容器独立进程中执行，跨副本依赖 TTL） |
 | `features/knowledge/difficulty.ts`                           | 难度每日重算周期任务单例句柄（24h，启动后不立即执行）                 | 多副本同时重算会重复写 `problem_difficulty`（结果幂等，仅浪费算力） | 单例只阻止同进程重复启动；跨副本用事务级 `pg_try_advisory_xact_lock`（`runExclusiveRecalibration`），拿不到锁的副本本轮跳过 |
+| `features/knowledge/mastery.ts`                              | 掌握度保护结束重算周期任务单例句柄（1h，启动后不立即执行）           | 多副本同时重算会重复写 `user_knowledge_mastery`（结果幂等，仅浪费算力） | 单例只阻止同进程重复启动；跨副本用事务级 `pg_try_advisory_xact_lock`，拿不到锁的副本本轮跳过；增量任务 `knowledge.mastery` 按用户去重 |
 
 **跨副本失效的正确做法（务必注意）**：`getSetting()` 在缓存未命中时**不回查
 DB**， 而是走 env → default

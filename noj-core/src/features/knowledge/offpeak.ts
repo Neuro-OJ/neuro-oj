@@ -130,7 +130,7 @@ export function readOffpeakPolicy(): OffpeakPolicy {
 
 /** 管理 API 视图：`{ enabled, window, next_start }`。 */
 export function offpeakView(
-  now: Date = new Date(),
+  now: Date = offpeakNow(),
 ): { enabled: boolean; window: string; next_start: string | null } {
   const policy = readOffpeakPolicy();
   return {
@@ -148,7 +148,7 @@ export function offpeakView(
  * 开启 offpeak 且当前不在时段内 → 返回 `nextWindowStart`，让任务入队时
  * `available_at` 就在时段内，避免白天被反复领取再顺延。
  */
-export function offpeakAvailableAt(now: Date = new Date()): string | null {
+export function offpeakAvailableAt(now: Date = offpeakNow()): string | null {
   const policy = readOffpeakPolicy();
   if (!policy.enabled) return null;
   if (isWithinWindow(now, policy.window)) return null;

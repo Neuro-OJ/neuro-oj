@@ -9,14 +9,23 @@ import { defineFeature } from "../../shared/feature.ts";
 import { knowledgeRouter } from "./routes.ts";
 import { startDifficultyRecalibrateWorker } from "./difficulty.ts";
 import { KNOWLEDGE_TAG_TASK_TYPE, knowledgeTagHandler } from "./tagging.ts";
+import {
+  knowledgeMasteryHandler,
+  MASTERY_TASK_TYPE,
+  startMasteryProtectionWorker,
+} from "./mastery.ts";
 
 export const feature = defineFeature({
   name: "knowledge",
   router: knowledgeRouter,
   // AI 打标任务（P1，默认关闭）：由题目发布事务投递，target = 题目。
-  tasks: { [KNOWLEDGE_TAG_TASK_TYPE]: knowledgeTagHandler },
+  tasks: {
+    [KNOWLEDGE_TAG_TASK_TYPE]: knowledgeTagHandler,
+    // 掌握度增量重算（P3）：有效成绩变更时投递，target = 用户。
+    [MASTERY_TASK_TYPE]: knowledgeMasteryHandler,
+  },
   // 难度每日重算（P2）：24h 一次，启动后不立即执行，多副本经 advisory lock 互斥。
-  workers: [startDifficultyRecalibrateWorker],
+  workers: [startDifficultyRecalibrateWorker, startMasteryProtectionWorker],
 });
 
 export {
@@ -64,6 +73,39 @@ export {
   type TagEstimate,
   type TagUsageView,
 } from "./tagging.ts";
+export {
+  computeNodeMastery,
+  type CoverageNodeItem,
+  type CoverageView,
+  diagnoseNode,
+  DIAGNOSIS_MAX_ITEMS,
+  type DiagnosisItem,
+  knowledgeMasteryHandler,
+  loadUserMastery,
+  loadUserProblemScores,
+  MASTERY_PROTECTION_INTERVAL_MS,
+  type MasteryItem,
+  masteryMinSolved,
+  type MasteryState,
+  type MyMasteryView,
+  type MyRecommendationsView,
+  type NodeDiagnosisView,
+  type NodeMasteryInput,
+  type NodeMasteryResult,
+  rankFrontierNodes,
+  readCoverage,
+  readMyMastery,
+  readMyRecommendations,
+  type Recommendation,
+  type RecommendationReason,
+  RECOMMENDATIONS_MAX_LIMIT,
+  recomputeRecentlyUnprotectedMastery,
+  recomputeUserMastery,
+  ROOT_CAUSE_THRESHOLD,
+  startMasteryProtectionWorker,
+  upperThirdThreshold,
+  type UserMasteryResult,
+} from "./mastery.ts";
 export {
   calibrateDifficulty,
   DIFFICULTY_RECALIBRATE_INTERVAL_MS,

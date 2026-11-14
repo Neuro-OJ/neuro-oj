@@ -28,6 +28,18 @@ Deno.test('空间导航：相同用户不同域角色只显示该域能力，所
   assert(teacher.every((item) => item.to.startsWith('/d/other-school')));
 });
 
+Deno.test('空间导航：知识图谱开启时登录用户有「我的学习」入口，关闭或匿名不显示', () => {
+  const enabled = workspaceNavigation(base, { knowledgeEnabled: true });
+  assertEquals(enabled.find((item) => item.section === 'knowledge')?.to, '/d/school/knowledge');
+  assertEquals(enabled.find((item) => item.section === 'knowledge')?.label, '我的学习');
+  assert(!workspaceNavigation(base, { knowledgeEnabled: false }).some((item) => item.section === 'knowledge'));
+  assert(!workspaceNavigation(base).some((item) => item.section === 'knowledge'));
+  assert(
+    !workspaceNavigation({ ...base, actor_id: null }, { knowledgeEnabled: true })
+      .some((item) => item.section === 'knowledge'),
+  );
+});
+
 Deno.test('域设置导航：默认域与其他域共用管理入口，成员无设置入口', () => {
   assertEquals(workspaceSettingsNavigation(base), []);
   for (const slug of ['main', 'school']) {

@@ -941,6 +941,20 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     max: 100,
     scope: "runtime",
   },
+  // 掌握度（P3，`features/knowledge/mastery.ts` 读取）：「已掌握」所需达标题数。
+  {
+    key: "knowledge_mastery_min_solved",
+    type: "integer",
+    default: 3,
+    description:
+      "知识点「已掌握」所需达标题数（节点题量少于该值时视为全部达标即掌握）；同时用于覆盖度面板的「题量不足」判定",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_MASTERY_MIN_SOLVED",
+    category: "knowledge",
+    min: 1,
+    max: 20,
+    scope: "runtime",
+  },
 
   // ── other ─────────────────────────────────────────────────
   {

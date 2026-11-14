@@ -110,6 +110,171 @@ export interface KnowledgeLadder {
   next: KnowledgeLadderItem | null;
 }
 
+// ─── P3：掌握状态、推荐、根因诊断、覆盖度 ───────────────
+
+/** 掌握状态（与后端 `MasteryState` 一致）。 */
+export type MasteryState = 'none' | 'learning' | 'mastered';
+
+/** 掌握状态展示文案。 */
+export function masteryStateLabel(state: MasteryState): string {
+  return state === 'mastered' ? '已掌握' : state === 'learning' ? '学习中' : '未开始';
+}
+
+/** 掌握状态徽标配色（已掌握=成功绿、学习中=品牌天青蓝、未开始=中性灰）。 */
+export function masteryStateColor(state: MasteryState): 'success' | 'primary' | 'neutral' {
+  return state === 'mastered' ? 'success' : state === 'learning' ? 'primary' : 'neutral';
+}
+
+/** 掌握度条目（`GET /knowledge/me/mastery` 的 `items[]`）。 */
+export interface MasteryItem {
+  node_id: string;
+  name: string;
+  area: string;
+  state: MasteryState;
+  solved_count: number;
+  attempted_count: number;
+  failed_attempts: number;
+  max_passed_difficulty: number | null;
+  /** 该域中该节点为主动知识点的可访问题目数。 */
+  problem_count: number;
+}
+
+/** 我的掌握度（`GET /knowledge/me/mastery` 的 `data`）。 */
+export interface MyMasteryView {
+  domain: { id: string; slug: string };
+  mastered: number;
+  learning: number;
+  total: number;
+  items: MasteryItem[];
+}
+
+/** 推荐理由（前端按 `code` 拼中文；params 字段以后端为准）。 */
+export type RecommendationReasonCode =
+  | 'continue_learning'
+  | 'prerequisites_mastered'
+  | 'entry_point'
+  | 'review_prerequisite';
+
+/** 推荐理由结构化数据（`params` 只填当前 code 使用的字段）。 */
+export interface RecommendationReasonParams {
+  node_id?: string;
+  node_name?: string;
+  /** `continue_learning`：还差几道达标题。 */
+  remaining?: number;
+  /** `review_prerequisite`：用户多次未达标的节点与次数。 */
+  failed_attempts?: number;
+  prerequisite_id?: string;
+  prerequisite_name?: string;
+  /** `prerequisites_mastered`：已掌握的前置列表。 */
+  prerequisites?: Array<{ id: string; name: string }>;
+}
+
+export interface RecommendationReason {
+  /** 已知 code 有联合类型；后端新增 code 时按字符串处理并走通用文案。 */
+  code: string;
+  params: RecommendationReasonParams & Record<string, unknown>;
+}
+
+/** 一条推荐（`GET /knowledge/me/recommendations` 的 `items[]`）。 */
+export interface KnowledgeRecommendation {
+  node: {
+    id: string;
+    name: string;
+    area: string;
+    state: MasteryState;
+    problem_count: number;
+  };
+  reason: RecommendationReason;
+  /** 推荐题（复用阶梯「下一题」）；无推荐题时为 null。 */
+  next: KnowledgeLadderItem | null;
+}
+
+/** 推荐视图（`GET /knowledge/me/recommendations` 的 `data`）。 */
+export interface MyRecommendationsView {
+  domain: { id: string; slug: string };
+  items: KnowledgeRecommendation[];
+}
+
+/** 根因诊断中的一个未掌握前置。 */
+export interface DiagnosisItem {
+  node_id: string;
+  name: string;
+  /** 与目标节点的最短层级：直接前置为 1。 */
+  depth: number;
+  state: MasteryState;
+  failed_attempts: number;
+}
+
+/** 根因诊断（`GET /knowledge/nodes/:id/diagnosis` 的 `data`）。 */
+export interface NodeDiagnosisView {
+  node_id: string;
+  state: MasteryState;
+  missing_prerequisites: DiagnosisItem[];
+  chain: DiagnosisItem[];
+}
+
+/** 覆盖度单节点（`GET /admin/knowledge/coverage` 的 `nodes[]`）。 */
+export interface CoverageNodeItem {
+  node_id: string;
+  name: string;
+  area: string;
+  difficulty_distribution: { easy: number; medium: number; hard: number };
+  problem_count: number;
+  insufficient_problems: boolean;
+  difficulty_gap: boolean;
+}
+
+/** 覆盖度视图。 */
+export interface CoverageView {
+  domain: { id: string; slug: string } | null;
+  min_solved: number;
+  totals: {
+    nodes: number;
+    nodes_with_problems: number;
+    insufficient_problems: number;
+    difficulty_gap: number;
+    problems: number;
+  };
+  nodes: CoverageNodeItem[];
+  unclassified_problems: number;
+  pending_mappings: number;
+  deprecated_mappings: number;
+  protected_problems: number;
+}
+
+/** 推荐理由中文文案；未知 code 回退通用文案。 */
+export function recommendationReasonText(reason: RecommendationReason | null | undefined): string {
+  const params = (reason?.params ?? {}) as RecommendationReasonParams;
+  switch (reason?.code) {
+    case 'continue_learning':
+      return `已在学习中，再完成 ${Number(params.remaining ?? 0)} 道达标题即可掌握`;
+    case 'prerequisites_mastered': {
+      const names = (params.prerequisites ?? []).map((item) => item.name).filter(Boolean);
+      return names.length ? `前置知识点 ${names.join('、')} 已掌握，可以开始` : '前置知识点已掌握，可以开始';
+    }
+    case 'entry_point':
+      return '入门知识点，适合作为起点';
+    case 'review_prerequisite': {
+      const nodeName = params.node_name ?? params.node_id ?? '该知识点';
+      const prerequisite = params.prerequisite_name ?? params.prerequisite_id ?? '前置知识点';
+      return `你在 ${nodeName} 上多次未达标，建议先巩固 ${prerequisite}`;
+    }
+    default:
+      return '根据你的学习进度推荐';
+  }
+}
+
+/** 覆盖度筛选：「只看有问题的节点」= 题量不足或难度断层。 */
+export function coverageNodeHasProblem(item: CoverageNodeItem): boolean {
+  return item.insufficient_problems || item.difficulty_gap;
+}
+
+/** 掌握率（0–100 整数）；总数为 0 时为 0。 */
+export function masteryPercent(mastered: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round((mastered / total) * 100));
+}
+
 /** 审核队列条目。 */
 export interface PendingReviewItem {
   problem_id: string;

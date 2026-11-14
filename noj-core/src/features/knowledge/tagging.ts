@@ -812,7 +812,7 @@ export interface TagUsageView {
 
 /** 读取用量（网关用量 + 开关 + 别名配置）。 */
 export async function readTagUsage(
-  now: Date = new Date(),
+  now: Date = offpeakNow(),
 ): Promise<TagUsageView> {
   const month = monthStart(now);
   let usage = { input_tokens: 0, output_tokens: 0, requests: 0, cost: 0 };

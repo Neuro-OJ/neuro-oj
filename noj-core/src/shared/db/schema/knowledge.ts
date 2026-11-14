@@ -234,3 +234,52 @@ export const problemDifficulty = pgTable(
     ),
   }),
 );
+
+/**
+ * 用户 × 知识点掌握度（P3，物化；见 design.md 第 8 节）。
+ *
+ * `state`：`none`（无达标记录）/ `learning`（任一题达标）/ `mastered`
+ * （达标题数 ≥ K 且至少一道达标题位于该节点题目难度上三分之一；节点题量
+ * < K 时为「全部达标」）。`failed_attempts` 为未达标提交次数（根因诊断用），
+ * `max_passed_difficulty` 为已达标题的最高校准难度（可空）。
+ * 由 `knowledge.mastery` 任务按用户整体重算（`features/knowledge/mastery.ts`）。
+ */
+export const userKnowledgeMastery = pgTable(
+  "user_knowledge_mastery",
+  {
+    user_id: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
+    }),
+    state: text("state").notNull().default("none"),
+    solved_count: integer("solved_count").notNull().default(0),
+    attempted_count: integer("attempted_count").notNull().default(0),
+    failed_attempts: integer("failed_attempts").notNull().default(0),
+    max_passed_difficulty: integer("max_passed_difficulty"),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.user_id, table.node_id] }),
+    stateCheck: check(
+      "user_knowledge_mastery_state_check",
+      sql`${table.state} IN ('none', 'learning', 'mastered')`,
+    ),
+    countsCheck: check(
+      "user_knowledge_mastery_counts_check",
+      sql`${table.solved_count} >= 0 AND ${table.attempted_count} >= 0
+        AND ${table.failed_attempts} >= 0`,
+    ),
+    maxDifficultyCheck: check(
+      "user_knowledge_mastery_max_difficulty_check",
+      sql`${table.max_passed_difficulty} IS NULL
+        OR (${table.max_passed_difficulty} >= 0
+          AND ${table.max_passed_difficulty} <= 100)`,
+    ),
+    nodeStateIndex: index("user_knowledge_mastery_node_state_idx").on(
+      table.node_id,
+      table.state,
+    ),
+  }),
+);

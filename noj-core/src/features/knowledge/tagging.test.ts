@@ -921,7 +921,7 @@ Deno.test({
       const data = (await res.json()).data;
       assertEquals(data.offpeak.enabled, true);
       assertEquals(data.offpeak.window, "22:00-06:00");
-      assertEquals(data.offpeak.next_start, "2026-11-14T14:00:00.000Z");
+      assertEquals(data.offpeak.next_start, "2026-11-13T14:00:00.000Z");
       // 关闭后 next_start 为 null。
       await setOffpeak(false);
       const res2 = await jsonRequest(
