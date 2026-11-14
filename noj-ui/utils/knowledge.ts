@@ -29,6 +29,8 @@ export interface ProblemKnowledgeView {
   primary: KnowledgeMappingEntry | null;
   secondary: KnowledgeMappingEntry[];
   pending: boolean;
+  /** 校准难度（P1 响应可能缺省）。 */
+  difficulty?: ProblemDifficultyView | null;
 }
 
 /** 图谱节点（`GET /knowledge/graph` 的 `data.nodes`）。 */
@@ -38,6 +40,8 @@ export interface KnowledgeNode {
   name: string;
   summary: string | null;
   requires: string[];
+  /** 本域内以该节点为主知识点的可做题目数（P2 附加，旧响应可能缺省）。 */
+  problem_count?: number;
 }
 
 /** 图谱领域（`GET /knowledge/graph` 的 `data.areas`）。 */
@@ -51,6 +55,59 @@ export interface KnowledgeGraph {
   pack: { id: string; version: string } | null;
   areas: KnowledgeArea[];
   nodes: KnowledgeNode[];
+}
+
+/** 知识点详情（`GET /knowledge/nodes/:id` 的 `data`）。 */
+export interface KnowledgeNodeView {
+  id: string;
+  area: string;
+  name: string;
+  summary: string;
+  /** 考纲标签。 */
+  syllabus: string[];
+  /** 讲解 markdown 原文；内容包未提供时为 null。 */
+  doc: string | null;
+  /** 直接前置知识点 ID（仅 active）。 */
+  requires: string[];
+  /** 直接后续知识点 ID（仅 active）。 */
+  dependents: string[];
+}
+
+/** 难度档位（与后端 `tier = <34 easy / <67 medium / 其余 hard` 一致）。 */
+export type DifficultyTier = 'easy' | 'medium' | 'hard';
+
+/** 题目校准难度（`GET/PUT /knowledge/problems/:problemId` 的 `difficulty`）。 */
+export interface ProblemDifficultyView {
+  /** 校准分 0–100（无校准行时为先验分）。 */
+  score: number;
+  tier: DifficultyTier;
+  sample_size: number;
+  /** 出题人覆盖的及格线（百分比 0–100）；null 表示用空间默认。 */
+  pass_ratio_override: number | null;
+}
+
+/** 阶梯中的一道题（`GET /knowledge/nodes/:id/ladder` 的 `items[]`）。 */
+export interface KnowledgeLadderItem {
+  problem_id: string;
+  number: number | null;
+  title: string;
+  /** 所属域 slug（跨域题目按 `/d/<域>/problems/…` 链接）。 */
+  domain: string;
+  /** 校准难度 0–100（按此升序排列）。 */
+  difficulty: number;
+  tier: DifficultyTier;
+  sample_size: number;
+  /** 当前用户是否达标；未登录为 null。 */
+  passed: boolean | null;
+}
+
+/** 节点题目阶梯（`GET /knowledge/nodes/:id/ladder` 的 `data`）。 */
+export interface KnowledgeLadder {
+  node_id: string;
+  domain: string;
+  items: KnowledgeLadderItem[];
+  /** 推荐的下一题；全部达标或空阶梯为 null。 */
+  next: KnowledgeLadderItem | null;
 }
 
 /** 审核队列条目。 */
@@ -227,4 +284,45 @@ export function formatOffpeakStart(iso: string | null | undefined): string {
     minute: '2-digit',
     hour12: false,
   });
+}
+
+/** 难度档位展示文案与颜色（配色走 Nuxt UI 语义色，映射到设计 token）。 */
+export function difficultyTierLabel(tier: DifficultyTier): string {
+  return tier === 'easy' ? '简单' : tier === 'medium' ? '中等' : '困难';
+}
+
+/** 难度档位对应的语义色（与 `DifficultyBadge` 同一口径）。 */
+export function difficultyTierColor(tier: DifficultyTier): 'success' | 'warning' | 'error' {
+  return tier === 'easy' ? 'success' : tier === 'medium' ? 'warning' : 'error';
+}
+
+/**
+ * 「去做第一题」目标：优先用户视角的 `next`，未登录时取阶梯第一题。
+ *
+ * 链接固定走题目详情页（`/d/<域>/problems/<题号>`），与阶梯项同口径；
+ * 无可用题目返回 null，调用方据此隐藏按钮。
+ */
+export function ladderEntryItem(ladder: KnowledgeLadder | null): KnowledgeLadderItem | null {
+  if (!ladder) return null;
+  return ladder.next ?? ladder.items[0] ?? null;
+}
+
+/** 阶梯题目的相对路径；题号缺失（仅 ID）时返回 null。 */
+export function ladderItemPath(item: KnowledgeLadderItem): string | null {
+  if (item.number === null || item.number === undefined) return null;
+  return `/d/${encodeURIComponent(item.domain)}/problems/${item.number}`;
+}
+
+/**
+ * 及格线覆盖值解析：空串 → null（清除覆盖，用空间默认）；越界或非整数 → `{ error }`。
+ *
+ * 后端只接受 0–100 整数或 null，前端提前拦截避免无谓的 400。
+ */
+export function parsePassRatioOverride(raw: string): { value: number | null; error?: string } {
+  const text = raw.trim();
+  if (!text) return { value: null };
+  if (!/^\d{1,3}$/.test(text)) return { value: null, error: '请填写 0–100 的整数百分比' };
+  const value = Number(text);
+  if (value > 100) return { value: null, error: '请填写 0–100 的整数百分比' };
+  return { value };
 }

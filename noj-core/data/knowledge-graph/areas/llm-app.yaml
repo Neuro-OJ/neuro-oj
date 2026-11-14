@@ -7,6 +7,7 @@ nodes:
     summary: 研究如何组织指令与上下文，让大模型稳定产出符合期望的回答，是使用大模型解决实际问题的基础技能
     syllabus: [lmcc, ioai]
     requires: [llm.definition, prog.llm-api]
+    doc: docs/llm-app.prompt-engineering.md
   - id: llm-app.prompt-design
     name: 人工提示设计与系统提示
     summary: 掌握角色设定、任务描述、格式约束与分隔符等手工提示技巧，并能用系统提示统一规定助手的身份与行为边界
@@ -32,6 +33,7 @@ nodes:
     summary: 在生成前检索外部知识库并把相关文档拼入提示，使模型能回答知识库内的问题并减少编造，是常见的落地架构
     syllabus: [lmcc]
     requires: [llm-app.vector-retrieval, llm-app.prompt-design]
+    doc: docs/llm-app.rag.md
   - id: llm-app.reasoning-concepts
     name: 认知推理与测试时扩展
     summary: 理解模型推理的慢思考与快思考之别，以及增加测试时计算（更长的思考、多次采样）换取更高准确率的基本思路

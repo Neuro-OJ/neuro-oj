@@ -7,11 +7,13 @@ nodes:
     summary: 用特征的线性组合拟合连续目标值，通过最小化平方误差求参数，并可用闭式解或梯度下降求解
     syllabus: [ioai, noai, lmcc]
     requires: [math.gradient, ai.ml-workflow]
+    doc: docs/ml.linear-regression.md
   - id: ml.logistic-regression
     name: 逻辑回归
     summary: 在线性打分上套用 Sigmoid 函数输出类别概率，用交叉熵损失训练，是二分类的基础模型
     syllabus: [ioai, noai, lmcc]
     requires: [ml.linear-regression, math.information-theory]
+    doc: docs/ml.logistic-regression.md
   - id: ml.regularization
     name: L1/L2 正则化
     summary: 在损失中加入参数范数惩罚以抑制过拟合，L2 使权重收缩，L1 还能产生稀疏解用于特征选择
@@ -47,6 +49,7 @@ nodes:
     summary: 迭代执行样本分配与中心更新，最小化簇内平方误差，把无标签数据划分为 K 个簇
     syllabus: [ioai, noai]
     requires: [math.similarity, ai.ml-paradigms]
+    doc: docs/ml.kmeans.md
   - id: ml.clustering-advanced
     name: 其他聚类（DBSCAN、层次聚类、谱聚类）
     summary: 通过密度可达、层次合并或图拉普拉斯特征分解发现簇，可处理任意形状簇且无需预设簇数

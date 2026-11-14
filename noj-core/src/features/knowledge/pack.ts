@@ -395,3 +395,51 @@ function findCycles(adjacency: Map<string, string[]>): string[][] {
   }
   return cycles;
 }
+
+/** 讲解文档根目录：`<官方内容包目录>/docs`。 */
+export function resolveDocsDir(): string {
+  return join(resolveOfficialPackDir(), "docs");
+}
+
+/**
+ * 读取节点讲解文档（markdown 原文）。
+ *
+ * `docPath` 来自内容包节点声明的 `doc`（相对路径，如 `docs/<node-id>.md`）。
+ * 只允许相对路径且必须落在 docs 目录内（防目录穿越：逐段拒绝 `..` / 绝对路径，
+ * 解析后再确认仍在根目录下）。文件不存在或越界返回 null。
+ */
+export async function readDocMarkdown(docPath: string | null): Promise<
+  string | null
+> {
+  if (!docPath) return null;
+  const relative = normalizePackRelativePath(docPath);
+  if (!relative) return null;
+  const root = resolve(resolveDocsDir());
+  // 允许 `docs/<x>.md`（含 `docs/` 前缀）或直接 `<x>.md`：都相对 docs 目录解析。
+  const target = resolve(root, relative.replace(/^docs\//, ""));
+  if (target === root || !target.startsWith(`${root}${SEP}`)) return null;
+  try {
+    return await Deno.readTextFile(target);
+  } catch {
+    return null;
+  }
+}
+
+/** 平台无关的分隔符（POSIX `/`；Windows 上额外拒绝 `\`）。 */
+const SEP = "/";
+
+/**
+ * 规范化内容包内相对路径：拒绝绝对路径、反斜杠、NUL 与任一 `..` 段。
+ *
+ * @returns 合法时返回去掉前导 `./` 的相对路径，否则 null
+ */
+export function normalizePackRelativePath(path: string): string | null {
+  if (!path || path.includes("\0") || path.includes("\\")) return null;
+  if (path.startsWith("/")) return null;
+  const cleaned = path.replace(/^\.\//, "");
+  const segments = cleaned.split("/");
+  if (segments.some((segment) => segment === "" || segment === "..")) {
+    return null;
+  }
+  return cleaned;
+}

@@ -175,13 +175,13 @@ export function createFakeDb(
     ) {
       const values0 = values;
       fakeDbPlatformInserts.push(values0);
-      // 同时登记一条按列名的聚合行。伪 Db 拿到的值布局随格式化后的跨行 VALUES
-      // 变化：前 6 个数值是用量列，其后的数值里最后一个为 estimated_cost。
+      // 同时登记一条按列名的聚合行。`recordPlatformUsage` 的占位符顺序固定，其中数值依次为：
+      // prompt、completion、total、cached、billed_prompt、billed_total、estimated_cost、
+      // latency_ms。必须按位置取 estimated_cost（第 7 个）——取「最后一个数值」会拿到
+      // latency_ms，耗时偶尔为 1ms 时测试随机失败。
       const numeric = values0.filter((value) => typeof value === "number");
       const numbers = numeric.slice(0, 6);
-      const estimatedCost = numeric.length > 6
-        ? numeric[numeric.length - 1]
-        : 0;
+      const estimatedCost = numeric[6] ?? 0;
       usageInserts.push({
         principal_type: String(values0.at(-2) ?? "platform"),
         principal_id: String(values0.at(-1) ?? ""),

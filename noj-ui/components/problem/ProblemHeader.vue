@@ -19,6 +19,11 @@ const props = defineProps<{
   /** 竞赛进行中时后端抑制统计，显示占位而非空白。 */
   suppressedReason?: 'running_contest' | null;
   showOwner?: boolean;
+  /**
+   * 知识图谱的校准难度档位（P2）：有值时优先于出题人自报难度显示，
+   * 没有时沿用原显示，保证关闭知识图谱后行为不变。
+   */
+  calibratedTier?: 'easy' | 'medium' | 'hard' | null;
 }>();
 
 /**
@@ -67,7 +72,11 @@ const suppressed = computed(
           而竞赛做题页不挂载该卡片，导致**竞赛页难度彻底消失**（相对重构前是回归）。
           放入头部后两种来源都可见，难度色仍只走 DifficultyBadge 一处。
         -->
-        <DifficultyBadge v-if="problem.difficulty" :difficulty="problem.difficulty" />
+        <DifficultyBadge
+          v-if="calibratedTier || problem.difficulty"
+          :difficulty="calibratedTier ?? problem.difficulty"
+          :title="calibratedTier ? '校准难度（依据本站作答数据）' : undefined"
+        />
       </div>
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-2xl font-bold text-text">{{ problem.title }}</h1>

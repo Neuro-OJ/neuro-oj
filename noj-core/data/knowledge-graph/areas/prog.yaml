@@ -26,6 +26,7 @@ nodes:
     summary: 使用 NumPy 多维数组的创建、切片、变形与广播进行向量化运算，用少量代码高效处理大规模数值数据
     syllabus: [ioai, noai]
     requires: [prog.python-data-structures]
+    doc: docs/prog.numpy.md
   - id: prog.pandas
     name: Pandas 表格数据处理
     summary: 用 DataFrame 读取、筛选、分组聚合与拼接表格数据，完成数据探索、特征整理和简单统计分析

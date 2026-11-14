@@ -199,3 +199,38 @@ export const knowledgeTagRuns = pgTable(
     ),
   }),
 );
+
+/**
+ * 题目难度（P2：AI 先验 + 数据校准，见 design.md 第 7 节）。
+ *
+ * 与 `problems.difficulty`（出题人三档）分表：`prior` 是打标/出题人给出的
+ * 0–100 先验，`calibrated` 是按有效成绩校准后的 0–100 分数，`sample_size`
+ * 为参与计算的尝试人数（有有效提交的去重用户数）。`pass_ratio_override`
+ * 是出题人按题覆盖的及格线百分数（0–100，空 = 用实例默认）。
+ */
+export const problemDifficulty = pgTable(
+  "problem_difficulty",
+  {
+    problem_id: text("problem_id").primaryKey().references(() => problems.id, {
+      onDelete: "cascade",
+    }),
+    prior: integer("prior").notNull(),
+    calibrated: integer("calibrated").notNull(),
+    sample_size: integer("sample_size").notNull().default(0),
+    pass_ratio_override: integer("pass_ratio_override"),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    rangeCheck: check(
+      "problem_difficulty_range_check",
+      sql`${table.prior} >= 0 AND ${table.prior} <= 100
+        AND ${table.calibrated} >= 0 AND ${table.calibrated} <= 100
+        AND ${table.sample_size} >= 0`,
+    ),
+    passRatioCheck: check(
+      "problem_difficulty_pass_ratio_check",
+      sql`${table.pass_ratio_override} IS NULL
+        OR (${table.pass_ratio_override} >= 0 AND ${table.pass_ratio_override} <= 100)`,
+    ),
+  }),
+);

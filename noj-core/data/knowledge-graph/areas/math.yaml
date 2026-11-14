@@ -15,10 +15,12 @@ nodes:
     summary: 理解梯度指向函数增长最快的方向，能借助梯度解释沿负梯度方向迭代寻优的直观原理与收敛条件
     syllabus: [noai, ioai]
     requires: [math.calculus, math.linear-algebra]
+    doc: docs/math.gradient.md
   - id: math.probability
     name: 概率基础与条件概率
     summary: 掌握随机事件、概率公理、条件概率、全概率与贝叶斯公式，能计算常见的随机现象并理解独立性
     syllabus: [noai, ioai, lmcc]
+    doc: docs/math.probability.md
   - id: math.statistics
     name: 描述统计与常见分布
     summary: 会用均值、方差、分位数等指标描述数据，理解正态、二项、伯努利等常见分布及其在建模中的作用

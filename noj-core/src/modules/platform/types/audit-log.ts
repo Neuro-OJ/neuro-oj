@@ -85,7 +85,8 @@ export type AuditAction =
   | "legal.publish_version"
   | "legal.data_request_update"
   | "background_task.retry"
-  | "knowledge.mapping.update";
+  | "knowledge.mapping.update"
+  | "knowledge.difficulty.pass_ratio";
 
 export type AuditDetail = {
   action: AuditAction;

@@ -30,6 +30,8 @@ watch(error, (failure) => {
 // 知识点：非关键数据，404/功能关闭时静默隐藏（不影响做题页）。
 const knowledge = useKnowledge();
 const knowledgeView = ref<ProblemKnowledgeView | null>(null);
+/** 校准难度档位（P2）：有 `difficulty` 时优先于出题人自报难度显示。 */
+const calibratedTier = computed(() => knowledgeView.value?.difficulty?.tier ?? null);
 watch(
   () => [slug.value, data.value?.reference.problem_id] as const,
   async ([currentSlug, problemId]) => {
@@ -80,8 +82,8 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
       </nav>
       <div class="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-12">
         <div class="min-w-0 space-y-6 lg:col-span-8">
-          <KnowledgeTags v-if="data.reference.problem_id" :view="knowledgeView" />
-          <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false">
+          <KnowledgeTags v-if="data.reference.problem_id" :view="knowledgeView" :domain="slug ?? undefined" />
+          <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false" :calibrated-tier="calibratedTier">
             <template #actions>
               <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
               <UButton v-if="!inlineAnswer && data.can_practice !== false" :to="solveTo" size="lg" :icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'">{{ editorLabel }}</UButton>
@@ -103,7 +105,8 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
             :key="`${slug}:${reference}:${user?.id}:solutions`" :slug="slug!" :problem-id="data.reference.problem_id" />
         </div>
         <aside class="min-w-0 space-y-6 lg:col-span-4">
-          <ProblemMetaCard :problem="problemView" :stats="publicStats" :problems-to="`/d/${slug}/problems`" />
+          <ProblemMetaCard :problem="problemView" :stats="publicStats" :problems-to="`/d/${slug}/problems`" :calibrated-tier="calibratedTier" />
+          <KnowledgeNextLink :problem-id="data.reference.problem_id" :user-key="user?.id ?? null" />
           <DomainProblemSubmissions :key="`${slug}:${reference}:${user?.id}:submissions`" :slug="slug!" :problem-id="data.reference.problem_id" />
           <UButton v-if="assignmentOrigin" :to="`/d/${slug}/assignments/${assignmentOrigin.assignment_id}`" color="neutral" variant="outline" class="w-full justify-center" icon="i-lucide-arrow-left">返回作业</UButton>
           <ClientOnly>
