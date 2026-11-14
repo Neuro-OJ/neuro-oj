@@ -107,11 +107,20 @@ function requireRevision(revision: number): void {
   }
 }
 
+/** 别名格式：小写字母开头，≤32 字符；`default` 为保留别名（域默认模型）。 */
+function isValidAlias(alias: unknown): alias is string {
+  return typeof alias === "string" &&
+    (alias === DEFAULT_ALIAS || ALIAS_PATTERN.test(alias) ||
+      // 平台调用约定的别名形如 `platform.tagger`（含命名空间点），
+      // 管理员需通过 `/internal/model-aliases/:alias` 配置，因此写入路径同样允许。
+      /^[a-z][a-z0-9._-]{0,31}$/.test(alias));
+}
+
 function validateAlias(alias: string): void {
   if (alias === DEFAULT_ALIAS) {
     throw new ModelAuthorityError(400, "reserved_alias");
   }
-  if (!ALIAS_PATTERN.test(alias)) {
+  if (!isValidAlias(alias)) {
     throw new ModelAuthorityError(400, "invalid_alias");
   }
 }
@@ -414,4 +423,51 @@ export async function resolveDomainModelSelection(
   }
   await requireEnabledProvider(db, [...providers][0]!, domainId);
   return { provider_id: [...providers][0]!, models };
+}
+
+/** 单个别名解析出的完整选择（含 Provider 归属，供平台调用转发）。 */
+export interface ResolvedAliasSelection {
+  provider_id: string;
+  alias: string;
+  model: string;
+}
+
+/**
+ * 解析**单个**别名，未配置时抛 404 `MODEL_ALIAS_NOT_CONFIGURED`。
+ *
+ * 与 {@link resolveDomainModelSelection} 的区别：后者服务于评测冻结快照，
+ * 接受一组别名并强制同一 Provider、未配置映射为 400
+ * `domain_llm_not_configured`；平台调用（如知识图谱打标）需要让 core 明确区分
+ * 「别名未配置 → 请管理员配置」与「上游/网关故障」，因此单独返回 404 与稳定
+ * 错误码。别名格式非法仍按 400 `invalid_alias` 拒绝。
+ */
+export async function resolveDomainModelAlias(
+  db: Db,
+  domainId: string,
+  alias: string,
+): Promise<ResolvedAliasSelection> {
+  if (!isValidAlias(alias)) {
+    throw new ModelAuthorityError(400, "invalid_alias");
+  }
+  if (alias === DEFAULT_ALIAS) {
+    const settings = await readDomainModelSettings(db, domainId);
+    if (!settings.provider_id || !settings.model) {
+      throw new ModelAuthorityError(404, "MODEL_ALIAS_NOT_CONFIGURED");
+    }
+    await requireEnabledProvider(db, settings.provider_id, domainId);
+    return {
+      provider_id: settings.provider_id,
+      alias,
+      model: settings.model,
+    };
+  }
+  const rows = await db<Pick<ModelAliasRow, "provider_id" | "model">[]>`
+    SELECT provider_id, model
+    FROM llm_gateway_model_aliases
+    WHERE domain_id=${domainId} AND alias=${alias}
+  `;
+  const row = rows[0];
+  if (!row) throw new ModelAuthorityError(404, "MODEL_ALIAS_NOT_CONFIGURED");
+  await requireEnabledProvider(db, row.provider_id, domainId);
+  return { provider_id: row.provider_id, alias, model: row.model };
 }

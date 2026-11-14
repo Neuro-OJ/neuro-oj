@@ -86,6 +86,80 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
   `;
 }
 
+/** 平台身份调用的记账输入（不涉及 submission/attempt/user）。 */
+export interface PlatformUsageEntry {
+  /** 记账行 ID（= 平台请求 ID，便于 core 对账）。 */
+  id: string;
+  domain_id: string;
+  provider_id: string;
+  /** 上游真实模型名。 */
+  model: string;
+  /** 调用用途（白名单，如 knowledge.tag）；作为 `principal_id` 记录。 */
+  purpose: string;
+  /** 请求的模型别名（便于对账，记入 request_params）。 */
+  alias: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  status: string;
+  error_code: string | null;
+  max_tokens: number;
+}
+
+/**
+ * 写入一条**平台身份**调用记录（如知识图谱打标）。
+ *
+ * 主体标记为 `principal_type='platform'`、`principal_id=<purpose>`；`user_id`
+ * 固定为空串、`problem_id` 固定为 `platform:<purpose>`、
+ * `submission_id`/`attempt_id` 使用请求 ID，从而：
+ * - 不进入任何学生 eval_token 的额度/用量统计（额度按 attempt/submission 维度的
+ *   Redis 计数，与这里无关）；
+ * - 可按 purpose + 时间聚合（`GET /internal/platform-usage`）；
+ * - 管理后台的提交/题目筛选不会误把平台调用混入。
+ *
+ * 不保存 prompt 原文（平台调用内容可能包含题目信息，最小化留存）与
+ * `prompt_hash`；`request_params` 只保留 purpose / 别名 / 输出上限。
+ */
+export async function recordPlatformUsage(
+  db: Db,
+  entry: PlatformUsageEntry,
+): Promise<void> {
+  const billedPrompt = Math.max(0, entry.prompt_tokens - entry.cached_tokens);
+  const billedTotal = billedPrompt + entry.completion_tokens;
+  const totalTokens = entry.prompt_tokens + entry.completion_tokens;
+  const requestParams = JSON.stringify({
+    purpose: entry.purpose,
+    model_alias: entry.alias,
+    max_tokens: entry.max_tokens,
+  });
+  const createdAt = new Date().toISOString();
+  // 平台调用不保存 prompt 原文，事件本身即 purpose；prompt_hash 记录该事件键。
+  const promptHash = `platform:${entry.purpose}`;
+  const principalType = "platform";
+  const EMPTY_MESSAGES = JSON.stringify([]);
+  await db`
+    INSERT INTO llm_usage (
+      id, domain_id, submission_id, attempt_id, problem_version_id, problem_id,
+      user_id, provider_id, model, request_messages, request_params,
+      prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens,
+      billed_prompt_tokens, billed_total_tokens, estimated_cost, latency_ms,
+      status, error_code, prompt_hash, created_at, principal_type,
+      principal_id
+    ) VALUES (
+      ${entry.id}, ${entry.domain_id}, ${entry.id}, NULL, NULL,
+      ${promptHash}, '', ${entry.provider_id}, ${entry.model},
+      ${EMPTY_MESSAGES}::text::jsonb, ${requestParams}::text::jsonb,
+      ${entry.prompt_tokens}, ${entry.completion_tokens}, ${totalTokens},
+      ${entry.cached_tokens}, ${billedPrompt}, ${billedTotal},
+      ${entry.estimated_cost}, ${entry.latency_ms}, ${entry.status},
+      ${entry.error_code}, ${promptHash}, ${createdAt}, ${principalType},
+      ${entry.purpose}
+    ) ON CONFLICT(id) DO NOTHING
+  `;
+}
+
 /** 调用前拒绝记录的去重窗口（秒）：同一提交 + 同一拒绝原因在窗口内只落一条。 */
 export const REJECTED_DEDUP_WINDOW_SECONDS = 60;
 

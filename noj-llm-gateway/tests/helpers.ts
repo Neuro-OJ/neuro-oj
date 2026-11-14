@@ -80,11 +80,23 @@ export class FakeRedis implements RedisClient {
   }
 }
 
-export function createFakeDb(provider: ProviderRow | null): {
+export function createFakeDb(
+  provider: ProviderRow | null,
+  options: {
+    /** 平台调用解析的固定使用域（缺省为默认域）。 */
+    domainId?: string;
+    /** 平台调用解析的固定别名（缺省为 knowledge.tag 约定的 platform.tagger）。 */
+    alias?: string;
+    /** 平台记账插入的原始 values 收集数组（由用例断言列顺序）。 */
+    platformInserts?: unknown[][];
+  } = {},
+): {
   db: Db;
   usageInserts: Record<string, unknown>[];
   ledger: Map<string, Record<string, unknown>>;
 } {
+  const { domainId, alias, platformInserts } = options;
+  const fakeDbPlatformInserts = platformInserts ?? [];
   const usageInserts: Record<string, unknown>[] = [];
   const ledger = new Map<string, Record<string, unknown>>();
   const db = ((
@@ -129,12 +141,55 @@ export function createFakeDb(provider: ProviderRow | null): {
       }
       return Promise.resolve([]);
     }
+    // 平台调用：POST /internal/platform-usage 的聚合查询（只有 platform router 使用）。
+    // 因 VALUES 模板无法被本假 DB 按列展开，平台记账行由 usageInserts 单独断言。
     if (sql.includes("UPDATE llm_usage SET status='rejected'")) {
       const row = usageInserts.find((entry) => entry.id === values[1]);
       if (row) {
         row.status = "rejected";
         row.error_code = values[0];
       }
+      return Promise.resolve([]);
+    }
+    // 平台调用：按使用域 + 别名解析（别名始终映射到本测试 Provider）。
+    // 只有解析查询（列出 provider_id/model）走这里；别名增删改仍返回空结果。
+    if (sql.includes("SELECT provider_id, model")) {
+      const aliased = values.includes(
+        domainId ?? "00000000-0000-4000-8000-000000000001",
+      ) &&
+        values.includes(alias ?? "platform.tagger");
+      return Promise.resolve(
+        aliased && provider
+          ? [{ provider_id: provider.id, model: "tag-model" }]
+          : [],
+      );
+    }
+    // 平台记账（principal_type / principal_id）：单独识别。值布局为
+    // id, domain, submission, purpose, provider, model, 5 个数值, status,
+    // error_code, prompt_hash, created_at, principal_type, principal_id。
+    // 由用例通过 options.platformInserts 收集原始 values 自行断言。
+    if (
+      sql.includes("INSERT INTO llm_usage") &&
+      sql.includes("principal_type") &&
+      strings.some((part) => part.includes("principal_id"))
+    ) {
+      const values0 = values;
+      fakeDbPlatformInserts.push(values0);
+      // 同时登记一条按列名的聚合行。伪 Db 拿到的值布局随格式化后的跨行 VALUES
+      // 变化：前 6 个数值是用量列，其后的数值里最后一个为 estimated_cost。
+      const numeric = values0.filter((value) => typeof value === "number");
+      const numbers = numeric.slice(0, 6);
+      const estimatedCost = numeric.length > 6
+        ? numeric[numeric.length - 1]
+        : 0;
+      usageInserts.push({
+        principal_type: String(values0.at(-2) ?? "platform"),
+        principal_id: String(values0.at(-1) ?? ""),
+        prompt_tokens: Number(numbers[0] ?? 0),
+        completion_tokens: Number(numbers[1] ?? 0),
+        estimated_cost: Number(estimatedCost),
+        created_at: String(values0.at(-3) ?? ""),
+      });
       return Promise.resolve([]);
     }
     if (sql.includes("FROM llm_providers")) {
@@ -144,6 +199,25 @@ export function createFakeDb(provider: ProviderRow | null): {
     }
     if (sql.includes("FROM llm_quotas")) {
       return Promise.resolve([]);
+    }
+    // 平台用量聚合（GET /internal/platform-usage）：按本测试已写入的平台记账行累计。
+    // 必须先于 INSERT INTO llm_usage 判断，因为该 INSERT 也包含 principal_type 列。
+    if (sql.includes("principal_type='platform'")) {
+      // 查询按 domain + purpose + since 过滤；测试数据均为同一域与同一 purpose，
+      // 这里只按平台主体筛选（年份判断避免把无 created_at 的种子行排除）。
+      const platformRows = usageInserts.filter((row) =>
+        row.principal_type === "platform"
+      );
+      const sum = (key: string) =>
+        String(
+          platformRows.reduce((acc, row) => acc + Number(row[key] ?? 0), 0),
+        );
+      return Promise.resolve([{
+        input_tokens: sum("prompt_tokens"),
+        output_tokens: sum("completion_tokens"),
+        requests: String(platformRows.length),
+        cost: sum("estimated_cost"),
+      }]);
     }
     // P5：预占在受控边界内读取实例政策行（共享锁）。测试默认"无额外上限"。
     if (sql.includes("INSERT INTO llm_policy")) {
@@ -186,6 +260,8 @@ export function createFakeDb(provider: ProviderRow | null): {
         "error_code",
         "prompt_hash",
         "created_at",
+        "principal_type",
+        "principal_id",
       ];
       const row: Record<string, unknown> = {};
       for (let i = 0; i < cols.length; i++) {

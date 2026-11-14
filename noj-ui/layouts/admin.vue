@@ -52,6 +52,7 @@ const navGroups: NavGroup[] = [
     label: '公共分类',
     items: [
       { label: '题型标签', to: '/admin/tags', icon: 'i-lucide-tags' },
+      { label: '知识图谱', to: '/admin/knowledge', icon: 'i-lucide-network' },
     ],
   },
   {

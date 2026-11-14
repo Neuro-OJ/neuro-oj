@@ -60,10 +60,10 @@ interface StreamingUsageResult {
   usage?: UpstreamUsage;
 }
 
-const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
+export const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
 
 /** 流式截断读取上游响应，防止超大流式内容引发 OOM 崩溃（GW-01）。 */
-async function readUpstreamBodyWithLimit(
+export async function readUpstreamBodyWithLimit(
   res: Response,
   maxBytes: number,
 ): Promise<string> {
@@ -97,7 +97,7 @@ async function readUpstreamBodyWithLimit(
 }
 
 /** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
-function buildChatUrl(baseUrl: string): string {
+export function buildChatUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
   if (base.endsWith("/chat/completions")) return base;
   if (base.endsWith("/v1")) return `${base}/chat/completions`;
@@ -931,7 +931,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 }
 
 /** 粗略估算 prompt token：按 JSON 字符数 /4 向上取整。 */
-function estimateTokens(messages: unknown[]): number {
+export function estimateTokens(messages: unknown[]): number {
   try {
     return Math.ceil(JSON.stringify(messages).length / 4);
   } catch {
@@ -940,7 +940,7 @@ function estimateTokens(messages: unknown[]): number {
 }
 
 /** 按单价（每 1k tokens）估算费用，结果取整。 */
-function estimateCost(totalTokens: number, costPer1k: number): number {
+export function estimateCost(totalTokens: number, costPer1k: number): number {
   if (!costPer1k || totalTokens <= 0) return 0;
   return Math.round((totalTokens / 1000) * costPer1k);
 }

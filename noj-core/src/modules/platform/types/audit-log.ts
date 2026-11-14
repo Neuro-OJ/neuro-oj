@@ -84,7 +84,8 @@ export type AuditAction =
   | "llm_model_alias.delete"
   | "legal.publish_version"
   | "legal.data_request_update"
-  | "background_task.retry";
+  | "background_task.retry"
+  | "knowledge.mapping.update";
 
 export type AuditDetail = {
   action: AuditAction;

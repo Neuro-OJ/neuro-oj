@@ -919,6 +919,11 @@ LLM 调用审计表；完整保留 `request_messages`，不自动清理。
 | `error_code`           | text    | NULL                     | 错误码                                                                                        |
 | `prompt_hash`          | text    | NOT NULL                 | 请求内容哈希（去重 / 风控）                                                                   |
 | `created_at`           | text    | NOT NULL；索引           | 时间                                                                                          |
+| `principal_type`       | text    | NOT NULL；DEFAULT `'user'` | 记账主体：`user`=评测调用，`platform`=平台身份调用（如知识图谱打标）                          |
+| `principal_id`         | text    | NULL                     | 平台调用的用途（如 `knowledge.tag`）；评测调用为 NULL                                          |
+
+平台身份调用（`principal_type='platform'`）不保存 prompt 原文，`user_id` 为空串、
+`problem_id` 为 `platform:<purpose>`，不与学生评测额度/统计混用。
 
 #### `llm_quotas`
 

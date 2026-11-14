@@ -16,6 +16,8 @@ beforeEach(() => {
   );
   vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'student' }) }));
   vi.stubGlobal('useDomainProblems', () => ({ detail: read }));
+  // 详情页知识点标签：默认关闭（loadProblem 返回 null），不影响做题入口断言
+  vi.stubGlobal('useKnowledge', () => ({ disabled: ref(false), loadProblem: () => Promise.resolve(null) }));
   vi.stubGlobal(
     'useAsyncData',
     async (_key: unknown, load: () => Promise<unknown>) => ({

@@ -86,6 +86,10 @@ export const llmUsage = pgTable(
     /** 请求内容哈希，用于快速去重/风控 */
     prompt_hash: text("prompt_hash").notNull(),
     created_at: text("created_at").notNull(),
+    /** 记账主体：`user`=评测调用（默认），`platform`=平台身份调用（如知识图谱打标） */
+    principal_type: text("principal_type").notNull().default("user"),
+    /** 记账主体 ID：评测调用为 NULL；平台调用为用途（如 `knowledge.tag`） */
+    principal_id: text("principal_id"),
   },
   (table) => ({
     domainCreatedIdx: index("idx_llm_usage_domain_created").on(
@@ -98,6 +102,13 @@ export const llmUsage = pgTable(
     userIdx: index("idx_llm_usage_user_id").on(table.user_id),
     providerIdx: index("idx_llm_usage_provider_id").on(table.provider_id),
     createdIdx: index("idx_llm_usage_created_at").on(table.created_at),
+    /** 平台按用途用量聚合（purpose + since） */
+    principalIdx: index("idx_llm_usage_principal").on(
+      table.domain_id,
+      table.principal_type,
+      table.principal_id,
+      table.created_at,
+    ),
   }),
 );
 

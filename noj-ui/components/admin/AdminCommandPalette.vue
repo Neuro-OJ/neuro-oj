@@ -29,6 +29,7 @@ const allItems: PaletteItem[] = [
 
   // 公共分类
   { id: "tags", label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags", group: "公共分类", keywords: ["biaoqian", "tag", "category"] },
+  { id: "knowledge", label: "知识图谱", to: "/admin/knowledge", icon: "i-lucide-network", group: "公共分类", keywords: ["zhishi", "knowledge", "graph", "tubu", "tagging", "dagbiao", "审核", "huibian"] },
 
   // 主空间（旧 /admin 题务教务入口的最终落点）
   { id: "prob", label: "主空间 · 题库资源", to: "/d/main/problem-bindings", icon: "i-lucide-book-open", group: "主空间", keywords: ["timu", "problem", "binding", "testcase"] },

@@ -67,9 +67,18 @@ export function validateDomainFeatures(
 }
 /** 注册表中的结构化文本同样执行业务格式验证。 */
 export function validateWorkspaceSetting(
-  schema: "domain_limits" | "domain_features" | "domain_llm_quota_caps",
+  schema:
+    | "domain_limits"
+    | "domain_features"
+    | "domain_llm_quota_caps"
+    | "knowledge_offpeak_window",
   text: string,
 ) {
+  // 低峰时段是纯字符串而非结构化 JSON，不走 JSON.parse。
+  if (schema === "knowledge_offpeak_window") {
+    validateKnowledgeOffpeakWindow(text);
+    return text;
+  }
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -81,6 +90,19 @@ export function validateWorkspaceSetting(
     validateDomainLlmQuotaCaps(value);
   } else validateDomainFeatures(value);
   return value;
+}
+
+/** 低峰时段格式：`HH:MM-HH:MM`，起止不同（跨零点允许）。 */
+export function validateKnowledgeOffpeakWindow(value: string): void {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(
+    value.trim(),
+  );
+  if (!match) {
+    throw new Error("低峰时段须为 HH:MM-HH:MM（24 小时制北京时间）");
+  }
+  if (match[1] === match[3] && match[2] === match[4]) {
+    throw new Error("低峰时段起止时刻不能相同");
+  }
 }
 
 /** 实例 LLM 上限按日/月限制各项数值，单位与 Gateway 配额一致。 */

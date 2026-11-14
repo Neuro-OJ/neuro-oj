@@ -196,6 +196,12 @@ vLLM），题面不出内网；运维文档给出 配置示例。core 不持有�
     token）；输出限制为 JSON，`max_tokens` 取小值。
 - 调用次数：默认关闭；题目内容 hash
   不变跳过；已有人工挂载的题目不调用；失败最多重试 1 次，预算类错误不重试。
+- **默认仅在低峰时段调用，时段可配置**：DeepSeek 在北京时间（Asia/Shanghai，
+  UTC+8）00:30–08:30 提供低峰优惠价；AI 打标不要求实时完成，故
+  `knowledge_ai_offpeak_only`（默认 `true`）开启时，`knowledge_ai_offpeak_window`
+  （默认 `"00:30-08:30"`，格式 `HH:MM-HH:MM`，允许跨零点）之外不调用模型：打标
+  任务不调用、不写运行记录，直接顺延到下一个时段开始；发布/回填投递时就把
+  `availableAt` 设为下一个时段开始，避免白天反复领取再顺延。
 - 预算封顶：网关为 `purpose=knowledge.tag` 设每月 token /
   金额上限（`knowledge_ai_monthly_budget`）。超额后
   任务以「预算暂停」状态延后到下个计费周期或预算调高后重试，题目保持未归类，覆盖度面板与审核页显示预算暂停。

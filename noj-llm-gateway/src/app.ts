@@ -11,6 +11,7 @@ import { INSTANCE_POLICY_ID } from "./policy-operations.ts";
 import type { PolicyCapsInput } from "./policy-operations.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
+import { createPlatformRouter } from "./routes/platform.ts";
 import { renderMetrics } from "./metrics.ts";
 import {
   type AccountingWorkerHandle,
@@ -234,6 +235,7 @@ export function createApp(config: GatewayConfig, deps: CreateAppDeps) {
 
   app.route("/", createLlmRouter({ config, db, redis }));
   app.route("/", createInternalRouter({ config, db, redis }));
+  app.route("/", createPlatformRouter({ config, db, redis }));
 
   app.notFound((c) => c.json({ error: "not_found" }, 404));
 

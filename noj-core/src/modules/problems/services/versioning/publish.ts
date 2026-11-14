@@ -35,6 +35,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { enqueueSearchIndexTaskTx } from "../../../application/search-tasks.ts";
+import { enqueueKnowledgeTagTaskTx } from "./knowledge-tag-task.ts";
 import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
   assertContentKindTransition,
@@ -640,6 +641,9 @@ export async function publishProblemVersion(
       "upsert",
       versionId,
     );
+    // 知识图谱 AI 打标（P1，默认关闭）：开关开启时投递 `knowledge.tag`，
+    // 去重键按题目 + 版本；与版本同事务提交/回滚。
+    await enqueueKnowledgeTagTaskTx(tx, problemId, versionId);
 
     return {
       problem_id: problemId,

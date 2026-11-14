@@ -252,7 +252,10 @@ function discardDraft(key: string) {
 // ─── 搜索与分类过滤 ───────────────────────────────────
 
 const searchQuery = ref('');
-const selectedCategory = ref('all');
+// 支持 /admin/settings?category=knowledge 从其他管理页深链到指定分类。
+const route = useRoute();
+const initialCategory = typeof route.query.category === 'string' ? route.query.category : 'all';
+const selectedCategory = ref(initialCategory);
 
 const dbSettings = computed(() =>
   settings.value.filter((s) => s.scope === 'runtime' && s.key !== 'oi_cost_profile_active')
