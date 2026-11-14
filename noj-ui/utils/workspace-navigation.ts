@@ -1,8 +1,16 @@
 import type { WorkspaceDetail } from './workspace.ts';
 import { workspacePath } from './workspace.ts';
 
-/** 导航只表达可进入的功能入口，具体资源和班级授权仍由接口决定。 */
-export function workspaceNavigation(domain: WorkspaceDetail) {
+/**
+ * 导航只表达可进入的功能入口，具体资源和班级授权仍由接口决定。
+ *
+ * `knowledgeEnabled` 为知识图谱总开关（`GET /knowledge/graph` 是否 404
+ * `KNOWLEDGE_DISABLED` 的结论）；关闭时隐藏「我的学习」入口。
+ */
+export function workspaceNavigation(
+  domain: WorkspaceDetail,
+  options: { knowledgeEnabled?: boolean } = {},
+) {
   const signedIn = domain.actor_id !== null;
   const features = domain.configuration.features;
   const entries = [
@@ -12,6 +20,9 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
       : []),
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
     { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },
+    ...(signedIn && options.knowledgeEnabled
+      ? [{ label: '我的学习', section: 'knowledge', icon: 'i-lucide-network' }]
+      : []),
     { label: '比赛', section: 'contests', icon: 'i-lucide-trophy' },
     ...(features.community ? [{ label: '社区', section: 'community', icon: 'i-lucide-messages-square' }] : []),
     ...(features.analytics

@@ -212,3 +212,33 @@
 
 测试：`cd noj-core && deno task test:domain knowledge`；发布投递用例在
 `modules/problems/tests/services/knowledge-tag-task.test.ts`（`test:domain problems`）。
+
+## 掌握度、推荐与覆盖度（P3，`mastery.ts`）
+
+- **物化表** `user_knowledge_mastery`（主键 `user_id, node_id`；`state` ∈
+  `none/learning/mastered`，另有 `solved_count`、`attempted_count`、
+  `failed_attempts`、`max_passed_difficulty`）。只统计以该节点为**主知识点**的
+  题目；成绩口径与 P2「达标」一致（练习有效成绩 + 已结束比赛，进行中比赛不计）。
+- **规则**（`computeNodeMastery`）：任一题达标 → `learning`；达标题数 ≥ K
+  （`knowledge_mastery_min_solved`，默认 3）且至少一道达标题位于该节点题目难度
+  上三分之一 → `mastered`；节点题量 < K 时需全部达标。
+- **增量重算**：有效成绩物化写入点（`evaluations/.../projection.ts`）经
+  `modules/runtime/knowledge-mastery-task.ts` 在同一事务登记 `knowledge.mastery`
+  任务（target = 用户，按用户去重），handler 调 `recomputeUserMastery(userId)`
+  重算该用户所有相关节点；开关关闭时直接成功结束。
+- **保护结束补算**：`startMasteryProtectionWorker`（1h 周期，事务级 advisory
+  锁多副本互斥）对过去 24h 内结束的比赛题目相关用户重算。
+- **推荐**（`readMyRecommendations` / `rankFrontierNodes`）：前沿节点 = 前置均
+  已掌握（入门节点视为满足）、自身未掌握、本域有可访问题目；`learning` 优先，
+  再按领域与节点 sort。每条带 `reason: { code, params }`： `continue_learning` /
+  `prerequisites_mastered` / `entry_point` / `review_prerequisite`（在某节点
+  `failed_attempts` ≥ 3 且有未掌握前置时，推荐先 补前置）。推荐题复用 P2 阶梯的
+  `next`。
+- **API**：`GET /knowledge/me/mastery?domain=`、
+  `GET /knowledge/me/recommendations?domain=&limit=5`（上限 20）、
+  `GET /knowledge/nodes/:id/diagnosis?domain=`（未掌握前置链，最多 5 个；未登录
+  返回空）、`GET /admin/knowledge/coverage?domain=`（实例管理员看全实例；带
+  `domain` 时本域 `problem:write_any` 也可看）。
+- **覆盖度**（`readCoverage`，聚合 SQL）：每节点题量、三档难度分布、题量不足 （<
+  K）、难度断层（题量已足但无「困难」档题，按校准难度绝对值判断）、未归类题、
+  待确认与失效挂载数，以及汇总。

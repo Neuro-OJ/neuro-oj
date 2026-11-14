@@ -11,6 +11,7 @@ import type { DeepReadonly, Ref } from 'vue';
 import { readonly } from 'vue';
 import {
   type BackfillResult,
+  type CoverageView,
   isBackfillDrift,
   isKnowledgeDisabled,
   type KnowledgeGraph,
@@ -18,6 +19,9 @@ import {
   type KnowledgeLadderItem,
   type KnowledgeNodeView,
   type KnowledgeSelection,
+  type MyMasteryView,
+  type MyRecommendationsView,
+  type NodeDiagnosisView,
   type PendingReviewPage,
   type ProblemKnowledgeView,
   type TagEstimate,
@@ -172,7 +176,97 @@ export function useKnowledge() {
     }
   }
 
+  // ─── P3：我的掌握度 / 推荐 / 根因诊断 ─────────────────
+
+  /** 我的掌握度；功能关闭 → null。未登录（401）由调用方展示登录提示。 */
+  function loadMyMastery(domain?: string): Promise<MyMasteryView | null> {
+    const key = `mastery:${domain ?? '*'}`;
+    const running = inflight.get(key);
+    if (running) return running as Promise<MyMasteryView | null>;
+    const task = (async () => {
+      try {
+        const res = await api.get<{ data: MyMasteryView }>('/api/v1/knowledge/me/mastery', {
+          params: domain ? { domain } : undefined,
+          silent: true,
+        });
+        return res.data;
+      } catch (err) {
+        if (markDisabled(err)) return null;
+        throw err;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, task);
+    return task;
+  }
+
+  /** 我的推荐；功能关闭 → null。未登录（401）由调用方展示登录提示。 */
+  function loadRecommendations(domain: string, limit = 5): Promise<MyRecommendationsView | null> {
+    const key = `recommendations:${domain}:${limit}`;
+    const running = inflight.get(key);
+    if (running) return running as Promise<MyRecommendationsView | null>;
+    const task = (async () => {
+      try {
+        const res = await api.get<{ data: MyRecommendationsView }>(
+          '/api/v1/knowledge/me/recommendations',
+          { params: { domain, limit }, silent: true },
+        );
+        return res.data;
+      } catch (err) {
+        if (markDisabled(err)) return null;
+        throw err;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, task);
+    return task;
+  }
+
+  /**
+   * 根因诊断（未掌握前置链）：节点不存在（404）或功能关闭 → null；
+   * 未登录时后端返回空链，界面据此不显示提示框。
+   */
+  function loadDiagnosis(nodeId: string, domain: string): Promise<NodeDiagnosisView | null> {
+    const key = `diagnosis:${nodeId}:${domain}`;
+    const running = inflight.get(key);
+    if (running) return running as Promise<NodeDiagnosisView | null>;
+    const task = (async () => {
+      try {
+        const res = await api.get<{ data: NodeDiagnosisView }>(
+          `/api/v1/knowledge/nodes/${encodeURIComponent(nodeId)}/diagnosis`,
+          { params: { domain }, silent: true },
+        );
+        return res.data;
+      } catch (err) {
+        if (markDisabled(err)) return null;
+        const status = (err as { status?: number } | null)?.status;
+        if (status === 404) return null;
+        throw err;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, task);
+    return task;
+  }
+
   // ─── 管理端 ───────────────────────────────────────────
+
+  /** 覆盖度面板；`domain` 缺省为全实例（仅实例管理员）。关闭 → null。 */
+  async function loadCoverage(domain?: string): Promise<CoverageView | null> {
+    try {
+      const res = await api.get<{ data: CoverageView }>('/api/v1/admin/knowledge/coverage', {
+        params: domain ? { domain } : undefined,
+        silent: true,
+      });
+      return res.data;
+    } catch (err) {
+      if (markDisabled(err)) return null;
+      throw err;
+    }
+  }
 
   async function loadUsage(): Promise<TagUsage | null> {
     try {
@@ -260,6 +354,10 @@ export function useKnowledge() {
     loadLadder,
     loadNextForProblem,
     saveProblem,
+    loadMyMastery,
+    loadRecommendations,
+    loadDiagnosis,
+    loadCoverage,
     loadUsage,
     estimateBackfill,
     backfill,

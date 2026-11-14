@@ -215,6 +215,8 @@ const ROUTES: BreadcrumbRoute[] = [
     pattern: '/d/:slug/problems/:reference',
     trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { param: 'reference' }],
   },
+  // 我的学习（知识图谱 P3）：终点为列表页。
+  { pattern: '/d/:slug/knowledge', trail: [{ param: 'slug' }, { key: 'nav.myLearning' }] },
   // 知识点页（知识图谱 P2）：中间层指回题库，终点为知识点名称。
   {
     pattern: '/d/:slug/knowledge/:nodeId',

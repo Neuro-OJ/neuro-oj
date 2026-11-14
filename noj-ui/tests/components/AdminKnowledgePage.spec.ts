@@ -11,6 +11,7 @@ const api: Record<string, ReturnType<typeof vi.fn>> = {
   loadGraph: vi.fn(),
   loadProblem: vi.fn(),
   saveProblem: vi.fn(),
+  loadCoverage: vi.fn(),
 };
 const disabled = ref(false);
 const confirm = vi.fn();
@@ -66,6 +67,45 @@ const review = {
   updated_at: '',
 };
 
+const coverage = {
+  domain: null,
+  min_solved: 3,
+  totals: { nodes: 3, nodes_with_problems: 2, insufficient_problems: 1, difficulty_gap: 1, problems: 5 },
+  nodes: [
+    {
+      node_id: 'ds.array',
+      name: '数组',
+      area: 'ds',
+      difficulty_distribution: { easy: 1, medium: 0, hard: 1 },
+      problem_count: 2,
+      insufficient_problems: true,
+      difficulty_gap: false,
+    },
+    {
+      node_id: 'ds.list',
+      name: '链表',
+      area: 'ds',
+      difficulty_distribution: { easy: 2, medium: 1, hard: 0 },
+      problem_count: 3,
+      insufficient_problems: false,
+      difficulty_gap: true,
+    },
+    {
+      node_id: 'ds.stack',
+      name: '栈',
+      area: 'ds',
+      difficulty_distribution: { easy: 1, medium: 1, hard: 1 },
+      problem_count: 3,
+      insufficient_problems: false,
+      difficulty_gap: false,
+    },
+  ],
+  unclassified_problems: 4,
+  pending_mappings: 2,
+  deprecated_mappings: 1,
+  protected_problems: 0,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   disabled.value = false;
@@ -84,6 +124,7 @@ beforeEach(() => {
   api.loadUsage.mockResolvedValue(usage);
   api.loadReviews.mockResolvedValue({ items: [review], total: 1, page: 1, limit: 20 });
   api.loadGraph.mockResolvedValue(null);
+  api.loadCoverage.mockResolvedValue(coverage);
   confirm.mockResolvedValue(true);
 });
 
@@ -101,6 +142,12 @@ async function view() {
         },
         UAlert: { props: ['title', 'description'], template: '<p class="alert">{{ title }}{{ description }}</p>' },
         UBadge: { template: '<span class="badge"><slot /></span>' },
+        UCheckbox: {
+          props: ['modelValue', 'label'],
+          emits: ['update:modelValue'],
+          template:
+            '<label class="checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />{{ label }}</label>',
+        },
         UButton: {
           props: ['disabled', 'loading', 'title'],
           emits: ['click'],
@@ -150,6 +197,27 @@ describe('管理后台知识图谱页', () => {
     expect(offpeak).not.toMatch(/折扣|优惠\s*\d/);
     expect(wrapper.text()).toContain('两数之和');
     expect(wrapper.text()).toContain('没有待审核的 AI 建议');
+  });
+
+  it('覆盖度面板显示 totals 与节点表，可筛选只看有问题的节点', async () => {
+    const wrapper = await view();
+    const panel = wrapper.get('[data-testid="kg-coverage"]');
+    expect(panel.text()).toContain('覆盖度');
+    expect(panel.get('[data-testid="coverage-insufficient"]').text()).toBe('1');
+    expect(panel.get('[data-testid="coverage-gap"]').text()).toBe('1');
+    expect(panel.get('[data-testid="coverage-unclassified"]').text()).toBe('4');
+    expect(panel.get('[data-testid="coverage-pending"]').text()).toBe('2');
+    expect(panel.get('[data-testid="coverage-deprecated"]').text()).toBe('1');
+    expect(panel.findAll('[data-testid="coverage-row"]')).toHaveLength(3);
+    const rows = panel.findAll('[data-testid="coverage-row"]');
+    expect(rows[0]!.text()).toContain('数组');
+    expect(rows[0]!.text()).toContain('题量不足');
+    expect(rows[1]!.text()).toContain('难度断层');
+
+    await panel.get('input[type="checkbox"]').setValue(true);
+    const filtered = wrapper.get('[data-testid="kg-coverage"]').findAll('[data-testid="coverage-row"]');
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((row) => row.text()).join('|')).not.toContain('栈');
   });
 
   it('KNOWLEDGE_DISABLED 时整块隐藏，只显示关闭提示', async () => {

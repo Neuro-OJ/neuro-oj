@@ -10,6 +10,10 @@
  * - `GET|POST /admin/knowledge/reviews...`：审核队列（实例管理员）。
  * - `GET /admin/knowledge/tagging/usage|estimate` 与
  *   `POST /admin/knowledge/tagging/backfill`：AI 打标用量/预估/回填（实例管理员）。
+ * - `GET /knowledge/me/mastery|recommendations`：我的掌握度与推荐（登录用户）。
+ * - `GET /knowledge/nodes/:id/diagnosis`：根因诊断（未登录返回空）。
+ * - `GET /admin/knowledge/coverage`：覆盖度面板（实例管理员；`?domain=` 时域
+ *   管理员可见本域）。
  *
  * `/admin/knowledge/*` 不在 admin 聚合路由下（功能路由挂在 admin 之前），因此
  * 必须显式挂 `authMiddleware` + 实例管理员检查，参照
@@ -23,6 +27,7 @@ import { Hono } from "hono";
 import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
 import {
   authMiddleware,
+  loadWorkspace,
   optionalAuthMiddleware,
 } from "../../modules/access/index.ts";
 import { isUserAdmin } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -49,6 +54,14 @@ import {
   resolveAccessibleDomain,
 } from "./difficulty.ts";
 import { setPassRatioOverride } from "./pass-ratio.ts";
+import {
+  type CoverageView,
+  diagnoseNode,
+  readCoverage,
+  readMyMastery,
+  readMyRecommendations,
+  RECOMMENDATIONS_MAX_LIMIT,
+} from "./mastery.ts";
 import {
   backfillKnowledgeTags,
   estimateBackfill,
@@ -333,5 +346,122 @@ knowledgeRouter.post(
         { ipAddress: getClientIp(c) },
       ),
     });
+  },
+);
+
+// ── 掌握度、推荐与根因诊断（P3）──────────────────────────
+// 只读接口：与其他只读列表一致使用可选鉴权；`/knowledge/me/*` 要求登录。
+
+/** 读取 `?domain=<slug>` 并解析为当前用户可访问的域；缺省返回 null。 */
+async function resolveDomainQuery(
+  c: {
+    req: { query: (key: string) => string | undefined };
+    get: (k: "userId") => string | undefined;
+  },
+): Promise<{ id: string; slug: string } | null> {
+  const slug = c.req.query("domain");
+  if (!slug) return null;
+  const userId = c.get("userId") ?? null;
+  const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+  const domain = await resolveAccessibleDomain(slug, viewer);
+  if (!domain) throw new NotFoundError("工作空间不存在");
+  return domain;
+}
+
+/** 我的掌握度（按域可选）：每节点状态与题量 + 领域汇总。 */
+knowledgeRouter.get(
+  "/knowledge/me/mastery",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const domain = await resolveDomainQuery(c);
+    return c.json({ data: await readMyMastery(userId, domain) });
+  },
+);
+
+/** 我的推荐（前沿节点 + 根因提示）：`?domain=<slug>&limit=5`。 */
+knowledgeRouter.get(
+  "/knowledge/me/recommendations",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const domain = await resolveDomainQuery(c);
+    if (!domain) throw new BadRequestError("缺少 domain 参数");
+    const rawLimit = Number(c.req.query("limit") ?? "5");
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0
+      ? Math.min(RECOMMENDATIONS_MAX_LIMIT, rawLimit)
+      : 5;
+    return c.json({
+      data: await readMyRecommendations(userId, domain, limit),
+    });
+  },
+);
+
+/**
+ * 根因诊断：给定节点的未掌握前置链（最多 5 个）。
+ *
+ * 未登录返回空链（不暴露个人掌握情况）；节点不存在或已废弃 → 404。
+ */
+knowledgeRouter.get(
+  "/knowledge/nodes/:id/diagnosis",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const nodeId = c.req.param("id")!;
+    await resolveDomainQuery(c);
+    const userId = c.get("userId") ?? null;
+    if (!userId) {
+      return c.json({
+        data: {
+          node_id: nodeId,
+          state: "none",
+          missing_prerequisites: [],
+          chain: [],
+        },
+      });
+    }
+    const view = await diagnoseNode(userId, nodeId);
+    if (!view) throw new NotFoundError("知识点不存在");
+    return c.json({ data: view });
+  },
+);
+
+/**
+ * 覆盖度面板（聚合 SQL）。
+ *
+ * 权限：实例管理员可看全实例或任一域；域管理员（`problem:write_any`）只能看
+ * 本域。`?domain=` 缺省时仅实例管理员可见全实例汇总。
+ */
+knowledgeRouter.get(
+  "/admin/knowledge/coverage",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const slug = c.req.query("domain");
+    let view: CoverageView;
+    if (slug) {
+      // 域管理员走 loadWorkspace 的能力判断（不是该域成员 → 访问异常即 403/404）。
+      const workspace = await loadWorkspace(
+        slug,
+        userActorFromAuthenticatedId(userId),
+      );
+      if (
+        !workspace.platformAdmin &&
+        !workspace.context.domainPermissions.has("problem:write_any")
+      ) {
+        throw new ForbiddenError("需要实例管理员或本域管理员权限");
+      }
+      view = await readCoverage({
+        id: workspace.domain.id,
+        slug,
+      });
+    } else {
+      await requireInstanceAdmin(userId);
+      view = await readCoverage(null);
+    }
+    return c.json({ data: view });
   },
 );

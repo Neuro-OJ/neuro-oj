@@ -10,6 +10,7 @@
  *   时段与下次开始时刻，回填确认框注明「任务将在低峰时段执行」。
  */
 import type { AdminColumn } from '~/components/admin/AdminTable.vue';
+import { type CoverageView, coverageNodeHasProblem } from '~/utils/knowledge';
 import { extractApiError } from '~/utils/apiError';
 import {
   formatCost,
@@ -239,6 +240,34 @@ function reasonOf(item: PendingReviewItem): string {
   return `AI 置信度 ${value}%，未达自动生效阈值`;
 }
 
+// ─── 覆盖度 ──────────────────────────────────────────
+const coverage = ref<CoverageView | null>(null);
+const coverageLoading = ref(false);
+const coverageError = ref('');
+const coverageOnlyProblems = ref(false);
+
+async function loadCoverage() {
+  coverageLoading.value = true;
+  coverageError.value = '';
+  try {
+    coverage.value = await knowledge.loadCoverage();
+  } catch (error) {
+    coverageError.value = extractApiError(error).message;
+  } finally {
+    coverageLoading.value = false;
+  }
+}
+
+/** 「只看有问题的节点」= 题量不足或难度断层。 */
+const coverageNodes = computed(() => {
+  const list = coverage.value?.nodes ?? [];
+  return coverageOnlyProblems.value ? list.filter(coverageNodeHasProblem) : list;
+});
+
+function areaLabel(areaId: string): string {
+  return knowledge.graph.value?.areas.find((area) => area.id === areaId)?.name ?? areaId;
+}
+
 // 初始化：先试用量；一旦功能关闭就整页隐藏，不再请求其他接口。
 onMounted(async () => {
   await loadUsage();
@@ -247,19 +276,100 @@ onMounted(async () => {
     reviewsLoading.value = false;
     return;
   }
-  await Promise.all([loadReviews()]);
+  await Promise.all([loadReviews(), loadCoverage()]);
 });
 </script>
 
 <template>
   <div class="space-y-5">
     <AdminPageHeader title="知识图谱" icon="i-lucide-network"
-      description="竞赛知识图谱的 AI 打标用量、批量回填与待确认建议审核。" />
+      description="竞赛知识图谱的覆盖度、AI 打标用量、批量回填与待确认建议审核。" />
 
     <UAlert v-if="knowledge.disabled.value" color="warning" title="知识图谱功能已关闭"
       description="总开关关闭时相关接口不可用。可在 系统设置 → 知识图谱 中开启。" />
 
     <template v-else>
+      <!-- 覆盖度：totals + 节点表 -->
+      <section class="space-y-3" data-testid="kg-coverage">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="flex items-center gap-2 text-base font-semibold">
+            <UIcon name="i-lucide-gauge" class="size-4 text-primary" />覆盖度
+            <span class="text-xs font-normal text-text-muted tabular-nums">
+              掌握门槛 {{ coverage?.min_solved ?? '—' }} 题
+            </span>
+          </h2>
+          <div class="flex flex-wrap items-center gap-2">
+            <UCheckbox v-model="coverageOnlyProblems" label="只看有问题的节点" data-testid="coverage-only-problems" />
+            <UButton size="xs" variant="outline" :loading="coverageLoading" @click="loadCoverage">刷新</UButton>
+          </div>
+        </div>
+        <UAlert v-if="coverageError" color="error" :title="coverageError" />
+        <p v-if="coverageLoading && !coverage" class="text-sm text-text-muted">正在统计覆盖度…</p>
+        <template v-else-if="coverage">
+          <dl class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+            <div class="rounded-lg border border-border bg-bg-panel p-3">
+              <dt class="text-xs text-text-muted">题量不足节点</dt>
+              <dd class="font-semibold tabular-nums" data-testid="coverage-insufficient">{{ coverage.totals.insufficient_problems }}</dd>
+            </div>
+            <div class="rounded-lg border border-border bg-bg-panel p-3">
+              <dt class="text-xs text-text-muted">难度断层节点</dt>
+              <dd class="font-semibold tabular-nums" data-testid="coverage-gap">{{ coverage.totals.difficulty_gap }}</dd>
+            </div>
+            <div class="rounded-lg border border-border bg-bg-panel p-3">
+              <dt class="text-xs text-text-muted">未归类题目</dt>
+              <dd class="font-semibold tabular-nums" data-testid="coverage-unclassified">{{ coverage.unclassified_problems }}</dd>
+            </div>
+            <div class="rounded-lg border border-border bg-bg-panel p-3">
+              <dt class="text-xs text-text-muted">待确认挂载</dt>
+              <dd class="font-semibold tabular-nums" data-testid="coverage-pending">{{ coverage.pending_mappings }}</dd>
+            </div>
+            <div class="rounded-lg border border-border bg-bg-panel p-3">
+              <dt class="text-xs text-text-muted">失效挂载</dt>
+              <dd class="font-semibold tabular-nums" data-testid="coverage-deprecated">{{ coverage.deprecated_mappings }}</dd>
+            </div>
+          </dl>
+          <p class="text-xs text-text-muted tabular-nums">
+            共 {{ coverage.totals.nodes }} 个知识点 · 有题 {{ coverage.totals.nodes_with_problems }} 个 · 题目 {{ coverage.totals.problems }} 道
+            <span v-if="coverage.protected_problems">· 保护期题目 {{ coverage.protected_problems }} 道未计入</span>
+          </p>
+          <p v-if="!coverageNodes.length" class="rounded-lg border border-border bg-bg-panel px-4 py-6 text-sm text-text-muted">
+            {{ coverageOnlyProblems ? '所有知识点均无题量或难度缺口' : '暂无知识点数据' }}
+          </p>
+          <div v-else class="overflow-x-auto rounded-lg border border-border" data-testid="coverage-table">
+            <table class="w-full text-sm">
+              <thead class="bg-bg-panel text-left text-xs text-text-muted">
+                <tr>
+                  <th class="px-3 py-2 font-medium">领域</th>
+                  <th class="px-3 py-2 font-medium">知识点</th>
+                  <th class="px-3 py-2 text-right font-medium">题量</th>
+                  <th class="px-3 py-2 text-right font-medium">简单</th>
+                  <th class="px-3 py-2 text-right font-medium">中等</th>
+                  <th class="px-3 py-2 text-right font-medium">困难</th>
+                  <th class="px-3 py-2 font-medium">标记</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border">
+                <tr v-for="node in coverageNodes" :key="node.node_id" data-testid="coverage-row">
+                  <td class="px-3 py-2 text-text-muted">{{ areaLabel(node.area) }}</td>
+                  <td class="px-3 py-2 font-medium">{{ node.name }}</td>
+                  <td class="px-3 py-2 text-right tabular-nums">{{ node.problem_count }}</td>
+                  <td class="px-3 py-2 text-right tabular-nums">{{ node.difficulty_distribution.easy }}</td>
+                  <td class="px-3 py-2 text-right tabular-nums">{{ node.difficulty_distribution.medium }}</td>
+                  <td class="px-3 py-2 text-right tabular-nums">{{ node.difficulty_distribution.hard }}</td>
+                  <td class="px-3 py-2">
+                    <div class="flex flex-wrap gap-1">
+                      <UBadge v-if="node.insufficient_problems" color="warning" variant="subtle" size="sm">题量不足</UBadge>
+                      <UBadge v-if="node.difficulty_gap" color="error" variant="subtle" size="sm">难度断层</UBadge>
+                      <span v-if="!node.insufficient_problems && !node.difficulty_gap" class="text-xs text-text-muted">—</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </section>
+
       <!-- AI 打标用量 -->
       <section class="rounded-lg border border-border bg-bg-panel p-4 space-y-3" data-testid="kg-usage">
         <div class="flex flex-wrap items-center justify-between gap-2">

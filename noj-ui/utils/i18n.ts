@@ -18,6 +18,7 @@ export const messages: Record<string, string> = {
   'nav.queue': '队列',
   'nav.about': '关于',
   'nav.search': '搜索',
+  'nav.myLearning': '我的学习',
   'nav.searchFull': '搜索题目、用户、帖子、竞赛、提交、消息、公告...',
   'nav.announcements': '公告',
   'breadcrumb.newProblem': '新建题目',

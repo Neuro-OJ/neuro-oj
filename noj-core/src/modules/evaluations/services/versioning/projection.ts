@@ -17,6 +17,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { recordEvaluationChangeTx } from "../../../education/contracts/events.ts";
+import { enqueueKnowledgeMasteryTaskTx } from "../../../runtime/knowledge-mastery-task.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
@@ -492,6 +493,14 @@ export async function recomputeSubmissionProjection(
       user_id: objectiveSubmissions.user_id,
       contest_id: objectiveSubmissions.contest_id,
     }).from(objectiveSubmissions).where(eq(objectiveSubmissions.id, source.id));
+  if (identity) {
+    // 迁移期：掌握度增量重算（knowledge.mastery，target = 用户）与有效成绩同事务
+    // 登记；开关关闭时由 handler 直接成功结束。
+    await enqueueKnowledgeMasteryTaskTx(executor as DbTx, {
+      userId: identity.user_id,
+      problemId: source.problem_id,
+    });
+  }
   if (identity?.domain_id) {
     // 教学事实登记归 education：这里只经其窄事务合同登记定位，不带成绩。
     await recordEvaluationChangeTx(executor as DbTx, {

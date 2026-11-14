@@ -5,8 +5,12 @@ const { user } = useAuth();
 const route = useRoute(), slug = useNavigationDomain(), workspace = useOptionalWorkspace();
 const mobileOpen = ref(false), headerRef = ref<HTMLElement | null>(null);
 const navRef = ref<HTMLElement | null>(null), measureRef = ref<HTMLElement | null>(null), navWidth = ref(Infinity);
+const knowledge = useKnowledge();
+// 知识图谱总开关：不在导航里主动探测（避免每页水合多一次请求），只沿用已知的
+// 关闭状态（任一知识图谱接口返回 KNOWLEDGE_DISABLED 后隐藏入口）。
+const knowledgeEnabled = computed(() => !knowledge.disabled.value);
 const entries = computed(() => workspace?.domain.value
-  ? workspaceNavigation(workspace.domain.value)
+  ? workspaceNavigation(workspace.domain.value, { knowledgeEnabled: knowledgeEnabled.value })
   : [
     { label: '首页', section: '', to: workspacePath(slug.value), icon: 'i-lucide-home' },
     { label: '题库', section: 'problems', to: workspacePath(slug.value, 'problems'), icon: 'i-lucide-book-open' },

@@ -7,6 +7,12 @@ export {
 } from "./contracts/sse-events.ts";
 export type { RuntimeSseEventRow } from "./contracts/sse-events.ts";
 export { createSystemActor } from "./system-actors.ts";
+// 迁移期：供 src/features/knowledge 使用（掌握度任务 handler 登记与常量对齐）。
+export {
+  enqueueKnowledgeMasteryTaskTx,
+  KNOWLEDGE_MASTERY_TARGET_KIND,
+  KNOWLEDGE_MASTERY_TASK_TYPE,
+} from "./knowledge-mastery-task.ts";
 export {
   TASK_DEFAULT_CLAIM_LIMIT,
   TASK_DEFAULT_LEASE_MS,
