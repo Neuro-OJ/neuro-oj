@@ -47,6 +47,7 @@ describe('班级页面导航', () => {
       '班级概览',
       '学生训练',
       '班级成员',
+      '知识点掌握',
       '班级设置',
     ]);
     route.path = '/d/school/classrooms/class-one/students/student-one';
@@ -63,13 +64,20 @@ describe('班级页面导航', () => {
       '班级概览',
       '学生训练',
       '班级成员',
+      '知识点掌握',
       '班级设置',
     ]);
     for (const link of result.findAll('a')) {
       expect(link.attributes('href')).toMatch(
-        /^\/d\/school\/classrooms(?:\/class-one(?:\/(?:students|members|settings))?)?$/,
+        /^\/d\/school\/classrooms(?:\/class-one(?:\/(?:students|members|knowledge|settings))?)?$/,
       );
     }
+    result.unmount();
+  });
+
+  it('知识点掌握入口仅教练可见（学生不展示）', () => {
+    const result = view('student');
+    expect(result.findAll('a').map((link) => link.text())).not.toContain('知识点掌握');
     result.unmount();
   });
 

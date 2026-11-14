@@ -8,9 +8,13 @@ import {
 } from '~/utils/education';
 import type { AssignmentDetail, AssignmentDraftInput, TeachingProblemOption } from '~/utils/education';
 import { extractApiError } from '~/utils/apiError';
+import type { KnowledgePickItem } from '~/utils/knowledge';
+import AssignmentKnowledgePicker from '~/components/education/AssignmentKnowledgePicker.vue';
 const props = defineProps<{ slug: string; classroomId: string; initial?: AssignmentDetail }>();
 const emit = defineEmits<{ saved: [id: string] }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope();
+// 知识图谱：仅在开启时展示「按知识点添加」区块（关闭时 `disabled` 为 true，整块隐藏）。
+const knowledge = useKnowledge();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const originalRevision = props.initial?.revision ?? 0;
 const title = ref(props.initial?.title ?? ''), description = ref(props.initial?.description ?? '');
@@ -77,6 +81,37 @@ function add(item: TeachingProblemOption) {
       requirement: 'accepted',
       score: '60',
     });
+  }
+}
+/**
+ * 按知识点挑题结果追加到已选题目。
+ *
+ * 逐题走与「按题号添加」相同的解析接口拿到本域绑定（保存作业只认 `binding_id`），
+ * 再经 `add()` 去重并沿用 200 道上限；解析失败的题目跳过并提示。
+ */
+async function addKnowledgeItems(list: KnowledgePickItem[]) {
+  if (adding.value) return;
+  const scope = capture(), classId = props.classroomId;
+  adding.value = true;
+  error.value = '';
+  const failed: string[] = [];
+  try {
+    for (const item of list) {
+      // 引用由后端按编辑器规则给出：本域题为题号，跨域共享题为「来源域:题号」。
+      const ref = item.display_ref;
+      if (!ref || items.value.some((i) => i.reference === ref)) continue;
+      if (items.value.length >= 200) break;
+      try {
+        const result = await education.problem(scope.slug, ref);
+        if (!scope.isCurrent() || props.classroomId !== classId) return;
+        add({ ...result, title: result.content.title, kind: result.content.kind });
+      } catch {
+        failed.push(ref);
+      }
+    }
+    if (failed.length) error.value = `以下题目无法加入作业：${failed.join('、')}`;
+  } finally {
+    adding.value = false;
   }
 }
 function move(index: number, delta: number) {
@@ -493,6 +528,16 @@ async function save() {
               请从上方搜索题库或按题号添加到本作业
             </div>
           </div>
+
+          <!-- 按知识点添加（知识图谱开启时才显示） -->
+          <AssignmentKnowledgePicker
+            v-if="!knowledge.disabled.value"
+            :slug="slug"
+            :classroom-id="classroomId"
+            :graph="knowledge.graph.value"
+            :existing="items.map(i => i.reference)"
+            @add="addKnowledgeItems"
+          />
         </template>
       </div>
     </UCard>

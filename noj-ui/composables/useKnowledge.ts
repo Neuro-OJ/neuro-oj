@@ -11,6 +11,7 @@ import type { DeepReadonly, Ref } from 'vue';
 import { readonly } from 'vue';
 import {
   type BackfillResult,
+  type ClassroomMasteryView,
   type CoverageView,
   isBackfillDrift,
   isKnowledgeDisabled,
@@ -18,6 +19,7 @@ import {
   type KnowledgeLadder,
   type KnowledgeLadderItem,
   type KnowledgeNodeView,
+  type KnowledgePickView,
   type KnowledgeSelection,
   type MyMasteryView,
   type MyRecommendationsView,
@@ -252,6 +254,60 @@ export function useKnowledge() {
     return task;
   }
 
+  // ─── P4：班级教练视角 ─────────────────────────────
+
+  /**
+   * 班级知识点掌握矩阵；功能关闭或无权/不可见（404）→ null，界面据此隐藏或提示。
+   * 学生访问（403）照常抛出，由页面权限判断提前挡住。
+   */
+  function loadClassroomMastery(slug: string, classroomId: string): Promise<ClassroomMasteryView | null> {
+    const key = `classroom-mastery:${slug}:${classroomId}`;
+    const running = inflight.get(key);
+    if (running) return running as Promise<ClassroomMasteryView | null>;
+    const task = (async () => {
+      try {
+        const res = await api.get<{ data: ClassroomMasteryView }>(
+          `/api/v1/domains/${encodeURIComponent(slug)}/classrooms/${encodeURIComponent(classroomId)}/knowledge-mastery`,
+          { silent: true },
+        );
+        return res.data;
+      } catch (err) {
+        if (markDisabled(err)) return null;
+        const status = (err as { status?: number } | null)?.status;
+        if (status === 404) return null;
+        throw err;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, task);
+    return task;
+  }
+
+  /**
+   * 按知识点挑题（不创建作业）：功能关闭或节点不存在（404）→ null；
+   * 参数错误（400）等其他错误照常抛出。
+   */
+  async function loadClassroomPick(
+    slug: string,
+    classroomId: string,
+    nodeId: string,
+    count: number,
+  ): Promise<KnowledgePickView | null> {
+    try {
+      const res = await api.get<{ data: KnowledgePickView }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/classrooms/${encodeURIComponent(classroomId)}/knowledge-pick`,
+        { query: { node: nodeId, count }, silent: true },
+      );
+      return res.data;
+    } catch (err) {
+      if (markDisabled(err)) return null;
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 404) return null;
+      throw err;
+    }
+  }
+
   // ─── 管理端 ───────────────────────────────────────────
 
   /** 覆盖度面板；`domain` 缺省为全实例（仅实例管理员）。关闭 → null。 */
@@ -357,6 +413,8 @@ export function useKnowledge() {
     loadMyMastery,
     loadRecommendations,
     loadDiagnosis,
+    loadClassroomMastery,
+    loadClassroomPick,
     loadCoverage,
     loadUsage,
     estimateBackfill,

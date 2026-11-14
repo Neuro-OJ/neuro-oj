@@ -14,6 +14,8 @@
  * - `GET /knowledge/nodes/:id/diagnosis`：根因诊断（未登录返回空）。
  * - `GET /admin/knowledge/coverage`：覆盖度面板（实例管理员；`?domain=` 时域
  *   管理员可见本域）。
+ * - `GET /domains/:slug/classrooms/:id/knowledge-mastery|knowledge-pick`：
+ *   教练视角班级掌握矩阵与按知识点挑题（班级教练 / 域管理员 / 平台管理员）。
  *
  * `/admin/knowledge/*` 不在 admin 聚合路由下（功能路由挂在 admin 之前），因此
  * 必须显式挂 `authMiddleware` + 实例管理员检查，参照
@@ -32,6 +34,10 @@ import {
 } from "../../modules/access/index.ts";
 import { isUserAdmin } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
+  assertClassroomCoach,
+  loadClassroom,
+} from "../../modules/education/index.ts";
+import {
   enforceRateLimit,
   getClientIp,
   getSetting,
@@ -41,6 +47,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import type { AuthEnv } from "../../shared/http/hono-env.ts";
 import { parsePagination } from "../../shared/http/pagination.ts";
@@ -53,6 +60,13 @@ import {
   readProblemDifficulty,
   resolveAccessibleDomain,
 } from "./difficulty.ts";
+import {
+  type ClassMasteryView,
+  PICK_DEFAULT_COUNT,
+  PICK_MAX_COUNT,
+  readClassMastery,
+  readKnowledgePick,
+} from "./coach.ts";
 import { setPassRatioOverride } from "./pass-ratio.ts";
 import {
   type CoverageView,
@@ -462,6 +476,83 @@ knowledgeRouter.get(
       await requireInstanceAdmin(userId);
       view = await readCoverage(null);
     }
+    return c.json({ data: view });
+  },
+);
+
+// ── 教练视角（P4）：班级掌握矩阵与按知识点挑题 ─────────────
+// 只读接口；权限为班级教练（loadClassroom + assertClassroomCoach），学生 → 403
+// CLASSROOM_PERMISSION_DENIED，非成员 404，未登录 401。班级按
+// 「历史学生可见」读取（与 `GET /classrooms/:id` 同口径），因此已离班学生也走
+// 403 而不是被伪装成 404。
+
+/** 解析班级访问：未登录 401；不可见 404；无教练身份 403（教学域判定）。 */
+async function loadCoachClassroom(c: {
+  req: { param: (key: string) => string | undefined };
+  get: (k: "userId") => string | undefined;
+}): Promise<{
+  slug: string;
+  classroomId: string;
+  domain: { id: string; slug: string };
+}> {
+  const userId = c.get("userId");
+  if (!userId) throw new UnauthorizedError("未提供认证令牌");
+  const slug = c.req.param("slug")!;
+  const classroomId = c.req.param("id")!;
+  const access = await loadClassroom(slug, classroomId, userId, {
+    historicalStudent: true,
+  });
+  assertClassroomCoach(access);
+  return {
+    slug: access.domain.slug,
+    classroomId: access.classroom.id,
+    domain: { id: access.domain.id, slug: access.domain.slug },
+  };
+}
+
+/** 班级掌握矩阵（学生 × 知识点；cells 稀疏，counts 三项之和 = 学生数）。 */
+knowledgeRouter.get(
+  "/domains/:slug/classrooms/:id/knowledge-mastery",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const target = await loadCoachClassroom(c);
+    const view: ClassMasteryView = await readClassMastery(
+      target.classroomId,
+      target.domain,
+    );
+    return c.json({ data: view });
+  },
+);
+
+/** 按知识点挑题：`?node=<id>&count=1-20`（默认 5），均匀抽样，不建作业。 */
+knowledgeRouter.get(
+  "/domains/:slug/classrooms/:id/knowledge-pick",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const nodeId = c.req.query("node");
+    if (!nodeId) throw new BadRequestError("缺少 node 参数");
+    const rawCount = c.req.query("count");
+    let count = PICK_DEFAULT_COUNT;
+    if (rawCount !== undefined) {
+      const parsed = Number(rawCount);
+      if (
+        !Number.isInteger(parsed) || parsed < 1 || parsed > PICK_MAX_COUNT
+      ) {
+        throw new BadRequestError(
+          `count 必须在 1–${PICK_MAX_COUNT} 之间`,
+        );
+      }
+      count = parsed;
+    }
+    const target = await loadCoachClassroom(c);
+    const view = await readKnowledgePick({
+      nodeId,
+      count,
+      domain: target.domain,
+    });
+    if (!view) throw new NotFoundError("知识点不存在");
     return c.json({ data: view });
   },
 );

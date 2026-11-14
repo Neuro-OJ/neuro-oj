@@ -53,6 +53,7 @@ export const messages: Record<string, string> = {
   'breadcrumb.newTraining': '创建题单',
   'breadcrumb.newAssignment': '创建作业',
   'breadcrumb.contestRemediation': '比赛补题',
+  'breadcrumb.knowledgeMastery': '知识点掌握',
   'breadcrumb.submissionJob': '评测任务',
   'breadcrumb.invitation': '接受邀请',
   'breadcrumb.about': '关于',

@@ -4,27 +4,29 @@
 为题目挂载知识点、节点阶梯与掌握度提供数据基础。用户文档与完整设计见
 [openspec/changes/add-knowledge-graph/](../../../../openspec/changes/add-knowledge-graph/)。
 
-| 文件                      | 职责                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `index.ts`                | 唯一对外出口：`feature` 声明（含只读路由）与知识图谱能力导出                             |
-| `pack.ts`                 | `loadPackFromDir` / `validatePack` / `resolveOfficialPackDir`                            |
-| `import.ts`               | `importPack(dir)`：单事务幂等导入，统计新增/更新/废弃节点与边                            |
-| `graph.ts`                | 只读图视图 + 进程内 TTL 缓存（10 分钟）与 `invalidateKnowledgeGraphCache()`              |
-| `mappings.ts`             | 题目挂载：读取、人工挂载、审核、`applyAiMapping`（AI 结果落库）、比赛保护过滤            |
-| `tagging.ts`              | AI 打标：`knowledge.tag` 任务、提示词与截断、预算暂停、回填预估与管理 API 支撑           |
-| `offpeak.ts`              | 低峰时段纯函数：`isWithinWindow` / `nextWindowStart`（UTC+8）、设置读取与视图            |
-| `difficulty.ts`           | P2 难度：达标判定、校准公式、每日重算 worker、阶梯与「下一题」                           |
-| `pass-ratio.ts`           | 出题人按题覆盖及格线（`pass_ratio_override`），题目编辑权限 + 审计                       |
-| `objective-full-score.ts` | 客观题套卷满分（作答版本小题数 × 100，`evaluation_attempts` 记分口径）                   |
-| `routes.ts`               | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核                            |
-| `mappings.test.ts`        | 服务测试（权限、校验、整体替换、AI 不覆盖人工、审核流、保护期、废弃节点）                |
-| `pack.test.ts`            | 纯函数测试（临时目录构造非法包 + 真实官方包 14 领域 / 181 节点）                         |
-| `import.test.ts`          | 导入测试（真实 PostgreSQL：首导、幂等、替换废弃、扩展、失败不写库）                      |
-| `routes.test.ts`          | API 测试（整图/详情/开关关闭/空库/缓存失效）                                             |
-| `tagging.test.ts`         | 打标测试（开关/hash/人工挂载/预算/别名未配置/重试/阈值/提示词稳定性/回填/鉴权/低峰顺延） |
-| `offpeak.test.ts`         | 低峰时段纯函数测试（时段内外、跨零点、边界、下次开始、非法回退默认）                     |
-| `difficulty.test.ts`      | 校准公式/达标判定/阶梯排序与保护过滤/下一题/重算互斥/API 端到端                          |
-| `doc.test.ts`             | 讲解文档读取与目录穿越防护                                                               |
+| 文件                      | 职责                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `index.ts`                | 唯一对外出口：`feature` 声明（含只读路由）与知识图谱能力导出                               |
+| `pack.ts`                 | `loadPackFromDir` / `validatePack` / `resolveOfficialPackDir`                              |
+| `import.ts`               | `importPack(dir)`：单事务幂等导入，统计新增/更新/废弃节点与边                              |
+| `graph.ts`                | 只读图视图 + 进程内 TTL 缓存（10 分钟）与 `invalidateKnowledgeGraphCache()`                |
+| `mappings.ts`             | 题目挂载：读取、人工挂载、审核、`applyAiMapping`（AI 结果落库）、比赛保护过滤              |
+| `tagging.ts`              | AI 打标：`knowledge.tag` 任务、提示词与截断、预算暂停、回填预估与管理 API 支撑             |
+| `offpeak.ts`              | 低峰时段纯函数：`isWithinWindow` / `nextWindowStart`（UTC+8）、设置读取与视图              |
+| `difficulty.ts`           | P2 难度：达标判定、校准公式、每日重算 worker、阶梯与「下一题」                             |
+| `pass-ratio.ts`           | 出题人按题覆盖及格线（`pass_ratio_override`），题目编辑权限 + 审计                         |
+| `objective-full-score.ts` | 客观题套卷满分（作答版本小题数 × 100，`evaluation_attempts` 记分口径）                     |
+| `coach.ts`                | P4 教练视角：班级掌握矩阵 `readClassMastery`、按知识点挑题 `readKnowledgePick`（均匀抽样） |
+| `routes.ts`               | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核、教练视角接口                |
+| `mappings.test.ts`        | 服务测试（权限、校验、整体替换、AI 不覆盖人工、审核流、保护期、废弃节点）                  |
+| `pack.test.ts`            | 纯函数测试（临时目录构造非法包 + 真实官方包 14 领域 / 181 节点）                           |
+| `import.test.ts`          | 导入测试（真实 PostgreSQL：首导、幂等、替换废弃、扩展、失败不写库）                        |
+| `routes.test.ts`          | API 测试（整图/详情/开关关闭/空库/缓存失效）                                               |
+| `tagging.test.ts`         | 打标测试（开关/hash/人工挂载/预算/别名未配置/重试/阈值/提示词稳定性/回填/鉴权/低峰顺延）   |
+| `offpeak.test.ts`         | 低峰时段纯函数测试（时段内外、跨零点、边界、下次开始、非法回退默认）                       |
+| `difficulty.test.ts`      | 校准公式/达标判定/阶梯排序与保护过滤/下一题/重算互斥/API 端到端                            |
+| `doc.test.ts`             | 讲解文档读取与目录穿越防护                                                                 |
+| `coach.test.ts`           | 教练视角（权限矩阵、活跃学生、稀疏 cells/counts、挑题均匀抽样/边界/保护期）                |
 
 ## API（只读，挂在 `/api/v1`）
 
@@ -242,3 +244,26 @@
 - **覆盖度**（`readCoverage`，聚合 SQL）：每节点题量、三档难度分布、题量不足 （<
   K）、难度断层（题量已足但无「困难」档题，按校准难度绝对值判断）、未归类题、
   待确认与失效挂载数，以及汇总。
+
+## P4 教练视角（`coach.ts`）
+
+- **权限**：`loadClassroom(slug, classroomId, userId)` +
+  `assertClassroomCoach(access)`（仅经
+  `src/modules/education/index.ts`）。域教练 /
+  域管理员（`classroom:manage_any`）/ 平台管理员可用；学生 → 403
+  `CLASSROOM_PERMISSION_DENIED`；非成员 → 404（不暴露班级是否存在）；未登录 →
+  401。班级按「历史学生可见」读取（与 `GET /classrooms/:id` 同口径）。
+  `knowledge_enabled = false` → 404 `KNOWLEDGE_DISABLED`。
+- **`GET /domains/:slug/classrooms/:id/knowledge-mastery`**：`students` 为班级
+  `status='active'` 的学生（按 username 排序；账号暂无昵称列，`display_name`
+  恒为 null）。`areas[].nodes[]` 只列本域有可访问题目（`problem_count > 0`，与
+  P2/P3 同口径）或班级成员有 `learning`/`mastered` 记录的非废弃节点，按领域与
+  节点 sort 排序，空领域不出现。`cells` 稀疏（只含 `learning`/`mastered`），
+  `counts` 三项之和恒等于学生数。取数：一次取学生 + 一次取（学生 × 节点）掌握
+  记录 + 复用 `loadNodeProblems` 的域题量，不逐学生/节点查库。
+- **`GET /domains/:slug/classrooms/:id/knowledge-pick?node=&count=`**：候选复用
+  `loadLadderItems`（主知识点、已发布、域绑定可用、非进行中比赛 / 保密保护期，
+  难度升序）。`count` 缺省 5，范围 1–20（越界 400），缺 `node` 400，节点不存在
+  或已废弃 404。候选 ≤ count 全返回，否则第 i 个取下标
+  `ceil(i*(n-1)/(count-1))`（即 `round` 的向上取整，7 取 3 → 0/3/6），
+  `count = 1` 取中位（`floor(n/2)`）。只返回题目列表，不创建作业。

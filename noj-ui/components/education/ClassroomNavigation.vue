@@ -13,6 +13,9 @@ const links = computed(() => {
     ...(room && (classroomCan(room, 'submissions:read') || classroomCan(room, 'progress:read'))
       ? [{ label: '学生训练', to: `${base}/students` }] : []),
     ...(room && (classroomCan(room, 'students:manage') || room.membership?.role === 'student') ? [{ label: '班级成员', to: `${base}/members` }] : []),
+    // 知识点掌握：教练视角（学情只读能力），仅课堂教练/域管理员可见。
+    ...(room && classroomCan(room, 'progress:read')
+      ? [{ label: '知识点掌握', to: `${base}/knowledge` }] : []),
     ...(room && room.manages_domain
       ? [{ label: '班级设置', to: `${base}/settings` }] : []),
   ];
