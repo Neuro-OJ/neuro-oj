@@ -174,17 +174,22 @@ pub async fn evaluate_dual_with_cpu_limit(
         .context("启动 Solution exec 失败")?;
 
         // 8. 运行主循环
+        // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值；
+        // evaluator 帧里的 timeout_ms 受 judge 硬上限截断，防止绕过 clamp 挂住评测）。
+        // 同时统计 Solution 忙碌时长，作为上报给做题人的 time_ms。
+        let mut tracker =
+            InFlightTracker::new(solution.call_timeout_ms, max_solution_call_timeout_ms);
         let result = run_dual_loop(
             task_submission_id,
             evaluator_exec,
             solution_exec,
             runtime_config.evaluator.time_limit_ms,
-            solution.call_timeout_ms,
-            max_solution_call_timeout_ms,
+            &mut tracker,
             task_rejudge_seq,
             startup_deadline,
         )
         .await;
+        let solution_time_ms = tracker.solution_time_ms(Instant::now());
 
         // NOJ-162：销毁前读取 Solution 容器内存峰值（仅尽力而为，失败不影响结果）
         let memory_peak_kb = read_container_memory_peak_kb(&docker, &solution_id).await;
@@ -196,7 +201,7 @@ pub async fn evaluate_dual_with_cpu_limit(
             );
         }
 
-        Ok::<_, anyhow::Error>((result, memory_peak_kb))
+        Ok::<_, anyhow::Error>((result, memory_peak_kb, solution_time_ms))
     }
     .await;
 
@@ -205,12 +210,19 @@ pub async fn evaluate_dual_with_cpu_limit(
         warn!("DualContainer 销毁警告: {}", e);
     }
 
-    let (result, memory_peak_kb) = evaluation?;
+    let (result, memory_peak_kb, solution_time_ms) = evaluation?;
 
-    // NOJ-162：回填真实总耗时与内存峰值
+    // 耗时口径：只统计 Solution 处理 evaluator 调用的时间，不含容器创建/销毁、
+    // 文件注入、评测脚本自身与 LLM 调用；整段墙钟时间仅写日志供排查。
     let mut result = result?;
+    info!(
+        submission_id = task_submission_id,
+        wall_time_ms = started.elapsed().as_millis() as u64,
+        solution_time_ms = ?solution_time_ms,
+        "双容器评测耗时"
+    );
     if result.time_ms.is_none() {
-        result.time_ms = Some(started.elapsed().as_millis() as u64);
+        result.time_ms = solution_time_ms;
     }
     if result.memory_kb.is_none() {
         result.memory_kb = memory_peak_kb;
@@ -312,8 +324,7 @@ async fn run_dual_loop(
     evaluator_exec: ExecSession,
     solution_exec: ExecSession,
     evaluator_timeout_ms: u64,
-    default_call_timeout_ms: u64,
-    max_call_timeout_ms: u64,
+    tracker: &mut InFlightTracker,
     rejudge_seq: Option<i64>,
     startup_deadline: Instant,
 ) -> Result<JudgeResult> {
@@ -337,10 +348,6 @@ async fn run_dual_loop(
     let mut solution_ready = false;
 
     let mut result_payload = ResultPayload::new();
-
-    // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值；
-    // evaluator 帧里的 timeout_ms 受 judge 硬上限截断，防止绕过 clamp 挂住评测）
-    let mut tracker = InFlightTracker::new(default_call_timeout_ms, max_call_timeout_ms);
 
     // 是否向 evaluator 发送过 CallTimeout 错误帧（solution 调用超时）。
     // 仅 WaitingSide::Evaluator（evaluator 等 solution 的 call）置位；
@@ -378,9 +385,9 @@ async fn run_dual_loop(
                 ));
             }
             // 调用级超时（in-flight 到期）
-            _ = next_call_timeout(&tracker) => {
+            _ = next_call_timeout(tracker) => {
                 let (eval_pipe, sol_pipe) = expire_call_timeouts(
-                    &mut tracker,
+                    tracker,
                     &mut eval_input,
                     &mut sol_input,
                     &mut sent_call_timeout,
@@ -427,7 +434,7 @@ async fn run_dual_loop(
                     &mut eval_stdout_full,
                     &mut sol_input,
                     &mut result_payload,
-                    &mut tracker,
+                    tracker,
                     chunk,
                 )
                 .await?;
@@ -507,9 +514,9 @@ async fn run_dual_loop(
                 }
 
                 // 调用级超时（in-flight 到期）
-                _ = next_call_timeout(&tracker) => {
+                _ = next_call_timeout(tracker) => {
                     let (eval_pipe, sol_pipe) = expire_call_timeouts(
-                        &mut tracker,
+                        tracker,
                         &mut eval_input,
                         &mut sol_input,
                         &mut sent_call_timeout,
@@ -563,7 +570,7 @@ async fn run_dual_loop(
                         &mut eval_stdout_full,
                         &mut sol_input,
                         &mut result_payload,
-                        &mut tracker,
+                        tracker,
                         chunk,
                     )
                     .await?
@@ -596,7 +603,7 @@ async fn run_dual_loop(
                                 &mut eval_input,
                                 c,
                                 &mut solution_ready,
-                                &mut tracker,
+                                tracker,
                             )
                             .await?
                             {

@@ -267,7 +267,8 @@ pub struct JudgeResult {
     pub output: String,
     /// 结构化结果（透传 evaluate.py details，含 cases 数组）
     pub details: Value,
-    /// 总运行耗时（毫秒）
+    /// 运行耗时（毫秒）。双容器评测为 Solution 处理调用的累计时长
+    /// （见 `InFlightTracker::solution_time_ms`），不含容器开销与评测脚本自身耗时。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_ms: Option<u64>,
     /// 峰值内存（KB）
