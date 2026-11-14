@@ -1,7 +1,7 @@
 ## Purpose
 
 规定统一题目包 manifest 的格式 3：以单一字段判别题型、可缺省的运行配置、
-明确的版本兼容策略，以及 noj-core 与 noj-cli 共用的唯一校验实现。
+旧格式的自动转换策略，以及 noj-core 与 noj-cli 共用的唯一校验实现。
 
 ## ADDED Requirements
 
@@ -48,8 +48,9 @@
 ### Requirement: AI runtime configuration has platform defaults
 
 对 `kind: "ai"`，`runtime_config` 及其每个字段 SHALL 可缺省。系统 SHALL
-在导入时用固定的平台缺省值补全为完整配置后再校验与保存；缺省值 SHALL 不随部署
-配置变化。`submission_mode` 为 `prediction` 时 SHALL NOT 补全 `solution`。
+在导入时用平台缺省值补全为完整配置后再校验与保存：时限、内存与命令为固定值；
+缺省镜像 SHALL 为导入平台的官方评测镜像（名称由部署的镜像仓库前缀决定）。
+`submission_mode` 为 `prediction` 时 SHALL NOT 补全 `solution`。
 
 #### Scenario: Only time limit overridden
 
@@ -77,22 +78,22 @@
 - **WHEN** manifest 同时声明 `llm` 与 `evaluator.network.enabled: false`
 - **THEN** 导入以 HTTP 400 拒绝并指出两者冲突
 
-### Requirement: Older formats follow a fixed compatibility schedule
+### Requirement: Older formats remain importable via automatic conversion
 
-系统 SHALL 以 HTTP 400 拒绝格式 1 manifest，并在错误信息中给出
-`noj problem migrate` 指令。在 v0.12 系列中，系统 SHALL 将格式 2 manifest
-按固定规则转换为格式 3 后导入，并在导入结果中返回升级告警；自 v0.13 起 SHALL
-拒绝格式 2。导入期转换与 `noj problem migrate` SHALL 使用同一转换实现。
+系统 SHALL 将格式 2 manifest 与声明 `type: "P"` 的格式 1 manifest 按固定规则
+转换为格式 3 后导入，并在导入结果中返回升级告警（含 `noj problem migrate`
+指令）；本变更不设旧格式删除时间点。导入期转换与 `noj problem migrate` SHALL
+使用同一转换实现，且转换 SHALL NOT 写入任何平台缺省值。
 
-#### Scenario: Format 2 bundle during transition
+#### Scenario: Format 2 bundle
 
-- **WHEN** 在 v0.12 系列中导入 `is_objective: true` 的格式 2 题包
+- **WHEN** 导入 `is_objective: true` 的格式 2 题包
 - **THEN** 导入成功，题目为客观题套卷，结果包含升级到格式 3 的告警
 
-#### Scenario: Format 1 bundle
+#### Scenario: Format 1 P bundle
 
-- **WHEN** 导入 `format_version: 1` 的题包
-- **THEN** 导入以 HTTP 400 拒绝，错误信息包含 `noj problem migrate`
+- **WHEN** 导入 `format_version: 1`、`type: "P"` 的题包
+- **THEN** 导入成功并给出包含 `noj problem migrate` 的升级告警
 
 #### Scenario: CLI migration rewrites manifest
 
@@ -102,7 +103,7 @@
 ### Requirement: Bundle validation has a single implementation
 
 noj-core 导入与 noj-cli 的 `lint` / `pack` / `push` / `migrate` SHALL 使用同一份
-题目包校验实现，该实现 SHALL 不依赖任何模块的导入映射。仓库中 SHALL NOT
+题目包校验实现（noj-cli 以相对路径直接引用 noj-core 源码）。仓库中 SHALL NOT
 存在题目包校验逻辑的副本。
 
 #### Scenario: Offline lint matches server import
@@ -110,10 +111,10 @@ noj-core 导入与 noj-cli 的 `lint` / `pack` / `push` / `migrate` SHALL 使用
 - **WHEN** 某题包在 `noj problem lint` 中通过校验
 - **THEN** 同一题包在服务端导入时不会因 manifest 或 zip 结构校验失败
 
-### Requirement: Hydro archives use a separate importer
+### Requirement: Hydro archives keep their import behavior
 
-统一题包解析 SHALL 只处理根级含 `problem.json` 的题包。根级含 `problem.yaml` 的
-Hydro 归档 SHALL 由独立导入器处理，其导入结果 SHALL 与本变更前一致。
+根级含 `problem.yaml` 的 Hydro 归档 SHALL 继续可导入，并 SHALL 规范化为
+`kind: "oi"` 的格式 3 manifest，导入结果与本变更前一致。
 
 #### Scenario: Hydro archive import
 

@@ -12,8 +12,8 @@
   `ProblemDraftContent.kind`（`ai` / `oi` / `objective`），题包格式却没有对齐。
 - **兼容层仍承担实际负载**：格式 1 P/U 包转换、`type` / `domain_id`
   剥离、`llm.provider_id` / `model` 容忍、Hydro `problem.yaml` 分支混在
-  `parseBundleZip` 中。私有题源 `noj-problems` 22 道题里 **19 道仍是格式
-  1**，导致 v1 转换路径无法删除。
+  `parseBundleZip` 中。私有题源 `noj-problems` 22 道题里 **19 道仍是格式 1**，v1
+  转换路径需要继续保留。
 - **校验实现两份**：`noj-cli/src/problem/vendor/` 下手工复制了
   `problem-bundle.ts`（523 行）、`bundle-parser.ts`（401 行）与
   `runtime-config-validate.ts`（issue #514 决策），再用 424 行共享 fixture
@@ -33,22 +33,18 @@
   有独立的允许字段集合；出现不属于该 `kind`
   的字段时，用**同一条通用错误**拒绝并列出该 `kind` 支持的字段。
   **BREAKING**：格式 3 移除 `is_objective` 与 `judge_type`。
-- **`runtime_config` 全字段可缺省**（仅 `kind: "ai"`）：缺省镜像为官方
-  `noj-evaluator-python` /
-  `noj-solution-python`，缺省命令、时限与内存取平台默认值；
+- **`runtime_config` 全字段可缺省**（仅 `kind: "ai"`）：缺省镜像为导入平台的官方
+  `noj-evaluator-python` / `noj-solution-python`（带 `JUDGE_IMAGE_BASE` 前缀），
+  缺省命令、时限与内存取平台默认值；
   题包只需写与默认值不同的字段。导入时规范化为完整配置落库，数据库与评测链路不变。
 - **声明 `llm` 即隐含开启 evaluator 网络**；只有显式 `network.enabled: false` 与
   `llm` 同时出现才报错。
 - **未知顶层字段一律拒绝**（格式 3），以捕获拼写错误；已退役字段给出迁移提示。
-- **校验单一事实来源**：题包 manifest 与 zip 结构校验抽到仓库根下零依赖目录
-  `packages/problem-bundle/`，noj-core 与 noj-cli 以相对路径直接引用，删除
-  `noj-cli/src/problem/vendor/` 副本与共享 fixture 契约测试。
-- **兼容层收敛**：
-  - `noj problem migrate` 将格式 1 / 2 题包重写为格式 3；`noj-problems`
-    一次性迁移后，**删除格式 1 转换**。
-  - 格式 2 在一个小版本内（v0.12 系列）继续接受并在导入结果中告警，之后删除。
-  - Hydro 导入从 `parseBundleZip` 中拆出为独立导入器（入口按根级文件识别），
-    行为不变，只是不再与统一题包解析交织。
+- **校验单一事实来源**：noj-cli 以相对路径直接引用 noj-core 的题包校验与解析
+  代码，删除 `noj-cli/src/problem/vendor/` 副本与 CLI 侧契约测试。
+- **兼容层收敛但不删除**：格式 1（P）/ 2 经同一个纯函数 `upgradeBundleManifest`
+  自动转换为格式 3 并告警，**已有题包无需改动**；新增 `noj problem migrate`
+  用同一 转换改写源 `problem.json`。Hydro `problem.yaml` 规范化为 `kind: "oi"`。
 - 同步更新 noj-docs 题目包规范、出题指南与 `noj problem init` 脚手架。
 
 **不变**：zip 文件布局（`problem.json` / `evaluate.py` / `statement.md` /
@@ -69,15 +65,12 @@
 
 ## Impact
 
-- **noj-core**：`modules/problems/types/problem-bundle.ts`、
-  `services/bundle-parser.ts` 迁入 `packages/problem-bundle/`；
-  `problem-bundle-edit.ts` / `problem-bundle-import.ts` 改为消费 `kind`；Hydro
-  解析独立成文件。按「改到即迁」原则，题目包导入相关代码同时迁入
-  `features/`（是否在本变更内完成见 design.md 开放问题）。
-- **noj-cli**：删除 `src/problem/vendor/`；`lint` / `pack` / `push` / `init`
-  引用 `packages/problem-bundle/`；新增 `problem migrate` 子命令。
-- **noj-problems（私有仓库）**：一次性运行 `noj problem migrate`，单独提交。
-- **noj-docs**：`standards/problem-bundle.md` 与出题人指南全面改写为格式 3。
-- **出题人**：格式 2 题包在 v0.12 系列中仍可导入（带告警）；格式 1 题包需先运行
-  `noj problem migrate`。
+- **noj-core**：`types/problem-bundle.ts` 实现格式 3 与
+  `upgradeBundleManifest`； `bundle-parser.ts` 与 `problem-bundle-edit.ts`
+  改为按 `kind` 分支。
+- **noj-cli**：删除 `src/problem/vendor/`；`lint` / `pack` 直接引用 core；`init`
+  生成格式 3 最小 manifest；新增 `problem migrate` 子命令。
+- **noj-problems（私有仓库）**：无需改动；可选运行 `noj problem migrate`。
+- **noj-docs**：`standards/problem-bundle.md` 与出题人指南示例改写为格式 3。
+- **出题人**：旧格式题包继续可导入（带升级告警）。
 - **noj-ui / noj-judge / noj-llm-gateway**：无改动。

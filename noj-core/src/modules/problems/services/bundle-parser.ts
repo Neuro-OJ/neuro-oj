@@ -27,8 +27,8 @@ import {
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
   MAX_UI_HTML_BYTES,
-  normalizeBundleManifestFormat,
   UI_FILE,
+  upgradeBundleManifest,
 } from "../types/problem-bundle.ts";
 import { validateOiRuntimeConfig } from "../types/runtime-config.ts";
 
@@ -221,8 +221,9 @@ function normalizeBundleRoot(
     const names = Object.keys(files).filter((path) => !path.endsWith("/"));
     if (!names.length || names.some((path) => !path.includes("/"))) break;
     const folders = new Set(names.map((path) => path.split("/")[0]));
-    if (folders.size !== 1) break;
-    const prefix = `${names[0].split("/")[0]}/`;
+    const [folder] = folders;
+    if (folders.size !== 1 || folder === undefined) break;
+    const prefix = `${folder}/`;
     const unwrapped: Record<string, Uint8Array> = Object.create(null);
     for (const [path, bytes] of Object.entries(files)) {
       if (path.startsWith(prefix) && path.length > prefix.length) {
@@ -303,6 +304,7 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     if (!name.includes("/")) rootNames.add(name);
   }
   let manifest: Record<string, unknown>;
+  let warnings: string[] = [];
   let statementFile = files["statement.md"];
   if (files["problem.json"]) {
     try {
@@ -316,7 +318,8 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     } catch {
       throw new BadRequestError("problem.json 不是合法的 JSON 对象");
     }
-    if (manifest.judge_type === "oi") {
+    ({ manifest, warnings } = upgradeBundleManifest(manifest));
+    if (manifest.kind === "oi") {
       const configFile = files["config.yaml"] ?? files["config.yml"];
       manifest.runtime_config = normalizeNojOiConfig(
         configFile ? parseConfigYaml(configFile) : manifest.runtime_config,
@@ -328,8 +331,8 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       files["testdata/config.yml"];
     manifest = {
       format_version: BUNDLE_FORMAT_VERSION,
+      kind: "oi",
       title: metadata.title,
-      judge_type: "oi",
       runtime_config: normalizeHydroOiConfig(
         configFile ? parseConfigYaml(configFile) : {},
         files,
@@ -346,17 +349,13 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     );
   }
 
-  const normalized = normalizeBundleManifestFormat(manifest);
-  manifest = normalized.manifest;
-
-  const isObjective = manifest.is_objective === true;
-  if (isObjective) {
+  if (manifest.kind === "objective") {
     if (!rootNames.has("questions.json")) {
       throw new BadRequestError(
         "客观题套卷包必须包含 questions.json（小题数组）",
       );
     }
-  } else if (manifest.judge_type === "oi") {
+  } else if (manifest.kind === "oi") {
     validateOiRuntimeConfig(manifest.runtime_config);
     const config = manifest.runtime_config;
     const referenced = config.subtasks.flatMap((subtask) =>
@@ -393,7 +392,7 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
 
   return {
     manifest,
-    warnings: normalized.warnings,
+    warnings,
     statement: statementFile ? new TextDecoder().decode(statementFile) : null,
     questions,
     entries: files,

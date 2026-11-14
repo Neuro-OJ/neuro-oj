@@ -58,12 +58,26 @@ Deno.test("validateBundleManifest: 客观题 manifest 携带 llm/template/submis
   }
 });
 
-Deno.test("validateBundleManifest: 非客观题仍要求 runtime_config", () => {
+Deno.test("validateBundleManifest: AI 题缺省 runtime_config 时补全平台缺省值", () => {
+  const manifest = validateBundleManifest({
+    format_version: 2,
+    title: "编程题",
+  });
+  assertEquals(manifest.kind, "ai");
+  assertEquals(
+    (manifest.runtime_config as { evaluator: { image: string } }).evaluator
+      .image,
+    "noj-evaluator-python",
+  );
+});
+
+Deno.test("validateBundleManifest: OI 题仍要求 runtime_config", () => {
   assertThrows(
     () =>
       validateBundleManifest({
-        format_version: 2,
-        title: "编程题",
+        format_version: 3,
+        kind: "oi",
+        title: "OI 题",
       }),
     BadRequestError,
     "runtime_config",

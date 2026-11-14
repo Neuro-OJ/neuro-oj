@@ -1,9 +1,7 @@
 {
   "$comment": [
-    "共享 fixture 契约（#514）。",
-    "本文件是 noj-core 与 noj-cli 两份校验实现的**共同契约**：",
-    "两侧测试都对它断言，任一实现漂移即红灯。",
-    "修改本文件前请确认两侧都能通过。"
+    "题目包 manifest 校验用例表：valid 必须通过、invalid 必须被拒。",
+    "noj-cli 直接复用 noj-core 的校验实现，本表即唯一行为基线。"
   ],
   "valid": [
     {
@@ -11,14 +9,22 @@
       "manifest": {
         "format_version": 2,
         "title": "能力别名",
-        "llm": { "models": ["default", "fast"], "max_calls": 10 },
+        "llm": {
+          "models": [
+            "default",
+            "fast"
+          ],
+          "max_calls": 10
+        },
         "runtime_config": {
           "evaluator": {
             "image": "i",
             "command": "c",
             "time_limit_ms": 1,
             "memory_limit_mb": 1,
-            "network": { "enabled": true }
+            "network": {
+              "enabled": true
+            }
           },
           "solution": {
             "image": "i",
@@ -203,13 +209,128 @@
           }
         }
       }
+    },
+    {
+      "name": "格式 2 缺 runtime_config：按平台缺省补全",
+      "manifest": {
+        "format_version": 2,
+        "title": "x"
+      }
+    },
+    {
+      "name": "格式 2 声明 llm 未写网络：隐含开启",
+      "manifest": {
+        "format_version": 2,
+        "title": "x",
+        "llm": {
+          "max_calls": 1
+        },
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "格式 3 最小 AI 题",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "A+B"
+      }
+    },
+    {
+      "name": "格式 3 客观题",
+      "manifest": {
+        "format_version": 3,
+        "kind": "objective",
+        "title": "套卷",
+        "tags": [
+          "基础"
+        ]
+      }
+    },
+    {
+      "name": "格式 3 OI 题",
+      "manifest": {
+        "format_version": 3,
+        "kind": "oi",
+        "title": "A+B OI",
+        "runtime_config": {
+          "backend": "native",
+          "languages": [
+            "c",
+            "cc"
+          ],
+          "time_limit_ms": 1000,
+          "memory_limit_mb": 256,
+          "checker": {
+            "type": "default"
+          },
+          "subtasks": [
+            {
+              "id": "all",
+              "score": 100,
+              "cases": [
+                {
+                  "input": "1.in",
+                  "output": "1.out"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "格式 3 仅覆盖 evaluator 时限",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "runtime_config": {
+          "evaluator": {
+            "time_limit_ms": 180000
+          }
+        }
+      }
+    },
+    {
+      "name": "格式 3 llm 隐含网络",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "llm": {
+          "max_calls": 10
+        }
+      }
+    },
+    {
+      "name": "格式 3 prediction 不需要 solution",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "submission_mode": "prediction"
+      }
     }
   ],
   "invalid": [
     {
       "name": "格式版本不支持",
       "manifest": {
-        "format_version": 3,
+        "format_version": 4,
+        "kind": "ai",
         "title": "x"
       }
     },
@@ -226,13 +347,6 @@
         "format_version": 2,
         "title": "x",
         "difficulty": "insane"
-      }
-    },
-    {
-      "name": "缺 runtime_config（非客观题）",
-      "manifest": {
-        "format_version": 2,
-        "title": "x"
       }
     },
     {
@@ -262,29 +376,6 @@
         "format_version": 2,
         "title": "x",
         "template": "../evil.py",
-        "runtime_config": {
-          "evaluator": {
-            "image": "i",
-            "command": "c",
-            "time_limit_ms": 1,
-            "memory_limit_mb": 1
-          },
-          "solution": {
-            "image": "i",
-            "call_timeout_ms": 1,
-            "memory_limit_mb": 1
-          }
-        }
-      }
-    },
-    {
-      "name": "LLM 未开 evaluator 网络",
-      "manifest": {
-        "format_version": 2,
-        "title": "x",
-        "llm": {
-          "max_calls": 1
-        },
         "runtime_config": {
           "evaluator": {
             "image": "i",
@@ -418,6 +509,151 @@
             }
           }
         }
+      }
+    },
+    {
+      "name": "格式 3 缺 kind",
+      "manifest": {
+        "format_version": 3,
+        "title": "x"
+      }
+    },
+    {
+      "name": "格式 3 kind 非法",
+      "manifest": {
+        "format_version": 3,
+        "kind": "code",
+        "title": "x"
+      }
+    },
+    {
+      "name": "格式 3 仍写 is_objective",
+      "manifest": {
+        "format_version": 3,
+        "kind": "objective",
+        "title": "x",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "格式 3 仍写 judge_type",
+      "manifest": {
+        "format_version": 3,
+        "kind": "oi",
+        "title": "x",
+        "judge_type": "oi",
+        "runtime_config": {
+          "backend": "native",
+          "languages": [
+            "c",
+            "cc"
+          ],
+          "time_limit_ms": 1000,
+          "memory_limit_mb": 256,
+          "checker": {
+            "type": "default"
+          },
+          "subtasks": [
+            {
+              "id": "all",
+              "score": 100,
+              "cases": [
+                {
+                  "input": "1.in",
+                  "output": "1.out"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "格式 3 客观题带 template",
+      "manifest": {
+        "format_version": 3,
+        "kind": "objective",
+        "title": "x",
+        "template": "t.py"
+      }
+    },
+    {
+      "name": "格式 3 OI 题带 llm",
+      "manifest": {
+        "format_version": 3,
+        "kind": "oi",
+        "title": "x",
+        "llm": {
+          "max_calls": 1
+        },
+        "runtime_config": {
+          "backend": "native",
+          "languages": [
+            "c",
+            "cc"
+          ],
+          "time_limit_ms": 1000,
+          "memory_limit_mb": 256,
+          "checker": {
+            "type": "default"
+          },
+          "subtasks": [
+            {
+              "id": "all",
+              "score": 100,
+              "cases": [
+                {
+                  "input": "1.in",
+                  "output": "1.out"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "格式 3 字段拼写错误",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "dificulty": "easy"
+      }
+    },
+    {
+      "name": "格式 3 llm 与显式关闭网络冲突",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "llm": {
+          "max_calls": 1
+        },
+        "runtime_config": {
+          "evaluator": {
+            "network": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "格式 3 OI 缺 runtime_config",
+      "manifest": {
+        "format_version": 3,
+        "kind": "oi",
+        "title": "x"
+      }
+    },
+    {
+      "name": "格式 3 runtime_config 非对象",
+      "manifest": {
+        "format_version": 3,
+        "kind": "ai",
+        "title": "x",
+        "runtime_config": "default"
       }
     }
   ]

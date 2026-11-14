@@ -399,8 +399,8 @@ Deno.test("T22 端到端：引导答案 → 生成骨架 → 通过 problem lint
     );
     assertEquals(manifest.title, "引导生成的题目");
     assertEquals(manifest.difficulty, "medium");
-    assertEquals(manifest.format_version, 2);
-    assertEquals("type" in manifest, false);
+    assertEquals(manifest.format_version, 3);
+    assertEquals(manifest.kind, "ai");
   } finally {
     await Deno.remove(root, { recursive: true });
   }

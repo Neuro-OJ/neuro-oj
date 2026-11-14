@@ -22,7 +22,7 @@
 - 题型由一个字段决定；每种题型的允许字段一目了然，错误信息统一。
 - 最小 AI 编程题 manifest 只需 `format_version`、`kind`、`title` 三个字段。
 - 题目包校验只有一份实现，CLI 离线 `lint` 与服务端导入结果一致。
-- 兼容层有明确的删除时间点，不再无限期保留。
+- 旧格式题包无需改动即可继续导入；兼容转换收敛为一个纯函数。
 
 **Non-Goals:**
 
@@ -62,105 +62,93 @@
 
 ### D2：`runtime_config` 全字段可缺省，导入时规范化为完整配置
 
-仅 `kind: "ai"`。缺省值集中定义在 `packages/problem-bundle/defaults.ts`：
+仅 `kind: "ai"`。缺省值集中定义在
+`types/problem-bundle.ts`（`AI_RUNTIME_DEFAULTS`）：
 
-| 字段                        | 缺省值                                   |
-| --------------------------- | ---------------------------------------- |
-| `evaluator.image`           | `ghcr.io/neuro-oj/noj-evaluator-python`  |
-| `evaluator.command`         | `python3 /workspace/evaluate.py`（现有） |
-| `evaluator.time_limit_ms`   | 5000                                     |
-| `evaluator.memory_limit_mb` | 512                                      |
-| `evaluator.network.enabled` | 声明 `llm` 时为 `true`，否则 `false`     |
-| `solution.image`            | `ghcr.io/neuro-oj/noj-solution-python`   |
-| `solution.call_timeout_ms`  | 5000                                     |
-| `solution.memory_limit_mb`  | 512                                      |
+| 字段                        | 缺省值                                    |
+| --------------------------- | ----------------------------------------- |
+| `evaluator.image`           | 官方 `noj-evaluator-python`（加部署前缀） |
+| `evaluator.command`         | `python3 /workspace/evaluate.py`（现有）  |
+| `evaluator.time_limit_ms`   | 5000                                      |
+| `evaluator.memory_limit_mb` | 512                                       |
+| `evaluator.network.enabled` | 声明 `llm` 时为 `true`，否则 `false`      |
+| `solution.image`            | 官方 `noj-solution-python`（加部署前缀）  |
+| `solution.call_timeout_ms`  | 5000                                      |
+| `solution.memory_limit_mb`  | 512                                       |
 
 - `submission_mode: "prediction"` 不注入 `solution`（与现有校验一致）。
 - 规范化后的完整 `runtime_config` 写入草稿，下游（版本发布、镜像白名单、Judge）
   看到的结构与今天相同。
-- 缺省镜像仍需通过平台镜像白名单；运营者未登记官方镜像时，导入报错与今天显式写
-  镜像时一致。
+- 缺省镜像名由 `JUDGE_IMAGE_BASE` 前缀拼接，与 `seed-system`
+  写入白名单的官方镜像
+  同名，因此开箱即在白名单内；仍需通过白名单校验，与显式写镜像时一致。
+- 校验函数本身不读环境变量：前缀由调用方（core 导入）通过参数传入，CLI 离线
+  `lint` 不传前缀，只做结构校验。
 - 显式 `network.enabled: false` 与 `llm` 同时出现 →
   400（冲突声明，不静默覆盖）。
 
 **备选**：缺省值放进系统设置由运营者配置——题包含义随部署变化，同一题包在不同平台
 行为不同，违背「题包可跨部署导入」，否决。
 
-### D3：校验代码抽到 `packages/problem-bundle/`，两侧相对路径引用
+### D3：noj-cli 以相对路径直接引用 noj-core 校验代码
 
-```text
-packages/problem-bundle/
-  mod.ts            # 唯一出口
-  manifest.ts       # 格式 3 字段表 + validateManifest
-  migrate.ts        # 格式 1/2 → 3 的纯函数转换（CLI migrate 与导入告警共用）
-  zip.ts            # unzipWithLimits、根级文件检查
-  defaults.ts
-  errors.ts         # BundleValidationError { field, message }
-  *_test.ts
-```
+不新建 `packages/` 目录。noj-cli 的 `lint` / `pack` / `migrate`
+以相对路径直接导入 noj-core 的
+`types/problem-bundle.ts`、`types/runtime-config.ts` 与
+`services/bundle-parser.ts`。
 
-- **零依赖**：不使用任何导入映射条目，只依赖 Deno 标准库的相对 / `jsr:` 精确
-  URL（或完全无依赖），从而规避 #514 当初担心的「noj-cli
-  依赖主仓库导入映射」问题。
-- noj-core 侧把 `BundleValidationError` 包装为 `BadRequestError`；noj-cli
-  侧映射为 lint 诊断。
-- `deno compile` 会把相对路径模块打进 noj-cli 二进制，发布流程不变。
-- 删除 `noj-cli/src/problem/vendor/`、`contract_test.ts`、core 侧契约测试与
-  `fixtures/problem-bundle-manifest.json`；fixture 中的用例转为
-  `packages/problem-bundle/` 的单元测试。
+- 两侧 `deno.json` 对 `fflate` / `yaml` 的导入映射一致，CLI 侧可直接解析；被引用
+  的 core 文件需满足 CLI 的 `noUncheckedIndexedAccess`（已修正两处）。
+- `deno compile` 会把相对路径模块打进 noj-cli 二进制，发布流程不变；CI 的
+  `production-cli` 任务不做路径过滤，core 改动破坏 CLI 时会被类型检查拦截。
+- 删除 `noj-cli/src/problem/vendor/` 与 `contract_test.ts`；共享 fixture 移到
+  core 测试目录，作为唯一行为基线。
 
-**备选 A**：CLI `lint` 调用服务端 dry-run 接口——离线不可用，且 `init` / `pack`
-仍需本地规则，否决。 **备选 B**：从一份定义生成 JSON Schema
-两侧加载——需引入新依赖，且 schema 难以表达 OI 子任务分值总和等规则，否决。
+**备选 A**：抽到 `packages/problem-bundle/`——需改动 54 处 core
+引用并新增顶层目录， 收益与直接引用相同，否决。**备选 B**：CLI `lint` 调用服务端
+dry-run 接口——离线 不可用，否决。
 
-### D4：兼容策略与删除时间点
+### D4：旧格式长期自动转换
 
-| 输入                 | v0.12 系列                                 | v0.13 起                            |
-| -------------------- | ------------------------------------------ | ----------------------------------- |
-| 格式 3               | 接受                                       | 接受                                |
-| 格式 2               | `migrate.ts` 转为格式 3 后导入，结果附告警 | 400，提示运行 `noj problem migrate` |
-| 格式 1               | 400，提示运行 `noj problem migrate`        | 同左                                |
-| Hydro `problem.yaml` | 独立导入器，行为不变                       | 同左                                |
+| 输入                 | 处理                                       |
+| -------------------- | ------------------------------------------ |
+| 格式 3               | 严格校验                                   |
+| 格式 2               | `upgradeBundleManifest` 转为格式 3，附告警 |
+| 格式 1（P）          | 同上；U 包或未声明分类仍拒绝               |
+| Hydro `problem.yaml` | 规范化为 `kind: "oi"` 格式 3，行为不变     |
 
-- 格式 1 在本变更内即删除导入期转换：唯一已知存量 `noj-problems` 先行迁移；
-  `noj problem migrate` 仍支持格式 1 → 3，供外部出题人离线转换。
-- `migrate.ts` 是纯函数，导入期告警与 CLI 重写共用同一转换，保证一致。
-- 迁移规则：`is_objective: true` → `objective`；`judge_type: "oi"` → `oi`； 其余
-  → `ai`；删除 `type` / `domain_id` / `categories` / `llm.provider_id` /
-  `llm.model`；`runtime_config`
-  中等于缺省值的字段**保留不删**（只做语义等价改写， 是否精简交给作者）。
+- 不设删除时间点：已有题包（含 `noj-problems` 中的格式 1 题）无需改动即可导入。
+- `upgradeBundleManifest` 是纯函数，导入期告警与 `noj problem migrate`
+  共用；它不 注入平台缺省值，因此 `pack` / `migrate` 写回的 manifest
+  不会固化部署相关镜像。
+- 迁移规则：`is_objective: true` → `objective`；`judge_type: "oi"` → `oi`；其余
+  → `ai`；删除 `type` / `domain_id`；`llm` 只保留 `max_calls` / `max_tokens` /
+  `models`；格式 3 不认识的字段（如
+  `categories`）丢弃并告警；题型不匹配的已知字段 保留，交由格式 3
+  校验拒绝（与旧行为一致）。
 
-### D5：Hydro 导入拆为独立入口
+### D5：Hydro 导入保留在 `parseBundleZip`
 
-`parseBundleZip` 只处理统一题包；新增 `parseHydroArchive`（OI 归档已有
-`oi-archive.ts`，优先并入该文件）。上传入口按根级文件分派：`problem.json` →
-统一题包；`problem.yaml` → Hydro；二者皆无 → 现有错误信息。
+Hydro 分支只是构造一份 `kind: "oi"` 的格式 3 manifest，拆成独立入口收益有限；本
+变更不拆分，留待题包代码迁入 `features/` 时一并处理。
 
 ## Risks / Trade-offs
 
-- **未知字段拒绝可能误伤**：外部题包带自定义字段会导入失败 →
-  错误信息指明字段名； 格式 2 迁移期仍走旧的宽松策略，只对格式 3 严格。
-- **缺省镜像依赖白名单登记**：新部署若未登记官方镜像，最小题包导入失败 →
-  `noj-cli check` 增加「官方评测镜像已登记」检查项，并在错误信息中提示。
-- **删除格式 1 转换影响未知外部用户**：当前没有已知外部存量；CHANGELOG
-  与导入错误 中给出 `noj problem migrate` 指令。
-- **`packages/` 是新的顶层目录**：仅放题包校验一个包，不借机抽取其他共享代码；
-  在根 `AGENTS.md` 顶层目录列表登记。
+- **未知字段拒绝可能误伤**：只对格式 3 严格；旧格式的未知字段丢弃并告警。
+- **缺省镜像依赖白名单**：缺省名与种子写入的官方镜像同名；运营者若改过官方镜像名，
+  最小题包导入会以白名单错误失败，需显式写镜像。
+- **CLI 依赖 core 源码路径**：core 题包文件移动时需同步 CLI 引用，由 CI
+  类型检查兜底。
 
 ## Migration Plan
 
-1. 落地 `packages/problem-bundle/`（格式 2 + 3 双读，行为与现状等价），core 与
-   cli 切换引用，删除 vendor 与契约测试。
-2. 新增 `noj problem migrate`，迁移 `noj-problems` 并在 dev-setup
-   种子导入中验证。
-3. 删除格式 1 导入期转换；更新文档与 `noj problem init` 生成格式 3。
-4. v0.13：删除格式 2 读取路径。
+1. CLI 直接引用 core，删除 vendor 与 CLI 契约测试（行为不变）。
+2. 格式 3：`kind`、字段表、缺省值、`llm` 隐含网络；旧格式自动转换。
+3. `noj problem migrate`、`noj problem init` 生成格式 3、文档改写。
 
-每步独立 PR、可单独回滚；第 1 步完成前不改变任何对外行为。
+三步在同一 PR 落地；旧格式持续可导入，无需协调外部题源。
 
 ## Open Questions
 
-- 题包导入相关代码是否在本变更中顺带迁入 `features/problem-bundle/`，还是保持在
-  `modules/problems/` 待后续「改到即迁」？倾向后者，避免两个重构叠在一个 PR。
-- 缺省时限 / 内存（5000 ms / 512 MB）是否需要按 `submission_mode` 区分（如
-  `prediction` 仅需较小 evaluator 内存）？倾向不区分，保持规则简单。
+- 题包导入相关代码迁入 `features/problem-bundle/` 留待后续「改到即迁」。
+- `noj-problems` 是否批量运行 `noj problem migrate`，由该仓库维护者决定。

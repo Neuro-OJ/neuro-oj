@@ -141,9 +141,8 @@ export {
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
   MAX_UI_HTML_BYTES,
-  normalizeBundleManifestFormat,
-  resolveManifestCommand,
   UI_FILE,
+  upgradeBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./types/problem-bundle.ts";

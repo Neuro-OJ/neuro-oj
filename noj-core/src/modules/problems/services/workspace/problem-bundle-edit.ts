@@ -136,7 +136,10 @@ export async function importDomainProblemDraftBundle(
 /** HTTP 编辑与容器 CLI 共用题包内容规范化，部署 Domain 不写进 manifest。 */
 export function parseDomainDraftBundle(bytes: Uint8Array) {
   const parsed = parseBundleZip(bytes);
-  const manifest = validateBundleManifest(parsed.manifest);
+  // 缺省镜像补全为本部署的官方镜像（与 seed-system 写入白名单的名称一致）。
+  const manifest = validateBundleManifest(parsed.manifest, {
+    imageBase: Deno.env.get("JUDGE_IMAGE_BASE") ?? "",
+  });
   const base = {
     title: manifest.title,
     description: parsed.statement ?? manifest.description ?? "",
@@ -144,7 +147,7 @@ export function parseDomainDraftBundle(bytes: Uint8Array) {
   };
   if (!base.description.trim()) throw new BadRequestError("题包缺少题面");
   let content: ProblemDraftContent;
-  if (manifest.is_objective) {
+  if (manifest.kind === "objective") {
     content = {
       ...base,
       kind: "objective",
@@ -157,7 +160,7 @@ export function parseDomainDraftBundle(bytes: Uint8Array) {
         explanation: question.explanation ?? "",
       })),
     };
-  } else if (manifest.judge_type === "oi") {
+  } else if (manifest.kind === "oi") {
     content = { ...base, kind: "oi", runtime_config: manifest.runtime_config };
   } else {
     const template = readBundleTemplate(parsed.entries, manifest.template);

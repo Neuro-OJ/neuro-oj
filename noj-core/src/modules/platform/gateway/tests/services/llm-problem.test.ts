@@ -70,7 +70,7 @@ Deno.test("llm-bundle: P 型 + 网络开启通过", () => {
 
 // 题包解析器只做结构校验；U 型 LLM 的管理员准入由导入/CRUD/草稿服务执行
 //（#651，见 catalog/tests/routes/private-llm.test.ts）。
-Deno.test("llm-bundle: 格式 2携带 llm 通过结构校验", () => {
+Deno.test("llm-bundle: 格式 2携带 llm 通过结构校验并升级为格式 3", () => {
   const manifest = validateBundleManifest({
     format_version: 2,
     title: "LLM 题",
@@ -89,7 +89,8 @@ Deno.test("llm-bundle: 格式 2携带 llm 通过结构校验", () => {
     },
     llm: { provider_id: "p1", model: "qwen-plus" },
   });
-  assertEquals(manifest.format_version, 2);
+  assertEquals(manifest.format_version, 3);
+  assertEquals(manifest.kind, "ai");
   assert(manifest.llm);
 });
 

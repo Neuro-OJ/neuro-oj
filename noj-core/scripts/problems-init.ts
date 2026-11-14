@@ -2,7 +2,7 @@
 //
 // 设计目标：让出题人从「可评测的最小骨架」起步，而不是从空目录 + 记忆规范起步。
 // 生成的内容**严格对齐** noj-docs 的题目包与质量规范：
-//   - problem.json：format_version=2、无 type、必填字段齐备
+//   - problem.json：format_version=3、kind=ai，显式写出时限/内存便于题面引用
 //   - evaluate.py：标准 details.cases 输出、隐藏用例不泄露输入/期望/实际、
 //     运行期异常上抛（不吞异常 → judge 收尾为 error）
 //   - template.py：入口保持 NotImplementedError（质量规范：模板 MUST NOT 含可满分实现）
@@ -96,7 +96,8 @@ function problemJson(
   >,
 ): string {
   const manifest = {
-    format_version: 2,
+    format_version: 3,
+    kind: "ai",
     title: opts.title,
     difficulty: opts.difficulty,
     // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会

@@ -28,5 +28,7 @@ export function oiCaseMaxScores(subtask: OiSubtask): number[] {
     missing,
   );
   let next = 0;
-  return subtask.cases.map((testCase) => testCase.score ?? defaults[next++]);
+  return subtask.cases.map((testCase) =>
+    testCase.score ?? defaults[next++] ?? 0
+  );
 }

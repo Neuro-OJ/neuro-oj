@@ -178,7 +178,7 @@ function objectiveBundle(): Uint8Array {
 
 Deno.test("parseBundleZip: 客观题包不要求 evaluate.py 且解析 questions.json", () => {
   const parsed = parseBundleZip(objectiveBundle());
-  assertEquals(parsed.manifest.is_objective, true);
+  assertEquals(parsed.manifest.kind, "objective");
   assertEquals(Array.isArray(parsed.questions), true);
   assertEquals(
     (parsed.questions as Array<{ prompt: string }>)[0].prompt,
@@ -230,7 +230,7 @@ Deno.test("parseBundleZip: OI 包允许无 evaluate.py 并校验全部引用文�
     "tests/1.out": "3\n",
   });
   const parsed = parseBundleZip(zip);
-  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.manifest.kind, "oi");
   assertEquals(parsed.entries["evaluate.py"], undefined);
 });
 
@@ -295,7 +295,7 @@ Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
     "testdata/1.in": "1 2",
     "testdata/1.out": "3",
   }));
-  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.manifest.kind, "oi");
   assertEquals(parsed.statement, "# A+B");
   const rc = parsed.manifest.runtime_config as {
     languages: string[];
@@ -415,14 +415,16 @@ Deno.test("parseBundleZip: 剥离外层目录之前拒绝原路径穿越", () =>
   );
 });
 
-Deno.test("parseBundleZip: v1 P 转换并提示，v1 U 拒绝", () => {
+Deno.test("parseBundleZip: v1 P 转换为格式 3 并提示，v1 U 拒绝", () => {
   const legacy = { ...JSON.parse(MANIFEST), format_version: 1, type: "P" };
   const parsed = parseBundleZip(
     makeZip({ "problem.json": JSON.stringify(legacy), "evaluate.py": "pass" }),
   );
-  assertEquals(parsed.manifest.format_version, 2);
+  assertEquals(parsed.manifest.format_version, 3);
+  assertEquals(parsed.manifest.kind, "ai");
   assertEquals("type" in parsed.manifest, false);
   assertEquals(parsed.warnings.length, 1);
+  assertMatch(parsed.warnings[0], /noj problem migrate/);
   assertThrows(
     () =>
       parseBundleZip(

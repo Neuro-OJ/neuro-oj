@@ -43,43 +43,33 @@ function problemJson(options: {
   difficulty: string;
   judgeType: "dual" | "oi";
 }): string {
-  const runtimeConfig = options.judgeType === "oi"
+  // 格式 3 最小 manifest：AI 题 runtime_config 全部可缺省，导入时补全平台缺省值。
+  const manifest = options.judgeType === "oi"
     ? {
-      backend: "native",
-      languages: ["c", "cc"],
-      time_limit_ms: 1000,
-      memory_limit_mb: 256,
-      checker: { type: "default" },
-      subtasks: [{
-        id: "all",
-        score: 100,
-        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
-      }],
-    }
-    : {
-      evaluator: {
-        image: "noj/evaluator-python:1",
-        command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-      },
-      solution: {
-        image: "noj/solution-python:1",
-        call_timeout_ms: 5000,
-        memory_limit_mb: 256,
-      },
-    };
-  return JSON.stringify(
-    {
-      format_version: 2,
+      format_version: 3,
+      kind: "oi",
       title: options.title,
       difficulty: options.difficulty,
-      judge_type: options.judgeType,
-      runtime_config: runtimeConfig,
-    },
-    null,
-    2,
-  ) + "\n";
+      runtime_config: {
+        backend: "native",
+        languages: ["c", "cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [{
+          id: "all",
+          score: 100,
+          cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+        }],
+      },
+    }
+    : {
+      format_version: 3,
+      kind: "ai",
+      title: options.title,
+      difficulty: options.difficulty,
+    };
+  return JSON.stringify(manifest, null, 2) + "\n";
 }
 
 const STATEMENT = (title: string) =>

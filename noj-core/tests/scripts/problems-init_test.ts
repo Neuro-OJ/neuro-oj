@@ -259,7 +259,8 @@ Deno.test("initProblem: manifest 通过平台校验器 validateBundleManifest", 
     const parsed = validateBundleManifest(manifest);
     assertEquals(parsed.title, "清单校验题");
     assertEquals("type" in parsed, false);
-    assertEquals(parsed.format_version, 2);
+    assertEquals(parsed.format_version, 3);
+    assertEquals(parsed.kind, "ai");
     // 双容器 runtime_config 齐备
     const runtime = parsed.runtime_config;
     assert(runtime && "evaluator" in runtime);

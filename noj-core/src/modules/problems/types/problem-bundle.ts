@@ -4,10 +4,10 @@
  * 导入载体 zip 根级必须包含 `problem.json`（manifest）与 `evaluate.py`，
  * 可包含 `statement.md`（题面）与任意评测内容（testcase 不标准化）。
  *
- * 与 `problem-bundle-import` spec 对齐：
- * - manifest 顶层字段映射 `CreateProblemInput`（title/difficulty/number/runtime_config）
- * - `runtime_config.evaluator.command` 可缺省，导入时注入默认值 `python3 /workspace/evaluate.py`
- * - 校验失败抛 `BadRequestError`（HTTP 400）
+ * 格式 3 以 `kind`（ai / oi / objective）判别题型，每种题型有封闭的字段集合；
+ * AI 题 `runtime_config` 全字段可缺省，导入时以平台缺省值补全。格式 1/2 经
+ * `upgradeBundleManifest` 自动转换并告警。noj-cli 直接复用本文件。
+ * 校验失败抛 `BadRequestError`（HTTP 400）。
  */
 
 import {
@@ -40,7 +40,7 @@ import {
 } from "./runtime-config.ts";
 
 /** 当前 manifest 格式版本。 */
-export const BUNDLE_FORMAT_VERSION = 2 as const;
+export const BUNDLE_FORMAT_VERSION = 3 as const;
 
 /** `evaluator.command` 缺省时注入的默认评测命令（与 judge 端 /workspace 约定对齐）。 */
 export const DEFAULT_EVALUATOR_COMMAND = "python3 /workspace/evaluate.py";
@@ -59,6 +59,8 @@ export const BUNDLE_METADATA_ENTRIES = [
 export interface ProblemBundleManifest {
   samples?: ProblemSample[];
   format_version: number;
+  /** 题型判别：ai（双容器）/ oi（测试点）/ objective（客观题套卷） */
+  kind: BundleKind;
   title: string;
   /** 题面 Markdown（`statement.md` 存在时以文件为准，本字段作为兜底） */
   description?: string;
@@ -79,26 +81,12 @@ export interface ProblemBundleManifest {
    * `provider_id` / `model` 容忍并忽略。
    */
   llm?: LlmConfig;
-  /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
-  is_objective?: boolean;
-  /** 评测模式，存量题缺省为双容器。 */
-  judge_type?: "dual" | "oi";
-  /** 编程题必填；由 judge_type 区分双容器和 OI。 */
+  /** 由 kind 推导，供下游沿用（objective → true） */
+  is_objective: boolean;
+  /** 由 kind 推导，供下游沿用（oi → "oi"，其余 "dual"） */
+  judge_type: "dual" | "oi";
+  /** AI 题为补全缺省值后的完整配置；OI 题为 OI 结构；客观题无。 */
   runtime_config?: RuntimeConfig | OiRuntimeConfig;
-}
-
-/**
- * 注入 `evaluator.command` 默认值（深拷贝，不修改入参）。
- *
- * `validateRuntimeConfig` 强制 command 非空，因此默认值注入必须在
- * 结构校验之前完成——落库后的 runtime_config 与既有题目结构一致。
- */
-export function resolveManifestCommand(rc: RuntimeConfig): RuntimeConfig {
-  const evaluator = { ...rc.evaluator };
-  if (typeof evaluator.command !== "string" || !evaluator.command.trim()) {
-    evaluator.command = DEFAULT_EVALUATOR_COMMAND;
-  }
-  return { ...rc, evaluator };
 }
 
 /**
@@ -143,47 +131,151 @@ export const MAX_UI_HTML_BYTES = 512 * 1024;
  */
 export const MAX_TEMPLATE_BYTES = 256 * 1024;
 
-/** 将旧 P 题包转换为格式 2；题包不携带部署域或执行 Provider。 */
-export function normalizeBundleManifestFormat(raw: unknown): {
+/** 题型判别值，与 `ProblemDraftContent.kind` 一致。 */
+export const BUNDLE_KINDS = ["ai", "oi", "objective"] as const;
+export type BundleKind = typeof BUNDLE_KINDS[number];
+
+/** 所有题型通用的 manifest 顶层字段。 */
+const COMMON_FIELDS = [
+  "format_version",
+  "kind",
+  "title",
+  "description",
+  "number",
+  "difficulty",
+  "tags",
+  "samples",
+] as const;
+
+/** 每种题型额外允许的顶层字段；不在「通用 ∪ 本题型」内的字段一律拒绝。 */
+const KIND_FIELDS: Record<BundleKind, readonly string[]> = {
+  ai: [
+    "runtime_config",
+    "submission_mode",
+    "template",
+    "artifact_max_size_mb",
+    "llm",
+  ],
+  oi: ["runtime_config"],
+  objective: [],
+};
+
+/** 格式 1/2 中已知的顶层字段（升级时保留，交给格式 3 校验；其余丢弃并告警）。 */
+const LEGACY_KNOWN_FIELDS = new Set<string>([
+  ...COMMON_FIELDS,
+  ...KIND_FIELDS.ai,
+]);
+
+/** AI 题 `runtime_config` 缺省值（镜像名不含仓库前缀，由 `imageBase` 补全）。 */
+export const AI_RUNTIME_DEFAULTS = {
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: DEFAULT_EVALUATOR_COMMAND,
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+  },
+  solution: {
+    image: "noj-solution-python",
+    call_timeout_ms: 5000,
+    memory_limit_mb: 512,
+  },
+} as const;
+
+/** 拼接官方评测镜像全名；`imageBase` 对应部署配置 `JUDGE_IMAGE_BASE`。 */
+export function officialJudgeImage(name: string, imageBase = ""): string {
+  const base = imageBase.replace(/\/+$/, "");
+  return base ? `${base}/${name}` : name;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 把任意受支持版本的 manifest 升级为格式 3 结构（纯函数，不注入平台缺省值）。
+ *
+ * 导入期解析与 `noj problem migrate` 共用：格式 1（仅 P 题）与格式 2 按固定规则
+ * 转换并返回告警；格式 3 只检查 `kind` 合法。字段合法性由
+ * `validateBundleManifest` 负责。
+ */
+export function upgradeBundleManifest(raw: unknown): {
   manifest: Record<string, unknown>;
   warnings: string[];
 } {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+  if (!isPlainObject(raw)) {
     throw new BadRequestError("problem.json 必须是 JSON 对象");
   }
-  const manifest = { ...(raw as Record<string, unknown>) };
-  const warnings: string[] = [];
-  if (manifest.format_version === 1) {
-    if (manifest.type !== "P") {
+  const source = { ...raw };
+  const version = source.format_version;
+  if (version === BUNDLE_FORMAT_VERSION) {
+    if (!BUNDLE_KINDS.includes(source.kind as BundleKind)) {
       throw new BadRequestError(
-        "格式 1 仅支持 P 题包转换；U 题包或未声明分类的旧题包请先转换为格式 2",
+        `manifest.kind 必须是 ${BUNDLE_KINDS.join(" / ")} 之一`,
       );
     }
-    delete manifest.type;
-    manifest.format_version = BUNDLE_FORMAT_VERSION;
-    warnings.push(
-      "已将格式 1 P 题包转换为格式 2；请更新源 problem.json 并移除 type",
-    );
-  } else if (manifest.format_version !== BUNDLE_FORMAT_VERSION) {
+    return { manifest: source, warnings: [] };
+  }
+  if (version !== 1 && version !== 2) {
     throw new BadRequestError(
       `不支持的 manifest 格式版本：${
-        String(manifest.format_version)
-      }（当前支持 ${BUNDLE_FORMAT_VERSION}）`,
+        String(version)
+      }（支持 1 / 2 / ${BUNDLE_FORMAT_VERSION}）`,
     );
-  } else if (manifest.type !== undefined) {
+  }
+  if (version === 1 && source.type !== "P") {
+    throw new BadRequestError(
+      "格式 1 仅支持 P 题包转换；U 题包或未声明分类的旧题包请先转换为格式 3",
+    );
+  }
+  if (version === 2 && source.type !== undefined) {
     throw new BadRequestError(
       "格式 2 不允许 manifest.type；题目归属由导入目标 Domain 决定",
     );
   }
-  if (manifest.domain_id !== undefined) {
-    delete manifest.domain_id;
-    warnings.push("已移除题包中的部署 Domain ID；目标域由导入入口决定");
+
+  const isObjective = source.is_objective ?? false;
+  if (typeof isObjective !== "boolean") {
+    throw new BadRequestError("manifest.is_objective 必须是布尔值");
   }
-  if (
-    typeof manifest.llm === "object" && manifest.llm !== null &&
-    !Array.isArray(manifest.llm)
-  ) {
-    const llm = manifest.llm as Record<string, unknown>;
+  const judgeType = source.judge_type ?? "dual";
+  if (judgeType !== "dual" && judgeType !== "oi") {
+    throw new BadRequestError("manifest.judge_type 仅允许 dual/oi");
+  }
+  if (isObjective && judgeType === "oi") {
+    throw new BadRequestError("客观题套卷不允许 judge_type=oi");
+  }
+  const kind: BundleKind = isObjective
+    ? "objective"
+    : judgeType === "oi"
+    ? "oi"
+    : "ai";
+
+  const warnings: string[] = [];
+  const manifest: Record<string, unknown> = {
+    format_version: BUNDLE_FORMAT_VERSION,
+    kind,
+  };
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(source)) {
+    if (
+      key === "format_version" || key === "kind" || key === "type" ||
+      key === "is_objective" || key === "judge_type"
+    ) continue;
+    if (key === "domain_id") {
+      warnings.push("已移除题包中的部署 Domain ID；目标域由导入入口决定");
+      continue;
+    }
+    if (!LEGACY_KNOWN_FIELDS.has(key)) {
+      dropped.push(key);
+      continue;
+    }
+    manifest[key] = value;
+  }
+  if (dropped.length > 0) {
+    warnings.push(`已忽略格式 3 不支持的字段：${dropped.join(", ")}`);
+  }
+  if (isPlainObject(manifest.llm)) {
+    const llm = manifest.llm;
     manifest.llm = {
       ...(llm.max_calls !== undefined ? { max_calls: llm.max_calls } : {}),
       ...(llm.max_tokens !== undefined ? { max_tokens: llm.max_tokens } : {}),
@@ -199,58 +291,106 @@ export function normalizeBundleManifestFormat(raw: unknown): {
       );
     }
   }
+  warnings.push(
+    `已将格式 ${version} 题包自动转换为格式 ${BUNDLE_FORMAT_VERSION}；` +
+      "可运行 noj problem migrate 更新源 problem.json",
+  );
   return { manifest, warnings };
 }
 
+/** 校验选项。 */
+export interface ValidateBundleManifestOptions {
+  /** 官方评测镜像仓库前缀（部署配置 `JUDGE_IMAGE_BASE`），用于补全缺省镜像。 */
+  imageBase?: string;
+}
+
 /**
- * 校验 manifest 结构与字段合法性，返回规范化副本（不修改入参）。
+ * 用平台缺省值补全 AI 题 `runtime_config`（深拷贝，不修改入参）。
  *
- * 校验项：
- * - 格式 2 无题库分类；格式 1 仅接受显式 P 题转换
- * - `title` 非空字符串
- * - `difficulty` 枚举合法
- * - `number` 类型合法
- * - `tags` 为字符串数组
- * - `samples` 校验并作为独立公开样例保存
- * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
+ * 声明 `llm` 时 evaluator 网络缺省开启；显式关闭网络则视为冲突声明。
+ * `prediction` 不补全 solution（无 Solution 容器）。
+ */
+function resolveAiRuntimeConfig(
+  raw: unknown,
+  mode: SubmissionMode,
+  hasLlm: boolean,
+  imageBase: string,
+): RuntimeConfig {
+  if (raw !== undefined && !isPlainObject(raw)) {
+    throw new BadRequestError("manifest.runtime_config 必须是对象");
+  }
+  const rc = structuredClone(raw ?? {}) as Record<string, unknown>;
+  if (rc.evaluator !== undefined && !isPlainObject(rc.evaluator)) {
+    throw new BadRequestError("runtime_config.evaluator 必须是对象");
+  }
+  const defaults = AI_RUNTIME_DEFAULTS;
+  const evaluator: Record<string, unknown> = {
+    ...defaults.evaluator,
+    image: officialJudgeImage(defaults.evaluator.image, imageBase),
+    ...(rc.evaluator ?? {}),
+  };
+  if (typeof evaluator.command !== "string" || !evaluator.command.trim()) {
+    evaluator.command = DEFAULT_EVALUATOR_COMMAND;
+  }
+  if (hasLlm) {
+    const network = evaluator.network;
+    if (isPlainObject(network) && network.enabled === false) {
+      throw new BadRequestError(
+        "声明 llm 时不能关闭 evaluator 网络（runtime_config.evaluator.network.enabled=false 与 llm 冲突）",
+      );
+    }
+    evaluator.network = {
+      ...(isPlainObject(network) ? network : {}),
+      enabled: true,
+    };
+  }
+  rc.evaluator = evaluator;
+  if (mode !== "prediction") {
+    if (rc.solution !== undefined && !isPlainObject(rc.solution)) {
+      throw new BadRequestError("runtime_config.solution 必须是对象");
+    }
+    rc.solution = {
+      ...defaults.solution,
+      image: officialJudgeImage(defaults.solution.image, imageBase),
+      ...(rc.solution ?? {}),
+    };
+  }
+  return rc as unknown as RuntimeConfig;
+}
+
+/**
+ * 校验 manifest 并返回规范化副本（不修改入参）。
+ *
+ * 先经 `upgradeBundleManifest` 统一为格式 3，再按「通用字段 + 题型字段」表拒绝
+ * 不支持的字段，然后校验各字段；AI 题 `runtime_config` 用平台缺省值补全。
+ * 返回值同时给出 `kind` 与等价的 `is_objective` / `judge_type`，供下游沿用。
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
  */
 export function validateBundleManifest(
   raw: unknown,
+  options: ValidateBundleManifestOptions = {},
 ): ProblemBundleManifest {
-  const { manifest: m } = normalizeBundleManifestFormat(raw);
-
-  if (
-    m.is_objective !== undefined && typeof m.is_objective !== "boolean"
-  ) {
-    throw new BadRequestError("manifest.is_objective 必须是布尔值");
-  }
-  const isObjective = m.is_objective === true;
-  const judgeType = m.judge_type ?? "dual";
-  if (judgeType !== "dual" && judgeType !== "oi") {
-    throw new BadRequestError("manifest.judge_type 仅允许 dual/oi");
-  }
-  if (isObjective && judgeType === "oi") {
-    throw new BadRequestError("客观题套卷不允许 judge_type=oi");
-  }
-  if (judgeType === "oi") {
-    for (
-      const field of [
-        "llm",
-        "template",
-        "submission_mode",
-        "artifact_max_size_mb",
-      ] as const
-    ) {
-      if (m[field] !== undefined) {
-        throw new BadRequestError(`OI 题不允许提供 ${field}`);
-      }
+  const { manifest: m } = upgradeBundleManifest(raw);
+  const kind = m.kind as BundleKind;
+  const allowed = [...COMMON_FIELDS, ...KIND_FIELDS[kind]];
+  for (const key of Object.keys(m)) {
+    if (allowed.includes(key)) continue;
+    if (key === "is_objective" || key === "judge_type") {
+      throw new BadRequestError(
+        `格式 ${BUNDLE_FORMAT_VERSION} 不再使用 ${key}，题型由 kind 决定`,
+      );
     }
+    throw new BadRequestError(
+      `kind=${kind} 不支持字段 ${key}；该题型支持：${allowed.join(", ")}`,
+    );
   }
 
   if (typeof m.title !== "string" || !m.title.trim()) {
     throw new BadRequestError("manifest.title 必须是非空字符串");
+  }
+  if (m.description !== undefined && typeof m.description !== "string") {
+    throw new BadRequestError("manifest.description 必须是字符串");
   }
 
   if (
@@ -280,11 +420,41 @@ export function validateBundleManifest(
 
   if (m.samples !== undefined) validateProblemSamples(m.samples);
 
+  const base = {
+    format_version: BUNDLE_FORMAT_VERSION,
+    kind,
+    title: m.title,
+    description: m.description as string | undefined,
+    difficulty: m.difficulty as string | undefined,
+    number: m.number as number | undefined,
+    tags: m.tags as string[] | undefined,
+    samples: m.samples as ProblemSample[] | undefined,
+  };
+
+  if (kind === "objective") {
+    return { ...base, is_objective: true, judge_type: "dual" };
+  }
+
+  if (kind === "oi") {
+    if (!isPlainObject(m.runtime_config)) {
+      throw new BadRequestError("manifest.runtime_config 是必填字段");
+    }
+    validateOiRuntimeConfig(m.runtime_config);
+    return {
+      ...base,
+      is_objective: false,
+      judge_type: "oi",
+      runtime_config: structuredClone(
+        m.runtime_config,
+      ) as unknown as OiRuntimeConfig,
+    };
+  }
+
   if (m.template !== undefined) {
     if (typeof m.template !== "string" || !m.template.trim()) {
       throw new BadRequestError("manifest.template 必须是非空字符串");
     }
-    // 模板安全校验：禁止路径分隔符与 ..（与 solution.entry 旧校验同风格）
+    // 模板安全校验：禁止路径分隔符与 ..
     if (!isValidTemplateFileName(m.template)) {
       throw new BadRequestError(
         `manifest.template 含非法字符：${m.template}`,
@@ -292,7 +462,6 @@ export function validateBundleManifest(
     }
   }
 
-  // 提交模式校验
   if (
     m.submission_mode !== undefined &&
     !isValidSubmissionMode(m.submission_mode as string)
@@ -303,8 +472,8 @@ export function validateBundleManifest(
       }`,
     );
   }
+  const mode = (m.submission_mode as SubmissionMode | undefined) ?? "code";
 
-  // artifact 大小上限校验
   if (
     m.artifact_max_size_mb !== undefined &&
     m.artifact_max_size_mb !== null &&
@@ -325,67 +494,30 @@ export function validateBundleManifest(
     }
     // prediction 路径不注入 NOJ_LLM_*（评测只跑 Evaluator），题目级 LLM 配置
     // 不会生效，导入期即拒绝而不是拖到提交期。
-    if (m.submission_mode === "prediction") {
+    if (mode === "prediction") {
       throw new BadRequestError("预测提交题不支持 LLM 配置");
     }
-    llm = m.llm as LlmConfig;
+    llm = m.llm;
   }
 
-  let runtimeConfig: RuntimeConfig | OiRuntimeConfig | undefined;
-  if (isObjective) {
-    if (m.runtime_config !== undefined) {
-      throw new BadRequestError("客观题套卷不允许提供 runtime_config");
-    }
-    if (m.llm !== undefined) {
-      throw new BadRequestError("客观题套卷不允许提供 llm");
-    }
-    if (m.template !== undefined) {
-      throw new BadRequestError("客观题套卷不允许提供 template");
-    }
-    if (m.submission_mode !== undefined) {
-      throw new BadRequestError("客观题套卷不允许提供 submission_mode");
-    }
-    if (m.artifact_max_size_mb !== undefined) {
-      throw new BadRequestError("客观题套卷不允许提供 artifact_max_size_mb");
-    }
-  } else {
-    if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
-      throw new BadRequestError("manifest.runtime_config 是必填字段");
-    }
-
-    if (judgeType === "oi") {
-      validateOiRuntimeConfig(m.runtime_config);
-      runtimeConfig = structuredClone(m.runtime_config);
-    } else {
-      // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
-      runtimeConfig = resolveManifestCommand(m.runtime_config as RuntimeConfig);
-      // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
-      // solution，prediction 可省略。
-      validateRuntimeConfig(
-        runtimeConfig,
-        (m.submission_mode as SubmissionMode) ?? "code",
-      );
-      if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
-        throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
-      }
-    }
-  }
+  const runtimeConfig = resolveAiRuntimeConfig(
+    m.runtime_config,
+    mode,
+    llm !== undefined,
+    options.imageBase ?? "",
+  );
+  // 模式只由显式 submission_mode 判定：code/artifact/ui 需要 solution，prediction 可省略。
+  validateRuntimeConfig(runtimeConfig, mode);
 
   return {
-    format_version: m.format_version as number,
-    title: m.title as string,
-    description: m.description as string | undefined,
-    difficulty: m.difficulty as string | undefined,
-    number: m.number as number | undefined,
-    tags: m.tags as string[] | undefined,
+    ...base,
     template: m.template as string | undefined,
     submission_mode: m.submission_mode as string | undefined,
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
-    is_objective: isObjective,
-    judge_type: judgeType,
-    runtime_config: isObjective ? undefined : runtimeConfig,
-    samples: m.samples as ProblemSample[] | undefined,
+    is_objective: false,
+    judge_type: "dual",
+    runtime_config: runtimeConfig,
   };
 }
 

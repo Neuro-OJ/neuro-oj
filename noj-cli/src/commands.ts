@@ -220,7 +220,8 @@ export const COMMANDS: readonly CommandSpec[] = [
     name: "problem",
     tier: "problem",
     aliases: ["problems"],
-    summary: "题目包管理（离线 init/lint/pack；build/import 经 Tier 3 容器）",
+    summary:
+      "题目包管理（离线 init/lint/pack/migrate；build/import 经 Tier 3 容器）",
     subcommands: [
       {
         name: "init",
@@ -233,6 +234,11 @@ export const COMMANDS: readonly CommandSpec[] = [
         summary: "校验题目包（MUST/SHOULD 两级）",
       },
       { name: "pack", tier: "problem", summary: "打包为可导入的题目包 ZIP" },
+      {
+        name: "migrate",
+        tier: "problem",
+        summary: "将 problem.json 升级为当前格式（原地改写）",
+      },
       {
         name: "build",
         tier: "problem",
