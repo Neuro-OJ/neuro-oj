@@ -1,9 +1,9 @@
 {
-  "format_version": 2,
+  "format_version": 3,
+  "kind": "oi",
   "number": 1101,
   "title": "A+B Problem（OI · 原生后端）",
   "difficulty": "easy",
-  "judge_type": "oi",
   "tags": [
     "入门",
     "模拟"

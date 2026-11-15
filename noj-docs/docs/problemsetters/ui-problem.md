@@ -48,13 +48,12 @@ temperature = PARAMS["temperature"]
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 3,
+  "kind": "ai",
   "title": "情感分类调参",
-  "type": "P",
   "submission_mode": "ui",
   "runtime_config": {
-    "evaluator": { "image": "noj-evaluator-python", "time_limit_ms": 120000, "memory_limit_mb": 256 },
-    "solution": { "image": "noj-solution-python", "call_timeout_ms": 5000, "memory_limit_mb": 128 }
+    "evaluator": { "time_limit_ms": 120000 }
   }
 }
 ```

@@ -9,6 +9,7 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "../exit_codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { packBundle } from "./pack.ts";
+import { migrateManifest } from "./migrate.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
 import {
   normalizeServer,
@@ -131,7 +132,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   // 使 `problem lint --dir <别的题包>` 把 out.dir 覆盖成 undefined，
   // 随后静默回落到 cwd 并返回 0——既忽略用户显式指定的目录，
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
-  if (out.sub === "lint" || out.sub === "pack" || out.sub === "push") {
+  if (
+    out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
+    out.sub === "migrate"
+  ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
@@ -491,6 +495,39 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   return EXIT_OK;
 }
 
+/** 执行 `problem migrate`：把目录中的 problem.json 原地改写为当前格式。 */
+export async function runProblemMigrate(args: ProblemArgs): Promise<number> {
+  const dir = resolve(args.dir ?? Deno.cwd());
+  const path = join(dir, "problem.json");
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    throw new UsageError(`找不到 problem.json：${path}`);
+  }
+  let result;
+  try {
+    result = migrateManifest(text);
+  } catch (err) {
+    console.error(`problem migrate: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  if (result.changed) await Deno.writeTextFile(path, result.text);
+  if (args.json) {
+    console.log(JSON.stringify(
+      { path, changed: result.changed, warnings: result.warnings },
+      null,
+      2,
+    ));
+  } else if (!result.changed) {
+    console.log(`已是最新格式，无需迁移：${path}`);
+  } else {
+    console.log(`已迁移：${path}`);
+    for (const warning of result.warnings) console.log(`  - ${warning}`);
+  }
+  return EXIT_OK;
+}
+
 /** 分发 `problem <子命令>`。 */
 export async function runProblem(args: ProblemArgs): Promise<number> {
   switch (args.sub) {
@@ -502,8 +539,10 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemInit(args);
     case "push":
       return await runProblemPush(args);
+    case "migrate":
+      return await runProblemMigrate(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push");
+      console.error("problem: 需要子命令 init/lint/pack/push/migrate");
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }

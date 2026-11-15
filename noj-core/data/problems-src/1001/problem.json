@@ -1,5 +1,6 @@
 {
-  "format_version": 2,
+  "format_version": 3,
+  "kind": "ai",
   "number": 1001,
   "title": "A+B Problem",
   "difficulty": "easy",

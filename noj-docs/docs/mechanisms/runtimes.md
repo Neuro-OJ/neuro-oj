@@ -92,9 +92,9 @@ OI 题包的 `problem.json` 使用以下核心字段；`subtasks` 分数总和�
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 3,
+  "kind": "oi",
   "title": "A+B",
-  "judge_type": "oi",
   "runtime_config": {
     "backend": "native",
     "languages": ["c", "cc"],

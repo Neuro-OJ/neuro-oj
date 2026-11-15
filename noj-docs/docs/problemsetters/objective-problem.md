@@ -47,19 +47,19 @@ my-objective-exam.zip
 
 ### 2. `problem.json` 声明
 
-在题目元数据中将 `is_objective` 设为 `true`：
+在题目元数据中将 `kind` 设为 `"objective"`：
 
 ```json
 {
-  "title": "大模型理论与微调工程模拟测评",
-  "format_version": 2,
-  "is_objective": true
+  "format_version": 3,
+  "kind": "objective",
+  "title": "大模型理论与微调工程模拟测评"
 }
 ```
 
-::: tip 简化配置 当 `is_objective: true` 时，系统将自动忽略
-`time_limit`、`memory_limit` 等沙箱资源参数，上传校验器也不会要求提供
-`evaluator` 评测镜像。 :::
+::: tip 简化配置 客观题没有评测容器，manifest 中不得出现 `runtime_config`、
+`template`、`llm` 等字段（出现即 400）。旧格式 `"is_objective": true`
+仍可导入并自动转换，可用 `noj-cli problem migrate` 更新源文件。 :::
 
 ### 3. `statement.md` 题面说明
 

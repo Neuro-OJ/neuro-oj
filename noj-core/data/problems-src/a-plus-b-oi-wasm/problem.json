@@ -1,9 +1,9 @@
 {
-  "format_version": 2,
+  "format_version": 3,
+  "kind": "oi",
   "number": 1102,
   "title": "A+B Problem（OI · WASM 后端）",
   "difficulty": "easy",
-  "judge_type": "oi",
   "tags": [
     "入门",
     "模拟"
