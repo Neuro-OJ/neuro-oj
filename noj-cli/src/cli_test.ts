@@ -55,9 +55,6 @@ Deno.test("run 识别 version 返回 0", async () => {
 // ── #517 E1/E2/E12：--help 全面可用且严格只读 ──────────────────────
 
 Deno.test("E1: 各子命令 --help / -h 返回 0", async () => {
-  // T23：旧名（deploy/maintain/stack/run-server/doctor）已移除，不再列在这里——
-  // 它们的 `--help` 现在返回用法错误 2（见下一个用例）。留下它们会让本用例
-  // 同时断言"命令存在"与"命令不存在"两种矛盾事实。
   const cases: string[][] = [
     ["install", "--help"],
     ["check", "--help"],
@@ -74,38 +71,6 @@ Deno.test("E1: 各子命令 --help / -h 返回 0", async () => {
   ];
   for (const argv of cases) {
     assertEquals(await run(argv), EXIT_OK, argv.join(" "));
-  }
-});
-
-Deno.test("T23: 已移除的命令返回用法错误 2 并给出可粘贴的替代命令", async () => {
-  const originalErr = console.error;
-  const cases: [string[], string][] = [
-    [["deploy", "status"], "已移除"],
-    [["stack", "up"], "已移除"],
-    [["run-server"], "docker compose up -d"],
-    [["doctor"], "noj-cli check"],
-  ];
-  for (const [argv, expect] of cases) {
-    let err = "";
-    console.error = (...a: unknown[]) => {
-      err += a.join(" ") + "\n";
-    };
-    try {
-      assertEquals(await run(argv), EXIT_USAGE, argv.join(" "));
-    } finally {
-      console.error = originalErr;
-    }
-    // 提示必须说明"已移除"，并给出可直接粘贴的替代命令
-    assertEquals(
-      err.includes("已移除"),
-      true,
-      `${argv.join(" ")} 的提示应说明命令已移除，实得：${err}`,
-    );
-    assertEquals(
-      err.includes(expect),
-      true,
-      `${argv.join(" ")} 的提示应含 "${expect}"，实得：${err}`,
-    );
   }
 });
 

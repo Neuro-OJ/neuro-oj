@@ -44,8 +44,6 @@ export const PROFILE_AGNOSTIC = new Set([
   "help",
   "problem",
   "problems",
-  "doctor",
-  "completions",
 ]);
 
 /**

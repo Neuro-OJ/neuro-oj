@@ -27,29 +27,9 @@ export function dispatchableTopLevelNames(): Set<string> {
   return names;
 }
 
-/**
- * 已移除的命令（T23 的双模态收敛）。
- *
- * 这些名字**不再是命令**：分发时只打印迁移提示并返回用法错误 2。
- * 它们必须与 {@link PRODUCTION_COMMANDS} 一样**跳过 profile 探测**——
- * 否则一个纯粹的用法错误会先报"未能识别出生产安装目录"，掩盖真实原因。
- *
- * 唯一事实源：`dispatchCommand` 里处理它们的分支必须与本集合一致
- * （`commands_test.ts` 的门禁断言两者同步）。
- */
-export const REMOVED_COMMANDS = new Set([
-  "doctor",
-  "deploy",
-  "stack",
-  "run-server",
-]);
-
 /** 已登记的顶层命令（用于拼写建议，#517 E8）。 */
 export const KNOWN_TOP = new Set([
   // #518/#514：新命令必须登记，否则拼写建议看不到它们。
-  // T23：`doctor`/`deploy`/`stack`/`run-server` 已随双模态移除，因此不再登记——
-  // 它们不是"可用命令"，出现在拼写建议里会误导用户。`maintain` 于 P1d 以
-  // Tier 3 容器命令重新引入（维护模式/排空），故重新登记。
   "maintain",
   "problem",
   "problems",
