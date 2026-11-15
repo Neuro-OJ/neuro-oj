@@ -16,13 +16,8 @@ import {
   assertThrows,
 } from "@std/assert";
 import { join } from "@std/path";
-import {
-  flagValue,
-  hasFlag,
-  hasJson,
-  parseProdArgs,
-  positionals,
-} from "./commands/args.ts";
+import { hasJson, parseProdArgs, positionals } from "./commands/args.ts";
+import { flagValue, hasFlag } from "../util/args.ts";
 import { UsageError } from "../util/args.ts";
 import { run } from "../cli.ts";
 import { EXIT_USAGE } from "../cli-commands/exit-codes.ts";
@@ -415,9 +410,8 @@ async function dirFingerprint(dir: string): Promise<string[]> {
 // `slice(0, NaN)` 返回**空数组** → "受数量保护"的集合为空 → **每一份备份都进 remove**。
 // 也就是说 `--keep oops --confirm` 会把所有快照删掉，而用户的本意是"保留一些"。
 //
-// `parseBackupArgs` 本来校验 `--keep` 必须是非负整数，但它只被 drill 路径使用，
-// prune 走 `runBackupPrune` 完全绕过了那个校验。
-// **"存在且有测试的校验"不在活跃路径上**，这正是它危险的原因。
+// 校验必须落在 prune 的活跃路径（`runBackupPrune` → `optionalCount`）上：
+// 曾经"存在且有测试"的校验写在只被 drill 使用的解析器里，prune 完全绕过了它。
 
 Deno.test("prune 的 --keep/--older-than 非法值必须报用法错误，而非删光备份", async () => {
   const { runBackupPrune } = await import("./commands/backup.ts");

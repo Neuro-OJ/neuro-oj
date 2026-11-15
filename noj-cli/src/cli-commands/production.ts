@@ -3,13 +3,13 @@
 import { resolve } from "@std/path";
 import { findProductionDir } from "../prod/install-dir.ts";
 import {
-  hasFlag,
   hasJson,
   humanOutput,
   parseProdArgs,
   positionals,
   rejectUnimplementedProdFlags,
 } from "../prod/commands/args.ts";
+import { hasFlag } from "../util/args.ts";
 import { runProdBackup } from "../prod/commands/backup.ts";
 import { runProdCheck, runProdVerify } from "../prod/commands/check.ts";
 import { runProdJudge } from "../prod/commands/judge.ts";

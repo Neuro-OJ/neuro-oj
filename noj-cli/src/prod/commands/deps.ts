@@ -8,7 +8,7 @@ import { realIO } from "../../tui/io.ts";
 import type { PromptIO } from "../../tui/io.ts";
 import { UsageError } from "../../util/args.ts";
 import { PROD_ENV_FILE } from "../compose.ts";
-import { flagValue } from "./args.ts";
+import { flagValue } from "../../util/args.ts";
 import type { ProdCliDeps } from "./types.ts";
 
 /** 装配公共依赖（缺省值即生产路径）。 */

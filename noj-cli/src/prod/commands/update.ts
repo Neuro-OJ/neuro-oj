@@ -3,7 +3,7 @@
 import type { CommandRunner } from "../../runtime/command.ts";
 import { update, type UpdateResult } from "../lifecycle.ts";
 import { createDrainLifecycle } from "../lifecycle/drain.ts";
-import { flagValue, hasFlag, optionalCount } from "./args.ts";
+import { flagValue, hasFlag, optionalCount } from "../../util/args.ts";
 import { prodDeps, renderIOOf } from "./deps.ts";
 import { runBackupCreate } from "./backup.ts";
 import type { ProdCliDeps } from "./types.ts";

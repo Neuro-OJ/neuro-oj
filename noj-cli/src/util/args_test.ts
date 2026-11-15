@@ -1,40 +1,22 @@
 import { assertEquals } from "@std/assert";
-import {
-  levenshtein,
-  parseDirArg,
-  suggestCommand,
-  UsageError,
-} from "./args.ts";
+import { flagValue, levenshtein, suggestCommand, UsageError } from "./args.ts";
 
-Deno.test("parseDirArg: --dir <path> 与 --dir=<path> 等价", () => {
-  assertEquals(parseDirArg(["--dir", "/opt"]), "/opt");
-  assertEquals(parseDirArg(["--dir=/opt"]), "/opt");
+Deno.test("flagValue: --flag v 与 --flag=v 等价，未出现返回 undefined", () => {
+  assertEquals(flagValue(["--dir", "/opt"], "--dir"), "/opt");
+  assertEquals(flagValue(["--dir=/opt"], "--dir"), "/opt");
+  assertEquals(flagValue(["--follow"], "--dir"), undefined);
 });
 
-Deno.test("parseDirArg: 无 --dir 返回 undefined", () => {
-  assertEquals(parseDirArg([]), undefined);
-  assertEquals(parseDirArg(["--follow"]), undefined);
-});
-
-Deno.test("parseDirArg: 缺值显式报错（不再静默 undefined）", () => {
-  // 回归防线（E6）：早先 `--dir` 缺值会静默取到 undefined，用户以为生效了。
+Deno.test("flagValue: 缺值显式报用法错误（不静默 undefined）", () => {
   for (const argv of [["--dir"], ["--dir="], ["--dir", "--follow"]]) {
     let err: unknown;
     try {
-      parseDirArg(argv);
+      flagValue(argv, "--dir", "--dir 需要一个安装目录");
     } catch (e) {
       err = e;
     }
     assertEquals(err instanceof UsageError, true, JSON.stringify(argv));
-  }
-});
-
-Deno.test("parseDirArg: 报错信息可操作", () => {
-  try {
-    parseDirArg(["--dir"]);
-  } catch (e) {
-    assertEquals((e as Error).message.includes("--dir"), true);
-    assertEquals((e as Error).message.includes("目录"), true);
+    assertEquals((err as Error).message, "--dir 需要一个安装目录");
   }
 });
 

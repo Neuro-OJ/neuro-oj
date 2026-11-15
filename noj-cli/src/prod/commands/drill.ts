@@ -3,8 +3,54 @@
 import { realRunner } from "../../runtime/command.ts";
 import { EXIT_USAGE } from "../../cli-commands/exit-codes.ts";
 import { runDrill } from "../drill/drill.ts";
-import { parseBackupArgs } from "./backup-args.ts";
+import { flagValue, hasFlag, UsageError } from "../../util/args.ts";
+import { hasJson, positionals } from "./args.ts";
 import { readConfiguredPassphrase, resolveBackupPassphrase } from "./deps.ts";
+
+/** `backup drill` 的参数（`--dir` 已由 `dispatchProduction` 拆走）。 */
+export interface DrillArgs {
+  snapshot: string | undefined;
+  dockerHost: string | undefined;
+  skipJudge: boolean;
+  subnet: string | undefined;
+  projectName: string | undefined;
+  report: string | undefined;
+  rpoMaxHours: number | undefined;
+  rtoMaxMinutes: number | undefined;
+  noEncrypt: boolean;
+  /** 裸 `--keep`：保留演练环境（与 prune 的 `--keep N` 不同，不带值）。 */
+  keep: boolean;
+  json: boolean;
+}
+
+/** 解析 drill 参数；非法值抛 {@link UsageError}。 */
+export function parseDrillArgs(args: string[]): DrillArgs {
+  return {
+    // `positionals` 把 `--keep` 当带值旗标（prune 语义），drill 的裸 `--keep`
+    // 须先剔除，否则会吞掉紧随其后的快照路径。
+    snapshot: positionals(args.filter((a) => a !== "--keep"))[0],
+    dockerHost: flagValue(args, "--docker-host"),
+    skipJudge: hasFlag(args, "--skip-judge"),
+    subnet: flagValue(args, "--subnet"),
+    projectName: flagValue(args, "--project-name"),
+    report: flagValue(args, "--report"),
+    rpoMaxHours: positiveInt(args, "--rpo-max-hours"),
+    rtoMaxMinutes: positiveInt(args, "--rto-max-minutes"),
+    noEncrypt: hasFlag(args, "--no-encrypt"),
+    keep: hasFlag(args, "--keep"),
+    json: hasJson(args),
+  };
+}
+
+function positiveInt(args: string[], name: string): number | undefined {
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new UsageError(`${name} 需要正整数，收到 "${raw}"`);
+  }
+  return n;
+}
 
 /**
  * `backup drill`：解析参数并执行一次真实恢复演练，输出结果。
@@ -20,7 +66,7 @@ export async function runBackupDrill(
   dir: string,
   args: string[],
 ): Promise<number> {
-  const a = parseBackupArgs(["drill", ...args]);
+  const a = parseDrillArgs(args);
   if (a.snapshot === undefined) {
     console.error(
       "backup drill: 需要 <snapshot> 路径" + "\n" +
@@ -38,7 +84,7 @@ export async function runBackupDrill(
       return EXIT_USAGE;
     }
     const result = await runDrill({
-      snapshotPath: a.snapshot!,
+      snapshotPath: a.snapshot,
       dir,
       runner: realRunner(),
       // 口令来源与其它 backup 子命令一致：旗标 > 进程环境 > `.env.prod`。
@@ -60,7 +106,7 @@ export async function runBackupDrill(
       // restore/drill 此前把 docker 写死，只有 install/update/create 装配
       // 尊重该变量。
       dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
-      keep: a.keepFlag === true,
+      keep: a.keep,
       log: (line) => {
         // `--json` 时 stdout 必须逐字节为 JSON，故人类日志改道 stderr
         if (a.json) console.error(line);

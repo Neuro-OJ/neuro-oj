@@ -14,7 +14,8 @@ import {
   judgeUpgrade,
 } from "../judge/actions.ts";
 import { createLocalRedis } from "../judge/config.ts";
-import { flagValue, hasFlag, humanOutput } from "./args.ts";
+import { humanOutput } from "./args.ts";
+import { flagValue, hasFlag } from "../../util/args.ts";
 
 /**
  * `judge` 的子命令分发（`install-env` / `install` / `upgrade` 等）。

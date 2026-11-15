@@ -1,4 +1,4 @@
-/** 生产命令的通用参数解析辅助（`--dir`、旗标取值与未实现旗标守卫）。 */
+/** 生产命令的参数辅助：`--dir` 拆分、位置参数、未实现旗标守卫与输出通道。 */
 
 import { UsageError } from "../../util/args.ts";
 
@@ -49,59 +49,6 @@ export function parseProdArgs(args: string[]): ProdArgs {
 /** `--json` 是否开启（原生实现自己也会判，这里只为统一读取）。 */
 export function hasJson(args: string[]): boolean {
   return args.includes("--json");
-}
-
-/** 取 `--flag value` 或 `--flag=value` 的值。 */
-export function flagValue(
-  args: string[],
-  name: string,
-): string | undefined {
-  const eq = `${name}=`;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === name) {
-      const value = args[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        throw new UsageError(`${name} 需要一个值`);
-      }
-      return value;
-    }
-    if (arg.startsWith(eq)) {
-      const value = arg.slice(eq.length);
-      if (value === "") throw new UsageError(`${name} 需要一个值`);
-      return value;
-    }
-  }
-  return undefined;
-}
-
-/**
- * 读一个**非负整数**旗标；缺省返回 undefined，非法值抛用法错误。
- *
- * 存在的理由：这类值会被下游当作**数量/天数**参与"保护哪些备份"的计算，
- * 而非法的 `NaN` 在 `slice`/比较里会静默退化为"什么都不保护"——
- * 也就是说校验缺失的后果是**删数据**，不是报错。
- */
-export function optionalCount(
-  args: string[],
-  name: string,
-): number | undefined {
-  const raw = flagValue(args, name);
-  if (raw === undefined) return undefined;
-  // 只接受十进制非负整数（拒绝 "1.5"、"1e3"、"0x10"、"-1"、""）
-  if (!/^\d+$/.test(raw)) {
-    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
-  }
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(n)) {
-    throw new UsageError(`${name} 超出可用范围，收到 "${raw}"`);
-  }
-  return n;
-}
-
-/** 取布尔旗标（支持 `-y` 这类短名）。 */
-export function hasFlag(args: string[], ...names: string[]): boolean {
-  return args.some((a) => names.includes(a));
 }
 
 /**
