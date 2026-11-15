@@ -19,7 +19,8 @@ import {
 } from "../lifecycle.ts";
 import type { LifecycleBaseResult } from "../lifecycle.ts";
 import { DEFAULT_REPOSITORY } from "../install-defaults.ts";
-import { flagValue, hasFlag, positionals } from "./args.ts";
+import { positionals } from "./args.ts";
+import { flagValue, hasFlag } from "../../util/args.ts";
 import { prodDeps, renderIOOf } from "./deps.ts";
 import type { ProdCliDeps, ProdCliResult } from "./types.ts";
 

@@ -1,6 +1,6 @@
 // Tier 3 自有旗标的剥离与解析。
 
-import { UsageError } from "../util/args.ts";
+import { flagValue } from "../util/args.ts";
 
 /**
  * 剔除属于 noj-cli 自身的选项（`--dir` 及其值、`--dry-run`），
@@ -33,20 +33,5 @@ export function stripCliOwnedFlags(args: string[]): string[] {
  * 与 `--dir` 分开的原因见 {@link stripCliOwnedFlags}。
  */
 export function parseInstallDirArg(args: string[]): string | undefined {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === "--install-dir") {
-      const value = args[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        throw new UsageError("--install-dir 需要一个安装目录");
-      }
-      return value;
-    }
-    if (arg.startsWith("--install-dir=")) {
-      const value = arg.slice("--install-dir=".length);
-      if (value === "") throw new UsageError("--install-dir 需要一个安装目录");
-      return value;
-    }
-  }
-  return undefined;
+  return flagValue(args, "--install-dir", "--install-dir 需要一个安装目录");
 }

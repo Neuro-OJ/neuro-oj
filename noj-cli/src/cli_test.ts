@@ -8,7 +8,7 @@ import {
 } from "./cli-commands/exit-codes.ts";
 import { parseInstallDirArg, stripCliOwnedFlags } from "./cli-commands/args.ts";
 import { formatBytes } from "./prod/commands/backup.ts";
-import { parseBackupArgs } from "./prod/commands/backup-args.ts";
+import { parseDrillArgs } from "./prod/commands/drill.ts";
 import {
   dispatchContainer,
   parseContainerCommand,
@@ -231,99 +231,47 @@ Deno.test("E8: 拼写错误给出建议", async () => {
 
 // ── 解析函数 ─────────────────────────────────────────────────────
 
-Deno.test("E6: parseBackupArgs 支持 --dir= 且缺值报错", () => {
-  assertEquals(parseBackupArgs(["create", "--dir=/opt"]).dir, "/opt");
-  let threw = false;
-  try {
-    parseBackupArgs(["create", "--dir"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
+Deno.test("parseDrillArgs: 隔离 daemon、report 与快照位置参数", () => {
+  const a = parseDrillArgs([
+    "x.nojbackup",
+    "--report",
+    "/r.json",
+    "--docker-host=unix:///run/noj-restore-drill/test/docker.sock",
+    "--rpo-max-hours",
+    "24",
+  ]);
+  assertEquals(a.snapshot, "x.nojbackup");
+  assertEquals(a.report, "/r.json");
+  assertEquals(a.dockerHost, "unix:///run/noj-restore-drill/test/docker.sock");
+  assertEquals(a.rpoMaxHours, 24);
+  assertEquals(a.keep, false);
 });
 
-Deno.test("E6: parseBackupArgs 旗标缺值报错而非静默 undefined", () => {
-  for (const argv of [["create", "--backup-dir"], ["create", "--report"]]) {
+Deno.test("parseDrillArgs: 裸 --keep 不吞掉其后的快照路径", () => {
+  const a = parseDrillArgs(["--keep", "x.nojbackup", "--skip-judge"]);
+  assertEquals(a.keep, true);
+  assertEquals(a.snapshot, "x.nojbackup");
+  assertEquals(a.skipJudge, true);
+});
+
+Deno.test("parseDrillArgs: 旗标缺值或 RPO/RTO 非正整数报用法错误", () => {
+  for (
+    const argv of [
+      ["x", "--report"],
+      ["x", "--rpo-max-hours", "0"],
+      ["x", "--rto-max-minutes", "abc"],
+    ]
+  ) {
     let threw = false;
     try {
-      parseBackupArgs(argv);
-    } catch {
-      threw = true;
+      parseDrillArgs(argv);
+    } catch (e) {
+      threw = e instanceof UsageError;
     }
     assertEquals(threw, true, argv.join(" "));
   }
 });
 
-Deno.test("parseBackupArgs: create 旗标解析", () => {
-  const a = parseBackupArgs([
-    "create",
-    "--backup-dir",
-    "/bk",
-    "--passphrase-file",
-    "/pw",
-    "--zstd-level",
-    "19",
-    "--no-encrypt",
-    "--dir",
-    "/opt",
-  ]);
-  assertEquals(a.sub, "create");
-  assertEquals(a.backupDir, "/bk");
-  assertEquals(a.passphraseFile, "/pw");
-  assertEquals(a.zstdLevel, 19);
-  assertEquals(a.noEncrypt, true);
-  assertEquals(a.dir, "/opt");
-});
-
-Deno.test("parseBackupArgs: verify 位置参数 snapshot", () => {
-  const a = parseBackupArgs([
-    "verify",
-    "/bk/snapshot-2026.nojbackup",
-    "--dir",
-    "/opt",
-  ]);
-  assertEquals(a.sub, "verify");
-  assertEquals(a.snapshot, "/bk/snapshot-2026.nojbackup");
-});
-
-Deno.test("parseBackupArgs: restore 旗标", () => {
-  const a = parseBackupArgs([
-    "restore",
-    "x.nojbackup",
-    "--confirm",
-    "--include-deploy-configs",
-    "--passphrase-file",
-    "/pw",
-  ]);
-  assertEquals(a.sub, "restore");
-  assertEquals(a.confirm, true);
-  assertEquals(a.includeDeployConfigs, true);
-  assertEquals(a.passphraseFile, "/pw");
-});
-
-Deno.test("parseBackupArgs: drill 隔离 daemon 与 report 旗标", () => {
-  const a = parseBackupArgs([
-    "drill",
-    "x.nojbackup",
-    "--report",
-    "/r.json",
-    "--docker-host",
-    "unix:///run/noj-restore-drill/test/docker.sock",
-  ]);
-  assertEquals(a.sub, "drill");
-  assertEquals(a.report, "/r.json");
-  assertEquals(a.dockerHost, "unix:///run/noj-restore-drill/test/docker.sock");
-});
-
-Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {
-  let threw = false;
-  try {
-    parseBackupArgs(["create", "--zstd-level", "99"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
-});
 // ── Tier 3 ──────────────────────────────────────────────────────
 
 Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器侧 --dir", () => {
@@ -446,44 +394,6 @@ Deno.test("problem lint/pack 只有位置参数存在时才覆盖 --dir", () => 
   assertEquals(parseProblemArgs(["lint"]).dir, undefined);
 });
 // ── #515 P6：备份 list/prune 的 CLI 契约 ─────────────────────────────
-
-Deno.test("P6: parseBackupArgs 解析 list/prune 旗标", () => {
-  const a = parseBackupArgs([
-    "prune",
-    "--keep",
-    "3",
-    "--older-than",
-    "7",
-    "--include-legacy",
-    "--json",
-  ]);
-  assertEquals(a.sub, "prune");
-  assertEquals(a.keep, 3);
-  assertEquals(a.olderThanDays, 7);
-  assertEquals(a.includeLegacy, true);
-  assertEquals(a.json, true);
-});
-
-Deno.test("P6: --keep/--older-than 非法值报用法错误", () => {
-  for (
-    const argv of [["prune", "--keep", "x"], ["prune", "--older-than", "-1"]]
-  ) {
-    let threw = false;
-    try {
-      parseBackupArgs(argv);
-    } catch (e) {
-      threw = e instanceof UsageError;
-    }
-    assertEquals(threw, true, argv.join(" "));
-  }
-});
-
-Deno.test("P6: prune 默认不 confirm（安全默认 = dry-run）", () => {
-  assertEquals(parseBackupArgs(["prune"]).confirm, false);
-  assertEquals(parseBackupArgs(["prune", "--confirm"]).confirm, true);
-  // 默认不删旧目录格式（存量数据保护）
-  assertEquals(parseBackupArgs(["prune"]).includeLegacy, false);
-});
 
 Deno.test("P6: formatBytes 人类可读", () => {
   assertEquals(formatBytes(0), "0B");
