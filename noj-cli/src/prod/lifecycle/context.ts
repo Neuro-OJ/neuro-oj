@@ -4,7 +4,7 @@ import { createTheme } from "../../output/theme.ts";
 import type { StatusKind } from "../../output/theme.ts";
 import type { ColorMode } from "../../util/color.ts";
 import { validateTargetDir } from "../bootstrap.ts";
-import type { LifecycleBaseResult, LifecycleOptions } from "../lifecycle.ts";
+import type { LifecycleBaseResult, LifecycleOptions } from "./services.ts";
 
 /** 一次命令运行的上下文：目录 + 两个输出通道 + 状态行写出器。 */
 export interface LifecycleContext {

@@ -1,9 +1,7 @@
 /**
  * gpg / tar 的薄封装（`backup verify/restore` 解包容器时复用）。
  *
- * 从 `prod/cli.ts` 抽出（2026-09-23）：该文件已到单文件规模阈值边缘，而本次复审
- * 修复又在其上增加了几处接线；抽出这两个零业务逻辑的系统调用包装是成本最低的
- * 拆分（它们与 `prod/backup/driver.ts` 的 ops 同名同形，只是接受注入的 runner）。
+ * 与 `prod/backup/driver.ts` 的 ops 同名同形，只是接受注入的 runner。
  *
  * @module
  */

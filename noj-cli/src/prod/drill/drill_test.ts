@@ -36,7 +36,6 @@ import {
   drillCleanupArgs,
   drillComposeArgs,
   drillDirName,
-  readEnvValues,
   renderDisableOutboundIntegrationsSql,
   renderDrillOverride,
   resolveReportPath,
@@ -58,6 +57,7 @@ import {
 } from "./report.ts";
 import { buildDrillBundle, runBusinessVerification } from "./verify.ts";
 import { makeIdempotentGlobals, runDrill, tailLines } from "./drill.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** 一次 compose/命令调用记录。 */
 interface Call {
@@ -1328,19 +1328,19 @@ Deno.test("makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", async ()
   }
 });
 
-Deno.test("readEnvValues/valueOr/tailLines：解析与兜底", async () => {
+Deno.test("readEnvValuesOrEmpty/valueOr/tailLines：解析与兜底", async () => {
   const root = await makeTempDir();
   try {
     const env = join(root, ".env.prod");
     await Deno.writeTextFile(env, 'POSTGRES_USER=pguser\nS3_BUCKET="bkt"\n');
-    const values = await readEnvValues(env);
+    const values = await readEnvValuesOrEmpty(env);
     assertEquals(values["POSTGRES_USER"], "pguser");
     assertEquals(values["S3_BUCKET"], "bkt");
     assertEquals(valueOr(values, "POSTGRES_USER", "noj"), "pguser");
     assertEquals(valueOr(values, "MISSING", "fallback"), "fallback");
     assertEquals(valueOr({ K: "" }, "K", "def"), "def");
     // 缺文件 → 空表
-    assertEquals(await readEnvValues(join(root, "nope")), {});
+    assertEquals(await readEnvValuesOrEmpty(join(root, "nope")), {});
 
     assertEquals(tailLines("a\nb\nc\nd", 2), "c\nd");
     assertEquals(tailLines("only", 5), "only");

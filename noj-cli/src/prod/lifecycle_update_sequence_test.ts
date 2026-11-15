@@ -431,7 +431,7 @@ Deno.test("update --latest 的 pull/up 必须使用暂存配置（目标版本�
       dir,
       runner,
       // 注意：`latest` 是**布尔字段**（`opts.latest === true`），不是从 args 推的；
-      // CLI 层由 `hasFlag(args, "--latest")` 传入（`prod/cli.ts`）。
+      // CLI 层由 `hasFlag(args, "--latest")` 传入（`prod/commands/update.ts`）。
       latest: true,
       args: ["--latest"],
       io: { stdout: () => {}, stderr: () => {}, jsonMode: false },

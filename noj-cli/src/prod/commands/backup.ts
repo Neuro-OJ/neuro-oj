@@ -1,4 +1,4 @@
-/** `backup` 子命令：create / verify / list / prune / restore / schedule 的命令级装配。 */
+/** `backup` 子命令：create / verify / list / prune / restore / schedule 的命令级装配与分发（drill 见 `drill.ts`）。 */
 
 import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
@@ -29,17 +29,30 @@ import {
   statusSchedule,
 } from "../schedule.ts";
 import type { ScheduleResult } from "../schedule.ts";
-import { readEnvValues } from "../drill/plan.ts";
 import { gpgDecrypt, untarZst } from "../gpg-tar.ts";
 import {
   flagValue,
   hasFlag,
   hasJson,
+  humanOutput,
   optionalCount,
   positionals,
 } from "./args.ts";
-import { prodDeps, resolveBackupPassphrase } from "./deps.ts";
+import {
+  envNumber,
+  numberFlag,
+  prodDeps,
+  readConfiguredPassphrase,
+  resolveBackupPassphrase,
+} from "./deps.ts";
+import { runBackupDrill } from "./drill.ts";
+import {
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+} from "../../cli-commands/exit-codes.ts";
 import type { ProdCliDeps } from "./types.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /**
  * 去掉目录路径的尾随斜杠（根路径除外）。
@@ -153,24 +166,6 @@ async function readMigrationStatus(
     : status;
 }
 
-/**
- * 读 `.env.prod` 里的 `NOJ_BACKUP_PASSPHRASE_FILE`（文件不存在/不可读时为 undefined）。
- *
- * 备份命令（verify/restore/drill）可能在**安装目录之外**执行（例如只拿到一个
- * 快照文件做校验），因此这里绝不因读不到 `.env.prod` 而失败——口令的必需性
- * 由各命令自己的前置校验决定。
- */
-async function readConfiguredPassphrase(
-  dir: string,
-): Promise<string | undefined> {
-  try {
-    const env = await readEnvValues(join(dir, PROD_ENV_FILE));
-    return env["NOJ_BACKUP_PASSPHRASE_FILE"];
-  } catch {
-    return undefined;
-  }
-}
-
 /** `backup create` 的选项（在 CLI 旗标之上再暴露 `args` 便于测试注入）。 */
 export interface BackupCreateCliOptions {
   passphraseFile?: string;
@@ -229,7 +224,7 @@ export async function runBackupCreate(
   // `listBackups` 拼出的 `/x//name` 不一致，会让下面的 `excludePaths` 完全失配
   // → 刚创建的快照仍可能被自己的清理删掉。
   const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
-  const env = await readEnvValues(envFile);
+  const env = await readEnvValuesOrEmpty(envFile);
   // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore/drill
   // 一致。此前只认旗标：`install`/`update` 已把口令路径写进 `.env.prod`，
   // 手动 `backup create` 却仍报"缺少 GPG 口令文件"。
@@ -430,7 +425,7 @@ export function runBackupPrune(
  * `runBackupRestorePlan`，于是带 `--confirm` 也只规划不执行——**文档承诺了
  * 一个不存在的实现**。
  *
- * 失败一律抛错（由 `dispatchProdBackup` 统一转退出码）：
+ * 失败一律抛错（由 `runProdBackup` 统一转退出码）：
  * 恢复失败绝不能被当成"成功但没什么可做"。
  */
 export async function runBackupRestore(
@@ -558,5 +553,156 @@ export async function runBackupSchedule(
       throw new UsageError(
         `backup schedule 需要子命令 install/status/remove，收到 "${sub}"`,
       );
+  }
+}
+
+/** 人类可读字节数（备份 list 展示用）。 */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + "B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + "K";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + "M";
+  return (bytes / 1024 / 1024 / 1024).toFixed(1) + "G";
+}
+
+/** `backup` 的子命令分发。 */
+export async function runProdBackup(
+  dir: string,
+  args: string[],
+  json: boolean,
+): Promise<number> {
+  const sub = args[0] ?? "";
+  const rest = args.slice(1);
+  const say = humanOutput(json);
+  switch (sub) {
+    case "drill":
+      return await runBackupDrill(dir, rest);
+    case "create": {
+      const created = await runBackupCreate(dir, {
+        args: rest,
+        deps: {},
+        passphraseFile: flagValue(rest, "--passphrase-file"),
+        backupDir: flagValue(rest, "--backup-dir"),
+        zstdLevel: numberFlag(rest, "--zstd-level"),
+        noEncrypt: hasFlag(rest, "--no-encrypt"),
+        // 旗标缺省时读环境变量 `NOJ_BACKUP_RETENTION_DAYS` /
+        // `NOJ_BACKUP_MIN_FREE_MB`。
+        retentionDays: numberFlag(rest, "--retention-days") ??
+          envNumber("NOJ_BACKUP_RETENTION_DAYS"),
+        minFreeMb: numberFlag(rest, "--min-free-mb") ??
+          envNumber("NOJ_BACKUP_MIN_FREE_MB"),
+      });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            path: created.path,
+            sha256: created.sha256,
+            sidecar: created.sidecar,
+            payload_layout: created.manifest.payload_layout,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(`完整生产快照已创建：${created.path}`);
+        say(`校验文件：${created.sidecar}`);
+      }
+      return EXIT_OK;
+    }
+    case "verify": {
+      const r = await runBackupVerify(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            path: r.path,
+            pass: r.pass,
+            checks: r.checks,
+            issues: r.issues,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(r.summary);
+      }
+      return r.pass ? EXIT_OK : EXIT_FAILURE;
+    }
+    case "list": {
+      const r = await runBackupList(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(r, null, 2));
+      } else if (r.entries.length === 0) {
+        say("没有可用备份");
+      } else {
+        for (const e of r.entries) {
+          say(`${e.name}  ${formatBytes(e.bytes ?? 0)}  ${e.createdAt}`);
+        }
+      }
+      return EXIT_OK;
+    }
+    case "prune": {
+      const r = await runBackupPrune(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            applied: r.applied,
+            deleted: r.deleted.map((p) => p),
+            planned: r.plan.remove.map((e) => e.name),
+            failed: r.failed.map((f) => f.path),
+          },
+          null,
+          2,
+        ));
+      } else {
+        // 默认 dry-run：必须明确告知"没有删任何东西"，否则用户以为已清理
+        say(
+          r.applied
+            ? `已删除 ${r.deleted.length} 个备份`
+            : `[dry-run] 将删除 ${r.plan.remove.length} 个备份（加 --confirm 才真正删除）`,
+        );
+        for (const e of r.plan.remove) say(`  - ${e.name}`);
+      }
+      return r.failed.length === 0 ? EXIT_OK : EXIT_FAILURE;
+    }
+    case "restore": {
+      // `--confirm` → 真实恢复；否则 dry-run 计划（文档承诺的语义）。
+      // `--dry-run` 是**显式**的 dry-run 请求：与 `--confirm` 互斥的检查
+      // 已在 `dispatchProduction` 的开头完成（纯参数错误先于目录解析）。
+      const r = await runBackupRestore(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(r, null, 2));
+      } else {
+        say(r.summary);
+        if (r.kind === "restored") {
+          for (const component of r.restored) say(`  ✓ 已恢复：${component}`);
+        }
+      }
+      if (r.kind === "dry-run") {
+        return r.verified ? EXIT_OK : EXIT_FAILURE;
+      }
+      return EXIT_OK;
+    }
+    case "schedule": {
+      const r = await runBackupSchedule(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            exitCode: r.exitCode,
+            message: r.message,
+            block: r.block,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(r.message);
+      }
+      return r.exitCode;
+    }
+    default:
+      console.error(
+        `backup 需要子命令 create/verify/list/prune/restore/drill/schedule，` +
+          `收到 "${sub}"`,
+      );
+      return EXIT_USAGE;
   }
 }

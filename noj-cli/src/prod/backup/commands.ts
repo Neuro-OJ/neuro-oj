@@ -25,7 +25,6 @@ import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { prodComposeArgs } from "./driver.ts";
 import { restoreDataServices } from "./data_restore.ts";
-import { readEnvValues } from "../drill/plan.ts";
 import {
   listBackups,
   type ListResult,
@@ -39,6 +38,7 @@ import {
   verifyContainer,
   type VerifyContainerResult,
 } from "./container.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** `list` 的结果（复用 `prod/backup/list.ts` 的形状，不新造）。 */
 export type BackupListResult = ListResult;
@@ -386,7 +386,7 @@ export async function restoreConfirmed(
     throw new Error(`快照校验未通过，拒绝恢复：\n${detail}`);
   }
 
-  const env = await readEnvValues(opts.envFile);
+  const env = await readEnvValuesOrEmpty(opts.envFile);
   const dockerBin = opts.dockerBin ?? "docker";
   const composeArgs = (command: string[]): string[] =>
     prodComposeArgs({

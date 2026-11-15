@@ -34,12 +34,9 @@
 
 import { isAbsolute, join } from "@std/path";
 import type { CommandRunner } from "../runtime/command.ts";
-import {
-  checkPassphraseFile,
-  DrillPreflightError,
-  isFile,
-} from "./drill/plan.ts";
+import { checkPassphraseFile, DrillPreflightError } from "./drill/plan.ts";
 import { UsageError } from "../util/args.ts";
+import { isFile } from "../util/fs.ts";
 
 /**
  * 区块起始标记（含 `(managed)`）。

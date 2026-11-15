@@ -33,14 +33,8 @@ import type { CommandRunner } from "../../runtime/command.ts";
 import { valueOr } from "../env-values.ts";
 import { makeIdempotentGlobals } from "./globals.ts";
 
-/** 恢复序列所需的全部注入点与上下文。 */
-export interface DataRestoreContext {
-  /** 解包后的快照目录（`postgres.dump` / `redis.rdb` / `minio/` 所在处）。 */
-  staging: string;
-  /** 临时目录（幂等化后的 globals 脚本落在这里）。 */
-  tempDir: string;
-  /** `.env.prod` 解析出的键值（取 `POSTGRES_USER`/`POSTGRES_DB`/`S3_BUCKET`）。 */
-  env: Record<string, string>;
+/** 一个 Compose 项目的调用目标：命令注入点 + docker 可执行名 + 参数构造。 */
+export interface ComposeTarget {
   /** 命令注入点。 */
   runner: CommandRunner;
   /** docker 可执行名。 */
@@ -51,6 +45,16 @@ export interface DataRestoreContext {
    * 由调用方决定项目名/override/是否隔离——本模块只负责"恢复什么、按什么顺序"。
    */
   composeArgs: (command: string[]) => string[];
+}
+
+/** 恢复序列所需的全部注入点与上下文。 */
+export interface DataRestoreContext extends ComposeTarget {
+  /** 解包后的快照目录（`postgres.dump` / `redis.rdb` / `minio/` 所在处）。 */
+  staging: string;
+  /** 临时目录（幂等化后的 globals 脚本落在这里）。 */
+  tempDir: string;
+  /** `.env.prod` 解析出的键值（取 `POSTGRES_USER`/`POSTGRES_DB`/`S3_BUCKET`）。 */
+  env: Record<string, string>;
   /** `--wait` 超时（秒）。 */
   waitTimeout: number;
   /** 人类日志汇聚点。 */
@@ -66,8 +70,8 @@ export interface DataRestoreContext {
 }
 
 /** 跑一条 compose 子命令并返回退出码。 */
-async function compose(
-  ctx: DataRestoreContext,
+export async function compose(
+  ctx: ComposeTarget,
   command: string[],
 ): Promise<number> {
   const res = await ctx.runner.run(ctx.dockerBin, ctx.composeArgs(command));
@@ -82,8 +86,8 @@ async function compose(
  * 容器状态地 `up -d`，再用 `compose wait` 读取其真实退出码，才能同时满足
  * `depends_on: service_completed_successfully` 与恢复错误可见性。
  */
-async function startOneShotService(
-  ctx: DataRestoreContext,
+export async function startOneShotService(
+  ctx: ComposeTarget,
   service: string,
 ): Promise<number> {
   if (await compose(ctx, ["up", "-d", service]) !== 0) return 1;
@@ -98,8 +102,8 @@ async function startOneShotService(
  * **都不拼进脚本正文**。这是 `driver.ts:feedFromFile` 的同一语义，
  * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
  */
-async function feedFileToCompose(
-  ctx: DataRestoreContext,
+export async function feedFileToCompose(
+  ctx: ComposeTarget,
   command: string[],
   srcFile: string,
 ): Promise<number> {

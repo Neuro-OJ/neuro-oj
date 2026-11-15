@@ -1,5 +1,5 @@
 import { join } from "@std/path";
-import { fileExists } from "../util/fs.ts";
+import { isFile } from "../util/fs.ts";
 import { sha256Hex } from "../util/hash.ts";
 
 /**
@@ -207,7 +207,7 @@ export async function downloadReleaseFiles(
   // 拒绝模式下目录不存在时后续同样按需创建。
   if (!overwrite) {
     for (let i = 0; i < RELEASE_FILES.length; i++) {
-      if (await fileExists(targets[i]!)) {
+      if (await isFile(targets[i]!)) {
         throw new Error(
           `${
             RELEASE_FILES[i]!.target
@@ -248,7 +248,7 @@ export async function downloadReleaseFiles(
     // 阶段二：事务式提交。先备份将被覆盖的普通文件，再逐个 rename 进去；
     // 任一步失败都回滚到提交前的完整状态，不留混合状态。
     for (const { target, tmp } of staged) {
-      if (await fileExists(target)) {
+      if (await isFile(target)) {
         const bak = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
         await Deno.rename(target, bak);
         backups.push({ target, bak });
@@ -308,7 +308,7 @@ export async function downloadReleaseSet(
   const targetDir = validateTargetDir(opts.targetDir);
   const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
   const target = join(targetDir, RELEASE_SET_FILE.target);
-  if (!opts.overwrite && await fileExists(target)) {
+  if (!opts.overwrite && await isFile(target)) {
     throw new Error(
       `${RELEASE_SET_FILE.target} 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
     );
@@ -326,7 +326,7 @@ export async function downloadReleaseSet(
       fetcher,
     });
     await Deno.writeFile(tmp, bytes);
-    if (opts.overwrite && await fileExists(target)) {
+    if (opts.overwrite && await isFile(target)) {
       await Deno.rename(target, backup);
       backedUp = true;
     }
@@ -349,7 +349,7 @@ export async function downloadReleaseSet(
     }
     throw error;
   } finally {
-    if (!keepBackup && await fileExists(backup)) {
+    if (!keepBackup && await isFile(backup)) {
       await Deno.remove(backup).catch(() => {});
     }
   }

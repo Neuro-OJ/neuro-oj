@@ -32,11 +32,8 @@ import {
   assertConfiguration,
   composeOutputText,
   ensureCommandPassphrase,
-  isFile,
-  judgeEnabledFrom,
   prepareAndCheck,
   probeCommandCode,
-  readEnvValues,
   runComposeSub,
   statMode,
   waitForStack,
@@ -44,6 +41,9 @@ import {
 import { installCliBinary, registerCommand } from "./path.ts";
 import type { PathRegistration } from "./path.ts";
 import { resolveTargetConfig } from "./target.ts";
+import { isFile } from "../../util/fs.ts";
+import { readEnvValues } from "../../core/env-file.ts";
+import { judgeEnabledFrom } from "../config/checks.ts";
 
 export type InstallStepName =
   | "bootstrap"
@@ -161,7 +161,7 @@ const GENERATED_SECRET_KEYS: readonly string[] = [
   "NOJ_LLM_STORE_KEY",
 ];
 
-// ---------------- 通用小工具（readEnvValues/isFile/statMode 已抽到 ./lifecycle/steps.ts） ----------------
+// ---------------- 通用小工具 ----------------
 
 /**
  * `.env.prod` 路径的**三态**判定（`stat` 而非 `-e`）。
@@ -382,7 +382,7 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
 
   // ---- 3. configure（向导）：仅 TTY 且确有缺失时进入 ----
   // 步骤记录必须诚实：只有真的进入并跑完向导才记 `configure`。
-  let env = await readEnvValues(envFile);
+  let env: EnvValues = await readEnvValues(envFile);
   if (opts.nonInteractive !== true && (opts.isTty ?? Deno.stdin.isTerminal())) {
     if (wizardNeedsInteractiveInput(env)) {
       await runConfigWizard(io, env, { isTty: true, envFile });

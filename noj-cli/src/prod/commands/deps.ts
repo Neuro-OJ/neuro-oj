@@ -1,10 +1,13 @@
 /** 生产命令的依赖装配与数值/口令解析辅助（`prodDeps`、`envNumber` 等）。 */
 
+import { join } from "@std/path";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { realRunner } from "../../runtime/command.ts";
 import { realIO } from "../../tui/io.ts";
 import type { PromptIO } from "../../tui/io.ts";
 import { UsageError } from "../../util/args.ts";
+import { PROD_ENV_FILE } from "../compose.ts";
 import { flagValue } from "./args.ts";
 import type { ProdCliDeps } from "./types.ts";
 
@@ -43,6 +46,24 @@ export function resolveBackupPassphrase(
   const configured = opts.configured;
   if (configured !== undefined && configured !== "") return configured;
   return undefined;
+}
+
+/**
+ * 读 `.env.prod` 里的 `NOJ_BACKUP_PASSPHRASE_FILE`（文件不存在/不可读时为 undefined）。
+ *
+ * 备份命令（verify/restore/drill）可能在**安装目录之外**执行（例如只拿到一个
+ * 快照文件做校验），因此这里绝不因读不到 `.env.prod` 而失败——口令的必需性
+ * 由各命令自己的前置校验决定。
+ */
+export async function readConfiguredPassphrase(
+  dir: string,
+): Promise<string | undefined> {
+  try {
+    const env = await readEnvValuesOrEmpty(join(dir, PROD_ENV_FILE));
+    return env["NOJ_BACKUP_PASSPHRASE_FILE"];
+  } catch {
+    return undefined;
+  }
 }
 
 /**
