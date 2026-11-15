@@ -593,9 +593,3 @@ export async function checkPassphraseFile(path: string): Promise<void> {
     );
   }
 }
-
-/** 带缺省值的取值。 */
-
-// `valueOr` 已移到 `prod/env-values.ts`（生产 restore 也要用，避免 backup→drill
-// 的反向依赖）。此处**再导出**以保持既有导入点不变。
-export { valueOr } from "../env-values.ts";

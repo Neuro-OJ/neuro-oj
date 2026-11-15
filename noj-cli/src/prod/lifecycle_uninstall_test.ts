@@ -12,7 +12,7 @@ import {
 import { join } from "@std/path";
 import type { CmdResult } from "../runtime/command.ts";
 import { uninstall, type UninstallResult } from "./lifecycle.ts";
-import { assertRemovableInstallDir } from "./lifecycle/steps.ts";
+import { assertRemovableInstallDir } from "./lifecycle/uninstall-guards.ts";
 import {
   captureRenderIO,
   completeEnv,

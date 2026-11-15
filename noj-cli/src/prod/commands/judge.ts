@@ -13,7 +13,7 @@ import {
   judgeStop,
   judgeUpgrade,
 } from "../judge/actions.ts";
-import { createLocalRedis } from "../judge/config.ts";
+import { createLocalRedis } from "../judge/local-redis.ts";
 import { humanOutput } from "./args.ts";
 import { flagValue, hasFlag } from "../../util/args.ts";
 
