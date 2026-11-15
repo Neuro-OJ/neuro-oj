@@ -1,13 +1,8 @@
 /**
- * 随机密钥生成（原 `init/secrets.ts`，T23 搬迁）。
+ * 随机密钥生成。
  *
- * 为什么独立成模块：`randomKey` 被 `prod/lifecycle.ts`（首装生成强随机密钥）与
- * `prod/config.ts`（备份口令回退）使用，而它原先住的 `init/secrets.ts` 是双模态
- * 时代的产物——那里的 `generateSecrets`/`SecretsConfig` 属于 `noj-secrets.json`
- * 路径，已随 T23 删除。把 `randomKey` 留在一个以"JSON 配置"为主题的模块里，
- * 会让"prod 依赖了已删除的模态"这种错觉长期存在。
- *
- * 实现零依赖（WebCrypto），与 `init/secrets.ts` 原实现逐字一致。
+ * `randomKey` 被 `prod/lifecycle.ts`（首装生成强随机密钥）与 `prod/config.ts`
+ * （备份口令回退）使用。实现零依赖（WebCrypto）。
  */
 
 /**

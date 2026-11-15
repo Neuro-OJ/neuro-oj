@@ -1,4 +1,15 @@
 // update / upgrade（含别名）：升级序列编排、注入点、结果形状与提示文案。
+//
+// `update` 是生产升级的唯一入口，`upgrade` 是别名。固定版本模式取自 `.env.prod`
+// 的 `NOJ_VERSION`（先同步部署文件再升级）；`--latest` 查询资产就绪的稳定
+// Release，归一化比较相等即 no-op（零 compose/备份/写配置），否则先写暂存配置、
+// 升级成功后才原子提交。
+//
+// 升级序列：前置校验 → 解析目标配置 → 备份口令 → **备份** → `compose pull` →
+// **验签** → **排空** → 健康等待 → 退出维护 → 记录部署元数据。
+//
+// 备份不可省：`update` 经注入点 {@link UpdateOptions.backup} 调用，未注入即
+// **明确的运行失败**（退出码 1，且尚未 pull/up），绝不静默跳过。
 
 import { join } from "@std/path";
 import { emitHuman, emitJson } from "../../output/render.ts";
@@ -52,15 +63,15 @@ export interface UpdateOptions extends LifecycleOptions, DrainOptions {
   /** 元数据时间戳（测试注入固定值）。 */
   now?: Date;
   /**
-   * 升级前备份（bash `run_backup "upgrade"`）。
+   * 升级前备份。
    *
-   * T17–T19 之前必须由调用方注入；缺省返回失败文案（见模块内注释）。
+   * 必须由调用方注入；缺省返回失败文案。
    */
   backup?: (context: UpdateBackupContext) => Promise<UpdateBackupResult>;
   /**
-   * `--files-only` 语义的部署文件同步（bash `run_files_sync --files-only`）。
+   * `--files-only` 语义的部署文件同步。
    *
-   * 缺省用 T9 {@link downloadReleaseFiles}（`overwrite:true`）实现：以目标 ref
+   * 缺省用 {@link downloadReleaseFiles}（`overwrite:true`）实现：以目标 ref
    * 重新拉取 compose / example 并 SHA-256 校验，**不动 `.env.prod`**。
    */
   syncFiles?: (context: UpdateSyncContext) => Promise<void>;
@@ -74,7 +85,7 @@ export interface UpdateOptions extends LifecycleOptions, DrainOptions {
   migrate?: (context: UpdateMigrationContext) => Promise<void>;
 }
 
-/** 升级前备份的上下文（供 T17–T19 实现消费）。 */
+/** 升级前备份的上下文。 */
 export interface UpdateBackupContext {
   /** 归一化安装目录。 */
   dir: string;
@@ -125,24 +136,24 @@ export interface UpdateResult extends LifecycleBaseResult {
   backupPath: string | null;
 }
 
-/** `--latest` 且已是最新时的文案（production.sh:396 逐字）。 */
+/** `--latest` 且已是最新时的文案。 */
 export const UPDATE_UP_TO_DATE_HINT = "当前已经是最新稳定 Release，无需升级";
 
-/** 升级成功文案（production.sh:431 逐字，仅版本号参数化）。 */
+/** 升级成功文案（仅版本号参数化）。 */
 export function updateSuccessHint(version: string): string {
   return `已升级到最新稳定 Release：${version}`;
 }
 
-/** 升级前备份未接线时的失败文案（T17–T19 之前）。 */
+/** 未注入升级前备份时的失败文案。 */
 export const UPDATE_BACKUP_UNAVAILABLE_HINT =
-  "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级";
+  "升级前备份不可用；为安全起见已中止升级";
 
 /**
- * `update`（production.sh:345-436）：两种模式共用同一套升级序列。
+ * `update`：两种模式共用同一套升级序列。
  *
  * 编排（**顺序即断言**）：前置校验（零变更）→ `--latest` 解析并比较版本（相等即
  * no-op，零 compose/备份/写配置；否则先写暂存配置）→ 同步部署文件（`.env.prod`
- * 不受影响）→ 升级序列 → **仅升级成功后**才提交暂存配置（bash :428-432）。
+ * 不受影响）→ 升级序列 → **仅升级成功后**才提交暂存配置。
  *
  * 退出码：0 成功（含 no-op）；1 运行失败（前置/版本/同步/备份/compose/健康检查/
  * 配置提交/drain 失败）；用法错误 2 由 CLI 层产出。`--json` 时 stdout 只含一个
@@ -368,7 +379,7 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
 }
 
 /**
- * `upgrade`：`update` 的**别名**（bash :518-519 两个词进同一函数）。
+ * `upgrade`：`update` 的**别名**。
  *
  * 行为与 `update` 完全一致；独立导出只为 CLI 层与 `commands.ts` 的声明同形，
  * 不复制任何编排（别名若有第二份实现，迟早会漂移）。

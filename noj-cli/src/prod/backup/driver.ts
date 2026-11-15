@@ -1,5 +1,5 @@
 /**
- * prod-raw payload driver（T17）：用**文件重定向**采集二进制。
+ * prod-raw payload driver：用**文件重定向**采集二进制。
  *
  * ## 本模块存在的唯一理由（最高风险项）
  *
@@ -14,8 +14,8 @@
  *
  * 因此 spec §3.1 明确：
  *
- * > `prod-raw` 必须走**文件重定向**（`docker compose exec -T … > file`，
- * > 与 `backup.sh:246` 相同），不得沿用 stdout 字符串捕获。否则引入静默损坏。
+ * > `prod-raw` 必须走**文件重定向**（`docker compose exec -T … > file`），
+ * > 不得沿用 stdout 字符串捕获。否则引入静默损坏。
  *
  * 本模块把这条约束落成一个**类型**：{@link RawDriver.captureToFile} 与
  * {@link RawDriver.feedFromFile} 是采集/回灌二进制的**唯一**入口，二者的签名里
@@ -41,7 +41,7 @@
  *
  * - 一切命令经注入的 {@link CommandRunner}；本模块不直接 `new Deno.Command`；
  * - **不读** payload 进内存：本模块只搬字节与判定退出码；
- * - 路径一律作为**独立 argv 元素**传递，不拼 shell 字符串（R1）。
+ * - 路径一律作为**独立 argv 元素**传递，不拼 shell 字符串。
  */
 
 import type { CommandRunner, SpawnOpts } from "../../runtime/command.ts";
@@ -228,7 +228,7 @@ export function prodComposeArgs(
   }
   if (ctx.judge === true) args.push("--profile", "judge");
   if (ctx.monitoring === true) args.push("--profile", "monitoring");
-  // **`--ansi` 是 `docker compose` 的旗标，不是 `docker` 的**（评审发现）：
+  // **`--ansi` 是 `docker compose` 的旗标，不是 `docker` 的**：
   // `unshift` 会把它放到数组最前（`compose` 之前）→
   // `docker --ansi never compose …` → 实测 `unknown flag: --ansi`。
   // 必须插在 `compose` **之后**；`lifecycle/steps.ts` 的日志路径一直是对的，
@@ -306,7 +306,7 @@ export function postgresEnvOf(
 /**
  * 构造 prod-raw 操作集。
  *
- * 采集路径要点（对照 `backup.sh:246-258`）：
+ * 采集路径要点：
  * - `postgres.dump`：`compose exec -T postgres pg_dump -U <user> -d <db> -Fc`
  *   的 stdout **重定向到文件**；
  * - `redis.rdb`：`compose exec -T redis sh -c 'REDISCLI_AUTH=… redis-cli

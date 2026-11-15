@@ -1,4 +1,4 @@
-// ── 评审发现（Critical）：共享 socket 守卫可被尾部斜杠绕过 ────────────
+// ── 回归：共享 socket 守卫可被尾部斜杠绕过 ────────────
 //
 // `assertDedicatedSocket` 只比较字面量、`collapseSlashes` 与 `realpath`，
 // 而 `collapseSlashes` **不处理尾部斜杠**、`realPath("/var/run/docker.sock/")`
@@ -14,7 +14,7 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { UsageError } from "../../util/args.ts";
 
-Deno.test("评审: 共享 socket 守卫必须拒绝尾部斜杠/点段等一切等价写法", async () => {
+Deno.test("共享 socket 守卫必须拒绝尾部斜杠/点段等一切等价写法", async () => {
   const { assertDedicatedSocket } = await import("./config.ts");
   const bypasses = [
     "/var/run/docker.sock/",
@@ -39,7 +39,7 @@ Deno.test("评审: 共享 socket 守卫必须拒绝尾部斜杠/点段等一切�
   }
 });
 
-Deno.test("评审: 共享 socket 守卫对 realpath 抛错的输入也不放行", async () => {
+Deno.test("共享 socket 守卫对 realpath 抛错的输入也不放行", async () => {
   const { assertDedicatedSocket } = await import("./config.ts");
   // 真实 Deno.realPathSync 对 `/var/run/docker.sock/` 抛 NotADirectory；
   // 守卫必须自己归一化，不能依赖 realpath 成功。
@@ -49,7 +49,7 @@ Deno.test("评审: 共享 socket 守卫对 realpath 抛错的输入也不放行"
   );
 });
 
-Deno.test("评审: 专用 socket 的合法写法仍放行（不误伤）", async () => {
+Deno.test("专用 socket 的合法写法仍放行（不误伤）", async () => {
   const { assertDedicatedSocket } = await import("./config.ts");
   for (
     const ok of [
@@ -65,7 +65,7 @@ Deno.test("评审: 专用 socket 的合法写法仍放行（不误伤）", async
 
 // ── 用户要求：补本地 Redis 模式（原先函数已导出但零调用者、零测试）──
 //
-// bash `judge-install.sh` 的 `create_local_redis()`（:391-460）提供
+// `createLocalRedis` 提供
 // "为本机 Judge 创建一个仅绑定回环地址的 Redis"：
 //   - 只能管理带 `com.neuro-oj.component=judge-standalone-redis` 标签的同名容器，
 //     否则**绝不删改**别人的容器；
@@ -178,7 +178,7 @@ Deno.test("本地 Redis：端口被占用时拒绝（不覆盖既有服务）", 
         if (args.includes("inspect")) {
           return Promise.resolve({ code: 1, stdout: "", stderr: "" });
         }
-        // `ss -ltnH`：第 4 列是本地地址且以 `:16379` 结尾 → 被占用
+        // `ss -ltnH`：第 4 列是本地地址且以 `` 结尾 → 被占用
         if (args.includes("-ltnH")) {
           return Promise.resolve({
             code: 0,
@@ -241,7 +241,7 @@ Deno.test("本地 Redis：创建成功时用仅回环绑定 + 标签 + 数据卷
     } as never);
 
     const joined = calls.join("\n");
-    // 仅绑定回环（bash `--publish 127.0.0.1:$port:6379`）
+    // 仅绑定回环
     assert(
       joined.includes("127.0.0.1:16379:6379"),
       `必须仅绑定回环地址，实得：${joined}`,
@@ -258,7 +258,7 @@ Deno.test("本地 Redis：创建成功时用仅回环绑定 + 标签 + 数据卷
       `runtime URL 应走 host.docker.internal，实得 ${result.runtimeUrl}`,
     );
     assert(result.checkUrl === result.coreUrl, "check URL 应等于 core URL");
-    // 配置文件 600 且含 appendonly（bash heredoc）
+    // 配置文件 600 且含 appendonly
     const conf = await Deno.readTextFile(`${root}/redis.conf`);
     assert(conf.includes("appendonly yes"), "配置必须含 appendonly yes");
     assert(conf.includes("requirepass "), "配置必须含 requirepass");

@@ -706,7 +706,7 @@ Deno.test("composeConfig: 校验编排，参数形状正确且 stdout 保留", a
   ]]);
 });
 
-Deno.test("composeConfig: quiet=true 追加 --quiet（对照 deploy.sh:904 的前置校验）", async () => {
+Deno.test("composeConfig: quiet=true 追加 --quiet（前置校验用）", async () => {
   const { runner, calls } = fakeRunner(0, "");
   const result = await composeConfig(runner, {
     composeFile: COMPOSE,

@@ -1,5 +1,5 @@
 /**
- * `.nojbackup` 单文件容器格式（T17）。
+ * `.nojbackup` 单文件容器格式。
  *
  * ## 形态（spec `2026-09-19-noj-cli-production-unification-design.md` §3.1）
  *
@@ -28,12 +28,7 @@
  * "加密备份"名不副实——任何能读目录的人都拿得到全库转储。单文件 + 整包加密
  * 同时解决这两点，且 sha256 有唯一锚点（整个文件）。
  *
- * ## 与 `maintain/backup.ts`（JSON 模式）的关系
- *
- * 那套是 `noj-deploy.json` 双模态时代的产物：payload 走 **stdout 字符串**
- * （`backup_driver.ts:114` 注释说明二进制因此要 base64）。本模块是 prod 侧的
- * 重写，**payload 走文件重定向**（见 `driver.ts`），二进制不经字符串。
- * 两者在 T23 收敛前并存，互不 import。
+ * **payload 走文件重定向**（见 `driver.ts`），二进制不经字符串。
  *
  * ## 边界（不得越界）
  *
@@ -72,7 +67,7 @@ export const CONTAINER_FILES = {
   minioDir: "minio",
 } as const;
 
-/** `SUCCESS` 哨兵的内容（bash `backup.sh:290` 写 `'success\\n'`）。 */
+/** `SUCCESS` 哨兵的内容。 */
 export const SUCCESS_MARKER = "success";
 
 /** `.nojbackup` 文件后缀。 */
@@ -91,7 +86,7 @@ export const BACKUP_SUFFIX = ".nojbackup";
 export const CHECKSUM_SUFFIX = ".sha256";
 
 /**
- * manifest.json 的形状（字段名与 `backup.sh:271-283` 的 JSON **逐字对应**，
+ * manifest.json 的形状（字段名**不得改动**，
  * 只多了单文件容器必需的 `schema_version` / `payload_layout` / `encrypted` /
  * `zstd_level` / `sha256` / `files`）。
  */
@@ -108,28 +103,28 @@ export interface BackupManifest {
   zstd_level: number;
   /** staging 内的文件清单（容器内相对路径，已排序）。 */
   files: string[];
-  /** PostgreSQL 数据库名（bash 字段）。 */
+  /** PostgreSQL 数据库名。 */
   postgres_database: string;
-  /** Redis 策略说明（bash 字段）。 */
+  /** Redis 策略说明。 */
   redis_policy: string;
-  /** 对象存储说明（bash 字段）。 */
+  /** 对象存储说明。 */
   object_storage: string;
-  /** PostgreSQL 备份模式（bash 字段）。 */
+  /** PostgreSQL 备份模式。 */
   postgres_backup_mode: string;
-  /** 增量策略说明（bash 字段）。 */
+  /** 增量策略说明。 */
   incremental_policy: string;
-  /** RPO 说明（bash 字段）。 */
+  /** RPO 说明。 */
   rpo: string;
-  /** RTO 说明（bash 字段）。 */
+  /** RTO 说明。 */
   rto: string;
-  /** 保留天数（bash 字段）。 */
+  /** 保留天数。 */
   retention_days: number;
 }
 
 /**
- * bash `backup.sh:271-283` 的说明性字段默认值（逐字）。
+ * 说明性字段默认值。
  *
- * 抽成常量而不是散在调用点：T19 的 drill 与文档都会引用同一套措辞。
+ * 抽成常量而不是散在调用点：drill 与文档都会引用同一套措辞。
  */
 export const MANIFEST_DEFAULTS = {
   redis_policy: "RDB snapshot; judge queue is recoverable transient data",
@@ -141,7 +136,7 @@ export const MANIFEST_DEFAULTS = {
   rto: "restore duration depends on database and object volume",
 } as const;
 
-/** 默认保留天数（bash `NOJ_BACKUP_RETENTION_DAYS` 缺省 30）。 */
+/** 默认保留天数（`NOJ_BACKUP_RETENTION_DAYS` 缺省 30）。 */
 export const DEFAULT_RETENTION_DAYS = 30;
 
 /** 默认 zstd 级别（与 `maintain/backup.ts` 的缺省一致）。 */

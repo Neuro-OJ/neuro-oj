@@ -6,20 +6,16 @@ import { sha256Hex } from "../util/hash.ts";
  * 从 GitHub Release 下载生产部署所需文件（docker-compose.prod.yml、
  * .env.prod.example）并做 SHA-256 校验。
  *
- * 背景（spec §3.3 洞 2）：纯 TS 重写移除 setup.sh / install.sh 后，
- * `install` 仍需要这两个文件。旧 install.sh 从源码归档（archive/<ref>.tar.gz）
- * 解压后 cp（:608-673），本模块把该职责吸收进 CLI：直接从 Release 下载
- * 同版本资产，不再依赖源码归档。
+ * `install` 需要这两个文件；直接从 Release 下载同版本资产，不依赖源码归档。
  *
- * 设计与旧脚本的对应关系：
- * - 下载 + 校验模式对照 install.sh 的 download_cli()（:535-556）：先下载资产与
- *   其 .sha256，校验正文为 64 位十六进制（大小写均可），再比较小写化摘要。
- * - ref 白名单对照 validate_ref()（:185-190）：^[A-Za-z0-9._/-]+$，非前导 /、
+ * - 先下载资产与其 .sha256，校验正文为 64 位十六进制（大小写均可），再比较
+ *   小写化摘要。
+ * - ref 白名单：^[A-Za-z0-9._/-]+$，非前导 /、
  *   非尾部 /、不含 ..、不含 //、非空。
  * - 使用 Deno 内置 fetch()（可注入），不 spawn curl/wget：既去掉对外部二进制的
  *   依赖，也彻底消除拼接 shell 命令带来的注入面。
  *
- * Release 资产名与落盘文件名（由 .github/workflows/release.yml 发布，T12 依赖此契约）：
+ * Release 资产名与落盘文件名（由 .github/workflows/release.yml 发布，install 依赖此契约）：
  * - docker-compose.prod.yml  + docker-compose.prod.yml.sha256 → 落盘 docker-compose.prod.yml
  * - env.prod.example         + env.prod.example.sha256        → 落盘 .env.prod.example
  *
@@ -75,7 +71,7 @@ export interface DownloadReleaseFilesOptions {
 
 /** Release ref 的逐字符白名单（字母 / 数字 / `.` `_` `/` `-`），语义见 validateRef。 */
 const REF_RE = /^[A-Za-z0-9._/-]+$/;
-/** 对照 install.sh:551 的 `[a-fA-F0-9]{64}`：接受大小写十六进制。 */
+/** `[a-fA-F0-9]{64}`：接受大小写十六进制。 */
 const SHA256_RE = /^[a-fA-F0-9]{64}$/;
 
 /** 校验并归一化仓库地址：必须 HTTPS，且不含空白 / @ / ? / #。 */
@@ -86,13 +82,13 @@ export function validateRepository(repository: string): string {
   if (/[\s@?#]/.test(repository)) {
     throw new Error(`仓库地址包含不支持的字符：${repository}`);
   }
-  // 对照 install.sh 的 REPOSITORY="${REPOSITORY%/}" / "${REPOSITORY%.git}"。
+  // 去掉尾部 `/` 与 `.git`。
   let repo = repository.replace(/\/+$/, "");
   repo = repo.replace(/\.git$/, "");
   return repo;
 }
 
-/** 校验 Release ref 字符白名单（对照 install.sh:185-190 的 validate_ref）。 */
+/** 校验 Release ref 字符白名单。 */
 export function validateRef(ref: string): void {
   if (
     ref === "" || !REF_RE.test(ref) || ref.startsWith("/") ||
@@ -103,7 +99,7 @@ export function validateRef(ref: string): void {
 }
 
 /**
- * 校验并归一化目标安装目录，对照 install.sh:177-181 的安全防护。
+ * 校验并归一化目标安装目录。
  *
  * 拒绝：
  * - 空串或仅含空白字符（归一化后为空则无法作为目录）
@@ -142,7 +138,7 @@ function parseExpectedSha256(text: string, asset: string): string {
   if (!SHA256_RE.test(first)) {
     throw new Error(`${asset} 校验文件格式非法：${first || "(空)"}`);
   }
-  // 对照 install.sh:553 的 tr 'A-F' 'a-f'：摘要统一小写后再比较。
+  // 摘要统一小写后再比较。
   return first.toLowerCase();
 }
 
@@ -191,7 +187,7 @@ async function downloadVerified(
  * - `finally` 无条件清理所有暂存文件与备份文件，失败路径也不留残留。
  *
  * 目标目录必须先通过 `validateTargetDir`：`/`、空串、`.`、`..`
- * 会被拒绝（对照 install.sh:177-181），绝不会静默写进当前工作目录。
+ * 会被拒绝，绝不会静默写进当前工作目录。
  *
  * 返回写入的绝对路径列表（顺序与 RELEASE_FILES 一致）。
  */

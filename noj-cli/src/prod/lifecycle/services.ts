@@ -26,7 +26,7 @@ import {
 import type { LifecycleContext } from "./context.ts";
 
 export interface LifecycleOptions {
-  /** 生产安装目录（`--dir`）；入口负责归一化（T9 `validateTargetDir`）。 */
+  /** 生产安装目录（`--dir`）；入口负责归一化（`validateTargetDir`）。 */
   dir: string;
   /** 外部命令注入点（docker）。 */
   runner: CommandRunner;
@@ -37,16 +37,16 @@ export interface LifecycleOptions {
   /** 着色模式（`--color`）；缺省 `auto`（非 TTY 自动关色）。 */
   color?: ColorMode;
   /**
-   * judge socket 存在性探测（T11 `checkJudgeSocket` 的注入点）。
+   * judge socket 存在性探测（`checkJudgeSocket` 的注入点）。
    *
-   * 仅 judge 启用时被调用；缺省不探测 = bash judge 关闭时的「已跳过」分支。
+   * 仅 judge 启用时被调用；缺省不探测。
    */
   socketExists?: (path: string) => Promise<boolean>;
   /**
    * 端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
    *
-   * 缺省不探测（等同 bash `command -v lsof` 不命中）；注入后命中即写一条
-   * 端口冲突告警，**不阻断**命令（与 bash 的 `warn` 一致）。
+   * 缺省不探测；注入后命中即写一条
+   * 端口冲突告警，**不阻断**命令。
    */
   probePort?: (port: number) => Promise<boolean>;
 }
@@ -55,7 +55,7 @@ export interface LifecycleOptions {
 export interface LifecycleBaseResult {
   /** 归一化安装目录（无尾斜杠）。 */
   dir: string;
-  /** T4 状态机给出的当前/最终状态。 */
+  /** 状态机给出的当前/最终状态。 */
   state: DeployState;
   /** 是否 no-op（未执行任何变更命令）。 */
   noOp: boolean;
@@ -74,7 +74,7 @@ export interface StatusResult extends LifecycleBaseResult {
 export { failed, jsonPayload, lifecycleContext };
 // 注：LifecycleContext 由上游 lifecycle/context.ts 定义，LifecycleBaseResult 供本目录与门面共用。
 
-/** 由已校验的环境构造 T10 compose 选项（judge → `--profile judge`）。 */
+/** 由已校验的环境构造 compose 选项（judge → `--profile judge`）。 */
 function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
   return {
     composeFile: env.composeFile,
@@ -90,13 +90,13 @@ export type PreparedLifecycle = PreparedEnvironment & {
 };
 
 /**
- * `prepare_and_check` 的公共前置：配置校验（T13 评审 Important：与 install 同源）。
+ * 生命周期命令的公共前置：配置校验（与 install 同源）。
  *
- * `prepareAndCheck` 负责 bash `check_configuration` 的**六步**（env 文件 / 权限 /
+ * `prepareAndCheck` 负责配置校验**六步**（env 文件 / 权限 /
  * 必填值 / judge socket / 端口 / compose config），本函数只把它接进命令上下文：
  * 1. 目录经 `validateTargetDir` 归一化（`lifecycleContext` 已做）；
- * 2. 环境探测注入点从 {@link LifecycleOptions} 透传（未注入即 bash 的「已跳过」/「无 lsof」）；
- * 3. 端口冲突告警走人类通道（T6/T8，`--json` 自动改道 stderr）；
+ * 2. 环境探测注入点从 {@link LifecycleOptions} 透传（未注入即跳过探测）；
+ * 3. 端口冲突告警走人类通道（`--json` 自动改道 stderr）；
  * 4. 失败诊断写 stderr 并回传文案。
  *
  * **零变更命令**：步骤 1–5 不调用 docker；步骤 6 的 `compose config` 只读解析。
@@ -118,12 +118,12 @@ export async function prepareLifecycle(
     return { ok: false, error: prepared.error };
   }
   ctx.status("success", "生产配置检查通过");
-  // env 透传给 logs（T14）：着色取值需要读 .env.prod 的 LOG_COLOR / NO_COLOR，
+  // env 透传给 logs：着色取值需要读 .env.prod 的 LOG_COLOR / NO_COLOR，
   // 复用已读取的同一份值，避免在命令层再解析一遍配置文件。
   return { ...prepared, composeOptions: composeOptionsOf(prepared) };
 }
 
-/** 取“当前真实状态”：跑 `docker compose ps` 并用 T4 `prodState` 推断。 */
+/** 取“当前真实状态”：跑 `docker compose ps` 并用 `prodState` 推断。 */
 export async function probeState(
   ctx: LifecycleContext,
   opts: LifecycleOptions,
@@ -149,7 +149,7 @@ export async function probeState(
   return { ok: true, state: prodState(result.stdout), psOutput: result.stdout };
 }
 
-/** T4 状态 → T8 状态符号种类 + 中文标签（人类可读摘要行）。 */
+/** 状态 → 状态符号种类 + 中文标签（人类可读摘要行）。 */
 function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
   switch (state) {
     case "running":
@@ -165,7 +165,7 @@ function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
   }
 }
 
-// ---------------- logs（T14，deploy.sh:1117-1158） ----------------
+// ---------------- logs ----------------
 
 /**
  * logs 的选项：在 {@link LifecycleOptions} 上追加服务名、--follow 与着色取值来源。
@@ -193,7 +193,7 @@ export interface LogsCommandOptions extends LifecycleOptions {
 /**
  * logs 的结果：在公共形状上追加服务名、着色决策与是否跟随。
  *
- * `state` 恒为 `"running"` 且**不作探测**（与 bash `logs()` 一致：不查
+ * `state` 恒为 `"running"` 且**不作探测**（不查
  * `compose ps`）；它只是为满足 {@link LifecycleBaseResult} 的公共形状，
  * **不代表真实栈状态**。
  */
@@ -213,19 +213,18 @@ export interface LogsResult extends LifecycleBaseResult {
 }
 
 /**
- * logs（deploy.sh:1117-1158）：前置校验 → 着色判定 → compose logs。
+ * logs：前置校验 → 着色判定 → compose logs。
  *
- * 迁移要点：
- * 1. **着色优先级**逐字对照 bash（见 steps.ts 的 decideLogsColor）：NO_COLOR 非空
+ * 要点：
+ * 1. **着色优先级**（见 steps.ts 的 decideLogsColor）：NO_COLOR 非空
  *    或 LOG_COLOR=never → --no-color；LOG_COLOR=always → 强制（子命令**之前**的
  *    全局 --ansi always）；否则按 stdout 是否 TTY（resolveColor）。取值
  *    **进程环境优先、回退 .env.prod**；
- * 2. **实时跟随走 CommandRunner.stream**：T10 composeLogs 经 run() 是**缓冲**的，
- *    --follow 会一直不返回、看不到输出（T10/T13 已登记）。因此 follow 分支先用
- *    T10 的 composeLogs(dryRun: true) 取参数数组，再交给 stream 逐行写 stdout；
- * 3. **非 follow 用缓冲路径并自行写 stdout**（runner 不替调用方打印，T10
- *    carry-forward）：stdout 原样写人类通道、stderr（compose 告警）原样转 stderr；
- * 4. **--json 纯净**：stdout 只有结果 JSON，日志与诊断都改道 stderr（T6/T13 先例）；
+ * 2. **实时跟随走 CommandRunner.stream**：composeLogs 经 run() 是**缓冲**的，
+ *    --follow 会一直不返回、看不到输出。因此 follow 分支先用
+ *    composeLogs(dryRun: true) 取参数数组，再交给 stream 逐行写 stdout；
+ * 3. **非 follow 用缓冲路径并自行写 stdout**（runner 不替调用方打印）：stdout 原样写人类通道、stderr（compose 告警）原样转 stderr；
+ * 4. **--json 纯净**：stdout 只有结果 JSON，日志与诊断都改道 stderr；
  * 5. **退出码**：0 成功 / 1 运行失败（前置校验不过、compose 非 0）；用法错误 2 由
  *    CLI 解析层产出。
  */
@@ -254,12 +253,12 @@ export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
       prepared.env["LOG_COLOR"],
     ),
     noColor: mergeColorSource(processEnv["NO_COLOR"], prepared.env["NO_COLOR"]),
-    // bash 用 [[ -t 1 ]] 探测 **stdout**；这里保持同一流。
+    // 探测 **stdout** 是否 TTY。
     stream: "stdout",
   });
 
   const logOptions = { ...prepared.composeOptions, services, follow: followed };
-  // dryRun 只取参数数组：参数形状由 T10 唯一保证，着色两处插入由 T14 helper 完成。
+  // dryRun 只取参数数组：参数形状由 composeLogs 唯一保证，着色两处插入由 applyLogsColor 完成。
   const dryRun = await composeLogs(opts.runner, {
     ...logOptions,
     dryRun: true,
@@ -330,14 +329,14 @@ async function runLogs(
   // 日志本体是人类通道输出（--json 时自动改道 stderr），告警（compose stderr）
   // 同样改道——stdout 在 JSON 模式下必须逐字节为 JSON。
   emitHuman(result.stdout, ctx.io);
-  // compose 告警属于诊断：**永远 stderr**（对照 bash 的 >&2 继承），
+  // compose 告警属于诊断：**永远 stderr**，
   // 这样重定向 stdout 时告警仍可见、--json 的 stdout 也不被污染。
   if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
   return result.code;
 }
 
 /**
- * follow：实时逐行执行（T13 报告的缺口在本任务闭合）。
+ * follow：实时逐行执行。
  *
  * runner 未实现 stream（P2 既有 fake）时**不静默降级**：直接报错，避免
  * --follow 悄悄退化成不可用的缓冲调用。
@@ -351,19 +350,19 @@ async function streamLogs(
     ctx.error("当前运行时不支持实时日志（CommandRunner.stream 缺失）");
     return 1;
   }
-  // compose 的告警/进度走 stderr：显式与 stdout 分流（评审建议）。
+  // compose 的告警/进度走 stderr：显式与 stdout 分流。
   const emit = (line: string) => emitHuman(line + "\n", ctx.io);
   return await runner.stream("docker", args, emit, { onStderr: emit });
 }
 
 /**
- * `status`（deploy.sh:1112-1115）：`prepare_and_check` → `run_compose ps`。
+ * `status`：前置校验 → `compose ps`。
  *
- * **T4 接线点**：`prodState(compose ps 的输出)` 推断 running / partial / stopped。
- * 状态**探测成功本身**即退出码 0（与 bash 一致：`compose ps` 成功就是成功，
+ * `prodState(compose ps 的输出)` 推断 running / partial / stopped。
+ * 状态**探测成功本身**即退出码 0（`compose ps` 成功就是成功，
  * 不因栈处于 stopped 而失败）；只有前置校验或 `compose ps` 失败才是 1。
  *
- * 人类输出 = 状态摘要行（T8） + 完整 compose 表（含原表头，与 bash 一致）；
+ * 人类输出 = 状态摘要行 + 完整 compose 表（含原表头）；
  * `--json` 时 stdout 只有 `{ dir, state, ps }` 一个 JSON 文档，人类文字改道 stderr。
  */
 export async function status(opts: LifecycleOptions): Promise<StatusResult> {

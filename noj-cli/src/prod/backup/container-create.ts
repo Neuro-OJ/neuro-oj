@@ -44,7 +44,7 @@ export interface CreateContainerOptions {
   envFile: string;
   /** PostgreSQL 数据库名（写入 manifest）。 */
   postgresDatabase: string;
-  /** 迁移状态文本（bash `record_migration_status` 的结果，T18 接真实查询）。 */
+  /** 迁移状态文本。 */
   migrationStatus: string;
   /** 采集与打包操作集（注入；生产为 `createProdPayloadOps`）。 */
   ops: ContainerPayloadOps;
@@ -84,7 +84,7 @@ export interface CreateContainerResult {
 }
 
 /**
- * 创建 `.nojbackup` 单文件容器（`backup.sh create_snapshot` :224-294 的等价）。
+ * 创建 `.nojbackup` 单文件容器。
  *
  * 编排（顺序即断言）：
  * 1. staging 目录（`0700`）；
@@ -95,7 +95,7 @@ export interface CreateContainerResult {
  * 3. Redis：`redis-cli --rdb -` → `redis.rdb`（**二进制**）+ `INFO persistence`；
  * 4. MinIO：`mc mirror` → `minio/`；
  * 5. `.env.prod` → `env.prod.gpg`（单文件加密；整包还会再加密）；
- * 6. `migration-status.txt`（内容由 `migrationStatus` 回调给出，T18 接真实查询）；
+ * 6. `migration-status.txt`（内容由 `migrationStatus` 回调给出）；
  * 7. `sha256sums.txt`（覆盖除自身外全部文件）+ `SUCCESS` + `manifest.json`；
  * 8. 权限 `go-rwx`；
  * 9. `tar -I zstd` 打包 → `tar.zst`（**第一轮**）；取其摘要写入 manifest；
@@ -114,7 +114,7 @@ export async function createContainer(
   const passphraseFile = opts.passphraseFile ?? "";
 
   if (!noEncrypt && passphraseFile === "") {
-    // bash :227 的等价：缺口令且未显式关闭加密 → 拒绝（不产出未加密的"备份"）
+    // 缺口令且未显式关闭加密 → 拒绝（不产出未加密的"备份"）
     throw new ContainerError(
       "encrypt",
       "缺少 GPG 口令文件（或用 --no-encrypt 显式关闭加密）",
@@ -132,7 +132,7 @@ export async function createContainer(
   let committed = false;
 
   try {
-    // ---- 1. staging 权限 0700（bash mkdir -m 700）----
+    // ---- 1. staging 权限 0700----
     await Deno.chmod(staging, 0o700);
 
     // ---- 2. PostgreSQL（二进制经文件重定向）----
@@ -198,9 +198,9 @@ export async function createContainer(
     );
 
     // ---- 8. manifest 先落盘（顺序重要：checksums 必须覆盖 manifest）----
-    // bash `write_checksums`（:187-195）覆盖 staging 内**除自身以外的全部文件**，
-    // 包含它之前写入的 manifest。因此这里必须"先写 manifest、再算 checksums"——
-    // 反过来会让 manifest 游离在校验之外（实测中被 T17 的覆盖用例抓出）。
+    // checksums 覆盖 staging 内**除自身以外的全部文件**，包含 manifest。
+    // 因此必须"先写 manifest、再算 checksums"——反过来会让 manifest 游离在
+    // 校验之外（有覆盖用例锁定）。
     //
     // `files` 清单是**预测**：此刻 checksums 尚未写出，故显式把它自己也算进去。
     const manifest: BackupManifest = {
@@ -245,7 +245,7 @@ export async function createContainer(
     // 单轮打包也因此足够：manifest 不需要引用它所属归档的摘要。
     await opts.ops.tarZst(staging, tarZst, zstdLevel);
 
-    // ---- 10. 收紧权限（bash chmod -R go-rwx）----
+    // ---- 10. 收紧权限----
     await chmodPrivate(staging);
 
     // ---- 11. 整包加密 + 原子提交 ----
@@ -259,10 +259,10 @@ export async function createContainer(
         await opts.ops.gpgEncrypt(tarZst, tempPath, passphraseFile);
       }
       await Deno.rename(tempPath, finalPath);
-      // **最终产物也必须收紧权限**（评审发现）：`chmodPrivate` 只作用于
+      // **最终产物也必须收紧权限**：`chmodPrivate` 只作用于
       // staging 目录，而这里 rename 出来的容器文件权限由进程 umask 决定——
       // 实测 umask 022 下是 **644**，即 `--no-encrypt` 时**含明文 pg dump**
-      // 的备份全世界可读（bash 侧是 `chmod -R go-rwx`）。
+      // 的备份全世界可读。
       // 加密时风险较小，但"同一个命令的产物权限取决于调用者 umask"本身
       // 就不可接受：备份不该比 `.env.prod`（600）更宽松。
       await Deno.chmod(finalPath, 0o600);

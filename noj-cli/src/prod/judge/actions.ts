@@ -1,11 +1,9 @@
 import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
 /**
- * 独立 Judge 的命令编排（T21）。
+ * 独立 Judge 的命令编排。
  *
- * 迁移 `judge-install.sh` 的 `check_configuration()`（:790-809）、
- * `run_compose()`（:810-820）、`install`/`start`/`stop`/`status`/`logs`/`upgrade`
- * 的动作部分，以及 `ensure_target_dir()`/`validate_existing_target()`（:299-316）
- * 与 `configure_redis()` 的非交互分支（:457-500）。
+ * 覆盖 `install`/`start`/`stop`/`status`/`logs`/`upgrade` 的动作部分、
+ * 目标目录校验与本机 Redis 的非交互配置。
  *
  * ## 与其他模块的分工
  *
@@ -17,14 +15,13 @@ import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
  *
  * ## `--dry-run` 的语义
  *
- * `--dry-run` 时**零 runner 调用、零文件写入**：只回报"将要做什么"。这条在
- * bash 里是散落的 `((DRY_RUN)) && { ok "[dry-run] …"; return 0; }`，本模块把它
- * 收敛为一个显式分支，因此可以用"注入的 runner 一次都没被调用"直接断言。
+ * `--dry-run` 时**零 runner 调用、零文件写入**：只回报"将要做什么"。它是一个
+ * 显式分支，因此可以用"注入的 runner 一次都没被调用"直接断言。
  *
  * ## 退出码
  *
  * 0 成功 / 1 运行失败（compose 非 0、daemon 不可连）/ 2 用法或前置错误
- * （配置缺失、权限不符、共享 socket、参数非法）。与 T19/T20 同一分层。
+ * （配置缺失、权限不符、共享 socket、参数非法）。与 drill / schedule 同一分层。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
@@ -102,7 +99,7 @@ export interface JudgeInstallOptions
 }
 
 /**
- * `install-env`（bash `install_env()`:847-867）：依赖检查 + rootless 隔离指引。
+ * `install-env`：依赖检查 + rootless 隔离指引。
  *
  * **为什么单列一个子命令**：独立 Judge 节点的部署**不能**自动化——它要求运维者
  * 先准备一个只服务于 Judge 的 rootless Docker daemon 与独立 socket。本工具刻意
@@ -110,25 +107,20 @@ export interface JudgeInstallOptions
  * 要防的东西）。因此这条命令的产出是"**检查 + 指引**"：确认依赖可用，并把必须
  * 由人工确认的四条隔离条件说清楚。
  *
- * ## 对照 bash（R3）
- *
- * | bash（`judge-install.sh:847-867`） | 本实现 |
+ * | 检查 | 实现 |
  * | --- | --- |
  * | Linux 判定 | {@link checkJudgeHost} 的 OS 探测 |
- * | `detect_panel` + `show_panel_guidance` | `host` 的面板探测（只提示，不调 API） |
- * | `require_command curl` / `docker` | `host` 的依赖探测 |
- * | `docker info` 失败 → fail | 见下（退出码 **1**） |
- * | `docker compose version` 失败 → fail | 见下（退出码 **1**） |
- * | 打印四条隔离条件 | 见下（逐条对应） |
- * | 声明不动宿主 daemon 与 socket | 见下（**不可省略**：它是安全边界的对外声明） |
+ * | 面板探测 | `host` 的面板探测（只提示，不调 API） |
+ * | curl / docker 存在 | `host` 的依赖探测 |
+ * | `docker info` 失败 | 退出码 **1** |
+ * | `docker compose version` 失败 | 退出码 **1** |
+ * | 打印四条隔离条件 | 逐条输出 |
+ * | 声明不动宿主 daemon 与 socket | **不可省略**：它是安全边界的对外声明 |
  *
- * ## 与 bash 的差异
+ * ## 注意
  *
- * 1. **退出码与 bash 一致**（`judge-install.sh:51-54` 的 `fail()` 是 `exit 1`）：
- *    daemon 不可连、Compose 不可用都返回 **1**。这与 `judge` 模块整体的
- *    "2 = 用法或前置错误、1 = 运行失败"分层**不同**——因为 bash 侧本就把
- *    judge 的各类失败统一为 1。此处以**逐命令 parity** 为准（R3 要求退出码
- *    逐命令一致），而不是套用模块内的通用分层。
+ * 1. **退出码**：daemon 不可连、Compose 不可用都返回 **1**。这与 `judge` 模块整体的
+ *    "2 = 用法或前置错误、1 = 运行失败"分层**不同**：它们属于运行环境故障。
  * 2. **前置失败不打印后续指引**：指引只在依赖全部通过后才输出，否则用户会误以为
  *    环境已就绪。
  */
@@ -161,7 +153,7 @@ export async function judgeInstallEnv(
   }
   log("✓ Docker daemon 与 Compose 可用");
 
-  // ---- 四条隔离条件（bash :859-864 逐条对应）----
+  // ---- 四条隔离条件 ----
   log("");
   log("请确认已准备以下隔离条件：");
   log("  1. 只服务于 Judge 的 rootless Docker daemon；");
@@ -179,7 +171,7 @@ export async function judgeInstallEnv(
 }
 
 /**
- * `install`（bash `install` 动作的等价）：建目录 → 写配置 → 渲染 Compose →
+ * `install`：建目录 → 写配置 → 渲染 Compose →
  * 前置校验 → `compose up -d`。
  *
  * **顺序是安全要求**：配置写入（{@link writeJudgeEnv}）内部会在落盘前调用
@@ -203,7 +195,7 @@ export async function judgeInstall(
   try {
     const existing = await readJudgeEnv(paths.envFile);
     const values: Record<string, string> = { ...(opts.values ?? {}) };
-    // `--version` 是**显式**的版本变更（对应 bash 的 VERSION_OVERRIDE）：
+    // `--version` 是**显式**的版本变更：
     // 走 updateVersion 而非塞进 values，否则复用一份基线配置对象的调用会静默
     // 覆盖用户既有版本。首装时更新 version 也从这里取。
     const explicitVersion = opts.version !== undefined && opts.version !== ""
@@ -248,7 +240,7 @@ export async function judgeInstall(
         ? `✓ 配置就绪：${paths.envFile}`
         : `✓ 保留已有配置：${paths.envFile}`,
     );
-    // **必须显式提示被保留覆盖的键**（评审发现）：既有配置优先时，
+    // **必须显式提示被保留覆盖的键**：既有配置优先时，
     // `--redis-url` / `--socket-path` / `--socket-gid` 会被静默丢弃，
     // 用户以为改了实际没改。静默忽略与"旗标被吞"属同一类缺陷。
     const ignoredKeys = Object.keys(written.ignored);
@@ -336,7 +328,7 @@ export interface JudgeCheckOptions
 }
 
 /**
- * `check`（bash `check_configuration` :790-809 的等价）。
+ * `check`。
  *
  * 逐条：文件存在 → 权限 600/400 → 配置值 → **专用 socket** → Redis → 镜像架构 →
  * `compose config --quiet`。前四条**零 docker 调用**（除 socket 的连通性探测），
@@ -424,7 +416,7 @@ async function prepareExisting(
     }
     const env = await readJudgeEnv(paths.envFile);
     assertJudgeConfigValues(env);
-    // **配置文件本身也必须过共享 socket 守卫**（评审发现 Important）：
+    // **配置文件本身也必须过共享 socket 守卫**：
     // 此前只有 `check`/`install` 会调 `assertDedicatedSocket`，而
     // `start`/`stop`/`status`/`logs`/`upgrade` 走 `prepareExisting`——
     // 于是**手工把 `JUDGE_DOCKER_SOCKET` 改成宿主 socket 后，
@@ -442,7 +434,7 @@ async function prepareExisting(
 }
 
 /**
- * `start`（bash `start`）：`compose up -d`，**保留现有容器与配置**。
+ * `start`：`compose up -d`，**保留现有容器与配置**。
  *
  * 与 `install` 的区别：不写配置、不渲染 Compose（那些是 install 的职责），
  * 只做前置 + 启动。这样"重新启动"不会意外覆盖用户改过的文件。
@@ -466,7 +458,7 @@ export async function judgeStart(
 }
 
 /**
- * `stop`（bash `stop`）：`compose stop`，**保留配置、缓存与 Redis 任务**。
+ * `stop`：`compose stop`，**保留配置、缓存与 Redis 任务**。
  *
  * **不使用 `down`**：`down` 会删容器与网络（`-v` 还会删卷）。停止评测服务不该
  * 丢掉缓存卷里的内容——重启后重新拉取会浪费时间，而 `stop` 完全够用。
@@ -498,7 +490,7 @@ export interface JudgeStatusResult extends JudgeActionResult {
 }
 
 /**
- * `status`（bash `status`）：`compose ps` + **脱敏**配置摘要。
+ * `status`：`compose ps` + **脱敏**配置摘要。
  *
  * 脱敏不是可选项：`REDIS_URL` 里嵌着 Redis 口令，`status` 的输出常被贴进
  * issue / 聊天窗口 / 工单。因此摘要只展示**白名单键**，而 URL 类值再经
@@ -585,14 +577,14 @@ export function renderStatusSummary(env: Record<string, string>): string[] {
 export interface JudgeLogsOptions extends JudgeActionOptions {
   /** 是否 `--follow`。 */
   follow?: boolean;
-  /** 尾部行数（缺省 200，与 T14 同一默认）。 */
+  /** 尾部行数（缺省 200，与生产 logs 同一默认）。 */
   tail?: number;
 }
 
 /**
  * `logs`：`compose logs --tail=<n> [--follow]`。
  *
- * `--follow` 必须走 `runner.stream`（与 T14 的同一结论）：缓冲的 `run` 会一直
+ * `--follow` 必须走 `runner.stream`（与生产 logs 的同一结论）：缓冲的 `run` 会一直
  * 不返回、用户看不到任何输出。runner 不支持 `stream` 时**明确报错**，
  * 不静默退化成"看起来卡住"的缓冲调用。
  */
@@ -627,7 +619,7 @@ export async function judgeLogs(
       (line) => log(line),
       // `--json` 时人类日志走 stderr（`log` 已按该契约分发），stderr 行的
       // 路由与 stdout 一致即可；显式给出以表明"诊断输出也必须可见且不污染
-      // stdout"（评审建议：缺省转发是安全默认，但显式更清晰）。
+      // stdout"（缺省转发是安全默认，但显式更清晰）。
       { onStderr: (line) => log(line) },
     );
     if (code !== 0) {
@@ -649,10 +641,10 @@ export async function judgeLogs(
 }
 
 /**
- * `upgrade`：拉取配置里的版本并重建（bash `upgrade` 的等价）。
+ * `upgrade`：拉取配置里的版本并重建。
  *
  * 版本来源是**配置里的 `NOJ_VERSION`**（用户先改配置再升级），与
- * T16 的 `update` 取舍一致——自动选最新版本需要网络查询与额外的可信源，
+ * `update` 取舍一致——自动选最新版本需要网络查询与额外的可信源，
  * 而那属于生产侧 `update --latest` 的职责。
  */
 export async function judgeUpgrade(
@@ -674,13 +666,13 @@ export async function judgeUpgrade(
     return { exitCode: 0, message: `[dry-run] 将升级到 ${version}`, paths };
   }
 
-  // ---- write_compose（bash `upgrade_worker`:890）----
+  // ---- write_compose----
   // **必须先重渲染**：`renderJudgeCompose` 把版本**烘成字面量**
-  // （`image: "…/noj-judge:${version}"`，compose.ts:114），不像
+  // （`image: "…/noj-judge:${version}"`），不像
   // `docker-compose.prod.yml` 用 `${NOJ_VERSION}` 插值。因此只改
   // `NOJ_VERSION` 再 pull/up，拉到的仍是**旧 tag** 的镜像——
-  // 结果是"报成功但版本没变"的空升级（评审用真实 compose 复现）。
-  // bash 的 `upgrade_worker` 正是靠这行 `write_compose` 避免该问题。
+  // 结果是"报成功但版本没变"的空升级。
+  // 因此升级时必须重新渲染 Compose。
   try {
     const yaml = renderJudgeCompose(env);
     await Deno.writeTextFile(paths.composeFile, yaml);

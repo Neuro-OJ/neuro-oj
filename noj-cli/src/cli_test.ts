@@ -81,7 +81,7 @@ Deno.test("E12: install --help 由 CLI 回答，不出现 deploy.sh 文案", asy
   assertEquals(out.includes("deploy.sh install"), false);
 });
 
-Deno.test("T26: 生产命令在缺少安装目录时报运行失败（1），并给出可操作提示", async () => {
+Deno.test("生产命令在缺少安装目录时报运行失败（1），并给出可操作提示", async () => {
   const originalErr = console.error;
   let err = "";
   console.error = (...a: unknown[]) => {
@@ -152,7 +152,7 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
   assertEquals(debug.includes("    at "), true, "--debug 应打印栈帧");
 });
 
-Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）", async () => {
+Deno.test("--debug 在命令名前也可用（全局选项剥离）", async () => {
   const originalErr = console.error;
   const capture = async (
     argv: string[],
@@ -330,7 +330,7 @@ Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {
 // ── Tier 3 ──────────────────────────────────────────────────────
 
 Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器侧 --dir", () => {
-  // 评审 M1：CLI 自身的安装目录选项是 --install-dir；
+  // CLI 自身的安装目录选项是 --install-dir；
   // 容器命令自己的 --dir（如 problems import --dir <包目录>）必须透传。
   assertEquals(
     stripCliOwnedFlags(["db", "migrate", "--dry-run", "--install-dir", "/opt"]),
@@ -354,7 +354,7 @@ Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器
   );
 });
 
-Deno.test("评审 B2: 旗标缺值走统一兜底（用法错误 2，无栈帧）", async () => {
+Deno.test("旗标缺值走统一兜底（用法错误 2，无栈帧）", async () => {
   const orig = console.error;
   let err = "";
   console.error = (...a: unknown[]) => {
@@ -371,7 +371,7 @@ Deno.test("评审 B2: 旗标缺值走统一兜底（用法错误 2，无栈帧�
   assertEquals(err.includes("file://"), false, "不得泄露源码路径");
 });
 
-Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {
+Deno.test("stripCliOwnedFlags 保留容器命令的 --dir", () => {
   // 容器命令自身的 --dir 必须透传
   assertEquals(
     stripCliOwnedFlags(["problems", "import", "--dir", "/pkg"]),
@@ -396,12 +396,12 @@ Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {
   );
 });
 
-Deno.test("评审 M1: parseInstallDirArg 支持两种写法", () => {
+Deno.test("parseInstallDirArg 支持两种写法", () => {
   assertEquals(parseInstallDirArg(["--install-dir", "/opt"]), "/opt");
   assertEquals(parseInstallDirArg(["--install-dir=/opt"]), "/opt");
   assertEquals(parseInstallDirArg([]), undefined);
 });
-Deno.test("评审: Tier 3 子命令 help 必须写 --install-dir 而非 --dir", async () => {
+Deno.test("Tier 3 子命令 help 必须写 --install-dir 而非 --dir", async () => {
   // 阻塞项：help 写 --dir 但 dispatchContainer 只认 --install-dir，
   // 照 help 抄的命令会 exit 1。
   const original = console.log;
@@ -427,9 +427,9 @@ Deno.test("评审: Tier 3 子命令 help 必须写 --install-dir 而非 --dir", 
   assertEquals(out.includes("原样透传"), true, "应说明 --dir 透传给容器");
 });
 
-// ── 第四轮评审修正：problem lint/pack 的 --dir 不得被 positional 覆盖 ──
+// ── 回归：problem lint/pack 的 --dir 不得被 positional 覆盖 ──
 
-Deno.test("评审: problem lint/pack 只有位置参数存在时才覆盖 --dir", () => {
+Deno.test("problem lint/pack 只有位置参数存在时才覆盖 --dir", () => {
   // 阻塞项：无位置参数时 out.dir = positional[0]（undefined）会覆盖 --dir，
   // 导致 lint/pack 静默改用 cwd 并返回 0（假阳性）。
   assertEquals(
@@ -495,30 +495,9 @@ Deno.test("P6: formatBytes 人类可读", () => {
   assertEquals(formatBytes(5 * 1024 * 1024), "5.0M");
 });
 
-// ── 第四轮评审修正：problem lint/pack 的 --dir 不得被 positional 覆盖 ──
+// ── 新命令必须可从 help 发现；单数名可到达 Tier 3 ─────────
 
-Deno.test("评审: problem lint/pack 只有位置参数存在时才覆盖 --dir", () => {
-  // 阻塞项：无位置参数时 out.dir = positional[0]（undefined）会覆盖 --dir，
-  // 导致 lint/pack 静默改用 cwd 并返回 0（假阳性）。
-  assertEquals(
-    parseProblemArgs(["lint", "--dir", "/some/problem"]).dir,
-    "/some/problem",
-  );
-  assertEquals(
-    parseProblemArgs(["pack", "--dir", "/some/problem"]).dir,
-    "/some/problem",
-  );
-  // 显式位置参数优先
-  assertEquals(
-    parseProblemArgs(["lint", "/positional", "--dir", "/flag"]).dir,
-    "/positional",
-  );
-  // 两者都没有：dir 保持 undefined（由调用方回落到 cwd）
-  assertEquals(parseProblemArgs(["lint"]).dir, undefined);
-});
-// ── 评审 B2/B3：新命令必须可从 help 发现；单数名可到达 Tier 3 ─────────
-
-Deno.test("评审 B2: 顶层 help 必须登记 problem init/lint/pack", () => {
+Deno.test("顶层 help 必须登记 problem init/lint/pack", () => {
   // #517 E5：help 是命令清单唯一事实源；新命令不登记则用户无法发现。
   const help = printHelp();
   for (const cmd of ["problem init", "problem lint", "problem pack"]) {
@@ -526,7 +505,7 @@ Deno.test("评审 B2: 顶层 help 必须登记 problem init/lint/pack", () => {
   }
 });
 
-Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
+Deno.test("单数 problem 也能到达 Tier 3 build/import", () => {
   // canonical 名是单数（core 已改名、problems 为别名），
   // 若容器包装只认复数，canonical 名就无法到达这两个命令。
   for (const sub of ["build", "import"]) {
@@ -541,7 +520,7 @@ Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
   assertEquals(parseContainerCommand(["problem", "init"]).matched, false);
 });
 
-// ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
+// ── drill 快照形态与错误码（集成回归） ───────────────
 
 Deno.test("problem import: --domain 与包目录原样透传 core 容器", () => {
   assertEquals(

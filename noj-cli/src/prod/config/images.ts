@@ -9,21 +9,21 @@ import { type EnvValues, judgeEnabledFrom } from "./checks.ts";
 /** 默认镜像仓库（compose 文件里的 `${NOJ_IMAGE_REGISTRY:-...}`）。 */
 export const DEFAULT_IMAGE_REGISTRY = "ghcr.io/neuro-oj";
 
-/** 默认 cosign 证书身份正则（deploy.sh:851）。 */
+/** 默认 cosign 证书身份正则。 */
 export const DEFAULT_COSIGN_IDENTITY_REGEX =
   "^https://github.com/Neuro-OJ/neuro-oj/.github/workflows/release.yml@.*$";
 
-/** cosign OIDC issuer（deploy.sh:867）。 */
+/** cosign OIDC issuer。 */
 export const DEFAULT_COSIGN_OIDC_ISSUER =
   "https://token.actions.githubusercontent.com";
 
-/** 无条件校验的生产镜像（deploy.sh:854）。 */
+/** 无条件校验的生产镜像。 */
 export const PROD_IMAGES: readonly string[] = [
   "noj-server",
   "noj-ui",
   "noj-llm-gateway",
 ];
-/** judge 启用时追加的镜像（deploy.sh:856）。 */
+/** judge 启用时追加的镜像。 */
 export const JUDGE_IMAGES: readonly string[] = [
   "noj-judge",
   "noj-evaluator-python",
@@ -76,7 +76,7 @@ export function parseDigest(stdout: string): string | null {
 }
 
 /**
- * 迁移 `verify_image_signatures`（:837-874）。
+ * 用 cosign 校验镜像签名。
  *
  * - `NOJ_ENFORCE_IMAGE_SIGNATURES=false` → 跳过（零调用）；
  * - cosign 不可用 → 报错返回（零调用）；
@@ -160,7 +160,7 @@ export async function verifyImageSignatures(
 
 // ---------------- 部署元数据 ----------------
 
-/** 部署元数据文件名（deploy.sh:881）。 */
+/** 部署元数据文件名。 */
 export const DEPLOYMENT_MANIFEST_FILE = "current-deployment.txt";
 
 /** {@link recordDeploymentMetadata} 的输入。 */
@@ -179,9 +179,9 @@ export interface RecordMetadataResult {
 }
 
 /**
- * 迁移 `record_deployment_metadata`（:875-891）。
+ * 记录部署元数据（版本、时间与镜像摘要）。
  *
- * 无验签结果时不产生任何副作用（bash 的 `return 0`）；否则在 `backupDir` 下
+ * 无验签结果时不产生任何副作用；否则在 `backupDir` 下
  * 原子写出 `current-deployment.txt`（权限 600），内容为
  * `version=` / `recorded_at=` / 排序后的 `<name> <digest>` 行。
  */

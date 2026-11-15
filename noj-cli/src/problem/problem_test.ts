@@ -97,7 +97,7 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   assertEquals(shouldExclude("problem.json"), false);
 });
 
-Deno.test("评审 P1: bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
+Deno.test("bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
   // 修复前用 dir.split("/")，Windows 路径会返回整条路径，
   // join(outDir, slug + ".zip") 因此把盘符/分隔符带进输出路径。
   assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b"), "a-plus-b");

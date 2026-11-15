@@ -20,7 +20,7 @@ export type EnvValues = Record<string, string | undefined>;
 
 // ---------------- 内部复用原语 ----------------
 
-/** 只保留已定义的值，供 T2 的 `validateEnv` 消费。 */
+/** 只保留已定义的值，供 `validateEnv` 消费。 */
 export function definedOnly(env: EnvValues): Record<string, string> {
   const clean: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
@@ -32,9 +32,9 @@ export function definedOnly(env: EnvValues): Record<string, string> {
 /**
  * 判定 judge 是否启用。
  *
- * **不复制 T2 的真值表**：以 `validateEnv` 在"仅含 JUDGE_ENABLED 的探针输入"
- * 下是否要求 JUDGE_DOCKER_SOCKET 为准，T2 增删真值集合时本函数自动跟随。
- * 枚举外的非法值须先经 {@link judgeEnabledError} 拒绝；此处沿用 T2 的
+ * **不复制真值表**：以 `validateEnv` 在"仅含 JUDGE_ENABLED 的探针输入"
+ * 下是否要求 JUDGE_DOCKER_SOCKET 为准，真值集合变化时本函数自动跟随。
+ * 枚举外的非法值须先经 {@link judgeEnabledError} 拒绝；此处沿用
  * fail-safe（非法值按启用处理）。
  */
 export function judgeEnabledFrom(env: EnvValues): boolean {
@@ -53,7 +53,7 @@ export async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-/** bash `current_config_value`（:275-285）：占位值归零，DOMAIN 的退出词归零。 */
+/** 当前配置值：占位值归零，DOMAIN 的退出词归零。 */
 export const EXIT_WORDS: ReadonlySet<string> = new Set([
   "exit",
   "EXIT",
@@ -74,14 +74,14 @@ export function currentConfigValue(env: EnvValues, key: string): string {
   return raw;
 }
 
-/** 生成 32 字节随机 hex（64 位），即 bash `openssl rand -hex 32`。 */
+/** 生成 32 字节随机 hex（64 位）。 */
 export function generateSecret(): string {
   return randomKey(32);
 }
 
 // ---------------- 站点地址 ----------------
 
-/** bash `is_ipv4_address`（:344-352）：四段 1-3 位数字且每段 ≤ 255。 */
+/** IPv4 地址：四段 1-3 位数字且每段 ≤ 255。 */
 export function isIpv4Address(address: string): boolean {
   const match = /^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$/
     .exec(address);
@@ -93,11 +93,10 @@ export function isIpv4Address(address: string): boolean {
 }
 
 /**
- * bash `is_site_address`（:354-361）：IPv4 或「字母数字开头结尾、中间允许
+ * 站点地址：IPv4 或「字母数字开头结尾、中间允许
  * `.`/\`-\`、且含点」的字符串。
  *
- * 注意这是**逐字移植**：`a..b`（连续点）与 `bad-.com`（段尾连字符）在 bash
- * 正则下都算合法，此处保持一致，不做额外收紧。
+ * 注意：`a..b`（连续点）与 `bad-.com`（段尾连字符）都算合法，不做额外收紧。
  */
 export function isSiteAddress(address: string): boolean {
   if (isIpv4Address(address)) return true;
@@ -113,39 +112,36 @@ export interface RequiredValuesReport {
   ok: boolean;
   /** `JUDGE_ENABLED` 枚举错误；非 null 时其余字段为空（先于 validateEnv）。 */
   judgeError: string | null;
-  /** judge 是否启用（未设置/空串视为启用，见 T2 carry-forward）。 */
+  /** judge 是否启用（未设置/空串视为启用）。 */
   judgeEnabled: boolean;
   /**
-   * 判定失败的键：未设置、空值、占位值，或 judge 启用时非数字的 GID
-   * （bash :747 把 GID 非数字也写进 missing 计数）。顺序与 T2 的
-   * `validateEnv` 一致；judge 启用时追加 JUDGE_KEYS。
+   * 判定失败的键：未设置、空值、占位值，或 judge 启用时非数字的 GID。
+   * 顺序与 `validateEnv` 一致；judge 启用时追加 JUDGE_KEYS。
    */
   missing: string[];
   /** 命中占位值黑名单的键。 */
   placeholder: string[];
-  /** 面向用户的逐行错误（含 "  - " 前缀，与 bash printf 一致）。 */
+  /** 面向用户的逐行错误（含 "  - " 前缀）。 */
   errors: string[];
   /** DOMAIN 不是域名/IP 时的错误；合法或缺失时为 null。 */
   siteAddressError: string | null;
 }
 
 /**
- * 迁移 `check_required_values`（:684-766）。
+ * 校验 .env.prod 必填项与取值约束。
  *
  * 判定顺序：
- * 1. **先** {@link judgeEnabledError}（T2 carry-forward）；非 null 立即返回；
- *    bash 中该错误由 `judge_enabled` 的 `*) fail` 产出，此处等价地作为硬错误；
+ * 1. **先** {@link judgeEnabledError}；非 null 立即返回；
+ *    该错误是硬错误；
  * 2. {@link validateEnv} 得到 missing / placeholder（judge 启用时自动含 judge 键）；
- * 3. DOMAIN 站点地址检查（:713）；
- * 4. judge 启用且 GID 非数字（:747-750，错误同时计入 missing）；
- * 5. EMAIL_PROVIDER 枚举 + 分支条件键（:718-737）；
+ * 3. DOMAIN 站点地址检查；
+ * 4. judge 启用且 GID 非数字（错误同时计入 missing）；
+ * 5. EMAIL_PROVIDER 枚举 + 分支条件键；
  * 6. 取值约束 STORAGE_PROVIDER / JWT_SECRET / APP_URL / NOJ_VERSION
- *    （:739-764，规则表在 T2 的 `ENV_VALUE_RULES`）。
+ *    （规则表在 `ENV_VALUE_RULES`）。
  *
- * 与 bash 的差异（有意）：
- * - bash 在缺失/占位阶段就 `fail`（硬错误退出），后半段根本不会被执行到；
- *   本函数不提前退出，把全部失败并入 `errors` 后由调用方一次性处理，因此
- *   `errors` 的**顺序**是 TS 自定的稳定顺序，而非 bash 的打印顺序；
+ * - 本函数不提前退出，把全部失败并入 `errors` 后由调用方一次性处理，
+ *   `errors` 的**顺序**稳定；
  * - 取值约束（步骤 6）仅在键**已配置且非占位**时判定，避免与「未配置」重复报错。
  */
 export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
@@ -178,7 +174,7 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
     errors.push("  - " + siteAddressError);
   }
 
-  // judge 分支（bash :747-750）：GID 必须是纯数字；该错误同样计入 missing。
+  // judge 分支：GID 必须是纯数字；该错误同样计入 missing。
   if (judgeEnabled) {
     const gid = env["JUDGE_DOCKER_SOCKET_GID"];
     if (gid !== undefined && gid !== "" && !/^[0-9]+$/.test(gid)) {
@@ -189,8 +185,8 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
     }
   }
 
-  // EMAIL_PROVIDER 枚举 + 分支条件键（bash :718-737）。
-  // 占位/空值已由 validateEnv 记入 missing（bash 在缺失阶段即 fail，枚举行不可达），
+  // EMAIL_PROVIDER 枚举 + 分支条件键。
+  // 占位/空值已由 validateEnv 记入 missing，
   // 故仅在非占位时做枚举校验，避免同一键同时报"未配置"与"枚举非法"。
   const provider = env["EMAIL_PROVIDER"] ?? "";
   if (!isPlaceholder(provider)) {
@@ -206,7 +202,7 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
     }
   }
 
-  // 后半段取值约束（bash :739-764）：仅对**已配置且非占位**的键判定，
+  // 后半段取值约束：仅对**已配置且非占位**的键判定，
   // 否则「未配置」已由上面的 missing 表达，不重复报错。GID 不在本表内，
   // 由上面的 judge 分支单独处理（其错误还需计入 missing）。
   for (const rule of ENV_VALUE_RULES) {
@@ -244,10 +240,9 @@ export interface JudgeSocketOptions {
 }
 
 /**
- * 迁移 `check_judge_socket`（:768-778）并补上 GID 数字校验（:747 的同义检查）。
+ * 校验 judge socket 与 GID。
  *
- * 顺序与 bash 一致：先拒绝宿主 Docker socket，再要求 socket 存在；GID 为可选的
- * 附加校验（bash 在 `check_required_values` 内检查，本模块收敛到同一入口）。
+ * 顺序：先拒绝宿主 Docker socket，再要求 socket 存在；GID 为可选的附加校验。
  */
 export async function checkJudgeSocket(
   env: EnvValues,
@@ -292,10 +287,9 @@ export interface PortCheckOptions {
 }
 
 /**
- * 迁移 `check_port_value`（:780-789）：默认 8080，必须是 1-65535 的纯数字。
+ * 校验端口：默认 8080，必须是 1-65535 的纯数字。
  *
- * lsof 占用告警只在注入 runner 时执行；bash 的 `command -v lsof` 由调用方通过
- * "是否传 runner"表达（runner 在 lsof 缺失时自会返回非 0）。
+ * lsof 占用告警只在注入 runner 时执行（runner 在 lsof 缺失时自会返回非 0）。
  */
 export async function checkPortValue(
   env: EnvValues,
@@ -334,7 +328,7 @@ export type PanelName = "none" | "baota";
 /** `--panel` 取值。 */
 export type PanelMode = "auto" | "baota" | "none";
 
-/** 面板探测路径（对应 bash `PANEL_ROOT` / `PANEL_COMMAND`）。 */
+/** 面板探测路径。 */
 export interface PanelPaths {
   panelRoot?: string;
   panelCommand?: string;
@@ -346,9 +340,9 @@ export interface PanelProbe {
   execExists(path: string): Promise<boolean>;
 }
 
-/** bash 默认面板根目录。 */
+/** 默认面板根目录。 */
 export const DEFAULT_PANEL_ROOT = "/www/server/panel";
-/** bash 默认面板命令。 */
+/** 默认面板命令。 */
 export const DEFAULT_PANEL_COMMAND = "/usr/bin/bt";
 
 /** 真实探测：目录存在 / 可执行文件存在（`-x`）。 */
@@ -371,7 +365,7 @@ export const realPanelProbe: PanelProbe = {
 };
 
 /**
- * 迁移 `detect_panel`（:791-802）。
+ * 检测宿主机面板（宝塔等）。
  *
  * `baota` 直接命中且**零探测**；`none` 直接返回；`auto` 才探测目录/命令。
  */
@@ -390,7 +384,7 @@ export async function detectPanel(
   return "none";
 }
 
-/** 宝塔引导正文（逐字对照 deploy.sh:807-816 的 heredoc）。 */
+/** 宝塔引导正文。 */
 export const BAOTA_GUIDANCE = [
   "已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。",
   "",
@@ -407,13 +401,12 @@ export function panelGuidance(panel: PanelName | PanelMode): string | null {
   return panel === "baota" ? BAOTA_GUIDANCE : null;
 }
 
-/** bash `:817` 的 ok 行（`show_panel_guidance` 的收尾输出）。 */
+/** 宝塔引导的收尾行。 */
 export const PANEL_GUIDANCE_OK_LINE = "✓ 宝塔兼容提示已启用";
 
 /**
- * 迁移 `show_panel_guidance`（:804-818）：仅 baota 时输出
- * section 标题 + 正文 + {@link PANEL_GUIDANCE_OK_LINE}（bash 无着色时 ok() 的
- * 逐字输出）。
+ * 宝塔面板引导：仅 baota 时输出 section 标题 + 正文 +
+ * {@link PANEL_GUIDANCE_OK_LINE}。
  */
 export function showPanelGuidance(
   panel: PanelName | PanelMode,

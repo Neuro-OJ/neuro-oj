@@ -1,5 +1,5 @@
 /**
- * T18 命令面测试：verify 三档 / list / prune 默认 dry-run / restore --dry-run。
+ * 备份命令面测试：verify 三档 / list / prune 默认 dry-run / restore --dry-run。
  *
  * 三条硬约束由本套测试锁死（都是实测过的缺陷面）：
  *
@@ -8,7 +8,7 @@
  * 2. **prune 默认 dry-run**：无 `--confirm` 时零删除、零副作用。
  * 3. **都不创建备份**：命令前后备份目录**逐项不变**（清单 + 各自摘要）。
  *
- * 容器由 T17 的 `createContainer` + fake ops 真实产出，故这些测试覆盖的是
+ * 容器由 `createContainer` + fake ops 真实产出，故这些测试覆盖的是
  * **真实容器**而非手工构造的假包。
  */
 
@@ -310,7 +310,7 @@ async function workDir(root: string, name: string): Promise<string> {
 
 // ---------------- verify 三档 ----------------
 
-Deno.test("T18 verify：三档累加全部通过（真实容器）", async () => {
+Deno.test("verify：三档累加全部通过（真实容器）", async () => {
   const c = await makeContainer();
   try {
     const passphraseFile = join(c.root, "passphrase");
@@ -354,7 +354,7 @@ Deno.test("T18 verify：三档累加全部通过（真实容器）", async () =>
   }
 });
 
-Deno.test("T18 verify：篡改 payload 一个字节 → 默认档必须失败（sha256sums 抓住）", async () => {
+Deno.test("verify：篡改 payload 一个字节 → 默认档必须失败（sha256sums 抓住）", async () => {
   const root = await makeTempDir();
   try {
     const backupDir = join(root, "backups");
@@ -403,7 +403,7 @@ Deno.test("T18 verify：篡改 payload 一个字节 → 默认档必须失败（
   }
 });
 
-Deno.test("T18 verify --deep：redis.rdb 缺 REDIS 魔术串 → 恰好 --deep 失败", async () => {
+Deno.test("verify --deep：redis.rdb 缺 REDIS 魔术串 → 恰好 --deep 失败", async () => {
   const root = await makeTempDir();
   try {
     const backupDir = join(root, "backups");
@@ -464,7 +464,7 @@ Deno.test("T18 verify --deep：redis.rdb 缺 REDIS 魔术串 → 恰好 --deep �
   }
 });
 
-Deno.test("T18 verify：整包加密 + 缺口令 → 明确失败（整包加密的必然后果）", async () => {
+Deno.test("verify：整包加密 + 缺口令 → 明确失败（整包加密的必然后果）", async () => {
   const c = await makeContainer();
   try {
     // 整包加密意味着**没有口令就读不到包内任何字节**——因此缺口令不是"跳过
@@ -485,7 +485,7 @@ Deno.test("T18 verify：整包加密 + 缺口令 → 明确失败（整包加密
   }
 });
 
-Deno.test("T18 verify --deep：未加密容器 + 缺口令 → 如实跳过 env 解密而非静默通过", async () => {
+Deno.test("verify --deep：未加密容器 + 缺口令 → 如实跳过 env 解密而非静默通过", async () => {
   const root = await makeTempDir();
   try {
     const backupDir = join(root, "backups");
@@ -523,7 +523,7 @@ Deno.test("T18 verify --deep：未加密容器 + 缺口令 → 如实跳过 env 
   }
 });
 
-Deno.test("T18 verify --deep：包内 env.prod.gpg 无法解密 → --deep 失败", async () => {
+Deno.test("verify --deep：包内 env.prod.gpg 无法解密 → --deep 失败", async () => {
   const root = await makeTempDir();
   try {
     const backupDir = join(root, "backups");
@@ -578,7 +578,7 @@ Deno.test("T18 verify --deep：包内 env.prod.gpg 无法解密 → --deep 失�
   }
 });
 
-Deno.test("T18 verify --payload-sha：容器被改而 sidecar 未更新 → 恰好 payload 档失败", async () => {
+Deno.test("verify --payload-sha：容器被改而 sidecar 未更新 → 恰好 payload 档失败", async () => {
   const c = await makeContainer();
   try {
     const passphraseFile = join(c.root, "passphrase");
@@ -614,7 +614,7 @@ Deno.test("T18 verify --payload-sha：容器被改而 sidecar 未更新 → 恰�
   }
 });
 
-Deno.test("T18 verify --payload-sha：仅 sidecar 缺失 → 恰好 payload 档失败（缺文件必须报）", async () => {
+Deno.test("verify --payload-sha：仅 sidecar 缺失 → 恰好 payload 档失败（缺文件必须报）", async () => {
   const c = await makeContainer();
   try {
     // 删掉 sidecar：默认档与 --deep 仍应通过（包内完整性没变），
@@ -654,7 +654,7 @@ Deno.test("T18 verify --payload-sha：仅 sidecar 缺失 → 恰好 payload 档�
   }
 });
 
-Deno.test("T18 verify：payload_layout 非 prod-raw → 明确拒绝（无分派）", async () => {
+Deno.test("verify：payload_layout 非 prod-raw → 明确拒绝（无分派）", async () => {
   const c = await makeContainer();
   try {
     const passphraseFile = join(c.root, "passphrase");
@@ -690,7 +690,7 @@ Deno.test("T18 verify：payload_layout 非 prod-raw → 明确拒绝（无分派
   }
 });
 
-Deno.test("T18 assertContainerPath：只接受 .nojbackup 单文件；拒绝 ..", () => {
+Deno.test("assertContainerPath：只接受 .nojbackup 单文件；拒绝 ..", () => {
   assertContainerPath("/opt/noj/backups/snapshot-1.nojbackup");
   for (const bad of ["/opt/noj/backups/snapshot-1", "../x.nojbackup"]) {
     let msg = "";
@@ -705,7 +705,7 @@ Deno.test("T18 assertContainerPath：只接受 .nojbackup 单文件；拒绝 .."
 
 // ---------------- list / prune ----------------
 
-Deno.test("T18 list：列举容器，且不创建/不修改任何东西", async () => {
+Deno.test("list：列举容器，且不创建/不修改任何东西", async () => {
   const c = await makeContainer();
   try {
     const before = await fingerprint(c.backupDir);
@@ -722,7 +722,7 @@ Deno.test("T18 list：列举容器，且不创建/不修改任何东西", async 
   }
 });
 
-Deno.test("T18 list：目录不存在 → 空结果（首次使用不是错误）", async () => {
+Deno.test("list：目录不存在 → 空结果（首次使用不是错误）", async () => {
   const root = await makeTempDir();
   try {
     const result = await listBackupCommand(join(root, "nope"));
@@ -733,7 +733,7 @@ Deno.test("T18 list：目录不存在 → 空结果（首次使用不是错误�
   }
 });
 
-Deno.test("T18 prune：默认 dry-run 零删除、零副作用", async () => {
+Deno.test("prune：默认 dry-run 零删除、零副作用", async () => {
   const c = await makeContainer();
   try {
     // 再放两个快照（不同时间），以形成可 prune 的对象
@@ -760,7 +760,7 @@ Deno.test("T18 prune：默认 dry-run 零删除、零副作用", async () => {
   }
 });
 
-Deno.test("T18 prune：--confirm 才真正删除，且只删计划内的", async () => {
+Deno.test("prune：--confirm 才真正删除，且只删计划内的", async () => {
   const c = await makeContainer();
   try {
     const keep = join(c.backupDir, "snapshot-20260919-120000.nojbackup");
@@ -789,7 +789,7 @@ Deno.test("T18 prune：--confirm 才真正删除，且只删计划内的", async
   }
 });
 
-Deno.test("T18 prune：两个条件都不给 → 不删任何东西（安全默认）", async () => {
+Deno.test("prune：两个条件都不给 → 不删任何东西（安全默认）", async () => {
   const c = await makeContainer();
   try {
     const before = await fingerprint(c.backupDir);
@@ -802,7 +802,7 @@ Deno.test("T18 prune：两个条件都不给 → 不删任何东西（安全默�
   }
 });
 
-Deno.test("T18 prune：legacy 目录默认不被删除", async () => {
+Deno.test("prune：legacy 目录默认不被删除", async () => {
   const c = await makeContainer();
   try {
     // 造一个 legacy 目录形态快照（含 sha256sums.txt + SUCCESS 两个哨兵）
@@ -833,7 +833,7 @@ Deno.test("T18 prune：legacy 目录默认不被删除", async () => {
 
 // ---------------- restore --dry-run ----------------
 
-Deno.test("T18 restore --dry-run：零副作用（不触 docker、不改配置），输出步骤清单", async () => {
+Deno.test("restore --dry-run：零副作用（不触 docker、不改配置），输出步骤清单", async () => {
   const c = await makeContainer();
   try {
     const passphraseFile = join(c.root, "passphrase");
@@ -888,7 +888,7 @@ Deno.test("T18 restore --dry-run：零副作用（不触 docker、不改配置�
   }
 });
 
-Deno.test("T18 restore --dry-run：校验不通过 → 不给步骤清单", async () => {
+Deno.test("restore --dry-run：校验不通过 → 不给步骤清单", async () => {
   const root = await makeTempDir();
   try {
     const backupDir = join(root, "backups");
@@ -935,7 +935,7 @@ Deno.test("T18 restore --dry-run：校验不通过 → 不给步骤清单", asyn
   }
 });
 
-Deno.test("T18 restore --dry-run：ops 类型上就没有恢复能力（不触 docker）", async () => {
+Deno.test("restore --dry-run：ops 类型上就没有恢复能力（不触 docker）", async () => {
   const c = await makeContainer();
   try {
     // restorePlan 只接受 gpgDecrypt/untarZst；注入一个"任何额外调用即抛错"的 ops
@@ -963,7 +963,7 @@ Deno.test("T18 restore --dry-run：ops 类型上就没有恢复能力（不触 d
 
 // ---------------- 都不创建备份（误路由回归） ----------------
 
-Deno.test("T18 误路由回归：verify/list/prune/restore-dry-run 都不创建备份", async () => {
+Deno.test("误路由回归：verify/list/prune/restore-dry-run 都不创建备份", async () => {
   const c = await makeContainer();
   try {
     const passphraseFile = join(c.root, "passphrase");
@@ -998,11 +998,11 @@ Deno.test("T18 误路由回归：verify/list/prune/restore-dry-run 都不创建�
   }
 });
 
-Deno.test("T18 prodBackupDir：与 install 的 record-metadata 落点一致", () => {
+Deno.test("prodBackupDir：与 install 的 record-metadata 落点一致", () => {
   assertEquals(prodBackupDir("/opt/noj"), "/opt/noj/backups");
 });
 
-Deno.test("T18 prodBackupDir/tempContainerPath：路径形状一致（无尾斜杠陷阱）", () => {
+Deno.test("prodBackupDir/tempContainerPath：路径形状一致（无尾斜杠陷阱）", () => {
   assertEquals(prodBackupDir("/opt/noj/"), "/opt/noj/backups");
   assert(
     tempContainerPath("/opt/noj/backups/x.nojbackup").startsWith(
@@ -1011,7 +1011,7 @@ Deno.test("T18 prodBackupDir/tempContainerPath：路径形状一致（无尾斜�
   );
 });
 
-Deno.test("T18 list：ignored 记录非快照条目（不静默丢弃）", async () => {
+Deno.test("list：ignored 记录非快照条目（不静默丢弃）", async () => {
   const c = await makeContainer();
   try {
     await Deno.writeTextFile(join(c.backupDir, "random.txt"), "x");
@@ -1031,7 +1031,7 @@ Deno.test("T18 list：ignored 记录非快照条目（不静默丢弃）", async
   }
 });
 
-Deno.test("T18 verify：目录形态快照 → 明确拒绝（引导迁移）", async () => {
+Deno.test("verify：目录形态快照 → 明确拒绝（引导迁移）", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "snapshot-20200101-000000");
@@ -1052,7 +1052,7 @@ Deno.test("T18 verify：目录形态快照 → 明确拒绝（引导迁移）", 
   }
 });
 
-Deno.test("T18 copyTree 辅助自检：确保测试打包器忠实（往返一致）", async () => {
+Deno.test("copyTree 辅助自检：确保测试打包器忠实（往返一致）", async () => {
   const root = await makeTempDir();
   try {
     const src = join(root, "src");
@@ -1077,9 +1077,9 @@ Deno.test("T18 copyTree 辅助自检：确保测试打包器忠实（往返一�
 // 而实现只有 dry-run 规划器（`restorePlan` 的 `dryRun` 恒为 true）。
 // 本组用例钉住真实恢复的三条契约：
 //   1. **无 `--confirm` 必须拒绝**（不可逆操作）；
-//   2. **服务未停必须拒绝**（对齐 bash `ensure_stopped`）；
+//   2. **服务未停必须拒绝**；
 //   3. 带 `--confirm` 时执行真实恢复序列（PostgreSQL → Redis → MinIO），
-//      且恢复后**停止数据服务**等人工检查（bash 语义）。
+//      且恢复后**停止数据服务**等人工检查。
 
 Deno.test("新增 restore --confirm：无确认时拒绝，且零 compose 调用", async () => {
   const { restoreConfirmed } = await import("./commands.ts");
@@ -1114,7 +1114,7 @@ Deno.test("新增 restore --confirm：无确认时拒绝，且零 compose 调用
   assertEquals(calls, [], "拒绝时必须零 compose 调用");
 });
 
-Deno.test("新增 restore --confirm：服务仍在运行时拒绝（对齐 bash ensure_stopped）", async () => {
+Deno.test("新增 restore --confirm：服务仍在运行时拒绝", async () => {
   const { restoreConfirmed } = await import("./commands.ts");
   const calls: string[] = [];
   const runner = {
@@ -1261,7 +1261,7 @@ Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 
     // 恢复后停数据服务（等人工检查）
     assert(
       subs.includes("stop postgres redis minio"),
-      `恢复后必须停数据服务（bash :382 语义），实得子命令：${subs.join(" | ")}`,
+      `恢复后必须停数据服务，实得子命令：${subs.join(" | ")}`,
     );
   } finally {
     await Deno.remove(c.root, { recursive: true }).catch(() => {});
@@ -1272,11 +1272,10 @@ Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 
 //
 // `deploy/monitoring/noj-alerts.yml` 的 NojBackupStale / NojBackupVeryStale /
 // NojBackupMetricMissing 三条告警依赖该指标（以及 snapshot_bytes），
-// 而 TS 侧**没有任何写入方**——`backup.sh` 仍会写，但它已列入删除计划。
-// 即"迁移不完整"：脚本一删，三条告警会同时失去数据源（其中一条正是
-// `absent(...)` 缺失告警，会持续报警）。
+// 缺少写入方时三条告警会同时失去数据源（其中一条正是 `absent(...)` 缺失
+// 告警，会持续报警）。
 //
-// 格式必须与 bash（backup.sh:213-220）与 drill 的既有 writer 一致：
+// 格式必须与 drill 的既有 writer 一致：
 // `# HELP` + `# TYPE` + 值行，文件名 `noj_backup.prom`，权限 644、目录 755。
 
 Deno.test("新增 备份指标：renderBackupMetrics 输出三行且指标名逐字正确", async () => {
@@ -1336,7 +1335,7 @@ Deno.test("新增 备份指标：writeBackupMetrics 落盘为 644、目录 755",
   }
 });
 
-Deno.test("新增 备份指标：NOJ_BACKUP_METRICS_DIR 可覆盖目录（与 bash 一致）", async () => {
+Deno.test("新增 备份指标：NOJ_BACKUP_METRICS_DIR 可覆盖目录", async () => {
   const root = await makeTempDir();
   try {
     const { writeBackupMetrics } = await import("./metrics.ts");

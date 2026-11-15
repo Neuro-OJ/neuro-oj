@@ -26,11 +26,11 @@ export function prodDeps(deps: ProdCliDeps): {
 /**
  * 解析 GPG 口令文件路径（`--passphrase-file` > 进程环境 > `.env.prod`）。
  *
- * **为什么必须集中解析**（评审发现）：`backup drill` 的报错文案明示
+ * **为什么必须集中解析**：`backup drill` 的报错文案明示
  * "必须提供 `--passphrase-file` 或 `NOJ_BACKUP_PASSPHRASE_FILE`"，但该环境变量
  * 此前对 `drill`/`verify`/`restore` **全未接线**——设了也报同一错误；
  * 而 `install` 恰会把它回填进 `.env.prod`，形成"安装时写进去、备份校验时用不上"。
- * 优先级与 `backupPassphrasePath` 一致（bash deploy.sh:924）。
+ * 优先级与 `backupPassphrasePath` 一致。
  */
 export function resolveBackupPassphrase(
   args: string[],
@@ -48,8 +48,7 @@ export function resolveBackupPassphrase(
 /**
  * 读数值型环境变量（缺省或非法时返回 undefined，由调用方的默认值兜底）。
  *
- * 用于 `NOJ_BACKUP_RETENTION_DAYS` / `NOJ_BACKUP_MIN_FREE_MB` 的 bash 兼容缺省
- * （backup.sh:13-14）。
+ * 用于 `NOJ_BACKUP_RETENTION_DAYS` / `NOJ_BACKUP_MIN_FREE_MB` 的缺省。
  */
 export function envNumber(name: string): number | undefined {
   const raw = Deno.env.get(name);

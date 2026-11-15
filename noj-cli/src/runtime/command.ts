@@ -40,7 +40,7 @@ export interface CommandRunner {
   /**
    * 逐行流式执行命令；`onLine` 每收到一行（不含换行）回调一次，返回退出码。
    *
-   * `opts.onStderr` 控制 **stderr 的行路由**（2026-09-22 评审）：
+   * `opts.onStderr` 控制 **stderr 的行路由**：
    * - 未提供（缺省）：stderr 与 stdout 一样逐行交给 `onLine`。这是安全默认——
    *   子进程写满 stderr 管道会**挂死**（Linux 管道缓冲约 64 KiB），排空是必需的，
    *   而"排空的字节必须有去处"。
@@ -166,7 +166,7 @@ export function realRunner(): CommandRunner {
       // `--follow` 的子进程正是 `docker compose ... logs --follow`，多服务时
       // 会向 stderr 输出告警/进度，属真实可达路径。
       //
-      // 行的去处由 `opts.onStderr` 决定（评审建议）：缺省与 stdout 同等对待
+      // 行的去处由 `opts.onStderr` 决定：缺省与 stdout 同等对待
       // （安全默认，保证排空的字节可见）；传函数则分流；传 `false` 只排空。
       const stderrRoute = opts?.onStderr === undefined
         ? onLine

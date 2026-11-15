@@ -11,7 +11,7 @@ export interface ProdArgs {
 }
 
 /**
- * 拆出 `--dir`（T23 后 CLI 只剩这一种目录旗标）。
+ * 拆出 `--dir`（CLI 唯一的目录旗标）。
  *
  * **只认 `--dir`**：`--install-dir` 是 Tier 3 容器命令的旗标（指宿主机安装目录），
  * 在生产命令上出现应报错而不是被悄悄吞掉——静默吞掉会让用户以为它生效了。
@@ -107,12 +107,9 @@ export function hasFlag(args: string[], ...names: string[]): boolean {
 /**
  * 生产命令上**未实现却会被静默吞掉**的旗标 → 拒绝并说明原因。
  *
- * ## 为什么必须拒绝而不是忽略（评审发现的数据丢失）
+ * ## 为什么必须拒绝而不是忽略（曾导致数据丢失）
  *
- * `--dry-run` 是 bash 的真实选项（`deploy.sh:110`），且在破坏性路径上有守卫：
- * `production.sh:506` 的 `if ((remove_all && !dry_run))` 与 `:511` 的
- * `if (( !dry_run ))` 明确**在 dry-run 下不做 `unregister_command` 与
- * `remove_install_directory`**。TS 版既没实现它、也没拒绝它，于是：
+ * 用户会期望 `--dry-run` 在破坏性路径上只做预演。若既不实现也不拒绝，于是：
  *
  * ```
  * $ rm -rf y2 && mkdir -p y2/bin && ... && touch y2/important.txt
@@ -180,7 +177,7 @@ export function positionals(args: string[]): string[] {
     "--retention-days",
     "--min-free-mb",
     "--ref",
-    // **带值的旗标必须登记在此**（评审发现）：`positionals()` 靠这份清单决定
+    // **带值的旗标必须登记在此**：`positionals()` 靠这份清单决定
     // "是否跳过下一个 token"，漏登记会让旗标的**值**被当成位置参数。
     // 实测 `backup restore --restore-env /tmp/custom.env snap.nojbackup`
     // 会把 `/tmp/custom.env` 当成快照路径，报"只支持 .nojbackup 单文件快照"。
