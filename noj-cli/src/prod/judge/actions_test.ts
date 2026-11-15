@@ -95,7 +95,7 @@ Deno.test("T26 门禁: judge 必须可从 CLI 到达（命令注册表 + 分发�
       names.join(", ")
     }`,
   );
-  const { PRODUCTION_COMMANDS } = await import("../../production.ts");
+  const { PRODUCTION_COMMANDS } = await import("../../commands.ts");
   assert(
     PRODUCTION_COMMANDS.has("judge"),
     "judge 必须是生产命令（否则不会被分发到生产层）",

@@ -1,7 +1,7 @@
 // 生产命令分发：安装目录定位、install/check/status/… 原生实现分派、backup/judge 子命令与 drill。
 
 import { join, resolve } from "@std/path";
-import { findProductionDir, ProductionDirError } from "../production.ts";
+import { findProductionDir } from "../prod/install-dir.ts";
 import {
   judgeCheck,
   judgeInstall,
@@ -44,7 +44,7 @@ import { readEnvValues } from "../prod/drill/plan.ts";
 import { createLocalRedis } from "../prod/judge/config.ts";
 import { PROD_ENV_FILE } from "../prod/compose.ts";
 import { realRunner } from "../runtime/command.ts";
-import { type BackupArgs, parseBackupArgs } from "../backup-args.ts";
+import { type BackupArgs, parseBackupArgs } from "./backup-args.ts";
 import type { CommandContext } from "./context.ts";
 import { formatBytes } from "./args.ts";
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, wantsHelp } from "./guards.ts";
@@ -183,16 +183,11 @@ export async function dispatchProduction(
     );
   }
   const parsed = parseProdArgs(args);
-  let dir: string;
-  try {
-    // install 和独立 judge 允许首次安装时指定空目录。
-    const allowsFreshDir = command === "install" || command === "judge";
-    dir = allowsFreshDir && parsed.dir !== undefined
-      ? resolve(ctx.cwd, parsed.dir)
-      : await findProductionDir(parsed.dir, ctx.cwd);
-  } catch (e) {
-    throw new ProductionDirError((e as Error).message);
-  }
+  // install 和独立 judge 允许首次安装时指定空目录。
+  const allowsFreshDir = command === "install" || command === "judge";
+  const dir = allowsFreshDir && parsed.dir !== undefined
+    ? resolve(ctx.cwd, parsed.dir)
+    : await findProductionDir(parsed.dir, ctx.cwd);
   const rest = parsed.rest;
   const json = hasJson(rest);
   // 人类结论统一走 stderr 或 stdout：`--json` 时走 stderr，保证 stdout 干净。

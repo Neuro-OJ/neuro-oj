@@ -89,7 +89,7 @@
  *    {@link seedEnvFile} 绝不覆盖已存在的 `.env.prod`（对照 bash
  *    `initialize_env` :600-615 的 `[[ -e "$ENV_FILE" ]]` 早退）。T5 的
  *    `PRODUCTION_MARKERS`（compose + env 两件套）不再是 install 的判定依据，
- *    它只由 `production.ts` 的 profile 探测消费。资产名沿用 T9 的
+ *    它只用于定位已安装目录（`prod/install-dir.ts`）。资产名沿用 T9 的
  *    `RELEASE_FILES`（各带 `.sha256`）。
  * 2. **T11**：调用顺序 **先 `judgeEnabledError` → 再 `checkRequiredValues`
  *    （内部即 `validateEnv`）**；judge 未设置/空串 = 启用。口令回填**仅由进程

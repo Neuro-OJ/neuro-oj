@@ -67,7 +67,7 @@ import type {
   DrainLifecycle,
   DrainResult,
 } from "./lifecycle/drain.ts";
-import { PRODUCTION_MARKERS } from "../profile.ts";
+import { PRODUCTION_MARKERS } from "./install-dir.ts";
 
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
 const REF = "v0.9.5";

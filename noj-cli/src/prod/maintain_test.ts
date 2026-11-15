@@ -11,9 +11,9 @@ import {
 /** 造一个 fake dispatch 依赖：记录 run 收到的容器执行选项。 */
 function makeDeps(): {
   deps: MaintainDispatchDeps;
-  runs: import("../container_run.ts").RunContainerOptions[];
+  runs: import("./tier3.ts").RunContainerOptions[];
 } {
-  const runs: import("../container_run.ts").RunContainerOptions[] = [];
+  const runs: import("./tier3.ts").RunContainerOptions[] = [];
   return {
     runs,
     deps: {

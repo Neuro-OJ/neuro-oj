@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
-import { findProductionDir } from "./production.ts";
+import { findProductionDir } from "./install-dir.ts";
 
 Deno.test("生产目录支持显式路径、祖先目录及 PATH 软链接；错误目录不回退", async () => {
   const root = await Deno.makeTempDir();

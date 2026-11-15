@@ -1,7 +1,11 @@
 // 帮助文本渲染：顶层帮助、drill 专项帮助与生产命令帮助。
 
-import { renderCommandList } from "../commands.ts";
-import { renderCommandHelp } from "../help.ts";
+import { COMMANDS, renderCommandList } from "../commands.ts";
+
+/** 生成某个子命令的用法文本（供 `<cmd> --help` 使用）。 */
+export function renderCommandHelp(usage: string, body: string[]): string {
+  return [`用法: ${usage}`, "", ...body, ""].join("\n");
+}
 
 /**
  * 生成顶层帮助文本（唯一事实源见 {@link renderCommandList}）。
@@ -60,22 +64,21 @@ export function renderDrillHelp(): string {
 
 /** 生产命令的 CLI 侧帮助（不转发给底层 bash 脚本，#517 E12）。 */
 export function renderProductionCommandHelp(command: string): string {
-  const summaries: Record<string, string> = {
-    install: "生产安装（写入 .env.prod 并启动 Docker Compose 栈）",
-    check: "生产环境检测（Linux/Docker/Compose/磁盘/端口）",
-    start: "启动生产服务",
-    stop: "停止生产服务",
-    restart: "重启生产服务",
-    status: "查看生产服务状态",
-    logs: "查看生产服务日志",
-    update: "同步部署文件、备份并升级生产服务（中断后用 --recover）",
-    upgrade: "update 的别名",
-    backup: "生产备份；子命令 create/verify/restore/drill",
-    verify: "校验生产配置与镜像签名",
-    config: "校验生产配置（不校验镜像签名）",
-    uninstall: "卸载生产服务；--all 删除全部数据，需确认",
-    judge: "独立 Judge Worker 部署（install-env/install/check/start/stop/…）",
-  };
+  // 摘要与子命令取自命令表（唯一事实源），不再另维护一份。
+  const spec = COMMANDS.find((c) =>
+    c.name === command || (c.aliases?.includes(command) ?? false)
+  );
+  const head = [spec?.summary ?? "生产命令"];
+  if (spec !== undefined && spec.name !== command) {
+    head.push(`（${command} 是 ${spec.name} 的别名）`);
+  }
+  const subs = spec?.subcommands ?? [];
+  const width = Math.max(0, ...subs.map((sub) => sub.name.length));
+  const subLines = subs.length === 0 ? [] : [
+    "",
+    "子命令:",
+    ...subs.map((sub) => `  ${sub.name.padEnd(width)}  ${sub.summary}`),
+  ];
   // `judge` 的必需旗标必须出现在 help 里：文档给的一行命令此前不可执行
   // （评审发现——`judge install --dir X` 只会报"首装必须提供 NOJ_VERSION"，
   // 而 `--version`/`--redis-url`/`--socket-path` 在任何 help 中都不出现）。
@@ -104,13 +107,13 @@ export function renderProductionCommandHelp(command: string): string {
     ]
     : [];
   return renderCommandHelp(`noj-cli ${command} [选项]`, [
-    summaries[command] ?? "生产命令",
+    ...head,
+    ...subLines,
     "",
     "说明:",
     "  该命令需要完整的生产安装目录（含 docker-compose.prod.yml 与",
     "  .env.prod）。使用 --dir <path> 指定，或在安装目录内执行。",
     "  `judge` 允许空/新建目录（独立节点不运行 noj-core/noj-ui）。",
-    "  --help 由 noj-cli 自己回答，不会转发给底层脚本。",
     ...judgeFlags,
     ...backupFlags,
   ]);

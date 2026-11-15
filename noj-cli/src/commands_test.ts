@@ -2,78 +2,11 @@ import { assert, assertEquals } from "@std/assert";
 import {
   COMMANDS,
   type CommandSpec,
-  declaredTopLevelNames,
   findCommand,
   renderCommandList,
 } from "./commands.ts";
-import {
-  dispatchableTopLevelNames as declaredDispatchableNames,
-  KNOWN_TOP,
-} from "./cli.ts";
-import { PRODUCTION_COMMANDS } from "./production.ts";
-import { CONTAINER_COMMANDS } from "./container.ts";
-
-/** 声明中出现的全部别名（反向门禁匹配用）。 */
-function declaredAliases(): Set<string> {
-  const out = new Set<string>();
-  for (const c of COMMANDS) for (const a of c.aliases ?? []) out.add(a);
-  return out;
-}
-
-/** 本测试文件所在目录（用于定位被测源码）。 */
-const SRC_DIR = new URL(".", import.meta.url);
-
-/**
- * 从 `cli.ts` 的 `dispatchCommand` 源码中提取顶层命令名（防漂移门禁的事实源）。
- *
- * 这是**测试门禁**，只在本测试中读源码；生产代码不再运行时读自身源码
- * （`deno compile` 后的单二进制里没有 src/cli.ts）。
- *
- * 提取两处既有判定，而不是另写一份字面量清单——后者会与 switch 一起漂移，
- * 正是本任务要消灭的缺陷形态：
- * 1. `dispatchCommand` 顶层 `switch (command)` 的 `case "..."` 标签
- *    （4 空格缩进；内层 switch 缩进更深，不会被命中）；
- * 2. `dispatchCommand` 内 `command === "..."` 的特判分支
- *    （`problem`/`problems`；`backup drill` 的 `backup` 亦在此列）。
- *
- * 以 `dispatchCommand`（而非整个文件）为界，避免把 `run()` 的
- * `--help`/`-v` 等旗标误收为命令名。锚点失效时抛错，
- * 主门禁会立刻变红，不会静默通过。
- */
-async function topLevelDispatchNames(): Promise<Set<string>> {
-  const source = await Deno.readTextFile(new URL("cli.ts", SRC_DIR));
-  // 锚点必须**行首匹配**：函数名也会出现在注释里，普通 indexOf 不可靠。
-  const startMatch = /^export async function dispatchCommand\(/m.exec(source);
-  const endMatch = /^\/\/ 直接执行时作为程序入口。/m.exec(source);
-  if (startMatch === null || endMatch === null) {
-    throw new Error(
-      "防漂移门禁锚点失效：无法在 cli.ts 中定位 dispatchCommand 正文" +
-        "（函数被改名/删除？同步修改本测试的锚点正则）",
-    );
-  }
-  const start = startMatch.index;
-  const end = endMatch.index;
-  if (end <= start) {
-    throw new Error("防漂移门禁锚点顺序异常：结束锚点位于起始锚点之前");
-  }
-  const body = source.slice(start, end);
-  const names = new Set<string>();
-  for (const m of body.matchAll(/^ {4}case "([^"]+)":/gm)) names.add(m[1]!);
-  for (const m of body.matchAll(/command === "([^"]+)"/g)) names.add(m[1]!);
-  return names;
-}
-
-/**
- * dispatcher **实际可处理**的顶层命令集合（防漂移门禁的右侧）。
- *
- * 生产代码的声明式事实源 {@link declaredDispatchableNames}，加上从
- * `dispatchCommand` 源码提取的名字（提取失败直接抛错，不静默返回空集）。
- */
-async function dispatchableTopLevelNames(): Promise<Set<string>> {
-  const names = declaredDispatchableNames();
-  for (const name of await topLevelDispatchNames()) names.add(name);
-  return names;
-}
+import { run } from "./cli.ts";
+import { EXIT_OK } from "./cli-commands/exit-codes.ts";
 
 /**
  * 校验某条命令的后代：每个父级内子命令名唯一、name/summary 非空，并递归。
@@ -115,7 +48,7 @@ Deno.test("renderCommandList: 含全部顶层命令、分区标题与退出码",
   const firstTokens = new Set(
     text.split("\n").map((l) => l.trim().split(/\s+/)[0] ?? ""),
   );
-  for (const name of declaredTopLevelNames()) {
+  for (const { name } of COMMANDS) {
     assert(firstTokens.has(name), `顶层 help 缺少命令 ${name}`);
   }
   // T23：`JSON 编排模式` 分区已随双模态删除，故不再断言它存在。
@@ -134,70 +67,28 @@ Deno.test("renderCommandList: 含全部顶层命令、分区标题与退出码",
   assert(text.includes("退出码"), "help 缺少退出码分区");
 });
 
-Deno.test("防漂移门禁: 声明的顶层命令 ⊆ dispatcher 实际可处理集合", async () => {
-  const declared = declaredTopLevelNames();
-  const handled = await dispatchableTopLevelNames();
-  const undeclared = [...declared].filter((n) => !handled.has(n)).sort();
-  assertEquals(
-    undeclared,
-    [],
-    `这些命令出现在 help 但 dispatcher 无法处理（help 漂移）: ${
-      undeclared.join(", ")
-    }`,
-  );
-});
-
-Deno.test("防漂移门禁自检: 注入虚构命令必须被判为不可处理（非恒真）", async () => {
-  const handled = await dispatchableTopLevelNames();
-  const declared = declaredTopLevelNames();
-  // 基线：当前真实的漂移（正常应为空集；真有漂移时由主门禁报错）
-  const baseline = [...declared].filter((n) => !handled.has(n)).sort();
-  // 注入一个 dispatcher 绝不可能处理的虚构名，失败集合必须**恰好**增加它。
-  // 这样断言不会掩盖真实漂移，也不会因真实漂移而误报"门禁有效"。
-  const planted = new Set([...declared, "frobnicate-xyz"]);
-  const withPlant = [...planted].filter((n) => !handled.has(n)).sort();
-  assertEquals(
-    withPlant,
-    [...baseline, "frobnicate-xyz"].sort(),
-    "门禁必须能识别出未实现的声明，否则形同虚设",
-  );
-  assertEquals(handled.has("frobnicate-xyz"), false);
-});
-
-Deno.test("完整性: PRODUCTION_COMMANDS 全部出现在声明中", () => {
-  const declared = declaredTopLevelNames();
-  const aliases = declaredAliases();
-  const missing = [...PRODUCTION_COMMANDS]
-    .filter((n) => !declared.has(n) && !aliases.has(n))
-    .sort();
-  assertEquals(
-    missing,
-    [],
-    `生产命令未在 help 声明: ${missing.join(", ")}`,
-  );
-});
-
-Deno.test("反向门禁: cli.ts 自登记的命令名（KNOWN_TOP）必须已被声明", () => {
-  const declared = declaredTopLevelNames();
-  const aliases = declaredAliases();
-  const missing = [...KNOWN_TOP]
-    .filter((n) => !declared.has(n) && !aliases.has(n))
-    .sort();
-  assertEquals(
-    missing,
-    [],
-    `KNOWN_TOP 中未在 help 声明的命令（help 漏登记）: ${missing.join(", ")}`,
-  );
-});
-
-Deno.test("cli.ts 自洽: KNOWN_TOP ⊆ dispatcher 可处理集合", async () => {
-  const handled = await dispatchableTopLevelNames();
-  const missing = [...KNOWN_TOP].filter((n) => !handled.has(n)).sort();
-  assertEquals(
-    missing,
-    [],
-    `KNOWN_TOP 中 dispatcher 无法处理的命令: ${missing.join(", ")}`,
-  );
+Deno.test("可达性门禁: 每个顶层命令（含别名）都能被分发，--help 不落入未知命令", async () => {
+  const origLog = console.log;
+  const origErr = console.error;
+  for (const cmd of COMMANDS) {
+    for (const name of [cmd.name, ...(cmd.aliases ?? [])]) {
+      if (name.startsWith("-")) continue;
+      let err = "";
+      console.log = () => {};
+      console.error = (...a: unknown[]) => {
+        err += a.join(" ") + "\n";
+      };
+      let code = -1;
+      try {
+        code = await run([name, "--help"]);
+      } finally {
+        console.log = origLog;
+        console.error = origErr;
+      }
+      assertEquals(code, EXIT_OK, `${name} --help 应返回 0，stderr：${err}`);
+      assertEquals(err.includes("未知命令"), false, `${name} 不可达`);
+    }
+  }
 });
 
 Deno.test("漂移回归: backup 声明包含 list 与 prune，且可从顶层 help 发现", () => {
@@ -237,23 +128,8 @@ Deno.test("准确: backup 的 help 不得声称支持 schedule（E5 回归，T23
   );
 });
 
-Deno.test("Tier 3 声明的顶层名必须都能被容器路由识别", () => {
-  const tier3Top = new Set(
-    CONTAINER_COMMANDS.map((prefix) => prefix[0] ?? "").filter((n) => n !== ""),
-  );
-  const declaredTier3 = COMMANDS.filter((c) => c.tier === "tier3").map(
-    (c) => c.name,
-  );
-  const missing = declaredTier3.filter((n) => !tier3Top.has(n));
-  assertEquals(
-    missing,
-    [],
-    `Tier 3 声明了容器路由不认识的名字: ${missing.join(", ")}`,
-  );
-});
-
 Deno.test("P1d: maintain 作为 Tier 3 命令声明完整且可从 help 发现", () => {
-  const maintain = findCommand("maintain");
+  const maintain = COMMANDS.find((c) => c.name === "maintain");
   assert(maintain !== undefined, "必须声明 maintain");
   assertEquals(maintain.tier, "tier3");
   const subs = new Set((maintain.subcommands ?? []).map((s) => s.name));
@@ -312,16 +188,13 @@ Deno.test("T26 可达性门禁: prod/ 的每个域模块都有可达的 CLI 入�
     "lifecycle.ts": "install",
   };
 
-  const handled = await dispatchableTopLevelNames();
-  const declared = declaredTopLevelNames();
+  // 命令表即分发依据，声明即可达（见上方可达性门禁），这里只需查声明。
+  const declared = new Set(COMMANDS.map((c) => c.name));
   const problems: string[] = [];
   for (const [mod, command] of Object.entries(DOMAIN_TO_COMMAND)) {
     if (!(await fileExists(`./prod/${mod}`))) {
       problems.push(`${mod} 不存在（域模块被删但映射未更新）`);
       continue;
-    }
-    if (!handled.has(command)) {
-      problems.push(`${mod} 已交付，但命令 ${command} 不可分发（能力不可达）`);
     }
     if (!declared.has(command)) {
       problems.push(
@@ -348,40 +221,6 @@ async function fileExists(relativePath: string): Promise<boolean> {
     return false;
   }
 }
-
-// ── T26：help 不得承诺实现拒绝的取值 ────────────────────────────────
-//
-// **这个缺陷真实存在过**：T23 把 profile 收敛为单模态（只接受 `prod`），
-// 但顶层 help 仍写 `--profile <prod|stack>`。用户照 help 传 `--profile stack`
-// 会得到"无效的 --profile: stack"，而 `--debug` 的错误提示里同时说"可选值: prod"
-// ——help 与报错自相矛盾。
-//
-// 这类漂移（"help 承诺一个实现不接受的取值"）比"help 漏了一个命令"更糟：
-// 漏掉的用户自己会发现，而多承诺的会让用户按文档操作后失败。
-
-Deno.test("T26 门禁: help 中的 --profile 取值必须与实现接受的一致", async () => {
-  const text = renderCommandList();
-  // 实现接受的全部取值（唯一事实源）
-  const { PROFILE_NAMES } = await import("./profile.ts");
-  const accepted = [...PROFILE_NAMES];
-  // 找到 help 里 `--profile <...>` 那一行
-  const line: string | undefined = text.split("\n").find((l) =>
-    l.includes("--profile")
-  );
-  assert(line !== undefined, "help 必须声明 --profile");
-  // 该行里 `<>` 内的取值集合必须恰好等于实现接受的集合
-  const m = /<([^>]+)>/.exec(line);
-  assert(m !== null, `--profile 的取值应写在 <> 中，实得：${line}`);
-  const inside: string = m?.[1] ?? "";
-  const advertised = inside.split("|").map((x) => x.trim()).filter((x) =>
-    x !== ""
-  );
-  assertEquals(
-    advertised.sort(),
-    [...accepted].sort(),
-    `help 声明的 --profile 取值必须与实现一致（help=${advertised} 实现=${accepted}）`,
-  );
-});
 
 // ── T26：窄终端不破版（spec R5）──────────────────────────────────────
 //

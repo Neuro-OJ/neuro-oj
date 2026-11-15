@@ -1,44 +1,35 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
+import { dispatchCommand, run } from "./cli.ts";
 import {
-  assertCommandAllowedInProfile,
-  detectProfileOrNull,
-  dispatchCommand,
-  dispatchContainer,
   EXIT_FAILURE,
   EXIT_OK,
   EXIT_USAGE,
-  extractProfile,
-  firstPositional,
+} from "./cli-commands/exit-codes.ts";
+import {
   formatBytes,
-  parseBackupArgs,
   parseInstallDirArg,
-  parsePort,
-  printHelp,
-  run,
   stripCliOwnedFlags,
-} from "./cli.ts";
-import { parseDirArg } from "./util/args.ts";
-import type { CommandContext } from "./cli.ts";
-import type { ProfileName } from "./profile.ts";
-import { parseContainerCommand } from "./container.ts";
+} from "./cli-commands/args.ts";
+import { parseBackupArgs } from "./cli-commands/backup-args.ts";
+import {
+  dispatchContainer,
+  parseContainerCommand,
+} from "./cli-commands/container.ts";
+import type { CommandContext } from "./cli-commands/context.ts";
+import { printHelp } from "./cli-commands/help.ts";
 import { parseProblemArgs } from "./problem/command.ts";
 import { UsageError } from "./util/args.ts";
 
-// T23：CommandContext 只剩 cwd（deployDir 随 JSON 模态删除）
 const ctx: CommandContext = { cwd: "/tmp" };
 
-/** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
+/** 造一个满足生产安装目录特征文件的临时目录。 */
 function makeProductionDir(): string {
   const dir = Deno.makeTempDirSync({ prefix: "noj-prod-" });
   Deno.writeTextFileSync(join(dir, ".env.prod"), "");
   Deno.writeTextFileSync(join(dir, "docker-compose.prod.yml"), "");
   return dir;
 }
-
-Deno.test("version stub 返回 0", async () => {
-  assertEquals(await dispatchCommand("version", [], ctx), EXIT_OK);
-});
 
 Deno.test("未知命令返回用法错误 2（E9）", async () => {
   assertEquals(await dispatchCommand("bogus", [], ctx), EXIT_USAGE);
@@ -90,72 +81,6 @@ Deno.test("E12: install --help 由 CLI 回答，不出现 deploy.sh 文案", asy
   assertEquals(out.includes("deploy.sh install"), false);
 });
 
-Deno.test("评审: 错误文案不得出现已删除的模式名（stack）", async () => {
-  // T26 的 help 门禁只检查 help 文本，**不检查错误信息**，于是
-  // `--profile` 缺值的报错仍写着"（prod 或 stack）"——唯一残留的
-  // "已删模式"用户可见文案。本门禁补上错误文本这一面。
-  const originalErr = console.error;
-  let err = "";
-  console.error = (...a: unknown[]) => {
-    err += a.join(" ") + "\n";
-  };
-  try {
-    await run(["status", "--profile"]);
-  } finally {
-    console.error = originalErr;
-  }
-  assertEquals(
-    err.includes("stack"),
-    false,
-    `错误信息不得再提已删除的 stack 模式，实得：${err}`,
-  );
-});
-
-// ── T26 发现：同一次目录定位失败必须给出同一个退出码 ──────────────
-//
-// 这个用例来自验收取证（T26）：编译产物实测发现
-//   `status --dir /nonexistent`               → 2
-//   `status --profile prod --dir /nonexistent` → 1
-// **同一次失败、同一句错误文案，退出码却不同**。
-//
-// 根因：探测（`detectProfileOrNull`）先于生产分发运行，它对"目录不是生产安装目录"
-// 抛 `UsageError`（2）；而显式 `--profile prod` 跳过探测，改由 `findProductionDir`
-// 抛 `ProductionDirError`（1）。调用方无法用退出码区分"我参数写错了"与"目录不对"，
-// 而计划与 `production.ts` 的契约都写明**目录定位失败 = 1（运行失败）**：
-// 目录不存在是环境问题，不是用法问题。
-//
-// 契约：无论是否显式给 `--profile`，目录定位失败的退出码必须一致。
-
-Deno.test("T26: 目录定位失败的退出码与 --profile 是否显式无关", async () => {
-  const originalErr = console.error;
-  const capture = async (argv: string[]): Promise<number> => {
-    console.error = () => {};
-    try {
-      return await run(argv);
-    } finally {
-      console.error = originalErr;
-    }
-  };
-  const implicit = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
-  const explicit = await capture([
-    "--profile",
-    "prod",
-    "status",
-    "--dir",
-    "/nonexistent-noj-xyz",
-  ]);
-  assertEquals(
-    implicit,
-    explicit,
-    `目录定位失败的退出码必须一致：隐式=${implicit} 显式=${explicit}`,
-  );
-  assertEquals(
-    implicit,
-    EXIT_FAILURE,
-    "目录不存在属运行失败（1），非用法错误（2）",
-  );
-});
-
 Deno.test("T26: 生产命令在缺少安装目录时报运行失败（1），并给出可操作提示", async () => {
   const originalErr = console.error;
   let err = "";
@@ -180,26 +105,18 @@ Deno.test("T26: 生产命令在缺少安装目录时报运行失败（1），并
 // ── #517 E3/E4：异常兜底与可读错误 ────────────────────────────────
 
 Deno.test("E3: --debug 下用法错误仍只给可读文案（不打印栈）", async () => {
-  // T23：原用例用 `doctor --port abc`，但 doctor 已随双模态移除。
-  // 改用仍在的 `--profile stack` 触发 UsageError——它同样是"可预期错误"，
-  // 因此即便 --debug 也只应给可读文案（栈只留给未预期错误，见下一例）。
+  // 用法错误是可预期错误，即便 --debug 也只给可读文案（栈只留给未预期错误）。
   const originalErr = console.error;
   let err = "";
   console.error = (...a: unknown[]) => {
     err += a.join(" ") + "\n";
   };
   try {
-    assertEquals(
-      await run(["status", "--profile", "stack", "--debug"]),
-      EXIT_USAGE,
-    );
+    assertEquals(await run(["status", "--dir", "--debug"]), EXIT_USAGE);
   } finally {
     console.error = originalErr;
   }
-  // 提示必须说明可接受的值（原先断言"单模态"字样，但更早的 validateProfileName
-  // 会先以"无效的 --profile: stack；可选值: prod"拒绝——两者都是可读文案，
-  // 断言措辞会绑定实现细节，故断言**实质**：说明了可选值、且无栈帧）。
-  assertEquals(err.includes("可选值"), true, err);
+  assertEquals(err.includes("--dir"), true, err);
   assertEquals(err.includes("    at "), false, "用法错误不该打印栈");
 });
 
@@ -217,11 +134,8 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
     }
     return err;
   };
-  // 显式 --profile prod 跳过探测（探测先于生产驱动运行），
-  // 再让 --dir 指向不存在路径 → findProductionDir 抛 ProductionDirError（退出码 1）。
+  // --dir 指向不存在路径 → findProductionDir 抛 ProductionDirError（退出码 1）。
   const plain = await capture([
-    "--profile",
-    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
@@ -230,8 +144,6 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
   assertEquals(plain.includes("    at "), false, "默认不得打印栈帧");
 
   const debug = await capture([
-    "--profile",
-    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
@@ -258,8 +170,6 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
     return { code, err };
   };
   const base = [
-    "--profile",
-    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
@@ -280,11 +190,10 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
   // 后置 --debug 同样生效
   const postDebug = await capture([...base, "--debug"]);
   assertEquals(postDebug.err.includes("    at "), true);
-  // 普通命令语义不受影响（T23：原先用 doctor --port abc，doctor 已移除，
-  // 改用仍在的 --profile stack 触发同一类可预期错误）。
-  const plain = await capture(["status", "--profile", "stack", "--debug"]);
+  // 普通命令语义不受影响：用法错误仍是 2
+  const plain = await capture(["status", "--dir", "--debug"]);
   assertEquals(plain.code, EXIT_USAGE);
-  assertEquals(plain.err.includes("可选值"), true);
+  assertEquals(plain.err.includes("--dir"), true);
 });
 
 // ── #517 E7/E8：可发现性 ─────────────────────────────────────────
@@ -324,24 +233,6 @@ Deno.test("E8: 拼写错误给出建议", async () => {
 });
 
 // ── 解析函数 ─────────────────────────────────────────────────────
-
-Deno.test("parsePort: 缺省 8080", () => {
-  assertEquals(parsePort([]), 8080);
-});
-
-Deno.test("parsePort: 解析 --port 8081", () => {
-  assertEquals(parsePort(["--port", "8081"]), 8081);
-});
-
-Deno.test("parsePort: 非法端口抛错", () => {
-  let threw = false;
-  try {
-    parsePort(["--port", "abc"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
-});
 
 Deno.test("E6: parseBackupArgs 支持 --dir= 且缺值报错", () => {
   assertEquals(parseBackupArgs(["create", "--dir=/opt"]).dir, "/opt");
@@ -436,33 +327,7 @@ Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {
   }
   assertEquals(threw, true);
 });
-// ── #518：profile 与 Tier 3 ────────────────────────────────────────
-
-Deno.test("前向兼容：--profile 剥离后子命令不受影响", () => {
-  const r = extractProfile(["--profile", "stack", "deploy", "status"]);
-  assertEquals(r.profile, "stack");
-  assertEquals(r.rest, ["deploy", "status"]);
-  assertEquals(extractProfile(["--profile=prod", "status"]).profile, "prod");
-  assertEquals(extractProfile(["status"]).profile, undefined);
-});
-
-Deno.test("extractProfile: 缺值报用法错误", () => {
-  let threw = false;
-  try {
-    extractProfile(["--profile"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
-});
-
-Deno.test("firstPositional: 跳过选项及其值", () => {
-  assertEquals(firstPositional(["--dir", "/opt", "status"]), "status");
-  assertEquals(firstPositional(["--follow", "logs"]), "logs");
-  assertEquals(firstPositional(["--dir=/opt", "backup"]), "backup");
-  assertEquals(firstPositional([]), "");
-  assertEquals(firstPositional(["--dir", "/opt"]), "");
-});
+// ── Tier 3 ──────────────────────────────────────────────────────
 
 Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器侧 --dir", () => {
   // 评审 M1：CLI 自身的安装目录选项是 --install-dir；
@@ -489,91 +354,21 @@ Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器
   );
 });
 
-// ── 评审 P1：Tier 3 的 --install-dir 参与 profile 探测，--dir 只透传 ──
-
-Deno.test("评审 P1: Tier 3 从任意目录用 --install-dir 可判定 profile", () => {
-  // 修复前：探测只读 parseDirArg(topRest)，完全忽略 --install-dir，
-  // 用户按 help 在任意目录执行 noj-cli db migrate --install-dir /opt/neuro-oj
-  // 会先收到「未能识别 profile」，与 help 宣称的支持自相矛盾。
-  const prod = makeProductionDir();
-  const cwd = Deno.cwd();
-  try {
-    Deno.chdir(Deno.makeTempDirSync());
-    assertEquals(
-      detectProfileOrNull(parseInstallDirArg(["--install-dir", prod])),
-      "prod",
-    );
-  } finally {
-    Deno.chdir(cwd);
-    Deno.removeSync(prod, { recursive: true });
-  }
-});
-
-Deno.test("评审 P1: 容器侧 --dir 不得被宿主机 profile 探测消费", () => {
-  // 修复前：problems import --dir <包目录> 的容器侧参数被当成宿主机探测起点；
-  // 当题目包位于生产目录之外时，即使 cwd 已是生产安装目录也会报 profile 未识别。
-  const prod = makeProductionDir();
-  const pkg = Deno.makeTempDirSync({ prefix: "noj-pkg-" });
-  const cwd = Deno.cwd();
-  try {
-    Deno.chdir(prod);
-    const container = parseContainerCommand([
-      "problems",
-      "import",
-      "--dir",
-      pkg,
-    ]);
-    assertEquals(container.matched, true);
-    const argv = ["problems", "import", "--dir", pkg];
-    const start = container.matched
-      ? parseInstallDirArg(argv)
-      : parseDirArg(argv);
-    // --install-dir 未给出 → 回落到 cwd（生产目录），不得使用容器侧 --dir
-    assertEquals(start, undefined);
-    assertEquals(detectProfileOrNull(start), "prod");
-  } finally {
-    Deno.chdir(cwd);
-    Deno.removeSync(prod, { recursive: true });
-    Deno.removeSync(pkg, { recursive: true });
-  }
-});
-
-Deno.test("评审 B2: --profile 缺值走统一兜底（用法错误 2，无栈帧）", async () => {
+Deno.test("评审 B2: 旗标缺值走统一兜底（用法错误 2，无栈帧）", async () => {
   const orig = console.error;
   let err = "";
   console.error = (...a: unknown[]) => {
     err += a.join(" ") + "\n";
   };
   try {
-    assertEquals(await run(["--profile"]), EXIT_USAGE);
+    assertEquals(await run(["status", "--dir"]), EXIT_USAGE);
   } finally {
     console.error = orig;
   }
-  assertEquals(err.includes("--profile"), true);
+  assertEquals(err.includes("--dir"), true);
   assertEquals(err.includes("Uncaught"), false, "不得出现未捕获异常");
   assertEquals(err.includes("    at "), false, "不得打印栈帧");
   assertEquals(err.includes("file://"), false, "不得泄露源码路径");
-});
-
-Deno.test("T23: profile 门禁只剩一条规则（拒绝已删除的 stack）", () => {
-  // `--profile prod` 放行：它是显式确认唯一模式
-  assertCommandAllowedInProfile("prod", "status");
-  assertCommandAllowedInProfile("prod", "backup");
-  // `--profile stack` 拒绝：模式已删除，静默忽略会让用户以为自己在用某个模式。
-  // 注意类型系统现在已经**不接受** "stack"（ProfileName 只剩 "prod"），
-  // 故这里用 as 断言刻意传非法值——那正是用户从旧文档/旧脚本里可能传来的输入。
-  let message = "";
-  try {
-    assertCommandAllowedInProfile("stack" as ProfileName, "status");
-  } catch (e) {
-    message = (e as Error).message;
-  }
-  assertEquals(message.includes("单模态"), true, message);
-  assertEquals(
-    message.includes("noj-deploy.json"),
-    true,
-    "提示应说明旧配置可删",
-  );
 });
 
 Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {

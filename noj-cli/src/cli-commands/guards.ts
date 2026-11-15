@@ -1,12 +1,10 @@
 // 轻量判定与错误输出：退出码常量、help/debug 判定、全局旗标剥离与错误映射。
 
-import { ProductionDirError } from "../production.ts";
+import { ProductionDirError } from "../prod/install-dir.ts";
+import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "./exit-codes.ts";
 import { UsageError } from "../util/args.ts";
 
-/** 退出码语义（#517 E9）。 */
-export const EXIT_OK = 0;
-export const EXIT_FAILURE = 1;
-export const EXIT_USAGE = 2;
+export { EXIT_FAILURE, EXIT_OK, EXIT_USAGE };
 
 /** 判断参数中是否请求帮助（`--help` 或 `-h`）。 */
 export function wantsHelp(args: string[]): boolean {

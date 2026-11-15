@@ -20,14 +20,14 @@
  *    `check_uninstall_dependencies`）与 `--all` 的安装目录守卫
  *    （`remove_install_directory`/`validate_install_directory`）也进本模块——
  *    它们与 `prepareAndCheck` 同属「命令变更任何东西之前必须通过」的判定。
- *    安装目录特征文件消费 `profile.ts` 的 {@link PRODUCTION_MARKERS} 单一事实源，
+ *    安装目录特征文件消费 `install-dir.ts` 的 {@link PRODUCTION_MARKERS} 单一事实源，
  *    不新增第二份标记清单（T5/T12 carry-forward）。
  *
  * 本模块不持有任何模块级可变状态（AGENTS.md §8.2 多副本约束）：只有常量与纯函数。
  */
 
 import { join } from "@std/path";
-import { PRODUCTION_MARKERS } from "../../profile.ts";
+import { PRODUCTION_MARKERS } from "../install-dir.ts";
 import {
   checkEnvFileMode,
   judgeEnabledError,

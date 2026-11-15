@@ -16,8 +16,8 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
-import type { RunContainerOptions } from "../container_run.ts";
-import { runInContainer } from "../container_run.ts";
+import type { RunContainerOptions } from "./tier3.ts";
+import { runInContainer } from "./tier3.ts";
 import { UsageError } from "../util/args.ts";
 
 /** 受支持的维护子命令（与容器内 CLI 的子命令一致）。 */
@@ -100,7 +100,7 @@ export function renderMaintainHelp(): string {
   ].join("\n");
 }
 
-/** 容器路由匹配结果的结构子集（`container.ts:ContainerCommandMatch`）。 */
+/** 容器路由匹配结果的结构子集（`cli-commands/container.ts:ContainerCommandMatch`）。 */
 export interface MaintainRouteMatch {
   /** compose service 名（`core`）。 */
   service: string;
