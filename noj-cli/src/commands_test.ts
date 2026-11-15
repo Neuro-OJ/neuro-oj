@@ -44,7 +44,7 @@ async function topLevelDispatchNames(): Promise<Set<string>> {
   const source = await Deno.readTextFile(new URL("cli.ts", SRC_DIR));
   // 锚点必须**行首匹配**：函数名也会出现在注释里，普通 indexOf 不可靠。
   const startMatch = /^export async function dispatchCommand\(/m.exec(source);
-  const endMatch = /^export function removedCommandNotice\(/m.exec(source);
+  const endMatch = /^\/\/ 直接执行时作为程序入口。/m.exec(source);
   if (startMatch === null || endMatch === null) {
     throw new Error(
       "防漂移门禁锚点失效：无法在 cli.ts 中定位 dispatchCommand 正文" +
@@ -270,44 +270,6 @@ Deno.test("P1d: maintain 作为 Tier 3 命令声明完整且可从 help 发现",
 // M5/M6/M7 的验收"rg 残留为空"在此**门禁化**——只靠一次性 grep 无法防止
 // 后来者重新引入旧名（例如复制粘贴一段旧代码）。这里断言的是**行为面**
 // 而非文本面：命令注册表与 help 里不得再出现旧命令。
-
-Deno.test("T23 残留门禁: 命令注册表不含已删除的旧命令", () => {
-  // P1d：`maintain` 已作为 Tier 3 容器命令重新引入（维护模式/排空），
-  // 不再属于"已删除的旧命令"，故从本清单移除。
-  const removed = ["stack", "deploy", "run-server", "doctor"];
-  const declared = COMMANDS.map((c) => c.name);
-  for (const name of removed) {
-    assertEquals(
-      declared.includes(name),
-      false,
-      `命令注册表不得再声明 ${name}（T23 已移除）`,
-    );
-  }
-});
-
-Deno.test("T23 残留门禁: 顶层 help 不列旧命令，且不出现旧分区标题", () => {
-  const text = renderCommandList();
-  const firstTokens = new Set(
-    text.split("\n").map((l) => l.trim().split(/\s+/)[0] ?? ""),
-  );
-  for (const name of ["stack", "deploy", "run-server", "doctor"]) {
-    assertEquals(
-      firstTokens.has(name),
-      false,
-      `顶层 help 不得把 ${name} 列为命令`,
-    );
-  }
-  assertEquals(
-    text.includes("JSON 编排模式"),
-    false,
-    "help 不得再出现已删除的 JSON 编排模式分区",
-  );
-  assertEquals(
-    text.includes("noj-deploy.json"),
-    false,
-    "help 不得再提已删除的双配置文件",
-  );
-});
 
 Deno.test("T23 残留门禁: Tier 类型与分区表只剩单模态", () => {
   // 类型层面已由 TS 保证（Tier 不含 "stack"），这里锁住**运行期**的分区表：

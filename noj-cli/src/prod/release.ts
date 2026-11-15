@@ -10,25 +10,12 @@
  * | `configured_version()`（:219-232） | {@link configuredVersion} |
  * | `write_config_version()`（:324-344） | {@link writeConfigVersion} / {@link stageConfigVersion} / {@link commitConfigVersion} |
  *
- * ## 与 `runtime/download.ts:resolveLatestVersion` 的关系（T9 遗留问题的裁决）
+ * ## 资产就绪过滤
  *
- * T9 已指出 `resolveLatestVersion` **只按 CLI 资产过滤**（`noj-cli-linux-amd64`
- * 与其 `.sha256`），而升级需要 compose / example 也已就绪。任务书要求二择一：
- * 「扩展 `resolveLatestVersion` 的资产集合」或「在 `prod/` 内实现等价过滤」。
- *
- * **本实现选第三种（更小改动 + 单一份规则）**：把过滤规则抽成
- * `runtime/download.ts` 的纯函数 {@link selectLatestAssetReadyRelease}
- * （稳定标签 → 非 draft → 非 prerelease → 资产齐备），**资产集合由调用方给出**。
- * 于是：
- * - `resolveLatestVersion()` 保持原语义（CLI 资产集合），init 向导与既有测试零变化；
- * - 升级路径（本模块）传**更宽的** {@link UPDATE_RELEASE_ASSETS}
- *   （CLI + compose + example 及其校验文件），因为升级要一次性换掉二进制与部署文件；
- * - 两侧**共用同一份**过滤实现，不存在"扩展后忘记同步"的漂移面。
- *
- * 选"更宽集合"而非"沿用 CLI 集合"的理由：`update` 会以目标 ref 重新拉取
- * compose/example（`--files-only` 语义），若该 ref 只有二进制而没有部署文件，
- * 同步必然失败——那正是 issue #431 想避免的"已发布但资产未就绪"版本。因此升级
- * 必须要求**它实际会用到的全部资产**都就绪。
+ * {@link selectLatestAssetReadyRelease} 要求升级会用到的**全部资产**
+ * （{@link UPDATE_RELEASE_ASSETS}：CLI + compose + example 及其校验文件）都已就绪：
+ * `update` 会以目标 ref 重新拉取 compose/example（`--files-only` 语义），若该 ref
+ * 只有二进制而没有部署文件，同步必然失败（issue #431）。
  *
  * ## 版本字符串的口径（与 bash 逐字一致）
  *
@@ -47,12 +34,44 @@ import {
   serializeEnvFile,
   writeEnvFileAtomic,
 } from "../core/env-file.ts";
-import {
-  isReleaseTag,
-  type ReleaseSummary,
-  selectLatestAssetReadyRelease,
-} from "../runtime/download.ts";
 import { type Fetcher, RELEASE_FILES } from "./bootstrap.ts";
+
+/** GitHub Release 列表条目中本模块需要的字段。 */
+interface ReleaseSummary {
+  tag_name?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+  assets?: { name?: string }[];
+}
+
+/**
+ * Release 标签格式：`v?X.Y.Z`，允许 SemVer 预发布后缀（`-rc.1` / `-beta.3` 等），
+ * 与 `prod/judge/config.ts` 的 `VERSION_RE` 一致。
+ *
+ * **稳定性不由标签后缀判定**：发布流水线先以 GitHub 预发布创建 Release，全部
+ * 校验通过后才转正（`prerelease=false`）。因此已转正的 `-rc.N` 同样可被自动选择。
+ */
+const RELEASE_TAG_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * 从 Release 列表里选出**资产就绪**的最新正式版本标签（保留原始 v 前缀）：
+ * 合法标签 → 非 draft → 非 prerelease → `assets` 含全部期望资产名。
+ * 列表顺序即优先级，命中即返回；无命中返回 `null`。
+ */
+function selectLatestAssetReadyRelease(
+  releases: readonly ReleaseSummary[],
+  assets: readonly string[],
+): string | null {
+  for (const release of releases) {
+    const tag = release.tag_name ?? "";
+    if (!RELEASE_TAG_RE.test(tag)) continue;
+    if (release.draft || release.prerelease) continue;
+    const names = new Set((release.assets ?? []).map((asset) => asset.name));
+    if (!assets.every((asset) => names.has(asset))) continue;
+    return tag;
+  }
+  return null;
+}
 
 /** 升级默认仓库（bash `NOJ_UPDATE_REPOSITORY` 的缺省值，:259）。 */
 export const DEFAULT_UPDATE_REPOSITORY = "https://github.com/Neuro-OJ/neuro-oj";
@@ -101,11 +120,10 @@ export const SINGLE_RELEASE_INVALID_HINT =
 /**
  * 校验 Release 标签格式（源自 bash `validate_release_tag`，:249-254；现允许预发布后缀）。
  *
- * 与 `runtime/download.ts` 的标签判定**同源**（{@link isReleaseTag}），
- * 不在这里再写一遍正则。返回原标签（含 `v` 前缀），便于链式使用。
+ * 返回原标签（含 `v` 前缀），便于链式使用。
  */
 export function validateReleaseTag(tag: string): string {
-  if (!isReleaseTag(tag)) throw new Error(releaseTagHint(tag));
+  if (!RELEASE_TAG_RE.test(tag)) throw new Error(releaseTagHint(tag));
   return tag;
 }
 

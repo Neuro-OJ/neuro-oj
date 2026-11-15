@@ -1,6 +1,6 @@
 // 顶层入口：全局旗标/help/version 处理、命令路由、profile 探测与容器包装。
 
-import { VERSION } from "../mod.ts";
+import { VERSION } from "../version.ts";
 import { PRODUCTION_COMMANDS } from "../production.ts";
 import { declaredTopLevelNames } from "../commands.ts";
 import { parseDirArg } from "../util/args.ts";
@@ -19,7 +19,6 @@ import {
   PROFILE_AGNOSTIC,
   validateProfileName,
 } from "./profile.ts";
-import { REMOVED_COMMANDS } from "./registry.ts";
 import { printHelp } from "./help.ts";
 import { dispatchContainer } from "./container.ts";
 import type { CommandContext } from "./context.ts";
@@ -120,22 +119,16 @@ export async function run(argv: string[]): Promise<number> {
     //
     // 因此：**生产命令跳过 profile 探测**，把目录判定完全交给生产分发。
     // 对非生产命令（Tier 3 容器、problem 等）仍照常探测。
-    // **已移除的命令也必须跳过探测**（评审发现，clean checkout 下转红）：
-    // 它们的分发路径只打印迁移提示并返回 2，与任何安装目录无关。
-    // 若照常探测，"已移除"这个纯粹的用法错误会先撞上
-    // "未能识别出生产安装目录"，用户看到的提示与真实原因无关——
-    // 而且该测试此前**只在仓根恰好存在 .env.prod 时**才通过（本地残留文件），
-    // 干净检出下必然失败（实测：685 passed / 2 failed）。
-    // **未知命令同理**：它只会走 dispatchCommand 的 default 分支打印
+    // **未知命令也必须跳过探测**：它只会走 dispatchCommand 的 default 分支打印
     // "未知命令 + 拼写建议"，与安装目录无关。若照常探测，`noj-cli instal`
     // 会先报"未能识别出生产安装目录"，把"你拼错了"这条真正有用的信息盖掉
     // （干净检出下的实测失败之一）。
     const isKnownCommand = PRODUCTION_COMMANDS.has(topCommand) ||
-      REMOVED_COMMANDS.has(topCommand) || PROFILE_AGNOSTIC.has(topCommand) ||
+      PROFILE_AGNOSTIC.has(topCommand) ||
       declaredTopLevelNames().has(topCommand) ||
       parseContainerCommand([topCommand, ...topRest]).matched;
     const skipProfileDetection = PRODUCTION_COMMANDS.has(topCommand) ||
-      REMOVED_COMMANDS.has(topCommand) || !isKnownCommand;
+      !isKnownCommand;
     const effectiveProfile = (profileAgnostic || skipProfileDetection)
       ? (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
