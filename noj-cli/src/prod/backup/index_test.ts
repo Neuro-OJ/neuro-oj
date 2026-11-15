@@ -133,7 +133,7 @@ Deno.test("planPrune: 列表按时间倒序返回，便于展示", () => {
 // 触发条件：`backup create` 的自动清理按"年龄 > 保留天数"删除，而
 // `listBackups` 对**解析不出时间戳**的名字退化成 epoch（视为极旧）→ 当场删。
 // 真实可达：(1) 同秒碰撞产物 `snapshot-<ts>-1.nojbackup`（allocateContainerPath
-// 的合法输出）；(2) 用户手工改名/拷贝的快照（bash 的 `find -mtime +N` 永不删）。
+// 的合法输出）；(2) 用户手工改名/拷贝的快照（不应被当场删除）。
 Deno.test("parseBackupName: 同秒碰撞后缀（-1/-2）必须可解析", () => {
   const base = parseBackupName("snapshot-2026-09-17T10-30-00Z.nojbackup");
   const one = parseBackupName("snapshot-2026-09-17T10-30-00Z-1.nojbackup");

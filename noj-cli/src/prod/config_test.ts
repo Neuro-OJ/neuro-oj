@@ -1,14 +1,6 @@
 /**
  * prod/config 测试：全部注入 IO / runner / isTty，绝不执行 cosign、docker
  * 或真实交互，也不写 /etc。
- *
- * 断言逐条对照 scripts/deploy/deploy.sh（R3）：
- * - check_required_values :684-766（含 judge 分支 :702/:747、站点地址 :713）
- * - check_judge_socket :768、check_port_value :780、is_site_address :354
- * - detect_panel :791、show_panel_guidance :804
- * - verify_image_signatures :837-874、record_deployment_metadata :875-891
- * - passphrase_file_mode :916、ensure_backup_passphrase :920-953
- * - configure_env_interactive :429-595
  */
 
 import { assertEquals, assertRejects } from "@std/assert";
@@ -193,7 +185,7 @@ Deno.test("checkRequiredValues: 全部合法时 ok 且无 missing/placeholder", 
   assertEquals(report.siteAddressError, null);
 });
 
-// ---------------- judge 枚举（T2 carry-forward） ----------------
+// ---------------- judge 枚举 ----------------
 
 Deno.test("checkRequiredValues: JUDGE_ENABLED=maybe 在 validateEnv 之前报错", async () => {
   // 故意只给一个非法 JUDGE_ENABLED 与一堆缺失键：只有枚举错误能被报出，
@@ -241,7 +233,7 @@ Deno.test("checkRequiredValues: judge 启用时 socket/GID 缺失进 missing", a
     "JUDGE_DOCKER_SOCKET",
     "JUDGE_DOCKER_SOCKET_GID",
   ]);
-  // GID 已填但非数字时也判错（对照 bash :747）。
+  // GID 已填但非数字时也判错。
   const badGid = await checkRequiredValues(okEnv({
     JUDGE_ENABLED: "true",
     JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
@@ -271,8 +263,8 @@ Deno.test("isIpv4Address: 接受合法 IPv4，拒绝越界与畸形", () => {
   }
 });
 
-Deno.test("isSiteAddress: 逐字对照 bash 正则（域名 vs IP vs 非法）", () => {
-  // bash 正则 ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ 且必须含点，
+Deno.test("isSiteAddress: 域名 vs IP vs 非法", () => {
+  // 正则 ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ 且必须含点，
   // 因此 "a..b" / 多段数字都算「合法」（与直觉不符但必须一致）。
   for (
     const addr of [
@@ -314,7 +306,7 @@ Deno.test("checkRequiredValues: DOMAIN 非法时 siteAddressError 非空", async
   assertEquals(report.missing, []);
 });
 
-// ---------------- 后半段取值约束（bash :718-764） ----------------
+// ---------------- 后半段取值约束 ----------------
 
 Deno.test("checkRequiredValues: EMAIL_PROVIDER 枚举外报错（对照 :731-734）", async () => {
   const report = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: "smtp" }));
@@ -342,7 +334,7 @@ Deno.test("checkRequiredValues: EMAIL_PROVIDER 枚举外报错（对照 :731-734
 });
 
 Deno.test("checkRequiredValues: EMAIL_PROVIDER 空/占位时只报未配置，不重复报枚举", async () => {
-  // bash 在缺失阶段就 fail（枚举行不可达）；占位值同样先被 missing/placeholder 拦截，
+  // 占位值先被 missing/placeholder 拦截，
   // 因此空值/占位值不应再叠加"必须是 aliyun、tencent 或 disabled"。
   const enumError = "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled";
   const missingError = "  - EMAIL_PROVIDER 未配置或仍是占位值";
@@ -428,7 +420,7 @@ Deno.test("checkRequiredValues: 邮件分支填齐后 all-green（分支互不�
   assertEquals(tencent.missing, []);
   assertEquals(tencent.errors, []);
 
-  // 选中 tencent 时缺失的阿里云键不应被要求（bash 只走当前分支）。
+  // 选中 tencent 时缺失的阿里云键不应被要求（只走当前分支）。
   const tencentOnly = await checkRequiredValues(okEnv({
     EMAIL_PROVIDER: "tencent",
     TENCENT_SECRET_ID: "id",
@@ -459,7 +451,7 @@ Deno.test("checkRequiredValues: STORAGE_PROVIDER 必须恰为 s3（对照 :739-7
 });
 
 Deno.test("checkRequiredValues: JWT_SECRET 不得含 test（对照 :743-746）", async () => {
-  // bash 用子串匹配 `*test*`（区分大小写）。
+  // 子串匹配 `*test*`（区分大小写）。
   for (
     const bad of [
       "my-test-secret",
@@ -581,7 +573,7 @@ Deno.test("checkEnvFileMode: .env.prod 权限必须为 600 或 400（对照 :658
       mode,
     );
   }
-  // stat 读不出权限 -> bash 的硬错误（fail）。
+  // stat 读不出权限 -> 硬错误。
   const unreadable = checkEnvFileMode(null, file);
   assertEquals(unreadable.kind, "unreadable");
   assertEquals(
@@ -615,7 +607,7 @@ Deno.test("ENV_VALUE_RULES: 覆盖 4 类取值约束（GID 由 judge 分支单�
     gid.errors.includes("  - JUDGE_DOCKER_SOCKET_GID 必须是数字"),
     true,
   );
-  // judge 关闭时 GID 不参与判定（bash 同样只在 judge_enabled 时检查）。
+  // judge 关闭时 GID 不参与判定。
   const off = await checkRequiredValues(okEnv({
     JUDGE_ENABLED: "false",
     JUDGE_DOCKER_SOCKET_GID: "abc",
@@ -738,7 +730,7 @@ Deno.test("ensureBackupPassphrase: 缺失时自动生成 600 口令并回填配�
     assertEquals(/^[0-9a-f]{64}$/.test(result.passphrase ?? ""), true);
     assertEquals(await Deno.readTextFile(target), result.passphrase);
     assertEquals((await Deno.stat(target)).mode! & 0o777, 0o600);
-    // 父目录 700（对照 bash mkdir -p -m 700）。
+    // 父目录 700。
     assertEquals((await Deno.stat(join(dir, "noj"))).mode! & 0o777, 0o700);
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -774,7 +766,7 @@ Deno.test("ensureBackupPassphrase: 权限非 600/400 时拒绝并给可操作提
       result.error,
       `GPG 备份口令文件权限必须为 600 或 400：${target}`,
     );
-    // 不改权限、不覆盖内容（bash 的 fail 即退出，无副作用）。
+    // 不改权限、不覆盖内容（失败即退出，无副作用）。
     assertEquals((await Deno.stat(target)).mode! & 0o777, 0o644);
     assertEquals(await Deno.readTextFile(target), "x");
   } finally {
@@ -882,7 +874,7 @@ Deno.test("panelGuidance: 非 baota 模式返回 null，baota 经 IO 输出", ()
   const io = new FakeIO([]);
   showPanelGuidance("baota", io);
   assertEquals(io.output().includes("宝塔兼容模式"), true);
-  // bash :817 的 ok 行必须真实输出（此前注释声称有、实现却没有）。
+  // 收尾 ok 行必须真实输出（此前注释声称有、实现却没有）。
   assertEquals(io.output().includes(PANEL_GUIDANCE_OK_LINE), true);
   assertEquals(PANEL_GUIDANCE_OK_LINE, "✓ 宝塔兼容提示已启用");
   // 非 baota 模式零输出。
@@ -892,7 +884,7 @@ Deno.test("panelGuidance: 非 baota 模式返回 null，baota 经 IO 输出", ()
   assertEquals(silent.output(), "");
 });
 
-Deno.test("面板常数: 默认值对应 deploy.sh:31-32 的注入默认", () => {
+Deno.test("面板常数: 默认值", () => {
   assertEquals(DEFAULT_PANEL_ROOT, "/www/server/panel");
   assertEquals(DEFAULT_PANEL_COMMAND, "/usr/bin/bt");
 });
@@ -1108,7 +1100,7 @@ Deno.test("wizardNeedsInteractiveInput: 核心键缺失或占位即需要交互"
     wizardNeedsInteractiveInput(okEnv({ EMAIL_PROVIDER: "" })),
     true,
   );
-  // judge 未设置视为启用 → 无 socket 即需要交互（T2 carry-forward）。
+  // judge 未设置视为启用 → 无 socket 即需要交互。
   const noJudge = okEnv();
   delete noJudge.JUDGE_ENABLED;
   assertEquals(wizardNeedsInteractiveInput(noJudge), true);
@@ -1205,7 +1197,7 @@ Deno.test("runConfigWizard: HTTPS + disabled 邮件 + 不装 judge 的输入序�
   assertEquals(result.values["NOJ_ALLOW_INSECURE_HTTP"], "false");
   assertEquals(result.values["EMAIL_PROVIDER"], "disabled");
   assertEquals(result.values["JUDGE_ENABLED"], "false");
-  // 跳过邮件时清空留存的邮件键（对照 bash :548-551）。
+  // 跳过邮件时清空留存的邮件键。
   assertEquals(result.values["TENCENT_REGION"], "");
   assertEquals(result.values["ALIBABA_ACCESS_KEY_ID"], "");
 });
@@ -1298,7 +1290,7 @@ Deno.test("runConfigWizard: 确认写入时落盘 .env.prod（父目录自动创
     ]);
     const result = await runConfigWizard(io, {}, { isTty: true, envFile });
     assertEquals(result.wroteEnvFile, true);
-    // T3 carry-forward：writeEnvFileAtomic 不 mkdir，调用方保证父目录存在。
+    // writeEnvFileAtomic 不 mkdir，调用方保证父目录存在。
     assertEquals((await Deno.stat(envFile)).mode! & 0o777, 0o600);
     const entries = await readEnvFile(envFile);
     assertEquals(entries.get("DOMAIN"), "oj.prod.test");
@@ -1309,7 +1301,7 @@ Deno.test("runConfigWizard: 确认写入时落盘 .env.prod（父目录自动创
   }
 });
 
-Deno.test("runConfigWizard: 非法站点地址当场报错（对照 bash :456）", async () => {
+Deno.test("runConfigWizard: 非法站点地址当场报错", async () => {
   const io = new FakeIO([
     "v0.9.6",
     "https://oj.prod.test", // 非法：带 scheme
@@ -1321,7 +1313,7 @@ Deno.test("runConfigWizard: 非法站点地址当场报错（对照 bash :456）
   );
 });
 
-Deno.test("runConfigWizard: judge GID 非数字时报错（对照 bash :581）", async () => {
+Deno.test("runConfigWizard: judge GID 非数字时报错", async () => {
   const io = new FakeIO([
     "v0.9.6",
     "oj.prod.test",
@@ -1378,7 +1370,7 @@ Deno.test("ensureBackupPassphrase: 进程环境给出该变量时不回填配置
   try {
     const target = join(dir, "passphrase");
     // 模拟 `NOJ_BACKUP_PASSPHRASE_FILE=/tmp/x noj-cli ...`：进程环境已给出路径，
-    // bash :948 的 `-z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"` 因此为假 → 不回填。
+    // 进程环境已设置 → 不回填。
     const result = await ensureBackupPassphrase({}, {
       targetFile: target,
       configuredFromEnv: true,
@@ -1395,8 +1387,8 @@ Deno.test("ensureBackupPassphrase: 仅旗标给出路径时仍回填配置（对
   const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
   try {
     const target = join(dir, "from-flag-passphrase");
-    // `--passphrase-file /x` 只影响目标路径（deploy.sh:924），不进入 :948 的回填门；
-    // 进程环境为空且 .env.prod 无该键 → bash 仍会 set_env_value 回填。
+    // `--passphrase-file /x` 只影响目标路径，不进入 :948 的回填门；
+    // 进程环境为空且 .env.prod 无该键 → 仍会回填。
     const result = await ensureBackupPassphrase({}, {
       targetFile: target,
       configuredFromEnv: false,

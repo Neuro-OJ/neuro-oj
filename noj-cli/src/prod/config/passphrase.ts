@@ -5,16 +5,16 @@
 import { dirname } from "@std/path";
 import { type EnvValues, generateSecret } from "./checks.ts";
 
-/** bash `DEFAULT_BACKUP_PASSPHRASE_FILE`（:28）。 */
+/** 缺省备份口令文件路径。 */
 export const DEFAULT_BACKUP_PASSPHRASE_FILE = "/etc/noj/backup-passphrase";
 
-/** 口令文件允许的权限（deploy.sh:930）。 */
+/** 口令文件允许的权限。 */
 export const PASSPHRASE_ALLOWED_MODES: readonly string[] = ["600", "400"];
 
 /**
- * 迁移 `passphrase_file_mode`（:916-918）：返回八进制权限串（如 "600"/"640"）。
+ * 返回八进制权限串（如 "600"/"640"）。
  *
- * bash 用 `stat -c %a`；文件缺失时 bash 返回空串，本实现抛 `Deno.errors.NotFound`
+ * 文件缺失时抛 `Deno.errors.NotFound`
  * （调用方先做存在性判定，见 {@link ensureBackupPassphrase}）。
  */
 export async function passphraseFileMode(path: string): Promise<string> {
@@ -33,7 +33,7 @@ export interface PassphrasePathOptions {
 }
 
 /**
- * 迁移 `ensure_backup_passphrase` 的目标选择（deploy.sh:924）：
+ * 备份口令文件的目标选择：
  * `flag` > `explicit` > `configured` > {@link DEFAULT_BACKUP_PASSPHRASE_FILE}。
  */
 export function backupPassphrasePath(opts: PassphrasePathOptions): string {
@@ -46,14 +46,11 @@ export interface EnsurePassphraseOptions {
   /** 覆盖目标路径（测试用；生产由 {@link backupPassphrasePath} 决定）。 */
   targetFile?: string;
   /**
-   * 口令来源是否来自**进程环境** `NOJ_BACKUP_PASSPHRASE_FILE`（deploy.sh:27 把
-   * 它读进 `BACKUP_PASSPHRASE_FILE`）。
+   * 口令来源是否来自**进程环境** `NOJ_BACKUP_PASSPHRASE_FILE`。
    *
-   * bash `ensure_backup_passphrase` 的回填门（:948）**只读进程环境**：
-   * `[[ -z "$configured_file" && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}" ]]`，其中
-   * `configured_file` 是 .env.prod 里的值（:923），第二个是进程环境（:27）。
-   * **`--passphrase-file` 旗标不参与该门**：bash :924 只用它选目标路径，:948
-   * 不再引用它，故旗标给出的路径仍会被回填进 .env.prod（R3 逐字对齐）。
+   * 回填门只看两处：.env.prod 里有没有该键、进程环境有没有该变量。
+   * **`--passphrase-file` 旗标不参与该门**：它只用于选目标路径，
+   * 故旗标给出的路径仍会被回填进 .env.prod。
    *
    * 缺省 false = 进程环境未给出该变量 → 允许回填。
    */
@@ -72,17 +69,16 @@ export interface EnsurePassphraseResult {
 }
 
 /**
- * 迁移 `ensure_backup_passphrase`（:920-953）。
+ * 确保备份口令文件存在且权限正确。
  *
  * - 目标存在：必须是普通文件且权限为 600/400，否则拒绝并给可操作提示；
  * - 目标缺失：`mkdir -p -m 700` 父目录 → 生成 32 字节 hex → 临时文件 600 →
  *   原子 rename → 最终 600；仅当"配置里没有该键 **且** 进程环境未给出
- *   `NOJ_BACKUP_PASSPHRASE_FILE`"时才回填（对照 :948 的 `-z "$configured_file"
- *   && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"`）。**`--passphrase-file` 旗标不抑制
- *   回填**：bash :948 只读进程环境，旗标仅在 :924 参与选目标路径。
+ *   `NOJ_BACKUP_PASSPHRASE_FILE`"时才回填。**`--passphrase-file` 旗标不抑制
+ *   回填**：它只参与选目标路径。
  *
  * 口令生成不依赖 openssl（复用 init/secrets.ts 的 `randomKey`），因此不会因缺
- * openssl 失败；这是与 bash 的唯一有意差异，见 task-11 报告。
+ * openssl 失败。
  */
 export async function ensureBackupPassphrase(
   env: EnvValues,
@@ -168,8 +164,8 @@ export async function ensureBackupPassphrase(
     path: target,
     created: true,
     passphrase,
-    // 回填条件与 bash :948 一致：.env.prod 里没有该键，且进程环境未给出该变量。
-    // `--passphrase-file` 旗标不抑制回填（bash :948 只读进程环境）。
+    // 回填条件：.env.prod 里没有该键，且进程环境未给出该变量。
+    // `--passphrase-file` 旗标不抑制回填。
     envUpdate: configured === "" && !opts.configuredFromEnv
       ? { NOJ_BACKUP_PASSPHRASE_FILE: target }
       : null,

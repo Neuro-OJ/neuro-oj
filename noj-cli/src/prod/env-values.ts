@@ -9,8 +9,8 @@
 /**
  * 取 `env[key]`；缺失或空串时返回 `fallback`。
  *
- * "空串等同缺失"是有意的：`.env.prod` 里 `KEY=` 与不写该键在 bash 的
- * `${KEY:-default}` 语义下等价，本函数与之一致。
+ * "空串等同缺失"是有意的：`.env.prod` 里 `KEY=` 与不写该键等价
+ * （同 shell 的 `${KEY:-default}`）。
  */
 export function valueOr(
   env: Record<string, string>,

@@ -1,8 +1,6 @@
 /**
  * 把 `pg_dumpall --globals-only` 的 `CREATE ROLE` 改为幂等形式。
  *
- * 迁移 bash `prepare_idempotent_globals`（backup.sh:150-170）。
- *
  * ## 为什么需要
  *
  * 目标 PostgreSQL 已由 `POSTGRES_USER` 创建了默认角色，直接重放

@@ -13,7 +13,7 @@ export function renderCommandHelp(usage: string, body: string[]): string {
  * 命令清单已收敛到 `commands.ts`；此处只做委托，不再手写命令列表。
  */
 export function printHelp(): string {
-  // T26：把终端宽度传给渲染器，使窄终端下每行不溢出。
+  // 把终端宽度传给渲染器，使窄终端下每行不溢出。
   // `COLUMNS` 缺失或非法时不限制宽度（保持既有行为）。
   const raw = Deno.env.get("COLUMNS");
   const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
@@ -25,8 +25,7 @@ export function printHelp(): string {
  * drill 专项帮助（#516 验收：help 必须明确「分钟级、耗 Docker」，
  * 而不是只显示通用的 maintain backup 帮助）。
  *
- * **T23 更新**：快照形态说明随 T19 的裁决反转——现在只接受 `.nojbackup`
- * 单文件（唯一形态），旧的"目录快照"表述已作废。
+ * 只接受 `.nojbackup` 单文件（唯一形态）。
  */
 export function renderDrillHelp(): string {
   return renderCommandHelp(
@@ -62,7 +61,7 @@ export function renderDrillHelp(): string {
   );
 }
 
-/** 生产命令的 CLI 侧帮助（不转发给底层 bash 脚本，#517 E12）。 */
+/** 生产命令的 CLI 侧帮助（#517 E12）。 */
 export function renderProductionCommandHelp(command: string): string {
   // 摘要与子命令取自命令表（唯一事实源），不再另维护一份。
   const spec = COMMANDS.find((c) =>
@@ -80,7 +79,7 @@ export function renderProductionCommandHelp(command: string): string {
     ...subs.map((sub) => `  ${sub.name.padEnd(width)}  ${sub.summary}`),
   ];
   // `judge` 的必需旗标必须出现在 help 里：文档给的一行命令此前不可执行
-  // （评审发现——`judge install --dir X` 只会报"首装必须提供 NOJ_VERSION"，
+  // （`judge install --dir X` 只会报"首装必须提供 NOJ_VERSION"，
   // 而 `--version`/`--redis-url`/`--socket-path` 在任何 help 中都不出现）。
   const judgeFlags = command === "judge"
     ? [

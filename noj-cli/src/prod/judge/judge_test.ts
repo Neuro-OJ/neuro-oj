@@ -1,5 +1,5 @@
 /**
- * T21 测试：独立 Judge 部署的安全约束与命令编排。
+ * Judge 测试：独立 Judge 部署的安全约束与命令编排。
  *
  * 全部注入 runner / 探测 / 时间，**不起容器、不碰真实 Docker socket**。
  *
@@ -115,7 +115,7 @@ function makeRunner(
       } as CmdResult);
     },
     spawn(): SpawnHandle {
-      throw new Error("T21 测试不 spawn");
+      throw new Error("Judge 测试不 spawn");
     },
   };
   if (opts.stream === true) {
@@ -181,7 +181,7 @@ function socketProbes(
 
 // ---------------- 安全约束 1：禁止共享 Docker socket ----------------
 
-Deno.test("T21 安全：两个共享 socket 字面路径被拒", () => {
+Deno.test("安全：两个共享 socket 字面路径被拒", () => {
   for (const bad of ["/var/run/docker.sock", "/run/docker.sock"]) {
     let message = "";
     try {
@@ -194,7 +194,7 @@ Deno.test("T21 安全：两个共享 socket 字面路径被拒", () => {
   }
 });
 
-Deno.test("T21 安全：等价写法与符号链接（realpath）同样被拒", () => {
+Deno.test("安全：等价写法与符号链接（realpath）同样被拒", () => {
   // 1) 重复斜杠
   for (
     const bad of [
@@ -224,7 +224,7 @@ Deno.test("T21 安全：等价写法与符号链接（realpath）同样被拒", 
   assertStringIncludes(message, "禁止使用应用宿主机 Docker socket");
 });
 
-Deno.test("T21 安全：专用 socket 通过；非绝对路径与 TCP 形式被拒", () => {
+Deno.test("安全：专用 socket 通过；非绝对路径与 TCP 形式被拒", () => {
   // 合规：专用路径
   assertDedicatedSocket(
     "/run/noj-judge/docker.sock",
@@ -251,7 +251,7 @@ Deno.test("T21 安全：专用 socket 通过；非绝对路径与 TCP 形式被�
   assert(message !== "", "TCP endpoint 必须被拒");
 });
 
-Deno.test("T21 安全：共享 socket 的配置写入被拒且零文件残留", async () => {
+Deno.test("安全：共享 socket 的配置写入被拒且零文件残留", async () => {
   const root = await makeTempDir();
   try {
     const envFile = join(root, ".env.judge");
@@ -280,7 +280,7 @@ Deno.test("T21 安全：共享 socket 的配置写入被拒且零文件残留", 
   }
 });
 
-Deno.test("T21 安全：install 遇到共享 socket → 退出码 2 且零 compose 调用", async () => {
+Deno.test("安全：install 遇到共享 socket → 退出码 2 且零 compose 调用", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -314,7 +314,7 @@ Deno.test("T21 安全：install 遇到共享 socket → 退出码 2 且零 compo
   }
 });
 
-Deno.test("T21 安全：JUDGE_DOCKER_HOST 必须指向容器内专用 endpoint", () => {
+Deno.test("安全：JUDGE_DOCKER_HOST 必须指向容器内专用 endpoint", () => {
   assertJudgeDockerHost("unix:///run/noj-judge/docker.sock");
   for (
     const bad of [
@@ -345,7 +345,7 @@ Deno.test("T21 安全：JUDGE_DOCKER_HOST 必须指向容器内专用 endpoint",
 
 // ---------------- 安全约束 2：不碰宿主 Docker daemon ----------------
 
-Deno.test("T21 安全：整个 judge 路径从不调用宿主管理命令", async () => {
+Deno.test("安全：整个 judge 路径从不调用宿主管理命令", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -381,7 +381,7 @@ Deno.test("T21 安全：整个 judge 路径从不调用宿主管理命令", asyn
   }
 });
 
-Deno.test("T21 安全：checkJudgeHost 只做只读探测，且非 Linux 时拒绝", async () => {
+Deno.test("安全：checkJudgeHost 只做只读探测，且非 Linux 时拒绝", async () => {
   const calls: Call[] = [];
   const ok = await checkJudgeHost({
     uname: () => Promise.resolve("Linux"),
@@ -404,7 +404,7 @@ Deno.test("T21 安全：checkJudgeHost 只做只读探测，且非 Linux 时拒�
 
 // ---------------- socket 连通性校验 ----------------
 
-Deno.test("T21 socket：共享路径在最前被拒（连探针都不跑）", async () => {
+Deno.test("socket：共享路径在最前被拒（连探针都不跑）", async () => {
   const calls: Call[] = [];
   const result = await checkStandaloneJudgeSocket(
     {
@@ -418,7 +418,7 @@ Deno.test("T21 socket：共享路径在最前被拒（连探针都不跑）", as
   assertEquals(calls.length, 0, "共享 socket 必须在任何探测之前被拒");
 });
 
-Deno.test("T21 socket：非 socket / 不可读写 / GID 不符 / daemon 不可连 分别被拒", async () => {
+Deno.test("socket：非 socket / 不可读写 / GID 不符 / daemon 不可连 分别被拒", async () => {
   const base = {
     JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
     JUDGE_DOCKER_SOCKET_GID: "10001",
@@ -472,7 +472,7 @@ Deno.test("T21 socket：非 socket / 不可读写 / GID 不符 / daemon 不可�
   assertStringIncludes(daemonDown.error ?? "", "install-env");
 });
 
-Deno.test("T21 socket：可用时经 DOCKER_HOST 指向**目标 socket** 探测", async () => {
+Deno.test("socket：可用时经 DOCKER_HOST 指向**目标 socket** 探测", async () => {
   const calls: Call[] = [];
   const result = await checkStandaloneJudgeSocket(
     {
@@ -497,7 +497,7 @@ Deno.test("T21 socket：可用时经 DOCKER_HOST 指向**目标 socket** 探测"
 
 // ---------------- Compose 渲染的安全属性 ----------------
 
-Deno.test("T21 compose：渲染结果含全部安全属性（纯函数，不调 runner）", () => {
+Deno.test("compose：渲染结果含全部安全属性（纯函数，不调 runner）", () => {
   const yaml = renderJudgeCompose({ ...JUDGE_DEFAULT_VALUES, ...baseEnv() });
   // socket 挂载 :ro
   assertStringIncludes(
@@ -522,7 +522,7 @@ Deno.test("T21 compose：渲染结果含全部安全属性（纯函数，不调 
   assertStringIncludes(yaml, "name: noj-judge-standalone-cache");
 });
 
-Deno.test("T21 compose：缺必填项即拒绝（对应 bash 的 ${VAR:?}）", () => {
+Deno.test("compose：缺必填项即拒绝", () => {
   for (
     const missing of [
       "NOJ_VERSION",
@@ -543,7 +543,7 @@ Deno.test("T21 compose：缺必填项即拒绝（对应 bash 的 ${VAR:?}）", (
   }
 });
 
-Deno.test("T21 compose：渲染时也会拒绝共享 socket（防线不依赖调用方纪律）", () => {
+Deno.test("compose：渲染时也会拒绝共享 socket（防线不依赖调用方纪律）", () => {
   let message = "";
   try {
     renderJudgeCompose({
@@ -557,7 +557,7 @@ Deno.test("T21 compose：渲染时也会拒绝共享 socket（防线不依赖调
   assertStringIncludes(message, "禁止使用应用宿主机 Docker socket");
 });
 
-Deno.test("T21 compose：参数数组形状正确（project-name/env-file/-f）", () => {
+Deno.test("compose：参数数组形状正确（project-name/env-file/-f）", () => {
   const args = judgeComposeArgs(
     {
       dir: "/srv/noj-judge",
@@ -578,7 +578,7 @@ Deno.test("T21 compose：参数数组形状正确（project-name/env-file/-f）"
 
 // ---------------- 配置写入与保留 ----------------
 
-Deno.test("T21 配置：首装写入 600，升级**不覆盖**既有配置", async () => {
+Deno.test("配置：首装写入 600，升级**不覆盖**既有配置", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -618,7 +618,7 @@ Deno.test("T21 配置：首装写入 600，升级**不覆盖**既有配置", asy
   }
 });
 
-Deno.test("T21 配置：显式 --version 时**只**更新该键，其它键与注释保留", async () => {
+Deno.test("配置：显式 --version 时**只**更新该键，其它键与注释保留", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -644,7 +644,7 @@ Deno.test("T21 配置：显式 --version 时**只**更新该键，其它键与�
   }
 });
 
-Deno.test("T21 配置：首装缺 NOJ_VERSION / REDIS_URL 即拒绝", async () => {
+Deno.test("配置：首装缺 NOJ_VERSION / REDIS_URL 即拒绝", async () => {
   const root = await makeTempDir();
   try {
     const envFile = join(root, ".env.judge");
@@ -664,7 +664,7 @@ Deno.test("T21 配置：首装缺 NOJ_VERSION / REDIS_URL 即拒绝", async () =
   }
 });
 
-Deno.test("T21 配置：值校验（版本/并发/GID/UID/HOST）逐条", () => {
+Deno.test("配置：值校验（版本/并发/GID/UID/HOST）逐条", () => {
   assertJudgeVersion("v0.1.0");
   assertJudgeVersion("0.8.0");
   assertJudgeVersion("0.8.0-rc.1");
@@ -711,7 +711,7 @@ Deno.test("T21 配置：值校验（版本/并发/GID/UID/HOST）逐条", () => 
   assertStringIncludes(message, "JUDGE_UID");
 });
 
-Deno.test("T21 配置：文件权限非 600/400 即拒绝", async () => {
+Deno.test("配置：文件权限非 600/400 即拒绝", async () => {
   const root = await makeTempDir();
   try {
     const envFile = join(root, ".env.judge");
@@ -735,7 +735,7 @@ Deno.test("T21 配置：文件权限非 600/400 即拒绝", async () => {
   }
 });
 
-Deno.test("T21 Redis：URL 形态校验与主机名脱敏", async () => {
+Deno.test("Redis：URL 形态校验与主机名脱敏", async () => {
   const calls: Call[] = [];
   // 非 redis:// 协议
   const bad = await checkJudgeRedis({ REDIS_URL: "http://127.0.0.1:6379" }, {
@@ -772,7 +772,7 @@ Deno.test("T21 Redis：URL 形态校验与主机名脱敏", async () => {
   assertEquals(ok.ok, true);
 });
 
-Deno.test("T21 Redis：回退容器路径把口令经 **env-file** 传入（不进 argv）", async () => {
+Deno.test("Redis：回退容器路径把口令经 **env-file** 传入（不进 argv）", async () => {
   const calls: Call[] = [];
   const result = await checkJudgeRedis(
     { REDIS_URL: "redis://:super-secret@127.0.0.1:6379/0" },
@@ -790,7 +790,7 @@ Deno.test("T21 Redis：回退容器路径把口令经 **env-file** 传入（不�
   assert(runCall!.args.includes("--env-file"), "口令必须经 --env-file 传入");
 });
 
-Deno.test("T21 镜像架构：uname 映射 + 不符即拒绝 + 镜像缺失不算失败", async () => {
+Deno.test("镜像架构：uname 映射 + 不符即拒绝 + 镜像缺失不算失败", async () => {
   assertEquals(dockerArchOf("x86_64"), "amd64");
   assertEquals(dockerArchOf("aarch64"), "arm64");
   assertEquals(dockerArchOf("armv7l"), "arm");
@@ -829,7 +829,7 @@ Deno.test("T21 镜像架构：uname 映射 + 不符即拒绝 + 镜像缺失不�
 
 // ---------------- 命令编排 ----------------
 
-Deno.test("T21 install：完整流程（配置 → socket 校验 → 渲染 → pull → up）", async () => {
+Deno.test("install：完整流程（配置 → socket 校验 → 渲染 → pull → up）", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -870,7 +870,7 @@ Deno.test("T21 install：完整流程（配置 → socket 校验 → 渲染 → 
   }
 });
 
-Deno.test("T21 install --dry-run：零 runner 调用、零文件写入", async () => {
+Deno.test("install --dry-run：零 runner 调用、零文件写入", async () => {
   const root = await makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -898,7 +898,7 @@ Deno.test("T21 install --dry-run：零 runner 调用、零文件写入", async (
   }
 });
 
-Deno.test("T21 install：非 Linux → 退出码 2 且零 compose", async () => {
+Deno.test("install：非 Linux → 退出码 2 且零 compose", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -917,7 +917,7 @@ Deno.test("T21 install：非 Linux → 退出码 2 且零 compose", async () => 
   }
 });
 
-Deno.test("T21 check：配置/权限/socket/Redis/架构/config 全通过", async () => {
+Deno.test("check：配置/权限/socket/Redis/架构/config 全通过", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeJudgeDir(root);
@@ -942,7 +942,7 @@ Deno.test("T21 check：配置/权限/socket/Redis/架构/config 全通过", asyn
   }
 });
 
-Deno.test("T21 check：缺配置 / 权限过宽 / 超时 socket → 退出码 2", async () => {
+Deno.test("check：缺配置 / 权限过宽 / 超时 socket → 退出码 2", async () => {
   const root = await makeTempDir();
   try {
     // 1) 缺配置
@@ -962,7 +962,7 @@ Deno.test("T21 check：缺配置 / 权限过宽 / 超时 socket → 退出码 2"
   }
 });
 
-Deno.test("T21 start/stop：用 stop 而非 down（保数据）", async () => {
+Deno.test("start/stop：用 stop 而非 down（保数据）", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeJudgeDir(root);
@@ -996,7 +996,7 @@ Deno.test("T21 start/stop：用 stop 而非 down（保数据）", async () => {
   }
 });
 
-Deno.test("T21 status：**脱敏**——配置里的口令不得出现在任何输出", async () => {
+Deno.test("status：**脱敏**——配置里的口令不得出现在任何输出", async () => {
   const root = await makeTempDir();
   try {
     const secret = "super-secret-redis-pw";
@@ -1028,7 +1028,7 @@ Deno.test("T21 status：**脱敏**——配置里的口令不得出现在任何�
   }
 });
 
-Deno.test("T21 status：脱敏用**白名单**，未知敏感键也不会泄露", () => {
+Deno.test("status：脱敏用**白名单**，未知敏感键也不会泄露", () => {
   const summary = renderStatusSummary({
     NOJ_VERSION: "v0.9.5",
     NOJ_LLM_SERVICE_TOKEN: "tok-should-not-appear",
@@ -1042,7 +1042,7 @@ Deno.test("T21 status：脱敏用**白名单**，未知敏感键也不会泄露"
   assertStringIncludes(summary, "NOJ_VERSION=v0.9.5");
 });
 
-Deno.test("T21 logs：--follow 走 stream；runner 不支持时明确报错", async () => {
+Deno.test("logs：--follow 走 stream；runner 不支持时明确报错", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeJudgeDir(root);
@@ -1071,7 +1071,7 @@ Deno.test("T21 logs：--follow 走 stream；runner 不支持时明确报错", as
   }
 });
 
-Deno.test("T21 upgrade：按配置版本 pull + force-recreate", async () => {
+Deno.test("upgrade：按配置版本 pull + force-recreate", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeJudgeDir(root, { NOJ_VERSION: "v0.10.0" });
@@ -1086,7 +1086,7 @@ Deno.test("T21 upgrade：按配置版本 pull + force-recreate", async () => {
   }
 });
 
-Deno.test("T21 辅助：端口/容器名校验与口令生成", () => {
+Deno.test("辅助：端口/容器名校验与口令生成", () => {
   assertRedisPort(16379);
   assertRedisPort(1024);
   assertRedisPort(65535);
@@ -1117,7 +1117,7 @@ Deno.test("T21 辅助：端口/容器名校验与口令生成", () => {
   assertEquals(generateRedisPassword() === pw, false, "口令必须每次不同");
 });
 
-Deno.test("T21 辅助：judgePaths/envValue/redactUrl", () => {
+Deno.test("辅助：judgePaths/envValue/redactUrl", () => {
   const paths = judgePaths("/srv/noj-judge");
   assertEquals(paths.envFile, "/srv/noj-judge/.env.judge");
   assertEquals(paths.composeFile, "/srv/noj-judge/docker-compose.judge.yml");
@@ -1141,7 +1141,7 @@ Deno.test("T21 辅助：judgePaths/envValue/redactUrl", () => {
   assertEquals(redactUrl("redis://h:6379/0"), "redis://h:6379/0");
 });
 
-Deno.test("T21 默认值：COMPOSE_ENV_DEFAULTS 与 JUDGE_DEFAULT_VALUES 覆盖 bash 的默认", () => {
+Deno.test("默认值：COMPOSE_ENV_DEFAULTS 与 JUDGE_DEFAULT_VALUES 覆盖全部默认", () => {
   // 队列名必须与 noj-core 一致（这是最容易被改错的地方）
   assertEquals(COMPOSE_ENV_DEFAULTS["JUDGE_QUEUE"], "noj:judge:queue");
   assertEquals(COMPOSE_ENV_DEFAULTS["RESULT_QUEUE"], "noj:judge:results");

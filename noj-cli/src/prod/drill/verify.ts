@@ -1,11 +1,9 @@
 /**
- * 演练的业务验收（T19）：`restore-drill-verify.ts` 的原生移植。
+ * 演练的业务验收。
  *
  * ## 与原实现的关键差异（spec §3.3 的裁决）
  *
- * 原实现把 `restore-drill-verify.ts` 挂进一个**额外的 deno 容器**里跑
- * （`restore-drill.sh:288` 固定 `denoland/deno:debian-2.9.5@sha256:…`），
- * 于是演练多了一个镜像依赖。移植后由 **CLI 进程直接发 HTTP**，该镜像依赖消失。
+ * 业务验收由 **CLI 进程直接发 HTTP**，不额外起 deno 容器，因此没有额外镜像依赖。
  *
  * 那 CLI 怎么在不映射端口的前提下访问隔离网络里的 core？——**经容器 IP**：
  * 用 `docker compose ps -q core` 取容器 ID，再 `docker inspect` 读它在演练网络里的
@@ -48,7 +46,7 @@ import {
   DRILL_ADMIN_USER,
 } from "./plan.ts";
 
-/** 单个验收步骤的结论（字段名与原实现逐字一致，报告解析方无需改动）。 */
+/** 单个验收步骤的结论（字段名固定，报告解析方依赖它）。 */
 export interface VerifyStep {
   step: string;
   status: "passed" | "failed" | "warning" | "skipped";
@@ -405,7 +403,7 @@ class Verifier {
         username: `drill_${suffix}`.slice(0, 30),
         email: `drill-${suffix}@${DRILL_ADMIN_EMAIL_DOMAIN}`,
         password: DRILL_ADMIN_PASSWORD,
-        // PIPL 同意硬门槛（2026-09-25 评审）：不带该字段注册恒 400，探针会被永久
+        // PIPL 同意硬门槛：不带该字段注册恒 400，探针会被永久
         // 降级成 warning，且归因误导为"邮件提供方问题"。
         accepted_legal: true,
       }),

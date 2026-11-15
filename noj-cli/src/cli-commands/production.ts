@@ -53,7 +53,7 @@ import { renderDrillHelp } from "./help.ts";
 /**
  * `backup drill`：解析参数并执行**真实恢复演练**。
  *
- * **T24 接线**：目录由调用方（`dispatchProduction`）给定——它已用
+ * 目录由调用方（`dispatchProduction`）给定——它已用
  * `findProductionDir` 定位过，这里不再重复探测（重复探测会在"显式 --dir 与实际
  * 安装目录不一致"时给出误导性的第二次报错）。
  */
@@ -81,11 +81,9 @@ export async function runBackupDrillFromProduction(
 /**
  * 执行一次真实恢复演练并输出结果。
  *
- * **T23 接线**：改用 T19 的**原生**实现（`prod/drill/drill.ts`），不再经
- * `maintain/drill.ts` 的 bash 薄包装。这正是 R1 的落点——drill 路径因此
- * 零 `Deno.command("bash", …)`、零仓库脚本依赖。
+ * 实现见 `prod/drill/drill.ts`（零 bash / 仓库脚本依赖）。
  *
- * 退出码（#516 验收，T19 已实现并测试）：0 通过 / 1 演练失败（含 RPO/RTO 超标）/
+ * 退出码（#516）：0 通过 / 1 演练失败（含 RPO/RTO 超标）/
  * 2 参数或资源错误。`runDrill` 内部已按此分层，这里只做输出与透传。
  */
 export async function executeDrill(
@@ -105,7 +103,7 @@ export async function executeDrill(
       dir,
       runner: realRunner(),
       // **`--passphrase-file` > `NOJ_BACKUP_PASSPHRASE_FILE` > `.env.prod`**
-      // （评审发现）：此前只透传旗标，环境变量形同虚设——而报错文案却
+      // ：此前只透传旗标，环境变量形同虚设——而报错文案却
       // 明示该变量可用。
       passphraseFile: await resolveBackupPassphraseForDir(
         a.passphraseFile,
@@ -118,10 +116,10 @@ export async function executeDrill(
       report: a.report,
       rpoMaxHours: a.rpoMaxHours,
       rtoMaxMinutes: a.rtoMaxMinutes,
-      // `backup create --no-encrypt` 的产物必须也能被演练（评审发现）：
+      // `backup create --no-encrypt` 的产物必须也能被演练：
       // 否则"不加密"这条受支持的路径无法做恢复验收。
       encrypted: !a.noEncrypt,
-      // `NOJ_DEPLOY_DOCKER_BIN` 与非默认 docker 路径的宿主机（评审发现）：
+      // `NOJ_DEPLOY_DOCKER_BIN` 与非默认 docker 路径的宿主机：
       // restore/drill 此前把 docker 写死，只有 install/update/create 装配
       // 尊重该变量。
       dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
@@ -147,7 +145,7 @@ export async function executeDrill(
 }
 
 /**
- * 生产命令的原生分发（T24）。
+ * 生产命令的原生分发。
  *
  * 职责分工：
  * - **本函数**：定位安装目录（`findProductionDir`）→ 拆 `--dir` → 分派到
@@ -156,7 +154,7 @@ export async function executeDrill(
  *
  * 退出码：0 成功 / 1 运行失败 / 2 用法错误。
  * `--json` 时原生实现已把结果 JSON 写到 stdout，因此这里**不再打印结论**
- * （否则 stdout 会混入人类文字，破坏 T6 契约）。
+ * （否则 stdout 会混入人类文字，破坏 JSON 输出契约）。
  */
 export async function dispatchProduction(
   ctx: CommandContext,
@@ -164,7 +162,7 @@ export async function dispatchProduction(
   args: string[],
 ): Promise<number> {
   // **先拒绝未实现的旗标**（在任何副作用之前）：`--dry-run` 在破坏性命令上
-  // 被静默忽略会让"预演"真的执行（评审实测：`uninstall --all --yes --dry-run`
+  // 被静默忽略会让"预演"真的执行（`uninstall --all --yes --dry-run`
   // 删除了整个安装目录）。必须在解析/分发之前。
   // 已实现 `--dry-run` 的命令必须放行：`judge`（`judgeInstall` 内的 dry-run 分支）
   // 与 `backup restore`（`README.md` / CHANGELOG 承诺的"只规划并校验"）。
@@ -252,13 +250,13 @@ export async function dispatchProduction(
       case "verify": {
         // `verify` = 配置校验 + **镜像验签**（比 `check` 多验签）。
         // 此前这里误调 `runProdCheck`，与 check/config 完全相同 →
-        // 安全控制报成功却从未运行（评审发现）。
+        // 安全控制报成功却从未运行。
         const r = await runProdVerify(dir, rest, {});
         say(r.message);
         return r.exitCode;
       }
       case "config": {
-        // `config check` 是唯一支持的子命令（与 bash 的 `config-check` 等价）。
+        // `config check` 是唯一支持的子命令。
         const sub = positionals(rest)[0];
         if (sub !== undefined && sub !== "check") {
           console.error(`config 目前只支持 check，收到 "${sub}"`);
@@ -291,11 +289,7 @@ export async function dispatchProduction(
 }
 
 /**
- * `judge` 的子命令分发（T21 的原生实现 + T26 补齐的 `install-env`）。
- *
- * **T26 补漏**：T21 交付了 `prod/judge/*`（36 个测试全过），但 `judge` 既未登记在
- * `PRODUCTION_COMMANDS`、也无本函数——该能力从 CLI **完全不可达**。本函数把它接通，
- * 并补上当时缺失的 `install-env`（依赖检查 + rootless 隔离指引）。
+ * `judge` 的子命令分发（`install-env` / `install` / `upgrade` 等）。
  */
 export async function dispatchProdJudge(
   dir: string,
@@ -315,10 +309,10 @@ export async function dispatchProdJudge(
     envFile: flagValue(rest, "--env-file"),
     composeFile: flagValue(rest, "--compose-file"),
     dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
-    // **必须转发 `--dry-run`**（评审发现）：`judgeInstall` 里有完整的 dry-run
+    // **必须转发 `--dry-run`**：`judgeInstall` 里有完整的 dry-run
     // 分支（校验后直接返回、不写任何文件），但 CLI 层从未传这个字段，于是
     // `--dry-run` 被静默吞掉 → **真的写了 `.env.judge`** 才因后续检查失败退出。
-    // 即"预演"产生了副作用，违反 plan T21 §6 的"dry-run 零副作用"。
+    // 即"预演"产生了副作用，违反"dry-run 零副作用"。
     dryRun: hasFlag(rest, "--dry-run"),
     log: say,
   };
@@ -331,16 +325,12 @@ export async function dispatchProdJudge(
     }
     case "install": {
       // `--redis-mode local`：先为本机 Judge 创建**仅绑定回环**的 Redis，
-      // 再把它的连接串喂给 install（bash `create_local_redis` 的接线）。
-      // 缺省（不传）为"连接已有 Redis"，与 bash 交互式缺省一致。
+      // 再把它的连接串喂给 install。缺省（不传）为"连接已有 Redis"。
       let redisUrl = flagValue(rest, "--redis-url");
       let localRedis: Awaited<ReturnType<typeof createLocalRedis>> | null =
         null;
       const redisMode = flagValue(rest, "--redis-mode");
-      // **`--dry-run` 下绝不创建 Redis**：bash 的 install 在 `DRY_RUN` 时早退
-      // （judge-install.sh:523），根本走不到 `configure_redis`。
-      // 我第一版把创建放在 dry-run 判断之前，实测 `--dry-run` 真的建了容器并写了
-      // `redis.conf`——违反"预演零副作用"，而那正是本会话反复修过的一类缺陷。
+      // **`--dry-run` 下绝不创建 Redis**：否则预演会真的建容器并写 `redis.conf`。
       const dryRunForRedis = hasFlag(rest, "--dry-run");
       if (redisMode === "local" && dryRunForRedis) {
         say("[dry-run] 将创建本机 Redis（仅绑定 127.0.0.1，不执行）");
@@ -408,7 +398,7 @@ export async function dispatchProdJudge(
           2,
         ));
       } else {
-        // **人类模式不得重复打印**（评审发现）：`judgeStatus` 已经通过
+        // **人类模式不得重复打印**：`judgeStatus` 已经通过
         // `base.log`（= say）逐行输出了 summary 与 compose ps，这里再打印
         // 一遍会让每行出现两次（实测 15 行重复）。
         // 因此人类模式只补 `message`；`summary`/`psOutput` 仅在 `--json`
@@ -441,7 +431,7 @@ export async function dispatchProdJudge(
   }
 }
 
-/** `backup` 的子命令分发（T17–T20 的原生实现）。 */
+/** `backup` 的子命令分发。 */
 export async function dispatchProdBackup(
   dir: string,
   args: string[],
@@ -469,8 +459,8 @@ export async function dispatchProdBackup(
         backupDir: flagValue(rest, "--backup-dir"),
         zstdLevel: numberFlag(rest, "--zstd-level"),
         noEncrypt: hasFlag(rest, "--no-encrypt"),
-        // 环境变量缺省与 bash 一致（`NOJ_BACKUP_RETENTION_DAYS` /
-        // `NOJ_BACKUP_MIN_FREE_MB`，backup.sh:13-14）。
+        // 旗标缺省时读环境变量 `NOJ_BACKUP_RETENTION_DAYS` /
+        // `NOJ_BACKUP_MIN_FREE_MB`。
         retentionDays: numberFlag(rest, "--retention-days") ??
           envNumber("NOJ_BACKUP_RETENTION_DAYS"),
         minFreeMb: numberFlag(rest, "--min-free-mb") ??
@@ -595,7 +585,7 @@ export async function dispatchProdBackup(
  * 解析 drill 的口令文件（`--passphrase-file` > 进程环境 > `.env.prod`）。
  *
  * 独立成函数是因为 drill 的调用点只有 `executeDrill`，而它需要 `dir`
- * 才能读安装目录里的 `.env.prod`（评审发现：环境变量此前未接线）。
+ * 才能读安装目录里的 `.env.prod`（环境变量此前未接线）。
  */
 export async function resolveBackupPassphraseForDir(
   flag: string | undefined,

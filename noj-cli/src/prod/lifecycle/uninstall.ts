@@ -40,8 +40,7 @@ export interface UninstallOptions extends LifecycleOptions {
    * 进程环境快照；缺省 `Deno.env.toObject()`（与 install 的 `processEnv` 同义）。
    *
    * 命名刻意**不叫 `env`**：`PreparedEnvironment.env` 指 `.env.prod` 解析出的
-   * 键值集合，两者概念相反（进程环境 vs 配置文件），同名会被读成同一件事
-   * （T15 评审 Minor 6）。
+   * 键值集合，两者概念相反（进程环境 vs 配置文件），同名会被读成同一件事。
    */
   processEnv?: Record<string, string>;
   /** 显示传入的终端判定；缺省 `Deno.stdin.isTerminal()`。 */
@@ -59,7 +58,7 @@ export interface UninstallResult extends LifecycleBaseResult {
    *
    * 只反映第 4 步（`compose down`）的结果，**不受**后续清理影响：软链清理
    * （第 5 步）或删目录（第 6 步）失败时本字段仍为 `true`——数据卷已经删了，
-   * 如实报告才便于自动化判定"是否已不可恢复"（T15 评审 Minor 4）。
+   * 如实报告才便于自动化判定"是否已不可恢复"。
    * 成功路径恒等于 `all`（默认卸载不带 `--volumes`）。
    */
   volumesRemoved: boolean;
@@ -69,13 +68,13 @@ export interface UninstallResult extends LifecycleBaseResult {
   installDirRemoved: boolean;
 }
 
-/** 确认提示（逐字对照 deploy.sh:1068/:1079 的 `read_prompt` 文案）。 */
+/** 确认提示。 */
 export const UNINSTALL_PROMPT = "请输入 UNINSTALL 确认卸载（其他输入取消）：";
 /** `--all` 的确认提示（**不同**于默认卸载）。 */
 export const UNINSTALL_ALL_PROMPT =
   "请输入 DELETE ALL 确认完全删除（其他输入取消）：";
 
-/** `--all` 的警告正文（deploy.sh:1060-1067 逐字）。 */
+/** `--all` 的警告正文。 */
 export const UNINSTALL_ALL_WARNING = [
   "警告：即将完全删除 NOJ：",
   "  - 删除当前 Compose 栈的容器、网络、本地镜像和全部数据卷",
@@ -85,7 +84,7 @@ export const UNINSTALL_ALL_WARNING = [
   "此操作不可恢复，请先确认备份已经下载到其他位置。",
 ].join("\n");
 
-/** 默认卸载的说明正文（deploy.sh:1072-1078 逐字）。 */
+/** 默认卸载的说明正文。 */
 export const UNINSTALL_WARNING = [
   "即将卸载 NOJ 生产服务：",
   "  - 删除当前 Compose 栈的容器、网络和本地镜像",
@@ -94,18 +93,18 @@ export const UNINSTALL_WARNING = [
   "  - 不修改宿主机 Nginx/Caddy/宝塔站点、证书或其他容器",
 ].join("\n");
 
-/** 无 TTY 且未 `--yes` 的硬错误文案（deploy.sh:1057-1058 逐字）。 */
+/** 无 TTY 且未 `--yes` 的硬错误文案。 */
 export const UNINSTALL_TTY_HINT =
   "卸载需要交互确认；自动化环境请显式使用 --yes";
 
-/** 默认卸载取消文案（deploy.sh:1081 逐字）。 */
+/** 默认卸载取消文案。 */
 export const UNINSTALL_CANCELLED_HINT = "未确认卸载，未修改任何服务或文件";
-/** `--all` 取消文案（deploy.sh:1070 逐字）。 */
+/** `--all` 取消文案。 */
 export const UNINSTALL_ALL_CANCELLED_HINT =
   "未确认完全删除，未修改任何服务或文件";
 
 /**
- * `confirm_uninstall`（deploy.sh:1052-1084）：确认词闸门。
+ * `confirm_uninstall`：确认词闸门。
  *
  * **成功返回 `null`，失败返回面向用户的文案**（错误已经在人类通道写出）：
  * 两种确认词与"无 TTY"三种拒绝理由的文案各不同，调用方只需转退出码。
@@ -148,7 +147,7 @@ async function readConfirm(
 }
 
 /**
- * `uninstall`（deploy.sh:1097-1111）：确认 → 前置 → compose down → 软链清理 → 删目录。
+ * `uninstall`：确认 → 前置 → compose down → 软链清理 → 删目录。
  *
  * 退出码：0 成功；1 运行失败（确认不符、前置不过、compose 失败、工作区拒绝、
  * 目录删除失败）；用法错误 2 由 CLI 解析层产出。
@@ -173,7 +172,7 @@ export async function uninstall(
     return full;
   };
   // volumesRemoved 反映"第 4 步是否真的删了卷"：第 4 步自身失败或更早失败时为
-  // false，之后的清理失败（软链/删目录）不改变它（T15 评审 Minor 4）。
+  // false，之后的清理失败（软链/删目录）不改变它。
   const fail = (
     error: string,
     removed: string[] = [],
@@ -204,11 +203,11 @@ export async function uninstall(
   });
   if (!prepared.ok) return fail(prepared.error);
 
-  // compose down 参数：bash 置 INCLUDE_ALL_PROFILES=1，故 **judge 恒带**
+  // compose down 参数：包含全部 profile，故 **judge 恒带**
   // （uninstall 前不判 judge_enabled，见选择 (a) 的注释）；再叠加同样必须覆盖的
   // monitoring，使 profiled 服务（prometheus/alertmanager）不在卸载后残留。
   // --profile 对未声明该 profile 的 compose 文件是**惰性**的，故无条件带上不改变
-  // 默认卸载语义。monitoring 的存在性取自 T10 的 PROD_SERVICES 单一事实源
+  // 默认卸载语义。monitoring 的存在性取自 PROD_SERVICES 单一事实源
   // （compose_test.ts 已把它与真实 docker-compose.prod.yml 双向比对），不手抄清单。
   const monitoring = PROD_SERVICES.some((service) =>
     service.profile === "monitoring"
@@ -220,7 +219,7 @@ export async function uninstall(
     monitoring,
   };
 
-  // ---- 3. --all 的安装目录守卫：必须早于 down（bash production.sh:509）----
+  // ---- 3. --all 的安装目录守卫：必须早于 down----
   if (all) {
     try {
       await assertRemovableInstallDir(ctx.dir, processEnv, {
@@ -237,7 +236,7 @@ export async function uninstall(
     : ["down", "--remove-orphans", "--rmi", "local"];
   // `down` 成功即代表卷删除这一步已完成（默认命令本就不带 --volumes，字段为 false）。
   // 该事实必须**在后续清理之前**固定下来：软链/删目录失败不能让 `volumesRemoved`
-  // 退回 false（T15 评审 Minor 4）。
+  // 退回 false。
   const result = await runComposeSub(opts.runner, uninstallOptions, command);
   const text = composeOutputText(result);
   if (text !== "") emitHuman(text, ctx.io);
@@ -284,7 +283,7 @@ export async function uninstall(
     log("success", `已删除 NOJ 安装目录：${ctx.dir}`);
   }
 
-  // ---- 结果文案（deploy.sh:1104/1107-1108 逐字）----
+  // ---- 结果文案 ----
   if (all) {
     log("success", "生产容器、网络、本地镜像和数据卷已清理");
   } else {

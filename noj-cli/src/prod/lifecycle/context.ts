@@ -11,9 +11,9 @@ export interface LifecycleContext {
   dir: string;
   io: RenderIO;
   jsonMode: boolean;
-  /** 写一行状态（T8 符号 + 语义色），JSON 模式自动改道 stderr。 */
+  /** 写一行状态（符号 + 语义色），JSON 模式自动改道 stderr。 */
   status: (kind: StatusKind, text: string) => void;
-  /** 写一条失败诊断：**永远 stderr**（对照 bash `fail` 的 >&2）。 */
+  /** 写一条失败诊断：**永远 stderr**。 */
   error: (text: string) => void;
 }
 
@@ -25,15 +25,14 @@ function realStderr(text: string): void {
 /**
  * 写失败诊断到 stderr。
  *
- * bash `fail` 是 `printf ... >&2; exit 1`，而 T6 的 `emitHuman` 在人类模式写
- * **stdout**（只有 JSON 模式改道 stderr）——两者不能同时满足，故失败诊断显式
- * 走 stderr：这样重定向 `> out.txt` 时错误仍可见，`--json` 的 stdout 也不被污染。
+ * `emitHuman` 在人类模式写 **stdout**（只有 JSON 模式改道 stderr），故失败诊断
+ * 显式走 stderr：这样重定向 `> out.txt` 时错误仍可见，`--json` 的 stdout 也不被污染。
  */
 export function emitFailure(io: RenderIO, text: string): void {
   (io.stderr ?? realStderr)(text);
 }
 
-/** 构造命令上下文：T6 的 JSON 模式与 T8 的 stream 成对判定。 */
+/** 构造命令上下文：JSON 模式与输出 stream 成对判定。 */
 export function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
   const jsonMode = isJsonMode(opts.args ?? []);
   const io: RenderIO = { ...(opts.io ?? {}), jsonMode };

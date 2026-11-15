@@ -1,5 +1,5 @@
 /**
- * T17 driver 测试：prod-raw 的文件重定向**对真实进程**成立。
+ * driver 测试：prod-raw 的文件重定向**对真实进程**成立。
  *
  * 前面的 `container_test.ts` 用 fake runner 证明"容器层只走 spawn 的 stdoutFile"。
  * 那还不够——它没有证明 `stdoutFile` 这条路径在**真实进程**上确实以字节搬运。
@@ -44,7 +44,7 @@ const BINARY = new Uint8Array([
   0x00,
 ]);
 
-Deno.test("T17 realRawDriver.captureToFile：真实 cat 的二进制输出逐字节落盘", async () => {
+Deno.test("realRawDriver.captureToFile：真实 cat 的二进制输出逐字节落盘", async () => {
   const dir = await makeTempDir();
   try {
     const source = join(dir, "source.bin");
@@ -71,7 +71,7 @@ Deno.test("T17 realRawDriver.captureToFile：真实 cat 的二进制输出逐字
   }
 });
 
-Deno.test("T17 realRawDriver.feedFromFile：从文件喂 stdin，参数不受污染", async () => {
+Deno.test("realRawDriver.feedFromFile：从文件喂 stdin，参数不受污染", async () => {
   const dir = await makeTempDir();
   try {
     const source = join(dir, "source.bin");
@@ -93,7 +93,7 @@ Deno.test("T17 realRawDriver.feedFromFile：从文件喂 stdin，参数不受污
   }
 });
 
-Deno.test("T17 realRawDriver.feedFromFile：目标命令收到原始参数（路径不混进 argv）", async () => {
+Deno.test("realRawDriver.feedFromFile：目标命令收到原始参数（路径不混进 argv）", async () => {
   const dir = await makeTempDir();
   try {
     const source = join(dir, "source.txt");
@@ -123,7 +123,7 @@ Deno.test("T17 realRawDriver.feedFromFile：目标命令收到原始参数（路
   }
 });
 
-Deno.test("T17 realRawDriver：含空格/引号/$ 的路径经位置参数安全传递", async () => {
+Deno.test("realRawDriver：含空格/引号/$ 的路径经位置参数安全传递", async () => {
   const dir = await makeTempDir();
   try {
     // 刻意含空格、单引号、双引号与 $：若实现把它拼进脚本正文，必然失败或注入
@@ -144,7 +144,7 @@ Deno.test("T17 realRawDriver：含空格/引号/$ 的路径经位置参数安全
   }
 });
 
-Deno.test("T17 realRawDriver.captureToFile：非 0 退出码如实回传（不抛错）", async () => {
+Deno.test("realRawDriver.captureToFile：非 0 退出码如实回传（不抛错）", async () => {
   const dir = await makeTempDir();
   try {
     const dest = join(dir, "out.bin");
@@ -159,7 +159,7 @@ Deno.test("T17 realRawDriver.captureToFile：非 0 退出码如实回传（不�
   }
 });
 
-Deno.test("T17 prodComposeArgs：参数数组形状（含 profile / project-name / --ansi never）", () => {
+Deno.test("prodComposeArgs：参数数组形状（含 profile / project-name / --ansi never）", () => {
   const base = {
     composeFile: "/opt/noj/docker-compose.prod.yml",
     envFile: "/opt/noj/.env.prod",
@@ -176,7 +176,7 @@ Deno.test("T17 prodComposeArgs：参数数组形状（含 profile / project-name
     "postgres",
     "pg_dump",
   ]);
-  // judge 在 monitoring 之前（与 T10 的插入顺序一致）
+  // judge 在 monitoring 之前
   assertEquals(
     prodComposeArgs({ ...base, judge: true, monitoring: true }, ["ps"]),
     [
@@ -199,7 +199,7 @@ Deno.test("T17 prodComposeArgs：参数数组形状（含 profile / project-name
     judge: true,
     noAnsi: true,
   }, ["ps"]);
-  // **`--ansi` 必须紧跟 `compose` 之后**（评审发现）：它是 compose 的旗标。
+  // **`--ansi` 必须紧跟 `compose` 之后**：它是 compose 的旗标。
   // 旧断言把 `["--ansi","never"]` 钉在数组**最前**（即 `compose` 之前），
   // 实测那会得到 `docker --ansi never compose …` → `unknown flag: --ansi`。
   // 也就是说：**这条断言在固化一个真实的 bug**。
@@ -215,7 +215,7 @@ Deno.test("T17 prodComposeArgs：参数数组形状（含 profile / project-name
   assert(pn > 0 && pf > pn, "project-name 必须在 profile 之前");
 });
 
-Deno.test("T17 CaptureError：带上命令名与退出码，便于定位", () => {
+Deno.test("CaptureError：带上命令名与退出码，便于定位", () => {
   const err = new CaptureError("pg_dump", 1, "connection refused");
   assert(err.message.includes("pg_dump"));
   assert(err.message.includes("1"));
@@ -225,7 +225,7 @@ Deno.test("T17 CaptureError：带上命令名与退出码，便于定位", () =>
   assertEquals(err.name, "CaptureError");
 });
 
-Deno.test("T17 MinIO 镜像沿用采集数据库的独立 Compose 项目", async () => {
+Deno.test("MinIO 镜像沿用采集数据库的独立 Compose 项目", async () => {
   const dir = await makeTempDir();
   try {
     const calls: { cmd: string; args: string[] }[] = [];

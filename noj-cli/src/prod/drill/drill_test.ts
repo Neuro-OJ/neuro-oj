@@ -1,5 +1,5 @@
 /**
- * T19 演练测试：隔离性、退出码语义、失败也清理、报告与指标契约。
+ * 演练测试：隔离性、退出码语义、失败也清理、报告与指标契约。
  *
  * 全部注入（runner / fetch / 时间 / 睡眠），**不起容器、不触网**。
  *
@@ -131,7 +131,7 @@ function makeRunner(
       } as CmdResult);
     },
     spawn(): SpawnHandle {
-      throw new Error("T19 测试不 spawn");
+      throw new Error("演练测试不 spawn");
     },
   };
 }
@@ -432,17 +432,17 @@ async function baseOptions(
 
 // ---------------- 隔离性（#516 核心） ----------------
 
-Deno.test("T19 隔离性：覆盖 YAML 清除 ports 映射并只改演练网络参数", () => {
+Deno.test("隔离性：覆盖 YAML 清除 ports 映射并只改演练网络参数", () => {
   const yaml = renderDrillOverride("172.29.0.0/16");
   assertStringIncludes(yaml, "ports: !reset []");
   assertStringIncludes(yaml, `networks:\n  ${DRILL_NETWORK_NAME}:\n    ipam:`);
   assertStringIncludes(yaml, "subnet: 172.29.0.0/16");
-  // `verifier` 服务已删除（评审发现：TS 重写后业务验收由 CLI 直接发 HTTP，
+  // `verifier` 服务已删除（TS 重写后业务验收由 CLI 直接发 HTTP，
   // 该服务无任何使用点，只会多拉一个镜像并出现在 compose 解析面）。
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
-Deno.test("T19 隔离性：覆盖文件在 core.environment 中禁用出站集成", () => {
+Deno.test("隔离性：覆盖文件在 core.environment 中禁用出站集成", () => {
   const yaml = renderDrillOverride("172.29.0.0/16");
   assertStringIncludes(yaml, "services:\n  core:\n    environment:\n");
   assertStringIncludes(yaml, `      EMAIL_PROVIDER: "disabled"\n`);
@@ -461,7 +461,7 @@ Deno.test("T19 隔离性：覆盖文件在 core.environment 中禁用出站集�
   }
 });
 
-Deno.test("T19 隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
+Deno.test("隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
   const sql = renderDisableOutboundIntegrationsSql();
   // system_settings.value 是 JSON 编码，禁用值必须带引号
   assertStringIncludes(sql, `SET value = '"disabled"'`);
@@ -475,7 +475,7 @@ Deno.test("T19 隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_provid
   assertStringIncludes(sql, "WHERE key ~* 'webhook|slack|discord|feishu|lark'");
 });
 
-Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
+Deno.test("隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
   const root = await Deno.makeTempDir();
   const envFile = join(root, ".env.drill");
   const overrideFile = join(root, "compose.drill-override.yml");
@@ -571,7 +571,7 @@ Deno.test("T19 隔离性：真实 Compose 合并配置清除宿主机端口并�
   }
 });
 
-Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {
+Deno.test("隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {
   const args = drillComposeArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -588,7 +588,7 @@ Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子
   assertEquals(args.filter((a) => a === "--file").length, 2);
 });
 
-Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）", () => {
+Deno.test("清理参数：down -v --remove-orphans（隔离卷必须删）", () => {
   const args = drillCleanupArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -597,7 +597,7 @@ Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）",
   });
   assertStringIncludes(args.join(" "), "down -v --remove-orphans");
   assertEquals(args.slice(0, 3), ["compose", "--project-name", "noj-drill"]);
-  // 覆盖文件已删时不应再传它（bash on_exit 的同一判定）
+  // 覆盖文件已删时不应再传它
   const noOverride = drillCleanupArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -606,7 +606,7 @@ Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）",
   assertEquals(noOverride.filter((a) => a === "--file").length, 1);
 });
 
-Deno.test("T19 项目名/子网：复用既有校验（含 prod 拒绝与主机位判定）", () => {
+Deno.test("项目名/子网：复用既有校验（含 prod 拒绝与主机位判定）", () => {
   assertSubnetCidr("172.29.0.0/16");
   for (const bad of ["999.1.1.1/16", "172.29.1.1/16", "172.29.0.0/31"]) {
     let msg = "";
@@ -642,7 +642,7 @@ Deno.test("P8 隔离 daemon：只接受专用 socket，默认项目/子网每次
 
 // ---------------- 退出码语义 ----------------
 
-Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", async () => {
+Deno.test("退出码 0：完整成功流程（报告 + 指标 + 清理）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -654,7 +654,7 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
     assertEquals(result.pass, true);
     assertEquals(result.failedStage, null);
     assertEquals(result.reportPath, join(root, "report.txt"));
-    // 报告字段与 bash 逐字对应
+    // 报告字段名固定
     const report = await Deno.readTextFile(join(root, "report.txt"));
     assertStringIncludes(report, "result=passed\n");
     assertStringIncludes(
@@ -713,7 +713,7 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
   }
 });
 
-Deno.test("T19 退出码 1：RPO 超限（快照过旧）→ 失败且不刷新指标", async () => {
+Deno.test("退出码 1：RPO 超限（快照过旧）→ 失败且不刷新指标", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -745,7 +745,7 @@ Deno.test("T19 退出码 1：RPO 超限（快照过旧）→ 失败且不刷新�
   }
 });
 
-Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报告", async () => {
+Deno.test("退出码 2：docker 不可用 → 零 compose 调用、不写报告", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -781,7 +781,7 @@ Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报
   }
 });
 
-Deno.test("T19 退出码 2：项目名含 prod → 拒绝且零 compose 调用", async () => {
+Deno.test("退出码 2：项目名含 prod → 拒绝且零 compose 调用", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -797,7 +797,7 @@ Deno.test("T19 退出码 2：项目名含 prod → 拒绝且零 compose 调用",
   }
 });
 
-Deno.test("T19 退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO", async () => {
+Deno.test("退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -828,7 +828,7 @@ Deno.test("T19 退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO",
 
 // ---------------- 失败也清理 ----------------
 
-Deno.test("T19 失败也清理：恢复阶段失败 → 仍执行 down -v，且报告记录失败阶段", async () => {
+Deno.test("失败也清理：恢复阶段失败 → 仍执行 down -v，且报告记录失败阶段", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -861,7 +861,7 @@ Deno.test("T19 失败也清理：恢复阶段失败 → 仍执行 down -v，且�
   }
 });
 
-Deno.test("T19 --keep：失败时**不**清理资源与目录", async () => {
+Deno.test("--keep：失败时**不**清理资源与目录", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -889,7 +889,7 @@ Deno.test("T19 --keep：失败时**不**清理资源与目录", async () => {
   }
 });
 
-Deno.test("T19 清理失败不掩盖原始错误（原始原因仍是 message 主体）", async () => {
+Deno.test("清理失败不掩盖原始错误（原始原因仍是 message 主体）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -918,7 +918,7 @@ Deno.test("T19 清理失败不掩盖原始错误（原始原因仍是 message �
 
 // ---------------- 形态反转与数据核对 ----------------
 
-Deno.test("T19 形态反转：.nojbackup 被接受；目录形态被拒绝（2）", async () => {
+Deno.test("形态反转：.nojbackup 被接受；目录形态被拒绝（2）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -945,7 +945,7 @@ Deno.test("T19 形态反转：.nojbackup 被接受；目录形态被拒绝（2�
   }
 });
 
-Deno.test("T19 数据核对：迁移版本与快照不一致 → 失败（1）", async () => {
+Deno.test("数据核对：迁移版本与快照不一致 → 失败（1）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -972,7 +972,7 @@ Deno.test("T19 数据核对：迁移版本与快照不一致 → 失败（1）",
   }
 });
 
-Deno.test("T19 数据核对：MinIO 对象数少于快照 → 失败（1）", async () => {
+Deno.test("数据核对：MinIO 对象数少于快照 → 失败（1）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -1002,7 +1002,7 @@ Deno.test("T19 数据核对：MinIO 对象数少于快照 → 失败（1）", as
 
 // ---------------- 业务验收（原生 HTTP） ----------------
 
-Deno.test("T19 业务验收：登录失败 → 立即短路（不再发题目请求）", async () => {
+Deno.test("业务验收：登录失败 → 立即短路（不再发题目请求）", async () => {
   const { fetch, calls } = makeFetch({ loginStatus: 401 });
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -1018,7 +1018,7 @@ Deno.test("T19 业务验收：登录失败 → 立即短路（不再发题目请
   assertStringIncludes(result.firstFailure ?? "", "HTTP 401");
 });
 
-Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/注册）", async () => {
+Deno.test("业务验收：完整链路通过（导入/详情/附件/评测/注册）", async () => {
   const { fetch } = makeFetch();
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -1043,7 +1043,7 @@ Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/�
   );
 });
 
-Deno.test("T19 业务验收：--skip-judge 时不导入题目、评测记为 skipped", async () => {
+Deno.test("业务验收：--skip-judge 时不导入题目、评测记为 skipped", async () => {
   const { fetch, calls } = makeFetch();
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -1063,7 +1063,7 @@ Deno.test("T19 业务验收：--skip-judge 时不导入题目、评测记为 ski
   );
 });
 
-Deno.test("T19 业务验收：评测分数为 0 → 失败（1）", async () => {
+Deno.test("业务验收：评测分数为 0 → 失败（1）", async () => {
   const { fetch } = makeFetch();
   // 让轮询返回 score=0 的响应：复用 handler 但覆盖 /self-tests/ 分支
   const zeroScore: typeof fetch = (input, init) => {
@@ -1091,7 +1091,7 @@ Deno.test("T19 业务验收：评测分数为 0 → 失败（1）", async () => 
   assertStringIncludes(evaluation?.detail ?? "", "score=0");
 });
 
-Deno.test("T19 业务验收：注册失败只记 warning，不影响结论", async () => {
+Deno.test("业务验收：注册失败只记 warning，不影响结论", async () => {
   const { fetch } = makeFetch({ registerStatus: 403 });
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -1103,7 +1103,7 @@ Deno.test("T19 业务验收：注册失败只记 warning，不影响结论", asy
   assertEquals(probe?.status, "warning");
 });
 
-Deno.test("T19 业务验收：Cookie 与 JSON token 双兼容", async () => {
+Deno.test("业务验收：Cookie 与 JSON token 双兼容", async () => {
   // 只给 Set-Cookie，不给 JSON token
   const cookieOnly: typeof fetch = (input) => {
     const url = String(input);
@@ -1140,7 +1140,7 @@ Deno.test("T19 业务验收：Cookie 与 JSON token 双兼容", async () => {
   assertEquals(result.steps.find((s) => s.step === "login")?.status, "passed");
 });
 
-Deno.test("T19 buildDrillBundle：产出可被 zip 解析的包（含 evaluator/template）", async () => {
+Deno.test("buildDrillBundle：产出可被 zip 解析的包（含 evaluator/template）", async () => {
   const { unzipSync } = await import("fflate");
   const bytes = buildDrillBundle("eval-img:1", "sol-img:1");
   const files = unzipSync(bytes);
@@ -1161,7 +1161,7 @@ Deno.test("T19 buildDrillBundle：产出可被 zip 解析的包（含 evaluator/
 
 // ---------------- 报告与指标（纯函数） ----------------
 
-Deno.test("T19 报告：字段名与 bash 逐字一致", () => {
+Deno.test("报告：字段名固定不变", () => {
   const text = renderReport({
     result: "passed",
     snapshot: "/t/snap.nojbackup",
@@ -1219,7 +1219,7 @@ Deno.test("T19 报告：字段名与 bash 逐字一致", () => {
   }
 });
 
-Deno.test("T19 失败报告：有 failed_stage，无 RPO/RTO 字段（避免误读为跑完）", () => {
+Deno.test("失败报告：有 failed_stage，无 RPO/RTO 字段（避免误读为跑完）", () => {
   const text = renderFailureReport({
     snapshot: "/t/snap.nojbackup",
     failedStage: "business-verify",
@@ -1235,7 +1235,7 @@ Deno.test("T19 失败报告：有 failed_stage，无 RPO/RTO 字段（避免误�
   assertStringIncludes(text, "# ---- 业务验收输出（失败现场） ----");
 });
 
-Deno.test("T19 指标：名字逐字保持契约（含 HELP/TYPE），且仅成功时渲染", () => {
+Deno.test("指标：名字逐字保持契约（含 HELP/TYPE），且仅成功时渲染", () => {
   const text = renderDrillMetrics(1789819200);
   assertEquals(
     text,
@@ -1247,7 +1247,7 @@ Deno.test("T19 指标：名字逐字保持契约（含 HELP/TYPE），且仅成�
   assertEquals(METRIC_LAST_SUCCESS, "noj_restore_drill_last_success_unix_time");
 });
 
-Deno.test("T19 时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标（inf）", () => {
+Deno.test("时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标（inf）", () => {
   const now = new Date("2026-09-19T12:00:00Z");
   assertEquals(hoursSinceSnapshot("2026-09-19T10:00:00Z", now), 2);
   assertEquals(hoursSinceSnapshot("", now), Number.POSITIVE_INFINITY);
@@ -1262,7 +1262,7 @@ Deno.test("T19 时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标�
   assertEquals(snapshotCreatedAt("not json"), "");
 });
 
-Deno.test("T19 路径与目录：报告落点、演练目录、指标目录", async () => {
+Deno.test("路径与目录：报告落点、演练目录、指标目录", async () => {
   const root = await makeTempDir();
   try {
     // 单文件快照：报告写到**所在目录**（不是把文件当目录拼路径）
@@ -1306,7 +1306,7 @@ Deno.test("T19 路径与目录：报告落点、演练目录、指标目录", as
   }
 });
 
-Deno.test("T19 makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", async () => {
+Deno.test("makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", async () => {
   const root = await makeTempDir();
   try {
     const src = join(root, "globals.sql");
@@ -1328,7 +1328,7 @@ Deno.test("T19 makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", asyn
   }
 });
 
-Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
+Deno.test("readEnvValues/valueOr/tailLines：解析与兜底", async () => {
   const root = await makeTempDir();
   try {
     const env = join(root, ".env.prod");
@@ -1339,7 +1339,7 @@ Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
     assertEquals(valueOr(values, "POSTGRES_USER", "noj"), "pguser");
     assertEquals(valueOr(values, "MISSING", "fallback"), "fallback");
     assertEquals(valueOr({ K: "" }, "K", "def"), "def");
-    // 缺文件 → 空表（bash env_value 同样不报错）
+    // 缺文件 → 空表
     assertEquals(await readEnvValues(join(root, "nope")), {});
 
     assertEquals(tailLines("a\nb\nc\nd", 2), "c\nd");
@@ -1349,12 +1349,12 @@ Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
   }
 });
 
-// ── 评审发现（Important）：恢复路径上两处 compose 退出码被丢弃 ────────
+// ── 回归：恢复路径上两处 compose 退出码被丢弃 ────────
 //
-// bash 对 drill 的每一步都是 `|| die`。一次性服务必须经 Compose `up` 保留
+// 演练的每一步失败都必须终止。一次性服务必须经 Compose `up` 保留
 // 完成状态，不能用 `run --rm` 后再 `up core`，否则依赖会被重新执行。
 
-Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
+Deno.test("minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
   // 行为断言而非源码文本匹配：注入 runner 让一次性 `up minio-init` 失败，
   // 断言最终错误**点名 minio-init**。
   const root = await Deno.makeTempDir();
@@ -1504,7 +1504,7 @@ Deno.test("P2b: 演练按 Core → Gateway → Core HTTP 顺序执行且不重�
   }
 });
 
-Deno.test("T19 业务验收：全部请求命中域契约路径（旧无域写入口一律失败）", async () => {
+Deno.test("业务验收：全部请求命中域契约路径（旧无域写入口一律失败）", async () => {
   const { fetch, calls } = makeFetch();
   await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",

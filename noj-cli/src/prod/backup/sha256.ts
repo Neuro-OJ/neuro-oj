@@ -9,7 +9,7 @@
  *
  * 三个可选方案与取舍：
  * 1. **spawn `sha256sum`**：coreutils 通常存在，但把"算摘要"这一纯计算绑到外部
- *    二进制上；R1 要求 CLI 在仅有 docker/curl/openssl 的环境可用，且
+ *    二进制上；CLI 须 在仅有 docker/curl/openssl 的环境可用，且
  *    `openssl dgst` 的输出格式还需再解析——不必要的外部面。
  * 2. **`FFI` 调 OpenSSL**：Deno 的 FFI 需要 `--allow-ffi` 且跨平台差异大。
  * 3. **纯 TS 增量实现**（本模块）：约 100 行、无依赖、内存有界，代价是吞吐低于

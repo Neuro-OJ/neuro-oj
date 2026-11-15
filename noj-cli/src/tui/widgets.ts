@@ -3,9 +3,9 @@ import type { PromptIO } from "./io.ts";
 /** {@link select} 的选项。 */
 export interface SelectOptions {
   /**
-   * 视为"回退"的输入（T22）。命中时**立即返回 -1** 而不重试。
+   * 视为"回退"的输入。命中时**立即返回 -1** 而不重试。
    *
-   * 为什么需要它：`problem init` 的引导要求"含校验与回退"（R6）。回退必须是
+   * 为什么需要它：`problem init` 的引导要求"含校验与回退"。回退必须是
    * `select` 能表达的结果，否则调用方只能靠"抛异常"来中断选择——那会让
    * "回退"与"出错"在调用方无法区分。
    *

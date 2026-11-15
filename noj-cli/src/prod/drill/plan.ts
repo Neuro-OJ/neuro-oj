@@ -1,15 +1,10 @@
 /**
- * 演练的参数校验、隔离编排规划与资源前置（T19）。
- *
- * 迁移 `scripts/deploy/restore-drill.sh` 的 `preflight()`（:250-281）、
- * `prepare_directories()`（:282-306）、`prepare_compose_override()`（:321-339）与
- * `env_value()`/`file_mode()`/`check_secret_file()`（:98-121）；参数校验部分
- * **复用** `maintain/drill.ts` 已带 P1/P2 评审修复的实现（见下方 import 说明）。
+ * 演练的参数校验、隔离编排规划与资源前置。
  *
  * ## 为什么这些是纯函数 / 可注入
  *
- * `restore-drill.sh` 的等价逻辑散在 609 行里、与 docker 调用交织，因此无法单测
- * "参数错误是否在起容器之前被拦下"。本模块把**判定**与**执行**分开：
+ * 判定与 docker 调用交织时，无法单测"参数错误是否在起容器之前被拦下"。
+ * 本模块把**判定**与**执行**分开：
  * - 判定（项目名 / 子网 / RPO-RTO / 快照形态 / 覆盖 YAML 生成）全为纯函数；
  * - 执行（docker 调用）只在 `drill.ts` 的编排层，且一切经注入的 runner。
  *
@@ -35,7 +30,7 @@ import type { CmdResult, CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 
 /**
- * 校验演练项目名（原 `maintain/drill.ts`，T23 搬迁）。
+ * 校验演练项目名。
  *
  * **拒绝包含 `prod`**（#516 验收）：演练必须用独立 Compose 项目，若与生产同名，
  * `docker compose down -v` 会**删掉生产数据卷**。这是不可逆的破坏，必须在开跑前拦下。
@@ -123,9 +118,9 @@ export function uniqueDrillSubnet(octet = randomDrillOctet()): string {
 }
 
 /**
- * 校验子网格式（CIDR）（原 `maintain/drill.ts`，T23 搬迁）。
+ * 校验子网格式（CIDR）。
  *
- * **必须挡住 Docker 也会拒绝的输入**（#516 评审 P2）：早先只检查「四段数字 +
+ * **必须挡住 Docker 也会拒绝的输入**（#516）：早先只检查「四段数字 +
  * 前缀 8-30」，`999.1.1.1/16`、`172.29.1.1/16`（主机位不为 0）都会通过，
  * 直到 `docker network create` 才失败——而此时演练已进入 prepare 阶段，
  * 用户看到的是「演练失败(1)」，与 help/注释承诺的「参数错误 = 2」不符。
@@ -134,7 +129,7 @@ export function uniqueDrillSubnet(octet = randomDrillOctet()): string {
  * **主机位必须为 0**（即网络地址形式）。
  *
  * 非法值抛 {@link UsageError}（退出码 2），而不是普通 Error——否则会被 CLI
- * 当作运行失败(1)，正是评审指出的错误码不符。
+ * 当作运行失败(1)。
  */
 export function assertSubnetCidr(cidr: string): void {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
@@ -169,40 +164,40 @@ export function assertSubnetCidr(cidr: string): void {
   }
 }
 
-/** 演练默认项目名（`NOJ_DRILL_PROJECT_NAME` 的缺省，bash :31）。 */
+/** 演练默认项目名（`NOJ_DRILL_PROJECT_NAME` 的缺省）。 */
 export const DEFAULT_DRILL_PROJECT_NAME = "noj-drill";
 
-/** 演练默认子网（`NOJ_DRILL_SUBNET` 的缺省，bash :35）。 */
+/** 演练默认子网（`NOJ_DRILL_SUBNET` 的缺省）。 */
 export const DEFAULT_DRILL_SUBNET = "172.29.0.0/16";
 
-/** 默认 RPO 上限（小时，bash :36）。 */
+/** 默认 RPO 上限（小时）。 */
 export const DEFAULT_RPO_MAX_HOURS = 24;
 
-/** 默认 RTO 上限（分钟，bash :37）。 */
+/** 默认 RTO 上限（分钟）。 */
 export const DEFAULT_RTO_MAX_MINUTES = 60;
 
-/** 默认 Compose 等待超时（秒，bash :38）。 */
+/** 默认 Compose 等待超时（秒）。 */
 export const DEFAULT_WAIT_TIMEOUT = 300;
 
-/** 演练管理员账号（只存在于隔离演练库；bash :43-46）。 */
+/** 演练管理员账号（只存在于隔离演练库）。 */
 export const DRILL_ADMIN_USER = "drill_admin";
-/** 演练管理员邮箱域（`.invalid` 保证不可达；bash :44）。 */
+/** 演练管理员邮箱域（`.invalid` 保证不可达）。 */
 export const DRILL_ADMIN_EMAIL_DOMAIN = "restore-drill.invalid";
-/** 演练管理员口令（固定，保证演练可复现；bash :45）。 */
+/** 演练管理员口令（固定，保证演练可复现）。 */
 export const DRILL_ADMIN_PASSWORD = "Drill-Recover-2026";
-/** 演练管理员 bcrypt 哈希（cost 12；bash :46 逐字）。 */
+/** 演练管理员 bcrypt 哈希（cost 12）。 */
 export const DRILL_BCRYPT_HASH =
   "$2b$12$edDmxsubnHJL8B/Wsdryxu4ibNin0/SEhqAXkB.Yn50SCoN29lQCW";
 
-/** judge_images 白名单缺失时的兜底评测镜像（bash :49-50）。 */
+/** judge_images 白名单缺失时的兜底评测镜像。 */
 export const DEFAULT_EVALUATOR_IMAGE = "noj-evaluator-python";
-/** judge_images 白名单缺失时的兜底解题镜像（bash :50）。 */
+/** judge_images 白名单缺失时的兜底解题镜像。 */
 export const DEFAULT_SOLUTION_IMAGE = "noj-solution-python";
 
-/** 演练所需的磁盘下限（bash 无此检查，见 {@link checkDrillResources}）。 */
+/** 演练所需的磁盘下限（见 {@link checkDrillResources}）。 */
 export const DRILL_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 
-/** 演练网络名（覆盖文件里的键，bash :334 的 `noj-net`）。 */
+/** 演练网络名（覆盖文件里的键）。 */
 export const DRILL_NETWORK_NAME = "noj-net";
 
 /**
@@ -304,20 +299,17 @@ export function renderDisableOutboundIntegrationsSql(): string {
 }
 
 /**
- * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` :321-339 的等价）。
+ * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` 的等价）。
  *
  * 覆盖三类隔离属性：把 `noj-net` 的子网改为演练子网；用 Compose 的
  * `!reset []` 清空生产服务继承的宿主机端口映射（必须写在合并后的配置里，
  * 仅仅让覆盖文件不出现 `ports:` 并不能移除生产文件的映射）；以及在 core 的
  * `environment` 中按键覆盖出站集成（见 {@link DRILL_OUTBOUND_ENV_OVERRIDES}）。
  *
- * ## 为什么不再声明 `verifier` 服务（评审发现）
+ * ## 为什么不声明 `verifier` 服务
  *
- * bash 的覆盖文件声明了一个 `verifier` 服务（`restore-drill.sh:326-334`），
- * 载体是**额外容器**里跑的 `verify.ts`。TS 重写后业务验收改由 CLI **直接发
- * HTTP**（经容器 IP 访问隔离网络，见 `verify.ts`），该服务再无任何使用点——
- * 但它仍留在覆盖文件里，会出现在 `compose config`/`up` 的解析面并多拉一个镜像，
- * 且与"少一个镜像依赖"的表述矛盾。已删除。
+ * 业务验收由 CLI **直接发 HTTP**（经容器 IP 访问隔离网络，见 `verify.ts`），
+ * 不需要额外容器；多声明一个服务只会多拉一个镜像。
  *
  * 为什么需要覆盖而不是改生产文件：生产 `docker-compose.prod.yml` 受版本管理且
  * 被 CI/文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
@@ -347,12 +339,12 @@ networks:
 }
 
 /**
- * 构造 `docker compose` 的**纯参数数组**（bash `compose()` :153-163 的等价）。
+ * 构造 `docker compose` 的**纯参数数组**。
  *
  * 形状：`compose --project-name <演练名> --env-file <演练env> --file <生产compose>
  * --file <覆盖> [--profile judge] <子命令…>`。
  * 注意 `--project-name` **必须**在最前（它是隔离性的第一保证），且 profile 在
- * 子命令之前（Compose 的全局旗标语义，与 T10/T14 的 `--ansi` 同一类）。
+ * 子命令之前（Compose 的全局旗标语义，与 `--ansi` 同一类）。
  */
 export function drillComposeArgs(opts: {
   projectName: string;
@@ -384,12 +376,12 @@ export interface CleanupArgsOptions {
   projectName: string;
   composeEnvFile: string;
   composeFile: string;
-  /** 覆盖文件路径；演练目录已被删时传 undefined（bash `on_exit` 的同一判定）。 */
+  /** 覆盖文件路径；演练目录已被删时传 undefined。 */
   overrideFile?: string;
 }
 
 /**
- * 构造 `down -v --remove-orphans` 的参数（bash `on_exit` :165-186 的等价）。
+ * 构造 `down -v --remove-orphans` 的参数。
  *
  * `-v` 是**必需**的：演练卷留着的唯一后果是占盘，且下次演练会因卷已存在而
  * 复用到脏数据。这里与生产的安全性无关——项目名不同，卷名前缀就不同。
@@ -411,7 +403,7 @@ export function drillCleanupArgs(opts: CleanupArgsOptions): string[] {
   return args;
 }
 
-/** 演练目录的默认名（`drill-<时间戳>`，bash :288）。 */
+/** 演练目录的默认名（`drill-<时间戳>`）。 */
 export function drillDirName(now: Date): string {
   const p = (n: number): string => String(n).padStart(2, "0");
   return `drill-${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}` +
@@ -420,10 +412,10 @@ export function drillDirName(now: Date): string {
 }
 
 /**
- * 分配演练目录（bash :288-295 的等价）：默认在**快照同级**，冲突时追加序号。
+ * 分配演练目录：默认在**快照同级**，冲突时追加序号。
  *
  * 与快照同级是有意的：演练目录里要放解包后的 payload 与日志，放在快照旁边
- * 便于 `--keep` 时人工检查（bash 同样如此）。
+ * 便于 `--keep` 时人工检查。
  */
 export async function allocateDrillDir(
   snapshotPath: string,
@@ -460,11 +452,10 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
- * 报告路径（bash :296-299 + `maintain/drill.ts:279-291` 的同一语义）。
+ * 报告路径。
  *
  * 默认写在**快照目录之内**的 `restore-drill-report.txt`。注意对**单文件快照**
- * 来说，"快照目录"是其所在目录——因此这里用 `dirname` 而非把快照当成目录
- * （`maintain/drill.ts` 的旧实现假定快照是目录，对单文件会拼出不存在的路径）。
+ * 来说，"快照目录"是其所在目录——因此这里用 `dirname` 而非把快照当成目录。
  */
 export function resolveReportPath(
   snapshotPath: string,
@@ -487,14 +478,11 @@ export class DrillPreflightError extends Error {
 }
 
 /**
- * 演练前置：环境、口令、docker、磁盘、报告可写（bash `preflight` :250-281 的等价，
- * 但把 docker/磁盘探测改为**注入**以便测试与"零 compose 调用"断言）。
+ * 演练前置：环境、口令、docker、磁盘、报告可写；docker/磁盘探测经**注入**，
+ * 以便测试与"零 compose 调用"断言。
  *
- * 与 bash 的差异（都在 {@link DrillPreflightOptions} 的 JSDoc 中说明）：
- * - bash 用 `bash backup.sh verify` 做文件校验；本实现用 T18 的 `verifyContainer`
- *   （原生，且对单文件形态天然支持）；
- * - bash 在 preflight 里 `die`（退出码 1）；本实现抛 {@link DrillPreflightError}，
- *   由编排层映射为**退出码 2**（#516 验收："资源缺失 = 2，且必须在开始前"）。
+ * 失败抛 {@link DrillPreflightError}，由编排层映射为**退出码 2**
+ * （#516 验收："资源缺失 = 2，且必须在开始前"）。
  */
 export interface DrillPreflightOptions {
   /** 解包后的快照 staging 目录（已校验）。 */
@@ -516,13 +504,13 @@ export interface DrillPreflightOptions {
 /**
  * 执行前置校验；任一不过即抛 {@link DrillPreflightError}。
  *
- * **顺序对齐 bash**：快照 → 口令 → 生产环境文件 → compose → docker → 项目名 →
+ * **顺序**：快照 → 口令 → 生产环境文件 → compose → docker → 项目名 →
  * 数值。全部在**起任何容器之前**，因此"前置失败 ⇒ 零 compose 调用"。
  */
 export async function checkDrillPreflight(
   opts: DrillPreflightOptions,
 ): Promise<void> {
-  // 快照必需条目（bash :264-268）：校验由 T18 的 verifyContainer 完成，
+  // 快照必需条目：校验由 verifyContainer 完成，
   // 这里只断言它对容器形态的结论（payload_layout 已由 verify 校验）。
   if (!(await isFile(join(opts.staging, "manifest.json")))) {
     throw new DrillPreflightError("快照缺少 manifest.json");
@@ -543,7 +531,7 @@ export async function checkDrillPreflight(
       "无法连接 Docker（演练需要起隔离容器）；请确认 Docker 已安装并运行",
     );
   }
-  // 磁盘：演练要恢复完整数据 + 起容器（bash 无此检查，这里保留 noj-cli 既有行为）
+  // 磁盘：演练要恢复完整数据 + 起容器
   if (opts.freeBytes !== undefined) {
     const free = await opts.freeBytes();
     if (Number.isFinite(free) && free < DRILL_MIN_FREE_BYTES) {
@@ -601,7 +589,7 @@ export function probeDocker(
 }
 
 /**
- * 校验口令文件权限（bash `check_secret_file` :114-121 的等价）。
+ * 校验口令文件权限。
  *
  * 600/400 之外一律拒绝：口令文件是可读即得收益的机密，宽松权限等于把
  * "异地独立保管"这条要求作废。
@@ -625,9 +613,9 @@ export async function checkPassphraseFile(path: string): Promise<void> {
 }
 
 /**
- * 解析 `.env.prod` 的键值（bash `env_value` :98-108 的等价）。
+ * 解析 `.env.prod` 的键值。
  *
- * 复用 T3 `core/env-file.ts` 的解析器；缺失文件返回空表（bash 同样 `return 0`）。
+ * 复用 `core/env-file.ts` 的解析器；缺失文件返回空表。
  */
 export async function readEnvValues(
   envFile: string,
@@ -644,7 +632,7 @@ export async function readEnvValues(
   return out;
 }
 
-/** 带缺省值的取值（bash `${VAR:-default}` 的等价）。 */
+/** 带缺省值的取值。 */
 
 // `valueOr` 已移到 `prod/env-values.ts`（生产 restore 也要用，避免 backup→drill
 // 的反向依赖）。此处**再导出**以保持既有导入点不变。

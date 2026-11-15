@@ -1,20 +1,9 @@
 /**
- * 生产命令的 CLI 接线层（T24）：参数解析 → 调用原生实现。
+ * 生产命令的 CLI 接线层：参数解析 → 调用原生实现。
  *
- * ## 本模块存在的唯一理由（R1 收口）
- *
- * T12–T21 交付了全部生产命令的**原生实现**（`prod/lifecycle.ts`、`prod/backup/*`、
- * `prod/drill/*`、`prod/schedule.ts`、`prod/judge/*`），但它们此前**没有接线**：
- * `cli.ts` 把 `PRODUCTION_COMMANDS` 整体转发给 `bash production.sh`
- * （旧 `production.ts:112`）——那是 `noj-cli/src` 内**唯一**的 R1 违例，
- * 也是"纯 TS 重写"最后一块非 TS 拼图。
- *
- * 本模块把那层转发换成真实调用：
- *
- * ```text
- * 旧：noj-cli status → bash <dir>/scripts/deploy/production.sh status → deploy.sh
- * 新：noj-cli status → prod/lifecycle.ts:status → docker compose ps
- * ```
+ * 命令语义在 `prod/lifecycle.ts`、`prod/backup/*`、`prod/drill/*`、
+ * `prod/schedule.ts`、`prod/judge/*`；本模块把 CLI 参数接到这些实现上，例如
+ * `noj-cli status → prod/lifecycle.ts:status → docker compose ps`。
  *
  * ## 边界
  *
@@ -22,7 +11,7 @@
  *    任何判定（例如"已 running 时 up 是 no-op"只在 `lifecycle.ts`）。
  * 2. **一切外部访问可注入**：`runner`/`io`/`fetcher`/`isTty` 都可替换，因此
  *    `cli_test` 断言"调到原生实现且不 spawn bash"时不起容器。
- * 3. **`--json` 由原生实现负责**：它们已实现 T6 契约（stdout 只含 JSON），
+ * 3. **`--json` 由原生实现负责**：stdout 只含 JSON，
  *    本模块不得再把人类文字写进 stdout。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。

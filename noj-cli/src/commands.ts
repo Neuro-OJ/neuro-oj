@@ -153,8 +153,7 @@ export const COMMANDS: readonly TopCommandSpec[] = [
     ],
   },
   {
-    // T26：独立 Judge Worker 部署入口（对应已删除的 judge-install.sh）。
-    // 子命令与 bash `judge-install.sh usage()` 逐项对应。
+    // 独立 Judge Worker 部署入口。
     name: "judge",
     tier: "prod",
     summary: "独立 Judge Worker 部署（需专用 rootless Docker socket）",
@@ -403,7 +402,7 @@ function flatten(cmd: CommandSpec, prefix = ""): RenderRow[] {
  * 输出按 {@link Tier} 分区；每个分区内，顶层命令与其子命令逐行展开，
  * 使 `backup list` 这类真实能力可直接从顶层 help 发现（本任务修复的漂移）。
  *
- * ## 窄终端（T26）
+ * ## 窄终端
  *
  * 传入 `maxWidth`（通常为 `COLUMNS`）时，每个分区的命令表经
  * {@link renderTable} 的宽度约束渲染：先均摊收缩最宽列、超宽以 `…` 截断、

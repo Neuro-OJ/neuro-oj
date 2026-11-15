@@ -1,17 +1,8 @@
 /**
- * 隔离恢复演练的编排（T19）。
+ * 隔离恢复演练的编排。
  *
- * 迁移 `scripts/deploy/restore-drill.sh` 的 `main()`（:576-605）与
- * `restore_data_services()`（:340-376）、`verify_data()`（:377-424）、
- * `seed_drill_admin()`（:425-447）、`start_business_services()`（:448-466）、
- * `ensure_judge_images()`（:467-480）、`run_business_verification()`（:481-501）、
- * `on_exit()`（:165-186）。
+ * ## 本模块**零** shell / 脚本调用
  *
- * ## R1：本模块**零** bash / 脚本调用
- *
- * 原实现是 `restore-drill.sh` 的薄包装（`maintain/drill.ts` 的
- * `new Deno.Command("bash", …)`），且业务验收要在额外容器里跑
- * `deno run restore-drill-verify.ts`。移植后：
  * - 恢复序列全部经注入的 `CommandRunner` 发 `docker compose …`；
  * - 业务验收由 CLI 直接发 HTTP（见 `verify.ts`），经容器 IP 访问隔离网络。
  *
@@ -31,7 +22,7 @@
  *
  * ## 二进制与转储的搬运
  *
- * `postgres.dump` / `redis.rdb` 一律经**文件重定向**（T17 `driver.ts` 的
+ * `postgres.dump` / `redis.rdb` 一律经**文件重定向**（`driver.ts` 的
  * `feedFromFile`/`captureToFile` 语义），不经 stdout 字符串——理由见该模块头。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2）：状态全在一次运行对象里。
@@ -142,7 +133,7 @@ export interface DrillRunOptions {
   /**
    * 快照是否加密（缺省 `true`，对应 `backup create` 的默认行为）。
    *
-   * `backup create --no-encrypt` 的产物必须也能演练（评审发现）：
+   * `backup create --no-encrypt` 的产物必须也能演练：
    * 此前 drill 无条件按加密解包，不加密的快照会在 `gpg --decrypt` 处失败，
    * 于是"不加密"这条受支持的路径无法做恢复验收。
    */
@@ -193,12 +184,12 @@ interface DrillContext {
 /**
  * 执行隔离恢复演练。
  *
- * 流程（阶段名与 bash `STAGE` 逐条对应，用于失败报告定位）：
+ * 流程（阶段名用于失败报告定位）：
  * `preflight`（参数/资源/快照校验，**零 compose 调用**）→ `prepare`（目录、解密 env、
  * 覆盖文件）→ `restore-data` → `verify-data` → `seed-admin` → `start-business`
  * → `business-verify` → `report`。
  *
- * **前置失败返回 2 且不写报告**（bash 同样在 preflight 不写）；其余失败写失败
+ * **前置失败返回 2 且不写报告**；其余失败写失败
  * 报告、清理资源、返回 1。
  */
 export async function runDrill(
@@ -434,7 +425,7 @@ export async function runDrill(
   };
 }
 
-/** 前置失败（退出码 2，**零 compose 调用**、不写报告——bash preflight 同样不写）。 */
+/** 前置失败（退出码 2，**零 compose 调用**、不写报告）。 */
 function preflightFailure(err: unknown): DrillRunResult {
   return {
     pass: false,
@@ -446,14 +437,14 @@ function preflightFailure(err: unknown): DrillRunResult {
   };
 }
 
-/** 非负整数校验（bash :277 的 `[[ =~ ^[0-9]+$ ]]`）。 */
+/** 非负整数校验。 */
 function assertNonNegativeInt(label: string, value: number): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new UsageError(`${label} 目标必须是非负整数，收到 "${value}"`);
   }
 }
 
-/** 解包快照到演练目录（接受 `.nojbackup` 单文件——T19 的形态反转）。 */
+/** 解包快照到演练目录（只接受 `.nojbackup` 单文件）。 */
 async function unpackForDrill(
   opts: DrillRunOptions,
   projectName: string,
@@ -462,7 +453,7 @@ async function unpackForDrill(
   if (!opts.snapshotPath.endsWith(".nojbackup")) {
     throw new UsageError(
       `drill 只接受 .nojbackup 单文件快照：${opts.snapshotPath}\n` +
-        "  原因：T17 起单文件容器是唯一形态（payload_layout=prod-raw），" +
+        "  原因：单文件容器是唯一形态（payload_layout=prod-raw），" +
         "目录形态的旧快照已不受支持。",
     );
   }
@@ -526,7 +517,7 @@ async function unpackForDrill(
   return { staging: unpacked.staging, tempRoot: drillDir };
 }
 
-/** 写覆盖文件与解密后的 env（bash `prepare_env`/`prepare_compose_override`）。 */
+/** 写覆盖文件与解密后的 env。 */
 async function prepareDrillEnvironment(
   opts: DrillRunOptions,
   ctx: DrillContext,
@@ -648,11 +639,11 @@ async function startComposeService(
   }
 }
 
-/** `restore_data_services()`（bash :340-376）：启动隔离数据服务并恢复三类数据。 */
+/** `restore_data_services()`：启动隔离数据服务并恢复三类数据。 */
 /**
  * 恢复三类数据服务（**委托给 `backup/data_restore.ts` 的共享序列**）。
  *
- * 抽取理由见该模块头部：这段序列的顺序与错误处理是评审迭代出来的，
+ * 抽取理由见该模块头部：这段序列的顺序与错误处理是反复修正出来的，
  * 分成 drill 与生产 restore 两份必然漂移——而"演练通过但真实恢复没做对"
  * 是最坏的一类不一致（drill 的全部意义就是证明 restore 可行）。
  *
@@ -694,7 +685,7 @@ async function restoreDataServices(
  * 把文件喂给一条 compose 子命令的 stdin（**文件重定向，不经字符串**）。
  *
  * 用 `sh -c '<cmd> "$@" < "$src"'` 的形式：路径经位置参数传递，不拼进脚本正文；
- * `docker` 由位置参数给出。这是 T17 `driver.ts:feedFromFile` 的同一语义，
+ * `docker` 由位置参数给出。这是 `driver.ts:feedFromFile` 的同一语义，
  * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
  */
 async function feedFileToCompose(
@@ -728,7 +719,7 @@ async function feedFileToCompose(
 // 此处**再导出**以保持既有导入点（含测试）不变。
 export { makeIdempotentGlobals };
 
-/** `verify_data()`（bash :377-424）：迁移版本、用户数、Redis 键数、对象数。 */
+/** `verify_data()`：迁移版本、用户数、Redis 键数、对象数。 */
 async function verifyData(
   ctx: DrillContext,
   runner: CommandRunner,
@@ -926,7 +917,7 @@ async function feedTextToCompose(
   }
 }
 
-/** `start_business_services()` + `ensure_judge_images()`（bash :448-480）。 */
+/** `start_business_services()` + `ensure_judge_images()`。 */
 async function startBusinessServices(
   ctx: DrillContext,
   runner: CommandRunner,
@@ -1185,7 +1176,7 @@ async function readTextOr(path: string, fallback: string): Promise<string> {
   }
 }
 
-/** 取文本末尾 N 行（bash `tail -n 50` 的等价）。 */
+/** 取文本末尾 N 行。 */
 export function tailLines(text: string, n: number): string {
   const lines = text.replace(/\n+$/, "").split("\n");
   return lines.slice(Math.max(0, lines.length - n)).join("\n");

@@ -1,14 +1,10 @@
 /**
- * 生产升级的版本解析与版本配置落盘（T16）。
+ * 生产升级的版本解析与版本配置落盘。
  *
- * 迁移 `scripts/deploy/production.sh` 的四个函数（逐条对照）：
- *
- * | bash（源行） | 本模块 |
- * | --- | --- |
- * | `validate_release_tag()`（:249-254） | {@link validateReleaseTag} |
- * | `latest_release_version()`（:255-323） | {@link resolveLatestReleaseTag} + {@link releasesApiUrl} |
- * | `configured_version()`（:219-232） | {@link configuredVersion} |
- * | `write_config_version()`（:324-344） | {@link writeConfigVersion} / {@link stageConfigVersion} / {@link commitConfigVersion} |
+ * - 标签校验：{@link validateReleaseTag}
+ * - 最新版本解析：{@link resolveLatestReleaseTag} + {@link releasesApiUrl}
+ * - 读当前版本：{@link configuredVersion}
+ * - 写版本：{@link writeConfigVersion} / {@link stageConfigVersion} / {@link commitConfigVersion}
  *
  * ## 资产就绪过滤
  *
@@ -17,10 +13,9 @@
  * `update` 会以目标 ref 重新拉取 compose/example（`--files-only` 语义），若该 ref
  * 只有二进制而没有部署文件，同步必然失败（issue #431）。
  *
- * ## 版本字符串的口径（与 bash 逐字一致）
+ * ## 版本字符串的口径
  *
- * 解析结果**保留原始 tag 的 `v` 前缀**（bash `latest_release_version` 打印
- * `"$tag"` 原文），写入 `.env.prod` 的也是原文——`NOJ_VERSION` 直接参与镜像
+ * 解析结果**保留原始 tag 的 `v` 前缀**，写入 `.env.prod` 的也是原文——`NOJ_VERSION` 直接参与镜像
  * tag 插值（`docker-compose.prod.yml` 的 `${NOJ_VERSION}`），改写前缀会让镜像
  * 引用凭空变化。仅 **比较**时归一化前缀（见 {@link normalizedVersion}）。
  *
@@ -73,14 +68,14 @@ function selectLatestAssetReadyRelease(
   return null;
 }
 
-/** 升级默认仓库（bash `NOJ_UPDATE_REPOSITORY` 的缺省值，:259）。 */
+/** 升级默认仓库（`NOJ_UPDATE_REPOSITORY` 的缺省值）。 */
 export const DEFAULT_UPDATE_REPOSITORY = "https://github.com/Neuro-OJ/neuro-oj";
 
 /**
  * 升级要求**全部就绪**的 Release 资产名。
  *
- * 由 T9 的 {@link RELEASE_FILES}（compose / example）派生，不手抄第二份清单；
- * CLI 二进制与其校验文件是 bash `latest_release_version` 原本的过滤条件，保留。
+ * 由 {@link RELEASE_FILES}（compose / example）派生，不手抄第二份清单；
+ * 另加 CLI 二进制与其校验文件。
  *
  * 这里比较的是 **Release 资产名**（`asset`）而非落盘文件名（`target`）：
  * `env.prod.example` 资产落盘后叫 `.env.prod.example`，而 Release 上的资产名受
@@ -94,31 +89,31 @@ export const UPDATE_RELEASE_ASSETS: readonly string[] = [
   "release-set.json.sha256",
 ];
 
-/** 稳定版本标签报错文案（bash :253 逐字，仅版本号参数化）。 */
+/** 稳定版本标签报错文案。 */
 export function releaseTagHint(version: string): string {
   return `GitHub Release 标签格式非法：${version}；请使用固定版本升级`;
 }
 
-/** 解析最新版本的失败文案（bash :264 逐字）。 */
+/** 解析最新版本的失败文案。 */
 export const UPDATE_API_URL_HINT =
   "无法自动获取最新版本；请使用 NOJ_UPDATE_API_URL 或固定版本升级";
 
-/** API 地址非 HTTPS 的报错文案（bash :270 逐字）。 */
+/** API 地址非 HTTPS 的报错文案。 */
 export function httpsOnlyHint(url: string): string {
   return `最新版本 API 地址必须使用 HTTPS：${url}`;
 }
 
-/** Release 列表获取失败的文案（bash :275/:279 逐字，追加 HTTP 细节便于诊断）。 */
+/** Release 列表获取失败的文案（追加 HTTP 细节便于诊断）。 */
 export function releaseListHint(status: number): string {
   return `无法获取 Release 列表，请检查网络，或使用固定版本升级（GitHub API ${status}）`;
 }
 
-/** 自定义 API 地址返回的单个 Release 对象无效时的文案（bash :316 逐字）。 */
+/** 自定义 API 地址返回的单个 Release 对象无效时的文案。 */
 export const SINGLE_RELEASE_INVALID_HINT =
   "GitHub 返回的最新 Release 无效或仍是预发布版本";
 
 /**
- * 校验 Release 标签格式（源自 bash `validate_release_tag`，:249-254；现允许预发布后缀）。
+ * 校验 Release 标签格式（允许预发布后缀）。
  *
  * 返回原标签（含 `v` 前缀），便于链式使用。
  */
@@ -130,14 +125,12 @@ export function validateReleaseTag(tag: string): string {
 /**
  * 版本比较用的归一化形式：去掉前导 `v`（`v0.9.5` 与 `0.9.5` 视为同一版本）。
  *
- * **为什么比较时要归一化**（与 bash 的差异，有意为之）：bash `update` 用
- * `[[ "$version" == "$current" ]]` **逐字**比较，于是 `.env.prod` 里写成
- * `NOJ_VERSION=0.9.5`（合法，且 `install` 的默认值正是 `install.sh` 传的
- * `REF`，历史 Release 有不带 `v` 的 tag：`0.1.0-rc.2`、`v0.9.5` 并存）而最新
+ * **为什么比较时要归一化**：若逐字比较，`.env.prod` 里写成 `NOJ_VERSION=0.9.5`
+ * （合法，历史 Release 有不带 `v` 的 tag：`0.1.0-rc.2`、`v0.9.5` 并存）而最新
  * 稳定 Release 是 `v0.9.5` 时，`--latest` 会认为"有新版"，从而**白跑一次**
  * 备份 + 拉镜像 + 重启全部服务。归一化后该情况正确判定为 no-op。
  *
- * 写入配置时**仍用原始 tag**（bash 逐字）：`NOJ_VERSION` 直接插入镜像引用，
+ * 写入配置时**仍用原始 tag**：`NOJ_VERSION` 直接插入镜像引用，
  * 改写前缀会改变镜像名。
  */
 export function normalizedVersion(tag: string): string {
@@ -145,7 +138,7 @@ export function normalizedVersion(tag: string): string {
 }
 
 /**
- * 由仓库地址与可选的显式 API 地址推出 Release 列表接口（bash :258-271）。
+ * 由仓库地址与可选的显式 API 地址推出 Release 列表接口。
  *
  * - `apiUrl` 非空即胜出（`NOJ_UPDATE_API_URL`，供私有镜像/离线验证）；
  * - 否则仓库必须是 `https://github.com/<owner>/<repo>`：**不**用
@@ -153,9 +146,8 @@ export function normalizedVersion(tag: string): string {
  *   而是取列表接口后在本地过滤；
  * - 任意分支产出的地址都必须是 HTTPS。
  *
- * 归一化比 bash 多一步：仓库末尾的 `.git` 被剥掉。bash 的正则 `[^/]+/[^/]+`
- * 会把 `…/neuro-oj.git` 当成合法仓库名，进而拼出 `/repos/Owner/neuro-oj.git/…`
- * 这个必然 404 的地址（安装侧 `install.sh` 本来就剥 `.git`），这里与安装侧对齐。
+ * 仓库末尾的 `.git` 被剥掉：否则会拼出 `/repos/Owner/neuro-oj.git/…` 这个
+ * 必然 404 的地址。
  */
 export function releasesApiUrl(opts: {
   repository?: string;
@@ -181,14 +173,13 @@ export function releasesApiUrl(opts: {
 }
 
 /**
- * 查询最新**资产就绪**的正式（非 draft、非 prerelease）Release 标签（bash `latest_release_version`）。
+ * 查询最新**资产就绪**的正式（非 draft、非 prerelease）Release 标签。
  *
- * 两条分支与 bash 一致：
+ * 两条分支：
  * 1. 列表响应（`[` 开头）：按 {@link UPDATE_RELEASE_ASSETS} 过滤，命中即返回；
  *    无命中报"没有发现资产就绪的正式 Release…"；
  * 2. 单个 Release 对象（自定义 API 地址的常见形态）：要求 `draft`/`prerelease`
- *    **显式为 false**（bash 的 `json_field` 取不到字段即为空串 → 不通过，故字段
- *    缺失同样拒绝），再过标签格式校验。
+ *    **显式为 false**（字段缺失同样拒绝），再过标签格式校验。
  *
  * 网络/HTTP 失败、响应非 JSON 都归到同一条可操作文案；**绝不**回退到
  * `/releases/latest`。
@@ -233,20 +224,20 @@ export async function resolveLatestReleaseTag(opts: {
 
 // ---------------- 版本配置的读写 ----------------
 
-/** `.env.prod` 缺失文案（bash :221 逐字）。 */
+/** `.env.prod` 缺失文案。 */
 export function envMissingHint(envFile: string): string {
   return `未找到生产配置：${envFile}`;
 }
 
-/** `.env.prod` 缺少 `NOJ_VERSION` 文案（bash :231 逐字）。 */
+/** `.env.prod` 缺少 `NOJ_VERSION` 文案。 */
 export function versionMissingHint(envFile: string): string {
   return `生产配置缺少 NOJ_VERSION：${envFile}`;
 }
 
 /**
- * 读 `.env.prod` 的 `NOJ_VERSION`（bash `configured_version`，:219-232）。
+ * 读 `.env.prod` 的 `NOJ_VERSION`。
  *
- * 与 bash 同序：先判文件存在（`未找到生产配置`），再取值；取到后剥一层成对引号
+ * 先判文件存在（`未找到生产配置`），再取值；取到后剥一层成对引号
  * （{@link parseEnvFile} 已实现同一语义），空值即报 `生产配置缺少 NOJ_VERSION`。
  * 原样返回（**不去 `v` 前缀**）：它既用于比较，也是 compose 的镜像 tag 插值源。
  */
@@ -257,31 +248,29 @@ export async function configuredVersion(envFile: string): Promise<string> {
   } catch {
     throw new Error(envMissingHint(envFile));
   }
-  // 复用 T3 的解析：首个 `^NOJ_VERSION=` 命中即胜出、成对引号剥一层、CRLF 归一。
-  // 不用 T3 的 `readEnvFile`：它的"文件不存在"文案是另一套，而 bash 在这里
-  // 必须先报 `未找到生产配置`（:221），故自行读取、只复用解析。
+  // 复用 parseEnvFile：首个 `^NOJ_VERSION=` 命中即胜出、成对引号剥一层、CRLF 归一。
+  // 不用 `readEnvFile`：它的"文件不存在"文案是另一套，这里必须先报
+  // `未找到生产配置`，故自行读取、只复用解析。
   const version = parseEnvFile(text).get("NOJ_VERSION") ?? "";
   if (version === "") throw new Error(versionMissingHint(envFile));
   return version;
 }
 
 /**
- * 生成**仅改动 `NOJ_VERSION`** 的配置文本（`write_config_version` 的核心语义）。
+ * 生成**仅改动 `NOJ_VERSION`** 的配置文本。
  *
- * 委托 T3 的 {@link serializeEnvFile}：命中 `^NOJ_VERSION=` 的行就地替换（值相同
+ * 委托 {@link serializeEnvFile}：命中 `^NOJ_VERSION=` 的行就地替换（值相同
  * 则逐字节保留原行），其余行（注释、空行、其它键、顺序）原样保留；原文本没有该
- * 键时按 bash `END { if (!found) print … }` 追加到末尾。因此"注释与顺序保留 +
- * 幂等写回"由 T3 的既有测试背书，本模块不另写一套序列化。
+ * 键时追加到末尾。因此"注释与顺序保留 + 幂等写回"由 env-file 的既有测试背书，本模块不另写一套序列化。
  */
 export function versionConfigText(original: string, version: string): string {
   return serializeEnvFile(new Map([["NOJ_VERSION", version]]), original);
 }
 
 /**
- * 把 `version` 落进 `.env.prod`（bash `write_config_version`，:324-344）。
+ * 把 `version` 落进 `.env.prod`。
  *
- * 原子写（临时文件 → 600 → rename）由 T3 {@link writeEnvFileAtomic} 保证，
- * 与 bash 的 `mktemp` + `chmod 600` + `mv` 同形。
+ * 原子写（临时文件 → 600 → rename）由 {@link writeEnvFileAtomic} 保证。
  */
 export async function writeConfigVersion(
   envFile: string,
@@ -291,14 +280,13 @@ export async function writeConfigVersion(
 }
 
 /**
- * 把新版本写进**暂存文件**并返回其路径（bash `update --latest` 的 stage_file）。
+ * 把新版本写进**暂存文件**并返回其路径。
  *
- * 语义与 bash 的 `cp env_file stage_file` + `write_config_version stage_file` 一致：
+ * 语义：
  * 内容 = 原配置（逐字节保留注释/顺序/其它键）仅把 `NOJ_VERSION` 换成新值；
  * 权限 600；同名目录内落盘，便于成功后用 `rename` 原子提交。
  *
- * 暂存文件放在 `.env.prod` **同目录**（bash 的 `mktemp "${env_file}.latest.XXXXXX"`
- * 亦然）：跨目录 `rename` 可能退化为拷贝并丢失原子性。
+ * 暂存文件放在 `.env.prod` **同目录**：跨目录 `rename` 可能退化为拷贝并丢失原子性。
  */
 export async function stageConfigVersion(
   envFile: string,
@@ -327,7 +315,7 @@ export async function stageConfigVersion(
     } finally {
       file.close();
     }
-    // open 的 mode 会被 umask 裁剪，而 bash 的暂存文件恒为 600。
+    // open 的 mode 会被 umask 裁剪，暂存文件必须恒为 600。
     await Deno.chmod(staged, 0o600);
   } catch (err) {
     await Deno.remove(staged).catch(() => {});
@@ -339,10 +327,10 @@ export async function stageConfigVersion(
 /**
  * 提交暂存配置：`chmod 600` + 原子 `rename` 覆盖 `.env.prod`。
  *
- * 失败文案对应 bash :433 的 `升级成功但无法提交生产版本配置`——此时服务**已经**
+ * 失败文案 `升级成功但无法提交生产版本配置`——此时服务**已经**
  * 升到新版本，但配置仍指向旧值，属于必须显式告知的半完成状态。
  *
- * 提交失败时**保留**暂存文件（bash 同样 `rm` 都不做，只 `fail`）：它内含用户
+ * 提交失败时**保留**暂存文件：它内含用户
  * 配置的唯一新副本，删除会丢掉"应该写什么"的信息。
  */
 export async function commitConfigVersion(

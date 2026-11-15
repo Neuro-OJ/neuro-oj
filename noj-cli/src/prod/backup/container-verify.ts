@@ -56,7 +56,7 @@ export interface VerifyContainerOptions extends UnpackContainerOptions {
 }
 
 /**
- * 校验 `.nojbackup` 容器（`backup.sh verify_snapshot` :302-334 的等价 + 两档增强）。
+ * 校验 `.nojbackup` 容器（三档）。
  *
  * 三档**累加**（高档包含低档的全部检查）：
  *
@@ -68,8 +68,7 @@ export interface VerifyContainerOptions extends UnpackContainerOptions {
  *
  * 设计要点：
  * - **不清理** staging（调用方 `finally` 删）——verify 之后 restore/drill 可能还要读；
- * - `sha256sums` 的路径做**穿越防护**（`../`、绝对路径一律拒绝），与 bash
- *   `verify_snapshot` 的 `[[ "$file" != /* && "$file" != *".."* ]]` 同义；
+ * - `sha256sums` 的路径做**穿越防护**（`../`、绝对路径一律拒绝）；
  * - `--deep` 在缺口令时**跳过**解密并置 {@link VerifyContainerResult.skippedDecrypt}，
  *   由调用方如实报告——静默通过会让"加密档"名不副实。
  */

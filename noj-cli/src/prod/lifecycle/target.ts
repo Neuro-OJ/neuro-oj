@@ -71,7 +71,7 @@ export type ResolveTargetConfigResult =
 /**
  * 解析目标发布配置（升级序列的第 0 步，必须先于备份 / pull / 验签 / up）。
  *
- * 生效文件的选择与 bash `production.sh:419` 一致：**有暂存配置就用暂存配置**
+ * 生效文件的选择：**有暂存配置就用暂存配置**
  * （升级本身跑在目标版本上），否则用 `.env.prod`（固定版本升级：版本号没变）。
  * 无暂存文件时直接复用 `prepareAndCheck` 已解析的 `prepared.env`，避免同一份
  * 配置被读两遍；有暂存文件时必须重新解析它，因为 `prepared.env` 来自旧配置。

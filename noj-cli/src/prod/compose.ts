@@ -1,15 +1,14 @@
 /**
- * prod 侧 compose 服务集与命令封装（T10）。
+ * prod 侧 compose 服务集与命令封装。
  *
  * 裁决（spec §3.4 洞 3）：生产编排**只认仓库内受版本管理的
- * `docker-compose.prod.yml`**（由 T9 bootstrap 下载并 SHA-256 校验），
+ * `docker-compose.prod.yml`**（由 bootstrap 下载并 SHA-256 校验），
  * **不引入运行时渲染**。理由：固定文件的容器集合 / 健康检查 / profile 已由 CI
  * 与 e2e 覆盖；运行时渲染会引入一份未被测试覆盖的编排面。
  *
- * 与 stack 侧 `deploy/compose.ts` 的 `renderCompose()` 是两个不同模块：
  * 本模块**只**负责服务清单、参数数组构造与调用，不做任何渲染。
  *
- * ## 调用契约（T12–T16 接线必读）
+ * ## 调用契约
  *
  * 1. **参数数组永远是纯字符串数组**，由 `composeArgs()` 构造，绝不拼接 shell
  *    字符串；wrapper 把它原样交给 `CommandRunner.run("docker", args)`。
@@ -72,7 +71,7 @@ export const PROD_SERVICES: readonly ProdService[] = [
   { name: "minio-init" },
 ];
 
-/** 生产编排文件名（T9 `RELEASE_FILES` 中的固定资产名）。 */
+/** 生产编排文件名（`RELEASE_FILES` 中的固定资产名）。 */
 export const PROD_COMPOSE_FILE = "docker-compose.prod.yml";
 
 /** 生产配置文件相对名（安装目录下的 `.env.prod`）。 */
@@ -104,7 +103,7 @@ export interface ComposeArgsOptions {
  *
  * 形状：`["compose", "--env-file", <env>, "-f", <compose>, ...profiles, ...cmd]`。
  * `--profile judge` / `--profile monitoring` 仅在对应开关为 `true` 时插入，
- * 且 judge 排在 monitoring 之前（与 `deploy.sh:run_compose` 的插入顺序一致）。
+ * 且 judge 排在 monitoring 之前。
  */
 export function composeArgs(options: ComposeArgsOptions): string[] {
   const args = ["compose"];
@@ -197,7 +196,7 @@ export function composeDown(
 /**
  * `docker compose ... ps`。
  *
- * 容器列表在 `result.stdout`（T13 status 解析用）；退出码在 `result.code`；
+ * 容器列表在 `result.stdout`（status 解析用）；退出码在 `result.code`；
  * `dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composePs(
@@ -213,7 +212,7 @@ export function composePs(
 
 /** `composeLogs` 的选项：在公共选项上追加 tail / follow。 */
 export interface ComposeLogsOptions extends ComposeOptions {
-  /** 仅显示末尾 N 行；缺省 200（与 `deploy.sh:logs` 一致）。 */
+  /** 仅显示末尾 N 行；缺省 200。 */
   tail?: number;
   /** 是否 `--follow`。 */
   follow?: boolean;
@@ -242,9 +241,7 @@ export function composeLogs(
 /**
  * `docker compose ... pull [services...]`。
  *
- * T12/T13 登记的 carry-forward：`install` 与 `update` 都直接经
- * {@link runComposeSub} 跑裸 `pull`，本任务把它收敛为命名封装（T16），
- * 语义与 bash `run_compose pull` 等价（无附加旗标）。
+ * 无附加旗标。
  *
  * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
@@ -290,8 +287,7 @@ export interface ComposeConfigOptions extends ComposeOptions {
   /**
    * 追加 `--quiet`（只判定可解析性，不输出渲染结果）。
    *
-   * 生产前置校验（`prepareAndCheck` 的步骤 6）恒用 `--quiet`，与 bash
-   * `check_configuration` 的 `run_compose config --quiet`（deploy.sh:904）逐字一致。
+   * 生产前置校验（`prepareAndCheck` 的步骤 6）恒用 `--quiet`。
    */
   quiet?: boolean;
 }
@@ -299,9 +295,8 @@ export interface ComposeConfigOptions extends ComposeOptions {
 /**
  * `docker compose ... config [--quiet]`：校验编排文件可解析。
  *
- * `quiet: true` 对应 bash `check_configuration` 的 `run_compose config --quiet`
- * （deploy.sh:904）——只判定可解析性，不把渲染结果打到 stdout。缺省 false 保留
- * T10 的通用语义（渲染后的配置在 `result.stdout`，供需要完整配置的调用方使用）。
+ * `quiet: true` 只判定可解析性，不把渲染结果打到 stdout。缺省 false 保留
+ * 通用语义（渲染后的配置在 `result.stdout`，供需要完整配置的调用方使用）。
  *
  * 退出码在 `result.code`；`dryRun` 时返回参数数组。
  */

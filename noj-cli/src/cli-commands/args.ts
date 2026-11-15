@@ -11,10 +11,10 @@ export function stripCliOwnedFlags(args: string[]): string[] {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--dry-run") continue;
-    // 评审 B3：--debug 是 noj-cli 自身的排查开关，必须剥离后再转发，
+    // --debug 是 noj-cli 自身的排查开关，必须剥离后再转发，
     // 否则会被子命令/容器当作未知选项（help 却把它列为全局选项）。
     if (arg === "--debug") continue;
-    // 评审 M1：Tier 3 命令的 --dir 存在双语义冲突——noj-cli 用它指安装目录，
+    // Tier 3 命令的 --dir 存在双语义冲突——noj-cli 用它指安装目录，
     // 而容器内的 noj 用它指子命令参数（如 problems import --dir <包目录>）。
     // 因此 CLI 自身的安装目录选项改名为 --install-dir，容器侧的 --dir 原样透传。
     if (arg === "--install-dir") {
@@ -30,7 +30,7 @@ export function stripCliOwnedFlags(args: string[]): string[] {
 /**
  * 解析 Tier 3 命令的安装目录（`--install-dir`）。
  *
- * 与 `--dir` 分开的原因见 {@link stripCliOwnedFlags}（评审 M1）。
+ * 与 `--dir` 分开的原因见 {@link stripCliOwnedFlags}。
  */
 export function parseInstallDirArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {

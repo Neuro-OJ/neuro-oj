@@ -3,12 +3,10 @@ import {
   SCHEDULING_ENV_DEFAULTS,
 } from "./scheduling-env.ts";
 /**
- * 独立 Judge Worker 的配置层与**安全守卫**（T21）。
+ * 独立 Judge Worker 的配置层与**安全守卫**。
  *
- * 迁移 `scripts/deploy/judge-install.sh` 的 `env_value()`/`set_env_value()`（:205-239）、
- * `initialize_env()`（:501-581）、`check_config_values()`（:667-694）、
- * `check_socket()`（:695-717）、`check_base_environment()`（:638-666）与
- * `validate_redis_port()`/`port_is_in_use()`（:345-365）。
+ * 负责 `.env.judge` 读写、首装配置、配置值与 socket 校验、宿主环境探测，
+ * 以及本机 Redis 的端口校验与占用探测。
  *
  * ## 两条不可协商的安全约束（本模块存在的首要理由）
  *
@@ -47,13 +45,13 @@ import { parseEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
 import { UsageError } from "../../util/args.ts";
 import type { CommandRunner } from "../../runtime/command.ts";
 
-/** Judge 配置文件权限（bash `chmod 600`）。 */
+/** Judge 配置文件权限。 */
 export const JUDGE_ENV_MODE = 0o600;
 
-/** Judge Compose 文件权限（bash `:636` 的 `chmod 600`）。 */
+/** Judge Compose 文件权限。 */
 export const JUDGE_COMPOSE_MODE = 0o600;
 
-/** 默认 Judge 运行目录（bash `:87`）。 */
+/** 默认 Judge 运行目录。 */
 export const DEFAULT_JUDGE_DIR = "/srv/noj-judge";
 
 /** 配置文件相对名。 */
@@ -62,17 +60,17 @@ export const JUDGE_ENV_FILE = ".env.judge";
 /** Compose 文件相对名。 */
 export const JUDGE_COMPOSE_FILE = "docker-compose.judge.yml";
 
-/** Compose 项目名（bash `:810` 的 `--project-name`）。 */
+/** Compose 项目名。 */
 export const JUDGE_PROJECT_NAME = "noj-judge-standalone";
 
-/** 本机 Redis 数据卷名（bash `:635`）。 */
+/** 本机 Redis 数据卷名。 */
 export const JUDGE_REDIS_VOLUME = "noj-judge-standalone-cache";
 
-/** 容器内专用 socket 挂载点（bash `:562` 与 `:614`）。 */
+/** 容器内专用 socket 挂载点。 */
 export const JUDGE_SOCKET_CONTAINER_PATH = "/run/noj-judge/docker.sock";
 
 /**
- * **被禁止的共享 socket 路径**（bash `:699-701` 逐字）。
+ * **被禁止的共享 socket 路径**。
  *
  * 两者都指向应用宿主机的 daemon。`/var/run` 通常是 `/run` 的符号链接，因此
  * 逻辑上二者等价；本模块同时拒绝**经 realpath 归一后**落在二者上的路径
@@ -105,21 +103,21 @@ export const FORBIDDEN_HOST_COMMANDS: readonly string[] = [
   "chown",
 ];
 
-/** 默认 Redis 镜像（bash 的 `REDIS_IMAGE`）。 */
+/** 默认 Redis 镜像。 */
 export const DEFAULT_JUDGE_REDIS_IMAGE = "redis:7-alpine";
 
-/** 本机 Redis 默认宿主机端口（bash `--redis-port` 缺省 16379）。 */
+/** 本机 Redis 默认宿主机端口（`--redis-port` 缺省 16379）。 */
 export const DEFAULT_REDIS_PORT = 16379;
 
-/** 本机 Redis 默认容器名（bash `:91`）。 */
+/** 本机 Redis 默认容器名。 */
 export const DEFAULT_REDIS_CONTAINER = "noj-judge-redis";
 
-/** 本机 Redis 容器的归属标签（bash `:434-435`）——只管理带此标签的同名容器。 */
+/** 本机 Redis 容器的归属标签——只管理带此标签的同名容器。 */
 export const REDIS_COMPONENT_LABEL = "judge-standalone-redis";
 /** 管理方标签值。 */
 export const REDIS_MANAGED_BY_LABEL = "judge-install";
 
-/** 必须配置的键（bash `check_config_values` :669-672 逐字）。 */
+/** 必须配置的键。 */
 export const JUDGE_REQUIRED_KEYS: readonly string[] = [
   "NOJ_VERSION",
   "REDIS_URL",
@@ -135,7 +133,7 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
   "JUDGE_GID",
 ];
 
-/** 首装写入的键与默认值（bash `:550-580` 的 heredoc 逐字）。 */
+/** 首装写入的键与默认值。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
   ...OI_ENV_DEFAULTS,
   ...SCHEDULING_ENV_DEFAULTS,
@@ -169,7 +167,7 @@ export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
   SUPPORT_CACHE_MAX_MB: "2048",
 };
 
-/** 不可变 Release 标签（bash `is_version` :276-278：`v?N.N.N`，允许 `-rc` 后缀）。 */
+/** 不可变 Release 标签（`v?N.N.N`，允许 `-rc` 后缀）。 */
 const VERSION_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 
 /** `JUDGE_VERSION` 校验（`v0.1.0` / `0.8.0-rc.1` 通过；`main` / `latest` 拒绝）。 */
@@ -186,11 +184,11 @@ export function assertJudgeVersion(version: string): void {
  * 拒绝应用宿主机的共享 Docker socket（安全约束 1 的实现）。
  *
  * 三层判定，缺一不可：
- * 1. **字面比较**（bash `:699-701`）：直接命中两个已知路径；
+ * 1. **字面比较**：直接命中两个已知路径；
  * 2. **realpath 归一**：`/var/run` 常是 `/run` 的符号链接，且用户可以写
  *    `//run/docker.sock`、`/run/./docker.sock` 等等价形式——只比字面
  *    等于给绕过留门；
- * 3. **须为绝对路径且不含 `:`**（bash `:703-704`）：`:` 意味着写成了
+ * 3. **须为绝对路径且不含 `:`**：`:` 意味着写成了
  *    `host:port` 形式的 TCP endpoint，那不是 Unix socket。
  *
  * @param socketPath 配置里的 socket 路径
@@ -214,7 +212,7 @@ export function assertDedicatedSocket(
     );
   }
 
-  // **归一化是必需的**（评审发现的绕过）：仅比较字面量会漏掉一切等价写法。
+  // **归一化是必需的**：仅比较字面量会漏掉一切等价写法。
   // 实测被放行的形态：`/var/run/docker.sock/`（尾部斜杠）、`…/docker.sock/.`、
   // `/run/docker.sock/./`。它们指向同一个宿主 socket——且真实 Docker 对
   // 尾部斜杠的 bind 源同样会挂载该路径，所以一个手误的斜杠就能把宿主 socket
@@ -300,7 +298,7 @@ function defaultRealPath(path: string): string {
 }
 
 /**
- * 校验 `JUDGE_DOCKER_HOST` 必须是**容器内**的专用 endpoint（bash `:687-691`）。
+ * 校验 `JUDGE_DOCKER_HOST` 必须是**容器内**的专用 endpoint。
  *
  * 为什么要专门校验它：即使 `JUDGE_DOCKER_SOCKET` 是对的，`JUDGE_DOCKER_HOST`
  * 若写成默认的 `unix:///var/run/docker.sock`，容器内的 Judge 就会去连宿主机
@@ -320,7 +318,7 @@ export function assertJudgeDockerHost(host: string): void {
   }
 }
 
-/** 校验 `JUDGE_REQUIRE_ISOLATED_DOCKER` 必须为 true（bash `:692-693`）。 */
+/** 校验 `JUDGE_REQUIRE_ISOLATED_DOCKER` 必须为 true。 */
 export function assertIsolatedDockerRequired(value: string): void {
   if (value !== "true") {
     throw new UsageError(
@@ -330,7 +328,7 @@ export function assertIsolatedDockerRequired(value: string): void {
   }
 }
 
-/** 读取 `.env.judge` 为键值表；不存在返回空表（bash `env_value` 的语义）。 */
+/** 读取 `.env.judge` 为键值表；不存在返回空表。 */
 export async function readJudgeEnv(
   path: string,
 ): Promise<Record<string, string>> {
@@ -345,19 +343,19 @@ export async function readJudgeEnv(
   return out;
 }
 
-/** 取配置值（bash `env_value` 的等价；缺失返回空串）。 */
+/** 取配置值；缺失返回空串。 */
 export function envValue(env: Record<string, string>, key: string): string {
   return env[key] ?? "";
 }
 
 /**
- * 校验配置**值**（bash `check_config_values` :667-694 的等价）。
+ * 校验配置**值**。
  *
- * 逐条顺序对齐 bash：必填非占位 → 版本标签 → 并发正整数 → GID/UID 数字 →
+ * 校验顺序：必填非占位 → 版本标签 → 并发正整数 → GID/UID 数字 →
  * HOST endpoint → REQUIRE_ISOLATED_DOCKER。任一条失败即抛 {@link UsageError}
  * （退出码 2：这是配置错误，不是运行时故障）。
  *
- * 占位判定复用 T2 的 {@link isPlaceholder}（`change-me` / `REPLACE_WITH_` /
+ * 占位判定复用 {@link isPlaceholder}（`change-me` / `REPLACE_WITH_` /
  * `your-` 等前缀），不重写一份。
  */
 export function assertJudgeConfigValues(env: Record<string, string>): void {
@@ -383,10 +381,10 @@ export function assertJudgeConfigValues(env: Record<string, string>): void {
   assertIsolatedDockerRequired(envValue(env, "JUDGE_REQUIRE_ISOLATED_DOCKER"));
 }
 
-/** 配置文件权限的可接受值（bash `:794-796`）。 */
+/** 配置文件权限的可接受值。 */
 export const JUDGE_ENV_ALLOWED_MODES: readonly string[] = ["600", "400"];
 
-/** 校验配置文件权限（bash `check_configuration` :793-796 的前半）。 */
+/** 校验配置文件权限。 */
 export async function assertJudgeEnvFileMode(path: string): Promise<void> {
   let st: Deno.FileInfo;
   try {
@@ -409,7 +407,7 @@ export interface WriteJudgeEnvOptions {
   /** 首装的值（缺省用 {@link JUDGE_DEFAULT_VALUES}）；`NOJ_VERSION`/`REDIS_URL` 必给。 */
   values?: Record<string, string>;
   /**
-   * **显式**要求就地更新 `NOJ_VERSION`（对应 bash 的 `--version` / `VERSION_OVERRIDE`）。
+   * **显式**要求就地更新 `NOJ_VERSION`（`--version`）。
    *
    * 与 `values["NOJ_VERSION"]` 分开是刻意的：`values` 只是"首装时该写什么"，
    * 而升级路径必须能表达"我确实想改版本"。混在一个字段里的话，任何把
@@ -430,7 +428,7 @@ export interface WriteJudgeEnvResult {
   /**
    * 因「既有配置优先」而被忽略的键（值为本次请求值）。
    *
-   * 为什么必须回报（评审发现）：`judge install --redis-url …` 在既有配置上
+   * 为什么必须回报：`judge install --redis-url …` 在既有配置上
    * 只应用 `updateVersion`，其余值一律不动且**零提示**——用户以为改了 Redis
    * 口令，实际什么都没发生。静默忽略与"旗标被吞"是同一类缺陷。
    */
@@ -438,15 +436,13 @@ export interface WriteJudgeEnvResult {
 }
 
 /**
- * 写入首装配置（bash `initialize_env` :501-581 的等价）。
+ * 写入首装配置。
  *
- * **绝不覆盖既有配置**（bash `:517-523`：存在即 `chmod 600` + 「保留已有配置」
- * 后返回）。这不是保守，而是必要：升级时覆盖会丢掉用户手工调过的队列名、并发数、
+ * **绝不覆盖既有配置**（存在即 `chmod 600` 后返回）。这不是保守，而是必要：升级时覆盖会丢掉用户手工调过的队列名、并发数、
  * socket GID——那些值无法从任何地方重新推导。
  *
- * `NOJ_VERSION` 是唯一例外：`--version` 显式给出时**就地更新**该键
- * （bash `:521` 的 `[[ -n "$VERSION_OVERRIDE" ]] && set_env_value`），因为升级
- * 的本质就是改版本，而 `set_env_value` 保留注释与其它键。
+ * `NOJ_VERSION` 是唯一例外：`--version` 显式给出时**就地更新**该键，因为升级
+ * 的本质就是改版本；就地更新保留注释与其它键。
  */
 export async function writeJudgeEnv(
   opts: WriteJudgeEnvOptions,
@@ -465,7 +461,7 @@ export async function writeJudgeEnv(
     }
     await Deno.chmod(opts.path, JUDGE_ENV_MODE);
     // 回报「请求了但因既有配置而未被应用」的键：静默忽略会让用户误以为
-    // `--redis-url` / `--socket-gid` 生效（评审发现的同类缺陷）。
+    // `--redis-url` / `--socket-gid` 生效。
     const ignored: Record<string, string> = {};
     for (const [key, value] of Object.entries(opts.values ?? {})) {
       if (key === "NOJ_VERSION") continue; // 版本是显式例外，已在上面处理
@@ -533,7 +529,7 @@ export function judgePaths(
   };
 }
 
-/** 校验本机 Redis 端口（bash `validate_redis_port` :345-351）。 */
+/** 校验本机 Redis 端口。 */
 export function assertRedisPort(port: number): void {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new UsageError(
@@ -542,7 +538,7 @@ export function assertRedisPort(port: number): void {
   }
 }
 
-/** 校验本机 Redis 容器名（bash `:410-411` 的正则）。 */
+/** 校验本机 Redis 容器名。 */
 export function assertRedisContainerName(name: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
     throw new UsageError(`本机 Redis 容器名格式无效：${name}`);
@@ -550,10 +546,9 @@ export function assertRedisContainerName(name: string): void {
 }
 
 /**
- * 生成本机 Redis 口令（bash `generate_redis_password` :337-343）。
+ * 生成本机 Redis 口令。
  *
- * bash 优先用 openssl、否则读 `/dev/urandom`；TS 侧直接用 WebCrypto
- * （零外部依赖、不读设备文件）。与 `init/secrets.ts:randomKey` 同源。
+ * 直接用 WebCrypto（零外部依赖、不读设备文件）。与 `init/secrets.ts:randomKey` 同源。
  */
 export function generateRedisPassword(bytes = 24): string {
   const buf = new Uint8Array(bytes);
@@ -564,10 +559,10 @@ export function generateRedisPassword(bytes = 24): string {
 }
 
 /**
- * 探测宿主是否支持独立 Judge（bash `check_base_environment` :638-666 的等价）。
+ * 探测宿主是否支持独立 Judge。
  *
- * **只读探测**：不做任何安装、配置或替换（安全约束 2）。bash 侧检查
- * `uname -s` 是否为 Linux、docker/compose 是否可用；这里把 `uname` 也经注入
+ * **只读探测**：不做任何安装、配置或替换（安全约束 2）：检查
+ * `uname -s` 是否为 Linux、docker/compose 是否可用；`uname` 也经注入
  * runner 以便在非 Linux 的 CI 上测试。
  */
 export interface HostProbe {
@@ -621,7 +616,7 @@ function defaultUname(): string {
   }
 }
 
-/** 校验 Judge 依赖的通用键（复用 T2 `validateEnv` 的判定，不重写）。 */
+/** 校验 Judge 依赖的通用键（复用 `validateEnv` 的判定，不重写）。 */
 export function assertJudgeEnvViaSchema(
   env: Record<string, string>,
 ): { missing: string[]; placeholder: string[] } {
@@ -660,7 +655,7 @@ export function findForbiddenHostCalls(
 
 /** {@link createLocalRedis} 的注入点与参数。 */
 export interface CreateLocalRedisOptions {
-  /** Judge 运行目录（`redis.conf` 落在其中，与 bash `$TARGET_DIR/redis.conf` 一致）。 */
+  /** Judge 运行目录（`redis.conf` 落在其中）。 */
   dir: string;
   runner: CommandRunner;
   /** 容器名；缺省 {@link DEFAULT_REDIS_CONTAINER}。 */
@@ -679,7 +674,7 @@ export interface CreateLocalRedisResult {
   containerName: string;
   port: number;
   /**
-   * 三方连接串（bash `write_redis_connection_files` 的三个值）：
+   * 三方连接串：
    * - `coreUrl`：**宿主机**上的 noj-core 用（`127.0.0.1`）；
    * - `runtimeUrl`：**容器内**的 Judge 用（`host.docker.internal`）；
    * - `checkUrl`：本工具自检用（等于 `coreUrl`）。
@@ -696,25 +691,23 @@ export interface CreateLocalRedisResult {
 /**
  * 为本机 Judge 创建（或复用）一个**仅绑定回环地址**的 Redis。
  *
- * 迁移 bash `create_local_redis()`（judge-install.sh:391-460）。
- *
- * ## 安全边界（逐条对照 bash）
+ * ## 安全边界
  *
  * 1. **只管理自己创建的容器**：同名容器存在时，检查
  *    `com.neuro-oj.component` 标签是否为 {@link REDIS_COMPONENT_LABEL}；
- *    不是则**拒绝**，绝不 `rm`/`stop`/修改别人的容器（bash :406-409）；
- * 2. **端口必须空闲**：被占用即拒绝，不覆盖既有服务（bash :424-426）；
+ *    不是则**拒绝**，绝不 `rm`/`stop`/修改别人的容器；
+ * 2. **端口必须空闲**：被占用即拒绝，不覆盖既有服务；
  * 3. **只绑定 `127.0.0.1`**：`--publish 127.0.0.1:<port>:6379`——Redis 带口令
- *    但**绝不暴露到公网**（bash :437）；
+ *    但**绝不暴露到公网**；
  * 4. **随机口令**：48 位 hex，写进 600 权限的 `redis.conf`；
- * 5. **独立数据卷**：`<container>-data`，删容器不丢数据（bash :439）。
+ * 5. **独立数据卷**：`<container>-data`，删容器不丢数据。
  *
  * ## 为什么 coreUrl 与 runtimeUrl 不同
  *
  * Judge 跑在**容器内**、Redis 在**宿主机**上：
  * - `coreUrl` 给宿主机上的 noj-core 用 → `127.0.0.1:<port>`；
  * - `runtimeUrl` 给容器内的 Judge 用 → `host.docker.internal:<port>`。
- * 混用会导致"本机能连、容器内连不上"这类难查故障（bash 也是两个值）。
+ * 混用会导致"本机能连、容器内连不上"这类难查故障。
  */
 export async function createLocalRedis(
   opts: CreateLocalRedisOptions,
@@ -825,7 +818,7 @@ export async function createLocalRedis(
   return redisUrls(containerName, port, password, false);
 }
 
-/** 组装三条连接串（bash :452-454 逐字语义）。 */
+/** 组装三条连接串。 */
 function redisUrls(
   containerName: string,
   port: number,
@@ -858,10 +851,10 @@ async function readRedisPassword(dir: string): Promise<string> {
 }
 
 /**
- * 缺省的端口占用探测（bash `port_is_in_use` :352-370 的等价）。
+ * 缺省的端口占用探测。
  *
  * 优先 `ss`，回落 `lsof`；两者都不可用时**保守地返回 false**
- * （bash 亦然：探测不到就当未占用，随后 docker run 会给出真实错误）。
+ * （探测不到就当未占用，随后 docker run 会给出真实错误）。
  */
 async function defaultProbePortInUse(
   runner: CommandRunner,
@@ -869,7 +862,7 @@ async function defaultProbePortInUse(
 ): Promise<boolean> {
   const ss = await runner.run("ss", ["-ltnH"]);
   if (ss.code === 0) {
-    // **逐字段对照 bash**：`awk '$4 ~ /:PORT$/'`——只查**第 4 列**
+    // 只查**第 4 列**
     // （ss 的本地地址列，如 `127.0.0.1:16379`），且 `:PORT` 必须在**该字段末尾**。
     //
     // 两点都不能省：

@@ -82,7 +82,7 @@ export async function dispatchContainer(
   }
 
   const dryRun = tail.includes("--dry-run");
-  // 评审 M1：安装目录用 --install-dir，避免与容器命令自身的 --dir 冲突
+  // 安装目录用 --install-dir，避免与容器命令自身的 --dir 冲突
   const dirOverride = parseInstallDirArg(tail);
   const dir = await findProductionDir(dirOverride, Deno.cwd());
   // CLI 自身的选项（--dir/--dry-run）不得进入容器命令，否则会被

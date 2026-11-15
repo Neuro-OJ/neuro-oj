@@ -21,7 +21,7 @@ export function isDebug(args: string[] = []): boolean {
 /**
  * 剥离 CLI 自有的全局旗标，返回剩余参数与是否命中 `--debug`。
  *
- * 评审 P2（#518）：`--debug` 被帮助声明为全局选项，但 `run()` 曾直接把
+ * `--debug` 被帮助声明为全局选项，但 `run()` 曾直接把
  * `argv[0]` 当作命令，`noj-cli --debug status` 因此落入未知命令分支返回 2，
  * 文档承诺的调试模式在命令名前不可用。
  *

@@ -1,9 +1,8 @@
 /**
- * T24 测试：生产命令的原生接线与 R1 门禁。
+ * 生产命令的原生接线与「零脚本调用」门禁。
  *
- * 本套测试的最高价值项是 **R1 门禁**：断言 `noj-cli/src` 内**零** bash / 脚本调用。
- * 那是一条"只要有人贴回一段旧代码就会失效"的性质，靠 review 不可靠——
- * 实测过它的价值：T23 之后 `production.ts:112` 是唯一的违例，本门禁直接指出它。
+ * 门禁断言 `noj-cli/src` 内**零** bash / 脚本调用：那是一条"只要有人贴回一段
+ * 旧代码就会失效"的性质，靠人工审查不可靠。
  *
  * 其余用例覆盖接线层自己的职责（参数解析、退出码、`--json` 纯净），
  * 命令语义本身由 `prod/*_test.ts` 各自覆盖。
@@ -28,9 +27,9 @@ import { UsageError } from "../util/args.ts";
 import { run } from "../cli.ts";
 import { EXIT_USAGE } from "../cli-commands/exit-codes.ts";
 
-// ---------------- R1 门禁 ----------------
+// ---------------- 零脚本调用门禁 ----------------
 
-Deno.test("R1 门禁: src 内零 bash / 生产脚本调用", async () => {
+Deno.test("门禁: src 内零 bash / 生产脚本调用", async () => {
   const root = new URL(".", import.meta.url);
   const offenders: string[] = [];
   // 遍历 src 下的全部 .ts（排除测试自身）
@@ -44,17 +43,14 @@ Deno.test("R1 门禁: src 内零 bash / 生产脚本调用", async () => {
       if (!entry.name.endsWith(".ts")) continue;
       if (entry.name.endsWith("_test.ts")) continue;
       const text = await Deno.readTextFile(child);
-      // **只查代码，不查注释**：注释里引用 `deploy.sh:679` 这类"出处"是必要的
-      // 可追溯信息（R3 parity 的对照表就靠它）。门禁要抓的是"真的去执行脚本"，
+      // **只查代码，不查注释**：门禁要抓的是"真的去执行脚本"，
       // 因此剥掉三种注释形态：整行 `//`、JSDoc 续行 `*`、以及行尾 `// …`。
       const code = text
         .split("\n")
         .map((l) => {
           const t = l.trim();
           if (t.startsWith("*") || t.startsWith("//")) return "";
-          // 单行 JSDoc（`/** … */`）整体是注释——`steps.ts` 里大量存在
-          // （`/** \`deploy.sh:906\` 的 fail 逐字 */`），剥掉它们才不会把
-          // "引用出处"误判成"调用脚本"。
+          // 单行 JSDoc（`/** … */`）整体是注释。
           if (t.startsWith("/**") && t.endsWith("*/")) return "";
           if (t.startsWith("/*")) return "";
           const idx = l.indexOf("//");
@@ -82,7 +78,7 @@ Deno.test("R1 门禁: src 内零 bash / 生产脚本调用", async () => {
   assertEquals(
     offenders,
     [],
-    `src 内不得再调用 bash / 生产脚本（R1）：\n${offenders.join("\n")}`,
+    `src 内不得再调用 bash / 生产脚本：\n${offenders.join("\n")}`,
   );
 });
 
@@ -177,7 +173,7 @@ Deno.test("接线: status 走原生实现（注入 runner 收到 compose ps，�
     assertEquals(
       calls.some((c) => c.cmd === "bash"),
       false,
-      "不得 spawn bash（R1）",
+      "不得 spawn bash",
     );
     assert(
       calls.some((c) => c.cmd === "docker" && c.args.includes("compose")),
@@ -188,7 +184,7 @@ Deno.test("接线: status 走原生实现（注入 runner 收到 compose ps，�
   }
 });
 
-Deno.test("接线: uninstall 在非 TTY 下明确报错且零副作用（T15 契约保持）", async () => {
+Deno.test("接线: uninstall 在非 TTY 下明确报错且零副作用", async () => {
   const dir = await makeInstallDir();
   try {
     const calls: { cmd: string; args: string[] }[] = [];
@@ -220,7 +216,7 @@ Deno.test("接线: uninstall 在非 TTY 下明确报错且零副作用（T15 契
   }
 });
 
-Deno.test("接线: update 未接线备份时明确失败（T16 的注入点已接上真实实现）", async () => {
+Deno.test("接线: update 未接线备份时明确失败", async () => {
   const dir = await makeInstallDir();
   try {
     const { runProdUpdate } = await import("./cli.ts");
@@ -413,19 +409,17 @@ async function dirFingerprint(dir: string): Promise<string[]> {
   return out.sort();
 }
 
-// ── 评审发现：prune 的数值旗标未校验 → 静默删光全部备份 ────────────
+// ── 回归：prune 的数值旗标未校验 → 静默删光全部备份 ────────────
 //
 // `Number("oops")` 是 `NaN`，而 `planPrune` 里 `Math.max(0, NaN)` 仍是 `NaN`，
 // `slice(0, NaN)` 返回**空数组** → "受数量保护"的集合为空 → **每一份备份都进 remove**。
 // 也就是说 `--keep oops --confirm` 会把所有快照删掉，而用户的本意是"保留一些"。
 //
-// 注意这条**不是新旗标的边界情况，而是 parity 回归**：旧的
-// `parseBackupArgs`（`cli.ts`）本来校验 `--keep` 必须是非负整数，且
-// `cli_test.ts` 至今仍在断言它——但 T24 之后 `parseBackupArgs` 只被 drill 路径使用，
+// `parseBackupArgs` 本来校验 `--keep` 必须是非负整数，但它只被 drill 路径使用，
 // prune 走 `runBackupPrune` 完全绕过了那个校验。
-// **"存在且有测试的校验"不再位于活跃路径上**，这正是它危险的原因。
+// **"存在且有测试的校验"不在活跃路径上**，这正是它危险的原因。
 
-Deno.test("评审: prune 的 --keep/--older-than 非法值必须报用法错误，而非删光备份", async () => {
+Deno.test("prune 的 --keep/--older-than 非法值必须报用法错误，而非删光备份", async () => {
   const { runBackupPrune } = await import("./cli.ts");
   for (
     const args of [
@@ -448,7 +442,7 @@ Deno.test("评审: prune 的 --keep/--older-than 非法值必须报用法错误�
   }
 });
 
-Deno.test("评审: prune 的合法值仍正常规划（不误伤）", async () => {
+Deno.test("prune 的合法值仍正常规划（不误伤）", async () => {
   const { runBackupPrune } = await import("./cli.ts");
   // 空备份目录：只验证不抛错、且默认 dry-run
   const r = await runBackupPrune("/tmp/noj-nonexistent-dir-xyz", [
@@ -458,18 +452,17 @@ Deno.test("评审: prune 的合法值仍正常规划（不误伤）", async () =
   assertEquals(r.applied, false, "未给 --confirm 时必须保持 dry-run");
 });
 
-// ── 评审发现：R4 的首次安装路径不可达 ────────────────────────────────
+// ── 回归：首次安装路径不可达 ────────────────────────────────
 //
-// R4 的验收是"`install` 在空目录仅凭二进制即可完成"，文档也写成
+// 首次安装要求"`install` 在空目录仅凭二进制即可完成"，文档也写成
 // `./noj-cli-linux-amd64 install --dir /opt/neuro-oj`（"目录可以是空的"）。
 // 但 `dispatchProduction` 先调 `findProductionDir`，而它对**显式目录**要求
 // 已含两个生产标记 → `install --dir <空目录>` 报
 // "不是完整的 NOJ 生产安装目录"，**永远走不到 install 自己**。
 //
-// 即"必须先装好才能装"。这是计划级错误：R4 删掉了 install.sh 的自举，
-// 却没把"目标目录可以为空"这条语义接上。
+// 即"必须先装好才能装"。
 
-Deno.test("评审: install 接受不存在的目标目录（R4 首次安装的前提）", async () => {
+Deno.test("install 接受不存在的目标目录（首次安装的前提）", async () => {
   const root = await Deno.makeTempDir();
   const dir = `${root}/fresh-install`;
   try {
@@ -498,7 +491,7 @@ Deno.test("评审: install 接受不存在的目标目录（R4 首次安装的�
   }
 });
 
-Deno.test("评审: 非 install 命令仍要求完整安装目录（不放宽守卫）", async () => {
+Deno.test("非 install 命令仍要求完整安装目录（不放宽守卫）", async () => {
   const root = await Deno.makeTempDir();
   try {
     for (const cmd of ["status", "start", "uninstall"]) {
@@ -523,10 +516,10 @@ Deno.test("评审: 非 install 命令仍要求完整安装目录（不放宽守�
   }
 });
 
-// ── 评审发现：install 缺省 ref 曾是分支名 `main`（R4 阻塞 + R3 parity 破坏）──
+// ── 回归：install 缺省 ref 曾是分支名 `main` ──
 //
-// 删掉的 `install.sh:722` 在无 `--ref` 时调 `resolve_latest_ref`：查询 Release
-// 列表并选**最新资产就绪的稳定版**。TS 版却把缺省写成字符串 `"main"`：
+// 无 `--ref` 时应查询 Release 列表并选**最新资产就绪的稳定版**，却曾把缺省
+// 写成字符串 `"main"`：
 //
 //   $ noj-cli install --dir X        # 文档就是让用户这么装（无 --ref）
 //   → https://github.com/.../releases/download/main/docker-compose.prod.yml → 404
@@ -534,7 +527,7 @@ Deno.test("评审: 非 install 命令仍要求完整安装目录（不放宽守�
 // 而文档让用户下载的是某个**标签**的二进制，install 必须从同一个标签取部署文件，
 // 否则正是 issue #431 要避免的"CLI 与部署文件版本不一致"。
 
-Deno.test("评审: install 无 --ref 时必须解析最新资产就绪 Release（而非分支 main）", async () => {
+Deno.test("install 无 --ref 时必须解析最新资产就绪 Release（而非分支 main）", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const urls: string[] = [];
@@ -602,11 +595,10 @@ Deno.test("评审: install 无 --ref 时必须解析最新资产就绪 Release�
   }
 });
 
-// ── 评审发现：--dry-run 被静默忽略 → "预演"真的删数据 ────────────────
+// ── 回归：--dry-run 被静默忽略 → "预演"真的删数据 ────────────────
 //
-// bash 的 `--dry-run` 在破坏性路径上有守卫（`production.sh:506`/`:511`：dry-run 下
-// 不做 `unregister_command` 与 `remove_install_directory`）。TS 版既没实现也没拒绝，
-// 于是旗标被静默吞掉。实测（编译产物）：
+// `--dry-run` 在破坏性路径上必须有守卫（dry-run 下不注销命令、不删安装目录）。
+// 曾既没实现也没拒绝，于是旗标被静默吞掉。实测（编译产物）：
 //
 //   $ noj-cli uninstall --all --yes --dry-run --dir /tmp/y2
 //   ✓ 已删除 NOJ 安装目录：/tmp/y2        ← 真的删了
@@ -615,7 +607,7 @@ Deno.test("评审: install 无 --ref 时必须解析最新资产就绪 Release�
 // 即用户执行"给我看看会做什么"，结果整个安装目录与数据卷被删除。
 // 因此**未实现的旗标必须显式拒绝（2）**，而不是忽略。
 
-Deno.test("评审: 生产命令上未实现的 --dry-run 必须被拒绝，而非静默执行", async () => {
+Deno.test("生产命令上未实现的 --dry-run 必须被拒绝，而非静默执行", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -677,7 +669,7 @@ Deno.test("评审: 生产命令上未实现的 --dry-run 必须被拒绝，而�
   }
 });
 
-Deno.test("评审: 未实现的 --panel 同样被拒绝（不静默吞掉）", async () => {
+Deno.test("未实现的 --panel 同样被拒绝（不静默吞掉）", async () => {
   const { rejectUnimplementedProdFlags } = await import("./cli.ts");
   assertThrows(
     () => rejectUnimplementedProdFlags(["--panel", "none"]),
@@ -694,7 +686,7 @@ Deno.test("评审: 未实现的 --panel 同样被拒绝（不静默吞掉）", a
   rejectUnimplementedProdFlags(["--dir", "/x", "--all", "--yes", "--json"]);
 });
 
-// ── 评审发现（Critical）：create 与 drill 的迁移状态口径不一致 ────────
+// ── 回归：create 与 drill 的迁移状态口径不一致 ────────
 //
 // `drill` 把 `migration-status.txt` 与**真实 SQL 结果**比对并要求相等
 // （`drill.ts:800`：`if (actual !== expected) throw`）。而 `create` 此前把
@@ -702,10 +694,10 @@ Deno.test("评审: 未实现的 --panel 同样被拒绝（不静默吞掉）", a
 // `backup drill` 对 `backup create` 产出的任何快照都必然失败（实测退出码 1）。
 // 即"真的能恢复吗"这个唯一保证，对唯一受支持的快照形态不可达。
 //
-// bash 的 `record_migration_status` 是**真查** `drizzle.__drizzle_migrations`，
+// 正确做法是**真查** `drizzle.__drizzle_migrations`，
 // 并以 `hash || ':' || created_at::text` 的同一口径输出。
 
-Deno.test("评审: create 的 migration-status 必须来自真实查询（与 drill 同口径）", async () => {
+Deno.test("create 的 migration-status 必须来自真实查询（与 drill 同口径）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -773,7 +765,7 @@ Deno.test("评审: create 的 migration-status 必须来自真实查询（与 dr
   }
 });
 
-Deno.test("评审: 迁移表不存在时写 not-initialized（而非 unavailable）", async () => {
+Deno.test("迁移表不存在时写 not-initialized（而非 unavailable）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -811,14 +803,14 @@ Deno.test("评审: 迁移表不存在时写 not-initialized（而非 unavailable
   }
 });
 
-// ── 评审发现（Critical）：CLI 层从未把 --dry-run 转给 judge ────────────
+// ── 回归：CLI 层从未把 --dry-run 转给 judge ────────────
 //
 // 上一组用例直接调 `judgeInstall({dryRun:true})`，验的是 actions.ts 的分支；
 // 而缺陷在**接线**：`dispatchProdJudge` 只传了 version/redisUrl/socketPath，
 // `--dry-run` 被静默吞掉 → 真的写出 `.env.judge` 才失败退出。
 // 因此必须在 **CLI 层**（`run([...])`）断言零副作用，否则修复可能只修了一半。
 
-Deno.test("评审: CLI 层 judge install --dry-run 不得写出 .env.judge", async () => {
+Deno.test("CLI 层 judge install --dry-run 不得写出 .env.judge", async () => {
   const root = await Deno.makeTempDir();
   try {
     // 造一个**完整生产安装目录**（findProductionDir 会放行），
@@ -876,7 +868,7 @@ Deno.test("评审: CLI 层 judge install --dry-run 不得写出 .env.judge", asy
   }
 });
 
-// ── 评审发现：独立 Judge 节点的文档入口不可执行（与 install 同类）──────
+// ── 回归：独立 Judge 节点的文档入口不可执行（与 install 同类）──────
 //
 // `noj-docs/docs/operators/judge-workers.md` 给**不运行 noj-core/noj-ui** 的
 // 独立评测节点的流程是：
@@ -885,7 +877,7 @@ Deno.test("评审: CLI 层 judge install --dry-run 不得写出 .env.judge", asy
 // 而 `dispatchProduction` 只对 `command === "install"` 放宽目录要求，
 // 于是这两条命令都报"不是完整的 NOJ 生产安装目录"**永远无法执行**。
 
-Deno.test("评审: judge 子命令接受新建/空目录（独立节点文档流程）", async () => {
+Deno.test("judge 子命令接受新建/空目录（独立节点文档流程）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "fresh-judge");
@@ -911,7 +903,7 @@ Deno.test("评审: judge 子命令接受新建/空目录（独立节点文档流
   }
 });
 
-Deno.test("评审: 放宽只针对 install/judge，其他命令仍要求完整安装目录", async () => {
+Deno.test("放宽只针对 install/judge，其他命令仍要求完整安装目录", async () => {
   const root = await Deno.makeTempDir();
   try {
     for (const cmd of ["status", "start", "stop", "logs", "backup"]) {
@@ -936,14 +928,14 @@ Deno.test("评审: 放宽只针对 install/judge，其他命令仍要求完整�
   }
 });
 
-// ── 评审发现：judge status 人类模式每行打印两次 ─────────────────────
+// ── 回归：judge status 人类模式每行打印两次 ─────────────────────
 //
 // `judgeStatus` 通过 `base.log`（= 注入的 say）逐行输出 summary 与 compose ps，
 // 而 `dispatchProdJudge` 的 status 分支**又**打印一遍返回的 `summary`/`psOutput`，
 // 于是每行出现两次（实测 15 行重复）。人类可读输出重复既是噪声，
 // 也让人怀疑"是不是跑了两遍"。
 
-Deno.test("评审: judge status 人类模式不重复打印（summary 只出现一次）", async () => {
+Deno.test("judge status 人类模式不重复打印（summary 只出现一次）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -1001,21 +993,20 @@ Deno.test("评审: judge status 人类模式不重复打印（summary 只出现�
   }
 });
 
-// ── 评审发现（Important）：verify 与 check 完全相同，安全控制没运行 ──
+// ── 回归：verify 与 check 完全相同，安全控制没运行 ──
 //
-// `case "verify"` 此前直接调 `runProdCheck`，与 `check`/`config` **逐字相同**，
+// `case "verify"` 此前直接调 `runProdCheck`，与 `check`/`config` **完全相同**，
 // 而注释与 help 都写着"比 check 多验签名"。即**一个安全控制报成功却从未运行**，
 // 而运维者会把它当作部署前的保证闸门——比"没有该命令"更糟。
 //
-// bash（deploy.sh:911）对 `install|start|upgrade|verify` **都**跑
-// `verify_image_signatures`；`verifyImageSignatures` 在 TS 侧也早已实现
-// （install/update 都在用），只是 `verify` 命令的接线漏了。
+// `verifyImageSignatures` 早已实现（install/update 都在用），只是 `verify`
+// 命令的接线漏了。
 
 // 覆盖范围说明（诚实标注）：本用例直接调 `runProdVerify`，因此验的是
 // **验签逻辑本身**；把 `dispatchProduction` 的 `case "verify"` 退回
 // `runProdCheck` **不会**让它转红。接线那一层由下面的"verify 与 check 行为可区分"
 // 用例覆盖（它比较两个函数的返回，同样是直接调用，但至少钉住两者不等价）。
-Deno.test("评审: verify 必须真的验签（ENFORCE=true 且无 cosign → 失败）", async () => {
+Deno.test("verify 必须真的验签（ENFORCE=true 且无 cosign → 失败）", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const HEX = "a".repeat(64);
@@ -1099,7 +1090,7 @@ Deno.test("评审: verify 必须真的验签（ENFORCE=true 且无 cosign → �
   }
 });
 
-// ── 评审发现：带值旗标未登记 → 旗标的值被当成位置参数 ────────────────
+// ── 回归：带值旗标未登记 → 旗标的值被当成位置参数 ────────────────
 //
 // `positionals()` 靠一份 `valueTaking` 清单决定"是否跳过下一个 token"。
 // 漏登记会让**旗标的值**被当成位置参数。实测：
@@ -1109,7 +1100,7 @@ Deno.test("评审: verify 必须真的验签（ENFORCE=true 且无 cosign → �
 //
 // 即把 `--restore-env` 的**值**当成了快照路径，真正的快照被忽略。
 
-Deno.test("评审: 带值旗标的值不得被当成位置参数", async () => {
+Deno.test("带值旗标的值不得被当成位置参数", async () => {
   const { positionals } = await import("./cli.ts");
   // 每种旗标：其值必须被跳过，只留下真正的位置参数
   const cases: [string[], string[]][] = [
@@ -1138,12 +1129,12 @@ Deno.test("评审: 带值旗标的值不得被当成位置参数", async () => {
 // ── 用户要求：create 成功后必须写出备份新鲜度指标 ────────────────────
 //
 // 单测 `metrics.ts` 只证明渲染/落盘正确；**接线**（create 是否真的调用它）
-// 必须单独断言——评审反复证明过这一类"实现有、接线漏"的缺陷。
+// 必须单独断言——"实现有、接线漏"的缺陷真实出现过。
 
 Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言）", async () => {
   // 注入最小 ops 走**完整 create 路径**——这样断言的是 `runBackupCreate`
   // 的指标接线，而不是把 `writeBackupMetrics` 再测一遍（后者无法发现
-  // "create 忘了调它"这一类缺陷，评审已多次证明这类缺陷真实存在）。
+  // "create 忘了调它"这一类缺陷）。
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -1384,8 +1375,7 @@ function fakePayloadOps(
 
 // ── 我自查发现的缺陷：judge --redis-mode local 在 --dry-run 下真建了 Redis ──
 //
-// bash 的 install 在 `DRY_RUN` 时早退（judge-install.sh:523），根本走不到
-// `configure_redis`。我第一版把"创建本机 Redis"放在 dry-run 判断**之前**，
+// install 在 dry-run 时必须先短路。第一版把"创建本机 Redis"放在 dry-run 判断**之前**，
 // 实测 `--dry-run` 真的创建了容器并写出 `redis.conf`——违反"预演零副作用"，
 // 而这正是本会话反复修过的一类缺陷（`uninstall --dry-run` 删数据、
 // `judge install --dry-run` 写配置）。
@@ -1441,13 +1431,13 @@ Deno.test("自查: judge install --redis-mode local --dry-run 不得创建 Redis
   }
 });
 
-// ── 评审发现（major）：三处"旗标被接受却静默无效"的接线缺口 ────────────
+// ── 回归：三处"旗标被接受却静默无效"的接线缺口 ────────────
 //
 // 本 PR 自己把"被静默忽略的旗标会让用户的预期与结果相反"定义为 Critical
-// （见 `UNIMPLEMENTED_PROD_FLAGS` 的注释）。评审指出同一形态仍有三个新实例，
+// （见 `UNIMPLEMENTED_PROD_FLAGS` 的注释）。同一形态曾有三个新实例，
 // 下面逐条断言"不再静默"。
 
-Deno.test("评审: judge install 必须把 --socket-gid 传给底层实现", async () => {
+Deno.test("judge install 必须把 --socket-gid 传给底层实现", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "judge");
@@ -1502,7 +1492,7 @@ Deno.test("评审: judge install 必须把 --socket-gid 传给底层实现", asy
   }
 });
 
-Deno.test("评审: backup restore --dry-run 被接受（不再报用法错误）", async () => {
+Deno.test("backup restore --dry-run 被接受（不再报用法错误）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -1548,7 +1538,7 @@ Deno.test("评审: backup restore --dry-run 被接受（不再报用法错误）
   }
 });
 
-Deno.test("评审: backup restore --dry-run 与 --confirm 同时给出必须拒绝", async () => {
+Deno.test("backup restore --dry-run 与 --confirm 同时给出必须拒绝", async () => {
   const { run } = await import("../cli.ts");
   const originalErr = console.error;
   let err = "";
@@ -1574,7 +1564,7 @@ Deno.test("评审: backup restore --dry-run 与 --confirm 同时给出必须拒�
   );
 });
 
-Deno.test("评审: backup create 接住 --retention-days / --min-free-mb", async () => {
+Deno.test("backup create 接住 --retention-days / --min-free-mb", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -1604,14 +1594,14 @@ Deno.test("评审: backup create 接住 --retention-days / --min-free-mb", async
         }),
       Error,
       "可用空间不足",
-      "--min-free-mb 必须真的生效（曾被静默忽略，且 bash 的空间守卫被整体删除）",
+      "--min-free-mb 必须真的生效（曾被静默忽略）",
     );
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
 
-Deno.test("评审: backup create --retention-days 非法值在采集前报错", async () => {
+Deno.test("backup create --retention-days 非法值在采集前报错", async () => {
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -1789,7 +1779,7 @@ Deno.test("复审: 陈旧快照可被清理，但刚创建的那份按 excludePa
   // 不排除时：刚创建的也会命中（--retention-days 0 的危险来源）
   const without = planPrune([fresh, old], { olderThanDays: 0, now });
   assertEquals(without.remove.length, 1);
-  // **整天向下取整**后，ageDays=0 → 不删（与 bash `-mtime +0` 一致）
+  // **整天向下取整**后，ageDays=0 → 不删
   assertEquals(
     without.remove[0]!.path,
     "/b/snapshot-20200101-000000.nojbackup",

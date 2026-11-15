@@ -70,8 +70,7 @@ export async function runUpdateBackup(
     return {
       ok: false,
       path: null,
-      error:
-        "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级",
+      error: "升级前备份不可用；为安全起见已中止升级",
     };
   }
   return await opts.backup(context);

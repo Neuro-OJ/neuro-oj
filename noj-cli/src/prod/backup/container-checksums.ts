@@ -18,9 +18,9 @@ export interface ChecksumEntry {
 }
 
 /**
- * 生成 `sha256sums.txt` 正文（`backup.sh:187-195` 的等价）。
+ * 生成 `sha256sums.txt` 正文。
  *
- * 逐字对齐三点：
+ * 格式三点：
  * - 每行 `<摘要>  <相对路径>`（**两个空格**，sha256sum 的 GNU 格式）；
  * - `sha256sums.txt` **自身不入选**；
  * - 顺序按 `LC_ALL=C sort`（即 UTF-8 字节序；JS 的默认字符串比较对 BMP

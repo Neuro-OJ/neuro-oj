@@ -25,7 +25,7 @@ import {
 
 // ---------------- 向导 ----------------
 
-/** 向导的核心键（对应 `configuration_needs_interactive_input`:392）。 */
+/** 向导的核心键。 */
 export const WIZARD_CORE_KEYS: readonly string[] = [
   "NOJ_VERSION",
   "DOMAIN",
@@ -34,13 +34,13 @@ export const WIZARD_CORE_KEYS: readonly string[] = [
   "JUDGE_ENABLED",
 ];
 
-/** 跳过邮件时清空的键（:548-549）。 */
+/** 跳过邮件时清空的键。 */
 export const ALL_EMAIL_KEYS: readonly string[] = [
   ...ALIYUN_EMAIL_KEYS,
   ...TENCENT_EMAIL_KEYS,
 ];
 
-/** 迁移 `configuration_needs_interactive_input`（:390-417）。 */
+/** 必须由向导补齐的键。 */
 export function wizardMissingKeys(env: EnvValues): string[] {
   const missing: string[] = [];
   for (const key of WIZARD_CORE_KEYS) {
@@ -63,7 +63,7 @@ export function isWizardKey(key: string): boolean {
     TENCENT_EMAIL_KEYS.includes(key) || JUDGE_KEYS.includes(key);
 }
 
-/** 迁移 `configuration_needs_interactive_input`（:390）：是否仍需向导补值。 */
+/** 是否仍需向导补值。 */
 export function wizardNeedsInteractiveInput(env: EnvValues): boolean {
   return wizardMissingKeys(env).length > 0;
 }
@@ -76,9 +76,9 @@ export interface WizardOptions {
   required?: string[];
   /** 给出时在确认后原子写入该 .env.prod（父目录自动创建）。 */
   envFile?: string;
-  /** 自动探测到的默认 IP（对应 `detect_default_ipv4`）。 */
+  /** 自动探测到的默认 IP。 */
   defaultIp?: string;
-  /** 语义色主题（T8）；缺省按 auto 现算。 */
+  /** 语义色主题；缺省按 auto 现算。 */
   theme?: Theme;
 }
 
@@ -107,7 +107,7 @@ export function normalizeEmailProvider(raw: string): string | null {
   }
 }
 
-/** 邮件服务的提示文案（deploy.sh:336-342 的 `email_provider_prompt_label`）。 */
+/** 邮件服务的提示文案。 */
 export function emailProviderPromptLabel(current: string): string {
   switch (current) {
     case "aliyun":
@@ -119,7 +119,7 @@ export function emailProviderPromptLabel(current: string): string {
   }
 }
 
-/** 取 socket 的 gid（bash `stat -c %g`）；不可得时返回 null。 */
+/** 取 socket 的 gid；不可得时返回 null。 */
 export async function socketGid(path: string): Promise<string | null> {
   try {
     const st = await Deno.stat(path);
@@ -130,9 +130,9 @@ export async function socketGid(path: string): Promise<string | null> {
 }
 
 /**
- * 把键值表转成 T3 `writeEnvFileAtomic` 需要的 Map（丢弃 undefined）。
+ * 把键值表转成 `writeEnvFileAtomic` 需要的 Map（丢弃 undefined）。
  *
- * T12 起导出：`lifecycle.ts` 的 install 与向导回填共用这一份实现，避免同形
+ * 导出供 `lifecycle.ts` 的 install 与向导回填共用这一份实现，避免同形
  * 函数在 `config.ts` / `lifecycle.ts` 各存一份（去重）。
  */
 export function toEntries(values: EnvValues): Map<string, string> {
@@ -143,7 +143,7 @@ export function toEntries(values: EnvValues): Map<string, string> {
   return entries;
 }
 
-/** 带默认值的文本输入：默认值为空串时不写 `[ ]`（与 bash 无默认提示一致）。 */
+/** 带默认值的文本输入：默认值为空串时不写 `[ ]`。 */
 export function promptText(
   io: PromptIO,
   label: string,
@@ -153,21 +153,21 @@ export function promptText(
 }
 
 /**
- * 迁移 `configure_env_interactive`（:429-595）。
+ * 交互式配置向导。
  *
  * **非 TTY**：缺必需输入时直接抛错并附上缺少的键，绝不进入交互循环
- * （#517 E10；错误文本复用 T9 `init/non_interactive.ts` 的
+ * （#517 E10；错误文本复用 `init/non_interactive.ts` 的
  * {@link nonInteractiveAdvice}），也不写任何输出。
  * 配置已完整时零输出返回当前值（无需交互）。
  *
- * **TTY**：按 bash 顺序询问版本 → 网站地址 → HTTPS → 邮件服务 → Judge →
- * 确认写入。返回值是"待落盘键值"；只有显式传入 `envFile` 才写盘（T12+ 决定
+ * **TTY**：依次询问版本 → 网站地址 → HTTPS → 邮件服务 → Judge →
+ * 确认写入。返回值是"待落盘键值"；只有显式传入 `envFile` 才写盘（由调用方决定
  * 是暂存还是直接提交，本模块不实现生命周期动作）。
  *
- * 邮件条件键清单来自 T2 schema 的 {@link ALIYUN_EMAIL_KEYS} /
+ * 邮件条件键清单来自 schema 的 {@link ALIYUN_EMAIL_KEYS} /
  * {@link TENCENT_EMAIL_KEYS}（唯一事实源），本模块不再自带第二份 key 数组。
  *
- * 复填语义（bash `reset_existing`）通过"传入空 env"表达：传入当前 env 即
+ * 复填语义通过"传入空 env"表达：传入当前 env 即
  * "补齐缺失"，非占位的历史值成为默认值并在用户回车时复用。
  */
 export async function runConfigWizard(
@@ -266,7 +266,7 @@ export async function runConfigWizard(
     emailProvider = normalized;
     break;
   }
-  // bash 仅当"当前值非空且与本次选择相同"时才复用分支（:491）。
+  // 仅当"当前值非空且与本次选择相同"时才复用分支。
   const emailReused = currentEmail === emailProvider &&
     (emailProvider === "aliyun" || emailProvider === "tencent");
   const canReuse = (key: string): boolean =>
@@ -372,7 +372,7 @@ export async function runConfigWizard(
   let wroteEnvFile = false;
   if (opts.envFile !== undefined) {
     const parent = dirname(opts.envFile);
-    // T3 carry-forward：writeEnvFileAtomic 不 mkdir 父目录，调用方保证存在。
+    // writeEnvFileAtomic 不 mkdir 父目录，调用方保证存在。
     if (parent !== "" && parent !== ".") {
       await Deno.mkdir(parent, { recursive: true, mode: 0o700 });
     }

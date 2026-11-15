@@ -78,15 +78,14 @@ export async function listBackups(backupDir: string): Promise<ListResult> {
     }
     const path = backupDir + "/" + e.name;
     // 时间来源优先级（2026-09-23 复审修复）：
-    // 1. 文件名里的时间戳（最可信，与 bash 的 `-name 'snapshot-*'` 口径一致）；
-    // 2. **文件系统 mtime**（文件名解析不出时间戳时的兜底，与 bash `find -mtime`
-    //    实际使用的判据一致）。
+    // 1. 文件名里的时间戳（最可信）；
+    // 2. **文件系统 mtime**（文件名解析不出时间戳时的兜底）。
     //
     // 为什么不能用 epoch 兜底：`backup create` 的自动清理按"年龄 > 保留天数"删除，
     // epoch 会让任何**文件名不合规范**的快照被判成"极旧"而当场删除。触发场景：
     // - 同秒碰撞的 `snapshot-<ts>-1.nojbackup`（`allocateContainerPath` 的产物，
     //   `parseBackupName` 不匹配）；
-    // - 用户手工改名/拷贝的快照（bash 的 `find -mtime +N` 永不删它们）。
+    // - 用户手工改名/拷贝的快照。
     // 这两种情况下 mtime 才是真实年龄，用 epoch 属误删。
     let createdAt: string;
     const parsed = parseBackupName(e.name);
@@ -115,7 +114,7 @@ export interface PruneResult {
   /** 实际删除的路径（dry-run 时为空）。 */
   deleted: string[];
   /**
-   * 删除失败的条目与原因（评审修正）。
+   * 删除失败的条目与原因。
    *
    * 早先 `catch {}` 静默吞掉失败，调用方只看到 "已删除 0 个" 却 exit 0——
    * 向用户传达了"已清理"的**假成功**，恰恰破坏 prune 的安全价值。

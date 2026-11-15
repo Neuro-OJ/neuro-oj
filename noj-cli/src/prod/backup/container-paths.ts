@@ -7,7 +7,7 @@ import { BACKUP_SUFFIX } from "./container.ts";
 /**
  * 备份产物的文件名（`snapshot-<ts>` + {@link BACKUP_SUFFIX}）。
  *
- * 时间戳格式 `%Y%m%d-%H%M%S`（bash `backup.sh:238` 的 `date '+%Y%m%d-%H%M%S'`），
+ * 时间戳格式 `%Y%m%d-%H%M%S`，
  * 可在 `prod/backup/index.ts:parseBackupName` 的既有解析下工作，从而让
  * `list`/`prune` 无需感知容器细节。
  */
@@ -20,9 +20,9 @@ export function containerFileName(ts: Date): string {
 }
 
 /**
- * 在 `backupDir` 中挑一个**未被占用**的容器路径（bash `:239-243` 的等价）。
+ * 在 `backupDir` 中挑一个**未被占用**的容器路径。
  *
- * bash 用 `-e` 判存在并在冲突时追加 `-<index>`；本实现同样追加序号，
+ * 冲突时追加序号 `-<index>`，
  * 保证既不覆盖既有快照，也不因并发创建而互相踩踏。
  */
 export async function allocateContainerPath(
@@ -49,7 +49,7 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-/** 格式化为 bash `date -u '+%Y-%m-%dT%H:%M:%SZ'` 的 UTC 时间戳。 */
+/** 格式化为 `YYYY-MM-DDTHH:MM:SSZ` 的 UTC 时间戳。 */
 export function utcTimestamp(ts: Date): string {
   return ts.toISOString().replace(/\.\d{3}Z$/, "Z");
 }

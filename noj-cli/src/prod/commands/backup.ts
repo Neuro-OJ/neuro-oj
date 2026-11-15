@@ -53,7 +53,7 @@ export function normalizeDir(path: string): string {
   return path.replace(/\/+$/, "");
 }
 
-/** 校验一个非负整数旗标（未给或非法时的报错口径与 bash `check_numbers` 一致）。 */
+/** 校验一个非负整数旗标。 */
 function assertNonNegative(value: number, flag: string): number {
   if (!Number.isInteger(value) || value < 0) {
     throw new UsageError(`${flag} 必须是非负整数，收到 "${value}"`);
@@ -85,9 +85,9 @@ async function probeDirFreeBytes(
 }
 
 /**
- * 读迁移状态（迁移 bash `record_migration_status`，backup.sh:172-185）。
+ * 读迁移状态。
  *
- * ## 为什么必须真查（评审发现的 Critical）
+ * ## 为什么必须真查
  *
  * 此前这里硬编码 `"migration-status-unavailable"`，而 `drill` 把
  * `migration-status.txt` 的内容与**真实查询结果**比对并要求相等：
@@ -100,13 +100,13 @@ async function probeDirFreeBytes(
  * **`backup drill` 对 `backup create` 产出的任何快照都必然失败**（实测退出码 1）。
  * 即"我们真的能恢复吗"这个唯一保证，对唯一受支持的快照形态**不可达**。
  *
- * ## 语义（逐条对照 bash）
+ * ## 语义
  *
  * 1. 先问 `to_regclass('drizzle.__drizzle_migrations')` 是否存在该表；
  * 2. 不存在/为空 → `not-initialized`（drill 视其为"快照缺少迁移记录"）；
  * 3. 存在 → `hash:created_at` 按 `created_at` 排序，**逐字**与 drill 的查询一致
  *    （两边都必须是 `hash || ':' || created_at::text`，否则永远不相等）；
- * 4. 查询失败 → `migration-status-unavailable`（bash 的同名回退值）。
+ * 4. 查询失败 → `migration-status-unavailable`。
  */
 async function readMigrationStatus(
   runner: CommandRunner,
@@ -180,15 +180,14 @@ export interface BackupCreateCliOptions {
   /**
    * 保留天数（`--retention-days` / `NOJ_BACKUP_RETENTION_DAYS`，默认 30）。
    *
-   * 语义与 bash 一致：写入 manifest，并在**成功创建快照后**清理
-   * 早于该天数的快照（bash `prune_old_snapshots`，`backup.sh:196-203`）。
+   * 写入 manifest，并在**成功创建快照后**清理
+   * 早于该天数的快照。
    */
   retentionDays?: number;
   /**
    * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
    *
-   * 对应 bash `check_free_space`（`backup.sh:113-121`）：采集**之前**校验，
-   * 空间不足直接失败。此前 TS 侧整体缺失该守卫，`backup create` 可以把磁盘写满。
+   * 采集**之前**校验，空间不足直接失败，避免 `backup create` 把磁盘写满。
    */
   minFreeMb?: number;
   args: string[];
@@ -212,16 +211,12 @@ export interface BackupCreateCliOptions {
 }
 
 /**
- * `backup create`（T17 的 `createContainer` 的**命令级装配**）。
+ * `backup create`（`createContainer` 的**命令级装配**）。
  *
- * T17 交付了容器层（`createContainer` + `createProdPayloadOps`），T18 交付了
- * verify/list/prune/restore，但 `create` 的装配此前**只有测试里做过**
- * （`commands_test.ts` 用 fake ops 造容器）。本函数把生产装配补齐：
  * 读 `.env.prod` → 构造 prod-raw 操作集 → 采集 → 打包加密 → 写 sidecar。
  *
- * `migrationStatus` 在 `create` 时**不查库**（那是 T19 drill 的职责：
- * drill 要与快照比对迁移版本）。这里记录"待核对"标记，与 bash
- * `record_migration_status` 在库不可达时的 `migration-status-unavailable` 同义。
+ * `migrationStatus` 经 {@link readMigrationStatus} **真查**数据库，
+ * 与 drill 的比对口径一致。
  */
 export async function runBackupCreate(
   dir: string,
@@ -244,7 +239,7 @@ export async function runBackupCreate(
       configured: env["NOJ_BACKUP_PASSPHRASE_FILE"],
     });
 
-  // ---- 0. 数字旗标校验（bash `check_numbers` :108-111）----
+  // ---- 0. 数字旗标校验----
   // **必须在任何副作用之前**：`--retention-days oops` 若拖到清理阶段才报错，
   // 备份已经产出、用户却拿到失败退出码。
   const retentionDays = assertNonNegative(
@@ -253,9 +248,8 @@ export async function runBackupCreate(
   );
   const minFreeMb = assertNonNegative(opts.minFreeMb ?? 1024, "--min-free-mb");
 
-  // ---- 0b. 可用空间守卫（bash `check_free_space` :113-121）----
+  // ---- 0b. 可用空间守卫----
   // 这是备份场景最常见的自伤方式：磁盘写满后连恢复都没有余量。
-  // bash 侧一直有此检查，TS 重写时被整体删除（评审发现）。
   const probe = opts.probeFreeBytes ??
     ((target: string) => probeDirFreeBytes(d.runner, target));
   const freeBytes = await probe(backupDir);
@@ -322,12 +316,12 @@ export async function runBackupCreate(
     );
   }
 
-  // ---- 14. 按保留天数清理旧快照（bash `prune_old_snapshots` :291-292）----
+  // ---- 14. 按保留天数清理旧快照----
   // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
   // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
   //
   // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
-  // 必须**逐字节为 JSON**（CHANGELOG 的 T6 契约），此前这些 `✓ 已清理…` 走 stdout
+  // 必须**逐字节为 JSON**，此前这些 `✓ 已清理…` 走 stdout
   // 会让 `JSON.parse(stdout)` 直接抛错。
   const note = opts.deps.err ?? ((t: string) => console.error(t));
   try {
@@ -335,7 +329,7 @@ export async function runBackupCreate(
       olderThanDays: retentionDays,
       confirm: true,
       // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
-      // "不留旧快照"，而 bash 的 `-mtime +0` 要求**满 24 小时**且只匹配目录。
+      // "不留旧快照"，但刚产出的这一份不在其列。
       // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
       // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
       excludePaths: new Set([created.path]),
@@ -355,7 +349,7 @@ export async function runBackupCreate(
   return created;
 }
 
-/** `backup verify`（T18 三档）。 */
+/** `backup verify`（三档）。 */
 export async function runBackupVerify(
   dir: string,
   args: string[],
@@ -366,7 +360,7 @@ export async function runBackupVerify(
     throw new UsageError("backup verify 需要 <snapshot> 路径");
   }
   const d = prodDeps(deps);
-  // 口令来源：旗标 > 进程环境 > `.env.prod`（评审发现：环境变量此前未接线，
+  // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线，
   // 而 `install` 会把它写进 `.env.prod`）。
   const configured = await readConfiguredPassphrase(dir);
   const passphraseFile = resolveBackupPassphrase(args, {
@@ -392,7 +386,7 @@ export async function runBackupVerify(
   }
 }
 
-/** `backup list`（T18）。 */
+/** `backup list`。 */
 export function runBackupList(
   dir: string,
   args: string[],
@@ -405,7 +399,7 @@ export function runBackupList(
 }
 
 /**
- * `backup prune`（T18：**默认 dry-run**）。
+ * `backup prune`（**默认 dry-run**）。
  *
  * `--confirm` 才真正删除——这条安全默认在 `pruneCommand` 里，本函数只透传。
  */
@@ -416,7 +410,7 @@ export function runBackupPrune(
 ): Promise<BackupPruneResult> {
   void deps;
   const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
-  // **必须校验**（评审发现的数据丢失缺陷）：`Number("oops")` 是 `NaN`，
+  // **必须校验**：`Number("oops")` 是 `NaN`，
   // 而 `planPrune` 的 `Math.max(0, NaN)` 仍是 `NaN`、`slice(0, NaN)` 返回空集，
   // 于是"受数量保护"的集合为空 → **每一份备份都被删**。
   // 用户输入 `--keep oops --confirm` 的本意是"保留一些"，结果全删了。
@@ -434,7 +428,7 @@ export function runBackupPrune(
  * 这是文档承诺的语义（"恢复到已停止的 Compose 环境（需 --confirm）"）：
  * 该旗标是"不可逆操作"的门禁，而不是装饰。此前的实现无条件走
  * `runBackupRestorePlan`，于是带 `--confirm` 也只规划不执行——**文档承诺了
- * 一个不存在的实现**（评审发现）。
+ * 一个不存在的实现**。
  *
  * 失败一律抛错（由 `dispatchProdBackup` 统一转退出码）：
  * 恢复失败绝不能被当成"成功但没什么可做"。
@@ -457,7 +451,7 @@ export async function runBackupRestore(
     throw new UsageError("backup restore 需要 <snapshot> 路径");
   }
   const d = prodDeps(deps);
-  // 口令来源：旗标 > 进程环境 > `.env.prod`（评审发现：环境变量此前未接线）。
+  // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线）。
   const passphraseFile = resolveBackupPassphrase(args, {
     env: d.processEnv,
     configured: await readConfiguredPassphrase(dir),
@@ -523,7 +517,7 @@ export async function runBackupRestore(
   }
 }
 
-/** `backup schedule`（T20）。 */
+/** `backup schedule`。 */
 export async function runBackupSchedule(
   dir: string,
   args: string[],

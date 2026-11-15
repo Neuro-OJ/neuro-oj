@@ -1,5 +1,5 @@
 /**
- * `problem init` 的 TUI 引导（#514 P6，T22 补 R6 收口）。
+ * `problem init` 的 TUI 引导（#514 P6）。
  *
  * 复用既有 TUI 基座（`tui/io.ts` 的 PromptIO + `tui/widgets.ts` 的
  * input/select/confirm），不引入新依赖——这正是 issue 所指
@@ -9,9 +9,9 @@
  * - 交互模式（默认，且 stdin 是 TTY）：缺什么问什么，带默认值；
  * - `--no-interactive` 或非 TTY：不提问，直接要求显式参数（避免 #517 修过的空转）。
  *
- * ## T22 补的三件事
+ * ## 三个要点
  *
- * ### 1. EOF 不再挂死（修一个实测缺陷）
+ * ### 1. EOF 不挂死
  *
  * 早先 slug 的校验是 `for (;;) { const raw = await input(...); if (SLUG_RE.test(raw)) break; }`。
  * `PromptIO.readLine` 在**输入结束时返回空串**（`realIO` 读到 EOF 就是这条路径），
@@ -28,7 +28,7 @@
  *
  * ### 2. 回退（back）
  *
- * R6 明文要求"含校验与回退"。任一提问处输入 `back` / `:b` 即回到**上一个**字段
+ * 引导要求"含校验与回退"。任一提问处输入 `back` / `:b` 即回到**上一个**字段
  * 重新提问；在第一步输入则给出提示后重问（无处可退）。回退计数同样受上限约束，
  * 避免"来回退"变成另一种挂死。
  *
@@ -70,7 +70,7 @@ export function planInitPrompts(partial: {
 }
 
 /**
- * 单字段的连续拒绝上限（T22）。
+ * 单字段的连续拒绝上限。
  *
  * **这个上限的存在只是为了保证"有限次后结束"**，而不是为了限制用户耐心：
  * EOF 下 `readLine` 恒返回空串，任何"重试直到合法"的循环都会永远转下去并把堆吃满

@@ -9,9 +9,9 @@ import { runBackupCreate } from "./backup.ts";
 import type { ProdCliDeps } from "./types.ts";
 
 /**
- * `update` / `upgrade`（T16）。
+ * `update` / `upgrade`。
  *
- * **接线 T16 登记的 carry-forward**：`UpdateOptions.backup` 是**必填注入点**
+ * `UpdateOptions.backup` 是**必填注入点**
  * （未注入即明确失败，而不是静默跳过备份）。这里接上 `prod/backup` 的真实实现——
  * "升级前必须备份"这条门禁因此真正生效。
  */
@@ -40,9 +40,9 @@ export async function runProdUpdate(
     processEnv: d.processEnv,
     now: deps.now?.(),
     warn: (message) => (deps.err ?? ((t: string) => console.error(t)))(message),
-    // T16 的注入点：真实备份（此前留空 → 明确失败）
+    // 升级前真实备份（未注入 → 明确失败）
     backup: (ctx) => runUpgradeBackup(d, ctx, passphraseFile, deps),
-    // `--files-only` 语义的部署文件同步：缺省走 T9 downloadReleaseFiles
+    // `--files-only` 语义的部署文件同步：缺省走 downloadReleaseFiles
     syncFiles: undefined,
     // 默认排空实现：docker compose run --rm --no-deps --entrypoint … core maintain …
     drain: skipDrain ? undefined : createDrainLifecycle({

@@ -1,14 +1,10 @@
 /**
- * 演练报告与监控指标（T19）。
- *
- * 迁移 `restore-drill.sh` 的 `write_report()`（:521-564）、`write_failure_report()`
- * （:187-207）、`write_drill_metrics()`（:565-575）、`snapshot_created_at()`
- * （:502-511）与 `hours_since_snapshot()`（:512-520）。
+ * 演练报告与监控指标。
  *
  * ## 为什么字段名必须逐字保持
  *
- * 报告是**运维与人（以及告警）的接口**：`deploy/monitoring/noj-alerts.yml:236`
- * 引用指标名，外部脚本与 runbook 引用报告字段。移植时改字段名等于悄悄破坏
+ * 报告是**运维与人（以及告警）的接口**：`deploy/monitoring/noj-alerts.yml`
+ * 引用指标名，外部脚本与 runbook 引用报告字段。改字段名等于悄悄破坏
  * 这些消费方——而它们不在本仓库的测试覆盖里（`check-runbooks.ts` 只做静态检查）。
  * 因此本模块用**逐字常量**而非"更优雅的命名"，并由测试逐字段断言。
  *
@@ -25,10 +21,10 @@
 
 import { dirname, join } from "@std/path";
 
-/** 报告文件名（bash :297）。 */
+/** 报告文件名。 */
 export const REPORT_FILE_NAME = "restore-drill-report.txt";
 
-/** 指标文件名（bash :572）。 */
+/** 指标文件名。 */
 export const DRILL_METRICS_FILE = "noj_restore_drill.prom";
 
 /**
@@ -41,10 +37,10 @@ export const DRILL_METRICS_FILE = "noj_restore_drill.prom";
  */
 export const METRIC_LAST_SUCCESS = "noj_restore_drill_last_success_unix_time";
 
-/** 演练类型标记（bash :527，报告与失败报告共用）。 */
+/** 演练类型标记（报告与失败报告共用）。 */
 export const DRILL_TYPE = "isolated-restore-with-business-verification";
 
-/** 凭据提示（bash :559 逐字）。 */
+/** 凭据提示。 */
 export const CREDENTIAL_NOTE =
   "备份快照与 GPG 口令文件应异地独立保存；口令丢失即无法恢复。";
 
@@ -76,7 +72,7 @@ export interface ReportInput {
   cleanup: "kept-for-review" | "done";
 }
 
-/** 渲染成功报告（bash `write_report` :521-564 的等价）。 */
+/** 渲染成功报告。 */
 export function renderReport(input: ReportInput): string {
   const lines = [
     `result=${input.result}`,
@@ -113,17 +109,17 @@ export interface FailureReportInput {
   failedStage: string;
   drillStartedAt: string;
   composeProject: string;
-  /** 失败现场：验收日志尾部（bash 取最后 50 行）。 */
+  /** 失败现场：验收日志尾部（最后 50 行）。 */
   verifyLogTail: string;
   cleanup: "kept-for-review" | "done";
 }
 
 /**
- * 渲染失败报告（bash `write_failure_report` :187-207 的等价）。
+ * 渲染失败报告。
  *
  * 与成功报告**不同**的字段集：没有 RPO/RTO 与时长（那些在失败时没有意义，
  * 硬填会让人误读为"跑完了"），但有 `failed_stage`（定位失败位置）。
- * `preflight` 阶段不写报告（bash 同样 `return 0`）——那时报告路径可能都还没定。
+ * `preflight` 阶段不写报告——那时报告路径可能都还没定。
  */
 export function renderFailureReport(input: FailureReportInput): string {
   const lines = [
@@ -143,7 +139,7 @@ export function renderFailureReport(input: FailureReportInput): string {
   return lines.join("\n") + "\n";
 }
 
-/** 数据核对明细的输入（bash `verify_data` :416-423 的 `checks.env`）。 */
+/** 数据核对明细的输入。 */
 export interface ChecksInput {
   restoredUserCount: number;
   restoredRedisKeys: number;
@@ -151,7 +147,7 @@ export interface ChecksInput {
   restoredObjectCount: number;
 }
 
-/** 渲染 `checks.env` 段（bash :416-423 逐字）。 */
+/** 渲染 `checks.env` 段。 */
 export function renderChecks(input: ChecksInput): string {
   return [
     "restore_data_check=passed",
@@ -163,7 +159,7 @@ export function renderChecks(input: ChecksInput): string {
 }
 
 /**
- * 渲染演练指标正文（bash `write_drill_metrics` :565-575 的等价）。
+ * 渲染演练指标正文。
  *
  * **只在成功时调用**（编排层保证）：告警语义是"最近一次成功距今多久"，
  * 失败也写会让"演练一直没成功"这件事被掩盖——那正是该告警要抓的。
@@ -176,7 +172,7 @@ export function renderDrillMetrics(unixSeconds: number): string {
   ].join("\n") + "\n";
 }
 
-/** 指标目录（bash :566：`NOJ_BACKUP_METRICS_DIR` 或快照同级的 `metrics/`）。 */
+/** 指标目录：`NOJ_BACKUP_METRICS_DIR` 或快照同级的 `metrics/`。 */
 export function metricsDirOf(
   snapshotPath: string,
   explicit: string | undefined,
@@ -186,14 +182,10 @@ export function metricsDirOf(
 }
 
 /**
- * 从 manifest.json 提取 `created_at`（bash `snapshot_created_at` :502-511 的等价）。
+ * 从 manifest.json 提取 `created_at`。
  *
- * bash 用 `awk` 在 JSON 文本上做正则；这里用 `JSON.parse`（更可靠），
- * 但**保持宽容**：解析失败或字段缺失时返回空串，而不是抛错——RPO 计算会据此
- * 记为"无法判定"（`rpo_met=false` 的反面：bash 的 `date -d ""` 得到 0，
- * 从而 `hours_since_snapshot` 变成一个巨大值 → RPO 不达标）。
- *
- * 与 bash 的这点差异是**有意的**：见 {@link hoursSinceSnapshot}。
+ * 用 `JSON.parse`，但**保持宽容**：解析失败或字段缺失时返回空串，而不是抛错——
+ * RPO 计算会据此判为不达标，见 {@link hoursSinceSnapshot}。
  */
 export function snapshotCreatedAt(manifestText: string): string {
   try {
@@ -205,11 +197,9 @@ export function snapshotCreatedAt(manifestText: string): string {
 }
 
 /**
- * 计算距快照创建的小时数（bash `hours_since_snapshot` :512-520 的等价）。
+ * 计算距快照创建的小时数。
  *
- * **缺失/不可解析的时间戳 ⇒ `Infinity`**（即 RPO 必然不达标）。这与 bash 的
- * 实际行为一致（bash 在 `date` 解析失败时回退 `echo 0`，于是
- * `epoch_created=0`、`(now-0)/3600` 是个巨大值），但表达得更明确：
+ * **缺失/不可解析的时间戳 ⇒ `Infinity`**（即 RPO 必然不达标）：
  * "无法判断快照有多旧"与"快照很旧"在 RPO 上应当**同样**不达标——一份时间戳
  * 损坏的备份不应因为解析失败而"通过"新鲜度检查。
  */
@@ -223,7 +213,7 @@ export function hoursSinceSnapshot(
 }
 
 /**
- * 格式化小时数（bash 的 `awk 'BEGIN { printf "%.2f" }'` 等价）。
+ * 格式化小时数。
  *
  * `Infinity` 会格式化成 `inf`——刻意不特判为数字：报告里出现 `inf` 明确表示
  * "时间戳不可用"，比伪装成一个具体小时数更诚实。

@@ -1,24 +1,15 @@
 /**
- * 生产配置校验与交互向导（T11）。
+ * 生产配置校验与交互向导。
  *
- * 逐项迁移 `scripts/deploy/deploy.sh` 的配置能力，行为对照（R3）：
- * - `is_ipv4_address` :344、`is_site_address` :354
- * - `generate_secret` :220、`current_config_value` :275
- * - `configuration_needs_interactive_input` :390
- * - `configure_env_interactive` :429-595（本模块只做"产出键值"，落盘由调用方
- *   决定是否传 `envFile`；生命周期动作属 T12–T16，不在本模块）
- * - `check_required_values` :684-766（含 EMAIL_PROVIDER 分支 :718-737、取值约束
- *   :739-764 与 `is_site_address` :713）、`check_judge_socket` :768
- * - `check_file_permissions` :658-665（经 {@link checkEnvFileMode}）
- * - `check_port_value` :780、`detect_panel` :791、`show_panel_guidance` :804
- * - `verify_image_signatures` :837-874、`record_deployment_metadata` :875-891
- * - `passphrase_file_mode` :916、`ensure_backup_passphrase` :920-953
+ * 门面：再导出 `./config/` 下的校验（必填项、取值约束、站点地址、judge socket、
+ * 端口、文件权限）、交互向导（只产出键值，落盘由调用方决定是否传 `envFile`）、
+ * 面板检测、镜像验签、部署元数据与备份口令管理。
  *
- * 三个 carry-forward（不得绕过）：
- * 1. T2：`validateEnv` **不承载** `JUDGE_ENABLED` 枚举错误，凡走校验的入口都
+ * 三条约束（不得绕过）：
+ * 1. `validateEnv` **不承载** `JUDGE_ENABLED` 枚举错误，凡走校验的入口都
  *    **先**调 `judgeEnabledError`，非 null 即报错返回，**再**进 `validateEnv`；
- *    且未设置/空串视为**启用**（deploy.sh:679）。
- * 2. T3：`writeEnvFileAtomic` 不会 `mkdir` 父目录，调用方保证目录存在。
+ *    且未设置/空串视为**启用**。
+ * 2. `writeEnvFileAtomic` 不会 `mkdir` 父目录，调用方保证目录存在。
  * 3. 所有外部命令（docker / cosign / lsof）经注入的 {@link CommandRunner}，
  *    测试永不真的执行；依赖的二进制存在性同样以注入断言代替 `command -v`。
  */

@@ -21,17 +21,15 @@ export async function runProdCheck(
 }
 
 /**
- * `verify`：配置校验 **+ 镜像签名验证**（bash `deploy.sh:911` 的
- * `install|start|upgrade|verify) verify_image_signatures`）。
+ * `verify`：配置校验 **+ 镜像签名验证**。
  *
- * ## 为什么必须有这个函数（评审发现）
+ * ## 为什么必须有这个函数
  *
  * 此前 `dispatchProduction` 的 `case "verify"` 直接调 `runProdCheck`——
  * 与 `check`/`config` **完全相同**，而注释与 help 都写着"比 check 多验签名"。
  * 也就是说：**一个安全控制报成功但从未运行**，而运维者会把它当作部署前的
  * 保证闸门。比"没有该命令"更糟——后者至少不会被误信。
- * bash 是真跑的，`verifyImageSignatures` 也早已实现并在 install/update 里使用，
- * 只是 `verify` 命令的接线漏了。
+ * `verifyImageSignatures` 早已在 install/update 里使用，只是 `verify` 的接线漏了。
  */
 export async function runProdVerify(
   dir: string,

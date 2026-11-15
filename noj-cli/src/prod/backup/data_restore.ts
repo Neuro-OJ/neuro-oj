@@ -3,7 +3,7 @@
  *
  * ## 为什么抽出来（而不是两处各写一份）
  *
- * 这段序列的顺序与错误处理是**评审迭代出来的**，不是随手写的：
+ * 这段序列的顺序与错误处理是**反复修正出来的**，不是随手写的：
  *
  * 1. **必须先 `--wait` 起数据服务**，否则后续 `psql`/`pg_restore` 会以
  *    "connection refused" 之类的下游错误掩盖"服务没起来"这一根因；
@@ -58,7 +58,7 @@ export interface DataRestoreContext {
   /**
    * 是否在恢复结束后**停掉数据服务**。
    *
-   * - 生产 restore：`true`（与 bash 一致——恢复后停服务，等人工检查再起业务，
+   * - 生产 restore：`true`（恢复后停服务，等人工检查再起业务，
    *   避免应用在半恢复的数据上对外服务）；
    * - drill：`false`（它后续还要起业务服务做验收）。
    */
@@ -95,7 +95,7 @@ async function startOneShotService(
  *
  * 用 `sh -c 'bin="$1"; src="$2"; shift 2; exec "$bin" "$@" < "$src"'`：
  * 可执行名走 `$1`、快照路径走 `$2`、compose 参数走 `"$@"`，
- * **都不拼进脚本正文**。这是 T17 `driver.ts:feedFromFile` 的同一语义，
+ * **都不拼进脚本正文**。这是 `driver.ts:feedFromFile` 的同一语义，
  * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
  */
 async function feedFileToCompose(
@@ -261,7 +261,7 @@ export async function restoreDataServices(
   // ---- 5. 收尾（生产语义：停服务等人工检查；drill：保留给后续验收）----
   if (ctx.stopAfterRestore) {
     log("✓ 停止数据服务（请人工检查后再启动业务服务）");
-    // 与 bash 一致：`|| true` —— 收尾失败不该把"数据已恢复成功"报成失败。
+    // 收尾失败不该把"数据已恢复成功"报成失败。
     await compose(ctx, ["stop", "postgres", "redis", "minio"]);
   }
 }
