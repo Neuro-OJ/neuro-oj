@@ -25,7 +25,8 @@ import {
   positionals,
 } from "./cli.ts";
 import { UsageError } from "../util/args.ts";
-import { EXIT_USAGE, run } from "../cli.ts";
+import { run } from "../cli.ts";
+import { EXIT_USAGE } from "../cli-commands/exit-codes.ts";
 
 // ---------------- R1 门禁 ----------------
 

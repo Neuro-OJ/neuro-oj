@@ -26,7 +26,7 @@
  *    注入的 runner。
  */
 
-import { buildComposeArgs, CONTAINER_SERVICE } from "../../container.ts";
+import { buildComposeArgs, CONTAINER_SERVICE } from "../tier3.ts";
 import { emitHuman } from "../../output/render.ts";
 import type { RenderIO } from "../../output/render.ts";
 import type { CmdResult, CommandRunner } from "../../runtime/command.ts";

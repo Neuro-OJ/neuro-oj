@@ -8,7 +8,7 @@
  * @module
  */
 
-import { parseDirArg, UsageError } from "./util/args.ts";
+import { parseDirArg, UsageError } from "../util/args.ts";
 
 export interface BackupArgs {
   sub: string;

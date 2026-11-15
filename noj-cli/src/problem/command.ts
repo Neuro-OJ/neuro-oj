@@ -5,7 +5,11 @@
  * 退出码遵循 #517 的分层：0 通过 / 1 校验失败 / 2 用法错误。
  */
 import { dirname, join, relative, resolve } from "@std/path";
-import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "../exit_codes.ts";
+import {
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+} from "../cli-commands/exit-codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { packBundle } from "./pack.ts";
