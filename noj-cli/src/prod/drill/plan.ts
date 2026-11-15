@@ -28,6 +28,7 @@
 import { dirname, join } from "@std/path";
 import type { CmdResult, CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
+import { isFile, pathExists } from "../../util/fs.ts";
 
 /**
  * 校验演练项目名。
@@ -441,16 +442,6 @@ export async function allocateDrillDir(
   return candidate;
 }
 
-/** `-e` 语义的存在性判定（含悬空软链）。 */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Deno.lstat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 报告路径。
  *
@@ -544,15 +535,6 @@ export async function checkDrillPreflight(
   }
 }
 
-/** `-f` 语义的普通文件判定。 */
-export async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await Deno.stat(path)).isFile;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 探测磁盘可用空间（`df -Pk <dir>` 的等价，经注入 runner）。
  *
@@ -610,26 +592,6 @@ export async function checkPassphraseFile(path: string): Promise<void> {
       `GPG 口令文件权限必须为 600 或 400：${path}（当前 ${mode}）`,
     );
   }
-}
-
-/**
- * 解析 `.env.prod` 的键值。
- *
- * 复用 `core/env-file.ts` 的解析器；缺失文件返回空表。
- */
-export async function readEnvValues(
-  envFile: string,
-): Promise<Record<string, string>> {
-  const { parseEnvFile } = await import("../../core/env-file.ts");
-  let text: string;
-  try {
-    text = await Deno.readTextFile(envFile);
-  } catch {
-    return {};
-  }
-  const out: Record<string, string> = {};
-  for (const [k, v] of parseEnvFile(text)) out[k] = v;
-  return out;
 }
 
 /** 带缺省值的取值。 */

@@ -27,9 +27,8 @@ import { PRODUCTION_MARKERS } from "../install-dir.ts";
 import {
   checkEnvFileMode,
   judgeEnabledError,
-  validateEnv,
 } from "../../core/config-schema.ts";
-import { readEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
+import { writeEnvFileAtomic } from "../../core/env-file.ts";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { type ColorMode, resolveColor } from "../../util/color.ts";
 import {
@@ -48,17 +47,10 @@ import {
   PROD_ENV_FILE,
 } from "../compose.ts";
 import type { ComposeOptions, ComposeResult } from "../compose.ts";
+import { isFile, pathExists } from "../../util/fs.ts";
+import { readEnvValues } from "../../core/env-file.ts";
 
 // ---------------- 共享文件原语 ----------------
-
-/** `-f` 语义的普通文件判定。 */
-export async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await Deno.stat(path)).isFile;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * 读文件的八进制权限串（`stat -c %a` 的等价）。
@@ -79,26 +71,6 @@ export async function statMode(path: string): Promise<{
   } catch {
     return { isFile: false, mode: null };
   }
-}
-
-/** 读取 `.env.prod` 为 {@link EnvValues}。 */
-export async function readEnvValues(path: string): Promise<EnvValues> {
-  const map = await readEnvFile(path);
-  const out: EnvValues = {};
-  for (const [key, value] of map) out[key] = value;
-  return out;
-}
-
-/**
- * judge 是否启用：**镜像 `validateEnv` 的真值表**，不新增第三份字面集合。
- *
- * 在"仅含 JUDGE_ENABLED 的探针输入"上跑 `validateEnv`，看它是否要求
- * `JUDGE_KEYS[0]`：要求即启用。空串/未设置 → 按启用处理。
- * `install` 与各生命周期命令共用此实现。
- */
-export function judgeEnabledFrom(env: EnvValues): boolean {
-  const probe = validateEnv({ JUDGE_ENABLED: env["JUDGE_ENABLED"] ?? "" });
-  return probe.missing.includes("JUDGE_DOCKER_SOCKET");
 }
 
 /**
@@ -726,16 +698,6 @@ export async function checkUninstallDependencies(opts: {
   }
 
   return { ok: true, dir: opts.dir, envFile, composeFile };
-}
-
-/** `-e` 语义（含悬空软链）的存在性判定。 */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Deno.lstat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

@@ -157,6 +157,26 @@ export async function readEnvFile(path: string): Promise<Map<string, string>> {
   return parseEnvFile(text);
 }
 
+/** 读取 .env.prod 为键值表；文件不存在时抛错（同 {@link readEnvFile}）。 */
+export async function readEnvValues(
+  path: string,
+): Promise<Record<string, string>> {
+  return Object.fromEntries(await readEnvFile(path));
+}
+
+/** 读取 .env.prod 为键值表；文件缺失或不可读时返回空表。 */
+export async function readEnvValuesOrEmpty(
+  path: string,
+): Promise<Record<string, string>> {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    return {};
+  }
+  return Object.fromEntries(parseEnvFile(text));
+}
+
 /**
  * 原子写入 .env.prod：同目录临时文件 -> chmod 600 -> rename 覆盖。
  *

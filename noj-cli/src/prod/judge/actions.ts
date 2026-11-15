@@ -1,4 +1,5 @@
 import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
+
 /**
  * 独立 Judge 的命令编排。
  *
@@ -48,6 +49,7 @@ import {
   redactUrl,
   renderJudgeCompose,
 } from "./compose.ts";
+import { isFile } from "../../util/fs.ts";
 
 /** 所有动作的公共注入点。 */
 export interface JudgeActionOptions {
@@ -737,15 +739,6 @@ function fail(
 /** 是否属于"用法/前置错误"（退出码 2）。 */
 function isUsage(err: unknown): boolean {
   return err instanceof UsageError;
-}
-
-/** `-f` 语义。 */
-async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await Deno.stat(path)).isFile;
-  } catch {
-    return false;
-  }
 }
 
 /** `uname -m` 的缺省实现。 */

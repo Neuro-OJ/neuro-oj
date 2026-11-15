@@ -1,4 +1,4 @@
-// Tier 3 自有旗标的剥离与解析，以及字节数格式化。
+// Tier 3 自有旗标的剥离与解析。
 
 import { UsageError } from "../util/args.ts";
 
@@ -49,12 +49,4 @@ export function parseInstallDirArg(args: string[]): string | undefined {
     }
   }
   return undefined;
-}
-
-/** 人类可读字节数（备份 list 展示用，#515 P6）。 */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + "B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + "K";
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + "M";
-  return (bytes / 1024 / 1024 / 1024).toFixed(1) + "G";
 }

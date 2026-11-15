@@ -1,14 +1,12 @@
 /**
  * `backup` 子命令的参数解析（纯函数）。
  *
- * 从 `cli.ts` 抽出（2026-09-23）：`cli.ts` 已登记单文件规模棘轮基线，本次修复在
- * `parseBackupArgs` 上新增了 `--dry-run` 等旗标，继续留在原文件会让它越过基线。
- * 本模块只做参数解析（零副作用），便于单测与复用。
+ * 只做参数解析（零副作用），便于单测与复用。
  *
  * @module
  */
 
-import { parseDirArg, UsageError } from "../util/args.ts";
+import { parseDirArg, UsageError } from "../../util/args.ts";
 
 export interface BackupArgs {
   sub: string;

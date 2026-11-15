@@ -42,8 +42,8 @@ export function judgeEnabledFrom(env: EnvValues): boolean {
   return probe.missing.includes(JUDGE_KEYS[0] ?? "JUDGE_DOCKER_SOCKET");
 }
 
-/** `-e` 语义的存在性探测（socket / 设备也算存在）。 */
-export async function pathExists(path: string): Promise<boolean> {
+/** socket 路径存在性探测（跟随软链；socket / 设备也算存在）。 */
+async function socketPathExists(path: string): Promise<boolean> {
   if (path === "") return false;
   try {
     await Deno.stat(path);
@@ -258,7 +258,7 @@ export async function checkJudgeSocket(
     };
   }
 
-  const exists = opts.socketExists ?? pathExists;
+  const exists = opts.socketExists ?? socketPathExists;
   if (!(await exists(socketPath))) {
     return {
       ok: false,

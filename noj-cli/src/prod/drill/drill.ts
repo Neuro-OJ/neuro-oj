@@ -30,7 +30,13 @@
 
 import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
-import { restoreDataServices as sharedRestoreDataServices } from "../backup/data_restore.ts";
+import {
+  compose,
+  type ComposeTarget,
+  feedFileToCompose,
+  restoreDataServices as sharedRestoreDataServices,
+  startOneShotService,
+} from "../backup/data_restore.ts";
 import { makeIdempotentGlobals } from "../backup/globals.ts";
 import {
   type ContainerPayloadOps,
@@ -51,10 +57,8 @@ import {
   DEFAULT_WAIT_TIMEOUT,
   drillCleanupArgs,
   drillComposeArgs,
-  isFile,
   probeDocker,
   probeFreeBytes,
-  readEnvValues,
   renderDisableOutboundIntegrationsSql,
   renderDrillOverride,
   resolveReportPath,
@@ -80,6 +84,8 @@ import {
 import { resolveCoreBaseUrl } from "./network.ts";
 import { START_SERVICE_ERRORS, withDockerHost } from "./runtime.ts";
 import { runBusinessVerification } from "./verify.ts";
+import { isFile } from "../../util/fs.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** {@link runDrill} 的注入点：一切外部访问都可替换。 */
 export interface DrillRunOptions {
@@ -263,7 +269,7 @@ export async function runDrill(
   try {
     // ---- preflight（资源 + 口令 + 环境文件；全部在起容器之前）----
     await checkPassphraseFile(opts.passphraseFile!);
-    ctx.env = await readEnvValues(join(opts.dir, ".env.prod"));
+    ctx.env = await readEnvValuesOrEmpty(join(opts.dir, ".env.prod"));
     await checkDrillPreflight({
       staging: ctx.staging,
       dir: opts.dir,
@@ -304,7 +310,7 @@ export async function runDrill(
   try {
     // ---- restore-data ----
     const restoreStart = now().getTime();
-    await restoreDataServices(opts, ctx, runner, dockerBin, waitTimeout, log);
+    await restoreDataServices(ctx, runner, dockerBin, waitTimeout, log);
     // ---- verify-data ----
     checks = await verifyData(ctx, runner, dockerBin, log);
     restoreSeconds = Math.round((now().getTime() - restoreStart) / 1000);
@@ -396,7 +402,7 @@ export async function runDrill(
   // ---- 清理（成功路径；失败路径由 failAndCleanup 负责）----
   if (!keep) {
     await downDrillStack(ctx, runner, dockerBin);
-    await removeQuietly(ctx.drillDir);
+    await Deno.remove(ctx.drillDir, { recursive: true });
   }
 
   // 指标**只在成功且 RPO/RTO 达标时**写：告警语义是"最近一次成功距今多久"，
@@ -559,16 +565,10 @@ async function prepareDrillEnvironment(
 
   await Deno.writeTextFile(ctx.overrideFile, renderDrillOverride(ctx.subnet));
   // 只读解析校验（`compose config --quiet`）
+  const dockerBin = dockerBinOf(opts);
   const check = await runner.run(
-    dockerBinOf(opts),
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command: ["config", "--quiet"],
-    }),
+    dockerBin,
+    drillTarget(ctx, runner, dockerBin).composeArgs(["config", "--quiet"]),
   );
   if (check.code !== 0) {
     throw new Error("演练 Compose 配置无效：" + check.stderr.trim());
@@ -580,38 +580,25 @@ function dockerBinOf(opts: DrillRunOptions): string {
   return opts.dockerBin ?? "docker";
 }
 
-/** 执行一条演练 compose 子命令并返回退出码。 */
-async function compose(
+/** 演练隔离项目的 Compose 调用目标（项目名 / env / override 固定）。 */
+function drillTarget(
   ctx: DrillContext,
   runner: CommandRunner,
   dockerBin: string,
-  command: string[],
-): Promise<number> {
-  const res = await runner.run(
+): ComposeTarget {
+  return {
+    runner,
     dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command,
-    }),
-  );
-  return res.code;
-}
-
-/** Compose 的 `up --wait` 不适用于正常退出的 one-shot service。 */
-async function startOneShotService(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  service: string,
-): Promise<number> {
-  if (await compose(ctx, runner, dockerBin, ["up", "-d", service]) !== 0) {
-    return 1;
-  }
-  return await compose(ctx, runner, dockerBin, ["wait", service]);
+    composeArgs: (command) =>
+      drillComposeArgs({
+        projectName: ctx.projectName,
+        composeEnvFile: ctx.composeEnvFile,
+        composeFile: ctx.composeFile,
+        overrideFile: ctx.overrideFile,
+        judge: ctx.judge,
+        command,
+      }),
+  };
 }
 
 async function startComposeService(
@@ -622,7 +609,7 @@ async function startComposeService(
   waitTimeout: number,
 ): Promise<void> {
   const code = service === "core"
-    ? await compose(ctx, runner, dockerBin, [
+    ? await compose(drillTarget(ctx, runner, dockerBin), [
       "up",
       "-d",
       "--wait",
@@ -630,7 +617,7 @@ async function startComposeService(
       String(waitTimeout),
       service,
     ])
-    : await startOneShotService(ctx, runner, dockerBin, service);
+    : await startOneShotService(drillTarget(ctx, runner, dockerBin), service);
   if (code !== 0) {
     throw new Error(
       START_SERVICE_ERRORS[service as keyof typeof START_SERVICE_ERRORS] ??
@@ -651,68 +638,22 @@ async function startComposeService(
  * 因为 drill 后续还要起业务服务做验收）。
  */
 async function restoreDataServices(
-  opts: DrillRunOptions,
   ctx: DrillContext,
   runner: CommandRunner,
   dockerBin: string,
   waitTimeout: number,
   log: (line: string) => void,
 ): Promise<void> {
-  void opts;
   await sharedRestoreDataServices({
+    ...drillTarget(ctx, runner, dockerBin),
     staging: ctx.staging,
     tempDir: ctx.tempDir,
     env: ctx.env,
-    runner,
-    dockerBin,
-    composeArgs: (command) =>
-      drillComposeArgs({
-        projectName: ctx.projectName,
-        composeEnvFile: ctx.composeEnvFile,
-        composeFile: ctx.composeFile,
-        overrideFile: ctx.overrideFile,
-        judge: ctx.judge,
-        command,
-      }),
     waitTimeout,
     log,
     // drill 之后还要起业务服务做验收，故 **不** 在恢复后停服务。
     stopAfterRestore: false,
   });
-}
-
-/**
- * 把文件喂给一条 compose 子命令的 stdin（**文件重定向，不经字符串**）。
- *
- * 用 `sh -c '<cmd> "$@" < "$src"'` 的形式：路径经位置参数传递，不拼进脚本正文；
- * `docker` 由位置参数给出。这是 `driver.ts:feedFromFile` 的同一语义，
- * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
- */
-async function feedFileToCompose(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  command: string[],
-  srcFile: string,
-): Promise<number> {
-  const composeArgs = drillComposeArgs({
-    projectName: ctx.projectName,
-    composeEnvFile: ctx.composeEnvFile,
-    composeFile: ctx.composeFile,
-    overrideFile: ctx.overrideFile,
-    judge: ctx.judge,
-    command,
-  });
-  // 安全：dockerBin 走 $1，compose 参数走 "$@"，均不经脚本正文插值。
-  const res = await runner.run("sh", [
-    "-c",
-    `bin="$1"; src="$2"; shift 2; exec "$bin" "$@" < "$src"`,
-    "noj-drill-feed",
-    dockerBin,
-    srcFile,
-    ...composeArgs,
-  ]);
-  return res.code;
 }
 
 // `makeIdempotentGlobals` 已移到 `backup/globals.ts`：生产 restore 也要用它。
@@ -842,17 +783,8 @@ async function composeCapture(
   dockerBin: string,
   command: string[],
 ): Promise<string> {
-  const res = await runner.run(
-    dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command,
-    }),
-  );
+  const target = drillTarget(ctx, runner, dockerBin);
+  const res = await runner.run(dockerBin, target.composeArgs(command));
   return res.stdout;
 }
 
@@ -911,9 +843,13 @@ async function feedTextToCompose(
   const tmp = join(ctx.tempDir, `stdin-${crypto.randomUUID()}.sql`);
   await Deno.writeTextFile(tmp, text);
   try {
-    return await feedFileToCompose(ctx, runner, dockerBin, command, tmp);
+    return await feedFileToCompose(
+      drillTarget(ctx, runner, dockerBin),
+      command,
+      tmp,
+    );
   } finally {
-    await removeQuietly(tmp);
+    await Deno.remove(tmp, { recursive: true });
   }
 }
 
@@ -962,7 +898,7 @@ async function startBusinessServices(
 
   log("✓ 启动 judge（使用与生产相同的独立沙箱 daemon）");
   if (
-    await compose(ctx, runner, dockerBin, [
+    await compose(drillTarget(ctx, runner, dockerBin), [
       "up",
       "-d",
       "--wait",
@@ -1119,7 +1055,7 @@ async function failAndCleanup(
       cleanupErrors.push(`清理演练 Compose 资源失败（退出码 ${code}）`);
     }
     try {
-      await removeQuietly(ctx.drillDir);
+      await Deno.remove(ctx.drillDir, { recursive: true });
     } catch (err) {
       cleanupErrors.push(`删除演练目录失败：${(err as Error).message}`);
     }
@@ -1154,11 +1090,6 @@ async function downDrillStack(
     }),
   );
   return res.code;
-}
-
-/** 删演练目录（失败静默——调用方按需记入诊断）。 */
-async function removeQuietly(path: string): Promise<void> {
-  await Deno.remove(path, { recursive: true });
 }
 
 /** 清理解包暂存（前置失败路径用；演练目录由 cleanup 逻辑统一处理）。 */

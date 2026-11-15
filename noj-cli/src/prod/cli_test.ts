@@ -22,7 +22,7 @@ import {
   hasJson,
   parseProdArgs,
   positionals,
-} from "./cli.ts";
+} from "./commands/args.ts";
 import { UsageError } from "../util/args.ts";
 import { run } from "../cli.ts";
 import { EXIT_USAGE } from "../cli-commands/exit-codes.ts";
@@ -147,7 +147,7 @@ Deno.test("接线: status 走原生实现（注入 runner 收到 compose ps，�
   const dir = await makeInstallDir();
   try {
     const calls: { cmd: string; args: string[] }[] = [];
-    const { runProdStatus } = await import("./cli.ts");
+    const { runProdStatus } = await import("./commands/lifecycle.ts");
     const result = await runProdStatus(dir, [], {
       runner: {
         run(cmd: string, args: string[]) {
@@ -188,7 +188,7 @@ Deno.test("接线: uninstall 在非 TTY 下明确报错且零副作用", async (
   const dir = await makeInstallDir();
   try {
     const calls: { cmd: string; args: string[] }[] = [];
-    const { runProdUninstall } = await import("./cli.ts");
+    const { runProdUninstall } = await import("./commands/lifecycle.ts");
     const result = await runProdUninstall(dir, ["--all"], {
       runner: {
         run(cmd: string, args: string[]) {
@@ -219,7 +219,7 @@ Deno.test("接线: uninstall 在非 TTY 下明确报错且零副作用", async (
 Deno.test("接线: update 未接线备份时明确失败", async () => {
   const dir = await makeInstallDir();
   try {
-    const { runProdUpdate } = await import("./cli.ts");
+    const { runProdUpdate } = await import("./commands/update.ts");
     // 备份 inject 已由接线层提供；这里让 docker 调用失败以验证"备份失败 → 中止升级"
     const calls: string[] = [];
     const result = await runProdUpdate(dir, [], {
@@ -265,7 +265,7 @@ Deno.test("接线: update 未接线备份时明确失败", async () => {
 Deno.test("P1d: update --drain-timeout 非法值 → 用法错误（零 docker 调用）", async () => {
   const dir = await makeInstallDir();
   try {
-    const { runProdUpdate } = await import("./cli.ts");
+    const { runProdUpdate } = await import("./commands/update.ts");
     const calls: string[] = [];
     await assertRejects(
       () =>
@@ -293,7 +293,7 @@ Deno.test("P1d: update --drain-timeout 非法值 → 用法错误（零 docker �
 Deno.test("接线: backup list 走原生实现且不创建备份", async () => {
   const dir = await makeInstallDir();
   try {
-    const { runBackupList } = await import("./cli.ts");
+    const { runBackupList } = await import("./commands/backup.ts");
     const before = await dirFingerprint(join(dir, "backups"));
     const result = await runBackupList(dir, [], {});
     assertEquals(result.entries.length, 0);
@@ -310,7 +310,7 @@ Deno.test("接线: backup list 走原生实现且不创建备份", async () => {
 Deno.test("接线: backup schedule status 未安装 → 退出码 1 且提示可读", async () => {
   const dir = await makeInstallDir();
   try {
-    const { runBackupSchedule } = await import("./cli.ts");
+    const { runBackupSchedule } = await import("./commands/backup.ts");
     const result = await runBackupSchedule(dir, ["status"], {
       runner: {
         run(_cmd: string, args: string[]) {
@@ -338,7 +338,7 @@ Deno.test("接线: backup schedule status 未安装 → 退出码 1 且提示可
 Deno.test("接线: backup schedule 非法子命令 → 用法错误", async () => {
   const dir = await makeInstallDir();
   try {
-    const { runBackupSchedule } = await import("./cli.ts");
+    const { runBackupSchedule } = await import("./commands/backup.ts");
     await assertRejects(
       () =>
         runBackupSchedule(dir, ["bogus"], { processEnv: {}, out: () => {} }),
@@ -420,7 +420,7 @@ async function dirFingerprint(dir: string): Promise<string[]> {
 // **"存在且有测试的校验"不在活跃路径上**，这正是它危险的原因。
 
 Deno.test("prune 的 --keep/--older-than 非法值必须报用法错误，而非删光备份", async () => {
-  const { runBackupPrune } = await import("./cli.ts");
+  const { runBackupPrune } = await import("./commands/backup.ts");
   for (
     const args of [
       ["--keep", "oops"],
@@ -443,7 +443,7 @@ Deno.test("prune 的 --keep/--older-than 非法值必须报用法错误，而非
 });
 
 Deno.test("prune 的合法值仍正常规划（不误伤）", async () => {
-  const { runBackupPrune } = await import("./cli.ts");
+  const { runBackupPrune } = await import("./commands/backup.ts");
   // 空备份目录：只验证不抛错、且默认 dry-run
   const r = await runBackupPrune("/tmp/noj-nonexistent-dir-xyz", [
     "--keep",
@@ -531,7 +531,7 @@ Deno.test("install 无 --ref 时必须解析最新资产就绪 Release（而非�
   const dir = await Deno.makeTempDir();
   try {
     const urls: string[] = [];
-    const { runProdInstall } = await import("./cli.ts");
+    const { runProdInstall } = await import("./commands/lifecycle.ts");
     const releases = [
       { tag_name: "v0.10.0", draft: false, prerelease: false, assets: [] },
       {
@@ -670,7 +670,7 @@ Deno.test("生产命令上未实现的 --dry-run 必须被拒绝，而非静默�
 });
 
 Deno.test("未实现的 --panel 同样被拒绝（不静默吞掉）", async () => {
-  const { rejectUnimplementedProdFlags } = await import("./cli.ts");
+  const { rejectUnimplementedProdFlags } = await import("./commands/args.ts");
   assertThrows(
     () => rejectUnimplementedProdFlags(["--panel", "none"]),
     UsageError,
@@ -713,7 +713,7 @@ Deno.test("create 的 migration-status 必须来自真实查询（与 drill 同�
     await Deno.chmod(join(dir, ".env.prod"), 0o600);
 
     const sqls: string[] = [];
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
     // 用注入的 runner 断言"确实查了迁移表"，并让查询返回一个真实形态的值
     const runner = {
       run(_cmd: string, args: string[]) {
@@ -779,7 +779,7 @@ Deno.test("迁移表不存在时写 not-initialized（而非 unavailable）", as
       "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
     );
     await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
     await runBackupCreate(dir, {
       args: [],
       deps: {
@@ -806,7 +806,7 @@ Deno.test("迁移表不存在时写 not-initialized（而非 unavailable）", as
 // ── 回归：CLI 层从未把 --dry-run 转给 judge ────────────
 //
 // 上一组用例直接调 `judgeInstall({dryRun:true})`，验的是 actions.ts 的分支；
-// 而缺陷在**接线**：`dispatchProdJudge` 只传了 version/redisUrl/socketPath，
+// 而缺陷在**接线**：`runProdJudge` 只传了 version/redisUrl/socketPath，
 // `--dry-run` 被静默吞掉 → 真的写出 `.env.judge` 才失败退出。
 // 因此必须在 **CLI 层**（`run([...])`）断言零副作用，否则修复可能只修了一半。
 
@@ -931,7 +931,7 @@ Deno.test("放宽只针对 install/judge，其他命令仍要求完整安装目�
 // ── 回归：judge status 人类模式每行打印两次 ─────────────────────
 //
 // `judgeStatus` 通过 `base.log`（= 注入的 say）逐行输出 summary 与 compose ps，
-// 而 `dispatchProdJudge` 的 status 分支**又**打印一遍返回的 `summary`/`psOutput`，
+// 而 `runProdJudge` 的 status 分支**又**打印一遍返回的 `summary`/`psOutput`，
 // 于是每行出现两次（实测 15 行重复）。人类可读输出重复既是噪声，
 // 也让人怀疑"是不是跑了两遍"。
 
@@ -1044,7 +1044,7 @@ Deno.test("verify 必须真的验签（ENFORCE=true 且无 cosign → 失败）"
     );
     await Deno.chmod(join(dir, ".env.prod"), 0o600);
 
-    const { runProdVerify, runProdCheck } = await import("./cli.ts");
+    const { runProdVerify, runProdCheck } = await import("./commands/check.ts");
     const warn: string[] = [];
     const deps = {
       runner: {
@@ -1101,7 +1101,7 @@ Deno.test("verify 必须真的验签（ENFORCE=true 且无 cosign → 失败）"
 // 即把 `--restore-env` 的**值**当成了快照路径，真正的快照被忽略。
 
 Deno.test("带值旗标的值不得被当成位置参数", async () => {
-  const { positionals } = await import("./cli.ts");
+  const { positionals } = await import("./commands/args.ts");
   // 每种旗标：其值必须被跳过，只留下真正的位置参数
   const cases: [string[], string[]][] = [
     [["--restore-env", "/tmp/custom.env", "snap.nojbackup"], [
@@ -1153,7 +1153,7 @@ Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言�
     const pass = join(root, "pass");
     await Deno.writeTextFile(pass, "x".repeat(64));
 
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
 
     await runBackupCreate(dir, {
       args: [],
@@ -1225,7 +1225,7 @@ async function createWithPassphrase(
   opts: { passphraseFile?: string; processEnv?: Record<string, string> },
 ): Promise<string[]> {
   const used: string[] = [];
-  const { runBackupCreate } = await import("./cli.ts");
+  const { runBackupCreate } = await import("./commands/backup.ts");
   await runBackupCreate(dir, {
     args: [],
     deps: {
@@ -1291,7 +1291,7 @@ Deno.test("缺陷修复: backup schedule install 未传旗标时读取 .env.prod
   try {
     const { dir, configuredPass } = await makeCreateFixture(root);
     let written = "";
-    const { runBackupSchedule } = await import("./cli.ts");
+    const { runBackupSchedule } = await import("./commands/backup.ts");
     const result = await runBackupSchedule(dir, ["install"], {
       runner: {
         run(_cmd: string, args: string[], opts?: { stdin?: string }) {
@@ -1578,7 +1578,7 @@ Deno.test("backup create 接住 --retention-days / --min-free-mb", async () => {
       "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
     );
     await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
     // 注入"空间不足"的探测结果：必须**拒绝**（修复前 --min-free-mb 被静默吞掉）
     await assertRejects(
       () =>
@@ -1615,7 +1615,7 @@ Deno.test("backup create --retention-days 非法值在采集前报错", async ()
       "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
     );
     await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
     const spawned: string[] = [];
     await assertRejects(
       () =>
@@ -1693,7 +1693,7 @@ Deno.test("复审: 自动清理的提示文案走 stderr（--json 的 stdout 只
     const past = new Date(Date.now() - 40 * 24 * 3600 * 1000);
     await Deno.utime(stale, past, past);
 
-    const { runBackupCreate } = await import("./cli.ts");
+    const { runBackupCreate } = await import("./commands/backup.ts");
     const outLines: string[] = [];
     const errLines: string[] = [];
     await runBackupCreate(dir, {
@@ -1799,7 +1799,7 @@ Deno.test("复审: 陈旧快照可被清理，但刚创建的那份按 excludePa
 });
 
 Deno.test("复审: positionals 不得把 --min-free-mb 的值当位置参数", async () => {
-  const { positionals } = await import("./cli.ts");
+  const { positionals } = await import("./commands/args.ts");
   assertEquals(
     positionals(["--min-free-mb", "999", "snap.nojbackup"]),
     ["snap.nojbackup"],
@@ -1842,7 +1842,7 @@ Deno.test("复审: restore --confirm 的日志通道在 --json 下改为 stderr�
 });
 
 Deno.test("复审: backup schedule 的人类日志在 --json 下走 stderr", async () => {
-  const { runBackupSchedule } = await import("./cli.ts");
+  const { runBackupSchedule } = await import("./commands/backup.ts");
   const outLines: string[] = [];
   const errLines: string[] = [];
   const root = await Deno.makeTempDir();

@@ -3,6 +3,7 @@
 
 import { dirname, join } from "@std/path";
 import { BACKUP_SUFFIX } from "./container.ts";
+import { pathExists } from "../../util/fs.ts";
 
 /**
  * 备份产物的文件名（`snapshot-<ts>` + {@link BACKUP_SUFFIX}）。
@@ -37,16 +38,6 @@ export async function allocateContainerPath(
     index++;
   }
   return candidate;
-}
-
-/** `-e` 语义的存在性判定（含悬空软链）。 */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Deno.lstat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** 格式化为 `YYYY-MM-DDTHH:MM:SSZ` 的 UTC 时间戳。 */

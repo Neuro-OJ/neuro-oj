@@ -22,7 +22,8 @@
 
 import type { ComposeOptions } from "../compose.ts";
 import type { EnvValues } from "../config.ts";
-import { judgeEnabledFrom, readEnvValues } from "./steps.ts";
+import { readEnvValues } from "../../core/env-file.ts";
+import { judgeEnabledFrom } from "../config/checks.ts";
 
 /** 生效环境文件缺失 `NOJ_VERSION` 时的报错文案。 */
 export function targetVersionMissingHint(envFile: string): string {

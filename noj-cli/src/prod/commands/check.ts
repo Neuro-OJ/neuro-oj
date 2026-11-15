@@ -1,4 +1,4 @@
-/** `check` / `verify` 命令：配置校验与镜像签名验证（自 `prod/cli.ts` 拆出）。 */
+/** `check` / `verify` 命令：配置校验与镜像签名验证。 */
 
 import { prodDeps } from "./deps.ts";
 import type { ProdCliDeps, ProdCliResult } from "./types.ts";

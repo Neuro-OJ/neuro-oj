@@ -1,4 +1,4 @@
-/** `prod/commands/` 共享的命令结果与依赖类型（自 `prod/cli.ts` 拆出，纯搬移）。 */
+/** `prod/commands/` 共享的命令结果与依赖类型。 */
 
 import type { CommandRunner } from "../../runtime/command.ts";
 import type { PromptIO } from "../../tui/io.ts";

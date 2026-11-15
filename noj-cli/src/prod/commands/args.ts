@@ -210,3 +210,15 @@ export function positionals(args: string[]): string[] {
   }
   return out;
 }
+
+/**
+ * 人类结论的输出通道：`--json` 时走 stderr（保证 stdout 只含 JSON），否则 stdout；
+ * 空串不输出。
+ */
+export function humanOutput(json: boolean): (text: string) => void {
+  return (text) => {
+    if (text === "") return;
+    if (json) console.error(text);
+    else console.log(text);
+  };
+}

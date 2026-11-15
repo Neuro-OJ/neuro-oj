@@ -238,7 +238,7 @@ Deno.test("judge install --dry-run 不得写入任何文件", async () => {
 });
 
 Deno.test("生产命令的 --dry-run 拒绝不影响 judge（已实现，须放行）", async () => {
-  const { rejectUnimplementedProdFlags } = await import("../cli.ts");
+  const { rejectUnimplementedProdFlags } = await import("../commands/args.ts");
   // 生产命令（未实现）：拒绝——注意 `--` 之后的旗标才是被检查的对象，
   // 命令名本身不参与判断，故这里只传旗标。
   assertThrows(

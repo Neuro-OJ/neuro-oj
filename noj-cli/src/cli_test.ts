@@ -6,12 +6,9 @@ import {
   EXIT_OK,
   EXIT_USAGE,
 } from "./cli-commands/exit-codes.ts";
-import {
-  formatBytes,
-  parseInstallDirArg,
-  stripCliOwnedFlags,
-} from "./cli-commands/args.ts";
-import { parseBackupArgs } from "./cli-commands/backup-args.ts";
+import { parseInstallDirArg, stripCliOwnedFlags } from "./cli-commands/args.ts";
+import { formatBytes } from "./prod/commands/backup.ts";
+import { parseBackupArgs } from "./prod/commands/backup-args.ts";
 import {
   dispatchContainer,
   parseContainerCommand,
