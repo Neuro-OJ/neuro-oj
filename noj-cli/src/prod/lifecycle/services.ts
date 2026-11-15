@@ -13,9 +13,9 @@ import {
   applyLogsColor,
   decideLogsColor,
   mergeColorSource,
-  prepareAndCheck,
-} from "./steps.ts";
-import type { LogsColorDecision } from "./steps.ts";
+} from "./logs-color.ts";
+import { prepareAndCheck } from "./steps.ts";
+import { type LogsColorDecision } from "./logs-color.ts";
 import type { PreparedEnvironment } from "./steps.ts";
 import {
   emitFailure,

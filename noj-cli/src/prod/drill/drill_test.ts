@@ -41,8 +41,8 @@ import {
   resolveReportPath,
   uniqueDrillProjectName,
   uniqueDrillSubnet,
-  valueOr,
 } from "./plan.ts";
+import { valueOr } from "../env-values.ts";
 import { renderSeedDrillAdminSql } from "./seed-admin-sql.ts";
 import {
   formatHours,
@@ -56,7 +56,9 @@ import {
   snapshotCreatedAt,
 } from "./report.ts";
 import { buildDrillBundle, runBusinessVerification } from "./verify.ts";
-import { makeIdempotentGlobals, runDrill, tailLines } from "./drill.ts";
+import { runDrill } from "./drill.ts";
+import { makeIdempotentGlobals } from "../backup/globals.ts";
+import { tailLines } from "./finish.ts";
 import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** 一次 compose/命令调用记录。 */

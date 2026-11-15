@@ -80,7 +80,7 @@ Deno.test("专用 socket 的合法写法仍放行（不误伤）", async () => {
 // 本组用例覆盖校验层与编排层。
 
 Deno.test("本地 Redis：端口必须在 1024-65535（拒绝特权端口与越界）", async () => {
-  const { assertRedisPort } = await import("./config.ts");
+  const { assertRedisPort } = await import("./local-redis.ts");
   assertRedisPort(16379);
   assertRedisPort(1024);
   assertRedisPort(65535);
@@ -95,7 +95,7 @@ Deno.test("本地 Redis：端口必须在 1024-65535（拒绝特权端口与越�
 });
 
 Deno.test("本地 Redis：容器名格式校验（防注入进 docker 参数）", async () => {
-  const { assertRedisContainerName } = await import("./config.ts");
+  const { assertRedisContainerName } = await import("./local-redis.ts");
   assertRedisContainerName("noj-judge-redis");
   assertRedisContainerName("a");
   assertRedisContainerName("a.b_c-d");
@@ -110,7 +110,7 @@ Deno.test("本地 Redis：容器名格式校验（防注入进 docker 参数）"
 });
 
 Deno.test("本地 Redis：口令是随机 hex 且长度足够", async () => {
-  const { generateRedisPassword } = await import("./config.ts");
+  const { generateRedisPassword } = await import("./local-redis.ts");
   const a = generateRedisPassword();
   const b = generateRedisPassword();
   assertEquals(/^[0-9a-f]{48}$/.test(a), true, `口令应为 48 位 hex，实得 ${a}`);
@@ -120,7 +120,7 @@ Deno.test("本地 Redis：口令是随机 hex 且长度足够", async () => {
 Deno.test("本地 Redis：已存在同名容器但不是本工具的 → 拒绝，绝不删改", async () => {
   const root = await Deno.makeTempDir();
   try {
-    const { createLocalRedis } = await import("./config.ts");
+    const { createLocalRedis } = await import("./local-redis.ts");
     const calls: string[] = [];
     const runner = {
       run: (cmd: string, args: string[]) => {
@@ -171,7 +171,7 @@ Deno.test("本地 Redis：已存在同名容器但不是本工具的 → 拒绝�
 Deno.test("本地 Redis：端口被占用时拒绝（不覆盖既有服务）", async () => {
   const root = await Deno.makeTempDir();
   try {
-    const { createLocalRedis } = await import("./config.ts");
+    const { createLocalRedis } = await import("./local-redis.ts");
     const runner = {
       run: (_cmd: string, args: string[]) => {
         // 容器**不存在**（否则会先撞上"同名容器"分支）
@@ -214,7 +214,7 @@ Deno.test("本地 Redis：端口被占用时拒绝（不覆盖既有服务）", 
 Deno.test("本地 Redis：创建成功时用仅回环绑定 + 标签 + 数据卷 + 600 配置", async () => {
   const root = await Deno.makeTempDir();
   try {
-    const { createLocalRedis } = await import("./config.ts");
+    const { createLocalRedis } = await import("./local-redis.ts");
     const calls: string[] = [];
     const runner = {
       run: (_cmd: string, args: string[]) => {

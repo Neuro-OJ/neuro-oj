@@ -33,11 +33,11 @@ import {
   composeOutputText,
   ensureCommandPassphrase,
   prepareAndCheck,
-  probeCommandCode,
   runComposeSub,
   statMode,
   waitForStack,
 } from "./steps.ts";
+import { probeCommandCode } from "./uninstall-guards.ts";
 import { installCliBinary, registerCommand } from "./path.ts";
 import type { PathRegistration } from "./path.ts";
 import { resolveTargetConfig } from "./target.ts";

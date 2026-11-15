@@ -7,10 +7,9 @@ import { PROD_SERVICES } from "../compose.ts";
 import {
   assertRemovableInstallDir,
   checkUninstallDependencies,
-  composeOutputText,
   removeInstallDirectory,
-  runComposeSub,
-} from "./steps.ts";
+} from "./uninstall-guards.ts";
+import { composeOutputText, runComposeSub } from "./steps.ts";
 import { unregisterCommand } from "./path.ts";
 import { failed, lifecycleContext } from "./context.ts";
 import type { LifecycleBaseResult, LifecycleOptions } from "./services.ts";

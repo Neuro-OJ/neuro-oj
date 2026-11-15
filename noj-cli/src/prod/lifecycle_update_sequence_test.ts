@@ -13,10 +13,8 @@ import { join } from "@std/path";
 import type { CommandRunner, SpawnHandle } from "../runtime/command.ts";
 import type { RenderIO } from "../output/render.ts";
 import { install, update } from "./lifecycle.ts";
-import {
-  assertRemovableInstallDir,
-  WAIT_FAILURE_HINT,
-} from "./lifecycle/steps.ts";
+import { assertRemovableInstallDir } from "./lifecycle/uninstall-guards.ts";
+import { WAIT_FAILURE_HINT } from "./lifecycle/steps.ts";
 import { configuredVersion } from "./release.ts";
 import type { DrainContext, DrainResult } from "./lifecycle/drain.ts";
 import {

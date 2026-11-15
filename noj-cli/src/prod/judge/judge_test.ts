@@ -46,13 +46,10 @@ import {
   assertJudgeDockerHost,
   assertJudgeEnvFileMode,
   assertJudgeVersion,
-  assertRedisContainerName,
-  assertRedisPort,
   checkJudgeHost,
   envValue,
   findForbiddenHostCalls,
   FORBIDDEN_HOST_COMMANDS,
-  generateRedisPassword,
   JUDGE_DEFAULT_VALUES,
   JUDGE_ENV_MODE,
   JUDGE_REQUIRED_KEYS,
@@ -60,6 +57,11 @@ import {
   readJudgeEnv,
   writeJudgeEnv,
 } from "./config.ts";
+import {
+  assertRedisContainerName,
+  assertRedisPort,
+  generateRedisPassword,
+} from "./local-redis.ts";
 import {
   checkJudgeImageArchitecture,
   checkJudgeRedis,
