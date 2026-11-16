@@ -200,8 +200,15 @@ function handleCommand(
     case "INFO":
       return renderRespBulkString("run_id:test-server\r\n");
     case "SET":
+      if (args.includes("NX") && queues.has(args[0])) {
+        return renderRespNull();
+      }
       queues.set(args[0], [args[1]]);
       return renderRespString("OK");
+    case "MGET":
+      return renderRespNullableArray(
+        args.map((key) => queues.get(key)?.[0] ?? null),
+      );
     case "EVAL":
       return handleEval(args, queues);
     case "BRPOP":
@@ -394,13 +401,19 @@ function handleEval(
       return renderRespError("ERR invalid queue capacity");
     }
     const queue = queues.get(key) ?? [];
-    const total = keys.reduce(
+    // ARGV[5] 是队列 key 数量；其后的 key 是派发标记，不参与容量统计。
+    const queueKeyCount = Number(argv[4] ?? keys.length);
+    const queueKeys = keys.slice(0, queueKeyCount);
+    const total = queueKeys.reduce(
       (sum, item) => sum + (queues.get(item)?.length ?? 0),
       0,
     );
     if (total >= maxLength) return renderRespInteger(-1);
     queue.unshift(argv[1]);
     queues.set(key, queue);
+    if (argv[2]) {
+      queues.set(keys[queueKeyCount], ["queued"]);
+    }
     return renderRespInteger(queue.length);
   }
 
@@ -473,6 +486,17 @@ function renderRespArray(items: string[]): Uint8Array {
   let result = `*${items.length}\r\n`;
   for (const item of items) {
     result += `$${encoder.encode(item).length}\r\n${item}\r\n`;
+  }
+  return encoder.encode(result);
+}
+
+function renderRespNullableArray(items: (string | null)[]): Uint8Array {
+  const encoder = new TextEncoder();
+  let result = `*${items.length}\r\n`;
+  for (const item of items) {
+    result += item === null
+      ? "$-1\r\n"
+      : `$${encoder.encode(item).length}\r\n${item}\r\n`;
   }
   return encoder.encode(result);
 }

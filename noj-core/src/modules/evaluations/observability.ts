@@ -62,6 +62,13 @@ export function registerSubmissionObservability(
     owner: "submission",
     labels: ["result"],
   });
+  registry.registerBusinessMetric({
+    name: "noj_submission_recovery_total",
+    help: "评测提交恢复动作总数",
+    type: "counter",
+    owner: "submission",
+    labels: ["type", "result"],
+  });
   // readiness 旧语义要求结果消费者存活；作为 critical probe 重新纳入。
   registry.registerHealthProbe({
     name: "result_consumer",

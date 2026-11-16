@@ -19,6 +19,7 @@ import { consumeDomainSubmissionQuota } from "../../access/contracts/cross-modul
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
+import { clearJudgeTaskMarker } from "../mq/task-marker.ts";
 import { validateJudgeImageWithKind } from "../../platform/contracts/cross-module/services_judge-images.ts";
 import { getLogger } from "@logtape/logtape";
 import {
@@ -118,6 +119,13 @@ export async function cancelSelfTest(
         taskSnapshot: row.task_snapshot,
       });
     }
+  });
+  await clearJudgeTaskMarker(row.judge_run_id).catch((err) => {
+    logger.warn("取消自测后清理派发标记失败，等待 TTL", {
+      self_test_id: id,
+      run_id: row.judge_run_id,
+      err,
+    });
   });
   await runAttemptTerminalRevocationAfterCommit(row.judge_run_id);
   await publishSseEvent(Channels.submission(id), {

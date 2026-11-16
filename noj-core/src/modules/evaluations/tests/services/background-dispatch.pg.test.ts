@@ -4,7 +4,13 @@ import { fixture, withQueue } from "../_domain-execution-fixture.ts";
 import { createDomainSubmission } from "../../index.ts";
 import { handleEvaluationDispatchTask } from "../../../application/dispatch-handlers.ts";
 import { claimTasks } from "../../../runtime/tasks/repository.ts";
-import { getRedis } from "../../../../shared/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "../../../../shared/mq/connection.ts";
+import { ALL_JUDGE_QUEUES } from "../../../../shared/mq/judge-queues.ts";
+import { judgeTaskMarkerKey } from "../../mq/task-marker.ts";
+import { startFakeRedis as startMarkerAwareFakeRedis } from "../mq/_setup.ts";
 import {
   backgroundTasks,
   evaluationAttempts,
@@ -139,4 +145,49 @@ Deno.test("dispatch[真实 PG]: 重签下载地址临时失败保留 pending，�
       await Deno.remove(root, { recursive: true });
     }
   });
+});
+
+Deno.test("dispatch[真实 PG]: 内联派发已入队时只补齐状态，不重复推送同一 run", async () => {
+  const previous = Deno.env.get("REDIS_URL");
+  const fake = startMarkerAwareFakeRedis();
+  resetRedisForTest();
+  Deno.env.set("REDIS_URL", fake.url);
+  try {
+    await getRedis().connect();
+    // pendingFixture 复现的正是崩溃窗口：受理请求已把任务入队并写下 queued
+    // 标记，提交状态却仍是 pending。
+    const f = await pendingFixture();
+    const attemptId = f.task.payload.attempt_id as string;
+    const queued = () =>
+      ALL_JUDGE_QUEUES.flatMap((queue) => fake.getMessages(queue)).filter(
+        (raw) => JSON.parse(raw).run_id === attemptId,
+      ).length;
+    assertEquals(queued(), 1);
+    assertEquals(
+      (await handleEvaluationDispatchTask(f.task)).skipped,
+      "already_dispatched",
+    );
+    assertEquals(queued(), 1);
+    const [row] = await f.db.select().from(submissions).where(
+      eq(submissions.id, f.submission.id),
+    );
+    assertEquals(row.status, "judging");
+
+    // 另一个副本的恢复器正在派发：本任务让路，不推送也不改状态。
+    await f.db.update(submissions).set({ status: "pending" }).where(
+      eq(submissions.id, f.submission.id),
+    );
+    await getRedis().set(judgeTaskMarkerKey(attemptId), "dispatching");
+    assertEquals(
+      (await handleEvaluationDispatchTask(f.task)).skipped,
+      "dispatch_in_progress",
+    );
+    assertEquals(queued(), 1);
+  } finally {
+    getRedis().disconnect();
+    resetRedisForTest();
+    if (previous === undefined) Deno.env.delete("REDIS_URL");
+    else Deno.env.set("REDIS_URL", previous);
+    await fake.stop();
+  }
 });

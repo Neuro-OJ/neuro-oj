@@ -9,6 +9,10 @@ import { logAudit } from "../../../platform/contracts/cross-module/system_servic
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getPendingQueuePosition, JUDGE_QUEUE_LIST } from "./pending.ts";
+import { clearJudgeTaskMarker } from "../../mq/task-marker.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import type { SubmissionStatusResponse } from "./overview.ts";
 
 /** 普通队列通知只发到提交的使用域；共享池健康信息另走平台治理接口。 */
@@ -34,6 +38,15 @@ export async function publishQueueChange(submissionId: string) {
       { type: "queue:changed" },
     );
     await publishSseEvent(INSTANCE_QUEUE_CHANNEL, { type: "queue:changed" });
+  }
+}
+
+function parseQueuedRunId(raw: string): string | null {
+  try {
+    const runId = JSON.parse(raw).run_id;
+    return typeof runId === "string" && runId ? runId : null;
+  } catch {
+    return null;
   }
 }
 
@@ -73,6 +86,19 @@ export async function removePendingSubmission(id: string): Promise<void> {
   }
   const removed = await redis.lrem(targetQueue, 1, raw);
   if (removed !== 1) throw new NotFoundError("待处理队列中不存在该提交");
+
+  // 任务已离开队列：清理派发标记，否则 pending 恢复会把它当成“已入队”补成
+  // judging，留下没有任务的提交直到标记 TTL 过期。
+  const runId = parseQueuedRunId(raw);
+  if (runId) {
+    await clearJudgeTaskMarker(runId).catch((err) => {
+      logger.warn("移出队列后清理派发标记失败，等待 TTL", {
+        submission_id: id,
+        run_id: runId,
+        err,
+      });
+    });
+  }
 
   if (submission.status === "judging") {
     await db.update(submissions).set({
