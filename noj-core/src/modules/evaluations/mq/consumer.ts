@@ -21,6 +21,7 @@ import { observability as metrics } from "../../platform/observability/write.ts"
 
 const logger = getLogger(["noj", "submission"]);
 import { saveOiProgress } from "../services/oi-progress.ts";
+import { clearJudgeTaskMarker } from "./task-marker.ts";
 
 /**
  * 评测结果队列名称。
@@ -237,6 +238,7 @@ export async function handleResultMessage(data: unknown): Promise<void> {
         });
         return;
       }
+      await clearResultTaskMarker(judgeResult);
       logger.info("自测结果已持久化", {
         self_test_id: judgeResult.submission_id,
       });
@@ -256,6 +258,8 @@ export async function handleResultMessage(data: unknown): Promise<void> {
       });
       return;
     }
+
+    await clearResultTaskMarker(judgeResult);
 
     // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
     // 已调度自动重试的平台错误不是最终结果，不计入。
@@ -288,6 +292,25 @@ export async function handleResultMessage(data: unknown): Promise<void> {
   } catch (err) {
     metrics.inc("noj_evaluation_consumer_errors_total");
     throw err;
+  }
+}
+
+/**
+ * 结果已落库后清理派发标记。
+ *
+ * 标记清理失败不能让已经提交成功的结果重新进入队列；TTL 会作为最后一道兜底，
+ * 这里只记录告警并继续完成消费确认。
+ */
+async function clearResultTaskMarker(result: JudgeResult): Promise<void> {
+  const runId = result.run_id ?? result.attempt_id;
+  if (!runId) return;
+  try {
+    await clearJudgeTaskMarker(runId);
+  } catch (err) {
+    logger.warn("评测结果已落库但派发标记清理失败，等待 TTL", {
+      run_id: runId,
+      err,
+    });
   }
 }
 

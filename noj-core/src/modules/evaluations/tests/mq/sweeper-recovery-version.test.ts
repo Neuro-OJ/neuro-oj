@@ -21,7 +21,10 @@ import {
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { recoverPendingSubmissions } from "../../mq/sweeper.ts";
+import {
+  reconcileStaleJudgingSubmissions,
+  recoverPendingSubmissions,
+} from "../../mq/sweeper.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -31,6 +34,7 @@ import {
   LocalStorageProvider,
   setStorageProviderForTest,
 } from "../../../assets/storage/mod.ts";
+import { judgeTaskMarkerKey } from "../../mq/task-marker.ts";
 import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });
@@ -117,7 +121,9 @@ async function seedProblem(
 }
 
 /** 在假 Redis 环境中执行一次恢复，返回主队列消息（JSON）。 */
-async function recoverAndReadMessages(): Promise<Record<string, unknown>[]> {
+async function recoverAndReadMessages(
+  recover: (now: number) => Promise<void> = recoverPendingSubmissions,
+): Promise<Record<string, unknown>[]> {
   const fake = startFakeRedis();
   const prevUrl = Deno.env.get("REDIS_URL") ?? null;
   try {
@@ -125,7 +131,7 @@ async function recoverAndReadMessages(): Promise<Record<string, unknown>[]> {
     Deno.env.set("REDIS_URL", fake.url);
     const redis = getRedis();
     await redis.connect();
-    await recoverPendingSubmissions(Date.now());
+    await recover(Date.now());
     const messages: Record<string, unknown>[] = [];
     for (
       const queue of [
@@ -509,5 +515,200 @@ Deno.test({
       eq(submissions.id, submissionId),
     );
     assertEquals(row.status, "error");
+  },
+});
+
+/** 造一条带活动尝试的正式提交；`at` 同时作为创建时间与（judging 时的）开始时间。 */
+async function seedAttemptSubmission(
+  tag: string,
+  number: number,
+  status: "pending" | "judging",
+  at: string,
+): Promise<{ submissionId: string; attemptId: string; versionId: string }> {
+  const { problemId, versionId, userId } = await seedProblem(tag, number, {
+    kind: "ai",
+    title: `恢复测试题 ${tag}`,
+    description: "d",
+    samples: [],
+    submission_mode: "code",
+    runtime_config: versionConfig,
+    template_content: "",
+    artifact_max_size_mb: null,
+    llm_config: null,
+  });
+  const submissionId = `tst-sweep-sub-${tag}-${ts}`;
+  const attemptId = `tst-sweep-att-${tag}-${ts}`;
+  await db.insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
+    id: submissionId,
+    user_id: userId,
+    problem_id: problemId,
+    status,
+    language: "python3",
+    code: `print('${tag}')`,
+    submitted_version_id: versionId,
+    version_origin: "known",
+    judge_started_at: status === "judging" ? at : null,
+    created_at: at,
+  });
+  await db.insert(evaluationAttempts).values({
+    id: attemptId,
+    submission_id: submissionId,
+    problem_id: problemId,
+    problem_version_id: versionId,
+    sequence: 0,
+    source: "initial",
+    state: status === "judging" ? "judging" : "queued",
+    created_at: at,
+  });
+  await db.update(submissions).set({ active_attempt_id: attemptId })
+    .where(eq(submissions.id, submissionId));
+  return { submissionId, attemptId, versionId };
+}
+
+/** 超过默认 10 分钟 processing 超时的时间点。 */
+const staleJudgingAt = () => new Date(Date.now() - 11 * 60_000).toISOString();
+
+Deno.test({
+  name: "sweeper: 长时间 judging 且任务丢失时按活动尝试恢复",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const staleNow = staleJudgingAt();
+    const { submissionId, attemptId, versionId } = await seedAttemptSubmission(
+      "judging-reconcile",
+      95600 + (ts % 500),
+      "judging",
+      staleNow,
+    );
+
+    const messages = await recoverAndReadMessages(
+      reconcileStaleJudgingSubmissions,
+    );
+    const task = messages.find((m) => m.submission_id === submissionId);
+    assertEquals(task !== undefined, true);
+    assertEquals(task!.run_id, attemptId);
+    assertEquals(task!.problem_version_id, versionId);
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(row.status, "judging");
+    // 恢复不得重置开始时间，否则“最老 judging 年龄”指标会掩盖卡住的提交。
+    assertEquals(row.judge_started_at, staleNow);
+  },
+});
+
+Deno.test({
+  name: "sweeper: 未超过 processing 超时的 judging 提交不参与对账",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { submissionId } = await seedAttemptSubmission(
+      "judging-fresh",
+      96400 + (ts % 500),
+      "judging",
+      oldNow,
+    );
+    const messages = await recoverAndReadMessages(
+      reconcileStaleJudgingSubmissions,
+    );
+    assertEquals(
+      messages.find((m) => m.submission_id === submissionId),
+      undefined,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "sweeper: 无标记但仍在 processing 中的 judging 任务不重复派发并补写标记",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { submissionId, attemptId } = await seedAttemptSubmission(
+      "judging-inflight",
+      95800 + (ts % 500),
+      "judging",
+      staleJudgingAt(),
+    );
+
+    let marker: string | null = null;
+    const messages = await recoverAndReadMessages(async (now) => {
+      // 模拟标记引入前入队、judge 仍在处理的任务。
+      const redis = getRedis();
+      await redis.lpush(
+        "noj:judge:queue:ai:medium:processing",
+        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
+      );
+      await reconcileStaleJudgingSubmissions(now);
+      marker = await redis.get(judgeTaskMarkerKey(attemptId));
+    });
+    assertEquals(
+      messages.find((m) => m.submission_id === submissionId),
+      undefined,
+    );
+    assertEquals(marker, "queued");
+  },
+});
+
+Deno.test({
+  name: "sweeper: 另一副本正在派发（dispatching 标记）时本副本不重复恢复",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { submissionId, attemptId } = await seedAttemptSubmission(
+      "claimed-elsewhere",
+      96000 + (ts % 500),
+      "pending",
+      oldNow,
+    );
+    const messages = await recoverAndReadMessages(async (now) => {
+      await getRedis().set(
+        judgeTaskMarkerKey(attemptId),
+        "dispatching",
+        "EX",
+        60,
+      );
+      await recoverPendingSubmissions(now);
+    });
+    assertEquals(
+      messages.find((m) => m.submission_id === submissionId),
+      undefined,
+    );
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(row.status, "pending");
+  },
+});
+
+Deno.test({
+  name: "sweeper: 已入队 marker 只补齐状态，不重复派发任务",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { submissionId, attemptId } = await seedAttemptSubmission(
+      "already-dispatched",
+      95700 + (ts % 500),
+      "pending",
+      oldNow,
+    );
+    const messages = await recoverAndReadMessages(async (now) => {
+      const redis = getRedis();
+      await redis.lpush(
+        "noj:judge:queue:ai:medium",
+        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
+      );
+      await redis.set(judgeTaskMarkerKey(attemptId), "queued", "EX", 3600);
+      await recoverPendingSubmissions(now);
+    });
+    assertEquals(
+      messages.filter((m) => m.submission_id === submissionId).length,
+      1,
+    );
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(row.status, "judging");
   },
 });

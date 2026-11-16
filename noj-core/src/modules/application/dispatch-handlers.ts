@@ -24,6 +24,10 @@ import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../evaluations/mq/producer.ts";
+import {
+  claimJudgeTaskDispatch,
+  releaseJudgeTaskDispatch,
+} from "../evaluations/mq/task-marker.ts";
 import { publishQueueChange } from "../evaluations/services/queue.ts";
 import { applyAttemptResultTx } from "../evaluations/services/versioning/result-write.ts";
 import { runAttemptTerminalRevocationAfterCommit } from "../evaluations/services/versioning/attempts.ts";
@@ -105,10 +109,34 @@ export async function handleEvaluationDispatchTask(
     throw error;
   }
 
+  // 条件更新：极端竞态下结果可能已先落库，不能把 finished 覆盖回 judging。
+  const markJudging = async () => {
+    await db.update(submissions).set({ status: "judging" }).where(
+      and(
+        eq(submissions.id, submissionId),
+        eq(submissions.status, "pending"),
+        eq(submissions.active_attempt_id, attemptId),
+      ),
+    );
+    await publishQueueChange(submissionId);
+  };
+
   signal?.throwIfAborted();
+  // 受理请求的内联派发可能已经入队、却死在状态更新之前：此时提交仍是 pending，
+  // 直接重推会让同一 run 被评测两次。派发标记能区分这种情况。
+  const claim = await claimJudgeTaskDispatch(attemptId);
+  if (claim.status === "already") {
+    if (claim.marker === "queued") {
+      await markJudging();
+      return { skipped: "already_dispatched" };
+    }
+    // 另一个副本的恢复器正在派发；它失败时会释放标记，由 pending 恢复接手。
+    return { skipped: "dispatch_in_progress" };
+  }
   try {
     await pushJudgeTask(judgeTask);
   } catch (error) {
+    await releaseJudgeTaskDispatch(attemptId).catch(() => {});
     if (!isRetryableJudgeQueueError(error)) {
       logger.error("评测派发永久失败，标记平台错误", {
         submission_id: submissionId,
@@ -119,14 +147,6 @@ export async function handleEvaluationDispatchTask(
     throw error;
   }
 
-  // 条件更新：极端竞态下结果可能已先落库，不能把 finished 覆盖回 judging。
-  await db.update(submissions).set({ status: "judging" }).where(
-    and(
-      eq(submissions.id, submissionId),
-      eq(submissions.status, "pending"),
-      eq(submissions.active_attempt_id, attemptId),
-    ),
-  );
-  await publishQueueChange(submissionId);
+  await markJudging();
   return { dispatched: true };
 }

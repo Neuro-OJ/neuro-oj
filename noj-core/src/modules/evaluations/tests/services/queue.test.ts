@@ -28,6 +28,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
+import { judgeTaskMarkerKey } from "../../mq/task-marker.ts";
 import { enterTestContext } from "../../../platform/system/index.ts";
 import {
   ALL_JUDGE_QUEUES,
@@ -168,7 +169,7 @@ async function teardown() {
   } catch { /* ignore */ }
 }
 
-async function pushToQueue(submissionId: string) {
+async function pushToQueue(submissionId: string, runId?: string) {
   const redis = getRedis();
   if (redis.status !== "ready") {
     await redis.connect();
@@ -192,6 +193,7 @@ async function pushToQueue(submissionId: string) {
     },
     language: "python3",
     code: "print('test')",
+    ...(runId ? { run_id: runId } : {}),
   });
   await redis.lpush(JUDGE_QUEUES.medium, task);
 }
@@ -254,7 +256,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await clearQueue();
-    await pushToQueue(SUBMISSION_JUDGING_ID);
+    const runId = `tst-queue-run-${ts}`;
+    await pushToQueue(SUBMISSION_JUDGING_ID, runId);
+    await getRedis().set(judgeTaskMarkerKey(runId), "queued", "EX", 3600);
     enterTestContext({
       actorId: USER_ID,
       actorIp: "127.0.0.1",
@@ -284,6 +288,8 @@ Deno.test({
       ),
       false,
     );
+    // 任务离开队列后派发标记必须同步清理，否则 pending 恢复会误判“已入队”。
+    assertEquals(await redis.get(judgeTaskMarkerKey(runId)), null);
     const db = getDb();
     const [submission] = await db.select({
       status: submissions.status,
