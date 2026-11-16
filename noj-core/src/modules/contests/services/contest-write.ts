@@ -180,6 +180,35 @@ export async function createContest(
 }
 
 /**
+ * 合并竞赛配置输入：部分更新 `config` 未显式传入 `submission_limits`（或只传 `type` 未传 `config`）时，
+ * 保留既有 `submission_limits`；显式传入 `submission_limits`（含 `{}`）则按新值替换或清空。
+ */
+function mergeSubmissionLimits(
+  inputConfig: UpdateContestInput["config"],
+  existingConfig: ContestConfig | null | undefined,
+): ContestConfig | undefined {
+  const existingLimits = existingConfig?.submission_limits;
+  if (existingLimits === undefined) {
+    return inputConfig;
+  }
+  if (inputConfig === undefined) {
+    return { submission_limits: existingLimits };
+  }
+  if (
+    inputConfig === null ||
+    typeof inputConfig !== "object" ||
+    Array.isArray(inputConfig)
+  ) {
+    return inputConfig;
+  }
+  const raw = inputConfig as Record<string, unknown>;
+  if ("submission_limits" in raw && raw.submission_limits !== undefined) {
+    return inputConfig;
+  }
+  return { ...inputConfig, submission_limits: existingLimits };
+}
+
+/**
  * 更新竞赛：仅更新传入的字段，并同步更新题目关联（若提供）。
  *
  * @param id 竞赛 UUID
@@ -231,7 +260,13 @@ export async function updateContest(
   }
 
   const config = input.config !== undefined || input.type !== undefined
-    ? normalizeContestConfig(type, input.config)
+    ? normalizeContestConfig(
+      type,
+      mergeSubmissionLimits(
+        input.config,
+        existing.config as ContestConfig | undefined,
+      ),
+    )
     : existing.config as ContestConfig;
   const problemInputs = input.problems === undefined
     ? undefined

@@ -7,8 +7,18 @@ Neuro OJ 实例，不代表 CCF 或 LMCC 官方服务。
 
 ## 安装
 
-从项目发布页下载 `neuro-oj-lmcc` 的 VSIX 文件。在 LMCC IDE 或 Visual Studio Code
-中打开命令面板，执行「扩展：从 VSIX 安装」，选择下载的文件并按提示重新加载窗口。
+从项目 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 发布页下载对应版本的 VSIX 资产与校验文件：
+
+- 插件包：`neuro-oj-lmcc-<version>.vsix`（例如 `neuro-oj-lmcc-0.11.0.vsix` 或预发布版 `neuro-oj-lmcc-0.11.0-rc.1.vsix`，文件名不含 tag 前缀 `v`）
+- 校验文件：`neuro-oj-lmcc-<version>.vsix.sha256`
+
+下载后建议先校验 SHA-256：
+
+```bash
+sha256sum -c neuro-oj-lmcc-<version>.vsix.sha256
+```
+
+然后在 LMCC IDE 或 Visual Studio Code 中打开命令面板，执行「扩展：从 VSIX 安装」，选择下载的 `.vsix` 文件并按提示重新加载窗口。
 
 开发者也可以从源码构建：
 

@@ -53,8 +53,8 @@ Deno.test({
     await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
     await db.execute(sql`
       INSERT INTO domain_problem_bindings
-        (id, domain_id, problem_id, kind, visibility, created_by, created_at, updated_at)
-      SELECT 'binding-' || id, domain_id, id, 'owned', 'public', '0', ${now}, ${now}
+        (id, domain_id, problem_id, visibility, created_by, created_at, updated_at)
+      SELECT 'binding-' || id, domain_id, id, 'public', '0', ${now}, ${now}
       FROM problems
     `);
     await reindexAll();

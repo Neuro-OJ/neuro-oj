@@ -18,6 +18,17 @@ export const domainProblemBindings = pgTable("domain_problem_bindings", {
   id: text("id").primaryKey(),
   domain_id: text("domain_id").notNull().references(() => domains.id),
   problem_id: text("problem_id").notNull().references(() => problems.id),
+  /**
+   * 域题库绑定的目录暴露级别（`'public' | 'members'`，默认 `'members'`）。
+   *
+   * 0.11 公开域契约（`#697`）下的运行时语义：
+   * - 表达该绑定在域题库目录/列表中的入口暴露范围意图（`public`=公开目录，`members`=域成员可见），
+   *   **不阻断**公开域（`main`）已发布题目在 `evaluateProblemAccess` 中按 ID/URL 直达读取；
+   * - 当前 `listDomainProblems` 与 `bindingAvailabilityCondition` 仅检查启用、发布及源域状态，
+   *   未按本列做 SQL 过滤，`readDomainProblem` 详情响应会返回该字段作为绑定元数据；
+   * - 实际域隔离与可用性由 `domain_id` 成员准入、`disabled_at IS NULL`、`problems.latest_version_id`
+   *   及比赛保密独立强制执行。
+   */
   visibility: text("visibility").$type<"public" | "members">().notNull()
     .default("members"),
   revision: integer("revision").notNull().default(0),

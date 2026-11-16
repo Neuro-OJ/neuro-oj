@@ -88,6 +88,24 @@ function add(problem: DomainProblemSummary) {
 async function save() {
   if (saving.value) return;
   const operation = scope();
+  // 编辑未开赛比赛时仅保留当前仍选中的题目的 submission_limits，避免覆盖丢失既有单题限额。
+  const baseConfig: ContestPayload['config'] = type.value === 'acm'
+    ? { penalty_minutes: penalty.value }
+    : type.value === 'kaggle'
+    ? { scoreboard_scope: scoreboard.value }
+    : {};
+  const existingLimits = props.existing?.config?.submission_limits;
+  const selectedIds = new Set(selected.value.map((entry) => entry.problem.reference.problem_id));
+  const preservedLimits = existingLimits
+    ? Object.fromEntries(
+      Object.entries(existingLimits).filter(([problemId, limit]) =>
+        selectedIds.has(problemId) && typeof limit === 'number'
+      ),
+    )
+    : {};
+  const config: ContestPayload['config'] = Object.keys(preservedLimits).length > 0
+    ? { ...baseConfig, submission_limits: preservedLimits }
+    : baseConfig;
   const body: ContestPayload = {
     classroom_ids: [...classrooms.value],
     title: title.value,
@@ -99,11 +117,7 @@ async function save() {
     affect_global_ranking: false,
     ranking_visibility: visibility.value,
     freeze_duration_seconds: freezeMinutes.value * 60,
-    config: type.value === 'acm'
-      ? { penalty_minutes: penalty.value }
-      : type.value === 'kaggle'
-      ? { scoreboard_scope: scoreboard.value }
-      : {},
+    config,
     problems: selected.value.map((entry, sort_order) => ({
       problem_id: entry.problem.reference.problem_id,
       sort_order,

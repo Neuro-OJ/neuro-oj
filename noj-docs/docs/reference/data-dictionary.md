@@ -237,7 +237,7 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 | `owner_id`                    | text     | NOT NULL；DEFAULT `'0'`                                                  | 题目所有者；默认 root                                                     |
 | `type`                        | text     | NOT NULL；DEFAULT `'U'`；CHECK `U/P`                                     | `U`=用户题库，`P`=主题库                                                  |
 | `is_objective`                | boolean  | NOT NULL；DEFAULT `false`                                                | true=客观题套卷（服务端即时判定，无评测容器）                             |
-| `visibility`                  | text     | NOT NULL；DEFAULT `'public'`；CHECK `public/private`（且 P 型恒 public） | 可见性                                                                    |
+| `visibility`                  | text     | NOT NULL；DEFAULT `'public'`；CHECK `public/private`                     | 源题可见性元数据（0.11 契约 `#697`：不阻断公开域 `main` 已发布题目按 ID/URL 直接读取；普通列表当前亦未按此过滤，现用于管理端列表筛选与响应 DTO，实际访问由 `domain_id`、`latest_version_id`、`domain_problem_bindings.disabled_at` 与比赛保密决定） |
 | `submission_mode`             | text     | NOT NULL；DEFAULT `'code'`；CHECK `code/artifact`                        | 提交模式：单文件代码 / zip 产物                                           |
 | `artifact_max_size_mb`        | integer  | NULL                                                                     | artifact 提交大小上限（MB）；NULL=使用系统硬上限                          |
 | `llm_config`                  | jsonb    | NULL                                                                     | 题目 LLM 能力与预算声明（`provider_id`/`model`/`max_calls`/`max_tokens`） |
@@ -252,6 +252,23 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 `key`（同题跨版本稳定，迁移时取旧小题 UUID）、
 `sort_order`、`type`、`prompt`、`options`、`answer`、`explanation`。
 详见[题目版本管理](../features/problem-versioning.md)。
+
+#### `domain_problem_bindings`
+
+使用域对源题的唯一题库配置；撤销授权时设置 `disabled_at`，不删除提交所依赖的绑定行。
+
+| 列                          | 类型    | 约束 / 默认                                                                                       | 说明                                                                                                                                                                                           |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | text    | PK                                                                                                | 绑定 UUID                                                                                                                                                                                      |
+| `domain_id`                 | text    | NOT NULL；FK→`domains(id)`                                                                        | 所属使用域                                                                                                                                                                                     |
+| `problem_id`                | text    | NOT NULL；FK→`problems(id)`；复合 FK→`problems(domain_id, id)`；与 `domain_id` 共同 UNIQUE        | 源题目（仅允许同域题目）                                                                                                                                                                       |
+| `visibility`                | text    | NOT NULL；DEFAULT `'members'`；CHECK `public/members`                                             | 目录入口暴露级别（`public`=公开目录，`members`=域成员可见意图；0.11 契约 `#697` 下不阻断公开域 `main` 按 ID/URL 直达读取，当前列表/可用性查询亦未按此过滤，在 `readDomainProblem` 详情 DTO 返回） |
+| `revision`                  | integer | NOT NULL；DEFAULT `0`；CHECK `>= 0`                                                               | 乐观锁版本号                                                                                                                                                                                   |
+| `disabled_at`               | text    | NULL                                                                                              | 停用/撤销时间；非 NULL 时阻断列表展示与直接读取                                                                                                                                                |
+| `created_by`                | text    | NOT NULL；FK→`users(id)`                                                                          | 创建人                                                                                                                                                                                         |
+| `created_at` / `updated_at` | text    | NOT NULL                                                                                          | 创建 / 更新时间                                                                                                                                                                                |
+
+复合唯一与索引：`UNIQUE(domain_id, id)`、`UNIQUE(id, problem_id)`、索引 `idx_domain_problem_bindings_source(problem_id, domain_id)`。
 
 #### `judge_images`
 

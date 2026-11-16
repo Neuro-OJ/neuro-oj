@@ -72,6 +72,11 @@ export async function evaluateProblemAccess(
   if (!source.latest_version_id && !privileged && !canReadOwn) {
     return { result: { allowed: false, mode: "denied" }, secrecy: [] };
   }
+  // 0.11 公开域可见性契约（#697 / #696）：
+  // 公开域（main / DEFAULT_DOMAIN_ID）内已发布且未禁用的题目在 evaluateProblemAccess 中保持按 ID 直接可读；
+  // `problems.visibility` 与 `domain_problem_bindings.visibility` 用于列表/目录入口暴露语义，
+  // 而非阻断公开域的直链（URL）访问。私有域成员隔离（上方 domain_id 检查）与进行中比赛保密
+  // （下方 loadPublicContestSecrecy）仍分别独立限制访问。
   const visible = true;
   const secrecy = await loadPublicContestSecrecy(
     problem.id,

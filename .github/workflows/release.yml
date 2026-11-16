@@ -1,16 +1,20 @@
 # =============================================================================
-# Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI 资产就绪 → 自动转正
+# Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI/IDE 资产就绪 → 按标签发布
 #
-# 触发条件：GitHub Release published/prereleased（仅预发布）或 workflow_dispatch。
+# 触发条件：GitHub Release prereleased（预发布）或 workflow_dispatch。
 # 普通 push / pull_request / 直接 published 不发布生产镜像。
 #
-# 就绪窗口控制（issue #431）：预发布 Release 先触发本工作流完成镜像构建、扫描、
-# 签名、验证与 noj-cli 资产上传，最后的 publish-release 任务把预发布转正为正式
-# Release。用户可见的正式版本因此总是具备同版本镜像与 CLI 资产；
-# 安装器（scripts/deploy/install.sh）同时只选择非 draft、非 prerelease 且
-# 已包含 CLI 资产的 Release，双重避免"版本可见但资产未就绪"。
+# 就绪窗口控制（issue #431）：Release 先以 GitHub pre-release 触发本工作流，
+# 完成镜像构建、扫描、签名、验证与 noj-cli / LMCC IDE 插件资产上传，最后的
+# publish-release 任务生成 release-set.json 并按版本标签类型收尾：
+# - 稳定标签（vX.Y.Z）：转正为正式 Release（--prerelease=false --latest）；
+# - 预发布标签（vX.Y.Z-rc.N / -alpha.N / -beta.N）：保持 prerelease=true，
+#   避免 v0.10.x 等存量节点的 `noj-cli update --latest` 或默认 `install` 误选 RC；
+#   候选版本需显式通过 `noj-cli install --ref <tag>` 安装。
+# `noj-cli` 自动选择逻辑（noj-cli/src/prod/release.ts）只选择非 draft、非
+# prerelease 且包含完整 CLI/部署/发布集资产的 Release，双重避免"版本可见但资产未就绪"。
 # 每次 Release 构建并推送 7 个镜像，平台为 linux/amd64（公测阶段只支持 amd64）。
-# 转正前由 verify-release 的同一组 digest 元数据生成 release-set.json，避免
+# 收尾前由 verify-release 的同一组 digest 元数据生成 release-set.json，避免
 # CLI、镜像、迁移与协议版本在发布后各自漂移。
 # =============================================================================
 
@@ -136,6 +140,54 @@ jobs:
             docker-compose.prod.yml.sha256 \
             env.prod.example \
             env.prod.example.sha256 \
+            --clobber
+
+  publish-ide:
+    name: 发布 LMCC IDE 插件
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
+    needs: verify-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: noj-lmcc-extension/package-lock.json
+      - name: 安装依赖、类型检查与单元测试
+        working-directory: noj-lmcc-extension
+        run: |
+          npm ci
+          npm run check
+          npm test
+      - name: 打包 VSIX 并发布 Release 资产
+        working-directory: noj-lmcc-extension
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::版本必须是合法 Release tag：$VERSION"
+            exit 1
+          }
+          asset="neuro-oj-lmcc-${VERSION#v}.vsix"
+          [[ "${asset:0:1}" != "." ]] || { echo "::error::资产名不得以点号开头：$asset"; exit 1; }
+          npx @vscode/vsce package -o "$asset"
+          sha256sum "$asset" > "${asset}.sha256"
+          test "$(awk '{print $1}' "${asset}.sha256")" = "$(sha256sum "$asset" | awk '{print $1}')"
+          [[ -f "$asset" && -f "${asset}.sha256" ]] || {
+            echo "::error::缺少待发布 VSIX 资产：$asset"
+            exit 1
+          }
+          gh release upload "$VERSION" \
+            "$asset" \
+            "${asset}.sha256" \
             --clobber
 
   supply-chain-check:
@@ -497,11 +549,12 @@ jobs:
           done
 
   publish-release:
-    name: 资产就绪后转正 Release
+    name: 资产就绪后完成 Release 发布
     if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: [
       verify-release,
       publish-cli,
+      publish-ide,
       performance-gate,
       functional-gate,
       e2e-gate,
@@ -538,13 +591,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           gh release upload "$VERSION" release-set.json release-set.json.sha256 --clobber
-      - name: 将预发布转正为正式 Release
+      - name: 按标签类型转正正式 Release 或保持预发布
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           set -Eeuo pipefail
-          # 此时镜像标签、签名、SBOM/来源证明与 noj-cli 资产均已就绪，
-          # 转正后 /releases/latest 才会指向该版本，安装器即可选择它。
-          gh release edit "$VERSION" --draft=false --prerelease=false --latest
-          echo "Release $VERSION 已转正为最新正式版本"
+          # 此时镜像标签、签名、SBOM/来源证明、noj-cli、IDE VSIX 与 release-set.json 均已就绪。
+          # 仅无预发布后缀的稳定版本（vX.Y.Z）转正为正式 Latest Release；
+          # 带 SemVer 预发布后缀的标签（如 v0.11.0-rc.1 / -alpha.1 / -beta.1）保持
+          # prerelease=true，避免 v0.10.x 的 `noj-cli update --latest` 或默认 `install` 误选 RC。
+          if [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            gh release edit "$VERSION" --draft=false --prerelease
+            echo "预发布 Release $VERSION 资产已就绪，保持 prerelease=true（未转正为 latest）"
+          elif [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            gh release edit "$VERSION" --draft=false --prerelease=false --latest
+            echo "Release $VERSION 已转正为最新正式版本"
+          else
+            echo "::error::无法识别 Release 标签格式：$VERSION"
+            exit 1
+          fi

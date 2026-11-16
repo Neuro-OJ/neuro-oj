@@ -48,10 +48,14 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 > `default.env.prod.example`，同样不可用）。
 >
 > **省略 `--ref` 时**，`install` / `update --latest` 选择最新的非 draft、非
-> prerelease 且资产齐备的 Release。发布流水线只在全部校验通过后才把预发布
-> 转正，因此已转正的 `-rc.N` / `-beta.N` 等标签同样会被选中。**0.10.4 及更早**的
-> CLI 仍只认纯 `X.Y.Z` 标签，使用这些版本的二进制时请显式
-> `--ref <标签>`。推荐始终用 `--ref` 指定与二进制一致的版本。
+> prerelease 且资产齐备的 Release。发布流水线只在全部校验通过后才把**稳定版
+> （`vX.Y.Z`）**转正为正式 Release；自 `v0.11` 起，带 SemVer 预发布后缀的标签
+> （如 `v0.11.0-rc.1` / `-beta.N` / `-alpha.N`）在资产就绪后仍保持
+> `prerelease=true`，不会被 `install`（省略 `--ref`）或 `update --latest`
+> 自动选中，安装/验证候选版本请显式 `--ref <标签>`。历史已转正的预发布标签 （如
+> `v0.10.4-rc.1`）仍保持兼容；**0.10.4 及更早**的 CLI 仍只认纯 `X.Y.Z`
+> 标签，使用这些版本的二进制时请显式 `--ref <标签>`。推荐始终用 `--ref`
+> 指定与二进制一致的版本。
 
 > **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
 > （Debian / Ubuntu / RHEL / CentOS 等）。**Alpine 等 musl 发行版不能运行**
