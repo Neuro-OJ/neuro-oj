@@ -374,7 +374,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           # 正式标签不可变：已存在且指向不同构建时拒绝覆盖，防止重试混用版本。
-          existing="$(docker buildx imagetools inspect "$TARGET" 2>/dev/null | awk '/^Digest:/ {print $2; exit}' || true)"
+          existing="$(scripts/release/read-image-digest.sh "$TARGET" --allow-missing)"
           if [[ -n "$existing" ]]; then
             [[ "$existing" == "$DIGEST" ]] || {
               echo "::error::正式标签 $TARGET 已存在且指向不同构建（$existing != $DIGEST），禁止覆盖；请使用新版本号。"
@@ -384,7 +384,7 @@ jobs:
             exit 0
           fi
           docker buildx imagetools create --tag "$TARGET" "$SOURCE@$DIGEST"
-          actual="$(docker buildx imagetools inspect "$TARGET" | awk '/^Digest:/ {print $2; exit}')"
+          actual="$(scripts/release/read-image-digest.sh "$TARGET")"
           [[ "$actual" == "$DIGEST" ]] || {
             echo "::error::正式标签 digest 不匹配：期望 $DIGEST，实际 $actual"
             exit 1
@@ -497,7 +497,7 @@ jobs:
           for metadata in "${files[@]}"; do
             read -r image version digest < "$metadata"
             release="$image:$version"
-            actual="$(docker buildx imagetools inspect "$release" | awk '/^Digest:/ {print $2; exit}')"
+            actual="$(scripts/release/read-image-digest.sh "$release")"
             [[ "$actual" == "$digest" ]] || {
               echo "::error::$release digest 不匹配：期望 $digest，实际 $actual"
               exit 1
