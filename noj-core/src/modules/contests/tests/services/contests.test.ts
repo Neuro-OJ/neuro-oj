@@ -219,3 +219,68 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "contests service: 更新配置省略 submission_limits 时保留既有值，显式传入空对象则清空",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("limits-owner");
+    const problemId = await createProblem(950003);
+    const contest = await createContest({
+      title: "限额保留回归赛",
+      start_time: new Date(Date.now() + 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      config: {
+        scoreboard_scope: "self",
+        submission_limits: { [problemId]: 3 },
+      },
+      problems: [{
+        problem_id: problemId,
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      }],
+    }, creator);
+    try {
+      // 仅修改 scoreboard_scope 时不应抹去既有的 submission_limits
+      const partialUpdated = await updateContest(contest.id, {
+        config: { scoreboard_scope: "full" },
+      });
+      assertEquals(partialUpdated.config, {
+        scoreboard_scope: "full",
+        submission_limits: { [problemId]: 3 },
+      });
+
+      // 只传 type 而不传 config 时也应保留既有 submission_limits
+      const typeOnlyUpdated = await updateContest(contest.id, {
+        type: "kaggle",
+      });
+      assertEquals(typeOnlyUpdated.config, {
+        scoreboard_scope: "self",
+        submission_limits: { [problemId]: 3 },
+      });
+
+      // 显式传入 submission_limits: {} 应清空/替换既有限额
+      const cleared = await updateContest(contest.id, {
+        config: { scoreboard_scope: "full", submission_limits: {} },
+      });
+      assertEquals(cleared.config, {
+        scoreboard_scope: "full",
+        submission_limits: {},
+      });
+      assertEquals((await getContest(contest.id)).config, {
+        scoreboard_scope: "full",
+        submission_limits: {},
+      });
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await deleteProblemFixtures(eq(problems.id, problemId));
+      await getDb().update(users).set({
+        deleted_at: new Date().toISOString(),
+      }).where(eq(users.id, creator));
+    }
+  },
+});

@@ -168,9 +168,13 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
 
 e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
   if (!isE2E) return;
+  // 排名只统计 created_at <= end_time 的提交；若把 end_time 设为「当前 - 1s」，
+  // 测试 2 在 1s 内产生的提交会被当作赛后提交排除而偶发失败。
+  // 因此把 end_time 设在当前时刻之后（晚于所有已产生的提交），再等待其到期。
+  const endTime = Date.now() + 300;
   const updateResult = await apiPut(
     `/api/v1/admin/contest/contests/${contestId}`,
-    { end_time: new Date(Date.now() - 1000).toISOString() },
+    { end_time: new Date(endTime).toISOString() },
     adminToken,
   );
   if (updateResult.status !== 200) {
@@ -180,6 +184,9 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
       }`,
     );
   }
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.max(0, endTime - Date.now()) + 200)
+  );
 
   const contestResult = await apiGet(
     `/api/v1/domains/main/contests/${contestId}`,

@@ -107,21 +107,31 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root
 ## 2.1 版本发布流程（维护者）
 
 为避免"Release 已可见但镜像 / CLI 资产尚未就绪"的窗口（issue #431），发布采用
-预发布转正流程：
+先预发布后收尾的流程：
 
-1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或
-   `vX.Y.Z-rc.N`）。
+1. 创建 GitHub Release 并勾选 **pre-release**（稳定版 tag 形如 `vX.Y.Z`，
+   候选版形如 `vX.Y.Z-rc.N` / `vX.Y.Z-alpha.N` / `vX.Y.Z-beta.N`）。
 2. `release.yml` 只监听 `prereleased` 事件（不监听
    `published`，避免同一次预发布触发两条流水线）：构建 7 个候选镜像 → 漏洞扫描 →
    签名 / SBOM / 来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli`
-   二进制、`docker-compose.prod.yml`、`env.prod.example` 及各自的校验文件。
-3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式
-   Release（`--latest`）。
+   二进制、`docker-compose.prod.yml`、`env.prod.example`、LMCC IDE 插件
+   `neuro-oj-lmcc-<version>.vsix` 及各自的 `.sha256` 校验文件。
+3. 全部门禁与资产上传通过后，工作流最后的 `publish-release` 任务生成并上传
+   `release-set.json`（及 `.sha256`），再按标签格式执行收尾：
+   - **稳定标签（`vX.Y.Z`）**：将 Release
+     转正为正式版本（`--draft=false
+     --prerelease=false --latest`），`/releases/latest`
+     随即指向该版本；
+   - **预发布后缀标签（`vX.Y.Z-rc.N` / `-alpha.N` / `-beta.N`）**：保持
+     `prerelease=true`（`--draft=false --prerelease`），**不会**去掉预发布标记
+     或设为 `--latest`，从而避免存量 `v0.10.x` 节点的 `noj-cli update --latest`
+     或默认 `install` 误选到 `v0.11.0-rc.1`。
 
-由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
-`noj-cli install`（省略 `--ref`）与 `update --latest` 自动选择版本时只接受非
-draft、非 prerelease（即已转正，含 `-rc.N` 等标签）且资产中 包含
-`noj-cli-linux-amd64`、`.sha256` 与两个部署文件的 Release，双重过滤未就绪版本。
+由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产、IDE 插件与
+`release-set.json` 校验文件。`noj-cli install`（省略 `--ref`）与
+`update --latest` 自动选择版本时只接受非 draft、非 prerelease 且资产齐备的
+Release（历史已转正的如 `v0.10.4-rc.1` 保持向后兼容，而自 `v0.11` 起 RC 等预发布
+后缀始终保持 `prerelease=true`，需显式使用 `--ref vX.Y.Z-rc.N` 安装）。
 直接发布正式 Release（不经预发布）不会触发构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
 
@@ -216,9 +226,11 @@ noj-cli update
 noj-cli update --latest
 ```
 
-`update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、 非
-prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件及各自 `.sha256` 的
-Release， 保证安装与升级使用同一版本集合，不会选中资产未就绪的版本。
+`update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、非
+prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件、`release-set.json`
+及各自 `.sha256` 的
+Release，保证安装与升级使用同一版本集合，不会选中资产未就绪的 版本；保持
+`prerelease=true` 的 RC / 测试版（如 `v0.11.0-rc.1`）也不会被自动选中。
 
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
 先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION`
@@ -276,7 +288,9 @@ deno task preflight -- --json /tmp/noj-preflight.json
 1. 准备主机与 `.env.prod`（`docker-compose.prod.yml` 与 `.env.prod.example` 必须
    与 Release 同版本），生成 `NOJ_INTERNAL_SERVICE_TOKEN`（见下文
    [新增环境变量](#011-新增环境变量)）；
-2. 用 Release 的 CLI 安装：`noj-cli install --dir <目录> --ref v0.11.0-rc.N`，
+2. 从对应预发布 Release 下载 `noj-cli-linux-amd64` 并显式通过 `--ref` 安装
+   （预发布版本保持 `prerelease=true`，不会进入 `--latest`）：
+   `noj-cli install --dir <目录> --ref v0.11.0-rc.N`，
    安装器会下载并校验同名部署文件及其 `.sha256`；
 3. `noj-cli check` → `noj-cli start`，等待健康检查通过；
 4. `noj-cli bootstrap first-admin` 创建首个管理员（仅空站可执行一次）；

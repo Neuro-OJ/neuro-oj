@@ -43,8 +43,12 @@ interface ReleaseSummary {
  * Release 标签格式：`v?X.Y.Z`，允许 SemVer 预发布后缀（`-rc.1` / `-beta.3` 等），
  * 与 `prod/judge/config.ts` 的 `VERSION_RE` 一致。
  *
- * **稳定性不由标签后缀判定**：发布流水线先以 GitHub 预发布创建 Release，全部
- * 校验通过后才转正（`prerelease=false`）。因此已转正的 `-rc.N` 同样可被自动选择。
+ * **稳定性不由标签后缀判定**：发布流水线先以 GitHub 预发布创建 Release。自
+ * `v0.11` 起，带 SemVer 预发布后缀的标签（如 `v0.11.0-rc.1` / `-alpha.1` /
+ * `-beta.1`）在资产就绪后仍保持 `prerelease=true`（需通过 `--ref <tag>` 显式
+ * 安装，不会被 `install` 省略 `--ref` 或 `update --latest` 自动选中）；仅无后缀的
+ * 稳定版本（如 `v0.11.0`）才会转正为 `prerelease=false`。历史已转正的预发布标签
+ * （如 `v0.10.4-rc.1`）仍可被兼容识别。
  */
 const RELEASE_TAG_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 

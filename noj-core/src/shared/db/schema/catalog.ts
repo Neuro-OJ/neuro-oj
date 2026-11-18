@@ -231,6 +231,16 @@ export const problems = pgTable(
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
+    /**
+     * 源题可见性元数据（`'public' | 'private'`，默认 `'public'`）。
+     *
+     * 0.11 公开域契约（`#697`）下的运行时语义：
+     * - **不阻断**公开域（`main`）已发布题目按 ID/URL 的直接读取与作答（`evaluateProblemAccess` 固定按可读处理）；
+     * - 当前 `listProblems` 与域题库查询亦不按本列过滤行；
+     * - 现用于管理端全量列表（`listAllProblems`）的 `visibility` 筛选与响应 DTO 字段，
+     *   实际访问控制由 `domain_id`（私有域隔离）、`latest_version_id`（发布状态）、
+     *   `domain_problem_bindings.disabled_at` 与进行中比赛保密分别限制。
+     */
     visibility: text("visibility").notNull().default("public"),
     /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交，prediction=预测文件提交，ui=题包自带 HTML 界面提交 */
     submission_mode: text("submission_mode").notNull().default("code"),
