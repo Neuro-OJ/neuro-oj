@@ -93,6 +93,21 @@ export function renderProductionCommandHelp(command: string): string {
       "可选: --redis-mode local|existing、--redis-port、--redis-container、",
       "      --dry-run（零副作用预演）、--env-file、--compose-file",
       "",
+      "judge reset-config 常用选项（排空后解除资源组容量锁）:",
+      "  --group <name>         资源组名（缺省读 JUDGE_RESOURCE_GROUP）",
+      "  --claim-prefix <pfx>   Redis 键前缀（缺省从 JUDGE_QUEUE 派生）",
+      "  --stop                 重置前先停止本机 Judge 容器（compose stop -t <sec>）",
+      "  --restart              先停止、重置并更新后以 --force-recreate 重建启动",
+      "  --wait-timeout <sec>   等待同组心跳/租约过期超时（0..3600，默认 90）",
+      "  --ai-tasks <n>         同步更新 JUDGE_AI_TASK_CONCURRENCY（1..1024）",
+      "  --wasm-tasks <n>       同步更新 JUDGE_WASM_TASK_CONCURRENCY（1..1024）",
+      "  --native-tasks <n>     同步更新 JUDGE_NATIVE_TASK_CONCURRENCY（1..1024）",
+      "  --wasm-compile <n>     同步更新 JUDGE_WASM_COMPILE_CONCURRENCY（1..1024）",
+      "  --wasm-run <n>         同步更新 JUDGE_WASM_CASE_CONCURRENCY（1..1024）",
+      "  --memory-mb <n|auto>   同步更新 JUDGE_RESOURCE_MEMORY_MB",
+      "  --pools <list>         同步更新 JUDGE_RESOURCE_POOLS",
+      "  --dry-run / --json     零副作用预演 / 机器可读 JSON 输出",
+      "",
     ]
     : [];
   const backupFlags = command === "backup"

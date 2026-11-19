@@ -49,6 +49,10 @@ import {
   redactUrl,
   renderJudgeCompose,
 } from "./compose.ts";
+import {
+  computeJudgeStopTimeoutSeconds,
+  readJudgeComposeEnv,
+} from "./reset-config-helpers.ts";
 import { isFile } from "../../util/fs.ts";
 
 /** 所有动作的公共注入点。 */
@@ -401,8 +405,8 @@ export async function judgeCheck(
   return { exitCode: 0, message: "Judge 配置检查通过", paths };
 }
 
-/** `start` / `stop` / `upgrade` 的公共前置。 */
-async function prepareExisting(
+/** `start` / `stop` / `upgrade` / `reset-config` 的公共前置。 */
+export async function prepareExisting(
   opts: JudgeActionOptions,
 ): Promise<
   | { ok: true; paths: JudgePaths; env: Record<string, string> }
@@ -471,13 +475,28 @@ export async function judgeStop(
   const log = opts.log ?? (() => {});
   const prepared = await prepareExisting(opts);
   if (!prepared.ok) return prepared.result;
-  const { paths } = prepared;
+  const { paths, env } = prepared;
+
+  let composeEnv: Record<string, string> | null = null;
+  try {
+    const composeText = await Deno.readTextFile(paths.composeFile);
+    composeEnv = readJudgeComposeEnv(composeText, env, Deno.env.toObject());
+  } catch {
+    composeEnv = null;
+  }
+  const stopTimeoutSeconds = computeJudgeStopTimeoutSeconds(composeEnv ?? env);
 
   if (opts.dryRun === true) {
-    log("[dry-run] 将停止 Judge 容器（compose stop）");
+    log(
+      `[dry-run] 将停止 Judge 容器（compose stop -t ${stopTimeoutSeconds}）`,
+    );
     return { exitCode: 0, message: "[dry-run] 未停止任何容器", paths };
   }
-  const code = await runCompose(opts, paths, ["stop"]);
+  const code = await runCompose(opts, paths, [
+    "stop",
+    "-t",
+    String(stopTimeoutSeconds),
+  ]);
   if (code !== 0) return fail(paths, 1, "停止 Judge 失败");
   log("✓ Judge 已停止（配置、缓存与 Redis 任务均已保留）");
   return { exitCode: 0, message: "Judge 已停止（数据已保留）", paths };
@@ -697,7 +716,7 @@ export async function judgeUpgrade(
 // ---------------- 内部辅助 ----------------
 
 /** 执行一条 compose 子命令，返回退出码（dry-run 时**不调用** runner）。 */
-async function runCompose(
+export async function runCompose(
   opts: JudgeActionOptions,
   paths: JudgePaths,
   command: string[],

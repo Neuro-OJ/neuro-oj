@@ -96,6 +96,29 @@ export async function readUpstreamBodyWithLimit(
   }
 }
 
+/** 提取非敏感传输诊断字段（仅错误类名与系统错误码，不记录消息文本与 URL）。 */
+function extractErrorDiagnostics(err: unknown): {
+  error_name: string;
+  transport_error_code?: string;
+} {
+  const error_name = err instanceof Error ? err.name : typeof err;
+  const directCode = err && typeof err === "object" && "code" in err &&
+      typeof (err as { code?: unknown }).code === "string"
+    ? (err as { code: string }).code
+    : undefined;
+  const cause = err && typeof err === "object" && "cause" in err
+    ? (err as { cause?: unknown }).cause
+    : undefined;
+  const causeCode = cause && typeof cause === "object" && "code" in cause &&
+      typeof (cause as { code?: unknown }).code === "string"
+    ? (cause as { code: string }).code
+    : undefined;
+  const code = directCode ?? causeCode;
+  return code !== undefined
+    ? { error_name, transport_error_code: code }
+    : { error_name };
+}
+
 /** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
 export function buildChatUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
@@ -729,7 +752,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         ),
         signal: upstreamSignal,
       }, upstreamResolution);
-    } catch {
+    } catch (err) {
       const errorCode = c.req.raw.signal.aborted
         ? "client_closed_request"
         : upstreamSignal.aborted
@@ -740,6 +763,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         error_code: errorCode,
+        ...extractErrorDiagnostics(err),
         latency_ms: Date.now() - startedAt,
       });
       inc("noj_llm_provider_errors_total");
@@ -808,6 +832,13 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           readErr.message === "upstream_response_too_large"
         ? "upstream_response_too_large"
         : "upstream_error";
+      logger.warn("LLM 上游响应读取失败", {
+        submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        error_code: errCode,
+        ...extractErrorDiagnostics(readErr),
+        latency_ms: Date.now() - startedAt,
+      });
       await recordUsage(deps.db, {
         id: callId,
         domain_id: payload.domain_id,

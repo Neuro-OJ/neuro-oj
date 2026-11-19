@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import {
   assertResolvesPublic,
@@ -338,5 +339,71 @@ Deno.test("fetchPinned: 传输层可注入，且调用方拿到已验证地址�
     }]);
   } finally {
     setPinnedTransport();
+  }
+});
+
+Deno.test("fetchPinned: 多字节中文请求体计算真实 UTF-8 Content-Length 并启用 socket keepalive", async () => {
+  const payload = JSON.stringify({ prompt: "你好，世界🚀" });
+  const expectedBytes = new TextEncoder().encode(payload).byteLength;
+  assertEquals(expectedBytes > payload.length, true);
+
+  let capturedHeaders: Record<string, string> = {};
+  let writtenBytes: Uint8Array | null = null;
+  const keepAliveArgs: Array<[boolean, number | undefined]> = [];
+
+  const fakeRequest = ((
+    options: { headers?: Record<string, string> },
+    onResponse: (
+      incoming: Readable & {
+        statusCode: number;
+        statusMessage: string;
+        headers: Record<string, string>;
+      },
+    ) => void,
+  ) => {
+    capturedHeaders = options.headers ?? {};
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    return {
+      on(event: string, cb: (...args: unknown[]) => void) {
+        handlers.set(event, cb);
+      },
+      write(chunk: Uint8Array) {
+        writtenBytes = chunk;
+      },
+      end() {
+        handlers.get("socket")?.({
+          setKeepAlive(enable: boolean, initialDelay?: number) {
+            keepAliveArgs.push([enable, initialDelay]);
+          },
+        });
+        const incoming = Object.assign(
+          Readable.from([new TextEncoder().encode('{"ok":true}')]),
+          {
+            statusCode: 200,
+            statusMessage: "OK",
+            headers: { "content-type": "application/json" },
+          },
+        );
+        onResponse(incoming);
+      },
+    } as never;
+  }) as never;
+
+  setRequestImplementations(fakeRequest, fakeRequest);
+  try {
+    const res = await fetchPinned(
+      "https://api.example.com/v1/chat/completions",
+      { method: "POST", body: payload },
+      { addresses: ["93.184.216.34"], host: "api.example.com" },
+    );
+    assertEquals(await res.text(), '{"ok":true}');
+    assertEquals(capturedHeaders["content-length"], String(expectedBytes));
+    assertEquals(
+      new TextDecoder().decode(writtenBytes!),
+      payload,
+    );
+    assertEquals(keepAliveArgs, [[true, 30_000]]);
+  } finally {
+    resetRequestImplementations();
   }
 });

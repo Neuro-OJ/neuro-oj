@@ -382,6 +382,7 @@ fn main() -> Result<()> {
 
         // 使用 FuturesUnordered 跟踪所有 in-flight 任务
         let mut tasks = FuturesUnordered::new();
+        let mut fatal_exit: Option<anyhow::Error> = None;
 
         loop {
             // F-07：先获取全局并发槽位，再拉取任务。
@@ -397,8 +398,15 @@ fn main() -> Result<()> {
                 acquired = next_pool_admission(&scheduler, &mut pool_cursor) => {
                     match acquired {
                         Ok(permit) => permit,
+                        Err(e) if scheduling::is_group_config_mismatch(&e) => {
+                            error!(error = %e, "资源组容量配置已重置或变更，停止准入并在排空在途任务后退出");
+                            drain::drain_tasks(&mut tasks, drain_timeout).await;
+                            fatal_exit = Some(e);
+                            break;
+                        }
                         Err(e) => {
                             error!("获取评测并发槽位失败: {}", e);
+                            tokio::time::sleep(PULL_RETRY_DELAY).await;
                             continue;
                         }
                     }
@@ -445,6 +453,26 @@ fn main() -> Result<()> {
                                 drop(permit);
                                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                                 continue;
+                            }
+                            Err(error) if scheduling::is_group_config_mismatch(&error) => {
+                                error!(
+                                    submission_id = %pulled.task.submission_id,
+                                    error = %error,
+                                    "检测到资源组容量配置已重置或变更，将任务放回队列并排空退出"
+                                );
+                                if let Err(requeue_err) =
+                                    mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
+                                {
+                                    error!(
+                                        submission_id = %pulled.task.submission_id,
+                                        error = %requeue_err,
+                                        "放回已拉取任务失败（将由 sweeper 兜底恢复）"
+                                    );
+                                }
+                                drop(permit);
+                                drain::drain_tasks(&mut tasks, drain_timeout).await;
+                                fatal_exit = Some(error);
+                                break;
                             }
                             Err(error) => Some(error),
                         },
@@ -697,6 +725,10 @@ fn main() -> Result<()> {
             drain::POST_DRAIN_CLEANUP_TIMEOUT_SECS,
         )
         .await;
+
+        if let Some(err) = fatal_exit {
+            return Err(err);
+        }
 
         Ok(())
     })

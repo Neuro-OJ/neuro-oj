@@ -34,7 +34,12 @@ export interface CommandRunner {
   run(
     cmd: string,
     args: string[],
-    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string },
+    opts?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      stdin?: string;
+      timeoutMs?: number;
+    },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
   /**
@@ -67,7 +72,8 @@ export function realRunner(): CommandRunner {
   return {
     async run(cmd, args, opts) {
       const stdin = opts?.stdin;
-      if (stdin === undefined) {
+      const timeoutMs = opts?.timeoutMs;
+      if (stdin === undefined && (timeoutMs === undefined || timeoutMs <= 0)) {
         const p = new Deno.Command(cmd, {
           args,
           cwd: opts?.cwd,
@@ -86,27 +92,73 @@ export function realRunner(): CommandRunner {
         args,
         cwd: opts?.cwd,
         env: opts?.env ?? {},
-        stdin: "piped",
+        stdin: stdin !== undefined ? "piped" : "null",
         stdout: "piped",
         stderr: "piped",
       });
       const child = p.spawn();
       // 先开始读 stdout/stderr，避免大 stdin 时子进程写满管道导致双方阻塞。
-      const stdoutPromise = new Response(child.stdout).arrayBuffer();
-      const stderrPromise = new Response(child.stderr).arrayBuffer();
-      const writer = child.stdin.getWriter();
-      await writer.write(new TextEncoder().encode(stdin));
-      await writer.close();
-      const [status, stdoutBuf, stderrBuf] = await Promise.all([
-        child.status,
-        stdoutPromise,
-        stderrPromise,
-      ]);
-      return {
-        code: status.code,
-        stdout: decoder.decode(stdoutBuf),
-        stderr: decoder.decode(stderrBuf),
-      };
+      const stdoutPromise = new Response(child.stdout).arrayBuffer().catch(() =>
+        new ArrayBuffer(0)
+      );
+      const stderrPromise = new Response(child.stderr).arrayBuffer().catch(() =>
+        new ArrayBuffer(0)
+      );
+      let stdinPromise: Promise<void> = Promise.resolve();
+      if (stdin !== undefined) {
+        stdinPromise = (async () => {
+          const writer = child.stdin.getWriter();
+          try {
+            await writer.write(new TextEncoder().encode(stdin));
+            await writer.close();
+          } catch {
+            // 子进程提前退出时忽略管道写入错误
+          }
+        })();
+      }
+      let timedOut = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      if (timeoutMs !== undefined && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          try {
+            child.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+          killTimer = setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              // 已退出则忽略
+            }
+          }, 200);
+        }, timeoutMs);
+      }
+      try {
+        const [status, stdoutBuf, stderrBuf] = await Promise.all([
+          child.status,
+          stdoutPromise,
+          stderrPromise,
+        ]);
+        await stdinPromise.catch(() => {});
+        if (timedOut) {
+          return {
+            code: 124,
+            stdout: "",
+            stderr: "command timed out",
+          };
+        }
+        return {
+          code: status.code,
+          stdout: decoder.decode(stdoutBuf),
+          stderr: decoder.decode(stderrBuf),
+        };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        if (killTimer !== undefined) clearTimeout(killTimer);
+      }
     },
     spawn(opts) {
       const cmd = new Deno.Command(opts.cmd, {
