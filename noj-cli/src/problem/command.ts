@@ -12,7 +12,7 @@ import {
 } from "../cli-commands/exit-codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
-import { packBundle } from "./pack.ts";
+import { collectBundleEntries, packBundle } from "./pack.ts";
 import { migrateManifest } from "./migrate.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
 import {
@@ -22,6 +22,7 @@ import {
   pushErrorHint,
 } from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
+import { runProblemTest } from "./test-command.ts";
 import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
 
@@ -49,6 +50,21 @@ export interface ProblemArgs {
   domain: string;
   /** push: 导入后立即发布。 */
   publish: boolean;
+  /** test: 参考解答（`path[@name]`，可多个）。 */
+  solutions: string[];
+  /** test: 分数断言（`name=100` / `name<60`，可多个）。 */
+  expects: string[];
+  /** test: noj-judge 二进制路径。 */
+  judgeBin?: string;
+  /** test: 显式允许 evaluator 联网（默认关闭）。 */
+  allowNetwork: boolean;
+  /** test: 联网时使用的 Docker 网络。 */
+  network?: string;
+  /** test: LLM 离线 mock（默认开启，--no-llm-mock 关闭）。 */
+  llmMock: boolean;
+  /** test: 真实 LLM 网关地址与 token。 */
+  llmGateway?: string;
+  llmToken?: string;
 }
 
 /** 解析 problem 子命令参数。 */
@@ -60,6 +76,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     noInteractive: false,
     publish: false,
     domain: "main",
+    solutions: [],
+    expects: [],
+    allowNetwork: false,
+    llmMock: true,
   };
   const positional: string[] = [];
   const takeValue = (name: string, i: number): string => {
@@ -113,6 +133,39 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       case "--publish":
         out.publish = true;
         break;
+      case "--solution":
+        out.solutions.push(takeValue("--solution", i));
+        i++;
+        break;
+      case "--expect":
+        out.expects.push(takeValue("--expect", i));
+        i++;
+        break;
+      case "--judge-bin":
+        out.judgeBin = takeValue("--judge-bin", i);
+        i++;
+        break;
+      case "--allow-network":
+        out.allowNetwork = true;
+        break;
+      case "--network":
+        out.network = takeValue("--network", i);
+        i++;
+        break;
+      case "--llm-mock":
+        out.llmMock = true;
+        break;
+      case "--no-llm-mock":
+        out.llmMock = false;
+        break;
+      case "--llm-gateway":
+        out.llmGateway = takeValue("--llm-gateway", i);
+        i++;
+        break;
+      case "--llm-token":
+        out.llmToken = takeValue("--llm-token", i);
+        i++;
+        break;
       case "--strict":
         out.strict = true;
         break;
@@ -138,7 +191,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
   if (
     out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
-    out.sub === "migrate"
+    out.sub === "migrate" || out.sub === "test"
   ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
@@ -269,20 +322,7 @@ export async function packDirectory(dir: string): Promise<DirectoryPackResult> {
   const report = lintBundle(await readBundleFiles(dir));
   if (report.hasError) return { report, pack: null };
 
-  const entries: Record<string, Uint8Array> = {};
-  async function collect(current: string, prefix: string): Promise<void> {
-    for await (const entry of Deno.readDir(current)) {
-      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (entry.isDirectory) {
-        if (entry.name === "__pycache__" || entry.name === ".git") continue;
-        await collect(join(current, entry.name), rel);
-        continue;
-      }
-      if (!entry.isFile) continue;
-      entries[rel] = await Deno.readFile(join(current, entry.name));
-    }
-  }
-  await collect(dir, "");
+  const entries = await collectBundleEntries(dir);
   // 注意：模板文件（manifest.template，缺省 template.py）**保留在包内**——
   // 平台导入题目包时从这里取编辑器初始代码，不再依赖服务器本地 problems-src。
   return { report, pack: packBundle({ entries }) };
@@ -545,8 +585,10 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemPush(args);
     case "migrate":
       return await runProblemMigrate(args);
+    case "test":
+      return await runProblemTest(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push/migrate");
+      console.error("problem: 需要子命令 init/lint/pack/push/migrate/test");
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }

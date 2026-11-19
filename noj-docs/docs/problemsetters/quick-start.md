@@ -40,8 +40,9 @@ P/U。展示范围可选域成员或域内公开题库；域管理员不能授�
    能读取。见[测试数据与样例规范](../standards/test-data.md)。
 
 4. **打包上传**：将题面、`evaluate.py` 与测试数据整理为统一题目包
-   zip（`noj-cli problem lint` 校验、`noj-cli problem pack`
-   打包），在编辑页「题目支持包」处上传；未发布的新题同样可以上传。包结构与
+   zip（`noj-cli problem lint` 校验、`noj-cli problem pack` 打包；上传前建议用
+   `noj-cli problem test` 在本地 Docker
+   沙箱验题，见[本地验题](local-test.md)），在编辑页「题目支持包」处上传；未发布的新题同样可以上传。包结构与
    manifest 要求见[题目包格式规范](../standards/problem-bundle.md)。
 
 5. **自测发布**：

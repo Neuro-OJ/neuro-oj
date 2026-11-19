@@ -207,7 +207,7 @@ export const COMMANDS: readonly TopCommandSpec[] = [
     tier: "problem",
     aliases: ["problems"],
     summary:
-      "题目包管理（离线 init/lint/pack/migrate；build/import 经 Tier 3 容器）",
+      "题目包管理（离线 init/lint/pack/migrate/test；build/import 经 Tier 3 容器）",
     subcommands: [
       {
         name: "init",
@@ -218,6 +218,10 @@ export const COMMANDS: readonly TopCommandSpec[] = [
         summary: "校验题目包（MUST/SHOULD 两级）",
       },
       { name: "pack", summary: "打包为可导入的题目包 ZIP" },
+      {
+        name: "test",
+        summary: "本地 Docker 沙箱验题，断言参考解答得分（需 noj-judge）",
+      },
       {
         name: "migrate",
         summary: "将 problem.json 升级为当前格式（原地改写）",

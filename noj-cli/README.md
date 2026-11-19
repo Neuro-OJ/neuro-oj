@@ -161,6 +161,7 @@ noj-cli judge reset-config --group <资源组> [--ai-tasks 6] [--restart]
 noj-cli problem init <slug> [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
 noj-cli problem lint <目录>
+noj-cli problem test <目录> [--solution <文件|目录>[@名称]]... [--expect good=100]... [--json]
 noj-cli problem pack <目录> --out <目录>
 noj-cli problem migrate <目录>   # 将旧格式 problem.json 原地改写为格式 3
 noj-cli problem import --domain school --dir <题包目录>
@@ -178,6 +179,11 @@ noj-cli problem push <目录或zip> --server https://noj.example.com --domain sc
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。
+
+`problem test` 先跑 lint，再经 `noj-judge run-local`（与线上 Worker 同一评测
+入口）在本地 Docker 沙箱逐个评测参考解答（缺省读取 `submissions/` 与
+`submissions/expect.json`），退出码 0 通过 / 1 校验或断言失败 / 2 用法错误。默认
+不联网，LLM 题默认离线 mock；详见文档站「出题人 → 本地验题」。
 
 `--judge-type oi` 会生成 C99/C++11 传统 OI 题包骨架（`testdata/`、default
 checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。
