@@ -1,3 +1,8 @@
+import {
+  PROBLEM_TEMPLATE_DESCRIPTIONS,
+  PROBLEM_TEMPLATE_NAMES,
+} from "../../../noj-core/scripts/problem-templates.ts";
+
 /**
  * `noj-cli problem` 帮助文本（#514）。
  *
@@ -20,6 +25,12 @@ export function renderProblemHelp(): string {
     "",
     "init 选项:",
     "  --judge-type dual|oi 评测模式（默认 dual；oi 为 C/C++ 传统 OI）",
+    "  --template <name>   从可验题模板生成（含参考解答与断言，可直接 problem test）：",
+    ...PROBLEM_TEMPLATE_NAMES.map((name) =>
+      `                        ${name.padEnd(11)}${
+        PROBLEM_TEMPLATE_DESCRIPTIONS[name]
+      }`
+    ),
     "  --difficulty <d>    easy / medium / hard（默认 medium）",
     "  --title <t>         题目标题（默认同 slug）",
     "  --no-interactive    跳过 TUI 引导（自动化）",

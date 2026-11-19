@@ -16,6 +16,30 @@
 `problem test` 本身只负责把题包转换成生产同款评测任务，真正的容器编排由
 `noj-judge run-local` 完成（与线上 Worker 走同一评测入口）。
 
+## 从模板起步
+
+不想从空目录开始时，用 `--template` 生成一道**生成即可验题**的完整题目：
+
+```bash
+noj-cli problem init my-problem --template code --no-interactive
+noj-cli problem test problems/my-problem     # 满分解 100、错解低分、空解 0
+```
+
+| 模板         | 题型                     | 评分方式                                   |
+| ------------ | ------------------------ | ------------------------------------------ |
+| `code`       | 代码题（双容器函数调用） | 隐藏用例等权；可见用例不计分               |
+| `prediction` | 预测提交题（CSV）        | 对照隐藏标签算准确率，ID 严格对齐          |
+| `llm`        | LLM 工程题               | 选手构造提示词，评测脚本调用大模型并检查   |
+| `objective`  | 客观题套卷               | 单选 / 多选 / 判断，平台直接判分           |
+| `ui`         | 界面题                   | `ui.html` 填参数，注入脚本模板后按 F1 评分 |
+
+每个模板都带 `evaluate.py`（客观题除外）、`README.md`（改造步骤与常见坑）和
+`submissions/`（满分解、错解、空解与 `expect.json`），生成后 `lint --strict`
+零发现。先跑通 `problem test`，再按 README
+逐步改成自己的题目，每改一步重跑一次。 源码仓库内的
+`deno run -A noj-core/scripts/noj.ts problem init <slug> --template <name>`
+生成同一份模板。
+
 ## 约定目录
 
 ```text

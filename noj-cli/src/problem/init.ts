@@ -6,8 +6,20 @@
  *
  * ⚠️ 这是**刻意的第二份实现**（issue #514 决策：`noj-cli` 不依赖主仓库导入映射）。
  * 修改时必须同步 `noj-core/scripts/problems-init.ts`。
+ *
+ * `--template` 的模板内容**不在此处维护**：两处 init 共用
+ * `noj-core/scripts/problem-templates.ts`（无外部依赖的纯数据模块，相对路径引用，
+ * `deno compile` 时随二进制嵌入），事实源为 `noj-core/scripts/problem-templates/`。
  */
 import { dirname, join } from "@std/path";
+import {
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  renderProblemTemplate,
+} from "../../../noj-core/scripts/problem-templates.ts";
+
+export { PROBLEM_TEMPLATE_NAMES, type ProblemTemplateName };
 
 /** slug 允许的字符：小写字母/数字/连字符，3-64 位，首尾非连字符。 */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
@@ -27,6 +39,8 @@ export interface ProblemInitOptions {
   title?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
+  /** 从可验题模板生成（与 judgeType=oi 互斥）。 */
+  template?: ProblemTemplateName;
   root?: string;
 }
 
@@ -168,6 +182,18 @@ export async function initProblemScaffold(
     throw new Error(`评测模式非法：${opts.judgeType}（仅允许 dual/oi）`);
   }
   const judgeType = opts.judgeType ?? "dual";
+  if (opts.template !== undefined) {
+    if (!isProblemTemplateName(opts.template)) {
+      throw new Error(
+        `未知模板：${opts.template}（可选 ${
+          PROBLEM_TEMPLATE_NAMES.join("/")
+        }）`,
+      );
+    }
+    if (judgeType === "oi") {
+      throw new Error("--template 与 --judge-type oi 不能同时使用");
+    }
+  }
   const root = opts.root ?? "problems";
   const dir = join(root, opts.slug);
   const title = opts.title?.trim() || opts.slug;
@@ -202,7 +228,9 @@ export async function initProblemScaffold(
     createdDir = true;
   }
 
-  const files: Array<[string, string]> = judgeType === "oi"
+  const files: Array<[string, string]> = opts.template !== undefined
+    ? renderProblemTemplate(opts.template, { title, difficulty })
+    : judgeType === "oi"
     ? [
       [
         "problem.json",

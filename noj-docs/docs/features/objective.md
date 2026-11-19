@@ -91,9 +91,9 @@ flowchart TD
 - **`problem.json` 声明**：
   ```json
   {
-    "title": "大模型架构与训练理论模拟试卷",
-    "type": "U",
-    "is_objective": true
+    "format_version": 3,
+    "kind": "objective",
+    "title": "大模型架构与训练理论模拟试卷"
   }
   ```
 - **`questions.json` 试题阵列**：
@@ -103,22 +103,22 @@ flowchart TD
       "type": "single",
       "prompt": "在 Transformer 架构中，Scaled Dot-Product Attention 缩放因子通常取值为：",
       "options": [
-        { "key": "A", "content": "$\\sqrt{d_k}$" },
-        { "key": "B", "content": "$d_k$" },
-        { "key": "C", "content": "$2\\sqrt{d_k}$" },
-        { "key": "D", "content": "$\\log(d_k)$" }
+        { "key": "A", "text": "$\\sqrt{d_k}$" },
+        { "key": "B", "text": "$d_k$" },
+        { "key": "C", "text": "$2\\sqrt{d_k}$" },
+        { "key": "D", "text": "$\\log(d_k)$" }
       ],
-      "answer": "A",
+      "answer": ["A"],
       "explanation": "缩放因子 $\\frac{1}{\\sqrt{d_k}}$ 旨在防止点积结果在维度较大时进入 Softmax 梯度饱和区。"
     },
     {
       "type": "multiple",
       "prompt": "以下属于常见大语言模型解码策略（Decoding Strategies）的是：",
       "options": [
-        { "key": "A", "content": "Greedy Search" },
-        { "key": "B", "content": "Beam Search" },
-        { "key": "C", "content": "Top-p (Nucleus) Sampling" },
-        { "key": "D", "content": "Gradient Checkpointing" }
+        { "key": "A", "text": "Greedy Search" },
+        { "key": "B", "text": "Beam Search" },
+        { "key": "C", "text": "Top-p (Nucleus) Sampling" },
+        { "key": "D", "text": "Gradient Checkpointing" }
       ],
       "answer": ["A", "B", "C"],
       "explanation": "选项 D 属于显存优化训练技术，并非推理生成解码算法。"
@@ -126,11 +126,12 @@ flowchart TD
     {
       "type": "judge",
       "prompt": "LoRA 微调技术通常在注意力权重旁路引入低秩矩阵，推理时可直接无损融回主权重。",
-      "answer": true,
+      "answer": [true],
       "explanation": "LoRA 权重满足 $W = W_0 + B \\times A$，在线服务时可通过矩阵加法直接融合，无额外推理延迟。"
     }
   ]
   ```
 
-打包为 ZIP
+字段约定（`prompt` / `options` / 数组形式的 `answer`）详见
+[客观题出题指南](../problemsetters/objective-problem.md)。打包为 ZIP
 后在出题后台一键上传，系统将自动校验题型规范、标答存在性并完成持久化建卷。

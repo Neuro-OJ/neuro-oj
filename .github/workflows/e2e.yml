@@ -4,7 +4,7 @@
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
 #   - e2e-full：noj-tests 全量 E2E（30 个测试文件 / 204 个 e2eTest 用例）
 #   - judge-sandbox：noj-judge Docker 沙箱 E2E（7 个 binary，独立 job）
-#   - problem-local-test：noj-cli problem test 本地验题门禁（fixtures/problem-test）
+#   - problem-local-test：noj-cli problem test 本地验题门禁（fixtures/problem-test + 五类出题模板）
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
 #
@@ -617,3 +617,19 @@ jobs:
             echo "负例期望退出码 1，实际 ${code}"
             exit 1
           fi
+
+      # P0-2 B：五类出题模板都必须「生成即可验题」——经 init --template 生成
+      # （覆盖嵌入与渲染路径），再 lint --strict 零发现 + problem test 断言全过。
+      - name: problem init --template 五类模板验题
+        working-directory: noj-cli
+        env:
+          NOJ_JUDGE_BIN: ${{ github.workspace }}/noj-judge/target/debug/noj-judge
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/problem-templates"
+          for t in code prediction llm objective ui; do
+            echo "── template ${t}"
+            deno run -A src/cli.ts problem init "tpl-${t}" --template "$t" --no-interactive --dir "$out"
+            deno run -A src/cli.ts problem lint --strict "$out/tpl-${t}"
+            deno run -A src/cli.ts problem test "$out/tpl-${t}"
+          done

@@ -14,7 +14,12 @@ import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { collectBundleEntries, packBundle } from "./pack.ts";
 import { migrateManifest } from "./migrate.ts";
-import { initProblemScaffold, validateSlug } from "./init.ts";
+import {
+  initProblemScaffold,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  validateSlug,
+} from "./init.ts";
 import {
   normalizeServer,
   pushBundle,
@@ -44,6 +49,8 @@ export interface ProblemArgs {
   title?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
+  /** init: 可验题模板名（code/prediction/llm/objective/ui）。 */
+  template?: string;
   /** push: 平台地址（缺省读 NOJ_SERVER）。 */
   server?: string;
   /** push: 明确的使用域（默认 main）。 */
@@ -122,6 +129,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       }
+      case "--template":
+        out.template = takeValue("--template", i);
+        i++;
+        break;
       case "--server":
         out.server = takeValue("--server", i);
         i++;
@@ -482,6 +493,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         ...(await guideProblemInit(realIO(), answers)),
         judgeType: args.judgeType,
       };
+      // 模板只由 --template 指定，TUI 不追问（保持既有引导流程不变）。
     } catch (err) {
       // 用户在确认环节取消：不是错误，用 0 退出（与常见 CLI 一致）
       if ((err as Error).message === "已取消") {
@@ -519,6 +531,20 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         `--judge-type 仅支持 dual/oi，收到 "${answers.judgeType}"`,
       );
     }
+    if (args.template !== undefined) {
+      if (
+        !(PROBLEM_TEMPLATE_NAMES as readonly string[]).includes(args.template)
+      ) {
+        throw new UsageError(
+          `--template 仅支持 ${
+            PROBLEM_TEMPLATE_NAMES.join("/")
+          }，收到 "${args.template}"`,
+        );
+      }
+      if (answers.judgeType === "oi") {
+        throw new UsageError("--template 与 --judge-type oi 不能同时使用");
+      }
+    }
   } catch (err) {
     if (err instanceof UsageError) throw err;
     throw new UsageError((err as Error).message);
@@ -529,13 +555,21 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
     title: answers.title,
     difficulty: answers.difficulty,
     judgeType: answers.judgeType,
+    template: args.template as ProblemTemplateName | undefined,
     root: args.dir,
   });
   console.log(`已生成题目骨架：${result.dir}`);
   for (const f of result.files) console.log(`  + ${f}`);
-  console.log(
-    `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
-  );
+  if (args.template !== undefined) {
+    console.log(
+      `\n下一步：先运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+        "再按 README.md 的改造步骤改成你的题目",
+    );
+  } else {
+    console.log(
+      `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
+    );
+  }
   return EXIT_OK;
 }
 
