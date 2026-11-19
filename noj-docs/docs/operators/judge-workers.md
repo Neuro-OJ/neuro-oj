@@ -57,13 +57,28 @@ Redis，可加 `--redis-mode local`，让 CLI 在本机创建
 管理独立 Worker：
 
 ```bash
-noj-cli judge status  --dir /srv/noj-judge                         # 状态 + 脱敏配置摘要
-noj-cli judge logs    --dir /srv/noj-judge [--follow]              # 日志
-noj-cli judge check   --dir /srv/noj-judge                         # 配置 / Redis / 专用 socket / 镜像架构
-noj-cli judge start   --dir /srv/noj-judge                         # 启动（保留现有容器）
-noj-cli judge stop    --dir /srv/noj-judge                         # 停止（保留配置与 Redis 任务）
-noj-cli judge upgrade --dir /srv/noj-judge                         # 升级镜像
+noj-cli judge status       --dir /srv/noj-judge                    # 状态 + 脱敏配置摘要
+noj-cli judge logs         --dir /srv/noj-judge [--follow]         # 日志
+noj-cli judge check        --dir /srv/noj-judge                    # 配置 / Redis / 专用 socket / 镜像架构
+noj-cli judge start        --dir /srv/noj-judge                    # 启动（保留现有容器）
+noj-cli judge stop         --dir /srv/noj-judge                    # 停止（保留配置与 Redis 任务）
+noj-cli judge upgrade      --dir /srv/noj-judge                    # 升级镜像
+noj-cli judge reset-config --dir /srv/noj-judge --restart --ai-tasks 6
+                                                                   # 排空并重置资源组容量锁，同步调整并发后重建
 ```
+
+> 调整 `JUDGE_RESOURCE_GROUP` 内任意并发或内存预算时，因调度参数在生成
+> `docker-compose.judge.yml` 时固化（`judge start` 不会重渲染 Compose），
+> 多节点同组调参请严格按以下三步执行：
+>
+> 1. 在同组**全部节点**停止 Worker（`noj-cli judge stop --dir /srv/noj-judge`；
+>    该命令会自动传入 Worker 优雅排空宽限期 `compose stop -t <≥120s>`，防止
+>    Docker 默认 10 秒强杀中断在途评测与退场清理）；
+> 2. 在**每个节点**执行**不带 `--restart`** 的
+>    `noj-cli judge reset-config --dir /srv/noj-judge --ai-tasks 6`（首台等待在途租约与心跳过期后解除 Redis 容量锁，默认 90s 可用 `--wait-timeout` 调整；未显式设置 `JUDGE_RESOURCE_GROUP` 时需传 `--group`；各节点同步完成 `.env.judge` 与 `docker-compose.judge.yml` 局部更新）；
+> 3. 确认组内全部节点配置与 Compose 均已同步后，再依次执行 `noj-cli judge start --dir /srv/noj-judge`。
+>
+> 单节点场景可直接带 `--restart` 一步完成停机、清锁、更新与重建。
 
 Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
 daemon，宝塔类面板也只做探测与提示（不调用其 API）。

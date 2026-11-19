@@ -35,6 +35,9 @@ export function assertSchedulingEnv(env: Record<string, string>): void {
       throw new UsageError(`${key} 包含非法字符`);
     }
     if (key === "JUDGE_RESOURCE_POOLS") {
+      if (/[\r\n\0]/.test(value)) {
+        throw new UsageError(`${key} 不得包含换行或控制字符`);
+      }
       const pools = value.split(",").map((pool) => pool.trim());
       if (
         new Set(pools).size !== pools.length ||

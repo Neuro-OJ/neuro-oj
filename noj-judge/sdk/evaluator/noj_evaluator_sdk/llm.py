@@ -14,8 +14,10 @@ Evaluator 环境变量：
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -34,6 +36,77 @@ class LLMError(Exception):
         super().__init__(message)
         self.status_code = status_code
         self.error_code = error_code
+
+
+def _enable_keepalive(sock: Any) -> None:
+    """开启 TCP Keepalive 与 TCP_NODELAY，避免长推理期间被中间转发设备静默断开。"""
+    if sock is None:
+        return
+    for level, optname, value in (
+        (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+        (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
+    ):
+        try:
+            sock.setsockopt(level, optname, value)
+        except OSError:
+            pass
+    for attr in ("TCP_KEEPIDLE", "TCP_KEEPALIVE"):
+        opt = getattr(socket, attr, None)
+        if opt is not None:
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, opt, 30)
+            except OSError:
+                pass
+    for attr, val in (("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 3)):
+        opt = getattr(socket, attr, None)
+        if opt is not None:
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, opt, val)
+            except OSError:
+                pass
+
+
+class _KeepAliveHTTPConnection(http.client.HTTPConnection):
+    """建立连接后自动开启 TCP Keepalive 的 HTTPConnection。"""
+
+    def connect(self) -> None:
+        super().connect()
+        _enable_keepalive(self.sock)
+
+
+class _KeepAliveHTTPSConnection(http.client.HTTPSConnection):
+    """建立连接后自动开启 TCP Keepalive 的 HTTPSConnection。"""
+
+    def connect(self) -> None:
+        super().connect()
+        _enable_keepalive(self.sock)
+
+
+class _KeepAliveHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_KeepAliveHTTPConnection, req)
+
+
+class _KeepAliveHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_KeepAliveHTTPSConnection, req, context=self._context)
+
+
+_DEFAULT_URLOPEN = urllib.request.urlopen
+_KEEPALIVE_OPENER = urllib.request.build_opener(
+    _KeepAliveHTTPHandler,
+    _KeepAliveHTTPSHandler,
+)
+
+
+def _open_request(request: urllib.request.Request, timeout: float) -> Any:
+    """优先尊重测试对 `urlopen` 的替换以及调用方通过 `install_opener` 安装的网络配置；仅在未配置全局 opener 时使用 SDK 私有 Keepalive opener。"""
+    if urllib.request.urlopen is not _DEFAULT_URLOPEN:
+        return urllib.request.urlopen(request, timeout=timeout)
+    installed = getattr(urllib.request, "_opener", None)
+    if installed is not None:
+        return installed.open(request, timeout=timeout)
+    return _KEEPALIVE_OPENER.open(request, timeout=timeout)
 
 
 def _required_env(name: str) -> str:
@@ -90,13 +163,14 @@ def complete(
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
+            "Connection": "close",
         },
     )
 
     for attempt in range(max_retries + 1):
         retry_after = 0.25 * (attempt + 1)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
+            with _open_request(request, timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             try:
@@ -122,7 +196,12 @@ def complete(
                 pass
             if not retryable or attempt == max_retries:
                 raise failure from exc
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.HTTPException,
+        ) as exc:
             failure = LLMError(f"LLM gateway 连接失败: {getattr(exc, 'reason', exc)}")
             if attempt == max_retries:
                 raise failure from exc

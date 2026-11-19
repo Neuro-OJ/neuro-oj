@@ -171,63 +171,94 @@ pub async fn heartbeat_loop_with_resources(
                             .div_ceil(1024 * 1024)
                     })
                     .unwrap_or(0);
-                // 租约过期与准入都使用 Redis 时间，避免多 Worker 时钟偏差。
-                let server_time: redis::RedisResult<(u64, u64)> =
-                    redis::cmd("TIME").query_async(&mut connection).await;
-                let Ok((seconds, micros)) = server_time else {
-                    continue;
-                };
-                let now = seconds.saturating_mul(1000) + micros / 1000;
-                let rss_key = format!("{resource_key}:rss");
-                let sample = serde_json::json!({"mb":rss,"expires":now+30_000}).to_string();
-                let _: redis::RedisResult<usize> =
-                    connection.hset(&rss_key, &instance_id, sample).await;
-                let _: redis::RedisResult<bool> = connection.expire(&rss_key, 60).await;
-                let leases: redis::RedisResult<std::collections::HashMap<String, String>> =
-                    connection.hgetall(resource_key).await;
-                if let Ok(leases) = leases {
-                    let mut counts = std::collections::HashMap::<String, u64>::new();
-                    let mut parents = std::collections::HashMap::<String, (u64, u64)>::new();
-                    let mut children = std::collections::HashMap::<String, u64>::new();
-                    for (id, raw) in leases {
-                        let Ok(item) = serde_json::from_str::<serde_json::Value>(&raw) else {
-                            continue;
-                        };
-                        if item["expires"].as_u64().unwrap_or(0) <= now {
-                            continue;
-                        }
-                        let kind = item["kind"].as_str().unwrap_or_default().to_owned();
-                        let parent = item["parent"].as_str().unwrap_or_default();
-                        // 领取前的零内存容量探针不作为活跃提交展示。
-                        if !parent.is_empty()
-                            || item["base"].as_u64().unwrap_or(0) != 0
-                            || item["headroom"].as_u64().unwrap_or(0) != 0
-                        {
-                            *counts.entry(kind).or_default() += 1;
-                        }
-                        if parent.is_empty() {
-                            parents.insert(
-                                id,
-                                (
-                                    item["base"].as_u64().unwrap_or(0),
-                                    item["headroom"].as_u64().unwrap_or(0),
-                                ),
-                            );
-                        } else {
-                            *children.entry(parent.to_owned()).or_default() +=
-                                item["memory"].as_u64().unwrap_or(0);
+                // 校验 Redis 中的 `{resource_key}:config` 仍与本 Worker 一致后，再原子写入 RSS 心跳；
+                // 防止已遭重置的陈旧 Worker 覆盖或重新激活已清除的心跳键。
+                let config_key = format!("{resource_key}:config");
+                let raw_config = connection
+                    .get::<_, Option<String>>(&config_key)
+                    .await
+                    .ok()
+                    .flatten();
+                let matched_config_raw = raw_config.filter(|raw| {
+                    serde_json::from_str::<serde_json::Value>(raw)
+                        .is_ok_and(|parsed| &parsed == capacities)
+                });
+                if let Some(expected_config_raw) = matched_config_raw {
+                    // 租约过期与准入都使用 Redis 时间，避免多 Worker 时钟偏差。
+                    let server_time: redis::RedisResult<(u64, u64)> =
+                        redis::cmd("TIME").query_async(&mut connection).await;
+                    let Ok((seconds, micros)) = server_time else {
+                        continue;
+                    };
+                    let now = seconds.saturating_mul(1000) + micros / 1000;
+                    let rss_key = format!("{resource_key}:rss");
+                    let sample = serde_json::json!({"mb":rss,"expires":now+30_000}).to_string();
+                    let wrote_rss: i64 = redis::Script::new(
+                        r#"
+                        if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
+                        redis.call('HSET',KEYS[2],ARGV[2],ARGV[3])
+                        redis.call('EXPIRE',KEYS[2],60)
+                        return 1
+                        "#,
+                    )
+                    .key(&config_key)
+                    .key(&rss_key)
+                    .arg(&expected_config_raw)
+                    .arg(&instance_id)
+                    .arg(&sample)
+                    .invoke_async(&mut connection)
+                    .await
+                    .unwrap_or(0);
+                    if wrote_rss == 1 {
+                        let leases: redis::RedisResult<std::collections::HashMap<String, String>> =
+                            connection.hgetall(resource_key).await;
+                        if let Ok(leases) = leases {
+                            let mut counts = std::collections::HashMap::<String, u64>::new();
+                            let mut parents =
+                                std::collections::HashMap::<String, (u64, u64)>::new();
+                            let mut children = std::collections::HashMap::<String, u64>::new();
+                            for (id, raw) in leases {
+                                let Ok(item) = serde_json::from_str::<serde_json::Value>(&raw)
+                                else {
+                                    continue;
+                                };
+                                if item["expires"].as_u64().unwrap_or(0) <= now {
+                                    continue;
+                                }
+                                let kind = item["kind"].as_str().unwrap_or_default().to_owned();
+                                let parent = item["parent"].as_str().unwrap_or_default();
+                                // 领取前的零内存容量探针不作为活跃提交展示。
+                                if !parent.is_empty()
+                                    || item["base"].as_u64().unwrap_or(0) != 0
+                                    || item["headroom"].as_u64().unwrap_or(0) != 0
+                                {
+                                    *counts.entry(kind).or_default() += 1;
+                                }
+                                if parent.is_empty() {
+                                    parents.insert(
+                                        id,
+                                        (
+                                            item["base"].as_u64().unwrap_or(0),
+                                            item["headroom"].as_u64().unwrap_or(0),
+                                        ),
+                                    );
+                                } else {
+                                    *children.entry(parent.to_owned()).or_default() +=
+                                        item["memory"].as_u64().unwrap_or(0);
+                                }
+                            }
+                            let reserved = parents
+                                .into_iter()
+                                .map(|(id, (base, headroom))| {
+                                    base + headroom.max(children.get(&id).copied().unwrap_or(0))
+                                })
+                                .sum::<u64>();
+                            heartbeat["scheduling_version"] = serde_json::json!(1);
+                            heartbeat["resource_group"] = serde_json::json!(group);
+                            heartbeat["resource_pools"] = serde_json::json!(enabled);
+                            heartbeat["resources"] = serde_json::json!({"capacities":capacities,"active":counts,"reserved_memory_mb":reserved,"worker_rss_mb":rss});
                         }
                     }
-                    let reserved = parents
-                        .into_iter()
-                        .map(|(id, (base, headroom))| {
-                            base + headroom.max(children.get(&id).copied().unwrap_or(0))
-                        })
-                        .sum::<u64>();
-                    heartbeat["scheduling_version"] = serde_json::json!(1);
-                    heartbeat["resource_group"] = serde_json::json!(group);
-                    heartbeat["resource_pools"] = serde_json::json!(enabled);
-                    heartbeat["resources"] = serde_json::json!({"capacities":capacities,"active":counts,"reserved_memory_mb":reserved,"worker_rss_mb":rss});
                 }
             }
         }

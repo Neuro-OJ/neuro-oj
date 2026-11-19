@@ -306,19 +306,16 @@ async function nodePinnedTransport(
   const host = bareHost(target.hostname);
   // 选第一个已验证地址；连接失败不再回退到其它地址（避免绕过验证语义）
   const pinned = resolution.addresses[0];
-  const body = init.body === undefined || init.body === null
+  const bodyBytes = init.body === undefined || init.body === null
     ? undefined
-    : typeof init.body === "string"
-    ? init.body
     : init.body instanceof Uint8Array
     ? init.body
-    : String(init.body);
-  const headers = new Headers(init.headers);
-  if (body !== undefined && !headers.has("content-length")) {
-    headers.set(
-      "content-length",
-      String(typeof body === "string" ? body.length : body.byteLength),
+    : new TextEncoder().encode(
+      typeof init.body === "string" ? init.body : String(init.body),
     );
+  const headers = new Headers(init.headers);
+  if (bodyBytes !== undefined && !headers.has("content-length")) {
+    headers.set("content-length", String(bodyBytes.byteLength));
   }
   return await new Promise<Response>((resolve, reject) => {
     const lookup = pinned === undefined ? undefined : ((
@@ -368,7 +365,10 @@ async function nodePinnedTransport(
       );
     });
     request.on("error", reject);
-    if (body !== undefined) request.write(body);
+    request.on("socket", (socket) => {
+      socket?.setKeepAlive?.(true, 30_000);
+    });
+    if (bodyBytes !== undefined) request.write(bodyBytes);
     request.end();
   });
 }

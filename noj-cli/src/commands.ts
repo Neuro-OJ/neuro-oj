@@ -179,6 +179,10 @@ export const COMMANDS: readonly TopCommandSpec[] = [
       { name: "status", summary: "查看状态与脱敏配置摘要" },
       { name: "logs", summary: "查看日志（--follow 实时跟随）" },
       { name: "upgrade", summary: "升级 Judge 镜像" },
+      {
+        name: "reset-config",
+        summary: "排空后重置资源组容量锁（可同时更新并发并重建）",
+      },
     ],
   },
   {

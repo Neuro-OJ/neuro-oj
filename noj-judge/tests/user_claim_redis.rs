@@ -13,7 +13,7 @@
 //! 现已在 `.github/workflows/ci.yml` 的 `judge-check` 中提供 Redis 服务并导出
 //! `REDIS_URL`，故它们在每次 CI 都真实执行。
 
-use noj_judge::scheduling::{Capacities, Pool, Scheduler, Settings};
+use noj_judge::scheduling::{is_group_config_mismatch, Capacities, Pool, Scheduler, Settings};
 use redis::AsyncCommands;
 use std::time::Duration;
 
@@ -170,6 +170,82 @@ async fn resource_groups_share_atomic_run_and_memory_limits() {
             .await
             .unwrap()
     );
+    let turn_seq_exists: bool = conn
+        .exists(format!("{prefix}:resources:shared-node:turn-sequence"))
+        .await
+        .unwrap();
+    assert!(!turn_seq_exists);
+    let keys: Vec<String> = conn.keys(format!("{prefix}:*")).await.unwrap();
+    if !keys.is_empty() {
+        let _: usize = conn.del(keys).await.unwrap();
+    }
+}
+
+/// 回归：旧 Worker 在首次写入心跳/租约前遭 reset-config 清锁后，不得再按旧容量准入任务。
+#[tokio::test]
+async fn stale_worker_cannot_admit_after_group_config_reset_before_heartbeat() {
+    let Some(mut conn) = connect().await else {
+        return;
+    };
+    let url = std::env::var("REDIS_URL").unwrap();
+    let client = redis::Client::open(url).unwrap();
+    let prefix = format!("noj:test:stale-worker:{}", uuid::Uuid::new_v4());
+
+    let old_settings = Settings {
+        group: "shared-node".into(),
+        enabled: Pool::ALL.to_vec(),
+        capacities: Capacities {
+            wasm_tasks: 4,
+            native_tasks: 2,
+            ai_tasks: 2,
+            wasm_compile: 2,
+            wasm_run: 16,
+            memory_mb: 2048,
+        },
+    };
+    let worker_a = Scheduler::connect(client.clone(), old_settings.clone(), &prefix)
+        .await
+        .unwrap();
+
+    // 模拟 Worker A 尚未写出首条 RSS 心跳与任何租约前，管理端清空资源组配置锁。
+    assert!(
+        Scheduler::reset_group_config(&client, &prefix, "shared-node")
+            .await
+            .unwrap()
+    );
+
+    // 配置锁已被清除后，Worker A 再尝试准入必须因 config 不匹配而失败。
+    let err_after_clear = worker_a
+        .try_task(Pool::Ai, 128, 256)
+        .await
+        .err()
+        .expect("清锁后旧 Worker 准入必须失败");
+    assert!(
+        is_group_config_mismatch(&err_after_clear),
+        "清锁后旧 Worker 准入必须被 GroupConfigMismatchError 拒绝，实得：{err_after_clear}"
+    );
+
+    // 新 Worker B 使用新容量重新连接并写锁后，Worker A 仍不得按旧容量准入，而 Worker B 正常准入。
+    let mut new_settings = old_settings;
+    new_settings.capacities.ai_tasks = 6;
+    let worker_b = Scheduler::connect(client.clone(), new_settings, &prefix)
+        .await
+        .unwrap();
+
+    let err_after_rebind = worker_a
+        .try_task(Pool::Ai, 128, 256)
+        .await
+        .err()
+        .expect("新容量生效后旧 Worker 准入必须失败");
+    assert!(
+        is_group_config_mismatch(&err_after_rebind),
+        "新容量生效后旧 Worker 准入仍必须被拒绝，实得：{err_after_rebind}"
+    );
+    let lease_b = worker_b.try_task(Pool::Ai, 128, 256).await.unwrap();
+    assert!(lease_b.is_some(), "新 Worker 必须正常准入任务");
+    drop(lease_b);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
     let keys: Vec<String> = conn.keys(format!("{prefix}:*")).await.unwrap();
     if !keys.is_empty() {
         let _: usize = conn.del(keys).await.unwrap();
