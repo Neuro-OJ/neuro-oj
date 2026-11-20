@@ -18,7 +18,7 @@ import { eq } from "drizzle-orm";
 import { closeDbForShutdown, getDb } from "../src/shared/db/connection.ts";
 import { closeRedisForShutdown } from "../src/shared/mq/connection.ts";
 import { domains } from "../src/shared/db/schema.ts";
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { runMigrations } from "./../src/shared/db/migrate.ts";
@@ -31,6 +31,10 @@ import {
 import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
 import { initProblem } from "./problems-init.ts";
+import {
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+} from "./problem-templates.ts";
 import { runMaintain } from "./maintain.ts";
 import {
   ensureAdminFromEnv,
@@ -65,7 +69,8 @@ let requestedExitCode = 0;
 /**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
  *
- * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git。
+ * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git，以及根级
+ * AI 编码助手目录 .agents/ / .claude/（与 noj-cli 的 shouldExclude 对齐）。
  *
  * **模板不做排除**：编辑器初始代码（manifest.template，缺省 template.py）随包
  * 上传，导入时由 `importProblemBundle` 落库到 `problems.template_content`，
@@ -99,6 +104,10 @@ async function buildProblemPackage(id: string): Promise<void> {
       "*__pycache__*",
       "-x",
       ".git/*",
+      "-x",
+      ".agents/*",
+      "-x",
+      ".claude/*",
     ],
     cwd: srcDir,
   });
@@ -353,28 +362,46 @@ const problemsCmd = new Command()
     default: "medium",
   })
   .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
+  .option(
+    "--template <template:string>",
+    `可验题模板：${
+      PROBLEM_TEMPLATE_NAMES.join(" / ")
+    }（含参考解答，可直接 noj-cli problem test）`,
+  )
   .action(
     async (
       opts: {
         title?: string;
         difficulty?: string;
         dir?: string;
+        template?: string;
       },
       slug: string,
     ) => {
+      if (
+        opts.template !== undefined && !isProblemTemplateName(opts.template)
+      ) {
+        throw new ValidationError(
+          `--template 仅支持 ${PROBLEM_TEMPLATE_NAMES.join("/")}`,
+        );
+      }
       const result = await initProblem({
         slug,
         title: opts.title,
         difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
         root: opts.dir,
+        template: opts.template,
       });
       console.log(`已生成题目骨架：${result.dir}`);
       for (const file of result.files) {
         console.log(`  + ${file}`);
       }
       console.log(
-        `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
-          `deno task problems:build --id ${slug}`,
+        opts.template !== undefined
+          ? `\n下一步：运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+            `再按 README.md 的改造步骤改成你的题目`
+          : `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
+            `deno task problems:build --id ${slug}`,
       );
       if (opts.dir) {
         console.log(

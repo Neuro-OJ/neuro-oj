@@ -20,6 +20,7 @@ import os
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
@@ -123,6 +124,103 @@ def _default_model() -> Optional[str]:
     return None
 
 
+# 本地验题（`noj-cli problem test --llm-mock`）使用的离线网关地址前缀。
+# 生产网关地址只来自 noj-core 配置，恒为 http(s)，不会进入该分支。
+MOCK_GATEWAY_PREFIX = "mock://"
+
+
+def _message_text(message: dict[str, Any]) -> str:
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    return str(content)
+
+
+# mock 网关在本进程内累计的调用次数与 billed token（单次评测 = 单个 evaluator 进程）。
+_mock_usage = {"calls": 0, "tokens": 0}
+
+
+def _mock_budget(gateway_url: str) -> tuple[Optional[int], Optional[int]]:
+    """从 `mock://echo?max_calls=N&max_tokens=M` 解析题目声明的单次评测预算。"""
+    query = urllib.parse.urlsplit(gateway_url).query
+    params = urllib.parse.parse_qs(query)
+
+    def _int(name: str) -> Optional[int]:
+        values = params.get(name)
+        if not values:
+            return None
+        try:
+            value = int(values[0])
+        except ValueError:
+            return None
+        return value if value > 0 else None
+
+    return _int("max_calls"), _int("max_tokens")
+
+
+def _out_of_usage() -> LLMError:
+    # 与网关超限响应一致：429 + code=out_of_usage，不重试。
+    return LLMError(
+        "LLM gateway 返回 429: Out of usage for this evaluation（本地 mock 预算）",
+        status_code=429,
+        error_code="out_of_usage",
+    )
+
+
+def _mock_completion(
+    model: str, messages: list[dict[str, Any]], gateway_url: str = MOCK_GATEWAY_PREFIX
+) -> dict[str, Any]:
+    """离线回显：返回最后一条 user 消息原文，确定性、不联网、不计费。
+
+    只用于验证预算、capability 封装与结果解析链路，**不代表真实模型效果**。
+    与网关一致地拒绝不在 NOJ_LLM_ALLOWED_MODELS 内的别名，并按网关地址查询串
+    中的 max_calls / max_tokens 执行单次评测预算（超出返回 429 out_of_usage）。
+    """
+    allowed = [
+        m.strip()
+        for m in os.environ.get("NOJ_LLM_ALLOWED_MODELS", "").split(",")
+        if m.strip()
+    ]
+    if allowed and model not in allowed:
+        raise LLMError(
+            f"模型别名 {model} 不在允许列表内",
+            status_code=403,
+            error_code="model_not_allowed",
+        )
+    max_calls, max_tokens = _mock_budget(gateway_url)
+    if max_calls is not None and _mock_usage["calls"] >= max_calls:
+        raise _out_of_usage()
+    if max_tokens is not None and _mock_usage["tokens"] >= max_tokens:
+        raise _out_of_usage()
+    user_texts = [_message_text(m) for m in messages if m.get("role") == "user"]
+    content = user_texts[-1] if user_texts else ""
+    prompt_tokens = sum(len(_message_text(m)) for m in messages) // 4 + 1
+    completion_tokens = len(content) // 4 + 1
+    _mock_usage["calls"] += 1
+    _mock_usage["tokens"] += prompt_tokens + completion_tokens
+    return {
+        "id": "mock-completion",
+        "object": "chat.completion",
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
+
+
 def complete(
     model: Optional[str] = None,
     messages: Optional[list[dict[str, Any]]] = None,
@@ -151,6 +249,9 @@ def complete(
     model = model or _default_model()
     if not model:
         raise LLMError("model 未指定且 NOJ_LLM_ALLOWED_MODELS 为空")
+
+    if gateway_url.startswith(MOCK_GATEWAY_PREFIX):
+        return _mock_completion(model, messages, gateway_url)
 
     body: dict[str, Any] = {"model": model, "messages": messages}
     body.update(params)

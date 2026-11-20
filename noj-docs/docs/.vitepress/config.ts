@@ -201,6 +201,14 @@ export default withMermaid(defineConfig({
             },
             { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
             {
+              text: "本地验题（problem test）",
+              link: "/problemsetters/local-test",
+            },
+            {
+              text: "AI 辅助出题（Skill）",
+              link: "/problemsetters/ai-skill",
+            },
+            {
               text: "Web 题目编辑器全流程",
               link: "/problemsetters/web-editor",
             },
@@ -244,6 +252,14 @@ export default withMermaid(defineConfig({
               link: "/problemsetters/quick-start",
             },
             { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
+            {
+              text: "本地验题（problem test）",
+              link: "/problemsetters/local-test",
+            },
+            {
+              text: "AI 辅助出题（Skill）",
+              link: "/problemsetters/ai-skill",
+            },
             {
               text: "Web 题目编辑器全流程",
               link: "/problemsetters/web-editor",

@@ -11,6 +11,7 @@
 import {
   upgradeBundleManifest,
   validateBundleManifest,
+  validateObjectiveQuestions,
 } from "../../../noj-core/src/modules/problems/types/problem-bundle.ts";
 import {
   isOiRuntimeConfig,
@@ -188,6 +189,20 @@ export function lintBundle(files: BundleFiles): LintReport {
         message: "客观题套卷缺少 questions.json",
         file: "questions.json",
       });
+    } else {
+      // 与导入同一校验：字段名、选项与答案格式错误在本地即报出。
+      try {
+        validateObjectiveQuestions(
+          JSON.parse(files.texts["questions.json"] ?? ""),
+        );
+      } catch (err) {
+        findings.push({
+          level: "error",
+          rule: "must/questions-invalid",
+          message: `questions.json 不合法：${(err as Error).message}`,
+          file: "questions.json",
+        });
+      }
     }
   } else if (kind !== "oi" && !files.names.includes("evaluate.py")) {
     findings.push({

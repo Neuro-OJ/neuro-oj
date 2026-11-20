@@ -1,0 +1,6 @@
+{"id": "h1", "input": "{\"nums\": [5, 9, 2, 7]}", "expected": {"sum": 23, "max": 9}}
+{"id": "h2", "input": "{\"nums\": [100]}", "expected": {"sum": 100, "max": 100}}
+{"id": "h3", "input": "{\"nums\": []}", "expected": {"sum": 0, "max": null}}
+{"id": "h4", "input": "{\"nums\": [-8, -3, -12]}", "expected": {"sum": -23, "max": -3}}
+{"id": "h5", "input": "{\"nums\": [-1000000000, -999999999]}", "expected": {"sum": -1999999999, "max": -999999999}}
+{"id": "h6", "input": "{\"nums\": [-5]}", "expected": {"sum": -5, "max": -5}}

@@ -12,6 +12,7 @@
 
 ### 1. 快速上手与出题工具
 - [快速出一题（5 步极速路径）](quick-start.md)：新出题人必备，5 步完成一道题目的编写、打包与发布。
+- [AI 辅助出题（Skill）](ai-skill.md)：用 `noj-cli problem skill` 给 AI 编码助手装上出题 Skill，按模板 → 评测脚本 → 参考解答 → 本地验题的流程出题。
 - [Web 题目编辑器使用指南](web-editor.md)：题面 Markdown 编辑、时空限制配置、支持包上传与发布前一键预检。
 - [A+B 样例题完整拆解](ab-example.md)：最简单的函数题模版，包含标准 `evaluate.py` 与标程参考。
 

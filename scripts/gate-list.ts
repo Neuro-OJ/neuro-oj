@@ -166,6 +166,22 @@ export const REPO_GATES: Gate[] = [
   // fixture 逐字符锁定等价，否则「统一日志渲染」会静默漂移。
   { args: ["deno", "run", "-A", "scripts/check-log-parity.ts"] },
   { args: ["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"] },
+  // 出题模板嵌入（P0-2 B）：noj-cli 单二进制读不到仓库文件，模板以生成模块嵌入；
+  // 改了 noj-core/scripts/problem-templates/ 却没重新生成，两处 init 会发出旧模板。
+  {
+    args: [
+      "deno",
+      "run",
+      "-A",
+      "noj-core/scripts/gen-problem-templates.ts",
+      "--check",
+    ],
+  },
+  // AI 出题 Skill 嵌入（P0-2 C）：同理，改了 noj-cli/skills/ 却没重新生成，
+  // `noj-cli problem skill` 会写出旧版 Skill。
+  {
+    args: ["deno", "run", "-A", "noj-cli/src/problem/gen-skill.ts", "--check"],
+  },
   // 单文件规模棘轮：存量巨型文件不得继续变大，新文件超阈值直接失败（评审 §3.2）
   { args: ["deno", "run", "-A", "scripts/check-file-size.ts"] },
   // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）

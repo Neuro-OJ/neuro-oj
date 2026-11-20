@@ -165,6 +165,11 @@ fn task_memory_reservation(task: &types::JudgeTask) -> (u64, u64) {
 
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
+    // 本地验题子命令（出题人工具）：不连 Redis、不进入 Worker 主循环。
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.get(1).map(String::as_str) == Some(noj_judge::local::SUBCOMMAND) {
+        std::process::exit(noj_judge::local::main_with_args(&argv[2..]));
+    }
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
         // 契约化日志：布局/配色/分流见 noj_judge::logging 与
@@ -598,7 +603,7 @@ fn main() -> Result<()> {
                         // 根据 judge_type 分发到双容器或传统 OI 执行器。
                         let execution = judge::runner::evaluate_with_scheduler(
                             docker,
-                            redis_client.clone(),
+                            Some(redis_client.clone()),
                             &task,
                             download_timeout,
                             task_cache_dir.to_string_lossy().into_owned(),
