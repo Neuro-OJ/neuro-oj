@@ -182,6 +182,23 @@ pub struct Scheduler {
 }
 const TTL_MS: u64 = 60_000;
 
+/// 当前 Worker 持有的资源组容量配置已被重置或与 Redis `:config` 不一致，不可再准入新任务。
+#[derive(Debug, Clone, Copy)]
+pub struct GroupConfigMismatchError;
+
+impl std::fmt::Display for GroupConfigMismatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("资源组容量配置已被重置或与当前实例不一致，Worker 须停止准入并重建")
+    }
+}
+
+impl std::error::Error for GroupConfigMismatchError {}
+
+/// 判断错误是否源于资源组容量配置已被重置或变更。
+pub fn is_group_config_mismatch(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<GroupConfigMismatchError>().is_some()
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct Demand {
     kind: String,
@@ -194,6 +211,7 @@ struct Demand {
 // 父任务预留 base+headroom，阶段借用 headroom；并行阶段超出的部分才额外计入。
 // 这样已准入任务始终有完成一个阶段的内存，避免所有任务占着数据等待编译的死锁。
 const ACQUIRE: &str = r#"
+if redis.call('GET',KEYS[6])~=ARGV[3] then return -3 end
 local t=redis.call('TIME'); local now=t[1]*1000+math.floor(t[2]/1000)
 local demand=cjson.decode(ARGV[2]); local capacity=cjson.decode(ARGV[3]); local id=ARGV[1]
 local entries={}; local parents={}; local children={}; local used={}
@@ -269,7 +287,7 @@ impl Scheduler {
                     if not ok or not item.expires or item.expires>now then return 0 end
                 end
             end
-            redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6]); return 1
+            redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7]); return 1
         "#,
         )
         .key(&key)
@@ -277,6 +295,7 @@ impl Scheduler {
         .key(format!("{key}:config"))
         .key(format!("{key}:requests"))
         .key(format!("{key}:turns"))
+        .key(format!("{key}:turn-sequence"))
         .key(format!("{key}:sequence"))
         .invoke_async(&mut conn)
         .await?;
@@ -322,12 +341,16 @@ impl Scheduler {
             .key(format!("{}:turns", self.key))
             .key(format!("{}:turn-sequence", self.key))
             .key(format!("{}:rss", self.key))
+            .key(format!("{}:config", self.key))
             .arg(id)
             .arg(serde_json::to_string(demand)?)
             .arg(serde_json::to_string(&self.settings.capacities)?)
             .arg(TTL_MS)
             .invoke_async(&mut conn)
             .await?;
+        if result == -3 {
+            return Err(GroupConfigMismatchError.into());
+        }
         anyhow::ensure!(result != -2, "父任务资源租约已失效");
         Ok((result == 1).then(|| Lease::new(self.clone(), id.to_owned())))
     }
@@ -424,12 +447,16 @@ impl Lease {
             .key(format!("{}:turns", self.scheduler.key))
             .key(format!("{}:turn-sequence", self.scheduler.key))
             .key(format!("{}:rss", self.scheduler.key))
+            .key(format!("{}:config", self.scheduler.key))
             .arg(&self.id)
             .arg(serde_json::to_string(&demand)?)
             .arg(serde_json::to_string(&self.scheduler.settings.capacities)?)
             .arg(TTL_MS)
             .invoke_async(&mut conn)
             .await?;
+        if result == -3 {
+            return Err(GroupConfigMismatchError.into());
+        }
         Ok(result == 1)
     }
     pub async fn shrink_base(&self, memory_mb: u64) -> Result<()> {

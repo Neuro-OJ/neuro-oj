@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { safeAuthRedirect } from "~/utils/authRedirect"
 
 definePageMeta({ layout: "auth" })
 const route = useRoute()
-const { t, locale } = useI18n()
+const destination = computed(() => safeAuthRedirect(route.query.redirect))
+const { t } = useI18n()
 const auth = useAuth()
 const token = computed(() => typeof route.query.token === "string" ? route.query.token : "")
 const deliveryFailed = computed(() => route.query.sent === "0")
@@ -20,7 +22,7 @@ onMounted(async () => {
     await auth.verifyEmail(token.value)
     state.value = "success"
   } catch (cause: unknown) {
-    error.value = extractApiError(cause, locale.value).message
+    error.value = extractApiError(cause).message
     state.value = "error"
   }
 })
@@ -34,7 +36,7 @@ async function resendEmail() {
     resendResult.value = result.sent === false ? "failed" : "sent"
   } catch (cause: unknown) {
     resendResult.value = "failed"
-    error.value = extractApiError(cause, locale.value).message
+    error.value = extractApiError(cause).message
   } finally {
     resending.value = false
   }
@@ -61,7 +63,7 @@ async function resendEmail() {
         :loading="resending"
         @click="resendEmail"
       >{{ t('verify.resend') }}</UButton>
-      <UButton to="/" color="primary" :variant="state === 'waiting' && deliveryFailed ? 'outline' : 'solid'">{{ t('common.backHome') }}</UButton>
+      <UButton :to="destination" color="primary" :variant="state === 'waiting' && deliveryFailed ? 'outline' : 'solid'">{{ destination === '/' ? t('common.backHome') : '进入空间' }}</UButton>
     </div>
   </div>
 </template>

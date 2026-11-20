@@ -101,7 +101,7 @@ Deno.test("pruneBackups: 无参数时不删任何东西（安全默认）", asyn
   }
 });
 Deno.test("pruneBackups: 删除失败必须上报而非静默吞掉", async () => {
-  // 评审修正：早先 catch{} 让调用方看到「已删除 0 个」却 exit 0，
+  // 回归：早先 catch{} 让调用方看到「已删除 0 个」却 exit 0，
   // 传达「已清理」的假成功。删除失败必须出现在 failed[] 中。
   const dir = await Deno.makeTempDir();
   try {

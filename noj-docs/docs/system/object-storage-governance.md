@@ -1,6 +1,6 @@
 # 对象存储生命周期治理（Object Storage Governance）
 
-随着平台比赛频次与题目规模的增长，题目支持包、选手产物提交、用户头像与私信附件持续落盘。Neuro
+随着平台比赛频次与题目规模的增长，题目支持包、选手产物提交、用户头像等对象持续落盘。Neuro
 OJ
 建立了严谨的**只读对象盘点基线与对账治理机制**，旨在防止脏数据堆积，同时避免误删正在被引用的关键资产。
 
@@ -27,7 +27,7 @@ OJ
 | **题目纯净评测包** | `problems.support_package_storage_url` | `packages/<problem_id>.zip`                     | 仅在出题人更新题包或物理删除题目时由业务代码事务清理               |
 | **选手产物提交包** | `submissions.artifact_storage_url`     | `artifacts/<uuid>.zip`                          | **高频暂态对象**。评测完毕、任务超时或入队失败后由宿主异步物理回收 |
 | **用户自定义头像** | `users.avatar_url`                     | `avatar/<user_id>.<ext>`                        | 用户更换或移除头像时，在确认无多处引用的前提下清理历史版本         |
-| **站内私信图片**   | `messages.image_url`                   | `message-images/<conversation_id>/<uuid>.<ext>` | 私信单向软删除不触发物理对象删除，留存备查违规证据                 |
+| **站内私信图片**   | 无（私信已于 #698 下线）               | `message-images/<conversation_id>/<uuid>.<ext>` | 不再有引用，`storage:audit` 盘点时计为孤儿，人工复核后清理         |
 | **系统备份快照**   | 独立快照 Manifest（不在业务表）        | `backups/` 归档前缀                             | 遵照运营者灾备保留周期策略手动或归档脚本清理                       |
 
 ---

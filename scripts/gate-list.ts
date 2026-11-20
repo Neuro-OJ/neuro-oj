@@ -29,7 +29,11 @@ export interface Gate {
 
 /** 门禁自测文件（`deno test` 一次跑完，避免启动多次 Deno）。 */
 export const GATE_SELF_TESTS: string[] = [
-  "scripts/check-domains_test.ts",
+  // P3 结构门禁自测：解析器负例与生产严格结构门禁共同执行。
+  "scripts/check-module-boundaries_test.ts",
+  // 功能边界门禁自测（core 重构阶段 2.4）。
+  "scripts/check-feature-boundaries_test.ts",
+  "scripts/select-core-ci_test.ts",
   "scripts/check-metrics_test.ts",
   "scripts/check-runtime-contract_test.ts",
   "scripts/check-runbooks_test.ts",
@@ -38,15 +42,20 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-dashboards_test.ts",
   "scripts/check-migration-safety_test.ts",
   "scripts/check-migration-snapshot-chain_test.ts",
-  "scripts/verify-capability-seams_test.ts",
   "scripts/verify-compile-safe-imports_test.ts",
   "scripts/gen-route-catalog_test.ts",
   "scripts/silent-skip-report_test.ts",
   "scripts/check-file-size_test.ts",
   "scripts/check-write-rate-limits_test.ts",
+  // 旧无域比赛 API 下线门禁：写方法必须已退役 + 不允许新增生产调用方。
+  "scripts/check-legacy-api-removed_test.ts",
+  "scripts/check-dependency-audit_test.ts",
+  "scripts/check-upload-limits_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
   "scripts/check-version-consistency_test.ts",
+  // 发布阶段版本校验（0.11 RC）：标签基础版本必须等于清单基础版本。
+  "scripts/check-release-version_test.ts",
   "scripts/check-action-pins_test.ts",
   "scripts/check-prod-env-injection_test.ts",
   // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）。
@@ -58,8 +67,15 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/coverage-report_test.ts",
   // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
   "scripts/test-baseline_test.ts",
+  // 耗时基线必须只指向现存测试文件：曾长期保留 5 个已删除条目，分片计划照旧"有依据"。
+  "scripts/test-duration-baseline_test.ts",
+  // 测试性能基础设施（2026-11-03）：阶段计时与报告聚合是后续所有性能结论的
+  // 事实源，坏行/坏文件/缺失清单都必须有回归。
+  "scripts/lib/test-timing_test.ts",
+  "scripts/test-performance-report_test.ts",
+  // 本地 E2E 会话所有权：session/project/owner 不匹配必须拒绝清理。
+  "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
-  "scripts/verify-export-jsdoc_test.ts",
   "scripts/verify-agent-note-format_test.ts",
 ];
 
@@ -71,8 +87,6 @@ export const GATE_SELF_TESTS: string[] = [
 export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/verify-agent-note-format.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-md-links.ts"] },
-  { args: ["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"] },
-  { args: ["deno", "run", "-A", "scripts/verify-capability-seams.ts"] },
   // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制，
   // 编译期不报错、源码运行与单元测试全绿，只在生产容器里抛 Module not found
   //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
@@ -84,6 +98,16 @@ export const REPO_GATES: Gate[] = [
   {
     label: "E2E 启动脚本闸门（项目名隔离 + SDK 构建失败传播）",
     args: ["bash", "scripts/e2e/check-setup.sh"],
+  },
+  // 协调服务是 LLM 治理用例的同步屏障：单线程服务器、nonce 去重或 release
+  // 幂等任一回归都会让 Browser 用例死锁/假通过，必须在仓库门禁里跑契约检查。
+  {
+    label: "E2E 评测屏障协调服务契约检查",
+    args: ["python3", "-B", "scripts/e2e/check_test_coordinator.py"],
+  },
+  {
+    label: "E2E LLM Mock 只读接口契约检查",
+    args: ["python3", "-B", "scripts/e2e/check_llm_mock.py"],
   },
   // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
   {
@@ -108,9 +132,19 @@ export const REPO_GATES: Gate[] = [
       "scripts/deploy/verify-compose-server_test.ts",
     ],
   },
-  { args: ["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"] },
-  { args: ["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"] },
-  { args: ["deno", "run", "-A", "scripts/check-domains.ts"] },
+  {
+    label: "P3 模块边界严格门禁",
+    args: [
+      "deno",
+      "run",
+      "-A",
+      "scripts/check-module-boundaries.ts",
+      "--strict",
+    ],
+  },
+  // 功能边界（core 重构阶段 2.4）：功能只经对方 index.ts 互相引用、底座不依赖功能、
+  // 功能不深入旧模块内部、功能间无运行时循环。
+  { args: ["deno", "run", "-A", "scripts/check-feature-boundaries.ts"] },
   // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
   // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   { args: ["deno", "run", "-A", "scripts/check-migration-safety.ts"] },
@@ -118,6 +152,9 @@ export const REPO_GATES: Gate[] = [
   // CREATE TABLE，空库测试通过而**存量部署必失败**（2026-09-14 实测：search_entries
   // 自 0076 起从快照链消失，0082 因此生成了重复建表语句）。
   { args: ["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"] },
+  // 知识图谱官方内容包：加载并校验 data/knowledge-graph（ID 唯一、无悬挂、无环、考纲已声明）；
+  // 官方包随版本发布，内容损坏必须在 CI 拦截，而不是等到实例初始化时才发现。
+  { args: ["deno", "run", "-A", "scripts/check-knowledge-pack.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-metrics.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-runtime-contract.ts"] },
   { args: ["deno", "run", "-A", "scripts/check-runbooks.ts"] },
@@ -133,6 +170,11 @@ export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/check-file-size.ts"] },
   // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）
   { args: ["deno", "run", "-A", "scripts/check-write-rate-limits.ts"] },
+  // 旧无域比赛 API 下线门禁（0.11 RC）：写方法必须已退役，且第一方生产代码
+  // 不得再引用 `/api/v1/contests/*`（只保留只读兼容到 0.12）。
+  { args: ["deno", "run", "-A", "scripts/check-legacy-api-removed.ts"] },
+  { args: ["deno", "run", "-A", "scripts/check-dependency-audit.ts"] },
+  { args: ["deno", "run", "-A", "scripts/check-upload-limits.ts"] },
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
@@ -140,28 +182,21 @@ export const REPO_GATES: Gate[] = [
   // version，没有任何同步机制——实测 noj-tests 已漂移到 0.9.5，其余为 0.10.5，
   // 而页脚/构建身份/文档各取一处，无人察觉。只断言彼此一致，不绑定 Release 标签。
   { args: ["deno", "run", "-A", "scripts/check-version-consistency.ts"] },
+  // 发布阶段版本校验（2026-10-31，0.11 RC）：上一条只断言清单彼此一致、不绑定 Release
+  // 标签，于是"标签是 v0.11.0、清单还写 0.10.5"这种发布身份错位永远是绿的
+  // （0.10.6 之后 412 个提交零版本跃迁正是此状态）。本门禁在**未提供标签时跳过**，
+  // 只作发布流水线前置断言，本地 check-all 不会因此误报。
+  { args: ["deno", "run", "-A", "scripts/check-release-version.ts"] },
   // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
   // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
   { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },
   // 生产 env 注入一致性（2026-10-04）：compose 无 env_file，.env.prod.example 声明却未插值的
   // 变量静默无效——实测邮件凭据未注入导致启用邮件即 core 启动失败、G-03 白名单无法放行。
   { args: ["deno", "run", "-A", "scripts/check-prod-env-injection.ts"] },
-  // schema-ddl.ts（PGlite 测试用手工 SQL 镜像）与 Drizzle schema 的表/列一致性
-  //（2026-09-12 评审 §3.3）。脚本置于 noj-core 下以便解析其导入映射。
-  {
-    args: ["deno", "run", "-A", "scripts/check-schema-parity.ts"],
-    cwd: "noj-core",
-  },
-  {
-    args: ["deno", "test", "-A", "scripts/check-schema-parity_test.ts"],
-    cwd: "noj-core",
-  },
   // T24：被删脚本的测试（test-deploy/test-backup/test-restore-drill/
   // test-monitoring 等）随之移除——它们测的是已删除的 bash 实现，
   // 其行为覆盖已由 noj-cli 的 TS 测试承接（prod/*_test.ts）。
-  // 取而代之的是**弃用闸门**测试：过渡期保留的 deploy.sh/restore-drill.sh
-  // 必须继续受 R2 闸门保护（警告 + y 确认 + 非 TTY 不挂起 + 零副作用）。
-  { args: ["bash", "scripts/deploy/test-deprecation-gate.sh"] },
+  // Bash 部署脚本与弃用闸门已删除，生产行为由 noj-cli 的 TS 测试覆盖。
   { args: ["deno", "test", "-A", ...GATE_SELF_TESTS] },
 ];
 

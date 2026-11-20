@@ -39,10 +39,20 @@ export function useBanStatus() {
   const user = useState<{ id: string; role: string } | null>('ban:user', () => null);
   const loading = useState<boolean>('ban:loading', () => true);
   const error = useState<string>('ban:error', () => '');
-
   let fetched = false;
 
-  async function fetch(): Promise<BanStatusResponse | null> {
+  async function fetch(force = true): Promise<BanStatusResponse | null> {
+    if (!force && fetched) {
+      loading.value = false;
+      return {
+        ip_banned: ipBanned.value,
+        ip_ban_info: ipBanInfo.value,
+        user_banned: userBanned.value,
+        user_ban_info: userBanInfo.value,
+        authenticated: authenticated.value,
+        user: user.value,
+      };
+    }
     // 客户端每次调用都重新请求，避免 SSR 填充的封禁状态在解封/封禁后不刷新
     if (fetched && import.meta.server) return null;
     loading.value = true;

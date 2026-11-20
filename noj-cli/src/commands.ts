@@ -1,16 +1,11 @@
 /**
- * noj-cli 命令树的**单一事实源**（Task 7）。
+ * noj-cli 命令表：**唯一事实源**。
  *
- * 背景：命令清单此前同时维护在 `help.ts` 的分区常量与 `cli.ts` 的多处手写
- * 文案里，已实测漂移——`noj-cli backup --help` 漏列 `list`/`prune`（真实能力），
- * 根因正是同一份清单有 4 个副本。本模块把**顶层命令及其子命令**收敛为唯一
- * 声明（以 `cli.ts` 的分发代码为准，而非以旧 help 文案为准），
- * `cli.ts` 的 `printHelp()` 改为渲染本模块。
- *
- * 防漂移门禁见 `commands_test.ts`：它把本模块声明的顶层命令与
- * `cli.ts:dispatchableTopLevelNames()`（从 dispatcher 自身逻辑提取）比对，
- * 而非与第二份手写清单比对。
+ * 顶层 help、生产命令集合、Tier 3 容器路由与拼写建议全部由 {@link COMMANDS}
+ * 推导，新增命令只需在此登记一处。
  */
+
+import { displayWidth, renderTable } from "./output/render.ts";
 
 /** 命令所属分区；决定顶层 help 的展示分组。 */
 export type Tier = "prod" | "problem" | "tier3" | "global";
@@ -21,17 +16,22 @@ export interface CommandSpec {
   name: string;
   /** 一句话说明。 */
   summary: string;
-  /** 别名（可接受的等价名，用于 help 标注）。 */
+  /** 别名（可接受的等价名，用于 help 标注与分发）。 */
   aliases?: string[];
-  /**
-   * 所属分区。
-   *
-   * 子命令沿用父级分区：分区只用于顶层 help 的分组渲染，
-   * 子命令随父级出现在同一分区。
-   */
-  tier: Tier;
   /** 子命令（可多级）。 */
   subcommands?: CommandSpec[];
+  /**
+   * 是否在 core 容器内执行（Tier 3）。`tier3` 分区的顶层命令隐含为真；
+   * 其他分区的个别子命令（如 `problem build`）显式声明。
+   */
+  container?: boolean;
+  /** Tier 3 以 `--no-deps` 执行（只访问已运行 core 的内部 API，如 maintain）。 */
+  noDeps?: boolean;
+}
+
+/** 顶层命令：额外声明所属分区（决定 help 分组与分发路径）。 */
+export interface TopCommandSpec extends CommandSpec {
+  tier: Tier;
 }
 
 /** 命令表每行的缩进宽度（缩进计入 `maxWidth` 预算）。 */
@@ -98,17 +98,9 @@ export const EXIT_CODES: ReadonlyArray<{ code: number; meaning: string }> = [
   { code: 2, meaning: "用法错误（参数非法、缺少必需参数、未知命令）" },
 ];
 
-/**
- * 顶层命令与子命令声明。
- *
- * 逐条核对自 `cli.ts` 的实际分发：`PRODUCTION_COMMANDS`、
- * `dispatchCommand` 的 `switch (command)` 分支、`problem`/`problems`/
- * `stack` 特判，以及 `container.ts` 的 Tier 3 前缀路由。
- */
-import { displayWidth, renderTable } from "./output/render.ts";
-
-export const COMMANDS: readonly CommandSpec[] = [
-  // ── 生产模式（PRODUCTION_COMMANDS）──
+/** 顶层命令与子命令声明（分发路径由 `tier`/`container` 决定）。 */
+export const COMMANDS: readonly TopCommandSpec[] = [
+  // ── 生产模式 ──
   {
     name: "install",
     tier: "prod",
@@ -132,75 +124,65 @@ export const COMMANDS: readonly CommandSpec[] = [
     name: "update",
     tier: "prod",
     aliases: ["upgrade"],
-    summary: "同步部署文件、备份并升级生产服务",
+    summary: "同步部署文件、备份并升级生产服务（中断后用 --recover）",
   },
   {
     name: "backup",
     tier: "prod",
     summary: "生产备份；子命令如下（list/prune 支持 --json）",
     subcommands: [
-      { name: "create", tier: "prod", summary: "创建完整生产备份快照" },
-      { name: "verify", tier: "prod", summary: "校验快照完整性（<snapshot>）" },
+      { name: "create", summary: "创建完整生产备份快照" },
+      { name: "verify", summary: "校验快照完整性（<snapshot>）" },
       {
         name: "restore",
-        tier: "prod",
         summary: "恢复到已停止的 Compose 环境（需 --confirm）",
       },
       {
         name: "drill",
-        tier: "prod",
         summary: "隔离环境真实恢复演练（分钟级、需 Docker）",
       },
-      { name: "list", tier: "prod", summary: "列出备份（支持 --json）" },
+      { name: "list", summary: "列出备份（支持 --json）" },
       {
         name: "prune",
-        tier: "prod",
         summary: "清理过期备份（默认 dry-run，--confirm 才真正删除）",
       },
       {
         name: "schedule",
-        tier: "prod",
         summary: "安装/查看/删除定期备份 cron 任务",
       },
     ],
   },
   {
-    // T26：独立 Judge Worker 部署入口（对应已删除的 judge-install.sh）。
-    // 子命令与 bash `judge-install.sh usage()` 逐项对应。
+    // 独立 Judge Worker 部署入口。
     name: "judge",
     tier: "prod",
     summary: "独立 Judge Worker 部署（需专用 rootless Docker socket）",
     subcommands: [
       {
         name: "install-env",
-        tier: "prod",
         summary: "检查依赖并输出 rootless 准备指引",
       },
       {
-        name: "calibrate",
-        tier: "prod",
-        summary: "根据可信基准留出集拟合并导出 WASM 成本表",
-      },
-      {
         name: "install",
-        tier: "prod",
         summary:
           "首次配置并启动独立 Judge（--redis-mode local 可创建仅绑定回环的本机 Redis）",
       },
       {
         name: "check",
-        tier: "prod",
         summary: "检查配置 / Redis / 专用 socket / 镜像架构",
       },
-      { name: "start", tier: "prod", summary: "启动 Judge（保留现有容器）" },
+      { name: "start", summary: "启动 Judge（保留现有容器）" },
       {
         name: "stop",
-        tier: "prod",
         summary: "停止 Judge（保留配置与 Redis 任务）",
       },
-      { name: "status", tier: "prod", summary: "查看状态与脱敏配置摘要" },
-      { name: "logs", tier: "prod", summary: "查看日志（--follow 实时跟随）" },
-      { name: "upgrade", tier: "prod", summary: "升级 Judge 镜像" },
+      { name: "status", summary: "查看状态与脱敏配置摘要" },
+      { name: "logs", summary: "查看日志（--follow 实时跟随）" },
+      { name: "upgrade", summary: "升级 Judge 镜像" },
+      {
+        name: "reset-config",
+        summary: "排空后重置资源组容量锁（可同时更新并发并重建）",
+      },
     ],
   },
   {
@@ -224,39 +206,42 @@ export const COMMANDS: readonly CommandSpec[] = [
     name: "problem",
     tier: "problem",
     aliases: ["problems"],
-    summary: "题目包管理（离线 init/lint/pack；build/import 经 Tier 3 容器）",
+    summary:
+      "题目包管理（离线 init/lint/pack/migrate；build/import 经 Tier 3 容器）",
     subcommands: [
       {
         name: "init",
-        tier: "problem",
         summary: "生成题目骨架（TTY 下为交互式引导）",
       },
       {
         name: "lint",
-        tier: "problem",
         summary: "校验题目包（MUST/SHOULD 两级）",
       },
-      { name: "pack", tier: "problem", summary: "打包为可导入的题目包 ZIP" },
+      { name: "pack", summary: "打包为可导入的题目包 ZIP" },
+      {
+        name: "migrate",
+        summary: "将 problem.json 升级为当前格式（原地改写）",
+      },
       {
         name: "build",
-        tier: "problem",
+        container: true,
         summary: "构建题目包（Tier 3，需生产安装目录）",
       },
       {
         name: "import",
-        tier: "problem",
+        container: true,
         summary: "导入题目包（Tier 3，需生产安装目录）",
       },
     ],
   },
 
-  // ── Tier 3 服务端管理（container.ts 前缀路由）──
+  // ── Tier 3 服务端管理（整组在 core 容器内执行）──
   {
     name: "db",
     tier: "tier3",
     summary: "数据库维护",
     subcommands: [
-      { name: "migrate", tier: "tier3", summary: "执行数据库迁移" },
+      { name: "migrate", summary: "执行数据库迁移" },
     ],
   },
   {
@@ -264,7 +249,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     tier: "tier3",
     summary: "初始化系统",
     subcommands: [
-      { name: "system", tier: "tier3", summary: "初始化系统基础数据" },
+      { name: "system", summary: "初始化系统基础数据" },
     ],
   },
   {
@@ -272,7 +257,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     tier: "tier3",
     summary: "引导初始化",
     subcommands: [
-      { name: "first-admin", tier: "tier3", summary: "创建首个管理员" },
+      { name: "first-admin", summary: "创建首个管理员" },
     ],
   },
   {
@@ -280,20 +265,32 @@ export const COMMANDS: readonly CommandSpec[] = [
     tier: "tier3",
     summary: "搜索索引维护",
     subcommands: [
-      { name: "reindex", tier: "tier3", summary: "全量重建搜索索引" },
+      { name: "reindex", summary: "全量重建搜索索引" },
+    ],
+  },
+  {
+    // P1d：维护模式/排空（update 自动排空的执行通道；也可人工干预）。
+    name: "maintain",
+    tier: "tier3",
+    noDeps: true,
+    summary: "维护模式与排空（update 自动 enter/wait/exit）",
+    subcommands: [
+      { name: "enter", summary: "进入维护模式（幂等）" },
+      { name: "status", summary: "查看排空状态与阻塞项" },
+      { name: "wait", summary: "等待排空完成（默认 1800s）" },
+      { name: "exit", summary: "退出维护模式（幂等）" },
     ],
   },
 
   // ── 全局命令与选项 ──
-  // `version` 是可分发命令（`dispatchCommand` 的 `case "version"`），且与部署
-  // 模式无关；它与 `--version`/`-v` 等价，故与全局选项同区展示。
+  // `version` 与 `--version`/`-v` 等价，故与全局选项同区展示。
   {
     name: "version",
     tier: "global",
     aliases: ["--version", "-v"],
     summary: "显示版本",
   },
-  // 以下三项由 run() 前置处理，不是可分发命令（declaredTopLevelNames 已排除）
+  // 以下为全局选项，由 run() 前置处理，不是命令
   {
     name: "--help",
     tier: "global",
@@ -311,31 +308,51 @@ export const COMMANDS: readonly CommandSpec[] = [
     tier: "global",
     summary: "错误时打印完整栈帧（排查用；亦可设 NOJ_CLI_DEBUG=1）",
   },
-  {
-    // T23 收敛为单模态后只剩 `prod`。**这里必须与实现同步**：旧的
-    // `<prod|stack>` 会让用户照 help 传 `--profile stack`，然后被拒绝——
-    // help 承诺一个实现不接受的取值，是最容易误导人的一类漂移。
-    name: "--profile <prod>",
-    tier: "global",
-    summary: "显式确认部署模式（仅 prod）；缺省按目录特征自动探测",
-  },
 ];
 
-/**
- * 顶层命令名集合（不含别名，也不含 `-` 开头的全局选项）。
- *
- * 这是防漂移门禁的左侧：`commands_test.ts` 断言它 ⊆
- * `cli.ts:dispatchableTopLevelNames()`（从 dispatcher 自身逻辑提取），
- * 因此新增 help 命令却未实现、或删除实现却未清理 help，都会立刻变红。
- */
-export function declaredTopLevelNames(): Set<string> {
-  const names = new Set<string>();
-  for (const cmd of COMMANDS) {
-    if (cmd.name.startsWith("-")) continue;
-    names.add(cmd.name);
-  }
-  return names;
+function namesOf(cmd: CommandSpec): string[] {
+  return [cmd.name, ...(cmd.aliases ?? [])];
 }
+
+/** 生产命令（含别名）：分发到 `dispatchProduction`。 */
+export const PRODUCTION_COMMANDS: ReadonlySet<string> = new Set(
+  COMMANDS.filter((c) => c.tier === "prod").flatMap(namesOf),
+);
+
+/** 全部可识别的顶层命令名（含别名，不含 `-` 开头的全局选项）；用于拼写建议。 */
+export const KNOWN_TOP: ReadonlySet<string> = new Set(
+  COMMANDS.flatMap(namesOf).filter((n) => !n.startsWith("-")),
+);
+
+/** 一条 Tier 3 容器路由。 */
+export interface ContainerRoute {
+  /** 命中的参数前缀（顶层名或别名 + 可选子命令名）。 */
+  prefix: readonly string[];
+  /** 以 `--no-deps` 执行。 */
+  noDeps: boolean;
+}
+
+/**
+ * Tier 3 容器路由表（按前缀长度降序，最长前缀优先）。
+ *
+ * `tier3` 分区的顶层命令连同其子命令整组路由（裸顶层名交由容器内 CLI 打印用法）；
+ * 其他分区只路由显式声明 `container: true` 的子命令。
+ */
+export const CONTAINER_ROUTES: readonly ContainerRoute[] = COMMANDS
+  .flatMap((top) =>
+    namesOf(top).flatMap((name) => {
+      const noDeps = top.noDeps === true;
+      const all = top.tier === "tier3";
+      const routes: ContainerRoute[] = all ? [{ prefix: [name], noDeps }] : [];
+      for (const sub of top.subcommands ?? []) {
+        if (all || sub.container === true) {
+          routes.push({ prefix: [name, sub.name], noDeps });
+        }
+      }
+      return routes;
+    })
+  )
+  .sort((a, b) => b.prefix.length - a.prefix.length);
 
 /**
  * 按名查找命令：先匹配顶层，再递归匹配任意层级的子命令；均支持别名。
@@ -389,7 +406,7 @@ function flatten(cmd: CommandSpec, prefix = ""): RenderRow[] {
  * 输出按 {@link Tier} 分区；每个分区内，顶层命令与其子命令逐行展开，
  * 使 `backup list` 这类真实能力可直接从顶层 help 发现（本任务修复的漂移）。
  *
- * ## 窄终端（T26）
+ * ## 窄终端
  *
  * 传入 `maxWidth`（通常为 `COLUMNS`）时，每个分区的命令表经
  * {@link renderTable} 的宽度约束渲染：先均摊收缩最宽列、超宽以 `…` 截断、

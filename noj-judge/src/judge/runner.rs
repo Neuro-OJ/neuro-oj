@@ -373,10 +373,12 @@ mod tests {
         JudgeTask {
             scheduling_version: None,
             resource_pool: None,
+            task_kind: None,
             run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
+            self_test_run_id: None,
             submission_id: "sid-support-fail".to_string(),
             problem_id: "1001".to_string(),
             user_id: "u-1".to_string(),

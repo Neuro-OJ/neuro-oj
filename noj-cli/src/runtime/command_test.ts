@@ -83,3 +83,16 @@ Deno.test("realRunner.stream: 子进程大量 stderr 输出不会死锁", async 
   );
   assertEquals(lines.includes("done"), true);
 });
+
+Deno.test("realRunner.run: 超时后终止子进程并返回 124（无句柄泄漏）", async () => {
+  const started = Date.now();
+  const out = await realRunner().run("sleep", ["10"], { timeoutMs: 100 });
+  const elapsed = Date.now() - started;
+  assertEquals(out.code, 124);
+  assertEquals(out.stderr, "command timed out");
+  assertEquals(
+    elapsed < 3000,
+    true,
+    `应在 timeoutMs 后迅速返回，实得 ${elapsed}ms`,
+  );
+});

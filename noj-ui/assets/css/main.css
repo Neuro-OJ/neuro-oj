@@ -5,10 +5,18 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ----
- * inline 让工具类在使用处读取 --c-*，跟随 .editor-dark 的局部主题。
- * 普通 @theme 会在 :root 提前解析别名，造成编辑器白底与 Markdown 浅字混用。
- */
+/* 赛题保护仅标记元数据，条纹之外保留文字说明以便辨认。 */
+.contest-protected {
+  background: repeating-linear-gradient(135deg, #f3f4f6 0 8px, #e5e7eb 8px 16px);
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+.dark .contest-protected {
+  background: repeating-linear-gradient(135deg, #27272a 0 8px, #3f3f46 8px 16px);
+}
+
+/* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
+/* 在使用位置解析语义颜色，才能继承编辑器局部的 --c-* 明暗变量。 */
 @theme inline {
   /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
@@ -50,6 +58,7 @@
   --color-text-on-color: var(--c-text-on-color);
   --color-bg-page: var(--c-bg-page);
   --color-bg-panel: var(--c-bg-panel);
+  --color-bg-card: var(--c-bg-card);
   --color-bg-sunken: var(--c-bg-sunken);
   --color-bg-dark: var(--c-bg-dark);
   --color-bg-dark-2: var(--c-bg-dark-2);
@@ -156,6 +165,14 @@
   box-shadow: 0 1px 3px rgba(194, 65, 12, 0.1);
 }
 
+/* ---- 独立卡片专用立体感（白色专用面板底，彻底与浅蓝页面底分离） ---- */
+@utility card-elevated {
+  background-color: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
 /* ---- 无障碍：键盘焦点可见（WCAG 2.4.7）----
  * 自定义链接/按钮无 focus-visible 样式类时，由浏览器默认 outline 兜底；
  * 此处统一为品牌天青蓝焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
@@ -194,7 +211,8 @@
 }
 
 /* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
-:root {
+:root,
+.editor-dark {
   /* Nuxt UI primary 使用品牌天青蓝（Sky 600）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
   --ui-color-primary-50: #f0f9ff;
@@ -221,9 +239,9 @@
   --ui-color-success-900: #064e3b;
   --ui-color-success-950: #022c22;
   --ui-radius: var(--radius);
-  --ui-bg: var(--c-bg-page);
-  --ui-bg-muted: var(--c-bg-panel);
-  --ui-bg-elevated: var(--c-bg-sunken);
+  --ui-bg: var(--c-bg-panel);
+  --ui-bg-muted: var(--c-bg-sunken);
+  --ui-bg-elevated: var(--c-bg-panel);
   --ui-border: var(--c-border);
   --ui-border-accented: var(--c-border);
   --ui-text: var(--c-text);
@@ -231,6 +249,10 @@
   --ui-text-dimmed: var(--c-text-muted);
   --ui-text-toned: var(--c-text-secondary);
   --ui-text-highlighted: var(--c-text);
+}
+
+.editor-dark {
+  --ui-text-inverted: var(--c-bg-page);
 }
 
 /* ---- @tailwindcss/typography 插件（Tailwind v4 通过 @plugin 加载） ---- */

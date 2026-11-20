@@ -60,6 +60,9 @@ docker-data/
 
 # --- Staging 验收产物 ---
 /artifacts/staging/
+/noj-tests/test-results/
+# 测试性能计时/运行清单/JUnit（test-baseline 与 noj-tests 启动器产物）
+/test-results/
 
 # --- AI 工具本地配置（AGENTS.md §7.1：不提交 AI 工具配置） ---
 .commandcode/
@@ -116,3 +119,10 @@ dev-docs/review-snapshots/
 
 # --- 安全扫描本地产物（security.yml 与 CONTRIBUTING.md 的本地复现命令） ---
 .security/
+
+# 蜂群模式任务批次（本地开发辅助）
+.swarm/
+
+# 路由/事件目录：按需本地生成，不提交
+/dev-docs/engineering/route-catalog.md
+/dev-docs/engineering/event-catalog.md

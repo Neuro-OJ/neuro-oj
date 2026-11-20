@@ -1,17 +1,8 @@
 /**
- * 隔离恢复演练的编排（T19）。
+ * 隔离恢复演练的编排。
  *
- * 迁移 `scripts/deploy/restore-drill.sh` 的 `main()`（:576-605）与
- * `restore_data_services()`（:340-376）、`verify_data()`（:377-424）、
- * `seed_drill_admin()`（:425-447）、`start_business_services()`（:448-466）、
- * `ensure_judge_images()`（:467-480）、`run_business_verification()`（:481-501）、
- * `on_exit()`（:165-186）。
+ * ## 本模块**零** shell / 脚本调用
  *
- * ## R1：本模块**零** bash / 脚本调用
- *
- * 原实现是 `restore-drill.sh` 的薄包装（`maintain/drill.ts` 的
- * `new Deno.Command("bash", …)`），且业务验收要在额外容器里跑
- * `deno run restore-drill-verify.ts`。移植后：
  * - 恢复序列全部经注入的 `CommandRunner` 发 `docker compose …`；
  * - 业务验收由 CLI 直接发 HTTP（见 `verify.ts`），经容器 IP 访问隔离网络。
  *
@@ -31,16 +22,14 @@
  *
  * ## 二进制与转储的搬运
  *
- * `postgres.dump` / `redis.rdb` 一律经**文件重定向**（T17 `driver.ts` 的
+ * `postgres.dump` / `redis.rdb` 一律经**文件重定向**（`driver.ts` 的
  * `feedFromFile`/`captureToFile` 语义），不经 stdout 字符串——理由见该模块头。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2）：状态全在一次运行对象里。
  */
 
 import { join } from "@std/path";
-import type { CommandRunner } from "../../runtime/command.ts";
-import { restoreDataServices as sharedRestoreDataServices } from "../backup/data_restore.ts";
-import { makeIdempotentGlobals } from "../backup/globals.ts";
+import { type CommandRunner } from "../../runtime/command.ts";
 import {
   type ContainerPayloadOps,
   unpackContainer,
@@ -48,45 +37,49 @@ import {
 import { UsageError } from "../../util/args.ts";
 import {
   allocateDrillDir,
+  assertDedicatedDockerHost,
   assertDrillProjectName,
   assertSubnetCidr,
   checkDrillPreflight,
   checkPassphraseFile,
-  DEFAULT_DRILL_PROJECT_NAME,
-  DEFAULT_DRILL_SUBNET,
-  DEFAULT_EVALUATOR_IMAGE,
   DEFAULT_RPO_MAX_HOURS,
   DEFAULT_RTO_MAX_MINUTES,
-  DEFAULT_SOLUTION_IMAGE,
   DEFAULT_WAIT_TIMEOUT,
-  DRILL_ADMIN_EMAIL_DOMAIN,
-  DRILL_ADMIN_USER,
-  DRILL_BCRYPT_HASH,
-  drillCleanupArgs,
-  drillComposeArgs,
-  isFile,
   probeDocker,
   probeFreeBytes,
-  readEnvValues,
   renderDrillOverride,
   resolveReportPath,
-  valueOr,
+  uniqueDrillProjectName,
+  uniqueDrillSubnet,
 } from "./plan.ts";
+import { renderSeedDrillAdminSql } from "./seed-admin-sql.ts";
 import {
   type ChecksInput,
-  DRILL_METRICS_FILE,
   formatHours,
   hoursSinceSnapshot,
-  METRIC_LAST_SUCCESS,
-  metricsDirOf,
-  renderChecks,
-  renderDrillMetrics,
-  renderFailureReport,
-  renderReport,
-  REPORT_FILE_NAME,
   snapshotCreatedAt,
 } from "./report.ts";
+import { resolveCoreBaseUrl } from "./network.ts";
+import { withDockerHost } from "./runtime.ts";
 import { runBusinessVerification } from "./verify.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
+import {
+  dockerBinOf,
+  type DrillContext,
+  drillTarget,
+  restoreDataServices,
+  runDrillSql,
+  startBusinessServices,
+  verifyData,
+} from "./stack.ts";
+import {
+  cleanupStaging,
+  downDrillStack,
+  failAndCleanup,
+  readTextOr,
+  writeMetrics,
+  writeReport,
+} from "./finish.ts";
 
 /** {@link runDrill} 的注入点：一切外部访问都可替换。 */
 export interface DrillRunOptions {
@@ -100,9 +93,9 @@ export interface DrillRunOptions {
   ops?: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
   /** 口令文件。 */
   passphraseFile?: string;
-  /** 演练项目名（缺省 `noj-drill`）。 */
+  /** 演练项目名（缺省每次唯一生成；测试可显式指定）。 */
   projectName?: string;
-  /** 演练子网（缺省 `172.29.0.0/16`）。 */
+  /** 演练子网（缺省每次唯一生成；测试可显式指定）。 */
   subnet?: string;
   /** 演练目录（缺省快照同级的 `drill-<ts>`）。 */
   drillDir?: string;
@@ -135,10 +128,12 @@ export interface DrillRunOptions {
   }>;
   /** docker 可执行名（`NOJ_BACKUP_DOCKER_BIN`）。 */
   dockerBin?: string;
+  /** 专用隔离 Docker daemon 的 Unix socket（生产演练必填）。 */
+  dockerHost?: string;
   /**
    * 快照是否加密（缺省 `true`，对应 `backup create` 的默认行为）。
    *
-   * `backup create --no-encrypt` 的产物必须也能演练（评审发现）：
+   * `backup create --no-encrypt` 的产物必须也能演练：
    * 此前 drill 无条件按加密解包，不加密的快照会在 `gpg --decrypt` 处失败，
    * 于是"不加密"这条受支持的路径无法做恢复验收。
    */
@@ -169,48 +164,31 @@ export interface DrillRunResult {
   checks: ChecksInput | null;
 }
 
-/** 演练的隔离运行期上下文（compose 参数与路径都从这里派生）。 */
-interface DrillContext {
-  projectName: string;
-  subnet: string;
-  dir: string;
-  snapshot: string;
-  staging: string;
-  drillDir: string;
-  tempDir: string;
-  composeFile: string;
-  composeEnvFile: string;
-  overrideFile: string;
-  reportPath: string;
-  env: Record<string, string>;
-  judge: boolean;
-}
-
 /**
  * 执行隔离恢复演练。
  *
- * 流程（阶段名与 bash `STAGE` 逐条对应，用于失败报告定位）：
+ * 流程（阶段名用于失败报告定位）：
  * `preflight`（参数/资源/快照校验，**零 compose 调用**）→ `prepare`（目录、解密 env、
  * 覆盖文件）→ `restore-data` → `verify-data` → `seed-admin` → `start-business`
  * → `business-verify` → `report`。
  *
- * **前置失败返回 2 且不写报告**（bash 同样在 preflight 不写）；其余失败写失败
+ * **前置失败返回 2 且不写报告**；其余失败写失败
  * 报告、清理资源、返回 1。
  */
 export async function runDrill(
   opts: DrillRunOptions,
 ): Promise<DrillRunResult> {
-  const runner = opts.runner;
   const log = opts.log ?? (() => {});
   const now = opts.now ?? (() => new Date());
   const dockerBin = opts.dockerBin ?? "docker";
-  const projectName = opts.projectName ?? DEFAULT_DRILL_PROJECT_NAME;
-  const subnet = opts.subnet ?? DEFAULT_DRILL_SUBNET;
+  const projectName = opts.projectName ?? uniqueDrillProjectName(now());
+  const subnet = opts.subnet ?? uniqueDrillSubnet();
   const rpoMaxHours = opts.rpoMaxHours ?? DEFAULT_RPO_MAX_HOURS;
   const rtoMaxMinutes = opts.rtoMaxMinutes ?? DEFAULT_RTO_MAX_MINUTES;
   const waitTimeout = opts.waitTimeout ?? DEFAULT_WAIT_TIMEOUT;
   const judge = opts.skipJudge !== true;
   const keep = opts.keep === true;
+  const dockerHost = opts.dockerHost;
 
   // ---- 参数校验：**最先**（纯参数错误不应被资源错误掩盖）----
   try {
@@ -226,9 +204,19 @@ export async function runDrill(
         "必须提供 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE",
       );
     }
+    if (dockerHost === undefined || dockerHost.trim() === "") {
+      throw new UsageError(
+        "必须提供 --docker-host 或 NOJ_DRILL_DOCKER_HOST（专用隔离 Docker daemon）",
+      );
+    }
+    assertDedicatedDockerHost(dockerHost);
   } catch (err) {
     return preflightFailure(err);
   }
+
+  // Docker CLI、Compose 以及 docker inspect 必须共享同一专用 daemon。
+  // 强制覆盖调用方遗留的 DOCKER_HOST，避免某一步意外回到宿主机 daemon。
+  const runner = withDockerHost(opts.runner, dockerHost);
 
   // ---- 解包快照（在资源检查之前：损坏的快照不该先起容器）----
   let staged: { staging: string; tempRoot: string };
@@ -258,7 +246,7 @@ export async function runDrill(
   try {
     // ---- preflight（资源 + 口令 + 环境文件；全部在起容器之前）----
     await checkPassphraseFile(opts.passphraseFile!);
-    ctx.env = await readEnvValues(join(opts.dir, ".env.prod"));
+    ctx.env = await readEnvValuesOrEmpty(join(opts.dir, ".env.prod"));
     await checkDrillPreflight({
       staging: ctx.staging,
       dir: opts.dir,
@@ -299,13 +287,21 @@ export async function runDrill(
   try {
     // ---- restore-data ----
     const restoreStart = now().getTime();
-    await restoreDataServices(opts, ctx, runner, dockerBin, waitTimeout, log);
+    await restoreDataServices(ctx, runner, dockerBin, waitTimeout, log);
     // ---- verify-data ----
     checks = await verifyData(ctx, runner, dockerBin, log);
     restoreSeconds = Math.round((now().getTime() - restoreStart) / 1000);
 
     // ---- seed-admin + start-business ----
-    await seedDrillAdmin(ctx, runner, dockerBin, now);
+    await runDrillSql(
+      ctx,
+      runner,
+      dockerBin,
+      renderSeedDrillAdminSql(
+        now().toISOString().replace(/\.\d{3}Z$/, ".000Z"),
+      ),
+      "写入演练管理员失败",
+    );
     const judgeImages = await startBusinessServices(
       ctx,
       runner,
@@ -383,7 +379,7 @@ export async function runDrill(
   // ---- 清理（成功路径；失败路径由 failAndCleanup 负责）----
   if (!keep) {
     await downDrillStack(ctx, runner, dockerBin);
-    await removeQuietly(ctx.drillDir);
+    await Deno.remove(ctx.drillDir, { recursive: true });
   }
 
   // 指标**只在成功且 RPO/RTO 达标时**写：告警语义是"最近一次成功距今多久"，
@@ -412,7 +408,7 @@ export async function runDrill(
   };
 }
 
-/** 前置失败（退出码 2，**零 compose 调用**、不写报告——bash preflight 同样不写）。 */
+/** 前置失败（退出码 2，**零 compose 调用**、不写报告）。 */
 function preflightFailure(err: unknown): DrillRunResult {
   return {
     pass: false,
@@ -424,14 +420,14 @@ function preflightFailure(err: unknown): DrillRunResult {
   };
 }
 
-/** 非负整数校验（bash :277 的 `[[ =~ ^[0-9]+$ ]]`）。 */
+/** 非负整数校验。 */
 function assertNonNegativeInt(label: string, value: number): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new UsageError(`${label} 目标必须是非负整数，收到 "${value}"`);
   }
 }
 
-/** 解包快照到演练目录（接受 `.nojbackup` 单文件——T19 的形态反转）。 */
+/** 解包快照到演练目录（只接受 `.nojbackup` 单文件）。 */
 async function unpackForDrill(
   opts: DrillRunOptions,
   projectName: string,
@@ -440,7 +436,7 @@ async function unpackForDrill(
   if (!opts.snapshotPath.endsWith(".nojbackup")) {
     throw new UsageError(
       `drill 只接受 .nojbackup 单文件快照：${opts.snapshotPath}\n` +
-        "  原因：T17 起单文件容器是唯一形态（payload_layout=prod-raw），" +
+        "  原因：单文件容器是唯一形态（payload_layout=prod-raw），" +
         "目录形态的旧快照已不受支持。",
     );
   }
@@ -504,7 +500,7 @@ async function unpackForDrill(
   return { staging: unpacked.staging, tempRoot: drillDir };
 }
 
-/** 写覆盖文件与解密后的 env（bash `prepare_env`/`prepare_compose_override`）。 */
+/** 写覆盖文件与解密后的 env。 */
 async function prepareDrillEnvironment(
   opts: DrillRunOptions,
   ctx: DrillContext,
@@ -546,639 +542,12 @@ async function prepareDrillEnvironment(
 
   await Deno.writeTextFile(ctx.overrideFile, renderDrillOverride(ctx.subnet));
   // 只读解析校验（`compose config --quiet`）
+  const dockerBin = dockerBinOf(opts);
   const check = await runner.run(
-    dockerBinOf(opts),
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command: ["config", "--quiet"],
-    }),
+    dockerBin,
+    drillTarget(ctx, runner, dockerBin).composeArgs(["config", "--quiet"]),
   );
   if (check.code !== 0) {
     throw new Error("演练 Compose 配置无效：" + check.stderr.trim());
   }
 }
-
-/** docker 可执行名。 */
-function dockerBinOf(opts: DrillRunOptions): string {
-  return opts.dockerBin ?? "docker";
-}
-
-/** 执行一条演练 compose 子命令并返回退出码。 */
-async function compose(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  command: string[],
-): Promise<number> {
-  const res = await runner.run(
-    dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command,
-    }),
-  );
-  return res.code;
-}
-
-/** `restore_data_services()`（bash :340-376）：启动隔离数据服务并恢复三类数据。 */
-/**
- * 恢复三类数据服务（**委托给 `backup/data_restore.ts` 的共享序列**）。
- *
- * 抽取理由见该模块头部：这段序列的顺序与错误处理是评审迭代出来的，
- * 分成 drill 与生产 restore 两份必然漂移——而"演练通过但真实恢复没做对"
- * 是最坏的一类不一致（drill 的全部意义就是证明 restore 可行）。
- *
- * 本函数只负责**把 drill 的上下文适配成共享接口**（隔离项目参数 + 不停服务，
- * 因为 drill 后续还要起业务服务做验收）。
- */
-async function restoreDataServices(
-  opts: DrillRunOptions,
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  waitTimeout: number,
-  log: (line: string) => void,
-): Promise<void> {
-  void opts;
-  await sharedRestoreDataServices({
-    staging: ctx.staging,
-    tempDir: ctx.tempDir,
-    env: ctx.env,
-    runner,
-    dockerBin,
-    composeArgs: (command) =>
-      drillComposeArgs({
-        projectName: ctx.projectName,
-        composeEnvFile: ctx.composeEnvFile,
-        composeFile: ctx.composeFile,
-        overrideFile: ctx.overrideFile,
-        judge: ctx.judge,
-        command,
-      }),
-    waitTimeout,
-    log,
-    // drill 之后还要起业务服务做验收，故 **不** 在恢复后停服务。
-    stopAfterRestore: false,
-  });
-}
-
-/**
- * 把文件喂给一条 compose 子命令的 stdin（**文件重定向，不经字符串**）。
- *
- * 用 `sh -c '<cmd> "$@" < "$src"'` 的形式：路径经位置参数传递，不拼进脚本正文；
- * `docker` 由位置参数给出。这是 T17 `driver.ts:feedFromFile` 的同一语义，
- * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
- */
-async function feedFileToCompose(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  command: string[],
-  srcFile: string,
-): Promise<number> {
-  const composeArgs = drillComposeArgs({
-    projectName: ctx.projectName,
-    composeEnvFile: ctx.composeEnvFile,
-    composeFile: ctx.composeFile,
-    overrideFile: ctx.overrideFile,
-    judge: ctx.judge,
-    command,
-  });
-  // 安全：dockerBin 走 $1，compose 参数走 "$@"，均不经脚本正文插值。
-  const res = await runner.run("sh", [
-    "-c",
-    `bin="$1"; src="$2"; shift 2; exec "$bin" "$@" < "$src"`,
-    "noj-drill-feed",
-    dockerBin,
-    srcFile,
-    ...composeArgs,
-  ]);
-  return res.code;
-}
-
-// `makeIdempotentGlobals` 已移到 `backup/globals.ts`：生产 restore 也要用它。
-// 此处**再导出**以保持既有导入点（含测试）不变。
-export { makeIdempotentGlobals };
-
-/** `verify_data()`（bash :377-424）：迁移版本、用户数、Redis 键数、对象数。 */
-async function verifyData(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  log: (line: string) => void,
-): Promise<ChecksInput> {
-  const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
-  const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
-
-  const expected = (await readTextOr(
-    join(ctx.staging, "migration-status.txt"),
-    "",
-  )).trim();
-  if (expected === "" || expected === "not-initialized") {
-    throw new Error("数据核对失败：快照缺少迁移状态记录");
-  }
-  const actual = (await psql(
-    ctx,
-    runner,
-    dockerBin,
-    pgUser,
-    pgDb,
-    "SELECT hash || ':' || created_at::text FROM drizzle.__drizzle_migrations ORDER BY created_at",
-  )).trim();
-  if (actual !== expected) {
-    throw new Error("数据核对失败：迁移版本与快照不一致");
-  }
-  log("✓ 数据核对：迁移版本与快照一致");
-
-  const userCountRaw = (await psql(
-    ctx,
-    runner,
-    dockerBin,
-    pgUser,
-    pgDb,
-    "SELECT count(*) FROM users",
-  )).trim();
-  if (!/^[0-9]+$/.test(userCountRaw)) {
-    throw new Error("数据核对失败：无法读取用户数");
-  }
-  const restoredUserCount = Number(userCountRaw);
-  log(`✓ 数据核对：恢复后用户数 ${restoredUserCount}`);
-
-  const redisRaw = await composeCapture(ctx, runner, dockerBin, [
-    "exec",
-    "-T",
-    "redis",
-    "sh",
-    "-c",
-    'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --no-auth-warning DBSIZE',
-  ]);
-  const redisKeys = /^[0-9]+$/.test(redisRaw.trim())
-    ? Number(redisRaw.trim())
-    : 0;
-  log(`✓ 数据核对：Redis 键数 ${redisKeys}`);
-
-  const bucket = valueOr(ctx.env, "S3_BUCKET", "noj-support-packages");
-  const snapshotObjectCount = await listFilesCount(
-    join(ctx.staging, "minio"),
-  );
-  const restoredRaw = await composeCapture(ctx, runner, dockerBin, [
-    "run",
-    "--rm",
-    "--no-deps",
-    "--entrypoint",
-    "/bin/sh",
-    "minio-init",
-    "-c",
-    `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc ls --recursive --json "local/${bucket}" | wc -l`,
-  ]);
-  const last = restoredRaw.trim().split("\n").pop()?.trim() ?? "";
-  if (!/^[0-9]+$/.test(last)) {
-    throw new Error("数据核对失败：无法读取恢复后的对象数");
-  }
-  const restoredObjectCount = Number(last);
-  if (restoredObjectCount < snapshotObjectCount) {
-    throw new Error(
-      `数据核对失败：MinIO 对象数少于快照（快照 ${snapshotObjectCount} / 恢复 ${restoredObjectCount}）`,
-    );
-  }
-  log(
-    `✓ 数据核对：MinIO 对象数 快照 ${snapshotObjectCount} / 恢复 ${restoredObjectCount}`,
-  );
-
-  return {
-    restoredUserCount,
-    restoredRedisKeys: redisKeys,
-    snapshotObjectCount,
-    restoredObjectCount,
-  };
-}
-
-/** 跑一条 psql 并返回 stdout（`-Atqc` 的紧凑输出）。 */
-async function psql(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  user: string,
-  db: string,
-  sql: string,
-): Promise<string> {
-  return await composeCapture(ctx, runner, dockerBin, [
-    "exec",
-    "-T",
-    "postgres",
-    "psql",
-    "-U",
-    user,
-    "-d",
-    db,
-    "-Atqc",
-    sql,
-  ]);
-}
-
-/** 跑一条 compose 子命令并**捕获 stdout**（仅用于文本查询结果，不用于二进制）。 */
-async function composeCapture(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  command: string[],
-): Promise<string> {
-  const res = await runner.run(
-    dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command,
-    }),
-  );
-  return res.stdout;
-}
-
-/** 统计目录内文件数（用于 MinIO 对象数核对）。 */
-async function listFilesCount(dir: string): Promise<number> {
-  let count = 0;
-  const walk = async (d: string): Promise<void> => {
-    let entries: Deno.DirEntry[];
-    try {
-      entries = await Array.fromAsync(Deno.readDir(d));
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory) await walk(join(d, entry.name));
-      else if (entry.name !== "sha256sums.txt") count++;
-    }
-  };
-  await walk(dir);
-  return count;
-}
-
-/** `seed_drill_admin()`（bash :425-447）：向隔离库写入演练管理员。 */
-async function seedDrillAdmin(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  now: () => Date,
-): Promise<void> {
-  const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
-  const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
-  const stamp = now().toISOString().replace(/\.\d{3}Z$/, ".000Z");
-  // email_verified 刻意不写：它是后续迁移新增的字段，新 schema 默认 true；
-  // 不显式写入才能同时恢复并验收迁移前的历史快照（bash 注释的同一理由）。
-  const sql = [
-    "INSERT INTO users (id, username, email, password_hash, created_at, updated_at)",
-    `VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',`,
-    `        '${DRILL_BCRYPT_HASH}', '${stamp}', '${stamp}')`,
-    "ON CONFLICT (id) DO NOTHING;",
-    "INSERT INTO user_roles (user_id, role_id)",
-    "SELECT 'drill-admin-user', id FROM roles WHERE name = 'admin'",
-    "ON CONFLICT DO NOTHING;",
-  ].join("\n");
-  const code = await feedTextToCompose(
-    ctx,
-    runner,
-    dockerBin,
-    [
-      "exec",
-      "-T",
-      "postgres",
-      "psql",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      pgUser,
-      "-d",
-      pgDb,
-    ],
-    sql,
-  );
-  if (code !== 0) throw new Error("写入演练管理员失败");
-}
-
-/** 把一段 SQL 文本作为 stdin 喂给 compose 子命令（经临时文件，不经命令行参数）。 */
-async function feedTextToCompose(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  command: string[],
-  text: string,
-): Promise<number> {
-  const tmp = join(ctx.tempDir, `stdin-${crypto.randomUUID()}.sql`);
-  await Deno.writeTextFile(tmp, text);
-  try {
-    return await feedFileToCompose(ctx, runner, dockerBin, command, tmp);
-  } finally {
-    await removeQuietly(tmp);
-  }
-}
-
-/** `start_business_services()` + `ensure_judge_images()`（bash :448-480）。 */
-async function startBusinessServices(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-  waitTimeout: number,
-  opts: DrillRunOptions,
-  log: (line: string) => void,
-): Promise<{ evaluator: string; solution: string }> {
-  log("✓ 执行迁移并启动 core");
-  // 同上：迁移失败必须立刻显式报错，否则会表现为 core 起不来
-  // （"隔离 core 启动失败"），掩盖"其实是迁移失败"这一根因。
-  if (await compose(ctx, runner, dockerBin, ["run", "--rm", "migrate"]) !== 0) {
-    throw new Error("数据库迁移失败（migrate）");
-  }
-  if (
-    await compose(ctx, runner, dockerBin, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(waitTimeout),
-      "core",
-    ]) !== 0
-  ) {
-    throw new Error("隔离 core 启动失败");
-  }
-
-  if (!ctx.judge) {
-    log("! 跳过 judge（--skip-judge）：演练不包含真实评测");
-    return {
-      evaluator: DEFAULT_EVALUATOR_IMAGE,
-      solution: DEFAULT_SOLUTION_IMAGE,
-    };
-  }
-
-  log("✓ 启动 judge（使用与生产相同的独立沙箱 daemon）");
-  if (
-    await compose(ctx, runner, dockerBin, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(waitTimeout),
-      "judge",
-    ]) !== 0
-  ) {
-    throw new Error("隔离 judge 启动失败");
-  }
-
-  if (opts.resolveJudgeImages !== undefined) {
-    return await opts.resolveJudgeImages({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-    });
-  }
-
-  // 从隔离库的 judge_images 白名单取镜像（只读查询，不写入）。
-  const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
-  const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
-  const evaluator = (await psql(
-    ctx,
-    runner,
-    dockerBin,
-    pgUser,
-    pgDb,
-    "SELECT image FROM judge_images WHERE kind = 'evaluator' ORDER BY CASE WHEN image LIKE '%noj-evaluator-python%' THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
-  )).trim().split("\n")[0]?.trim() ?? "";
-  const solution = (await psql(
-    ctx,
-    runner,
-    dockerBin,
-    pgUser,
-    pgDb,
-    "SELECT image FROM judge_images WHERE kind = 'solution' ORDER BY CASE WHEN image LIKE '%noj-solution-python%' THEN 0 ELSE 1 END, created_at DESC LIMIT 1",
-  )).trim().split("\n")[0]?.trim() ?? "";
-  if (evaluator === "") {
-    throw new Error("judge_images 白名单缺少 evaluator 镜像");
-  }
-  if (solution === "") {
-    throw new Error("judge_images 白名单缺少 solution 镜像");
-  }
-  log(`✓ 评测镜像：evaluator=${evaluator} solution=${solution}`);
-  return { evaluator, solution };
-}
-
-/**
- * 解析 core 的 API 基址（**经容器 IP**，不依赖端口映射）。
- *
- * 隔离演练**不映射宿主机端口**（#516 要求），因此不能走 `localhost:8080`。
- * 取法：`compose ps -q core` 得到容器 ID → `docker inspect` 读它在演练网络里的
- * IP → `http://<ip>:8000/api/v1`。
- */
-async function resolveCoreBaseUrl(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-): Promise<string> {
-  const idRes = await runner.run(
-    dockerBin,
-    drillComposeArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: ctx.overrideFile,
-      judge: ctx.judge,
-      command: ["ps", "-q", "core"],
-    }),
-  );
-  const containerId = idRes.stdout.trim().split("\n")[0]?.trim() ?? "";
-  if (containerId === "") throw new Error("无法定位隔离 core 容器");
-
-  const inspect = await runner.run(dockerBin, [
-    "inspect",
-    "--format",
-    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-    containerId,
-  ]);
-  const ip = inspect.stdout.trim();
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    throw new Error(`无法解析隔离 core 的容器 IP：${JSON.stringify(ip)}`);
-  }
-  return `http://${ip}:8000/api/v1`;
-}
-
-/** 写报告（权限 600）与指标目录准备。 */
-async function writeReport(
-  ctx: DrillContext,
-  input:
-    & Omit<
-      Parameters<typeof renderReport>[0],
-      "snapshot" | "composeProject" | "networkSubnet" | "checks" | "cleanup"
-    >
-    & { cleanup: "kept-for-review" | "done" },
-  checks: ChecksInput,
-): Promise<void> {
-  const text = renderReport({
-    ...input,
-    snapshot: ctx.snapshot,
-    composeProject: ctx.projectName,
-    networkSubnet: ctx.subnet,
-    checks: renderChecks(checks),
-  });
-  await writePrivate(ctx.reportPath, text);
-}
-
-/** 写演练指标（仅成功路径调用）。 */
-async function writeMetrics(
-  opts: DrillRunOptions,
-  ctx: DrillContext,
-  at: Date,
-): Promise<void> {
-  const dir = metricsDirOf(ctx.snapshot, opts.metricsDir);
-  await Deno.mkdir(dir, { recursive: true, mode: 0o755 });
-  const file = join(dir, DRILL_METRICS_FILE);
-  await Deno.writeTextFile(
-    file,
-    renderDrillMetrics(Math.floor(at.getTime() / 1000)),
-  );
-  await Deno.chmod(file, 0o644);
-}
-
-/** 原子写一个 600 文件（报告含内部 URL 与题目 ID，不应全局可读）。 */
-async function writePrivate(path: string, text: string): Promise<void> {
-  const tmp = `${path}.${Deno.pid}.${crypto.randomUUID()}.tmp`;
-  await Deno.mkdir(path.substring(0, path.lastIndexOf("/")), {
-    recursive: true,
-  }).catch(() => {});
-  const file = await Deno.open(tmp, {
-    create: true,
-    write: true,
-    truncate: true,
-    mode: 0o600,
-  });
-  try {
-    await file.write(new TextEncoder().encode(text));
-  } finally {
-    file.close();
-  }
-  await Deno.chmod(tmp, 0o600);
-  await Deno.rename(tmp, path);
-}
-
-/**
- * 失败路径：写失败报告 → 清理资源 → 返回退出码 1。
- *
- * **清理失败不掩盖原始错误**：原始失败原因（`message`）是诊断核心，清理问题
- * 只作为附加信息追加到 message 尾部，且不影响退出码（仍是 1）。
- */
-async function failAndCleanup(
-  opts: DrillRunOptions,
-  ctx: DrillContext,
-  runner: CommandRunner,
-  keep: boolean,
-  stage: string,
-  message: string,
-  startedAt: string,
-  log: (line: string) => void,
-  verifyLog = "",
-): Promise<DrillRunResult> {
-  const cleanup: "kept-for-review" | "done" = keep ? "kept-for-review" : "done";
-  let reportError: string | null = null;
-
-  // 1) 先写失败报告（需要读验收日志，故在清理之前）
-  if (stage !== "preflight") {
-    try {
-      await writePrivate(
-        ctx.reportPath,
-        renderFailureReport({
-          snapshot: ctx.snapshot,
-          failedStage: stage,
-          drillStartedAt: startedAt,
-          composeProject: ctx.projectName,
-          verifyLogTail: tailLines(verifyLog, 50),
-          cleanup,
-        }),
-      );
-      log(`! 演练在 ${stage} 阶段失败，报告：${ctx.reportPath}`);
-    } catch (err) {
-      reportError = (err as Error).message;
-    }
-  }
-
-  // 2) 清理资源（--keep 时保留）
-  const cleanupErrors: string[] = [];
-  if (reportError !== null) cleanupErrors.push(`写报告失败：${reportError}`);
-  if (!keep) {
-    const code = await downDrillStack(ctx, runner, dockerBinOf(opts));
-    if (code !== 0) {
-      cleanupErrors.push(`清理演练 Compose 资源失败（退出码 ${code}）`);
-    }
-    try {
-      await removeQuietly(ctx.drillDir);
-    } catch (err) {
-      cleanupErrors.push(`删除演练目录失败：${(err as Error).message}`);
-    }
-  }
-
-  return {
-    pass: false,
-    exitCode: 1,
-    reportPath: ctx.reportPath,
-    failedStage: stage,
-    checks: null,
-    message: cleanupErrors.length === 0
-      ? message
-      : `${message}（另有：${cleanupErrors.join("；")}）`,
-  };
-}
-
-/** 清理演练 Compose 资源（`down -v --remove-orphans`）。 */
-async function downDrillStack(
-  ctx: DrillContext,
-  runner: CommandRunner,
-  dockerBin: string,
-): Promise<number> {
-  const overrideExists = await isFile(ctx.overrideFile);
-  const res = await runner.run(
-    dockerBin,
-    drillCleanupArgs({
-      projectName: ctx.projectName,
-      composeEnvFile: ctx.composeEnvFile,
-      composeFile: ctx.composeFile,
-      overrideFile: overrideExists ? ctx.overrideFile : undefined,
-    }),
-  );
-  return res.code;
-}
-
-/** 删演练目录（失败静默——调用方按需记入诊断）。 */
-async function removeQuietly(path: string): Promise<void> {
-  await Deno.remove(path, { recursive: true });
-}
-
-/** 清理解包暂存（前置失败路径用；演练目录由 cleanup 逻辑统一处理）。 */
-async function cleanupStaging(dir: string, keep: boolean): Promise<void> {
-  if (keep) return;
-  await Deno.remove(dir, { recursive: true }).catch(() => {});
-}
-
-/** 读文本，失败返回兜底值。 */
-async function readTextOr(path: string, fallback: string): Promise<string> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch {
-    return fallback;
-  }
-}
-
-/** 取文本末尾 N 行（bash `tail -n 50` 的等价）。 */
-export function tailLines(text: string, n: number): string {
-  const lines = text.replace(/\n+$/, "").split("\n");
-  return lines.slice(Math.max(0, lines.length - n)).join("\n");
-}
-
-/** 供测试断言指标名契约（避免测试重复字面量）。 */
-export { METRIC_LAST_SUCCESS, REPORT_FILE_NAME };

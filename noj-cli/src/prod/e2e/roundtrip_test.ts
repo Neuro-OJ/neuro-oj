@@ -147,7 +147,7 @@ Deno.test({
         "pg_dump -Fc 必须是自定义格式（文本 SQL 会让 pg_restore 无法使用）",
       );
 
-      // 4) 真实 `pg_restore --list` 必须能解析它（T17 的"防静默损坏"判据）
+      // 4) 真实 `pg_restore --list` 必须能解析它（"防静默损坏"判据）
       const list = await runner.run("docker", [
         "exec",
         e.pgContainer,
@@ -174,7 +174,7 @@ Deno.test({
         `PGPASSWORD=${e.pgPassword}`,
         e.pgContainer,
         "pg_restore",
-        // **必须与生产路径同参数**（`data_restore.ts` 与 bash :369 都是这样）：
+        // **必须与生产路径同参数**（同 `data_restore.ts`）：
         // `--clean --if-exists` 先删既有对象——否则恢复到非空库时会以
         // `schema "drizzle" already exists` 失败。
         // 我第一版漏了这两个旗标，E2E 立刻抓出来（正是本测试存在的意义：
@@ -265,7 +265,7 @@ Deno.test({
       ]);
       assertEquals(g.code, 0, `gpg 加密失败：${g.stderr.trim()}`);
 
-      // **无口令不可读**（R7 P2 在真实产物上的回归）：明文文件名不得出现
+      // **无口令不可读**（真实产物上的回归）：明文文件名不得出现
       const raw = await Deno.readFile(container);
       const rawText = new TextDecoder("latin1").decode(raw);
       assertEquals(

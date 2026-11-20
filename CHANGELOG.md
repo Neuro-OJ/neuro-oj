@@ -10,6 +10,244 @@
 
 ## [Unreleased]
 
+### 新功能
+
+- **独立 Judge 资源组重置命令**：新增 `noj-cli judge reset-config`，支持在同组 Worker
+  停机排空并等待租约/心跳过期后安全清除 Redis 资源组容量锁，局部更新 `.env.judge` 与
+  `docker-compose.judge.yml`（保留运维自定义网络/挂载配置），并同步提供容量配置失配时的
+  Worker 停止准入保护（PR #761）。
+
+### 修复
+
+- **Judge 到 LLM 网关链路加固**：修复 `noj-llm-gateway` 固定地址传输层对多字节 UTF-8
+  请求体按字符数计算 `Content-Length` 导致的截断/断连问题；为 `noj-llm-gateway`、
+  `deploy/judge-llm-proxy.py` 与 Evaluator SDK 开启 TCP Keepalive 并补齐瞬时断连有界重试，
+  同时修复 `noj-cli judge install --redis-mode local` 写入 `REDIS_URL` / `REDIS_CHECK_URL`
+  顺序反置的问题（PR #761）。
+
+---
+
+## [0.11.0-rc.2] - 2026-11-18
+
+### 升级须知（破坏性，0.11 首个 RC 仅支持新装）
+
+- **0.11 首个 RC 只交付新装路径**：使用同一 Release 的 `noj-cli`、core、gateway、
+  judge、UI 与适配的 IDE 组件从空库安装。**不要**对现有 0.10.x 实例执行 0.11 的
+  `noj-cli update`；旧实例继续运行原有版本即可。0.10.x → 0.11 的原地升级与历史数据
+  转换工具不在本轮范围，另行设计并验收。该路径提供后，**最低可升级版本为
+  v0.10.6**：更早的版本须先升级到 v0.10.6，由它完成评测单队列到三级优先级队列的
+  迁移（0.11 不再携带这段一次性迁移代码，PR #710）。
+- **RC 不再自动转正为 Latest（PR #757）**：带 `-rc` / `-alpha` / `-beta` 后缀的
+  Release 资产就绪后保持预发布状态，`noj-cli install`（省略 `--ref`）与
+  `noj-cli update --latest` 不会选中它；安装本 RC 需显式
+  `noj-cli install --ref v0.11.0-rc.2`。
+- **`v0.11.0-rc.1` 未完成发布**：其发布流水线在 `noj-ui` 正式标签回读校验处失败，
+  Release 未上传任何资产，请勿使用；首个可用的 0.11 候选版本为 `v0.11.0-rc.2`。
+- **迁移 `0116` 是兼容性守卫，不是自动搬运**：存量库只要还存在旧 `U` 型题或任意
+  `contests` 行，迁移会以 `55000` 中止。它不会删除业务数据，也不提供绕过手段。
+  评估现有实例时请使用只读预检（`scripts/preflight-upgrade.ts`）导出报告，不要把
+  预检报告当作备份。
+- **Domain 成为资源访问边界**：题目、题单、比赛、存储、LLM 归属都按使用域隔离；
+  旧的无域入口固定落到 `main` 域并保持 301，但不再承载跨域可见性。
+- **比赛保密不可关闭式绕过**：题目从被加入比赛起、到比赛结束，所有历史版本对
+  非参赛者不可读；列表保留元信息，正文请求返回 403，跨域仍为 404。
+- **评测协议的配置来源已冻结为版本快照**；重测沿用当时冻结的运行配置与模型别名映射。
+- **角色固定，不再有 RBAC 表**：平台角色只有 `user` / `admin`，域内角色只有
+  `member` / `educator` / `admin`，能力映射是代码里的静态表；自定义角色、板块
+  自定义角色授权与 RBAC 种子全部删除（PR #717）。
+- **题目包格式升到 3，P/U 分类取消**：新包用 `kind` 一个字段声明题型；格式 1 / 2
+  仍可导入，自动转换并给出升级告警。`noj-cli problem init` 不再接受 `--type P|U`，
+  导入与推送必须用 `--domain <slug>` 指定目标域（PR #744）。
+- **一批功能已下线**（站内私信、首页轮播、社区关注 / 点赞 / 收藏、界面语言切换等），
+  清单见「移除」。
+- 环境变量的新增与删除见「运维变更」；`NOJ_INTERNAL_SERVICE_TOKEN` 未设置时排空
+  端点返回 503。
+
+### 新功能
+
+- **使用域（Domain）与资源隔离**：域角色管理编辑与发布；跨域复用改为一处复制所选
+  发布版本为目标域独立 V1（分配本地题号、不带来源历史与 Provider 身份），不再维护
+  跨域实时引用。
+- **比赛保密与统一报名**：比赛不再区分公开赛 / 邀请赛，也不再使用比赛密码或邀请码；
+  报名统一由域访问权决定。详情页重做信息架构（赛程、规模、榜单可见性、封榜、
+  计分范围、关联班级），题库与比赛的题面、作答面板共用同一套组件。
+- **赛后开放赛题读取**：比赛结束后，可见本场的所有成员都能回看题面复盘，提交入口
+  仍受受理窗口与报名关系限制。
+- **教学简化与作业来源**：教练以当前域角色管理同域班级 / 作业 / 题目 / 比赛，班级只
+  保存学生名单；作业新增 `submission_source`（`domain_any` / `assignment_only`），
+  历史提交默认关闭；进度与提交依据采用相同的来源限制。
+- **统一收件箱**：社区、教学与比赛答疑通知合并进 `notifications` 单一模型，列表、
+  未读数、已读、详情与 SSE 重放共用同一授权条件；域权限撤销只隐藏相应通知。
+- **域比赛关联班级**：一场比赛可关联同域多个班级，赛制引擎完成成绩选择后按当前
+  学生名单分组，单班筛选不改变其他参赛者的补集与同分排名。
+- **持久后台任务与自动重试**：评测受理、搜索索引与教学 outbox 改为事务内登记任务，
+  由应用处理器领取执行；正式提交的平台错误默认最多自动重试 3 次。
+- **评测派发防重与卡住提交自动恢复**：每次派发以活动尝试的 `run_id` 写入 Redis
+  派发标记，内联派发、持久派发任务与 pending 恢复不再重复推送同一个 run，多副本
+  也不会同时恢复同一条提交；提交停在 `judging` 而任务已从 Redis 丢失时，sweeper
+  在一次完整 processing 超时后按尝试绑定的版本自动重建任务，无需管理员手动处理
+  （PR #754，移植自 0.10 线的 PR #716）。
+- **升级排空能力（过渡期）**：Core 提供内部维护 API，`noj-cli` 升级前可 `enter` /
+  `wait` 排空在途评测与队列，目标栈健康后 `exit`；Judge 心跳上报节点版本。
+- **知识图谱**：以可替换的内容包导入知识点图谱（附官方内容包初稿）；题目可人工
+  挂载知识点并经审核生效，也可开启 AI 打标（默认关闭，带置信度阈值、月度 token
+  预算与错峰窗口）；提供难度校准、题目阶梯与讲解文档、个人掌握度、推荐与覆盖度，
+  以及教练视角。总开关 `knowledge_enabled` 默认开启，关闭后
+  `/api/v1/knowledge/*` 返回 404（PR #738、#739、#740、#741、#742）。
+- **题目包格式 3**：`problem.json` 用 `kind` 判别题型，`noj-cli` 直接复用 core 的
+  校验逻辑；新增 `noj-cli problem migrate <目录>` 把旧格式原地改写为格式 3
+  （PR #744）。
+- **管理员开号与批量导入**：后台可直接新建账号、用 CSV 批量导入（单批最多 500 行，
+  整批事务）、重置密码和解除登录锁定，不依赖邮件服务与注册开关；新账号与重置后
+  首次登录强制改密，重置会撤销全部旧会话（PR #707）。
+- **三种邀请与短码兑换**：域邀请支持三种模式，新增短码入口与兑换记录。
+- **班级协作**：班级与「我的学习」展示关联比赛；同班进度可见，作业结束后可互阅
+  代码；支持按比赛成绩或全班未达标名单创建补题。
+- **运维与界面**：视图 BFF 聚合与 SSR 边界修正；班级 / 教学 / 学习 / 设置页面视觉与
+  人体工程学重构；域与实例设置按功能分页；提交筛选与评测队列统一；题库表格与域内
+  筛选、域首页与公告阅读流程恢复。
+
+### 变更
+
+- **比赛 API 契约**：响应不再下发 `kind` / `is_public` / `has_password`；创建、更新与
+  报名请求收到这些旧字段时返回 400（见「兼容清理」）。数据库列暂时保留但已不参与授权。
+- 题目版本策略归题目本身所有；题库、作业与成绩投影使用同一策略，比赛保留自身固定版本。
+- LLM 模型别名、Provider 限流排队、Provider 测试连接沿用 0.10.5 已交付能力，本轮不重复宣称。
+- **登录锁定按「账号 + 客户端 IP」隔离**：登录、改密与 TFA 的失败计数和锁定不再
+  只按账号，他人无法靠反复输错锁死公开用户名（PR #707）。
+- **提交类 IP 限流按机房席位放大**：代码提交、比赛提交、客观题提交与自测的 IP
+  阈值为用户阈值 × 60，机房共用出口时正常考生不再被误伤；社区互动、教学写入与
+  创建题目在 Redis 不可用时放行并告警，认证、提交与导入仍然拒绝（PR #699）。
+- **代码草稿按用户隔离**：草稿键包含当前用户，退出登录、会话失效或换号时清理本人
+  草稿，机房电脑轮流使用时下一位用户不再读到上一位的代码（PR #708）。
+- **双容器评测的「耗时」口径**：`time_ms` 改为 Solution 处理调用的累计忙碌时长，
+  不含容器创建销毁、评测脚本自身计算与 LLM 调用；总超时 `time_limit_ms` 仍按
+  墙钟时间计算（PR #743）。
+- 搜索索引统一由 PostgreSQL 后台任务驱动，Redis 搜索队列 `noj:search:index` 已
+  移除（PR #700）。
+- 实例级提交与题单页面删除，旧入口统一跳转到 `main` 域（PR #713）。
+- `noj-cli update` 升级前除自动备份外还会自动排空。
+- 版本号从 0.10.6 升至 **0.11.0**；发布流水线新增「标签基础版本 == 模块清单基础版本」
+  的前置断言，避免产物身份与发布说明错位。
+
+### 移除
+
+- **站内私信与第三方内容审核**：私信页面、接口与 `PRIVATE_MESSAGING_ENABLED`、
+  `CONTENT_REVIEW_*` 配置全部删除（PR #712）。
+- **首页轮播**（PR #711）。
+- **社区关注、点赞与收藏**；举报限流改为仅按用户（PR #714）。
+- **界面语言切换**：前端只提供中文界面，`<html lang>` 固定 `zh-CN`（PR #725）。
+- **法律文档 TSA 时间戳**：功能与 `TSA_*` 配置删除（PR #704）。
+- **作业版本沿革**页面与接口（PR #729）。
+- **自定义角色与板块角色授权**（PR #717）。
+- **`noj-cli judge calibrate`** 命令与 profile 机制（PR #745、#746）。
+
+### 运维变更
+
+- **core 新增环境变量**：`NOJ_INTERNAL_SERVICE_TOKEN`（内部维护 API 鉴权）、
+  `JUDGE_PLATFORM_ERROR_MAX_RETRIES`、`KNOWLEDGE_ENABLED`、
+  `KNOWLEDGE_AI_TAGGING_ENABLED`、`KNOWLEDGE_AUTO_ACCEPT_THRESHOLD`、
+  `KNOWLEDGE_AI_MONTHLY_TOKEN_BUDGET`、`KNOWLEDGE_AI_OFFPEAK_ONLY`、
+  `KNOWLEDGE_AI_OFFPEAK_WINDOW`、`KNOWLEDGE_MASTERY_MIN_SOLVED`、
+  `KNOWLEDGE_PASS_RATIO`。
+- **core 删除环境变量**：`RUNTIME_JUDGE_MODE`、`PRIVATE_MESSAGING_ENABLED`、
+  `CONTENT_REVIEW_*`（8 项）、`TSA_PROVIDER`、`TSA_URL`、`TSA_ROOT_CERT`。
+- **gateway 新增**：`NOJ_CORE_INTERNAL_URL`、`NOJ_GATEWAY_MIGRATIONS_DIR`。
+- **UI 新增**：`NUXT_API_BASE`、`NUXT_BFF_REDIS_URL`、`NUXT_BFF_CACHE_PREFIX`、
+  `NUXT_PUBLIC_AUTH_COOKIE_PREFIX`。
+- **`.env.prod.example`**：新增 `NOJ_INTERNAL_SERVICE_TOKEN`、
+  `NUXT_BFF_CACHE_PREFIX`、`NUXT_PUBLIC_AUTH_COOKIE_PREFIX`，删除
+  `RUNTIME_JUDGE_MODE`。
+- 新增 `noj-cli maintain status | enter | wait | exit`，用于人工查看与控制维护
+  模式和排空。
+- 新增指标 `noj_submission_recovery_total{type,result}`，记录 pending 恢复与
+  `judging` 对账的结果；尚未接入仪表盘与告警。
+
+### 缺陷修复
+
+- 在域内编辑比赛会清空后台设置的单题提交次数限制（`submission_limits`）：后端部分
+  更新时保留原有限额，只有显式传入才替换或清空；域内比赛表单回传仍选中题目的
+  限额（PR #757，#726）。
+- **安全加固**（PR #720）：UI 代理与 nginx 对 `/api/v1/internal/*` 一律返回 404；
+  恢复演练禁用邮件、OAuth、LLM 与告警 webhook 等出站集成；发布预检与自测包解压
+  统一执行条目数、大小与路径穿越限制；OAuth 登录同样拦截被封禁账号；后台密钥
+  掩码不再回显首尾字符。
+- 新用户预审的帖子发出后凭空消失：作者现在能看到自己的待审帖，并提示「审核后
+  公开」（PR #719）。
+- 比赛已结束但尚未结算时泄露全量榜单（PR #672）。
+- 标签管理审计丢失操作人与客户端 IP（PR #736）。
+- 导航栏未读消息角标恒为 0（PR #671）；提交时间在 SSR 与浏览器之间显示不一致
+  （PR #669）。
+- 编辑器保存草稿时清空题包导入的界面题模板（PR #665、#667）。
+- 选手未定义被调用函数时被判为平台错误，现判 0 分（PR #678）；evaluator SDK 在
+  stdin 关闭竞态下 `call()` 永久阻塞（PR #681）；Judge 拉取与领取失败后不重建
+  Redis 连接（PR #663）。
+- 首页最新评测与公告不随实时事件刷新，以及底栏、题面页与题解入口的界面走查问题
+  （PR #724）；教学多角色界面与移动端的验收缺陷（PR #718）。
+- 统一通知在真实 Nuxt UI 选择器下的空值导致通知页 SSR 500。
+- 竞赛答疑通知不再受社区功能开关误伤，改按域比赛授权判定。
+- 搜索结果中的赛期题解在封榜与结束后仍可能泄露标题，已按实时 join 收口。
+- 长事务中的过期租约改用数据库实时钟判定。
+- 评测队列订阅历史通知引起的请求风暴。
+- 每日签到与邮件投递回执两条写端点此前**完全没有限流**（门禁里挂着的 `pending` 欠债）：
+  签到按账号 60s/10、回执按来源 IP 60s/120 补上限流，并补"最后一次放行 + 超额 429 +
+  被拒请求无业务副作用"的回归。至今写端点限流欠债为 0。
+- 搜索性能基准此前只测 `reindexAll()` 后的**第一条**查询，CI 实测 592ms 顶到 500ms
+  阈值：冷启动（页缓存/执行计划/连接池）成本被算进回归。改为预热一次后取三次中位数，
+  阈值不变，稳态实测 180–220ms。
+- 浏览器验收里按"标签 · 标题"可访问名精确匹配赛题行链接的选择器已与改版后的 DOM
+  脱节（行内还含版本号与本人状态文本），改为按行链接 href 定位。
+- 登录落点在"默认域 + 唯一私有域"时把刚被邀请的学生丢回公共默认域首屏：现在除默认域
+  外只有一个空间时进入该空间（只影响导航，不改变授权）。
+
+### 兼容清理
+
+- 旧比赛前端页面（`/contests/**`）已在上一轮被全局中间件 301 到 `/d/main/contests/**`，
+  本轮删除其页面与仅供旧页使用的组件 / 组合式运行时代码，保留 URL 301 行为。
+- 无域前缀的比赛 API（`/api/v1/contests/**`）**已在 0.11 整体删除**：8 条只读路由、5 条
+  写入路由与 SSE `/contests/:id/events` 全部移除，不保留 301/410 兼容层，也不再有退役清单
+  条目；全域入口是 `/api/v1/domains/:slug/contests/**`。E2E 的 37 处旧路径调用已迁到域路径，
+  后台两处读接口改走 `GET /api/v1/admin/contest/contests/:id`；旧编辑器页
+  `pages/editor/[id].vue` 及其专用组件、`utils/editorHistory.ts` 一并删除（它们此前已被
+  全局 301 覆盖，永不可达）。`scripts/check-legacy-contest-api.ts` 锁定"路由文件不得复活 +
+  第一方零引用 + 退役清单不得再登记比赛"。
+- 无域题单写接口（`POST/PUT/DELETE /api/v1/trainings`、`/trainings/:id/problems`）**已删除**：
+  题单创建、更新、删除与题目增删只存在于 `/api/v1/domains/:slug/trainings`（全域入口按
+  `If-Match` revision 提交完整题号列表）。`catalog/routes/trainings.ts` 只剩只读端点；
+  旧前端组件 `AddToTrainingMenu.vue`、`TrainingManagementSection.vue`、旧页面
+  `pages/admin/trainings.vue` 与 `pages/problems/[id].vue`、以及只服务它们的
+  `composables/useTrainings.ts` 一并删除（活着的域页面用的是 `DomainAddToTrainingMenu`）。
+- 无域提交与自测写接口**已删除**：`POST /api/v1/submissions`、`POST /api/v1/self-tests/:id/cancel`、
+  `POST /api/v1/submission-upgrade-jobs` 只存在于域入口
+  （`/api/v1/domains/:slug/submissions`、`/domains/:slug/self-tests/:id/cancel`、
+  `/domains/:slug/submission-jobs`）。题目的无域 `POST /problems/:id/self-test` 同步删除。
+  前端随之删除 `OiSelfTestPanel.vue` 与 `useProblemVersions` 的升级任务受理/读取
+  （只有自己的单测在调）；E2E 的提交统一走域入口，helper 负责把题目 UUID 换成题号。
+- **无域出题写接口全部删除**：`POST/PUT/DELETE /api/v1/problems`、`/problems/:id/draft`、
+  `/problems/:id/versions`、`/problems/:id/questions**`、`/problems/:id/submit`、
+  `/problems/:id/support-package`、`/problems/import-bundle`、`/problems/oi-author/:id/save`
+  只存在于 `/api/v1/domains/:slug/problems/**`。旧前端出题链（`ProblemEditor`、
+  `CodingProblemEditor`、`OiProblemEditor`、`SupportPackageUpload`、`ObjectiveProblemEditor`、
+  `ObjectiveAnswerForm` 及对应死页面）与 `useObjective()` 的运行时 API 一并删除；
+  该 composable 只保留类型与题型标签。
+- **退役清单机制整体删除**：`retired-endpoints.json`、`retired-endpoints.ts`、
+  `retiredEndpointMiddleware` 与 `createApp({ retireLegacyEndpoints })` 开关全部移除。
+  旧路径不再返回 `410 ENDPOINT_RETIRED`，就是 404。门禁
+  `scripts/check-legacy-api-removed.ts` 锁定"机制不得复活 + 生产代码零无域写引用"。
+- **无域评测读路由删除**（PR #732）：`/queue`、`/queue/events`、
+  `/submissions/:id/events`、`/problems/:id/self-test(s)`、`/self-tests/:id` 与
+  `GET /me/submissions` 列表；管理台队列态势改用 `/instance/queue`。
+- **旧实例级题单 API 整体删除**（PR #730）：`/api/v1/trainings` 的只读端点与
+  `/admin/catalog/trainings*` 一并移除；旧链接 `/trainings/<ref>` 跳转域内页面。
+- **无域题目界面与统计接口删除**（PR #731）：`GET /api/v1/problems/:id/ui`、
+  `/:id/stats`、`/:id/stats/public`；模板接口不再接受 `?contest_id=`。
+
+### 已知未完成
+
+- 赛后复盘仅提供「官方题解入口 + 正式成绩版本」，按提交时间轴回放尚未实现。
+- 隐藏测试集 / A-B 榜、IOAI-NOAI 赛制模板、Judge 镜像预热与压力测试仍在规划中。
+- 0.10.x → 0.11 的原地升级与历史数据转换工具（见「升级须知」）。
+
 ---
 
 ## [0.10.5] - 2026-10-12

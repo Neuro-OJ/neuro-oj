@@ -3,14 +3,25 @@
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
 import { useToast } from '~/composables/useToast'
 
-import type { Clarification, Contest, ContestProblem } from '~/composables/useContests'
+import type { Clarification, Contest, ContestProblem } from '~/utils/contest-types'
 import { extractApiError } from '~/utils/apiError'
 
-const props = defineProps<{ contest: Contest; problems: ContestProblem[] }>()
+/**
+ * 竞赛答疑面板（**域页面专用**）。
+ *
+ * 只调用域入口 `/api/v1/domains/:slug/contests/:id/clarifications`：答疑的可见性、
+ * 保密与主持人判定都按域规则执行。旧无域 `/api/v1/contests/:id/clarifications`
+ * 仍保留只读兼容，但混用会拿到另一套授权结果，因此本组件不再接受无域调用。
+ */
+const props = defineProps<{
+  slug: string
+  contest: Contest & { can_manage?: boolean }
+  problems: ContestProblem[]
+}>()
 
 const { user } = useAuth()
 const toast = useToast()
-const { listClarifications, askClarification, replyClarification } = useContests()
+const contests = useDomainContests()
 
 const clarifications = ref<Clarification[]>([])
 const loading = ref(true)
@@ -45,7 +56,7 @@ const canAsk = computed(() =>
   !!user.value && props.contest.status === 'running' && props.contest.is_registered === true,
 )
 const isManager = computed(() =>
-  !!user.value && (user.value.is_admin || props.contest.created_by === user.value.id),
+  !!user.value && (props.contest.can_manage === true || user.value.is_admin || props.contest.created_by === user.value.id),
 )
 
 async function load(reset = true, silent = false) {
@@ -55,7 +66,10 @@ async function load(reset = true, silent = false) {
   }
   loadError.value = ''
   try {
-    const result = await listClarifications(props.contest.id, { page: page.value, per_page: perPage })
+    const result = await contests.listClarifications(props.slug, props.contest.id, {
+      page: page.value,
+      per_page: perPage,
+    })
     clarifications.value = reset
       ? result.data
       : [...clarifications.value, ...result.data]
@@ -75,7 +89,7 @@ async function loadMore() {
 
 // 收到 notification:new 时静默刷新（答疑回复通知触发），替换而非追加数据
 useEventSource({
-  url: '/api/v1/community/notifications/events',
+  url: '/api/v1/notifications/events',
   enabled: computed(() => !!user.value),
   onEvent: {
     'notification:new': () => load(true, true),
@@ -93,7 +107,7 @@ async function submitQuestion() {
   asking.value = true
   questionError.value = ''
   try {
-    const result = await askClarification(props.contest.id, {
+    const result = await contests.askClarification(props.slug, props.contest.id, {
       content,
       problem_id: questionProblemId.value || undefined,
     })
@@ -119,7 +133,7 @@ async function submitReply(clarId: string) {
   replying.value = true
   replyError.value = ''
   try {
-    const result = await replyClarification(props.contest.id, clarId, {
+    const result = await contests.replyClarification(props.slug, props.contest.id, clarId, {
       content,
       is_public: draft.isPublic,
     })

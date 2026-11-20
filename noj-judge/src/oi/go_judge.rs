@@ -300,27 +300,9 @@ fn parse_response(body: &str) -> Result<GoJudgeResponse> {
     anyhow::bail!("go-judge 响应格式无效")
 }
 
-#[allow(dead_code)]
-pub fn command_for_case(
-    language: &str,
-    source: &str,
-    input: &[u8],
-    time_limit_ms: u64,
-    memory_limit_mb: u64,
-    extra_files: &HashMap<String, Vec<u8>>,
-) -> Result<GoJudgeCommand> {
-    command_for_case_with_filename(
-        language,
-        source,
-        input,
-        time_limit_ms,
-        memory_limit_mb,
-        extra_files,
-        None,
-    )
-}
-
 /// 构造标准输入或 Hydro 兼容文件输入的用户命令。
+/// 生产路径已改为编译一次 + 逐测试点运行缓存可执行文件；保留供测试校验命令构造规则。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn command_for_case_with_filename(
     language: &str,
     source: &str,
@@ -587,60 +569,6 @@ fn validate_filename(filename: &str) -> Result<()> {
     Ok(())
 }
 
-/// 构造只运行受信 testlib checker 的命令。用户程序在另一个 go-judge
-/// sandbox 中运行，checker 只接收已经捕获的用户输出，避免用户进程篡改
-/// checker 源码、输入或标准答案。
-#[allow(dead_code)]
-pub fn command_for_testlib_checker(
-    checker_source: &[u8],
-    input: &[u8],
-    expected: &[u8],
-    actual: &[u8],
-    time_limit_ms: u64,
-    memory_limit_mb: u64,
-    extra_files: &HashMap<String, Vec<u8>>,
-) -> GoJudgeCommand {
-    let mut copy_in = HashMap::new();
-    for (name, content) in extra_files {
-        copy_in.insert(
-            name.clone(),
-            GoJudgeFile::content(String::from_utf8_lossy(content).into_owned()),
-        );
-    }
-    for (name, content) in [
-        ("checker.cpp", checker_source),
-        ("checker.in", input),
-        ("checker.ans", expected),
-        ("checker.out", actual),
-    ] {
-        copy_in.insert(
-            name.to_string(),
-            GoJudgeFile::content(String::from_utf8_lossy(content).into_owned()),
-        );
-    }
-    GoJudgeCommand {
-        args: vec![
-            "/bin/sh".to_string(),
-            "-c".to_string(),
-            "g++ -std=c++11 -O2 -Wall -pipe -I . checker.cpp -o checker; compile_status=$?; if [ $compile_status -ne 0 ]; then exit 125; fi; ./checker checker.in checker.out checker.ans".to_string(),
-        ],
-        env: vec!["PATH=/usr/bin:/bin".to_string()],
-        stdio: vec![
-            GoJudgeStdioFile::input(String::new()),
-            GoJudgeStdioFile::collector("stdout"),
-            GoJudgeStdioFile::collector("stderr"),
-        ],
-        copy_in,
-        copy_out: Vec::new(),
-        copy_out_cached: Vec::new(),
-        copy_out_max: MAX_OUTPUT_BYTES as u64,
-        cpu_limit_ns: time_limit_ms.saturating_mul(1_000_000),
-        clock_limit_ns: time_limit_ms.saturating_mul(3_000_000),
-        memory_limit_bytes: memory_limit_mb.saturating_mul(1024 * 1024),
-        proc_limit: 32,
-    }
-}
-
 /// testlib checker 在独立 sandbox 中运行；退出码 1/2 表示 checker 判 WA，
 /// 资源耗尽或 sandbox 错误仍由 go-judge 状态归因。
 pub fn map_testlib_status(response: &GoJudgeResponse) -> OiStatus {
@@ -737,20 +665,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_contains_fixed_limits_and_no_user_command() {
-        let extra = HashMap::from([(String::from("include/extra.h"), b"#define X 1".to_vec())]);
-        let command = command_for_case("cc", "int main(){}", b"1\n", 1000, 256, &extra).unwrap();
-        assert_eq!(command.cpu_limit_ns, 1_000_000_000);
-        assert_eq!(command.clock_limit_ns, 3_000_000_000);
-        assert!(command.args.join(" ").contains("g++ -std=c++11"));
-        assert!(command.args.join(" ").contains("./main"));
-        assert!(!command.args.join(" ").contains("/workspace"));
-        assert_eq!(command.copy_out_max, MAX_OUTPUT_BYTES as u64);
-        assert!(command.copy_in.contains_key("include/extra.h"));
-        assert!(!command.args.join(" ").contains("JUDGE_GO_JUDGE_URL"));
-    }
-
-    #[test]
     fn file_input_command_uses_hydro_names_and_does_not_feed_stdin() {
         let command = command_for_case_with_filename(
             "c",
@@ -771,9 +685,9 @@ mod tests {
     }
 
     #[test]
-    fn testlib_command_uses_fixed_checker_protocol() {
-        let command = command_for_testlib_checker(
-            b"int main(){return 0;}",
+    fn testlib_command_uses_compiled_checker_file_id() {
+        let command = command_for_compiled_checker(
+            "file-id-123",
             b"1\n",
             b"1\n",
             b"1\n",
@@ -783,8 +697,17 @@ mod tests {
         );
         let shell = command.args.join(" ");
         assert!(shell.contains("checker.in checker.out checker.ans"));
-        assert!(shell.contains("exit 125"));
-        assert!(command.copy_in.contains_key("checker.cpp"));
+        assert!(!shell.contains("g++"));
+        assert_eq!(
+            command
+                .copy_in
+                .get("checker")
+                .and_then(|file| file.file_id.as_deref()),
+            Some("file-id-123")
+        );
+        assert!(command.copy_in.contains_key("checker.in"));
+        assert!(command.copy_in.contains_key("checker.ans"));
+        assert!(command.copy_in.contains_key("checker.out"));
         assert!(!command.copy_out.contains(&"checker.out".to_string()));
     }
 

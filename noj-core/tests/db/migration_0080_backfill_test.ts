@@ -14,14 +14,16 @@
  *   3. 回填值取自 `created_at`（而非执行时刻）；
  *   4. 执行后列确为 NOT NULL（约束真的生效，不是"看起来通过"）。
  *
- * 依赖 preload 的每用例事务回滚：DROP/ADD COLUMN 与插入的探针数据都会自动回滚，
- * 不污染其他用例。
+ * 使用启动器提供的隔离数据库，并在用例结束时显式清理：DROP/ADD COLUMN 与插入的
+ * 探针数据不会污染其他测试运行。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 
 /** 覆盖本次迁移涉及的全部表 */
 const TABLES = [
@@ -99,6 +101,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    await resetDbForTest();
     const db = getDb();
 
     // ── 1. 构造"存量库"前置状态：删除 updated_at（= 0080 执行前的形态）──
@@ -120,27 +123,27 @@ Deno.test({
     // community_reports 有 target_check（post_id/comment_id/message_id 三选一非空），
     // 因此需要构造一个真实的举报目标（板块 → 帖子），不能只塞空值。
     await db.execute(sql`
-      INSERT INTO community_boards (id, slug, name, created_at, updated_at)
-      VALUES ('00000000-0000-4000-8000-000000000086', 'migration-0080-probe',
+      INSERT INTO community_boards (id, domain_id, slug, name, created_at, updated_at)
+      VALUES ('00000000-0000-4000-8000-000000000086', ${DEFAULT_DOMAIN_ID}, 'migration-0080-probe',
               '迁移回填回归板块', ${PROBE_CREATED_AT}, ${PROBE_CREATED_AT})
     `);
     await db.execute(sql`
       INSERT INTO community_posts
-        (id, type, board_id, title, author_id, content, created_at, updated_at)
-      VALUES ('00000000-0000-4000-8000-000000000087', 'discussion',
+        (id, domain_id, type, board_id, title, author_id, content, created_at, updated_at)
+      VALUES ('00000000-0000-4000-8000-000000000087', ${DEFAULT_DOMAIN_ID}, 'discussion',
               '00000000-0000-4000-8000-000000000086', '迁移回填回归帖子',
               ${PROBE_USER_ID}, '正文', ${PROBE_CREATED_AT}, ${PROBE_CREATED_AT})
     `);
     await db.execute(sql`
       INSERT INTO community_reports
-        (id, reporter_id, post_id, reason, content_snapshot, created_at)
-      VALUES ('00000000-0000-4000-8000-000000000081', ${PROBE_USER_ID},
+        (id, domain_id, reporter_id, post_id, reason, content_snapshot, created_at)
+      VALUES ('00000000-0000-4000-8000-000000000081', ${DEFAULT_DOMAIN_ID}, ${PROBE_USER_ID},
               '00000000-0000-4000-8000-000000000087',
               '迁移回填回归', 'snapshot', ${PROBE_CREATED_AT})
     `);
     await db.execute(sql`
-      INSERT INTO community_sanctions (id, user_id, reason, created_at)
-      VALUES ('00000000-0000-4000-8000-000000000082', ${PROBE_USER_ID},
+      INSERT INTO community_sanctions (id, domain_id, user_id, reason, created_at)
+      VALUES ('00000000-0000-4000-8000-000000000082', ${DEFAULT_DOMAIN_ID}, ${PROBE_USER_ID},
               '迁移回填回归', ${PROBE_CREATED_AT})
     `);
     await db.execute(sql`

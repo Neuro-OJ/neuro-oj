@@ -1,11 +1,11 @@
 /**
- * T19 演练测试：隔离性、退出码语义、失败也清理、报告与指标契约。
+ * 演练测试：隔离性、退出码语义、失败也清理、报告与指标契约。
  *
  * 全部注入（runner / fetch / 时间 / 睡眠），**不起容器、不触网**。
  *
  * 本套测试的三条最高价值断言：
- * 1. **隔离性**：compose 覆盖 YAML **不含 `ports:`**（不映射宿主机端口）；
- *    参数含 `--project-name <演练名>`；只改 `noj-net` 的 ipam 子网。
+ * 1. **隔离性**：真实 Compose 合并配置不含宿主机端口；参数含
+ *    `--project-name <演练名>`；网络子网和卷名均与生产隔离。
  * 2. **退出码语义（#516 验收）**：RPO/RTO 超限 = 1；资源/参数错误 = **2 且零
  *    compose 调用**——后者是"必须在开始前决出"的可断言形式。
  * 3. **失败也清理**：注入失败 → 断言仍执行 `down -v --remove-orphans`；
@@ -17,8 +17,9 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "@std/assert";
-import { join } from "@std/path";
+import { fromFileUrl, join } from "@std/path";
 import type {
   CmdResult,
   CommandRunner,
@@ -27,17 +28,22 @@ import type {
 import { makeTempDir } from "../../testing/helpers.ts";
 import {
   allocateDrillDir,
+  assertDedicatedDockerHost,
   assertSubnetCidr,
   DEFAULT_DRILL_PROJECT_NAME,
   DRILL_NETWORK_NAME,
+  DRILL_OUTBOUND_ENV_OVERRIDES,
   drillCleanupArgs,
   drillComposeArgs,
   drillDirName,
-  readEnvValues,
+  renderDisableOutboundIntegrationsSql,
   renderDrillOverride,
   resolveReportPath,
-  valueOr,
+  uniqueDrillProjectName,
+  uniqueDrillSubnet,
 } from "./plan.ts";
+import { valueOr } from "../env-values.ts";
+import { renderSeedDrillAdminSql } from "./seed-admin-sql.ts";
 import {
   formatHours,
   hoursSinceSnapshot,
@@ -50,13 +56,42 @@ import {
   snapshotCreatedAt,
 } from "./report.ts";
 import { buildDrillBundle, runBusinessVerification } from "./verify.ts";
-import { makeIdempotentGlobals, runDrill, tailLines } from "./drill.ts";
+import { runDrill } from "./drill.ts";
+import { makeIdempotentGlobals } from "../backup/globals.ts";
+import { tailLines } from "./finish.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** 一次 compose/命令调用记录。 */
 interface Call {
   cmd: string;
   args: string[];
+  env?: Record<string, string>;
 }
+
+const PROD_COMPOSE_FILE = fromFileUrl(
+  new URL("../../../../docker-compose.prod.yml", import.meta.url),
+);
+const REAL_COMPOSE_ENV = {
+  NOJ_VERSION: "compose-drill-test",
+  POSTGRES_PASSWORD: "compose-drill-postgres-password",
+  REDIS_PASSWORD: "compose-drill-redis-password",
+  JWT_SECRET: "compose-drill-jwt-secret-012345678901234567890123456789",
+  TFA_ENCRYPTION_KEY: "compose-drill-tfa-key-012345678901234567890123456789",
+  APP_URL: "http://compose-drill.invalid",
+  CORS_ALLOWED_ORIGINS: "http://compose-drill.invalid",
+  TRUSTED_PROXIES: "172.29.0.0/16",
+  STORAGE_PROVIDER: "s3",
+  S3_ACCESS_KEY: "compose-drill-storage-user",
+  S3_SECRET_KEY: "compose-drill-storage-password",
+  S3_BUCKET: "compose-drill-bucket",
+  EMAIL_PROVIDER: "disabled",
+  MINIO_ROOT_USER: "compose-drill-minio-root",
+  MINIO_ROOT_PASSWORD: "compose-drill-minio-password",
+  NOJ_LLM_SERVICE_TOKEN: "compose-drill-llm-service-token",
+  NOJ_LLM_STORE_KEY: "compose-drill-llm-store-key",
+  NOJ_EVAL_NETWORK_NAME: "noj-drill-config-test_noj-eval-net",
+  JUDGE_EVALUATOR_NETWORK: "noj-drill-config-test_noj-eval-net",
+};
 
 /**
  * 记录调用的 fake runner。
@@ -74,8 +109,8 @@ function makeRunner(
   } = {},
 ): CommandRunner {
   return {
-    run(cmd, args) {
-      calls.push({ cmd, args: [...args] });
+    run(cmd, args, options) {
+      calls.push({ cmd, args: [...args], env: options?.env });
       if (opts.throwOn?.(cmd, args)) {
         return Promise.reject(new Deno.errors.NotFound(`spawn ${cmd} failed`));
       }
@@ -98,7 +133,7 @@ function makeRunner(
       } as CmdResult);
     },
     spawn(): SpawnHandle {
-      throw new Error("T19 测试不 spawn");
+      throw new Error("演练测试不 spawn");
     },
   };
 }
@@ -238,6 +273,7 @@ function makeFetch(
     detailStatus?: number;
     attachment?: Uint8Array;
     importStatus?: number;
+    publishStatus?: number;
     selfTestCreateStatus?: number;
     selfTestStatuses?: string[];
     registerStatus?: number;
@@ -248,6 +284,8 @@ function makeFetch(
   const handler = (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input);
     calls.push(url);
+    // 域路径会带 query（列表分页），匹配时去掉查询串
+    const path = url.split("?")[0]!;
     const json = (body: unknown, status = 200): Response =>
       new Response(JSON.stringify(body), {
         status,
@@ -275,7 +313,29 @@ function makeFetch(
           new Response("bad", { status: opts.importStatus }),
         );
       }
-      return Promise.resolve(json({ data: { problem: { id: "p-1" } } }, 200));
+      // 契约（0.11）：无域导入已删除，域导入返回草稿事实 {problem_id, number, draft_revision}
+      return Promise.resolve(
+        json({
+          data: { problem_id: "p-1", number: 1001, draft_revision: 7 },
+        }, 201),
+      );
+    }
+    if (url.includes("/problems/1001/publish")) {
+      if ((opts.publishStatus ?? 200) !== 200) {
+        return Promise.resolve(
+          new Response("bad", { status: opts.publishStatus }),
+        );
+      }
+      // 契约：发布响应顶层返回 version_id
+      return Promise.resolve(
+        json({
+          problem_id: "p-1",
+          version_id: "ver-1",
+          version: 1,
+          draft_revision: 7,
+          unchanged: false,
+        }, 200),
+      );
     }
     if (url.includes("/support-package")) {
       return Promise.resolve(
@@ -302,12 +362,12 @@ function makeFetch(
       return Promise.resolve(json({ data: { id: "st-1" } }, 201));
     }
     // 题目详情 /problems/<id> 与列表 /problems
-    if (/\/problems\/[^/]+$/.test(url)) {
+    if (/\/problems\/[^/]+$/.test(path)) {
       return Promise.resolve(
         new Response("{}", { status: opts.detailStatus ?? 200 }),
       );
     }
-    if (url.endsWith("/problems")) {
+    if (path.endsWith("/problems")) {
       if ((opts.problemsStatus ?? 200) !== 200) {
         return Promise.resolve(
           new Response("bad", { status: opts.problemsStatus }),
@@ -360,6 +420,8 @@ async function baseOptions(
     ops: makeUnpackOps(),
     passphraseFile: await makePassphrase(root),
     projectName: "noj-drill",
+    dockerHost: "unix:///tmp/noj-restore-drill-test/docker.sock",
+    subnet: "172.29.0.0/16",
     drillDir: join(root, "drill-run"),
     report: join(root, "report.txt"),
     metricsDir: join(root, "metrics"),
@@ -372,18 +434,146 @@ async function baseOptions(
 
 // ---------------- 隔离性（#516 核心） ----------------
 
-Deno.test("T19 隔离性：覆盖 YAML 不含 ports（不映射宿主机端口），且只改 noj-net ipam", () => {
+Deno.test("隔离性：覆盖 YAML 清除 ports 映射并只改演练网络参数", () => {
   const yaml = renderDrillOverride("172.29.0.0/16");
-  assertEquals(yaml.includes("ports:"), false, "覆盖文件不得映射任何端口");
+  assertStringIncludes(yaml, "ports: !reset []");
   assertStringIncludes(yaml, `networks:\n  ${DRILL_NETWORK_NAME}:\n    ipam:`);
   assertStringIncludes(yaml, "subnet: 172.29.0.0/16");
-  // `verifier` 服务已删除（评审发现：TS 重写后业务验收由 CLI 直接发 HTTP，
+  // `verifier` 服务已删除（TS 重写后业务验收由 CLI 直接发 HTTP，
   // 该服务无任何使用点，只会多拉一个镜像并出现在 compose 解析面）。
-  assertEquals(yaml.includes("services:"), false, "覆盖文件不得声明任何服务");
   assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
-Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {
+Deno.test("隔离性：覆盖文件在 core.environment 中禁用出站集成", () => {
+  const yaml = renderDrillOverride("172.29.0.0/16");
+  assertStringIncludes(yaml, "services:\n  core:\n    environment:\n");
+  assertStringIncludes(yaml, `      EMAIL_PROVIDER: "disabled"\n`);
+  for (
+    const key of [
+      "OAUTH_GITHUB_CLIENT_ID",
+      "OAUTH_GITHUB_CLIENT_SECRET",
+      "OAUTH_OIDC_CLIENT_SECRET",
+      "ALIBABA_ACCESS_KEY_SECRET",
+      "TENCENT_SECRET_KEY",
+      "NOJ_LLM_GATEWAY_URL",
+      "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    ]
+  ) {
+    assertStringIncludes(yaml, `      ${key}: ""\n`, `${key} 必须被置空`);
+  }
+});
+
+Deno.test("隔离性：出站禁用 SQL 覆盖 email_provider 与 llm_providers", () => {
+  const sql = renderDisableOutboundIntegrationsSql();
+  // system_settings.value 是 JSON 编码，禁用值必须带引号
+  assertStringIncludes(sql, `SET value = '"disabled"'`);
+  assert(!sql.includes("SET value = 'disabled'"), "不得写入非 JSON 编码的裸值");
+  assertStringIncludes(sql, "'email_provider'");
+  assertStringIncludes(sql, "'alibaba_access_key_secret'");
+  assertStringIncludes(sql, "'email_webhook_secret'");
+  assertStringIncludes(sql, "'llm_default_provider_id'");
+  assertStringIncludes(sql, "UPDATE llm_providers SET enabled = false");
+  // webhook 兜底只命中「键名像 webhook 且值是 URL」的行，避免误清纯文本设置
+  assertStringIncludes(sql, "WHERE key ~* 'webhook|slack|discord|feishu|lark'");
+});
+
+Deno.test("隔离性：真实 Compose 合并配置清除宿主机端口并隔离网络/卷", async () => {
+  const root = await Deno.makeTempDir();
+  const envFile = join(root, ".env.drill");
+  const overrideFile = join(root, "compose.drill-override.yml");
+  try {
+    // 模拟快照里的生产出站配置：覆盖文件必须在合并结果中压过它们
+    const snapshotEnv: Record<string, string> = {
+      ...REAL_COMPOSE_ENV,
+      EMAIL_PROVIDER: "aliyun",
+      ALIBABA_ACCESS_KEY_SECRET: "prod-alibaba-secret",
+      OAUTH_GITHUB_CLIENT_ID: "prod-github-client",
+      OAUTH_GITHUB_CLIENT_SECRET: "prod-github-secret",
+      NOJ_LLM_DEFAULT_PROVIDER_ID: "prod-provider",
+    };
+    await Deno.writeTextFile(
+      envFile,
+      Object.entries(snapshotEnv).map(([key, value]) => `${key}=${value}`)
+        .join(
+          "\n",
+        ) + "\n",
+    );
+    await Deno.writeTextFile(
+      overrideFile,
+      renderDrillOverride("172.29.0.0/16"),
+    );
+    const result = await new Deno.Command("docker", {
+      args: [
+        "compose",
+        "--project-name",
+        "noj-drill-config-test",
+        "--env-file",
+        envFile,
+        "--file",
+        PROD_COMPOSE_FILE,
+        "--file",
+        overrideFile,
+        "--profile",
+        "judge",
+        "config",
+        "--format",
+        "json",
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(
+      result.code,
+      0,
+      `隔离覆盖必须能被真实 Compose 解析：${
+        new TextDecoder().decode(result.stderr)
+      }`,
+    );
+    const config = JSON.parse(new TextDecoder().decode(result.stdout)) as {
+      services?: Record<
+        string,
+        { ports?: unknown[]; environment?: Record<string, string | null> }
+      >;
+      networks?: Record<
+        string,
+        { name?: string; ipam?: { config?: Array<{ subnet?: string }> } }
+      >;
+      volumes?: Record<string, { name?: string }>;
+    };
+    for (const [name, service] of Object.entries(config.services ?? {})) {
+      assertEquals(
+        service.ports ?? [],
+        [],
+        `演练合并配置不得把 ${name} 的端口映射到宿主机`,
+      );
+    }
+    // 出站集成：合并后 core 环境必须是禁用值（含 compose 中的字面量
+    // NOJ_LLM_GATEWAY_URL），且每个覆盖键都真实存在于生产 core 环境
+    const coreEnv = config.services?.core?.environment ?? {};
+    for (const [key, value] of Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)) {
+      assert(key in coreEnv, `${key} 不在生产 core 环境中，覆盖无意义`);
+      assertEquals(coreEnv[key], value, `演练 core 的 ${key} 必须被覆盖`);
+    }
+    assertEquals(
+      config.networks?.[DRILL_NETWORK_NAME]?.ipam?.config?.[0]?.subnet,
+      "172.29.0.0/16",
+    );
+    assertEquals(
+      config.networks?.["noj-eval-net"]?.name,
+      "noj-drill-config-test_noj-eval-net",
+      "演练评测网络必须使用本项目专属的显式网络名",
+    );
+    assertEquals(
+      config.volumes?.pgdata?.name,
+      "noj-drill-config-test_pgdata",
+      "演练卷必须使用独立 Compose 项目前缀",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {
   const args = drillComposeArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -400,7 +590,7 @@ Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子
   assertEquals(args.filter((a) => a === "--file").length, 2);
 });
 
-Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）", () => {
+Deno.test("清理参数：down -v --remove-orphans（隔离卷必须删）", () => {
   const args = drillCleanupArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -409,7 +599,7 @@ Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）",
   });
   assertStringIncludes(args.join(" "), "down -v --remove-orphans");
   assertEquals(args.slice(0, 3), ["compose", "--project-name", "noj-drill"]);
-  // 覆盖文件已删时不应再传它（bash on_exit 的同一判定）
+  // 覆盖文件已删时不应再传它
   const noOverride = drillCleanupArgs({
     projectName: "noj-drill",
     composeEnvFile: "/t/env.drill",
@@ -418,7 +608,7 @@ Deno.test("T19 清理参数：down -v --remove-orphans（隔离卷必须删）",
   assertEquals(noOverride.filter((a) => a === "--file").length, 1);
 });
 
-Deno.test("T19 项目名/子网：复用既有校验（含 prod 拒绝与主机位判定）", () => {
+Deno.test("项目名/子网：复用既有校验（含 prod 拒绝与主机位判定）", () => {
   assertSubnetCidr("172.29.0.0/16");
   for (const bad of ["999.1.1.1/16", "172.29.1.1/16", "172.29.0.0/31"]) {
     let msg = "";
@@ -432,9 +622,29 @@ Deno.test("T19 项目名/子网：复用既有校验（含 prod 拒绝与主机�
   assertEquals(DEFAULT_DRILL_PROJECT_NAME, "noj-drill");
 });
 
+Deno.test("P8 隔离 daemon：只接受专用 socket，默认项目/子网每次可唯一生成", () => {
+  assertDedicatedDockerHost(
+    "unix:///run/noj-restore-drill/20261022-120000/docker.sock",
+  );
+  assertThrows(
+    () => assertDedicatedDockerHost("unix:///var/run/docker.sock"),
+    Error,
+  );
+  assertThrows(
+    () => assertDedicatedDockerHost("tcp://127.0.0.1:2375"),
+    Error,
+  );
+  assertEquals(
+    uniqueDrillProjectName(new Date("2026-10-22T12:34:56Z"), "deadbeef"),
+    "noj-drill-20261022123456-deadbeef",
+  );
+  assertEquals(uniqueDrillSubnet(0), "172.29.1.0/24");
+  assertEquals(uniqueDrillSubnet(253), "172.29.254.0/24");
+});
+
 // ---------------- 退出码语义 ----------------
 
-Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", async () => {
+Deno.test("退出码 0：完整成功流程（报告 + 指标 + 清理）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -446,7 +656,7 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
     assertEquals(result.pass, true);
     assertEquals(result.failedStage, null);
     assertEquals(result.reportPath, join(root, "report.txt"));
-    // 报告字段与 bash 逐字对应
+    // 报告字段名固定
     const report = await Deno.readTextFile(join(root, "report.txt"));
     assertStringIncludes(report, "result=passed\n");
     assertStringIncludes(
@@ -484,12 +694,28 @@ Deno.test("T19 退出码 0：完整成功流程（报告 + 指标 + 清理）", 
       dirExists = false;
     }
     assertEquals(dirExists, false, "成功路径默认删除演练目录");
+
+    // 出站集成禁用必须在 core 启动之前执行（core 启动后 DB 改动不再进入
+    // 设置缓存）。SQL 正文经临时文件喂给 psql，喂入后即删除，因此只断言
+    // 「已执行」与「早于 core up」。
+    const outboundAt = calls.findIndex((c) =>
+      c.cmd === "sh" && c.args.includes("psql")
+    );
+    const coreUpAt = calls.findIndex((c) =>
+      c.args.includes("up") && c.args.includes("core")
+    );
+    assert(outboundAt >= 0, "必须执行出站集成禁用 SQL");
+    assert(coreUpAt >= 0, "必须启动隔离 core");
+    assert(
+      outboundAt < coreUpAt,
+      "出站集成禁用必须在 core 启动之前执行",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("T19 退出码 1：RPO 超限（快照过旧）→ 失败且不刷新指标", async () => {
+Deno.test("退出码 1：RPO 超限（快照过旧）→ 失败且不刷新指标", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -521,7 +747,7 @@ Deno.test("T19 退出码 1：RPO 超限（快照过旧）→ 失败且不刷新�
   }
 });
 
-Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报告", async () => {
+Deno.test("退出码 2：docker 不可用 → 零 compose 调用、不写报告", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -536,6 +762,7 @@ Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报
       }),
       ops: makeUnpackOps(),
       passphraseFile: await makePassphrase(root),
+      dockerHost: "unix:///tmp/noj-restore-drill-test/docker.sock",
       drillDir: join(root, "drill-run"),
       report: join(root, "report.txt"),
       now: () => new Date("2026-09-19T12:00:00Z"),
@@ -556,7 +783,7 @@ Deno.test("T19 退出码 2：docker 不可用 → 零 compose 调用、不写报
   }
 });
 
-Deno.test("T19 退出码 2：项目名含 prod → 拒绝且零 compose 调用", async () => {
+Deno.test("退出码 2：项目名含 prod → 拒绝且零 compose 调用", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -572,7 +799,7 @@ Deno.test("T19 退出码 2：项目名含 prod → 拒绝且零 compose 调用",
   }
 });
 
-Deno.test("T19 退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO", async () => {
+Deno.test("退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -603,7 +830,7 @@ Deno.test("T19 退出码 2：缺口令文件 / 口令权限过宽 / 非法 RPO",
 
 // ---------------- 失败也清理 ----------------
 
-Deno.test("T19 失败也清理：恢复阶段失败 → 仍执行 down -v，且报告记录失败阶段", async () => {
+Deno.test("失败也清理：恢复阶段失败 → 仍执行 down -v，且报告记录失败阶段", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -636,7 +863,7 @@ Deno.test("T19 失败也清理：恢复阶段失败 → 仍执行 down -v，且�
   }
 });
 
-Deno.test("T19 --keep：失败时**不**清理资源与目录", async () => {
+Deno.test("--keep：失败时**不**清理资源与目录", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -664,7 +891,7 @@ Deno.test("T19 --keep：失败时**不**清理资源与目录", async () => {
   }
 });
 
-Deno.test("T19 清理失败不掩盖原始错误（原始原因仍是 message 主体）", async () => {
+Deno.test("清理失败不掩盖原始错误（原始原因仍是 message 主体）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -693,7 +920,7 @@ Deno.test("T19 清理失败不掩盖原始错误（原始原因仍是 message �
 
 // ---------------- 形态反转与数据核对 ----------------
 
-Deno.test("T19 形态反转：.nojbackup 被接受；目录形态被拒绝（2）", async () => {
+Deno.test("形态反转：.nojbackup 被接受；目录形态被拒绝（2）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -720,7 +947,7 @@ Deno.test("T19 形态反转：.nojbackup 被接受；目录形态被拒绝（2�
   }
 });
 
-Deno.test("T19 数据核对：迁移版本与快照不一致 → 失败（1）", async () => {
+Deno.test("数据核对：迁移版本与快照不一致 → 失败（1）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -747,7 +974,7 @@ Deno.test("T19 数据核对：迁移版本与快照不一致 → 失败（1）",
   }
 });
 
-Deno.test("T19 数据核对：MinIO 对象数少于快照 → 失败（1）", async () => {
+Deno.test("数据核对：MinIO 对象数少于快照 → 失败（1）", async () => {
   const root = await makeTempDir();
   try {
     const calls: Call[] = [];
@@ -777,7 +1004,7 @@ Deno.test("T19 数据核对：MinIO 对象数少于快照 → 失败（1）", as
 
 // ---------------- 业务验收（原生 HTTP） ----------------
 
-Deno.test("T19 业务验收：登录失败 → 立即短路（不再发题目请求）", async () => {
+Deno.test("业务验收：登录失败 → 立即短路（不再发题目请求）", async () => {
   const { fetch, calls } = makeFetch({ loginStatus: 401 });
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -793,7 +1020,7 @@ Deno.test("T19 业务验收：登录失败 → 立即短路（不再发题目请
   assertStringIncludes(result.firstFailure ?? "", "HTTP 401");
 });
 
-Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/注册）", async () => {
+Deno.test("业务验收：完整链路通过（导入/详情/附件/评测/注册）", async () => {
   const { fetch } = makeFetch();
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -805,6 +1032,7 @@ Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/�
   assertEquals(steps, [
     "login",
     "problem_import",
+    "problem_publish",
     "problem_read",
     "attachment_download",
     "evaluation",
@@ -817,7 +1045,7 @@ Deno.test("T19 业务验收：完整链路通过（导入/详情/附件/评测/�
   );
 });
 
-Deno.test("T19 业务验收：--skip-judge 时不导入题目、评测记为 skipped", async () => {
+Deno.test("业务验收：--skip-judge 时不导入题目、评测记为 skipped", async () => {
   const { fetch, calls } = makeFetch();
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -837,7 +1065,7 @@ Deno.test("T19 业务验收：--skip-judge 时不导入题目、评测记为 ski
   );
 });
 
-Deno.test("T19 业务验收：评测分数为 0 → 失败（1）", async () => {
+Deno.test("业务验收：评测分数为 0 → 失败（1）", async () => {
   const { fetch } = makeFetch();
   // 让轮询返回 score=0 的响应：复用 handler 但覆盖 /self-tests/ 分支
   const zeroScore: typeof fetch = (input, init) => {
@@ -865,7 +1093,7 @@ Deno.test("T19 业务验收：评测分数为 0 → 失败（1）", async () => 
   assertStringIncludes(evaluation?.detail ?? "", "score=0");
 });
 
-Deno.test("T19 业务验收：注册失败只记 warning，不影响结论", async () => {
+Deno.test("业务验收：注册失败只记 warning，不影响结论", async () => {
   const { fetch } = makeFetch({ registerStatus: 403 });
   const result = await runBusinessVerification({
     baseUrl: "http://core:8000/api/v1",
@@ -877,7 +1105,7 @@ Deno.test("T19 业务验收：注册失败只记 warning，不影响结论", asy
   assertEquals(probe?.status, "warning");
 });
 
-Deno.test("T19 业务验收：Cookie 与 JSON token 双兼容", async () => {
+Deno.test("业务验收：Cookie 与 JSON token 双兼容", async () => {
   // 只给 Set-Cookie，不给 JSON token
   const cookieOnly: typeof fetch = (input) => {
     const url = String(input);
@@ -914,7 +1142,7 @@ Deno.test("T19 业务验收：Cookie 与 JSON token 双兼容", async () => {
   assertEquals(result.steps.find((s) => s.step === "login")?.status, "passed");
 });
 
-Deno.test("T19 buildDrillBundle：产出可被 zip 解析的包（含 evaluator/template）", async () => {
+Deno.test("buildDrillBundle：产出可被 zip 解析的包（含 evaluator/template）", async () => {
   const { unzipSync } = await import("fflate");
   const bytes = buildDrillBundle("eval-img:1", "sol-img:1");
   const files = unzipSync(bytes);
@@ -929,12 +1157,13 @@ Deno.test("T19 buildDrillBundle：产出可被 zip 解析的包（含 evaluator/
   const manifest = JSON.parse(new TextDecoder().decode(files["problem.json"]!));
   assertEquals(manifest.runtime_config.evaluator.image, "eval-img:1");
   assertEquals(manifest.runtime_config.solution.image, "sol-img:1");
-  assertEquals(manifest.type, "P");
+  assertEquals(manifest.format_version, 2);
+  assertEquals("type" in manifest, false);
 });
 
 // ---------------- 报告与指标（纯函数） ----------------
 
-Deno.test("T19 报告：字段名与 bash 逐字一致", () => {
+Deno.test("报告：字段名固定不变", () => {
   const text = renderReport({
     result: "passed",
     snapshot: "/t/snap.nojbackup",
@@ -992,7 +1221,7 @@ Deno.test("T19 报告：字段名与 bash 逐字一致", () => {
   }
 });
 
-Deno.test("T19 失败报告：有 failed_stage，无 RPO/RTO 字段（避免误读为跑完）", () => {
+Deno.test("失败报告：有 failed_stage，无 RPO/RTO 字段（避免误读为跑完）", () => {
   const text = renderFailureReport({
     snapshot: "/t/snap.nojbackup",
     failedStage: "business-verify",
@@ -1008,7 +1237,7 @@ Deno.test("T19 失败报告：有 failed_stage，无 RPO/RTO 字段（避免误�
   assertStringIncludes(text, "# ---- 业务验收输出（失败现场） ----");
 });
 
-Deno.test("T19 指标：名字逐字保持契约（含 HELP/TYPE），且仅成功时渲染", () => {
+Deno.test("指标：名字逐字保持契约（含 HELP/TYPE），且仅成功时渲染", () => {
   const text = renderDrillMetrics(1789819200);
   assertEquals(
     text,
@@ -1020,7 +1249,7 @@ Deno.test("T19 指标：名字逐字保持契约（含 HELP/TYPE），且仅成�
   assertEquals(METRIC_LAST_SUCCESS, "noj_restore_drill_last_success_unix_time");
 });
 
-Deno.test("T19 时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标（inf）", () => {
+Deno.test("时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标（inf）", () => {
   const now = new Date("2026-09-19T12:00:00Z");
   assertEquals(hoursSinceSnapshot("2026-09-19T10:00:00Z", now), 2);
   assertEquals(hoursSinceSnapshot("", now), Number.POSITIVE_INFINITY);
@@ -1035,7 +1264,7 @@ Deno.test("T19 时间：缺失/不可解析的时间戳 ⇒ RPO 必然不达标�
   assertEquals(snapshotCreatedAt("not json"), "");
 });
 
-Deno.test("T19 路径与目录：报告落点、演练目录、指标目录", async () => {
+Deno.test("路径与目录：报告落点、演练目录、指标目录", async () => {
   const root = await makeTempDir();
   try {
     // 单文件快照：报告写到**所在目录**（不是把文件当目录拼路径）
@@ -1079,7 +1308,7 @@ Deno.test("T19 路径与目录：报告落点、演练目录、指标目录", as
   }
 });
 
-Deno.test("T19 makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", async () => {
+Deno.test("makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", async () => {
   const root = await makeTempDir();
   try {
     const src = join(root, "globals.sql");
@@ -1101,19 +1330,19 @@ Deno.test("T19 makeIdempotentGlobals：CREATE ROLE 改写为幂等 DO 块", asyn
   }
 });
 
-Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
+Deno.test("readEnvValuesOrEmpty/valueOr/tailLines：解析与兜底", async () => {
   const root = await makeTempDir();
   try {
     const env = join(root, ".env.prod");
     await Deno.writeTextFile(env, 'POSTGRES_USER=pguser\nS3_BUCKET="bkt"\n');
-    const values = await readEnvValues(env);
+    const values = await readEnvValuesOrEmpty(env);
     assertEquals(values["POSTGRES_USER"], "pguser");
     assertEquals(values["S3_BUCKET"], "bkt");
     assertEquals(valueOr(values, "POSTGRES_USER", "noj"), "pguser");
     assertEquals(valueOr(values, "MISSING", "fallback"), "fallback");
     assertEquals(valueOr({ K: "" }, "K", "def"), "def");
-    // 缺文件 → 空表（bash env_value 同样不报错）
-    assertEquals(await readEnvValues(join(root, "nope")), {});
+    // 缺文件 → 空表
+    assertEquals(await readEnvValuesOrEmpty(join(root, "nope")), {});
 
     assertEquals(tailLines("a\nb\nc\nd", 2), "c\nd");
     assertEquals(tailLines("only", 5), "only");
@@ -1122,33 +1351,27 @@ Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
   }
 });
 
-// ── 评审发现（Important）：恢复路径上两处 compose 退出码被丢弃 ────────
+// ── 回归：恢复路径上两处 compose 退出码被丢弃 ────────
 //
-// bash 对 drill 的每一步都是 `|| die`；而 `run --rm minio-init`
-// 与 `run --rm migrate` 此前**丢弃返回值**，于是失败会表现为后续某个更难懂的
-// 错误（"隔离 core 启动失败"、"数据核对失败"），把根因埋掉。
+// 演练的每一步失败都必须终止。一次性服务必须经 Compose `up` 保留
+// 完成状态，不能用 `run --rm` 后再 `up core`，否则依赖会被重新执行。
 
-Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
-  // 行为断言而非源码文本匹配：注入 runner 让 `run --rm minio-init` 失败，
-  // 断言最终错误**点名 minio-init**。修复前该退出码被丢弃，错误会变成
-  // 后面某个更难懂的现象，运维者无法定位。
+Deno.test("minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
+  // 行为断言而非源码文本匹配：注入 runner 让一次性 `up minio-init` 失败，
+  // 断言最终错误**点名 minio-init**。
   const root = await Deno.makeTempDir();
   try {
     const calls: Call[] = [];
     const runner = makeRunner(calls, {
-      // **只命中 `run --rm minio-init`**（初始化），不要误伤后面那条
+      // **只命中一次性 `up minio-init`**（初始化），不要误伤后面那条
       // `mc mirror`（它的 args 里也含 "minio-init"，但它自己已检查退出码）。
       // 我第一版就是这样写的：`includes("minio-init")` 命中了 `mc mirror`，
       // 于是演练在更早处失败、本用例**恒真**——移除修复也照样通过。
       failOn: (args) =>
-        args.includes("run") && args.includes("--rm") &&
-        args.includes("minio-init") && !args.includes("-c"),
+        args.includes("wait") && args.includes("minio-init") &&
+        !args.includes("-c"),
     });
     const result = await runDrill(await baseOptions(root, runner));
-    console.log(
-      "DBG minio:",
-      JSON.stringify({ code: result.exitCode, msg: result.message }),
-    );
     assertEquals(result.exitCode, 1, "minio-init 失败应使演练失败");
     assert(
       result.message.includes("MinIO") || result.message.includes("minio-init"),
@@ -1157,4 +1380,196 @@ Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋�
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
+});
+
+Deno.test("P2b: gateway-migrate 失败必须阻止业务服务启动并点名根因", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const successful = successfulRunner(calls);
+    const runner: CommandRunner = {
+      run(cmd, args) {
+        if (
+          args.includes("wait") &&
+          args.includes("gateway-migrate")
+        ) {
+          return Promise.resolve({
+            code: 1,
+            stdout: "",
+            stderr: "injected gateway migration failure",
+          });
+        }
+        return successful.run(cmd, args);
+      },
+      spawn: successful.spawn,
+    };
+    const result = await runDrill(await baseOptions(root, runner));
+    assertEquals(result.exitCode, 1, "gateway-migrate 失败应使演练失败");
+    assertStringIncludes(result.message, "Gateway");
+    assert(
+      calls.every((call) =>
+        !(call.args.includes("up") && call.args.includes("core"))
+      ),
+      "Gateway 迁移失败后不得启动 Core",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("P2b: Core migrate/init 失败必须阻止 Gateway 与业务服务启动", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const successful = successfulRunner(calls);
+    const runner: CommandRunner = {
+      run(cmd, args) {
+        if (
+          args.includes("wait") &&
+          args.includes("migrate") && !args.includes("gateway-migrate")
+        ) {
+          return Promise.resolve({
+            code: 1,
+            stdout: "",
+            stderr: "injected core migration failure",
+          });
+        }
+        return successful.run(cmd, args);
+      },
+      spawn: successful.spawn,
+    };
+    const result = await runDrill(await baseOptions(root, runner));
+    assertEquals(result.exitCode, 1, "Core migrate 失败应使演练失败");
+    assertStringIncludes(result.message, "数据库迁移");
+    assert(
+      calls.every((call) =>
+        !(call.args.includes("up") &&
+          (call.args.includes("gateway-migrate") || call.args.includes("core")))
+      ),
+      "Core 迁移失败后不得启动 Gateway migrate 或 Core HTTP",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("P2b: 演练按 Core → Gateway → Core HTTP 顺序执行且不重复 one-shot", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const { fetch } = makeFetch();
+    const result = await runDrill(
+      await baseOptions(root, successfulRunner(calls), fetch),
+    );
+    assertEquals(result.exitCode, 0, result.message);
+
+    const composeCommands = calls
+      .filter((call) => call.args.includes("compose"))
+      .map((call) => call.args);
+    const migrationUp = composeCommands.filter((args) =>
+      args.includes("wait") &&
+      (args.includes("migrate") || args.includes("gateway-migrate"))
+    );
+    const coreUp = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("core")
+    );
+    assertEquals(
+      migrationUp.length >= 2,
+      true,
+      "应分别启动 Core/Gateway one-shot",
+    );
+    const coreMigrationAt = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("migrate") &&
+      !args.includes("gateway-migrate")
+    );
+    const gatewayMigrationAt = composeCommands.findIndex((args) =>
+      args.includes("up") && args.includes("gateway-migrate")
+    );
+    assert(
+      coreMigrationAt >= 0 && gatewayMigrationAt > coreMigrationAt &&
+        coreUp > gatewayMigrationAt,
+      `必须按 Core → Gateway → Core HTTP 顺序，实得：${
+        composeCommands.map((a) => a.join(" ")).join("\n")
+      }`,
+    );
+    assertEquals(
+      composeCommands.some((args) =>
+        args.includes("run") && args.includes("--rm") &&
+        (args.includes("migrate") || args.includes("gateway-migrate") ||
+          args.includes("core"))
+      ),
+      false,
+      "迁移与 Core 启动不得使用会丢失完成状态的 run --rm",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("业务验收：全部请求命中域契约路径（旧无域写入口一律失败）", async () => {
+  const { fetch, calls } = makeFetch();
+  await runBusinessVerification({
+    baseUrl: "http://core:8000/api/v1",
+    fetch,
+    sleep: () => Promise.resolve(),
+  });
+  // 0.11 起无域写入口已删除：任何 `/api/v1/problems...` 写路径都是 404。
+  // 这里把"演练实际发出的路径"固定成白名单，mock 与真实契约再次脱节时直接失败
+  // （2026-11-02 审计 F3 的根因就是缺这条断言）。
+  const allowed = [
+    /^\/api\/v1\/auth\/login$/,
+    /^\/api\/v1\/auth\/register$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/import-bundle$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/publish$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/support-package$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/problems\/\d+\/self-tests$/,
+    /^\/api\/v1\/domains\/[a-z0-9-]+\/self-tests\/[^/]+$/,
+  ];
+  for (const url of calls) {
+    const path = new URL(url).pathname;
+    assert(
+      allowed.some((pattern) => pattern.test(path)),
+      `演练请求了未登记路径：${path}（0.11 已删除无域写入口）`,
+    );
+  }
+  assert(
+    calls.some((url) => url.includes("/problems/import-bundle")),
+    "完整链路应包含题包导入",
+  );
+  assert(
+    calls.some((url) => url.includes("/publish")),
+    "完整链路应包含显式发布",
+  );
+});
+
+/**
+ * 演练管理员的授权写入必须只写 users.role。
+ *
+ * 固定角色重构删除了 roles / user_roles（迁移 0133），但 e2e 夹具曾长期
+ * 复制旧 SQL 并因此断链；这里把 SQL 形态钉死，两份实现再次分叉时直接失败。
+ */
+Deno.test("drill: seedDrillAdmin SQL 只写 users.role，不引用已删 RBAC 表", () => {
+  const sql = renderSeedDrillAdminSql("2026-01-01T00:00:00.000Z");
+  assertStringIncludes(sql, "INSERT INTO users");
+  assertStringIncludes(sql, "UPDATE users SET role = 'admin'");
+  assertStringIncludes(sql, "ON CONFLICT (id) DO NOTHING;");
+  // 覆盖 user_roles 与 roles 两种形态：任何含 "roles" 的表名都不允许出现。
+  assert(!sql.includes("roles"), "不得引用已删除的 roles/user_roles");
+  assert(!sql.includes("email_verified"), "不得显式写历史快照可能没有的列");
+});
+
+Deno.test("drill: e2e 恢复演练夹具与渲染器保持同一 SQL 形态", async () => {
+  const fixture = new URL(
+    "../../../../noj-tests/e2e/cross-domain/restore_drill_contract.test.ts",
+    import.meta.url,
+  );
+  const text = await Deno.readTextFile(fixture);
+  assertStringIncludes(
+    text,
+    "UPDATE users SET role = 'admin' WHERE id = 'drill-admin-user';",
+  );
+  assert(!text.includes("user_roles"), "e2e 夹具不得引用已删除的 user_roles");
+  assert(!text.includes("FROM roles"), "e2e 夹具不得引用已删除的 roles");
 });

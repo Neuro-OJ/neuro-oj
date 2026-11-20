@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -10,17 +11,26 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { manyToManyPk, publicIdColumn } from "./common.ts";
-import { roles, userBans, users } from "./identity.ts";
+import { publicIdColumn } from "./common.ts";
+import { userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
-import { messages } from "./messaging.ts";
+import { domains } from "./workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
+import { assignments, educationOutbox } from "./assignment.ts";
+import {
+  assignmentFeedback,
+  assignmentHelpReplies,
+  assignmentHelpRequests,
+} from "./education-interactions.ts";
 
 /** 社区讨论板块。 */
 export const communityBoards = pgTable(
   "community_boards",
   {
     id: text("id").primaryKey(),
-    slug: text("slug").notNull().unique(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    revision: integer("revision").notNull().default(0),
+    slug: text("slug").notNull(),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
     sort_order: integer("sort_order").notNull().default(0),
@@ -29,30 +39,18 @@ export const communityBoards = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    domainIdUnique: unique("community_boards_domain_id_unique").on(
+      table.id,
+      table.domain_id,
+    ),
+    domainSlugUnique: unique("community_boards_domain_slug_unique").on(
+      table.domain_id,
+      table.slug,
+    ),
     sortIdx: index("idx_community_boards_sort").on(
       table.is_archived,
       table.sort_order,
     ),
-  }),
-);
-
-/** 板块级角色授权；没有授权记录时沿用全局社区 RBAC。 */
-export const communityBoardRoleGrants = pgTable(
-  "community_board_role_grants",
-  {
-    board_id: text("board_id").notNull().references(() => communityBoards.id, {
-      onDelete: "cascade",
-    }),
-    role_id: text("role_id").notNull().references(() => roles.id, {
-      onDelete: "cascade",
-    }),
-    can_read: boolean("can_read").notNull().default(true),
-    can_post: boolean("can_post").notNull().default(false),
-    can_moderate: boolean("can_moderate").notNull().default(false),
-  },
-  (table) => ({
-    ...manyToManyPk([table.board_id, table.role_id]),
-    roleIdx: index("idx_community_board_role_grants_role").on(table.role_id),
   }),
 );
 
@@ -62,6 +60,8 @@ export const communityPosts = pgTable(
   {
     id: text("id").primaryKey(),
     public_id: publicIdColumn("post"),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id"),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",
@@ -91,9 +91,45 @@ export const communityPosts = pgTable(
     publicIdUnique: unique("community_posts_public_id_unique").on(
       table.public_id,
     ),
+    domainIdUnique: unique("community_posts_domain_id_unique").on(
+      table.id,
+      table.domain_id,
+    ),
+    workspaceBoardFk: foreignKey({
+      name: "community_posts_workspace_board_fk",
+      columns: [table.board_id, table.domain_id],
+      foreignColumns: [communityBoards.id, communityBoards.domain_id],
+    }),
+    workspaceBindingFk: foreignKey({
+      name: "community_posts_workspace_binding_fk",
+      columns: [table.domain_problem_binding_id, table.domain_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.domain_id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "community_posts_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.problem_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
+    workspaceIdx: index("idx_community_posts_workspace").on(
+      table.domain_id,
+      table.type,
+      table.status,
+      table.created_at,
+    ),
     typeCheck: check(
       "community_posts_type_check",
-      sql`${table.type} IN ('solution', 'discussion', 'moment')`,
+      sql`${table.type} IN ('solution', 'discussion')`,
+    ),
+    bindingRequiredCheck: check(
+      "community_posts_binding_required_check",
+      sql`(${table.type} = 'solution' AND ${table.domain_problem_binding_id} IS NOT NULL)
+        OR (${table.type} <> 'solution' AND ${table.domain_problem_binding_id} IS NULL)`,
     ),
     statusCheck: check(
       "community_posts_status_check",
@@ -104,7 +140,6 @@ export const communityPosts = pgTable(
       sql`(
         (${table.type} = 'solution' AND ${table.problem_id} IS NOT NULL AND ${table.board_id} IS NULL AND ${table.title} IS NOT NULL)
         OR (${table.type} = 'discussion' AND ${table.board_id} IS NOT NULL AND ${table.problem_id} IS NULL AND ${table.title} IS NOT NULL)
-        OR (${table.type} = 'moment' AND ${table.problem_id} IS NULL AND ${table.board_id} IS NULL AND ${table.title} IS NULL)
       )`,
     ),
     authorIdx: index("idx_community_posts_author").on(
@@ -134,7 +169,7 @@ export const communityPosts = pgTable(
       table.created_at,
     ),
     // issue #453：ILIKE '%keyword%' 由 pg_trgm GIN 索引加速。
-    // pg_trgm 扩展只在生产 PostgreSQL 迁移中安装；PGlite 测试 DDL 会跳过这两项。
+    // pg_trgm 扩展由 PostgreSQL 迁移安装。
     titleTrgmIdx: index("idx_community_posts_title_trgm").using(
       "gin",
       table.title.op("gin_trgm_ops"),
@@ -151,6 +186,7 @@ export const communityComments = pgTable(
   "community_comments",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     post_id: text("post_id").notNull().references(() => communityPosts.id, {
       onDelete: "cascade",
     }),
@@ -168,6 +204,25 @@ export const communityComments = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    domainIdUnique: unique("community_comments_domain_id_unique").on(
+      table.id,
+      table.domain_id,
+    ),
+    postDomainUnique: unique("community_comments_post_domain_unique").on(
+      table.id,
+      table.post_id,
+      table.domain_id,
+    ),
+    workspacePostFk: foreignKey({
+      name: "community_comments_workspace_post_fk",
+      columns: [table.post_id, table.domain_id],
+      foreignColumns: [communityPosts.id, communityPosts.domain_id],
+    }),
+    workspaceParentFk: foreignKey({
+      name: "community_comments_workspace_parent_fk",
+      columns: [table.parent_id, table.post_id, table.domain_id],
+      foreignColumns: [table.id, table.post_id, table.domain_id],
+    }),
     statusCheck: check(
       "community_comments_status_check",
       sql`${table.status} IN ('pending', 'published', 'hidden', 'deleted')`,
@@ -181,94 +236,12 @@ export const communityComments = pgTable(
   }),
 );
 
-/** 帖子点赞。 */
-export const communityPostLikes = pgTable(
-  "community_post_likes",
-  {
-    post_id: text("post_id").notNull().references(() => communityPosts.id, {
-      onDelete: "cascade",
-    }),
-    user_id: text("user_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    ...manyToManyPk([table.post_id, table.user_id]),
-    userIdx: index("idx_community_post_likes_user").on(table.user_id),
-  }),
-);
-
-/** 评论点赞。 */
-export const communityCommentLikes = pgTable(
-  "community_comment_likes",
-  {
-    comment_id: text("comment_id").notNull().references(
-      () => communityComments.id,
-      { onDelete: "cascade" },
-    ),
-    user_id: text("user_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    ...manyToManyPk([table.comment_id, table.user_id]),
-    userIdx: index("idx_community_comment_likes_user").on(table.user_id),
-  }),
-);
-
-/** 帖子收藏。 */
-export const communityBookmarks = pgTable(
-  "community_bookmarks",
-  {
-    post_id: text("post_id").notNull().references(() => communityPosts.id, {
-      onDelete: "cascade",
-    }),
-    user_id: text("user_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    ...manyToManyPk([table.post_id, table.user_id]),
-    userIdx: index("idx_community_bookmarks_user").on(
-      table.user_id,
-      table.created_at,
-    ),
-  }),
-);
-
-/** 用户关注关系。 */
-export const communityFollows = pgTable(
-  "community_follows",
-  {
-    follower_id: text("follower_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    followee_id: text("followee_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    ...manyToManyPk([table.follower_id, table.followee_id]),
-    notSelfCheck: check(
-      "community_follows_not_self_check",
-      sql`${table.follower_id} <> ${table.followee_id}`,
-    ),
-    followeeIdx: index("idx_community_follows_followee").on(
-      table.followee_id,
-      table.created_at,
-    ),
-  }),
-);
-
 /** 帖子或评论举报。 */
 export const communityReports = pgTable(
   "community_reports",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").references(() => domains.id),
     reporter_id: text("reporter_id").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),
@@ -276,10 +249,6 @@ export const communityReports = pgTable(
       onDelete: "set null",
     }),
     comment_id: text("comment_id").references(() => communityComments.id, {
-      onDelete: "set null",
-    }),
-    /** 私信消息举报目标（复用社区举报处理流程） */
-    message_id: text("message_id").references(() => messages.id, {
       onDelete: "set null",
     }),
     content_type: text("content_type").notNull().default("post"),
@@ -304,9 +273,23 @@ export const communityReports = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspacePostFk: foreignKey({
+      name: "community_reports_workspace_post_fk",
+      columns: [table.post_id, table.domain_id],
+      foreignColumns: [communityPosts.id, communityPosts.domain_id],
+    }),
+    workspaceCommentFk: foreignKey({
+      name: "community_reports_workspace_comment_fk",
+      columns: [table.comment_id, table.domain_id],
+      foreignColumns: [communityComments.id, communityComments.domain_id],
+    }),
+    workspaceCheck: check(
+      "community_reports_workspace_check",
+      sql`${table.content_type} IN ('post', 'comment') AND ${table.domain_id} IS NOT NULL`,
+    ),
     targetCheck: check(
       "community_reports_target_check",
-      sql`num_nonnulls(${table.post_id}, ${table.comment_id}, ${table.message_id}) = 1`,
+      sql`num_nonnulls(${table.post_id}, ${table.comment_id}) = 1`,
     ),
     statusCheck: check(
       "community_reports_status_check",
@@ -321,7 +304,6 @@ export const communityReports = pgTable(
     reporterIdx: index("idx_community_reports_reporter").on(table.reporter_id),
     postIdx: index("idx_community_reports_post").on(table.post_id),
     commentIdx: index("idx_community_reports_comment").on(table.comment_id),
-    messageIdx: index("idx_community_reports_message").on(table.message_id),
   }),
 );
 
@@ -330,6 +312,7 @@ export const communityModerationActions = pgTable(
   "community_moderation_actions",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").references(() => domains.id),
     moderator_id: text("moderator_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -341,6 +324,11 @@ export const communityModerationActions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspaceCheck: check(
+      "community_moderation_actions_workspace_check",
+      sql`(${table.target_type} IN ('message', 'user_ban') AND ${table.domain_id} IS NULL)
+        OR (${table.target_type} NOT IN ('message', 'user_ban') AND ${table.domain_id} IS NOT NULL)`,
+    ),
     targetIdx: index("idx_community_moderation_actions_target").on(
       table.target_type,
       table.target_id,
@@ -357,6 +345,7 @@ export const communitySanctions = pgTable(
   "community_sanctions",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     user_id: text("user_id").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),
@@ -380,11 +369,12 @@ export const communitySanctions = pgTable(
   }),
 );
 
-/** 社区通知。 */
-export const communityNotifications = pgTable(
-  "community_notifications",
+/** 账号统一通知；业务模块只保存受控资源定位，不保存私有教学正文。 */
+export const accountNotifications = pgTable(
+  "notifications",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").references(() => domains.id),
     recipient_id: text("recipient_id").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),
@@ -392,6 +382,11 @@ export const communityNotifications = pgTable(
       onDelete: "set null",
     }),
     type: text("type").notNull(),
+    assignment_id: text("assignment_id"),
+    event_id: text("event_id").references(() => educationOutbox.id),
+    feedback_id: text("feedback_id"),
+    help_id: text("help_id"),
+    reply_id: text("reply_id"),
     post_id: text("post_id").references(() => communityPosts.id, {
       onDelete: "set null",
     }),
@@ -403,9 +398,72 @@ export const communityNotifications = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    deliveryUnique: unique("notifications_delivery_unique").on(
+      table.event_id,
+      table.recipient_id,
+    ),
+    assignmentFk: foreignKey({
+      name: "notifications_assignment_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [assignments.domain_id, assignments.id],
+    }),
+    feedbackFk: foreignKey({
+      name: "notifications_feedback_fk",
+      columns: [table.domain_id, table.assignment_id, table.feedback_id],
+      foreignColumns: [
+        assignmentFeedback.domain_id,
+        assignmentFeedback.assignment_id,
+        assignmentFeedback.id,
+      ],
+    }),
+    helpFk: foreignKey({
+      name: "notifications_help_fk",
+      columns: [table.domain_id, table.assignment_id, table.help_id],
+      foreignColumns: [
+        assignmentHelpRequests.domain_id,
+        assignmentHelpRequests.assignment_id,
+        assignmentHelpRequests.id,
+      ],
+    }),
+    replyFk: foreignKey({
+      name: "notifications_reply_fk",
+      columns: [table.domain_id, table.assignment_id, table.reply_id],
+      foreignColumns: [
+        assignmentHelpReplies.domain_id,
+        assignmentHelpReplies.assignment_id,
+        assignmentHelpReplies.id,
+      ],
+    }),
+    teachingSourceCheck: check(
+      "notifications_teaching_source_check",
+      sql`
+      (${table.assignment_id} IS NULL AND ${table.event_id} IS NULL AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+      OR (${table.assignment_id} IS NOT NULL AND ${table.event_id} IS NOT NULL AND (
+        (${table.type} IN ('assignment','assignment_changed','resource_unavailable') AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'feedback' AND ${table.feedback_id} IS NOT NULL AND ${table.help_id} IS NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'help' AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NOT NULL AND ${table.reply_id} IS NULL)
+        OR (${table.type} = 'help_reply' AND ${table.feedback_id} IS NULL AND ${table.help_id} IS NOT NULL AND ${table.reply_id} IS NOT NULL)))`,
+    ),
+    workspacePostFk: foreignKey({
+      name: "community_notifications_workspace_post_fk",
+      columns: [table.post_id, table.domain_id],
+      foreignColumns: [communityPosts.id, communityPosts.domain_id],
+    }),
+    workspaceCommentFk: foreignKey({
+      name: "community_notifications_workspace_comment_fk",
+      columns: [table.comment_id, table.domain_id],
+      foreignColumns: [communityComments.id, communityComments.domain_id],
+    }),
+    workspaceCheck: check(
+      "community_notifications_workspace_check",
+      sql`(${table.type} IN ('reply', 'like', 'moderation', 'clarification') AND ${table.domain_id} IS NOT NULL)
+        OR (${table.type} IN ('follow', 'ban') AND ${table.domain_id} IS NULL)
+        OR ${table.type} = 'report'
+        OR (${table.type} IN ('assignment','assignment_changed','resource_unavailable','feedback','help','help_reply') AND ${table.domain_id} IS NOT NULL AND ${table.assignment_id} IS NOT NULL AND ${table.event_id} IS NOT NULL)`,
+    ),
     typeCheck: check(
       "community_notifications_type_check",
-      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')`,
+      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban', 'assignment','assignment_changed','resource_unavailable','feedback','help','help_reply')`,
     ),
     recipientIdx: index("idx_community_notifications_recipient").on(
       table.recipient_id,

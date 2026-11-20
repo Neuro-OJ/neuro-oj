@@ -1,15 +1,8 @@
 /**
  * 唯一状态机：所有命令的状态源（M1）。
  *
- * transition / DeployAction / TransitionResult 逐字移植自 src/state/machine.ts，
- * 语义与中文措辞完全一致；prodState 为新增，解决「prod 路径无状态」问题（§2.2）。
- *
- * ## T23：`DeployState` 的定义搬到这里
- *
- * 它原住在 `config/types.ts`（双模态时代的 JSON 配置类型集合）。M1 要求
- * "一套状态机"，而状态的**类型**却定义在另一份已删除的配置模态里，是明显的
- * 遗留错位：`prod/` 依赖它，就必须连整份 JSON 配置类型一起留着。
- * 现在它属于状态机自身，`config/types.ts` 可随之删除。
+ * `transition` 描述动作对状态的影响；`prodState` 由 compose ps 的结果推断当前态。
+ * 状态类型 `DeployState` 也定义在这里。
  */
 
 /** 部署状态机的所有合法状态。 */
@@ -31,7 +24,7 @@ export interface TransitionResult {
   message: string;
 }
 
-/** no-op 时的固定提示语（与 src/state/machine.ts 逐字一致）。 */
+/** no-op 时的固定提示语。 */
 const NO_OP_MSG: Record<string, string> = {
   up: "已处于 running，无需重复启动",
   down: "已处于 stopped，无需重复关闭",
@@ -40,7 +33,7 @@ const NO_OP_MSG: Record<string, string> = {
 /**
  * 计算状态机在给定状态上执行某动作后的迁移结果。
  *
- * 语义（移植自 src/state/machine.ts，不得改动）：
+ * 语义（不得改动）：
  * - init / reset 一律进入 stopped；
  * - up 在 running 时为 no-op（changed=false），其余进入 running；
  * - down 在 stopped 时为 no-op（changed=false），其余进入 stopped；

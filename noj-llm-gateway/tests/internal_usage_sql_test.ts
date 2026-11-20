@@ -76,24 +76,24 @@ async function callUsage(query: string): Promise<Captured> {
 Deno.test("internal/usage: 占位符序号连续且与绑定值一一对应（无筛选）", async () => {
   const { query, params } = await callUsage("?limit=100&page=1");
   // LIMIT/OFFSET 都必须是 `$n` 形式（此前 OFFSET 漏了 `$`，渲染成 `OFFSET 0`）
-  assertStringIncludes(query, "LIMIT $1");
-  assertStringIncludes(query, "OFFSET $2");
-  assertEquals(params.length, 2, `绑定值数量应与占位符一致，query=${query}`);
+  assertStringIncludes(query, "LIMIT $2");
+  assertStringIncludes(query, "OFFSET $3");
+  assertEquals(params.length, 3, `绑定值数量应与占位符一致，query=${query}`);
   // 值必须是**数字**（字符串会让 postgres.js 发 unknown → 42P18）
-  assertEquals(typeof params[0], "number");
   assertEquals(typeof params[1], "number");
+  assertEquals(typeof params[2], "number");
 });
 
 Deno.test("internal/usage: 有筛选时占位符序号不跳号", async () => {
   const { query, params } = await callUsage(
     "?submission_id=s1&limit=20&page=3",
   );
-  assertStringIncludes(query, "submission_id = $1");
-  assertStringIncludes(query, "LIMIT $2");
-  assertStringIncludes(query, "OFFSET $3");
-  assertEquals(params.length, 3);
-  assertEquals(params[1], 20);
-  assertEquals(params[2], 40, "page=3, limit=20 → offset=40");
+  assertStringIncludes(query, "submission_id = $2");
+  assertStringIncludes(query, "LIMIT $3");
+  assertStringIncludes(query, "OFFSET $4");
+  assertEquals(params.length, 4);
+  assertEquals(params[2], 20);
+  assertEquals(params[3], 40, "page=3, limit=20 → offset=40");
 });
 
 Deno.test("internal/usage: 每个 $n 都出现在 SQL 中且不超出绑定数量", async () => {
@@ -124,10 +124,10 @@ Deno.test("internal/usage: 每个 $n 都出现在 SQL 中且不超出绑定数�
 
 Deno.test("internal/usage: 超大 page 被夹取到上界且仍是数字参数", async () => {
   const { query, params } = await callUsage("?limit=100&page=1e30");
-  assertStringIncludes(query, "LIMIT $1");
-  assertStringIncludes(query, "OFFSET $2");
-  assertEquals(typeof params[1], "number");
+  assertStringIncludes(query, "LIMIT $2");
+  assertStringIncludes(query, "OFFSET $3");
+  assertEquals(typeof params[2], "number");
   // 上界夹取：offset 不应是 Infinity/NaN（否则 PG 仍会报错）
+  assertEquals(Number.isFinite(params[2] as number), true);
   assertEquals(Number.isFinite(params[1] as number), true);
-  assertEquals(Number.isFinite(params[0] as number), true);
 });

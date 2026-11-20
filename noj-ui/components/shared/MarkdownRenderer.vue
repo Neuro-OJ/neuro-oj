@@ -91,27 +91,6 @@ function restoreFormulas(html: string, formulas: string[], nonce: string): strin
     .join('')
 }
 
-function secureExternalImages(html: string): string {
-  return html.replace(/<img\b[^>]*?\bsrc=(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi, (tag, dq, sq, nq) => {
-    const src = (dq ?? sq ?? nq ?? '').trim()
-    // 提取原 alt（若存在）
-    const altMatch = tag.match(/\balt=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
-    const rawAlt = altMatch ? (altMatch[1] ?? altMatch[2] ?? altMatch[3] ?? '') : ''
-    const altAttr = rawAlt ? ` alt="${md.utils.escapeHtml(rawAlt)}"` : ''
-
-    // 允许站内相对路径（以 / 开头，但不允许协议相对路径 //）
-    if (src.startsWith('/') && !src.startsWith('//')) {
-      return `<img src="${md.utils.escapeHtml(src)}" loading="lazy"${altAttr}>`
-    }
-    // 外链只允许 https://
-    if (!src.startsWith('https://')) return ''
-    if (!allowExternalImages) {
-      return `<a href="${md.utils.escapeHtml(src)}" rel="nofollow noopener noreferrer" target="_blank">${rawAlt ? md.utils.escapeHtml(rawAlt) : '外链图片'}</a>`
-    }
-    return `<img src="${md.utils.escapeHtml(src)}" loading="lazy" referrerpolicy="no-referrer"${altAttr || ' alt="外链图片"'}>`
-  })
-}
-
 // DOMPurify sanitize（防止 v-html XSS）
 // 客户端优先使用 DOMPurify，加载失败时使用标签白名单降级
 const renderedHtml = ref("")
@@ -119,13 +98,16 @@ let renderId = 0
 
 watch(
   [() => content, () => allowExternalImages],
-  async ([source]) => {
+  async ([source, imagesAllowed]) => {
     const id = ++renderId
     const { html: rendered, formulas, nonce } = renderMarkdown(source)
-    const raw = secureExternalImages(rendered)
+    // 图片处置（站内相对保留、非 https 降级为链接、未知协议丢弃）由净化政策的
+    // 解析器回调执行 —— 不再用正则重写标签：正则无法可靠复现浏览器的实体与
+    // 属性解析规则（2026-11-02 审计 F1）。
+    const sanitizeOptions = { allowExternalImages: imagesAllowed === true }
     const sanitized = import.meta.client
-      ? await sanitizeHtmlAsync(raw)
-      : sanitizeHtmlSync(raw)
+      ? await sanitizeHtmlAsync(rendered, sanitizeOptions)
+      : sanitizeHtmlSync(rendered, sanitizeOptions)
     const html = restoreFormulas(sanitized, formulas, nonce)
     // 只应用最新的渲染结果，防止 async 完成顺序错乱
     if (id === renderId) renderedHtml.value = html

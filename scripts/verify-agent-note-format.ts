@@ -1,5 +1,5 @@
 // Agent Note 格式校验。
-// 检查 .agents/notes 下 implemented 记录的分类、路径、状态行和必需章节。
+// 检查 .agents/notes 下实现记录和提案的分类、路径、状态行和必需章节。
 
 /** 允许的 Agent Note 分类。 */
 export const AGENT_NOTE_CLASSES = [
@@ -34,12 +34,14 @@ export function verifyAgentNotePath(relativePath: string): string[] {
   const parts = normalized.split("/").filter(Boolean);
 
   if (parts.length !== 3) {
-    errors.push("路径格式应为 implemented/<分类>/yyyy-mm-dd-topic.md");
+    errors.push(
+      "路径格式应为 <implemented|proposed>/<分类>/yyyy-mm-dd-topic.md",
+    );
     return errors;
   }
 
-  if (parts[0] !== "implemented") {
-    errors.push("当前仅支持 implemented 目录");
+  if (parts[0] !== "implemented" && parts[0] !== "proposed") {
+    errors.push("生命周期只能是 implemented 或 proposed");
   }
 
   const cls = parts[1];
@@ -56,7 +58,10 @@ export function verifyAgentNotePath(relativePath: string): string[] {
 }
 
 /** 校验单个 Agent Note 文件内容。 */
-export function verifyAgentNote(filePath: string): string[] {
+export function verifyAgentNote(
+  filePath: string,
+  lifecycle: "implemented" | "proposed" = "implemented",
+): string[] {
   const errors: string[] = [];
   let text: string;
   try {
@@ -76,8 +81,8 @@ export function verifyAgentNote(filePath: string): string[] {
     errors.push("第二行必须是空行");
   }
 
-  if (lines[2]?.trim() !== "Status: implemented") {
-    errors.push("第三行必须是 'Status: implemented'");
+  if (lines[2]?.trim() !== `Status: ${lifecycle}`) {
+    errors.push(`第三行必须是 'Status: ${lifecycle}'`);
   }
 
   for (const section of REQUIRED_SECTIONS_IMPLEMENTED) {
@@ -87,7 +92,7 @@ export function verifyAgentNote(filePath: string): string[] {
   }
 
   for (const section of FORBIDDEN_SECTIONS_IMPLEMENTED) {
-    if (text.includes(section)) {
+    if (lifecycle === "implemented" && text.includes(section)) {
       errors.push(`implemented 记录禁止包含: ${section}`);
     }
   }
@@ -139,7 +144,11 @@ export async function verifyAgentNotesTree(root: string): Promise<string[]> {
       ...verifyAgentNotePath(relative).map((e) => `${filePath}: ${e}`),
     );
     errors.push(
-      ...verifyAgentNote(filePath).map((e) => `${filePath}: ${e}`),
+      ...verifyAgentNote(
+        filePath,
+        relative.startsWith("proposed/") ? "proposed" : "implemented",
+      )
+        .map((e) => `${filePath}: ${e}`),
     );
   }
 

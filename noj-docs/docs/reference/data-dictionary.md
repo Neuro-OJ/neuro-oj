@@ -57,9 +57,8 @@
 | `audit_logs`                                                   | 全站审计留痕                                                                                                                                                              | 误删破坏合规证据链                                                                 |
 | `submissions` / `self_tests`                                   | <span class="noj-danger-col">`code`</span>、<span class="noj-danger-col">`artifact_storage_url`</span>                                                                    | 用户代码/产物可能含隐私与密钥                                                      |
 | `ip_bans` / `user_bans` / `contest_clarifications`             | 风控与申诉数据                                                                                                                                                            | 误删放开攻击者；误加封禁误伤用户                                                   |
-| `search_entries`                                               | <span class="noj-danger-col">`body`</span> 含私信原文（含撤回前内容）                                                                                                     | 整表导出等同于导出用户私信，必须脱敏                                               |
+| `search_entries`                                               | <span class="noj-danger-col">`body`</span> 含索引内容正文                                                                                                     | 整表导出等同于导出用户私信，必须脱敏                                               |
 | `community_posts` / `community_comments` / `community_reports` | 用户生成内容与举报数据                                                                                                                                                    | 泄露用户隐私；误删破坏审核证据                                                     |
-| `messages`                                                     | <span class="noj-danger-col">私信原文</span>与撤回状态                                                                                                                    | 泄露私信；误删破坏会话完整性                                                       |
 | Redis 会话/限流键                                              | 见下文「Redis 键族」                                                                                                                                                      | `DEL jwt:revoked:*` 会让已撤销令牌复活；`DEL` 评测队列会丢评测任务                 |
 
 ---
@@ -98,8 +97,7 @@
 - **不要**直接改写 `password_hash` 或
   `session_version`：前者会破坏登录校验，后者会强制目标用户全部会话失效。
 - 注销（软删除）走 `deleted_at`，不要物理删除：部分表为
-  CASCADE（会连带删除用户内容），另有 `submissions` / `self_tests` /
-  `messages.sender_id` / `conversations` 等为 **NO
+  CASCADE（会连带删除用户内容），另有 `submissions` / `self_tests` 等为 **NO
   ACTION**，物理删除会因外键违约直接失败回滚，无法作为清理手段。 :::
 
 #### `oauth_accounts` <span class="noj-danger-zone">DANGER ZONE</span>
@@ -239,7 +237,7 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 | `owner_id`                    | text     | NOT NULL；DEFAULT `'0'`                                                  | 题目所有者；默认 root                                                     |
 | `type`                        | text     | NOT NULL；DEFAULT `'U'`；CHECK `U/P`                                     | `U`=用户题库，`P`=主题库                                                  |
 | `is_objective`                | boolean  | NOT NULL；DEFAULT `false`                                                | true=客观题套卷（服务端即时判定，无评测容器）                             |
-| `visibility`                  | text     | NOT NULL；DEFAULT `'public'`；CHECK `public/private`（且 P 型恒 public） | 可见性                                                                    |
+| `visibility`                  | text     | NOT NULL；DEFAULT `'public'`；CHECK `public/private`                     | 源题可见性元数据（0.11 契约 `#697`：不阻断公开域 `main` 已发布题目按 ID/URL 直接读取；普通列表当前亦未按此过滤，现用于管理端列表筛选与响应 DTO，实际访问由 `domain_id`、`latest_version_id`、`domain_problem_bindings.disabled_at` 与比赛保密决定） |
 | `submission_mode`             | text     | NOT NULL；DEFAULT `'code'`；CHECK `code/artifact`                        | 提交模式：单文件代码 / zip 产物                                           |
 | `artifact_max_size_mb`        | integer  | NULL                                                                     | artifact 提交大小上限（MB）；NULL=使用系统硬上限                          |
 | `llm_config`                  | jsonb    | NULL                                                                     | 题目 LLM 能力与预算声明（`provider_id`/`model`/`max_calls`/`max_tokens`） |
@@ -254,6 +252,23 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 `key`（同题跨版本稳定，迁移时取旧小题 UUID）、
 `sort_order`、`type`、`prompt`、`options`、`answer`、`explanation`。
 详见[题目版本管理](../features/problem-versioning.md)。
+
+#### `domain_problem_bindings`
+
+使用域对源题的唯一题库配置；撤销授权时设置 `disabled_at`，不删除提交所依赖的绑定行。
+
+| 列                          | 类型    | 约束 / 默认                                                                                       | 说明                                                                                                                                                                                           |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | text    | PK                                                                                                | 绑定 UUID                                                                                                                                                                                      |
+| `domain_id`                 | text    | NOT NULL；FK→`domains(id)`                                                                        | 所属使用域                                                                                                                                                                                     |
+| `problem_id`                | text    | NOT NULL；FK→`problems(id)`；复合 FK→`problems(domain_id, id)`；与 `domain_id` 共同 UNIQUE        | 源题目（仅允许同域题目）                                                                                                                                                                       |
+| `visibility`                | text    | NOT NULL；DEFAULT `'members'`；CHECK `public/members`                                             | 目录入口暴露级别（`public`=公开目录，`members`=域成员可见意图；0.11 契约 `#697` 下不阻断公开域 `main` 按 ID/URL 直达读取，当前列表/可用性查询亦未按此过滤，在 `readDomainProblem` 详情 DTO 返回） |
+| `revision`                  | integer | NOT NULL；DEFAULT `0`；CHECK `>= 0`                                                               | 乐观锁版本号                                                                                                                                                                                   |
+| `disabled_at`               | text    | NULL                                                                                              | 停用/撤销时间；非 NULL 时阻断列表展示与直接读取                                                                                                                                                |
+| `created_by`                | text    | NOT NULL；FK→`users(id)`                                                                          | 创建人                                                                                                                                                                                         |
+| `created_at` / `updated_at` | text    | NOT NULL                                                                                          | 创建 / 更新时间                                                                                                                                                                                |
+
+复合唯一与索引：`UNIQUE(domain_id, id)`、`UNIQUE(id, problem_id)`、索引 `idx_domain_problem_bindings_source(problem_id, domain_id)`。
 
 #### `judge_images`
 
@@ -446,11 +461,14 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 | `ranking_visibility`        | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/participants/hidden` | 榜单可见性                                        |
 | `freeze_start_time`         | text    | NULL；CHECK 形态                                                 | 封榜开始时间                                      |
 | `freeze_duration_seconds`   | integer | NOT NULL；DEFAULT `0`；CHECK `>= 0`                              | 结束前冻结时长（秒）；0=不封榜                    |
-| `type`                      | text    | NOT NULL；CHECK `kaggle`                                         | 竞赛类型                                          |
-| `kind`                      | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/invite`              | 公开 / 邀请制                                     |
+| `domain_id`                 | text    | NOT NULL；FK→`domains(id)`；UNIQUE(`domain_id`,`id`)；索引       | 归属使用域（Domain）；Domain 是资源访问边界       |
+| `revision`                  | integer | NOT NULL；DEFAULT `0`                                            | 乐观锁版本（`If-Match`）                          |
+| `secrecy_enabled`           | boolean | NOT NULL；DEFAULT `true`                                         | 赛题保密开关；开赛后锁定，不能再改                |
+| `type`                      | text    | NOT NULL；CHECK `kaggle` / `oi` / `ioi` / `ioi_strict` / `acm`   | 竞赛赛制                                          |
 | `config`                    | jsonb   | NOT NULL；DEFAULT `{}`；CHECK 为对象                             | 竞赛配置（含 `submission_limits` 等）             |
-| `is_public`                 | boolean | NOT NULL；DEFAULT `true`                                         | 是否公开可见                                      |
-| `password`                  | text    | NULL                                                             | <span class="noj-danger-col">邀请码 / 口令</span> |
+| `kind`                      | text    | NOT NULL；DEFAULT `'public'`；CHECK `public/invite`              | **兼容遗留**：已不参与授权，写入恒为 `public` |
+| `is_public`                 | boolean | NOT NULL；DEFAULT `true`                                         | **兼容遗留**：已不参与授权，写入恒为 `true` |
+| `password`                  | text    | NULL                                                             | **兼容遗留**：已不参与授权，写入恒为 `NULL` |
 | `affect_global_ranking`     | boolean | NOT NULL；DEFAULT `false`                                        | 是否计入全局排行                                  |
 | `created_by`                | text    | FK→`users(id)` ON DELETE SET NULL；索引                          | 创建者                                            |
 | `announcement`              | text    | NOT NULL；DEFAULT `''`                                           | 竞赛公告                                          |
@@ -528,91 +546,6 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 唯一约束
 `objective_submissions_contest_unique(paper_id, user_id, contest_id)`：同一竞赛内同一用户对同一套卷仅一条。
 
-### 私信
-
-#### `conversations`
-
-私信会话；每对用户一个会话。
-
-| 列                | 类型 | 约束 / 默认                                                                      | 说明                                   |
-| ----------------- | ---- | -------------------------------------------------------------------------------- | -------------------------------------- |
-| `id`              | text | PK                                                                               | 会话 UUID                              |
-| `user1_id`        | text | NOT NULL；FK→`users(id)`；与 `user2_id` 共同 UNIQUE；CHECK `user1_id < user2_id` | 参与者（字典序小）                     |
-| `user2_id`        | text | NOT NULL；FK→`users(id)`                                                         | 参与者（字典序大）                     |
-| `last_message_at` | text | NOT NULL；索引                                                                   | 最后消息时间（列表排序用，反范式缓存） |
-| `created_at`      | text | NOT NULL                                                                         | 创建时间                               |
-
-#### `messages` <span class="noj-danger-zone">DANGER ZONE</span>
-
-私信消息，支持文本/图片、回复、转发、编辑、撤回。
-
-| 列                       | 类型 | 约束 / 默认                                              | 说明                                                                                      |
-| ------------------------ | ---- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `id`                     | text | PK                                                       | 消息 UUID                                                                                 |
-| `conversation_id`        | text | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE；索引 | 会话                                                                                      |
-| `sender_id`              | text | NOT NULL；FK→`users(id)`；索引                           | 发送者                                                                                    |
-| `type`                   | text | NOT NULL；DEFAULT `'text'`；CHECK `text/image`           | 消息类型                                                                                  |
-| `image_url`              | text | NULL                                                     | <span class="noj-danger-col">图片存储地址</span>（`noj-storage://`）；`type=image` 时必填 |
-| `reply_to_message_id`    | text | FK→`messages(id)` ON DELETE SET NULL                     | 引用的消息                                                                                |
-| `forwarded_from_user_id` | text | FK→`users(id)` ON DELETE SET NULL                        | 转发来源                                                                                  |
-| `content`                | text | NOT NULL                                                 | <span class="noj-danger-col">文本内容</span>                                              |
-| `created_at`             | text | NOT NULL                                                 | 创建时间                                                                                  |
-| `edited_at`              | text | NULL                                                     | 编辑时间                                                                                  |
-| `recalled_at`            | text | NULL                                                     | 撤回时间                                                                                  |
-| `edit_history`           | text | NULL                                                     | <span class="noj-danger-col">编辑历史 JSON 数组</span>（仅后台保存，不对外展示）          |
-
-#### `message_reactions`
-
-消息表情反应；同一用户对同一消息可加多个不同表情。
-
-| 列           | 类型 | 约束 / 默认                                         | 说明                 |
-| ------------ | ---- | --------------------------------------------------- | -------------------- |
-| `message_id` | text | NOT NULL；FK→`messages(id)` ON DELETE CASCADE；索引 | 消息                 |
-| `user_id`    | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE          | 用户                 |
-| `emoji`      | text | NOT NULL                                            | 表情（取自固定集合） |
-| `created_at` | text | NOT NULL                                            | 创建时间             |
-
-PK 为 `(message_id, user_id, emoji)`。
-
-#### `conversation_reads`
-
-会话已读位置。
-
-| 列                     | 类型 | 约束 / 默认                                        | 说明                           |
-| ---------------------- | ---- | -------------------------------------------------- | ------------------------------ |
-| `user_id`              | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE         | 用户                           |
-| `conversation_id`      | text | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE | 会话                           |
-| `last_read_message_id` | text | NULL                                               | 最后已读消息 ID；NULL=从未阅读 |
-| `updated_at`           | text | NOT NULL                                           | 更新时间                       |
-
-PK 为 `(user_id, conversation_id)`。
-
-#### `message_deletions`
-
-单用户视角的消息删除记录（原始消息仍保留）。
-
-| 列           | 类型 | 约束 / 默认                                         | 说明     |
-| ------------ | ---- | --------------------------------------------------- | -------- |
-| `user_id`    | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE          | 用户     |
-| `message_id` | text | NOT NULL；FK→`messages(id)` ON DELETE CASCADE；索引 | 消息     |
-| `deleted_at` | text | NOT NULL                                            | 删除时间 |
-
-PK 为 `(user_id, message_id)`。
-
-#### `conversation_preferences`
-
-每用户每会话的偏好（备注名 / 免打扰）。
-
-| 列                | 类型    | 约束 / 默认                                              | 说明                           |
-| ----------------- | ------- | -------------------------------------------------------- | ------------------------------ |
-| `user_id`         | text    | NOT NULL；FK→`users(id)` ON DELETE CASCADE               | 用户                           |
-| `conversation_id` | text    | NOT NULL；FK→`conversations(id)` ON DELETE CASCADE；索引 | 会话                           |
-| `remark_name`     | text    | NULL                                                     | 备注名；NULL/空=使用真实用户名 |
-| `is_muted`        | boolean | NOT NULL；DEFAULT `false`                                | 消息免打扰                     |
-| `updated_at`      | text    | NOT NULL                                                 | 更新时间                       |
-
-PK 为 `(user_id, conversation_id)`。
-
 ### 社区
 
 社区共 13 张表。内容类表（`community_posts` /
@@ -684,39 +617,16 @@ PK 为 `(user_id, conversation_id)`。
 | `moderation_reason`         | text | NULL                                                                      | 审核原因                                     |
 | `created_at` / `updated_at` | text | NOT NULL                                                                  | 创建 / 更新时间                              |
 
-#### `community_post_likes` / `community_comment_likes` / `community_bookmarks`
-
-点赞与收藏关联表，结构一致。
-
-| 列                       | 类型 | 约束 / 默认                                                     | 说明     |
-| ------------------------ | ---- | --------------------------------------------------------------- | -------- |
-| `post_id` / `comment_id` | text | NOT NULL；FK→对应内容表 ON DELETE CASCADE；与 `user_id` 共同 PK | 目标内容 |
-| `user_id`                | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                | 用户     |
-| `created_at`             | text | NOT NULL                                                        | 创建时间 |
-
-#### `community_follows`
-
-用户关注关系。
-
-| 列            | 类型 | 约束 / 默认                                                          | 说明     |
-| ------------- | ---- | -------------------------------------------------------------------- | -------- |
-| `follower_id` | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；与 `followee_id` 共同 PK | 关注者   |
-| `followee_id` | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                     | 被关注者 |
-| `created_at`  | text | NOT NULL                                                             | 创建时间 |
-
-`CHECK community_follows_not_self_check`：不能关注自己。
-
 #### `community_reports` <span class="noj-danger-zone">DANGER ZONE</span>
 
-举报记录；目标须为帖子/评论/私信之一。
+举报记录；目标须为帖子/评论之一。
 
 | 列                          | 类型 | 约束 / 默认                                                       | 说明                                                 |
 | --------------------------- | ---- | ----------------------------------------------------------------- | ---------------------------------------------------- |
 | `id`                        | text | PK                                                                | 举报 UUID                                            |
 | `reporter_id`               | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引                  | 举报人                                               |
-| `post_id`                   | text | FK→`community_posts(id)` ON DELETE SET NULL；索引                 | 被举报帖子（三选一）                                 |
-| `comment_id`                | text | FK→`community_comments(id)` ON DELETE SET NULL；索引              | 被举报评论（三选一）                                 |
-| `message_id`                | text | FK→`messages(id)` ON DELETE SET NULL；索引                        | 被举报私信（三选一）                                 |
+| `post_id`                   | text | FK→`community_posts(id)` ON DELETE SET NULL；索引                 | 被举报帖子（二选一）                                 |
+| `comment_id`                | text | FK→`community_comments(id)` ON DELETE SET NULL；索引              | 被举报评论（二选一）                                 |
 | `content_type`              | text | NOT NULL；DEFAULT `'post'`                                        | 内容类型                                             |
 | `sanction_id`               | text | FK→`community_sanctions(id)` ON DELETE SET NULL                   | 关联处罚                                             |
 | `ban_id`                    | text | FK→`user_bans(id)` ON DELETE SET NULL                             | 关联封禁                                             |
@@ -729,7 +639,7 @@ PK 为 `(user_id, conversation_id)`。
 | `resolved_at`               | text | NULL                                                              | 处理时间                                             |
 | `updated_at` / `created_at` | text | NOT NULL                                                          | 时间                                                 |
 
-`CHECK community_reports_target_check`：`num_nonnulls(post_id, comment_id, message_id) = 1`。
+`CHECK community_reports_target_check`：`num_nonnulls(post_id, comment_id) = 1`。
 
 #### `community_moderation_actions`
 
@@ -769,7 +679,7 @@ PK 为 `(user_id, conversation_id)`。
 | `id`           | text  | PK                                                                      | 通知 UUID           |
 | `recipient_id` | text  | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引（含未读部分索引）      | 接收者              |
 | `actor_id`     | text  | FK→`users(id)` ON DELETE SET NULL；索引                                 | 触发者              |
-| `type`         | text  | NOT NULL；CHECK `reply/like/follow/moderation/clarification/report/ban` | 类型                |
+| `type`         | text  | NOT NULL；CHECK `reply/like/follow/moderation/clarification/report/ban`（like/follow 仅存于历史通知） | 类型                |
 | `post_id`      | text  | FK→`community_posts(id)` ON DELETE SET NULL；索引                       | 关联帖子            |
 | `comment_id`   | text  | FK→`community_comments(id)` ON DELETE SET NULL；索引                    | 关联评论            |
 | `data`         | jsonb | NOT NULL；DEFAULT `{}`                                                  | 附加数据            |
@@ -828,7 +738,7 @@ DB，只删缓存会读到 env/默认值而非真实新值）。 :::
 | `created_at`  | text  | NOT NULL；索引                     | 时间                           |
 
 `action` 的 `CHECK` 覆盖
-`users.*`、`roles.*`、`problems.*`、`submissions.*`、`settings.update`、`auth.*`、`community.*`、`announcement.*`、`carousel.*`、`review.*`、`contest.*`、`ip_ban.*`、`judge_images.*`、`email_delivery.clear_suppression`、`llm_provider.*`、`llm_quota.upsert`
+`users.*`、`roles.*`、`problems.*`、`submissions.*`、`settings.update`、`auth.*`、`community.*`、`announcement.*`、`carousel.*`（已下线，仅保留历史记录）、`review.*`、`contest.*`、`ip_ban.*`、`judge_images.*`、`email_delivery.clear_suppression`、`llm_provider.*`、`llm_quota.upsert`
 等。
 
 ::: tip 保留策略 超过 `AUDIT_LOG_RETENTION_DAYS`（默认 **90
@@ -884,9 +794,8 @@ IP 黑名单，支持裸 IP 与 CIDR。
 
 #### `search_entries` <span class="noj-danger-zone">DANGER ZONE</span>
 
-统一搜索索引表，唯一写者是 search domain（源域通过 Redis
-事件异步维护）。**私信条目会写入 `body`
-原文**，整表导出等同于导出用户私信，必须脱敏/加密。
+统一搜索索引表，唯一写者是 search domain（源域登记 `search.index` 后台任务
+异步维护）。`body` 含帖子、评论等正文，整表导出前须评估脱敏。
 
 | 列                          | 类型     | 约束 / 默认                                                      | 说明                                                                                   |
 | --------------------------- | -------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -894,7 +803,7 @@ IP 黑名单，支持裸 IP 与 CIDR。
 | `entity_type`               | text     | NOT NULL；与 `entity_id` 共同唯一（`idx_search_entries_entity`） | 实体类型                                                                               |
 | `entity_id`                 | text     | NOT NULL                                                         | 实体 ID                                                                                |
 | `title`                     | text     | NOT NULL；DEFAULT `''`                                           | 标题（权重 A）                                                                         |
-| `body`                      | text     | NOT NULL；DEFAULT `''`                                           | <span class="noj-danger-col">正文（权重 B）；私信条目为私信原文（含撤回前内容）</span> |
+| `body`                      | text     | NOT NULL；DEFAULT `''`                                           | 正文（权重 B） |
 | `search_vector`             | tsvector | GENERATED ALWAYS                                                 | 全文向量，GIN 索引                                                                     |
 | `metadata`                  | jsonb    | NOT NULL；DEFAULT `{}`                                           | 元数据                                                                                 |
 | `owner_id`                  | text     | NULL；索引                                                       | 所有者                                                                                 |
@@ -907,32 +816,6 @@ IP 黑名单，支持裸 IP 与 CIDR。
 
 可选扩展：`idx_search_entries_title_trgm` /
 `idx_search_entries_body_trgm`（`pg_trgm` GIN，生产迁移创建）。
-
-### 内容审核
-
-#### `content_review_queue`
-
-内容合规审核队列（UGC 同步 + 私信异步）。
-
-| 列                          | 类型 | 约束 / 默认                                                           | 说明                                                           |
-| --------------------------- | ---- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `id`                        | text | PK                                                                    | 记录 UUID                                                      |
-| `content_type`              | text | NOT NULL；CHECK `post/comment/message`                                | 目标类型                                                       |
-| `target_id`                 | text | NOT NULL；索引                                                        | 目标内容主键                                                   |
-| `channel`                   | text | NOT NULL；CHECK `ugc/dm`                                              | 来源渠道                                                       |
-| `status`                    | text | NOT NULL；CHECK `pending_review/approved/rejected/reviewed/dismissed` | 处理状态                                                       |
-| `review_provider`           | text | NOT NULL                                                              | 判定 Provider（`mock/aliyun/tencent/none`）                    |
-| `verdict`                   | text | NOT NULL；CHECK `pass/review/block/error`                             | 机器结论                                                       |
-| `label`                     | text | NULL                                                                  | 命中分类标签（JSON 数组字符串）                                |
-| `hit_words`                 | text | NULL                                                                  | 命中词（JSON 数组字符串）                                      |
-| `risk_level`                | text | NULL                                                                  | 风险级别（`low/medium/high`）                                  |
-| `content_snapshot`          | text | NOT NULL；DEFAULT `''`                                                | <span class="noj-danger-col">送审内容快照</span>（私信仅文本） |
-| `meta`                      | text | NOT NULL；DEFAULT `'{}'`                                              | 上下文 JSON                                                    |
-| `reviewed_by`               | text | FK→`users(id)` ON DELETE SET NULL                                     | 人工处置人                                                     |
-| `reviewed_at`               | text | NULL                                                                  | 处置时间                                                       |
-| `resolution`                | text | NULL                                                                  | 处置说明                                                       |
-| `action_taken`              | text | NULL                                                                  | 处置动作（留痕）                                               |
-| `created_at` / `updated_at` | text | NOT NULL                                                              | 时间                                                           |
 
 ### 法律与合规
 
@@ -962,11 +845,6 @@ IP 黑名单，支持裸 IP 与 CIDR。
 | `is_material`    | boolean | NOT NULL；DEFAULT `false`；索引                                                | 是否重大变更（触发重新同意）           |
 | `published_at`   | text    | NOT NULL                                                                       | 发布时间                               |
 | `created_by`     | text    | FK→`users(id)` ON DELETE SET NULL                                              | 创建人                                 |
-| `tsa_provider`   | text    | NULL                                                                           | 时间戳 Provider 标识                   |
-| `tsa_token`      | text    | NULL                                                                           | RFC 3161 TimeStampToken（base64）      |
-| `tsa_chain`      | text    | NULL                                                                           | 时间戳证书链（base64）                 |
-| `tsa_query`      | text    | NULL                                                                           | 原始 RFC 3161 请求（base64）           |
-| `tsa_timestamp`  | text    | NULL                                                                           | 时间戳签发时间                         |
 
 #### `user_consents`
 
@@ -1000,25 +878,6 @@ PIPL 删除/更正请求（内容类），状态机
 | `handled_at`                | text | NULL                                                                              | 处理时间     |
 | `resolution`                | text | NULL                                                                              | 处理结果说明 |
 | `created_at` / `updated_at` | text | NOT NULL                                                                          | 时间         |
-
-### 首页轮播
-
-#### `carousel_slides`
-
-首页轮播（与公告解耦）。
-
-| 列                          | 类型    | 约束 / 默认                  | 说明                          |
-| --------------------------- | ------- | ---------------------------- | ----------------------------- |
-| `id`                        | text    | PK                           | 幻灯片 UUID                   |
-| `kind`                      | text    | NOT NULL；CHECK `image/text` | 图片 / 渐变文案               |
-| `image_storage_url`         | text    | NULL                         | 图片地址（`kind=image` 必填） |
-| `title`                     | text    | NULL                         | 主标题（`kind=text` 必填）    |
-| `subtitle`                  | text    | NULL                         | 副标题                        |
-| `gradient_key`              | text    | NULL                         | 渐变预设键（`kind=text`）     |
-| `link_url`                  | text    | NULL                         | 跳转地址；为空则整卡不可点    |
-| `sort_order`                | integer | NOT NULL；DEFAULT `0`；索引  | 排序（升序）                  |
-| `is_enabled`                | boolean | NOT NULL；DEFAULT `true`     | 是否启用                      |
-| `created_at` / `updated_at` | text    | NOT NULL                     | 时间                          |
 
 ### LLM 网关表（noj-llm-gateway）
 
@@ -1077,6 +936,11 @@ LLM 调用审计表；完整保留 `request_messages`，不自动清理。
 | `error_code`           | text    | NULL                     | 错误码                                                                                        |
 | `prompt_hash`          | text    | NOT NULL                 | 请求内容哈希（去重 / 风控）                                                                   |
 | `created_at`           | text    | NOT NULL；索引           | 时间                                                                                          |
+| `principal_type`       | text    | NOT NULL；DEFAULT `'user'` | 记账主体：`user`=评测调用，`platform`=平台身份调用（如知识图谱打标）                          |
+| `principal_id`         | text    | NULL                     | 平台调用的用途（如 `knowledge.tag`）；评测调用为 NULL                                          |
+
+平台身份调用（`principal_type='platform'`）不保存 prompt 原文，`user_id` 为空串、
+`problem_id` 为 `platform:<purpose>`，不与学生评测额度/统计混用。
 
 #### `llm_quotas`
 
@@ -1097,11 +961,12 @@ LLM 配额配置（按用户 / 题目 / 全局维度，日或月窗口）。
 `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`，共 24
 个），**缺失配额不会视为无限**。 :::
 
-### 物化视图
+### 历史物化视图
 
 #### `user_rankings`
 
-全局排行榜物化视图（非普通表），由迁移 `0020` / `0028` / `0059` 重建。
+全局排行榜历史物化视图（非普通表），由迁移 `0020` / `0028` / `0059` 重建；
+应用已改为按域实时查询有效成绩投影，**不再读取或刷新该视图**。
 
 | 列                  | 类型  | 说明                                                               |
 | ------------------- | ----- | ------------------------------------------------------------------ |
@@ -1113,10 +978,8 @@ LLM 配额配置（按用户 / 题目 / 全局维度，日或月窗口）。
 | `acceptance_rate`   | float | 通过率                                                             |
 | `rank`              | int   | 排名（`idx_user_rankings_rank`）                                   |
 
-::: warning 刷新与依赖 该视图在 noj-core 侧通过
-`REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`
-刷新（排名相关操作后、带节流）。PGlite
-测试模式不支持物化视图，会自动跳过。**只读**：不要对其执行 `UPDATE`/`DELETE`。
+::: warning 状态 该视图仅保留为历史对象，评测结果保存与榜单读取均不再触发
+`REFRESH MATERIALIZED VIEW`。**只读**：不要对其执行 `UPDATE`/`DELETE`。
 :::
 
 ### 迁移记账表
@@ -1171,7 +1034,7 @@ key；对非空列表设 TTL 会连未消费任务一起删）。 :::
 | ------------------------------------ | ------------ | ------------------ | ---- | ---------------------------------- | --------------------------------------- |
 | `noj:events:submission:<id>`         | Pub/Sub 频道 | noj-core `publish` | 瞬时 | 单提交状态变更通知（SSE 推送）     | 不适用（Pub/Sub）                       |
 | `noj:events:queue`                   | Pub/Sub 频道 | noj-core           | 瞬时 | 全局队列变更通知                   | 不适用                                  |
-| `noj:events:user:<id>`               | Pub/Sub 频道 | noj-core           | 瞬时 | 用户私信通知                       | 不适用                                  |
+| `noj:events:user:<id>`               | Pub/Sub 频道 | noj-core           | 瞬时 | 用户通知                           | 不适用                                  |
 | `noj:events:contest:<id>:ranking`    | Pub/Sub 频道 | noj-core           | 瞬时 | 竞赛排名变更                       | 不适用                                  |
 | `noj:events:contest:<id>:submission` | Pub/Sub 频道 | noj-core           | 瞬时 | 竞赛新提交                         | 不适用                                  |
 | `noj:events:stats`                   | Pub/Sub 频道 | noj-core           | 瞬时 | 统计数据变更                       | 不适用                                  |
@@ -1184,14 +1047,13 @@ DB，只删缓存会读到 env/默认值而非真实新值。 :::
 
 ### 异步消费者队列（noj-core）
 
-| 键模式                        | 类型 | 写入方                           | TTL | 作用                                                                                                                                                                           | 能否删除                    |
-| ----------------------------- | ---- | -------------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
-| `noj:search:index`            | List | 源域写库后 fire-and-forget LPUSH | 无  | 异步搜索索引投影队列；崩溃残留在 `:processing` 由启动期重投与 sweeper 兜底（默认 15 分钟）自动恢复，坏消息进 `:dead`；极端情况下仍可能落后，可用 `noj-cli search reindex` 对账 | 谨慎（丢索引事件→索引落后） |
-| `noj:search:index:processing` | List | search 消费者                    | 无  | 已取未确认索引事件                                                                                                                                                             | 谨慎                        |
-| `noj:review:dm`               | List | messaging 域 RPUSH               | 无  | 私信异步内容审核队列                                                                                                                                                           | 谨慎                        |
-| `noj:review:dm:processing`    | List | review 消费者                    | 无  | 已取未确认审核任务                                                                                                                                                             | 谨慎                        |
+Core 内部已不再使用 Redis 列表队列：私信异步内容审核队列（原 `noj:review:dm`）已随私信下线（#698），
+升级后残留的 `noj:review:dm*` 键可直接删除。
 
-（各消费者自动登记进 sweeper 兜底表；坏消息进入对应 `:dead` 队列。）
+> 搜索索引不再使用 Redis 队列（原 `noj:search:index`，#698
+> N1）：源域在业务写入时 登记 PostgreSQL `background_tasks` 中的 `search.index`
+> 任务，由后台任务 worker 领取执行；已成功的搜索任务保留 7 天后清理。升级后
+> Redis 中残留的 `noj:search:index*` 键可直接删除。
 
 ### 登录 / 改密 / TFA 限流（noj-core）
 
@@ -1232,8 +1094,7 @@ namespace 默认 `login`；改密用 `pwchange`；TFA 用 `tfa`。
 | `ratelimit:hardening:contest-submission:...`                                             | 60s / 120              |
 | `ratelimit:hardening:objective-submit:...`                                               | 60s / 60               |
 | `ratelimit:hardening:problem-create:...` / `problem-import:...`                          | 60s / 30、60s / 10     |
-| `ratelimit:hardening:post-like:...` / `comment-like:...` / `bookmark:...` / `follow:...` | 60s / 120              |
-| `ratelimit:hardening:report:...`                                                         | 60s / 30               |
+| `ratelimit:hardening:report:user:<id>`（举报，仅用户维度）                                | 60s / 30               |
 | `ratelimit:hardening:contest-register:ip:<ip>:c:<contestId>`                             | 30s / 5                |
 
 ### 竞赛提交预算（noj-core）

@@ -48,13 +48,12 @@ temperature = PARAMS["temperature"]
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 3,
+  "kind": "ai",
   "title": "情感分类调参",
-  "type": "P",
   "submission_mode": "ui",
   "runtime_config": {
-    "evaluator": { "image": "noj-evaluator-python", "time_limit_ms": 120000, "memory_limit_mb": 256 },
-    "solution": { "image": "noj-solution-python", "call_timeout_ms": 5000, "memory_limit_mb": 128 }
+    "evaluator": { "time_limit_ms": 120000 }
   }
 }
 ```
@@ -135,6 +134,7 @@ def solve(text: str) -> str:
 
 ## 选手侧体验
 
-界面题有专用的做题工作区：草稿自动保存在浏览器本地；下方「运行历史」合并每轮自测与提交，
+界面题有专用的做题工作区：草稿按账号自动保存在浏览器本地；退出登录或会话失效时清除当前账号的草稿和旧格式的无归属草稿，游客草稿保留。
+下方「运行历史」合并每轮自测与提交，
 **每轮的整份参数都随记录保存在服务端**，可与当前参数逐行对比（JSON）、一键回滚——回滚后会通过
 `NOJ.onSet` 通知界面刷新控件。

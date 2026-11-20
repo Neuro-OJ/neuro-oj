@@ -185,49 +185,27 @@ export async function initRedisForTest(): Promise<void> {
 /**
  * 创建真实存在的测试用户并返回其 JWT。
  *
- * 权限判定（requireAdmin / checkPermission）实时查询 DB，JWT 仅含 sub/role，
- * 因此 token 的 sub 必须对应一个真实用户且关联了相应角色：
- * - `"admin"`：关联 admin 角色（其 admin:full_access 权限由 ensureRbacSeeds 预置）
- * - `"user"`：关联 user 角色（默认权限集）
+ * 权限判定（requireAdmin / checkPermission）实时查询 DB `users.role`，
+ * JWT 仅含 sub/role：token 的 sub 必须对应一个真实用户，平台角色直接写在
+ * 用户行上（admin 或 user），不存在可编辑角色表。
  *
  * 动态 import 避免本模块顶层引入 DB 依赖（helper 保持零副作用导入）。
  */
 export async function createUserToken(
   role: "admin" | "user" = "user",
 ): Promise<string> {
-  const { getDb, ensurePGliteSchemaForTest } = await import(
+  const { getDb } = await import(
     "../src/shared/db/connection.ts"
   );
-  const { users, userRoles } = await import("../src/shared/db/schema.ts");
+  const { users } = await import("../src/shared/db/schema.ts");
   const { signToken } = await import(
-    "../src/domains/identity/services/security/jwt.ts"
+    "../src/modules/access/identity/services/security/jwt.ts"
   );
-  const { ensureRbacSeeds } = await import(
-    "../src/domains/system/index.ts"
-  );
-  // deno test 每个文件独立模块图：PGlite 模式下必须先引导 Schema，
-  // 否则 users/roles 等表不存在（PG 模式无操作）。
-  await ensurePGliteSchemaForTest();
   const db = getDb();
-  // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）。
-  // deno test 并行执行文件时，其他文件的 resetDbForTest 可能在本函数执行
-  // 期间并发 TRUNCATE roles 表 → user_roles 插入 FK 失败。此处捕获 FK 错误
-  // 并重试一次（重试前重新 seed），消除并行竞态窗口。
-  async function insertWithRetry(): Promise<void> {
-    try {
-      await db.insert(userRoles).values({ user_id: id, role_id: role })
-        .onConflictDoNothing();
-    } catch (err) {
-      if (!String(err).includes("user_roles_role_id_fkey")) throw err;
-      await ensureRbacSeeds();
-      await db.insert(userRoles).values({ user_id: id, role_id: role })
-        .onConflictDoNothing();
-    }
-  }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const username = `test_${role}_${Date.now()}_${
-    Math.random().toString(36).slice(2, 8)
+    crypto.randomUUID().slice(0, 8)
   }`;
   await db.insert(users).values({
     id,
@@ -235,10 +213,11 @@ export async function createUserToken(
     email: `${id}@test.local`,
     password_hash: "x",
     must_change_password: false,
+    // 平台角色单值写入用户行；不再有关联表或 FK 重试。
+    role,
     created_at: now,
     updated_at: now,
   });
-  await insertWithRetry();
   return await signToken({ sub: id, role });
 }
 
@@ -254,6 +233,69 @@ export async function createUserToken(
  * @param content 版本内容（缺省按题目行派生）
  * @returns 新版本 ID
  */
+/** 显式发布夹具同时建立所属域题库；已有独立策略不被初始化覆盖。 */
+export async function bindPublishedProblemForTest(
+  problemId: string,
+): Promise<string> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem) throw new Error(`题目不存在：${problemId}`);
+  await db.insert(domainProblemBindings).values({
+    id: `owned-binding-${problem.id}`,
+    domain_id: problem.domain_id,
+    problem_id: problem.id,
+    visibility: problem.visibility === "public" ? "public" : "members",
+    revision: problem.effective_policy_revision,
+    created_by: problem.owner_id ?? "0",
+    created_at: problem.created_at,
+    updated_at: problem.updated_at,
+  }).onConflictDoNothing();
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, problem.domain_id),
+    eq(domainProblemBindings.problem_id, problem.id),
+  ));
+  return binding.id;
+}
+
+/** 源题执行夹具显式携带所属域与真实绑定；共享执行须由用例指定使用域。 */
+export async function problemExecutionForTest(problemId: string) {
+  const bindingId = await bindPublishedProblemForTest(problemId);
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { domainProblemBindings } = await import("../src/shared/db/schema.ts");
+  const { eq } = await import("drizzle-orm");
+  const [binding] = await getDb().select({
+    domain_id: domainProblemBindings.domain_id,
+    domain_problem_binding_id: domainProblemBindings.id,
+  }).from(domainProblemBindings).where(eq(domainProblemBindings.id, bindingId));
+  return binding;
+}
+
+/** 仅测试清理：调用方先释放提交/比赛，再显式删除题库绑定和源题。 */
+export async function deleteProblemFixtures(
+  where: import("drizzle-orm").SQL,
+): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { inArray } = await import("drizzle-orm");
+  const db = getDb();
+  const rows = await db.select({ id: problems.id }).from(problems).where(where);
+  if (rows.length) {
+    await db.delete(domainProblemBindings).where(
+      inArray(domainProblemBindings.problem_id, rows.map((row) => row.id)),
+    );
+  }
+  await db.delete(problems).where(where);
+}
+
 export async function publishBaselineVersionForTest(
   problemId: string,
   content?: Record<string, unknown>,
@@ -263,7 +305,7 @@ export async function publishBaselineVersionForTest(
     "../src/shared/db/schema.ts"
   );
   const { deriveDraftContentFromProblem } = await import(
-    "../src/domains/catalog/services/versioning/draft.ts"
+    "../src/modules/problems/services/versioning/draft.ts"
   );
   const { eq } = await import("drizzle-orm");
   const db = getDb();
@@ -271,6 +313,7 @@ export async function publishBaselineVersionForTest(
     eq(problems.id, problemId),
   ).limit(1);
   if (!row) throw new Error(`题目不存在：${problemId}`);
+  await bindPublishedProblemForTest(problemId);
   // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
   // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
   if (row.latest_version_id) return row.latest_version_id;
@@ -343,6 +386,43 @@ export interface ContestProblemFixtureRow {
   effective_policy_revision?: number;
 }
 
+/** 按父比赛的真实使用域取得赛题绑定；跨域题必须先建立目标域引用。 */
+export async function contestProblemExecutionForTest(
+  contestId: string,
+  problemId: string,
+) {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contests, domainProblemBindings, problems } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [contest] = await db.select().from(contests).where(
+    eq(contests.id, contestId),
+  );
+  if (!contest) throw new Error("比赛夹具的父比赛不存在");
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, contest.domain_id),
+    eq(domainProblemBindings.problem_id, problemId),
+  ));
+  if (binding) {
+    return {
+      domain_id: contest.domain_id,
+      domain_problem_binding_id: binding.id,
+    };
+  }
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem || problem.domain_id !== contest.domain_id) {
+    throw new Error("共享赛题夹具缺少比赛使用域的题库绑定");
+  }
+  return {
+    domain_id: contest.domain_id,
+    domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
+  };
+}
+
 /**
  * 插入竞赛题目关联，自动补齐**必填**的固定版本（Handbook §2.6）。
  *
@@ -357,16 +437,20 @@ export async function insertContestProblems(
   input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
 ): Promise<void> {
   const { getDb } = await import("../src/shared/db/connection.ts");
-  const { contestProblems } = await import("../src/shared/db/schema.ts");
+  const { contestProblems } = await import(
+    "../src/shared/db/schema.ts"
+  );
   const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
     ? input
     : [input as ContestProblemFixtureRow];
   const resolved = [];
   for (const row of rows) {
+    const versionId = row.pinned_version_id ??
+      await publishBaselineVersionForTest(row.problem_id);
     resolved.push({
       ...row,
-      pinned_version_id: row.pinned_version_id ??
-        await publishBaselineVersionForTest(row.problem_id),
+      ...await contestProblemExecutionForTest(row.contest_id, row.problem_id),
+      pinned_version_id: versionId,
     });
   }
   await getDb().insert(contestProblems).values(resolved);

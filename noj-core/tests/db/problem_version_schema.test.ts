@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../tests/helper.ts";
 /**
  * 题目版本管理基础模型的数据库约束测试（Handbook §2）。
  *
@@ -5,12 +6,14 @@
  * 版本）、已发布版本不可修改守卫、`known`/`legacy_unknown` 与版本列的一致性、
  * 分版本当前判定的 partial unique index、尝试的「恰好一个来源」约束。
  *
- * preload 会把每个用例包在事务里回滚；预期失败的写入放在 `db.transaction()`
- * 中执行（测试内事务被转换成 SAVEPOINT），避免错误中断外层事务。
+ * 每个用例使用启动器提供的隔离数据库；预期失败的写入放在 `db.transaction()`
+ * 中执行，避免错误中断后续夹具操作。
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import {
   evaluationAttempts,
   objectiveSubmissions,
@@ -21,6 +24,7 @@ import {
   submissionVersionResults,
 } from "../../src/shared/db/schema.ts";
 
+await resetDbForTest();
 const now = new Date().toISOString();
 
 /** 插入一道题 + 一个版本，返回版本 ID。 */
@@ -31,10 +35,10 @@ async function seedProblemWithVersion(
 ): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -60,6 +64,7 @@ Deno.test("problem versions: 复合外键阻止提交引用他题版本", async 
 
   // 正确引用可以写入
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-p12"),
     id: "pv-sub-ok",
     user_id: "0",
     problem_id: "pv-p12",
@@ -74,6 +79,7 @@ Deno.test("problem versions: 复合外键阻止提交引用他题版本", async 
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-p12"),
         id: "pv-sub-cross",
         user_id: "0",
         problem_id: "pv-p12",
@@ -162,6 +168,7 @@ Deno.test("submissions: known 必须有版本，legacy_unknown 必须为空", as
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-origin"),
         id: "pv-origin-bad",
         user_id: "0",
         problem_id: "pv-origin",
@@ -176,6 +183,7 @@ Deno.test("submissions: known 必须有版本，legacy_unknown 必须为空", as
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-origin"),
         id: "pv-origin-bad2",
         user_id: "0",
         problem_id: "pv-origin",
@@ -193,6 +201,7 @@ Deno.test("evaluation attempts: 两个来源恰好一个非空", async () => {
   const db = getDb();
   await seedProblemWithVersion("pv-attempt", "pv-attempt-v1", 900007);
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-attempt"),
     id: "pv-attempt-sub",
     user_id: "0",
     problem_id: "pv-attempt",
@@ -236,6 +245,7 @@ Deno.test("submission version results: 已知版本与未知版本各一个桶",
   const db = getDb();
   await seedProblemWithVersion("pv-svr", "pv-svr-v1", 900008);
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-svr"),
     id: "pv-svr-sub",
     user_id: "0",
     problem_id: "pv-svr",
@@ -328,6 +338,7 @@ Deno.test("objective submissions: 版本字段与重判序列号已就位", asyn
     .set({ is_objective: true, judge_type: "dual" })
     .where(eq(problems.id, "pv-obj-paper"));
   await db.insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("pv-obj-paper"),
     id: "pv-obj-sub",
     paper_id: "pv-obj-paper",
     user_id: "0",

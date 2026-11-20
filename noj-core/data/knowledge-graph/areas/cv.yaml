@@ -1,0 +1,64 @@
+# 计算机视觉（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: cv
+name: 计算机视觉
+nodes:
+  - id: cv.image-basics
+    name: 数字图像基础与图像处理
+    summary: 理解像素、通道、颜色空间与分辨率，掌握读图、缩放、裁剪、灰度化等基本图像操作，为后续视觉模型准备输入
+    syllabus: [noai, ioai]
+    requires: [prog.numpy]
+  - id: cv.convolution
+    name: 卷积层
+    summary: 掌握卷积核、步长、填充与感受野的概念，能手动计算特征图尺寸，并用代码实现与可视化卷积操作
+    syllabus: [ioai, noai]
+    requires: [cv.image-basics, dl.mlp]
+  - id: cv.cnn
+    name: 卷积神经网络
+    summary: 认识堆叠卷积、池化与全连接层构成的典型网络结构，理解参数共享与局部连接为何适合处理图像
+    syllabus: [ioai, noai]
+    requires: [dl.pooling]
+  - id: cv.image-classification
+    name: 图像分类
+    summary: 用卷积网络完成多类别图像识别，掌握数据加载、数据增强、训练与验证流程，并读懂分类指标
+    syllabus: [ioai, noai]
+    requires: [cv.cnn, data.augmentation, data.classification-metrics]
+  - id: cv.pretrained-encoders
+    name: 预训练视觉编码器（ResNet、ViT）
+    summary: 了解 ResNet 残差连接与 ViT 图像切块加注意力的思路，能加载预训练权重做特征提取或分类迁移
+    syllabus: [ioai]
+    requires: [cv.image-classification, dl.transfer-learning]
+  - id: cv.image-augmentation
+    name: 图像增强
+    summary: 掌握翻转、裁剪、颜色抖动、混合等图像增强手段，理解它们如何扩大数据分布、缓解过拟合并提升泛化
+    syllabus: [ioai]
+    requires: [cv.image-basics, data.augmentation]
+  - id: cv.object-detection
+    name: 目标检测（YOLO、SSD、DETR）
+    summary: 理解边界框、锚框与交并比，区分单阶段与两阶段检测器，能用预训练模型推理并在自建数据上训练
+    syllabus: [ioai, noai]
+    requires: [cv.image-classification]
+  - id: cv.segmentation
+    name: 图像分割（U-Net）
+    summary: 区分语义与实例分割，掌握编码器-解码器与跳跃连接的 U-Net 结构，能用掩码与 IoU 评估分割结果
+    syllabus: [ioai, noai]
+    requires: [cv.cnn]
+  - id: cv.self-supervised
+    name: 视觉自监督学习
+    summary: 了解对比学习与掩码重建等无需人工标签的预训练范式，理解正负样本构造与表征学习的作用
+    syllabus: [ioai]
+    requires: [cv.image-augmentation, dl.self-supervised]
+  - id: cv.clip
+    name: 图文对比模型（CLIP）
+    summary: 理解双塔编码器与图文对比损失如何对齐视觉与语言表征，能实现零样本分类与图文检索
+    syllabus: [ioai]
+    requires: [cv.self-supervised, nlp.pretrained-encoders]
+  - id: cv.gan
+    name: 生成对抗网络
+    summary: 掌握生成器与判别器的对抗训练思想，理解损失设计、训练不稳定性与模型坍缩，并生成简单图像
+    syllabus: [ioai]
+    requires: [cv.cnn, dl.loss-functions]
+  - id: cv.diffusion
+    name: 扩散模型
+    summary: 理解前向加噪与反向去噪的扩散过程及去噪网络的作用，能训练并采样小型扩散模型生成图像
+    syllabus: [ioai]
+    requires: [cv.cnn, dl.autoencoder]

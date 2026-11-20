@@ -21,6 +21,9 @@ x-core-env: &core-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
   TFA_ENCRYPTION_KEY: ${TFA_ENCRYPTION_KEY:?TFA_ENCRYPTION_KEY is required}
+  # 内部维护/排空 API 的服务凭据（可选 bootstrap 配置）：未设置时 drain 端点
+  # 返回 503，`noj-cli update` 的自动排空不可用（需 --skip-drain）。
+  NOJ_INTERNAL_SERVICE_TOKEN: ${NOJ_INTERNAL_SERVICE_TOKEN:-}
   OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
   OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
   OAUTH_OIDC_ISSUER_URL: ${OAUTH_OIDC_ISSUER_URL:-}
@@ -42,7 +45,6 @@ x-core-env: &core-env
   # `http://noj-llm-gateway:8001`——那是开发编排的 container_name，生产 compose
   # 的服务名是 `llm-gateway`，不显式设置会指向不存在的 DNS 名。
   RUNTIME_LLM_GATEWAY_URL: http://llm-gateway:8001
-  RUNTIME_JUDGE_MODE: ${RUNTIME_JUDGE_MODE:-heartbeat}
   # 观测快照/探针参数（空值 → 代码默认）
   OBSERVABILITY_SNAPSHOT_TIMEOUT_MS: ${OBSERVABILITY_SNAPSHOT_TIMEOUT_MS:-}
   OBSERVABILITY_CACHE_TTL_MS: ${OBSERVABILITY_CACHE_TTL_MS:-}
@@ -118,6 +120,51 @@ services:
       - noj-net
     restart: "no"
 
+  # ── 升级预检：只读检查旧库能否切换到本版本 ─────────────────────
+  # 必须在停止旧应用与执行迁移之前运行；不写库、不初始化系统数据。
+  check-upgrade:
+    mem_limit: "${MIGRATE_MEM_LIMIT:-1g}"
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
+    entrypoint: ["/app/bin/noj", "db", "check-upgrade"]
+    environment:
+      <<: *core-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - noj-net
+    restart: "no"
+
+  # ── Gateway 一次性初始化：迁移 + 默认配额 ─────────────────────────
+  # Gateway HTTP 进程只读校验打包 journal/SQL 与数据库 ledger；所有 DDL 与默认
+  # 配额写入必须由此显式步骤完成。升级时镜像变化会使该服务重新创建；恢复演练
+  # 通过 `up` 保留完成态，让后续 HTTP 服务复用同一个 one-shot 依赖，不隐式重跑。
+  gateway-migrate:
+    mem_limit: "${GATEWAY_MIGRATE_MEM_LIMIT:-512m}"
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
+    entrypoint: ["deno", "run", "-A", "src/db/migrate-cli.ts"]
+    environment:
+      NOJ_ENV: production
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_COLOR: ${LOG_COLOR:-never}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+      NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
+      NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
+      DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - noj-net
+    restart: "no"
+
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
@@ -128,6 +175,8 @@ services:
       <<: *core-env
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      gateway-migrate:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
@@ -165,6 +214,9 @@ services:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NUXT_API_BASE: http://core:8000
+      NUXT_BFF_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
+      NUXT_BFF_CACHE_PREFIX: ${NUXT_BFF_CACHE_PREFIX:-noj:ui:bff:v1}
+      NUXT_PUBLIC_AUTH_COOKIE_PREFIX: ${NUXT_PUBLIC_AUTH_COOKIE_PREFIX:-noj}
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
       NUXT_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
       NODE_ENV: ${NODE_ENV:-production}
@@ -309,6 +361,7 @@ services:
       LOG_COLOR: ${LOG_COLOR:-never}
       LOG_LEVEL: ${LOG_LEVEL:-warn}
       NOJ_LLM_PORT: "8001"
+      NOJ_CORE_INTERNAL_URL: http://core:8000
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
@@ -350,6 +403,8 @@ services:
     expose:
       - "8001"
     depends_on:
+      gateway-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -450,6 +505,7 @@ services:
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${POSTGRES_MEM_LIMIT:-2g}"
     image: postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
+    shm_size: 512m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-noj}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}

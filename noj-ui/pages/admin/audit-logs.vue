@@ -7,7 +7,7 @@ import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 definePageMeta({
   layout: "admin",
   middleware: "admin",
-  ssr: false,
+
 })
 
 const { filters, data, pagination, loading, error, fetch, reset } = useAuditLogs()

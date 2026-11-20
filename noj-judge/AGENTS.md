@@ -203,9 +203,10 @@ cargo fmt
   └─ 9. 结果取得后立即收尾 → 显式 `dual.destroy()` 强制清理两个容器（编排循环不发 `shutdown` 帧、也不关闭 Solution stdin）
 ```
 
-当前实现回填 `time_ms`（从评测开始到 `dual.destroy()`
-清理完成的墙上时钟总耗时，含清理）； `memory_kb` 通过销毁前读取一次 Docker stats
-尽力回填：
+当前实现回填 `time_ms` 为 **Solution 忙碌时长**：`InFlightTracker` 统计所有
+evaluator → solution 调用 in-flight 区间的并集（不含容器创建/销毁、注入、
+评测脚本自身与 LLM 调用；从未调用时为 `null`），整段墙钟时间只写入
+`wall_time_ms` 日志；`memory_kb` 通过销毁前读取一次 Docker stats 尽力回填：
 
 - cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
 - cgroups v2 无 `max_usage` 时回退到 `usage`（近似值）；
@@ -304,7 +305,7 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   "time_ms": 42,
   "memory_kb": null,
   "rejudge_seq": 0,
-  "evaluation_protocol_version": 2,
+  "evaluation_protocol_version": 3,
   "run_id": "attempt-uuid",
   "attempt_id": "attempt-uuid",
   "problem_version_id": "version-uuid",
@@ -312,12 +313,13 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 }
 ```
 
-> **版本化封套（协议 v2，Handbook §5.5/§5.6）**：`main.rs`
+> **版本化封套（协议 v3，Handbook §5.5/§5.6）**：`main.rs`
 > 在推送前对**全部**成功 / 失败 / 超时结果统一调用
 > `JudgeResult::apply_protocol`，回显 `run_id` （=
 > `evaluation_attempts.id`）、`attempt_id`（缺省回退为 `run_id`，自测任务也
 > 因此完整）、`problem_version_id` 与
-> `evaluation_protocol_version=2`，并显式给出 `result_kind`（`graded` /
+> `evaluation_protocol_version=3`，并显式给出 `task_kind`、对应运行标识和
+> `result_kind`（`graded` /
 > `platform_error`）。协议字段**只**走可信封套，不写入 evaluator 可控的
 > `details`。`envelope_gaps()` 在推送前复核，不完整时记 error 日志 ——core
 > 会整体拒绝这类结果（`applied=false`），提交将卡在 judging。 Wire 字段集合由

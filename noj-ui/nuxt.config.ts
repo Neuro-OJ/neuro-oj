@@ -1,3 +1,4 @@
+import { CLIENT_ONLY_ROUTES } from './utils/ssr-routes';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -86,12 +87,17 @@ export default defineNuxtConfig({
   },
 
   // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
-  // （scan 扫描源码中实际用到的图标打包进客户端；@nuxt/icon 2.x 无
-  //   collections / includeAllCollections 选项，配置会被忽略，已移除）
+  // scan 的默认扫描不包括 TS，动态空间导航的图标在客户端明确打包。
   icon: {
     serverBundle: 'local',
     clientBundle: {
       scan: true,
+      icons: [
+        'lucide:chart-no-axes-column-increasing',
+        'lucide:library-big',
+        'lucide:bot',
+        'lucide:user-round-cog',
+      ],
     },
   },
 
@@ -111,9 +117,12 @@ export default defineNuxtConfig({
   runtimeConfig: {
     apiBase,
     siteUrl,
+    bffRedisUrl: '',
+    bffCachePrefix: 'noj:ui:bff:v1',
     // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
     // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
     public: {
+      authCookiePrefix: 'noj',
       buildInfo: resolveBuildInfo(),
     },
   },
@@ -163,9 +172,27 @@ export default defineNuxtConfig({
   // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
   // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
+    ...Object.fromEntries(CLIENT_ONLY_ROUTES.map((path) => [path, { ssr: false }])),
+    '/api/bff/**': { headers: { 'cache-control': 'private, no-store' } },
+    '/workspaces': { headers: { 'cache-control': 'no-store' } },
+    '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
+    '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
+    '/d/**': { headers: { 'cache-control': 'private, no-store' } },
+    '/d/*/members': { ssr: false },
+    '/d/*/settings': { ssr: false },
+    '/d/*/editor/**': { ssr: false },
+    '/d/*/problems/new': { ssr: false },
+    '/d/*/problem-bindings': { ssr: false },
+    '/d/*/trainings/new': { ssr: false },
+    '/d/*/trainings/*/edit': { ssr: false },
+    '/d/*/classrooms/*/contest-remediation': { ssr: false },
+    '/d/*/submission-jobs/**': { ssr: false },
+    '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
+    '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/instance/queue/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/queue/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/community/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/users/me/**': { headers: { 'cache-control': 'no-store' } },
   },

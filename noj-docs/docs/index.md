@@ -28,7 +28,7 @@ features:
     details: Solution 容器终身无网，通过出题人注册的白名单 Capability 间接、安全地调用外部网络与大模型 API。
   - icon: 🏆
     title: 全功能竞技与社区
-    details: 实时排行榜、每日签到打卡、类 Kaggle 分数赛、套卷客观题、题单训练与站内动态私信，一站式闭环。
+    details: 实时排行榜、每日签到打卡、类 Kaggle 分数赛、套卷客观题、题单训练与社区讨论，一站式闭环。
 ---
 
 <div class="role-guide-section" style="margin-top: 48px; margin-bottom: 32px;">

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
 import { ROOT_USER_ID } from "../../base/constants.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import { storageObjects } from "./system.ts";
 import type {
   ProblemObjectRole,
@@ -205,6 +206,8 @@ export const problems = pgTable(
   "problems",
   {
     id: text("id").primaryKey(),
+    /** 所属源域不可为空；使用域通过独立题库绑定表示。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     /** 公开样例独立于题面，旧题目缺省为空数组。 */
@@ -222,14 +225,22 @@ export const problems = pgTable(
     runtime_config: jsonb("runtime_config"),
     /** 评测模式：存量题目默认 dual。 */
     judge_type: text("judge_type").notNull().default("dual"),
-    /** 题号（同一 type 内独立自增） */
+    /** 域内数字题号，由工作空间游标原子分配。 */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
-    /** 题目类型：U=用户题库, P=主题库 */
-    type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
+    /**
+     * 源题可见性元数据（`'public' | 'private'`，默认 `'public'`）。
+     *
+     * 0.11 公开域契约（`#697`）下的运行时语义：
+     * - **不阻断**公开域（`main`）已发布题目按 ID/URL 的直接读取与作答（`evaluateProblemAccess` 固定按可读处理）；
+     * - 当前 `listProblems` 与域题库查询亦不按本列过滤行；
+     * - 现用于管理端全量列表（`listAllProblems`）的 `visibility` 筛选与响应 DTO 字段，
+     *   实际访问控制由 `domain_id`（私有域隔离）、`latest_version_id`（发布状态）、
+     *   `domain_problem_bindings.disabled_at` 与进行中比赛保密分别限制。
+     */
     visibility: text("visibility").notNull().default("public"),
     /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交，prediction=预测文件提交，ui=题包自带 HTML 界面提交 */
     submission_mode: text("submission_mode").notNull().default("code"),
@@ -275,13 +286,13 @@ export const problems = pgTable(
     searchVector: tsvector("search_vector"),
   },
   (table) => ({
-    typeNumberUnique: unique("problems_type_number_unique").on(
-      table.type,
-      table.number,
+    domainIdUnique: unique("problems_domain_id_id_unique").on(
+      table.domain_id,
+      table.id,
     ),
-    typeCheck: check(
-      "problems_type_check",
-      sql`${table.type} IN ('U', 'P')`,
+    domainNumberUnique: unique("problems_domain_number_unique").on(
+      table.domain_id,
+      table.number,
     ),
     submissionModeCheck: check(
       "problems_submission_mode_check",
@@ -290,10 +301,6 @@ export const problems = pgTable(
     visibilityCheck: check(
       "problems_visibility_check",
       sql`${table.visibility} IN ('public', 'private')`,
-    ),
-    pVisibilityCheck: check(
-      "problems_p_visibility_check",
-      sql`${table.type} <> 'P' OR ${table.visibility} = 'public'`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
@@ -325,7 +332,7 @@ export const problems = pgTable(
     // 与 `problems.(id, required_version_id) → problem_versions.(problem_id, id)`
     // **故意不在此声明**：`problem_versions.problem_id → problems.id` 与它们构成
     // 类型层面的互相引用，而 `drizzle-orm@0.45` 的 `foreignKey()` 立即求值列数组，
-    // TypeScript 会推出 `any`（TS7022/TS7024）。两条约束由迁移与 PGlite DDL 以
+    // TypeScript 会推出 `any`（TS7022/TS7024）。两条约束由 PostgreSQL 迁移以
     // `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` 建立，语义完全一致。
   }),
 );
@@ -379,11 +386,18 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
+    /** 存量先可空，域归属回填完成后收紧。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     public_id: publicIdColumn("tr"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
+    /** 资源准备状态与域访问范围独立，发布后遵循所属域准入。 */
+    state: text("state").$type<"draft" | "published">().notNull().default(
+      "draft",
+    ),
     is_pinned: boolean("is_pinned").notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     created_by: text("created_by").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),
@@ -395,6 +409,10 @@ export const trainings = pgTable(
     visibilityCheck: check(
       "trainings_visibility_check",
       sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
+    ),
+    stateCheck: check(
+      "trainings_state_check",
+      sql`${table.state} IN ('draft', 'published')`,
     ),
     visibilityPinnedCreatedIdx: index(
       "idx_trainings_visibility_pinned_created",

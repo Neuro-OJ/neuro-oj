@@ -42,7 +42,9 @@ let ready = false
 let lastFromFrame: Record<string, unknown> | null = null
 
 function post(message: Record<string, unknown>) {
-  frame.value?.contentWindow?.postMessage({ source: 'noj-host', ...message }, '*')
+  // 协议只承载 JSON；发送前生成普通快照，避免 Vue Proxy 无法被 postMessage 克隆。
+  const snapshot = JSON.parse(JSON.stringify({ source: 'noj-host', ...message }))
+  frame.value?.contentWindow?.postMessage(snapshot, '*')
 }
 
 function sendInit() {

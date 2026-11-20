@@ -25,7 +25,6 @@ export function validateSlug(slug: string): void {
 export interface ProblemInitOptions {
   slug: string;
   title?: string;
-  type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
   root?: string;
@@ -41,48 +40,36 @@ export interface ProblemInitResult {
 function problemJson(options: {
   slug: string;
   title: string;
-  type: string;
   difficulty: string;
   judgeType: "dual" | "oi";
 }): string {
-  const runtimeConfig = options.judgeType === "oi"
+  // 格式 3 最小 manifest：AI 题 runtime_config 全部可缺省，导入时补全平台缺省值。
+  const manifest = options.judgeType === "oi"
     ? {
-      backend: "native",
-      languages: ["c", "cc"],
-      time_limit_ms: 1000,
-      memory_limit_mb: 256,
-      checker: { type: "default" },
-      subtasks: [{
-        id: "all",
-        score: 100,
-        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
-      }],
-    }
-    : {
-      evaluator: {
-        image: "noj/evaluator-python:1",
-        command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-      },
-      solution: {
-        image: "noj/solution-python:1",
-        call_timeout_ms: 5000,
-        memory_limit_mb: 256,
-      },
-    };
-  return JSON.stringify(
-    {
-      format_version: 1,
+      format_version: 3,
+      kind: "oi",
       title: options.title,
       difficulty: options.difficulty,
-      type: options.type,
-      judge_type: options.judgeType,
-      runtime_config: runtimeConfig,
-    },
-    null,
-    2,
-  ) + "\n";
+      runtime_config: {
+        backend: "native",
+        languages: ["c", "cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [{
+          id: "all",
+          score: 100,
+          cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+        }],
+      },
+    }
+    : {
+      format_version: 3,
+      kind: "ai",
+      title: options.title,
+      difficulty: options.difficulty,
+    };
+  return JSON.stringify(manifest, null, 2) + "\n";
 }
 
 const STATEMENT = (title: string) =>
@@ -169,10 +156,6 @@ export async function initProblemScaffold(
 ): Promise<ProblemInitResult> {
   validateSlug(opts.slug);
 
-  const type = opts.type ?? "P";
-  if (type !== "U" && type !== "P") {
-    throw new Error(`题型非法：${type}（仅允许 U / P）`);
-  }
   const difficulty = opts.difficulty ?? "medium";
   if (!["easy", "medium", "hard"].includes(difficulty)) {
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
@@ -223,7 +206,7 @@ export async function initProblemScaffold(
     ? [
       [
         "problem.json",
-        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
       ],
       ["statement.md", STATEMENT(title)],
       ["testdata/1.in", "1\n"],
@@ -233,7 +216,7 @@ export async function initProblemScaffold(
     : [
       [
         "problem.json",
-        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
       ],
       ["statement.md", STATEMENT(title)],
       ["template.py", TEMPLATE_PY],

@@ -70,13 +70,13 @@ Deno.test("check-file-size: 真实仓库当前通过（基线与实际一致）"
 
 // ── 2026-09-21 修复：SCAN_ROOTS 遗漏 noj-cli ──
 // 触发条件：noj-cli 的超阈值文件此前完全不受棘轮约束。
-Deno.test("check-file-size: noj-cli 的超阈值文件被纳入扫描", async () => {
-  // 真实仓库：noj-cli 至少有一个文件超阈值且已登记基线
+Deno.test("check-file-size: 真实仓库无未登记的超阈值文件", async () => {
+  // 真实仓库：门禁零错误，且任何超阈值文件都已登记基线。
+  // 2026-11-08 大文件拆分后 noj-cli 已无超阈值文件；「noj-cli 被纳入扫描」
+  // 由下方夹具用例覆盖，不再依赖真实仓库中存在大文件。
   const { largeFiles, errors } = await checkFileSizes(".");
   assertEquals(errors, []);
-  const cliFiles = largeFiles.filter((f) => f.file.startsWith("noj-cli/"));
-  assert(cliFiles.length > 0, "noj-cli 的超阈值文件必须被扫描到");
-  for (const f of cliFiles) {
+  for (const f of largeFiles) {
     assertEquals(
       typeof SIZE_BASELINE[f.file],
       "number",

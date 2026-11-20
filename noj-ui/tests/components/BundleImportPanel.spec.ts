@@ -23,6 +23,7 @@ beforeEach(() => {
 });
 
 const global = { components: { ZipDropZone }, stubs: { UIcon: true } };
+const props = { domainSlug: 'school-a' };
 
 function dropFile(wrapper: ReturnType<typeof mount>, name: string) {
   const file = new File(['PK'], name, { type: 'application/zip' });
@@ -56,31 +57,37 @@ describe('ZipDropZone', () => {
 
 describe('BundleImportPanel', () => {
   it('不带 problem_id 走建题路径；成功后提示并抛出 imported', async () => {
-    post.mockResolvedValue({ data: { id: 'uuid-1', display_id: 'P20', published: null } });
-    const wrapper = mount(BundleImportPanel, { global });
+    post.mockResolvedValue({ data: { problem_id: 'uuid-1', number: 1001, draft_revision: 3, published: null } });
+    const wrapper = mount(BundleImportPanel, { props, global });
     await dropFile(wrapper, 'p.zip');
     await flushPromises();
 
     expect(post).toHaveBeenCalledTimes(1);
     const [url, body] = post.mock.calls[0]!;
-    expect(url).toBe('/api/v1/problems/import-bundle');
+    expect(url).toBe('/api/v1/domains/school-a/problems/import-bundle');
     const form = body as FormData;
     expect(form.get('file')).toBeInstanceOf(File);
     expect(form.has('problem_id')).toBe(false);
     expect(form.has('publish')).toBe(false);
-    expect(toastSuccess).toHaveBeenCalledWith('已导入 P20（草稿：核对后发布即可作答）');
-    expect(wrapper.emitted('imported')?.[0]?.[0]).toMatchObject({ id: 'uuid-1' });
+    expect(toastSuccess).toHaveBeenCalledWith('已导入 1001（草稿：核对后发布即可作答）');
+    expect(wrapper.emitted('imported')?.[0]?.[0]).toMatchObject({ problem_id: 'uuid-1' });
   });
 
-  it('勾选「导入后立即发布」时附带 publish=true', async () => {
-    post.mockResolvedValue({ data: { id: 'uuid-1', display_id: 'P20', published: { version: 1 } } });
-    const wrapper = mount(BundleImportPanel, { global });
+  it('勾选发布时使用该域题号与导入草稿 revision', async () => {
+    post.mockResolvedValueOnce({ data: { problem_id: 'uuid-1', number: 1001, draft_revision: 3 } });
+    post.mockResolvedValueOnce({ version: 1 });
+    const wrapper = mount(BundleImportPanel, { props, global });
     await wrapper.find('input[type="checkbox"]').setValue(true);
     await dropFile(wrapper, 'p.zip');
     await flushPromises();
 
-    expect((post.mock.calls[0]![1] as FormData).get('publish')).toBe('true');
-    expect(toastSuccess).toHaveBeenCalledWith('已导入 P20 并发布 V1');
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1]).toEqual([
+      '/api/v1/domains/school-a/problems/1001/publish',
+      { change_note: '题目包导入' },
+      { headers: { 'If-Match': '3' } },
+    ]);
+    expect(toastSuccess).toHaveBeenCalledWith('已导入 1001 并发布 V1');
   });
 
   it('题号撞到已有题目（428）时给出可操作的提示，不跳转', async () => {
@@ -88,7 +95,7 @@ describe('BundleImportPanel', () => {
       status: 428,
       data: { error: '保存草稿必须携带 If-Match', code: 'DRAFT_REVISION_REQUIRED' },
     });
-    const wrapper = mount(BundleImportPanel, { global });
+    const wrapper = mount(BundleImportPanel, { props, global });
     await dropFile(wrapper, 'p.zip');
     await flushPromises();
 

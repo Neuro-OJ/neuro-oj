@@ -1,22 +1,8 @@
 import { extractApiError } from '~/utils/apiError';
+import { authCookieNames } from '~/utils/auth-cookies';
+import { clearUserDrafts } from '~/utils/draft-storage';
 
-interface UserResponse {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  is_admin: boolean;
-  must_change_password: boolean;
-  email_verified: boolean;
-  has_local_password: boolean;
-  tfa_enabled?: boolean;
-  avatar_url?: string | null;
-  permissions?: string[];
-  /** 法律文档同意状态（PIPL）；未发布政策时后端可能不返回 */
-  legal?: import('~/utils/legalConsent').LegalStatusMap;
-  created_at: string;
-  updated_at: string;
-}
+import type { AuthUser as UserResponse } from '~/utils/auth-user';
 
 interface SessionData {
   userId: string;
@@ -48,18 +34,37 @@ function sessionToUser(session: SessionData): UserResponse {
   };
 }
 
-export function useAuth() {
+export function useAuth(targetRoute?: { path: string; fullPath: string }) {
   const user = useState<UserResponse | null>('auth:user', () => null);
   const loading = useState<boolean>('auth:loading', () => true);
 
   // 可读 cookie：SSR 时服务端注入、水合后客户端读取（与 HTTP-only token cookie 配合）
   // 不含敏感凭证，仅含基础用户信息
-  const session = useCookie<SessionData | null>('noj:session', {
+  const session = useCookie<SessionData | null>(authCookieNames(useRuntimeConfig().public.authCookiePrefix).session, {
     default: () => null,
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24,
   });
+
+  function clearSession() {
+    clearUserDrafts(user.value?.id ?? session.value?.userId);
+    user.value = null;
+    session.value = null;
+  }
+
+  if (import.meta.client) {
+    // 账号被替换时同样清理，覆盖登录切换和其他会话状态更新。
+    watch(() => user.value?.id, (next, previous) => {
+      if (previous && previous !== next) clearUserDrafts(previous);
+    }, { flush: 'sync' });
+    watch(() => session.value?.userId, (next, previous) => {
+      if (previous && !next) {
+        clearUserDrafts(previous);
+        user.value = null;
+      }
+    }, { flush: 'sync' });
+  }
 
   // `token` 不再由客户端管理，Nitro 代理从 HTTP-only cookie 自动注入
   // 保留 isLoggedIn 计算属性简化其他页面的访问
@@ -67,7 +72,7 @@ export function useAuth() {
 
   // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
   // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
-  const { api } = useApi();
+  const { api } = useApi(targetRoute);
 
   /** /auth/me 的 SSR 异步数据（同一请求内按 key 复用，守卫与页面只拉一次） */
   function meAsyncData() {
@@ -130,6 +135,7 @@ export function useAuth() {
     email: string,
     password: string,
     acceptedLegal = false,
+    invitationToken?: string,
   ) {
     const res = await api.post<{ data: { email_verification_sent: boolean } }>(
       '/api/v1/auth/register',
@@ -138,6 +144,7 @@ export function useAuth() {
         email,
         password,
         accepted_legal: acceptedLegal,
+        ...(invitationToken ? { invitation_token: invitationToken } : {}),
       },
       {
         silent: true,
@@ -188,7 +195,8 @@ export function useAuth() {
     const res = await api.get<{
       data: {
         allowed: boolean;
-        reason: 'register_disabled' | 'email_unconfigured' | null;
+        reason: 'register_disabled' | 'email_unconfigured' | 'admin_only' | 'invitation_required' | null;
+        mode: 'open' | 'invite' | 'admin_only';
       };
     }>('/api/v1/auth/register-status', { silent: true });
     return res.data;
@@ -320,9 +328,12 @@ export function useAuth() {
       }
     } catch (err) {
       const info = extractApiError(err);
-      user.value = info.status === 401 ? null : sessionToUser(snapshot);
-      // 明确 401：清掉可读 session cookie，避免登录页仍显示已登录态
-      if (info.status === 401 && import.meta.client) session.value = null;
+      if (info.status === 401) {
+        // user 尚未恢复时也使用 session 快照清理该账号草稿。
+        clearSession();
+      } else {
+        user.value = sessionToUser(snapshot);
+      }
     } finally {
       loading.value = false;
     }
@@ -352,7 +363,7 @@ export function useAuth() {
     } catch {
       // 即使网络错误也要清除本地状态
     }
-    user.value = null;
+    clearSession();
   }
 
   return {

@@ -3,6 +3,7 @@
  */
 import {
   apiPost,
+  BASE_URL,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -10,6 +11,10 @@ import {
   registerUser,
   TEST_PASSWORD,
 } from "../helper.ts";
+
+/** Compose 已移除固定 container_name；CI 通过 E2E_REDIS_CONTAINER 注入 ID。 */
+const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ??
+  "noj-e2e-redis";
 
 let adminToken = "";
 let userToken = "";
@@ -63,7 +68,7 @@ async function publishContestSubmissionEvent(
     const cmd = new Deno.Command("docker", {
       args: [
         "exec",
-        "noj-e2e-redis",
+        REDIS_CONTAINER,
         "redis-cli",
         "PUBLISH",
         `noj:events:contest:${contestId}:submission`,
@@ -93,10 +98,8 @@ e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
     {
       title: "AC Abnormal " + ts,
       type: "kaggle",
-      kind: "public",
       start_time: new Date(now - 3600_000).toISOString(),
       end_time: new Date(now + 3600_000).toISOString(),
-      is_public: true,
       affect_global_ranking: false,
       config: {},
       problems: [{
@@ -116,14 +119,16 @@ e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async 
   if (!isE2E) return;
   // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
   const res = await fetch(
-    `http://localhost:8099/api/v1/contests/${contestId}/events`,
+    `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
     { headers: { Authorization: "Bearer " + userToken } },
   );
   if (res.status !== 200) {
     throw new Error(`公开赛订阅应 200，实际 ${res.status}`);
   }
   const published = await publishContestSubmissionEvent(contestId);
-  if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+  if (!published) {
+    throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+  }
   const frames = await readSseFrames(res, 5_000);
   if (frames.includes("contest:submission:created")) {
     throw new Error(`未报名用户收到了提交事件帧: ${frames.slice(0, 200)}`);
@@ -135,7 +140,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const reg = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
+      `/api/v1/domains/main/contests/${contestId}/register`,
       {},
       userToken,
     );
@@ -143,14 +148,16 @@ e2eTest(
       throw new Error(`报名失败: ${reg.status}`);
     }
     const res = await fetch(
-      `http://localhost:8099/api/v1/contests/${contestId}/events`,
+      `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
       { headers: { Authorization: "Bearer " + userToken } },
     );
     if (res.status !== 200) {
       throw new Error(`报名用户订阅应 200，实际 ${res.status}`);
     }
     const published = await publishContestSubmissionEvent(contestId);
-    if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+    if (!published) {
+      throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+    }
     const frames = await readSseFrames(res, 10_000);
     const submissionData = extractSseEventData(
       frames,
@@ -168,7 +175,7 @@ e2eTest(
       );
     }
     // 审计 VULN-10：仅剔除 user_id 不足以阻断监听链——保留 submission_id 时，
-    // 参赛者可用它订阅 /api/v1/submissions/:id/events 实时监听他人评测完成。
+    // 参赛者可用它订阅 /api/v1/domains/:slug/submissions/:id/events 实时监听他人评测完成。
     // 故非管理员的事件帧同样不得包含 submission_id。
     if (submissionData.includes('"submission_id"')) {
       throw new Error(

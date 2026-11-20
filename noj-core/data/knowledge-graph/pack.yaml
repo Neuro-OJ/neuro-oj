@@ -1,0 +1,9 @@
+# NOJ 官方知识图谱内容包清单（格式见 openspec/changes/add-knowledge-graph/design.md 第 2 节）
+id: official
+name: NOJ 官方 AI 竞赛知识图谱
+version: 2026.11.0-draft
+license: CC-BY-SA-4.0
+syllabi:
+  ioai: IOAI 国际人工智能奥林匹克（2027 版考纲）
+  noai: NOAI 国际人工智能奥林匹克中国区学术活动（2025–2026 赛季官方说明）
+  lmcc: LMCC CCF 大模型能力认证（2026 年 5 月版大纲）

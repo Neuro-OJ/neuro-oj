@@ -2,7 +2,6 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import {
   logger,
   type LogRecord,
-  redactId,
   resetLogSink,
   setLogSink,
 } from "./../../src/shared/base/logging.ts";
@@ -32,18 +31,6 @@ function withCapture(
     restore: () => resetLogSink(),
   };
 }
-
-Deno.test({
-  name: "logging: redactId 截断超长 ID，短 ID 返回 [redacted]",
-  fn: () => {
-    assertEquals(
-      redactId("550e8400-e29b-41d4-a716-446655440000"),
-      "550e8400...",
-    );
-    assertEquals(redactId("short"), "[redacted]");
-    assertEquals(redactId(""), "[redacted]");
-  },
-});
 
 Deno.test({
   name: "logging: logger 输出结构化记录（msg + fields）",
@@ -100,7 +87,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "logging: 生产环境脱敏 submission_id / score / code",
+  name: "logging: 生产环境保留 submission_id / score，抹除 code",
   fn: () => {
     const { records, restore } = withCapture({
       NOJ_ENV: "production",
@@ -114,8 +101,8 @@ Deno.test({
         status: "finished",
       });
       const f = records[0].fields;
-      assertEquals(f.submission_id, "550e8400...");
-      assertEquals("score" in f, false); // score 生产环境隐藏
+      assertEquals(f.submission_id, "550e8400-e29b-41d4-a716-446655440000");
+      assertEquals(f.score, 9500);
       assertEquals(f.code, "[redacted]");
       assertEquals(f.status, "finished"); // 非敏感字段保留
     } finally {

@@ -1,9 +1,12 @@
 """
 noj_evaluator_sdk.llm 单元测试。
 """
+import http.client
 import json
 import os
+import socket
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -42,6 +45,8 @@ def _start_server():
 class LlmTest(TestCase):
     def setUp(self):
         self._old_env = {}
+        self._old_opener = getattr(urllib.request, "_opener", None)
+        urllib.request.install_opener(None)
         for key in (
             "NOJ_LLM_GATEWAY_URL",
             "NOJ_LLM_TOKEN",
@@ -52,6 +57,7 @@ class LlmTest(TestCase):
             os.environ.pop(key, None)
 
     def tearDown(self):
+        urllib.request.install_opener(self._old_opener)
         for key, value in self._old_env.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -159,3 +165,116 @@ class LlmTest(TestCase):
             llm.complete(model="model", messages=[{"role":"user","content":"hi"}])
             sleep.assert_called_once_with(60.0)
             self.assertEqual(request.call_count, 2)
+
+    def test_remote_disconnected_retries_then_raises_llm_error(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        exc = http.client.RemoteDisconnected("Remote end closed connection without response")
+        with patch("urllib.request.urlopen", side_effect=[exc, self._mock_response()]) as request, patch("time.sleep"):
+            response = llm.complete(model="model", messages=[{"role": "user", "content": "hi"}])
+            self.assertEqual(response["choices"][0]["message"]["content"], "OK")
+            self.assertEqual(request.call_count, 2)
+
+        with patch("urllib.request.urlopen", side_effect=exc) as request, patch("time.sleep"):
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.complete(model="model", messages=[{"role": "user", "content": "hi"}])
+            self.assertIn("LLM gateway 连接失败", str(ctx.exception))
+            self.assertEqual(request.call_count, 2)
+
+    def test_incomplete_read_retries_then_raises_llm_error(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "http://gateway"
+        os.environ["NOJ_LLM_TOKEN"] = "test-token"
+        exc = http.client.IncompleteRead(b'{"partial":', 128)
+        with patch("urllib.request.urlopen", side_effect=[exc, self._mock_response()]) as request, patch("time.sleep"):
+            response = llm.complete(model="model", messages=[{"role": "user", "content": "hi"}])
+            self.assertEqual(response["choices"][0]["message"]["content"], "OK")
+            self.assertEqual(request.call_count, 2)
+
+        with patch("urllib.request.urlopen", side_effect=exc) as request, patch("time.sleep"):
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.complete(model="model", messages=[{"role": "user", "content": "hi"}])
+            self.assertIn("LLM gateway 连接失败", str(ctx.exception))
+            self.assertEqual(request.call_count, 2)
+
+    def test_keepalive_and_connection_close_enabled_on_real_request(self):
+        seen_headers = {}
+        keepalive_flags = []
+
+        class _KeepAliveInspectHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen_headers["connection"] = self.headers.get("Connection")
+                length = int(self.headers.get("Content-Length", 0))
+                self.rfile.read(length)
+                body = b'{"ok": true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), _KeepAliveInspectHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        orig_connect = llm._KeepAliveHTTPConnection.connect
+
+        def spy_connect(conn):
+            orig_connect(conn)
+            keepalive_flags.append(
+                conn.sock.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE),
+            )
+
+        try:
+            os.environ["NOJ_LLM_GATEWAY_URL"] = f"http://127.0.0.1:{server.server_port}"
+            os.environ["NOJ_LLM_TOKEN"] = "test-token"
+            with patch.object(llm._KeepAliveHTTPConnection, "connect", spy_connect):
+                res = llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "hi"}])
+            self.assertTrue(res["ok"])
+            self.assertEqual(seen_headers.get("connection"), "close")
+            self.assertEqual(len(keepalive_flags), 1)
+            self.assertNotEqual(keepalive_flags[0], 0)
+            self.assertIsNone(urllib.request._opener)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_respects_caller_installed_opener_and_preserves_it(self):
+        class _DummyOkHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                self.rfile.read(length)
+                body = b'{"ok": true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        handler_calls = []
+
+        class _CustomHeaderHandler(urllib.request.BaseHandler):
+            def http_request(self, req):
+                handler_calls.append(req.full_url)
+                req.add_unredirected_header("X-Custom-Caller-Opener", "yes")
+                return req
+
+        server = HTTPServer(("127.0.0.1", 0), _DummyOkHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        custom_opener = urllib.request.build_opener(_CustomHeaderHandler())
+        urllib.request.install_opener(custom_opener)
+        try:
+            os.environ["NOJ_LLM_GATEWAY_URL"] = f"http://127.0.0.1:{server.server_port}"
+            os.environ["NOJ_LLM_TOKEN"] = "test-token"
+            res = llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "hi"}])
+            self.assertTrue(res["ok"])
+            self.assertEqual(len(handler_calls), 1)
+            self.assertIs(urllib.request._opener, custom_opener)
+        finally:
+            server.shutdown()
+            server.server_close()

@@ -11,7 +11,7 @@ const ALL_STATES: readonly DeployState[] = [
   "error",
 ];
 
-// ---------- transition：逐字移植自 src/state/machine.ts ----------
+// ---------- transition ----------
 
 Deno.test("transition: init 从任意状态进入 stopped，changed=true，措辞一致", () => {
   for (const s of ALL_STATES) {

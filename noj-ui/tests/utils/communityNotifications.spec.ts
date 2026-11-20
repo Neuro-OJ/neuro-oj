@@ -51,7 +51,7 @@ describe('notificationTarget', () => {
   it('clarification 指向竞赛答疑 Tab', () => {
     expect(
       notificationTarget(row({ type: 'clarification', data: { contest_id: 'c1' } })),
-    ).toBe('/contests/c1?tab=clarifications');
+    ).toBe('/d/main/contests/c1?tab=clarifications');
   });
 
   it('封禁通知没有关联内容 → null（回归：曾回退到 /community）', () => {
@@ -110,6 +110,6 @@ describe('通知类型文案与图标', () => {
 
 describe('notificationDetailUrl', () => {
   it('拼出通知详情页路径', () => {
-    expect(notificationDetailUrl('n1')).toBe('/community/notifications/n1');
+    expect(notificationDetailUrl('n1')).toBe('/notifications/n1');
   });
 });

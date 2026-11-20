@@ -1,5 +1,5 @@
 /**
- * T20 调度测试：crontab 标记区块的幂等与"不碰他人行"。
+ * 调度测试：crontab 标记区块的幂等与"不碰他人行"。
  *
  * 全部注入 runner（crontab），**不触碰真实 crontab**。
  *
@@ -99,7 +99,7 @@ function makeCrontabRunner(
         );
       },
       spawn(): SpawnHandle {
-        throw new Error("T20 测试不 spawn");
+        throw new Error("调度测试不 spawn");
       },
     },
   };
@@ -108,8 +108,7 @@ function makeCrontabRunner(
 /** 建一个"完整安装目录"：备份脚本（可执行）+ .env.prod + compose。 */
 async function makeInstallDir(root: string): Promise<string> {
   const dir = join(root, "install");
-  // T24：cron 的入口是 **noj-cli 自身**（`<dir>/bin/noj-cli backup create`），
-  // 不再是已删除的 scripts/deploy/backup.sh。
+  // cron 的入口是 **noj-cli 自身**（`<dir>/bin/noj-cli backup create`）。
   await Deno.mkdir(join(dir, "bin"), { recursive: true });
   const script = join(dir, "bin/noj-cli");
   await Deno.writeTextFile(script, "#!/bin/sh\nexit 0\n");
@@ -145,20 +144,20 @@ const HOST_TASKS = [
 
 // ---------------- 纯函数：区块解析与合并 ----------------
 
-Deno.test("T20 removeManagedBlock：只删区块，他行逐字节不变", () => {
+Deno.test("removeManagedBlock：只删区块，他行逐字节不变", () => {
   const crontab =
     `${HOST_TASKS}${MARKER_BEGIN}\n15 2 * * * /x\n${MARKER_END}\n`;
   assertEquals(removeManagedBlock(crontab), HOST_TASKS);
 });
 
-Deno.test("T20 removeManagedBlock：无 END 时删到末尾（保持 bash awk 的行为）", () => {
+Deno.test("removeManagedBlock：无 END 时删到末尾", () => {
   // 手工删掉 END 的退化情形：必须把本工具的命令行也删掉，否则它会以"无标记的
   // 孤儿行"永久留在 crontab 里，下次 install 再也认不出。
   const crontab = `${HOST_TASKS}${MARKER_BEGIN}\n15 2 * * * /x\n`;
   assertEquals(removeManagedBlock(crontab), HOST_TASKS);
 });
 
-Deno.test("T20 upsertManagedBlock：幂等（重复插入仍只有一个区块）", () => {
+Deno.test("upsertManagedBlock：幂等（重复插入仍只有一个区块）", () => {
   const entry = "30 3 * * * /x create";
   const once = upsertManagedBlock(HOST_TASKS, entry);
   const twice = upsertManagedBlock(once, entry);
@@ -170,7 +169,7 @@ Deno.test("T20 upsertManagedBlock：幂等（重复插入仍只有一个区块�
   assert(once.endsWith(`${MARKER_END}\n`));
 });
 
-Deno.test("T20 upsertManagedBlock：换 schedule 后旧条目消失（更新语义）", () => {
+Deno.test("upsertManagedBlock：换 schedule 后旧条目消失（更新语义）", () => {
   const first = upsertManagedBlock(HOST_TASKS, "30 3 * * * /x create");
   const second = upsertManagedBlock(first, "45 4 * * * /x create");
   assertEquals(countOccurrences(second, MARKER_BEGIN), 1, "不得产生第二个区块");
@@ -179,12 +178,12 @@ Deno.test("T20 upsertManagedBlock：换 schedule 后旧条目消失（更新语�
   assert(second.startsWith(HOST_TASKS));
 });
 
-Deno.test("T20 upsertManagedBlock：空 crontab 也能正确落盘（无多余空行）", () => {
+Deno.test("upsertManagedBlock：空 crontab 也能正确落盘（无多余空行）", () => {
   const result = upsertManagedBlock("", "15 2 * * * /x");
   assertEquals(result, `${MARKER_BEGIN}\n15 2 * * * /x\n${MARKER_END}\n`);
 });
 
-Deno.test("T20 extractManagedBlock：含两端标记；未安装返回 null", () => {
+Deno.test("extractManagedBlock：含两端标记；未安装返回 null", () => {
   const crontab =
     `${HOST_TASKS}${MARKER_BEGIN}\n15 2 * * * /x\n${MARKER_END}\n`;
   const block = extractManagedBlock(crontab);
@@ -195,7 +194,7 @@ Deno.test("T20 extractManagedBlock：含两端标记；未安装返回 null", ()
 
 // ---------------- 注入防线 ----------------
 
-Deno.test("T20 assertSchedule：五段合法表达式通过", () => {
+Deno.test("assertSchedule：五段合法表达式通过", () => {
   for (
     const expr of [
       "15 2 * * *",
@@ -210,8 +209,8 @@ Deno.test("T20 assertSchedule：五段合法表达式通过", () => {
   assertEquals(DEFAULT_SCHEDULE, "15 2 * * *");
 });
 
-Deno.test("T20 assertSchedule：shell 元字符与段数错误一律拒绝", () => {
-  // 既有 bash 用例：分号注入
+Deno.test("assertSchedule：shell 元字符与段数错误一律拒绝", () => {
+  // 分号注入
   for (
     const bad of [
       "15 2 * * *; touch /tmp/unsafe",
@@ -237,7 +236,7 @@ Deno.test("T20 assertSchedule：shell 元字符与段数错误一律拒绝", () 
   }
 });
 
-Deno.test("T20 quoteForCron：含空格/引号/$ 的路径被安全引用", () => {
+Deno.test("quoteForCron：含空格/引号/$ 的路径被安全引用", () => {
   // 安全字符集：不加引号（可读性）
   assertEquals(quoteForCron("/opt/noj/backups"), "/opt/noj/backups");
   assertEquals(quoteForCron("15 2 * * *".split(" ")[0]!), "15");
@@ -250,7 +249,7 @@ Deno.test("T20 quoteForCron：含空格/引号/$ 的路径被安全引用", () =
   assertEquals(quoteForCron(""), "''");
 });
 
-Deno.test("T20 renderScheduleEntry：结构逐字对齐 bash（含 >> 与 2>&1）", () => {
+Deno.test("renderScheduleEntry：结构固定（含 >> 与 2>&1）", () => {
   const entry = renderScheduleEntry({
     schedule: "15 2 * * *",
     backupScript: "/opt/noj/bin/noj-cli",
@@ -270,7 +269,7 @@ Deno.test("T20 renderScheduleEntry：结构逐字对齐 bash（含 >> 与 2>&1�
   );
 });
 
-Deno.test("T20 renderScheduleEntry：含空格的安装目录仍产出单一命令（引用生效）", async () => {
+Deno.test("renderScheduleEntry：含空格的安装目录仍产出单一命令（引用生效）", async () => {
   const entry = renderScheduleEntry({
     schedule: "15 2 * * *",
     backupScript: "/opt/my noj/bin/noj-cli",
@@ -307,7 +306,7 @@ Deno.test("T20 renderScheduleEntry：含空格的安装目录仍产出单一命�
 
 // ---------------- 命令面 ----------------
 
-Deno.test("T20 install：写入区块、建日志（600）与备份目录（700），保留他人任务", async () => {
+Deno.test("install：写入区块、建日志（600）与备份目录（700），保留他人任务", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -342,7 +341,7 @@ Deno.test("T20 install：写入区块、建日志（600）与备份目录（700�
   }
 });
 
-Deno.test("T20 install：重复安装幂等（区块仍为 1），换 schedule 后旧条目消失", async () => {
+Deno.test("install：重复安装幂等（区块仍为 1），换 schedule 后旧条目消失", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -371,7 +370,7 @@ Deno.test("T20 install：重复安装幂等（区块仍为 1），换 schedule �
   }
 });
 
-Deno.test("T20 install：危险表达式被拒且**零 crontab 写入**", async () => {
+Deno.test("install：危险表达式被拒且**零 crontab 写入**", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -398,7 +397,7 @@ Deno.test("T20 install：危险表达式被拒且**零 crontab 写入**", async 
   }
 });
 
-Deno.test("T20 install：前置失败（口令/缺文件/不可执行脚本）→ 2 且零写入", async () => {
+Deno.test("install：前置失败（口令/缺文件/不可执行脚本）→ 2 且零写入", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -477,7 +476,7 @@ Deno.test("T20 install：前置失败（口令/缺文件/不可执行脚本）�
   }
 });
 
-Deno.test("T20 install：无 crontab（-l 非 0）视为空，仍成功", async () => {
+Deno.test("install：无 crontab（-l 非 0）视为空，仍成功", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -495,7 +494,7 @@ Deno.test("T20 install：无 crontab（-l 非 0）视为空，仍成功", async 
   }
 });
 
-Deno.test("T20 install：crontab 二进制缺失 → 2（前置，零写入）", async () => {
+Deno.test("install：crontab 二进制缺失 → 2（前置，零写入）", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -515,7 +514,7 @@ Deno.test("T20 install：crontab 二进制缺失 → 2（前置，零写入）",
   }
 });
 
-Deno.test("T20 install：写入失败 → 退出码 1 并报出 crontab 的错误", async () => {
+Deno.test("install：写入失败 → 退出码 1 并报出 crontab 的错误", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -534,7 +533,7 @@ Deno.test("T20 install：写入失败 → 退出码 1 并报出 crontab 的错�
   }
 });
 
-Deno.test("T20 status：已安装时输出区块（含两端标记）", async () => {
+Deno.test("status：已安装时输出区块（含两端标记）", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -558,7 +557,7 @@ Deno.test("T20 status：已安装时输出区块（含两端标记）", async ()
   }
 });
 
-Deno.test("T20 status：未安装 → 退出码 1 且提示可读", async () => {
+Deno.test("status：未安装 → 退出码 1 且提示可读", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -578,7 +577,7 @@ Deno.test("T20 status：未安装 → 退出码 1 且提示可读", async () => 
   }
 });
 
-Deno.test("T20 remove：删区块但保留他人任务；无区块时不写 crontab", async () => {
+Deno.test("remove：删区块但保留他人任务；无区块时不写 crontab", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -613,7 +612,7 @@ Deno.test("T20 remove：删区块但保留他人任务；无区块时不写 cron
   }
 });
 
-Deno.test("T20 remove：crontab 缺失 → 2；写入失败 → 1", async () => {
+Deno.test("remove：crontab 缺失 → 2；写入失败 → 1", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);
@@ -636,7 +635,7 @@ Deno.test("T20 remove：crontab 缺失 → 2；写入失败 → 1", async () => 
   }
 });
 
-Deno.test("T20 readCrontab/writeCrontab：直连原语的错误传播", async () => {
+Deno.test("readCrontab/writeCrontab：直连原语的错误传播", async () => {
   const { runner, state } = makeCrontabRunner("seed\n");
   assertEquals(await readCrontab(runner, "crontab"), "seed\n");
   await writeCrontab(runner, "crontab", "new\n");
@@ -661,7 +660,7 @@ Deno.test("T20 readCrontab/writeCrontab：直连原语的错误传播", async ()
   );
 });
 
-Deno.test("T20 install：备份目录/日志已存在时不报错（幂等前置）", async () => {
+Deno.test("install：备份目录/日志已存在时不报错（幂等前置）", async () => {
   const root = await makeTempDir();
   try {
     const dir = await makeInstallDir(root);

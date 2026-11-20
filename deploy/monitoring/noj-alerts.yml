@@ -113,6 +113,37 @@ groups:
           description: 最早 judging 任务已超过 10 分钟。
           runbook: deploy/monitoring/runbooks/queue-oldest-judging-age.md
 
+      # ---- 通用后台任务与教学投影 ----
+      - alert: NojBackgroundTasksBacklog
+        expr: noj_background_tasks_oldest_ready_age_seconds >= 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 通用后台任务待领取积压
+          description: 最老可领取后台任务已超过 5 分钟，可能存在 worker 停止、数据库锁或任务处理速度不足。
+          runbook: deploy/monitoring/runbooks/background-tasks.md
+
+      - alert: NojBackgroundTasksFailed
+        expr: noj_background_tasks_failed > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 通用后台任务达到重试上限
+          description: 至少一条后台任务进入 failed 终态，需要检查 last_error 后人工重试或处置。
+          runbook: deploy/monitoring/runbooks/background-tasks.md
+
+      - alert: NojEducationProjectionStale
+        expr: noj_education_projection_oldest_age_seconds >= 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 教学投影事实长时间未完成
+          description: education_outbox 中最老未处理事实已超过 5 分钟，教学学情可能暂时落后。
+          runbook: deploy/monitoring/runbooks/background-tasks.md
+
       # ---- 近期错误率（滑动窗口，替代进程累计比例）----
       - alert: NojApiErrorRateRecentWarning
         expr: |

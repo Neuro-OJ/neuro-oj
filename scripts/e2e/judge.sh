@@ -23,14 +23,15 @@
 source "$(dirname "$0")/lib.sh"
 set -uo pipefail
 
-# 加载 E2E 环境（如果 setup.sh 有写入的话）
-[ -f /tmp/noj-e2e-env.sh ] && source /tmp/noj-e2e-env.sh
+# 会话环境由调用方（run-all.sh / session.ts env）注入；不再读取全局 /tmp 文件。
 
 # ── 进入项目目录 ──
 cd "$ROOT_DIR/noj-judge"
 
 # ── 配置（用独立 Redis DB 1，不污染开发环境 DB 0）──
-REDIS_URL="${REDIS_URL:-redis://localhost:6380/1}"
+# 会话内运行时 E2E_REDIS_URL 指向本会话的 Redis 端口（session.ts 注入），
+# 未注入时才退回 CI 默认端口。
+REDIS_URL="${REDIS_URL:-${E2E_REDIS_URL:-redis://localhost:6380/1}}"
 export REDIS_URL
 
 cleanup() {
@@ -61,7 +62,7 @@ REDIS_PORT="${REDIS_URL##*:}"
 REDIS_PORT="${REDIS_PORT%%/*}"
 if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping &>/dev/null; then
   warn "Redis 未就绪，尝试启动..."
-  docker start noj-e2e-redis 2>/dev/null || {
+  docker start "${E2E_REDIS_CONTAINER:-noj-e2e-redis}" 2>/dev/null || {
     fail "Redis 不可用，请先执行: bash scripts/e2e/setup.sh"
     exit 1
   }

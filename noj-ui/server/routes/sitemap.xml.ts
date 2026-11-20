@@ -1,132 +1,73 @@
-// 动态 sitemap：从 noj-core 拉取公开资源，短 TTL 内存缓存后输出 XML。
-// 避免引入额外依赖，适配 Deno 单二进制部署。
-//
-// ── 2026-09-12 架构评审 §4.2 修复 ────────────────────────────────
-// 原实现把**请求 Host 头**拼出的 origin 写入**进程级**缓存（TTL 1h）：
-// 伪造一次 `Host: evil.com` 即可把 `<loc>https://evil.com/...</loc>` 钉住一小时，
-// 影响所有访客与搜索引擎（缓存投毒）。
-// 现在的做法：
-//   1. 优先使用配置的权威地址 `runtimeConfig.siteUrl`（来自 NUXT_SITE_URL）；
-//   2. 未配置时退化为"按 origin 分键缓存 + 形状校验"，投毒只能污染伪造者自己那个键；
-//   3. 上游不可达的降级结果**不写缓存**（避免把"只有首页"的残缺 sitemap 固化一小时）；
-//   4. 显式声明 `cache-control`，让 CDN/爬虫有明确语义。
-
+// 公开目录每次由 core 以匿名身份重新授权，不缓存可被撤销的资源定位。
 import { resolveOrigin } from '../utils/sitemap-origin';
-import { SitemapCache } from '../utils/sitemap-cache';
+import { workspacePath, workspaceProblemPath } from '../../utils/workspace';
+import type { DomainProblemReference } from '../../utils/domain-problems';
 
-const CACHE_TTL_MS = 60 * 60 * 1000;
 const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
-/**
- * origin → 缓存条目。按 origin 分键（避免 Host 头互相污染）。
- *
- * 2026-09-21 修复：改用有界缓存（TTL + LRU）。此前是裸 `Map` 且只写不删——
- * `NUXT_SITE_URL` 未配置时 origin 来自请求 Host，攻击者循环发送不同 Host 即可
- * 让 Map 无界增长，并触发上游扇出。实现与容量上限见 `utils/sitemap-cache.ts`。
- */
-const cache = new SitemapCache({ ttlMs: CACHE_TTL_MS });
-
-interface SitemapEntry {
-  loc: string;
-  lastmod?: string;
-}
-
-async function fetchAll<T extends { id: string }>(
-  apiBase: string,
-  path: string,
-): Promise<T[]> {
-  const items: T[] = [];
-  let page = 1;
-  while (page <= MAX_PAGES) {
-    const res = await $fetch<{ data: T[]; total?: number }>(
-      `${apiBase}${path}?page=${page}&per_page=${PER_PAGE}`,
+async function publicProblems(apiBase: string) {
+  const items: { reference: DomainProblemReference }[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const result = await $fetch<{ items: typeof items; total: number }>(
+      `${apiBase}/api/v1/domains/main/problems?page=${page}&limit=${PER_PAGE}`,
     );
-    const batch = res.data ?? [];
-    items.push(...batch);
-    const total = res.total ?? items.length;
-    if (batch.length === 0 || items.length >= total || page * PER_PAGE >= total) break;
-    page++;
+    items.push(...result.items);
+    if (!result.items.length || items.length >= result.total) break;
   }
   return items;
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+/** 比赛返回 pagination，公告返回 meta；两者均不携带访问者 Cookie。 */
+async function publicPages<T extends { id: string }>(apiBase: string, path: string) {
+  const items: T[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const result = await $fetch<
+      & { data: T[] }
+      & (
+        { pagination: { total_pages: number } } | { meta: { total_pages: number } }
+      )
+    >(
+      `${apiBase}${path}?page=${page}&per_page=${PER_PAGE}`,
+    );
+    items.push(...result.data);
+    const pagination = 'pagination' in result ? result.pagination : result.meta;
+    if (!result.data.length || page >= pagination.total_pages) break;
+  }
+  return items;
+}
+
+function escapeXml(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
 export default defineEventHandler(async (event) => {
-  const now = Date.now();
+  setHeader(event, 'cache-control', 'no-store');
   const config = useRuntimeConfig();
-  const apiBase = config.apiBase as string;
   const origin = resolveOrigin(
     config.siteUrl as string | undefined,
     event.headers.get('x-forwarded-proto'),
     event.headers.get('host'),
   );
-
   if (!origin) {
-    // 既无权威配置、Host 头又不可用：宁可报错也不要产出被投毒的 URL
     setResponseStatus(event, 400);
     return 'invalid host';
   }
-
-  const cached = cache.get(origin, now);
-  if (cached) {
-    setHeader(event, 'content-type', 'application/xml');
-    setHeader(event, 'cache-control', 'public, max-age=3600');
-    return cached.body;
-  }
-  const entries: SitemapEntry[] = [{ loc: `${origin}/` }];
-  let degraded = false;
-
-  try {
-    const [problems, contests, announcements] = await Promise.all([
-      fetchAll<{ id: string; display_id?: string }>(apiBase, '/api/v1/problems'),
-      fetchAll<{ id: string; public_id?: string }>(apiBase, '/api/v1/contests'),
-      fetchAll<{ id: string; public_id?: string }>(apiBase, '/api/v1/announcements'),
-    ]);
-
-    for (const p of problems) {
-      entries.push({ loc: `${origin}/problems/${p.display_id || p.id}` });
-    }
-    for (const c of contests) {
-      entries.push({ loc: `${origin}/contests/${c.public_id || c.id}` });
-    }
-    for (const a of announcements) {
-      entries.push({ loc: `${origin}/announcements/${a.public_id || a.id}` });
-    }
-  } catch {
-    // core 不可达：降级为仅首页，且**不写缓存**（见文件头第 3 点）
-    degraded = true;
-  }
-
-  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${
-    entries
-      .map((e) => `<url><loc>${escapeXml(e.loc)}</loc></url>`)
-      .join('')
-  }</urlset>`;
-
-  if (degraded) {
-    setHeader(event, 'content-type', 'application/xml');
-    setHeader(event, 'cache-control', 'no-store');
-    const stale = cache.peekStale(origin);
-    if (stale) {
-      // 有完整旧缓存时优先返回旧内容，避免"只有首页"的残缺 sitemap 被收录。
-      // 用 peekStale 而非 get：即便旧缓存已过 TTL，完整内容仍优于残缺内容。
-      setHeader(event, 'cache-control', 'public, max-age=60');
-      return stale.body;
-    }
-    return body;
-  }
-
-  cache.set(origin, { at: now, body });
+  const apiBase = config.apiBase as string;
+  const [problems, contests, announcements] = await Promise.all([
+    publicProblems(apiBase),
+    publicPages<{ id: string }>(apiBase, '/api/v1/domains/main/contests'),
+    publicPages<{ id: string; public_id?: string }>(apiBase, '/api/v1/announcements'),
+  ]);
+  const paths = [
+    '/',
+    ...problems.map((p) => workspaceProblemPath('main', p.reference.display_ref)),
+    ...contests.map((c) => workspacePath('main', `contests/${c.id}`)),
+    ...announcements.map((a) => `/announcements/${encodeURIComponent(a.public_id ?? a.id)}`),
+  ];
   setHeader(event, 'content-type', 'application/xml');
-  setHeader(event, 'cache-control', 'public, max-age=3600');
-  return body;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${
+    paths.map((path) => `<url><loc>${escapeXml(`${origin}${path}`)}</loc></url>`).join('')
+  }</urlset>`;
 });

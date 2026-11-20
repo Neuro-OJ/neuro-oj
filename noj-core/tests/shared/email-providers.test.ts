@@ -1,8 +1,8 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { decodeBase64 } from "@std/encoding/base64";
-import { sendPasswordResetEmail as mockSend } from "./../../src/domains/system/services/email-providers/mock.ts";
-import { sendPasswordResetEmail as disabledSend } from "./../../src/domains/system/services/email-providers/disabled.ts";
-import type { SendPasswordResetEmail } from "./../../src/domains/system/services/email-providers/types.ts";
+import { sendPasswordResetEmail as mockSend } from "../../src/modules/platform/system/services/email-providers/mock.ts";
+import { sendPasswordResetEmail as disabledSend } from "../../src/modules/platform/system/services/email-providers/disabled.ts";
+import type { SendPasswordResetEmail } from "../../src/modules/platform/system/services/email-providers/types.ts";
 import {
   type LogRecord,
   resetLogSink,
@@ -119,7 +119,7 @@ Deno.test({
       Deno.env.delete("ALIBABA_FROM_EMAIL");
 
       const { sendPasswordResetEmail: aliyunSend } = await import(
-        "./../../src/domains/system/services/email-providers/aliyun.ts"
+        "../../src/modules/platform/system/services/email-providers/aliyun.ts"
       );
 
       await assertRejects(
@@ -149,7 +149,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { buildSendMailParams } = await import(
-      "./../../src/domains/system/services/email-providers/aliyun.ts"
+      "../../src/modules/platform/system/services/email-providers/aliyun.ts"
     );
     // deno-lint-ignore no-explicit-any
     const dm: any = await import("npm:@alicloud/dm20151123@^1.10.2");
@@ -197,7 +197,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const { encodeHtmlBase64 } = await import(
-      "./../../src/domains/system/services/email-providers/tencent.ts"
+      "../../src/modules/platform/system/services/email-providers/tencent.ts"
     );
     const html = "<p>欢迎注册 Neuro OJ。</p>";
     const encoded = encodeHtmlBase64(html);
@@ -229,7 +229,7 @@ Deno.test({
       Deno.env.delete("TENCENT_REGION");
 
       const { sendPasswordResetEmail: tencentSend } = await import(
-        "./../../src/domains/system/services/email-providers/tencent.ts"
+        "../../src/modules/platform/system/services/email-providers/tencent.ts"
       );
 
       await assertRejects(

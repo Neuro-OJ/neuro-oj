@@ -29,6 +29,7 @@ export async function pollSubmission(
     if (options.isCancelled?.()) throw new Error("已取消等待评测结果");
     const detail = await load();
     options.onUpdate?.(detail);
+    if (detail.result_visibility === "hidden") return detail;
     if (detail.status === "finished" || detail.status === "error") {
       return detail;
     }

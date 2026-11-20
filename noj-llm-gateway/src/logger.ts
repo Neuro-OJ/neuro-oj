@@ -160,38 +160,6 @@ const SENSITIVE_KEYS = new Set([
   "store_key",
 ]);
 
-/** 需要截断展示的 ID 字段。 */
-const ID_KEYS = new Set([
-  "submission_id",
-  "user_id",
-  "problem_id",
-  "conversation_id",
-  "message_id",
-]);
-
-/**
- * 免除 id 脱敏的**关联标识**（契约 §6 的显式例外）。
- *
- * `*_id` 通配规则的本意是保护业务实体 id，但 `request_id` 不是业务实体：
- * 它由服务端随机生成、不携带用户隐私，且唯一用途就是**跨服务串联同一次请求**。
- * 一旦被截断成前 8 字符，生产环境的日志就无法与上游/下游（core、judge）对齐。
- * 该键同时由 pretty 侧自行 `slice(0, 8)` 控制展示长度（契约 §1）。
- */
-const CORRELATION_KEYS = new Set([
-  "request_id",
-]);
-
-/**
- * 截断 ID 用于日志展示，保留前缀可识别性但避免完整泄露。
- *
- * @example
- * redactId("550e8400-e29b-41d4-a716-446655440000") // "550e8400..."
- */
-export function redactId(id: string, visiblePrefix = 8): string {
-  if (!id || id.length <= visiblePrefix) return "[redacted]";
-  return `${id.slice(0, visiblePrefix)}...`;
-}
-
 /** Error → 契约形状（生产去掉 stack）。 */
 export function serializeValue(
   value: unknown,
@@ -223,14 +191,6 @@ export function redactValueByKey(
   if (!production) return serializeValue(value, production);
   const lower = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lower)) return "[redacted]";
-  if (lower === "score") return "[redacted]";
-  // 关联标识先于 `*_id` 通配判定，否则会被误截断（见 CORRELATION_KEYS）
-  if (CORRELATION_KEYS.has(lower)) return serializeValue(value, production);
-  if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-    return typeof value === "string"
-      ? redactId(value)
-      : serializeValue(value, production);
-  }
   // 客户端 IP 在生产日志中不做完整记录（隐私最小化）
   if (lower === "client_ip" || lower === "ip" || lower === "ips") {
     return "[redacted]";
@@ -284,22 +244,12 @@ function redactNested(
       const [k, v] of Object.entries(serialized as Record<string, unknown>)
     ) {
       const lower = k.toLowerCase();
-      if (SENSITIVE_KEYS.has(lower) || lower === "score") {
+      if (SENSITIVE_KEYS.has(lower)) {
         out[k] = "[redacted]";
-        continue;
-      }
-      if (CORRELATION_KEYS.has(lower)) {
-        out[k] = serializeValue(v, production);
         continue;
       }
       if (lower === "client_ip" || lower === "ip" || lower === "ips") {
         out[k] = "[redacted]";
-        continue;
-      }
-      if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-        out[k] = typeof v === "string"
-          ? redactId(v)
-          : redactNested(v, depth + 1, seen, production);
         continue;
       }
       out[k] = redactNested(v, depth + 1, seen, production);
@@ -321,7 +271,6 @@ export function redactFields(
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
     const redacted = redactValueByKey(key, value, production);
-    if (production && key.toLowerCase() === "score") continue;
     out[key] = redacted;
   }
   return out;

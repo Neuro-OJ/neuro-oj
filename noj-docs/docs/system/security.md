@@ -15,7 +15,7 @@ Depth）体系。
 | **容器沙箱**     | `cap_drop ALL`、`no-new-privileges`、`network_mode none`、`pids_limit 256` | 根只读（`readonly_rootfs`），仅 `/workspace` 挂载 tmpfs，防提权与 fork 炸弹           |
 | **ZIP 炸弹防护** | 实时流式限额：单文件 ≤ 64 MiB、解压总容积 ≤ 512 MiB、条目 ≤ 1000           | 拒绝路径穿越；**按实际解压字节动态计数**，不信任 ZIP 头声明                           |
 | **可信代理**     | 生产强制配置 `TRUSTED_PROXIES`                                             | 杜绝通过伪造 `X-Forwarded-For` 绕过 IP 限流与黑名单。缺失此配置在生产环境**拒绝启动** |
-| **日志脱敏**     | 生产环境 UUID 截断、`score` 隐藏、数据库密码脱敏                           | 统一 Logger 拦截输出，防止排错日志意外泄露敏感资产与用例评分                          |
+| **日志脱敏**     | 生产环境保留业务 ID 与 `score`，抹除代码、令牌、密钥、密码等敏感内容                           | 统一 Logger 拦截输出，防止排错日志意外泄露敏感内容，并保留跨服务排障所需字段                          |
 | **审计追溯**     | 审计日志物理保留 **90 天**（`AUDIT_LOG_RETENTION_DAYS`）                   | 记录全部鉴权、管理操作与题目变更，支持合规审查与入侵溯源                              |
 
 ---

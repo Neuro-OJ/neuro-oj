@@ -1,5 +1,5 @@
 /**
- * prod-raw payload driver（T17）：用**文件重定向**采集二进制。
+ * prod-raw payload driver：用**文件重定向**采集二进制。
  *
  * ## 本模块存在的唯一理由（最高风险项）
  *
@@ -14,8 +14,8 @@
  *
  * 因此 spec §3.1 明确：
  *
- * > `prod-raw` 必须走**文件重定向**（`docker compose exec -T … > file`，
- * > 与 `backup.sh:246` 相同），不得沿用 stdout 字符串捕获。否则引入静默损坏。
+ * > `prod-raw` 必须走**文件重定向**（`docker compose exec -T … > file`），
+ * > 不得沿用 stdout 字符串捕获。否则引入静默损坏。
  *
  * 本模块把这条约束落成一个**类型**：{@link RawDriver.captureToFile} 与
  * {@link RawDriver.feedFromFile} 是采集/回灌二进制的**唯一**入口，二者的签名里
@@ -41,7 +41,7 @@
  *
  * - 一切命令经注入的 {@link CommandRunner}；本模块不直接 `new Deno.Command`；
  * - **不读** payload 进内存：本模块只搬字节与判定退出码；
- * - 路径一律作为**独立 argv 元素**传递，不拼 shell 字符串（R1）。
+ * - 路径一律作为**独立 argv 元素**传递，不拼 shell 字符串。
  */
 
 import type { CommandRunner, SpawnOpts } from "../../runtime/command.ts";
@@ -121,18 +121,12 @@ export class CaptureError extends Error {
 /**
  * 真实 prod-raw driver：把字节搬运交给注入的 {@link CommandRunner}。
  *
- * `runner.spawn` 是**必需**能力（P2 的某些 fake 未实现）——缺失时明确抛错，
- * 绝不退化为 `run()` 的字符串路径（那正是本模块要根除的缺陷）。
+ * 绝不退化为 `run()` 的字符串路径（那正是本模块要根除的缺陷）。`spawn` 是
+ * `CommandRunner` 的**必需**成员，由类型检查保证存在，无需运行时守卫。
  */
 export function realRawDriver(runner: CommandRunner): RawDriver {
   return {
     async captureToFile(cmd, args, io) {
-      if (typeof runner.spawn !== "function") {
-        throw new Error(
-          "当前 CommandRunner 不支持 spawn，无法以文件重定向采集二进制" +
-            "（绝不可退化为 stdout 字符串捕获）",
-        );
-      }
       const opts: SpawnOpts = {
         cmd,
         args,
@@ -165,12 +159,6 @@ export function realRawDriver(runner: CommandRunner): RawDriver {
       // 输入侧用 `sh -c ... < "$src"`，输出侧仍走 spawn 的 stdoutFile——
       // 因此这里 spawn 的是 `sh`（而非目标命令），shell 内 `exec` 替换自身，
       // 子进程的 stdout 于是就是目标命令的 stdout，由内核写入 destFile。
-      if (typeof runner.spawn !== "function") {
-        throw new Error(
-          "当前 CommandRunner 不支持 spawn，无法以文件重定向采集二进制" +
-            "（绝不可退化为 stdout 字符串捕获）",
-        );
-      }
       const script = `src="$1"; shift; exec ${
         quoteForShell(cmd)
       } "$@" < "$src"`;
@@ -240,7 +228,7 @@ export function prodComposeArgs(
   }
   if (ctx.judge === true) args.push("--profile", "judge");
   if (ctx.monitoring === true) args.push("--profile", "monitoring");
-  // **`--ansi` 是 `docker compose` 的旗标，不是 `docker` 的**（评审发现）：
+  // **`--ansi` 是 `docker compose` 的旗标，不是 `docker` 的**：
   // `unshift` 会把它放到数组最前（`compose` 之前）→
   // `docker --ansi never compose …` → 实测 `unknown flag: --ansi`。
   // 必须插在 `compose` **之后**；`lifecycle/steps.ts` 的日志路径一直是对的，
@@ -318,7 +306,7 @@ export function postgresEnvOf(
 /**
  * 构造 prod-raw 操作集。
  *
- * 采集路径要点（对照 `backup.sh:246-258`）：
+ * 采集路径要点：
  * - `postgres.dump`：`compose exec -T postgres pg_dump -U <user> -d <db> -Fc`
  *   的 stdout **重定向到文件**；
  * - `redis.rdb`：`compose exec -T redis sh -c 'REDISCLI_AUTH=… redis-cli
@@ -438,23 +426,25 @@ export function createProdPayloadOps(opts: ProdPayloadOptions): ProdPayloadOps {
     async minioMirror(destDir) {
       await Deno.mkdir(destDir, { recursive: true });
       const bucket = env["S3_BUCKET"] || "noj-support-packages";
-      const res = await runner.run("docker", [
-        "compose",
-        "--env-file",
-        compose.envFile,
-        "--file",
-        compose.composeFile,
-        "run",
-        "--rm",
-        "--no-deps",
-        "--entrypoint",
-        "/bin/sh",
-        "-v",
-        `${destDir}:/backup:rw`,
-        "minio-init",
-        "-c",
-        `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/${bucket}" /backup`,
-      ]);
+      const res = await runner.run(
+        compose.dockerBin,
+        prodComposeArgs(compose, [
+          "run",
+          "--rm",
+          "--no-deps",
+          "--user",
+          `${Deno.uid()}:${Deno.gid()}`,
+          "--env",
+          "MC_CONFIG_DIR=/tmp/noj-backup-mc",
+          "--entrypoint",
+          "/bin/sh",
+          "-v",
+          `${destDir}:/backup:rw`,
+          "minio-init",
+          "-c",
+          `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/${bucket}" /backup`,
+        ]),
+      );
       if (res.code !== 0) {
         throw new CaptureError("mc mirror", res.code, res.stderr.trim());
       }

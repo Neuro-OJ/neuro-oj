@@ -1,5 +1,6 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { createLlmRouter } from "../src/routes/llm.ts";
+import { TOKEN_REVOCATIONS_READY_KEY } from "../src/revocation.ts";
 import {
   createFakeDb,
   FakeRedis,
@@ -10,6 +11,67 @@ import {
   stubFetch,
   testConfig,
 } from "./helpers.ts";
+
+Deno.test("llm route: Provider 排队后已吊销的 attempt 不预占、不调用上游", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    rpm_limit: 1,
+  };
+  const { db, ledger } = createFakeDb(provider);
+  const redis = new FakeRedis(), baseEval = redis.eval.bind(redis);
+  redis.eval = (script, keys, args) => {
+    if (String(script).includes("local rank = redis.call('ZRANK'")) {
+      redis.revoked.add("llm:attempt:revoked:att-default");
+      return Promise.resolve([1, 0, 0]);
+    }
+    return baseEval(script, keys, args);
+  };
+  let fetches = 0;
+  const restore = stubFetch(() => {
+    fetches++;
+    return Promise.reject(new Error("吊销后不得访问上游"));
+  });
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const response = await requestChat(app, await makeToken(testConfig), {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+    assertEquals(response.status, 401);
+    assertEquals((await response.json()).error, "token_revoked");
+    assertEquals(fetches, 0);
+    assertEquals(ledger.size, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: Redis 世代与吊销 ready 不一致时拒绝旧快照", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis(), baseGet = redis.get.bind(redis);
+  redis.get = (key) =>
+    key === TOKEN_REVOCATIONS_READY_KEY
+      ? Promise.resolve("old-server")
+      : baseGet(key);
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const response = await requestChat(app, await makeToken(testConfig), {
+    model: "deepseek-chat",
+    messages: [],
+  });
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).error, "revocations_unavailable");
+});
 
 Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   const provider = await makeProvider(testConfig.storeKey);
@@ -24,11 +86,19 @@ Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   });
   const token = await makeToken(testConfig);
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-    max_tokens: 5,
-  });
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  let res: Response;
+  try {
+    res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+  } finally {
+    restore();
+  }
 
   assertEquals(res.status, 429);
   const body = await res.json();
@@ -60,12 +130,19 @@ Deno.test("llm route: 调用前拒绝按提交+原因去重，重复拒绝不再
   const token = await makeToken(testConfig);
   const big = "x".repeat(32 * 1024);
 
-  for (let i = 0; i < 4; i++) {
-    const res = await requestChat(app, token, {
-      model: "deepseek-chat",
-      messages: [{ role: "user", content: big }],
-    });
-    assertEquals(res.status, 429);
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  try {
+    for (let i = 0; i < 4; i++) {
+      const res = await requestChat(app, token, {
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: big }],
+      });
+      assertEquals(res.status, 429);
+    }
+  } finally {
+    restore();
   }
   // 三次 rate_limit_exceeded 只记一条；不同原因 limit_exceeded 另记一条
   assertEquals(usageInserts.length, 2);
@@ -91,10 +168,18 @@ Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async ()
   });
   const token = await makeToken(testConfig);
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-  });
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  let res: Response;
+  try {
+    res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+  } finally {
+    restore();
+  }
 
   assertEquals(res.status, 429);
   const body = await res.json();
@@ -300,7 +385,7 @@ Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async (
   const redis = new FakeRedis();
   // 模拟已吊销状态
   redis.get = (key: string) =>
-    Promise.resolve(key.startsWith("llm:token:revoked:") ? "1" : null);
+    Promise.resolve(key.startsWith("llm:attempt:revoked:") ? "1" : null);
   const app = createLlmRouter({
     config: testConfig,
     db,
@@ -319,9 +404,9 @@ Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async (
   assertEquals(body.error, "token_revoked");
 });
 
-Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
+Deno.test("llm route: stream: true 转发并保留响应", async () => {
   const provider = await makeProvider(testConfig.storeKey);
-  const { db } = createFakeDb(provider);
+  const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
   const app = createLlmRouter({
     config: testConfig,
@@ -330,16 +415,28 @@ Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
     resolveDns: publicDns,
   });
   const token = await makeToken(testConfig);
+  const restore = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        'data: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}\n\n' +
+          "data: [DONE]\n\n",
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    )
+  );
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-    stream: true,
-  });
-
-  assertEquals(res.status, 400);
-  const body = await res.json();
-  assertEquals(body.error, "stream_not_supported");
+  try {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      stream: true,
+    });
+    assertEquals(res.status, 200);
+    assert((await res.text()).includes("[DONE]"));
+    assertEquals(usageInserts[0]?.status, "ok");
+  } finally {
+    restore();
+  }
 });
 
 Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返回 502", async () => {
@@ -394,6 +491,7 @@ Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返�
 Deno.test("llm route: Provider RPM 超限排队超时返回 429 + Retry-After，且不扣用户额度", async () => {
   const provider = {
     ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-timeout",
     rpm_limit: 1,
   };
   const { db, usageInserts } = createFakeDb(provider);
@@ -410,9 +508,12 @@ Deno.test("llm route: Provider RPM 超限排队超时返回 429 + Retry-After，
       redis,
       resolveDns: publicDns,
     });
-    const token = await makeToken(testConfig);
+    const token = await makeToken(testConfig, "fast", {
+      domainId: provider.domain_id,
+      modelMap: { fast: "upstream-school-model" },
+    });
     const res = await requestChat(app, token, {
-      model: "deepseek-chat",
+      model: "fast",
       messages: [{ role: "user", content: "ping" }],
       max_tokens: 5,
     });
@@ -424,6 +525,12 @@ Deno.test("llm route: Provider RPM 超限排队超时返回 429 + Retry-After，
     assertEquals(usageInserts.length, 1);
     assertEquals(usageInserts[0].status, "rejected");
     assertEquals(usageInserts[0].error_code, "provider_queue_timeout");
+    assertEquals(usageInserts[0].domain_id, provider.domain_id);
+    assertEquals(usageInserts[0].model, "upstream-school-model");
+    assertEquals(
+      JSON.parse(String(usageInserts[0].request_params)).model_alias,
+      "fast",
+    );
     // 只调用了 Provider 节流脚本（键均为 llm:provider:{prov-1}:*），未执行用户额度扣减
     for (const keys of redis.evalKeys) {
       assertEquals(
@@ -477,8 +584,15 @@ Deno.test("llm route: 未配置 RPM/TPM 时不访问 Provider 节流", async () 
 });
 
 Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记录真实名与别名", async () => {
-  const provider = await makeProvider(testConfig.storeKey);
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-alias",
+    rpm_limit: 60,
+    tpm_limit: 1000,
+  };
   const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = [[1, 0, 0]];
   let upstreamModel = "";
   const restore = stubFetch((_url, init) => {
     upstreamModel = JSON.parse(String(init?.body)).model;
@@ -496,10 +610,11 @@ Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记�
     const app = createLlmRouter({
       config: testConfig,
       db,
-      redis: new FakeRedis(),
+      redis,
       resolveDns: publicDns,
     });
     const token = await makeToken(testConfig, "fast", {
+      domainId: provider.domain_id,
       modelMap: { fast: "Qwen/Qwen3-8B" },
     });
     const res = await requestChat(app, token, {
@@ -509,10 +624,55 @@ Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记�
     });
     assertEquals(res.status, 200);
     assertEquals(upstreamModel, "Qwen/Qwen3-8B");
+    assertEquals(usageInserts.at(-1)?.domain_id, provider.domain_id);
     assertEquals(usageInserts.at(-1)?.model, "Qwen/Qwen3-8B");
     const params = usageInserts.at(-1)?.request_params;
     const parsed = typeof params === "string" ? JSON.parse(params) : params;
     assertEquals((parsed as Record<string, unknown>).model_alias, "fast");
+    assertEquals(
+      redis.evalKeys.some((keys) => keys.includes("llm:provider:{prov-1}:rpm")),
+      true,
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: v3 别名 token 不越过 Provider 使用域或停用状态", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-a",
+  };
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const restore = stubFetch(() => {
+    throw new Error("无权使用 Provider 时不得调用上游");
+  });
+  try {
+    const token = (domainId: string) =>
+      makeToken(testConfig, "fast", {
+        domainId,
+        modelMap: { fast: "frozen-model" },
+      });
+    const body = {
+      model: "fast",
+      messages: [{ role: "user", content: "ping" }],
+    };
+    const foreign = await requestChat(app, await token("school-b"), body);
+    assertEquals(foreign.status, 400);
+    assertEquals((await foreign.json()).error, "provider_not_found");
+    provider.enabled = false;
+    const disabled = await requestChat(app, await token("school-a"), body);
+    assertEquals(disabled.status, 403);
+    assertEquals((await disabled.json()).error, "provider_disabled");
+    assertEquals(usageInserts.length, 0);
+    assertEquals(redis.evalKeys.length, 0);
   } finally {
     restore();
   }
@@ -571,7 +731,7 @@ Deno.test("llm route: 配额拒绝审计保留维度和预占数值，响应不�
   });
 });
 
-Deno.test("llm route: 客户端断开取消上游并归还 token 预占", async () => {
+Deno.test("llm route: 客户端断开取消上游，未知用量保留预占等待对账", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
@@ -609,10 +769,11 @@ Deno.test("llm route: 客户端断开取消上游并归还 token 预占", async 
     assertEquals(res.status, 499);
     assertEquals(upstreamAborted, true);
     assertEquals(usageInserts[0].error_code, "client_closed_request");
-    // 限额脚本一次预扣，一次结算；失败的 token 预占被扣回而调用次数保留。
-    const settlement = redis.evalArgs.at(-1) as unknown[];
-    const meta = JSON.parse(String(settlement[0]));
-    assertEquals(meta.incs[0] < 0, true);
+    // 请求已交给上游，断连不能证明零计费；保留预占及 unknown 账本，禁止盲目退款。
+    const reservation = redis.evalArgs[0] as unknown[];
+    const plan = JSON.parse(String(reservation[3]));
+    assertEquals(plan.incs.every((value: number) => value >= 0), true);
+    assertEquals(redis.evalArgs.length, 1);
   } finally {
     restore();
   }

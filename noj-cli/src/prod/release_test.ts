@@ -1,7 +1,7 @@
 /**
- * T16 版本解析与版本配置落盘测试。
+ * 版本解析与版本配置落盘测试。
  *
- * 全部使用**注入的 fetcher**（`Fetcher`，与 T9 `bootstrap.ts` 同一类型），
+ * 全部使用**注入的 fetcher**（`Fetcher`，与 `bootstrap.ts` 同一类型），
  * **绝不触网**；文件系统只用临时目录。
  *
  * 逐条覆盖任务书 Step 1 的验收：
@@ -44,6 +44,8 @@ const READY_ASSETS = [
   // Release 资产名非点号开头（GitHub 会改写点号名为 default.<name>）。
   "env.prod.example",
   "env.prod.example.sha256",
+  "release-set.json",
+  "release-set.json.sha256",
 ];
 
 /** 资产就绪的稳定 Release 条目。 */
@@ -76,7 +78,7 @@ function jsonFetcher(body: unknown, status = 200): {
 
 // ---------------- 版本解析 ----------------
 
-Deno.test("T16 resolveLatestReleaseTag：排除 draft/prerelease，选中最新资产就绪 tag", async () => {
+Deno.test("resolveLatestReleaseTag：排除 draft/prerelease，选中最新资产就绪 tag", async () => {
   const { fetcher, calls } = jsonFetcher([
     // 尚未转正的预发布 → 跳过
     { ...ready("v0.3.0-rc.1"), prerelease: true },
@@ -103,7 +105,7 @@ Deno.test("T16 resolveLatestReleaseTag：排除 draft/prerelease，选中最新�
   );
 });
 
-Deno.test("T16 resolveLatestReleaseTag：已转正的 rc 标签可被选中", async () => {
+Deno.test("resolveLatestReleaseTag：已转正的 rc 标签可被选中", async () => {
   const { fetcher } = jsonFetcher([
     {
       tag_name: "0.1.1-rc.1",
@@ -116,7 +118,7 @@ Deno.test("T16 resolveLatestReleaseTag：已转正的 rc 标签可被选中", as
   assertEquals(await resolveLatestReleaseTag({ fetcher }), "0.1.1-rc.1");
 });
 
-Deno.test("T16 resolveLatestReleaseTag：未转正的 rc（prerelease=true）仍被跳过", async () => {
+Deno.test("resolveLatestReleaseTag：未转正的 rc（prerelease=true）仍被跳过", async () => {
   const { fetcher } = jsonFetcher([
     {
       tag_name: "v0.1.1-rc.2",
@@ -129,7 +131,7 @@ Deno.test("T16 resolveLatestReleaseTag：未转正的 rc（prerelease=true）仍
   assertEquals(await resolveLatestReleaseTag({ fetcher }), "v0.1.0");
 });
 
-Deno.test("T16 resolveLatestReleaseTag：无合规版本 → 报错", async () => {
+Deno.test("resolveLatestReleaseTag：无合规版本 → 报错", async () => {
   const { fetcher } = jsonFetcher([
     { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [] },
     { ...ready("v0.3.0-rc.1"), prerelease: true },
@@ -141,7 +143,7 @@ Deno.test("T16 resolveLatestReleaseTag：无合规版本 → 报错", async () =
   );
 });
 
-Deno.test("T16 resolveLatestReleaseTag：HTTP 失败 → 可操作文案（含状态码）", async () => {
+Deno.test("resolveLatestReleaseTag：HTTP 失败 → 可操作文案（含状态码）", async () => {
   const { fetcher } = jsonFetcher({ message: "rate limit" }, 403);
   await assertRejects(
     () => resolveLatestReleaseTag({ fetcher }),
@@ -150,7 +152,7 @@ Deno.test("T16 resolveLatestReleaseTag：HTTP 失败 → 可操作文案（含�
   );
 });
 
-Deno.test("T16 resolveLatestReleaseTag：响应非 JSON → 同样的可操作文案", async () => {
+Deno.test("resolveLatestReleaseTag：响应非 JSON → 同样的可操作文案", async () => {
   const fetcher: Fetcher = () =>
     Promise.resolve(new Response("<html>oops</html>", { status: 200 }));
   await assertRejects(
@@ -160,7 +162,7 @@ Deno.test("T16 resolveLatestReleaseTag：响应非 JSON → 同样的可操作�
   );
 });
 
-Deno.test("T16 resolveLatestReleaseTag：单个 Release 对象（自定义 API）需显式非 draft/prerelease", async () => {
+Deno.test("resolveLatestReleaseTag：单个 Release 对象（自定义 API）需显式非 draft/prerelease", async () => {
   const ok = jsonFetcher({
     tag_name: "v0.4.0",
     draft: false,
@@ -195,7 +197,7 @@ Deno.test("T16 resolveLatestReleaseTag：单个 Release 对象（自定义 API�
   }
 });
 
-Deno.test("T16 releasesApiUrl：仓库形态、自定义 API、HTTPS 与 .git 归一", () => {
+Deno.test("releasesApiUrl：仓库形态、自定义 API、HTTPS 与 .git 归一", () => {
   assertEquals(
     releasesApiUrl({}),
     "https://api.github.com/repos/Neuro-OJ/neuro-oj/releases?per_page=100",
@@ -204,7 +206,7 @@ Deno.test("T16 releasesApiUrl：仓库形态、自定义 API、HTTPS 与 .git �
     releasesApiUrl({ repository: "https://github.com/Neuro-OJ/neuro-oj/" }),
     "https://api.github.com/repos/Neuro-OJ/neuro-oj/releases?per_page=100",
   );
-  // bash 会把 .git 拼进 URL 而必然 404；本实现与 install.sh 对齐剥掉
+  // .git 拼进 URL 必然 404，须剥掉
   assertEquals(
     releasesApiUrl({ repository: "https://github.com/Neuro-OJ/neuro-oj.git" }),
     "https://api.github.com/repos/Neuro-OJ/neuro-oj/releases?per_page=100",
@@ -234,7 +236,7 @@ Deno.test("T16 releasesApiUrl：仓库形态、自定义 API、HTTPS 与 .git �
   assertEquals(error?.message, UPDATE_API_URL_HINT);
 });
 
-Deno.test("T16 validateReleaseTag：非法 tag 被拒，正式与预发布后缀标签通过", () => {
+Deno.test("validateReleaseTag：非法 tag 被拒，正式与预发布后缀标签通过", () => {
   for (const good of ["v0.1.0", "0.1.0", "0.1.0-rc.1", "v0.10.4-beta.3"]) {
     assertEquals(validateReleaseTag(good), good);
   }
@@ -251,11 +253,11 @@ Deno.test("T16 validateReleaseTag：非法 tag 被拒，正式与预发布后缀
   }
 });
 
-Deno.test("T16 UPDATE_RELEASE_ASSETS：含 CLI 与 compose/example 的资产及其校验文件", () => {
+Deno.test("UPDATE_RELEASE_ASSETS：含 CLI 与 compose/example 的资产及其校验文件", () => {
   assertEquals([...UPDATE_RELEASE_ASSETS].sort(), [...READY_ASSETS].sort());
 });
 
-Deno.test("T16 normalizedVersion：比较时归一 v 前缀，写入时保留原文", () => {
+Deno.test("normalizedVersion：比较时归一 v 前缀，写入时保留原文", () => {
   assertEquals(normalizedVersion("v0.9.5"), "0.9.5");
   assertEquals(normalizedVersion("0.9.5"), "0.9.5");
   assertEquals(normalizedVersion("v0.9.5"), normalizedVersion("0.9.5"));
@@ -274,7 +276,7 @@ const ENV_TEXT = [
   "",
 ].join("\n");
 
-Deno.test("T16 versionConfigText：仅替换 NOJ_VERSION，保留注释/其它键/顺序", () => {
+Deno.test("versionConfigText：仅替换 NOJ_VERSION，保留注释/其它键/顺序", () => {
   const out = versionConfigText(ENV_TEXT, "v0.10.0");
   assertEquals(out.split("\n"), [
     "# NOJ 生产配置",
@@ -288,12 +290,12 @@ Deno.test("T16 versionConfigText：仅替换 NOJ_VERSION，保留注释/其它�
   ]);
 });
 
-Deno.test("T16 versionConfigText：值未变时逐字节幂等（不重写、不剥引号）", () => {
+Deno.test("versionConfigText：值未变时逐字节幂等（不重写、不剥引号）", () => {
   const quoted = 'NOJ_VERSION="v0.9.5"\nDOMAIN=x\n';
   assertEquals(versionConfigText(quoted, "v0.9.5"), quoted);
 });
 
-Deno.test("T16 versionConfigText：缺 NOJ_VERSION 时追加到末尾", () => {
+Deno.test("versionConfigText：缺 NOJ_VERSION 时追加到末尾", () => {
   const text = "DOMAIN=oj.test-oj.cn\n";
   assertEquals(
     versionConfigText(text, "v0.9.5"),
@@ -301,7 +303,7 @@ Deno.test("T16 versionConfigText：缺 NOJ_VERSION 时追加到末尾", () => {
   );
 });
 
-Deno.test("T16 configuredVersion：读值、剥引号、缺文件与缺键分别报错", async () => {
+Deno.test("configuredVersion：读值、剥引号、缺文件与缺键分别报错", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const envFile = join(dir, ".env.prod");
@@ -326,7 +328,7 @@ Deno.test("T16 configuredVersion：读值、剥引号、缺文件与缺键分别
   }
 });
 
-Deno.test("T16 writeConfigVersion：原子写且权限 600、其它键与注释不动", async () => {
+Deno.test("writeConfigVersion：原子写且权限 600、其它键与注释不动", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const envFile = join(dir, ".env.prod");
@@ -337,7 +339,7 @@ Deno.test("T16 writeConfigVersion：原子写且权限 600、其它键与注释�
     assertEquals(
       await Deno.readTextFile(envFile),
       versionConfigText(
-        ENV_TEXT.replace(/v0\.9\.5/g, "v0.9.5"),
+        ENV_TEXT,
         "v0.10.0",
       ),
     );
@@ -353,7 +355,7 @@ Deno.test("T16 writeConfigVersion：原子写且权限 600、其它键与注释�
   }
 });
 
-Deno.test("T16 stageConfigVersion + commitConfigVersion：两段式提交（暂存不改原文件）", async () => {
+Deno.test("stageConfigVersion + commitConfigVersion：两段式提交（暂存不改原文件）", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const envFile = join(dir, ".env.prod");
@@ -381,7 +383,7 @@ Deno.test("T16 stageConfigVersion + commitConfigVersion：两段式提交（暂�
   }
 });
 
-Deno.test("T16 stageConfigVersion：原配置缺失 → 报错且不落任何文件", async () => {
+Deno.test("stageConfigVersion：原配置缺失 → 报错且不落任何文件", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const envFile = join(dir, ".env.prod");
@@ -398,7 +400,7 @@ Deno.test("T16 stageConfigVersion：原配置缺失 → 报错且不落任何文
   }
 });
 
-Deno.test("T16 commitConfigVersion：暂存文件不存在 → 明确报错（半完成状态可诊断）", async () => {
+Deno.test("commitConfigVersion：暂存文件不存在 → 明确报错（半完成状态可诊断）", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const envFile = join(dir, ".env.prod");
@@ -415,7 +417,7 @@ Deno.test("T16 commitConfigVersion：暂存文件不存在 → 明确报错（�
   }
 });
 
-Deno.test("T16 DEFAULT_UPDATE_REPOSITORY：指向官方仓库", () => {
+Deno.test("DEFAULT_UPDATE_REPOSITORY：指向官方仓库", () => {
   assertEquals(
     DEFAULT_UPDATE_REPOSITORY,
     "https://github.com/Neuro-OJ/neuro-oj",

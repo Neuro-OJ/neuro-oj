@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "appRoot": "/home/xyber-nova/Github/neuro-oj/noj-ui",
+  "repoRoot": "/home/xyber-nova/Github/neuro-oj",
+  "contextRoot": "/home/xyber-nova/Github/neuro-oj",
+  "sessionRoot": "/home/xyber-nova/Github/neuro-oj/noj-ui/.impeccable/live",
+  "productPath": "/home/xyber-nova/Github/neuro-oj/PRODUCT.md",
+  "designPath": "/home/xyber-nova/Github/neuro-oj/DESIGN.md",
+  "resolvedFrom": "candidate:noj-ui"
+}

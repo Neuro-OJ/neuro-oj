@@ -1,8 +1,7 @@
 /**
- * PATH 注册/注销助手（T13 拆分，T15 补反向逻辑）：迁移 `register_command`
- * （production.sh:97-131）与 `unregister_command`（:133-165）。
+ * PATH 注册/注销助手。
  *
- * 从 `lifecycle.ts`（T13 时已达 1173 行）抽出的**内聚单元**：注册服务 install 的
+ * 注册服务 install 的
  * 第 9 步，注销服务 uninstall 的软链清理；两者与命令入口、结果形状无关，也不参与
  * compose 编排。正反两个方向共享同一套「软链指向何处」判定，故同住一个模块。
  *
@@ -11,7 +10,7 @@
 
 import { dirname, join, resolve } from "@std/path";
 
-/** PATH 追加行（逐字对照 production.sh:90）。 */
+/** PATH 追加行。 */
 export const PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH"';
 
 /** PATH 注册结果。 */
@@ -25,7 +24,7 @@ export interface PathRegistration {
 /** `link_command` 的三态：ok=已就绪 / refuse=拒绝覆盖 / cannot=无法创建。 */
 type LinkStatus = "ok" | "refuse" | "cannot";
 
-/** 该路径是否为可执行普通文件（对应 bash `[[ -x ]]`）。 */
+/** 该路径是否为可执行普通文件。 */
 async function isExecutableFile(path: string): Promise<boolean> {
   try {
     const st = await Deno.stat(path);
@@ -36,7 +35,7 @@ async function isExecutableFile(path: string): Promise<boolean> {
 }
 
 /**
- * 在 `binDir` 下建立 `noj-cli` → `target` 软链接（逐字对照 `link_command`）。
+ * 在 `binDir` 下建立 `noj-cli` → `target` 软链接。
  *
  * - 已是软链接且指向同一目标 → `ok`（幂等）；指向他处 → `refuse`；
  * - 存在同名非软链接 → `refuse`（绝不覆盖）；
@@ -72,7 +71,7 @@ async function linkCommand(
 }
 
 /**
- * 把 `~/.local/bin` 追加进 `~/.profile`（`add_user_path` :86-95）。
+ * 把 `~/.local/bin` 追加进 `~/.profile`（`add_user_path`）。
  *
  * `grep -Fqx` 等价：整行比较，已存在则不重复追加。返回是否成功。
  */
@@ -99,30 +98,26 @@ async function addUserPath(userHome: string): Promise<boolean> {
 }
 
 /**
- * 把运行中的二进制安装到 `<dir>/bin/noj-cli`（迁移 `install.sh:558-565` 的
- * `install_cli()`）。
+ * 把运行中的二进制安装到 `<dir>/bin/noj-cli`。
  *
- * ## 为什么必须有这一步（评审发现的 R4 阻塞）
+ * ## 为什么必须有这一步
  *
- * R4 把首次安装改成"用户手动下载二进制，再跑 `install`"。但
- * `install.sh` 随 R4 删除时，它**唯一**负责"把二进制放到安装目录"的那一步
- * （`install_cli()`：`mkdir -p bin` → 暂存 → `chmod 755` → `mv -f`）
- * 没有接上，于是在三处同时出问题：
+ * 首次安装是"用户手动下载二进制，再跑 `install`"。若不把二进制放到安装目录，
+ * 三处会同时出问题：
  *
  * 1. **PATH 注册静默跳过**：`registerCommand` 见目标不存在就按"源码运行模式"
  *    告警跳过（那是为 `deno run src/cli.ts` 设计的路径）——安装版用户拿到的是
  *    一条"未注册 PATH"的告警，却没有任何提示告诉他把二进制放哪里；
  * 2. **`uninstall --all` 永久自锁**：安装完整性判据要求 `bin/noj-cli` 存在，
- *    而它永远不会存在 → 任何真实安装目录都无法被完全卸载
- *    （正是 T15/T24 两次试图消除的同一类自锁，换了个缺失文件再次出现）；
- * 3. **定时备份必然失败**：T24 把 cron 入口重定向到 `<dir>/bin/noj-cli`，
+ *    而它永远不会存在 → 任何真实安装目录都无法被完全卸载；
+ * 3. **定时备份必然失败**：cron 入口是 `<dir>/bin/noj-cli`，
  *    而那个文件不存在 → `backup schedule install` 报"备份脚本不存在或不可执行"。
  *
  * 三份文档都承诺了这个路径（`README.md`、`noj-cli/README.md`、
  * `production-deploy.md` 让用户执行 `/opt/neuro-oj/bin/noj-cli status`），
  * 所以修复方向明确：**把二进制放到文档所说的位置**。
  *
- * ## 实现细节（照 bash）
+ * ## 实现细节
  *
  * - **暂存 + 原子 rename**：先写 `<dir>/bin/.noj-cli.XXXXXX` 再 `mv -f`，
  *   避免覆盖到一半时用户执行到一个半截二进制；
@@ -164,7 +159,7 @@ export async function installCliBinary(opts: {
 }
 
 /**
- * 迁移 `register_command`（production.sh:97-131）。
+ * 把 `noj-cli` 注册到 PATH。
  *
  * 目标 `<dir>/bin/noj-cli` 不存在/不可执行时按「源码运行模式」告警并跳过
  * （不把 `deno` 自身误注册成命令）。优先全局目录，权限不足回落 `~/.local/bin`；
@@ -219,23 +214,20 @@ export async function registerCommand(
   return { path: null, warnings };
 }
 
-// ---------------- unregister_command（T15） ----------------
+// ---------------- 注销 ----------------
 //
-// production.sh:133-165 的反向逻辑：**只**移除解析后指向本安装目录
+// **只**移除解析后指向本安装目录
 // `<dir>/bin/noj-cli` 或 `<dir>/noj` 的软链。三条语义逐条对照：
 // 1. `[[ -L "$command_path" ]] || continue`：普通文件（或不存在）一律跳过，
 //    绝不 `rm` 掉别的安装留下的真实命令；
-// 2. `symlink_points_to_current_install`（:133-146）：绝对目标直接比较；相对目标
-//    以软链所在目录为基准解析（bash 用 `cd -P "$(dirname ...)"`，本实现用
-//    `resolve(dirname(link), target)`），因此同一目标写成相对路径也能命中；
+// 2. `symlink_points_to_current_install`：绝对目标直接比较；相对目标
+//    以软链所在目录为基准解析（`resolve(dirname(link), target)`），因此同一目标写成相对路径也能命中；
 // 3. 一个都没删时 `warn`（不是失败）——"没有可清理的软链"是正常终态。
 
 /**
- * 该软链是否指向**本安装目录**（production.sh:133-146 的等价判定）。
+ * 该软链是否指向**本安装目录**。
  *
- * 目标为绝对路径时直接比较；为相对路径时以软链所在目录为基准解析——与 bash
- * `cd -P "$(dirname "$command_path")" && cd -P "$(dirname "$target")" && pwd`
- * 后再拼 `basename` 的结果一致（`resolve` 已规范化 `.` 与 `..`）。
+ * 目标为绝对路径时直接比较；为相对路径时以软链所在目录为基准解析（`resolve` 已规范化 `.` 与 `..`）。
  * 不是软链、目标是空串、或解析结果不属于本安装目录 → false。
  */
 export async function symlinkPointsToInstall(
@@ -259,15 +251,14 @@ export async function symlinkPointsToInstall(
 }
 
 /**
- * 迁移 `unregister_command`（production.sh:148-165）：移除指向本安装目录的 PATH 软链。
+ * 移除指向本安装目录的 PATH 软链。
  *
- * 候选路径的**顺序与重复**都照抄 bash：`NOJ_BIN_DIR`（若设置）下的 `noj-cli`/`noj`、
+ * 候选路径顺序：`NOJ_BIN_DIR`（若设置）下的 `noj-cli`/`noj`、
  * 再 `/usr/local/bin` 的两个、最后 `$HOME/.local/bin` 的两个。`NOJ_BIN_DIR` 等于
- * `/usr/local/bin` 时同一路径出现两次属 bash 既有行为——第二次已不是软链，自然跳过。
+ * `/usr/local/bin` 时同一路径出现两次——第二次已不是软链，自然跳过。
  *
- * **失败即抛错**（bash `rm -f ... || fail`）：不做"尽力而为"，删除失败必须让调用方
- * 转成退出码 1；返回的是**确实已移除**的路径列表。一个都没移除时调用方按 bash 的
- * `warn` 处理（本函数返回空数组，不写输出）。
+ * **失败即抛错**：不做"尽力而为"，删除失败必须让调用方
+ * 转成退出码 1；返回的是**确实已移除**的路径列表。一个都没移除时调用方告警（本函数返回空数组，不写输出）。
  */
 export async function unregisterCommand(opts: {
   dir: string;

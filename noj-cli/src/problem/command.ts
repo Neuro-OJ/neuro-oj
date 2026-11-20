@@ -5,10 +5,15 @@
  * 退出码遵循 #517 的分层：0 通过 / 1 校验失败 / 2 用法错误。
  */
 import { dirname, join, relative, resolve } from "@std/path";
-import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "../exit_codes.ts";
+import {
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+} from "../cli-commands/exit-codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { packBundle } from "./pack.ts";
+import { migrateManifest } from "./migrate.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
 import {
   normalizeServer,
@@ -36,11 +41,12 @@ export interface ProblemArgs {
   /** init 选项。 */
   slug?: string;
   title?: string;
-  type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
   /** push: 平台地址（缺省读 NOJ_SERVER）。 */
   server?: string;
+  /** push: 明确的使用域（默认 main）。 */
+  domain: string;
   /** push: 导入后立即发布。 */
   publish: boolean;
 }
@@ -53,6 +59,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     json: false,
     noInteractive: false,
     publish: false,
+    domain: "main",
   };
   const positional: string[] = [];
   const takeValue = (name: string, i: number): string => {
@@ -79,9 +86,9 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       case "--type":
-        out.type = takeValue("--type", i);
-        i++;
-        break;
+        throw new UsageError(
+          "格式 2 已取消 --type；导入时使用 --domain 指定目标工作空间",
+        );
       case "--difficulty":
         out.difficulty = takeValue("--difficulty", i);
         i++;
@@ -97,6 +104,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       }
       case "--server":
         out.server = takeValue("--server", i);
+        i++;
+        break;
+      case "--domain":
+        out.domain = takeValue("--domain", i);
         i++;
         break;
       case "--publish":
@@ -121,11 +132,14 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   if (positional.length > 0) out.slug = positional[0];
   // init 的第一个位置参数是 slug，lint/pack 的是 dir。
   //
-  // **只有位置参数存在时才覆盖 --dir**（评审修正）：早先无条件赋值，
+  // **只有位置参数存在时才覆盖 --dir**：早先无条件赋值，
   // 使 `problem lint --dir <别的题包>` 把 out.dir 覆盖成 undefined，
   // 随后静默回落到 cwd 并返回 0——既忽略用户显式指定的目录，
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
-  if (out.sub === "lint" || out.sub === "pack" || out.sub === "push") {
+  if (
+    out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
+    out.sub === "migrate"
+  ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
@@ -225,7 +239,7 @@ export async function runProblemLint(args: ProblemArgs): Promise<number> {
  * 从题目目录路径取产物 slug（最后一段目录名）。
  *
  * 平台无关：Windows 路径（`C:\work\a-plus-b`）与 POSIX 路径（`/w/a-plus-b`）
- * 都得到 `a-plus-b`。评审 P1：早先用 `dir.split("/")`，在 Windows 上会把
+ * 都得到 `a-plus-b`。早先用 `dir.split("/")`，在 Windows 上会把
  * 整条路径当成 slug，`join(outDir, slug + ".zip")` 因而写入错误位置。
  */
 export function bundleSlug(dir: string): string {
@@ -286,7 +300,7 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   const outDir = resolve(args.out ?? join(dirname(dir), "packages"));
   await Deno.mkdir(outDir, { recursive: true });
   // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根。
-  // 评审 P1（Windows）：必须 path-aware，不能用 dir.split("/")——
+  // Windows：必须 path-aware，不能用 dir.split("/")——
   // Windows 上 resolve 返回反斜杠路径（C:\work\problems\a-plus-b），
   // 按 "/" 切分会把整条路径当成 slug，产物名与输出位置都会出错。
   const slug = bundleSlug(dir);
@@ -350,7 +364,7 @@ export async function runProblemPush(args: ProblemArgs): Promise<number> {
   const interactive = !args.noInteractive && Deno.stdin.isTerminal();
   try {
     const result = await pushBundle(
-      { server, bundle, publish: args.publish },
+      { server, domain: args.domain, bundle, publish: args.publish },
       {
         fetch,
         io: interactive ? realIO() : null,
@@ -413,13 +427,11 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   let answers: {
     slug?: string;
     title?: string;
-    type?: string;
     difficulty?: string;
     judgeType?: "dual" | "oi";
   } = {
     slug: args.slug,
     title: args.title,
-    type: args.type,
     difficulty: args.difficulty,
     judgeType: args.judgeType,
   };
@@ -443,7 +455,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const slug = answers.slug;
   if (!slug) {
     console.error(
-      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b --type P）",
+      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b）",
     );
     return EXIT_USAGE;
   }
@@ -451,11 +463,6 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   // 参数/取值非法属**用法错误**（退出码 2），而非运行失败
   try {
     validateSlug(slug);
-    if (
-      answers.type !== undefined && answers.type !== "U" && answers.type !== "P"
-    ) {
-      throw new UsageError(`--type 仅支持 U/P，收到 "${answers.type}"`);
-    }
     if (
       answers.difficulty !== undefined &&
       !["easy", "medium", "hard"].includes(answers.difficulty)
@@ -480,7 +487,6 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const result = await initProblemScaffold({
     slug,
     title: answers.title,
-    type: answers.type,
     difficulty: answers.difficulty,
     judgeType: answers.judgeType,
     root: args.dir,
@@ -490,6 +496,39 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   console.log(
     `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
   );
+  return EXIT_OK;
+}
+
+/** 执行 `problem migrate`：把目录中的 problem.json 原地改写为当前格式。 */
+export async function runProblemMigrate(args: ProblemArgs): Promise<number> {
+  const dir = resolve(args.dir ?? Deno.cwd());
+  const path = join(dir, "problem.json");
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    throw new UsageError(`找不到 problem.json：${path}`);
+  }
+  let result;
+  try {
+    result = migrateManifest(text);
+  } catch (err) {
+    console.error(`problem migrate: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  if (result.changed) await Deno.writeTextFile(path, result.text);
+  if (args.json) {
+    console.log(JSON.stringify(
+      { path, changed: result.changed, warnings: result.warnings },
+      null,
+      2,
+    ));
+  } else if (!result.changed) {
+    console.log(`已是最新格式，无需迁移：${path}`);
+  } else {
+    console.log(`已迁移：${path}`);
+    for (const warning of result.warnings) console.log(`  - ${warning}`);
+  }
   return EXIT_OK;
 }
 
@@ -504,8 +543,10 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemInit(args);
     case "push":
       return await runProblemPush(args);
+    case "migrate":
+      return await runProblemMigrate(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push");
+      console.error("problem: 需要子命令 init/lint/pack/push/migrate");
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }

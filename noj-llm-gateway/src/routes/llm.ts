@@ -6,14 +6,21 @@ import type { Db } from "../db.ts";
 import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
+import {
+  assertEvalTokenActive,
+  EvalTokenAdmissionError,
+} from "../revocation.ts";
 import { getProviderSecret } from "../providers.ts";
 import {
   enforceAndCount,
   evalTokenIpSetKey,
-  evalTokenRevokedKey,
   QuotaLimitError,
-  settleUsage,
 } from "../limits.ts";
+import {
+  persistCallUsage,
+  recordUnknownCall,
+  settleCall,
+} from "../accounting.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import {
   acquireProviderSlot,
@@ -21,12 +28,13 @@ import {
   ProviderQueueTimeoutError,
   type ProviderSlot,
 } from "../provider-throttle.ts";
-import { calcBilledUsage } from "../billing.ts";
+import { calcBilledUsage, type UpstreamUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
 import {
-  assertResolvesPublic,
+  fetchPinned,
   type ResolveFn,
+  resolvePublicUpstream,
   UPSTREAM_BLOCKED,
 } from "../upstream-guard.ts";
 
@@ -47,10 +55,15 @@ interface ChatCompletionRequest {
   [key: string]: unknown;
 }
 
-const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
+interface StreamingUsageResult {
+  remainder: string;
+  usage?: UpstreamUsage;
+}
+
+export const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
 
 /** 流式截断读取上游响应，防止超大流式内容引发 OOM 崩溃（GW-01）。 */
-async function readUpstreamBodyWithLimit(
+export async function readUpstreamBodyWithLimit(
   res: Response,
   maxBytes: number,
 ): Promise<string> {
@@ -83,12 +96,72 @@ async function readUpstreamBodyWithLimit(
   }
 }
 
+/** 提取非敏感传输诊断字段（仅错误类名与系统错误码，不记录消息文本与 URL）。 */
+function extractErrorDiagnostics(err: unknown): {
+  error_name: string;
+  transport_error_code?: string;
+} {
+  const error_name = err instanceof Error ? err.name : typeof err;
+  const directCode = err && typeof err === "object" && "code" in err &&
+      typeof (err as { code?: unknown }).code === "string"
+    ? (err as { code: string }).code
+    : undefined;
+  const cause = err && typeof err === "object" && "cause" in err
+    ? (err as { cause?: unknown }).cause
+    : undefined;
+  const causeCode = cause && typeof cause === "object" && "code" in cause &&
+      typeof (cause as { code?: unknown }).code === "string"
+    ? (cause as { code: string }).code
+    : undefined;
+  const code = directCode ?? causeCode;
+  return code !== undefined
+    ? { error_name, transport_error_code: code }
+    : { error_name };
+}
+
 /** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
-function buildChatUrl(baseUrl: string): string {
+export function buildChatUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
   if (base.endsWith("/chat/completions")) return base;
   if (base.endsWith("/v1")) return `${base}/chat/completions`;
   return `${base}/v1/chat/completions`;
+}
+
+/** 从跨 chunk 的 SSE 文本中提取 OpenAI stream_options.include_usage 结尾块。 */
+function extractStreamingUsage(text: string): StreamingUsageResult {
+  const lines = text.split(/\r?\n/);
+  const remainder = lines.pop() ?? "";
+  let usage: UpstreamUsage | undefined;
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(data) as Record<string, unknown>;
+      const candidate = parsed.usage;
+      if (candidate && typeof candidate === "object") {
+        usage = candidate as UpstreamUsage;
+      }
+    } catch {
+      // 非 JSON 的 SSE 注释/增量内容不影响继续转发；最终 usage 块必须可解析。
+    }
+  }
+  return { remainder, ...(usage ? { usage } : {}) };
+}
+
+/** 给流式上游请求补齐最终 usage 选项，但保留调用方其它 stream_options。 */
+function prepareUpstreamRequestBody(
+  body: ChatCompletionRequest,
+): ChatCompletionRequest {
+  if (body.stream !== true) return body;
+  const options = body.stream_options;
+  const streamOptions = options && typeof options === "object"
+    ? options as Record<string, unknown>
+    : {};
+  return {
+    ...body,
+    stream_options: { ...streamOptions, include_usage: true },
+  };
 }
 
 /** 计算字符串 SHA-256 的十六进制摘要，用于用量审计的 prompt 哈希。 */
@@ -147,6 +220,238 @@ function providerQueueTimeoutError(retryAfterSeconds: number): Response {
   );
 }
 
+interface StreamingResponseOptions {
+  response: Response;
+  payload: Awaited<ReturnType<typeof verifyEvalToken>>;
+  body: ChatCompletionRequest;
+  callId: string;
+  startedAt: number;
+  promptTokens: number;
+  estimatedCost: number;
+  costPer1kTokens: number;
+  upstreamModel: string;
+  aliasForAudit?: string;
+  providerSlot: ProviderSlot;
+  requestSignal: AbortSignal;
+  deps: LlmDeps;
+}
+
+/**
+ * 转发 SSE 并把“流结束”作为记账完成边界。
+ *
+ * 上游响应已经建立后，客户端断开、上游读失败或没有最终 usage 都不能证明未计费，
+ * 因而只写 unknown，不自动重发上游。只有收到可解析的最终 usage，才持久化实际用量
+ * 并尝试幂等结算；结算失败保留 pending，由后台 worker 重试。
+ */
+async function createStreamingResponse(
+  options: StreamingResponseOptions,
+): Promise<Response> {
+  const {
+    response,
+    payload,
+    body,
+    callId,
+    startedAt,
+    promptTokens,
+    estimatedCost,
+    costPer1kTokens,
+    upstreamModel,
+    aliasForAudit,
+    providerSlot,
+    requestSignal,
+    deps,
+  } = options;
+  const decoder = new TextDecoder();
+  let pendingText = "";
+  let streamUsage: UpstreamUsage | undefined;
+  let closed = false;
+  let clientCancelled = false;
+  let finalization: Promise<void> | null = null;
+
+  const makeUsageEntry = async (
+    status: string,
+    errorCode: string | null,
+    usage: UpstreamUsage | undefined,
+  ) => {
+    const billed = calcBilledUsage(usage, promptTokens, 0);
+    const actualCost = usage
+      ? estimateCost(billed.billedTotalTokens, costPer1kTokens)
+      : estimatedCost;
+    return {
+      id: callId,
+      domain_id: payload.domain_id,
+      submission_id: payload.submission_id,
+      attempt_id: payload.attempt_id ?? null,
+      problem_version_id: payload.problem_version_id ?? null,
+      problem_id: payload.problem_id,
+      user_id: payload.user_id,
+      provider_id: payload.provider_id,
+      model: upstreamModel,
+      request_messages: body.messages,
+      request_params: pickParams(body, aliasForAudit),
+      prompt_tokens: billed.promptTokens,
+      completion_tokens: billed.completionTokens,
+      total_tokens: billed.totalTokens,
+      cached_prompt_tokens: billed.cachedPromptTokens,
+      billed_prompt_tokens: billed.billedPromptTokens,
+      billed_total_tokens: billed.billedTotalTokens,
+      estimated_cost: actualCost,
+      latency_ms: Date.now() - startedAt,
+      status,
+      error_code: errorCode,
+      prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+      created_at: new Date().toISOString(),
+    };
+  };
+
+  const recordUnknownOutcome = async (errorCode: string): Promise<void> => {
+    await recordUnknownCall(deps.db, callId).catch((error) => {
+      logger.warn("流式调用标记 unknown 失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    const entry = await makeUsageEntry("error", errorCode, undefined);
+    await recordUsage(deps.db, entry).catch((error) => {
+      logger.warn("流式 unknown 审计写入失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    // 已经拿到上游 HTTP 响应但没有可读 body，仍不能把账本留在“已预占”状态。
+    // 这和客户端断开/上游读失败同属无法证明实际用量的 unknown 结果，且绝不重发上游。
+    await recordUnknownOutcome("stream_body_missing");
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    headers.set("x-noj-call-id", callId);
+    return new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+
+  const finalize = (
+    usage: UpstreamUsage | undefined,
+    unknownReason: string,
+  ): Promise<void> => {
+    if (finalization) return finalization;
+    finalization = (async () => {
+      if (!usage) {
+        await recordUnknownOutcome(unknownReason);
+        return;
+      }
+      const billed = calcBilledUsage(usage, promptTokens, 0);
+      await providerSlot.settle(billed.totalTokens).catch(() => undefined);
+      const actualCost = estimateCost(
+        billed.billedTotalTokens,
+        costPer1kTokens,
+      );
+      const entry = await makeUsageEntry(
+        response.ok ? "ok" : "error",
+        response.ok ? null : String(response.status),
+        usage,
+      );
+      try {
+        await persistCallUsage(
+          deps.db,
+          callId,
+          entry,
+          billed.billedTotalTokens,
+          actualCost,
+        );
+      } catch (error) {
+        await recordUnknownOutcome("accounting_persist_failed");
+        logger.warn("流式调用实际用量持久化失败: {error}", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      try {
+        const settled = await settleCall(deps.db, deps.redis, callId);
+        if (settled !== "ok") inc("noj_llm_quota_exhausted_total");
+      } catch (error) {
+        // ledger 已是 pending，不能把已知用量改写成 unknown；worker 会按同一 ID 重放。
+        logger.warn("流式调用结算暂挂: {error}", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })().catch((error) => {
+      logger.warn("流式调用记账失败: {error}", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    return finalization;
+  };
+
+  const onAbort = () => {
+    clientCancelled = true;
+    void reader.cancel("client_closed_stream").catch(() => undefined);
+    void finalize(undefined, "client_closed_stream").then(detachAbort);
+  };
+  const detachAbort = (): void => {
+    requestSignal.removeEventListener("abort", onAbort);
+  };
+  if (requestSignal.aborted) onAbort();
+  else requestSignal.addEventListener("abort", onAbort, { once: true });
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (closed) return;
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          closed = true;
+          pendingText += decoder.decode();
+          const parsed = extractStreamingUsage(pendingText + "\n");
+          if (parsed.usage) streamUsage = parsed.usage;
+          await finalize(
+            clientCancelled || requestSignal.aborted ? undefined : streamUsage,
+            clientCancelled || requestSignal.aborted
+              ? "client_closed_stream"
+              : "stream_usage_unknown",
+          );
+          detachAbort();
+          controller.close();
+          return;
+        }
+        pendingText += decoder.decode(result.value, { stream: true });
+        const parsed = extractStreamingUsage(pendingText);
+        pendingText = parsed.remainder;
+        if (parsed.usage) streamUsage = parsed.usage;
+        controller.enqueue(result.value);
+      } catch (error) {
+        closed = true;
+        await finalize(
+          undefined,
+          requestSignal.aborted
+            ? "client_closed_stream"
+            : "upstream_stream_error",
+        );
+        detachAbort();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      closed = true;
+      clientCancelled = true;
+      await reader.cancel(reason).catch(() => undefined);
+      await finalize(undefined, "client_closed_stream");
+      detachAbort();
+    },
+  });
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.set("x-noj-call-id", callId);
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 /** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
 export function createLlmRouter(deps: LlmDeps): Hono {
   const app = new Hono();
@@ -182,9 +487,14 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     // 校验 eval_token 是否已被吊销（决策 7 · AR-08 · 单次生命周期绑定）。
     // 版本化后按**评测尝试**吊销：同一提交的重测不受旧尝试吊销影响；
     // 旧 core（token 无 attempt_id）继续读提交维度的旧键。
-    const isRevoked = await deps.redis.get(evalTokenRevokedKey(payload));
-    if (isRevoked !== null) {
-      return c.json({ error: "token_revoked" }, 401);
+    try {
+      await assertEvalTokenActive(deps.redis, payload);
+    } catch (error) {
+      if (!(error instanceof EvalTokenAdmissionError)) throw error;
+      return c.json(
+        { error: error.code },
+        error.code === "revocations_unavailable" ? 503 : 401,
+      );
     }
 
     // 监控：同一 submission 的 token 若从多个来源 IP 调用，记录告警（不阻断）。
@@ -202,6 +512,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           logger.warn(
             "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
             {
+              domain_id: payload.domain_id,
               submission_id: payload.submission_id,
               attempt_id: payload.attempt_id ?? null,
               problem_version_id: payload.problem_version_id ?? null,
@@ -220,9 +531,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const body = await c.req.json<ChatCompletionRequest>().catch(() => null);
     if (!body || !Array.isArray(body.messages)) {
       return c.json({ error: "invalid_request" }, 400);
-    }
-    if (body.stream) {
-      return c.json({ error: "stream_not_supported" }, 400);
     }
     const model = body.model ?? "";
     if (!payload.allowed_models.includes(model)) {
@@ -248,6 +556,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         deps.db,
         payload.provider_id,
         deps.config.storeKey,
+        payload.domain_id,
       );
     } catch {
       return c.json({ error: "provider_not_found" }, 400);
@@ -257,8 +566,13 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     // 出站目标校验（G-03）：调用前解析 DNS，目标落在内网即拒绝（白名单除外）。
     // 放在额度扣减之前，被拦截的调用不消耗配额。
+    let upstreamResolution: Awaited<
+      ReturnType<typeof resolvePublicUpstream>
+    >;
     try {
-      await assertResolvesPublic(
+      // 校验与连接绑定（审计 R1）：这里拿到**已验证地址**，下面用 fetchPinned
+      // 把连接钉在这批地址上，避免校验后再次解析（DNS rebinding / TOCTOU）。
+      upstreamResolution = await resolvePublicUpstream(
         providerSecret.provider.base_url,
         deps.config.upstreamAllowedHosts,
         deps.resolveDns,
@@ -273,6 +587,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
 
     const startedAt = Date.now();
+    const callId = crypto.randomUUID();
+    c.header("X-Noj-Call-Id", callId);
     const promptTokens = estimateTokens(body.messages);
     const completionTokens = typeof body.max_tokens === "number"
       ? Math.floor(Math.max(0, body.max_tokens))
@@ -281,6 +597,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       promptTokens + completionTokens,
       providerSecret.provider.cost_per_1k_tokens,
     );
+    // 政策读取发生在**预占步骤**（enforceAndCount 的 withReservationLock 内），
+    // 不在 Provider 排队之前读一份：排队期间提交的降额必须对本次新预占生效。
+    // 持久政策不可读时预占步骤抛错，由下方 catch 映射为 503 quota_unavailable；
+    // 请求不会发往上游，也不消耗 Provider 窗口额度。
 
     // Provider 级 RPM / TPM：超限时排队等待（多副本共享 Redis 队列），放在额度
     // 扣减之前——排队超时的请求不消耗用户/题目配额。
@@ -314,15 +634,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         );
         await recordRejectedUsage(deps.db, deps.redis, {
           id: crypto.randomUUID(),
+          domain_id: payload.domain_id,
           submission_id: payload.submission_id,
           attempt_id: payload.attempt_id ?? null,
           problem_version_id: payload.problem_version_id ?? null,
           problem_id: payload.problem_id,
           user_id: payload.user_id,
           provider_id: payload.provider_id,
-          model,
+          model: upstreamModel,
           request_messages: body.messages,
-          request_params: pickParams(body),
+          request_params: pickParams(body, aliasForAudit),
           prompt_tokens: promptTokens,
           completion_tokens: 0,
           total_tokens: promptTokens,
@@ -355,6 +676,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
+        callId,
         model,
         promptTokens,
         completionTokens,
@@ -366,19 +688,22 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
-      if (err instanceof QuotaLimitError) {
-        logger.warn("LLM 配额拒绝", {
-          submission_id: payload.submission_id,
-          attempt_id: payload.attempt_id ?? null,
-          ...err.diagnostics,
-        });
+      // 请求未发往上游：包括配额服务失败也归还 Provider 窗口额度。
+      await providerSlot.release().catch(() => undefined);
+      if (err instanceof EvalTokenAdmissionError) {
+        return c.json(
+          { error: err.code },
+          err.code === "revocations_unavailable" ? 503 : 401,
+        );
+      }
+      if (message !== "limit_exceeded" && message !== "rate_limit_exceeded") {
+        return c.json({ error: "quota_unavailable" }, 503);
       }
       inc("noj_llm_rate_limited_total");
-      // 请求未发往上游：归还 Provider 窗口额度
-      await providerSlot.release().catch(() => undefined);
       // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
       await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -412,50 +737,40 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       c.req.raw.signal,
       AbortSignal.timeout(120_000),
     ]);
-    const releaseFailedReservation = async () => {
-      await providerSlot.settle(0).catch(() => undefined);
-      await settleUsage(deps.db, deps.redis, payload, {
-        promptTokens,
-        completionTokens,
-        estimatedCost,
-        actualPromptTokens: 0,
-        actualCompletionTokens: 0,
-        actualBilledTotalTokens: 0,
-        actualCost: 0,
-        ip: c.req.header("x-forwarded-for") ?? "unknown",
-        ttlSeconds,
-      }).catch(() => undefined);
-    };
     let upstreamRes: Response;
     try {
-      upstreamRes = await fetch(upstreamUrl, {
+      upstreamRes = await fetchPinned(upstreamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${providerSecret.apiKey}`,
         },
         body: JSON.stringify(
-          upstreamModel === model ? body : { ...body, model: upstreamModel },
+          prepareUpstreamRequestBody(
+            upstreamModel === model ? body : { ...body, model: upstreamModel },
+          ),
         ),
         signal: upstreamSignal,
-        redirect: "error",
-      });
-    } catch {
+      }, upstreamResolution);
+    } catch (err) {
       const errorCode = c.req.raw.signal.aborted
         ? "client_closed_request"
         : upstreamSignal.aborted
         ? "upstream_timeout"
         : "upstream_error";
-      await releaseFailedReservation();
+      await providerSlot.release().catch(() => undefined);
       logger.warn("LLM 上游请求失败", {
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         error_code: errorCode,
+        ...extractErrorDiagnostics(err),
         latency_ms: Date.now() - startedAt,
       });
       inc("noj_llm_provider_errors_total");
+      await recordUnknownCall(deps.db, callId);
       await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -485,6 +800,24 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     }
 
+    if (body.stream === true) {
+      return createStreamingResponse({
+        response: upstreamRes,
+        payload,
+        body,
+        callId,
+        startedAt,
+        promptTokens,
+        estimatedCost,
+        costPer1kTokens: providerSecret.provider.cost_per_1k_tokens,
+        upstreamModel,
+        ...(aliasForAudit === undefined ? {} : { aliasForAudit }),
+        providerSlot,
+        requestSignal: c.req.raw.signal,
+        deps,
+      });
+    }
+
     let upstreamText = "";
     try {
       upstreamText = await readUpstreamBodyWithLimit(
@@ -492,14 +825,23 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         MAX_UPSTREAM_BODY_BYTES,
       );
     } catch (readErr) {
-      await releaseFailedReservation();
+      await providerSlot.release().catch(() => undefined);
       inc("noj_llm_provider_errors_total");
+      await recordUnknownCall(deps.db, callId);
       const errCode = readErr instanceof Error &&
           readErr.message === "upstream_response_too_large"
         ? "upstream_response_too_large"
         : "upstream_error";
+      logger.warn("LLM 上游响应读取失败", {
+        submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        error_code: errCode,
+        ...extractErrorDiagnostics(readErr),
+        latency_ms: Date.now() - startedAt,
+      });
       await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -555,30 +897,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       providerSecret.provider.cost_per_1k_tokens,
     );
 
-    try {
-      await settleUsage(deps.db, deps.redis, payload, {
-        promptTokens,
-        completionTokens,
-        estimatedCost,
-        actualPromptTokens,
-        actualCompletionTokens,
-        actualBilledTotalTokens,
-        actualCost,
-        ip: c.req.header("x-forwarded-for") ?? "unknown",
-        ttlSeconds,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "quota_exceeded";
-      if (err instanceof QuotaLimitError) {
-        logger.warn("LLM 结算超限", {
-          submission_id: payload.submission_id,
-          attempt_id: payload.attempt_id ?? null,
-          ...err.diagnostics,
-        });
-      }
-      inc("noj_llm_quota_exhausted_total");
-      await recordUsage(deps.db, {
-        id: crypto.randomUUID(),
+    await persistCallUsage(
+      deps.db,
+      callId,
+      {
+        id: callId,
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -587,12 +911,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         provider_id: payload.provider_id,
         model: upstreamModel,
         request_messages: body.messages,
-        request_params: {
-          ...pickParams(body, aliasForAudit),
-          ...(err instanceof QuotaLimitError
-            ? { quota_limit: err.diagnostics }
-            : {}),
-        },
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: actualPromptTokens,
         completion_tokens: actualCompletionTokens,
         total_tokens: actualTotalTokens,
@@ -601,38 +920,27 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         billed_total_tokens: billedUsage.billedTotalTokens,
         estimated_cost: actualCost,
         latency_ms: latency,
-        status: "rejected",
-        error_code: message,
+        status: upstreamRes.ok ? "ok" : "error",
+        error_code: upstreamRes.ok ? null : String(upstreamRes.status),
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
-      });
-      return openAiLimitError(message);
+      },
+      actualBilledTotalTokens,
+      actualCost,
+    );
+    let settled: string;
+    try {
+      settled = await settleCall(deps.db, deps.redis, callId);
+    } catch {
+      // 实际用量已持久化；不伪称额度错误，后台在 Redis 恢复后幂等结算。
+      return c.json({ error: "accounting_pending", call_id: callId }, 503);
     }
-
-    await recordUsage(deps.db, {
-      id: crypto.randomUUID(),
-      submission_id: payload.submission_id,
-      attempt_id: payload.attempt_id ?? null,
-      problem_version_id: payload.problem_version_id ?? null,
-      problem_id: payload.problem_id,
-      user_id: payload.user_id,
-      provider_id: payload.provider_id,
-      model: upstreamModel,
-      request_messages: body.messages,
-      request_params: pickParams(body, aliasForAudit),
-      prompt_tokens: actualPromptTokens,
-      completion_tokens: actualCompletionTokens,
-      total_tokens: actualTotalTokens,
-      cached_prompt_tokens: billedUsage.cachedPromptTokens,
-      billed_prompt_tokens: billedUsage.billedPromptTokens,
-      billed_total_tokens: billedUsage.billedTotalTokens,
-      estimated_cost: actualCost,
-      latency_ms: latency,
-      status: upstreamRes.ok ? "ok" : "error",
-      error_code: upstreamRes.ok ? null : String(upstreamRes.status),
-      prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
-      created_at: new Date().toISOString(),
-    });
+    if (settled !== "ok") {
+      inc("noj_llm_quota_exhausted_total");
+      await deps
+        .db`UPDATE llm_usage SET status='rejected',error_code=${settled} WHERE id=${callId}`;
+      return openAiLimitError(settled);
+    }
 
     if (!upstreamRes.ok) {
       inc("noj_llm_provider_errors_total");
@@ -654,7 +962,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 }
 
 /** 粗略估算 prompt token：按 JSON 字符数 /4 向上取整。 */
-function estimateTokens(messages: unknown[]): number {
+export function estimateTokens(messages: unknown[]): number {
   try {
     return Math.ceil(JSON.stringify(messages).length / 4);
   } catch {
@@ -663,7 +971,7 @@ function estimateTokens(messages: unknown[]): number {
 }
 
 /** 按单价（每 1k tokens）估算费用，结果取整。 */
-function estimateCost(totalTokens: number, costPer1k: number): number {
+export function estimateCost(totalTokens: number, costPer1k: number): number {
   if (!costPer1k || totalTokens <= 0) return 0;
   return Math.round((totalTokens / 1000) * costPer1k);
 }

@@ -5,11 +5,14 @@ import {
   apiPost,
   apiPut,
   CODE_SAMPLES,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
   getProblemIdByNumber,
   pollSubmission,
+  publishProblemVersion,
+  setProblemState,
   submitCode,
 } from "../helper.ts";
 
@@ -25,14 +28,21 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     `training_other_${Date.now().toString(36)}`,
     `training_other_${Date.now().toString(36)}@test.com`,
   );
+  const identity = await apiGet("/api/v1/auth/me", user.token);
+  const userId = (identity.body as { data: { id: string } }).data.id;
+  const granted = await apiPut(`/api/v1/domains/main/members/${userId}/role`, {
+    role: "educator",
+  }, adminToken);
+  if (granted.status !== 200) {
+    throw new Error(`授予域资源编辑角色失败: ${JSON.stringify(granted.body)}`);
+  }
 
-  // 用 admin 创建 U 型题（普通用户设置 evaluator.command 已被 RBAC 拒绝）
+  // 管理员创建默认域题目，普通成员不得设置敏感评测字段。
   const problemRes = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: "Training E2E Problem",
       description: "e2e",
-      type: "U",
       runtime_config: {
         evaluator: {
           image: "noj-evaluator-python",
@@ -52,12 +62,11 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   if (problemRes.status !== 201) {
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
-  const problemId = (problemRes.body as { data: { id: string } }).data.id;
-  const publicRes = await apiPut(
-    `/api/v1/problems/${problemId}/visibility`,
-    { visibility: "public" },
-    adminToken,
-  );
+  const problemId = (problemRes.body as { problem_id: string }).problem_id;
+  await publishProblemVersion(adminToken, problemId, "题单源题发布");
+  const publicRes = await setProblemState(adminToken, problemId, {
+    visibility: "public",
+  });
   if (publicRes.status !== 200) {
     throw new Error(
       `管理员设题目 public 失败: ${JSON.stringify(publicRes.body)}`,
@@ -65,9 +74,22 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   }
   const sampleProblemId = await getProblemIdByNumber(1001);
 
+  // 0.11 起题单写入只在域入口：创建时一次性提交题号列表（无域写路由已删除）。
+  const problemDetail = await apiGet(
+    `/api/v1/problems/${problemId}`,
+    adminToken,
+  );
+  const sourceNumber = (problemDetail.body as { data: { number: number } })
+    .data.number;
   const created = await apiPost(
-    "/api/v1/trainings",
-    { title: "E2E 题单", visibility: "private" },
+    "/api/v1/domains/main/trainings",
+    {
+      title: "E2E 题单",
+      description: "",
+      visibility: "private",
+      state: "draft",
+      problems: [String(sourceNumber), "1001"],
+    },
     user.token,
   );
   if (created.status !== 201) {
@@ -75,18 +97,10 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   }
   const trainingId = (created.body as { data: { id: string } }).data.id;
 
-  for (const pid of [problemId, sampleProblemId]) {
-    const added = await apiPost(
-      `/api/v1/trainings/${trainingId}/problems`,
-      { problem_id: pid },
-      user.token,
-    );
-    if (added.status !== 201) {
-      throw new Error(`加题失败: ${JSON.stringify(added.body)}`);
-    }
-  }
-
-  const hidden = await apiGet(`/api/v1/trainings/${trainingId}`, other.token);
+  const hidden = await apiGet(
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    other.token,
+  );
   if (hidden.status !== 404) {
     throw new Error(`私有题单应对他人 404: ${hidden.status}`);
   }
@@ -99,47 +113,75 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   );
   await pollSubmission(user.token, subId);
   const problems = await apiGet(
-    `/api/v1/trainings/${trainingId}/problems`,
+    `/api/v1/domains/main/trainings/${trainingId}`,
     user.token,
   );
   if (problems.status !== 200) {
-    throw new Error(`取题单题目失败: ${problems.status}`);
+    throw new Error(`取题单详情失败: ${problems.status}`);
   }
-  const problemsData = (problems.body as {
-    data: Array<{ problem_id: string; accepted: boolean }>;
+  const problemsBody = (problems.body as {
+    data: {
+      items: Array<{
+        problem_id: string;
+        resource_available: boolean;
+        can_read: boolean;
+      }>;
+    };
   }).data;
+  const problemsData = problemsBody.items;
+  // 题单详情按域内授权逐题返回可读性与可用性；AC 进度改由提交页展示。
   const sample = problemsData.find((p) => p.problem_id === sampleProblemId);
-  if (!sample?.accepted) {
-    throw new Error("AC 后进度应为 true");
+  if (!sample || !sample.resource_available || !sample.can_read) {
+    throw new Error("样例题应在题单中可读可用");
   }
 
-  const patched = await apiPatch(
-    `/api/v1/admin/catalog/trainings/${trainingId}`,
-    { visibility: "public", is_pinned: true },
+  // 无域 `/api/v1/admin/catalog/trainings/:id` 已删除；发布改走域内 PATCH（If-Match）。
+  const detail = await apiGet(
+    `/api/v1/domains/main/trainings/${trainingId}`,
     adminToken,
   );
+  const detailData = (detail.body as { data: { revision: number } }).data;
+  const patched = await apiPatch(
+    `/api/v1/domains/main/trainings/${trainingId}`,
+    {
+      title: "E2E 题单",
+      description: "",
+      state: "published",
+      problems: [String(sourceNumber), "1001"],
+    },
+    adminToken,
+    { "If-Match": String(detailData.revision) },
+  );
   if (patched.status !== 200) {
-    throw new Error(`管理员设 public 失败: ${patched.status}`);
+    throw new Error(`管理员设 published 失败: ${patched.status}`);
   }
 
-  const list = await apiGet("/api/v1/trainings");
-  const listData = (list.body as { data: { id: string }[] }).data;
+  const list = await apiGet(
+    `/api/v1/domains/main/trainings?keyword=${encodeURIComponent("E2E 题单")}`,
+  );
+  const listData = (list.body as { items: { id: string }[] }).items;
   if (!listData.some((t) => t.id === trainingId)) {
-    throw new Error("公开列表应包含该题单");
+    throw new Error("公开列表应包含已发布题单");
   }
 
-  const deleted = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
-  if (deleted.status !== 204 && deleted.status !== 200) {
-    throw new Error(`删题失败: ${deleted.status}`);
+  const deleted = await apiDelete(
+    await domainProblemPath(problemId),
+    adminToken,
+  );
+  if (deleted.status !== 409) {
+    throw new Error(`已发布源题不得物理删除: ${deleted.status}`);
   }
+  const withdrawn = await setProblemState(adminToken, problemId, {
+    visibility: "members",
+  });
+  if (withdrawn.status !== 200) throw new Error("更新源题可见性失败");
   const afterDelete = await apiGet(
-    `/api/v1/trainings/${trainingId}/problems`,
-    user.token,
+    `/api/v1/domains/main/trainings/${trainingId}`,
   );
   const afterData = (afterDelete.body as {
-    data: Array<{ problem_id: string }>;
-  }).data;
-  if (afterData.some((p) => p.problem_id === problemId)) {
-    throw new Error("删除题目后题单关联应自动清理");
+    data: { items: Array<{ problem_id: string }> };
+  }).data.items;
+  if (!afterData.some((p) => p.problem_id === problemId)) {
+    throw new Error("公开域已发布源题在题单中应保持可见");
   }
 });

@@ -261,7 +261,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload = noj_judge::dual::ResultPayload::new();
-    let mut tracker = InFlightTracker::new(2000);
+    let mut tracker = InFlightTracker::new(2000, 0);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -461,7 +461,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload = noj_judge::dual::ResultPayload::new();
-    let mut tracker = InFlightTracker::new(2000);
+    let mut tracker = InFlightTracker::new(2000, 0);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -650,7 +650,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload = noj_judge::dual::ResultPayload::new();
-    let mut tracker = InFlightTracker::new(2000);
+    let mut tracker = InFlightTracker::new(2000, 0);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);

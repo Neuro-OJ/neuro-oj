@@ -107,21 +107,31 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root
 ## 2.1 版本发布流程（维护者）
 
 为避免"Release 已可见但镜像 / CLI 资产尚未就绪"的窗口（issue #431），发布采用
-预发布转正流程：
+先预发布后收尾的流程：
 
-1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或
-   `vX.Y.Z-rc.N`）。
+1. 创建 GitHub Release 并勾选 **pre-release**（稳定版 tag 形如 `vX.Y.Z`，
+   候选版形如 `vX.Y.Z-rc.N` / `vX.Y.Z-alpha.N` / `vX.Y.Z-beta.N`）。
 2. `release.yml` 只监听 `prereleased` 事件（不监听
    `published`，避免同一次预发布触发两条流水线）：构建 7 个候选镜像 → 漏洞扫描 →
    签名 / SBOM / 来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli`
-   二进制、`docker-compose.prod.yml`、`env.prod.example` 及各自的校验文件。
-3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式
-   Release（`--latest`）。
+   二进制、`docker-compose.prod.yml`、`env.prod.example`、LMCC IDE 插件
+   `neuro-oj-lmcc-<version>.vsix` 及各自的 `.sha256` 校验文件。
+3. 全部门禁与资产上传通过后，工作流最后的 `publish-release` 任务生成并上传
+   `release-set.json`（及 `.sha256`），再按标签格式执行收尾：
+   - **稳定标签（`vX.Y.Z`）**：将 Release
+     转正为正式版本（`--draft=false
+     --prerelease=false --latest`），`/releases/latest`
+     随即指向该版本；
+   - **预发布后缀标签（`vX.Y.Z-rc.N` / `-alpha.N` / `-beta.N`）**：保持
+     `prerelease=true`（`--draft=false --prerelease`），**不会**去掉预发布标记
+     或设为 `--latest`，从而避免存量 `v0.10.x` 节点的 `noj-cli update --latest`
+     或默认 `install` 误选到 `v0.11.0-rc.1`。
 
-由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
-`noj-cli install`（省略 `--ref`）与 `update --latest` 自动选择版本时只接受非
-draft、非 prerelease（即已转正，含 `-rc.N` 等标签）且资产中 包含
-`noj-cli-linux-amd64`、`.sha256` 与两个部署文件的 Release，双重过滤未就绪版本。
+由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产、IDE 插件与
+`release-set.json` 校验文件。`noj-cli install`（省略 `--ref`）与
+`update --latest` 自动选择版本时只接受非 draft、非 prerelease 且资产齐备的
+Release（历史已转正的如 `v0.10.4-rc.1` 保持向后兼容，而自 `v0.11` 起 RC 等预发布
+后缀始终保持 `prerelease=true`，需显式使用 `--ref vX.Y.Z-rc.N` 安装）。
 直接发布正式 Release（不经预发布）不会触发构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
 
@@ -216,9 +226,11 @@ noj-cli update
 noj-cli update --latest
 ```
 
-`update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、 非
-prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件及各自 `.sha256` 的
-Release， 保证安装与升级使用同一版本集合，不会选中资产未就绪的版本。
+`update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、非
+prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件、`release-set.json`
+及各自 `.sha256` 的
+Release，保证安装与升级使用同一版本集合，不会选中资产未就绪的 版本；保持
+`prerelease=true` 的 RC / 测试版（如 `v0.11.0-rc.1`）也不会被自动选中。
 
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
 先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION`
@@ -226,11 +238,84 @@ Release， 保证安装与升级使用同一版本集合，不会选中资产未
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
+### 0.11 首个 RC：只支持新装，不做原地升级
+
+0.11 的首个 RC（`v0.11.0-rc.N`）**只交付新装路径**。它把 Domain
+变成资源访问边界、
+把比赛改为统一报名、把通知合并成单一模型——这些都是数据形态迁移，而历史数据的
+转换工具不在本轮范围。
+
+因此：
+
+- **新装**：用同一 Release 的 `noj-cli`、core、gateway、judge、UI 与适配的 IDE
+  组件，从**空库**安装。全新安装走的是完整迁移链，空库里没有旧数据，因此不会命中
+  `0116` 的数据守卫。
+- **已有 0.10.x 实例**：继续运行原版本，**不要**执行 0.11 的 `noj-cli update`。
+  0.10.x → 0.11 的升级能力另行设计并单独验收，完成前不提供该路径。该路径提供后，
+  **最低可升级版本为 v0.10.6**：更早的版本须先升级到
+  v0.10.6，由它完成评测单队列到 三级优先级队列的迁移（0.11
+  起不再携带这段一次性迁移代码）。
+- **不要**为了"让它过"而删除比赛、删除题目或绕过迁移守卫。`0116` 的中止是刻意的
+  数据契约，不是待修的缺陷。
+
+#### 升级前的只读预检
+
+迁移 `0116_peaceful_gorilla_man.sql` 开头是兼容性守卫：存量库只要还有旧 `U` 型题
+或任意一行 `contests`，迁移就会以 `55000`
+中止。想在动手前知道命中了什么，先跑预检：
+
+```bash
+cd /opt/neuro-oj/noj-core      # 源码树中即 noj-core/
+deno run --env-file=.env -A scripts/preflight-upgrade.ts \
+  --json /tmp/noj-preflight.json --csv /tmp/noj-preflight.csv
+```
+
+或在 `noj-core` 目录用任务别名：
+
+```bash
+deno task preflight -- --json /tmp/noj-preflight.json
+```
+
+预检的所有查询都在一个 `SET TRANSACTION READ ONLY` 事务里执行，**不写任何业务
+数据**。报告包含迁移位置、旧 `U` 型题与比赛的数量及标识、相关依赖计数和遗留列
+提示。退出码：`0` 未命中阻塞、`2` 命中阻塞（迁移会中止）、`1` 预检本身失败。
+
+> **预检报告不是备份。** 它只用于决策，不能替代 `noj-cli backup create`、
+> `noj-cli backup verify` 与 `noj-cli backup drill`。
+
+#### 新装 runbook
+
+1. 准备主机与 `.env.prod`（`docker-compose.prod.yml` 与 `.env.prod.example` 必须
+   与 Release 同版本），生成 `NOJ_INTERNAL_SERVICE_TOKEN`（见下文
+   [新增环境变量](#011-新增环境变量)）；
+2. 从对应预发布 Release 下载 `noj-cli-linux-amd64` 并显式通过 `--ref` 安装
+   （预发布版本保持 `prerelease=true`，不会进入 `--latest`）：
+   `noj-cli install --dir <目录> --ref v0.11.0-rc.N`，
+   安装器会下载并校验同名部署文件及其 `.sha256`；
+3. `noj-cli check` → `noj-cli start`，等待健康检查通过；
+4. `noj-cli bootstrap first-admin` 创建首个管理员（仅空站可执行一次）；
+5. 冒烟：注册 / 登录、题目读取、一次真实 Judge
+   提交、一次客观题交卷、一次比赛报名；
+6. 新装失败时**停止候选服务并保留诊断资料**（`noj-cli logs`、容器状态、迁移日志），
+   不要在有数据的库上反复重试迁移。
+
+### 0.11 新增环境变量
+
+| 变量                             | 默认值          | 配置位置              | 说明                                                                                                                                                                                                                                                                                                           |
+| -------------------------------- | --------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NOJ_INTERNAL_SERVICE_TOKEN`     | 空（关闭）      | `.env.prod`           | 内部维护 / 排空 API 的服务凭据（`Authorization: Bearer <token>`）。`openssl rand -hex 32` 生成。**未设置时所有 drain 端点返回 503**，`noj-cli update` 的自动排空会失败并提示设置本变量；过渡期可显式 `--skip-drain` 跳过。首次从尚无该 API 的旧版本升级时，`update` 会识别 `endpoint_unavailable` 并自动跳过。 |
+| `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj`           | `.env.prod` / compose | 身份 Cookie 前缀。同一主机不同端口运行多套 UI 时分别设置，避免登录 Cookie 互相覆盖。                                                                                                                                                                                                                           |
+| `NUXT_BFF_CACHE_PREFIX`          | `noj:ui:bff:v1` | `.env.prod` / compose | UI BFF 聚合缓存的 Redis 命名空间（TTL 30 秒，复用现有 Redis）。多套 UI 共用同一 Redis 时必须区分。                                                                                                                                                                                                             |
+
+三者都由 `docker-compose.prod.yml` 插值传入容器；修改后需要重建受影响的容器
+（`noj-cli restart`）。`check-prod-env-injection.ts`
+会校验它们在被声明与实际注入 之间没有断链。
+
 ### 题目版本管理升级（协调升级，必须按维护窗口执行）
 
 题目版本管理（草稿/发布、不可变版本、评测尝试、有效版本策略）是 **core / judge /
 gateway / UI / IDE / CLI 的协调升级**，新旧评测协议**不能混跑**：新 core 只接受
-`evaluation_protocol_version = 2` 的结果，旧 judge
+`evaluation_protocol_version = 3` 的结果，旧 judge
 的结果会被拒绝落库（不会写坏数据， 但提交会一直拿不到成绩）。因此：
 
 1. 确认 CI、迁移演练与完整验收通过（含 `noj-core` 迁移安全、`noj-tests` E2E）；
@@ -285,39 +370,46 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 `-dirty`）、构建时间取进程启动时刻——因此本地页脚显示的 `-dirty`
 是正常现象，表示图像来自未提交的工作区。
 
-### 升级前检查：题目引用的 LLM Provider 是否为用户自建
+### LLM 配置迁移：历史 BYOK 与当前域配置 {#升级前检查题目引用的-llm-provider-是否为用户自建}
 
-**适用版本**：升级到移除 BYOK 的版本（`llm_providers.created_by`
-列被删除）时必查。
+当前版本按**使用域**选择 Provider 和模型。已有平台 Provider、用量及默认配置 归入
+`main`；其他域需要独立配置。题目版本中旧的 Provider、模型字段保留为
+历史内容，不参与新的执行选择。不要通过清空题目 LLM 配置迁移 Provider：
+题目仍需保留 LLM 能力和单次预算，历史版本也保持不可变。
 
-在删除 BYOK 的迁移中，gateway 会执行
-`DELETE FROM llm_providers WHERE created_by <> '0'`（永久删除用户自建 Provider
-及其加密 Key）。**历史上题目的 `problems.llm_config->>'provider_id'` 可以指向
-用户自建 Provider**（题目保存时的校验只检查 Provider 存在且启用，不校验归属），
-因此这类题目的引用会在升级后变成悬空：提交仍会被接受，但评测时 gateway 返回 400
-`provider_not_found`，表现为"LLM 题评测静默失败"。
+如果跨越较早的 BYOK 移除版本，仍需核实历史密钥：Gateway 的
+`0002_remove_byok_created_by.sql` 删除 `created_by <> '0'` 的用户自建 Provider
+及其加密密钥，然后移除 `created_by`。这是**旧 Provider 记录的收缩迁移**，
+不代表当前域模型从题目字段中选取。已经应用该迁移的实例不用重复执行旧
+字段查询；不能从题目中的旧 Provider ID 判断当前域是否已经配置可用模型。
 
-升级**之前**用下面的 SQL 核查（`psql` 连到生产库）：
+可执行的升级顺序：
 
-```sql
--- 列出会被删除、但已被题目引用的用户 Provider
-SELECT p.id AS problem_id, p.title, p.llm_config->>'provider_id' AS provider_id
-FROM problems p
-JOIN llm_providers lp ON lp.id = p.llm_config->>'provider_id'
-WHERE lp.created_by <> '0';
-```
+1. 维护窗口前保存完整备份和 Gateway 密钥加密配置，核对已应用的 Gateway 迁移。若
+   `0002` 尚未应用，先盘点需要保留的旧用户自建服务及管理授权。
+2. 在仍有 `created_by` 的旧 Gateway 数据库中，可用下面的只读查询记录服务
+   信息。备份保存加密密钥；不要把解密后的密钥写进日志或工单。
 
-::: warning 悬空 Provider 引用会导致 LLM 题静默失败
+   ```sql
+   SELECT id, name, base_url, enabled, created_by
+   FROM llm_providers
+   WHERE created_by <> '0';
+   ```
 
-- **结果为空**：直接升级。
-- **有结果**：先把这些题目的 LLM 配置改为平台 Provider（管理端编辑题目即可），
-  或按需清空（`UPDATE problems SET llm_config = NULL WHERE id = '<problem_id>'`），
-  再执行升级。升级后这类题目的**编辑保存**也会以 「LLM Provider
-  不存在或已停用」失败，因此不要留到升级后再处理。 :::
+3. 使用同一目标 Release 协调升级 core、Gateway、Judge、UI 和客户端。Compose 会先
+   完成 `migrate` 与 `gateway-migrate` 两个一次性步骤：前者执行 Core
+   迁移/系统初始化， 后者执行 Gateway 迁移/默认配额 seed；HTTP 服务只做只读
+   schema 兼容检查。旧平台 Provider 和用量归默认域；新学校不继承其密钥。
+4. 登录各使用域“LLM”页，核对或配置启用的 Provider、默认模型及日/月额度。
+   原用户自建服务如仍需使用，经授权在目标域重新配置有效凭据；源题字段不会
+   自动重建它们。已有域设置不会在重启时被旧平台默认值覆盖。
+5. 用普通域成员完成一次该域 LLM 题提交，确认调用成功、用量记录属于该域，
+   引用公共题时也不使用来源域密钥。缺本域配置或服务停用会明确拒绝新调用。
 
-> 升级后若怀疑存在遗漏，可再查一次悬空引用：
-> `SELECT id, title FROM problems WHERE llm_config->>'provider_id' IS NOT NULL
-> AND llm_config->>'provider_id' NOT IN (SELECT id FROM llm_providers);`
+每次评测尝试保留当时解析的域、Provider、模型与预算；改变默认模型只影响新
+尝试，不改写已经受理的配置。不同域可以采用不同模型，成绩不承诺可比。
+详细政策与资源上限见[工作空间部署与治理](./workspace-deployment.md)，域内
+操作见[配置本域 LLM](../features/workspaces.md#配置本域-llm)。
 
 ## 5.1 备份、文件校验与隔离恢复演练
 
@@ -335,15 +427,24 @@ WHERE lp.created_by <> '0';
 ```bash
 # 快照是 .nojbackup 单文件，命名形如 snapshot-YYYYMMDD-HHMMSS.nojbackup
 noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
-  --passphrase-file /secure/noj-backup-passphrase
+  --passphrase-file /secure/noj-backup-passphrase \
+  --docker-host unix:///run/user/1000/docker-noj-restore-drill.sock
 ```
+
+`--docker-host` 必须指向专门为恢复演练创建的 Docker daemon socket（也可以用
+`NOJ_DRILL_DOCKER_HOST` 设置），不能省略，也不能指向承载生产服务的默认
+`/var/run/docker.sock`。演练 daemon 应使用独立的 data root、containerd root、
+Compose 项目名和网络；创建与清理它需要由维护者在维护窗口按
+[P8 演练说明](https://github.com/Neuro-OJ/neuro-oj/blob/7871d31ad22b659deb03eb92c66cb692d787a273/dev-docs/engineering/architecture-remediation-p8.md)执行。
 
 演练会把快照恢复到独立 Compose
 项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷）， 随后通过真实 API
 验收：管理员登录、题目读取、附件（支持包）下载与一次真实双容器评测 （需要 judge
 沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
-与生产 judge 使用同一个独立 rootless daemon）。可用 `--skip-judge`
-跳过评测环节。
+与生产 judge 使用同一个独立 rootless daemon）。恢复数据后演练按生产依赖顺序保留
+并执行 `migrate → gateway-migrate → core` 三个完成态服务；Core 迁移/系统初始化
+完成后才运行 Gateway 迁移与默认配额初始化，HTTP 进程只读检查 schema。可用
+`--skip-judge` 跳过评测环节。
 
 演练报告（默认写入快照同级的 `restore-drill-report.txt`，权限
 600）记录：快照时间、恢复耗时、 数据核对结果（迁移版本/用户数/Redis

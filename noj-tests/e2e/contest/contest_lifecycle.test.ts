@@ -15,9 +15,9 @@ import {
   getContestAnswerVersionId,
   getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   registerUser,
+  requireJudgeCanary,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -26,7 +26,6 @@ const testSuffix = Date.now().toString(36);
 let adminToken = "";
 let participantToken = "";
 let contestId = "";
-let judgeAvailable = false;
 let problemId = "";
 
 interface ContestData {
@@ -49,10 +48,8 @@ e2eTest("[e2e/contest] Setup", async () => {
   );
   // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
   problemId = await getProblemIdByNumber(1001);
-  judgeAvailable = await isJudgeAvailable();
-  if (!judgeAvailable) {
-    console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
-  }
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+  await requireJudgeCanary();
 });
 
 e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
@@ -66,8 +63,6 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
       config: {},
-      is_public: true,
-      password: "ContestPass123",
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,
@@ -90,20 +85,9 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
 
 e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   if (!isE2E) return;
-  const invalidPassword = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
-    { password: "wrong-password" },
-    participantToken,
-  );
-  if (invalidPassword.status !== 403) {
-    throw new Error(
-      `错误密码应被拒绝，实际状态码: ${invalidPassword.status}`,
-    );
-  }
-
   const registerResult = await apiPost(
-    `/api/v1/contests/${contestId}/register`,
-    { password: "ContestPass123" },
+    `/api/v1/domains/main/contests/${contestId}/register`,
+    {},
     participantToken,
   );
   if (registerResult.status !== 201) {
@@ -113,8 +97,16 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
       }`,
     );
   }
-  if (!judgeAvailable) return;
-
+  const duplicateRegister = await apiPost(
+    `/api/v1/domains/main/contests/${contestId}/register`,
+    {},
+    participantToken,
+  );
+  if (duplicateRegister.status !== 409) {
+    throw new Error(
+      `重复报名应返回 409，实际状态码: ${duplicateRegister.status}`,
+    );
+  }
   const versionId = await getContestAnswerVersionId(
     participantToken,
     contestId,
@@ -122,7 +114,7 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   );
 
   const submitResult = await apiPost(
-    `/api/v1/contests/${contestId}/submit`,
+    `/api/v1/domains/main/contests/${contestId}/problems/A/submissions`,
     {
       problem_id: problemId,
       version_id: versionId,
@@ -146,14 +138,17 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
 });
 
 e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
-  if (!isE2E || !judgeAvailable) return;
+  if (!isE2E) return;
   // 进行中（running）竞赛：非管理员仅能查看自己的排名（服务端设计，见
   // contest-ranking.ts getContestRanking：running 且非 admin 时 viewerId
   // 缺失返回 401、非参赛者返回 403，参赛者只见自身行）。因此这里用
   // 参赛者 token 验证其排名包含刚才提交的分数，管理员可看完整榜单。
   const [participantResult, adminResult] = await Promise.all([
-    apiGet(`/api/v1/contests/${contestId}/ranking`, participantToken),
-    apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
+    apiGet(
+      `/api/v1/domains/main/contests/${contestId}/ranking`,
+      participantToken,
+    ),
+    apiGet(`/api/v1/domains/main/contests/${contestId}/ranking`, adminToken),
   ]);
   if (participantResult.status !== 200 || adminResult.status !== 200) {
     throw new Error(
@@ -172,10 +167,14 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
 });
 
 e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
-  if (!isE2E || !judgeAvailable) return;
+  if (!isE2E) return;
+  // 排名只统计 created_at <= end_time 的提交；若把 end_time 设为「当前 - 1s」，
+  // 测试 2 在 1s 内产生的提交会被当作赛后提交排除而偶发失败。
+  // 因此把 end_time 设在当前时刻之后（晚于所有已产生的提交），再等待其到期。
+  const endTime = Date.now() + 300;
   const updateResult = await apiPut(
     `/api/v1/admin/contest/contests/${contestId}`,
-    { end_time: new Date(Date.now() - 1000).toISOString() },
+    { end_time: new Date(endTime).toISOString() },
     adminToken,
   );
   if (updateResult.status !== 200) {
@@ -185,8 +184,13 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
       }`,
     );
   }
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.max(0, endTime - Date.now()) + 200)
+  );
 
-  const contestResult = await apiGet(`/api/v1/contests/${contestId}`);
+  const contestResult = await apiGet(
+    `/api/v1/domains/main/contests/${contestId}`,
+  );
   const contest = (contestResult.body as { data: ContestData }).data;
   if (contestResult.status !== 200 || contest.status !== "ended") {
     throw new Error("竞赛结束后状态应为 ended");
@@ -206,7 +210,9 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
     );
   }
 
-  const rankingResult = await apiGet(`/api/v1/contests/${contestId}/ranking`);
+  const rankingResult = await apiGet(
+    `/api/v1/domains/main/contests/${contestId}/ranking`,
+  );
   const rows = (rankingResult.body as { data: KaggleRankingRow[] }).data;
   if (rankingResult.status !== 200 || rows[0]?.total_score <= 0) {
     throw new Error("竞赛结束后公开排名应显示最终分数");

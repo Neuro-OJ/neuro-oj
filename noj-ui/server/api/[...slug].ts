@@ -1,5 +1,7 @@
+import { getClientNetworkHeaders } from '../utils/client-network.ts';
 import { cookieMaxAgeFromJwt, parseAuthSession } from '../utils/auth-session.ts';
 import { withSecurityHeaders } from '../utils/security-headers.ts';
+import { authCookieNames } from '../../utils/auth-cookies.ts';
 
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',
@@ -19,14 +21,15 @@ const FORWARDABLE_HEADERS = new Set([
  *   再走 /login 重登，对用户不友好。
  */
 function shouldInterceptAuth(
-  event: { path: string; method?: string },
+  event: { method?: string },
+  pathname: string,
 ): boolean {
   if (event.method !== 'POST') return false;
-  // 必须比较 **pathname**：h3 的 `event.path` 即 `req.url`，**含 query 字符串**，
+  // 必须比较**规范化后的 pathname**：h3 的 `event.path` 即 `req.url`，**含 query 字符串**，
   // 因此 `endsWith('/api/v1/auth/login')` 会被 `POST /api/v1/auth/login?x=1` 绕过。
   // 后果：登录/改密的 JWT **原样回给 JS**（破坏"JWT 只进 HttpOnly Cookie"的不变量），
   // 且该路径不设置 Cookie → 会话陈旧（2026-09-29 前端审计 U-2）。
-  const pathname = toUrlPathname(event.path);
+  // pathname 直接取自上方已成功 `new URL()` 解析的 `targetUrl`，无需再次解析。
   return (
     pathname === '/api/v1/auth/login' ||
     pathname === '/api/v1/auth/change-password'
@@ -34,17 +37,31 @@ function shouldInterceptAuth(
 }
 
 /**
- * 取 URL 的 pathname（用于**规范化比较**，避免 query/编码路径干扰判定）。
+ * `/api/v1/internal/*` 是**仅容器内网**可访问的端点（排空、内部服务端点）：
+ * CLI 经 `docker compose run core ...` 直连 `http://core:8000`，judge/gateway 走内网。
+ * 公网请求经 nginx → Nitro 代理会抵达这些端点，因此代理层在规范化后的 pathname 上
+ * 直接 404，不转发给 noj-core。nginx 层另有 `^~ /api/v1/internal/` 兜底。
  *
- * 以哨兵 origin 解析相对路径；解析失败时退化为"首段问号截断"，绝不抛错。
+ * 判定基于 `targetUrl.pathname`（WHATWG URL 规范化后）：
+ * - 大小写：pathname 保留原始大小写，故用 `/i` 同时拦下 `/api/v1/Internal/...`；
+ *   合法的 internal 端点均为全小写，不会误伤。
+ * - `//`：`new URL()` 保留双斜杠，故用 `/+` 匹配任意个斜杠。
+ * - `%69` 等编码：对首段做一次 `decodeURIComponent` 后再判定（解码失败即视为命中，
+ *   fail-closed），避免 `/api/v1/%69nternal/x` 落到 core 侧被解码后当成 internal。
  */
-function toUrlPathname(pathOrUrl: string): string {
+const INTERNAL_API_PATH = /^\/api\/v1\/+internal(?:\/|$)/i;
+
+function isInternalApiPath(pathname: string): boolean {
+  if (INTERNAL_API_PATH.test(pathname)) return true;
+  // 编码形态的 `internal` 段（如 `%69nternal`）：解码后仍是 `/api/v1/internal` 前缀即拦截。
+  // 解码失败（畸形百分号序列）时同样拒绝，不给"依赖上游解码差异"留假设。
+  let decoded: string;
   try {
-    return new URL(pathOrUrl, 'http://noj.internal').pathname;
+    decoded = decodeURIComponent(pathname);
   } catch {
-    const q = pathOrUrl.indexOf('?');
-    return q === -1 ? pathOrUrl : pathOrUrl.slice(0, q);
+    return true;
   }
+  return decoded !== pathname && INTERNAL_API_PATH.test(decoded);
 }
 
 /**
@@ -72,17 +89,6 @@ function allowsInsecureHttp(): boolean {
  *   优先得到真实 socket IP，同时保留上游代理已写入的 XFF。
  * 如果 UI 前面有受信 edge，edge 写入的 XFF 会被保留，core 仍能取到真实客户端 IP。
  */
-function normalizeIp(ip?: string | null): string | undefined {
-  if (!ip) return undefined;
-  let value = ip.trim();
-  if (value.startsWith('::ffff:')) value = value.slice('::ffff:'.length);
-  if (value.startsWith('[') && value.includes(']')) {
-    value = value.slice(1, value.indexOf(']'));
-  }
-  const zone = value.indexOf('%');
-  if (zone !== -1) value = value.slice(0, zone);
-  return value || undefined;
-}
 
 const HOP_BY_HOP_HEADERS = new Set([
   'transfer-encoding',
@@ -164,38 +170,9 @@ async function proxySseRequest(
   });
 }
 
-function getClientNetworkHeaders(event: {
-  node: {
-    req: {
-      headers: Record<string, string | string[] | undefined>;
-      socket?: { remoteAddress?: string };
-    };
-  };
-  headers: Headers;
-}): Record<string, string> {
-  const out: Record<string, string> = {};
-  const peerIp = normalizeIp(event.node.req.socket?.remoteAddress);
-  const existingXff = event.headers.get('x-forwarded-for')?.trim() ?? '';
-
-  if (existingXff && peerIp) {
-    // 总是把当前 TCP 对端放到最右，确保 core 从右往左解析时先看到真实 socket IP，
-    // 防止攻击者在 XFF 里夹带任意 IP 来伪造来源。
-    out['x-forwarded-for'] = `${existingXff}, ${peerIp}`;
-  } else if (peerIp) {
-    out['x-forwarded-for'] = peerIp;
-  } else if (existingXff) {
-    out['x-forwarded-for'] = existingXff;
-  }
-
-  if (peerIp) out['x-real-ip'] = peerIp;
-
-  const ua = event.headers.get('user-agent');
-  if (ua) out['user-agent'] = ua;
-  return out;
-}
-
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+  const names = authCookieNames(config.public.authCookiePrefix);
 
   // 路径白名单：仅允许转发到 noj-core v1 API。
   //
@@ -224,7 +201,10 @@ export default defineEventHandler(async (event) => {
   if (
     target === null ||
     targetUrl.origin !== apiBaseOrigin ||
-    !targetUrl.pathname.startsWith('/api/v1/')
+    !targetUrl.pathname.startsWith('/api/v1/') ||
+    // 内部端点（排空/内部服务）只允许容器内网直连：规范化后命中即 404，
+    // 不进入下方任何分支（认证拦截、SSE、普通转发）。
+    isInternalApiPath(targetUrl.pathname)
   ) {
     return sendError(
       event,
@@ -233,13 +213,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const cookies = parseCookies(event);
-  const token = cookies['noj:token'];
+  const token = cookies[names.token];
   const clientNetworkHeaders = getClientNetworkHeaders(event);
 
   // ── 拦截登录/改密成功响应，设置 Cookie ──
   // 改密（issue #75 撤销机制）成功后服务端签发新 token，旧 token 被撤销；
   // 前端不感知，由 Nitro 代理同步替换 Cookie，避免「改密后被踢回登录页」的体验。
-  if (shouldInterceptAuth(event)) {
+  if (shouldInterceptAuth(event, targetUrl.pathname)) {
     const body = await readBody(event);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -283,18 +263,20 @@ export default defineEventHandler(async (event) => {
         };
 
         // HTTP-only cookie：令牌对 JS 不可见，防 XSS 窃取
-        setCookie(event, 'noj:token', jwt, cookieOptions);
+        setCookie(event, names.token, jwt, cookieOptions);
 
         // 可读 cookie：客户端用于快速判断登录状态
         // 包含 must_change_password（issue #75），前端路由守卫据此强制改密。
         // 包含 is_admin（RBAC），供前端 admin 路由守卫判断。
         setCookie(
           event,
-          'noj:session',
+          names.session,
           JSON.stringify({
             userId: user.id,
             username: user.username,
-            role: user.role ?? (user.is_admin ? 'admin' : 'user'),
+            // core 的 UserResponse 恒含 role（user/admin），login 与 change-password 都走
+            // toUserResponse 同口径；缺失时由 parseAuthSession 走失败路径，不在代理层推算。
+            role: user.role,
             email: user.email,
             avatar_url: user.avatar_url ?? null,
             must_change_password: user.must_change_password ?? false,

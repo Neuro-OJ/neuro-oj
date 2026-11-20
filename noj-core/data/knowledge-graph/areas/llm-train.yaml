@@ -1,0 +1,109 @@
+# 大模型训练、微调与对齐（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: llm-train
+name: 大模型训练、微调与对齐
+nodes:
+  - id: llm-train.pretraining-objectives
+    name: 预训练任务（下一词元预测、掩码语言模型）
+    summary: 掌握下一词元预测与掩码还原两类自监督目标的构造与损失计算，能说明它们各自适合怎样的下游任务
+    syllabus: [lmcc, ioai]
+    requires: [nlp.language-modeling, dl.self-supervised, llm.architectures]
+  - id: llm-train.pretraining-data
+    name: 预训练数据准备
+    summary: 了解网页、书籍、代码等语料从采集到清洗、去重与配比的全过程，能评估数据质量对模型能力的影响
+    syllabus: [lmcc]
+    requires: [llm-train.pretraining-objectives, llm.tokenizers]
+  - id: llm-train.batch-size
+    name: 批量大小与梯度累积
+    summary: 理解批量大小如何影响梯度噪声与吞吐，能用梯度累积在小显存下模拟大批量训练并设置合适的学习率
+    syllabus: [lmcc]
+    requires: [dl.sgd-minibatch, llm-train.pretraining-objectives]
+  - id: llm-train.param-count
+    name: 参数量计算
+    summary: 能根据层数、隐藏维度、词表大小等配置推算模型各部分的参数量与总规模，为显存与算力估算打基础
+    syllabus: [lmcc]
+    requires: [llm.transformer-config]
+  - id: llm-train.compute-memory
+    name: 训练运算量、时间与显存估算
+    summary: 掌握按词元数与参数量估算训练算力，以及根据参数、梯度、优化器状态与激活值估算显存需求的方法
+    syllabus: [lmcc]
+    requires: [llm-train.param-count, llm-train.batch-size]
+  - id: llm-train.mixed-precision
+    name: 训练精度与混合精度
+    summary: 理解半精度、混合精度训练及损失缩放的作用，能判断数值溢出与精度损失的来源并做出配置选择
+    syllabus: [lmcc]
+    requires: [llm-train.compute-memory, prog.pytorch-training]
+  - id: llm-train.parallelism
+    name: 分布式并行（数据、张量、流水线）
+    summary: 区分数据并行、张量并行与流水线并行的切分方式与通信代价，能为超出单卡容量的模型设计并行方案
+    syllabus: [lmcc]
+    requires: [llm-train.compute-memory]
+  - id: llm-train.efficient-training
+    name: 高效训练（FSDP、重计算、算子融合）
+    summary: 掌握分片参数、激活重计算与算子融合等省显存提速手段，能在有限硬件上增大可训练模型与批量的规模
+    syllabus: [lmcc]
+    requires: [llm-train.parallelism, llm-train.mixed-precision]
+  - id: llm-train.training-stability
+    name: 训练稳定性
+    summary: 认识损失尖峰、梯度爆炸与发散等训练异常，能通过梯度裁剪、学习率预热与日志监控来定位并缓解问题
+    syllabus: [lmcc]
+    requires: [llm-train.mixed-precision, dl.learning-rate]
+  - id: llm-train.instruction-tuning
+    name: 指令微调
+    summary: 理解用指令与回答配对数据继续训练模型的意义，能把预训练模型调整为按自然语言指令完成任务的助手
+    syllabus: [lmcc]
+    requires: [dl.fine-tuning, llm-train.pretraining-objectives]
+  - id: llm-train.instruction-data
+    name: 指令数据集构建
+    summary: 学习从任务描述、种子样例与人工标注出发构造指令数据的流程，能设计覆盖面合理、质量可控的小型数据集
+    syllabus: [lmcc]
+    requires: [llm-train.instruction-tuning]
+  - id: llm-train.instruction-data-enhancement
+    name: 指令数据增强（指令进化、自举）
+    summary: 了解用大模型改写任务、生成答案并筛选扩充数据的方法，能判断增强带来的多样性与噪声风险
+    syllabus: [lmcc]
+    requires: [llm-train.instruction-data]
+  - id: llm-train.sft-settings
+    name: 微调优化设置与数据组织
+    summary: 掌握微调阶段的学习率、轮数与损失掩码等设置，能合理组织多轮对话样本与批次拼接并监控效果
+    syllabus: [lmcc]
+    requires: [llm-train.instruction-tuning, llm-train.batch-size]
+  - id: llm-train.lora
+    name: LoRA
+    summary: 理解用低秩增量矩阵近似参数更新的原理，能在固定主干权重的前提下以很小代价完成模型适配任务
+    syllabus: [lmcc, ioai]
+    requires: [dl.peft, llm-train.instruction-tuning]
+  - id: llm-train.peft-variants
+    name: 其他参数高效微调（Adapter、Prefix、Prompt Tuning）
+    summary: 对比适配器、前缀与提示微调等方法的插入位置与可调参数量，能根据任务与资源选择合适方案
+    syllabus: [lmcc]
+    requires: [llm-train.lora]
+  - id: llm-train.alignment
+    name: 人类对齐目标（有用、诚实、无害）
+    summary: 理解对齐要解决的目标与预训练目标之间的落差，能用有用、诚实、无害三个维度描述期望的模型行为
+    syllabus: [lmcc]
+    requires: [llm-train.instruction-tuning]
+  - id: llm-train.preference-data
+    name: 偏好与反馈数据收集
+    summary: 了解如何让标注者或模型对多个回答排序、打分与撰写反馈，能构造可用于训练奖励模型的偏好数据
+    syllabus: [lmcc]
+    requires: [llm-train.alignment]
+  - id: llm-train.reward-model
+    name: 奖励模型训练
+    summary: 掌握以偏好对比为标签训练打分模型的方法，理解成对排序损失的设计及其对标注噪声的敏感性
+    syllabus: [lmcc]
+    requires: [llm-train.preference-data]
+  - id: llm-train.rlhf
+    name: 基于人类反馈的强化学习
+    summary: 理解以奖励模型为信号、用策略优化提升回答质量的完整流程，并能说明它与监督微调的互补关系
+    syllabus: [lmcc]
+    requires: [llm-train.reward-model, rl.policy-gradient]
+  - id: llm-train.dpo
+    name: 直接偏好优化（DPO）
+    summary: 掌握跳过显式奖励模型、直接用偏好对优化语言模型目标的思路，能比较它与强化学习方法在成本上的差异
+    syllabus: [lmcc]
+    requires: [llm-train.preference-data, llm-train.sft-settings]
+  - id: llm-train.hallucination
+    name: 幻象及其缓解
+    summary: 理解模型生成看似合理却与事实不符内容的成因，能借助检索、提示约束与偏好训练等手段降低幻象
+    syllabus: [lmcc]
+    requires: [llm-train.alignment]

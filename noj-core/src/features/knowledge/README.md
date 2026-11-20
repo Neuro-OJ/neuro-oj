@@ -1,0 +1,269 @@
+# knowledge — 知识图谱
+
+实例级的 AI 竞赛知识图谱：内容包（官方包 + 扩展包）的加载、校验与幂等导入，
+为题目挂载知识点、节点阶梯与掌握度提供数据基础。用户文档与完整设计见
+[openspec/changes/add-knowledge-graph/](../../../../openspec/changes/add-knowledge-graph/)。
+
+| 文件                      | 职责                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `index.ts`                | 唯一对外出口：`feature` 声明（含只读路由）与知识图谱能力导出                               |
+| `pack.ts`                 | `loadPackFromDir` / `validatePack` / `resolveOfficialPackDir`                              |
+| `import.ts`               | `importPack(dir)`：单事务幂等导入，统计新增/更新/废弃节点与边                              |
+| `graph.ts`                | 只读图视图 + 进程内 TTL 缓存（10 分钟）与 `invalidateKnowledgeGraphCache()`                |
+| `mappings.ts`             | 题目挂载：读取、人工挂载、审核、`applyAiMapping`（AI 结果落库）、比赛保护过滤              |
+| `tagging.ts`              | AI 打标：`knowledge.tag` 任务、提示词与截断、预算暂停、回填预估与管理 API 支撑             |
+| `offpeak.ts`              | 低峰时段纯函数：`isWithinWindow` / `nextWindowStart`（UTC+8）、设置读取与视图              |
+| `difficulty.ts`           | P2 难度：达标判定、校准公式、每日重算 worker、阶梯与「下一题」                             |
+| `pass-ratio.ts`           | 出题人按题覆盖及格线（`pass_ratio_override`），题目编辑权限 + 审计                         |
+| `objective-full-score.ts` | 客观题套卷满分（作答版本小题数 × 100，`evaluation_attempts` 记分口径）                     |
+| `coach.ts`                | P4 教练视角：班级掌握矩阵 `readClassMastery`、按知识点挑题 `readKnowledgePick`（均匀抽样） |
+| `routes.ts`               | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核、教练视角接口                |
+| `mappings.test.ts`        | 服务测试（权限、校验、整体替换、AI 不覆盖人工、审核流、保护期、废弃节点）                  |
+| `pack.test.ts`            | 纯函数测试（临时目录构造非法包 + 真实官方包 14 领域 / 181 节点）                           |
+| `import.test.ts`          | 导入测试（真实 PostgreSQL：首导、幂等、替换废弃、扩展、失败不写库）                        |
+| `routes.test.ts`          | API 测试（整图/详情/开关关闭/空库/缓存失效）                                               |
+| `tagging.test.ts`         | 打标测试（开关/hash/人工挂载/预算/别名未配置/重试/阈值/提示词稳定性/回填/鉴权/低峰顺延）   |
+| `offpeak.test.ts`         | 低峰时段纯函数测试（时段内外、跨零点、边界、下次开始、非法回退默认）                       |
+| `difficulty.test.ts`      | 校准公式/达标判定/阶梯排序与保护过滤/下一题/重算互斥/API 端到端                            |
+| `doc.test.ts`             | 讲解文档读取与目录穿越防护                                                                 |
+| `coach.test.ts`           | 教练视角（权限矩阵、活跃学生、稀疏 cells/counts、挑题均匀抽样/边界/保护期）                |
+
+## API（只读，挂在 `/api/v1`）
+
+- `GET /knowledge/graph` →
+  `{ data: { pack: { id, version } | null, areas: [{ id, name, sort }], nodes: [{ id, area, name, summary, syllabus, requires, doc }] } }`；
+  只含 `active` 节点与两端 active 的 `requires`，按领域 sort、节点 sort 排序；
+  无已导入包时 `pack: null`、areas/nodes 为空。
+- `GET /knowledge/nodes/:id` →
+  `{ data: { id, area, name, summary, syllabus, doc, requires, dependents } }`；
+  不存在或已废弃 → 404。
+- 两个接口采用可选鉴权（未登录可读）；`knowledge_enabled = false` 时返回 404，
+  `code: "KNOWLEDGE_DISABLED"`。
+
+## API（P1：题目挂载与审核）
+
+- `GET /knowledge/problems/:problemId`（可选鉴权）→
+  `{ data: { problem_id, state: "classified" | "unclassified", primary, secondary[], pending } }`；
+  条目字段
+  `node_id/name/role/source/confidence/review_status/version_id/updated_at`。
+  排除 `rejected` 挂载与 `deprecated` 节点；`pending` 计入已归类并置
+  `pending: true`。 题目在比赛保密保护期且查看者无编辑权限 →
+  404（与「不存在」不可区分）。
+- `PUT /knowledge/problems/:problemId`（鉴权 + 限流 30/min/用户）： body
+  `{ primary, secondary?: string[] }`；权限 = 题目编辑权限或实例管理员；
+  校验节点存在且 active、`secondary` ≤3 且不含 primary；**整体替换**为
+  `source='human', review_status='confirmed'`；审计 `knowledge.mapping.update`。
+- `GET /admin/knowledge/reviews?page&per_page`（实例管理员）→
+  `{ data: { items: [{ problem_id, title, domain_id, primary, secondary, updated_at }], total, page, limit } }`；
+  保护期题目不进队列。功能路由不经 admin 聚合中间件，路由内显式挂
+  `authMiddleware` + 实例管理员检查（`isUserAdmin`，与 `adminMiddleware`
+  同口径）。
+- `POST /admin/knowledge/reviews/:problemId`（实例管理员 + 限流 60/min/用户）：
+  body `{ decision: "accept" | "reject" }` 或 `{ primary, secondary }`。 accept
+  → 该题全部 `pending` 转 `confirmed`；reject → 转 `rejected`（题目回到
+  未归类，除非已有 `confirmed`/`auto` 主知识点）；修改 = 人工挂载。均写审计。
+- `problemId` 形态：**题目内部 ID（`problems.id` UUID）**，与
+  `/api/v1/problems/:id`、`/api/v1/admin/catalog/problems/:id` 一致；非 UUID →
+  400。
+- 以上接口均受 `knowledge_enabled` 约束：关闭时 404 `KNOWLEDGE_DISABLED`。
+
+## 表（P1，`src/shared/db/schema/knowledge.ts`）
+
+- `problem_knowledge`：`(problem_id, node_id)`
+  主键；`role ∈ {primary, secondary}`、
+  `source ∈ {ai, human}`、`review_status ∈ {auto, pending, confirmed, rejected}`、
+  `confidence` 0–100
+  可空（人工为空）、`version_id`、`updated_by`、`updated_at`；
+  部分唯一索引保证每题至多一条
+  `role='primary' AND review_status <> 'rejected'`。
+- `knowledge_tag_runs`：AI
+  打标运行记录（`status ∈ {succeeded, failed, skipped,
+  budget_paused}`，`raw_output`
+  jsonb，索引 `(problem_id, created_at)`）；本版本只建表， 由 `knowledge.tag`
+  任务写入。
+
+## 配置项（`src/shared/config/settings-registry.ts`，分类 `knowledge`，runtime 可热改）
+
+| key                                 | 类型 / 默认            | 用途                                                                      |
+| ----------------------------------- | ---------------------- | ------------------------------------------------------------------------- |
+| `knowledge_enabled`                 | boolean / true         | 总开关（env 兜底 `KNOWLEDGE_ENABLED`）                                    |
+| `knowledge_ai_tagging_enabled`      | boolean / false        | AI 打标开关（需网关配置别名 `platform.tagger`）                           |
+| `knowledge_auto_accept_threshold`   | integer / 75（0–100）  | AI 置信度不低于此值直接生效（auto），否则进入审核（pending）              |
+| `knowledge_ai_monthly_token_budget` | integer / 2000000      | 每月 token 预算（输入+输出合计，按自然月）；0 = 暂停所有调用              |
+| `knowledge_ai_offpeak_only`         | boolean / true         | 仅在低峰时段调用模型（env 兜底 `KNOWLEDGE_AI_OFFPEAK_ONLY`）              |
+| `knowledge_ai_offpeak_window`       | string / `00:30-08:30` | 低峰时段 `HH:MM-HH:MM`（北京时间），允许跨零点；写入按 `valueSchema` 校验 |
+| `knowledge_pass_ratio`              | integer / 60（0–100）  | 「达标」默认及格线百分数（非客观题；客观题恒为满分，可按题覆盖）          |
+
+缓存：图数据在进程内缓存 10 分钟（已登记于
+`dev-docs/engineering/domain-boundaries.md` 多副本约束表）；导入新包后同进程立即
+失效，其他副本最多 10 分钟内可见。
+
+关键约束：
+
+- 表 `knowledge_packs` / `knowledge_areas` / `knowledge_nodes` /
+  `knowledge_edges` 定义在 `src/shared/db/schema/knowledge.ts`。
+- 内容包格式：`pack.yaml`（`id`、`name`、`version`、`license`、`syllabi`、 可选
+  `extends: official@<version>`）+ `areas/<area>.yaml`；官方包在
+  `data/knowledge-graph/`，由仓库根门禁 `scripts/check-knowledge-pack.ts` 校验。
+- 节点 ID `<领域>.<名称>` 发布后不得改名或复用；删除只标记 `deprecated`。
+- 扩展包（P0 仅支持扩展官方包）导入时被扩展包一并生效，ID 冲突即失败；实例
+  任一时刻只有一个包 `active`。
+- 导入不删除节点与边以外的历史：废弃节点保留，边按新图整体重写。
+
+## AI 打标（P1，默认关闭）
+
+流程（`tagging.ts`，任务类型 `knowledge.tag`，target = 题目）：
+
+1. 总开关或 AI 打标开关关闭 → 不调用、不写记录（任务直接成功返回）。
+2. 题目无已发布版本 → 不调用。
+3. 内容 hash（题型、标题、题面、样例、评测模式、评测器摘要，含
+   `prompt_version`）与该题最近一次 `succeeded` 相同 → `skipped`。
+4. 已存在 `source='human'` 挂载 → `skipped`（AI 不覆盖人工）。
+5. 低峰时段（`offpeak.ts`）：`knowledge_ai_offpeak_only` 开启且当前不在
+   `knowledge_ai_offpeak_window` 内（北京时间，开始算在内、结束不算）→ **不调用
+   模型、不写 `knowledge_tag_runs`**，任务 `reschedule` 到下一个时段开始。该判断
+   在预算检查**之前**。
+6. 本月 `queryPlatformUsage("knowledge.tag")` 的输入+输出 token ≥ 预算（或预算为
+   0）→ `budget_paused`，任务 `reschedule` 到下个自然月起点。
+7. 调用网关
+   `platformCompletion({ purpose: "knowledge.tag", model_alias:
+   "platform.tagger" })`：别名未配置
+   → `skipped`；限流类错误抛出交由任务框架 退避重试；预算/配额类错误不重试（记
+   `budget_paused`）。
+8. 校验 JSON（primary/secondary 必须是 active 节点、secondary ≤3 且不含
+   primary、confidence ∈ [0,1]）；不合法再调用一次，仍不合法 → `failed`，
+   题目保持未归类。
+9. 合法 → `applyAiMapping`（≥ 阈值 auto，否则 pending），记录 `succeeded`
+   （tokens、model、raw_output）。
+
+成本控制要点：
+
+- system 消息 = 固定指令 + 全部 active 节点的 `id 名称`（**不含 summary**），
+  函数内按 id 排序，同一图谱版本内逐字节稳定，置于消息最前以命中服务商提示词
+  缓存；user 消息只含白名单字段（题型、标题、题面、公开样例、评测模式、
+  评测器截断摘要），题面 4000 / 样例 1000 / 评测器 1000 字符，合计约 6000；
+  不含隐藏测试数据与用户提交。
+- `max_tokens=300`、`temperature=0`、只输出 JSON。
+- **默认仅在低峰时段调用，时段可配置**：DeepSeek 在北京时间 00:30–08:30 提供
+  优惠价；打标不要求实时完成，默认只在该时段调用以降低成本。发布投递与回填投递
+  在时段外直接把任务的 `availableAt` 设为下一个时段开始，避免白天被反复领取再
+  顺延；时段外执行时同样顺延且不写记录。
+- 低峰时段的判断与投递各有一份 UTC+8 纯计算实现（`offpeak.ts` 与
+  `modules/problems/services/versioning/knowledge-tag-task.ts`）：旧模块不得
+  import 功能代码，设置键名即合同。
+- 触发：发布新版本成功后（`problems/services/versioning/publish.ts` 事务内）投递
+  任务，去重键 `tag:<versionId>`；开关关闭或草稿保存不投递。发布流程以字符串
+  任务类型约定投递，不 import 本目录。
+
+管理 API（实例管理员；`knowledge_enabled=false` 时 404）：
+
+- `GET /admin/knowledge/tagging/usage` → 本月 input/output/total token、请求数、
+  预算与剩余、`ai_tagging_enabled`、别名 `platform.tagger` 是否已配置（经网关
+  `/internal/model-aliases` 列表判断；网关不可达时 `alias_configured: null`），
+  以及 `offpeak: { enabled, window, next_start }`（关闭时 `next_start` 为
+  null）。
+- `GET /admin/knowledge/tagging/estimate` → 待回填题数（已发布、无人工挂载、
+  最新内容未成功打标）、固定前缀长度 + 平均题目长度 × `ESTIMATE_TOKENS_PER_CHAR`
+  （0.7，估算系数）+ 输出上限的 token 估算；网关未暴露单价，`estimated_cost` 为
+  null；另含
+  `offpeak: { enabled, window, next_start }`（回填任务同样在低峰时段执行）。
+- `POST /admin/knowledge/tagging/backfill`（限流 3/min/用户）：body 须带
+  `confirm: true` 与预估返回的 `expected_count`；实际数偏差超过 10% → 409
+  要求重新预估；保护期题目不投递；按题目去重投递，写审计。
+
+## 难度与阶梯（P2）
+
+- **达标**（`difficulty.ts`）：有效得分 ≥ 题目及格线。有效成绩只取练习有效成绩
+  （`submissions.effective_attempt_id` /
+  `objective_submissions.effective_attempt_id`）
+  与**已结束**比赛的成绩，进行中比赛不计。客观题套卷及格线 = 满分（作答版本
+  小题数 × 100）；其余题型 = `pass_ratio_override ?? knowledge_pass_ratio` ×
+  10000。复用于 P3 掌握度。
+- **校准**：`prior` 取出题人三档映射（easy 25 / medium 50 / hard 75；P1 未把 AI
+  难度落库，后续可改为读打标结果）；`d_data = (1 − 达标人数 / 尝试人数) × 100`
+  （尝试人数 =
+  有有效成绩的去重用户数）；`calibrated = round((k·prior +
+  n·d_data)/(k+n))`，k
+  = 20。`tier = <34 easy / <67 medium / 其余 hard`； 无 `problem_difficulty`
+  行时回退出题人三档。`recalibrateProblem(problemId)` 供 单题重算与测试。
+- **每日重算**：`index.ts` 经 `defineFeature({ workers })` 注册
+  `startDifficultyRecalibrateWorker`（`startPeriodicTask`，24h，启动后不立即
+  执行）。多副本互斥用事务级
+  `pg_try_advisory_xact_lock`（`runExclusiveRecalibration`），
+  拿不到锁的副本本轮直接跳过；只重算已发布且有挂载或有提交的题目，keyset 分批
+  200 题（`RECALIBRATE_BATCH_SIZE`）。总开关关闭时本轮不访问数据。
+- **讲解**：`GET /knowledge/nodes/:id` 的 `doc` 为内容包 `docs/` 下 markdown
+  原文（`readDocMarkdown`，拒绝 `..`、绝对路径与反斜杠；缺失为 null）。
+- **阶梯**：`GET /knowledge/nodes/:id/ladder?domain=<slug>` →
+  `{ node_id, domain, items: [{ problem_id, number, title, domain, difficulty,
+  tier, sample_size, passed }], next }`；只含该节点为**主动知识点**、已发布、
+  域绑定可用、非进行中比赛 / 保密保护期的题目，按 calibrated 升序（无校准行用
+  先验）。`next` = 难度 ≥ 用户已达标最高难度的第一道未达标题（未登录 = 第一题，
+  全部达标 = null）。
+- **题目页下一题**：`GET /knowledge/problems/:problemId/next` → 该题主知识点阶梯
+  中难度高于本题、用户未达标的第一题（无则 null）。
+- **只显示有题的知识点**：`GET /knowledge/graph?domain=<slug>` 给每个节点附
+  `problem_count`（与该域阶梯同口径，逐节点查询；实例规模小时够用）。
+- `GET/PUT /knowledge/problems/:problemId` 返回
+  `difficulty: { score, tier,
+  sample_size, pass_ratio_override }`；PUT 可带
+  `pass_ratio_override` （0–100 整数或 null 清除），与挂载同权限，审计
+  `knowledge.difficulty.pass_ratio`。
+- 表 `problem_difficulty`：`problem_id` 主键（FK `problems` 级联）、`prior` /
+  `calibrated` 0–100、`sample_size`、`pass_ratio_override` 可空、`updated_at`。
+
+测试：`cd noj-core && deno task test:domain knowledge`；发布投递用例在
+`modules/problems/tests/services/knowledge-tag-task.test.ts`（`test:domain problems`）。
+
+## 掌握度、推荐与覆盖度（P3，`mastery.ts`）
+
+- **物化表** `user_knowledge_mastery`（主键 `user_id, node_id`；`state` ∈
+  `none/learning/mastered`，另有 `solved_count`、`attempted_count`、
+  `failed_attempts`、`max_passed_difficulty`）。只统计以该节点为**主知识点**的
+  题目；成绩口径与 P2「达标」一致（练习有效成绩 + 已结束比赛，进行中比赛不计）。
+- **规则**（`computeNodeMastery`）：任一题达标 → `learning`；达标题数 ≥ K
+  （`knowledge_mastery_min_solved`，默认 3）且至少一道达标题位于该节点题目难度
+  上三分之一 → `mastered`；节点题量 < K 时需全部达标。
+- **增量重算**：有效成绩物化写入点（`evaluations/.../projection.ts`）经
+  `modules/runtime/knowledge-mastery-task.ts` 在同一事务登记 `knowledge.mastery`
+  任务（target = 用户，按用户去重），handler 调 `recomputeUserMastery(userId)`
+  重算该用户所有相关节点；开关关闭时直接成功结束。
+- **保护结束补算**：`startMasteryProtectionWorker`（1h 周期，事务级 advisory
+  锁多副本互斥）对过去 24h 内结束的比赛题目相关用户重算。
+- **推荐**（`readMyRecommendations` / `rankFrontierNodes`）：前沿节点 = 前置均
+  已掌握（入门节点视为满足）、自身未掌握、本域有可访问题目；`learning` 优先，
+  再按领域与节点 sort。每条带 `reason: { code, params }`： `continue_learning` /
+  `prerequisites_mastered` / `entry_point` / `review_prerequisite`（在某节点
+  `failed_attempts` ≥ 3 且有未掌握前置时，推荐先 补前置）。推荐题复用 P2 阶梯的
+  `next`。
+- **API**：`GET /knowledge/me/mastery?domain=`、
+  `GET /knowledge/me/recommendations?domain=&limit=5`（上限 20）、
+  `GET /knowledge/nodes/:id/diagnosis?domain=`（未掌握前置链，最多 5 个；未登录
+  返回空）、`GET /admin/knowledge/coverage?domain=`（实例管理员看全实例；带
+  `domain` 时本域 `problem:write_any` 也可看）。
+- **覆盖度**（`readCoverage`，聚合 SQL）：每节点题量、三档难度分布、题量不足 （<
+  K）、难度断层（题量已足但无「困难」档题，按校准难度绝对值判断）、未归类题、
+  待确认与失效挂载数，以及汇总。
+
+## P4 教练视角（`coach.ts`）
+
+- **权限**：`loadClassroom(slug, classroomId, userId)` +
+  `assertClassroomCoach(access)`（仅经
+  `src/modules/education/index.ts`）。域教练 /
+  域管理员（`classroom:manage_any`）/ 平台管理员可用；学生 → 403
+  `CLASSROOM_PERMISSION_DENIED`；非成员 → 404（不暴露班级是否存在）；未登录 →
+  401。班级按「历史学生可见」读取（与 `GET /classrooms/:id` 同口径）。
+  `knowledge_enabled = false` → 404 `KNOWLEDGE_DISABLED`。
+- **`GET /domains/:slug/classrooms/:id/knowledge-mastery`**：`students` 为班级
+  `status='active'` 的学生（按 username 排序；账号暂无昵称列，`display_name`
+  恒为 null）。`areas[].nodes[]` 只列本域有可访问题目（`problem_count > 0`，与
+  P2/P3 同口径）或班级成员有 `learning`/`mastered` 记录的非废弃节点，按领域与
+  节点 sort 排序，空领域不出现。`cells` 稀疏（只含 `learning`/`mastered`），
+  `counts` 三项之和恒等于学生数。取数：一次取学生 + 一次取（学生 × 节点）掌握
+  记录 + 复用 `loadNodeProblems` 的域题量，不逐学生/节点查库。
+- **`GET /domains/:slug/classrooms/:id/knowledge-pick?node=&count=`**：候选复用
+  `loadLadderItems`（主知识点、已发布、域绑定可用、非进行中比赛 / 保密保护期，
+  难度升序）。`count` 缺省 5，范围 1–20（越界 400），缺 `node` 400，节点不存在
+  或已废弃 404。候选 ≤ count 全返回，否则第 i 个取下标
+  `ceil(i*(n-1)/(count-1))`（即 `round` 的向上取整，7 取 3 → 0/3/6），
+  `count = 1` 取中位（`floor(n/2)`）。只返回题目列表，不创建作业。

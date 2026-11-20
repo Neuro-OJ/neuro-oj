@@ -15,7 +15,6 @@ const TYPE_LABELS: Record<string, string> = {
   community_comment: '评论',
   contest: '竞赛',
   submission: '提交',
-  message: '消息',
   announcement: '公告',
 };
 
@@ -26,7 +25,6 @@ const ICON_TEXTS: Record<string, string> = {
   community_comment: '评',
   contest: '赛',
   submission: '交',
-  message: '信',
   announcement: '告',
 };
 
@@ -37,7 +35,6 @@ const ICON_CLASSES: Record<string, string> = {
   community_comment: 'bg-amber-50 text-amber-700',
   contest: 'bg-purple-50 text-purple-700',
   submission: 'bg-gray-100 text-gray-700',
-  message: 'bg-green-50 text-green-700',
   announcement: 'bg-red-50 text-red-700',
 };
 
@@ -75,8 +72,6 @@ export function itemHref(item: SearchItem, fallback = ''): string {
       return `/contests/${item.entity_id}`;
     case 'submission':
       return `/submissions/${item.entity_id}`;
-    case 'message':
-      return `/messages?conversation=${String(item.metadata.conversation_id ?? '')}`;
     case 'announcement':
       return `/announcements/${item.entity_id}`;
     default:
@@ -125,8 +120,6 @@ export function metaLine(item: SearchItem): string {
       return `${String(m.kind ?? '')} · ${String(m.is_public ? '公开' : '邀请')}`;
     case 'submission':
       return `${String(m.language ?? '')} · ${String(m.status ?? '')}`;
-    case 'message':
-      return `私信 · ${String(m.sent_at ?? '')}`;
     case 'announcement':
       return '公告';
     default:

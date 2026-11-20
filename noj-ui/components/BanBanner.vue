@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import type { IpBanInfo, UserBanInfo } from "~/composables/useBanStatus"
 
-definePageMeta({
-  ssr: false,
-})
-
 const props = defineProps<{
   type: "ip" | "user"
   ipInfo?: IpBanInfo | null

@@ -1,7 +1,11 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "@std/path";
+import { unzipSync, zipSync } from "fflate";
+import { parseBundleZip } from "../../../noj-core/src/modules/problems/services/bundle-parser.ts";
+import { validateBundleManifest } from "../../../noj-core/src/modules/problems/types/problem-bundle.ts";
 import { lintBundle, runQualityRules } from "./lint.ts";
 import { packBundle, shouldExclude } from "./pack.ts";
+import { migrateManifest } from "./migrate.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
 import { bundleSlug, parseProblemArgs } from "./command.ts";
 
@@ -9,8 +13,6 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
   const a = parseProblemArgs([
     "init",
     "my-problem",
-    "--type",
-    "P",
     "--difficulty",
     "hard",
     "--title",
@@ -21,7 +23,6 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
   ]);
   assertEquals(a.sub, "init");
   assertEquals(a.slug, "my-problem");
-  assertEquals(a.type, "P");
   assertEquals(a.difficulty, "hard");
   assertEquals(a.title, "标题");
   assertEquals(a.judgeType, "oi");
@@ -96,7 +97,7 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   assertEquals(shouldExclude("problem.json"), false);
 });
 
-Deno.test("评审 P1: bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
+Deno.test("bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
   // 修复前用 dir.split("/")，Windows 路径会返回整条路径，
   // join(outDir, slug + ".zip") 因此把盘符/分隔符带进输出路径。
   assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b"), "a-plus-b");
@@ -111,7 +112,7 @@ Deno.test("packBundle: 排除项不出现在产物中，且可被解压回来", 
   const enc = new TextEncoder();
   const result = packBundle({
     entries: {
-      "problem.json": enc.encode('{"format_version":1,"title":"t"}'),
+      "problem.json": enc.encode('{"format_version":2,"title":"t"}'),
       "evaluate.py": enc.encode("print(1)"),
       "submission.py": enc.encode("SECRET"),
       "__pycache__/x.pyc": enc.encode("junk"),
@@ -125,7 +126,7 @@ Deno.test("lintBundle: 合法包无 error", () => {
   const report = lintBundle({
     texts: {
       "problem.json": JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: "t",
         runtime_config: {
           evaluator: {
@@ -146,7 +147,7 @@ Deno.test("lintBundle: 合法包无 error", () => {
 
 Deno.test("lintBundle: OI 包不要求 evaluate.py 且检查测试点文件", () => {
   const base = {
-    format_version: 1,
+    format_version: 2,
     title: "oi",
     judge_type: "oi",
     runtime_config: {
@@ -203,7 +204,7 @@ Deno.test("lintBundle: 缺 manifest / 缺 evaluator / JSON 非法均为 error", 
   const noEvaluator = lintBundle({
     texts: {
       "problem.json": JSON.stringify({
-        format_version: 1,
+        format_version: 2,
         title: "t",
         runtime_config: {
           evaluator: {
@@ -280,31 +281,6 @@ Deno.test("runQualityRules: 隐藏用例泄露到可见文件 → 警告", () =>
   );
 });
 
-Deno.test("runQualityRules: manifest.samples 已废弃 → 警告", () => {
-  const findings = runQualityRules({
-    files: { texts: {}, names: [] },
-    manifest: { samples: [{ input: "1 2", output: "3" }] },
-  });
-  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
-  assertEquals(finding?.rule, "quality/deprecated-samples");
-  // 必须是 warn：一旦被误升级为 error，带 samples 的存量题包会被 pack 拒绝
-  assertEquals(finding?.level, "warn");
-  assertEquals(finding?.file, "problem.json");
-  // 打包判定只看 hasError，warn 不得阻断
-  assertEquals(findings.some((f) => f.level === "error"), false);
-});
-
-Deno.test("runQualityRules: samples 为非法形状（字符串）同样只告警不报错", () => {
-  // 软废弃后不再校验形状：历史坏值也必须能打包，只在 warning 里可见
-  const findings = runQualityRules({
-    files: { texts: {}, names: [] },
-    manifest: { samples: "legacy-shape" },
-  });
-  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
-  assertEquals(finding?.level, "warn");
-  assertEquals(findings.some((f) => f.level === "error"), false);
-});
-
 Deno.test("runQualityRules: 无 samples → 不告警", () => {
   const findings = runQualityRules({
     files: { texts: {}, names: [] },
@@ -322,7 +298,6 @@ Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => 
     const r = await initProblemScaffold({
       slug: "my-problem",
       root,
-      type: "P",
       difficulty: "easy",
       title: "标题",
     });
@@ -331,7 +306,13 @@ Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => 
       await Deno.readTextFile(join(r.dir, "problem.json")),
     );
     assertEquals(manifest.title, "标题");
-    assertEquals(manifest.type, "P");
+    // 格式 3 最小 manifest：只有判别字段与元数据，runtime_config 走平台缺省
+    assertEquals(manifest, {
+      format_version: 3,
+      kind: "ai",
+      title: "标题",
+      difficulty: "easy",
+    });
 
     // 二次调用：目录非空 → 拒绝
     await assertRejects(() =>
@@ -353,7 +334,7 @@ Deno.test("initProblemScaffold: 生成传统 OI 题包骨架", async () => {
     const manifest = JSON.parse(
       await Deno.readTextFile(join(result.dir, "problem.json")),
     );
-    assertEquals(manifest.judge_type, "oi");
+    assertEquals(manifest.kind, "oi");
     assertEquals(manifest.runtime_config.backend, "native");
     assertEquals(
       await Deno.stat(join(result.dir, "testdata/1.in")).then((s) => s.isFile),
@@ -397,42 +378,14 @@ Deno.test("initProblemScaffold: 拒绝符号链接目标", async () => {
   }
 });
 
-Deno.test("initProblemScaffold: 非法 type/difficulty 拒绝", async () => {
+Deno.test("initProblemScaffold: 非法 difficulty 拒绝", async () => {
   const root = await Deno.makeTempDir();
   try {
-    await assertRejects(() =>
-      initProblemScaffold({ slug: "x-y-z", root, type: "Z" })
-    );
     await assertRejects(() =>
       initProblemScaffold({ slug: "x-y-z", root, difficulty: "insane" })
     );
   } finally {
     await Deno.remove(root, { recursive: true });
-  }
-});
-
-// ── 评审修正：vendored 副本的同步警示必须存在（issue #514 硬要求）──────
-
-Deno.test("vendored 副本：每个文件都必须有同步警示与原始路径", async () => {
-  const dir = new URL("./vendor/", import.meta.url);
-  const files: string[] = [];
-  for await (const e of Deno.readDir(dir)) {
-    if (e.isFile && e.name.endsWith(".ts")) files.push(e.name);
-  }
-  assertEquals(files.length > 0, true, "vendor 目录不应为空");
-  for (const name of files) {
-    const text = await Deno.readTextFile(new URL(name, dir));
-    assertEquals(
-      text.includes("本文件是 noj-core 的刻意副本"),
-      true,
-      `${name} 缺少「刻意副本」警示`,
-    );
-    // 必须写明原始路径，否则无法同步
-    assertEquals(
-      /原始路径：noj-core\//.test(text),
-      true,
-      `${name} 缺少原始路径`,
-    );
   }
 });
 
@@ -443,4 +396,112 @@ Deno.test("pack: 模板文件必须进包（平台据此填充编辑器初始代
   assertEquals(shouldExclude("template.py"), false);
   assertEquals(shouldExclude("custom-tpl.py"), false);
   assertEquals(shouldExclude("templates/template.py"), false);
+});
+
+Deno.test("packBundle: 旧 P 包输出格式 3，移除执行配置且保留源文件", () => {
+  const manifest = {
+    format_version: 1,
+    type: "P",
+    title: "旧题",
+    llm: {
+      max_calls: 3,
+      model: "source-model",
+      provider_id: "source",
+      api_key: "private",
+    },
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(manifest));
+  const packed = packBundle({
+    entries: { "problem.json": bytes, "evaluate.py": new Uint8Array() },
+  });
+  const normalized = JSON.parse(
+    new TextDecoder().decode(unzipSync(packed.data)["problem.json"]!),
+  );
+  assertEquals(normalized.format_version, 3);
+  assertEquals(normalized.kind, "ai");
+  assertEquals("type" in normalized, false);
+  assertEquals(normalized.llm, { max_calls: 3 });
+  // 不写入平台缺省值：runtime_config 仍由导入时补全
+  assertEquals("runtime_config" in normalized, false);
+  assertEquals(JSON.parse(new TextDecoder().decode(bytes)), manifest);
+});
+
+Deno.test("parseProblemArgs: --type 已退役，要求通过导入指定 Domain", () => {
+  let error: Error | undefined;
+  try {
+    parseProblemArgs(["init", "abc", "--type", "P"]);
+  } catch (caught) {
+    error = caught as Error;
+  }
+  assertEquals(error?.message.includes("--domain"), true);
+});
+
+Deno.test("CLI parser: Hydro OI 导入规范为格式 3，与新脚手架保持一致", () => {
+  const encode = (value: string) => new TextEncoder().encode(value);
+  const parsed = parseBundleZip(zipSync({
+    "problem.yaml": encode("title: A+B\n"),
+    "problem.md": encode("# A+B"),
+    "testdata/1.in": encode("1 2\n"),
+    "testdata/1.out": encode("3\n"),
+  }));
+  const manifest = validateBundleManifest(parsed.manifest);
+  assertEquals(manifest.format_version, 3);
+  assertEquals(manifest.kind, "oi");
+  assertEquals(manifest.judge_type, "oi");
+  assertEquals("type" in manifest, false);
+});
+
+Deno.test("migrateManifest: 格式 2 改写为格式 3，保留等价语义", () => {
+  const source = JSON.stringify({
+    format_version: 2,
+    title: "套卷",
+    is_objective: true,
+    domain_id: "d1",
+  });
+  const result = migrateManifest(source);
+  assertEquals(result.changed, true);
+  assertEquals(JSON.parse(result.text), {
+    format_version: 3,
+    kind: "objective",
+    title: "套卷",
+  });
+  assertEquals(
+    result.warnings.some((w) => w.includes("noj problem migrate")),
+    false,
+  );
+});
+
+Deno.test("migrateManifest: 已是格式 3 时不改写", () => {
+  const source = JSON.stringify({ format_version: 3, kind: "ai", title: "A" });
+  const result = migrateManifest(source);
+  assertEquals(result.changed, false);
+  assertEquals(result.text, source);
+});
+
+Deno.test("migrateManifest: 非法 JSON 与未知版本报错", () => {
+  assertThrows(() => migrateManifest("{"), Error, "不是合法 JSON");
+  assertThrows(
+    () => migrateManifest(JSON.stringify({ format_version: 9, title: "A" })),
+    Error,
+    "不支持的 manifest 格式版本",
+  );
+});
+
+Deno.test("lintBundle: 旧格式给出升级告警但不报错", () => {
+  const report = lintBundle({
+    names: ["problem.json", "evaluate.py", "statement.md"],
+    texts: {
+      "problem.json": JSON.stringify({
+        format_version: 2,
+        title: "A",
+        runtime_config: {},
+      }),
+      "statement.md": "# A",
+    },
+  });
+  assertEquals(report.hasError, false);
+  assertEquals(
+    report.findings.some((f) => f.rule === "format/upgrade"),
+    true,
+  );
 });

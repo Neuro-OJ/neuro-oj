@@ -10,10 +10,8 @@ const TAB = String.fromCharCode(9);
 /**
  * .env.prod 读写原语：唯一配置格式（纯文本 KEY=value）的低层读写。
  *
- * 语义逐字对照 scripts/deploy/deploy.sh：
- * - env_value()（:181-191）—— 行首前缀匹配 + 首个匹配即返回 + 成对引号剥一层
- * - set_env_value()（:200-218）—— 就地替换全部 ^key= 行 + 未匹配则追加 +
- *   临时文件 chmod 600 + 原子 mv
+ * - 读：行首前缀匹配 + 首个匹配即返回 + 成对引号剥一层
+ * - 写：就地替换全部 ^key= 行 + 未匹配则追加 + 临时文件 chmod 600 + 原子 rename
  */
 
 /** 生产配置文件权限：仅属主可读写。 */
@@ -22,7 +20,7 @@ export const ENV_FILE_MODE = 0o600;
 /**
  * 去掉行尾的 CR（CRLF）与空白（空格 / Tab）。
  *
- * bash awk 读到 CR 时值会带上它；本实现按解析器惯例归一化行尾，避免 CRLF 文件的
+ * 按解析器惯例归一化行尾，避免 CRLF 文件的
  * 值被 CR 污染（否则成对引号剥离会因尾字符是 CR 而失效）。
  */
 function normalizeLine(raw: string): string {
@@ -38,7 +36,6 @@ function normalizeLine(raw: string): string {
 
 /**
  * 剥掉成对的首尾引号（单或双），只剥一层；引号不配对或长度不足 2 则原样返回。
- * 等价 bash 的 case """*"""|"'"*"'" 模式。
  */
 function stripQuotes(value: string): string {
   const first = value[0];
@@ -57,7 +54,7 @@ function stripQuotes(value: string): string {
  * - 跳过空行与 # 注释行（注释行即使形如 #KEY=... 也不产生键）。
  * - 只在首个等号处分割，值内允许再出现等号。
  * - 值若被成对的单引号或双引号包裹，剥掉一层引号。
- * - 同一键出现多次时取首个（与 bash env_value 首个匹配即 exit 一致）。
+ * - 同一键出现多次时取首个。
  */
 export function parseEnvFile(text: string): Map<string, string> {
   const entries = new Map<string, string>();
@@ -67,7 +64,7 @@ export function parseEnvFile(text: string): Map<string, string> {
     const eq = line.indexOf("=");
     if (eq <= 0) continue;
     const key = line.slice(0, eq);
-    // 首个匹配优先：后续同键行忽略，与 bash 的 exit 一致。
+    // 首个匹配优先：后续同键行忽略。
     if (entries.has(key)) continue;
     entries.set(key, stripQuotes(line.slice(eq + 1)));
   }
@@ -160,6 +157,26 @@ export async function readEnvFile(path: string): Promise<Map<string, string>> {
   return parseEnvFile(text);
 }
 
+/** 读取 .env.prod 为键值表；文件不存在时抛错（同 {@link readEnvFile}）。 */
+export async function readEnvValues(
+  path: string,
+): Promise<Record<string, string>> {
+  return Object.fromEntries(await readEnvFile(path));
+}
+
+/** 读取 .env.prod 为键值表；文件缺失或不可读时返回空表。 */
+export async function readEnvValuesOrEmpty(
+  path: string,
+): Promise<Record<string, string>> {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    return {};
+  }
+  return Object.fromEntries(parseEnvFile(text));
+}
+
 /**
  * 原子写入 .env.prod：同目录临时文件 -> chmod 600 -> rename 覆盖。
  *
@@ -188,7 +205,7 @@ export async function writeEnvFileAtomic(
     } finally {
       file.close();
     }
-    // 显式 chmod：open 的 mode 会被 umask 裁剪，而 bash set_env_value 恒为 600。
+    // 显式 chmod：open 的 mode 会被 umask 裁剪，配置文件须恒为 600。
     await Deno.chmod(tmp, ENV_FILE_MODE);
     await Deno.rename(tmp, path);
   } catch (err) {

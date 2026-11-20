@@ -1,0 +1,1 @@
+DROP TABLE "carousel_slides" CASCADE;

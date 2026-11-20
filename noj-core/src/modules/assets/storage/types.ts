@@ -1,0 +1,402 @@
+/**
+ * StorageProvider 抽象接口与 URL 工具
+ *
+ * 定义两种 URL 空间：
+ * - `noj-storage://` — DB 持久存储层，标识资源在存储后端的位置
+ * - `noj-download://` — Judge 交付层，描述 judge 如何获取支持包内容
+ *
+ * @module
+ */
+
+// ── URL 类型定义 ─────────────────────────────────────────────
+
+/** `noj-storage://` URL 的解析结果 */
+export interface ParsedStorageUrl {
+  /** 存储后端标识：`local` 或 `s3` */
+  provider: "local" | "s3";
+  /** 存储后端内的资源路径（local 模式下为 base64 编码；S3 模式下为对象键） */
+  key: string;
+  /** SHA-256 校验和（十六进制），可能为空 */
+  checksumSha256?: string;
+}
+
+/** `noj-download://` URL 的解析结果 */
+export interface ParsedDownloadUrl {
+  /** 下载方式：`base64`（内嵌数据）、`s3`（presigned URL）或 `local`（本地共享文件系统） */
+  mode: "base64" | "s3" | "local";
+  /** base64 模式下的原始内容（base64 编码） */
+  content?: string;
+  /** S3 模式下的 presigned URL（已百分号解码） */
+  url?: string;
+  /** local 模式下的绝对文件路径（已百分号解码） */
+  path?: string;
+  /** SHA-256 校验和（十六进制），可能为空 */
+  checksumSha256?: string;
+}
+
+/**
+ * 存储后端中的对象清单项。
+ *
+ * 该类型只用于只读 inventory/audit；列举对象不会改变存储状态。
+ */
+export interface StorageObjectInfo {
+  /** provider 内的对象 key（local 模式为 URL 中的逻辑 key） */
+  key: string;
+  /** 对象字节数；后端无法提供时为 null */
+  sizeBytes: number | null;
+  /** 后端提供的最后修改时间；无法提供时为 null */
+  lastModified: string | null;
+}
+
+/**
+ * 对象存在性与大小的查询结果（`StorageProvider.stat`）。
+ *
+ * 用于**确认对象真实存在**（Handbook §2.5）：发布预检、存量对象首次核实、
+ * 删除前的存在性判断都依赖它，不能只看数据库登记行。
+ */
+export interface StorageObjectStat {
+  /** 对象是否存在于后端。 */
+  exists: boolean;
+  /** 对象字节数；后端无法提供时为 null。 */
+  sizeBytes: number | null;
+  /** 最后修改时间（ISO 8601）；无法提供时为 null。 */
+  lastModified: string | null;
+}
+
+// ── URL 常量 ─────────────────────────────────────────────────
+
+export const STORAGE_URL_PREFIX = "noj-storage://";
+export const DOWNLOAD_URL_PREFIX = "noj-download://";
+
+// ── StorageProvider 接口 ─────────────────────────────────────
+
+/**
+ * 抽象存储层接口
+ *
+ * 参考项目中已有的 email-provider 模式，通过环境变量选择实现。
+ * 支持本地文件系统和 S3 兼容对象存储两种后端。
+ */
+export interface StorageProvider {
+  /**
+   * 存储数据并返回 `noj-storage://` URL
+   *
+   * @param key 存储键（local 模式下为 base64 编码路径；S3 模式下为对象键）
+   * @param data 原始字节数据
+   * @param contentType 内容类型（S3 模式下使用）
+   * @returns `noj-storage://` URL，包含 checksum_sha256
+   */
+  put(key: string, data: Uint8Array, contentType?: string): Promise<string>;
+
+  /**
+   * 预测 `put()` 将返回的 `noj-storage://` URL（**不写盘、不发请求**）。
+   *
+   * 用途：Handbook §2.5 要求"物理上传**之前**先写上传预约
+   * （`reserveStorageObjectUpload`）"，而预约以存储 URL 为准。local 是内容寻址、
+   * S3 用调用方选定的 key，二者都能由 `key` + 内容 SHA-256 唯一决定，因此调用方
+   * 可以先把 URL 算出来登记预约，再执行真正的上传。
+   *
+   * 实现必须与同实现的 `put()` 返回完全一致（`put` 应复用本方法）。
+   *
+   * @param key 存储键（local 忽略，内容寻址；S3 为对象键）
+   * @param sha256Hex 内容 SHA-256（十六进制小写）
+   * @param contentType 内容类型（local 用于推导扩展名）
+   * @returns 与 `put()` 相同格式的 `noj-storage://` URL
+   */
+  urlForUpload?(
+    key: string,
+    sha256Hex: string,
+    contentType?: string,
+  ): string;
+
+  /**
+   * 流式存储数据并返回 `noj-storage://` URL。
+   *
+   * 用于大文件（如 artifact zip）上传，内存占用 O(1)（S3 模式使用固定
+   * 5MB 分片缓冲）。实现必须计算 SHA-256 并写入返回 URL 的 checksum。
+   *
+   * @param key 存储键（local 模式下忽略，内容寻址；S3 模式下为对象键）
+   * @param stream 输入字节流
+   * @param contentType 内容类型（S3 模式下使用）
+   * @param maxSizeBytes 可选大小上限，超过时中止并抛错
+   * @returns `noj-storage://` URL，包含 checksum_sha256
+   */
+  putStream(
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string>;
+
+  /**
+   * 根据 `noj-storage://` URL 读取数据
+   *
+   * @param url `noj-storage://` URL
+   * @returns 原始字节数据
+   */
+  get(url: string): Promise<Uint8Array>;
+
+  /** 服务端授权下载使用流读取，避免把整份产物载入内存。 */
+  getStream(url: string): Promise<ReadableStream<Uint8Array>>;
+
+  /**
+   * 根据 `noj-storage://` URL 删除数据
+   *
+   * @param url `noj-storage://` URL
+   */
+  delete(url: string): Promise<void>;
+
+  /**
+   * 将 `noj-storage://` URL 转换为 `noj-download://` URL（Judge 交付层）
+   *
+   * @param storageUrl `noj-storage://` URL
+   * @param expiresIn 有效期（秒），仅 S3 模式有效
+   * @returns `noj-download://` URL
+   */
+  downloadUrl(storageUrl: string, expiresIn?: number): Promise<string>;
+
+  /**
+   * 确保存储后端就绪（如 S3 bucket 存在）
+   * 非致命——失败仅 warn，不阻止启动
+   */
+  ensureBucket?(): Promise<void>;
+
+  /**
+   * 查询对象存在性与大小（不读取内容）。
+   *
+   * - local：使用文件系统元数据；
+   * - S3：使用对象元数据查询（HEAD）。
+   *
+   * 对象不存在时返回 `{ exists: false }`，**不抛错**——调用方据此把登记行
+   * 标记为 `missing` 或让删除流程继续。
+   */
+  stat(url: string): Promise<StorageObjectStat>;
+
+  /**
+   * 只读列举对象，用于生命周期盘点和容量观测。
+   *
+   * 实现不得在此方法中执行删除、覆盖或改变对象元数据。
+   */
+  listObjects?(): Promise<StorageObjectInfo[]>;
+}
+
+// ── `noj-storage://` URL 工具 ────────────────────────────────
+
+/**
+ * 判断字符串是否为 `noj-storage://` URL
+ */
+export function isStorageUrl(value: string): boolean {
+  return value.startsWith(STORAGE_URL_PREFIX);
+}
+
+/**
+ * 校验存储 key（所有 provider 读写前 MUST 调用）。
+ *
+ * 拒绝空 key、绝对路径、`..` 段、空段/`.` 段（避免 S3 前缀歧义）、
+ * 反斜杠与 NUL。S3 允许受控的 `/` 前缀（如 packages/<id>.zip）；
+ * local provider 会在此之上进一步禁止任何 `/`。
+ */
+export function validateStorageKey(key: string): void {
+  if (!key || key.length === 0) {
+    throw new Error("存储 key 不能为空");
+  }
+  if (key.length > 1024) {
+    throw new Error("存储 key 过长");
+  }
+  if (key.startsWith("/") || key.includes("\\") || key.includes("\0")) {
+    throw new Error(`存储 key 非法: ${key}`);
+  }
+  const segments = key.split("/");
+  if (segments.some((seg) => seg === ".." || seg === "." || seg === "")) {
+    throw new Error(`存储 key 不得包含路径穿越或空段: ${key}`);
+  }
+}
+
+/**
+ * 解析 `noj-storage://` URL
+ *
+ * 格式：
+ *   noj-storage://local/<base64>?checksum_sha256=<hex>
+ *   noj-storage://s3/<key>?checksum_sha256=<hex>
+ *
+ * 解析时执行语法白名单与 key 规范化校验；非受控 provider 直接拒绝。
+ *
+ * @throws {Error} 非 `noj-storage://` 前缀 / 非法 provider / 非法 key
+ */
+export function parseStorageUrl(url: string): ParsedStorageUrl {
+  if (!isStorageUrl(url)) {
+    throw new Error(`不是合法的 noj-storage:// URL: ${url}`);
+  }
+
+  const withoutPrefix = url.slice(STORAGE_URL_PREFIX.length);
+  const queryStart = withoutPrefix.indexOf("?");
+
+  let path: string;
+  let checksumSha256: string | undefined;
+
+  if (queryStart === -1) {
+    path = withoutPrefix;
+  } else {
+    path = withoutPrefix.slice(0, queryStart);
+    const query = withoutPrefix.slice(queryStart + 1);
+    const params = new URLSearchParams(query);
+    checksumSha256 = params.get("checksum_sha256") ?? undefined;
+  }
+
+  const slashIndex = path.indexOf("/");
+  if (slashIndex === -1) {
+    // 只有 provider 无 key（provider 层会拒绝空 key）
+    return { provider: path as "local" | "s3", key: "", checksumSha256 };
+  }
+
+  const provider = path.slice(0, slashIndex) as "local" | "s3";
+  if (provider !== "local" && provider !== "s3") {
+    throw new Error(`不是合法的 storage provider: ${provider}`);
+  }
+  const key = path.slice(slashIndex + 1);
+
+  // key 安全校验由 provider 在读写前执行（parse 保持兼容，仅拒绝 provider 非法）。
+  return { provider, key, checksumSha256 };
+}
+
+/**
+ * 构建 `noj-storage://` URL
+ */
+export function buildStorageUrl(
+  provider: "local" | "s3",
+  key: string,
+  checksumSha256?: string,
+): string {
+  let url = `${STORAGE_URL_PREFIX}${provider}/${key}`;
+  if (checksumSha256) {
+    url += `?checksum_sha256=${checksumSha256}`;
+  }
+  return url;
+}
+
+// ── `noj-download://` URL 工具 ───────────────────────────────
+
+/**
+ * 判断字符串是否为 `noj-download://` URL
+ */
+export function isDownloadUrl(value: string): boolean {
+  return value.startsWith(DOWNLOAD_URL_PREFIX);
+}
+
+/**
+ * 解析 `noj-download://` URL
+ *
+ * 格式：
+ *   noj-download://base64/?content=[base64]&checksum_sha256=<hex>
+ *   noj-download://s3?url=[percent-encoded-presigned-URL]&checksum_sha256=<hex>
+ */
+export function parseDownloadUrl(url: string): ParsedDownloadUrl {
+  const withoutPrefix = url.slice(DOWNLOAD_URL_PREFIX.length);
+
+  // Extract host (before first / or ?)
+  const queryStart = withoutPrefix.indexOf("?");
+  const hostEnd = queryStart === -1 ? withoutPrefix.length : queryStart;
+  const slashIndex = withoutPrefix.indexOf("/");
+  const host = (slashIndex !== -1 && slashIndex < hostEnd)
+    ? withoutPrefix.slice(0, slashIndex)
+    : withoutPrefix.slice(0, hostEnd);
+
+  const query = queryStart === -1 ? "" : withoutPrefix.slice(queryStart + 1);
+  const params = new URLSearchParams(query);
+
+  const checksumSha256 = params.get("checksum_sha256") ?? undefined;
+
+  if (host === "base64") {
+    return {
+      mode: "base64",
+      content: params.get("content") ?? undefined,
+      checksumSha256,
+    };
+  }
+
+  if (host === "s3") {
+    const rawUrl = params.get("url");
+    return {
+      mode: "s3",
+      url: rawUrl ? decodeURIComponent(rawUrl) : undefined,
+      checksumSha256,
+    };
+  }
+
+  if (host === "local") {
+    const rawPath = params.get("path");
+    return {
+      mode: "local",
+      path: rawPath ? decodeURIComponent(rawPath) : undefined,
+      checksumSha256,
+    };
+  }
+
+  throw new Error(`Unknown noj-download:// host: ${host}`);
+}
+
+/**
+ * 构建 `noj-download://base64/` URL
+ */
+export function buildBase64DownloadUrl(
+  content: string,
+  checksumSha256?: string,
+): string {
+  let url = `${DOWNLOAD_URL_PREFIX}base64/?content=${content}`;
+  if (checksumSha256) {
+    url += `&checksum_sha256=${checksumSha256}`;
+  }
+  return url;
+}
+
+/**
+ * 构建 `noj-download://local` URL。
+ *
+ * 仅用于本地开发模式：core 与 judge 共享文件系统，judge 直接从磁盘读取
+ * artifact/支持包文件，避免 base64 内联导致的 Redis 消息大小限制。
+ * 生产环境应使用 S3。
+ */
+export function buildLocalDownloadUrl(
+  path: string,
+  checksumSha256?: string,
+): string {
+  const encoded = encodeURIComponent(path);
+  let url = `${DOWNLOAD_URL_PREFIX}local?path=${encoded}`;
+  if (checksumSha256) {
+    url += `&checksum_sha256=${checksumSha256}`;
+  }
+  return url;
+}
+
+/**
+ * 构建 `noj-download://s3` URL
+ *
+ * @param presignedUrl S3 presigned URL（会被百分号编码嵌入）
+ * @param checksumSha256 SHA-256 校验和
+ */
+export function buildS3DownloadUrl(
+  presignedUrl: string,
+  checksumSha256?: string,
+): string {
+  const encoded = encodeURIComponent(presignedUrl);
+  let url = `${DOWNLOAD_URL_PREFIX}s3?url=${encoded}`;
+  if (checksumSha256) {
+    url += `&checksum_sha256=${checksumSha256}`;
+  }
+  return url;
+}
+
+// ── 哈希工具 ─────────────────────────────────────────────────
+
+/**
+ * 计算 Uint8Array 的 SHA-256 哈希（十六进制）
+ */
+export async function sha256Hex(data: Uint8Array): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    data as unknown as BufferSource,
+  );
+  const hashArray = new Uint8Array(hashBuffer);
+  return Array.from(hashArray)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}

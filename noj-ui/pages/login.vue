@@ -104,7 +104,7 @@
          已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
     <div
       v-if="legalConsentRequired"
-      class="rounded border border-warning-text/40 bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+      class="rounded border border-warning-text/40 bg-bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
       data-testid="oauth-legal-consent-notice"
     >
       {{ t('auth.oauthLegalConsentRequired') }}
@@ -250,6 +250,8 @@
 
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { safeAuthRedirect } from "~/utils/authRedirect"
+import { postLoginDestination } from "~/utils/workspace"
 import {
   assertRecoveryCodeFileSize,
   parseRecoveryCodesFile,
@@ -260,7 +262,8 @@ definePageMeta({ layout: "auth" })
 const router = useRouter()
 const auth = useAuth()
 const route = useRoute()
-const { t, locale } = useI18n()
+const workspaces = useWorkspaceApi()
+const { t } = useI18n()
 const { error, setError, clearError } = useFormError()
 
 const form = reactive({ login: "", password: "", code: "", remember: false })
@@ -280,6 +283,10 @@ onMounted(async () => {
     if (route.query.oauth_error === "legal_consent_required") {
       // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
       legalConsentRequired.value = true
+    } else if (route.query.oauth_error === "user_banned") {
+      // 与密码登录同口径（常驻封禁横幅）：封禁不是重试能解决的，提示联系管理员；
+      // 原因与期限不经 URL 传递
+      bannedMsg.value = "账号已被封禁，请联系管理员。"
     } else {
       setError(route.query.oauth_error === "state_invalid"
         ? "第三方登录请求已失效，请重新尝试"
@@ -418,7 +425,17 @@ async function handleLogin() {
     if (loggedInUser?.must_change_password === true) {
       router.replace("/change-password")
     } else {
-      router.replace("/")
+      let destination = safeAuthRedirect(route.query.redirect, "")
+      if (!destination) {
+        const results = await Promise.allSettled([workspaces.instance(), workspaces.list(true)])
+        const policy = results[0]; const available = results[1]
+        const authenticated = policy.status === "fulfilled" && policy.value.data.access === "authenticated"
+        const defaultSlug = policy.status === "fulfilled" ? policy.value.data.default_domain_slug : null
+        destination = authenticated
+          ? postLoginDestination(available.status === "fulfilled" ? available.value.data : [], defaultSlug)
+          : "/"
+      }
+      router.replace(destination)
     }
   } catch (e: any) {
     // ban-status-endpoint：被封用户直接 inline 显示 banner，不用 URL 跳转
@@ -443,7 +460,7 @@ async function handleLogin() {
       clearError()
       return;
     }
-    setError(extractApiError(e, locale.value).message)
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

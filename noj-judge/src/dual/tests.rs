@@ -6,6 +6,7 @@
  * 让 `dual/mod.rs` 回到单文件规模棘轮（`scripts/check-file-size.ts`）允许的范围。
  */
 use super::pipe::forward_frame_with_timeout;
+use super::pipe::PipeWriteOutcome;
 use super::result::{build_judge_result, MSG_INVALID_SCORE};
 use super::*;
 
@@ -25,7 +26,7 @@ impl EvalHarness {
             stderr_buf: String::new(),
             stdout_full: String::new(),
             result_payload: ResultPayload::new(),
-            tracker: InFlightTracker::new(2000),
+            tracker: InFlightTracker::new(2000, 0),
         }
     }
 }
@@ -42,7 +43,7 @@ impl SolHarness {
         Self {
             parser: LineParser::new(),
             solution_ready: true,
-            tracker: InFlightTracker::new(2000),
+            tracker: InFlightTracker::new(2000, 0),
         }
     }
 }
@@ -219,6 +220,9 @@ fn test_build_judge_result_valid_score_without_status_is_graded_finished() {
         "run_id": "attempt-ok",
         "attempt_id": "attempt-ok",
         "problem_version_id": "ver-ok",
+        "task_kind": "submission",
+        "evaluation_protocol_version": 3,
+        "rejudge_seq": 0,
         "runtime_config": {
             "evaluator": {
                 "image": "noj-evaluator-python",
@@ -392,7 +396,7 @@ async fn test_handle_eval_chunk_still_forwards_call_frames() {
     assert!(text.contains("\"type\":\"call\""));
     assert!(!text.contains("plain text"), "普通文本不应转发");
     // call 帧已被追踪：响应可命中
-    assert!(tracker.resolve_response("x"));
+    assert!(tracker.resolve_response("x", Instant::now()));
 }
 
 #[tokio::test]
@@ -520,7 +524,10 @@ async fn test_eval_call_frame_tracked_and_forwarded() {
     assert!(text.contains("\"timeout_ms\":500"), "帧应原样透传");
 
     // in-flight 已登记：响应命中可转发
-    assert!(tracker.resolve_response("c1"), "c1 应被追踪");
+    assert!(
+        tracker.resolve_response("c1", Instant::now()),
+        "c1 应被追踪"
+    );
 }
 
 #[tokio::test]
@@ -1111,4 +1118,20 @@ fn test_require_solution_rejects_absent_solution() {
     };
     let err = require_solution("sid-pred-guard", &rc).unwrap_err();
     assert!(err.to_string().contains("缺少 solution"), "err={}", err);
+}
+
+/// evaluator 帧可指定 timeout_ms，但不得超过 judge 硬上限（`JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS`）。
+#[test]
+fn test_call_frame_timeout_clamped_to_judge_max() {
+    let mut h = EvalHarness::new();
+    h.tracker = InFlightTracker::new(2000, 5000);
+    let frame = serde_json::json!({
+        "type": "call", "id": "big", "fn": "solve", "args": [], "timeout_ms": 3_600_000u64
+    });
+    let (id, ms) = h
+        .tracker
+        .on_call_frame(&frame, std::time::Instant::now())
+        .expect("有 id 的 call 帧应被追踪");
+    assert_eq!(id, "big");
+    assert_eq!(ms, 5000, "帧超时必须被 judge 硬上限截断");
 }

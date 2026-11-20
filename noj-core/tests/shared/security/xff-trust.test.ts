@@ -9,23 +9,19 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { userActorFromAuthenticatedId } from "../../../src/modules/access/contracts/actor.ts";
 import { Hono } from "hono";
-import { resetDbForTest } from "../../../src/shared/db/connection.ts";
-import { getClientIp } from "../../../src/domains/system/index.ts";
+import { resetDbForTest } from "../../helpers/db.ts";
+import { getClientIp } from "../../../src/modules/platform/system/index.ts";
 
-import { updateSetting } from "../../../src/domains/system/index.ts";
+import { updateSetting } from "../../../src/modules/platform/system/index.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../../../src/domains/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "../../../src/domains/system/services/env-snapshot.ts";
+} from "../../../src/modules/platform/system/index.ts";
 
-// 模块级 bootstrap：创建 PGlite schema（含 system_settings）
+// 模块级 bootstrap：创建 测试数据库 schema（含 system_settings）
 await resetDbForTest();
-snapshotEnv();
 
 const app = new Hono();
 app.get("/ip", (c) => c.json({ ip: getClientIp(c) }));
@@ -66,7 +62,11 @@ Deno.test({
   fn: async () => {
     _resetSystemSettingsForTest();
     await initSystemSettings();
-    await updateSetting("trusted_proxies", "10.0.0.1,10.0.0.2", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "10.0.0.1,10.0.0.2",
+      userActorFromAuthenticatedId("0"),
+    );
 
     // XFF = "1.1.1.1, 10.0.0.1, 10.0.0.2"：从右往左，10.0.0.2 / 10.0.0.1 都是代理
     // 首个非代理 IP = "1.1.1.1"
@@ -79,8 +79,11 @@ Deno.test({
     assertEquals(body.ip, "1.1.1.1");
 
     // 清理
-    await updateSetting("trusted_proxies", "", "0");
-    _resetEnvSnapshotForTest();
+    await updateSetting(
+      "trusted_proxies",
+      "",
+      userActorFromAuthenticatedId("0"),
+    );
   },
 });
 
@@ -91,9 +94,13 @@ Deno.test({
   fn: async () => {
     _resetSystemSettingsForTest();
     await initSystemSettings();
-    await updateSetting("trusted_proxies", "10.0.0.1", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "10.0.0.1",
+      userActorFromAuthenticatedId("0"),
+    );
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../../src/domains/system/index.ts"
+      "../../../src/modules/platform/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 
@@ -103,8 +110,11 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.ip, "unknown");
 
-    await updateSetting("trusted_proxies", "", "0");
-    _resetEnvSnapshotForTest();
+    await updateSetting(
+      "trusted_proxies",
+      "",
+      userActorFromAuthenticatedId("0"),
+    );
   },
 });
 
@@ -116,10 +126,14 @@ Deno.test({
     _resetSystemSettingsForTest();
     await initSystemSettings();
     // PR-7 评审修订：CIDR 支持是 K8s/Cloudflare 部署的关键
-    await updateSetting("trusted_proxies", "10.0.0.0/8", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "10.0.0.0/8",
+      userActorFromAuthenticatedId("0"),
+    );
     // 必须清缓存，因为 getTrustedProxyEntries 内部缓存
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../../src/domains/system/index.ts"
+      "../../../src/modules/platform/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 
@@ -131,7 +145,11 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.ip, "1.1.1.1");
 
-    await updateSetting("trusted_proxies", "", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "",
+      userActorFromAuthenticatedId("0"),
+    );
     _resetTrustedProxyCacheForTest();
   },
 });
@@ -142,12 +160,15 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const restoreEnv = restoreNojEnv();
-    _resetEnvSnapshotForTest();
     Deno.env.set("NOJ_ENV", "");
     _resetSystemSettingsForTest();
     await initSystemSettings();
     // 确保 trusted_proxies 为空
-    await updateSetting("trusted_proxies", "", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "",
+      userActorFromAuthenticatedId("0"),
+    );
     _resetSystemSettingsForTest(); // 重新初始化但保留 DB 中的空设置
 
     const res = await app.request("/ip", {
@@ -157,7 +178,6 @@ Deno.test({
     assertEquals(body.ip, "198.51.100.7");
 
     restoreEnv();
-    _resetEnvSnapshotForTest();
   },
 });
 
@@ -167,11 +187,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const restoreEnv = restoreNojEnv();
-    _resetEnvSnapshotForTest();
     Deno.env.set("NOJ_ENV", "production");
     _resetSystemSettingsForTest();
     await initSystemSettings();
-    await updateSetting("trusted_proxies", "", "0");
+    await updateSetting(
+      "trusted_proxies",
+      "",
+      userActorFromAuthenticatedId("0"),
+    );
 
     const res = await app.request("/ip", {
       headers: { "X-Forwarded-For": "198.51.100.7" },
@@ -181,6 +204,5 @@ Deno.test({
     assertEquals(body.ip, "unknown");
 
     restoreEnv();
-    _resetEnvSnapshotForTest();
   },
 });

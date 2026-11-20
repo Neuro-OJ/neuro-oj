@@ -21,7 +21,7 @@ const emit = defineEmits<{ focus: [] }>()
 </script>
 
 <template>
-  <UFormField :label="label" :error="error">
+  <UFormField :label="label" :error="error || undefined">
     <UInput
       v-model="model"
       :type="type"

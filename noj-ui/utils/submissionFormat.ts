@@ -80,12 +80,6 @@ export const statusLabels: Record<string, string> = {
   finished: '已完成',
   error: '系统错误',
 };
-export const statusLabelsEn: Record<string, string> = {
-  pending: 'Pending',
-  judging: 'Judging',
-  finished: 'Completed',
-  error: 'System error',
-};
 
 /**
  * 评测结果状态 → 显示标签。
@@ -93,10 +87,6 @@ export const statusLabelsEn: Record<string, string> = {
 export const resultLabels: Record<string, string> = {
   finished: '已评测',
   error: '出错',
-};
-export const resultLabelsEn: Record<string, string> = {
-  finished: 'Judged',
-  error: 'Error',
 };
 
 /**
@@ -128,14 +118,9 @@ export function getStatusColor(
 export function getStatusLabel(
   status: string,
   resultStatus: string | undefined | null,
-  locale: 'zh-CN' | 'en-US' = 'zh-CN',
 ): string {
-  const results = locale === 'en-US' ? resultLabelsEn : resultLabels;
-  const statuses = locale === 'en-US' ? statusLabelsEn : statusLabels;
-  if (resultStatus && resultLabels[resultStatus]) {
-    return results[resultStatus] ?? resultStatus;
-  }
-  return statuses[status] || status;
+  if (resultStatus && resultLabels[resultStatus]) return resultLabels[resultStatus];
+  return statusLabels[status] || status;
 }
 
 /**

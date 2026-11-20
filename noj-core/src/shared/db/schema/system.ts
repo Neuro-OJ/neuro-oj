@@ -3,15 +3,19 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import type { StorageObjectState } from "../../versioning/types.ts";
+import { WORKSPACE_AUDIT_ACTION_SQL } from "../../workspace/audit.ts";
 
 /**
  * 评测镜像白名单表。
@@ -104,6 +108,8 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
+    /** NULL 为实例公告；域公告不经实例公开入口返回。 */
+    domain_id: text("domain_id").references(() => domains.id),
     public_id: publicIdColumn("ann"),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
@@ -131,6 +137,7 @@ export const announcements = pgTable(
     ),
     /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
     activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
+      table.domain_id,
       table.is_active,
       table.is_pinned,
       table.created_at,
@@ -161,12 +168,13 @@ export const auditLogs = pgTable(
       "audit_logs_action_check",
       sql`${table.action} IN (
         'users.role_change',
+        'users.create',
+        'users.import',
+        'users.reset_password',
+        'users.unlock_login',
         'users.ban',
         'users.unban',
         'users.delete',
-        'roles.create',
-        'roles.update',
-        'roles.delete',
         'problems.delete',
         'problems.runtime_config_changed',
         'problems.imported',
@@ -207,8 +215,6 @@ export const auditLogs = pgTable(
         'community.preset_applied',
         'community.board_create',
         'community.board_update',
-        'community.board_role_grant_update',
-        'community.board_role_grant_delete',
         'community.post_flag',
         'announcement.create',
         'announcement.update',
@@ -238,8 +244,11 @@ export const auditLogs = pgTable(
         'llm_model_alias.upsert',
         'llm_model_alias.delete',
         'legal.publish_version',
-        'legal.data_request_update'
-      )`,
+        'legal.data_request_update',
+        'background_task.retry',
+        'knowledge.mapping.update',
+        'knowledge.difficulty.pass_ratio'
+      ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
     createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),
@@ -343,7 +352,9 @@ export const storageObjects = pgTable(
  * 恒等于系统设置 `llm_default_provider_id` + `llm_default_model`。
  */
 export const llmModelAliases = pgTable("llm_model_aliases", {
-  alias: text("alias").primaryKey(),
+  domain_id: text("domain_id").notNull().references(() => domains.id),
+  alias: text("alias").notNull(),
+  revision: integer("revision").notNull().default(0),
   /** gateway 内部 Provider UUID */
   provider_id: text("provider_id").notNull(),
   /** 上游真实模型名 */
@@ -354,4 +365,10 @@ export const llmModelAliases = pgTable("llm_model_aliases", {
   updated_by: text("updated_by").references(() => users.id, {
     onDelete: "set null",
   }),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.domain_id, table.alias] }),
+  revisionCheck: check(
+    "llm_model_aliases_revision_check",
+    sql`${table.revision} >= 0`,
+  ),
+}));

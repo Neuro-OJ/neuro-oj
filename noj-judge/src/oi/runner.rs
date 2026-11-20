@@ -127,7 +127,7 @@ pub async fn evaluate_scheduled(
     {
         return Ok(system_error_result(task, "OI 评分协议不匹配，请重测"));
     }
-    if runtime_config.self_test.is_some() && !task.submission_id.starts_with("st_") {
+    if runtime_config.self_test.is_some() && task.task_kind.as_deref() != Some("self_test") {
         return Ok(system_error_result(task, "正式评测禁止自测模式"));
     }
     if task.code.len() > MAX_SOURCE_BYTES {

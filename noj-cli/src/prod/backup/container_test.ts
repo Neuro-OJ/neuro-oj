@@ -1,5 +1,5 @@
 /**
- * T17 容器测试：`.nojbackup` 单文件容器 + prod-raw payload。
+ * 容器测试：`.nojbackup` 单文件容器 + prod-raw payload。
  *
  * 本套测试的**最高价值**用例是二进制完整性（"文件重定向采二进制"）：
  *
@@ -314,7 +314,7 @@ async function createOptions(
 
 // ---------------- 二进制完整性（最高价值） ----------------
 
-Deno.test("T17 create：postgres/redis 二进制经文件重定向落盘，逐字节等于原载荷", async () => {
+Deno.test("create：postgres/redis 二进制经文件重定向落盘，逐字节等于原载荷", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -356,7 +356,7 @@ Deno.test("T17 create：postgres/redis 二进制经文件重定向落盘，逐�
   }
 });
 
-Deno.test("T17 反例：同一载荷经 UTF-8 字符串往返后摘要必然不同（静默损坏可检出）", async () => {
+Deno.test("反例：同一载荷经 UTF-8 字符串往返后摘要必然不同（静默损坏可检出）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const exact = join(root, "exact.bin");
@@ -388,7 +388,7 @@ Deno.test("T17 反例：同一载荷经 UTF-8 字符串往返后摘要必然不�
   }
 });
 
-Deno.test("T17 create：pg_restore --list 的结构校验在成功路径上（输入来自文件）", async () => {
+Deno.test("create：pg_restore --list 的结构校验在成功路径上（输入来自文件）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -410,7 +410,7 @@ Deno.test("T17 create：pg_restore --list 的结构校验在成功路径上（�
   }
 });
 
-Deno.test("T17 create：pg_restore --list 失败 → 整体失败且备份目录零残留", async () => {
+Deno.test("create：pg_restore --list 失败 → 整体失败且备份目录零残留", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -442,7 +442,7 @@ Deno.test("T17 create：pg_restore --list 失败 → 整体失败且备份目录
 
 // ---------------- 容器形状与 manifest ----------------
 
-Deno.test("T17 create：manifest 的 payload_layout/字段/摘要时序正确", async () => {
+Deno.test("create：manifest 的 payload_layout/字段/摘要时序正确", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -458,7 +458,7 @@ Deno.test("T17 create：manifest 的 payload_layout/字段/摘要时序正确", 
     assertEquals(m.created_at, "2026-09-19T12:00:00Z");
     assertEquals(m.postgres_database, "noj");
     assertEquals(m.retention_days, 30);
-    // bash 的说明性字段逐字保留
+    // 说明性字段原样保留
     assertEquals(m.redis_policy, MANIFEST_DEFAULTS.redis_policy);
     assertEquals(m.object_storage, MANIFEST_DEFAULTS.object_storage);
     assertEquals(m.postgres_backup_mode, "logical-full");
@@ -486,7 +486,7 @@ Deno.test("T17 create：manifest 的 payload_layout/字段/摘要时序正确", 
   }
 });
 
-Deno.test("T17 create：checksums 覆盖除自身外的全部文件，格式为 GNU 两空格", async () => {
+Deno.test("create：checksums 覆盖除自身外的全部文件，格式为 GNU 两空格", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -536,7 +536,7 @@ Deno.test("T17 create：checksums 覆盖除自身外的全部文件，格式为 
   }
 });
 
-Deno.test("T17 create：整包加密的输入是 tar.zst（不是逐文件），产物是单个 .nojbackup", async () => {
+Deno.test("create：整包加密的输入是 tar.zst（不是逐文件），产物是单个 .nojbackup", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -564,7 +564,7 @@ Deno.test("T17 create：整包加密的输入是 tar.zst（不是逐文件），
   }
 });
 
-Deno.test("T17 create：--no-encrypt 仍产出单文件且 manifest.encrypted=false", async () => {
+Deno.test("create：--no-encrypt 仍产出单文件且 manifest.encrypted=false", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -586,7 +586,7 @@ Deno.test("T17 create：--no-encrypt 仍产出单文件且 manifest.encrypted=fa
   }
 });
 
-Deno.test("T17 create：缺口令且未 --no-encrypt → 明确报错且零产物", async () => {
+Deno.test("create：缺口令且未 --no-encrypt → 明确报错且零产物", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -606,7 +606,7 @@ Deno.test("T17 create：缺口令且未 --no-encrypt → 明确报错且零产�
 
 // ---------------- 失败路径与原子性 ----------------
 
-Deno.test("T17 create：加密失败 → 零 .nojbackup 残留、零 staging 残留", async () => {
+Deno.test("create：加密失败 → 零 .nojbackup 残留、零 staging 残留", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -637,7 +637,7 @@ Deno.test("T17 create：加密失败 → 零 .nojbackup 残留、零 staging 残
   }
 });
 
-Deno.test("T17 create：打包失败 → 零残留", async () => {
+Deno.test("create：打包失败 → 零残留", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -662,7 +662,7 @@ Deno.test("T17 create：打包失败 → 零残留", async () => {
   }
 });
 
-Deno.test("T17 create：pg_dump 输出为空 → 失败（防空备份）", async () => {
+Deno.test("create：pg_dump 输出为空 → 失败（防空备份）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -683,7 +683,7 @@ Deno.test("T17 create：pg_dump 输出为空 → 失败（防空备份）", asyn
   }
 });
 
-Deno.test("T17 create：已存在同名快照时追加序号（不覆盖既有备份）", async () => {
+Deno.test("create：已存在同名快照时追加序号（不覆盖既有备份）", async () => {
   const root = await Deno.makeTempDir();
   try {
     const spawns: SpawnRecord[] = [];
@@ -708,7 +708,7 @@ Deno.test("T17 create：已存在同名快照时追加序号（不覆盖既有�
 
 // ---------------- 纯函数 ----------------
 
-Deno.test("T17 containerFileName / allocateContainerPath / tempContainerPath", async () => {
+Deno.test("containerFileName / allocateContainerPath / tempContainerPath", async () => {
   const ts = new Date("2026-09-19T12:34:56Z");
   assertEquals(containerFileName(ts), "snapshot-20260919-123456.nojbackup");
   assertEquals(utcTimestamp(ts), "2026-09-19T12:34:56Z");
@@ -728,7 +728,7 @@ Deno.test("T17 containerFileName / allocateContainerPath / tempContainerPath", a
   }
 });
 
-Deno.test("T17 renderChecksums / parseChecksums：往返一致且拒绝非法行", () => {
+Deno.test("renderChecksums / parseChecksums：往返一致且拒绝非法行", () => {
   const text = renderChecksums([
     { relPath: "postgres.dump", sha256: "a".repeat(64) },
     { relPath: "minio/a b.bin", sha256: "b".repeat(64) }, // 路径含空格
@@ -792,7 +792,7 @@ async function assertNoStaging(root: string): Promise<void> {
   assertEquals(leftovers, [], "失败路径必须清理 staging 与 tar.zst");
 }
 
-Deno.test("T17 sha256 复用：容器使用增量实现（大文件不整读）", async () => {
+Deno.test("sha256 复用：容器使用增量实现（大文件不整读）", async () => {
   // 直接对照平台实现，锁住容器层的摘要来源正确
   const root = await Deno.makeTempDir();
   try {
@@ -817,17 +817,16 @@ Deno.test("T17 sha256 复用：容器使用增量实现（大文件不整读）"
   }
 });
 
-// ── 评审发现：最终产物权限由 umask 决定（--no-encrypt 时明文可读）────
+// ── 回归：最终产物权限由 umask 决定（--no-encrypt 时明文可读）────
 //
 // `chmodPrivate` 只遍历 staging 目录，而 rename 出来的 `.nojbackup` 与 sidecar
 // 的权限由进程 umask 决定——实测 umask 022 下是 **644**。即
 // `backup create --no-encrypt` 产出的容器**含明文 pg dump 且全世界可读**
-// （bash 侧是 `chmod -R go-rwx`）。
 //
 // 加密时风险较小，但"同一命令的产物权限取决于调用者 umask"本身不可接受：
 // 备份不该比 `.env.prod`（600）更宽松。
 
-Deno.test("评审: 产物 .nojbackup 与 sidecar 必须是 600（不随 umask 放宽）", async () => {
+Deno.test("产物 .nojbackup 与 sidecar 必须是 600（不随 umask 放宽）", async () => {
   const { createContainer } = await import("./container.ts");
   const root = await Deno.makeTempDir();
   const prev = Deno.umask();

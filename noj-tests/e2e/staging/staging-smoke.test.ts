@@ -11,6 +11,7 @@ import {
   apiGet,
   apiPost,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   isE2E,
@@ -116,32 +117,35 @@ async function importBundle(): Promise<string> {
     ], { type: "application/zip" }),
     "staging-bundle.zip",
   );
-  const response = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
-    body: formData,
-  });
-  if (response.status !== 200) {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    },
+  );
+  if (response.status !== 200 && response.status !== 201) {
     throw new Error(
       `题包导入失败: ${response.status} ${await response.text()}`,
     );
   }
-  const body = await response.json() as {
-    data: {
-      id: string;
-      type: string;
-      support_package_storage_url: string | null;
-    };
-  };
-  if (body.data.type !== "U" || !body.data.support_package_storage_url) {
-    throw new Error("题包导入响应缺少 U 型题目或对象存储地址");
+  // 域导入只回 problem_id/number（不再回 id/type/支持包地址）
+  const body = await response.json() as { data: { problem_id: string } };
+  const detail = await apiGet(
+    `/api/v1/problems/${body.data.problem_id}`,
+    adminToken,
+  );
+  const storageUrl = (detail.body as {
+    data: { support_package_storage_url: string | null };
+  }).data.support_package_storage_url;
+  if (!storageUrl) {
+    throw new Error("题包导入后题目缺少对象存储地址");
   }
-  if (!body.data.support_package_storage_url.startsWith("noj-storage://s3/")) {
-    throw new Error(
-      `staging 未使用 S3 支持包地址: ${body.data.support_package_storage_url}`,
-    );
+  if (!storageUrl.startsWith("noj-storage://s3/")) {
+    throw new Error(`staging 未使用 S3 支持包地址: ${storageUrl}`);
   }
-  return body.data.id;
+  return body.data.problem_id;
 }
 
 function currentCode(secret: string): string {
@@ -236,7 +240,7 @@ e2eTest("[e2e/staging] 真实提交完成评测", async () => {
 e2eTest("[e2e/staging] 提交 SSE 可连接并收到事件", async () => {
   if (!isE2E) return;
   const payload = await readSseOnce(
-    `${BASE_URL}/api/v1/submissions/${submissionId}/events`,
+    `${BASE_URL}/api/v1/domains/main/submissions/${submissionId}/events`,
     adminToken,
   );
   if (!payload) throw new Error("SSE 连接未收到任何事件数据");
@@ -249,7 +253,7 @@ e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
     {},
     adminToken,
   );
-  if (response.status !== 200) {
+  if (response.status !== 200 && response.status !== 201) {
     throw new Error(`重测发起失败: ${response.status}`);
   }
   const result = await pollSubmission(adminToken, submissionId);
@@ -260,7 +264,10 @@ e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
 
 e2eTest("[e2e/staging] 清理验收题目", async () => {
   if (!isE2E || !problemId) return;
-  const response = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+  const response = await apiDelete(
+    await domainProblemPath(problemId),
+    adminToken,
+  );
   if (response.status !== 200 && response.status !== 204) {
     throw new Error(`清理 staging 题目失败: ${response.status}`);
   }

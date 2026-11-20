@@ -4,9 +4,11 @@
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import { logger } from "./logger.ts";
+import type { ManagedTask } from "./runtime.ts";
 
 export interface UsageEntry {
   id: string;
+  domain_id: string;
   submission_id: string;
   /** 评测尝试 ID（版本化后必填；旧 core 缺省为 null） */
   attempt_id?: string | null;
@@ -58,23 +60,103 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
   const safeMessages = sanitizeMessagesForStorage(entry.request_messages);
   await db`
     INSERT INTO llm_usage (
-      id, submission_id, attempt_id, problem_version_id, problem_id, user_id, provider_id, model,
+      id, domain_id, submission_id, attempt_id, problem_version_id, problem_id, user_id, provider_id, model,
       request_messages, request_params, prompt_tokens, completion_tokens,
       total_tokens, cached_prompt_tokens, billed_prompt_tokens,
       billed_total_tokens, estimated_cost, latency_ms, status, error_code,
       prompt_hash, created_at
     ) VALUES (
-      ${entry.id}, ${entry.submission_id}, ${entry.attempt_id ?? null},
+      ${entry.id}, ${entry.domain_id}, ${entry.submission_id}, ${
+    entry.attempt_id ?? null
+  },
       ${entry.problem_version_id ?? null},
       ${entry.problem_id}, ${entry.user_id},
-      ${entry.provider_id}, ${entry.model}, ${JSON.stringify(safeMessages)},
-      ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
+      ${entry.provider_id}, ${entry.model}, ${
+    JSON.stringify(safeMessages)
+  }::text::jsonb,
+      ${
+    JSON.stringify(entry.request_params)
+  }::text::jsonb, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens},
       ${entry.cached_prompt_tokens ?? 0}, ${entry.billed_prompt_tokens ?? 0},
       ${entry.billed_total_tokens ?? 0}, ${entry.estimated_cost},
       ${entry.latency_ms}, ${entry.status}, ${entry.error_code ?? null},
       ${entry.prompt_hash}, ${entry.created_at}
-    )
+    ) ON CONFLICT(id) DO NOTHING
+  `;
+}
+
+/** 平台身份调用的记账输入（不涉及 submission/attempt/user）。 */
+export interface PlatformUsageEntry {
+  /** 记账行 ID（= 平台请求 ID，便于 core 对账）。 */
+  id: string;
+  domain_id: string;
+  provider_id: string;
+  /** 上游真实模型名。 */
+  model: string;
+  /** 调用用途（白名单，如 knowledge.tag）；作为 `principal_id` 记录。 */
+  purpose: string;
+  /** 请求的模型别名（便于对账，记入 request_params）。 */
+  alias: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  status: string;
+  error_code: string | null;
+  max_tokens: number;
+}
+
+/**
+ * 写入一条**平台身份**调用记录（如知识图谱打标）。
+ *
+ * 主体标记为 `principal_type='platform'`、`principal_id=<purpose>`；`user_id`
+ * 固定为空串、`problem_id` 固定为 `platform:<purpose>`、
+ * `submission_id`/`attempt_id` 使用请求 ID，从而：
+ * - 不进入任何学生 eval_token 的额度/用量统计（额度按 attempt/submission 维度的
+ *   Redis 计数，与这里无关）；
+ * - 可按 purpose + 时间聚合（`GET /internal/platform-usage`）；
+ * - 管理后台的提交/题目筛选不会误把平台调用混入。
+ *
+ * 不保存 prompt 原文（平台调用内容可能包含题目信息，最小化留存）与
+ * `prompt_hash`；`request_params` 只保留 purpose / 别名 / 输出上限。
+ */
+export async function recordPlatformUsage(
+  db: Db,
+  entry: PlatformUsageEntry,
+): Promise<void> {
+  const billedPrompt = Math.max(0, entry.prompt_tokens - entry.cached_tokens);
+  const billedTotal = billedPrompt + entry.completion_tokens;
+  const totalTokens = entry.prompt_tokens + entry.completion_tokens;
+  const requestParams = JSON.stringify({
+    purpose: entry.purpose,
+    model_alias: entry.alias,
+    max_tokens: entry.max_tokens,
+  });
+  const createdAt = new Date().toISOString();
+  // 平台调用不保存 prompt 原文，事件本身即 purpose；prompt_hash 记录该事件键。
+  const promptHash = `platform:${entry.purpose}`;
+  const principalType = "platform";
+  const EMPTY_MESSAGES = JSON.stringify([]);
+  await db`
+    INSERT INTO llm_usage (
+      id, domain_id, submission_id, attempt_id, problem_version_id, problem_id,
+      user_id, provider_id, model, request_messages, request_params,
+      prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens,
+      billed_prompt_tokens, billed_total_tokens, estimated_cost, latency_ms,
+      status, error_code, prompt_hash, created_at, principal_type,
+      principal_id
+    ) VALUES (
+      ${entry.id}, ${entry.domain_id}, ${entry.id}, NULL, NULL,
+      ${promptHash}, '', ${entry.provider_id}, ${entry.model},
+      ${EMPTY_MESSAGES}::text::jsonb, ${requestParams}::text::jsonb,
+      ${entry.prompt_tokens}, ${entry.completion_tokens}, ${totalTokens},
+      ${entry.cached_tokens}, ${billedPrompt}, ${billedTotal},
+      ${entry.estimated_cost}, ${entry.latency_ms}, ${entry.status},
+      ${entry.error_code}, ${promptHash}, ${createdAt}, ${principalType},
+      ${entry.purpose}
+    ) ON CONFLICT(id) DO NOTHING
   `;
 }
 
@@ -100,7 +182,7 @@ export async function recordRejectedUsage(
 ): Promise<boolean> {
   // 去重键按**尝试**优先：同一提交的重测是独立预算，拒绝窗口也必须独立，
   // 否则新尝试的首次拒绝会被旧尝试的窗口吞掉（旧 core 回退提交维度）。
-  const dedupKey = `llm:usage:rejected:${
+  const dedupKey = `llm:usage:rejected:${entry.domain_id}:${
     entry.attempt_id ?? entry.submission_id
   }:${entry.error_code ?? "unknown"}`;
   let first = true;
@@ -201,13 +283,43 @@ export function startUsageRetention(
   db: Db,
   redis: RedisClient,
   retentionDays: number,
-): () => void {
-  if (retentionDays <= 0) return () => {};
-  void runUsageRetention(db, redis, retentionDays);
-  const timer = setInterval(
-    () => void runUsageRetention(db, redis, retentionDays),
-    PRUNE_INTERVAL_MS,
-  );
+): ManagedTask {
+  if (retentionDays <= 0) {
+    return {
+      name: "gateway-usage-retention",
+      stop() {},
+      done: Promise.resolve(),
+    };
+  }
+  let stopped = false;
+  let inFlight: Promise<unknown> | null = null;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((resolve) => resolveDone = resolve);
+  const settleDone = (): void => {
+    if (stopped && inFlight === null) resolveDone();
+  };
+  const run = (): void => {
+    if (stopped || inFlight !== null) return;
+    const current = runUsageRetention(db, redis, retentionDays);
+    inFlight = current;
+    current.finally(() => {
+      if (inFlight === current) inFlight = null;
+      settleDone();
+    }).catch(() => {});
+  };
+  run();
+  const timer = setInterval(run, PRUNE_INTERVAL_MS);
   Deno.unrefTimer(timer);
-  return () => clearInterval(timer);
+  const task: ManagedTask = {
+    name: "gateway-usage-retention",
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      settleDone();
+    },
+    done,
+  };
+  done.catch(() => {});
+  return task;
 }

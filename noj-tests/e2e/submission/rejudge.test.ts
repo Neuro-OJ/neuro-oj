@@ -15,9 +15,7 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   registerUser,
   submitCode,
@@ -25,13 +23,13 @@ import {
   waitForJobCompleted,
   waitForServer,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 let PROBLEM_ID = "";
 
 let adminToken = "";
 let userToken = "";
 let submissionId = "";
-let judgeOk = false;
 
 e2eTest("[e2e/rejudge] Setup", async () => {
   if (!isE2E) return;
@@ -46,14 +44,7 @@ e2eTest("[e2e/rejudge] Setup", async () => {
     TEST_PASSWORD,
   );
 
-  judgeOk = await isJudgeAvailable();
-  if (!judgeOk) {
-    console.log("  ⚠ judge worker 不可用，重测测试跳过");
-    return;
-  }
-
-  // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
-  PROBLEM_ID = await getProblemIdByNumber(1001);
+  PROBLEM_ID = await createCodingProblemFixture();
 
   // 先提交一段正确代码，等待完成
   submissionId = await submitCode(
@@ -74,7 +65,7 @@ e2eTest("[e2e/rejudge] Setup", async () => {
 // ── 单条重测 ──
 
 e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const rejudgeRes = await apiPost(
     `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
@@ -124,7 +115,7 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
 // ── 404 / 403 ──
 
 e2eTest("[e2e/rejudge] 5.2a 不存在的提交受理为空任务", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   // 统一任务化后不存在的提交不会进入条目集合：返回 202 且总数为 0
   // （Handbook §4.3「空集合返回已完成、总数为 0 的任务」）。
   const res = await apiPost(
@@ -143,7 +134,7 @@ e2eTest("[e2e/rejudge] 5.2a 不存在的提交受理为空任务", async () => {
 });
 
 e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const res = await apiPost(
     `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
@@ -158,7 +149,7 @@ e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
 // ── 批量重测 ──
 
 e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const res = await apiPost(
     `/api/v1/admin/submission/problems/${PROBLEM_ID}/rejudge`,
     {},
@@ -182,7 +173,7 @@ e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
 });
 
 e2eTest("[e2e/rejudge] 5.3b 重测在审计日志中有记录", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   const logs = await apiGet(
     "/api/v1/admin/system/audit-logs?action=submissions.rejudge",
     adminToken,
