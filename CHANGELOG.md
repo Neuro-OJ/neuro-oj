@@ -10,6 +10,21 @@
 
 ## [Unreleased]
 
+### 新功能
+
+- **独立 Judge 资源组重置命令**：新增 `noj-cli judge reset-config`，支持在同组 Worker
+  停机排空并等待租约/心跳过期后安全清除 Redis 资源组容量锁，局部更新 `.env.judge` 与
+  `docker-compose.judge.yml`（保留运维自定义网络/挂载配置），并同步提供容量配置失配时的
+  Worker 停止准入保护（PR #761）。
+
+### 修复
+
+- **Judge 到 LLM 网关链路加固**：修复 `noj-llm-gateway` 固定地址传输层对多字节 UTF-8
+  请求体按字符数计算 `Content-Length` 导致的截断/断连问题；为 `noj-llm-gateway`、
+  `deploy/judge-llm-proxy.py` 与 Evaluator SDK 开启 TCP Keepalive 并补齐瞬时断连有界重试，
+  同时修复 `noj-cli judge install --redis-mode local` 写入 `REDIS_URL` / `REDIS_CHECK_URL`
+  顺序反置的问题（PR #761）。
+
 ---
 
 ## [0.11.0-rc.2] - 2026-11-18
