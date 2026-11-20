@@ -69,7 +69,8 @@ let requestedExitCode = 0;
 /**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
  *
- * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git。
+ * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git，以及根级
+ * AI 编码助手目录 .agents/ / .claude/（与 noj-cli 的 shouldExclude 对齐）。
  *
  * **模板不做排除**：编辑器初始代码（manifest.template，缺省 template.py）随包
  * 上传，导入时由 `importProblemBundle` 落库到 `problems.template_content`，
@@ -103,6 +104,10 @@ async function buildProblemPackage(id: string): Promise<void> {
       "*__pycache__*",
       "-x",
       ".git/*",
+      "-x",
+      ".agents/*",
+      "-x",
+      ".claude/*",
     ],
     cwd: srcDir,
   });

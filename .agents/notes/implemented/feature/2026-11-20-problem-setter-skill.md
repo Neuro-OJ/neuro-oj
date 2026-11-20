@@ -37,6 +37,18 @@ skill， 已在 #385 作为「AI 工具配置产物」整体清理，AGENTS.md �
    完整流程命令、包含四类常见坑与「不要搬运真实题库内容」、`references/` 引用
    都已嵌入；安装幂等、冲突与 `--force` 行为、退出码。
 
+6. **安装安全（复审修正）**：写入/删除前对 `.agents`、`skills`、Skill 目录逐级
+   `lstat`，任何一级是符号链接即拒绝，两处都不写；新内容先写进同级暂存目录，再把
+   旧目录挪作备份、整体替换，替换失败时还原，避免 `--force`
+   中途失败留下半残目录。 `--force` 只允许用于
+   `problem skill`，其他子命令以用法错误拒绝。
+7. **不污染题目包**：Skill 可能装在题目目录里，`problem pack`（及共用规则的本地
+   支持包）与 core `noj problems pack` 都排除根级 `.agents/`、`.claude/`。
+8. **Skill 内容边界（复审修正）**：默认流程在本地 `pack` 处结束，`push` 只在用户
+   明确授权并给出目标域后执行；评测日志会返回给选手，隐藏用例只打印 ID / 状态 /
+   错误类型；「template.py 保持未实现」只针对选手可编辑的代码骨架，`ui` 题的脚本
+   模板必须完整可运行；预测题公开数据一律走外部 HTTPS 链接。
+
 ## Alternatives considered
 
 - **主仓库 `.agents/skills/` + `.claude/skills` 软链**：改动最小，但与 #385

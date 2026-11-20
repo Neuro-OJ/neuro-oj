@@ -6,7 +6,9 @@
  * 教用户先 `mkdir -p data/packages` 来绕开首次失败）。
  *
  * 改用 `fflate` 在内存中打包，**零外部命令依赖**，排除规则与原实现对齐：
- * `submission*`（参考实现）、`__pycache__`、`.git`、本地脚手架/报告文件。
+ * `submission*`（参考实现）、`__pycache__`、`.git`、本地脚手架/报告文件，
+ * 以及根级 AI 编码助手目录 `.agents/` / `.claude/`（`problem skill` 可能写在题目
+ * 目录里，不属于题目内容）。
  *
  * **模板文件必须进包**（2026-09 修正）：编辑器初始代码（`manifest.template`，
  * 缺省 `template.py`）由平台在导入题目包时读取并落库到
@@ -27,6 +29,8 @@ export const PACK_EXCLUDES = {
   pycache: "__pycache__",
   /** git 元数据。 */
   gitDir: ".git/",
+  /** 根级 AI 编码助手目录（出题 Skill 等本地工具文件）。 */
+  assistantDirs: [".agents", ".claude"],
 } as const;
 
 /** 是否应把该相对路径排除出题目包。 */
@@ -40,6 +44,12 @@ export function shouldExclude(relativePath: string): boolean {
   if (normalized.split("/")[0]!.startsWith(PACK_EXCLUDES.submissionPrefix)) {
     return true;
   }
+  // 根级 .agents/ / .claude/（AI 编码助手的 skill 与配置，不进题目包）
+  if (
+    (PACK_EXCLUDES.assistantDirs as readonly string[]).includes(
+      normalized.split("/")[0]!,
+    ) && normalized.includes("/")
+  ) return true;
   // __pycache__（任意层级）
   if (normalized.split("/").includes(PACK_EXCLUDES.pycache)) return true;
   // .git

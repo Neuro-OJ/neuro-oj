@@ -200,6 +200,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         positional.push(a);
     }
   }
+  // --force 只对 skill 有意义；其他子命令静默接受会让人误以为生效（如 push --force）
+  if (out.force && out.sub !== "skill") {
+    throw new UsageError("--force 只能用于 problem skill");
+  }
   if (positional.length > 0) out.slug = positional[0];
   // init 的第一个位置参数是 slug，lint/pack 的是 dir。
   //

@@ -1,6 +1,6 @@
 ---
 name: noj-problem-setter
-description: 为 Neuro OJ（NOJ）出题：选题型 → noj-cli problem init --template 生成可验题模板 → 改写评测脚本与数据 → 写满分/错解/空解 → problem test 本地 Docker 验题 → lint → pack/push。用户要在 NOJ 上出新题、改造题目包、写 evaluate.py、给题目补参考解答或排查验题失败时使用。
+description: 为 Neuro OJ（NOJ）出题：选题型 → noj-cli problem init --template 生成可验题模板 → 改写评测脚本与数据 → 写满分/错解/空解 → problem test 本地 Docker 验题 → lint → pack（经用户明确授权才 push）。用户要在 NOJ 上出新题、改造题目包、写 evaluate.py、给题目补参考解答或排查验题失败时使用。
 ---
 
 # NOJ 出题助手
@@ -14,12 +14,18 @@ description: 为 Neuro OJ（NOJ）出题：选题型 → noj-cli problem init --
    不得复制真实考试、竞赛或任何已有题库（包括用户私有题库）的原题、原数据
    与官方题解，也不要把它们写进本 skill 的示例或模板里。用户要求「照着某题改」
    时，只借鉴题型结构，内容重新设计。
-2. **每一步改动后都重跑 `noj-cli problem test`**。验题不过就不进入 pack / push。
-3. **不要把参考解答放进题目包**：参考解答只放在
-   `submissions/`（打包时自动排除）， `template.py` 保持「未实现」状态。
-4. **不要绕过平台限制**：不调高沙箱权限、不让 Solution 联网、不在本地之外的
-   环境做验题；`push` 默认只建草稿，发布前要让用户确认。
-5. **不要编造 SDK 接口**。不确定时打开模板里的 `evaluate.py` 或文档站
+2. **每一步改动后都重跑 `noj-cli problem test`**。验题不过就不进入 pack。
+3. **不要把参考解答放进题目包**：参考解答只放在 `submissions/`（打包时自动
+   排除）；选手可编辑的代码骨架（`code` / `llm` 题的 `template.py`）保持
+   「未实现」状态。`ui` 题的 `template.py` 是出题人写的、由平台注入参数后执行的
+   脚本，**必须完整可运行**，不适用这一条。
+4. **未经用户明确授权不上传**：默认流程在本地 `problem pack` 生成 ZIP 处结束。
+   `problem push` 会把含隐藏数据的题目包传到远端，只有用户明确要求上传并给出
+   目标平台与使用域后才执行，即使环境里已有 `NOJ_SERVER` / `NOJ_TOKEN` 也一样；
+   `--publish` 需要用户单独明确要求。
+5. **不要绕过平台限制**：不调高沙箱权限、不让 Solution 联网、不在本地之外的
+   环境做验题。
+6. **不要编造 SDK 接口**。不确定时打开模板里的 `evaluate.py` 或文档站
    「Evaluator SDK」页核对。
 
 ## 工作流
@@ -58,8 +64,12 @@ noj-cli problem test problems/<slug>
 
 - `statement.md` 是选手**唯一**的规则来源：输入输出格式、边界、容差、计分方式、
   时限内存都要写清，评测脚本不能检查题面没写的东西；
-- 改 `template.py` 的函数签名时保持函数体未实现（`raise NotImplementedError` 或
-  `TODO`），否则 `lint` 会报 `quality/template-may-be-complete`；
+- `code` / `llm` 题：改 `template.py` 的函数签名时保持函数体未实现
+  （`raise NotImplementedError` 或 `TODO`），否则 `lint` 会报
+  `quality/template-may-be-complete`；
+- `ui` 题：选手只提交参数 JSON，`template.py` 由出题人完整实现参数化函数，
+  一律用 `PARAMS.get(...)` 取值并校验类型，空参数 `{}` 也要能跑完（得低分）；
+  它不下发给选手，`lint` 的上述警告对它可以忽略；
 - 可见用例（`visible.jsonl`）要与题面示例逐字一致。
 
 ### 4. 改写评测脚本（`evaluate.py`）
@@ -73,7 +83,9 @@ noj-cli problem test problems/<slug>
 - 用 `result.accept(score, details={...})` 上报，`score` 是 **0–100**；
 - 隐藏用例的 `details.cases` 项必须带 `hidden: True`，且**不得**带 `input` /
   `expected_output` / `actual_output`；每个用例都要显式写 `hidden` 字段；
-- 打印选手输出前压成单行并截断，避免伪造结果分隔符。
+- **评测日志会返回给选手**：隐藏用例只能打印用例 ID、通过状态与错误类型
+  （如异常类名），**不得**打印其输入、期望输出、选手实际输出或模型回复；
+- 可见用例可以回显选手输出，但要先压成单行并截断，避免伪造结果分隔符。
 
 ### 5. 写数据与参考解答
 
@@ -103,28 +115,37 @@ noj-cli problem test problems/<slug> --allow-network \
 
 不要自己去找、猜或写入 token。
 
-### 7. 打包与上传
+### 7. 打包（默认终点）
 
 ```bash
-noj-cli problem pack problems/<slug>                       # 生成 zip，submissions/ 自动排除
+noj-cli problem pack problems/<slug>   # 生成 zip；submissions/、.agents/、.claude/ 自动排除
+```
+
+到这里把 ZIP 路径交给用户即可。
+
+### 8. 上传（仅在用户明确授权后）
+
+只有用户明确要求上传、并给出目标平台地址与使用域时才执行：
+
+```bash
 noj-cli problem push problems/<slug> --server <平台地址> --domain <域>
 ```
 
-`push` 默认导入为草稿；`--publish` 会立即发布，只在用户明确要求时使用。
+`push` 导入为草稿；`--publish` 会立即发布，需要用户单独明确要求。
 更新已有题目请在平台编辑页操作。
 
 ## 常见坑速查
 
-| 坑              | 正确做法                                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 分数刻度        | `result.accept()` 收 0–100，SDK 自动换算成平台整数，**不要再乘 100**                                                |
-| 隐藏用例泄露    | 隐藏数据不进题面、可见文件和 `details`；`lint` 的 `quality/hidden-case-leak` 会查可见文件                           |
-| 选手错 ≠ 平台错 | 选手异常只让用例失败；脚本 bug、LLM 网关错误上抛                                                                    |
-| 资源限制        | `call_timeout_ms` 是单次调用超时，`evaluator.time_limit_ms` 是整次评测总时限；用例多时按总时长估算                  |
-| LLM 调用预算    | `max_calls` ≈ 用例数 × 每例调用次数 × 2（含重试），`max_tokens` 按提示词与回复长度估；平台上限 100 次 / 50000 token |
-| 结果不稳定      | LLM 判定用 `temperature=0`、限制 `max_tokens`、宽容判定（包含关系、JSON 容错）                                      |
-| 空解报错        | 空提交、空参数 `{}`、表头-only CSV 都要能正常得 0 分                                                                |
-| 依赖缺失        | 基础评测镜像不含 numpy / pandas，需要时随支持包提供或改用标准库                                                     |
+| 坑              | 正确做法                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 分数刻度        | `result.accept()` 收 0–100，SDK 自动换算成平台整数，**不要再乘 100**                                                                       |
+| 隐藏用例泄露    | 隐藏数据不进题面、可见文件、`details` 和评测日志（隐藏用例只打印 ID / 状态 / 错误类型）；`lint` 的 `quality/hidden-case-leak` 会查可见文件 |
+| 选手错 ≠ 平台错 | 选手异常只让用例失败；脚本 bug、LLM 网关错误上抛                                                                                           |
+| 资源限制        | `call_timeout_ms` 是单次调用超时，`evaluator.time_limit_ms` 是整次评测总时限；用例多时按总时长估算                                         |
+| LLM 调用预算    | `max_calls` ≈ 用例数 × 每例调用次数 × 2（含重试），`max_tokens` 按提示词与回复长度估；平台上限 100 次 / 50000 token                        |
+| 结果不稳定      | LLM 判定用 `temperature=0`、限制 `max_tokens`、宽容判定（包含关系、JSON 容错）                                                             |
+| 空解报错        | 空提交、空参数 `{}`、表头-only CSV 都要能正常得 0 分                                                                                       |
+| 依赖缺失        | 基础评测镜像不含 numpy / pandas，需要时随支持包提供或改用标准库                                                                            |
 
 ## 验题失败排查
 
@@ -145,4 +166,5 @@ noj-cli problem push problems/<slug> --server <平台地址> --domain <域>
 - [ ] `problem lint --strict` 零发现；
 - [ ] 题面写清所有判分规则，示例与可见用例一致；
 - [ ] 题面、数据与解答均为原创，没有真实题库内容；
-- [ ] 未经用户确认没有执行 `push --publish`。
+- [ ] 评测日志与 `details` 中没有隐藏用例的输入、期望或实际输出；
+- [ ] 未经用户明确授权没有执行 `push`，更没有 `--publish`。
