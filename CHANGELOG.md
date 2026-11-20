@@ -10,20 +10,66 @@
 
 ## [Unreleased]
 
+---
+
+## [0.11.0] - 2026-11-20
+
+0.11 首个正式版。相对 `v0.10.6` 的完整破坏性变更、新功能与移除清单见下方
+「0.11.0-rc.2」一节，本节只列 RC 之后的变化与正式版升级须知。
+
+### 升级须知（破坏性）
+
+- **0.10.x 节点不要执行 `noj-cli update --latest`**：`v0.11.0` 转正为 Latest
+  后， 0.10.x 节点上的旧版 `noj-cli`
+  会把它当作普通升级目标并尝试原地迁移；只要库里有 比赛或旧 `U` 型题，迁移
+  `0116` 就会以 `55000` 中止，需按回滚流程恢复。若自行配置了 定时执行
+  `update --latest` 的任务，请先停用，并改走下面的逻辑迁移路径。
+- **新装**：`noj-cli install` 省略 `--ref` 即会选中 `v0.11.0`；也可显式
+  `--ref v0.11.0`。
+- **从 0.10.x 升级**：最低源版本为 `v0.10.6`（更早版本先在 0.10.x 链升级到
+  `v0.10.6`）。按
+  [从 v0.10.6 逻辑升级至 v0.11](noj-docs/docs/operators/upgrade-v010-to-v011.md)
+  使用 `noj db upgrade-v010` 从只读源库迁移到全新初始化的空 v0.11
+  目标库；旧库保持 不变，可直接作为回滚兜底。
+- **私有题与非公开比赛需显式处置**：升级预检遇到已发布的私有题、非公开 / 邀请 /
+  口令比赛时会阻断，必须通过参数明确处置方式后才能导入（PR #768）。
+- **Gateway 目标库初始化**：与 Core 同库时用 `db:migrate --schema-only`
+  初始化（不写 默认配额，否则迁移器以 `TARGET_NOT_EMPTY` 拒绝）；Gateway
+  独立部署时，旧 Core 库中的 默认模型与别名须通过 `NOJ_UPGRADE_GATEWAY_URL`
+  由迁移器转移并读回校验，切流量前确认 校验通过（PR #768）。
+
 ### 新功能
 
-- **独立 Judge 资源组重置命令**：新增 `noj-cli judge reset-config`，支持在同组 Worker
-  停机排空并等待租约/心跳过期后安全清除 Redis 资源组容量锁，局部更新 `.env.judge` 与
+- **0.10.6 → 0.11 逻辑升级工具**：新增 `noj db upgrade-v010`，支持 dry-run、只读
+  源库、单事务导入与行数 /
+  约束核对，覆盖题目版本与绑定、比赛、提交与批量任务、SSE
+  事件序列、公告（迁为实例级）、Gateway 配置等数据（PR #768）。
+- **本地验题 `noj-cli problem test`**：在本机 Docker
+  沙箱中运行题目的评测脚本，按 `submissions/expect.json`
+  断言满分解、错解与空解的得分（PR #762）。
+- **出题模板 `noj-cli problem init --template`**：提供 `code` / `prediction` /
+  `llm` / `objective` / `ui` 五类开箱即可通过验题的模板（PR #763）。
+- **AI 出题 Skill `noj-cli problem skill`**：把 NOJ 出题 Skill 安装到
+  `.agents/skills/` 与 `.claude/skills/`，供 AI 编码助手按「模板 → 评测脚本 →
+  参考 解答 → 验题 → lint → 打包」流程出题；`problem pack`
+  自动排除这两个目录（PR #766）。
+- **独立 Judge 资源组重置命令**：新增 `noj-cli judge reset-config`，支持在同组
+  Worker 停机排空并等待租约/心跳过期后安全清除 Redis 资源组容量锁，局部更新
+  `.env.judge` 与
   `docker-compose.judge.yml`（保留运维自定义网络/挂载配置），并同步提供容量配置失配时的
   Worker 停止准入保护（PR #761）。
 
 ### 修复
 
-- **Judge 到 LLM 网关链路加固**：修复 `noj-llm-gateway` 固定地址传输层对多字节 UTF-8
-  请求体按字符数计算 `Content-Length` 导致的截断/断连问题；为 `noj-llm-gateway`、
-  `deploy/judge-llm-proxy.py` 与 Evaluator SDK 开启 TCP Keepalive 并补齐瞬时断连有界重试，
-  同时修复 `noj-cli judge install --redis-mode local` 写入 `REDIS_URL` / `REDIS_CHECK_URL`
-  顺序反置的问题（PR #761）。
+- **评测派发可靠性**：派发失败或 Worker
+  中断时，巡检器按任务标记与恢复版本重新对账并
+  重投，避免提交长期卡在排队状态（PR #716）。
+- **Judge 到 LLM 网关链路加固**：修复 `noj-llm-gateway` 固定地址传输层对多字节
+  UTF-8 请求体按字符数计算 `Content-Length` 导致的截断/断连问题；为
+  `noj-llm-gateway`、 `deploy/judge-llm-proxy.py` 与 Evaluator SDK 开启 TCP
+  Keepalive 并补齐瞬时断连有界重试， 同时修复
+  `noj-cli judge install --redis-mode local` 写入 `REDIS_URL` /
+  `REDIS_CHECK_URL` 顺序反置的问题（PR #761）。
 
 ---
 

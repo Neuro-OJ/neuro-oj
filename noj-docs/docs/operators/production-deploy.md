@@ -226,6 +226,12 @@ noj-cli update
 noj-cli update --latest
 ```
 
+> [!WARNING]
+> **0.10.x 节点不要执行 `update --latest`。** `v0.11.0` 转正后会成为 Latest，
+> 0.10.x 上的旧版 `noj-cli` 会尝试原地迁移并在 `0116` 处中止。0.10.x 升级到 0.11
+> 必须走[逻辑迁移](./upgrade-v010-to-v011.md)；自行配置了定时执行
+> `update --latest` 的节点请先停用该任务。
+
 `update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、非
 prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件、`release-set.json`
 及各自 `.sha256` 的
@@ -281,9 +287,9 @@ deno task preflight -- --json /tmp/noj-preflight.json
 1. 准备主机与 `.env.prod`（`docker-compose.prod.yml` 与 `.env.prod.example` 必须
    与 Release 同版本），生成 `NOJ_INTERNAL_SERVICE_TOKEN`（见下文
    [新增环境变量](#011-新增环境变量)）；
-2. 从对应预发布 Release 下载 `noj-cli-linux-amd64` 并显式通过 `--ref` 安装
-   （预发布版本保持 `prerelease=true`，不会进入 `--latest`）：
-   `noj-cli install --dir <目录> --ref v0.11.0-rc.N`，
+2. 从对应 Release 下载 `noj-cli-linux-amd64` 并通过 `--ref` 安装：
+   `noj-cli install --dir <目录> --ref v0.11.0`（候选版保持 `prerelease=true`，
+   须显式 `--ref v0.11.0-rc.N`），
    安装器会下载并校验同名部署文件及其 `.sha256`；
 3. `noj-cli check` → `noj-cli start`，等待健康检查通过；
 4. `noj-cli bootstrap first-admin` 创建首个管理员（仅空站可执行一次）；
