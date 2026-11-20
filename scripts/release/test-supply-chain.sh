@@ -153,4 +153,13 @@ fi
 pass "publish-release 漏等 publish-ide 拒绝"
 reset_fixture
 
+sed -i.bak 's/deno run -A --config deno\.json \.\.\/scripts\/release\/generate-release-set\.ts/deno run -A ..\/scripts\/release\/generate-release-set.ts/' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "生成发布集未指定 --config deno.json 的工作流未被拒绝"
+fi
+pass "生成发布集缺少 --config 拒绝"
+reset_fixture
+
 printf '全部供应链配置测试通过\n'

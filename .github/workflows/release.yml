@@ -581,7 +581,9 @@ jobs:
         working-directory: noj-cli
         run: |
           set -Eeuo pipefail
-          deno run -A ../scripts/release/generate-release-set.ts ../release-metadata "$VERSION" ../noj-core/drizzle ../noj-llm-gateway/drizzle ../release-set.json
+          # 脚本位于仓库根 scripts/，Deno 按脚本位置查找配置而非工作目录；显式指定
+          # noj-cli/deno.json 才能解析 @std/path 等导入映射。
+          deno run -A --config deno.json ../scripts/release/generate-release-set.ts ../release-metadata "$VERSION" ../noj-core/drizzle ../noj-llm-gateway/drizzle ../release-set.json
           sha256sum ../release-set.json > ../release-set.json.sha256
           test "$(awk '{print $1}' ../release-set.json.sha256)" = "$(sha256sum ../release-set.json | awk '{print $1}')"
       - name: 上传不可变发布集资产

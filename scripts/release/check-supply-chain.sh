@@ -131,6 +131,8 @@ check_release_workflow() {
   grep -q 'deno task test:production' "$file" || fail "CLI 发布缺少生产安装测试"
   grep -q 'sha256sum noj-cli-linux-amd64' "$file" || fail "CLI 发布缺少 SHA-256 校验文件"
   grep -q 'generate-release-set.ts' "$file" || fail "Release workflow 未从已验证 digest 生成发布集"
+  grep -Eq 'deno run -A --config deno\.json \.\./scripts/release/generate-release-set\.ts' "$file" \
+    || fail "生成发布集必须显式 --config deno.json（Deno 按脚本位置找配置，否则无法解析 @std/path）"
   grep -q 'release-set.json' "$file" || fail "Release workflow 未上传发布集及校验文件"
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
