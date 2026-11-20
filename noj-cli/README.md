@@ -160,6 +160,7 @@ noj-cli judge reset-config --group <资源组> [--ai-tasks 6] [--restart]
 ```bash
 noj-cli problem init <slug> [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
+noj-cli problem init <slug> --template code|prediction|llm|objective|ui
 noj-cli problem lint <目录>
 noj-cli problem test <目录> [--solution <文件|目录>[@名称]]... [--expect good=100]... [--json]
 noj-cli problem pack <目录> --out <目录>
@@ -167,6 +168,7 @@ noj-cli problem migrate <目录>   # 将旧格式 problem.json 原地改写为�
 noj-cli problem import --domain school --dir <题包目录>
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school --publish
+noj-cli problem skill [目录] [--force]   # 写入 AI 出题 Skill
 ```
 
 `problem init` 生成格式 3 最小题包（`kind` 声明题型，AI 题 `runtime_config`
@@ -184,6 +186,19 @@ TTY 或 `--no-interactive` 需显式给出参数。
 入口）在本地 Docker 沙箱逐个评测参考解答（缺省读取 `submissions/` 与
 `submissions/expect.json`），退出码 0 通过 / 1 校验或断言失败 / 2 用法错误。默认
 不联网，LLM 题默认离线 mock；详见文档站「出题人 → 本地验题」。
+
+`--template` 从五类**可验题模板**生成（代码题、预测提交题、LLM 工程题、客观题、
+界面题）：每个模板自带评测脚本、满分解 / 错解 / 空解与
+`submissions/expect.json`， 生成后可直接 `problem test` 验题，再按模板 README
+改造。模板事实源在 `noj-core/scripts/problem-templates/`，与
+`noj problems init --template` 共用。
+
+`problem skill` 把 AI 出题 Skill（`noj-problem-setter`）写入目标目录（缺省当前
+目录）的 `.agents/skills/` 与 `.claude/skills/`，AI 编码助手在出题仓库里即可按
+「选题型 → 模板 → 评测脚本 → 参考解答 → 验题 → lint → pack/push」的流程出题。
+已存在且内容不同时不覆盖，加 `--force` 整体替换。Skill 事实源在
+`noj-cli/skills/noj-problem-setter/`，由 `src/problem/gen-skill.ts`
+嵌入单二进制。
 
 `--judge-type oi` 会生成 C99/C++11 传统 OI 题包骨架（`testdata/`、default
 checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。

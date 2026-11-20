@@ -18,7 +18,10 @@
 ## 步骤
 
 1. **设计题目**：确定题面、函数签名与评分规则（例如
-   `solve(input_str) -> str`，按返回值判分）。可参考[A+B 示例题](ab-example.md)。
+   `solve(input_str) -> str`，按返回值判分）。可参考[A+B 示例题](ab-example.md)，
+   或用
+   `noj-cli problem init <slug> --template code|prediction|llm|objective|ui`
+   生成一道可直接本地验题的完整模板（见[本地验题 · 从模板起步](local-test.md#从模板起步)）。
 
 2. **创建题目**：二选一。
    - **已有完整题目包**（含 `problem.json` 与

@@ -14,7 +14,12 @@ import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { collectBundleEntries, packBundle } from "./pack.ts";
 import { migrateManifest } from "./migrate.ts";
-import { initProblemScaffold, validateSlug } from "./init.ts";
+import {
+  initProblemScaffold,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  validateSlug,
+} from "./init.ts";
 import {
   normalizeServer,
   pushBundle,
@@ -23,6 +28,7 @@ import {
 } from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
 import { runProblemTest } from "./test-command.ts";
+import { installProblemSetterSkill } from "./skill.ts";
 import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
 
@@ -39,11 +45,15 @@ export interface ProblemArgs {
   json: boolean;
   /** init: 跳过 TUI 引导。 */
   noInteractive: boolean;
+  /** skill: 已存在且内容不同时覆盖。 */
+  force: boolean;
   /** init 选项。 */
   slug?: string;
   title?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
+  /** init: 可验题模板名（code/prediction/llm/objective/ui）。 */
+  template?: string;
   /** push: 平台地址（缺省读 NOJ_SERVER）。 */
   server?: string;
   /** push: 明确的使用域（默认 main）。 */
@@ -74,6 +84,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     strict: false,
     json: false,
     noInteractive: false,
+    force: false,
     publish: false,
     domain: "main",
     solutions: [],
@@ -122,6 +133,10 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       }
+      case "--template":
+        out.template = takeValue("--template", i);
+        i++;
+        break;
       case "--server":
         out.server = takeValue("--server", i);
         i++;
@@ -175,12 +190,19 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       case "--no-interactive":
         out.noInteractive = true;
         break;
+      case "--force":
+        out.force = true;
+        break;
       default:
         if (a.startsWith("--")) {
           throw new UsageError(`未知选项: ${a}`);
         }
         positional.push(a);
     }
+  }
+  // --force 只对 skill 有意义；其他子命令静默接受会让人误以为生效（如 push --force）
+  if (out.force && out.sub !== "skill") {
+    throw new UsageError("--force 只能用于 problem skill");
   }
   if (positional.length > 0) out.slug = positional[0];
   // init 的第一个位置参数是 slug，lint/pack 的是 dir。
@@ -191,7 +213,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
   if (
     out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
-    out.sub === "migrate" || out.sub === "test"
+    out.sub === "migrate" || out.sub === "test" || out.sub === "skill"
   ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
@@ -482,6 +504,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         ...(await guideProblemInit(realIO(), answers)),
         judgeType: args.judgeType,
       };
+      // 模板只由 --template 指定，TUI 不追问（保持既有引导流程不变）。
     } catch (err) {
       // 用户在确认环节取消：不是错误，用 0 退出（与常见 CLI 一致）
       if ((err as Error).message === "已取消") {
@@ -519,6 +542,20 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         `--judge-type 仅支持 dual/oi，收到 "${answers.judgeType}"`,
       );
     }
+    if (args.template !== undefined) {
+      if (
+        !(PROBLEM_TEMPLATE_NAMES as readonly string[]).includes(args.template)
+      ) {
+        throw new UsageError(
+          `--template 仅支持 ${
+            PROBLEM_TEMPLATE_NAMES.join("/")
+          }，收到 "${args.template}"`,
+        );
+      }
+      if (answers.judgeType === "oi") {
+        throw new UsageError("--template 与 --judge-type oi 不能同时使用");
+      }
+    }
   } catch (err) {
     if (err instanceof UsageError) throw err;
     throw new UsageError((err as Error).message);
@@ -529,13 +566,21 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
     title: answers.title,
     difficulty: answers.difficulty,
     judgeType: answers.judgeType,
+    template: args.template as ProblemTemplateName | undefined,
     root: args.dir,
   });
   console.log(`已生成题目骨架：${result.dir}`);
   for (const f of result.files) console.log(`  + ${f}`);
-  console.log(
-    `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
-  );
+  if (args.template !== undefined) {
+    console.log(
+      `\n下一步：先运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+        "再按 README.md 的改造步骤改成你的题目",
+    );
+  } else {
+    console.log(
+      `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
+    );
+  }
   return EXIT_OK;
 }
 
@@ -572,6 +617,44 @@ export async function runProblemMigrate(args: ProblemArgs): Promise<number> {
   return EXIT_OK;
 }
 
+/** `problem skill [dir]`：把 AI 出题 Skill 写入出题仓库。 */
+export async function runProblemSkill(args: ProblemArgs): Promise<number> {
+  const root = resolve(args.dir ?? ".");
+  if (!(await isDirectory(root))) {
+    console.error(`problem skill: 目录不存在：${root}`);
+    return EXIT_USAGE;
+  }
+  let results;
+  try {
+    results = await installProblemSetterSkill({ root, force: args.force });
+  } catch (err) {
+    console.error(`problem skill: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  const conflict = results.some((r) => r.status === "conflict");
+  if (args.json) {
+    console.log(JSON.stringify({ root, targets: results }, null, 2));
+    return conflict ? EXIT_FAILURE : EXIT_OK;
+  }
+  const label = {
+    written: "已写入",
+    unchanged: "已是最新",
+    conflict: "已存在且内容不同，未覆盖",
+  } as const;
+  for (const r of results) {
+    console.log(`${label[r.status]}：${relative(Deno.cwd(), r.dir) || r.dir}`);
+  }
+  if (conflict) {
+    console.error("加 --force 覆盖（会先删除旧的 Skill 目录）。");
+    return EXIT_FAILURE;
+  }
+  console.log(
+    "AI 编码助手在该目录工作时会加载 noj-problem-setter；" +
+      "也可直接阅读其中的 SKILL.md。",
+  );
+  return EXIT_OK;
+}
+
 /** 分发 `problem <子命令>`。 */
 export async function runProblem(args: ProblemArgs): Promise<number> {
   switch (args.sub) {
@@ -587,8 +670,12 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemMigrate(args);
     case "test":
       return await runProblemTest(args);
+    case "skill":
+      return await runProblemSkill(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push/migrate/test");
+      console.error(
+        "problem: 需要子命令 init/lint/pack/push/migrate/test/skill",
+      );
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }
