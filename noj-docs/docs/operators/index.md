@@ -12,6 +12,7 @@ Neuro OJ 生产环境统一采用纯 TypeScript 编写的单二进制运维工�
 
 ### 1. 安装、初始化与日常维护
 - [生产部署指南 (noj-cli)](./production-deploy.md)：基于 Docker Compose 与官方容器镜像的一键安装、`.env.prod` 核心配置、平滑更新与备份恢复。
+- [从 v0.10.6 升级至 v0.11](./upgrade-v010-to-v011.md)：`noj db upgrade-v010` 跨大版本逻辑迁移流程、预检与 `--dry-run` 验收、数据映射与回滚兜底步骤。
 - [CLI 运维工具与命令](./cli.md)：服务管理、数据库迁移、系统初始化、管理员凭据引导等常用 CLI 命令清单。
 - [生产密钥管理与轮换 Runbook](./production-secrets.md)：JWT Secret、数据库密码、Redis、MinIO 与 SMTP 凭据的无停机轮换与应急回滚步骤。
 

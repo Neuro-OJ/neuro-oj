@@ -304,6 +304,10 @@ export default withMermaid(defineConfig({
               link: "/operators/production-deploy",
             },
             {
+              text: "从 v0.10.6 升级至 v0.11",
+              link: "/operators/upgrade-v010-to-v011",
+            },
+            {
               text: "工作空间部署与治理",
               link: "/operators/workspace-deployment",
             },

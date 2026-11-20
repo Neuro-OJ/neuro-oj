@@ -19,6 +19,7 @@
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "db:catalog-backfill": "deno run --env-file=.env -A scripts/noj.ts db catalog-backfill",
     "db:execution-backfill": "deno run --env-file=.env -A scripts/noj.ts db execution-backfill",
+    "db:upgrade-v010": "deno run --env-file=.env -A scripts/upgrade-from-v010.ts",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
     "check:config-usage": "deno run -A scripts/check-config-usage.ts",
