@@ -171,49 +171,46 @@ async function list(dir: string): Promise<string[]> {
   return out.sort();
 }
 
-Deno.test({
-  name: "installProblemSetterSkill：路径中有符号链接时拒绝，不写不删链接目标",
-  ignore: Deno.build.os === "windows",
-  fn: async () => {
-    const root = await Deno.makeTempDir();
-    const outside = await Deno.makeTempDir();
-    try {
-      // 情形一：.agents 指向仓库外的共享目录
-      await Deno.symlink(outside, join(root, ".agents"));
-      await assertRejects(
-        () => installProblemSetterSkill({ root, force: true }),
-        Error,
-        "符号链接",
-      );
-      assertEquals(await list(outside), []);
-      // 任一位置不安全时两处都不写
-      assertEquals(await exists(join(root, ".claude")), false);
-      await Deno.remove(join(root, ".agents"));
+Deno.test("installProblemSetterSkill：路径中有符号链接时拒绝，不写不删链接目标", async () => {
+  const root = await Deno.makeTempDir();
+  const outside = await Deno.makeTempDir();
+  try {
+    // 情形一：.agents 指向仓库外的共享目录
+    await Deno.symlink(outside, join(root, ".agents"), { type: "dir" });
+    await assertRejects(
+      () => installProblemSetterSkill({ root, force: true }),
+      Error,
+      "符号链接",
+    );
+    assertEquals(await list(outside), []);
+    // 任一位置不安全时两处都不写
+    assertEquals(await exists(join(root, ".claude")), false);
+    await Deno.remove(join(root, ".agents"));
 
-      // 情形二：Skill 目录本身指向共享目录，--force 不得删除其内容
-      const shared = join(outside, "shared-skill");
-      await Deno.mkdir(shared);
-      await Deno.writeTextFile(join(shared, "keep.md"), "本地修改");
-      await Deno.mkdir(join(root, ".claude/skills"), { recursive: true });
-      await Deno.symlink(
-        shared,
-        join(root, ".claude/skills", PROBLEM_SETTER_SKILL_NAME),
-      );
-      await assertRejects(
-        () => installProblemSetterSkill({ root, force: true }),
-        Error,
-        "符号链接",
-      );
-      assertEquals(
-        await Deno.readTextFile(join(shared, "keep.md")),
-        "本地修改",
-      );
-      assertEquals(await exists(join(root, ".agents")), false);
-    } finally {
-      await Deno.remove(root, { recursive: true });
-      await Deno.remove(outside, { recursive: true });
-    }
-  },
+    // 情形二：Skill 目录本身指向共享目录，--force 不得删除其内容
+    const shared = join(outside, "shared-skill");
+    await Deno.mkdir(shared);
+    await Deno.writeTextFile(join(shared, "keep.md"), "本地修改");
+    await Deno.mkdir(join(root, ".claude/skills"), { recursive: true });
+    await Deno.symlink(
+      shared,
+      join(root, ".claude/skills", PROBLEM_SETTER_SKILL_NAME),
+      { type: "dir" },
+    );
+    await assertRejects(
+      () => installProblemSetterSkill({ root, force: true }),
+      Error,
+      "符号链接",
+    );
+    assertEquals(
+      await Deno.readTextFile(join(shared, "keep.md")),
+      "本地修改",
+    );
+    assertEquals(await exists(join(root, ".agents")), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+    await Deno.remove(outside, { recursive: true });
+  }
 });
 
 Deno.test("installProblemSetterSkill：--force 写入失败时保留原目录且不留暂存", async () => {
