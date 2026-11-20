@@ -168,6 +168,7 @@ noj-cli problem migrate <目录>   # 将旧格式 problem.json 原地改写为�
 noj-cli problem import --domain school --dir <题包目录>
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school --publish
+noj-cli problem skill [目录] [--force]   # 写入 AI 出题 Skill
 ```
 
 `problem init` 生成格式 3 最小题包（`kind` 声明题型，AI 题 `runtime_config`
@@ -191,6 +192,13 @@ TTY 或 `--no-interactive` 需显式给出参数。
 `submissions/expect.json`， 生成后可直接 `problem test` 验题，再按模板 README
 改造。模板事实源在 `noj-core/scripts/problem-templates/`，与
 `noj problems init --template` 共用。
+
+`problem skill` 把 AI 出题 Skill（`noj-problem-setter`）写入目标目录（缺省当前
+目录）的 `.agents/skills/` 与 `.claude/skills/`，AI 编码助手在出题仓库里即可按
+「选题型 → 模板 → 评测脚本 → 参考解答 → 验题 → lint → pack/push」的流程出题。
+已存在且内容不同时不覆盖，加 `--force` 整体替换。Skill 事实源在
+`noj-cli/skills/noj-problem-setter/`，由 `src/problem/gen-skill.ts`
+嵌入单二进制。
 
 `--judge-type oi` 会生成 C99/C++11 传统 OI 题包骨架（`testdata/`、default
 checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。

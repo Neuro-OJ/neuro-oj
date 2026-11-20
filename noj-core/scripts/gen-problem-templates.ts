@@ -24,8 +24,14 @@ export const GENERATED_PATH = join(
 /** 不嵌入的条目（缓存与系统文件）。 */
 const SKIPPED = new Set(["__pycache__", ".DS_Store", ".pytest_cache"]);
 
-/** 读取一个模板目录：相对路径（POSIX 分隔）→ UTF-8 文本。 */
-async function readTemplate(dir: string): Promise<Record<string, string>> {
+/**
+ * 读取一个目录树：相对路径（POSIX 分隔）→ UTF-8 文本。
+ *
+ * 也供 noj-cli 的出题 Skill 嵌入生成器复用。
+ */
+export async function readTextTree(
+  dir: string,
+): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const decoder = new TextDecoder("utf-8", { fatal: true });
   async function walk(current: string): Promise<void> {
@@ -61,9 +67,9 @@ export async function collectTemplates(
   names.sort();
   const out: Record<string, Record<string, string>> = {};
   for (const name of names) {
-    const files = await readTemplate(join(root, name));
+    const files = await readTextTree(join(root, name));
     out[name] = Object.fromEntries(
-      Object.keys(files).sort().map((k) => [k, files[k]]),
+      Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
     );
   }
   return out;
@@ -94,7 +100,7 @@ export function renderModule(
 }
 
 /** 用 deno fmt 规范化源码，使生成结果与仓库格式检查一致。 */
-async function formatTs(source: string): Promise<string> {
+export async function formatTs(source: string): Promise<string> {
   const child = new Deno.Command(Deno.execPath(), {
     args: ["fmt", "--ext", "ts", "-"],
     stdin: "piped",

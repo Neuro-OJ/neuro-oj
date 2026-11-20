@@ -28,6 +28,7 @@ import {
 } from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
 import { runProblemTest } from "./test-command.ts";
+import { installProblemSetterSkill } from "./skill.ts";
 import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
 
@@ -44,6 +45,8 @@ export interface ProblemArgs {
   json: boolean;
   /** init: 跳过 TUI 引导。 */
   noInteractive: boolean;
+  /** skill: 已存在且内容不同时覆盖。 */
+  force: boolean;
   /** init 选项。 */
   slug?: string;
   title?: string;
@@ -81,6 +84,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     strict: false,
     json: false,
     noInteractive: false,
+    force: false,
     publish: false,
     domain: "main",
     solutions: [],
@@ -186,12 +190,19 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       case "--no-interactive":
         out.noInteractive = true;
         break;
+      case "--force":
+        out.force = true;
+        break;
       default:
         if (a.startsWith("--")) {
           throw new UsageError(`未知选项: ${a}`);
         }
         positional.push(a);
     }
+  }
+  // --force 只对 skill 有意义；其他子命令静默接受会让人误以为生效（如 push --force）
+  if (out.force && out.sub !== "skill") {
+    throw new UsageError("--force 只能用于 problem skill");
   }
   if (positional.length > 0) out.slug = positional[0];
   // init 的第一个位置参数是 slug，lint/pack 的是 dir。
@@ -202,7 +213,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
   if (
     out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
-    out.sub === "migrate" || out.sub === "test"
+    out.sub === "migrate" || out.sub === "test" || out.sub === "skill"
   ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
@@ -606,6 +617,44 @@ export async function runProblemMigrate(args: ProblemArgs): Promise<number> {
   return EXIT_OK;
 }
 
+/** `problem skill [dir]`：把 AI 出题 Skill 写入出题仓库。 */
+export async function runProblemSkill(args: ProblemArgs): Promise<number> {
+  const root = resolve(args.dir ?? ".");
+  if (!(await isDirectory(root))) {
+    console.error(`problem skill: 目录不存在：${root}`);
+    return EXIT_USAGE;
+  }
+  let results;
+  try {
+    results = await installProblemSetterSkill({ root, force: args.force });
+  } catch (err) {
+    console.error(`problem skill: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  const conflict = results.some((r) => r.status === "conflict");
+  if (args.json) {
+    console.log(JSON.stringify({ root, targets: results }, null, 2));
+    return conflict ? EXIT_FAILURE : EXIT_OK;
+  }
+  const label = {
+    written: "已写入",
+    unchanged: "已是最新",
+    conflict: "已存在且内容不同，未覆盖",
+  } as const;
+  for (const r of results) {
+    console.log(`${label[r.status]}：${relative(Deno.cwd(), r.dir) || r.dir}`);
+  }
+  if (conflict) {
+    console.error("加 --force 覆盖（会先删除旧的 Skill 目录）。");
+    return EXIT_FAILURE;
+  }
+  console.log(
+    "AI 编码助手在该目录工作时会加载 noj-problem-setter；" +
+      "也可直接阅读其中的 SKILL.md。",
+  );
+  return EXIT_OK;
+}
+
 /** 分发 `problem <子命令>`。 */
 export async function runProblem(args: ProblemArgs): Promise<number> {
   switch (args.sub) {
@@ -621,8 +670,12 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemMigrate(args);
     case "test":
       return await runProblemTest(args);
+    case "skill":
+      return await runProblemSkill(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push/migrate/test");
+      console.error(
+        "problem: 需要子命令 init/lint/pack/push/migrate/test/skill",
+      );
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }

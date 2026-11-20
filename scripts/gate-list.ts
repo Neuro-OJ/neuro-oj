@@ -177,6 +177,11 @@ export const REPO_GATES: Gate[] = [
       "--check",
     ],
   },
+  // AI 出题 Skill 嵌入（P0-2 C）：同理，改了 noj-cli/skills/ 却没重新生成，
+  // `noj-cli problem skill` 会写出旧版 Skill。
+  {
+    args: ["deno", "run", "-A", "noj-cli/src/problem/gen-skill.ts", "--check"],
+  },
   // 单文件规模棘轮：存量巨型文件不得继续变大，新文件超阈值直接失败（评审 §3.2）
   { args: ["deno", "run", "-A", "scripts/check-file-size.ts"] },
   // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）
