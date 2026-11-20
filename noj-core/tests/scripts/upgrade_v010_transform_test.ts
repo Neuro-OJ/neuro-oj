@@ -14,12 +14,16 @@ import {
   DEFAULT_DOMAIN_ID,
   normalizeAuditAction,
   normalizeUtcMillisIso,
+  ORPHAN_JOB_ITEM_REASON_CODE,
+  planAccessDecisions,
   planProblemNumbers,
   resolveAdminUserIds,
+  resolveAnswerVersionId,
   resolveModerationActionDomainId,
   resolveNotificationDomainId,
   selectDefaultDomainOwner,
   topoSortSelfFk,
+  transformOrphanJobItem,
   UpgradeV010Error,
 } from "../../src/shared/db/upgrade-v010/index.ts";
 import { deterministicUuid } from "../../src/shared/db/upgrade-v010/copy-helpers.ts";
@@ -296,6 +300,9 @@ Deno.test("deterministicUuid、CLI 参数解析与凭证脱敏报告", async () 
       skippedAuditLogs: 1,
       droppedSystemSettings: ["tsa_provider"],
       droppedLegacyTables: { roles: 2 },
+      privateProblems: [],
+      restrictedContests: [],
+      orphanJobItems: [],
     },
     gateway: {
       detected: true,
@@ -304,6 +311,7 @@ Deno.test("deterministicUuid、CLI 参数解析与凭证脱敏报告", async () 
       copiedQuotas: 1,
       backfilledDomainSettings: 1,
       backfilledModelAliases: 1,
+      standalone: null,
     },
   });
   assert(rendered.includes("DRY-RUN"));
@@ -315,4 +323,231 @@ Deno.test("deterministicUuid、CLI 参数解析与凭证脱敏报告", async () 
     UpgradeV010Error,
     "bad url",
   );
+});
+
+Deno.test("planAccessDecisions: 已发布私有题与受限比赛未指定处置时阻断，指定后按策略落地", () => {
+  const problems = [
+    {
+      id: "pub",
+      title: "公开题",
+      owner_id: "u1",
+      visibility: "public",
+      latest_version_id: "v1",
+    },
+    {
+      id: "priv-draft",
+      title: "未发布私有题",
+      owner_id: "u1",
+      visibility: "private",
+      latest_version_id: null,
+    },
+    {
+      id: "priv-pub",
+      title: "已发布私有题",
+      owner_id: "u2",
+      visibility: "private",
+      latest_version_id: "v2",
+    },
+  ];
+  const contests = [
+    {
+      id: "c-open",
+      title: "公开赛",
+      is_public: true,
+      kind: "public",
+      password: null,
+    },
+    {
+      id: "c-hidden",
+      title: "非公开赛",
+      is_public: false,
+      kind: "public",
+      password: null,
+    },
+    {
+      id: "c-invite",
+      title: "邀请赛",
+      is_public: true,
+      kind: "invite",
+      password: null,
+    },
+    {
+      id: "c-pass",
+      title: "口令赛",
+      is_public: true,
+      kind: "public",
+      password: "secret-pass",
+    },
+  ];
+
+  const err = assertThrows(
+    () => planAccessDecisions(problems, contests, {}),
+    UpgradeV010Error,
+  );
+  assertEquals(err.code, "ACCESS_DECISION_REQUIRED");
+  assertEquals(err.details?.privateProblemIds, ["priv-pub"]);
+  assertEquals(err.details?.restrictedContestIds, [
+    "c-hidden",
+    "c-invite",
+    "c-pass",
+  ]);
+  assert(!err.message.includes("secret-pass"));
+
+  // 只处置一类仍阻断
+  assertThrows(
+    () =>
+      planAccessDecisions(problems, contests, {
+        privateProblemPolicy: "disable",
+      }),
+    UpgradeV010Error,
+    "--restricted-contests",
+  );
+
+  const disabled = planAccessDecisions(problems, contests, {
+    privateProblemPolicy: "disable",
+    restrictedContestPolicy: "expose",
+  });
+  assertEquals([...disabled.disabledProblemIds], ["priv-pub"]);
+  assertEquals(disabled.privateProblems, [{
+    id: "priv-pub",
+    title: "已发布私有题",
+    ownerId: "u2",
+    action: "disable",
+  }]);
+  assertEquals([...disabled.exposedContestIds], [
+    "c-hidden",
+    "c-invite",
+    "c-pass",
+  ]);
+  assertEquals(
+    disabled.restrictedContests.map((c) => [c.id, c.wasPublic, c.hadPassword]),
+    [["c-hidden", false, false], ["c-invite", true, false], [
+      "c-pass",
+      true,
+      true,
+    ]],
+  );
+  assert(!JSON.stringify(disabled.restrictedContests).includes("secret-pass"));
+
+  const exposed = planAccessDecisions(problems, [], {
+    privateProblemPolicy: "expose",
+  });
+  assertEquals(exposed.disabledProblemIds.size, 0);
+  assertEquals(exposed.privateProblems[0]?.action, "expose");
+
+  // 无受限数据时无需任何处置参数
+  const clean = planAccessDecisions([problems[0]!, problems[1]!], [
+    contests[0]!,
+  ], {});
+  assertEquals(clean.privateProblems, []);
+  assertEquals(clean.restrictedContests, []);
+});
+
+Deno.test("transformOrphanJobItem: failed/skipped 保留空绑定，其余状态转 skipped 并记录原因", () => {
+  const executedAt = "2026-11-20T00:00:00.000Z";
+  for (const status of ["failed", "skipped"]) {
+    const kept = transformOrphanJobItem(
+      { id: "i1", job_id: "j1", problem_id: "gone", status },
+      executedAt,
+      "2026-01-01T00:00:00.000Z",
+    );
+    assertEquals(kept.overrides, null);
+    assertEquals(kept.entry.importedStatus, status);
+  }
+  for (const status of ["pending", "preparing", "dispatched", "succeeded"]) {
+    const converted = transformOrphanJobItem(
+      { id: "i2", job_id: "j1", problem_id: "gone", status },
+      executedAt,
+      null,
+    );
+    assertEquals(converted.overrides?.status, "skipped");
+    assertEquals(
+      converted.overrides?.reason_code,
+      ORPHAN_JOB_ITEM_REASON_CODE,
+    );
+    assertEquals(converted.overrides?.finished_at, executedAt);
+    assertEquals(converted.overrides?.lease_owner, null);
+    assert(String(converted.overrides?.reason_message).includes(status));
+    assertEquals(converted.entry, {
+      id: "i2",
+      jobId: "j1",
+      problemId: "gone",
+      originalStatus: status,
+      importedStatus: "skipped",
+    });
+  }
+  const finished = transformOrphanJobItem(
+    { id: "i3", job_id: "j1", problem_id: "gone", status: "succeeded" },
+    executedAt,
+    "2026-01-02T00:00:00.000Z",
+  );
+  assertEquals(finished.overrides?.finished_at, "2026-01-02T00:00:00.000Z");
+});
+
+Deno.test("resolveAnswerVersionId: exact 策略锁定版本优先于最新版本", () => {
+  assertEquals(resolveAnswerVersionId("v1", "v3"), "v1");
+  assertEquals(resolveAnswerVersionId(null, "v3"), "v3");
+  assertEquals(resolveAnswerVersionId(null, null), null);
+});
+
+Deno.test("CLI: 文档化的纯环境变量写法、处置参数与非法取值", async () => {
+  // 文档写法：连接串只走环境变量，参数里没有任何 URL，也不带字面量 `--`
+  const envOnly = parseUpgradeCliArgs(
+    ["--dry-run", "--json", "--private-problems=disable"],
+    {
+      NOJ_UPGRADE_SOURCE_URL: "postgres://u:pw@db/src",
+      NOJ_UPGRADE_TARGET_URL: "postgres://u:pw@db/dst",
+      NOJ_UPGRADE_GATEWAY_URL: "postgres://u:pw@gw/gateway",
+    },
+  );
+  assertEquals(envOnly.sourceUrl, "postgres://u:pw@db/src");
+  assertEquals(envOnly.targetUrl, "postgres://u:pw@db/dst");
+  assertEquals(envOnly.gatewayUrl, "postgres://u:pw@gw/gateway");
+  assertEquals(envOnly.privateProblems, "disable");
+  assertEquals(envOnly.restrictedContests, undefined);
+  assertEquals(envOnly.dryRun, true);
+
+  // 正式执行同样只靠环境变量
+  const realRun = parseUpgradeCliArgs(
+    ["--restricted-contests", "expose"],
+    {
+      NOJ_UPGRADE_SOURCE_URL: "postgres://u:pw@db/src",
+      NOJ_UPGRADE_TARGET_URL: "postgres://u:pw@db/dst",
+    },
+  );
+  assertEquals(realRun.dryRun, false);
+  assertEquals(realRun.restrictedContests, "expose");
+
+  // 旧文档里 `deno task ... -- --flags` 的字面量 `--` 会被严格解析器拒绝
+  assertThrows(() => parseUpgradeCliArgs(["--", "--dry-run"], {}));
+  assertThrows(
+    () => parseUpgradeCliArgs(["--private-problems=hide"], {}),
+    UpgradeV010Error,
+    "disable 或 expose",
+  );
+  assertThrows(
+    () => parseUpgradeCliArgs(["--restricted-contests=disable"], {}),
+    UpgradeV010Error,
+    "仅支持 expose",
+  );
+
+  // 非法处置值在连接数据库前即失败，且错误输出不含连接串
+  const errors: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => errors.push(args.join(" "));
+  try {
+    const code = await executeUpgradeCli({
+      privateProblems: "hide",
+      json: true,
+    }, {
+      NOJ_UPGRADE_SOURCE_URL: "postgres://u:pw@127.0.0.1:1/src",
+      NOJ_UPGRADE_TARGET_URL: "postgres://u:pw@127.0.0.1:1/dst",
+    });
+    assertEquals(code, 1);
+  } finally {
+    console.error = originalError;
+  }
+  const output = errors.join("\n");
+  assert(output.includes("INVALID_OPTIONS"));
+  assert(!output.includes("pw@"));
 });

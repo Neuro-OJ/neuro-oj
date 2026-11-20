@@ -2,15 +2,17 @@
 /**
  * `v0.10.6 → v0.11` 逻辑数据库升级 CLI。
  *
- * 用法：
- *   deno run --env-file=.env -A scripts/upgrade-from-v010.ts \
- *     --source-url postgres://... --target-url postgres://... [--dry-run] [--json]
+ * 用法（连接串只经环境变量传入，避免 `deno task` 回显参数或进程列表泄露口令）：
+ *   NOJ_UPGRADE_SOURCE_URL=... NOJ_UPGRADE_TARGET_URL=... \
+ *     deno task db:upgrade-v010 --dry-run --json
  *
  * 注意：绝不在 stdout / stderr / 错误消息中回显任何数据库连接串或口令。
  */
 
 import { parseArgs } from "node:util";
 import {
+  type PrivateProblemPolicy,
+  type RestrictedContestPolicy,
   runUpgradeFromV010,
   type UpgradeReport,
   UpgradeV010Error,
@@ -19,6 +21,9 @@ import {
 export interface UpgradeCliOptions {
   sourceUrl?: string;
   targetUrl?: string;
+  gatewayUrl?: string;
+  privateProblems?: PrivateProblemPolicy;
+  restrictedContests?: RestrictedContestPolicy;
   dryRun: boolean;
   json: boolean;
   help: boolean;
@@ -27,16 +32,46 @@ export interface UpgradeCliOptions {
 const USAGE_TEXT = [
   "Neuro OJ v0.10.6 → v0.11 逻辑数据库升级工具",
   "",
-  "用法:",
-  "  noj db upgrade-v010 --source-url <v0.10.6只读URL> --target-url <空v0.11目标URL> [--dry-run] [--json]",
+  "用法（推荐通过环境变量传连接串，避免口令出现在命令行与日志）:",
+  "  NOJ_UPGRADE_SOURCE_URL=... NOJ_UPGRADE_TARGET_URL=... noj db upgrade-v010 [--dry-run] [--json]",
+  "",
+  "环境变量:",
+  "  NOJ_UPGRADE_SOURCE_URL   只读源库（v0.10.6 / 0115）连接串",
+  "  NOJ_UPGRADE_TARGET_URL   全新空目标库（只执行过 v0.11 schema 迁移）连接串",
+  "  NOJ_UPGRADE_GATEWAY_URL  独立部署的 Gateway 库连接串（Gateway 不与 Core 同库时必填）",
   "",
   "参数:",
-  "  --source-url <url>  只读源库（v0.10.6 / 0115）连接串，也可通过 NOJ_UPGRADE_SOURCE_URL 提供",
-  "  --target-url <url>  全新空目标库（已执行 v0.11 全量迁移）连接串，也可通过 NOJ_UPGRADE_TARGET_URL 提供",
+  "  --source-url / --target-url / --gateway-url <url>  同上（会出现在进程列表，不推荐）",
+  "  --private-problems <disable|expose>  已发布私有题处置：disable=禁用绑定待复核，expose=接受公开",
+  "  --restricted-contests <expose>       非公开/邀请/口令比赛处置：expose=接受在 main 域公开",
   "  --dry-run           仅执行只读预检、映射与规划统计，不写入目标库",
   "  --json              输出单个 JSON 文档（自动化脚本与运维编排用）",
   "  -h, --help          显示帮助并退出",
 ].join("\n");
+
+/** 校验访问边界处置参数取值。 */
+export function parsePrivateProblemPolicy(
+  value: string | undefined,
+): PrivateProblemPolicy | undefined {
+  if (value === undefined) return undefined;
+  if (value === "disable" || value === "expose") return value;
+  throw new UpgradeV010Error(
+    "INVALID_OPTIONS",
+    `--private-problems 仅支持 disable 或 expose，收到: ${value}`,
+  );
+}
+
+/** 校验受限比赛处置参数取值。 */
+export function parseRestrictedContestPolicy(
+  value: string | undefined,
+): RestrictedContestPolicy | undefined {
+  if (value === undefined) return undefined;
+  if (value === "expose") return value;
+  throw new UpgradeV010Error(
+    "INVALID_OPTIONS",
+    `--restricted-contests 仅支持 expose，收到: ${value}`,
+  );
+}
 
 /** 解析命令行参数与环境变量回退，不访问数据库。 */
 export function parseUpgradeCliArgs(
@@ -48,6 +83,9 @@ export function parseUpgradeCliArgs(
     options: {
       "source-url": { type: "string" },
       "target-url": { type: "string" },
+      "gateway-url": { type: "string" },
+      "private-problems": { type: "string" },
+      "restricted-contests": { type: "string" },
       "dry-run": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -62,10 +100,18 @@ export function parseUpgradeCliArgs(
   const targetUrl = values["target-url"]?.trim() ||
     env.NOJ_UPGRADE_TARGET_URL?.trim() ||
     undefined;
+  const gatewayUrl = values["gateway-url"]?.trim() ||
+    env.NOJ_UPGRADE_GATEWAY_URL?.trim() ||
+    undefined;
 
   return {
     sourceUrl,
     targetUrl,
+    gatewayUrl,
+    privateProblems: parsePrivateProblemPolicy(values["private-problems"]),
+    restrictedContests: parseRestrictedContestPolicy(
+      values["restricted-contests"],
+    ),
     dryRun: Boolean(values["dry-run"]),
     json: Boolean(values.json),
     help: Boolean(values.help),
@@ -96,6 +142,12 @@ export function formatUpgradeReport(report: UpgradeReport): string {
         ? `providers=${report.gateway.copiedProviders}, usage=${report.gateway.copiedUsage}, quotas=${report.gateway.copiedQuotas}, domainSettings=${report.gateway.backfilledDomainSettings}, aliases=${report.gateway.backfilledModelAliases}`
         : "未检测到同库 Gateway 表（已跳过）"
     }`,
+    `独立 Gateway 模型配置: ${
+      report.gateway.standalone
+        ? `domainSettings=${report.gateway.standalone.domainSettings}, aliases=${report.gateway.standalone.modelAliases}, verified=${report.gateway.standalone.verified}`
+        : "无需转移"
+    }`,
+    `私有题处置: ${report.archivedSummary.privateProblems.length} 道；受限比赛处置: ${report.archivedSummary.restrictedContests.length} 场；孤儿批量任务条目: ${report.archivedSummary.orphanJobItems.length} 条`,
   ];
   if (nonZeroTables) {
     lines.push("已迁移/生成行数（非空表）:", nonZeroTables);
@@ -106,7 +158,11 @@ export function formatUpgradeReport(report: UpgradeReport): string {
 /** 运行 CLI 升级并返回退出码（0=成功，1=失败）。 */
 export async function executeUpgradeCli(
   options: Partial<
-    Pick<UpgradeCliOptions, "sourceUrl" | "targetUrl" | "dryRun" | "json">
+    & Pick<
+      UpgradeCliOptions,
+      "sourceUrl" | "targetUrl" | "gatewayUrl" | "dryRun" | "json"
+    >
+    & { privateProblems: string; restrictedContests: string }
   >,
   env: Record<string, string | undefined> = Deno.env.toObject(),
 ): Promise<number> {
@@ -114,6 +170,8 @@ export async function executeUpgradeCli(
     env.NOJ_UPGRADE_SOURCE_URL?.trim() || "";
   const targetUrl = options.targetUrl?.trim() ||
     env.NOJ_UPGRADE_TARGET_URL?.trim() || "";
+  const gatewayUrl = options.gatewayUrl?.trim() ||
+    env.NOJ_UPGRADE_GATEWAY_URL?.trim() || undefined;
 
   if (!sourceUrl || !targetUrl) {
     const errPayload = {
@@ -134,6 +192,11 @@ export async function executeUpgradeCli(
     const report = await runUpgradeFromV010({
       sourceUrl,
       targetUrl,
+      gatewayUrl,
+      privateProblemPolicy: parsePrivateProblemPolicy(options.privateProblems),
+      restrictedContestPolicy: parseRestrictedContestPolicy(
+        options.restrictedContests,
+      ),
       dryRun: Boolean(options.dryRun),
     });
     if (options.json) {

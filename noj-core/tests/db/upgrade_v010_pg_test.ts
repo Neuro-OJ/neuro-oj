@@ -3,9 +3,12 @@
  *
  * 在独立创建并清理的临时数据库上执行：
  * 1. 对源库应用官方 `0000..0115` Core 迁移 + `v0.10.6` Gateway SQL；
- * 2. 对目标库应用完整 `0000..0144` Core 迁移 + `v0.11` Gateway SQL；
- * 3. 灌入覆盖全表差异、循环外键、U 题重排、moment/私信清理、Gateway 的真实夹具；
- * 4. 验证 `dry-run` 零写入、原子提交全量校验、账本兼容以及幂等/误用拒绝条件。
+ * 2. 对目标库应用完整 Core 迁移，并通过运维实际入口
+ *    `noj-llm-gateway deno task db:migrate --schema-only` 初始化 Gateway schema；
+ * 3. 灌入覆盖全表差异、循环外键、U 题重排、moment/私信清理、Gateway、
+ *    私有题/邀请赛访问边界、孤儿批量任务条目、SSE 序列与实例公告的真实夹具；
+ * 4. 验证 `dry-run` 零写入、原子提交全量校验、账本兼容以及幂等/误用拒绝条件；
+ * 5. 独立部署 Gateway：默认模型与别名转移到独立 Gateway 库并读回校验。
  */
 
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
@@ -13,6 +16,8 @@ import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { type MigrationConfig, readMigrationFiles } from "drizzle-orm/migrator";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
+import * as schema from "../../src/shared/db/schema.ts";
+import { evaluateProblemAccess } from "../../src/modules/problems/services/problem-access-check.ts";
 import postgres from "postgres";
 import { assertDatabaseIdentifier } from "../../scripts/test-launcher-resources.ts";
 import {
@@ -31,10 +36,11 @@ const CORE_MIGRATIONS_DIR = resolve(
   dirname(fromFileUrl(import.meta.url)),
   "../../drizzle",
 );
-const GATEWAY_MIGRATIONS_DIR = resolve(
+const GATEWAY_ROOT = resolve(
   dirname(fromFileUrl(import.meta.url)),
-  "../../../noj-llm-gateway/drizzle",
+  "../../../noj-llm-gateway",
 );
+const GATEWAY_MIGRATIONS_DIR = `${GATEWAY_ROOT}/drizzle`;
 
 const MIGRATION_CONFIG: MigrationConfig = {
   migrationsFolder: CORE_MIGRATIONS_DIR,
@@ -54,20 +60,62 @@ const V010_GATEWAY_FILES = [
   "0005_provider_rate_limits.sql",
 ] as const;
 
-const V011_GATEWAY_FILES = [
-  "0000_baseline.sql",
-  "0001_llm_usage_billed_tokens.sql",
-  "0002_remove_byok_created_by.sql",
-  "0003_remove_provider_model.sql",
-  "0004_llm_usage_attempt_scope.sql",
-  "0005_domain_ownership.sql",
-  "0005_provider_rate_limits.sql",
-  "20261013002359_lazy_groot.sql",
-  "20261013054532_greedy_ironclad.sql",
-  "20261021105927_motionless_iron_patriot.sql",
-  "20261021115820_flat_forge.sql",
-  "20261113134736_organic_leopardon.sql",
-] as const;
+/**
+ * 通过运维文档中的同一入口初始化 Gateway：`cd noj-llm-gateway && deno task db:migrate`。
+ * 连接串只经环境变量传入（`deno task` 会回显展开后的参数）。
+ */
+async function runGatewayMigrateTask(
+  databaseUrl: string,
+  args: readonly string[],
+): Promise<void> {
+  const output = await new Deno.Command(Deno.execPath(), {
+    args: ["task", "db:migrate", ...args],
+    cwd: GATEWAY_ROOT,
+    env: {
+      DATABASE_URL: databaseUrl,
+      NOJ_LLM_SERVICE_TOKEN: "upgrade-test-service-token",
+      NOJ_LLM_STORE_KEY: "upgrade-test-store-key-0123456789",
+      REDIS_URL: "redis://127.0.0.1:6379/15",
+      LOG_LEVEL: "warn",
+    },
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const decoder = new TextDecoder();
+  const combined = decoder.decode(output.stdout) +
+    decoder.decode(output.stderr);
+  assert(
+    !combined.includes(new URL(databaseUrl).password || "\u0000"),
+    "gateway db:migrate 输出不得包含数据库口令",
+  );
+  if (!output.success) {
+    throw new Error(`gateway db:migrate ${args.join(" ")} 失败:\n${combined}`);
+  }
+}
+
+async function migrateCoreV011(client: PgClient): Promise<void> {
+  await new PgDialect().migrate(
+    readMigrationFiles(MIGRATION_CONFIG),
+    migrationSession(client),
+    MIGRATION_CONFIG,
+  );
+}
+
+async function migrateCoreV010(client: PgClient): Promise<void> {
+  const allMigrations = readMigrationFiles(MIGRATION_CONFIG);
+  const journal = JSON.parse(
+    await Deno.readTextFile(`${CORE_MIGRATIONS_DIR}/meta/_journal.json`),
+  ) as { entries: Array<{ tag: string }> };
+  const index0115 = journal.entries.findIndex(
+    (e) => e.tag === V010_LAST_MIGRATION_TAG,
+  );
+  assertEquals(index0115, 114);
+  await new PgDialect().migrate(
+    allMigrations.slice(0, index0115 + 1),
+    migrationSession(client),
+    MIGRATION_CONFIG,
+  );
+}
 
 function adminUrlForCurrentDatabase(): string {
   const databaseUrl = Deno.env.get("DATABASE_URL");
@@ -186,13 +234,14 @@ async function seedV010FixtureData(source: PgClient): Promise<void> {
     VALUES
       ('pv-p1-1', 'prob-p1', 1, 1, 'published', '{"stem":"P1"}'::jsonb, 'h1', 'v1', 'u-admin', ${ts1}),
       ('pv-paper-1', 'prob-paper', 1, 1, 'published', '{"stem":"Paper"}'::jsonb, 'h2', 'v1', 'u-admin', ${ts1}),
-      ('pv-u1-1', 'prob-u1', 1, 1, 'published', '{"stem":"U1"}'::jsonb, 'h3', 'v1', 'u-member', ${ts2})
+      ('pv-u1-1', 'prob-u1', 1, 1, 'published', '{"stem":"U1"}'::jsonb, 'h3', 'v1', 'u-member', ${ts2}),
+      ('pv-p1-2', 'prob-p1', 2, 1, 'published', '{"stem":"P1 v2"}'::jsonb, 'h4', 'v2', 'u-admin', ${ts3})
   `;
 
-  // 同时覆盖 exact 模式 + required_version_id 循环外键约束
+  // 同时覆盖 exact 模式 + required_version_id 循环外键约束；最新版本与锁定版本不同
   await source`
     UPDATE problems
-    SET latest_version_id = 'pv-p1-1',
+    SET latest_version_id = 'pv-p1-2',
         effective_version_mode = 'exact',
         required_version_id = 'pv-p1-1'
     WHERE id = 'prob-p1'
@@ -218,6 +267,18 @@ async function seedV010FixtureData(source: PgClient): Promise<void> {
       ('c-1', 'contest-1', '旧竞赛', 'desc',
        '2025-07-01T08:00:00.000Z', '2025-07-01T12:00:00.000Z',
        'public', 0, 'kaggle', 'public', '{}'::jsonb, true, true, 'u-admin', ${ts1}, ${ts1})
+  `;
+  // 邀请制 + 口令的非公开比赛：v0.11 不识别这些限制，必须由运维显式处置
+  await source`
+    INSERT INTO contests
+      (id, public_id, title, description, start_time, end_time,
+       ranking_visibility, freeze_duration_seconds, type, kind, config,
+       is_public, password, affect_global_ranking, created_by, created_at, updated_at)
+    VALUES
+      ('c-invite', 'contest-invite', '邀请赛', 'desc',
+       '2025-08-01T08:00:00.000Z', '2025-08-01T12:00:00.000Z',
+       'participants', 0, 'kaggle', 'invite', '{}'::jsonb, false, 'legacy-pass',
+       false, 'u-admin', ${ts1}, ${ts1})
   `;
   await source`
     INSERT INTO contest_problems
@@ -283,6 +344,39 @@ async function seedV010FixtureData(source: PgClient): Promise<void> {
   await source`UPDATE submissions SET active_attempt_id = 'att-1', latest_attempt_id = 'att-1', effective_attempt_id = 'att-1', accepted_attempt_id = 'att-1', contest_effective_attempt_id = 'att-1', contest_accepted_attempt_id = 'att-1' WHERE id = 'sub-1'`;
   await source`UPDATE submissions SET active_attempt_id = 'att-2', latest_attempt_id = 'att-2', effective_attempt_id = 'att-2', accepted_attempt_id = 'att-2' WHERE id = 'sub-2'`;
   await source`UPDATE objective_submissions SET active_attempt_id = 'att-obj-1', latest_attempt_id = 'att-obj-1', effective_attempt_id = 'att-obj-1', accepted_attempt_id = 'att-obj-1' WHERE id = 'obj-1'`;
+
+  // 批量任务：一条正常条目 + 三条引用已删除题目（problem_id 故意无外键）
+  await source`
+    INSERT INTO submission_jobs
+      (id, kind, actor_id, idempotency_key, request_hash, request, status, created_at, finished_at)
+    VALUES ('job-1', 'rejudge', 'u-admin', 'idem-1', 'hash-1', '{}'::jsonb, 'running', ${ts1}, NULL)
+  `;
+  await source`
+    INSERT INTO submission_job_items
+      (id, job_id, ordinal, source_kind, source_id, problem_id, target_version_id,
+       target_version_ref, status, lease_owner, lease_until, reason_code, created_at, finished_at)
+    VALUES
+      ('item-ok', 'job-1', 0, 'submission', 'sub-1', 'prob-p1', 'pv-p1-1',
+       'pv-p1-1', 'succeeded', NULL, NULL, NULL, ${ts1}, ${ts2}),
+      ('item-failed', 'job-1', 1, 'submission', 'sub-gone-1', 'prob-deleted', NULL,
+       'pv-gone', 'failed', NULL, NULL, 'DISPATCH_FAILED', ${ts1}, ${ts2}),
+      ('item-pending', 'job-1', 2, 'submission', 'sub-gone-2', 'prob-deleted', NULL,
+       'pv-gone', 'pending', 'worker-1', ${ts3}, NULL, ${ts1}, NULL),
+      ('item-succeeded', 'job-1', 3, 'objective', 'obj-gone', 'prob-deleted', NULL,
+       'pv-gone', 'succeeded', NULL, NULL, NULL, ${ts1}, ${ts2})
+  `;
+
+  await source`
+    INSERT INTO announcements
+      (id, public_id, title, content, is_pinned, is_active, created_by, created_at, updated_at)
+    VALUES ('ann-1', 'ann-1', '实例公告', '升级前公告', true, true, 'u-admin', ${ts1}, ${ts1})
+  `;
+  await source`
+    INSERT INTO sse_events (id, channel, payload, created_at)
+    VALUES
+      (41, 'submission:sub-1', '{"status":"accepted"}'::jsonb, ${ts1}),
+      (42, 'submission:sub-2', '{"status":"accepted"}'::jsonb, ${ts2})
+  `;
 
   await source`
     INSERT INTO community_boards (id, slug, name, description, sort_order, is_archived, created_at, updated_at)
@@ -428,29 +522,37 @@ Deno.test({
 
       try {
         const allMigrations = readMigrationFiles(MIGRATION_CONFIG);
-        const journal = JSON.parse(
-          await Deno.readTextFile(`${CORE_MIGRATIONS_DIR}/meta/_journal.json`),
-        ) as { entries: Array<{ tag: string }> };
-        const index0115 = journal.entries.findIndex(
-          (e) => e.tag === V010_LAST_MIGRATION_TAG,
-        );
-        assertEquals(index0115, 114);
-
-        const v010Migrations = allMigrations.slice(0, index0115 + 1);
-        await new PgDialect().migrate(
-          v010Migrations,
-          migrationSession(source),
-          MIGRATION_CONFIG,
-        );
+        await migrateCoreV010(source);
         await applyGatewaySqlFiles(source, V010_GATEWAY_FILES);
         await seedV010FixtureData(source);
 
-        await new PgDialect().migrate(
-          allMigrations,
-          migrationSession(target),
-          MIGRATION_CONFIG,
+        await migrateCoreV011(target);
+        // 运维文档入口：共享库 Gateway 只建 schema，不写默认配额
+        await runGatewayMigrateTask(targetUrl, ["--schema-only"]);
+        const schemaOnlyQuotas =
+          await target`SELECT count(*)::int AS cnt FROM llm_quotas`;
+        assertEquals(schemaOnlyQuotas[0]?.cnt, 0);
+
+        const policies = {
+          privateProblemPolicy: "disable",
+          restrictedContestPolicy: "expose",
+        } as const;
+
+        // 0. 旧文档写法（不带 --schema-only）会写入默认配额，迁移器必须拒绝并给出修复提示
+        await runGatewayMigrateTask(targetUrl, []);
+        const seededErr = await assertRejects(() =>
+          runUpgradeFromV010({
+            sourceUrl,
+            targetUrl,
+            dryRun: true,
+            migrationsDir: CORE_MIGRATIONS_DIR,
+            ...policies,
+          })
         );
-        await applyGatewaySqlFiles(target, V011_GATEWAY_FILES);
+        assert(seededErr instanceof UpgradeV010Error);
+        assertEquals(seededErr.code, "TARGET_NOT_EMPTY");
+        assert(seededErr.message.includes("--schema-only"));
+        await target`DELETE FROM llm_quotas`;
 
         // 1. 同库拦截
         const sameErr = await assertRejects(() =>
@@ -463,12 +565,27 @@ Deno.test({
         assert(sameErr instanceof UpgradeV010Error);
         assertEquals(sameErr.code, "SAME_DATABASE");
 
+        // 1b. 私有题与邀请赛未明确处置时，dry-run 即阻断
+        const accessErr = await assertRejects(() =>
+          runUpgradeFromV010({
+            sourceUrl,
+            targetUrl,
+            dryRun: true,
+            migrationsDir: CORE_MIGRATIONS_DIR,
+          })
+        );
+        assert(accessErr instanceof UpgradeV010Error);
+        assertEquals(accessErr.code, "ACCESS_DECISION_REQUIRED");
+        assertEquals(accessErr.details?.privateProblemIds, ["prob-u1"]);
+        assertEquals(accessErr.details?.restrictedContestIds, ["c-invite"]);
+
         // 2. Dry-run 只读规划，不写入任何目标行
         const dryReport = await runUpgradeFromV010({
           sourceUrl,
           targetUrl,
           dryRun: true,
           migrationsDir: CORE_MIGRATIONS_DIR,
+          ...policies,
         });
         assertEquals(dryReport.dryRun, true);
         assertEquals(dryReport.sourceMigrationCount, 115);
@@ -485,6 +602,32 @@ Deno.test({
         assertEquals(dryReport.archivedSummary.skippedMomentReports, 1);
         assertEquals(dryReport.archivedSummary.skippedAuditLogs, 2);
         assertEquals(dryReport.gateway.detected, true);
+        assertEquals(dryReport.gateway.standalone, null);
+        assertEquals(dryReport.archivedSummary.privateProblems, [{
+          id: "prob-u1",
+          title: "用户自建题 U1001",
+          ownerId: "u-member",
+          action: "disable",
+        }]);
+        assertEquals(dryReport.archivedSummary.restrictedContests, [{
+          id: "c-invite",
+          title: "邀请赛",
+          wasPublic: false,
+          kind: "invite",
+          hadPassword: true,
+          action: "expose",
+        }]);
+        assert(!JSON.stringify(dryReport).includes("legacy-pass"));
+        assertEquals(
+          dryReport.archivedSummary.orphanJobItems.map((
+            e,
+          ) => [e.id, e.originalStatus, e.importedStatus]),
+          [
+            ["item-failed", "failed", "failed"],
+            ["item-pending", "pending", "skipped"],
+            ["item-succeeded", "succeeded", "skipped"],
+          ],
+        );
 
         const dryTargetUsers =
           await target`SELECT count(*)::int AS cnt FROM users`;
@@ -496,6 +639,7 @@ Deno.test({
           targetUrl,
           dryRun: false,
           migrationsDir: CORE_MIGRATIONS_DIR,
+          ...policies,
         });
         assertEquals(realReport.dryRun, false);
         assertEquals(realReport.tableCounts.users, 4);
@@ -510,6 +654,119 @@ Deno.test({
         assertEquals(realReport.tableCounts.search_entries, 1);
         assertEquals(realReport.tableCounts.domain_storage_objects, 2);
         assertEquals(realReport.tableCounts.domain_resource_counters, 3);
+        assertEquals(realReport.tableCounts.contests, 2);
+        assertEquals(realReport.tableCounts.submission_job_items, 4);
+        assertEquals(realReport.tableCounts.announcements, 1);
+        assertEquals(realReport.tableCounts.sse_events, 2);
+
+        // [P1] 已发布私有题：绑定被禁用，匿名与非所有者均不可按 ID 读取；公开题不受影响
+        const bindingRows = await target`
+          SELECT problem_id, visibility, disabled_at IS NOT NULL AS disabled
+          FROM domain_problem_bindings ORDER BY problem_id ASC
+        `;
+        assertEquals([...bindingRows], [
+          { problem_id: "prob-p1", visibility: "public", disabled: false },
+          { problem_id: "prob-paper", visibility: "public", disabled: false },
+          { problem_id: "prob-u1", visibility: "members", disabled: true },
+        ]);
+        const targetDb = drizzlePg(target, { schema });
+        const accessOf = (problemId: string, viewerId: string | null) =>
+          targetDb.transaction((tx) =>
+            evaluateProblemAccess(
+              { id: problemId, visibility: "public", owner_id: "" },
+              { viewerId, isAdmin: false },
+              tx,
+            )
+          );
+        assertEquals((await accessOf("prob-p1", null)).result.allowed, true);
+        assertEquals((await accessOf("prob-u1", null)).result.allowed, false);
+        assertEquals(
+          (await accessOf("prob-u1", "u-admin")).result.allowed,
+          false,
+        );
+
+        // [P1] 邀请赛按运维批准的 expose 归一为 v0.11 公开语义，旧口令不落库
+        const contestRows = await target`
+          SELECT id, is_public, kind, password FROM contests ORDER BY id ASC
+        `;
+        assertEquals([...contestRows], [
+          { id: "c-1", is_public: true, kind: "public", password: null },
+          { id: "c-invite", is_public: true, kind: "public", password: null },
+        ]);
+
+        // [P3] exact 策略绑定历史记录锁定版本，而非最新版本
+        const historyRows = await target`
+          SELECT h.problem_id, h.required_version_id, h.answer_version_id,
+            p.latest_version_id
+          FROM problem_binding_history h JOIN problems p ON p.id = h.problem_id
+          WHERE h.problem_id = 'prob-p1'
+        `;
+        assertEquals([...historyRows], [{
+          problem_id: "prob-p1",
+          required_version_id: "pv-p1-1",
+          answer_version_id: "pv-p1-1",
+          latest_version_id: "pv-p1-2",
+        }]);
+
+        // [P1] 引用已删除题目的批量任务条目：failed 保留、其余转 skipped，均为空绑定
+        const jobItems = await target`
+          SELECT id, status, domain_problem_binding_id IS NOT NULL AS bound,
+            reason_code, lease_owner, finished_at IS NOT NULL AS finished
+          FROM submission_job_items ORDER BY ordinal ASC
+        `;
+        assertEquals([...jobItems], [
+          {
+            id: "item-ok",
+            status: "succeeded",
+            bound: true,
+            reason_code: null,
+            lease_owner: null,
+            finished: true,
+          },
+          {
+            id: "item-failed",
+            status: "failed",
+            bound: false,
+            reason_code: "DISPATCH_FAILED",
+            lease_owner: null,
+            finished: true,
+          },
+          {
+            id: "item-pending",
+            status: "skipped",
+            bound: false,
+            reason_code: "UPGRADE_PROBLEM_DELETED",
+            lease_owner: null,
+            finished: true,
+          },
+          {
+            id: "item-succeeded",
+            status: "skipped",
+            bound: false,
+            reason_code: "UPGRADE_PROBLEM_DELETED",
+            lease_owner: null,
+            finished: true,
+          },
+        ]);
+
+        // [P1] SSE serial 序列已推进：导入后新事件不与源库 ID 冲突
+        const newEvent = await target`
+          INSERT INTO sse_events (channel, payload, created_at)
+          VALUES ('submission:new', '{}'::jsonb, '2026-11-20T00:00:00.000Z')
+          RETURNING id
+        `;
+        assertEquals(newEvent[0]?.id, 43);
+        await target`DELETE FROM sse_events WHERE id = 43`;
+
+        // [P2] 旧公告为实例级：domain_id 为空，实例路由（contentScopeWhere 无 scope → IS NULL）可见
+        const instanceAnnouncements = await target`
+          SELECT id, domain_id FROM announcements
+          WHERE is_active = true AND domain_id IS NULL
+        `;
+        assertEquals([...instanceAnnouncements], [{
+          id: "ann-1",
+          domain_id: null,
+        }]);
 
         // 验证转换结果与约束
         const usersRows = await target`
@@ -539,6 +796,8 @@ Deno.test({
           SELECT id, number, latest_version_id, effective_version_mode, required_version_id
           FROM problems ORDER BY number ASC
         `;
+        assertEquals(problemRows[0]?.latest_version_id, "pv-p1-2");
+        assertEquals(problemRows[0]?.required_version_id, "pv-p1-1");
         assertEquals(
           problemRows.map((p) => [p.id, p.number, p.effective_version_mode]),
           [
@@ -687,6 +946,7 @@ Deno.test({
             sourceUrl,
             targetUrl,
             migrationsDir: CORE_MIGRATIONS_DIR,
+            ...policies,
           })
         );
         assert(nonEmptyErr instanceof UpgradeV010Error);
@@ -706,6 +966,162 @@ Deno.test({
         await Promise.allSettled([
           source.end({ timeout: 5 }),
           target.end({ timeout: 5 }),
+        ]);
+      }
+    } finally {
+      for (const dbName of [...created].reverse()) {
+        await admin.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+      }
+      await admin.end({ timeout: 5 });
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "upgrade-v010 pg e2e: 独立部署 Gateway 时默认模型与别名转移到 Gateway 库并读回校验",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const runDb = await assertOwnedTestDatabase();
+    assert(runDb.startsWith("noj_test_"));
+
+    const adminUrl = adminUrlForCurrentDatabase();
+    const admin = postgres(adminUrl, { max: 1 });
+    const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 10);
+    const sourceDb = assertDatabaseIdentifier(`noj_test_upgv010_${suffix}_src`);
+    const targetDb = assertDatabaseIdentifier(`noj_test_upgv010_${suffix}_dst`);
+    const gatewayDb = assertDatabaseIdentifier(`noj_test_upgv010_${suffix}_gw`);
+    const created: string[] = [];
+
+    try {
+      for (const name of [sourceDb, targetDb, gatewayDb]) {
+        await admin.unsafe(`CREATE DATABASE "${name}"`);
+        created.push(name);
+      }
+      const sourceUrl = databaseUrlForName(adminUrl, sourceDb);
+      const targetUrl = databaseUrlForName(adminUrl, targetDb);
+      const gatewayUrl = databaseUrlForName(adminUrl, gatewayDb);
+      const source = postgres(sourceUrl, { max: 1 });
+      const target = postgres(targetUrl, { max: 1 });
+      const gateway = postgres(gatewayUrl, { max: 1 });
+
+      try {
+        // 源库：仅 Core（Gateway 表在独立库），默认模型与别名存于 Core 表
+        await migrateCoreV010(source);
+        const ts = "2025-06-01T01:00:00.000Z";
+        await source`
+          INSERT INTO users
+            (id, username, email, password_hash, email_verified, session_version,
+             bio, must_change_password, tfa_enabled, deleted_at, created_at, updated_at)
+          VALUES ('0', 'root', 'root@example.test', 'hash', true, 0, '', false, false, NULL, ${ts}, ${ts})
+        `;
+        await source`
+          INSERT INTO system_settings (key, value, description, is_secret, updated_at, updated_by)
+          VALUES
+            ('llm_default_provider_id', 'prov-1', 'Default LLM provider', false, ${ts}, '0'),
+            ('llm_default_model', 'gpt-test', 'Default LLM model', false, ${ts}, '0')
+        `;
+        await source`
+          INSERT INTO llm_model_aliases (alias, provider_id, model, description, updated_at, updated_by)
+          VALUES
+            ('default', 'prov-1', 'gpt-test', 'Default', ${ts}, '0'),
+            ('fast', 'prov-1', 'gpt-fast', 'Fast alias', ${ts}, '0')
+        `;
+
+        // 目标 Core 库不含 Gateway 表；独立 Gateway 库按文档入口只建 schema
+        await migrateCoreV011(target);
+        await runGatewayMigrateTask(gatewayUrl, ["--schema-only"]);
+
+        // 1. 未提供 Gateway 库时拒绝（dry-run 即暴露，不会静默丢失默认模型）
+        const requiredErr = await assertRejects(() =>
+          runUpgradeFromV010({
+            sourceUrl,
+            targetUrl,
+            dryRun: true,
+            migrationsDir: CORE_MIGRATIONS_DIR,
+          })
+        );
+        assert(requiredErr instanceof UpgradeV010Error);
+        assertEquals(requiredErr.code, "GATEWAY_TARGET_REQUIRED");
+
+        // 2. dry-run：只做冲突检查，不写 Gateway 库
+        const dry = await runUpgradeFromV010({
+          sourceUrl,
+          targetUrl,
+          gatewayUrl,
+          dryRun: true,
+          migrationsDir: CORE_MIGRATIONS_DIR,
+        });
+        assertEquals(dry.gateway.standalone, {
+          domainSettings: 1,
+          modelAliases: 1,
+          verified: false,
+        });
+        const gwAfterDry =
+          await gateway`SELECT count(*)::int AS cnt FROM llm_gateway_model_aliases`;
+        assertEquals(gwAfterDry[0]?.cnt, 0);
+
+        // 3. Gateway 库已有冲突配置：拒绝且 Core 目标库整体回滚
+        await gateway`
+          INSERT INTO llm_gateway_model_aliases
+            (domain_id, alias, provider_id, model, description, revision, updated_at, updated_by)
+          VALUES (${DEFAULT_DOMAIN_ID}, 'fast', 'prov-2', 'other-model', '', 1, ${ts}, 'gw-admin')
+        `;
+        const conflictErr = await assertRejects(() =>
+          runUpgradeFromV010({
+            sourceUrl,
+            targetUrl,
+            gatewayUrl,
+            migrationsDir: CORE_MIGRATIONS_DIR,
+          })
+        );
+        assert(conflictErr instanceof UpgradeV010Error);
+        assertEquals(conflictErr.code, "GATEWAY_TARGET_INVALID");
+        const usersAfterConflict =
+          await target`SELECT count(*)::int AS cnt FROM users`;
+        assertEquals(usersAfterConflict[0]?.cnt, 0);
+        await gateway`DELETE FROM llm_gateway_model_aliases`;
+
+        // 4. 正式执行：写入并读回校验
+        const real = await runUpgradeFromV010({
+          sourceUrl,
+          targetUrl,
+          gatewayUrl,
+          migrationsDir: CORE_MIGRATIONS_DIR,
+        });
+        assertEquals(real.gateway.detected, false);
+        assertEquals(real.gateway.standalone, {
+          domainSettings: 1,
+          modelAliases: 1,
+          verified: true,
+        });
+        assert(!JSON.stringify(real).includes(new URL(gatewayUrl).host));
+        const settings = await gateway`
+          SELECT domain_id, provider_id, model FROM llm_gateway_domain_settings
+        `;
+        assertEquals([...settings], [{
+          domain_id: DEFAULT_DOMAIN_ID,
+          provider_id: "prov-1",
+          model: "gpt-test",
+        }]);
+        const aliases = await gateway`
+          SELECT domain_id, alias, provider_id, model FROM llm_gateway_model_aliases
+        `;
+        assertEquals([...aliases], [{
+          domain_id: DEFAULT_DOMAIN_ID,
+          alias: "fast",
+          provider_id: "prov-1",
+          model: "gpt-fast",
+        }]);
+        const targetUsers =
+          await target`SELECT count(*)::int AS cnt FROM users`;
+        assertEquals(targetUsers[0]?.cnt, 1);
+      } finally {
+        await Promise.allSettled([
+          source.end({ timeout: 5 }),
+          target.end({ timeout: 5 }),
+          gateway.end({ timeout: 5 }),
         ]);
       }
     } finally {

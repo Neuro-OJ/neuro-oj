@@ -32,17 +32,23 @@ import {
   type LegacyUserRoleInput,
   normalizeAuditAction,
   normalizeUtcMillisIso,
+  planAccessDecisions,
   planProblemNumbers,
   REMOVED_SYSTEM_SETTING_KEYS,
   resolveAdminUserIds,
+  resolveAnswerVersionId,
   resolveModerationActionDomainId,
   resolveNotificationDomainId,
   ROOT_USER_ID,
   selectDefaultDomainOwner,
   SUBMISSION_ATTEMPT_POINTER_COLUMNS,
   topoSortSelfFk,
+  transformOrphanJobItem,
 } from "./transform.ts";
 import {
+  type OrphanJobItemEntry,
+  type PrivateProblemPolicy,
+  type RestrictedContestPolicy,
   type SkippedMomentPostEntry,
   type UpgradeArchivedSummary,
   UpgradeV010Error,
@@ -69,6 +75,8 @@ export interface UpgradeExecutionPlan {
   executedAt: string;
   defaultDomainOwnerId: string;
   maxReceiptSequence: number;
+  /** 源库 `sse_events.id` 最大值；导入后据此推进 serial 序列。 */
+  maxSseEventId: number;
   gateway: GatewaySourcePlan;
   archivedSummary: UpgradeArchivedSummary;
   tables: Record<string, Record<string, unknown>[]>;
@@ -183,11 +191,17 @@ async function collectDroppedTableCounts(
   return result;
 }
 
+export interface BuildUpgradePlanOptions {
+  privateProblemPolicy?: PrivateProblemPolicy;
+  restrictedContestPolicy?: RestrictedContestPolicy;
+}
+
 /** 在只读源库事务中读入并转换全部升级数据。 */
 export async function buildUpgradePlan(
   sourceTx: PgExecutor,
   targetPublicTables: ReadonlySet<string>,
   executedAt: string,
+  options: BuildUpgradePlanOptions = {},
 ): Promise<UpgradeExecutionPlan> {
   const [
     rawUsers,
@@ -397,6 +411,27 @@ export async function buildUpgradePlan(
     })) satisfies LegacyProblemNumberInput[],
   );
 
+  // 访问边界：私有题与受限比赛在 v0.11 main 域没有等价语义，必须由运维显式处置
+  const accessPlan = planAccessDecisions(
+    rawProblems.map((p) => ({
+      id: String(p.id),
+      title: String(p.title),
+      owner_id: String(p.owner_id),
+      visibility: String(p.visibility),
+      latest_version_id: p.latest_version_id
+        ? String(p.latest_version_id)
+        : null,
+    })),
+    rawContests.map((c) => ({
+      id: String(c.id),
+      title: String(c.title),
+      is_public: c.is_public !== false,
+      kind: String(c.kind ?? "public"),
+      password: c.password ? String(c.password) : null,
+    })),
+    options,
+  );
+
   const bindingByProblemId = new Map<string, string>();
   const problemRestores: ProblemCircularRestore[] = [];
   const problemsRows: Record<string, unknown>[] = [];
@@ -414,6 +449,15 @@ export async function buildUpgradePlan(
     const createdBy = allUserIds.has(String(p.owner_id))
       ? String(p.owner_id)
       : ownerId;
+    const disabledAt = accessPlan.disabledProblemIds.has(problemId)
+      ? executedAt
+      : null;
+    const requiredVersionId = p.required_version_id
+      ? String(p.required_version_id)
+      : null;
+    const latestVersionId = p.latest_version_id
+      ? String(p.latest_version_id)
+      : null;
 
     problemRestores.push({
       id: problemId,
@@ -441,7 +485,7 @@ export async function buildUpgradePlan(
       problem_id: problemId,
       visibility: p.visibility === "public" ? "public" : "members",
       revision: 0,
-      disabled_at: null,
+      disabled_at: disabledAt,
       created_by: createdBy,
       created_at: p.created_at,
       updated_at: p.updated_at,
@@ -453,13 +497,13 @@ export async function buildUpgradePlan(
       problem_id: problemId,
       revision: 0,
       effective_version_mode: String(p.effective_version_mode ?? "any"),
-      required_version_id: p.required_version_id
-        ? String(p.required_version_id)
-        : null,
-      answer_version_id: p.latest_version_id
-        ? String(p.latest_version_id)
-        : null,
-      disabled_at: null,
+      required_version_id: requiredVersionId,
+      // 与 0116 工作区回填一致：exact 策略记录锁定版本而非最新版本
+      answer_version_id: resolveAnswerVersionId(
+        requiredVersionId,
+        latestVersionId,
+      ),
+      disabled_at: disabledAt,
       actor_id: createdBy,
       reason: "v0.10_upgrade",
       created_at: String(p.updated_at ?? p.created_at),
@@ -491,6 +535,10 @@ export async function buildUpgradePlan(
 
   const contestsRows = rawContests.map((c) => ({
     ...c,
+    // 运维已显式批准的受限比赛按 v0.11 契约归一为公开（不再保留旧口令）
+    ...(accessPlan.exposedContestIds.has(String(c.id))
+      ? { is_public: true, kind: "public", password: null }
+      : {}),
     domain_id: DEFAULT_DOMAIN_ID,
     revision: 0,
     secrecy_enabled: true,
@@ -596,15 +644,35 @@ export async function buildUpgradePlan(
     domain_id: DEFAULT_DOMAIN_ID,
   }));
 
-  const submissionJobItemsRows = rawSubmissionJobItems.map((item) => ({
-    ...item,
-    domain_id: DEFAULT_DOMAIN_ID,
-    domain_problem_binding_id: resolveBindingId(
-      bindingByProblemId,
-      item.problem_id,
-      `submission_job_items(${item.id})`,
-    ),
-  }));
+  // 批量任务条目的 problem_id 故意不建外键，可能指向已删除题目
+  const orphanJobItems: OrphanJobItemEntry[] = [];
+  const submissionJobItemsRows = rawSubmissionJobItems.map((item) => {
+    const bindingId = bindingByProblemId.get(String(item.problem_id ?? ""));
+    if (bindingId) {
+      return {
+        ...item,
+        domain_id: DEFAULT_DOMAIN_ID,
+        domain_problem_binding_id: bindingId,
+      };
+    }
+    const orphan = transformOrphanJobItem(
+      {
+        id: String(item.id),
+        job_id: String(item.job_id),
+        problem_id: String(item.problem_id ?? ""),
+        status: String(item.status),
+      },
+      executedAt,
+      item.finished_at ? String(item.finished_at) : null,
+    );
+    orphanJobItems.push(orphan.entry);
+    return {
+      ...item,
+      ...(orphan.overrides ?? {}),
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: null,
+    };
+  });
 
   const selfTestsRows = rawSelfTests.map((st) => ({
     ...st,
@@ -723,9 +791,10 @@ export async function buildUpgradePlan(
     };
   });
 
+  // v0.10 公告均为实例级；与迁移 0118 一致保持 domain_id 为空，实例路由才能看到
   const announcementsRows = rawAnnouncements.map((a) => ({
     ...a,
-    domain_id: DEFAULT_DOMAIN_ID,
+    domain_id: null,
   }));
 
   const llmModelAliasesRows = rawLlmAliases.map((a) => ({
@@ -846,6 +915,10 @@ export async function buildUpgradePlan(
     executedAt,
     defaultDomainOwnerId: ownerId,
     maxReceiptSequence: receiptSeq.maxSequence,
+    maxSseEventId: rawSseEvents.reduce(
+      (max, e) => Math.max(max, Number(e.id ?? 0)),
+      0,
+    ),
     gateway,
     archivedSummary: {
       renumberedProblems: numberPlan.renumbered,
@@ -858,6 +931,9 @@ export async function buildUpgradePlan(
       skippedAuditLogs,
       droppedSystemSettings,
       droppedLegacyTables,
+      privateProblems: accessPlan.privateProblems,
+      restrictedContests: accessPlan.restrictedContests,
+      orphanJobItems,
     },
     problemRestores,
     submissionRestores,

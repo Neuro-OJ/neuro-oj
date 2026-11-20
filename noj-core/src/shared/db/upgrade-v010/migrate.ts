@@ -17,7 +17,11 @@ import {
   type PgExecutor,
   type TargetColumnMeta,
 } from "./copy-helpers.ts";
-import { applyGatewayMigration } from "./migrate-gateway.ts";
+import {
+  applyGatewayMigration,
+  applyStandaloneGatewaySettings,
+  requiresStandaloneGatewayTransfer,
+} from "./migrate-gateway.ts";
 import {
   assertDistinctDatabases,
   validateSourceDatabase,
@@ -25,6 +29,7 @@ import {
 } from "./migrate-validation.ts";
 import { DEFAULT_DOMAIN_ID } from "./transform.ts";
 import {
+  type GatewayMigrationSummary,
   type UpgradeFromV010Options,
   type UpgradeReport,
   UpgradeV010Error,
@@ -323,10 +328,37 @@ async function introspectAllTargetColumns(
   return columnsByTable;
 }
 
+/** 将 serial 列序列推进到已显式写入的最大值之后，避免导入后首次插入主键冲突。 */
+async function advanceSerialSequence(
+  tx: PgExecutor,
+  tableName: string,
+  columnName: string,
+  maxValue: number,
+): Promise<void> {
+  if (maxValue <= 0) return;
+  const rows = await tx<{ seq: string | null }[]>`
+    SELECT pg_get_serial_sequence(${tableName}, ${columnName}) AS seq
+  `;
+  const seq = rows[0]?.seq;
+  if (!seq) {
+    throw new UpgradeV010Error(
+      "TARGET_INVALID_SCHEMA",
+      `目标表 ${tableName}.${columnName} 不是 serial 列，无法推进序列`,
+      { table: tableName, column: columnName },
+    );
+  }
+  await tx`SELECT setval(${seq}::regclass, ${maxValue}, true)`;
+}
+
+type StandaloneGatewaySummary = GatewayMigrationSummary["standalone"];
+
 async function executeTargetTransaction(
   target: PgClient,
   plan: UpgradeExecutionPlan,
-): Promise<Record<string, number>> {
+  gateway: PgClient | null,
+): Promise<
+  { counts: Record<string, number>; standalone: StandaloneGatewaySummary }
+> {
   const serializeJson: JsonParamSerializer = (value: unknown) =>
     target.json(value as never);
   return await target.begin(async (tx) => {
@@ -383,6 +415,8 @@ async function executeTargetTransaction(
       counts["llm_providers"] = gwSummary.copiedProviders;
       counts["llm_usage"] = gwSummary.copiedUsage;
       counts["llm_quotas"] = gwSummary.copiedQuotas;
+    }
+    if (plan.gateway.settingsInTarget) {
       counts["llm_gateway_domain_settings"] =
         gwSummary.backfilledDomainSettings;
       counts["llm_gateway_model_aliases"] = gwSummary.backfilledModelAliases;
@@ -393,6 +427,8 @@ async function executeTargetTransaction(
         SELECT setval('submission_receipt_sequence', ${plan.maxReceiptSequence}, true)
       `;
     }
+    // sse_events.id 为 serial，导入时显式写入了源库 ID
+    await advanceSerialSequence(tx, "sse_events", "id", plan.maxSseEventId);
 
     const matViewCheck = await tx<{ exists: boolean }[]>`
       SELECT to_regclass('public.user_rankings') IS NOT NULL AS exists
@@ -413,7 +449,16 @@ async function executeTargetTransaction(
       }
     }
 
-    return counts;
+    // 独立 Gateway 库的模型配置在 Core 提交前写入并读回校验；
+    // 任一失败都会让 Core 事务整体回滚，Gateway 侧写入本身幂等可重放。
+    let standalone: StandaloneGatewaySummary = null;
+    if (gateway && requiresStandaloneGatewayTransfer(plan.gateway)) {
+      standalone = await gateway.begin((gwTx) =>
+        applyStandaloneGatewaySettings(gwTx, plan.gateway, false)
+      );
+    }
+
+    return { counts, standalone };
   });
 }
 
@@ -426,12 +471,16 @@ export async function runUpgradeFromV010(
   assertValidDbUrl(options.sourceUrl, "源库");
   assertValidDbUrl(options.targetUrl, "目标库");
 
+  const gatewayUrl = options.gatewayUrl?.trim() || "";
+  if (gatewayUrl) assertValidDbUrl(gatewayUrl, "独立 Gateway 库");
+
   const migrationsDir = options.migrationsDir ?? resolveMigrationsDirectory();
   const executedAt = options.now ? options.now() : new Date().toISOString();
   const dryRun = options.dryRun ?? false;
 
   const source = postgres(options.sourceUrl, { max: 1 });
   const target = postgres(options.targetUrl, { max: 1 });
+  const gateway = gatewayUrl ? postgres(gatewayUrl, { max: 1 }) : null;
 
   try {
     await assertDistinctDatabases(source, target);
@@ -454,15 +503,38 @@ export async function runUpgradeFromV010(
 
     const plan = await source.begin(async (tx) => {
       await tx`SET TRANSACTION READ ONLY`;
-      return await buildUpgradePlan(tx, targetPublicTables, executedAt);
+      return await buildUpgradePlan(tx, targetPublicTables, executedAt, {
+        privateProblemPolicy: options.privateProblemPolicy,
+        restrictedContestPolicy: options.restrictedContestPolicy,
+      });
     });
 
+    const standaloneRequired = requiresStandaloneGatewayTransfer(plan.gateway);
+    if (standaloneRequired && !gateway) {
+      throw new UpgradeV010Error(
+        "GATEWAY_TARGET_REQUIRED",
+        "源库存在默认模型或模型别名，但目标 Core 库没有 Gateway 表（独立部署 Gateway）；" +
+          "请通过 NOJ_UPGRADE_GATEWAY_URL（或 --gateway-url）提供已执行 v0.11 迁移的独立 Gateway 库",
+        {
+          domainSettings: plan.gateway.domainSettingsRow ? 1 : 0,
+          modelAliases: plan.gateway.modelAliasRows.length,
+        },
+      );
+    }
+
     let tableCounts: Record<string, number>;
+    let standalone: StandaloneGatewaySummary = null;
     if (dryRun) {
       await target.begin(async (tx) => {
         await tx`SET TRANSACTION READ ONLY`;
         await introspectAllTargetColumns(tx, plan);
       });
+      if (standaloneRequired && gateway) {
+        standalone = await gateway.begin(async (tx) => {
+          await tx`SET TRANSACTION READ ONLY`;
+          return await applyStandaloneGatewaySettings(tx, plan.gateway, true);
+        });
+      }
       tableCounts = {};
       for (const tableName of CORE_INSERT_ORDER) {
         tableCounts[tableName] = plan.tables[tableName]?.length ?? 0;
@@ -473,14 +545,19 @@ export async function runUpgradeFromV010(
         tableCounts["llm_providers"] = plan.gateway.providers.length;
         tableCounts["llm_usage"] = plan.gateway.usage.length;
         tableCounts["llm_quotas"] = plan.gateway.quotas.length;
+      }
+      if (plan.gateway.settingsInTarget) {
         tableCounts["llm_gateway_domain_settings"] =
           plan.gateway.domainSettingsRow ? 1 : 0;
         tableCounts["llm_gateway_model_aliases"] =
           plan.gateway.modelAliasRows.length;
       }
     } else {
-      tableCounts = await executeTargetTransaction(target, plan);
+      const result = await executeTargetTransaction(target, plan, gateway);
+      tableCounts = result.counts;
+      standalone = result.standalone;
     }
+    const inTargetSettings = plan.gateway.settingsInTarget;
 
     return {
       dryRun,
@@ -497,14 +574,19 @@ export async function runUpgradeFromV010(
         copiedProviders: plan.gateway.providers.length,
         copiedUsage: plan.gateway.usage.length,
         copiedQuotas: plan.gateway.quotas.length,
-        backfilledDomainSettings: plan.gateway.domainSettingsRow ? 1 : 0,
-        backfilledModelAliases: plan.gateway.modelAliasRows.length,
+        backfilledDomainSettings:
+          inTargetSettings && plan.gateway.domainSettingsRow ? 1 : 0,
+        backfilledModelAliases: inTargetSettings
+          ? plan.gateway.modelAliasRows.length
+          : 0,
+        standalone,
       },
     };
   } finally {
     await Promise.allSettled([
       source.end({ timeout: 5 }),
       target.end({ timeout: 5 }),
+      ...(gateway ? [gateway.end({ timeout: 5 })] : []),
     ]);
   }
 }

@@ -237,11 +237,22 @@ export async function validateTargetDatabase(
 
   if (nonEmptyTables.length > 0) {
     assertPgIdentifier("domains");
+    const hints: string[] = [];
+    if (nonEmptyTables.some((t) => t.startsWith("llm_quotas("))) {
+      hints.push(
+        "llm_quotas 通常来自 Gateway 默认配额种子：初始化目标库请改用 `deno task db:migrate --schema-only`（Gateway）",
+      );
+    }
+    if (nonEmptyTables.some((t) => !t.startsWith("llm_quotas("))) {
+      hints.push(
+        "Core 目标库只执行 `noj db migrate`，不要执行 `noj init system`、`dev-setup` 或管理员引导",
+      );
+    }
     throw new UpgradeV010Error(
       "TARGET_NOT_EMPTY",
       `目标库必须为空的全新 v0.11 数据库，检测到已有数据的表: ${
         nonEmptyTables.join(", ")
-      }`,
+      }${hints.length > 0 ? `。${hints.join("；")}` : ""}`,
       { nonEmptyTables },
     );
   }

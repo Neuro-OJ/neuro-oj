@@ -320,13 +320,34 @@ const dbCmd = new Command()
     "upgrade-v010",
     "从只读 v0.10.6 源库逻辑迁移历史数据至全新空 v0.11 目标库",
   )
-  .option("--source-url <url:string>", "只读 v0.10.6 源库 PostgreSQL URL")
-  .option("--target-url <url:string>", "已执行 v0.11 全量迁移的空目标库 URL")
+  .option(
+    "--source-url <url:string>",
+    "只读 v0.10.6 源库 URL（推荐改用 NOJ_UPGRADE_SOURCE_URL，避免口令进入进程列表）",
+  )
+  .option(
+    "--target-url <url:string>",
+    "只执行过 v0.11 schema 迁移的空目标库 URL（推荐 NOJ_UPGRADE_TARGET_URL）",
+  )
+  .option(
+    "--gateway-url <url:string>",
+    "独立部署的 Gateway 库 URL（推荐 NOJ_UPGRADE_GATEWAY_URL）",
+  )
+  .option(
+    "--private-problems <policy:string>",
+    "已发布私有题处置：disable（禁用绑定待复核）或 expose（接受公开）",
+  )
+  .option(
+    "--restricted-contests <policy:string>",
+    "非公开/邀请/口令比赛处置：expose（接受在 main 域公开）",
+  )
   .option("--dry-run", "只做只读预检、映射与行数统计，不写入目标库")
   .option("--json", "输出单个 JSON 文档")
   .action(async (opts: {
     sourceUrl?: string;
     targetUrl?: string;
+    gatewayUrl?: string;
+    privateProblems?: string;
+    restrictedContests?: string;
     dryRun?: boolean;
     json?: boolean;
   }) => {
@@ -334,6 +355,9 @@ const dbCmd = new Command()
     requestedExitCode = await executeUpgradeCli({
       sourceUrl: opts.sourceUrl,
       targetUrl: opts.targetUrl,
+      gatewayUrl: opts.gatewayUrl,
+      privateProblems: opts.privateProblems,
+      restrictedContests: opts.restrictedContests,
       dryRun: opts.dryRun,
       json: opts.json,
     });
