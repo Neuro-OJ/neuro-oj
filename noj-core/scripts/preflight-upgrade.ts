@@ -487,8 +487,8 @@ if (import.meta.main) {
       }
     }
     console.error(
-      "处理方向：确认这些数据的业务归属与授权处理方案后，再执行升级；" +
-        "本轮 0.11 RC 只支持新装，不提供删除比赛/题目或绕过 0116 的 SQL。",
+      "处理方向：请先部署全新的空 v0.11 目标库，再通过 `noj db upgrade-v010 --dry-run` " +
+        "预演并执行逻辑数据库升级（详见 noj-docs 运维升级指南）；禁止绕过 0116 原地升级。",
     );
   }
   Deno.exit(preflightExitCode(report));

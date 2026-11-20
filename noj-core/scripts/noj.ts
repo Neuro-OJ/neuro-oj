@@ -315,6 +315,28 @@ const dbCmd = new Command()
       "../src/modules/evaluations/index.ts"
     );
     console.log(JSON.stringify(await backfillExecutionWorkspaces()));
+  })
+  .command(
+    "upgrade-v010",
+    "从只读 v0.10.6 源库逻辑迁移历史数据至全新空 v0.11 目标库",
+  )
+  .option("--source-url <url:string>", "只读 v0.10.6 源库 PostgreSQL URL")
+  .option("--target-url <url:string>", "已执行 v0.11 全量迁移的空目标库 URL")
+  .option("--dry-run", "只做只读预检、映射与行数统计，不写入目标库")
+  .option("--json", "输出单个 JSON 文档")
+  .action(async (opts: {
+    sourceUrl?: string;
+    targetUrl?: string;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const { executeUpgradeCli } = await import("./upgrade-from-v010.ts");
+    requestedExitCode = await executeUpgradeCli({
+      sourceUrl: opts.sourceUrl,
+      targetUrl: opts.targetUrl,
+      dryRun: opts.dryRun,
+      json: opts.json,
+    });
   });
 
 const initCmd = new Command()
