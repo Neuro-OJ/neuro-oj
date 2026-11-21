@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "generated_by": "scripts/check-ui-guards.ts --write-baseline",
+  "scopes": {
+    "s1": {
+      "radius": 176,
+      "palette": 146,
+      "motion": 23,
+      "entrance": 29,
+      "dark": 7,
+      "raw-control": 74,
+      "type": 68
+    },
+    "public": {
+      "radius": 190,
+      "palette": 165,
+      "motion": 23,
+      "entrance": 29,
+      "dark": 13,
+      "raw-control": 87,
+      "type": 80
+    },
+    "all": {
+      "radius": 231,
+      "palette": 301,
+      "motion": 28,
+      "entrance": 29,
+      "dark": 16,
+      "raw-control": 127,
+      "type": 131
+    }
+  }
+}
