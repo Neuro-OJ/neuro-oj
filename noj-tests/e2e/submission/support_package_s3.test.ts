@@ -419,13 +419,14 @@ e2eTest(
     const emptyVersion = await publish(f);
     assertEquals(emptyVersion.version, 3);
     await request("GET", deletePath, f.owner, 404);
-    const oldVersion = await request<{ data: { is_latest: boolean } }>(
+    const oldVersion = await request<{ version_id: string; version: number }>(
       "GET",
-      `/problems/${f.problemId}/versions/${v1.version_id}`,
+      `${f.problemPath}?version_id=${v1.version_id}`,
       f.owner,
       200,
     );
-    assertEquals(oldVersion.data.is_latest, false);
+    assertEquals(oldVersion.version_id, v1.version_id);
+    assertEquals(oldVersion.version, v1.version);
     assertEquals(marker(await operatorRead(url1)), "historical-v1");
     assertEquals(marker(await operatorRead(url2)), "historical-v2");
   },

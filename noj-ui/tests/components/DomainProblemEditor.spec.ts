@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, shallowRef, watch } from 'vue';
 import DomainProblemEditor from '~/components/editor/DomainProblemEditor.vue';
-import type { ProblemDraftView } from '~/composables/useProblemVersions';
+import type { ProblemDraftView } from '~/composables/useDomainProblemEditor';
 import { useDomainProblemEditor as authorApi } from '~/composables/useDomainProblemEditor';
 import { newDomainEditorContent } from '~/utils/domain-problem-editor';
 import type { DomainAiRuntime } from '~/utils/domain-problem-editor';

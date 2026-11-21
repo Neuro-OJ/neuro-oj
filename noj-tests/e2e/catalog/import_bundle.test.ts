@@ -162,11 +162,14 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
   // 域导入返回 problem_id/number，不再回 id/title/type（旧格式 2 的 P/U 分类字段已不存在）
 
   // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
-  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  const draft = await apiGet(
+    `${await domainProblemPath(problemId)}/draft`,
+    adminToken,
+  );
   if (draft.status !== 200) throw new Error("导入草稿不可读");
   const content = (draft.body as {
-    data: { content: { runtime_config: { evaluator: { command: string } } } };
-  }).data.content;
+    content: { runtime_config: { evaluator: { command: string } } };
+  }).content;
   if (
     content.runtime_config.evaluator.command !==
       "python3 /workspace/evaluate.py"
@@ -177,9 +180,12 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
 
 e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
   if (!isE2E || !problemId) return;
-  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  const draft = await apiGet(
+    `${await domainProblemPath(problemId)}/draft`,
+    adminToken,
+  );
   if (draft.status !== 200) throw new Error("读取重复导入基线失败");
-  const revision = (draft.body as { data: { revision: number } }).data.revision;
+  const revision = (draft.body as { revision: number }).revision;
   const zip = await makeBundleZip();
   const formData = new FormData();
   formData.append(
