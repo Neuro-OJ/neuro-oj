@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { readAiDraftPassthrough } from '../../../utils/aiDraftContent.ts';
+import { readAiDraftPassthrough } from '../../../utils/domain/problem/aiDraftContent.ts';
 
 Deno.test('aiDraftContent: 界面题草稿读回提交模式与脚本模板', () => {
   const template = 'def get_config() -> dict:\n    return {"prompt": PARAMS.get("prompt", "")}\n';

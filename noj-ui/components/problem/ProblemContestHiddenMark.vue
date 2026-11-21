@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CONTEST_HIDDEN_TIP } from '~/utils/contestHidden'
+import { CONTEST_HIDDEN_TIP } from '~/utils/domain/contest/contestHidden'
 
 /**
  * 「被公开赛收编」视觉标识（VULN-07）。

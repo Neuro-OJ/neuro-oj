@@ -1,8 +1,8 @@
-/** utils/submissionDateRange.ts 单元测试（issue #581）。 */
+/** utils/domain/submission/submissionDateRange.ts 单元测试（issue #581）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { buildDateRangeParams } from '../../../utils/submissionDateRange.ts';
+import { buildDateRangeParams } from '../../../utils/domain/submission/submissionDateRange.ts';
 
 const startOf = (d: string) => new Date(`${d}T00:00:00.000`).toISOString();
 const endOf = (d: string) => new Date(`${d}T23:59:59.999`).toISOString();

@@ -1,4 +1,4 @@
-/** utils/objectiveResult.ts 单元测试（VULN-03：竞赛模式不公布对错与精确分数）。 */
+/** utils/domain/submission/objectiveResult.ts 单元测试（VULN-03：竞赛模式不公布对错与精确分数）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -9,7 +9,7 @@ import {
   OBJECTIVE_SCORE_PENDING_TEXT,
   objectiveScoreView,
   objectiveSubmissionScoreText,
-} from '../../../utils/objectiveResult.ts';
+} from '../../../utils/domain/submission/objectiveResult.ts';
 
 Deno.test('correctnessByQuestion: 缺失 correct 的题目不入表（不得当成"回答错误"）', () => {
   const map = correctnessByQuestion({

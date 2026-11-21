@@ -88,7 +88,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
 import { useSearch, type SearchItem } from "~/composables/useSearch";
-import { itemHref, typeLabel } from "~/utils/searchFormat";
+import { itemHref, typeLabel } from "~/utils/domain/workspace/searchFormat";
 
 const { t } = useI18n();
 const { state, close, search } = useSearch();

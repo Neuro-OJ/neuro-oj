@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
 const props = defineProps<{ domainSlug: string; initialData?: AnnouncementSummary[] }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import AdminSettingFieldInput, {
   type SystemSetting,
 } from '~/components/admin/AdminSettingFieldInput.vue';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PostRow, CommentRow, ReportRow } from '~/composables/useCommunity';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import { useToast } from '~/composables/useToast';
 
 interface Board {

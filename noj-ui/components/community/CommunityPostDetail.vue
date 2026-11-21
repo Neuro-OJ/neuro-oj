@@ -6,10 +6,10 @@ import type {
 } from "~/composables/useCommunity"
 import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
-import { isCommunityEdited } from "~/utils/communityEdited"
-import { workspaceProblemPath } from '~/utils/workspace'
-import type { DomainProblemReference } from '~/utils/domain-problems'
-import { extractApiError } from '~/utils/apiError'
+import { isCommunityEdited } from "~/utils/domain/community/communityEdited"
+import { workspaceProblemPath } from '~/utils/domain/workspace/workspace'
+import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems'
+import { extractApiError } from '~/utils/server/apiError'
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 const scope = useCommunityScope().capture()

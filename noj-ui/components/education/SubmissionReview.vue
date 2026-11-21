@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { educationCacheKey } from '~/utils/education';
-import type { LineAnnotation } from '~/utils/education';
+import { extractApiError } from '~/utils/server/apiError';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import type { LineAnnotation } from '~/utils/domain/education/education';
 const props = defineProps<{ slug: string; classroomId: string; submissionId: string; canAnnotate: boolean; readOnlyPeer?: boolean }>();
 const education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);

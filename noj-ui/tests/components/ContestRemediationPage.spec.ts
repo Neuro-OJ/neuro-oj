@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense } from 'vue';
 import Page from '~/pages/d/[slug]/classrooms/[classroomId]/contest-remediation.vue';
-import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
+import type { ClassroomDetail, TeachingCapability } from '~/utils/domain/education/education';
 let capabilities: TeachingCapability[] = [];
 beforeEach(() => {
   capabilities = [];

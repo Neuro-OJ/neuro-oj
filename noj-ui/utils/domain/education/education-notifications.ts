@@ -1,4 +1,4 @@
-import { workspacePath } from './workspace.ts';
+import { workspacePath } from '../workspace/workspace.ts';
 export type TeachingNoticeType =
   | 'assignment'
   | 'assignment_changed'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
-import { workspaceProblemPath } from '~/utils/workspace';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceProblemPath } from '~/utils/domain/workspace/workspace';
 const props = defineProps<
   {
     slug: string;

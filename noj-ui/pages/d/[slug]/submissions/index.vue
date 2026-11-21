@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue';
-import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime, languageLabels } from '~/utils/submissionFormat';
+import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime, languageLabels } from '~/utils/domain/submission/submissionFormat';
 import { useToast } from '~/composables/useToast';
 import type { DomainSubmissionListQuery } from '~/composables/useDomainSubmissions';
 

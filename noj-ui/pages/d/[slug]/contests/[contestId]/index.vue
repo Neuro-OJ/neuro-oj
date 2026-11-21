@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { DOMAIN_CONTEST_TYPES } from '~/utils/domain-contests';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
-import { runContestRegistration } from '~/utils/contestRegistration';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { DOMAIN_CONTEST_TYPES } from '~/utils/domain/contest/domain-contests';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { runContestRegistration } from '~/utils/domain/contest/contestRegistration';
 import { useOfficialSolutions } from '~/composables/useOfficialSolutions';
 import {
   contestCountdown,
@@ -14,7 +14,7 @@ import {
   contestRegistrationState,
   rankingVisibilityText,
   scoreboardScopeText,
-} from '~/utils/contestWindow';
+} from '~/utils/domain/contest/contestWindow';
 
 /**
  * 域比赛详情与报名页。
@@ -22,7 +22,7 @@ import {
  * 信息架构：一个顶部赛事头部（状态、倒计时、赛程、规模、主操作）+ 左侧正文
  * （报名 / 赛题 / 说明 / 公告）+ 右侧事实栏（赛制规则、答题窗口、榜单可见性）。
  * 报名、已报名、未开始、已结束、组织者五种身份共用同一套状态机
- * （`utils/contestWindow.ts`），避免模板里散落互斥的 `v-if`。
+ * （`utils/domain/contest/contestWindow.ts`），避免模板里散落互斥的 `v-if`。
  */
 definePageMeta({
   layout: 'workspace',

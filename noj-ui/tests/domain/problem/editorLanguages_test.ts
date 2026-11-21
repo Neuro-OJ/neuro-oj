@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- 版本由锁文件固定
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { getEditorLanguages, getMonacoLanguage } from '../../../utils/editorLanguages.ts';
+import { getEditorLanguages, getMonacoLanguage } from '../../../utils/domain/problem/editorLanguages.ts';
 
 Deno.test('编辑器：OI 展示 C++/C，cc 使用 C++ 高亮', () => {
   const options = getEditorLanguages({ judge_type: 'oi', supported_languages: ['c', 'cc'] });

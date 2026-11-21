@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import type { WorkspaceMember, WorkspaceDetail } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { WorkspaceMember, WorkspaceDetail } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });

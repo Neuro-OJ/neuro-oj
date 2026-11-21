@@ -7,7 +7,7 @@
  */
 import { computed, onUnmounted, type Ref, ref } from 'vue';
 import { useEventSource } from './useEventSource';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 export type SubmissionStatus =
   | 'pending'

@@ -7,7 +7,7 @@ import ContestPage from '~/pages/d/[slug]/contests/[contestId]/index.vue';
  * 域比赛详情/报名页的状态机与信息完整性。
  *
  * 页面把「未登录 / 未报名 / 已报名 / 未开始 / 已结束 / 组织者」收敛到
- * `utils/contestWindow.ts` 的状态机，这里逐个状态验证渲染结果，并锁定
+ * `utils/domain/contest/contestWindow.ts` 的状态机，这里逐个状态验证渲染结果，并锁定
  * 「不展示赛题给未报名者」「结束后不再显示报名」等规则。
  */
 

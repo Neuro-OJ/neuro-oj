@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceSettingsNavigation, type WorkspaceSettingsNavItem } from '~/utils/workspace-settings';
-import { workspacePath } from '~/utils/workspace';
+import { workspaceSettingsNavigation, type WorkspaceSettingsNavItem } from '~/utils/domain/workspace/workspace-settings';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 
 const { domain, slug, status } = useWorkspace();
 const route = useRoute();

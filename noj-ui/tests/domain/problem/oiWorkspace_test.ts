@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { caseMaxScores, extractStatementSamples } from '../../../utils/oiWorkspace.ts';
+import { caseMaxScores, extractStatementSamples } from '../../../utils/domain/problem/oiWorkspace.ts';
 
 Deno.test('OI 工作区整数等分与显式零分保留', () => {
   assertEquals(caseMaxScores({ score: 100, scoring: 'sum', cases: [{}, {}, {}] }), [33, 33, 34]);

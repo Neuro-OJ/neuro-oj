@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
-import type { BffEnvelope } from '~/utils/bff-view';
+import type { BffEnvelope } from '~/utils/server/bff-view';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
-import type { EducationDashboardData } from '~/utils/education-dashboard';
-import type { DomainProblemSummary } from '~/utils/domain-problems';
+import type { EducationDashboardData } from '~/utils/domain/education/education-dashboard';
+import type { DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
 type HomeSnapshot = { total: number; full_score: number; not_full_score: number };
 type HomeRecentSubmission = {
   id: string;

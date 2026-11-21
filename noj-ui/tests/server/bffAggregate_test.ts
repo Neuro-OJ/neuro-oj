@@ -2,7 +2,7 @@
 import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@^1';
 import { aggregateView } from '../../server/utils/bff-aggregate.ts';
 import { BffError, type CoreReader } from '../../server/utils/bff-request.ts';
-import { bffViewRoute } from '../../utils/bff-view.ts';
+import { bffViewRoute } from '../../utils/server/bff-view.ts';
 
 function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', community = false) {
   const calls: string[] = [];
@@ -210,7 +210,7 @@ Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来�
     page: 2,
   }, () => Promise.resolve({}));
   const { data } = envelope.sections.training?.data as unknown as {
-    data: import('../../utils/domain-trainings.ts').TrainingView;
+    data: import('../../utils/domain/problem/domain-trainings.ts').TrainingView;
   };
   assertEquals(data.total, 100);
   assertEquals(data.items.length, 20);

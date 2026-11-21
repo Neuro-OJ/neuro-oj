@@ -1,4 +1,4 @@
-/** utils/contestRanking.ts 单元测试（VULN-09：封榜期只返回本人一行时的展示语义）。 */
+/** utils/domain/contest/contestRanking.ts 单元测试（VULN-09：封榜期只返回本人一行时的展示语义）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -8,7 +8,7 @@ import {
   frozenAccessHint,
   isFrozenSelfOnly,
   isLiveSelfOnly,
-} from '../../../utils/contestRanking.ts';
+} from '../../../utils/domain/contest/contestRanking.ts';
 
 Deno.test('isFrozenSelfOnly: 仅"封榜 + 非管理员实时榜"判定为只显示本人', () => {
   assertEquals(isFrozenSelfOnly('frozen', false), true);

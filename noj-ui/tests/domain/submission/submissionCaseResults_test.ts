@@ -5,7 +5,7 @@ import {
   isSubmissionCasePassed,
   normalizeSubmissionCases,
   submissionCasesWithProgress,
-} from '../../../utils/submissionCaseResults.ts';
+} from '../../../utils/domain/submission/submissionCaseResults.ts';
 
 Deno.test('submissionCaseResults: 实时明细合并并发用例，完成结果优先于迟到的运行标记', () => {
   const rows = submissionCasesWithProgress(null, {

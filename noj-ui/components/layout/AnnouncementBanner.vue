@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
 const slug = useNavigationDomain(), { user } = useAuth(), { api } = useApi();
 const { isDismissed, dismiss } = useAnnouncementDismiss();
 interface BannerPayload {

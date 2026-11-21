@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
+import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), workspace = useWorkspace(), { user } = useAuth(), api = useDomainSubmissions();
 const slug = workspace.slug, can = workspace.can ?? (() => false);

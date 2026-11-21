@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
-import type { UiFrameResult } from '~/utils/uiFrame';
-import { domainUiSubmissionResult, domainUiSelfTestResult } from '~/utils/domain-ui-runs';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { diffLines } from '~/utils/textDiff';
+import type { UiFrameResult } from '~/utils/domain/problem/uiFrame';
+import { domainUiSubmissionResult, domainUiSelfTestResult } from '~/utils/domain/problem/domain-ui-runs';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { diffLines } from '~/utils/domain/problem/textDiff';
 const props = defineProps<{
   slug: string; problemId: string; reference: string; contestId?: string; submissionId: string;
   selfTest: DomainSelfTest | null; code: string; writable: boolean;

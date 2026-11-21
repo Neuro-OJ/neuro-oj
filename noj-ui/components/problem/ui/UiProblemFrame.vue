@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { buildUiFrameDoc, sameValues, type UiFrameResult } from '~/utils/uiFrame'
+import { buildUiFrameDoc, sameValues, type UiFrameResult } from '~/utils/domain/problem/uiFrame'
 
 /**
  * 界面题的沙箱 iframe：渲染题包自带的 `ui.html`，并与宿主页用 postMessage 通信。
@@ -12,7 +12,7 @@ import { buildUiFrameDoc, sameValues, type UiFrameResult } from '~/utils/uiFrame
  * - 宿主只接受 `event.source === iframe.contentWindow` 的消息，并只信任消息里的
  *   `values` 对象（真正的合法性校验仍在服务端）。
  *
- * 协议与界面侧 SDK（`window.NOJ`）见 `utils/uiFrame.ts`。
+ * 协议与界面侧 SDK（`window.NOJ`）见 `utils/domain/problem/uiFrame.ts`。
  */
 const props = defineProps<{
   /** 题包里的 ui.html 原文 */

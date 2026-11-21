@@ -8,7 +8,7 @@ vi.mock('~/composables/useToast', () => ({
 
 import { useApi } from '~/composables/useApi';
 import { ref } from 'vue';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 
 describe('useApi', () => {
   beforeEach(() => {

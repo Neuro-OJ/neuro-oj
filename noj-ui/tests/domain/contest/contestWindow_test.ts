@@ -1,4 +1,4 @@
-/** utils/contestWindow.ts 的纯逻辑单元测试。 */
+/** utils/domain/contest/contestWindow.ts 的纯逻辑单元测试。 */
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import {
@@ -9,7 +9,7 @@ import {
   contestRegistrationState,
   rankingVisibilityText,
   scoreboardScopeText,
-} from '../../../utils/contestWindow.ts';
+} from '../../../utils/domain/contest/contestWindow.ts';
 
 const base = {
   isLoggedIn: true,

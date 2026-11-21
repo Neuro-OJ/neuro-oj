@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import WorkspaceInvitationManager from '~/components/workspace/WorkspaceInvitationManager.vue';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 

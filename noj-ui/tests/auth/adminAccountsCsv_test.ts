@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals, assertThrows } from 'jsr:@std/assert@^1';
-import { credentialsCsv, parseAccountCsv } from '../../utils/adminAccountsCsv.ts';
+import { credentialsCsv, parseAccountCsv } from '../../utils/auth/adminAccountsCsv.ts';
 
 Deno.test('adminAccountsCsv: BOM、CRLF、空字段及最多 500 行', () => {
   assertEquals(

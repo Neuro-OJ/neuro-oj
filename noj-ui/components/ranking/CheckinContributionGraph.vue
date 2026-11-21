@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { buildContributionGrid, formatDateFull } from '~/utils/checkinContributions'
+import { buildContributionGrid, formatDateFull } from '~/utils/domain/community/checkinContributions'
 
 /**
  * GitHub 风格签到贡献图。

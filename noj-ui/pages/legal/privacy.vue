@@ -4,7 +4,7 @@
 // 渲染当前已发布的隐私政策 Markdown；未发布时给出提示。
 // 运营者在「法律与合规」后台发布内容。页尾展示个人信息处理者信息与第三方清单。
 
-import { buildThirdPartyList, EMPTY_SITE_META } from "~/utils/siteMeta";
+import { buildThirdPartyList, EMPTY_SITE_META } from "~/utils/server/siteMeta";
 
 const { api } = useApi();
 

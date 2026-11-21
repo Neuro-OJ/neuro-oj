@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { toContestProblemView } from '~/utils/problemView';
-import { contestDurationText, contestPhase, scoreboardScopeText } from '~/utils/contestWindow';
-import { formatDateTime } from '~/utils/submissionFormat';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { toContestProblemView } from '~/utils/domain/problem/problemView';
+import { contestDurationText, contestPhase, scoreboardScopeText } from '~/utils/domain/contest/contestWindow';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 
 /**
  * 域比赛赛题页。

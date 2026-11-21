@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { workspaceCacheKey } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
 const props = defineProps<{ slug: string; disabled?: boolean }>();
 const selected = defineModel<string[]>({ required: true });
 const api = useDomainProblems(), { user } = useAuth(), capture = useWorkspaceActionScope();

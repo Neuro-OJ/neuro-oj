@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { publicUrl } from '~/utils/publicIdentifiers'
-import type { ProblemContestSecrecyNotice } from '~/utils/problemView'
+import type { ProblemContestSecrecyNotice } from '~/utils/domain/problem/problemView'
 
 /**
  * 公开赛保密提示横幅（仅题目所有者与管理员能看到本组件）。

@@ -1,4 +1,4 @@
-/** utils/avatarUpload.ts 单元测试。 */
+/** utils/auth/avatarUpload.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -7,7 +7,7 @@ import {
   AVATAR_TYPE_ERROR,
   getAvatarUploadError,
   MAX_AVATAR_SIZE_BYTES,
-} from '../../utils/avatarUpload.ts';
+} from '../../utils/auth/avatarUpload.ts';
 
 function avatarFile(
   overrides: Partial<Pick<File, 'name' | 'type' | 'size'>> = {},

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(),
   { slug, domain } = useWorkspace(),

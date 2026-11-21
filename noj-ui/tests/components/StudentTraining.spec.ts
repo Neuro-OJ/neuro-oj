@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import StudentTraining from '~/components/education/StudentTraining.vue';
-import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
+import type { ClassroomDetail, TeachingCapability } from '~/utils/domain/education/education';
 const api = { studentSubmissions: vi.fn(), studentSubmission: vi.fn(), assignments: vi.fn() };
 const stubs = {
   LibraryPageHeader: { props: ['title'], template: '<h1>{{ title }}</h1>' },

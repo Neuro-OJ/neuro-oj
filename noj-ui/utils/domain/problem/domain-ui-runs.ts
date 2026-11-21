@@ -1,5 +1,5 @@
 import type { UiFrameResult } from './uiFrame.ts';
-import { getStatusLabel } from './submissionFormat.ts';
+import { getStatusLabel } from '../submission/submissionFormat.ts';
 
 /** 界面只接收域接口已公开的汇总；hidden 不读取嵌套结果或评测输出。 */
 export function domainUiSubmissionResult(record: {

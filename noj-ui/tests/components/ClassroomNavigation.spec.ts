@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, reactive } from 'vue';
 import ClassroomNavigation from '~/components/education/ClassroomNavigation.vue';
-import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
+import type { ClassroomDetail, TeachingCapability } from '~/utils/domain/education/education';
 
 const route = reactive({ path: '/d/school/classrooms/class-one' });
 beforeEach(() => {

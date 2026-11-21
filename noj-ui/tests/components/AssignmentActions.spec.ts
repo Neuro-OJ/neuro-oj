@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref, watch } from 'vue';
 import AssignmentActions from '~/components/education/AssignmentActions.vue';
-import type { AssignmentDetail } from '~/utils/education';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
 const api = { publish: vi.fn(), schedule: vi.fn(), lifecycle: vi.fn() }, confirm = vi.fn();
 let current = true;
 beforeEach(() => {

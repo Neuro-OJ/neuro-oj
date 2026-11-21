@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { OwnSubmissionHistory } from '~/utils/own-submissions';
-import { formatMemory, formatScore, formatTime } from '~/utils/submissionFormat';
+import type { OwnSubmissionHistory } from '~/utils/domain/submission/own-submissions';
+import { formatMemory, formatScore, formatTime } from '~/utils/domain/submission/submissionFormat';
 defineProps<{ entry: OwnSubmissionHistory }>();
 </script>
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { REPORT_CATEGORIES, type ReportCategory } from "~/utils/reportCategories"
+import { REPORT_CATEGORIES, type ReportCategory } from "~/utils/domain/community/reportCategories"
 
 const emit = defineEmits<{ close: [result: { category: ReportCategory; reason: string } | null] }>()
 

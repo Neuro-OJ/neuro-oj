@@ -1,4 +1,4 @@
-import { stripMarkdown } from './markdown.ts';
+import { stripMarkdown } from '../../markdown.ts';
 
 export type PostRowWithPreview<T extends { post: { content: string } }> = T & {
   preview: string;

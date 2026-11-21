@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { OwnSubmissionKind } from '~/utils/own-submissions';
-import { extractApiError } from '~/utils/apiError';
+import type { OwnSubmissionKind } from '~/utils/domain/submission/own-submissions';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ middleware: 'auth' });
 const route = useRoute(), { user } = useAuth(), api = useOwnSubmissions();
 const kind = computed(() => String(route.params.kind) as OwnSubmissionKind),

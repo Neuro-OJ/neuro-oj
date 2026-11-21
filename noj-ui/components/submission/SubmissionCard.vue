@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 import { computed } from 'vue';
 import { publicUrl } from '~/utils/publicIdentifiers';
 

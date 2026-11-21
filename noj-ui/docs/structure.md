@@ -33,7 +33,7 @@
 | `assets/css/main.css` | Tailwind v4 `@theme`（映射 `--c-*`）+ `--ui-*` + `prose-neuro`                                   |
 
 无域前缀的题库、比赛、提交与旧编辑入口在页面 setup 前固定跳转默认域 `main`
-（`utils/default-workspace.ts`，301 保护旧书签），旧页面已删除。
+（`utils/domain/workspace/default-workspace.ts`，301 保护旧书签），旧页面已删除。
 
 ## 组件目录（`components/`）
 

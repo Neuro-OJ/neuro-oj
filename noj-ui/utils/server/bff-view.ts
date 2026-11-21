@@ -1,5 +1,5 @@
-import type { WorkspaceDetail } from './workspace.ts';
-import type { AuthUser } from './auth-user.ts';
+import type { WorkspaceDetail } from '../domain/workspace/workspace.ts';
+import type { AuthUser } from '../auth/auth-user.ts';
 
 export type BffViewKind = 'home' | 'classroom' | 'assignment' | 'training';
 export type BffSectionName =

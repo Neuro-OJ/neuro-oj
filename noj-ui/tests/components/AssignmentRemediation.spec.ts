@@ -3,8 +3,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, watch } from 'vue';
 import AssignmentRemediation from '~/components/education/AssignmentRemediation.vue';
 import RemediationSelection from '~/components/education/RemediationSelection.vue';
-import type { AssignmentDetail } from '~/utils/education';
-import type { AssignmentRemediationPreview } from '~/utils/education-remediation-preview';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
+import type { AssignmentRemediationPreview } from '~/utils/domain/education/education-remediation-preview';
 const api = { remediationPreview: vi.fn(), createRemediation: vi.fn() };
 const navigate = vi.fn();
 const preview = (): AssignmentRemediationPreview => ({

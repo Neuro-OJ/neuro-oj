@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { DomainEditorContent, DomainOiRuntime } from '~/utils/domain-problem-editor';
-import { domainEditorPayload } from '~/utils/domain-problem-editor';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import type { DomainEditorContent, DomainOiRuntime } from '~/utils/domain/problem/domain-problem-editor';
+import { domainEditorPayload } from '~/utils/domain/problem/domain-problem-editor';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<
   { slug: string; reference: string; content: DomainEditorContent; revision: number; writable: boolean; dirty: boolean }
 >();

@@ -1,7 +1,7 @@
 <!-- 队列行（正在评测 / 排队中 / 最近完成 三个分区共用）。 -->
 <script setup lang="ts">
 import { computed } from "vue"
-import { formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
+import { formatDateTime, formatScore, getLanguageLabel } from "~/utils/domain/submission/submissionFormat"
 import { publicUrl } from "~/utils/publicIdentifiers"
 import { useToast } from "~/composables/useToast"
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ endpoint: string; fileName: string }>();
 const { api } = useApi();
 const downloading = ref(false), failure = ref('');

@@ -36,8 +36,8 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
+import { extractApiError } from "~/utils/server/apiError"
+import { validatePassword, validatePasswordMatch } from "~/utils/auth/validatePassword"
 
 definePageMeta({ layout: "auth", middleware: "auth" })
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { WORKSPACE_LIMIT_FIELDS } from '~/utils/instance-governance';
-import type { WorkspaceLimits } from '~/utils/workspace';
+import { WORKSPACE_LIMIT_FIELDS } from '~/utils/server/instance-governance';
+import type { WorkspaceLimits } from '~/utils/domain/workspace/workspace';
 import {
   bestStorageUnit,
   bytesToUnitValue,
@@ -12,7 +12,7 @@ import {
   STORAGE_UNIT_OPTIONS,
   type StorageUnit,
   validateStorageInput,
-} from '~/utils/storage-limit';
+} from '~/utils/domain/workspace/storage-limit';
 
 export type LimitMode = 'domain_limits' | 'instance_caps' | 'instance_defaults';
 

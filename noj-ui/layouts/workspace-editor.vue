@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 const { domain, status, error, refresh } = provideWorkspaceContext();
 </script>
 <template>

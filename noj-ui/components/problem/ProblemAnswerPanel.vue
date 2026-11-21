@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { SubmitResult } from '~/composables/useObjective';
-import type { SubmissionMode } from '~/utils/problemView';
-import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/problemView';
-import { extractApiError } from '~/utils/apiError';
-import { languageLabels } from '~/utils/submissionFormat';
-import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
+import type { SubmissionMode } from '~/utils/domain/problem/problemView';
+import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/domain/problem/problemView';
+import { extractApiError } from '~/utils/server/apiError';
+import { languageLabels } from '~/utils/domain/submission/submissionFormat';
+import { parseValues, stableStringify, type UiFrameResult } from '~/utils/domain/problem/uiFrame';
 import UiProblemFrame from '~/components/problem/ui/UiProblemFrame.vue';
 
 /**

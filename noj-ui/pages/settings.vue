@@ -3,9 +3,9 @@
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
 import { useToast } from '~/composables/useToast'
 
-import { extractApiError } from "~/utils/apiError"
-import { getAvatarUploadError } from "~/utils/avatarUpload"
-import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
+import { extractApiError } from "~/utils/server/apiError"
+import { getAvatarUploadError } from "~/utils/auth/avatarUpload"
+import { formatRecoveryCodesFile } from "~/utils/auth/recoveryCodes"
 import { userUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({ })

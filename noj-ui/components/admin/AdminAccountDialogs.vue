@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { credentialsCsv, parseAccountCsv } from '~/utils/adminAccountsCsv';
+import { extractApiError } from '~/utils/server/apiError';
+import { credentialsCsv, parseAccountCsv } from '~/utils/auth/adminAccountsCsv';
 
 const props = defineProps<{ resetUser: { id: string; username: string } | null }>();
 const emit = defineEmits<{ changed: []; 'reset-closed': [] }>();

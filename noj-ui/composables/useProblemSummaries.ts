@@ -1,5 +1,5 @@
 import type { MaybeRefOrGetter } from 'vue';
-import type { ProblemSummaries } from '~/utils/problem-summaries';
+import type { ProblemSummaries } from '~/utils/server/problem-summaries';
 
 /** 只补齐当前显示的题名；初始作业视图直接消费同一份 BFF 摘要。 */
 export function useProblemSummaries(slug: MaybeRefOrGetter<string>, references: MaybeRefOrGetter<string[]>) {

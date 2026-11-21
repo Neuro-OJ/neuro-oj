@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
-import { workspaceCacheKey } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
 import type { QueueData, QueueScope } from '~/composables/useDomainQueue';
 
 definePageMeta({

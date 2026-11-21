@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- 复用仓库既有断言依赖，不引入新版本。
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { defaultProblemReference, defaultWorkspaceDestination } from '../../../utils/default-workspace.ts';
+import { defaultProblemReference, defaultWorkspaceDestination } from '../../../utils/domain/workspace/default-workspace.ts';
 Deno.test('旧Public入口固定main，不从偏好或题库类型决定空间', () => {
   assertEquals(defaultWorkspaceDestination('/problems/'), { path: '/d/main/problems' });
   assertEquals(defaultWorkspaceDestination('/trainings'), { path: '/d/main/trainings' });

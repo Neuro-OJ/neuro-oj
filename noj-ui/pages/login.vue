@@ -249,13 +249,13 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { safeAuthRedirect } from "~/utils/authRedirect"
-import { postLoginDestination } from "~/utils/workspace"
+import { extractApiError } from "~/utils/server/apiError"
+import { safeAuthRedirect } from "~/utils/auth/authRedirect"
+import { postLoginDestination } from "~/utils/domain/workspace/workspace"
 import {
   assertRecoveryCodeFileSize,
   parseRecoveryCodesFile,
-} from "~/utils/recoveryCodes"
+} from "~/utils/auth/recoveryCodes"
 
 definePageMeta({ layout: "auth" })
 

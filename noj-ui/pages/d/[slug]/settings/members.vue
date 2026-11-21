@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { WORKSPACE_ROLE_LABELS, workspaceCacheKey } from '~/utils/workspace';
-import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceMemberRole, WorkspaceRole } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { WORKSPACE_ROLE_LABELS, workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceMemberRole, WorkspaceRole } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });

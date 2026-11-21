@@ -1,10 +1,10 @@
 /**
- * utils/isAdminUser.ts 单元测试。
+ * utils/auth/isAdminUser.ts 单元测试。
  */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { isAdminUser } from '../../utils/isAdminUser.ts';
+import { isAdminUser } from '../../utils/auth/isAdminUser.ts';
 
 Deno.test('isAdminUser: 空值返回 false', () => {
   assertEquals(isAdminUser(null), false);

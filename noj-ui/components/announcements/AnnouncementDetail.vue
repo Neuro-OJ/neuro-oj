@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { formatDateTime } from '~/utils/submissionFormat';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ domainSlug?: string; announcementId: string }>();
 const { user } = useAuth(), api = useAnnouncements(props.domainSlug);
 const { data, status, error, refresh } = await useAsyncData(

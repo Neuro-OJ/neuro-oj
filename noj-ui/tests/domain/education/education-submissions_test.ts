@@ -1,8 +1,8 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { teachingAttemptLabel, teachingSubmissionResult } from '../../../utils/education-submissions.ts';
-import type { TeachingAttempt, TeachingSubmission } from '../../../utils/education-submissions.ts';
+import { teachingAttemptLabel, teachingSubmissionResult } from '../../../utils/domain/education/education-submissions.ts';
+import type { TeachingAttempt, TeachingSubmission } from '../../../utils/domain/education/education-submissions.ts';
 Deno.test('教学提交：缺少正式分数不展示零分或未通过', () => {
   const row = { score: null, accepted: false, status: 'finished', verdict: null } as TeachingSubmission;
   assertEquals(teachingSubmissionResult(row), '暂无有效成绩');

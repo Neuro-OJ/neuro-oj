@@ -1,8 +1,8 @@
 // deno-lint-ignore no-import-prefix
 import { assertEquals, assertNotEquals } from 'jsr:@std/assert@^1';
-import { communityApiPath, communityPath, communityScopeKey } from '../../../utils/community-workspace.ts';
-import { notificationDetailUrl, notificationTarget } from '../../../utils/communityNotifications.ts';
-import { defaultWorkspaceDestination } from '../../../utils/default-workspace.ts';
+import { communityApiPath, communityPath, communityScopeKey } from '../../../utils/domain/community/community-workspace.ts';
+import { notificationDetailUrl, notificationTarget } from '../../../utils/domain/community/communityNotifications.ts';
+import { defaultWorkspaceDestination } from '../../../utils/domain/workspace/default-workspace.ts';
 
 Deno.test('域社区入口与缓存不会把同一账号或同一帖子切换为其他域', () => {
   assertEquals(

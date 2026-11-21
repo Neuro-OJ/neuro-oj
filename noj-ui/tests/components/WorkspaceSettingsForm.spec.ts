@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
-import type { WorkspaceDetail } from '~/utils/workspace';
+import type { WorkspaceDetail } from '~/utils/domain/workspace/workspace';
 
 const notices = vi.hoisted(() => ({ success: vi.fn() }));
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: notices }) }));

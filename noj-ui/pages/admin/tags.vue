@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError } from '~/utils/server/apiError'
 import { useToast } from '~/composables/useToast'
 import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import { useDialog } from '~/composables/useDialog'

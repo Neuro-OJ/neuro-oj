@@ -1,20 +1,18 @@
-import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
-import { workspaceProblemPath, workspaceSolvePath } from '~/utils/workspace';
-import { isNotFoundError } from '~/utils/apiError';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-/** 旧入口在页面 setup 前转到 main（规则见 `utils/default-workspace.ts`），旧表单不再发起业务写操作。 */
+import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/domain/workspace/default-workspace';
+import { workspaceProblemPath, workspaceSolvePath } from '~/utils/domain/workspace/workspace';
+import { isNotFoundError } from '~/utils/server/apiError';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+/** 旧入口在页面 setup 前转到 main（规则见 `utils/domain/workspace/default-workspace.ts`），旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
   if (!destination) return;
   const query = { ...to.query };
-  const lower = to.path.toLowerCase();
-  if (!lower.startsWith('/community') && lower !== '/search') delete query.type;
+  if (!to.path.startsWith('/community') && to.path !== '/search') delete query.type;
   if (
-    lower === '/search' && query.type && !['problem', 'contest', 'submission', 'all'].includes(String(query.type))
+    to.path === '/search' && query.type && !['problem', 'contest', 'submission', 'all'].includes(String(query.type))
   ) delete query.type;
   if ('path' in destination) {
     if (destination.kind) query.kind = destination.kind;
-    if (destination.query) Object.assign(query, destination.query);
     return navigateTo({ path: destination.path, query, hash: to.hash }, { redirectCode: 301, replace: true });
   }
   if ('trainingRef' in destination) {

@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { canPublishSolution, needsAcceptedCheck, type SolutionConfig } from '../../../utils/solutionEligibility.ts';
+import { canPublishSolution, needsAcceptedCheck, type SolutionConfig } from '../../../utils/domain/problem/solutionEligibility.ts';
 
 function config(overrides: Partial<SolutionConfig> = {}): SolutionConfig {
   return {

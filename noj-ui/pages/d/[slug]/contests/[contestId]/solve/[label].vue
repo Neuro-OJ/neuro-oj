@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import type { DomainCodeProblem } from '~/utils/domain-problems';
-import { extractApiError } from '~/utils/apiError';
-import { contestPhase } from '~/utils/contestWindow';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import type { DomainCodeProblem } from '~/utils/domain/problem/domain-problems';
+import { extractApiError } from '~/utils/server/apiError';
+import { contestPhase } from '~/utils/domain/contest/contestWindow';
 definePageMeta({ layout: 'workspace-editor', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth();
 const api = useDomainContestAnswers(), contestApi = useDomainContests();

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { classroomCan, educationCacheKey } from '~/utils/education';
-import type { ClassroomDetail, ClassroomMember } from '~/utils/education';
-import { teachingSubmissionResult } from '~/utils/education-submissions';
-import type { TeachingSubmission } from '~/utils/education-submissions';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import type { ClassroomDetail, ClassroomMember } from '~/utils/domain/education/education';
+import { teachingSubmissionResult } from '~/utils/domain/education/education-submissions';
+import type { TeachingSubmission } from '~/utils/domain/education/education-submissions';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<
   { slug: string; classroom: ClassroomDetail; studentId: string; student?: ClassroomMember; writable: boolean }
 >();

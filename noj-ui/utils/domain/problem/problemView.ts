@@ -8,7 +8,7 @@
  *
  * 本模块把两种资源归一为 `ProblemView`，让 `components/problem/*` 只需面对一种形状；
  * 放在 `utils/` 而非组件内，是因为本仓库约定**纯逻辑放 utils**，可被 `deno task test`
- * 直接断言（与 `utils/problemStats.ts`、`utils/submissionFormat.ts` 一致）。
+ * 直接断言（与 `utils/domain/problem/problemStats.ts`、`utils/domain/submission/submissionFormat.ts` 一致）。
  */
 
 /** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { contestPenaltyText } from '~/utils/domain-contests';
-import { extractApiError } from '~/utils/apiError';
-import { contestCountdown, contestPhase } from '~/utils/contestWindow';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { contestPenaltyText } from '~/utils/domain/contest/domain-contests';
+import { extractApiError } from '~/utils/server/apiError';
+import { contestCountdown, contestPhase } from '~/utils/domain/contest/contestWindow';
 import type { DomainContestRanking, DomainContestRankingRow } from '~/composables/useDomainContests';
 import { useDomainContestStream, type DomainContestRankingEvent } from '~/composables/useDomainContestStream';
 

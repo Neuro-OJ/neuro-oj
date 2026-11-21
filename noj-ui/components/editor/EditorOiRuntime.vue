@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DomainOiRuntime } from '~/utils/domain-problem-editor';
+import type { DomainOiRuntime } from '~/utils/domain/problem/domain-problem-editor';
 const runtime = defineModel<DomainOiRuntime>({ required: true });
 function addSubtask() {
   runtime.value.subtasks.push({

@@ -5,7 +5,7 @@
  * - `definePageMeta` 是编译期宏、值必须可序列化，无法在页面里放函数解析动态标题，
  *   因此层级必须由「集中声明的路由表」推导，而不是每页手写；
  * - 纯逻辑放 utils 可被 `deno task test` 直接断言（本仓库既有约定，
- *   同 `utils/problemStats.ts`、`utils/problemView.ts`）；
+ *   同 `utils/domain/problem/problemStats.ts`、`utils/domain/problem/problemView.ts`）；
  * - 解析本身是 `route.path` 的纯函数，**不需要中间件**，
  *   布局组件在 SSR 首帧即可算出（见 `composables/useBreadcrumb.ts` 的说明）。
  *
@@ -16,7 +16,7 @@
  */
 import { messages } from './i18n.ts';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
-import { workspacePath, workspaceSlugFromPath } from './workspace.ts';
+import { workspacePath, workspaceSlugFromPath } from './domain/workspace/workspace.ts';
 
 /** 解析后的单层面包屑。`to` 缺省表示当前页（末层，不可点击）。 */
 export interface BreadcrumbItem {

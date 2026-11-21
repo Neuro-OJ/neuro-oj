@@ -5,7 +5,7 @@ import ProblemHeader from '~/components/problem/ProblemHeader.vue';
 import ProblemMetaCard from '~/components/problem/ProblemMetaCard.vue';
 import KnowledgeNextLink from '~/components/knowledge/KnowledgeNextLink.vue';
 import KnowledgeTags from '~/components/knowledge/KnowledgeTags.vue';
-import type { ProblemView } from '~/utils/problemView';
+import type { ProblemView } from '~/utils/domain/problem/problemView';
 
 const problem = {
   title: '数组求和',

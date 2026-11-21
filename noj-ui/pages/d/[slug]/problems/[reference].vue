@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceSolvePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
-import { toDomainProblemView } from '~/utils/problemView';
-import type { PublicProblemStats } from '~/utils/problemStats';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-import type { ProblemKnowledgeView } from '~/utils/knowledge';
+import { workspaceCacheKey, workspaceSolvePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
+import { toDomainProblemView } from '~/utils/domain/problem/problemView';
+import type { PublicProblemStats } from '~/utils/domain/problem/problemStats';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+import type { ProblemKnowledgeView } from '~/utils/domain/education/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'problem', breadcrumbWidth: '1280px' });
 const route = useRoute();

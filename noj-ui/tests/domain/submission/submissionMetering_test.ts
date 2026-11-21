@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由锁文件固定
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { submissionMeteringCases, submissionMeteringTimeLabel } from '../../../utils/submissionMetering.ts';
+import { submissionMeteringCases, submissionMeteringTimeLabel } from '../../../utils/domain/submission/submissionMetering.ts';
 
 Deno.test('submissionMetering: 仅提取工作量字段，保留零值，不输出隐藏数据', () => {
   assertEquals(

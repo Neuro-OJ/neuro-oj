@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDraftStorage } from '~/composables/useDraftStorage';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 import { clearUserDrafts, draftActor } from '~/utils/draft-storage';
 
 const target = (actor: string, context = 'problem') => domainAnswerKey(actor, 'global', context, '', 'answer');

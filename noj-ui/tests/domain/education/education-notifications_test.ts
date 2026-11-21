@@ -1,8 +1,8 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { teachingNoticeTarget } from '../../../utils/education-notifications.ts';
-import type { TeachingNotice } from '../../../utils/education-notifications.ts';
+import { teachingNoticeTarget } from '../../../utils/domain/education/education-notifications.ts';
+import type { TeachingNotice } from '../../../utils/domain/education/education-notifications.ts';
 Deno.test('教学通知：链接保留使用域，反馈与求助只传定位，不传成绩或正文', () => {
   const notice = { assignment_id: 'task', type: 'help_reply', help_id: 'help', feedback_id: null } as TeachingNotice;
   assertEquals(teachingNoticeTarget('school-one', notice), {

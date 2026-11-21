@@ -1,7 +1,7 @@
 import { computed, inject, onScopeDispose, provide, ref, watch } from 'vue';
 import type { InjectionKey } from 'vue';
 import { useApi } from '~/composables/useApi';
-import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
+import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils/domain/workspace/workspace';
 import type {
   WorkspaceDetail,
   WorkspaceLimits,
@@ -10,9 +10,9 @@ import type {
   WorkspacePreset,
   WorkspaceRecord,
   WorkspaceSummary,
-} from '~/utils/workspace';
+} from '~/utils/domain/workspace/workspace';
 
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 /** 当前空间始终由 URL 解析；异步数据按查看者分隔，切换期间不使用旧权限。 */
 export function provideWorkspaceContext() {

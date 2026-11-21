@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DomainProblemBinding } from '~/composables/useDomainResources';
-import { extractApiError } from '~/utils/apiError';
-import { workspaceCacheKey } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
 const props = defineProps<{ slug: string; initial: DomainProblemBinding; writable: boolean; canPolicy: boolean }>();
 const emit = defineEmits<{ saved: [] }>();
 const api = useDomainResources(),

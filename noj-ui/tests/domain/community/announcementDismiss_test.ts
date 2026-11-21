@@ -5,7 +5,7 @@
  */
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { DISMISS_KEY, parseDismissed, serializeDismissed } from '../../../utils/announcementDismiss.ts';
+import { DISMISS_KEY, parseDismissed, serializeDismissed } from '../../../utils/domain/community/announcementDismiss.ts';
 
 Deno.test('announcementDismiss: 存储键绑定公告 id 语义', () => {
   assertEquals(DISMISS_KEY, 'noj:announcement-dismissed');

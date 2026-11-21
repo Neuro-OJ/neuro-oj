@@ -1,5 +1,5 @@
-import { safeAuthRedirect } from '~/utils/authRedirect';
-import { workspaceSlugFromPath } from '~/utils/workspace';
+import { safeAuthRedirect } from '~/utils/auth/authRedirect';
+import { workspaceSlugFromPath } from '~/utils/domain/workspace/workspace';
 
 /** 账号页面仅继承导航来源；业务权限和提交归属始终取明确域 URL。 */
 export function useNavigationDomain() {

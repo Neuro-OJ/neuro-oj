@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix
 import { assertEquals, assertNotEquals } from 'jsr:@std/assert@^1';
-import { domainAnswerKey, domainProblemApiPath } from '../../../utils/domain-problems.ts';
+import { domainAnswerKey, domainProblemApiPath } from '../../../utils/domain/problem/domain-problems.ts';
 Deno.test('共享题入口保留使用域及来源题号', () => {
   assertEquals(domainProblemApiPath('school', 'main:1001'), '/api/v1/domains/school/problems/main%3A1001');
 });

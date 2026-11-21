@@ -6,7 +6,7 @@
 
 import { useToast } from "~/composables/useToast";
 import { useDialog } from "~/composables/useDialog";
-import { extractApiError } from "~/utils/apiError";
+import { extractApiError } from "~/utils/server/apiError";
 import type { LegalKind, LegalVersionSummary } from "~/composables/useLegal";
 
 definePageMeta({ layout: "admin", middleware: "admin", });

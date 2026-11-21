@@ -1,10 +1,10 @@
 /**
- * utils/textDiff.ts 单元测试。
+ * utils/domain/problem/textDiff.ts 单元测试。
  */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { diffLines } from '../../utils/textDiff.ts';
+import { diffLines } from '../../utils/domain/problem/textDiff.ts';
 
 Deno.test('diffLines: 标出新增、删除与相同行', () => {
   assertEquals(diffLines('a\nb\nc', 'a\nx\nc\nd'), [

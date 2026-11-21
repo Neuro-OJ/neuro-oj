@@ -6,7 +6,7 @@ import type {
   ContestProblem,
   KaggleRankingRow,
   Pagination,
-} from '~/utils/contest-types';
+} from '~/utils/domain/contest/contest-types';
 export interface DomainContest extends Contest {
   domain_id: string;
   revision: number;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref, Suspense, watch } from 'vue';
 import AssignmentEditor from '~/components/education/AssignmentEditor.vue';
-import type { AssignmentDetail } from '~/utils/education';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
 const api = {
   members: vi.fn(),
   problems: vi.fn(),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { workspaceCacheKey } from '~/utils/workspace';
-import type { WorkspaceLimits, WorkspaceLimitUsage } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceLimits, WorkspaceLimitUsage } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });

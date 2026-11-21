@@ -54,9 +54,9 @@ export interface Contest {
 }
 
 export interface ContestProblem {
-  samples?: import('~/utils/oiWorkspace').ProblemSample[];
+  samples?: import('~/utils/domain/problem/oiWorkspace').ProblemSample[];
   limits?: { time_limit_ms: number; memory_limit_mb: number } | null;
-  reference?: import('~/utils/domain-problems').DomainProblemReference;
+  reference?: import('~/utils/domain/problem/domain-problems').DomainProblemReference;
   judge_type?: 'dual' | 'oi';
   supported_languages?: string[];
   problem_id: string;

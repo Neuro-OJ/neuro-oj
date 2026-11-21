@@ -9,7 +9,7 @@ import {
   MIB,
   unitValueToBytes,
   validateStorageInput,
-} from '../../../utils/storage-limit.ts';
+} from '../../../utils/domain/workspace/storage-limit.ts';
 
 Deno.test('存储单位：任意字节不被默认格式化成两位小数而丢失精度', () => {
   for (const bytes of [1, MIB + 1, GIB + 1, Number.MAX_SAFE_INTEGER]) {

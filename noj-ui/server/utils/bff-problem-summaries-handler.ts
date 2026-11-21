@@ -1,6 +1,6 @@
 import { readProblemSummaries } from './bff-problem-summaries.ts';
 import { BffError, createCoreReader } from './bff-request.ts';
-import { authCookieNames } from '../../utils/auth-cookies.ts';
+import { authCookieNames } from '../../utils/auth/auth-cookies.ts';
 import { getClientNetworkHeaders } from './client-network.ts';
 import { getCookie, getQuery, getRouterParam, type H3Event, setHeader, setResponseStatus } from 'h3';
 /** 编辑与翻页的摘要请求同样不缓存私有数据，不接受客户端指定上游地址。 */

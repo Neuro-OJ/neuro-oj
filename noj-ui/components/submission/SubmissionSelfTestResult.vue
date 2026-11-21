@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
-import { formatMemory, formatScore, formatTime } from '~/utils/submissionFormat';
+import { formatMemory, formatScore, formatTime } from '~/utils/domain/submission/submissionFormat';
 const props = defineProps<{ record: DomainSelfTest }>();
 interface CaseStream {
   case_id: string;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DomainJobSource } from '~/utils/domain-submission-jobs';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import type { DomainJobSource } from '~/utils/domain/submission/domain-submission-jobs';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{
   slug: string;
   source: DomainJobSource;

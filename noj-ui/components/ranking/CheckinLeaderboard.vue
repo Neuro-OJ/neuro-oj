@@ -4,7 +4,7 @@
  * 数据源 `GET /api/v1/rankings/checkin`；月份与页码由父页面通过 URL query 驱动。
  */
 import type { CheckinRankingRow } from "~/composables/useRankings"
-import { currentUtcMonth, shiftMonth } from "~/utils/checkinCalendar"
+import { currentUtcMonth, shiftMonth } from "~/utils/domain/community/checkinCalendar"
 
 const props = defineProps<{ month: string; page: number }>()
 const emit = defineEmits<{

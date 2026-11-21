@@ -1,10 +1,10 @@
 /**
- * utils/uiFrame.ts 单元测试。
+ * utils/domain/problem/uiFrame.ts 单元测试。
  */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals, assertStringIncludes } from 'jsr:@std/assert@^1';
-import { buildUiFrameDoc, parseValues, sameValues, stableStringify, UI_FRAME_CSP } from '../../../utils/uiFrame.ts';
+import { buildUiFrameDoc, parseValues, sameValues, stableStringify, UI_FRAME_CSP } from '../../../utils/domain/problem/uiFrame.ts';
 
 Deno.test('buildUiFrameDoc: CSP 与 SDK 在题包界面之前', () => {
   const doc = buildUiFrameDoc('<h1 id="x">hello</h1>');

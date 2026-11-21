@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick, ref } from 'vue';
 import DomainProblemAnswer from '~/components/problem/ProblemAnswer.vue';
-import type { DomainProblemDetail } from '~/utils/domain-problems';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import type { DomainProblemDetail } from '~/utils/domain/problem/domain-problems';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 const api = { code: vi.fn(), objective: vi.fn(), artifact: vi.fn(), template: vi.fn(), ui: vi.fn() };
 const confirm = vi.fn();
 const detail: DomainProblemDetail = {

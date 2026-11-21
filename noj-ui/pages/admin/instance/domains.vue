@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { DOMAIN_STATUS_LABELS } from '~/utils/instance-governance';
-import type { InstanceDomain } from '~/utils/instance-governance';
-import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { DOMAIN_STATUS_LABELS } from '~/utils/server/instance-governance';
+import type { InstanceDomain } from '~/utils/server/instance-governance';
+import { WORKSPACE_PRESETS, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 import AdminInstanceNav from '~/components/admin/AdminInstanceNav.vue';
 
 definePageMeta({ layout: 'admin', middleware: 'admin', });

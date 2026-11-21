@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { AssignmentDetail, ClassroomMember, MatrixData } from '~/utils/education';
-import { currentPageRemediation } from '~/utils/education-remediation';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import type { AssignmentDetail, ClassroomMember, MatrixData } from '~/utils/domain/education/education';
+import { currentPageRemediation } from '~/utils/domain/education/education-remediation';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; task: AssignmentDetail; writable: boolean; matrix?: MatrixData }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null);

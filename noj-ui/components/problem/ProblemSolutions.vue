@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { PostRow } from '~/composables/useCommunity';
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { communityApiPath } from '~/utils/community-workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
-import { canPublishSolution, needsAcceptedCheck, type SolutionConfig } from '~/utils/solutionEligibility';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { communityApiPath } from '~/utils/domain/community/community-workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { canPublishSolution, needsAcceptedCheck, type SolutionConfig } from '~/utils/domain/problem/solutionEligibility';
 
 const props = defineProps<{ slug: string; problemId: string }>();
 const { user } = useAuth();

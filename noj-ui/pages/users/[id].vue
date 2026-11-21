@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
+import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/domain/submission/submissionFormat"
 import { problemUrl, publicUrl, workspaceProblemUrl } from "~/utils/publicIdentifiers"
-import { workspacePath } from "~/utils/workspace"
-import { contestHiddenRowClass } from "~/utils/contestHidden"
+import { workspacePath } from "~/utils/domain/workspace/workspace"
+import { contestHiddenRowClass } from "~/utils/domain/contest/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 definePageMeta({ breadcrumbWidth: '900px' })
@@ -174,7 +174,7 @@ const isOwnProfile = computed(
   () => currentUser.value?.username === userId,
 )
 
-// 语言标签（统一走 utils/submissionFormat 的 getLanguageLabel）
+// 语言标签（统一走 utils/domain/submission/submissionFormat 的 getLanguageLabel）
 
 // 结果状态
 const resultBadgeColors: Record<string, string> = {

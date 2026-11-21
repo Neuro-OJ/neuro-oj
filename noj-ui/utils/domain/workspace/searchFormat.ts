@@ -6,7 +6,7 @@
  */
 
 import type { SearchItem } from './search-types.ts';
-import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
+import { problemUrl, publicUrl, userUrl } from '../../publicIdentifiers.ts';
 
 const TYPE_LABELS: Record<string, string> = {
   problem: '题目',

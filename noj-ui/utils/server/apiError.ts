@@ -7,7 +7,7 @@
  */
 
 /** 提取结果：可直接用于 toast/表单错误展示 */
-import { translate, translateErrorCode } from './i18n.ts';
+import { translate, translateErrorCode } from '../i18n.ts';
 
 export interface ApiErrorInfo {
   /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */

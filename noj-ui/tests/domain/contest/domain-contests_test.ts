@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { contestPenaltyText, domainContestAllows, domainContestDefaults } from '../../../utils/domain-contests.ts';
+import { contestPenaltyText, domainContestAllows, domainContestDefaults } from '../../../utils/domain/contest/domain-contests.ts';
 Deno.test('五赛制题型限制和默认榜单对应确认规则', () => {
   assertEquals(domainContestAllows('kaggle', 'oi'), false);
   assertEquals(domainContestAllows('kaggle', 'objective'), true);

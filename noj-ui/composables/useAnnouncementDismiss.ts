@@ -4,11 +4,11 @@
  * 设计：记录"已关闭的公告 id 集合"，而非全局布尔——这样发了新公告仍会再出现，
  * 且关闭某条不影响其他条。SSR 安全（`import.meta.client` 守卫）。
  *
- * 纯解析/序列化逻辑在 `utils/announcementDismiss.ts`（便于无 Vue 单测）。
+ * 纯解析/序列化逻辑在 `utils/domain/community/announcementDismiss.ts`（便于无 Vue 单测）。
  */
 
 import { ref } from 'vue';
-import { DISMISS_KEY, parseDismissed, serializeDismissed } from '~/utils/announcementDismiss';
+import { DISMISS_KEY, parseDismissed, serializeDismissed } from '~/utils/domain/community/announcementDismiss';
 
 /** 读取已关闭 id 集合（SSR / 解析失败时返回空集）。 */
 function readDismissed(): Set<string> {

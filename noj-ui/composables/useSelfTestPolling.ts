@@ -4,7 +4,7 @@
  * 与 useSubmissionPolling 类似，但走 /api/v1/self-tests/:id，
  * 状态为 pending / judging / finished / error。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 export type SelfTestStatus = 'pending' | 'judging' | 'finished' | 'error' | 'cancelled';
 
